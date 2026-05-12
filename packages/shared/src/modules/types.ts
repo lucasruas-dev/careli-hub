@@ -1,6 +1,6 @@
 import type { HubPermission } from "../permissions/types";
 
-export type HubModuleStatus = "available" | "beta" | "planned" | "disabled";
+export type HubModuleStatus = "active" | "planned" | "locked" | "disabled";
 
 export type HubModuleCategory =
   | "core"

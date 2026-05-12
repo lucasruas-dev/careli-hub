@@ -53,6 +53,11 @@ export type AuthAdapter = {
   signOut?: () => Promise<AuthActionResult>;
 };
 
+export type MockAuthCredentials = {
+  email: string;
+  password: string;
+};
+
 export type AuthPermissionCheck = {
   permission: HubPermission;
   scope?: PermissionScope;

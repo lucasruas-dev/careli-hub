@@ -27,7 +27,10 @@ export function canAccessModule(
   user: HubUserContext,
   module: HubModule,
 ): boolean {
-  return hasAllPermissions(user, module.requiredPermissions);
+  return (
+    module.status === "active" &&
+    hasAllPermissions(user, module.requiredPermissions)
+  );
 }
 
 export function getAccessibleModules(
@@ -64,8 +67,11 @@ export function roleCanViewModule(
 ): boolean {
   const permissions = getPermissionsForRole(role);
 
-  return module.requiredPermissions.every((permission) =>
-    permissions.includes(permission),
+  return (
+    module.status === "active" &&
+    module.requiredPermissions.every((permission) =>
+      permissions.includes(permission),
+    )
   );
 }
 

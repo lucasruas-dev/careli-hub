@@ -3,9 +3,11 @@ import {
   type HubUserContext,
   type HubUserRole,
 } from "@repo/shared";
-import type { AuthState, AuthUser } from "./types";
+import type { AuthSession, AuthState, AuthUser } from "./types";
 
-type CreateMockAuthStateInput = {
+export const MOCK_AUTH_STORAGE_KEY = "careli:mock-auth-session";
+
+export type CreateMockAuthStateInput = {
   email?: string;
   fullName?: string;
   id?: string;
@@ -35,13 +37,42 @@ export function createMockAuthState(
 ): AuthState {
   const user = "permissions" in input ? input : createMockAuthUser(input);
 
-  return {
-    session: {
-      provider: "mock",
-      user,
-    },
-    status: "authenticated",
+  return createAuthStateFromSession({
+    provider: "mock",
     user,
+  });
+}
+
+export function createMockAuthSession(
+  input: AuthUser | CreateMockAuthStateInput = createMockAuthUser(),
+): AuthSession {
+  const user = "permissions" in input ? input : createMockAuthUser(input);
+
+  return {
+    user,
+    provider: "mock",
+  };
+}
+
+export function createAuthStateFromSession(
+  session: AuthSession | null,
+): AuthState {
+  if (!session) {
+    return createUnauthenticatedAuthState();
+  }
+
+  return {
+    session,
+    status: "authenticated",
+    user: session.user,
+  };
+}
+
+export function createUnauthenticatedAuthState(): AuthState {
+  return {
+    session: null,
+    status: "unauthenticated",
+    user: null,
   };
 }
 

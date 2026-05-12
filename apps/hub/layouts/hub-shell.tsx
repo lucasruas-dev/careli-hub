@@ -27,6 +27,7 @@ import {
   FileText,
   FolderKanban,
   LayoutDashboard,
+  LogOut,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -39,7 +40,11 @@ import {
   getUnreadNotificationsCount,
   mapConnectionStatusToPulseState,
 } from "@repo/realtime";
-import { getAccessibleModules, orderedHubModules } from "@repo/shared";
+import {
+  canAccessModule,
+  getHubModuleStatusLabel,
+  orderedHubModules,
+} from "@repo/shared";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -71,40 +76,49 @@ export function HubShell({
   );
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
-  const { hubUser } = useAuth();
+  const { hubUser, signOut } = useAuth();
   const { realtimeState } = useRealtime();
   const pathname = usePathname();
   const router = useRouter();
   const unreadNotificationsCount = getUnreadNotificationsCount(realtimeState);
   const onlinePresenceUsers = getOnlinePresenceUsers(realtimeState.presence);
-  const accessibleModules = getAccessibleModules(hubUser, orderedHubModules);
-  const activeModule = accessibleModules.find((hubModule) =>
+  const activeModule = orderedHubModules.find((hubModule) =>
     pathname.startsWith(hubModule.basePath),
   );
-  const moduleNavigationItems = accessibleModules.flatMap((hubModule) =>
-    hubModule.navigationItems.map((item) => ({
+  const moduleNavigationItems = orderedHubModules.flatMap((hubModule) => {
+    const canOpenModule = hubUser ? canAccessModule(hubUser, hubModule) : false;
+
+    return hubModule.navigationItems.map((item) => ({
       ...item,
       badge:
-        ("badge" in item ? item.badge : undefined) ??
-        (hubModule.realtimeEnabled && hubModule.status !== "planned"
+        canOpenModule && hubModule.realtimeEnabled
           ? "live"
-          : undefined),
+          : canOpenModule
+            ? ("badge" in item ? item.badge : undefined)
+            : "Em preparacao",
+      disabled: !canOpenModule,
       icon: moduleIconMap[hubModule.id] ?? (
         <FileText aria-hidden="true" size={18} />
       ),
       moduleId: hubModule.id,
-    })),
-  );
-  const commands = accessibleModules.flatMap((hubModule) =>
-    hubModule.routes.map((route) => ({
+      statusLabel: getHubModuleStatusLabel(hubModule.status),
+    }));
+  });
+  const commands = orderedHubModules.flatMap((hubModule) => {
+    const canOpenModule = hubUser ? canAccessModule(hubUser, hubModule) : false;
+
+    return hubModule.routes.map((route) => ({
+      disabled: !canOpenModule,
       group: hubModule.name,
       id: route.id,
       keywords: [hubModule.id, hubModule.name, route.label],
-      label: `Abrir ${hubModule.name} - ${route.label}`,
+      label: canOpenModule
+        ? `Abrir ${hubModule.name} - ${route.label}`
+        : `${hubModule.name} - Em preparacao`,
       path: route.path,
       shortcut: `G ${hubModule.iconKey.slice(0, 1).toUpperCase()}`,
-    })),
-  );
+    }));
+  });
 
   useEffect(() => {
     if (isOperationalChrome) {
@@ -242,15 +256,16 @@ export function HubShell({
             <SidebarGroup title="Modulos">
               {moduleNavigationItems.map((item) => (
                 <Tooltip
-                  content={item.label}
+                  content={item.disabled ? item.statusLabel : item.label}
                   key={`${item.moduleId}-${item.id}`}
                   placement="right"
                 >
                   <SidebarItem
-                    active={pathname === item.path}
+                    active={!item.disabled && pathname === item.path}
                     badge={item.badge}
                     collapsed={isSidebarCollapsed}
-                    href={item.path}
+                    disabled={item.disabled}
+                    href={item.disabled ? undefined : item.path}
                     icon={item.icon}
                     label={item.label}
                   />
@@ -334,8 +349,17 @@ export function HubShell({
               <div className="flex items-center gap-3">
                 <PresenceStack limit={3} users={onlinePresenceUsers} />
                 <span className="text-sm text-[var(--uix-text-muted)]">
-                  {hubUser.name}
+                  {hubUser?.name ?? "Sessao"}
                 </span>
+                <Tooltip content="Sair">
+                  <IconButton
+                    aria-label="Sair"
+                    icon={<LogOut aria-hidden="true" size={17} />}
+                    onClick={() => {
+                      void signOut();
+                    }}
+                  />
+                </Tooltip>
               </div>
             }
           />
@@ -358,29 +382,55 @@ export function HubShell({
           >
             {moduleNavigationItems.map((item) => (
               <Tooltip
-                content={item.label}
+                content={item.disabled ? item.statusLabel : item.label}
                 key={`${item.moduleId}-${item.id}`}
                 placement="right"
               >
-                <a
-                  aria-current={pathname === item.path ? "page" : undefined}
-                  className="relative grid h-10 w-10 place-items-center rounded-md border border-transparent text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] aria-[current=page]:border-[#A07C3B]/60 aria-[current=page]:bg-[#A07C3B]/20 aria-[current=page]:text-white"
-                  href={item.path}
-                >
-                  {item.icon}
-                  {item.badge ? (
-                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-[#0b0d11] bg-[#A07C3B]" />
-                  ) : null}
-                </a>
+                {item.disabled ? (
+                  <button
+                    aria-label={`${item.label} em preparacao`}
+                    className="relative grid h-10 w-10 cursor-not-allowed place-items-center rounded-md border border-transparent text-[#687386] opacity-60 outline-none"
+                    disabled
+                    type="button"
+                  >
+                    {item.icon}
+                  </button>
+                ) : (
+                  <a
+                    aria-current={pathname === item.path ? "page" : undefined}
+                    className="relative grid h-10 w-10 place-items-center rounded-md border border-transparent text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] aria-[current=page]:border-[#A07C3B]/60 aria-[current=page]:bg-[#A07C3B]/20 aria-[current=page]:text-white"
+                    href={item.path}
+                  >
+                    {item.icon}
+                    {item.badge ? (
+                      <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-[#0b0d11] bg-[#A07C3B]" />
+                    ) : null}
+                  </a>
+                )}
               </Tooltip>
             ))}
+            <div className="my-1 h-px bg-white/[0.08]" />
+            <Tooltip content="Sair" placement="right">
+              <button
+                aria-label="Sair"
+                className="grid h-10 w-10 place-items-center rounded-md border border-transparent text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                onClick={() => {
+                  void signOut();
+                }}
+                type="button"
+              >
+                <LogOut aria-hidden="true" size={17} />
+              </button>
+            </Tooltip>
           </aside>
         </>
       ) : null}
       <CommandPalette
         commands={commands.map((command) => ({
           ...command,
-          onSelect: () => router.push(command.path),
+          onSelect: command.disabled
+            ? undefined
+            : () => router.push(command.path),
         }))}
         onOpenChange={setIsCommandPaletteOpen}
         open={isCommandPaletteOpen}

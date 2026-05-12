@@ -1,4 +1,4 @@
-import type { HubModule } from "./types";
+import type { HubModule, HubModuleStatus } from "./types";
 
 export const hubModules = [
   {
@@ -6,7 +6,7 @@ export const hubModules = [
     name: "Guardian",
     description: "Operacao, seguranca e inteligencia operacional do ecossistema.",
     category: "core",
-    status: "available",
+    status: "locked",
     basePath: "/guardian",
     iconKey: "guardian",
     realtimeEnabled: true,
@@ -35,7 +35,7 @@ export const hubModules = [
     name: "PulseX",
     description: "Sinais, eventos e pulso realtime das operacoes.",
     category: "operations",
-    status: "beta",
+    status: "active",
     basePath: "/pulsex",
     iconKey: "pulsex",
     realtimeEnabled: true,
@@ -212,4 +212,19 @@ export const orderedHubModules = [...hubModules].sort(
 
 export function getHubModuleById(moduleId: string): HubModule | undefined {
   return hubModulesById[moduleId];
+}
+
+export function isHubModuleActive(module: HubModule): boolean {
+  return module.status === "active";
+}
+
+export function getHubModuleStatusLabel(status: HubModuleStatus): string {
+  const labels = {
+    active: "Ativo",
+    disabled: "Indisponivel",
+    locked: "Em preparacao",
+    planned: "Em preparacao",
+  } as const satisfies Record<HubModuleStatus, string>;
+
+  return labels[status];
 }

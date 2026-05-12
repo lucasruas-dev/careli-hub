@@ -3,6 +3,8 @@ import { mockHubUserContext } from "@/lib/auth-state";
 import {
   canAccessModule,
   getHubModuleById,
+  getHubModuleStatusLabel,
+  isHubModuleActive,
   type HubModule,
   type HubModuleStatus,
 } from "@repo/shared";
@@ -18,9 +20,9 @@ import type { BadgeVariant, RealtimePulseState } from "@repo/uix";
 import { notFound } from "next/navigation";
 
 const moduleStatusBadgeVariant: Record<HubModuleStatus, BadgeVariant> = {
-  available: "success",
-  beta: "info",
+  active: "success",
   disabled: "neutral",
+  locked: "warning",
   planned: "warning",
 };
 
@@ -29,7 +31,7 @@ function getRealtimeState(module: HubModule): RealtimePulseState {
     return "idle";
   }
 
-  return module.status === "planned" ? "syncing" : "live";
+  return isHubModuleActive(module) ? "live" : "syncing";
 }
 
 export function createModulePage(moduleId: string) {
@@ -37,6 +39,30 @@ export function createModulePage(moduleId: string) {
 
   if (!hubModule) {
     notFound();
+  }
+
+  if (!isHubModuleActive(hubModule)) {
+    return (
+      <HubShell layoutMode="module">
+        <WorkspaceLayout
+          header={
+            <WorkspaceHeader
+              actions={<Badge variant="warning">Em preparacao</Badge>}
+              description="Este modulo esta bloqueado enquanto a operacao real e preparada."
+              eyebrow={hubModule.category}
+              title={hubModule.name}
+            />
+          }
+        >
+          <Surface>
+            <EmptyState
+              description="O modulo aparecera na sidebar como desabilitado ate ser liberado para uso."
+              title={`${hubModule.name} em preparacao`}
+            />
+          </Surface>
+        </WorkspaceLayout>
+      </HubShell>
+    );
   }
 
   if (!canAccessModule(mockHubUserContext, hubModule)) {
@@ -63,13 +89,13 @@ export function createModulePage(moduleId: string) {
   }
 
   return (
-      <HubShell layoutMode="module">
+    <HubShell layoutMode="module">
       <WorkspaceLayout
         header={
           <WorkspaceHeader
             actions={
               <Badge variant={moduleStatusBadgeVariant[hubModule.status]}>
-                {hubModule.status}
+                {getHubModuleStatusLabel(hubModule.status)}
               </Badge>
             }
             description={hubModule.description}

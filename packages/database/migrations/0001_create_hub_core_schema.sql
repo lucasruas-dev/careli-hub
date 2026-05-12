@@ -20,7 +20,7 @@ end $$;
 
 do $$
 begin
-  create type hub_module_status as enum ('available', 'beta', 'disabled', 'planned');
+  create type hub_module_status as enum ('active', 'disabled', 'locked', 'planned');
 exception
   when duplicate_object then null;
 end $$;

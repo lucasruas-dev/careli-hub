@@ -42,7 +42,7 @@ export type HubModuleRecord = {
   name: string;
   order: number;
   realtimeEnabled: boolean;
-  status: "available" | "beta" | "disabled" | "planned";
+  status: "active" | "disabled" | "locked" | "planned";
   updatedAt: CanonicalTimestamp;
 };
 
