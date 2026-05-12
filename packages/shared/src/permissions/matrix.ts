@@ -1,0 +1,55 @@
+import type { HubPermission, HubUserRole } from "./types";
+
+const allPermissions = [
+  "hub:view",
+  "hub:manage",
+  "guardian:view",
+  "guardian:manage",
+  "pulsex:view",
+  "pulsex:manage",
+  "agenda:view",
+  "agenda:manage",
+  "financeiro:view",
+  "financeiro:manage",
+  "drive:view",
+  "drive:manage",
+  "contatos:view",
+  "contatos:manage",
+  "compras:view",
+  "compras:manage",
+] as const satisfies readonly HubPermission[];
+
+export const rolePermissionMatrix = {
+  admin: allPermissions,
+  leader: [
+    "hub:view",
+    "guardian:view",
+    "pulsex:view",
+    "agenda:view",
+    "agenda:manage",
+    "financeiro:view",
+    "drive:view",
+    "drive:manage",
+    "contatos:view",
+    "contatos:manage",
+    "compras:view",
+    "compras:manage",
+  ],
+  operator: [
+    "hub:view",
+    "guardian:view",
+    "pulsex:view",
+    "agenda:view",
+    "drive:view",
+    "contatos:view",
+    "compras:view",
+  ],
+  viewer: [
+    "hub:view",
+    "guardian:view",
+    "pulsex:view",
+    "agenda:view",
+    "drive:view",
+    "contatos:view",
+  ],
+} as const satisfies Record<HubUserRole, readonly HubPermission[]>;
