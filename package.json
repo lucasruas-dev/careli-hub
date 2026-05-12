@@ -3,7 +3,6 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "build:hub": "turbo run build --filter=@repo/hub...",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "lint:hub": "turbo run lint --filter=@repo/hub...",
