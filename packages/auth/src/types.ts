@@ -53,10 +53,12 @@ export type AuthAdapter = {
   signOut?: () => Promise<AuthActionResult>;
 };
 
-export type MockAuthCredentials = {
+export type PasswordAuthCredentials = {
   email: string;
   password: string;
 };
+
+export type MockAuthCredentials = PasswordAuthCredentials;
 
 export type AuthPermissionCheck = {
   permission: HubPermission;

@@ -4,13 +4,16 @@ import {
   MOCK_AUTH_STORAGE_KEY,
   createAuthStateFromSession,
   createMockAuthState,
+  createSupabaseAuthAdapter,
   createUnauthenticatedAuthState,
+  hasSupabaseAuthConfig,
   isAuthenticated,
   mapAuthUserToHubUserContext,
   type AuthActionResult,
   type AuthSession,
   type AuthState,
-  type MockAuthCredentials,
+  type PasswordAuthCredentials,
+  type SupabaseAuthAdapter,
 } from "@repo/auth";
 import type { HubUserContext } from "@repo/shared";
 import { usePathname, useRouter } from "next/navigation";
@@ -27,12 +30,17 @@ type AuthContextValue = {
   authState: AuthState;
   hubUser: HubUserContext | null;
   signIn: (
-    credentials: MockAuthCredentials,
+    credentials: PasswordAuthCredentials,
   ) => Promise<AuthActionResult<AuthSession>>;
   signOut: () => Promise<AuthActionResult>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const SUPABASE_AUTH_CONFIG = {
+  anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  workspaceId: "careli",
+};
 
 export function AuthProvider({
   children,
@@ -47,6 +55,13 @@ export function AuthProvider({
     user: null,
   });
   const isLoginRoute = pathname === "/login";
+  const supabaseAuthAdapter = useMemo<SupabaseAuthAdapter | null>(() => {
+    if (!hasSupabaseAuthConfig(SUPABASE_AUTH_CONFIG)) {
+      return null;
+    }
+
+    return createSupabaseAuthAdapter(SUPABASE_AUTH_CONFIG);
+  }, []);
   const hubUser = useMemo(
     () =>
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,
@@ -54,6 +69,38 @@ export function AuthProvider({
   );
 
   useEffect(() => {
+    if (supabaseAuthAdapter) {
+      let isMounted = true;
+
+      supabaseAuthAdapter.getSession().then((result) => {
+        if (!isMounted) {
+          return;
+        }
+
+        if (!result.ok) {
+          setAuthState({
+            ...createUnauthenticatedAuthState(),
+            error: result.error,
+            status: "error",
+          });
+          return;
+        }
+
+        setAuthState(createAuthStateFromSession(result.data));
+      });
+
+      const subscription = supabaseAuthAdapter.onAuthStateChange((session) => {
+        if (isMounted) {
+          setAuthState(createAuthStateFromSession(session));
+        }
+      });
+
+      return () => {
+        isMounted = false;
+        subscription.unsubscribe();
+      };
+    }
+
     try {
       const storedSession = window.localStorage.getItem(MOCK_AUTH_STORAGE_KEY);
 
@@ -69,7 +116,7 @@ export function AuthProvider({
       window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
       setAuthState(createUnauthenticatedAuthState());
     }
-  }, []);
+  }, [supabaseAuthAdapter]);
 
   useEffect(() => {
     if (authState.status === "loading") {
@@ -89,7 +136,7 @@ export function AuthProvider({
   async function signIn({
     email,
     password,
-  }: MockAuthCredentials): Promise<AuthActionResult<AuthSession>> {
+  }: PasswordAuthCredentials): Promise<AuthActionResult<AuthSession>> {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail || !password.trim()) {
@@ -97,6 +144,27 @@ export function AuthProvider({
         error: "Informe e-mail e senha para entrar.",
         ok: false,
       };
+    }
+
+    if (supabaseAuthAdapter) {
+      const result = await supabaseAuthAdapter.signIn?.({
+        email: normalizedEmail,
+        password,
+      });
+
+      if (!result) {
+        return {
+          error: "Adaptador Supabase Auth indisponivel.",
+          ok: false,
+        };
+      }
+
+      if (result.ok) {
+        window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
+        setAuthState(createAuthStateFromSession(result.data));
+      }
+
+      return result;
     }
 
     const nextAuthState = createMockAuthState({
@@ -127,6 +195,14 @@ export function AuthProvider({
   }
 
   async function signOut(): Promise<AuthActionResult> {
+    if (supabaseAuthAdapter) {
+      const result = await supabaseAuthAdapter.signOut?.();
+
+      if (result && !result.ok) {
+        return result;
+      }
+    }
+
     window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
     setAuthState(createUnauthenticatedAuthState());
     router.replace("/login");

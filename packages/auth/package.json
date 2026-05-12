@@ -9,14 +9,17 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@repo/shared": "*"
+    "@repo/shared": "*",
+    "@supabase/supabase-js": "^2.105.4"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",
