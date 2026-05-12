@@ -26,7 +26,6 @@ import {
   ContactRound,
   FileText,
   FolderKanban,
-  LayoutDashboard,
   LogOut,
   MessageSquareText,
   PanelLeftClose,
@@ -45,6 +44,7 @@ import {
   getHubModuleStatusLabel,
   orderedHubModules,
 } from "@repo/shared";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -214,17 +214,36 @@ export function HubShell({
             header={
               <div className="flex items-center justify-between gap-3">
                 {isSidebarCollapsed ? (
-                  <span className="grid h-9 w-9 place-items-center rounded-md bg-[var(--uix-color-brand-primary)] text-white">
-                    <LayoutDashboard aria-hidden="true" size={18} />
+                  <span className="grid h-9 w-9 place-items-center rounded-md border border-white/10 bg-white p-1.5">
+                    <Image
+                      alt=""
+                      aria-hidden="true"
+                      className="h-full w-full object-contain"
+                      height={36}
+                      src="/logo-hub.png"
+                      width={36}
+                    />
                   </span>
                 ) : (
-                  <div>
-                    <p className="m-0 text-sm font-semibold text-[var(--uix-text-primary)]">
-                      Careli Hub
-                    </p>
-                    <p className="m-0 mt-1 text-xs text-[var(--uix-text-muted)]">
-                      Central
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-white/10 bg-white p-1.5">
+                      <Image
+                        alt=""
+                        aria-hidden="true"
+                        className="h-full w-full object-contain"
+                        height={40}
+                        src="/logo-hub.png"
+                        width={40}
+                      />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="m-0 truncate text-sm font-semibold text-[var(--uix-text-primary)]">
+                        Careli Hub
+                      </p>
+                      <p className="m-0 mt-1 truncate text-xs text-[var(--uix-text-muted)]">
+                        Central operacional
+                      </p>
+                    </div>
                   </div>
                 )}
                 <Tooltip
@@ -380,6 +399,19 @@ export function HubShell({
             aria-label="Launcher de módulos"
             className="fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-14 gap-2 rounded-lg border border-white/[0.08] bg-[#0b0d11] p-2 shadow-2xl"
           >
+            <Tooltip content="Careli Hub" placement="right">
+              <span className="grid h-10 w-10 place-items-center rounded-md border border-white/[0.08] bg-white p-1.5">
+                <Image
+                  alt=""
+                  aria-hidden="true"
+                  className="h-full w-full object-contain"
+                  height={40}
+                  src="/logo-hub.png"
+                  width={40}
+                />
+              </span>
+            </Tooltip>
+            <div className="my-1 h-px bg-white/[0.08]" />
             {moduleNavigationItems.map((item) => (
               <Tooltip
                 content={item.disabled ? item.statusLabel : item.label}

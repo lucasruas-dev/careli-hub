@@ -6,6 +6,10 @@ import "@/styles/globals.css";
 export const metadata: Metadata = {
   title: "Careli Hub",
   description: "Hub Central do ecossistema Careli.",
+  icons: {
+    icon: "/logo-hub.png",
+    apple: "/logo-hub.png",
+  },
 };
 
 export default function RootLayout({
