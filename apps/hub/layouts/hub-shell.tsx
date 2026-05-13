@@ -63,10 +63,10 @@ const moduleIconMap: Record<string, ReactNode> = {
     <Image
       alt=""
       aria-hidden="true"
-      className="h-5 w-5 object-contain"
-      height={20}
-      src="/logo-hub.png"
-      width={20}
+      className="h-[1.125rem] w-[1.125rem] object-contain"
+      height={18}
+      src="/logog.png"
+      width={18}
     />
   ),
   pulsex: <MessageSquareText aria-hidden="true" size={18} />,
@@ -221,27 +221,27 @@ export function HubShell({
               )
             }
             header={
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex min-h-11 items-center justify-between gap-2 pb-1 pt-0.5">
                 {isSidebarCollapsed ? (
                   <span className="grid h-9 w-9 place-items-center">
                     <Image
                       alt=""
                       aria-hidden="true"
-                      className="h-8 w-8 object-contain"
-                      height={32}
+                      className="h-7 w-7 object-contain"
+                      height={28}
                       src="/logocbr.png"
-                      width={32}
+                      width={28}
                     />
                   </span>
                 ) : (
                   <div className="flex min-w-0 items-center">
                     <Image
                       alt="Careli C2X"
-                      className="h-auto w-[8.75rem] object-contain"
-                      height={44}
+                      className="h-auto w-[6.875rem] object-contain"
+                      height={34}
                       priority
                       src="/logocb.png"
-                      width={140}
+                      width={110}
                     />
                   </div>
                 )}
