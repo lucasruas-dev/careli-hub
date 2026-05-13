@@ -223,25 +223,41 @@ export function HubShell({
             header={
               <div className="flex min-h-11 items-center justify-between gap-2 pb-1 pt-0.5">
                 {isSidebarCollapsed ? (
-                  <span className="grid h-9 w-9 place-items-center">
-                    <Image
-                      alt=""
+                  <span className="grid h-9 w-9 place-items-center text-[#c9d1dc]">
+                    <span
                       aria-hidden="true"
-                      className="h-7 w-7 object-contain"
-                      height={28}
-                      src="/logocbr.png"
-                      width={28}
+                      className="h-7 w-7 bg-current"
+                      style={{
+                        WebkitMaskImage: "url('/logocbr.png')",
+                        WebkitMaskPosition: "center",
+                        WebkitMaskRepeat: "no-repeat",
+                        WebkitMaskSize: "contain",
+                        maskImage: "url('/logocbr.png')",
+                        maskPosition: "center",
+                        maskRepeat: "no-repeat",
+                        maskSize: "contain",
+                      }}
                     />
                   </span>
                 ) : (
-                  <div className="flex min-w-0 items-center">
-                    <Image
-                      alt="Careli C2X"
-                      className="h-auto w-[6.875rem] object-contain"
-                      height={34}
-                      priority
-                      src="/logocb.png"
-                      width={110}
+                  <div
+                    aria-label="Careli C2X"
+                    className="flex min-w-0 items-center text-[#c9d1dc]"
+                    role="img"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-[2.125rem] w-[6.875rem] bg-current"
+                      style={{
+                        WebkitMaskImage: "url('/logocb.png')",
+                        WebkitMaskPosition: "center",
+                        WebkitMaskRepeat: "no-repeat",
+                        WebkitMaskSize: "contain",
+                        maskImage: "url('/logocb.png')",
+                        maskPosition: "center",
+                        maskRepeat: "no-repeat",
+                        maskSize: "contain",
+                      }}
                     />
                   </div>
                 )}
