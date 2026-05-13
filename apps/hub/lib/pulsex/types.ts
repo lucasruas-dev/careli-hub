@@ -16,24 +16,44 @@ export type PulseXChannel = {
     status: string;
     unit: string;
   };
+  departmentId?: string;
+  departmentName?: string;
   description: string;
   id: string;
   kind: PulseXChannelKind;
   lastMessageAt: string;
+  memberUserIds?: readonly string[];
   name: string;
   preview: string;
+  sectorId?: string;
+  sectorName?: string;
   status?: "online" | "away" | "busy" | "offline";
   unreadCount?: number;
 };
 
+export type PulseXDepartment = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+export type PulseXSector = {
+  departmentId: PulseXDepartment["id"];
+  id: string;
+  name: string;
+  slug: string;
+};
+
 export type PulseXPresenceUser = {
   channelIds: readonly PulseXChannel["id"][];
+  email?: string;
   id: string;
   initials: string;
   label: string;
   lastInteractionMinutesAgo?: number;
   role: string;
   status: "online" | "away" | "busy" | "offline";
+  username?: string;
 };
 
 export type PulseXReaction = {
@@ -53,6 +73,12 @@ export type PulseXMessageTag =
 
 export type PulseXMessageFilter = "all" | PulseXMessageTag;
 
+export type PulseXMessageMention = {
+  displayName: string;
+  trigger: string;
+  userId: PulseXPresenceUser["id"];
+};
+
 export type PulseXMessage = {
   attachment?: {
     label: string;
@@ -69,7 +95,7 @@ export type PulseXMessage = {
   mentionAgeMinutes?: number;
   mentionRespondedAt?: string;
   mentionUserIds?: readonly PulseXPresenceUser["id"][];
-  mentions?: readonly string[];
+  mentions?: readonly PulseXMessageMention[];
   readBy?: readonly PulseXPresenceUser["id"][];
   reactions?: readonly PulseXReaction[];
   status?: ActivityFeedEventStatus;

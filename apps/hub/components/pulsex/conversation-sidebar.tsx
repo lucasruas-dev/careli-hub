@@ -2,18 +2,18 @@
 
 import type {
   PulseXChannel,
+  PulseXDepartment,
   PulseXMessage,
   PulseXMessageFilter,
   PulseXPresenceUser,
+  PulseXSector,
 } from "@/lib/pulsex";
 import { Tooltip } from "@repo/uix";
 import {
   AtSign,
-  BriefcaseBusiness,
+  Building2,
   ChevronDown,
   ChevronRight,
-  Cpu,
-  HeartHandshake,
   LayoutGrid,
   MessageCircle,
   Plus,
@@ -32,24 +32,15 @@ type ConversationSidebarProps = {
   activeMessageFilter: PulseXMessageFilter;
   channels: readonly PulseXChannel[];
   dataStatus?: "fallback" | "loading" | "ready";
+  departments: readonly PulseXDepartment[];
   messages: readonly PulseXMessage[];
   onSelectChannel?: (channelId: PulseXChannel["id"]) => void;
   onSelectMessageFilter?: (filter: PulseXMessageFilter) => void;
+  sectors: readonly PulseXSector[];
   users: readonly PulseXPresenceUser[];
 };
 
-type SidebarGroupId = "directs" | "operations" | "relation" | "technology";
-
-const sidebarGroups = [
-  { id: "operations", icon: BriefcaseBusiness, title: "Operacao" },
-  { id: "technology", icon: Cpu, title: "Tecnologia" },
-  { id: "relation", icon: HeartHandshake, title: "Relacao" },
-  { id: "directs", icon: Users, title: "Diretas" },
-] as const satisfies readonly {
-  id: SidebarGroupId;
-  icon: typeof BriefcaseBusiness;
-  title: string;
-}[];
+type SidebarGroupId = string;
 
 const messageFilters = [
   { id: "all", label: "Todas" },
@@ -68,18 +59,15 @@ export function ConversationSidebar({
   activeMessageFilter,
   channels,
   dataStatus = "ready",
+  departments,
   onSelectChannel,
   onSelectMessageFilter,
+  sectors,
   users,
 }: ConversationSidebarProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<SidebarGroupId, boolean>
-  >({
-    directs: false,
-    operations: false,
-    relation: false,
-    technology: false,
-  });
+  >({});
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const unreadCount = channels.reduce(
@@ -93,21 +81,12 @@ export function ConversationSidebar({
     messageFilters.find((filter) => filter.id === activeMessageFilter)?.label ??
     "Todas";
 
-  function getOrderedChannels(groupId: SidebarGroupId) {
-    if (groupId === "directs") {
-      return channels.filter((channel) => channel.kind === "direct");
-    }
-
-    if (groupId === "technology") {
-      return channels.filter((channel) => channel.kind === "technology");
-    }
-
-    if (groupId === "relation") {
-      return channels.filter((channel) => channel.kind === "relation");
-    }
-
-    return channels.filter((channel) => channel.kind === "operations");
-  }
+  const directChannels = channels.filter((channel) => channel.kind === "direct");
+  const departmentGroups = buildDepartmentGroups({
+    channels: channels.filter((channel) => channel.kind !== "direct"),
+    departments,
+    sectors,
+  });
 
   function toggleGroup(groupId: SidebarGroupId) {
     setCollapsedGroups((currentGroups) => ({
@@ -266,37 +245,59 @@ export function ConversationSidebar({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto py-2">
-        {sidebarGroups.map((group) => {
-          const GroupIcon = group.icon;
-          const groupChannels = getOrderedChannels(group.id);
-          const groupUnreadCount = groupChannels.reduce(
-            (total, channel) => total + (channel.unreadCount ?? 0),
-            0,
-          );
-
-          return (
+        {departmentGroups.length > 0 ? (
+          departmentGroups.map((group) => (
             <SidebarSection
-              collapsed={collapsedGroups[group.id]}
-              icon={<GroupIcon size={14} />}
+              collapsed={collapsedGroups[group.id] ?? false}
+              icon={<Building2 size={14} />}
               key={group.id}
               onToggle={() => toggleGroup(group.id)}
-              title={group.title}
-              unreadCount={groupUnreadCount}
+              title={group.name}
+              unreadCount={group.unreadCount}
             >
-              {groupChannels.length > 0 ? (
-                <ConversationList
-                  activeChannelId={activeChannelId}
-                  channels={groupChannels}
-                  onSelectChannel={onSelectChannel}
-                />
-              ) : (
-                <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
-                  Nenhum canal configurado.
-                </p>
-              )}
+              <div className="grid gap-2">
+                {group.sectors.map((sector) => (
+                  <div className="grid gap-1" key={sector.id}>
+                    <p className="m-0 px-4 text-[0.66rem] font-semibold uppercase text-[#7f8a99]">
+                      {sector.name}
+                    </p>
+                    <ConversationList
+                      activeChannelId={activeChannelId}
+                      channels={sector.channels}
+                      onSelectChannel={onSelectChannel}
+                    />
+                  </div>
+                ))}
+              </div>
             </SidebarSection>
-          );
-        })}
+          ))
+        ) : (
+          <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
+            Nenhum canal configurado.
+          </p>
+        )}
+        <SidebarSection
+          collapsed={collapsedGroups.directs ?? false}
+          icon={<Users size={14} />}
+          onToggle={() => toggleGroup("directs")}
+          title="Diretas"
+          unreadCount={directChannels.reduce(
+            (total, channel) => total + (channel.unreadCount ?? 0),
+            0,
+          )}
+        >
+          {directChannels.length > 0 ? (
+            <ConversationList
+              activeChannelId={activeChannelId}
+              channels={directChannels}
+              onSelectChannel={onSelectChannel}
+            />
+          ) : (
+            <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
+              Nenhum usuario disponivel.
+            </p>
+          )}
+        </SidebarSection>
       </div>
       {dataStatus !== "ready" ? (
         <div className="border-t border-white/[0.075] px-4 py-2 text-xs text-[#a5afbd]">
@@ -307,6 +308,70 @@ export function ConversationSidebar({
       ) : null}
     </aside>
   );
+}
+
+function buildDepartmentGroups({
+  channels,
+  departments,
+  sectors,
+}: {
+  channels: readonly PulseXChannel[];
+  departments: readonly PulseXDepartment[];
+  sectors: readonly PulseXSector[];
+}) {
+  const knownDepartments = departments.map((department) => ({
+    id: department.id,
+    name: department.name,
+  }));
+  const fallbackDepartments = channels
+    .filter((channel) => !departments.some((department) => department.id === channel.departmentId))
+    .map((channel) => ({
+      id: channel.departmentId ?? `department-${channel.departmentName ?? "geral"}`,
+      name: channel.departmentName ?? "Geral",
+    }));
+  const groups = [...knownDepartments, ...fallbackDepartments].filter(
+    (department, index, allDepartments) =>
+      allDepartments.findIndex((item) => item.id === department.id) === index,
+  );
+
+  return groups
+    .map((department) => {
+      const departmentChannels = channels.filter(
+        (channel) =>
+          channel.departmentId === department.id ||
+          (!channel.departmentId && department.name === "Geral"),
+      );
+      const departmentSectors = sectors.filter(
+        (sector) => sector.departmentId === department.id,
+      );
+      const fallbackSector = {
+        channels: departmentChannels.filter((channel) => !channel.sectorId),
+        id: `${department.id}-department`,
+        name: "Departamento",
+      };
+      const sectorGroups = [
+        ...departmentSectors.map((sector) => ({
+          channels: departmentChannels.filter(
+            (channel) => channel.sectorId === sector.id,
+          ),
+          id: sector.id,
+          name: sector.name,
+        })),
+        fallbackSector,
+      ].filter((sector) => sector.channels.length > 0);
+      const unreadCount = departmentChannels.reduce(
+        (total, channel) => total + (channel.unreadCount ?? 0),
+        0,
+      );
+
+      return {
+        id: department.id,
+        name: department.name,
+        sectors: sectorGroups,
+        unreadCount,
+      };
+    })
+    .filter((department) => department.sectors.length > 0);
 }
 
 function QuickAction({

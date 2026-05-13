@@ -10,6 +10,7 @@ import {
 } from "@/lib/pulsex";
 import {
   createPulseXMessage,
+  listChannelMessages,
   loadPulseXOperationalData,
 } from "@/lib/pulsex/supabase-data";
 import { hasHubSupabaseConfig } from "@/lib/supabase/client";
@@ -18,11 +19,13 @@ import type {
   PulseXCallSession,
   PulseXCallType,
   PulseXChannel,
+  PulseXDepartment,
   PulseXMessageMention,
   PulseXMessageFilter,
   PulseXMessage,
   PulseXPresenceUser,
   PulseXReactionEmoji,
+  PulseXSector,
   PulseXThreadReply,
 } from "@/lib/pulsex";
 import { CallPanel } from "./call-panel";
@@ -42,6 +45,8 @@ export function PulseXWorkspace() {
   const [channels, setChannels] = useState<PulseXChannel[]>(() =>
     pulsexChannels.map((channel) => ({ ...channel })),
   );
+  const [departments, setDepartments] = useState<PulseXDepartment[]>([]);
+  const [sectors, setSectors] = useState<PulseXSector[]>([]);
   const [messages, setMessages] = useState<PulseXMessage[]>(() =>
     pulsexMessages.map((message) => ({ ...message })),
   );
@@ -106,7 +111,10 @@ export function PulseXWorkspace() {
   useEffect(() => {
     let isMounted = true;
 
-    loadPulseXOperationalData()
+    loadPulseXOperationalData({
+      currentUserId,
+      userRole: hubUser?.role,
+    })
       .then((payload) => {
         if (!isMounted) {
           return;
@@ -117,10 +125,17 @@ export function PulseXWorkspace() {
           payload.users,
           currentUserId,
         );
+        const nextPresenceUsers = withUserChannelAccess(
+          payload.users,
+          nextChannels,
+          currentUserId,
+        );
 
         setChannels(nextChannels);
+        setDepartments(payload.departments);
         setMessages(payload.messages);
-        setPresenceUsers(payload.users);
+        setPresenceUsers(nextPresenceUsers);
+        setSectors(payload.sectors);
         setActiveChannelId((currentId) =>
           nextChannels.some((channel) => channel.id === currentId)
             ? currentId
@@ -139,12 +154,39 @@ export function PulseXWorkspace() {
     return () => {
       isMounted = false;
     };
-  }, [currentUserId]);
+  }, [currentUserId, hubUser?.role]);
+
+  useEffect(() => {
+    if (dataStatus !== "ready" || activeChannel.kind === "direct") {
+      return;
+    }
+
+    let isMounted = true;
+
+    listChannelMessages(activeChannel.id)
+      .then((nextMessages) => {
+        if (isMounted) {
+          setMessages(nextMessages);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setDataStatus("fallback");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeChannel.id, activeChannel.kind, dataStatus]);
 
   function handleSelectChannel(channelId: PulseXChannel["id"]) {
     setActiveChannelId(channelId);
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
+    if (dataStatus === "ready") {
+      setMessages([]);
+    }
     setChannels((currentChannels) =>
       currentChannels.map((channel) =>
         channel.id === channelId ? { ...channel, unreadCount: 0 } : channel,
@@ -361,10 +403,12 @@ export function PulseXWorkspace() {
         activeMessageFilter={activeMessageFilter}
         channels={channels}
         dataStatus={dataStatus}
+        departments={departments}
         users={presenceUsers}
         messages={messages}
         onSelectMessageFilter={setActiveMessageFilter}
         onSelectChannel={handleSelectChannel}
+        sectors={sectors}
       />
       <main className="relative grid min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-[#f3f6fa]">
         <ConversationHeader
@@ -458,6 +502,28 @@ function withDirectUserChannels(
     ...channels,
     ...directChannels.filter((channel) => !existingChannelIds.has(channel.id)),
   ];
+}
+
+function withUserChannelAccess(
+  users: readonly PulseXPresenceUser[],
+  channels: readonly PulseXChannel[],
+  currentUserId: PulseXPresenceUser["id"],
+): PulseXPresenceUser[] {
+  return users.map((user) => ({
+    ...user,
+    channelIds: channels
+      .filter((channel) => {
+        if (channel.kind === "direct") {
+          return user.id === currentUserId || channel.id === `direct-${user.id}`;
+        }
+
+        return (
+          !channel.memberUserIds?.length ||
+          channel.memberUserIds.includes(user.id)
+        );
+      })
+      .map((channel) => channel.id),
+  }));
 }
 
 function createLocalCallSession({
