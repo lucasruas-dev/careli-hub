@@ -1,8 +1,8 @@
 "use client";
 
 import { useAuth } from "@/providers/auth-provider";
-import { TextField } from "@repo/uix";
-import { Lock, LogIn, Mail } from "lucide-react";
+import { TextField, Tooltip } from "@repo/uix";
+import { KeyRound, Lock, LogIn, Mail } from "lucide-react";
 import Image from "next/image";
 import { useState, type FormEvent } from "react";
 
@@ -75,23 +75,28 @@ export default function LoginPage() {
             value={password}
           />
 
-          <div className="flex items-center justify-end">
-            <button
-              className="text-xs font-semibold text-[#7b5f2d] outline-none transition hover:text-[#A07C3B] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-              type="button"
-            >
-              Recuperar senha
-            </button>
-          </div>
+          <div className="mt-1 flex items-center justify-between">
+            <Tooltip content="Recuperar senha">
+              <button
+                aria-label="Recuperar senha"
+                className="grid h-10 w-10 place-items-center rounded-md border border-[#d9e0ea] text-[#7b5f2d] outline-none transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/10 hover:text-[#A07C3B] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+                type="button"
+              >
+                <KeyRound aria-hidden="true" size={17} />
+              </button>
+            </Tooltip>
 
-          <button
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#A07C3B] px-4 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#d8dde6] disabled:text-[#7d8796]"
-            disabled={isSubmitting}
-            type="submit"
-          >
-            <LogIn aria-hidden="true" size={16} />
-            {isSubmitting ? "Entrando..." : "Entrar"}
-          </button>
+            <Tooltip content="Entrar">
+              <button
+                aria-label="Entrar"
+                className="grid h-11 w-11 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#d8dde6] disabled:text-[#7d8796]"
+                disabled={isSubmitting}
+                type="submit"
+              >
+                <LogIn aria-hidden="true" size={18} />
+              </button>
+            </Tooltip>
+          </div>
         </form>
       </section>
     </main>
