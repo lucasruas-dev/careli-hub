@@ -82,7 +82,22 @@ const setupTabs = [
 }[];
 
 export default function SetupPage() {
-  const { hubUser } = useAuth();
+  const { hubUser, profileStatus } = useAuth();
+
+  if (profileStatus === "loading" && hubUser?.role !== "admin") {
+    return (
+      <HubShell layoutMode="module">
+        <WorkspaceLayout>
+          <Surface bordered className="border-[#d9e0e7] bg-white p-6">
+            <EmptyState
+              description="Carregando perfil operacional."
+              title="Preparando Setup"
+            />
+          </Surface>
+        </WorkspaceLayout>
+      </HubShell>
+    );
+  }
 
   if (!hubUser || hubUser.role !== "admin") {
     return (

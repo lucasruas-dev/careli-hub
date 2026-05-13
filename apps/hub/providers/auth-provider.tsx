@@ -4,7 +4,6 @@ import {
   MOCK_AUTH_STORAGE_KEY,
   createAuthStateFromSession,
   createMockAuthState,
-  createSupabaseAuthAdapter,
   createUnauthenticatedAuthState,
   isAuthenticated,
   mapAuthUserToHubUserContext,
@@ -13,14 +12,17 @@ import {
   type AuthSession,
   type AuthState,
   type PasswordAuthCredentials,
-  type SupabaseAuthAdapter,
 } from "@repo/auth";
 import {
   getHubSupabaseClient,
   hasHubSupabaseConfig,
-  hubSupabaseConfig,
 } from "@/lib/supabase/client";
-import type { HubUserContext } from "@repo/shared";
+import {
+  getPermissionsForRole,
+  type HubUserContext,
+  type HubUserRole,
+} from "@repo/shared";
+import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { AlertTriangle } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -35,10 +37,20 @@ import {
 type AuthContextValue = {
   authState: AuthState;
   hubUser: HubUserContext | null;
+  profileStatus: "error" | "idle" | "loading" | "ready";
   signIn: (
     credentials: PasswordAuthCredentials,
   ) => Promise<AuthActionResult<AuthSession>>;
   signOut: () => Promise<AuthActionResult>;
+};
+
+type HubProfileRow = {
+  avatar_url?: string | null;
+  display_name: string;
+  email: string;
+  id: string;
+  role: HubUserRole;
+  status: "active" | "archived" | "disabled";
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -54,23 +66,9 @@ export function AuthProvider({
     status: "loading",
     user: null,
   });
+  const [profileStatus, setProfileStatus] =
+    useState<AuthContextValue["profileStatus"]>("idle");
   const isLoginRoute = pathname === "/login";
-  const supabaseAuthAdapter = useMemo<SupabaseAuthAdapter | null>(() => {
-    if (!hasHubSupabaseConfig()) {
-      return null;
-    }
-
-    const client = getHubSupabaseClient();
-
-    if (!client) {
-      return null;
-    }
-
-    return createSupabaseAuthAdapter({
-      ...hubSupabaseConfig,
-      client,
-    });
-  }, []);
   const hubUser = useMemo(
     () =>
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,
@@ -78,18 +76,40 @@ export function AuthProvider({
   );
 
   useEffect(() => {
-    if (supabaseAuthAdapter) {
+    if (hasHubSupabaseConfig()) {
       let isMounted = true;
+      const client = getHubSupabaseClient();
 
-      supabaseAuthAdapter
-        .getSession()
-        .then((result) => {
+      if (!client) {
+        setAuthState(createUnauthenticatedAuthState());
+        return;
+      }
+
+      logAuthTiming("session start");
+      withMeasuredTimeout(
+        client.auth.getSession(),
+        "Tempo excedido ao carregar a sessao Supabase.",
+        "session",
+        8_000,
+      )
+        .then(({ data, error }) => {
           if (!isMounted) {
             return;
           }
 
-          logAuthDebug("auth session loaded", result.ok ? "resolved" : "error");
-          setAuthState(createAuthStateFromResult(result));
+          if (error) {
+            logAuthDebug("session error", error.message);
+            setAuthState(createAuthErrorState(error.message));
+            return;
+          }
+
+          applySupabaseSession({
+            client,
+            isMounted: () => isMounted,
+            session: data.session,
+            setAuthState,
+            setProfileStatus,
+          });
         })
         .catch((error: unknown) => {
           if (!isMounted) {
@@ -101,19 +121,23 @@ export function AuthProvider({
             "Nao foi possivel carregar a sessao.",
           );
 
-          logAuthDebug("auth error", message);
+          logAuthDebug("session error", message);
           setAuthState(createAuthErrorState(message));
         });
 
-      const subscription = supabaseAuthAdapter.onAuthStateChange((result) => {
-        if (isMounted) {
-          setAuthState(createAuthStateFromResult(result));
-        }
+      const { data } = client.auth.onAuthStateChange((_event, session) => {
+        applySupabaseSession({
+          client,
+          isMounted: () => isMounted,
+          session,
+          setAuthState,
+          setProfileStatus,
+        });
       });
 
       return () => {
         isMounted = false;
-        subscription.unsubscribe();
+        data.subscription.unsubscribe();
       };
     }
 
@@ -135,7 +159,7 @@ export function AuthProvider({
       logAuthDebug("auth error", "invalid mock session");
       setAuthState(createUnauthenticatedAuthState());
     }
-  }, [supabaseAuthAdapter]);
+  }, []);
 
   useEffect(() => {
     if (authState.status === "loading" || authState.status === "error") {
@@ -165,15 +189,51 @@ export function AuthProvider({
       };
     }
 
-    if (supabaseAuthAdapter) {
-      let result: AuthActionResult<AuthSession> | undefined;
+    if (hasHubSupabaseConfig()) {
+      const client = getHubSupabaseClient();
+
+      if (!client) {
+        return {
+          error: "Adaptador Supabase Auth indisponivel.",
+          ok: false,
+        };
+      }
 
       try {
-        result =
-          (await supabaseAuthAdapter.signIn?.({
+        logAuthTiming("session start");
+        const { data, error } = await withMeasuredTimeout(
+          client.auth.signInWithPassword({
             email: normalizedEmail,
             password,
-          })) ?? undefined;
+          }),
+          "Tempo excedido ao autenticar com Supabase.",
+          "session",
+          12_000,
+        );
+
+        if (error || !data.session) {
+          const message = getFriendlyAuthMessage(error?.message);
+          setAuthState(createAuthErrorState(message));
+
+          return {
+            error: message,
+            ok: false,
+          };
+        }
+
+        const session = createPartialAuthSession(data.session);
+        setAuthState(createAuthStateFromSession(session));
+        loadHubProfileInBackground({
+          client,
+          session: data.session,
+          setAuthState,
+          setProfileStatus,
+        });
+
+        return {
+          data: session,
+          ok: true,
+        };
       } catch (error) {
         const technicalMessage = getErrorMessage(
           error,
@@ -189,34 +249,6 @@ export function AuthProvider({
           ok: false,
         };
       }
-
-      if (!result) {
-        return {
-          error: "Adaptador Supabase Auth indisponivel.",
-          ok: false,
-        };
-      }
-
-      if (result.ok) {
-        window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
-        logAuthDebug("hub user profile loaded", result.data.user.id);
-        setAuthState(createAuthStateFromSession(result.data));
-      } else {
-        const message = getFriendlyAuthMessage(
-          result.error,
-          result.errorDetails,
-        );
-
-        logAuthDebug("auth error", result.error);
-        setAuthState(createAuthErrorState(message, result.errorDetails));
-
-        return {
-          ...result,
-          error: message,
-        };
-      }
-
-      return result;
     }
 
     const nextAuthState = createMockAuthState({
@@ -248,11 +280,18 @@ export function AuthProvider({
   }
 
   async function signOut(): Promise<AuthActionResult> {
-    if (supabaseAuthAdapter) {
-      const result = await supabaseAuthAdapter.signOut?.();
+    if (hasHubSupabaseConfig()) {
+      const client = getHubSupabaseClient();
 
-      if (result && !result.ok) {
-        return result;
+      if (client) {
+        const { error } = await client.auth.signOut();
+
+        if (error) {
+          return {
+            error: error.message,
+            ok: false,
+          };
+        }
       }
     }
 
@@ -290,6 +329,7 @@ export function AuthProvider({
       value={{
         authState,
         hubUser,
+        profileStatus,
         signIn,
         signOut,
       }}
@@ -319,21 +359,6 @@ function getMockDisplayName(email: string): string {
     .join(" ");
 }
 
-function createAuthStateFromResult(
-  result: AuthActionResult<AuthSession | null>,
-): AuthState {
-  if (result.ok) {
-    return createAuthStateFromSession(result.data);
-  }
-
-  return {
-    ...createUnauthenticatedAuthState(),
-    error: result.error,
-    errorDetails: result.errorDetails,
-    status: "error",
-  };
-}
-
 function createAuthErrorState(
   error: string,
   errorDetails?: AuthErrorDetails,
@@ -344,6 +369,194 @@ function createAuthErrorState(
     errorDetails,
     status: "error",
   };
+}
+
+function applySupabaseSession({
+  client,
+  isMounted,
+  session,
+  setAuthState,
+  setProfileStatus,
+}: {
+  client: SupabaseClient;
+  isMounted: () => boolean;
+  session: Session | null;
+  setAuthState: (state: AuthState) => void;
+  setProfileStatus: (status: AuthContextValue["profileStatus"]) => void;
+}) {
+  if (!isMounted()) {
+    return;
+  }
+
+  if (!session) {
+    logAuthDebug("session done", "no active session");
+    setProfileStatus("idle");
+    setAuthState(createUnauthenticatedAuthState());
+    return;
+  }
+
+  const partialSession = createPartialAuthSession(session);
+
+  logAuthDebug("session done", {
+    email: session.user.email,
+    userId: session.user.id,
+  });
+  setAuthState(createAuthStateFromSession(partialSession));
+
+  loadHubProfileInBackground({
+    client,
+    session,
+    setAuthState: (nextState) => {
+      if (isMounted()) {
+        setAuthState(nextState);
+      }
+    },
+    setProfileStatus: (nextStatus) => {
+      if (isMounted()) {
+        setProfileStatus(nextStatus);
+      }
+    },
+  });
+}
+
+async function loadHubProfileInBackground({
+  client,
+  session,
+  setAuthState,
+  setProfileStatus,
+}: {
+  client: SupabaseClient;
+  session: Session;
+  setAuthState: (state: AuthState) => void;
+  setProfileStatus: (status: AuthContextValue["profileStatus"]) => void;
+}) {
+  const startedAt = performance.now();
+
+  setProfileStatus("loading");
+  logAuthDebug("profile start", {
+    email: session.user.email,
+    userId: session.user.id,
+  });
+
+  try {
+    const { data, error } = await withMeasuredTimeout(
+      client
+        .from("hub_users")
+        .select("id,email,display_name,avatar_url,role,status")
+        .eq("id", session.user.id)
+        .maybeSingle<HubProfileRow>(),
+      "Tempo excedido ao carregar o perfil operacional do Hub.",
+      "profile",
+      15_000,
+    );
+
+    if (error || !data || data.status !== "active") {
+      logAuthDebug("profile error", error?.message ?? "profile unavailable");
+      setProfileStatus("error");
+      return;
+    }
+
+    const authSession = createAuthSessionFromProfile(session, data);
+
+    setAuthState(createAuthStateFromSession(authSession));
+    setProfileStatus("ready");
+    logAuthDebug("profile done", {
+      elapsedMs: Math.round(performance.now() - startedAt),
+      role: data.role,
+      userId: data.id,
+    });
+  } catch (error) {
+    logAuthDebug("profile error", getErrorMessage(error, "profile failed"));
+    setProfileStatus("error");
+  }
+}
+
+function createPartialAuthSession(session: Session): AuthSession {
+  const fallbackRole: HubUserRole = "viewer";
+
+  return {
+    accessToken: session.access_token,
+    expiresAt:
+      typeof session.expires_at === "number"
+        ? new Date(session.expires_at * 1000).toISOString()
+        : undefined,
+    provider: "supabase",
+    user: {
+      avatarUrl: getUserMetadataString(session.user, "avatar_url"),
+      email: session.user.email,
+      fullName:
+        getUserMetadataString(session.user, "full_name") ??
+        getUserMetadataString(session.user, "name") ??
+        session.user.email?.split("@")[0],
+      id: session.user.id,
+      permissions: getPermissionsForRole(fallbackRole),
+      role: fallbackRole,
+      status: "active",
+      workspaceId: "careli",
+    },
+  };
+}
+
+function createAuthSessionFromProfile(
+  session: Session,
+  profile: HubProfileRow,
+): AuthSession {
+  return {
+    ...createPartialAuthSession(session),
+    user: {
+      avatarUrl: profile.avatar_url ?? undefined,
+      email: profile.email,
+      fullName: profile.display_name,
+      id: profile.id,
+      permissions: getPermissionsForRole(profile.role),
+      role: profile.role,
+      status: profile.status,
+      workspaceId: "careli",
+    },
+  };
+}
+
+function getUserMetadataString(user: User, key: string): string | undefined {
+  const value = user.user_metadata[key] ?? user.app_metadata[key];
+
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function withMeasuredTimeout<Result>(
+  promise: PromiseLike<Result>,
+  message: string,
+  label: "profile" | "session",
+  timeoutMs: number,
+): Promise<Result> {
+  const startedAt = performance.now();
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      logAuthDebug(`${label} error`, {
+        elapsedMs: Math.round(performance.now() - startedAt),
+        message,
+      });
+      reject(new Error(message));
+    }, timeoutMs);
+
+    promise.then(
+      (result) => {
+        window.clearTimeout(timeoutId);
+        logAuthDebug(`${label} done`, {
+          elapsedMs: Math.round(performance.now() - startedAt),
+        });
+        resolve(result);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        logAuthDebug(`${label} error`, {
+          elapsedMs: Math.round(performance.now() - startedAt),
+          message: getErrorMessage(error, "Erro desconhecido."),
+        });
+        reject(error);
+      },
+    );
+  });
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -358,12 +571,16 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function logAuthDebug(event: string, detail?: string) {
+function logAuthDebug(event: string, detail?: unknown) {
   if (!isLocalDevelopmentRuntime()) {
     return;
   }
 
-  console.debug(`[careli-auth] ${event}`, detail ?? "");
+  console.debug(`[auth] ${event}`, detail ?? "");
+}
+
+function logAuthTiming(event: string) {
+  logAuthDebug(event);
 }
 
 function isLocalDevelopmentRuntime(): boolean {

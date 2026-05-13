@@ -47,6 +47,7 @@ import {
   getHubModuleStatusLabel,
   isHubModuleActive,
   orderedHubModules,
+  type HubUserContext,
 } from "@repo/shared";
 import Image from "next/image";
 import Link from "next/link";
@@ -79,6 +80,8 @@ const moduleIconMap: Record<string, ReactNode> = {
   setup: <Settings aria-hidden="true" size={18} />,
 };
 
+const minimumReleasedModuleIds = ["pulsex", "setup"] as const;
+
 export function HubShell({
   children,
   chrome = "standard",
@@ -94,7 +97,7 @@ export function HubShell({
   const [releasedModuleIds, setReleasedModuleIds] = useState<Set<string> | null>(
     null,
   );
-  const { hubUser, signOut } = useAuth();
+  const { hubUser, profileStatus, signOut } = useAuth();
   const { realtimeState } = useRealtime();
   const pathname = usePathname();
   const router = useRouter();
@@ -105,7 +108,12 @@ export function HubShell({
   );
   const visibleHubModules = orderedHubModules.filter((hubModule) => {
     if (!releasedModuleIds) {
-      return isHubModuleActive(hubModule);
+      return (
+        isHubModuleActive(hubModule) &&
+        minimumReleasedModuleIds.includes(
+          hubModule.id as (typeof minimumReleasedModuleIds)[number],
+        )
+      );
     }
 
     return isHubModuleActive(hubModule) && releasedModuleIds.has(hubModule.id);
@@ -113,7 +121,7 @@ export function HubShell({
   const moduleNavigationItems = orderedHubModules
     .filter((hubModule) => visibleHubModules.includes(hubModule))
     .flatMap((hubModule) => {
-      if (!hubUser || !canAccessModule(hubUser, hubModule)) {
+      if (!canOpenShellModule(hubModule.id, hubUser, hubModule, profileStatus)) {
         return [];
       }
 
@@ -138,7 +146,12 @@ export function HubShell({
   const commands = orderedHubModules
     .filter((hubModule) => visibleHubModules.includes(hubModule))
     .flatMap((hubModule) => {
-    const canOpenModule = hubUser ? canAccessModule(hubUser, hubModule) : false;
+    const canOpenModule = canOpenShellModule(
+      hubModule.id,
+      hubUser,
+      hubModule,
+      profileStatus,
+    );
 
     if (!canOpenModule) {
       return [];
@@ -165,18 +178,26 @@ export function HubShell({
     const client = getHubSupabaseClient();
 
     if (!client) {
+      setReleasedModuleIds(createMinimumReleasedModuleIds());
       return;
     }
 
-    Promise.all([
+    setReleasedModuleIds(createMinimumReleasedModuleIds());
+    logShellDebug("modules start");
+
+    withShellTimeout(Promise.all([
       client.from("hub_modules").select("id").eq("status", "active"),
       client
         .from("hub_department_modules")
         .select("module_id")
         .eq("status", "enabled"),
-    ])
+    ]), "modules", 8_000)
       .then(([modulesResult, accessResult]) => {
         if (!isMounted || modulesResult.error || accessResult.error) {
+          logShellDebug("modules error", {
+            accessError: accessResult.error?.message,
+            modulesError: modulesResult.error?.message,
+          });
           return;
         }
 
@@ -194,11 +215,21 @@ export function HubShell({
           [...activeIds].filter((moduleId) => accessIds.has(moduleId)),
         );
 
+        minimumReleasedModuleIds.forEach((moduleId) => {
+          if (activeIds.size === 0 || activeIds.has(moduleId)) {
+            nextReleasedIds.add(moduleId);
+          }
+        });
+
         setReleasedModuleIds(nextReleasedIds);
+        logShellDebug("modules done", {
+          count: nextReleasedIds.size,
+        });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        logShellDebug("modules error", getShellErrorMessage(error));
         if (isMounted) {
-          setReleasedModuleIds(null);
+          setReleasedModuleIds(createMinimumReleasedModuleIds());
         }
       });
 
@@ -567,4 +598,74 @@ export function HubShell({
       />
     </>
   );
+}
+
+function canOpenShellModule(
+  moduleId: string,
+  hubUser: HubUserContext | null,
+  hubModule: (typeof orderedHubModules)[number],
+  profileStatus: "error" | "idle" | "loading" | "ready",
+) {
+  if (hubUser && canAccessModule(hubUser, hubModule)) {
+    return true;
+  }
+
+  return (
+    profileStatus === "loading" &&
+    minimumReleasedModuleIds.includes(
+      moduleId as (typeof minimumReleasedModuleIds)[number],
+    )
+  );
+}
+
+function createMinimumReleasedModuleIds() {
+  return new Set<string>(minimumReleasedModuleIds);
+}
+
+function withShellTimeout<Result>(
+  promise: PromiseLike<Result>,
+  label: string,
+  timeoutMs: number,
+): Promise<Result> {
+  const startedAt = performance.now();
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error(`${label} timeout`));
+    }, timeoutMs);
+
+    promise.then(
+      (result) => {
+        window.clearTimeout(timeoutId);
+        logShellDebug(`${label} done`, {
+          elapsedMs: Math.round(performance.now() - startedAt),
+        });
+        resolve(result);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
+function logShellDebug(event: string, detail?: unknown) {
+  if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+    return;
+  }
+
+  console.debug(`[shell] ${event}`, detail ?? "");
+}
+
+function getShellErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  return "Erro desconhecido.";
 }
