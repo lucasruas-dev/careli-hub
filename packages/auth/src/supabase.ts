@@ -31,6 +31,7 @@ export type SupabaseAuthAdapter = AuthAdapter & {
 
 const HUB_USER_ROLES = ["admin", "leader", "operator", "viewer"] as const;
 const HUB_USER_STATUSES = ["active", "archived", "disabled"] as const;
+const SUPABASE_AUTH_TIMEOUT_MS = 10_000;
 
 type HubUserProfileStatus = (typeof HUB_USER_STATUSES)[number];
 
@@ -75,28 +76,66 @@ export function createSupabaseAuthAdapter(
   return {
     provider: "supabase",
     async getSession(): Promise<AuthActionResult<AuthSession | null>> {
-      const { data, error } = await client.auth.getSession();
+      try {
+        const { data, error } = await withTimeout(
+          client.auth.getSession(),
+          "Tempo excedido ao carregar a sessao Supabase.",
+        );
 
-      if (error) {
+        if (error) {
+          logAuthError("auth error", error.message);
+
+          return {
+            error: error.message,
+            ok: false,
+          };
+        }
+
+        return mapSupabaseSession(client, data.session, config.workspaceId);
+      } catch (error) {
+        const message = getErrorMessage(
+          error,
+          "Supabase indisponivel ao carregar a sessao.",
+        );
+
+        logAuthError("auth error", message);
+
         return {
-          error: error.message,
+          error: message,
           ok: false,
         };
       }
-
-      return mapSupabaseSession(client, data.session, config.workspaceId);
     },
     async refreshSession(): Promise<AuthActionResult<AuthSession | null>> {
-      const { data, error } = await client.auth.refreshSession();
+      try {
+        const { data, error } = await withTimeout(
+          client.auth.refreshSession(),
+          "Tempo excedido ao renovar a sessao Supabase.",
+        );
 
-      if (error) {
+        if (error) {
+          logAuthError("auth error", error.message);
+
+          return {
+            error: error.message,
+            ok: false,
+          };
+        }
+
+        return mapSupabaseSession(client, data.session, config.workspaceId);
+      } catch (error) {
+        const message = getErrorMessage(
+          error,
+          "Supabase indisponivel ao renovar a sessao.",
+        );
+
+        logAuthError("auth error", message);
+
         return {
-          error: error.message,
+          error: message,
           ok: false,
         };
       }
-
-      return mapSupabaseSession(client, data.session, config.workspaceId);
     },
     async signIn(input?: unknown): Promise<AuthActionResult<AuthSession>> {
       const credentials = parsePasswordCredentials(input);
@@ -108,65 +147,117 @@ export function createSupabaseAuthAdapter(
         };
       }
 
-      const { data, error } = await client.auth.signInWithPassword({
-        email: credentials.email.trim().toLowerCase(),
-        password: credentials.password,
-      });
+      try {
+        const { data, error } = await withTimeout(
+          client.auth.signInWithPassword({
+            email: credentials.email.trim().toLowerCase(),
+            password: credentials.password,
+          }),
+          "Tempo excedido ao autenticar com Supabase.",
+        );
 
-      if (error) {
+        if (error) {
+          logAuthError("auth error", error.message);
+
+          return {
+            error: error.message,
+            ok: false,
+          };
+        }
+
+        const sessionResult = await mapSupabaseSession(
+          client,
+          data.session,
+          config.workspaceId,
+        );
+
+        if (!sessionResult.ok) {
+          await safeSupabaseSignOut(client);
+
+          return {
+            error: sessionResult.error,
+            ok: false,
+          };
+        }
+
+        if (!sessionResult.data) {
+          await safeSupabaseSignOut(client);
+
+          return {
+            error: "Nao foi possivel iniciar a sessao Supabase.",
+            ok: false,
+          };
+        }
+
         return {
-          error: error.message,
+          data: sessionResult.data,
+          ok: true,
+        };
+      } catch (error) {
+        const message = getErrorMessage(
+          error,
+          "Supabase indisponivel ao autenticar.",
+        );
+
+        logAuthError("auth error", message);
+
+        return {
+          error: message,
           ok: false,
         };
       }
-
-      const sessionResult = await mapSupabaseSession(
-        client,
-        data.session,
-        config.workspaceId,
-      );
-
-      if (!sessionResult.ok) {
-        await client.auth.signOut();
-
-        return {
-          error: sessionResult.error,
-          ok: false,
-        };
-      }
-
-      if (!sessionResult.data) {
-        await client.auth.signOut();
-
-        return {
-          error: "Nao foi possivel iniciar a sessao Supabase.",
-          ok: false,
-        };
-      }
-
-      return {
-        data: sessionResult.data,
-        ok: true,
-      };
     },
     async signOut(): Promise<AuthActionResult> {
-      const { error } = await client.auth.signOut();
+      try {
+        const { error } = await withTimeout(
+          client.auth.signOut(),
+          "Tempo excedido ao encerrar a sessao Supabase.",
+        );
 
-      if (error) {
+        if (error) {
+          logAuthError("auth error", error.message);
+
+          return {
+            error: error.message,
+            ok: false,
+          };
+        }
+
         return {
-          error: error.message,
+          data: undefined,
+          ok: true,
+        };
+      } catch (error) {
+        const message = getErrorMessage(
+          error,
+          "Supabase indisponivel ao encerrar a sessao.",
+        );
+
+        logAuthError("auth error", message);
+
+        return {
+          error: message,
           ok: false,
         };
       }
-
-      return {
-        data: undefined,
-        ok: true,
-      };
     },
     onAuthStateChange(handler: SupabaseAuthChangeHandler) {
       const { data } = client.auth.onAuthStateChange(async (_event, session) => {
-        handler(await mapSupabaseSession(client, session, config.workspaceId));
+        try {
+          handler(await mapSupabaseSession(client, session, config.workspaceId));
+        } catch (error) {
+          const message = getErrorMessage(
+            error,
+            "Supabase indisponivel ao processar a sessao.",
+          );
+
+          logAuthError("auth error", message);
+
+          handler({
+            error: message,
+            ok: false,
+          });
+        }
       });
 
       return {
@@ -208,6 +299,8 @@ async function mapSupabaseSession(
   workspaceId = "careli",
 ): Promise<AuthActionResult<AuthSession | null>> {
   if (!session) {
+    logAuthDebug("auth session loaded", "no active session");
+
     return {
       data: null,
       ok: true,
@@ -219,6 +312,8 @@ async function mapSupabaseSession(
   if (!profileResult.ok) {
     return profileResult;
   }
+
+  logAuthDebug("auth session loaded", "active session");
 
   return {
     data: {
@@ -238,55 +333,86 @@ async function loadHubUserProfile(
   client: SupabaseClient,
   userId: string,
 ): Promise<AuthActionResult<HubUserProfileRow>> {
-  const { data, error } = await client
-    .from("hub_users")
-    .select("id,email,display_name,avatar_url,role,status")
-    .eq("id", userId)
-    .maybeSingle<HubUserProfileRow>();
+  try {
+    const result = await withTimeout(
+      client
+        .from("hub_users")
+        .select("id,email,display_name,avatar_url,role,status")
+        .eq("id", userId)
+        .maybeSingle<HubUserProfileRow>(),
+      "Tempo excedido ao carregar o perfil operacional do Hub.",
+    );
 
-  if (error) {
+    const { data, error } = result;
+
+    if (error) {
+      logAuthError("auth error", error.message);
+
+      return {
+        error: `Nao foi possivel carregar o perfil operacional do Hub: ${error.message}`,
+        ok: false,
+      };
+    }
+
+    if (!data) {
+      logAuthDebug("hub user profile missing", userId);
+
+      return {
+        error:
+          "Seu login foi autenticado, mas o perfil operacional ainda nao existe no Careli Hub. Solicite a liberacao do acesso.",
+        ok: false,
+      };
+    }
+
+    if (!isHubUserRole(data.role)) {
+      logAuthError("auth error", "invalid hub user role");
+
+      return {
+        error:
+          "Seu perfil operacional possui uma role invalida. Solicite revisao a um administrador.",
+        ok: false,
+      };
+    }
+
+    if (!isHubUserStatus(data.status)) {
+      logAuthError("auth error", "invalid hub user status");
+
+      return {
+        error:
+          "Seu perfil operacional possui um status invalido. Solicite revisao a um administrador.",
+        ok: false,
+      };
+    }
+
+    if (data.status !== "active") {
+      logAuthError("auth error", "inactive hub user profile");
+
+      return {
+        error:
+          "Seu perfil operacional nao esta ativo no Careli Hub. Solicite a liberacao do acesso.",
+        ok: false,
+      };
+    }
+
+    logAuthDebug("hub user profile loaded", data.id);
+
     return {
-      error: `Nao foi possivel carregar o perfil operacional do Hub: ${error.message}`,
+      data,
+      ok: true,
+    };
+  } catch (error) {
+    const message = getErrorMessage(
+      error,
+      "Supabase indisponivel ao carregar o perfil operacional do Hub.",
+    );
+
+    logAuthError("auth error", message);
+
+    return {
+      error: message,
       ok: false,
     };
   }
-
-  if (!data) {
-    return {
-      error:
-        "Seu login foi autenticado, mas o perfil operacional ainda nao existe no Careli Hub. Solicite a liberacao do acesso.",
-      ok: false,
-    };
-  }
-
-  if (!isHubUserRole(data.role)) {
-    return {
-      error:
-        "Seu perfil operacional possui uma role invalida. Solicite revisao a um administrador.",
-      ok: false,
-    };
-  }
-
-  if (!isHubUserStatus(data.status)) {
-    return {
-      error:
-        "Seu perfil operacional possui um status invalido. Solicite revisao a um administrador.",
-      ok: false,
-    };
-  }
-
-  if (data.status !== "active") {
-    return {
-      error:
-        "Seu perfil operacional nao esta ativo no Careli Hub. Solicite a liberacao do acesso.",
-      ok: false,
-    };
-  }
-
-  return {
-    data,
-    ok: true,
-  };
 }
 
 function mapHubUserProfile(
@@ -313,4 +439,74 @@ function isHubUserStatus(
   status: string | undefined,
 ): status is HubUserProfileStatus {
   return HUB_USER_STATUSES.some((hubStatus) => hubStatus === status);
+}
+
+async function safeSupabaseSignOut(client: SupabaseClient): Promise<void> {
+  try {
+    await withTimeout(
+      client.auth.signOut(),
+      "Tempo excedido ao encerrar sessao Supabase invalida.",
+    );
+  } catch {
+    // Best effort cleanup only. The caller already returns the auth failure.
+  }
+}
+
+function withTimeout<Result>(
+  promise: PromiseLike<Result>,
+  message: string,
+  timeoutMs = SUPABASE_AUTH_TIMEOUT_MS,
+): Promise<Result> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = globalThis.setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+
+    promise.then(
+      (result) => {
+        globalThis.clearTimeout(timeoutId);
+        resolve(result);
+      },
+      (error: unknown) => {
+        globalThis.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  return fallback;
+}
+
+function logAuthDebug(event: string, detail?: string) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  console.debug(`[careli-auth] ${event}`, detail ?? "");
+}
+
+function logAuthError(event: string, detail?: string) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  console.warn(`[careli-auth] ${event}`, detail ?? "");
+}
+
+function isLocalDevelopmentRuntime(): boolean {
+  if (typeof globalThis.location === "undefined") {
+    return false;
+  }
+
+  return ["localhost", "127.0.0.1"].includes(globalThis.location.hostname);
 }

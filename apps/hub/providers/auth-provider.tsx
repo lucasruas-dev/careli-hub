@@ -41,6 +41,7 @@ const SUPABASE_AUTH_CONFIG = {
   url: process.env.NEXT_PUBLIC_SUPABASE_URL,
   workspaceId: process.env.NEXT_PUBLIC_SUPABASE_WORKSPACE_ID ?? "careli",
 };
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 12_000;
 
 export function AuthProvider({
   children,
@@ -72,22 +73,31 @@ export function AuthProvider({
     if (supabaseAuthAdapter) {
       let isMounted = true;
 
-      supabaseAuthAdapter.getSession().then((result) => {
-        if (!isMounted) {
-          return;
-        }
+      withTimeout(
+        supabaseAuthAdapter.getSession(),
+        "Tempo excedido ao carregar a sessao.",
+      )
+        .then((result) => {
+          if (!isMounted) {
+            return;
+          }
 
-        if (!result.ok) {
-          setAuthState({
-            ...createUnauthenticatedAuthState(),
-            error: result.error,
-            status: "error",
-          });
-          return;
-        }
+          logAuthDebug("auth session loaded", result.ok ? "resolved" : "error");
+          setAuthState(createAuthStateFromResult(result));
+        })
+        .catch((error: unknown) => {
+          if (!isMounted) {
+            return;
+          }
 
-        setAuthState(createAuthStateFromResult(result));
-      });
+          const message = getErrorMessage(
+            error,
+            "Nao foi possivel carregar a sessao.",
+          );
+
+          logAuthDebug("auth error", message);
+          setAuthState(createAuthErrorState(message));
+        });
 
       const subscription = supabaseAuthAdapter.onAuthStateChange((result) => {
         if (isMounted) {
@@ -105,15 +115,18 @@ export function AuthProvider({
       const storedSession = window.localStorage.getItem(MOCK_AUTH_STORAGE_KEY);
 
       if (!storedSession) {
+        logAuthDebug("auth session loaded", "mock session missing");
         setAuthState(createUnauthenticatedAuthState());
         return;
       }
 
+      logAuthDebug("auth session loaded", "mock session loaded");
       setAuthState(
         createAuthStateFromSession(JSON.parse(storedSession) as AuthSession),
       );
     } catch {
       window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
+      logAuthDebug("auth error", "invalid mock session");
       setAuthState(createUnauthenticatedAuthState());
     }
   }, [supabaseAuthAdapter]);
@@ -147,10 +160,30 @@ export function AuthProvider({
     }
 
     if (supabaseAuthAdapter) {
-      const result = await supabaseAuthAdapter.signIn?.({
-        email: normalizedEmail,
-        password,
-      });
+      let result: AuthActionResult<AuthSession> | undefined;
+
+      try {
+        result = await withTimeout(
+          supabaseAuthAdapter.signIn?.({
+            email: normalizedEmail,
+            password,
+          }) ?? Promise.resolve(undefined),
+          "Tempo excedido ao entrar no Hub.",
+        );
+      } catch (error) {
+        const message = getErrorMessage(
+          error,
+          "Nao foi possivel entrar no Hub.",
+        );
+
+        logAuthDebug("auth error", message);
+        setAuthState(createAuthErrorState(message));
+
+        return {
+          error: message,
+          ok: false,
+        };
+      }
 
       if (!result) {
         return {
@@ -161,13 +194,11 @@ export function AuthProvider({
 
       if (result.ok) {
         window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
+        logAuthDebug("hub user profile loaded", result.data.user.id);
         setAuthState(createAuthStateFromSession(result.data));
       } else {
-        setAuthState({
-          ...createUnauthenticatedAuthState(),
-          error: result.error,
-          status: "error",
-        });
+        logAuthDebug("auth error", result.error);
+        setAuthState(createAuthErrorState(result.error));
       }
 
       return result;
@@ -192,6 +223,7 @@ export function AuthProvider({
       MOCK_AUTH_STORAGE_KEY,
       JSON.stringify(nextAuthState.session),
     );
+    logAuthDebug("auth session loaded", "mock sign-in");
     setAuthState(nextAuthState);
 
     return {
@@ -284,6 +316,60 @@ function createAuthStateFromResult(
     error: result.error,
     status: "error",
   };
+}
+
+function createAuthErrorState(error: string): AuthState {
+  return {
+    ...createUnauthenticatedAuthState(),
+    error,
+    status: "error",
+  };
+}
+
+function withTimeout<Result>(
+  promise: PromiseLike<Result>,
+  message: string,
+): Promise<Result> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error(message));
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
+
+    promise.then(
+      (result) => {
+        window.clearTimeout(timeoutId);
+        resolve(result);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  return fallback;
+}
+
+function logAuthDebug(event: string, detail?: string) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  console.debug(`[careli-auth] ${event}`, detail ?? "");
+}
+
+function isLocalDevelopmentRuntime(): boolean {
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
 function AuthGateMessage({ message }: { message: string }) {
