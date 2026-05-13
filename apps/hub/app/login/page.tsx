@@ -32,17 +32,17 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-[#f3f6fa] px-6 py-10 text-[#101820]">
       <section className="w-full max-w-[25rem]">
-        <div className="mb-9 grid justify-items-center text-center">
+        <div className="mb-10 grid justify-items-center text-center">
           <Image
             alt="Careli"
-            className="h-auto w-24 object-contain"
-            height={96}
+            className="h-auto w-28 object-contain"
+            height={112}
             priority
             src="/logoc.png"
-            width={96}
+            width={112}
           />
-          <h1 className="m-0 mt-6 text-3xl font-semibold tracking-normal text-[#101820]">
-            Ecossistema Careli
+          <h1 className="m-0 mt-5 text-2xl font-medium tracking-normal text-[#101820]">
+            Ecossistema
           </h1>
         </div>
 
