@@ -6,6 +6,7 @@ import type {
   CreateOperationalUserInput,
   CreatePulseXChannelInput,
   CreateSectorInput,
+  LinkUserAssignmentInput,
   SetupData,
   SetupDepartment,
   SetupDepartmentModule,
@@ -56,14 +57,20 @@ type UserRow = {
   avatar_url?: string | null;
   display_name: string;
   email: string;
-  hub_user_assignments?: {
-    hub_departments?: { name: string } | null;
-    hub_sectors?: { name: string } | null;
-  }[];
+  hub_user_assignments?: UserAssignmentRow[];
   id: string;
   operational_profile?: SetupOperationalProfileRole | null;
   role: SetupUser["role"];
   status: SetupUser["status"];
+};
+
+type UserAssignmentRow = {
+  department_id?: string | null;
+  hub_departments?: { name: string } | { name: string }[] | null;
+  hub_sectors?: { name: string } | { name: string }[] | null;
+  sector_id?: string | null;
+  status: "active" | "archived" | "disabled";
+  user_id: string;
 };
 
 type ModuleRow = {
@@ -388,7 +395,7 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
     department_id: input.departmentId || null,
     description: input.description?.trim() || null,
     id: input.id.trim() || createFallbackSlug(input.name),
-    kind: input.kind,
+    kind: mapChannelTypeToKind(input.type),
     name: input.name.trim(),
     sector_id: input.sectorId || null,
     status: input.status,
@@ -417,6 +424,7 @@ export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
 
   const payload = {
     department_id: input.departmentId || null,
+    ...(input.type ? { kind: mapChannelTypeToKind(input.type) } : {}),
     name: input.name.trim(),
     sector_id: input.sectorId || null,
     status: input.status,
@@ -469,6 +477,73 @@ export async function createOperationalUser(input: CreateOperationalUserInput) {
   if (!response.ok) {
     throw new Error(payload?.error ?? "Nao foi possivel criar usuario.");
   }
+}
+
+export async function linkUserAssignment(input: LinkUserAssignmentInput) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const userPayload = {
+    operational_profile: input.profile,
+    role: mapOperationalProfileToRole(input.profile),
+    status: input.status,
+  };
+  logSetupDebug("link user profile payload", {
+    userId: input.userId,
+    ...userPayload,
+  });
+
+  const userResult = await client
+    .from("hub_users")
+    .update(userPayload)
+    .eq("id", input.userId);
+
+  logSetupQueryResult("link user profile", userResult);
+
+  if ((userResult as QueryResult<unknown>).error?.message.includes("operational_profile")) {
+    const legacyUserResult = await client
+      .from("hub_users")
+      .update({
+        role: userPayload.role,
+        status: userPayload.status,
+      })
+      .eq("id", input.userId);
+
+    logSetupQueryResult("link user profile legacy", legacyUserResult);
+    assertQuery("vincular usuario", legacyUserResult);
+  } else {
+    assertQuery("vincular usuario", userResult);
+  }
+
+  const archiveResult = await client
+    .from("hub_user_assignments")
+    .update({ status: "archived" })
+    .eq("user_id", input.userId)
+    .eq("is_primary", true)
+    .eq("status", "active");
+
+  logSetupQueryResult("archive user assignments", archiveResult);
+  assertQuery("vincular usuario", archiveResult);
+
+  const assignmentPayload = {
+    department_id: input.departmentId,
+    is_primary: true,
+    sector_id: input.sectorId,
+    status: input.status,
+    title: input.profile,
+    user_id: input.userId,
+  };
+  logSetupDebug("link user assignment payload", assignmentPayload);
+
+  const assignmentResult = await client
+    .from("hub_user_assignments")
+    .insert(assignmentPayload);
+
+  logSetupQueryResult("link user assignment", assignmentResult);
+  assertQuery("vincular usuario", assignmentResult);
 }
 
 export const saveDepartment = createDepartment;
@@ -626,25 +701,54 @@ async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {
     "list users",
     client
       .from("hub_users")
-      .select(
-        "id,email,display_name,avatar_url,role,operational_profile,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
-      )
+      .select("id,email,display_name,avatar_url,role,operational_profile,status")
       .order("display_name"),
   );
 
-  if (!result.error) {
-    return result;
+  const users =
+    result.error?.message.includes("operational_profile")
+      ? await runSetupQuery<UserRow[]>(
+          "list users legacy profile fallback",
+          client
+            .from("hub_users")
+            .select("id,email,display_name,avatar_url,role,status")
+            .order("display_name"),
+        )
+      : result;
+
+  if (users.error || !users.data?.length) {
+    return users;
   }
 
-  return runSetupQuery<UserRow[]>(
-    "list users legacy profile fallback",
+  const assignments = await runSetupQuery<UserAssignmentRow[]>(
+    "list user assignments",
     client
-      .from("hub_users")
+      .from("hub_user_assignments")
       .select(
-        "id,email,display_name,avatar_url,role,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
+        "user_id,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
       )
-      .order("display_name"),
+      .order("created_at", { ascending: false }),
   );
+
+  if (assignments.error) {
+    return users;
+  }
+
+  const assignmentsByUser = new Map<string, UserAssignmentRow[]>();
+
+  for (const assignment of assignments.data ?? []) {
+    const currentAssignments = assignmentsByUser.get(assignment.user_id) ?? [];
+    currentAssignments.push(assignment);
+    assignmentsByUser.set(assignment.user_id, currentAssignments);
+  }
+
+  return {
+    data: users.data.map((user) => ({
+      ...user,
+      hub_user_assignments: assignmentsByUser.get(user.id) ?? [],
+    })),
+    error: null,
+  } satisfies QueryResult<UserRow[]>;
 }
 
 function getSetupErrorMessage(label: string) {
@@ -687,17 +791,21 @@ function mapSector(row: SectorRow | null): SetupSector {
 }
 
 function mapUser(row: UserRow): SetupUser {
-  const assignment = row.hub_user_assignments?.[0];
+  const assignment =
+    row.hub_user_assignments?.find((item) => item.status === "active") ??
+    row.hub_user_assignments?.[0];
 
   return {
     avatarUrl: row.avatar_url ?? undefined,
-    departmentName: assignment?.hub_departments?.name,
+    departmentId: assignment?.department_id ?? undefined,
+    departmentName: getRelationName(assignment?.hub_departments),
     displayName: row.display_name,
     email: row.email,
     id: row.id,
     operationalProfile: row.operational_profile ?? mapRoleToOperationalProfile(row.role),
     role: row.role,
-    sectorName: assignment?.hub_sectors?.name,
+    sectorId: assignment?.sector_id ?? undefined,
+    sectorName: getRelationName(assignment?.hub_sectors),
     status: row.status,
   };
 }
@@ -731,7 +839,60 @@ function mapPulseXChannel(row: PulseXChannelRow | null): SetupPulseXChannel {
     sectorId: row.sector_id ?? undefined,
     sectorName: row.hub_sectors?.name,
     status: row.status,
+    type: mapChannelKindToType(row.kind),
   };
+}
+
+function getRelationName(
+  relation?: { name: string } | { name: string }[] | null,
+) {
+  if (Array.isArray(relation)) {
+    return relation[0]?.name;
+  }
+
+  return relation?.name;
+}
+
+function mapChannelTypeToKind(
+  type: SetupPulseXChannel["type"],
+): SetupPulseXChannel["kind"] {
+  if (type === "sector_channel") {
+    return "sector";
+  }
+
+  if (type === "department_channel") {
+    return "department";
+  }
+
+  return "system";
+}
+
+function mapChannelKindToType(
+  kind: SetupPulseXChannel["kind"],
+): SetupPulseXChannel["type"] {
+  if (kind === "sector") {
+    return "sector_channel";
+  }
+
+  if (kind === "department") {
+    return "department_channel";
+  }
+
+  return "private_group";
+}
+
+function mapOperationalProfileToRole(
+  profile: SetupOperationalProfileRole,
+): SetupUser["role"] {
+  if (profile === "adm") {
+    return "admin";
+  }
+
+  if (profile === "cdr" || profile === "ldr") {
+    return "leader";
+  }
+
+  return "operator";
 }
 
 function createEmptySetupData(): SetupData {

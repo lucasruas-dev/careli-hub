@@ -46,12 +46,16 @@ export type PulseXSector = {
 
 export type PulseXPresenceUser = {
   channelIds: readonly PulseXChannel["id"][];
+  departmentId?: string;
+  departmentName?: string;
   email?: string;
   id: string;
   initials: string;
   label: string;
   lastInteractionMinutesAgo?: number;
   role: string;
+  sectorId?: string;
+  sectorName?: string;
   status: "online" | "away" | "busy" | "offline";
   username?: string;
 };

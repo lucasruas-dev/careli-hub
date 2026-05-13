@@ -27,12 +27,14 @@ export type SetupSector = {
 
 export type SetupUser = {
   avatarUrl?: string;
+  departmentId?: string;
   departmentName?: string;
   displayName: string;
   email: string;
   id: string;
   operationalProfile: SetupOperationalProfileRole;
   role: "admin" | "leader" | "operator" | "viewer";
+  sectorId?: string;
   sectorName?: string;
   status: "active" | "archived" | "disabled";
 };
@@ -69,6 +71,7 @@ export type SetupPulseXChannel = {
   sectorId?: string;
   sectorName?: string;
   status: "active" | "archived" | "disabled";
+  type: "department_channel" | "private_group" | "sector_channel";
 };
 
 export type SetupData = {
@@ -117,10 +120,10 @@ export type CreatePulseXChannelInput = {
   departmentId?: string;
   description?: string;
   id: string;
-  kind: SetupPulseXChannel["kind"];
   name: string;
   sectorId?: string;
   status: SetupRecordStatus;
+  type: SetupPulseXChannel["type"];
 };
 
 export type UpdatePulseXChannelInput = {
@@ -129,6 +132,7 @@ export type UpdatePulseXChannelInput = {
   name: string;
   sectorId?: string;
   status: SetupRecordStatus;
+  type?: SetupPulseXChannel["type"];
 };
 
 export type CreateOperationalUserInput = {
@@ -139,4 +143,12 @@ export type CreateOperationalUserInput = {
   profile: SetupOperationalProfileRole;
   sectorId: string;
   status: "active" | "disabled";
+};
+
+export type LinkUserAssignmentInput = {
+  departmentId: string;
+  profile: SetupOperationalProfileRole;
+  sectorId: string;
+  status: "active" | "disabled";
+  userId: string;
 };

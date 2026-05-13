@@ -117,13 +117,22 @@ export async function loadPulseXOperationalData(input: {
   const messages = activeChannelId
     ? await listChannelMessages(activeChannelId)
     : [];
+  const hasRealStructure =
+    departments.length > 0 ||
+    sectors.length > 0 ||
+    allChannels.length > 0 ||
+    users.length > 0;
+
+  if (!hasRealStructure) {
+    return createPulseXFallback();
+  }
 
   return {
-    channels: channels.length > 0 ? channels : [...pulsexChannels],
+    channels,
     departments,
     messages,
     sectors,
-    users: users.length > 0 ? users : [...pulsexPresenceUsers],
+    users,
   };
 }
 
@@ -178,7 +187,7 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
   const client = getHubSupabaseClient();
 
   if (!client) {
-    return pulsexChannels.map((channel) => ({ ...channel }));
+    return [];
   }
 
   const result = await client
@@ -200,7 +209,7 @@ export async function listDirectUsers(): Promise<PulseXPresenceUser[]> {
   const client = getHubSupabaseClient();
 
   if (!client) {
-    return pulsexPresenceUsers.map((user) => ({ ...user }));
+    return [];
   }
 
   const result = await client
@@ -376,11 +385,15 @@ function mapUser(row: HubUserRow): PulseXPresenceUser {
 
   return {
     channelIds: [],
+    departmentId: primaryAssignment?.department_id ?? undefined,
+    departmentName: primaryAssignment?.hub_departments?.name ?? undefined,
     email: row.email,
     id: row.id,
     initials: getInitials(row.display_name),
     label: row.display_name,
     role,
+    sectorId: primaryAssignment?.sector_id ?? undefined,
+    sectorName: primaryAssignment?.hub_sectors?.name ?? undefined,
     status: "online",
     username: row.email.split("@")[0],
   };

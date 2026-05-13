@@ -84,7 +84,8 @@ export function PulseXWorkspace() {
   );
   const activeChannel =
     channels.find((channel) => channel.id === activeChannelId) ??
-    pulsexChannels[0];
+    channels[0] ??
+    emptyPulseXChannel;
   const activeThreadMessage = activeThreadMessageId
     ? messages.find((message) => message.id === activeThreadMessageId)
     : undefined;
@@ -139,7 +140,7 @@ export function PulseXWorkspace() {
         setActiveChannelId((currentId) =>
           nextChannels.some((channel) => channel.id === currentId)
             ? currentId
-            : nextChannels[0]?.id ?? "cobranca",
+            : nextChannels[0]?.id ?? emptyPulseXChannel.id,
         );
         setDataStatus(hasHubSupabaseConfig() ? "ready" : "fallback");
       })
@@ -518,13 +519,34 @@ function withUserChannelAccess(
         }
 
         return (
-          !channel.memberUserIds?.length ||
-          channel.memberUserIds.includes(user.id)
+          channel.memberUserIds?.includes(user.id) ||
+          Boolean(channel.sectorId && channel.sectorId === user.sectorId) ||
+          Boolean(
+            channel.departmentId && channel.departmentId === user.departmentId,
+          ) ||
+          !channel.memberUserIds?.length
         );
       })
       .map((channel) => channel.id),
   }));
 }
+
+const emptyPulseXChannel = {
+  avatar: "--",
+  context: {
+    filesCount: 0,
+    owner: "PulseX",
+    status: "Aguardando setup",
+    unit: "Hub",
+  },
+  description: "Nenhum canal operacional configurado.",
+  id: "empty-pulsex",
+  kind: "system",
+  lastMessageAt: "-",
+  name: "Sem canal",
+  preview: "Configure canais no Setup Central.",
+  status: "offline",
+} satisfies PulseXChannel;
 
 function createLocalCallSession({
   channel,

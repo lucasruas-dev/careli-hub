@@ -6,6 +6,7 @@ import {
   createOperationalUser,
   createPulseXChannel,
   createSector,
+  linkUserAssignment,
   loadSetupData,
   updateDepartment,
   updatePulseXChannel,
@@ -16,12 +17,14 @@ import type {
   CreateOperationalUserInput,
   CreatePulseXChannelInput,
   CreateSectorInput,
+  LinkUserAssignmentInput,
   SetupData,
   SetupDepartment,
   SetupOperationalProfileRole,
   SetupPulseXChannel,
   SetupRecordStatus,
   SetupSector,
+  SetupUser,
   UpdateDepartmentInput,
   UpdatePulseXChannelInput,
   UpdateSectorInput,
@@ -33,6 +36,7 @@ import {
   Archive,
   KeyRound,
   Layers3,
+  Link2,
   MessageSquareText,
   MoreVertical,
   PackageCheck,
@@ -109,6 +113,7 @@ function SetupWorkspace() {
   const [success, setSuccess] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<SetupActionId | null>(null);
   const [editTarget, setEditTarget] = useState<SetupEditTarget | null>(null);
+  const [linkUserTarget, setLinkUserTarget] = useState<SetupUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -215,6 +220,24 @@ function SetupWorkspace() {
     }
   }
 
+  async function handleLinkUserAssignment(input: LinkUserAssignmentInput) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await linkUserAssignment(input);
+      await refreshSetupData();
+      setActiveTab("usuarios");
+      setLinkUserTarget(null);
+      setSuccess("Usuario vinculado ao setor.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function handleUpdateDepartment(input: UpdateDepartmentInput) {
     setIsSaving(true);
     setError(null);
@@ -309,6 +332,7 @@ function SetupWorkspace() {
                   setActiveTab(tab.id);
                   setActiveAction(null);
                   setEditTarget(null);
+                  setLinkUserTarget(null);
                 }}
                 type="button"
               >
@@ -345,6 +369,7 @@ function SetupWorkspace() {
               onCreatePulseXChannel={handleCreatePulseXChannel}
               onCreateSector={handleCreateSector}
               onEditRecord={setEditTarget}
+              onLinkUser={setLinkUserTarget}
               onOpenAction={setActiveAction}
             />
           )}
@@ -359,6 +384,15 @@ function SetupWorkspace() {
           onUpdatePulseXChannel={handleUpdatePulseXChannel}
           onUpdateSector={handleUpdateSector}
           target={editTarget}
+        />
+      ) : null}
+      {linkUserTarget ? (
+        <LinkUserAssignmentModal
+          data={data}
+          isSaving={isSaving}
+          onClose={() => setLinkUserTarget(null)}
+          onSubmit={handleLinkUserAssignment}
+          user={linkUserTarget}
         />
       ) : null}
     </WorkspaceLayout>
@@ -376,6 +410,7 @@ function SetupTabContent({
   onCreatePulseXChannel,
   onCreateSector,
   onEditRecord,
+  onLinkUser,
   onOpenAction,
 }: {
   activeTab: SetupTabId;
@@ -388,6 +423,7 @@ function SetupTabContent({
   onCreatePulseXChannel: (input: CreatePulseXChannelInput) => Promise<void>;
   onCreateSector: (input: CreateSectorInput) => Promise<void>;
   onEditRecord: (target: SetupEditTarget) => void;
+  onLinkUser: (user: SetupUser) => void;
   onOpenAction: (action: SetupActionId) => void;
 }) {
   if (activeTab === "usuarios") {
@@ -411,14 +447,18 @@ function SetupTabContent({
         ) : null}
         <DataGrid
           empty="Nenhum usuario sincronizado em hub_users."
-          headers={["Nome", "Email", "Perfil", "Departamento", "Setor", "Status"]}
+          headers={["Nome", "Email", "Perfil", "Departamento", "Setor", "Status", "Acoes"]}
           rows={data.users.map((user) => [
             user.displayName,
             user.email,
             user.operationalProfile,
-            user.departmentName ?? "-",
-            user.sectorName ?? "-",
+            user.departmentName ?? "Sem departamento",
+            user.sectorName ?? "Sem setor",
             user.status,
+            <UserAssignmentAction
+              key={user.id}
+              onClick={() => onLinkUser(user)}
+            />,
           ])}
         />
       </TabPanel>
@@ -568,7 +608,7 @@ function SetupTabContent({
         headers={["Canal", "Tipo", "Departamento", "Setor", "Status", "Acoes"]}
         rows={data.channels.map((channel) => [
           channel.name,
-          channel.kind,
+          getPulseXChannelTypeLabel(channel.type),
           channel.departmentName ?? "-",
           channel.sectorName ?? "-",
           channel.status,
@@ -709,10 +749,10 @@ function CreatePulseXChannelForm({
 }) {
   const [departmentId, setDepartmentId] = useState(data.departments[0]?.id ?? "");
   const [description, setDescription] = useState("");
-  const [kind, setKind] = useState<CreatePulseXChannelInput["kind"]>("sector");
   const [name, setName] = useState("");
   const [sectorId, setSectorId] = useState("");
   const [status, setStatus] = useState<SetupRecordStatus>("active");
+  const [type, setType] = useState<CreatePulseXChannelInput["type"]>("sector_channel");
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
@@ -723,10 +763,10 @@ function CreatePulseXChannelForm({
       departmentId,
       description,
       id: slugify(name),
-      kind,
       name,
       sectorId: sectorId || undefined,
       status,
+      type,
     });
     setDescription("");
     setName("");
@@ -775,14 +815,13 @@ function CreatePulseXChannelForm({
           <select
             className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
             onChange={(event) =>
-              setKind(event.target.value as CreatePulseXChannelInput["kind"])
+              setType(event.target.value as CreatePulseXChannelInput["type"])
             }
-            value={kind}
+            value={type}
           >
-            <option value="sector">Setor</option>
-            <option value="department">Departamento</option>
-            <option value="direct">Direta</option>
-            <option value="system">Sistema</option>
+            <option value="sector_channel">Canal de setor</option>
+            <option value="department_channel">Canal de departamento</option>
+            <option value="private_group">Grupo privado</option>
           </select>
         </label>
         <TextAreaInput
@@ -948,6 +987,24 @@ function RowActions({
         </button>
       </Tooltip>
       <MoreVertical aria-hidden="true" className="text-[#98a2b3]" size={14} />
+    </div>
+  );
+}
+
+function UserAssignmentAction({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex items-center justify-end">
+      <Tooltip content="Vincular setor">
+        <button
+          aria-label="Vincular setor"
+          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          onClick={onClick}
+          title="Vincular setor"
+          type="button"
+        >
+          <Link2 aria-hidden="true" size={14} />
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -1128,6 +1185,7 @@ function EditPulseXChannelModal({
   const [name, setName] = useState(record.name);
   const [sectorId, setSectorId] = useState(record.sectorId ?? "");
   const [status, setStatus] = useState<SetupRecordStatus>(record.status);
+  const [type, setType] = useState<SetupPulseXChannel["type"]>(record.type);
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
@@ -1140,6 +1198,7 @@ function EditPulseXChannelModal({
       name,
       sectorId: sectorId || undefined,
       status,
+      type,
     });
   }
 
@@ -1178,6 +1237,20 @@ function EditPulseXChannelModal({
                 {sector.name}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="grid gap-1.5">
+          <span className="text-xs font-semibold text-[#667085]">Tipo</span>
+          <select
+            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            onChange={(event) =>
+              setType(event.target.value as SetupPulseXChannel["type"])
+            }
+            value={type}
+          >
+            <option value="sector_channel">Canal de setor</option>
+            <option value="department_channel">Canal de departamento</option>
+            <option value="private_group">Grupo privado</option>
           </select>
         </label>
         <StatusSelect onChange={setStatus} value={status} />
@@ -1336,6 +1409,119 @@ function CreateOperationalUserModal({
         </form>
       </div>
     </div>
+  );
+}
+
+function LinkUserAssignmentModal({
+  data,
+  isSaving,
+  onClose,
+  onSubmit,
+  user,
+}: {
+  data: SetupData;
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (input: LinkUserAssignmentInput) => Promise<void>;
+  user: SetupUser;
+}) {
+  const [departmentId, setDepartmentId] = useState(
+    user.departmentId ?? data.departments[0]?.id ?? "",
+  );
+  const [profile, setProfile] = useState<SetupOperationalProfileRole>(
+    user.operationalProfile,
+  );
+  const [sectorId, setSectorId] = useState(user.sectorId ?? "");
+  const [status, setStatus] = useState<LinkUserAssignmentInput["status"]>(
+    user.status === "disabled" ? "disabled" : "active",
+  );
+  const [userId, setUserId] = useState(user.id);
+  const availableSectors = data.sectors.filter(
+    (sector) => !departmentId || sector.departmentId === departmentId,
+  );
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit({
+      departmentId,
+      profile,
+      sectorId,
+      status,
+      userId,
+    });
+  }
+
+  return (
+    <SetupModal onClose={onClose} title="Vincular setor">
+      <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
+        <label className="grid gap-1.5">
+          <span className="text-xs font-semibold text-[#667085]">Usuario</span>
+          <select
+            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            onChange={(event) => {
+              const nextUser = data.users.find(
+                (candidate) => candidate.id === event.target.value,
+              );
+              setUserId(event.target.value);
+              if (nextUser) {
+                setDepartmentId(nextUser.departmentId ?? data.departments[0]?.id ?? "");
+                setSectorId(nextUser.sectorId ?? "");
+                setProfile(nextUser.operationalProfile);
+                setStatus(nextUser.status === "disabled" ? "disabled" : "active");
+              }
+            }}
+            value={userId}
+          >
+            {data.users.map((setupUser) => (
+              <option key={setupUser.id} value={setupUser.id}>
+                {setupUser.displayName} · {setupUser.email}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+            <select
+              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+              onChange={(event) => {
+                setDepartmentId(event.target.value);
+                setSectorId("");
+              }}
+              value={departmentId}
+            >
+              {data.departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold text-[#667085]">Setor</span>
+            <select
+              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+              onChange={(event) => setSectorId(event.target.value)}
+              value={sectorId}
+            >
+              <option value="">Selecione</option>
+              {availableSectors.map((sector) => (
+                <option key={sector.id} value={sector.id}>
+                  {sector.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ProfileSelect onChange={setProfile} value={profile} />
+          <UserStatusSelect onChange={setStatus} value={status} />
+        </div>
+        <FormActions
+          disabled={!userId || !departmentId || !sectorId || isSaving}
+          onCancel={onClose}
+          submitLabel={isSaving ? "Salvando..." : "Vincular setor"}
+        />
+      </form>
+    </SetupModal>
   );
 }
 
@@ -1517,6 +1703,18 @@ function getFriendlySetupError(error: unknown, action: "load" | "save") {
   }
 
   return "Nao foi possivel salvar. Tente novamente.";
+}
+
+function getPulseXChannelTypeLabel(type: SetupPulseXChannel["type"]) {
+  if (type === "sector_channel") {
+    return "Canal de setor";
+  }
+
+  if (type === "department_channel") {
+    return "Canal de departamento";
+  }
+
+  return "Grupo privado";
 }
 
 const emptySetupData: SetupData = {
