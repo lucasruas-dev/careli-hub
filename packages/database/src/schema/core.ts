@@ -92,6 +92,55 @@ export type HubDepartmentModuleAccessRecord = {
   updatedAt: CanonicalTimestamp;
 };
 
+export type HubUserAssignmentRecord = {
+  createdAt: CanonicalTimestamp;
+  departmentId: HubDepartmentRecord["id"];
+  id: string;
+  isPrimary: boolean;
+  sectorId?: HubSectorRecord["id"];
+  status: CanonicalRecordStatus;
+  title?: string;
+  updatedAt: CanonicalTimestamp;
+  userId: HubUserRecord["id"];
+};
+
+export type PulseXChannelRecord = {
+  createdAt: CanonicalTimestamp;
+  createdByUserId?: HubUserRecord["id"];
+  departmentId?: HubDepartmentRecord["id"];
+  description?: string;
+  id: string;
+  kind: "department" | "sector" | "direct" | "system";
+  metadata?: Record<string, unknown>;
+  name: string;
+  order: number;
+  sectorId?: HubSectorRecord["id"];
+  status: CanonicalRecordStatus;
+  updatedAt: CanonicalTimestamp;
+};
+
+export type PulseXChannelMemberRecord = {
+  channelId: PulseXChannelRecord["id"];
+  createdAt: CanonicalTimestamp;
+  id: string;
+  lastReadAt?: CanonicalTimestamp;
+  role: string;
+  status: CanonicalRecordStatus;
+  updatedAt: CanonicalTimestamp;
+  userId: HubUserRecord["id"];
+};
+
+export type PulseXMessageRecord = {
+  authorUserId?: HubUserRecord["id"];
+  body: string;
+  channelId: PulseXChannelRecord["id"];
+  createdAt: CanonicalTimestamp;
+  deletedAt?: CanonicalTimestamp;
+  id: string;
+  metadata?: Record<string, unknown>;
+  updatedAt: CanonicalTimestamp;
+};
+
 export type HubPermissionRecord = {
   createdAt: CanonicalTimestamp;
   description?: string;
@@ -175,6 +224,7 @@ export type HubIntegrationRecord = {
 export type CanonicalDatabaseSchema = {
   hub_activity_events: HubActivityEventRecord;
   hub_department_module_access: HubDepartmentModuleAccessRecord;
+  hub_department_modules: HubDepartmentModuleAccessRecord;
   hub_departments: HubDepartmentRecord;
   hub_files: HubFileRecord;
   hub_integrations: HubIntegrationRecord;
@@ -182,10 +232,14 @@ export type CanonicalDatabaseSchema = {
   hub_notifications: HubNotificationRecord;
   hub_permissions: HubPermissionRecord;
   hub_presence: HubPresenceRecord;
+  hub_user_assignments: HubUserAssignmentRecord;
   hub_user_permissions: HubUserPermissionRecord;
   hub_users: HubUserRecord;
   hub_sectors: HubSectorRecord;
   hub_workspaces: HubWorkspaceRecord;
+  pulsex_channel_members: PulseXChannelMemberRecord;
+  pulsex_channels: PulseXChannelRecord;
+  pulsex_messages: PulseXMessageRecord;
 };
 
 export type CanonicalDatabaseTableName = keyof CanonicalDatabaseSchema;
@@ -197,11 +251,16 @@ export const canonicalDatabaseTableNames = [
   "hub_workspaces",
   "hub_modules",
   "hub_department_module_access",
+  "hub_department_modules",
   "hub_permissions",
   "hub_user_permissions",
+  "hub_user_assignments",
   "hub_activity_events",
   "hub_notifications",
   "hub_presence",
   "hub_files",
   "hub_integrations",
+  "pulsex_channels",
+  "pulsex_channel_members",
+  "pulsex_messages",
 ] as const satisfies readonly CanonicalDatabaseTableName[];

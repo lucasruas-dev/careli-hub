@@ -31,6 +31,35 @@ export const hubModules = [
     ],
   },
   {
+    id: "setup",
+    name: "Setup",
+    description: "Configuracao central de usuarios, estrutura e modulos do Hub.",
+    category: "core",
+    status: "active",
+    basePath: "/setup",
+    iconKey: "setup",
+    realtimeEnabled: false,
+    order: 15,
+    requiredPermissions: ["setup:view"],
+    routes: [
+      {
+        id: "setup-overview",
+        label: "Central",
+        path: "/setup",
+        description: "Configuracao global do Hub.",
+      },
+    ],
+    navigationItems: [
+      {
+        id: "setup-overview",
+        label: "Setup",
+        path: "/setup",
+        iconKey: "setup",
+        order: 10,
+      },
+    ],
+  },
+  {
     id: "pulsex",
     name: "PulseX",
     description: "Sinais, eventos e pulso realtime das operacoes.",

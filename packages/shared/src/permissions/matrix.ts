@@ -3,6 +3,8 @@ import type { HubPermission, HubUserRole } from "./types";
 const allPermissions = [
   "hub:view",
   "hub:manage",
+  "setup:view",
+  "setup:manage",
   "guardian:view",
   "guardian:manage",
   "pulsex:view",

@@ -4,6 +4,7 @@ import type {
   PulseXChannel,
   PulseXMessage,
   PulseXMessageFilter,
+  PulseXPresenceUser,
 } from "@/lib/pulsex";
 import { Tooltip } from "@repo/uix";
 import {
@@ -30,45 +31,21 @@ type ConversationSidebarProps = {
   activeChannelId: string;
   activeMessageFilter: PulseXMessageFilter;
   channels: readonly PulseXChannel[];
+  dataStatus?: "fallback" | "loading" | "ready";
   messages: readonly PulseXMessage[];
   onSelectChannel?: (channelId: PulseXChannel["id"]) => void;
   onSelectMessageFilter?: (filter: PulseXMessageFilter) => void;
+  users: readonly PulseXPresenceUser[];
 };
 
 type SidebarGroupId = "directs" | "operations" | "relation" | "technology";
 
 const sidebarGroups = [
-  {
-    channelIds: ["cobranca", "desk", "workflow", "financeiro"],
-    id: "operations",
-    icon: BriefcaseBusiness,
-    title: "Operacao",
-  },
-  {
-    channelIds: ["guardian", "pulsex", "infraestrutura"],
-    id: "technology",
-    icon: Cpu,
-    title: "Tecnologia",
-  },
-  {
-    channelIds: ["atendimento", "comercial", "diretoria"],
-    id: "relation",
-    icon: HeartHandshake,
-    title: "Relacao",
-  },
-  {
-    channelIds: [
-      "nivea-careli",
-      "gustavo-freitas",
-      "catherine-faria",
-      "lucas-ruas",
-    ],
-    id: "directs",
-    icon: Users,
-    title: "Diretas",
-  },
+  { id: "operations", icon: BriefcaseBusiness, title: "Operacao" },
+  { id: "technology", icon: Cpu, title: "Tecnologia" },
+  { id: "relation", icon: HeartHandshake, title: "Relacao" },
+  { id: "directs", icon: Users, title: "Diretas" },
 ] as const satisfies readonly {
-  channelIds: readonly string[];
   id: SidebarGroupId;
   icon: typeof BriefcaseBusiness;
   title: string;
@@ -90,8 +67,10 @@ export function ConversationSidebar({
   activeChannelId,
   activeMessageFilter,
   channels,
+  dataStatus = "ready",
   onSelectChannel,
   onSelectMessageFilter,
+  users,
 }: ConversationSidebarProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<SidebarGroupId, boolean>
@@ -114,10 +93,20 @@ export function ConversationSidebar({
     messageFilters.find((filter) => filter.id === activeMessageFilter)?.label ??
     "Todas";
 
-  function getOrderedChannels(channelIds: readonly string[]) {
-    return channelIds
-      .map((channelId) => channels.find((channel) => channel.id === channelId))
-      .filter((channel): channel is PulseXChannel => Boolean(channel));
+  function getOrderedChannels(groupId: SidebarGroupId) {
+    if (groupId === "directs") {
+      return channels.filter((channel) => channel.kind === "direct");
+    }
+
+    if (groupId === "technology") {
+      return channels.filter((channel) => channel.kind === "technology");
+    }
+
+    if (groupId === "relation") {
+      return channels.filter((channel) => channel.kind === "relation");
+    }
+
+    return channels.filter((channel) => channel.kind === "operations");
   }
 
   function toggleGroup(groupId: SidebarGroupId) {
@@ -148,6 +137,7 @@ export function ConversationSidebar({
           <p className="m-0 truncate text-base font-semibold text-[#f7f8fa]">
             PulseX
           </p>
+          <span className="sr-only">{users.length} usuarios carregados</span>
           <button
             aria-label="Nova conversa"
             className="grid h-9 w-9 place-items-center rounded-md border border-[#A07C3B]/45 bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
@@ -278,7 +268,7 @@ export function ConversationSidebar({
       <div className="min-h-0 flex-1 overflow-auto py-2">
         {sidebarGroups.map((group) => {
           const GroupIcon = group.icon;
-          const groupChannels = getOrderedChannels(group.channelIds);
+          const groupChannels = getOrderedChannels(group.id);
           const groupUnreadCount = groupChannels.reduce(
             (total, channel) => total + (channel.unreadCount ?? 0),
             0,
@@ -293,15 +283,28 @@ export function ConversationSidebar({
               title={group.title}
               unreadCount={groupUnreadCount}
             >
-              <ConversationList
-                activeChannelId={activeChannelId}
-                channels={groupChannels}
-                onSelectChannel={onSelectChannel}
-              />
+              {groupChannels.length > 0 ? (
+                <ConversationList
+                  activeChannelId={activeChannelId}
+                  channels={groupChannels}
+                  onSelectChannel={onSelectChannel}
+                />
+              ) : (
+                <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
+                  Nenhum canal configurado.
+                </p>
+              )}
             </SidebarSection>
           );
         })}
       </div>
+      {dataStatus !== "ready" ? (
+        <div className="border-t border-white/[0.075] px-4 py-2 text-xs text-[#a5afbd]">
+          {dataStatus === "loading"
+            ? "Carregando Supabase..."
+            : "Fallback local ativo"}
+        </div>
+      ) : null}
     </aside>
   );
 }

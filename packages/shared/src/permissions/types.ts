@@ -5,6 +5,8 @@ export type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 export type HubPermission =
   | "hub:view"
   | "hub:manage"
+  | "setup:view"
+  | "setup:manage"
   | "guardian:view"
   | "guardian:manage"
   | "pulsex:view"

@@ -8,10 +8,17 @@ import {
   pulsexReactionOptions,
   pulsexThreadReplies,
 } from "@/lib/pulsex";
+import {
+  createPulseXMessage,
+  loadPulseXOperationalData,
+} from "@/lib/pulsex/supabase-data";
+import { hasHubSupabaseConfig } from "@/lib/supabase/client";
+import { useAuth } from "@/providers/auth-provider";
 import type {
   PulseXCallSession,
   PulseXCallType,
   PulseXChannel,
+  PulseXMessageMention,
   PulseXMessageFilter,
   PulseXMessage,
   PulseXPresenceUser,
@@ -19,7 +26,7 @@ import type {
   PulseXThreadReply,
 } from "@/lib/pulsex";
 import { CallPanel } from "./call-panel";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConversationHeader } from "./conversation-header";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { IncomingCallBanner } from "./incoming-call-banner";
@@ -27,9 +34,9 @@ import { MessageComposer } from "./message-composer";
 import { MessageList } from "./message-list";
 import { ThreadPanel } from "./thread-panel";
 
-const currentUserId = "ana";
-
 export function PulseXWorkspace() {
+  const { hubUser } = useAuth();
+  const currentUserId = hubUser?.id ?? "ana";
   const [activeChannelId, setActiveChannelId] =
     useState<PulseXChannel["id"]>("cobranca");
   const [channels, setChannels] = useState<PulseXChannel[]>(() =>
@@ -37,6 +44,9 @@ export function PulseXWorkspace() {
   );
   const [messages, setMessages] = useState<PulseXMessage[]>(() =>
     pulsexMessages.map((message) => ({ ...message })),
+  );
+  const [presenceUsers, setPresenceUsers] = useState<PulseXPresenceUser[]>(() =>
+    pulsexPresenceUsers.map((user) => ({ ...user })),
   );
   const [threadReplies, setThreadReplies] = useState<
     Record<string, PulseXThreadReply[]>
@@ -60,7 +70,13 @@ export function PulseXWorkspace() {
       null,
   );
   const [composerValue, setComposerValue] = useState("");
+  const [composerMentions, setComposerMentions] = useState<
+    readonly PulseXMessageMention[]
+  >([]);
   const [threadComposerValue, setThreadComposerValue] = useState("");
+  const [dataStatus, setDataStatus] = useState<"fallback" | "loading" | "ready">(
+    "loading",
+  );
   const activeChannel =
     channels.find((channel) => channel.id === activeChannelId) ??
     pulsexChannels[0];
@@ -81,11 +97,49 @@ export function PulseXWorkspace() {
         );
   const channelPresenceUsers = useMemo(
     () =>
-      pulsexPresenceUsers.filter((user) =>
+      presenceUsers.filter((user) =>
         (user.channelIds as readonly string[]).includes(activeChannel.id),
       ),
-    [activeChannel.id],
+    [activeChannel.id, presenceUsers],
   );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadPulseXOperationalData()
+      .then((payload) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const nextChannels = withDirectUserChannels(
+          payload.channels,
+          payload.users,
+          currentUserId,
+        );
+
+        setChannels(nextChannels);
+        setMessages(payload.messages);
+        setPresenceUsers(payload.users);
+        setActiveChannelId((currentId) =>
+          nextChannels.some((channel) => channel.id === currentId)
+            ? currentId
+            : nextChannels[0]?.id ?? "cobranca",
+        );
+        setDataStatus(hasHubSupabaseConfig() ? "ready" : "fallback");
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+
+        setDataStatus("fallback");
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId]);
 
   function handleSelectChannel(channelId: PulseXChannel["id"]) {
     setActiveChannelId(channelId);
@@ -102,6 +156,8 @@ export function PulseXWorkspace() {
     setActiveCall(
       createLocalCallSession({
         channel: activeChannel,
+        currentUserId,
+        fallbackUsers: presenceUsers,
         participants: channelPresenceUsers,
         type,
       }),
@@ -122,8 +178,11 @@ export function PulseXWorkspace() {
     setIncomingCall(null);
   }
 
-  function handleSendMessage() {
+  async function handleSendMessage() {
     const body = composerValue.trim();
+    const mentions = composerMentions.filter((mention) =>
+      body.includes(mention.displayName),
+    );
 
     if (!body) {
       return;
@@ -134,20 +193,21 @@ export function PulseXWorkspace() {
       minute: "2-digit",
     }).format(new Date());
 
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      {
+    const localMessage = {
         authorId: currentUserId,
         body,
         channelId: activeChannel.id,
         id: `local-${activeChannel.id}-${Date.now()}`,
+        mentionUserIds: mentions.map((mention) => mention.userId),
+        mentions,
         reactions: [],
         status: "neutral",
         tags: [],
         threadCount: 0,
         timestamp,
-      },
-    ]);
+      } satisfies PulseXMessage;
+
+    setMessages((currentMessages) => [...currentMessages, localMessage]);
     setChannels((currentChannels) =>
       currentChannels.map((channel) =>
         channel.id === activeChannel.id
@@ -161,6 +221,35 @@ export function PulseXWorkspace() {
       ),
     );
     setComposerValue("");
+    setComposerMentions([]);
+
+    if (!hasHubSupabaseConfig() || activeChannel.kind === "direct") {
+      return;
+    }
+
+    try {
+      const savedMessage = await createPulseXMessage({
+        authorUserId: hubUser?.id,
+        body,
+        channelId: activeChannel.id,
+      });
+
+      setMessages((currentMessages) =>
+        currentMessages.map((message) =>
+          message.id === localMessage.id ? savedMessage : message,
+        ),
+      );
+    } catch {
+      setDataStatus("fallback");
+    }
+  }
+
+  function handleComposerChange(
+    value: string,
+    mentions: readonly PulseXMessageMention[],
+  ) {
+    setComposerValue(value);
+    setComposerMentions(mentions);
   }
 
   function handleToggleReaction(
@@ -271,6 +360,8 @@ export function PulseXWorkspace() {
         activeChannelId={activeChannel.id}
         activeMessageFilter={activeMessageFilter}
         channels={channels}
+        dataStatus={dataStatus}
+        users={presenceUsers}
         messages={messages}
         onSelectMessageFilter={setActiveMessageFilter}
         onSelectChannel={handleSelectChannel}
@@ -296,13 +387,15 @@ export function PulseXWorkspace() {
             onOpenThread={setActiveThreadMessageId}
             onToggleReaction={handleToggleReaction}
             reactionOptions={pulsexReactionOptions}
-            users={pulsexPresenceUsers}
+            users={presenceUsers}
           />
         </div>
         <MessageComposer
           channelName={activeChannel.name}
-          onChange={setComposerValue}
+          mentions={composerMentions}
+          onChange={handleComposerChange}
           onSubmit={handleSendMessage}
+          users={presenceUsers}
           value={composerValue}
         />
         {activeCall ? (
@@ -327,7 +420,7 @@ export function PulseXWorkspace() {
               reactionOptions={pulsexReactionOptions}
               replies={activeThreadReplies}
               replyValue={threadComposerValue}
-              users={pulsexPresenceUsers}
+              users={presenceUsers}
             />
           </div>
         ) : null}
@@ -336,16 +429,51 @@ export function PulseXWorkspace() {
   );
 }
 
+function withDirectUserChannels(
+  channels: readonly PulseXChannel[],
+  users: readonly PulseXPresenceUser[],
+  currentUserId: PulseXPresenceUser["id"],
+): PulseXChannel[] {
+  const existingChannelIds = new Set(channels.map((channel) => channel.id));
+  const directChannels = users
+    .filter((user) => user.id !== currentUserId)
+    .map((user) => ({
+      avatar: user.initials,
+      context: {
+        filesCount: 0,
+        owner: user.label,
+        status: "Direta",
+        unit: user.role,
+      },
+      description: `Conversa direta com ${user.label}.`,
+      id: `direct-${user.id}`,
+      kind: "direct",
+      lastMessageAt: "-",
+      name: user.label,
+      preview: user.email ?? "Usuario do Hub",
+      status: user.status,
+    })) satisfies PulseXChannel[];
+
+  return [
+    ...channels,
+    ...directChannels.filter((channel) => !existingChannelIds.has(channel.id)),
+  ];
+}
+
 function createLocalCallSession({
   channel,
+  currentUserId,
+  fallbackUsers,
   participants,
   type,
 }: {
   channel: PulseXChannel;
+  currentUserId: PulseXPresenceUser["id"];
+  fallbackUsers: readonly PulseXPresenceUser[];
   participants: readonly PulseXPresenceUser[];
   type: PulseXCallType;
 }): PulseXCallSession {
-  const fallbackCurrentUser = pulsexPresenceUsers.find(
+  const fallbackCurrentUser = fallbackUsers.find(
     (user) => user.id === currentUserId,
   );
   const callUsers =

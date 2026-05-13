@@ -123,6 +123,11 @@ export const departmentModuleAccess: readonly DepartmentModuleAccess[] = [
     moduleId: "pulsex",
     status: "enabled",
   },
+  {
+    departmentId: "dep-admin",
+    moduleId: "setup",
+    status: "enabled",
+  },
 ];
 
 export const operationalTeam: readonly OperationalTeamMember[] = [

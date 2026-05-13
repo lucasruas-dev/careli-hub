@@ -1,6 +1,10 @@
 "use client";
 
 import { useAuth } from "@/providers/auth-provider";
+import {
+  getHubSupabaseClient,
+  hasHubSupabaseConfig,
+} from "@/lib/supabase/client";
 import { useRealtime } from "@/providers/realtime-provider";
 import {
   ActionGroup,
@@ -72,6 +76,7 @@ const moduleIconMap: Record<string, ReactNode> = {
     />
   ),
   pulsex: <MessageSquareText aria-hidden="true" size={18} />,
+  setup: <Settings aria-hidden="true" size={18} />,
 };
 
 export function HubShell({
@@ -86,6 +91,9 @@ export function HubShell({
   );
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
+  const [releasedModuleIds, setReleasedModuleIds] = useState<Set<string> | null>(
+    null,
+  );
   const { hubUser, signOut } = useAuth();
   const { realtimeState } = useRealtime();
   const pathname = usePathname();
@@ -95,8 +103,15 @@ export function HubShell({
   const activeModule = orderedHubModules.find((hubModule) =>
     pathname.startsWith(hubModule.basePath),
   );
+  const visibleHubModules = orderedHubModules.filter((hubModule) => {
+    if (!releasedModuleIds) {
+      return isHubModuleActive(hubModule);
+    }
+
+    return isHubModuleActive(hubModule) && releasedModuleIds.has(hubModule.id);
+  });
   const moduleNavigationItems = orderedHubModules
-    .filter((hubModule) => isHubModuleActive(hubModule))
+    .filter((hubModule) => visibleHubModules.includes(hubModule))
     .flatMap((hubModule) => {
       if (!hubUser || !canAccessModule(hubUser, hubModule)) {
         return [];
@@ -121,7 +136,7 @@ export function HubShell({
       firstItem.label.localeCompare(secondItem.label, "pt-BR"),
     );
   const commands = orderedHubModules
-    .filter((hubModule) => isHubModuleActive(hubModule))
+    .filter((hubModule) => visibleHubModules.includes(hubModule))
     .flatMap((hubModule) => {
     const canOpenModule = hubUser ? canAccessModule(hubUser, hubModule) : false;
 
@@ -139,6 +154,58 @@ export function HubShell({
       shortcut: `G ${hubModule.iconKey.slice(0, 1).toUpperCase()}`,
     }));
   });
+
+  useEffect(() => {
+    if (!hasHubSupabaseConfig()) {
+      setReleasedModuleIds(null);
+      return;
+    }
+
+    let isMounted = true;
+    const client = getHubSupabaseClient();
+
+    if (!client) {
+      return;
+    }
+
+    Promise.all([
+      client.from("hub_modules").select("id").eq("status", "active"),
+      client
+        .from("hub_department_modules")
+        .select("module_id")
+        .eq("status", "enabled"),
+    ])
+      .then(([modulesResult, accessResult]) => {
+        if (!isMounted || modulesResult.error || accessResult.error) {
+          return;
+        }
+
+        const activeIds = new Set(
+          (modulesResult.data as { id: string }[] | null)?.map(
+            (module) => module.id,
+          ) ?? [],
+        );
+        const accessIds = new Set(
+          (accessResult.data as { module_id: string }[] | null)?.map(
+            (access) => access.module_id,
+          ) ?? [],
+        );
+        const nextReleasedIds = new Set(
+          [...activeIds].filter((moduleId) => accessIds.has(moduleId)),
+        );
+
+        setReleasedModuleIds(nextReleasedIds);
+      })
+      .catch(() => {
+        if (isMounted) {
+          setReleasedModuleIds(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (isOperationalChrome) {
