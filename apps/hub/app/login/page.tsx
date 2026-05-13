@@ -32,14 +32,14 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-[#f3f6fa] px-6 py-10 text-[#101820]">
       <section className="grid w-full max-w-[25rem] justify-items-center">
-        <div className="mb-9 grid justify-items-center">
+        <div className="mb-5 grid justify-items-center">
           <Image
             alt="Careli"
-            className="h-auto w-36 object-contain"
-            height={144}
+            className="h-auto w-40 object-contain"
+            height={160}
             priority
             src="/logoc.png"
-            width={144}
+            width={160}
           />
         </div>
 
