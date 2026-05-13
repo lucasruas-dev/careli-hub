@@ -93,25 +93,31 @@ export function HubShell({
   const activeModule = orderedHubModules.find((hubModule) =>
     pathname.startsWith(hubModule.basePath),
   );
-  const moduleNavigationItems = orderedHubModules.flatMap((hubModule) => {
-    const canOpenModule = hubUser ? canAccessModule(hubUser, hubModule) : false;
+  const moduleNavigationItems = orderedHubModules
+    .flatMap((hubModule) => {
+      const canOpenModule = hubUser
+        ? canAccessModule(hubUser, hubModule)
+        : false;
 
-    return hubModule.navigationItems.map((item) => ({
-      ...item,
-      badge:
-        canOpenModule && hubModule.realtimeEnabled
-          ? "live"
-          : canOpenModule
-            ? ("badge" in item ? item.badge : undefined)
-            : "Em preparacao",
-      disabled: !canOpenModule,
-      icon: moduleIconMap[hubModule.id] ?? (
-        <FileText aria-hidden="true" size={18} />
-      ),
-      moduleId: hubModule.id,
-      statusLabel: getHubModuleStatusLabel(hubModule.status),
-    }));
-  });
+      return hubModule.navigationItems.map((item) => ({
+        ...item,
+        badge:
+          canOpenModule && hubModule.realtimeEnabled
+            ? "live"
+            : canOpenModule
+              ? ("badge" in item ? item.badge : undefined)
+              : "Em preparacao",
+        disabled: !canOpenModule,
+        icon: moduleIconMap[hubModule.id] ?? (
+          <FileText aria-hidden="true" size={18} />
+        ),
+        moduleId: hubModule.id,
+        statusLabel: getHubModuleStatusLabel(hubModule.status),
+      }));
+    })
+    .sort((firstItem, secondItem) =>
+      firstItem.label.localeCompare(secondItem.label, "pt-BR"),
+    );
   const commands = orderedHubModules.flatMap((hubModule) => {
     const canOpenModule = hubUser ? canAccessModule(hubUser, hubModule) : false;
 
@@ -221,8 +227,8 @@ export function HubShell({
               )
             }
             header={
-              <div className="flex min-h-11 items-center justify-between gap-2 pb-1 pt-0.5">
-                {isSidebarCollapsed ? (
+              isSidebarCollapsed ? (
+                <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
                   <span className="grid h-9 w-9 place-items-center text-[#c9d1dc]">
                     <span
                       aria-hidden="true"
@@ -239,7 +245,19 @@ export function HubShell({
                       }}
                     />
                   </span>
-                ) : (
+                  <Tooltip content="Expandir menu" placement="right">
+                    <button
+                      aria-label="Expandir sidebar"
+                      className="grid h-8 w-8 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                      onClick={handleToggleSidebar}
+                      type="button"
+                    >
+                      <PanelLeftOpen aria-hidden="true" size={16} />
+                    </button>
+                  </Tooltip>
+                </div>
+              ) : (
+                <div className="relative flex min-h-11 items-center justify-center pb-1 pt-0.5">
                   <div
                     aria-label="Careli C2X"
                     className="flex min-w-0 items-center text-[#c9d1dc]"
@@ -260,31 +278,18 @@ export function HubShell({
                       }}
                     />
                   </div>
-                )}
-                <Tooltip
-                  content={
-                    isSidebarCollapsed ? "Expandir menu" : "Recolher menu"
-                  }
-                  placement="right"
-                >
-                  <button
-                    aria-label={
-                      isSidebarCollapsed
-                        ? "Expandir sidebar"
-                        : "Recolher sidebar"
-                    }
-                    className="grid h-8 w-8 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
-                    onClick={handleToggleSidebar}
-                    type="button"
-                  >
-                    {isSidebarCollapsed ? (
-                      <PanelLeftOpen aria-hidden="true" size={16} />
-                    ) : (
+                  <Tooltip content="Recolher menu" placement="right">
+                    <button
+                      aria-label="Recolher sidebar"
+                      className="absolute right-0 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                      onClick={handleToggleSidebar}
+                      type="button"
+                    >
                       <PanelLeftClose aria-hidden="true" size={16} />
-                    )}
-                  </button>
-                </Tooltip>
-              </div>
+                    </button>
+                  </Tooltip>
+                </div>
+              )
             }
           >
             <SidebarGroup title="Modulos">
