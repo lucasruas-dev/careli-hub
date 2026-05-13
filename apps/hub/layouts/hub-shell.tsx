@@ -31,7 +31,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
-  ShieldCheck,
   ShoppingCart,
 } from "lucide-react";
 import {
@@ -60,7 +59,16 @@ const moduleIconMap: Record<string, ReactNode> = {
   contatos: <ContactRound aria-hidden="true" size={18} />,
   drive: <FolderKanban aria-hidden="true" size={18} />,
   financeiro: <CircleDollarSign aria-hidden="true" size={18} />,
-  guardian: <ShieldCheck aria-hidden="true" size={18} />,
+  guardian: (
+    <Image
+      alt=""
+      aria-hidden="true"
+      className="h-5 w-5 object-contain"
+      height={20}
+      src="/logo-hub.png"
+      width={20}
+    />
+  ),
   pulsex: <MessageSquareText aria-hidden="true" size={18} />,
 };
 
@@ -198,6 +206,7 @@ export function HubShell({
   return (
     <>
       <AppShell
+        className="careli-hub-shell"
         layoutMode={isOperationalChrome ? "fullscreen" : layoutMode}
         sidebarVisibility={
           isOperationalChrome && !isOperationalRailOpen ? "hidden" : "visible"
@@ -214,36 +223,26 @@ export function HubShell({
             header={
               <div className="flex items-center justify-between gap-3">
                 {isSidebarCollapsed ? (
-                  <span className="grid h-9 w-9 place-items-center rounded-md border border-white/10 bg-white p-1.5">
+                  <span className="grid h-9 w-9 place-items-center">
                     <Image
                       alt=""
                       aria-hidden="true"
-                      className="h-full w-full object-contain"
-                      height={36}
-                      src="/logo-hub.png"
-                      width={36}
+                      className="h-8 w-8 object-contain"
+                      height={32}
+                      src="/logocbr.png"
+                      width={32}
                     />
                   </span>
                 ) : (
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-white/10 bg-white p-1.5">
-                      <Image
-                        alt=""
-                        aria-hidden="true"
-                        className="h-full w-full object-contain"
-                        height={40}
-                        src="/logo-hub.png"
-                        width={40}
-                      />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="m-0 truncate text-sm font-semibold text-[var(--uix-text-primary)]">
-                        Careli Hub
-                      </p>
-                      <p className="m-0 mt-1 truncate text-xs text-[var(--uix-text-muted)]">
-                        Central operacional
-                      </p>
-                    </div>
+                  <div className="flex min-w-0 items-center">
+                    <Image
+                      alt="Careli C2X"
+                      className="h-auto w-[8.75rem] object-contain"
+                      height={44}
+                      priority
+                      src="/logocb.png"
+                      width={140}
+                    />
                   </div>
                 )}
                 <Tooltip
@@ -400,14 +399,14 @@ export function HubShell({
             className="fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-14 gap-2 rounded-lg border border-white/[0.08] bg-[#0b0d11] p-2 shadow-2xl"
           >
             <Tooltip content="Careli Hub" placement="right">
-              <span className="grid h-10 w-10 place-items-center rounded-md border border-white/[0.08] bg-white p-1.5">
+              <span className="grid h-10 w-10 place-items-center rounded-md border border-white/[0.08] bg-white/[0.04]">
                 <Image
                   alt=""
                   aria-hidden="true"
-                  className="h-full w-full object-contain"
-                  height={40}
-                  src="/logo-hub.png"
-                  width={40}
+                  className="h-8 w-8 object-contain"
+                  height={32}
+                  src="/logocbr.png"
+                  width={32}
                 />
               </span>
             </Tooltip>
