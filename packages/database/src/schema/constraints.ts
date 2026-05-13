@@ -197,10 +197,17 @@ export const databaseConstraintDrafts = [
     table: "hub_notifications",
   },
   {
-    columns: ["user_id", "workspace_id", "module_id"],
-    description: "Uma presenca ativa por usuario em cada contexto operacional.",
+    columns: ["id"],
+    description: "Identificador canonico de presenca.",
     kind: "primary_key",
     name: "hub_presence_pkey",
+    table: "hub_presence",
+  },
+  {
+    columns: ["user_id", "workspace_id", "module_id"],
+    description: "Uma presenca ativa por usuario em cada contexto operacional.",
+    kind: "unique",
+    name: "hub_presence_context_key",
     table: "hub_presence",
   },
   {

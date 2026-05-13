@@ -92,6 +92,7 @@ export type HubNotificationRecord = {
 };
 
 export type HubPresenceRecord = {
+  id: string;
   lastSeenAt: CanonicalTimestamp;
   moduleId?: HubModuleRecord["id"];
   status: "online" | "away" | "busy" | "offline";

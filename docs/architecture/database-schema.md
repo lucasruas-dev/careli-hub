@@ -1,6 +1,6 @@
 # Careli Hub Canonical Database Schema
 
-Este documento define o schema canonico inicial do Careli Hub antes de migrations reais, SDKs ou credenciais. A fonte TypeScript exportavel vive em `packages/database/src/schema`.
+Este documento define o schema canonico inicial do Careli Hub para Supabase, SDKs e adapters. A fonte TypeScript exportavel vive em `packages/database/src/schema`.
 
 ## Tabelas Canonicas
 
@@ -18,6 +18,8 @@ Este documento define o schema canonico inicial do Careli Hub antes de migration
 | `hub_integrations` | Integracoes externas ou internas por workspace/modulo. |
 
 ## Relacionamentos Principais
+
+`hub_users.id` referencia `auth.users.id` no Supabase para manter o perfil operacional alinhado ao usuario autenticado.
 
 `hub_workspaces.owner_user_id` referencia `hub_users.id` para identificar o responsavel conceitual pelo workspace.
 
@@ -54,7 +56,7 @@ Primary keys:
 | `hub_user_permissions` | `id` |
 | `hub_activity_events` | `id` |
 | `hub_notifications` | `id` |
-| `hub_presence` | `user_id`, `workspace_id`, `module_id` |
+| `hub_presence` | `id` |
 | `hub_files` | `id` |
 | `hub_integrations` | `id` |
 
@@ -75,6 +77,7 @@ Foreign keys principais:
 | Origem | Referencia |
 | --- | --- |
 | `hub_workspaces.owner_user_id` | `hub_users.id` |
+| `hub_users.id` | `auth.users.id` |
 | `hub_permissions.module_id` | `hub_modules.id` |
 | `hub_user_permissions.user_id` | `hub_users.id` |
 | `hub_user_permissions.permission_id` | `hub_permissions.id` |
@@ -144,6 +147,8 @@ Os seeds exportados em `packages/database/src/schema/seeds.ts` sao derivados do 
 | `hubPermissionSeedDrafts` | Permissoes presentes na matriz de roles. |
 | `hubRoleSeedDrafts` | Roles iniciais `admin`, `leader`, `operator`, `viewer`. |
 
+Os seeds de `hub_workspaces` devem criar o workspace inicial `careli`.
+
 Os seeds de `hub_modules` devem popular Guardian, PulseX, Agenda, Financeiro, Drive, Contatos e Compras com `basePath`, `status`, `category`, `iconKey`, `realtimeEnabled` e `order`.
 
 Os seeds de `hub_permissions` devem preservar as chaves canonicas como `guardian:view`, `guardian:manage`, `hub:view` e `hub:manage`.
@@ -158,13 +163,17 @@ Antes de executar migrations reais, validar nomes snake_case, estrategia de `uui
 
 Seeds devem ser idempotentes, preferencialmente via upsert por chaves naturais (`id`, `key`, `base_path` ou `slug`).
 
-## Drafts SQL
+## SQL Supabase
 
-Os primeiros drafts SQL ficam no pacote `@repo/database`:
+Os arquivos SQL versionados ficam no pacote `@repo/database`:
 
 | Arquivo | Papel |
 | --- | --- |
-| `packages/database/migrations/0001_create_hub_core_schema.sql` | Draft inicial do schema Supabase/Postgres com extensao `pgcrypto`, enums, tabelas, constraints, indexes, defaults e comentarios. |
-| `packages/database/seeds/0001_hub_core_seed.sql` | Draft idempotente de seeds para modulos e permissoes iniciais. |
+| `packages/database/migrations/0001_create_hub_core_schema.sql` | Setup inicial do schema Supabase/Postgres com extensao `pgcrypto`, enums, tabelas, constraints, indexes, defaults, comentarios, auth sync e preparacao realtime. |
+| `packages/database/seeds/0001_hub_core_seed.sql` | Seed idempotente para workspace inicial, modulos, permissoes e evento operacional inicial. |
 
-Estes arquivos ainda nao devem ser executados em Supabase real. Antes da execucao, revisar RLS, ownership de schemas, estrategia de auth users, politica de retencao e se `hub_presence` deve manter `id uuid` como primary key ou voltar ao modelo estritamente composto.
+`packages/database/migrations/0001_create_hub_core_schema.sql` agora e o setup SQL pronto para execucao manual em Supabase. Ele cria a relacao `hub_users.id -> auth.users.id`, funcoes de sync de perfil, triggers de `updated_at`, indices e preparacao para realtime futuro.
+
+`packages/database/seeds/0001_hub_core_seed.sql` deve ser executado depois do schema. Ele cria o workspace inicial, os modulos, as permissoes e um evento operacional inicial do PulseX.
+
+RLS ainda nao e habilitada nesse primeiro setup. As policies devem entrar em migration posterior, depois de validar o acesso real do Hub, service/server reads, workspace scoping e estrategia de permissoes.

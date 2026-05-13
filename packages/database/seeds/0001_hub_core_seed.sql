@@ -1,7 +1,27 @@
--- Careli Hub core seed draft.
--- This file is idempotent and intended for review before any real Supabase run.
+-- Careli Hub production seed setup for Supabase.
+-- Execute manually after packages/database/migrations/0001_create_hub_core_schema.sql.
+-- This seed is idempotent and does not create Supabase Auth users.
 
-insert into hub_modules (
+begin;
+
+insert into public.hub_workspaces (
+  slug,
+  name,
+  description,
+  status
+) values (
+  'careli',
+  'Careli',
+  'Workspace operacional principal do Careli Hub.',
+  'active'
+)
+on conflict (slug) do update set
+  name = excluded.name,
+  description = excluded.description,
+  status = excluded.status,
+  updated_at = now();
+
+insert into public.hub_modules (
   id,
   name,
   description,
@@ -100,7 +120,7 @@ on conflict (id) do update set
   "order" = excluded."order",
   updated_at = now();
 
-insert into hub_permissions (
+insert into public.hub_permissions (
   id,
   key,
   scope,
@@ -130,7 +150,37 @@ on conflict (id) do update set
   description = excluded.description,
   updated_at = now();
 
+insert into public.hub_activity_events (
+  workspace_id,
+  module_id,
+  type,
+  severity,
+  title,
+  description,
+  metadata
+)
+select
+  workspace.id,
+  'pulsex',
+  'system',
+  'info',
+  'PulseX preparado para operacao',
+  'Schema e catalogo inicial do PulseX disponiveis no Careli Hub.',
+  jsonb_build_object('source', 'seed', 'version', '0001')
+from public.hub_workspaces workspace
+where workspace.slug = 'careli'
+  and not exists (
+    select 1
+    from public.hub_activity_events existing
+    where existing.workspace_id = workspace.id
+      and existing.module_id = 'pulsex'
+      and existing.metadata ->> 'source' = 'seed'
+      and existing.metadata ->> 'version' = '0001'
+  );
+
 -- Roles iniciais sao representadas pelo enum hub_user_role:
 -- admin, leader, operator, viewer.
 -- O schema atual nao possui tabela de roles; a matriz role -> permissions
 -- permanece contrato de aplicacao em @repo/shared e @repo/database seeds.ts.
+
+commit;
