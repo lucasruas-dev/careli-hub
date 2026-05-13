@@ -17,6 +17,7 @@ import {
   type SupabaseAuthAdapter,
 } from "@repo/auth";
 import type { HubUserContext } from "@repo/shared";
+import { AlertTriangle } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -259,11 +260,7 @@ export function AuthProvider({
   if (authState.status === "error" && !isLoginRoute) {
     return (
       <AuthGateMessage
-        details={authState.errorDetails}
-        message={
-          authState.error ??
-          "Nao foi possivel carregar seu perfil operacional no Careli Hub."
-        }
+        message={getAuthGateMessage(authState)}
         onSignOut={() => {
           void signOut();
         }}
@@ -382,37 +379,40 @@ function isLocalDevelopmentRuntime(): boolean {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
+function getAuthGateMessage(authState: AuthState): string {
+  const errorCode = authState.errorDetails?.code;
+
+  if (
+    errorCode === "hub_profile_create_failed" ||
+    errorCode === "hub_profile_inactive" ||
+    errorCode === "hub_profile_invalid" ||
+    errorCode === "hub_profile_missing"
+  ) {
+    return "Seu usuario ainda nao possui acesso liberado ao Hub Careli. Entre em contato com o administrador do sistema.";
+  }
+
+  return (
+    authState.error ??
+    "Nao foi possivel carregar seu acesso ao Hub Careli. Tente novamente."
+  );
+}
+
 function AuthGateMessage({
-  details,
   message,
   onSignOut,
 }: {
-  details?: AuthErrorDetails;
   message: string;
   onSignOut?: () => void;
 }) {
   return (
     <div className="grid min-h-screen place-items-center bg-[var(--uix-surface-canvas)] px-6 text-center">
-      <div className="max-w-2xl rounded-md border border-[#d9e0ea] bg-white px-6 py-5 shadow-sm">
+      <div className="max-w-md rounded-md border border-[#eadfca] bg-white px-6 py-5 shadow-sm">
+        <span className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-[#A07C3B]/10 text-[#8a682f]">
+          <AlertTriangle aria-hidden="true" size={18} strokeWidth={1.8} />
+        </span>
         <p className="m-0 text-sm font-medium text-[var(--uix-text-primary)]">
           {message}
         </p>
-        {details ? (
-          <div className="mt-4 grid gap-2 rounded-md bg-[#f8fafc] p-3 text-left text-xs text-[var(--uix-text-muted)]">
-            {details.email ? (
-              <AuthDetailRow label="Email" value={details.email} />
-            ) : null}
-            {details.userId ? (
-              <AuthDetailRow label="Auth user id" value={details.userId} />
-            ) : null}
-            {details.queryResult ? (
-              <AuthDetailRow label="hub_users" value={details.queryResult} />
-            ) : null}
-            {details.hint ? (
-              <p className="m-0 leading-5">{details.hint}</p>
-            ) : null}
-          </div>
-        ) : null}
         {onSignOut ? (
           <button
             className="mt-4 rounded-md bg-[#101820] px-4 py-2 text-sm font-semibold text-white outline-none transition hover:bg-[#182431] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
@@ -423,21 +423,6 @@ function AuthGateMessage({
           </button>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function AuthDetailRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
-      <span className="font-semibold text-[#667085]">{label}</span>
-      <span className="break-all font-mono text-[#344054]">{value}</span>
     </div>
   );
 }
