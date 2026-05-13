@@ -22,6 +22,14 @@ type QueryResult<T> = {
   error: { code?: string; message: string } | null;
 };
 
+type HubProfileDebugRow = {
+  email: string;
+  id: string;
+  operational_profile?: string | null;
+  role: string;
+  status: string;
+};
+
 type DepartmentRow = {
   created_at?: string;
   description?: string | null;
@@ -93,8 +101,13 @@ export async function loadSetupData(): Promise<SetupData> {
   const client = getHubSupabaseClient();
 
   if (!client) {
+    logSetupDebug("Supabase client indisponivel", {
+      hasClient: false,
+    });
     return createEmptySetupData();
   }
+
+  await logCurrentSetupAuthContext(client);
 
   const [
     departmentsResult,
@@ -105,29 +118,47 @@ export async function loadSetupData(): Promise<SetupData> {
     permissionsResult,
     channelsResult,
   ] = await Promise.all([
-    client
-      .from("hub_departments")
-      .select("id,slug,name,description,status,created_at")
-      .order("name"),
-    client
-      .from("hub_sectors")
-      .select("id,department_id,slug,name,description,status,hub_departments(name)")
-      .order("name"),
+    runSetupQuery<DepartmentRow[]>(
+      "list departments",
+      client
+        .from("hub_departments")
+        .select("id,slug,name,description,status,created_at")
+        .order("name"),
+    ),
+    runSetupQuery<SectorRow[]>(
+      "list sectors",
+      client
+        .from("hub_sectors")
+        .select("id,department_id,slug,name,description,status,hub_departments(name)")
+        .order("name"),
+    ),
     loadUsersQuery(client),
-    client.from("hub_modules").select("id,name,base_path,status,order").order("order"),
-    client
-      .from("hub_department_modules")
-      .select("department_id,module_id,status"),
-    client
-      .from("hub_permissions")
-      .select("id,key,scope,module_id,description")
-      .order("key"),
-    client
-      .from("pulsex_channels")
-      .select(
-        "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
-      )
-      .order("order"),
+    runSetupQuery<ModuleRow[]>(
+      "list modules",
+      client.from("hub_modules").select("id,name,base_path,status,order").order("order"),
+    ),
+    runSetupQuery<DepartmentModuleRow[]>(
+      "list department modules",
+      client
+        .from("hub_department_modules")
+        .select("department_id,module_id,status"),
+    ),
+    runSetupQuery<PermissionRow[]>(
+      "list permissions",
+      client
+        .from("hub_permissions")
+        .select("id,key,scope,module_id,description")
+        .order("key"),
+    ),
+    runSetupQuery<PulseXChannelRow[]>(
+      "list pulsex channels",
+      client
+        .from("pulsex_channels")
+        .select(
+          "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+        )
+        .order("order"),
+    ),
   ]);
 
   const readableResults = [
@@ -244,11 +275,13 @@ export async function createDepartment(input: CreateDepartmentInput) {
     slug: input.slug.trim() || createFallbackSlug(input.name),
     status: input.status,
   };
+  logSetupDebug("create department payload", payload);
   const result = await client
     .from("hub_departments")
     .insert(payload)
     .select("id,slug,name,description,status,created_at")
     .single();
+  logSetupQueryResult("create department", result);
 
   assertQuery("salvar departamento", result);
 
@@ -269,11 +302,13 @@ export async function createSector(input: CreateSectorInput) {
     slug: input.slug.trim() || createFallbackSlug(input.name),
     status: input.status,
   };
+  logSetupDebug("create sector payload", payload);
   const result = await client
     .from("hub_sectors")
     .insert(payload)
     .select("id,department_id,slug,name,description,status,hub_departments(name)")
     .single();
+  logSetupQueryResult("create sector", result);
 
   assertQuery("salvar setor", result);
 
@@ -287,21 +322,24 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
     throw new Error("Conexao indisponivel.");
   }
 
+  const payload = {
+    department_id: input.departmentId || null,
+    description: input.description?.trim() || null,
+    id: input.id.trim() || createFallbackSlug(input.name),
+    kind: input.kind,
+    name: input.name.trim(),
+    sector_id: input.sectorId || null,
+    status: input.status,
+  };
+  logSetupDebug("create pulsex channel payload", payload);
   const result = await client
     .from("pulsex_channels")
-    .insert({
-      department_id: input.departmentId || null,
-      description: input.description?.trim() || null,
-      id: input.id.trim() || createFallbackSlug(input.name),
-      kind: input.kind,
-      name: input.name.trim(),
-      sector_id: input.sectorId || null,
-      status: input.status,
-    })
+    .insert(payload)
     .select(
       "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
     )
     .single();
+  logSetupQueryResult("create pulsex channel", result);
 
   assertQuery("salvar canal PulseX", result);
 
@@ -366,6 +404,83 @@ function readRows<Row>(label: string, result: unknown): Row[] {
   return queryResult.data ?? [];
 }
 
+async function runSetupQuery<Result>(
+  label: string,
+  query: PromiseLike<unknown>,
+): Promise<QueryResult<Result>> {
+  logSetupDebug(`${label} start`);
+
+  const result = (await query) as QueryResult<Result>;
+
+  logSetupQueryResult(label, result);
+
+  return result;
+}
+
+async function logCurrentSetupAuthContext(
+  client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  const authResult = await client.auth.getUser();
+
+  if (authResult.error || !authResult.data.user) {
+    console.warn("[setup] current auth user error", authResult.error);
+    return;
+  }
+
+  const currentUser = authResult.data.user;
+
+  console.debug("[setup] current auth user", {
+    email: currentUser.email,
+    id: currentUser.id,
+  });
+
+  const profileResult = await client
+    .from("hub_users")
+    .select("id,email,role,status,operational_profile")
+    .eq("id", currentUser.id)
+    .maybeSingle<HubProfileDebugRow>();
+
+  if (profileResult.error) {
+    console.warn("[setup] current hub profile error", profileResult.error);
+    return;
+  }
+
+  console.debug("[setup] current hub profile", {
+    email: profileResult.data?.email,
+    id: profileResult.data?.id,
+    operationalProfile: profileResult.data?.operational_profile,
+    role: profileResult.data?.role,
+    status: profileResult.data?.status,
+  });
+}
+
+function logSetupQueryResult(label: string, result: unknown) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  const queryResult = result as QueryResult<unknown>;
+
+  if (queryResult.error) {
+    console.warn(`[setup] ${label} error`, queryResult.error);
+    return;
+  }
+
+  const rowCount = Array.isArray(queryResult.data)
+    ? queryResult.data.length
+    : queryResult.data
+      ? 1
+      : 0;
+
+  console.debug(`[setup] ${label} result`, {
+    rowCount,
+  });
+}
+
 function logSetupQueryError(label: string, result: unknown) {
   if (!isLocalDevelopmentRuntime()) {
     return;
@@ -379,6 +494,14 @@ function logSetupQueryError(label: string, result: unknown) {
       label,
     });
   }
+}
+
+function logSetupDebug(message: string, detail?: unknown) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  console.debug(`[setup] ${message}`, detail ?? "");
 }
 
 function isLocalDevelopmentRuntime(): boolean {
@@ -405,23 +528,29 @@ async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {
     return { data: [], error: null } satisfies QueryResult<UserRow[]>;
   }
 
-  const result = await client
-    .from("hub_users")
-    .select(
-      "id,email,display_name,avatar_url,role,operational_profile,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
-    )
-    .order("display_name");
+  const result = await runSetupQuery<UserRow[]>(
+    "list users",
+    client
+      .from("hub_users")
+      .select(
+        "id,email,display_name,avatar_url,role,operational_profile,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
+      )
+      .order("display_name"),
+  );
 
   if (!result.error) {
     return result;
   }
 
-  return client
-    .from("hub_users")
-    .select(
-      "id,email,display_name,avatar_url,role,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
-    )
-    .order("display_name");
+  return runSetupQuery<UserRow[]>(
+    "list users legacy profile fallback",
+    client
+      .from("hub_users")
+      .select(
+        "id,email,display_name,avatar_url,role,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
+      )
+      .order("display_name"),
+  );
 }
 
 function getSetupErrorMessage(label: string) {
