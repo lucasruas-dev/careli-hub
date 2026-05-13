@@ -32,7 +32,7 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-[#f3f6fa] px-6 py-10 text-[#101820]">
       <section className="grid w-full max-w-[25rem] justify-items-center">
-        <div className="mb-12 grid justify-items-center">
+        <div className="mb-9 grid justify-items-center">
           <Image
             alt="Careli"
             className="h-auto w-36 object-contain"
@@ -90,8 +90,8 @@ export default function LoginPage() {
             </Tooltip>
           </div>
         </form>
-        <p className="m-0 mt-7 text-xs font-medium uppercase tracking-[0.18em] text-[#8A682F]">
-          Ecossistema
+        <p className="m-0 mt-6 text-xs font-medium uppercase tracking-[0.18em] text-[#8A682F]">
+          Hub Careli
         </p>
       </section>
     </main>
