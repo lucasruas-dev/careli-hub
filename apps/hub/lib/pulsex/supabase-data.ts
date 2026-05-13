@@ -1,11 +1,6 @@
 "use client";
 
 import { getHubSupabaseClient } from "@/lib/supabase/client";
-import {
-  pulsexChannels,
-  pulsexMessages,
-  pulsexPresenceUsers,
-} from "./mock-data";
 import type {
   PulseXChannel,
   PulseXDepartment,
@@ -231,9 +226,7 @@ export async function listChannelMessages(
   const client = getHubSupabaseClient();
 
   if (!client || channelId.startsWith("direct-")) {
-    return pulsexMessages
-      .filter((message) => message.channelId === channelId)
-      .map((message) => ({ ...message }));
+    return [];
   }
 
   const result = await client
@@ -428,11 +421,11 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
 
 function createPulseXFallback(): PulseXOperationalData {
   return {
-    channels: pulsexChannels.map((channel) => ({ ...channel })),
+    channels: [],
     departments: [],
-    messages: pulsexMessages.map((message) => ({ ...message })),
+    messages: [],
     sectors: [],
-    users: pulsexPresenceUsers.map((user) => ({ ...user })),
+    users: [],
   };
 }
 

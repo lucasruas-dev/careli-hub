@@ -47,7 +47,7 @@ export function MessageList({
       <EmptyState
         description={
           filter === "all"
-            ? "As mensagens do canal aparecerao aqui quando o realtime real entrar."
+            ? "As mensagens deste canal aparecerao aqui."
             : "Nenhuma mensagem desta conversa possui a tag selecionada."
         }
         title={

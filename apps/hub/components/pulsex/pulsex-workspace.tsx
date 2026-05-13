@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  pulsexCallSessions,
-  pulsexChannels,
-  pulsexMessages,
-  pulsexPresenceUsers,
-  pulsexReactionOptions,
-  pulsexThreadReplies,
-} from "@/lib/pulsex";
+import { pulsexReactionOptions } from "@/lib/pulsex";
 import {
   createPulseXMessage,
   listChannelMessages,
@@ -41,39 +34,22 @@ export function PulseXWorkspace() {
   const { hubUser } = useAuth();
   const currentUserId = hubUser?.id ?? "ana";
   const [activeChannelId, setActiveChannelId] =
-    useState<PulseXChannel["id"]>("cobranca");
-  const [channels, setChannels] = useState<PulseXChannel[]>(() =>
-    pulsexChannels.map((channel) => ({ ...channel })),
-  );
+    useState<PulseXChannel["id"]>(emptyPulseXChannel.id);
+  const [channels, setChannels] = useState<PulseXChannel[]>([]);
   const [departments, setDepartments] = useState<PulseXDepartment[]>([]);
   const [sectors, setSectors] = useState<PulseXSector[]>([]);
-  const [messages, setMessages] = useState<PulseXMessage[]>(() =>
-    pulsexMessages.map((message) => ({ ...message })),
-  );
-  const [presenceUsers, setPresenceUsers] = useState<PulseXPresenceUser[]>(() =>
-    pulsexPresenceUsers.map((user) => ({ ...user })),
-  );
+  const [messages, setMessages] = useState<PulseXMessage[]>([]);
+  const [presenceUsers, setPresenceUsers] = useState<PulseXPresenceUser[]>([]);
   const [threadReplies, setThreadReplies] = useState<
     Record<string, PulseXThreadReply[]>
-  >(() =>
-    Object.fromEntries(
-      Object.entries(pulsexThreadReplies).map(([messageId, replies]) => [
-        messageId,
-        replies.map((reply) => ({ ...reply })),
-      ]),
-    ),
-  );
+  >({});
   const [activeThreadMessageId, setActiveThreadMessageId] = useState<
     PulseXMessage["id"] | null
   >(null);
   const [activeMessageFilter, setActiveMessageFilter] =
     useState<PulseXMessageFilter>("all");
   const [activeCall, setActiveCall] = useState<PulseXCallSession | null>(null);
-  const [incomingCall, setIncomingCall] = useState<PulseXCallSession | null>(
-    () =>
-      pulsexCallSessions.find((session) => session.status === "ringing") ??
-      null,
-  );
+  const [incomingCall, setIncomingCall] = useState<PulseXCallSession | null>(null);
   const [composerValue, setComposerValue] = useState("");
   const [composerMentions, setComposerMentions] = useState<
     readonly PulseXMessageMention[]
