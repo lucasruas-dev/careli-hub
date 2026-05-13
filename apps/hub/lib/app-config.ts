@@ -1,4 +1,4 @@
 export const appConfig = {
-  name: "Careli Hub",
-  description: "Hub Central do ecossistema Careli.",
+  name: "C2X",
+  description: "C2X",
 } as const;

@@ -4,11 +4,16 @@ import "@repo/uix/styles.css";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "Careli Hub",
-  description: "Hub Central do ecossistema Careli.",
+  applicationName: "C2X",
+  title: {
+    default: "C2X",
+    template: "%s | C2X",
+  },
+  description: "C2X",
   icons: {
-    icon: "/logo-hub.png",
-    apple: "/logo-hub.png",
+    apple: [{ url: "/logo-careli-c2x.png?v=2", type: "image/png" }],
+    icon: [{ url: "/logo-careli-c2x.png?v=2", type: "image/png" }],
+    shortcut: [{ url: "/logo-careli-c2x.png?v=2", type: "image/png" }],
   },
 };
 
