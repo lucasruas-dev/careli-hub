@@ -32,23 +32,18 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-[#f3f6fa] px-6 py-10 text-[#101820]">
       <section className="w-full max-w-[25rem]">
-        <div className="mb-8 grid justify-items-center text-center">
-          <span className="grid h-20 w-20 place-items-center rounded-md border border-[#d9e0ea] bg-white p-3 shadow-sm">
-            <Image
-              alt="Careli"
-              className="h-full w-full object-contain"
-              height={80}
-              priority
-              src="/logoc.png"
-              width={80}
-            />
-          </span>
-          <h1 className="m-0 mt-5 text-3xl font-semibold tracking-normal text-[#101820]">
-            Hub Careli
+        <div className="mb-9 grid justify-items-center text-center">
+          <Image
+            alt="Careli"
+            className="h-auto w-24 object-contain"
+            height={96}
+            priority
+            src="/logoc.png"
+            width={96}
+          />
+          <h1 className="m-0 mt-6 text-3xl font-semibold tracking-normal text-[#101820]">
+            Ecossistema Careli
           </h1>
-          <p className="m-0 mt-2 text-sm font-medium text-[#667085]">
-            Central Operacional
-          </p>
         </div>
 
         <form
