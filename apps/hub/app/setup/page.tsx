@@ -84,8 +84,9 @@ export default function SetupPage() {
 
 function SetupWorkspace() {
   const [activeTab, setActiveTab] = useState<SetupTabId>("usuarios");
-  const [data, setData] = useState<SetupData | null>(null);
+  const [data, setData] = useState<SetupData>(emptySetupData);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<SetupActionId | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -113,10 +114,10 @@ function SetupWorkspace() {
 
   const summary = useMemo(
     () => [
-      { label: "usuarios", value: data?.users.length ?? 0 },
-      { label: "departamentos", value: data?.departments.length ?? 0 },
-      { label: "setores", value: data?.sectors.length ?? 0 },
-      { label: "canais PulseX", value: data?.channels.length ?? 0 },
+      { label: "usuarios", value: data.users.length },
+      { label: "departamentos", value: data.departments.length },
+      { label: "setores", value: data.sectors.length },
+      { label: "canais PulseX", value: data.channels.length },
     ],
     [data],
   );
@@ -124,12 +125,14 @@ function SetupWorkspace() {
   async function handleCreateDepartment(input: CreateDepartmentInput) {
     setIsSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       await createDepartment(input);
       await refreshSetupData();
       setActiveTab("departamentos");
       setActiveAction(null);
+      setSuccess("Departamento cadastrado.");
     } catch (saveError) {
       setError(getFriendlySetupError(saveError, "save"));
     } finally {
@@ -140,12 +143,14 @@ function SetupWorkspace() {
   async function handleCreateSector(input: CreateSectorInput) {
     setIsSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       await createSector(input);
       await refreshSetupData();
       setActiveTab("setores");
       setActiveAction(null);
+      setSuccess("Setor cadastrado.");
     } catch (saveError) {
       setError(getFriendlySetupError(saveError, "save"));
     } finally {
@@ -156,12 +161,14 @@ function SetupWorkspace() {
   async function handleCreatePulseXChannel(input: CreatePulseXChannelInput) {
     setIsSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       await createPulseXChannel(input);
       await refreshSetupData();
       setActiveTab("pulsex");
       setActiveAction(null);
+      setSuccess("Canal PulseX cadastrado.");
     } catch (saveError) {
       setError(getFriendlySetupError(saveError, "save"));
     } finally {
@@ -188,6 +195,12 @@ function SetupWorkspace() {
             <ShieldAlert aria-hidden="true" size={16} />
             {error}
           </span>
+        </Surface>
+      ) : null}
+
+      {success ? (
+        <Surface bordered className="border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+          {success}
         </Surface>
       ) : null}
 
@@ -258,7 +271,7 @@ function SetupTabContent({
 }: {
   activeTab: SetupTabId;
   activeAction: SetupActionId | null;
-  data: SetupData | null;
+  data: SetupData;
   isSaving: boolean;
   onCloseAction: () => void;
   onCreateDepartment: (input: CreateDepartmentInput) => Promise<void>;
@@ -266,15 +279,6 @@ function SetupTabContent({
   onCreateSector: (input: CreateSectorInput) => Promise<void>;
   onOpenAction: (action: SetupActionId) => void;
 }) {
-  if (!data) {
-    return (
-      <EmptyState
-        description="Atualize a conexao e tente novamente."
-        title="Dados indisponiveis"
-      />
-    );
-  }
-
   if (activeTab === "usuarios") {
     return (
       <TabPanel
@@ -929,6 +933,16 @@ function getFriendlySetupError(error: unknown, action: "load" | "save") {
 
   return "Nao foi possivel salvar. Tente novamente.";
 }
+
+const emptySetupData: SetupData = {
+  channels: [],
+  departmentModules: [],
+  departments: [],
+  modules: [],
+  permissions: [],
+  sectors: [],
+  users: [],
+};
 
 function slugify(value: string) {
   return value

@@ -132,30 +132,28 @@ export async function loadSetupData(): Promise<SetupData> {
       .order("order"),
   ]);
 
-  assertQuery("departamentos", departmentsResult);
-  assertQuery("setores", sectorsResult);
-  assertQuery("usuarios", usersResult);
-  assertQuery("modulos", modulesResult);
-  assertQuery("modulos por departamento", departmentModulesResult);
-  assertQuery("permissoes", permissionsResult);
-  assertQuery("canais PulseX", channelsResult);
+  const readableResults = [
+    departmentsResult,
+    sectorsResult,
+    usersResult,
+    modulesResult,
+    permissionsResult,
+    channelsResult,
+  ];
+
+  if (readableResults.every(hasQueryError)) {
+    throw new Error("Nao foi possivel carregar os dados. Tente atualizar.");
+  }
 
   return {
-    channels: ((channelsResult as QueryResult<PulseXChannelRow[]>).data ?? []).map(
-      mapPulseXChannel,
-    ),
-    departmentModules: (
-      (departmentModulesResult as QueryResult<DepartmentModuleRow[]>).data ?? []
-    ).map((access) => ({
+    channels: readRows<PulseXChannelRow>(channelsResult).map(mapPulseXChannel),
+    departmentModules: readRows<DepartmentModuleRow>(departmentModulesResult).map((access) => ({
       departmentId: access.department_id,
       moduleId: access.module_id,
       status: access.status,
     })),
-    departments: (
-      (departmentsResult as QueryResult<DepartmentRow[]>).data ?? []
-    ).map(mapDepartment),
-    modules: ((modulesResult as QueryResult<ModuleRow[]>).data ?? []).map(
-      (module) => ({
+    departments: readRows<DepartmentRow>(departmentsResult).map(mapDepartment),
+    modules: readRows<ModuleRow>(modulesResult).map((module) => ({
         basePath: module.base_path,
         id: module.id,
         name: module.name,
@@ -163,19 +161,15 @@ export async function loadSetupData(): Promise<SetupData> {
         status: module.status,
       }),
     ),
-    permissions: (
-      (permissionsResult as QueryResult<PermissionRow[]>).data ?? []
-    ).map((permission) => ({
+    permissions: readRows<PermissionRow>(permissionsResult).map((permission) => ({
       description: permission.description ?? undefined,
       id: permission.id,
       key: permission.key,
       moduleId: permission.module_id ?? undefined,
       scope: permission.scope,
     })),
-    sectors: ((sectorsResult as QueryResult<SectorRow[]>).data ?? []).map(
-      mapSector,
-    ),
-    users: ((usersResult as QueryResult<UserRow[]>).data ?? []).map(mapUser),
+    sectors: readRows<SectorRow>(sectorsResult).map(mapSector),
+    users: readRows<UserRow>(usersResult).map(mapUser),
   };
 }
 
@@ -322,6 +316,20 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
   if (queryResult.error) {
     throw new Error(getSetupErrorMessage(label));
   }
+}
+
+function hasQueryError(result: unknown) {
+  return Boolean((result as QueryResult<unknown>).error);
+}
+
+function readRows<Row>(result: unknown): Row[] {
+  const queryResult = result as QueryResult<Row[]>;
+
+  if (queryResult.error) {
+    return [];
+  }
+
+  return queryResult.data ?? [];
 }
 
 function getSetupErrorMessage(label: string) {
