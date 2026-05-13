@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   MessageCircle,
   Plus,
+  RefreshCw,
   Search,
   Star,
   SlidersHorizontal,
@@ -36,6 +37,7 @@ type ConversationSidebarProps = {
   messages: readonly PulseXMessage[];
   onSelectChannel?: (channelId: PulseXChannel["id"]) => void;
   onSelectMessageFilter?: (filter: PulseXMessageFilter) => void;
+  onRefresh?: () => void;
   sectors: readonly PulseXSector[];
   users: readonly PulseXPresenceUser[];
 };
@@ -62,6 +64,7 @@ export function ConversationSidebar({
   departments,
   onSelectChannel,
   onSelectMessageFilter,
+  onRefresh,
   sectors,
   users,
 }: ConversationSidebarProps) {
@@ -102,7 +105,7 @@ export function ConversationSidebar({
   return (
     <aside className="flex h-full flex-col overflow-hidden border-l border-white/[0.035] border-r border-[#252a35] bg-[#101820] shadow-[inset_1px_0_0_rgb(255_255_255_/_0.035)]">
       <div className="shrink-0 border-b border-white/[0.075] bg-[#101820] px-4 py-3">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2">
           <Tooltip content="Abrir modulos" placement="bottom">
             <button
               aria-label="Abrir modulos"
@@ -117,6 +120,16 @@ export function ConversationSidebar({
             PulseX
           </p>
           <span className="sr-only">{users.length} usuarios carregados</span>
+          <Tooltip content="Atualizar canais" placement="bottom">
+            <button
+              aria-label="Atualizar canais"
+              className="grid h-9 w-9 place-items-center rounded-md border border-white/[0.075] bg-white/[0.055] text-[#a5afbd] outline-none transition hover:bg-white/[0.085] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+              onClick={onRefresh}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+          </Tooltip>
           <button
             aria-label="Nova conversa"
             className="grid h-9 w-9 place-items-center rounded-md border border-[#A07C3B]/45 bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
@@ -273,7 +286,9 @@ export function ConversationSidebar({
           ))
         ) : (
           <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
-            Nenhum canal configurado.
+            {dataStatus === "fallback"
+              ? "Nao foi possivel carregar canais."
+              : "Nenhum canal configurado."}
           </p>
         )}
         <SidebarSection
@@ -303,7 +318,7 @@ export function ConversationSidebar({
         <div className="border-t border-white/[0.075] px-4 py-2 text-xs text-[#a5afbd]">
           {dataStatus === "loading"
             ? "Carregando Supabase..."
-            : "Fallback local ativo"}
+            : "Nao foi possivel carregar canais"}
         </div>
       ) : null}
     </aside>

@@ -22,7 +22,7 @@ import type {
   PulseXThreadReply,
 } from "@/lib/pulsex";
 import { CallPanel } from "./call-panel";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConversationHeader } from "./conversation-header";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { IncomingCallBanner } from "./incoming-call-banner";
@@ -31,7 +31,7 @@ import { MessageList } from "./message-list";
 import { ThreadPanel } from "./thread-panel";
 
 export function PulseXWorkspace() {
-  const { hubUser } = useAuth();
+  const { hubUser, profileStatus } = useAuth();
   const currentUserId = hubUser?.id ?? "ana";
   const [activeChannelId, setActiveChannelId] =
     useState<PulseXChannel["id"]>(emptyPulseXChannel.id);
@@ -85,9 +85,15 @@ export function PulseXWorkspace() {
     [activeChannel.id, presenceUsers],
   );
 
-  useEffect(() => {
+  const loadOperationalData = useCallback(() => {
+    if (profileStatus === "loading") {
+      setDataStatus("loading");
+      return;
+    }
+
     let isMounted = true;
 
+    setDataStatus("loading");
     loadPulseXOperationalData({
       currentUserId,
       userRole: hubUser?.role,
@@ -120,7 +126,11 @@ export function PulseXWorkspace() {
         );
         setDataStatus(hasHubSupabaseConfig() ? "ready" : "fallback");
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        if (isLocalDevelopmentRuntime()) {
+          console.warn("[pulsex] load workspace error", error);
+        }
+
         if (!isMounted) {
           return;
         }
@@ -131,7 +141,9 @@ export function PulseXWorkspace() {
     return () => {
       isMounted = false;
     };
-  }, [currentUserId, hubUser?.role]);
+  }, [currentUserId, hubUser?.role, profileStatus]);
+
+  useEffect(() => loadOperationalData(), [loadOperationalData]);
 
   useEffect(() => {
     if (dataStatus !== "ready" || activeChannel.kind === "direct") {
@@ -385,6 +397,9 @@ export function PulseXWorkspace() {
         messages={messages}
         onSelectMessageFilter={setActiveMessageFilter}
         onSelectChannel={handleSelectChannel}
+        onRefresh={() => {
+          loadOperationalData();
+        }}
         sectors={sectors}
       />
       <main className="relative grid min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-[#f3f6fa]">
@@ -479,6 +494,10 @@ function withDirectUserChannels(
     ...channels,
     ...directChannels.filter((channel) => !existingChannelIds.has(channel.id)),
   ];
+}
+
+function isLocalDevelopmentRuntime() {
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
 function withUserChannelAccess(

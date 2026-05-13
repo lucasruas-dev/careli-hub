@@ -102,6 +102,10 @@ export async function loadPulseXOperationalData(input: {
       listPulseXChannels(),
       listDirectUsers(),
     ]);
+  logPulseXDebug("current user", {
+    id: input.currentUserId,
+  });
+  logPulseXDebug("current role", input.userRole ?? "unknown");
   const channels = filterChannelsForUser({
     assignments,
     channels: allChannels,
@@ -119,8 +123,17 @@ export async function loadPulseXOperationalData(input: {
     users.length > 0;
 
   if (!hasRealStructure) {
+    logPulseXDebug("channels count", {
+      filtered: channels.length,
+      total: allChannels.length,
+    });
     return createPulseXFallback();
   }
+
+  logPulseXDebug("channels count", {
+    filtered: channels.length,
+    total: allChannels.length,
+  });
 
   return {
     channels,
@@ -185,6 +198,8 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
     return [];
   }
 
+  logPulseXDebug("list channels start");
+
   const result = await client
     .from("pulsex_channels")
     .select(
@@ -193,11 +208,43 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
     .eq("status", "active")
     .order("order");
 
-  assertQuery("canais PulseX", result);
+  if ((result as QueryResult<PulseXChannelRow[]>).error) {
+    logPulseXDebug("list channels error", {
+      message: (result as QueryResult<PulseXChannelRow[]>).error?.message,
+      retry: "without members relation",
+    });
 
-  return ((result as QueryResult<PulseXChannelRow[]>).data ?? []).map(
+    const fallbackResult = await client
+      .from("pulsex_channels")
+      .select(
+        "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug)",
+      )
+      .eq("status", "active")
+      .order("order");
+
+    assertQuery("canais PulseX", fallbackResult);
+
+    const fallbackChannels = ((fallbackResult as QueryResult<PulseXChannelRow[]>)
+      .data ?? []).map(mapChannel);
+
+    logPulseXDebug("list channels result", {
+      count: fallbackChannels.length,
+      withMembers: false,
+    });
+
+    return fallbackChannels;
+  }
+
+  const channels = ((result as QueryResult<PulseXChannelRow[]>).data ?? []).map(
     mapChannel,
   );
+
+  logPulseXDebug("list channels result", {
+    count: channels.length,
+    withMembers: true,
+  });
+
+  return channels;
 }
 
 export async function listDirectUsers(): Promise<PulseXPresenceUser[]> {
@@ -300,7 +347,17 @@ function filterChannelsForUser({
   currentUserId: string;
   userRole?: string;
 }) {
-  if (userRole === "admin") {
+  const isAdmin = userRole === "admin" || userRole === "adm";
+
+  logPulseXDebug("filters applied", {
+    assignments: assignments.length,
+    channels: channels.length,
+    currentUserId,
+    isAdmin,
+    userRole: userRole ?? "unknown",
+  });
+
+  if (isAdmin) {
     return [...channels];
   }
 
@@ -441,8 +498,28 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
   const queryResult = result as QueryResult<unknown>;
 
   if (queryResult.error) {
+    logPulseXDebug("list channels error", {
+      label,
+      message: queryResult.error.message,
+    });
     throw new Error(`Nao foi possivel carregar ${label}: ${queryResult.error.message}`);
   }
+}
+
+function logPulseXDebug(event: string, detail?: unknown) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  console.debug(`[pulsex] ${event}`, detail ?? "");
+}
+
+function isLocalDevelopmentRuntime() {
+  if (typeof globalThis.location === "undefined") {
+    return false;
+  }
+
+  return ["localhost", "127.0.0.1"].includes(globalThis.location.hostname);
 }
 
 function createPulseXFallback(): PulseXOperationalData {
