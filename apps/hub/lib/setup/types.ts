@@ -74,7 +74,13 @@ export type SetupPulseXChannel = {
   type: "department_channel" | "private_group" | "sector_channel";
 };
 
+export type SetupPulseXChannelMember = {
+  channelId: string;
+  userId: string;
+};
+
 export type SetupData = {
+  channelMembers: SetupPulseXChannelMember[];
   channels: SetupPulseXChannel[];
   departmentModules: SetupDepartmentModule[];
   departments: SetupDepartment[];
@@ -121,6 +127,7 @@ export type CreatePulseXChannelInput = {
   description?: string;
   id: string;
   name: string;
+  participantUserIds?: string[];
   sectorId?: string;
   status: SetupRecordStatus;
   type: SetupPulseXChannel["type"];
@@ -130,6 +137,7 @@ export type UpdatePulseXChannelInput = {
   departmentId?: string;
   id: string;
   name: string;
+  participantUserIds?: string[];
   sectorId?: string;
   status: SetupRecordStatus;
   type?: SetupPulseXChannel["type"];

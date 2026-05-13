@@ -20,6 +20,7 @@ import type {
   LinkUserAssignmentInput,
   SetupData,
   SetupDepartment,
+  SetupModule,
   SetupOperationalProfileRole,
   SetupPulseXChannel,
   SetupRecordStatus,
@@ -43,6 +44,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Settings2,
   ShieldAlert,
   X,
   Users,
@@ -129,6 +131,8 @@ function SetupWorkspace() {
   const [activeAction, setActiveAction] = useState<SetupActionId | null>(null);
   const [editTarget, setEditTarget] = useState<SetupEditTarget | null>(null);
   const [linkUserTarget, setLinkUserTarget] = useState<SetupUser | null>(null);
+  const [moduleConfigTarget, setModuleConfigTarget] =
+    useState<SetupModule | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -228,6 +232,24 @@ function SetupWorkspace() {
       setActiveTab("pulsex");
       setActiveAction(null);
       setSuccess("Canal PulseX cadastrado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleCreatePulseXModuleChannel(
+    input: CreatePulseXChannelInput,
+  ) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await createPulseXChannel(input);
+      await refreshSetupData();
+      setSuccess("Grupo PulseX cadastrado.");
     } catch (saveError) {
       setError(getFriendlySetupError(saveError, "save"));
     } finally {
@@ -348,6 +370,7 @@ function SetupWorkspace() {
                   setActiveAction(null);
                   setEditTarget(null);
                   setLinkUserTarget(null);
+                  setModuleConfigTarget(null);
                 }}
                 type="button"
               >
@@ -385,6 +408,7 @@ function SetupWorkspace() {
               onCreateSector={handleCreateSector}
               onEditRecord={setEditTarget}
               onLinkUser={setLinkUserTarget}
+              onConfigureModule={setModuleConfigTarget}
               onOpenAction={setActiveAction}
             />
           )}
@@ -410,6 +434,14 @@ function SetupWorkspace() {
           user={linkUserTarget}
         />
       ) : null}
+      {moduleConfigTarget?.id === "pulsex" ? (
+        <PulseXModuleConfigModal
+          data={data}
+          isSaving={isSaving}
+          onClose={() => setModuleConfigTarget(null)}
+          onCreateChannel={handleCreatePulseXModuleChannel}
+        />
+      ) : null}
     </WorkspaceLayout>
   );
 }
@@ -424,6 +456,7 @@ function SetupTabContent({
   onCreateOperationalUser,
   onCreatePulseXChannel,
   onCreateSector,
+  onConfigureModule,
   onEditRecord,
   onLinkUser,
   onOpenAction,
@@ -437,6 +470,7 @@ function SetupTabContent({
   onCreateOperationalUser: (input: CreateOperationalUserInput) => Promise<void>;
   onCreatePulseXChannel: (input: CreatePulseXChannelInput) => Promise<void>;
   onCreateSector: (input: CreateSectorInput) => Promise<void>;
+  onConfigureModule: (module: SetupModule) => void;
   onEditRecord: (target: SetupEditTarget) => void;
   onLinkUser: (user: SetupUser) => void;
   onOpenAction: (action: SetupActionId) => void;
@@ -569,7 +603,7 @@ function SetupTabContent({
       <TabPanel title="Modulos">
         <DataGrid
           empty="Nenhum modulo cadastrado."
-          headers={["Modulo", "Rota", "Status", "Departamentos liberados"]}
+          headers={["Modulo", "Rota", "Status", "Departamentos liberados", "Acoes"]}
           rows={data.modules.map((module) => [
             module.name,
             module.basePath,
@@ -577,6 +611,11 @@ function SetupTabContent({
             data.departmentModules.filter(
               (access) => access.moduleId === module.id && access.status === "enabled",
             ).length,
+            <ModuleConfigAction
+              disabled={module.id !== "pulsex" || module.status === "planned"}
+              key={module.id}
+              onClick={() => onConfigureModule(module)}
+            />,
           ])}
         />
       </TabPanel>
@@ -768,6 +807,7 @@ function CreatePulseXChannelForm({
   const [sectorId, setSectorId] = useState("");
   const [status, setStatus] = useState<SetupRecordStatus>("active");
   const [type, setType] = useState<CreatePulseXChannelInput["type"]>("sector_channel");
+  const [participantUserIds, setParticipantUserIds] = useState<string[]>([]);
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
@@ -779,12 +819,14 @@ function CreatePulseXChannelForm({
       description,
       id: slugify(name),
       name,
+      participantUserIds,
       sectorId: sectorId || undefined,
       status,
       type,
     });
     setDescription("");
     setName("");
+    setParticipantUserIds([]);
     setSectorId("");
     setStatus("active");
   }
@@ -845,6 +887,11 @@ function CreatePulseXChannelForm({
           value={description}
         />
         <StatusSelect onChange={setStatus} value={status} />
+        <ParticipantPicker
+          onChange={setParticipantUserIds}
+          selectedUserIds={participantUserIds}
+          users={data.users}
+        />
         <FormActions
           disabled={!departmentId || !name.trim() || isSaving}
           onCancel={onCancel}
@@ -1002,6 +1049,31 @@ function RowActions({
         </button>
       </Tooltip>
       <MoreVertical aria-hidden="true" className="text-[#98a2b3]" size={14} />
+    </div>
+  );
+}
+
+function ModuleConfigAction({
+  disabled,
+  onClick,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end">
+      <Tooltip content={disabled ? "Modulo ainda sem configuracao" : "Configurar modulo"}>
+        <button
+          aria-label="Configurar modulo"
+          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-35"
+          disabled={disabled}
+          onClick={onClick}
+          title={disabled ? "Modulo ainda sem configuracao" : "Configurar modulo"}
+          type="button"
+        >
+          <Settings2 aria-hidden="true" size={14} />
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -1282,15 +1354,21 @@ function EditPulseXChannelModal({
 function SetupModal({
   children,
   onClose,
+  size = "default",
   title,
 }: {
   children: ReactNode;
   onClose: () => void;
+  size?: "default" | "wide";
   title: string;
 }) {
   return (
     <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/25 px-4">
-      <div className="w-full max-w-xl rounded-md border border-[#d9e0e7] bg-white shadow-2xl">
+      <div
+        className={`w-full rounded-md border border-[#d9e0e7] bg-white shadow-2xl ${
+          size === "wide" ? "max-w-5xl" : "max-w-xl"
+        }`}
+      >
         <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
           <h2 className="m-0 text-base font-semibold text-[#101820]">{title}</h2>
           <button
@@ -1306,6 +1384,175 @@ function SetupModal({
       </div>
     </div>
   );
+}
+
+function PulseXModuleConfigModal({
+  data,
+  isSaving,
+  onClose,
+  onCreateChannel,
+}: {
+  data: SetupData;
+  isSaving: boolean;
+  onClose: () => void;
+  onCreateChannel: (input: CreatePulseXChannelInput) => Promise<void>;
+}) {
+  const pulsexDepartmentIds = new Set(
+    data.departmentModules
+      .filter((access) => access.moduleId === "pulsex" && access.status === "enabled")
+      .map((access) => access.departmentId),
+  );
+  const releasedDepartments = data.departments.filter((department) =>
+    pulsexDepartmentIds.has(department.id),
+  );
+  const departmentChannels = data.channels.filter(
+    (channel) => channel.type === "department_channel",
+  );
+  const groupChannels = data.channels.filter(
+    (channel) => channel.type !== "department_channel",
+  );
+  const memberCountByChannel = getMemberCountByChannel(data);
+
+  return (
+    <SetupModal onClose={onClose} size="wide" title="Configurar PulseX">
+      <div className="grid max-h-[82vh] gap-5 overflow-auto p-5">
+        <CreatePulseXChannelForm
+          data={data}
+          isSaving={isSaving}
+          onCancel={onClose}
+          onSubmit={onCreateChannel}
+        />
+        <SetupConfigSection title="Departamentos liberados">
+          <DataGrid
+            empty="Nenhum departamento liberado."
+            headers={["Departamento", "Status"]}
+            rows={releasedDepartments.map((department) => [
+              department.name,
+              department.status,
+            ])}
+          />
+        </SetupConfigSection>
+        <SetupConfigSection title="Canais gerais por departamento">
+          <DataGrid
+            empty="Nenhum canal geral cadastrado."
+            headers={["Canal", "Departamento", "Status", "Participantes"]}
+            rows={departmentChannels.map((channel) => [
+              channel.name,
+              channel.departmentName ?? "-",
+              channel.status,
+              memberCountByChannel.get(channel.id) ?? 0,
+            ])}
+          />
+        </SetupConfigSection>
+        <SetupConfigSection title="Grupos de conversa">
+          <DataGrid
+            empty="Nenhum grupo cadastrado."
+            headers={["Grupo", "Tipo", "Departamento", "Setor", "Status", "Participantes"]}
+            rows={groupChannels.map((channel) => [
+              channel.name,
+              getPulseXChannelTypeLabel(channel.type),
+              channel.departmentName ?? "-",
+              channel.sectorName ?? "-",
+              channel.status,
+              memberCountByChannel.get(channel.id) ?? 0,
+            ])}
+          />
+        </SetupConfigSection>
+        <SetupConfigSection title="Participantes">
+          <DataGrid
+            empty="Nenhum participante vinculado."
+            headers={["Canal", "Usuario", "Email"]}
+            rows={data.channelMembers.map((member) => {
+              const channel = data.channels.find(
+                (candidate) => candidate.id === member.channelId,
+              );
+              const user = data.users.find(
+                (candidate) => candidate.id === member.userId,
+              );
+
+              return [
+                channel?.name ?? member.channelId,
+                user?.displayName ?? member.userId,
+                user?.email ?? "-",
+              ];
+            })}
+          />
+        </SetupConfigSection>
+      </div>
+    </SetupModal>
+  );
+}
+
+function SetupConfigSection({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="grid gap-3">
+      <h3 className="m-0 text-sm font-semibold text-[#101820]">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function ParticipantPicker({
+  onChange,
+  selectedUserIds,
+  users,
+}: {
+  onChange: (userIds: string[]) => void;
+  selectedUserIds: readonly string[];
+  users: readonly SetupUser[];
+}) {
+  const selectedUserSet = new Set(selectedUserIds);
+
+  if (users.length === 0) {
+    return null;
+  }
+
+  return (
+    <fieldset className="grid gap-2 rounded-md border border-[#d9e0e7] bg-white p-3">
+      <legend className="px-1 text-xs font-semibold text-[#667085]">
+        Participantes
+      </legend>
+      <div className="grid max-h-40 gap-2 overflow-auto md:grid-cols-2">
+        {users.map((user) => (
+          <label
+            className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#344054] hover:bg-[#f3f6fa]"
+            key={user.id}
+          >
+            <input
+              checked={selectedUserSet.has(user.id)}
+              className="h-4 w-4 accent-[#A07C3B]"
+              onChange={(event) => {
+                if (event.target.checked) {
+                  onChange([...selectedUserIds, user.id]);
+                  return;
+                }
+
+                onChange(selectedUserIds.filter((userId) => userId !== user.id));
+              }}
+              type="checkbox"
+            />
+            <span className="min-w-0 truncate">{user.displayName}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function getMemberCountByChannel(data: SetupData) {
+  const counts = new Map<string, number>();
+
+  for (const member of data.channelMembers) {
+    counts.set(member.channelId, (counts.get(member.channelId) ?? 0) + 1);
+  }
+
+  return counts;
 }
 
 function CreateOperationalUserModal({
@@ -1733,6 +1980,7 @@ function getPulseXChannelTypeLabel(type: SetupPulseXChannel["type"]) {
 }
 
 const emptySetupData: SetupData = {
+  channelMembers: [],
   channels: [],
   departmentModules: [],
   departments: [],

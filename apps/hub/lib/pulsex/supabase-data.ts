@@ -307,8 +307,7 @@ function filterChannelsForUser({
   if (assignments.length === 0) {
     return channels.filter(
       (channel) =>
-        !channel.memberUserIds?.length ||
-        channel.memberUserIds.includes(currentUserId),
+        channel.memberUserIds?.includes(currentUserId),
     );
   }
 
@@ -328,11 +327,23 @@ function filterChannelsForUser({
       return true;
     }
 
-    if (channel.sectorId && sectorIds.has(channel.sectorId)) {
+    if (channel.accessType === "private_group") {
+      return false;
+    }
+
+    if (
+      channel.accessType === "sector_channel" &&
+      channel.sectorId &&
+      sectorIds.has(channel.sectorId)
+    ) {
       return true;
     }
 
-    return Boolean(channel.departmentId && departmentIds.has(channel.departmentId));
+    return Boolean(
+      channel.accessType === "department_channel" &&
+        channel.departmentId &&
+        departmentIds.has(channel.departmentId),
+    );
   });
 }
 
@@ -343,6 +354,7 @@ function mapChannel(row: PulseXChannelRow): PulseXChannel {
     row.pulsex_channel_members?.map((member) => member.user_id) ?? [];
 
   return {
+    accessType: mapChannelAccessType(row.kind),
     avatar: getInitials(row.name),
     context: {
       filesCount: 0,
@@ -363,6 +375,20 @@ function mapChannel(row: PulseXChannelRow): PulseXChannel {
     sectorName: row.hub_sectors?.name,
     status: "online",
   };
+}
+
+function mapChannelAccessType(
+  kind: PulseXChannelRow["kind"],
+): PulseXChannel["accessType"] {
+  if (kind === "sector") {
+    return "sector_channel";
+  }
+
+  if (kind === "department") {
+    return "department_channel";
+  }
+
+  return "private_group";
 }
 
 function mapUser(row: HubUserRow): PulseXPresenceUser {

@@ -14,6 +14,7 @@ import type {
   SetupOperationalProfileRole,
   SetupPermission,
   SetupPulseXChannel,
+  SetupPulseXChannelMember,
   SetupSector,
   SetupUser,
   UpdateDepartmentInput,
@@ -107,6 +108,11 @@ type PulseXChannelRow = {
   status: SetupPulseXChannel["status"];
 };
 
+type PulseXChannelMemberRow = {
+  channel_id: string;
+  user_id: string;
+};
+
 export async function loadSetupData(): Promise<SetupData> {
   const client = getHubSupabaseClient();
 
@@ -127,6 +133,7 @@ export async function loadSetupData(): Promise<SetupData> {
     departmentModulesResult,
     permissionsResult,
     channelsResult,
+    channelMembersResult,
   ] = await Promise.all([
     runSetupQuery<DepartmentRow[]>(
       "list departments",
@@ -169,6 +176,10 @@ export async function loadSetupData(): Promise<SetupData> {
         )
         .order("order"),
     ),
+    runSetupQuery<PulseXChannelMemberRow[]>(
+      "list pulsex channel members",
+      client.from("pulsex_channel_members").select("channel_id,user_id"),
+    ),
   ]);
 
   const readableResults = [
@@ -188,6 +199,10 @@ export async function loadSetupData(): Promise<SetupData> {
   }
 
   return {
+    channelMembers: readRows<PulseXChannelMemberRow>(
+      "pulsex_channel_members",
+      channelMembersResult,
+    ).map(mapPulseXChannelMember),
     channels: readRows<PulseXChannelRow>("pulsex_channels", channelsResult).map(mapPulseXChannel),
     departmentModules: readRows<DepartmentModuleRow>("hub_department_modules", departmentModulesResult).map((access) => ({
       departmentId: access.department_id,
@@ -412,7 +427,13 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
 
   assertQuery("salvar canal PulseX", result);
 
-  return mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
+  const channel = mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
+
+  if (input.participantUserIds) {
+    await syncPulseXChannelMembers(channel.id, input.participantUserIds);
+  }
+
+  return channel;
 }
 
 export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
@@ -445,7 +466,48 @@ export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
 
   assertQuery("salvar canal PulseX", result);
 
-  return mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
+  const channel = mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
+
+  if (input.participantUserIds) {
+    await syncPulseXChannelMembers(channel.id, input.participantUserIds);
+  }
+
+  return channel;
+}
+
+export async function syncPulseXChannelMembers(
+  channelId: string,
+  participantUserIds: readonly string[],
+) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const deleteResult = await client
+    .from("pulsex_channel_members")
+    .delete()
+    .eq("channel_id", channelId);
+
+  logSetupQueryResult("sync pulsex channel members delete", deleteResult);
+  assertQuery("salvar participantes", deleteResult);
+
+  const uniqueUserIds = [...new Set(participantUserIds)].filter(Boolean);
+
+  if (uniqueUserIds.length === 0) {
+    return;
+  }
+
+  const insertResult = await client.from("pulsex_channel_members").insert(
+    uniqueUserIds.map((userId) => ({
+      channel_id: channelId,
+      user_id: userId,
+    })),
+  );
+
+  logSetupQueryResult("sync pulsex channel members insert", insertResult);
+  assertQuery("salvar participantes", insertResult);
 }
 
 export async function createOperationalUser(input: CreateOperationalUserInput) {
@@ -843,6 +905,15 @@ function mapPulseXChannel(row: PulseXChannelRow | null): SetupPulseXChannel {
   };
 }
 
+function mapPulseXChannelMember(
+  row: PulseXChannelMemberRow,
+): SetupPulseXChannelMember {
+  return {
+    channelId: row.channel_id,
+    userId: row.user_id,
+  };
+}
+
 function getRelationName(
   relation?: { name: string } | { name: string }[] | null,
 ) {
@@ -897,6 +968,7 @@ function mapOperationalProfileToRole(
 
 function createEmptySetupData(): SetupData {
   return {
+    channelMembers: [],
     channels: [],
     departmentModules: [],
     departments: [],

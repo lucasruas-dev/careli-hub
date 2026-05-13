@@ -496,11 +496,16 @@ function withUserChannelAccess(
 
         return (
           channel.memberUserIds?.includes(user.id) ||
-          Boolean(channel.sectorId && channel.sectorId === user.sectorId) ||
           Boolean(
-            channel.departmentId && channel.departmentId === user.departmentId,
+            channel.accessType === "sector_channel" &&
+              channel.sectorId &&
+              channel.sectorId === user.sectorId,
           ) ||
-          !channel.memberUserIds?.length
+          Boolean(
+            channel.accessType === "department_channel" &&
+              channel.departmentId &&
+              channel.departmentId === user.departmentId,
+          )
         );
       })
       .map((channel) => channel.id),
@@ -517,6 +522,7 @@ const emptyPulseXChannel = {
   },
   description: "Nenhum canal operacional configurado.",
   id: "empty-pulsex",
+  accessType: "private_group",
   kind: "system",
   lastMessageAt: "-",
   name: "Sem canal",

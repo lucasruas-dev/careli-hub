@@ -8,6 +8,7 @@ export type PulseXChannelKind =
   | "technology";
 
 export type PulseXChannel = {
+  accessType?: "department_channel" | "private_group" | "sector_channel";
   avatar: string;
   context: {
     filesCount: number;
