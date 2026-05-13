@@ -2,7 +2,6 @@ import {
   createClient,
   type Session,
   type SupabaseClient,
-  type User,
 } from "@supabase/supabase-js";
 import { getPermissionsForRole, type HubUserRole } from "@repo/shared";
 import type {
@@ -19,7 +18,9 @@ export type SupabaseAuthConfig = {
   workspaceId?: string;
 };
 
-export type SupabaseAuthChangeHandler = (session: AuthSession | null) => void;
+export type SupabaseAuthChangeHandler = (
+  result: AuthActionResult<AuthSession | null>,
+) => void;
 
 export type SupabaseAuthAdapter = AuthAdapter & {
   onAuthStateChange: (
@@ -29,6 +30,18 @@ export type SupabaseAuthAdapter = AuthAdapter & {
 };
 
 const HUB_USER_ROLES = ["admin", "leader", "operator", "viewer"] as const;
+const HUB_USER_STATUSES = ["active", "archived", "disabled"] as const;
+
+type HubUserProfileStatus = (typeof HUB_USER_STATUSES)[number];
+
+type HubUserProfileRow = {
+  avatar_url: string | null;
+  display_name: string;
+  email: string;
+  id: string;
+  role: HubUserRole;
+  status: HubUserProfileStatus;
+};
 
 export function hasSupabaseAuthConfig(
   config: SupabaseAuthConfig,
@@ -71,10 +84,7 @@ export function createSupabaseAuthAdapter(
         };
       }
 
-      return {
-        data: mapSupabaseSession(data.session, config.workspaceId),
-        ok: true,
-      };
+      return mapSupabaseSession(client, data.session, config.workspaceId);
     },
     async refreshSession(): Promise<AuthActionResult<AuthSession | null>> {
       const { data, error } = await client.auth.refreshSession();
@@ -86,10 +96,7 @@ export function createSupabaseAuthAdapter(
         };
       }
 
-      return {
-        data: mapSupabaseSession(data.session, config.workspaceId),
-        ok: true,
-      };
+      return mapSupabaseSession(client, data.session, config.workspaceId);
     },
     async signIn(input?: unknown): Promise<AuthActionResult<AuthSession>> {
       const credentials = parsePasswordCredentials(input);
@@ -113,9 +120,24 @@ export function createSupabaseAuthAdapter(
         };
       }
 
-      const session = mapSupabaseSession(data.session, config.workspaceId);
+      const sessionResult = await mapSupabaseSession(
+        client,
+        data.session,
+        config.workspaceId,
+      );
 
-      if (!session) {
+      if (!sessionResult.ok) {
+        await client.auth.signOut();
+
+        return {
+          error: sessionResult.error,
+          ok: false,
+        };
+      }
+
+      if (!sessionResult.data) {
+        await client.auth.signOut();
+
         return {
           error: "Nao foi possivel iniciar a sessao Supabase.",
           ok: false,
@@ -123,7 +145,7 @@ export function createSupabaseAuthAdapter(
       }
 
       return {
-        data: session,
+        data: sessionResult.data,
         ok: true,
       };
     },
@@ -143,8 +165,8 @@ export function createSupabaseAuthAdapter(
       };
     },
     onAuthStateChange(handler: SupabaseAuthChangeHandler) {
-      const { data } = client.auth.onAuthStateChange((_event, session) => {
-        handler(mapSupabaseSession(session, config.workspaceId));
+      const { data } = client.auth.onAuthStateChange(async (_event, session) => {
+        handler(await mapSupabaseSession(client, session, config.workspaceId));
       });
 
       return {
@@ -180,83 +202,115 @@ function parsePasswordCredentials(
   };
 }
 
-function mapSupabaseSession(
+async function mapSupabaseSession(
+  client: SupabaseClient,
   session: Session | null,
   workspaceId = "careli",
-): AuthSession | null {
+): Promise<AuthActionResult<AuthSession | null>> {
   if (!session) {
-    return null;
+    return {
+      data: null,
+      ok: true,
+    };
+  }
+
+  const profileResult = await loadHubUserProfile(client, session.user.id);
+
+  if (!profileResult.ok) {
+    return profileResult;
   }
 
   return {
-    accessToken: session.access_token,
-    expiresAt:
-      typeof session.expires_at === "number"
-        ? new Date(session.expires_at * 1000).toISOString()
-        : undefined,
-    provider: "supabase",
-    user: mapSupabaseUser(session.user, workspaceId),
+    data: {
+      accessToken: session.access_token,
+      expiresAt:
+        typeof session.expires_at === "number"
+          ? new Date(session.expires_at * 1000).toISOString()
+          : undefined,
+      provider: "supabase",
+      user: mapHubUserProfile(profileResult.data, workspaceId),
+    },
+    ok: true,
   };
 }
 
-function mapSupabaseUser(user: User, workspaceId: string): AuthUser {
-  const role = getSupabaseUserRole(user);
-  const fullName = getStringMetadataValue(user, [
-    "full_name",
-    "fullName",
-    "name",
-  ]);
+async function loadHubUserProfile(
+  client: SupabaseClient,
+  userId: string,
+): Promise<AuthActionResult<HubUserProfileRow>> {
+  const { data, error } = await client
+    .from("hub_users")
+    .select("id,email,display_name,avatar_url,role,status")
+    .eq("id", userId)
+    .maybeSingle<HubUserProfileRow>();
+
+  if (error) {
+    return {
+      error: `Nao foi possivel carregar o perfil operacional do Hub: ${error.message}`,
+      ok: false,
+    };
+  }
+
+  if (!data) {
+    return {
+      error:
+        "Seu login foi autenticado, mas o perfil operacional ainda nao existe no Careli Hub. Solicite a liberacao do acesso.",
+      ok: false,
+    };
+  }
+
+  if (!isHubUserRole(data.role)) {
+    return {
+      error:
+        "Seu perfil operacional possui uma role invalida. Solicite revisao a um administrador.",
+      ok: false,
+    };
+  }
+
+  if (!isHubUserStatus(data.status)) {
+    return {
+      error:
+        "Seu perfil operacional possui um status invalido. Solicite revisao a um administrador.",
+      ok: false,
+    };
+  }
+
+  if (data.status !== "active") {
+    return {
+      error:
+        "Seu perfil operacional nao esta ativo no Careli Hub. Solicite a liberacao do acesso.",
+      ok: false,
+    };
+  }
 
   return {
-    email: user.email,
-    fullName,
-    id: user.id,
-    permissions: getPermissionsForRole(role),
-    role,
-    workspaceId: getStringMetadataValue(user, ["workspace_id", "workspaceId"]) ??
-      workspaceId,
+    data,
+    ok: true,
   };
 }
 
-function getSupabaseUserRole(user: User): HubUserRole {
-  const metadataRole =
-    getStringValue(user.app_metadata.role) ??
-    getStringValue(user.user_metadata.role);
-
-  if (isHubUserRole(metadataRole)) {
-    return metadataRole;
-  }
-
-  return "operator";
-}
-
-function getStringMetadataValue(
-  user: User,
-  keys: readonly string[],
-): string | undefined {
-  for (const key of keys) {
-    const value =
-      getStringValue(user.app_metadata[key]) ??
-      getStringValue(user.user_metadata[key]);
-
-    if (value) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-function getStringValue(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmedValue = value.trim();
-
-  return trimmedValue || undefined;
+function mapHubUserProfile(
+  profile: HubUserProfileRow,
+  workspaceId: string,
+): AuthUser {
+  return {
+    avatarUrl: profile.avatar_url ?? undefined,
+    email: profile.email,
+    fullName: profile.display_name,
+    id: profile.id,
+    permissions: getPermissionsForRole(profile.role),
+    role: profile.role,
+    status: profile.status,
+    workspaceId,
+  };
 }
 
 function isHubUserRole(role: string | undefined): role is HubUserRole {
   return HUB_USER_ROLES.some((hubRole) => hubRole === role);
+}
+
+function isHubUserStatus(
+  status: string | undefined,
+): status is HubUserProfileStatus {
+  return HUB_USER_STATUSES.some((hubStatus) => hubStatus === status);
 }

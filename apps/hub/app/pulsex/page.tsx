@@ -1,7 +1,6 @@
-import { PulseXWorkspace } from "@/components/pulsex";
+import { PulseXAccessGate } from "@/components/pulsex";
 import { HubShell } from "@/layouts/hub-shell";
-import { mockHubUserContext } from "@/lib/auth-state";
-import { canAccessModule, getHubModuleById } from "@repo/shared";
+import { getHubModuleById, isHubModuleActive } from "@repo/shared";
 import { EmptyState, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
 import { notFound } from "next/navigation";
 
@@ -12,13 +11,13 @@ export default function PulseXPage() {
     notFound();
   }
 
-  if (!canAccessModule(mockHubUserContext, hubModule)) {
+  if (!isHubModuleActive(hubModule)) {
     return (
       <HubShell layoutMode="module">
         <WorkspaceLayout
           header={
             <WorkspaceHeader
-              description="Seu usuario nao possui permissao para acessar este modulo."
+              description="Este modulo esta bloqueado enquanto a operacao real e preparada."
               eyebrow="operations"
               title="PulseX"
             />
@@ -26,8 +25,8 @@ export default function PulseXPage() {
         >
           <Surface>
             <EmptyState
-              description="Solicite acesso a um administrador do workspace para visualizar o PulseX."
-              title="Acesso negado"
+              description="O modulo aparecera na sidebar como desabilitado ate ser liberado para uso."
+              title="PulseX em preparacao"
             />
           </Surface>
         </WorkspaceLayout>
@@ -37,7 +36,7 @@ export default function PulseXPage() {
 
   return (
     <HubShell chrome="operational" layoutMode="module">
-      <PulseXWorkspace />
+      <PulseXAccessGate module={hubModule} />
     </HubShell>
   );
 }

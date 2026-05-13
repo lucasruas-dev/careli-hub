@@ -39,7 +39,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const SUPABASE_AUTH_CONFIG = {
   anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-  workspaceId: "careli",
+  workspaceId: process.env.NEXT_PUBLIC_SUPABASE_WORKSPACE_ID ?? "careli",
 };
 
 export function AuthProvider({
@@ -86,12 +86,12 @@ export function AuthProvider({
           return;
         }
 
-        setAuthState(createAuthStateFromSession(result.data));
+        setAuthState(createAuthStateFromResult(result));
       });
 
-      const subscription = supabaseAuthAdapter.onAuthStateChange((session) => {
+      const subscription = supabaseAuthAdapter.onAuthStateChange((result) => {
         if (isMounted) {
-          setAuthState(createAuthStateFromSession(session));
+          setAuthState(createAuthStateFromResult(result));
         }
       });
 
@@ -119,7 +119,7 @@ export function AuthProvider({
   }, [supabaseAuthAdapter]);
 
   useEffect(() => {
-    if (authState.status === "loading") {
+    if (authState.status === "loading" || authState.status === "error") {
       return;
     }
 
@@ -162,6 +162,12 @@ export function AuthProvider({
       if (result.ok) {
         window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
         setAuthState(createAuthStateFromSession(result.data));
+      } else {
+        setAuthState({
+          ...createUnauthenticatedAuthState(),
+          error: result.error,
+          status: "error",
+        });
       }
 
       return result;
@@ -217,6 +223,17 @@ export function AuthProvider({
     return <AuthGateMessage message="Carregando sessao..." />;
   }
 
+  if (authState.status === "error" && !isLoginRoute) {
+    return (
+      <AuthGateMessage
+        message={
+          authState.error ??
+          "Nao foi possivel carregar seu perfil operacional no Careli Hub."
+        }
+      />
+    );
+  }
+
   if (!isLoginRoute && !isAuthenticated(authState)) {
     return <AuthGateMessage message="Redirecionando para login..." />;
   }
@@ -253,6 +270,20 @@ function getMockDisplayName(email: string): string {
     .filter(Boolean)
     .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
     .join(" ");
+}
+
+function createAuthStateFromResult(
+  result: AuthActionResult<AuthSession | null>,
+): AuthState {
+  if (result.ok) {
+    return createAuthStateFromSession(result.data);
+  }
+
+  return {
+    ...createUnauthenticatedAuthState(),
+    error: result.error,
+    status: "error",
+  };
 }
 
 function AuthGateMessage({ message }: { message: string }) {

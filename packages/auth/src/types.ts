@@ -5,11 +5,13 @@ import type {
 } from "@repo/shared";
 
 export type AuthUser = {
+  avatarUrl?: string;
   email?: string;
   fullName?: string;
   id: string;
   permissions: readonly HubPermission[];
   role: HubUserRole;
+  status?: "active" | "archived" | "disabled";
   workspaceId?: string;
 };
 

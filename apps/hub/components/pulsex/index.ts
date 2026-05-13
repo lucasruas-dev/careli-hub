@@ -11,5 +11,6 @@ export * from "./message-composer";
 export * from "./message-item";
 export * from "./message-list";
 export * from "./presence-list";
+export * from "./pulsex-access-gate";
 export * from "./pulsex-workspace";
 export * from "./thread-panel";
