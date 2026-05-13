@@ -48,9 +48,8 @@ export default function SetupPage() {
         <WorkspaceLayout
           header={
             <WorkspaceHeader
-              description="Setup Central e restrito a administradores do Hub."
-              eyebrow="Setup"
-              title="Acesso administrativo"
+              description="Acesso restrito."
+              title="Setup"
             />
           }
         >
@@ -159,9 +158,7 @@ function SetupWorkspace() {
               Atualizar
             </button>
           }
-          description="Configuracao global usada pelos modulos do Hub, incluindo PulseX."
-          eyebrow="Setup Central"
-          title="Estrutura operacional"
+          title="Setup"
         />
       }
     >

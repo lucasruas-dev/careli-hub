@@ -444,13 +444,8 @@ export function HubShell({
             }
             context={
               <div>
-                <p className="m-0 text-xs font-medium uppercase tracking-[0.16em] text-[var(--uix-text-muted)]">
-                  {layoutMode === "module" ? "Modulo" : "Operacao"}
-                </p>
-                <p className="m-0 mt-1 text-base font-semibold text-[var(--uix-text-primary)]">
-                  {layoutMode === "module"
-                    ? (activeModule?.name ?? "Modulo operacional")
-                    : "Painel inicial"}
+                <p className="m-0 text-base font-semibold text-[var(--uix-text-primary)]">
+                  {layoutMode === "module" ? (activeModule?.name ?? "Modulo") : "Home"}
                 </p>
               </div>
             }

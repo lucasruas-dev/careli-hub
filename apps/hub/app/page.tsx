@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  adminHomeScope,
   departmentModuleAccess,
   hubImprovements,
   operationalActivities,
@@ -15,7 +14,6 @@ import { useAuth } from "@/providers/auth-provider";
 import {
   canAccessModule,
   isHubModuleActive,
-  mapLegacyRoleToOperationalProfile,
   orderedHubModules,
 } from "@repo/shared";
 import { Badge, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
@@ -72,12 +70,7 @@ const improvementTypeVariant = {
 
 export default function HomePage() {
   const { hubUser } = useAuth();
-  const displayName = hubUser?.name ?? "Operacao Careli";
-  const profileRole = hubUser
-    ? mapLegacyRoleToOperationalProfile(hubUser.role)
-    : adminHomeScope.profileRole;
-  const scopeDescription =
-    profileRole === "adm" ? adminHomeScope.description : "visao operacional";
+  const displayName = getFirstName(hubUser?.name ?? "Operacao");
   const availableModules = orderedHubModules.filter(
     (hubModule) =>
       isHubModuleActive(hubModule) &&
@@ -99,17 +92,7 @@ export default function HomePage() {
         aside={<HomeAside activeModulesCount={availableModules.length} />}
         className="careli-home"
         header={
-          <WorkspaceHeader
-            actions={
-              <div className="flex items-center gap-2">
-                <Badge variant="success">adm</Badge>
-                <Badge variant="neutral">escopo global</Badge>
-              </div>
-            }
-            description={`Bom dia, ${displayName}. ${scopeDescription}.`}
-            eyebrow="Hub Careli"
-            title="Central Operacional"
-          />
+          <WorkspaceHeader title={`${getGreeting()}, ${displayName}.`} />
         }
       >
         <section className="grid grid-cols-6 gap-3">
@@ -377,4 +360,22 @@ function countTeamStatus(status: OperationStatus): number {
 function countActivities(status: OperationalActivityStatus): number {
   return operationalActivities.filter((activity) => activity.status === status)
     .length;
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+
+  if (hour < 12) {
+    return "Bom dia";
+  }
+
+  if (hour < 18) {
+    return "Boa tarde";
+  }
+
+  return "Boa noite";
+}
+
+function getFirstName(name: string) {
+  return name.trim().split(/\s+/)[0] ?? name;
 }

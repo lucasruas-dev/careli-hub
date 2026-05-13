@@ -3,7 +3,6 @@ import type {
   DepartmentModuleAccess,
   OperationalProfileRole,
   Sector,
-  VisibilityScope,
 } from "@repo/shared";
 
 export type OperationStatus =
@@ -53,13 +52,6 @@ export type HubImprovement = {
   moduleId?: string;
   title: string;
   type: HubImprovementType;
-};
-
-export type OperationalHomeScope = {
-  description: string;
-  label: string;
-  profileRole: OperationalProfileRole;
-  visibilityScope: VisibilityScope;
 };
 
 export const operationalDepartments: readonly Department[] = [
@@ -266,10 +258,3 @@ export const hubImprovements: readonly HubImprovement[] = [
     type: "novo recurso",
   },
 ];
-
-export const adminHomeScope: OperationalHomeScope = {
-  description: "visao geral da operacao",
-  label: "Administrador",
-  profileRole: "adm",
-  visibilityScope: "global",
-};
