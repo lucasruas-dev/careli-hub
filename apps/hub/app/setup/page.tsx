@@ -25,7 +25,6 @@ import {
   Plus,
   RefreshCw,
   ShieldAlert,
-  X,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
@@ -39,12 +38,9 @@ type SetupTabId =
   | "pulsex";
 
 type SetupActionId =
-  | "configure-module"
   | "new-channel"
   | "new-department"
-  | "new-permission"
-  | "new-sector"
-  | "new-user";
+  | "new-sector";
 
 const setupTabs = [
   { icon: Users, id: "usuarios", label: "Usuarios" },
@@ -109,7 +105,7 @@ function SetupWorkspace() {
       setError(
         setupError instanceof Error
           ? setupError.message
-          : "Nao foi possivel carregar o Setup.",
+          : "Nao foi possivel carregar os dados do Setup.",
       );
     } finally {
       setIsLoading(false);
@@ -283,39 +279,22 @@ function SetupTabContent({
   if (!data) {
     return (
       <EmptyState
-        description="Execute a migration 0002 para habilitar esta configuracao."
-        title="Setup indisponivel"
+        description="Atualize a conexao e tente novamente."
+        title="Dados indisponiveis"
       />
     );
   }
 
   if (activeTab === "usuarios") {
     return (
-      <TabPanel
-        action={
-          <ActionButton onClick={() => onOpenAction("new-user")}>
-            Novo usuario
-          </ActionButton>
-        }
-        title="Usuarios"
-      >
-        {activeAction === "new-user" ? (
-          <ActionNotice
-            onClose={onCloseAction}
-            title="Usuarios via Supabase Auth"
-          >
-            Crie o usuario no Supabase Auth. O perfil aparece aqui quando
-            existir em hub_users.
-          </ActionNotice>
-        ) : null}
+      <TabPanel title="Usuarios">
         <DataGrid
           empty="Nenhum usuario sincronizado em hub_users."
-          headers={["Nome", "Email", "Perfil", "Departamento", "Status"]}
+          headers={["Nome", "Email", "Role", "Status"]}
           rows={data.users.map((user) => [
             user.displayName,
             user.email,
             user.role,
-            [user.departmentName, user.sectorName].filter(Boolean).join(" / ") || "-",
             user.status,
           ])}
         />
@@ -387,19 +366,7 @@ function SetupTabContent({
 
   if (activeTab === "modulos") {
     return (
-      <TabPanel
-        action={
-          <ActionButton onClick={() => onOpenAction("configure-module")}>
-            Configurar modulo
-          </ActionButton>
-        }
-        title="Modulos"
-      >
-        {activeAction === "configure-module" ? (
-          <ActionNotice onClose={onCloseAction} title="Configuracao visual">
-            A edicao de liberacao por departamento fica para a proxima etapa.
-          </ActionNotice>
-        ) : null}
+      <TabPanel title="Modulos">
         <DataGrid
           empty="Nenhum modulo cadastrado."
           headers={["Modulo", "Rota", "Status", "Departamentos liberados"]}
@@ -418,18 +385,7 @@ function SetupTabContent({
 
   if (activeTab === "permissoes") {
     return (
-      <TabPanel
-        action={
-          <button
-            className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] px-3 text-sm font-semibold text-[#98a2b3]"
-            disabled
-            type="button"
-          >
-            Nova permissao
-          </button>
-        }
-        title="Permissoes"
-      >
+      <TabPanel title="Permissoes">
         <DataGrid
           empty="Nenhuma permissao cadastrada."
           headers={["Permissao", "Escopo", "Modulo", "Descricao"]}
@@ -698,7 +654,7 @@ function DataGrid({
   rows: readonly (readonly ReactNode[])[];
 }) {
   if (rows.length === 0) {
-    return <EmptyState description={empty} title="Estado vazio" />;
+    return <EmptyState description={empty} title="Nenhum registro" />;
   }
 
   return (
@@ -780,33 +736,6 @@ function ActionButton({
       <Plus aria-hidden="true" size={15} />
       {children}
     </button>
-  );
-}
-
-function ActionNotice({
-  children,
-  onClose,
-  title,
-}: {
-  children: ReactNode;
-  onClose: () => void;
-  title: string;
-}) {
-  return (
-    <div className="grid gap-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="m-0 text-sm font-semibold text-[#101820]">{title}</p>
-        <button
-          aria-label="Fechar"
-          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-          onClick={onClose}
-          type="button"
-        >
-          <X aria-hidden="true" size={15} />
-        </button>
-      </div>
-      <p className="m-0 text-sm text-[#667085]">{children}</p>
-    </div>
   );
 }
 

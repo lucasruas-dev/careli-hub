@@ -240,7 +240,7 @@ export async function createDepartment(input: CreateDepartmentInput) {
   const client = getHubSupabaseClient();
 
   if (!client) {
-    throw new Error("Supabase nao configurado.");
+    throw new Error("Conexao indisponivel.");
   }
 
   const payload = {
@@ -264,7 +264,7 @@ export async function createSector(input: CreateSectorInput) {
   const client = getHubSupabaseClient();
 
   if (!client) {
-    throw new Error("Supabase nao configurado.");
+    throw new Error("Conexao indisponivel.");
   }
 
   const payload = {
@@ -289,7 +289,7 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
   const client = getHubSupabaseClient();
 
   if (!client) {
-    throw new Error("Supabase nao configurado.");
+    throw new Error("Conexao indisponivel.");
   }
 
   const result = await client
@@ -320,24 +320,13 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
   const queryResult = result as QueryResult<unknown>;
 
   if (queryResult.error) {
-    throw new Error(getSetupErrorMessage(label, queryResult.error));
+    throw new Error(getSetupErrorMessage(label));
   }
 }
 
-function getSetupErrorMessage(
-  label: string,
-  error: NonNullable<QueryResult<unknown>["error"]>,
-) {
-  const message = error.message.toLowerCase();
-
-  if (
-    error.code === "42P01" ||
-    error.code === "PGRST205" ||
-    message.includes("could not find the table") ||
-    message.includes("does not exist") ||
-    message.includes("schema cache")
-  ) {
-    return "Execute a migration 0002 para habilitar esta configuracao.";
+function getSetupErrorMessage(label: string) {
+  if (label.startsWith("salvar")) {
+    return `Nao foi possivel ${label}.`;
   }
 
   return `Nao foi possivel carregar ${label}.`;
