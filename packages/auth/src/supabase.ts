@@ -2,11 +2,13 @@ import {
   createClient,
   type Session,
   type SupabaseClient,
+  type User,
 } from "@supabase/supabase-js";
 import { getPermissionsForRole, type HubUserRole } from "@repo/shared";
 import type {
   AuthActionResult,
   AuthAdapter,
+  AuthErrorDetails,
   AuthSession,
   AuthUser,
   PasswordAuthCredentials,
@@ -307,7 +309,12 @@ async function mapSupabaseSession(
     };
   }
 
-  const profileResult = await loadHubUserProfile(client, session.user.id);
+  logAuthDebug("auth session loaded", {
+    email: session.user.email,
+    userId: session.user.id,
+  });
+
+  const profileResult = await loadHubUserProfile(client, session.user);
 
   if (!profileResult.ok) {
     return profileResult;
@@ -331,8 +338,11 @@ async function mapSupabaseSession(
 
 async function loadHubUserProfile(
   client: SupabaseClient,
-  userId: string,
+  authUser: User,
 ): Promise<AuthActionResult<HubUserProfileRow>> {
+  const userId = authUser.id;
+  const email = authUser.email;
+
   try {
     const result = await withTimeout(
       client
@@ -346,55 +356,137 @@ async function loadHubUserProfile(
     const { data, error } = result;
 
     if (error) {
-      logAuthError("auth error", error.message);
+      logAuthError("auth error", {
+        email,
+        message: error.message,
+        queryResult: "error",
+        userId,
+      });
 
       return {
         error: `Nao foi possivel carregar o perfil operacional do Hub: ${error.message}`,
+        errorDetails: createAuthErrorDetails({
+          code: "supabase_auth_error",
+          email,
+          hint: "Verifique permissoes de leitura em public.hub_users e se a tabela existe no schema public.",
+          queryResult: "error",
+          userId,
+        }),
         ok: false,
       };
     }
 
     if (!data) {
-      logAuthDebug("hub user profile missing", userId);
+      logAuthDebug("hub user profile missing", {
+        email,
+        queryResult: "missing",
+        userId,
+      });
+
+      const createResult = await createDevelopmentHubUserProfile(
+        client,
+        authUser,
+      );
+
+      if (createResult.ok) {
+        logAuthDebug("hub user profile loaded", {
+          email: createResult.data.email,
+          queryResult: "created",
+          userId: createResult.data.id,
+        });
+
+        return createResult;
+      }
 
       return {
-        error:
-          "Seu login foi autenticado, mas o perfil operacional ainda nao existe no Careli Hub. Solicite a liberacao do acesso.",
+        error: createMissingHubProfileMessage({ email, userId }),
+        errorDetails: createAuthErrorDetails({
+          code: createResult.errorDetails?.code ?? "hub_profile_missing",
+          email,
+          hint:
+            createResult.errorDetails?.hint ??
+            "Crie ou sincronize um registro em public.hub_users com id igual ao auth.users.id.",
+          queryResult: createResult.errorDetails?.queryResult ?? "missing",
+          userId,
+        }),
         ok: false,
       };
     }
 
     if (!isHubUserRole(data.role)) {
-      logAuthError("auth error", "invalid hub user role");
+      logAuthError("auth error", {
+        email,
+        queryResult: "found",
+        reason: "invalid hub user role",
+        userId,
+      });
 
       return {
         error:
           "Seu perfil operacional possui uma role invalida. Solicite revisao a um administrador.",
+        errorDetails: createAuthErrorDetails({
+          code: "hub_profile_invalid",
+          email,
+          hint: "Use uma role valida: admin, leader, operator ou viewer.",
+          queryResult: "found",
+          userId,
+        }),
         ok: false,
       };
     }
 
     if (!isHubUserStatus(data.status)) {
-      logAuthError("auth error", "invalid hub user status");
+      logAuthError("auth error", {
+        email,
+        queryResult: "found",
+        reason: "invalid hub user status",
+        userId,
+      });
 
       return {
         error:
           "Seu perfil operacional possui um status invalido. Solicite revisao a um administrador.",
+        errorDetails: createAuthErrorDetails({
+          code: "hub_profile_invalid",
+          email,
+          hint: "Use um status valido: active, archived ou disabled.",
+          queryResult: "found",
+          userId,
+        }),
         ok: false,
       };
     }
 
     if (data.status !== "active") {
-      logAuthError("auth error", "inactive hub user profile");
+      logAuthError("auth error", {
+        email,
+        queryResult: "found",
+        reason: "inactive hub user profile",
+        status: data.status,
+        userId,
+      });
 
       return {
         error:
           "Seu perfil operacional nao esta ativo no Careli Hub. Solicite a liberacao do acesso.",
+        errorDetails: createAuthErrorDetails({
+          code: "hub_profile_inactive",
+          email,
+          hint: "Atualize public.hub_users.status para active.",
+          queryResult: "found",
+          userId,
+        }),
         ok: false,
       };
     }
 
-    logAuthDebug("hub user profile loaded", data.id);
+    logAuthDebug("hub user profile loaded", {
+      email: data.email,
+      queryResult: "found",
+      role: data.role,
+      status: data.status,
+      userId: data.id,
+    });
 
     return {
       data,
@@ -406,13 +498,101 @@ async function loadHubUserProfile(
       "Supabase indisponivel ao carregar o perfil operacional do Hub.",
     );
 
-    logAuthError("auth error", message);
+    logAuthError("auth error", {
+      email,
+      message,
+      queryResult: "error",
+      userId,
+    });
 
     return {
       error: message,
+      errorDetails: createAuthErrorDetails({
+        code: "supabase_unavailable",
+        email,
+        hint: "Verifique conectividade com Supabase e permissoes da anon key.",
+        queryResult: "error",
+        userId,
+      }),
       ok: false,
     };
   }
+}
+
+async function createDevelopmentHubUserProfile(
+  client: SupabaseClient,
+  authUser: User,
+): Promise<AuthActionResult<HubUserProfileRow>> {
+  if (!isLocalDevelopmentRuntime()) {
+    return {
+      error: "Perfil operacional ausente.",
+      errorDetails: createAuthErrorDetails({
+        code: "hub_profile_missing",
+        email: authUser.email,
+        hint:
+          "Crie ou sincronize manualmente um registro em public.hub_users para este auth.users.id.",
+        queryResult: "missing",
+        userId: authUser.id,
+      }),
+      ok: false,
+    };
+  }
+
+  const displayName = getAuthUserDisplayName(authUser);
+  const profile = {
+    avatar_url: getStringMetadataValue(authUser, ["avatar_url"]) ?? null,
+    display_name: displayName,
+    email: authUser.email ?? `${authUser.id}@auth.local`,
+    id: authUser.id,
+    role: "operator" as const,
+    status: "active" as const,
+  };
+
+  logAuthDebug("hub user profile missing", {
+    action: "attempting development auto-create",
+    email: authUser.email,
+    queryResult: "missing",
+    userId: authUser.id,
+  });
+
+  const { data, error } = await withTimeout(
+    client
+      .from("hub_users")
+      .upsert(profile, { onConflict: "id" })
+      .select("id,email,display_name,avatar_url,role,status")
+      .single<HubUserProfileRow>(),
+    "Tempo excedido ao criar perfil operacional de desenvolvimento.",
+  );
+
+  if (error) {
+    logAuthError("auth error", {
+      email: authUser.email,
+      message: error.message,
+      queryResult: "error",
+      userId: authUser.id,
+    });
+
+    return {
+      error: createMissingHubProfileMessage({
+        email: authUser.email,
+        userId: authUser.id,
+      }),
+      errorDetails: createAuthErrorDetails({
+        code: "hub_profile_create_failed",
+        email: authUser.email,
+        hint:
+          "A tentativa local de criar public.hub_users foi bloqueada. Execute o backfill SQL ou crie a linha manualmente.",
+        queryResult: "error",
+        userId: authUser.id,
+      }),
+      ok: false,
+    };
+  }
+
+  return {
+    data,
+    ok: true,
+  };
 }
 
 function mapHubUserProfile(
@@ -487,7 +667,66 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function logAuthDebug(event: string, detail?: string) {
+function createMissingHubProfileMessage({
+  email,
+  userId,
+}: {
+  email?: string;
+  userId: string;
+}) {
+  return [
+    "Seu login foi autenticado, mas o perfil operacional ainda nao existe no Careli Hub.",
+    `Crie ou sincronize public.hub_users com id = ${userId}.`,
+    email ? `Email autenticado: ${email}.` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function createAuthErrorDetails(
+  details: AuthErrorDetails,
+): AuthErrorDetails {
+  return Object.fromEntries(
+    Object.entries(details).filter(([, value]) => value !== undefined),
+  ) as AuthErrorDetails;
+}
+
+function getAuthUserDisplayName(user: User): string {
+  return (
+    getStringMetadataValue(user, ["full_name", "fullName", "name"]) ??
+    user.email?.split("@")[0] ??
+    "Careli User"
+  );
+}
+
+function getStringMetadataValue(
+  user: User,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value =
+      getStringValue(user.app_metadata[key]) ??
+      getStringValue(user.user_metadata[key]);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function getStringValue(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmedValue = value.trim();
+
+  return trimmedValue || undefined;
+}
+
+function logAuthDebug(event: string, detail?: unknown) {
   if (!isLocalDevelopmentRuntime()) {
     return;
   }
@@ -495,7 +734,7 @@ function logAuthDebug(event: string, detail?: string) {
   console.debug(`[careli-auth] ${event}`, detail ?? "");
 }
 
-function logAuthError(event: string, detail?: string) {
+function logAuthError(event: string, detail?: unknown) {
   if (!isLocalDevelopmentRuntime()) {
     return;
   }

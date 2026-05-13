@@ -29,8 +29,23 @@ export type AuthProviderStatus =
   | "unauthenticated"
   | "error";
 
+export type AuthErrorDetails = {
+  code?:
+    | "hub_profile_create_failed"
+    | "hub_profile_inactive"
+    | "hub_profile_invalid"
+    | "hub_profile_missing"
+    | "supabase_auth_error"
+    | "supabase_unavailable";
+  email?: string;
+  hint?: string;
+  queryResult?: "created" | "error" | "found" | "missing";
+  userId?: string;
+};
+
 export type AuthState = {
   error?: string;
+  errorDetails?: AuthErrorDetails;
   session: AuthSession | null;
   status: AuthProviderStatus;
   user: AuthUser | null;
@@ -45,6 +60,7 @@ export type AuthActionResult<Data = undefined> =
   | {
       data?: never;
       error: string;
+      errorDetails?: AuthErrorDetails;
       ok: false;
     };
 

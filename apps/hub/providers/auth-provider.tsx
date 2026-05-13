@@ -10,6 +10,7 @@ import {
   isAuthenticated,
   mapAuthUserToHubUserContext,
   type AuthActionResult,
+  type AuthErrorDetails,
   type AuthSession,
   type AuthState,
   type PasswordAuthCredentials,
@@ -198,7 +199,7 @@ export function AuthProvider({
         setAuthState(createAuthStateFromSession(result.data));
       } else {
         logAuthDebug("auth error", result.error);
-        setAuthState(createAuthErrorState(result.error));
+        setAuthState(createAuthErrorState(result.error, result.errorDetails));
       }
 
       return result;
@@ -258,10 +259,14 @@ export function AuthProvider({
   if (authState.status === "error" && !isLoginRoute) {
     return (
       <AuthGateMessage
+        details={authState.errorDetails}
         message={
           authState.error ??
           "Nao foi possivel carregar seu perfil operacional no Careli Hub."
         }
+        onSignOut={() => {
+          void signOut();
+        }}
       />
     );
   }
@@ -314,14 +319,19 @@ function createAuthStateFromResult(
   return {
     ...createUnauthenticatedAuthState(),
     error: result.error,
+    errorDetails: result.errorDetails,
     status: "error",
   };
 }
 
-function createAuthErrorState(error: string): AuthState {
+function createAuthErrorState(
+  error: string,
+  errorDetails?: AuthErrorDetails,
+): AuthState {
   return {
     ...createUnauthenticatedAuthState(),
     error,
+    errorDetails,
     status: "error",
   };
 }
@@ -372,10 +382,62 @@ function isLocalDevelopmentRuntime(): boolean {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
-function AuthGateMessage({ message }: { message: string }) {
+function AuthGateMessage({
+  details,
+  message,
+  onSignOut,
+}: {
+  details?: AuthErrorDetails;
+  message: string;
+  onSignOut?: () => void;
+}) {
   return (
     <div className="grid min-h-screen place-items-center bg-[var(--uix-surface-canvas)] px-6 text-center">
-      <p className="m-0 text-sm text-[var(--uix-text-muted)]">{message}</p>
+      <div className="max-w-2xl rounded-md border border-[#d9e0ea] bg-white px-6 py-5 shadow-sm">
+        <p className="m-0 text-sm font-medium text-[var(--uix-text-primary)]">
+          {message}
+        </p>
+        {details ? (
+          <div className="mt-4 grid gap-2 rounded-md bg-[#f8fafc] p-3 text-left text-xs text-[var(--uix-text-muted)]">
+            {details.email ? (
+              <AuthDetailRow label="Email" value={details.email} />
+            ) : null}
+            {details.userId ? (
+              <AuthDetailRow label="Auth user id" value={details.userId} />
+            ) : null}
+            {details.queryResult ? (
+              <AuthDetailRow label="hub_users" value={details.queryResult} />
+            ) : null}
+            {details.hint ? (
+              <p className="m-0 leading-5">{details.hint}</p>
+            ) : null}
+          </div>
+        ) : null}
+        {onSignOut ? (
+          <button
+            className="mt-4 rounded-md bg-[#101820] px-4 py-2 text-sm font-semibold text-white outline-none transition hover:bg-[#182431] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+            onClick={onSignOut}
+            type="button"
+          >
+            Sair
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function AuthDetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
+      <span className="font-semibold text-[#667085]">{label}</span>
+      <span className="break-all font-mono text-[#344054]">{value}</span>
     </div>
   );
 }
