@@ -173,12 +173,13 @@ export function AuthProvider({
           "Tempo excedido ao entrar no Hub.",
         );
       } catch (error) {
-        const message = getErrorMessage(
+        const technicalMessage = getErrorMessage(
           error,
           "Nao foi possivel entrar no Hub.",
         );
+        const message = getFriendlyAuthMessage(technicalMessage);
 
-        logAuthDebug("auth error", message);
+        logAuthDebug("auth error", technicalMessage);
         setAuthState(createAuthErrorState(message));
 
         return {
@@ -199,8 +200,18 @@ export function AuthProvider({
         logAuthDebug("hub user profile loaded", result.data.user.id);
         setAuthState(createAuthStateFromSession(result.data));
       } else {
+        const message = getFriendlyAuthMessage(
+          result.error,
+          result.errorDetails,
+        );
+
         logAuthDebug("auth error", result.error);
-        setAuthState(createAuthErrorState(result.error, result.errorDetails));
+        setAuthState(createAuthErrorState(message, result.errorDetails));
+
+        return {
+          ...result,
+          error: message,
+        };
       }
 
       return result;
@@ -380,7 +391,14 @@ function isLocalDevelopmentRuntime(): boolean {
 }
 
 function getAuthGateMessage(authState: AuthState): string {
-  const errorCode = authState.errorDetails?.code;
+  return getFriendlyAuthMessage(authState.error, authState.errorDetails);
+}
+
+function getFriendlyAuthMessage(
+  error?: string,
+  details?: AuthErrorDetails,
+): string {
+  const errorCode = details?.code;
 
   if (
     errorCode === "hub_profile_create_failed" ||
@@ -388,13 +406,41 @@ function getAuthGateMessage(authState: AuthState): string {
     errorCode === "hub_profile_invalid" ||
     errorCode === "hub_profile_missing"
   ) {
-    return "Seu usuario ainda nao possui acesso liberado ao Hub Careli. Entre em contato com o administrador do sistema.";
+    return "Seu usuário ainda não possui acesso ao Hub Careli.";
   }
 
-  return (
-    authState.error ??
-    "Nao foi possivel carregar seu acesso ao Hub Careli. Tente novamente."
-  );
+  const normalizedError = (error ?? "").trim().toLowerCase();
+
+  if (normalizedError.includes("invalid login credentials")) {
+    return "E-mail ou senha inválidos.";
+  }
+
+  if (normalizedError.includes("email not confirmed")) {
+    return "Seu acesso ainda não foi liberado.";
+  }
+
+  if (normalizedError.includes("user not found")) {
+    return "Usuário não encontrado.";
+  }
+
+  if (
+    normalizedError.includes("profile missing") ||
+    normalizedError.includes("perfil operacional ausente") ||
+    normalizedError.includes("perfil operacional ainda nao existe") ||
+    normalizedError.includes("public.hub_users")
+  ) {
+    return "Seu usuário ainda não possui acesso ao Hub Careli.";
+  }
+
+  if (normalizedError.includes("adaptador supabase auth indisponivel")) {
+    return "Serviço de autenticação indisponível. Tente novamente.";
+  }
+
+  if (normalizedError.includes("tempo excedido")) {
+    return "Não foi possível validar seu acesso agora. Tente novamente.";
+  }
+
+  return "Não foi possível validar seu acesso ao Hub Careli. Tente novamente.";
 }
 
 function AuthGateMessage({
