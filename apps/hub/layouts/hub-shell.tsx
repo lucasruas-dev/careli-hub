@@ -257,10 +257,11 @@ export function HubShell({
                   </Tooltip>
                 </div>
               ) : (
-                <div className="relative flex min-h-11 items-center justify-center pb-1 pt-0.5">
+                <div className="grid min-h-11 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-3 pb-1 pt-0.5">
+                  <span aria-hidden="true" />
                   <div
                     aria-label="Careli C2X"
-                    className="flex min-w-0 items-center text-[#c9d1dc]"
+                    className="flex min-w-0 items-center justify-center text-[#c9d1dc]"
                     role="img"
                   >
                     <span
@@ -281,7 +282,7 @@ export function HubShell({
                   <Tooltip content="Recolher menu" placement="right">
                     <button
                       aria-label="Recolher sidebar"
-                      className="absolute right-0 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                      className="grid h-8 w-8 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                       onClick={handleToggleSidebar}
                       type="button"
                     >
