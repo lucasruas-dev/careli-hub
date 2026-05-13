@@ -71,3 +71,30 @@ export type SetupData = {
   sectors: SetupSector[];
   users: SetupUser[];
 };
+
+export type SetupRecordStatus = SetupDepartment["status"];
+
+export type CreateDepartmentInput = {
+  description?: string;
+  name: string;
+  slug: string;
+  status: SetupRecordStatus;
+};
+
+export type CreateSectorInput = {
+  departmentId: string;
+  description?: string;
+  name: string;
+  slug: string;
+  status: SetupRecordStatus;
+};
+
+export type CreatePulseXChannelInput = {
+  departmentId?: string;
+  description?: string;
+  id: string;
+  kind: SetupPulseXChannel["kind"];
+  name: string;
+  sectorId?: string;
+  status: SetupRecordStatus;
+};

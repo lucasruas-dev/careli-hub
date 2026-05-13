@@ -2,6 +2,9 @@
 
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
+  CreateDepartmentInput,
+  CreatePulseXChannelInput,
+  CreateSectorInput,
   SetupData,
   SetupDepartment,
   SetupDepartmentModule,
@@ -14,7 +17,7 @@ import type {
 
 type QueryResult<T> = {
   data: T | null;
-  error: { message: string } | null;
+  error: { code?: string; message: string } | null;
 };
 
 type DepartmentRow = {
@@ -176,11 +179,64 @@ export async function loadSetupData(): Promise<SetupData> {
   };
 }
 
-export async function saveDepartment(input: {
-  id?: string;
-  name: string;
-  slug: string;
-}) {
+export async function listDepartments() {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    return [];
+  }
+
+  const result = await client
+    .from("hub_departments")
+    .select("id,slug,name,description,status,created_at")
+    .order("name");
+
+  assertQuery("departamentos", result);
+
+  return ((result as QueryResult<DepartmentRow[]>).data ?? []).map(
+    mapDepartment,
+  );
+}
+
+export async function listSectors() {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    return [];
+  }
+
+  const result = await client
+    .from("hub_sectors")
+    .select("id,department_id,slug,name,description,status,hub_departments(name)")
+    .order("name");
+
+  assertQuery("setores", result);
+
+  return ((result as QueryResult<SectorRow[]>).data ?? []).map(mapSector);
+}
+
+export async function listPulseXChannels() {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    return [];
+  }
+
+  const result = await client
+    .from("pulsex_channels")
+    .select(
+      "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+    )
+    .order("order");
+
+  assertQuery("canais PulseX", result);
+
+  return ((result as QueryResult<PulseXChannelRow[]>).data ?? []).map(
+    mapPulseXChannel,
+  );
+}
+
+export async function createDepartment(input: CreateDepartmentInput) {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -188,14 +244,14 @@ export async function saveDepartment(input: {
   }
 
   const payload = {
-    id: input.id,
+    description: input.description?.trim() || null,
     name: input.name.trim(),
     slug: input.slug.trim(),
-    status: "active",
+    status: input.status,
   };
   const result = await client
     .from("hub_departments")
-    .upsert(payload, { onConflict: input.id ? "id" : "slug" })
+    .insert(payload)
     .select("id,slug,name,description,status,created_at")
     .single();
 
@@ -204,12 +260,7 @@ export async function saveDepartment(input: {
   return mapDepartment((result as QueryResult<DepartmentRow>).data);
 }
 
-export async function saveSector(input: {
-  departmentId: string;
-  id?: string;
-  name: string;
-  slug: string;
-}) {
+export async function createSector(input: CreateSectorInput) {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -218,14 +269,14 @@ export async function saveSector(input: {
 
   const payload = {
     department_id: input.departmentId,
-    id: input.id,
+    description: input.description?.trim() || null,
     name: input.name.trim(),
     slug: input.slug.trim(),
-    status: "active",
+    status: input.status,
   };
   const result = await client
     .from("hub_sectors")
-    .upsert(payload, { onConflict: input.id ? "id" : "slug" })
+    .insert(payload)
     .select("id,department_id,slug,name,description,status,hub_departments(name)")
     .single();
 
@@ -234,12 +285,62 @@ export async function saveSector(input: {
   return mapSector((result as QueryResult<SectorRow>).data);
 }
 
+export async function createPulseXChannel(input: CreatePulseXChannelInput) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Supabase nao configurado.");
+  }
+
+  const result = await client
+    .from("pulsex_channels")
+    .insert({
+      department_id: input.departmentId || null,
+      description: input.description?.trim() || null,
+      id: input.id.trim(),
+      kind: input.kind,
+      name: input.name.trim(),
+      sector_id: input.sectorId || null,
+      status: input.status,
+    })
+    .select(
+      "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+    )
+    .single();
+
+  assertQuery("salvar canal PulseX", result);
+
+  return mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
+}
+
+export const saveDepartment = createDepartment;
+export const saveSector = createSector;
+
 function assertQuery(label: string, result: unknown): asserts result is QueryResult<unknown> {
   const queryResult = result as QueryResult<unknown>;
 
   if (queryResult.error) {
-    throw new Error(`Nao foi possivel carregar ${label}: ${queryResult.error.message}`);
+    throw new Error(getSetupErrorMessage(label, queryResult.error));
   }
+}
+
+function getSetupErrorMessage(
+  label: string,
+  error: NonNullable<QueryResult<unknown>["error"]>,
+) {
+  const message = error.message.toLowerCase();
+
+  if (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    message.includes("could not find the table") ||
+    message.includes("does not exist") ||
+    message.includes("schema cache")
+  ) {
+    return "Execute a migration 0002 para habilitar esta configuracao.";
+  }
+
+  return `Nao foi possivel carregar ${label}.`;
 }
 
 function mapDepartment(row: DepartmentRow | null): SetupDepartment {
@@ -288,7 +389,11 @@ function mapUser(row: UserRow): SetupUser {
   };
 }
 
-function mapPulseXChannel(row: PulseXChannelRow): SetupPulseXChannel {
+function mapPulseXChannel(row: PulseXChannelRow | null): SetupPulseXChannel {
+  if (!row) {
+    throw new Error("Canal PulseX inexistente.");
+  }
+
   return {
     departmentId: row.department_id ?? undefined,
     departmentName: row.hub_departments?.name,

@@ -1373,7 +1373,9 @@
   grid-column: 1;
   min-width: 0;
   min-height: 100vh;
+  max-width: 100%;
   flex-direction: column;
+  overflow-x: hidden;
   border-right: 1px solid #203b5a;
   background: #10243a;
   color: #f7f8fa;
@@ -1448,7 +1450,8 @@
   flex: 1;
   flex-direction: column;
   gap: var(--uix-space-4);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: var(--uix-space-4) var(--uix-space-3);
 }
 
@@ -1461,6 +1464,8 @@
 
 .uix-sidebar-group {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: var(--uix-space-2);
 }
 
@@ -1492,6 +1497,7 @@
 .uix-sidebar-item {
   display: grid;
   min-height: var(--uix-density-control-height);
+  min-width: 0;
   width: 100%;
   grid-template-columns: 1.25rem minmax(0, 1fr) auto;
   align-items: center;
@@ -1537,12 +1543,17 @@
 }
 
 .uix-sidebar-item__label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .uix-sidebar-item__badge {
+  max-width: 4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   min-width: 1.25rem;
   border-radius: var(--uix-radius-full);
   background: var(--uix-color-brand-primary);
