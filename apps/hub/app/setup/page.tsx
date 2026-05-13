@@ -7,6 +7,9 @@ import {
   createPulseXChannel,
   createSector,
   loadSetupData,
+  updateDepartment,
+  updatePulseXChannel,
+  updateSector,
 } from "@/lib/setup/data";
 import type {
   CreateDepartmentInput,
@@ -14,17 +17,26 @@ import type {
   CreatePulseXChannelInput,
   CreateSectorInput,
   SetupData,
+  SetupDepartment,
   SetupOperationalProfileRole,
+  SetupPulseXChannel,
   SetupRecordStatus,
+  SetupSector,
+  UpdateDepartmentInput,
+  UpdatePulseXChannelInput,
+  UpdateSectorInput,
 } from "@/lib/setup/types";
 import { useAuth } from "@/providers/auth-provider";
 import { Badge, EmptyState, Surface, Tooltip, WorkspaceLayout } from "@repo/uix";
 import {
   Building2,
+  Archive,
   KeyRound,
   Layers3,
   MessageSquareText,
+  MoreVertical,
   PackageCheck,
+  Pencil,
   Plus,
   RefreshCw,
   ShieldAlert,
@@ -46,6 +58,11 @@ type SetupActionId =
   | "new-department"
   | "new-sector"
   | "new-user";
+
+type SetupEditTarget =
+  | { record: SetupDepartment; type: "department" }
+  | { record: SetupSector; type: "sector" }
+  | { record: SetupPulseXChannel; type: "channel" };
 
 const setupTabs = [
   { icon: Users, id: "usuarios", label: "Usuarios" },
@@ -91,6 +108,7 @@ function SetupWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<SetupActionId | null>(null);
+  const [editTarget, setEditTarget] = useState<SetupEditTarget | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -197,6 +215,57 @@ function SetupWorkspace() {
     }
   }
 
+  async function handleUpdateDepartment(input: UpdateDepartmentInput) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updateDepartment(input);
+      await refreshSetupData();
+      setEditTarget(null);
+      setSuccess("Departamento atualizado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleUpdateSector(input: UpdateSectorInput) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updateSector(input);
+      await refreshSetupData();
+      setEditTarget(null);
+      setSuccess("Setor atualizado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleUpdatePulseXChannel(input: UpdatePulseXChannelInput) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updatePulseXChannel(input);
+      await refreshSetupData();
+      setEditTarget(null);
+      setSuccess("Canal PulseX atualizado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <WorkspaceLayout
       className="bg-[#f3f6fa]"
@@ -239,6 +308,7 @@ function SetupWorkspace() {
                 onClick={() => {
                   setActiveTab(tab.id);
                   setActiveAction(null);
+                  setEditTarget(null);
                 }}
                 type="button"
               >
@@ -274,11 +344,23 @@ function SetupWorkspace() {
               onCreateOperationalUser={handleCreateOperationalUser}
               onCreatePulseXChannel={handleCreatePulseXChannel}
               onCreateSector={handleCreateSector}
+              onEditRecord={setEditTarget}
               onOpenAction={setActiveAction}
             />
           )}
         </div>
       </Surface>
+      {editTarget ? (
+        <EditRecordModal
+          data={data}
+          isSaving={isSaving}
+          onClose={() => setEditTarget(null)}
+          onUpdateDepartment={handleUpdateDepartment}
+          onUpdatePulseXChannel={handleUpdatePulseXChannel}
+          onUpdateSector={handleUpdateSector}
+          target={editTarget}
+        />
+      ) : null}
     </WorkspaceLayout>
   );
 }
@@ -293,6 +375,7 @@ function SetupTabContent({
   onCreateOperationalUser,
   onCreatePulseXChannel,
   onCreateSector,
+  onEditRecord,
   onOpenAction,
 }: {
   activeTab: SetupTabId;
@@ -304,6 +387,7 @@ function SetupTabContent({
   onCreateOperationalUser: (input: CreateOperationalUserInput) => Promise<void>;
   onCreatePulseXChannel: (input: CreatePulseXChannelInput) => Promise<void>;
   onCreateSector: (input: CreateSectorInput) => Promise<void>;
+  onEditRecord: (target: SetupEditTarget) => void;
   onOpenAction: (action: SetupActionId) => void;
 }) {
   if (activeTab === "usuarios") {
@@ -361,11 +445,21 @@ function SetupTabContent({
         ) : null}
         <DataGrid
           empty="Nenhum departamento cadastrado."
-          headers={["Departamento", "Descricao", "Status"]}
+          headers={["Departamento", "Descricao", "Status", "Acoes"]}
           rows={data.departments.map((department) => [
             department.name,
             department.description ?? "-",
             department.status,
+            <RowActions
+              key={department.id}
+              onArchive={() =>
+                onEditRecord({
+                  record: { ...department, status: "archived" },
+                  type: "department",
+                })
+              }
+              onEdit={() => onEditRecord({ record: department, type: "department" })}
+            />,
           ])}
         />
       </TabPanel>
@@ -393,12 +487,22 @@ function SetupTabContent({
         ) : null}
         <DataGrid
           empty="Nenhum setor cadastrado."
-          headers={["Setor", "Departamento", "Descricao", "Status"]}
+          headers={["Setor", "Departamento", "Descricao", "Status", "Acoes"]}
           rows={data.sectors.map((sector) => [
             sector.name,
             sector.departmentName ?? "-",
             sector.description ?? "-",
             sector.status,
+            <RowActions
+              key={sector.id}
+              onArchive={() =>
+                onEditRecord({
+                  record: { ...sector, status: "archived" },
+                  type: "sector",
+                })
+              }
+              onEdit={() => onEditRecord({ record: sector, type: "sector" })}
+            />,
           ])}
         />
       </TabPanel>
@@ -461,13 +565,23 @@ function SetupTabContent({
       ) : null}
       <DataGrid
         empty="Nenhum canal PulseX cadastrado."
-        headers={["Canal", "Tipo", "Departamento", "Setor", "Status"]}
+        headers={["Canal", "Tipo", "Departamento", "Setor", "Status", "Acoes"]}
         rows={data.channels.map((channel) => [
           channel.name,
           channel.kind,
           channel.departmentName ?? "-",
           channel.sectorName ?? "-",
           channel.status,
+          <RowActions
+            key={channel.id}
+            onArchive={() =>
+              onEditRecord({
+                record: { ...channel, status: "archived" },
+                type: "channel",
+              })
+            }
+            onEdit={() => onEditRecord({ record: channel, type: "channel" })}
+          />,
         ])}
       />
     </TabPanel>
@@ -717,7 +831,7 @@ function DataGrid({
               {row.map((cell, cellIndex) => (
                 <td className="px-3 py-3 text-[#344054]" key={String(cellIndex)}>
                   {typeof cell === "string" && isStatusValue(cell) ? (
-                    <Badge variant="neutral">{cell}</Badge>
+                    <Badge variant={getStatusBadgeVariant(cell)}>{cell}</Badge>
                   ) : (
                     cell
                   )}
@@ -740,6 +854,24 @@ function isStatusValue(value: string) {
     "locked",
     "planned",
   ].includes(value);
+}
+
+function getStatusBadgeVariant(
+  value: string,
+): "danger" | "neutral" | "success" | "warning" {
+  if (value === "active" || value === "enabled") {
+    return "success";
+  }
+
+  if (value === "disabled" || value === "archived") {
+    return "warning";
+  }
+
+  if (value === "locked") {
+    return "danger";
+  }
+
+  return "neutral";
 }
 
 function TabPanel({
@@ -781,6 +913,310 @@ function ActionButton({
         <Plus aria-hidden="true" size={15} />
       </button>
     </Tooltip>
+  );
+}
+
+function RowActions({
+  onArchive,
+  onEdit,
+}: {
+  onArchive: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <Tooltip content="Editar">
+        <button
+          aria-label="Editar"
+          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          onClick={onEdit}
+          title="Editar"
+          type="button"
+        >
+          <Pencil aria-hidden="true" size={14} />
+        </button>
+      </Tooltip>
+      <Tooltip content="Arquivar">
+        <button
+          aria-label="Arquivar"
+          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#fff7e6] hover:text-[#8a682f] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          onClick={onArchive}
+          title="Arquivar"
+          type="button"
+        >
+          <Archive aria-hidden="true" size={14} />
+        </button>
+      </Tooltip>
+      <MoreVertical aria-hidden="true" className="text-[#98a2b3]" size={14} />
+    </div>
+  );
+}
+
+function EditRecordModal({
+  data,
+  isSaving,
+  onClose,
+  onUpdateDepartment,
+  onUpdatePulseXChannel,
+  onUpdateSector,
+  target,
+}: {
+  data: SetupData;
+  isSaving: boolean;
+  onClose: () => void;
+  onUpdateDepartment: (input: UpdateDepartmentInput) => Promise<void>;
+  onUpdatePulseXChannel: (input: UpdatePulseXChannelInput) => Promise<void>;
+  onUpdateSector: (input: UpdateSectorInput) => Promise<void>;
+  target: SetupEditTarget;
+}) {
+  if (target.type === "department") {
+    return (
+      <EditDepartmentModal
+        isSaving={isSaving}
+        onClose={onClose}
+        onSubmit={onUpdateDepartment}
+        record={target.record}
+      />
+    );
+  }
+
+  if (target.type === "sector") {
+    return (
+      <EditSectorModal
+        departments={data.departments}
+        isSaving={isSaving}
+        onClose={onClose}
+        onSubmit={onUpdateSector}
+        record={target.record}
+      />
+    );
+  }
+
+  return (
+    <EditPulseXChannelModal
+      data={data}
+      isSaving={isSaving}
+      onClose={onClose}
+      onSubmit={onUpdatePulseXChannel}
+      record={target.record}
+    />
+  );
+}
+
+function EditDepartmentModal({
+  isSaving,
+  onClose,
+  onSubmit,
+  record,
+}: {
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (input: UpdateDepartmentInput) => Promise<void>;
+  record: SetupDepartment;
+}) {
+  const [description, setDescription] = useState(record.description ?? "");
+  const [name, setName] = useState(record.name);
+  const [status, setStatus] = useState<SetupRecordStatus>(record.status);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit({
+      description,
+      id: record.id,
+      name,
+      status,
+    });
+  }
+
+  return (
+    <SetupModal onClose={onClose} title="Editar departamento">
+      <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
+        <TextInput label="Nome" onChange={setName} value={name} />
+        <TextAreaInput
+          label="Descricao"
+          onChange={setDescription}
+          value={description}
+        />
+        <StatusSelect onChange={setStatus} value={status} />
+        <FormActions
+          disabled={!name.trim() || isSaving}
+          onCancel={onClose}
+          submitLabel={isSaving ? "Salvando..." : "Salvar"}
+        />
+      </form>
+    </SetupModal>
+  );
+}
+
+function EditSectorModal({
+  departments,
+  isSaving,
+  onClose,
+  onSubmit,
+  record,
+}: {
+  departments: SetupData["departments"];
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (input: UpdateSectorInput) => Promise<void>;
+  record: SetupSector;
+}) {
+  const [departmentId, setDepartmentId] = useState(record.departmentId);
+  const [description, setDescription] = useState(record.description ?? "");
+  const [name, setName] = useState(record.name);
+  const [status, setStatus] = useState<SetupRecordStatus>(record.status);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit({
+      departmentId,
+      description,
+      id: record.id,
+      name,
+      status,
+    });
+  }
+
+  return (
+    <SetupModal onClose={onClose} title="Editar setor">
+      <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
+        <label className="grid gap-1.5">
+          <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+          <select
+            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            onChange={(event) => setDepartmentId(event.target.value)}
+            value={departmentId}
+          >
+            {departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextInput label="Nome" onChange={setName} value={name} />
+        <TextAreaInput
+          label="Descricao"
+          onChange={setDescription}
+          value={description}
+        />
+        <StatusSelect onChange={setStatus} value={status} />
+        <FormActions
+          disabled={!departmentId || !name.trim() || isSaving}
+          onCancel={onClose}
+          submitLabel={isSaving ? "Salvando..." : "Salvar"}
+        />
+      </form>
+    </SetupModal>
+  );
+}
+
+function EditPulseXChannelModal({
+  data,
+  isSaving,
+  onClose,
+  onSubmit,
+  record,
+}: {
+  data: SetupData;
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (input: UpdatePulseXChannelInput) => Promise<void>;
+  record: SetupPulseXChannel;
+}) {
+  const [departmentId, setDepartmentId] = useState(record.departmentId ?? "");
+  const [name, setName] = useState(record.name);
+  const [sectorId, setSectorId] = useState(record.sectorId ?? "");
+  const [status, setStatus] = useState<SetupRecordStatus>(record.status);
+  const availableSectors = data.sectors.filter(
+    (sector) => !departmentId || sector.departmentId === departmentId,
+  );
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit({
+      departmentId,
+      id: record.id,
+      name,
+      sectorId: sectorId || undefined,
+      status,
+    });
+  }
+
+  return (
+    <SetupModal onClose={onClose} title="Editar canal">
+      <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
+        <TextInput label="Nome" onChange={setName} value={name} />
+        <label className="grid gap-1.5">
+          <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+          <select
+            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            onChange={(event) => {
+              setDepartmentId(event.target.value);
+              setSectorId("");
+            }}
+            value={departmentId}
+          >
+            <option value="">Sem departamento</option>
+            {data.departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1.5">
+          <span className="text-xs font-semibold text-[#667085]">Setor</span>
+          <select
+            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            onChange={(event) => setSectorId(event.target.value)}
+            value={sectorId}
+          >
+            <option value="">Departamento</option>
+            {availableSectors.map((sector) => (
+              <option key={sector.id} value={sector.id}>
+                {sector.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <StatusSelect onChange={setStatus} value={status} />
+        <FormActions
+          disabled={!name.trim() || isSaving}
+          onCancel={onClose}
+          submitLabel={isSaving ? "Salvando..." : "Salvar"}
+        />
+      </form>
+    </SetupModal>
+  );
+}
+
+function SetupModal({
+  children,
+  onClose,
+  title,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+  title: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/25 px-4">
+      <div className="w-full max-w-xl rounded-md border border-[#d9e0e7] bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
+          <h2 className="m-0 text-base font-semibold text-[#101820]">{title}</h2>
+          <button
+            aria-label="Fechar"
+            className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={16} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 

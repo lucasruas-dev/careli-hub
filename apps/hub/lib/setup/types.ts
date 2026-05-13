@@ -90,6 +90,13 @@ export type CreateDepartmentInput = {
   status: SetupRecordStatus;
 };
 
+export type UpdateDepartmentInput = {
+  description?: string;
+  id: string;
+  name: string;
+  status: SetupRecordStatus;
+};
+
 export type CreateSectorInput = {
   departmentId: string;
   description?: string;
@@ -98,11 +105,27 @@ export type CreateSectorInput = {
   status: SetupRecordStatus;
 };
 
+export type UpdateSectorInput = {
+  departmentId: string;
+  description?: string;
+  id: string;
+  name: string;
+  status: SetupRecordStatus;
+};
+
 export type CreatePulseXChannelInput = {
   departmentId?: string;
   description?: string;
   id: string;
   kind: SetupPulseXChannel["kind"];
+  name: string;
+  sectorId?: string;
+  status: SetupRecordStatus;
+};
+
+export type UpdatePulseXChannelInput = {
+  departmentId?: string;
+  id: string;
   name: string;
   sectorId?: string;
   status: SetupRecordStatus;

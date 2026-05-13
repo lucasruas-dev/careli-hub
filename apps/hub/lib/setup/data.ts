@@ -15,6 +15,9 @@ import type {
   SetupPulseXChannel,
   SetupSector,
   SetupUser,
+  UpdateDepartmentInput,
+  UpdatePulseXChannelInput,
+  UpdateSectorInput,
 } from "./types";
 
 type QueryResult<T> = {
@@ -288,6 +291,35 @@ export async function createDepartment(input: CreateDepartmentInput) {
   return mapDepartment((result as QueryResult<DepartmentRow>).data);
 }
 
+export async function updateDepartment(input: UpdateDepartmentInput) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const payload = {
+    description: input.description?.trim() || null,
+    name: input.name.trim(),
+    status: input.status,
+  };
+  logSetupDebug("update department payload", {
+    id: input.id,
+    ...payload,
+  });
+  const result = await client
+    .from("hub_departments")
+    .update(payload)
+    .eq("id", input.id)
+    .select("id,slug,name,description,status,created_at")
+    .single();
+  logSetupQueryResult("update department", result);
+
+  assertQuery("salvar departamento", result);
+
+  return mapDepartment((result as QueryResult<DepartmentRow>).data);
+}
+
 export async function createSector(input: CreateSectorInput) {
   const client = getHubSupabaseClient();
 
@@ -309,6 +341,36 @@ export async function createSector(input: CreateSectorInput) {
     .select("id,department_id,slug,name,description,status,hub_departments(name)")
     .single();
   logSetupQueryResult("create sector", result);
+
+  assertQuery("salvar setor", result);
+
+  return mapSector((result as QueryResult<SectorRow>).data);
+}
+
+export async function updateSector(input: UpdateSectorInput) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const payload = {
+    department_id: input.departmentId,
+    description: input.description?.trim() || null,
+    name: input.name.trim(),
+    status: input.status,
+  };
+  logSetupDebug("update sector payload", {
+    id: input.id,
+    ...payload,
+  });
+  const result = await client
+    .from("hub_sectors")
+    .update(payload)
+    .eq("id", input.id)
+    .select("id,department_id,slug,name,description,status,hub_departments(name)")
+    .single();
+  logSetupQueryResult("update sector", result);
 
   assertQuery("salvar setor", result);
 
@@ -340,6 +402,38 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
     )
     .single();
   logSetupQueryResult("create pulsex channel", result);
+
+  assertQuery("salvar canal PulseX", result);
+
+  return mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
+}
+
+export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const payload = {
+    department_id: input.departmentId || null,
+    name: input.name.trim(),
+    sector_id: input.sectorId || null,
+    status: input.status,
+  };
+  logSetupDebug("update pulsex channel payload", {
+    id: input.id,
+    ...payload,
+  });
+  const result = await client
+    .from("pulsex_channels")
+    .update(payload)
+    .eq("id", input.id)
+    .select(
+      "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+    )
+    .single();
+  logSetupQueryResult("update pulsex channel", result);
 
   assertQuery("salvar canal PulseX", result);
 
