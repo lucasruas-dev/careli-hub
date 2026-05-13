@@ -3,19 +3,22 @@
 import { HubShell } from "@/layouts/hub-shell";
 import {
   createDepartment,
+  createOperationalUser,
   createPulseXChannel,
   createSector,
   loadSetupData,
 } from "@/lib/setup/data";
 import type {
   CreateDepartmentInput,
+  CreateOperationalUserInput,
   CreatePulseXChannelInput,
   CreateSectorInput,
   SetupData,
+  SetupOperationalProfileRole,
   SetupRecordStatus,
 } from "@/lib/setup/types";
 import { useAuth } from "@/providers/auth-provider";
-import { Badge, EmptyState, Surface, WorkspaceLayout } from "@repo/uix";
+import { Badge, EmptyState, Surface, Tooltip, WorkspaceLayout } from "@repo/uix";
 import {
   Building2,
   KeyRound,
@@ -158,6 +161,24 @@ function SetupWorkspace() {
     }
   }
 
+  async function handleCreateOperationalUser(input: CreateOperationalUserInput) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await createOperationalUser(input);
+      await refreshSetupData();
+      setActiveTab("usuarios");
+      setActiveAction(null);
+      setSuccess("Usuario criado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function handleCreatePulseXChannel(input: CreatePulseXChannelInput) {
     setIsSaving(true);
     setError(null);
@@ -227,14 +248,17 @@ function SetupWorkspace() {
             );
           })}
           </div>
-          <button
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-            onClick={() => void refreshSetupData()}
-            type="button"
-          >
-            <RefreshCw aria-hidden="true" size={15} />
-            Atualizar
-          </button>
+          <Tooltip content="Atualizar">
+            <button
+              aria-label="Atualizar"
+              className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#101820] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={() => void refreshSetupData()}
+              title="Atualizar"
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={15} />
+            </button>
+          </Tooltip>
         </div>
         <div className="p-5">
           {isLoading ? (
@@ -247,6 +271,7 @@ function SetupWorkspace() {
               isSaving={isSaving}
               onCloseAction={() => setActiveAction(null)}
               onCreateDepartment={handleCreateDepartment}
+              onCreateOperationalUser={handleCreateOperationalUser}
               onCreatePulseXChannel={handleCreatePulseXChannel}
               onCreateSector={handleCreateSector}
               onOpenAction={setActiveAction}
@@ -265,6 +290,7 @@ function SetupTabContent({
   isSaving,
   onCloseAction,
   onCreateDepartment,
+  onCreateOperationalUser,
   onCreatePulseXChannel,
   onCreateSector,
   onOpenAction,
@@ -275,6 +301,7 @@ function SetupTabContent({
   isSaving: boolean;
   onCloseAction: () => void;
   onCreateDepartment: (input: CreateDepartmentInput) => Promise<void>;
+  onCreateOperationalUser: (input: CreateOperationalUserInput) => Promise<void>;
   onCreatePulseXChannel: (input: CreatePulseXChannelInput) => Promise<void>;
   onCreateSector: (input: CreateSectorInput) => Promise<void>;
   onOpenAction: (action: SetupActionId) => void;
@@ -283,25 +310,30 @@ function SetupTabContent({
     return (
       <TabPanel
         action={
-          <ActionButton onClick={() => onOpenAction("new-user")}>
-            Novo usuario
-          </ActionButton>
+          <ActionButton
+            label="Novo usuario"
+            onClick={() => onOpenAction("new-user")}
+          />
         }
         title="Usuarios"
       >
         {activeAction === "new-user" ? (
-          <UserInfoModal
+          <CreateOperationalUserModal
             data={data}
+            isSaving={isSaving}
             onClose={onCloseAction}
+            onSubmit={onCreateOperationalUser}
           />
         ) : null}
         <DataGrid
           empty="Nenhum usuario sincronizado em hub_users."
-          headers={["Nome", "Email", "Role", "Status"]}
+          headers={["Nome", "Email", "Perfil", "Departamento", "Setor", "Status"]}
           rows={data.users.map((user) => [
             user.displayName,
             user.email,
-            user.role,
+            user.operationalProfile,
+            user.departmentName ?? "-",
+            user.sectorName ?? "-",
             user.status,
           ])}
         />
@@ -313,9 +345,10 @@ function SetupTabContent({
     return (
       <TabPanel
         action={
-          <ActionButton onClick={() => onOpenAction("new-department")}>
-            Novo departamento
-          </ActionButton>
+          <ActionButton
+            label="Novo departamento"
+            onClick={() => onOpenAction("new-department")}
+          />
         }
         title="Departamentos"
       >
@@ -343,9 +376,10 @@ function SetupTabContent({
     return (
       <TabPanel
         action={
-          <ActionButton onClick={() => onOpenAction("new-sector")}>
-            Novo setor
-          </ActionButton>
+          <ActionButton
+            label="Novo setor"
+            onClick={() => onOpenAction("new-sector")}
+          />
         }
         title="Setores"
       >
@@ -410,9 +444,10 @@ function SetupTabContent({
   return (
     <TabPanel
       action={
-        <ActionButton onClick={() => onOpenAction("new-channel")}>
-          Novo canal
-        </ActionButton>
+        <ActionButton
+          label="Novo canal"
+          onClick={() => onOpenAction("new-channel")}
+        />
       }
       title="PulseX"
     >
@@ -728,31 +763,62 @@ function TabPanel({
 }
 
 function ActionButton({
-  children,
+  label,
   onClick,
 }: {
-  children: ReactNode;
+  label: string;
   onClick: () => void;
 }) {
   return (
-    <button
-      className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-      onClick={onClick}
-      type="button"
-    >
-      <Plus aria-hidden="true" size={15} />
-      {children}
-    </button>
+    <Tooltip content={label}>
+      <button
+        aria-label={label}
+        className="grid h-9 w-9 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+        onClick={onClick}
+        title={label}
+        type="button"
+      >
+        <Plus aria-hidden="true" size={15} />
+      </button>
+    </Tooltip>
   );
 }
 
-function UserInfoModal({
+function CreateOperationalUserModal({
   data,
+  isSaving,
   onClose,
+  onSubmit,
 }: {
   data: SetupData;
+  isSaving: boolean;
   onClose: () => void;
+  onSubmit: (input: CreateOperationalUserInput) => Promise<void>;
 }) {
+  const [departmentId, setDepartmentId] = useState(data.departments[0]?.id ?? "");
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [profile, setProfile] = useState<SetupOperationalProfileRole>("op1");
+  const [sectorId, setSectorId] = useState("");
+  const [status, setStatus] = useState<CreateOperationalUserInput["status"]>("active");
+  const availableSectors = data.sectors.filter(
+    (sector) => !departmentId || sector.departmentId === departmentId,
+  );
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit({
+      departmentId,
+      email,
+      fullName,
+      password,
+      profile,
+      sectorId,
+      status,
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/25 px-4">
       <div className="w-full max-w-xl rounded-md border border-[#d9e0e7] bg-white shadow-2xl">
@@ -769,43 +835,69 @@ function UserInfoModal({
             <X aria-hidden="true" size={16} />
           </button>
         </div>
-        <div className="grid gap-4 p-5">
-          <p className="m-0 text-sm leading-6 text-[#344054]">
-            Usuarios sao criados pelo Supabase Auth. Depois, vincule o usuario
-            a um setor.
-          </p>
-          <div className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#f8fafc] p-4">
+        <form className="grid gap-4 p-5" onSubmit={handleSubmit}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <TextInput label="Nome completo" onChange={setFullName} value={fullName} />
+            <TextInput
+              inputType="email"
+              label="E-mail"
+              onChange={setEmail}
+              value={email}
+            />
+            <TextInput
+              inputType="password"
+              label="Senha temporaria"
+              onChange={setPassword}
+              value={password}
+            />
+            <ProfileSelect onChange={setProfile} value={profile} />
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">
-                Usuario existente
-              </span>
-              <select className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]">
-                {data.users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.displayName} / {user.email}
+              <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+              <select
+                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                onChange={(event) => {
+                  setDepartmentId(event.target.value);
+                  setSectorId("");
+                }}
+                value={departmentId}
+              >
+                {data.departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
                   </option>
                 ))}
               </select>
             </label>
             <label className="grid gap-1.5">
               <span className="text-xs font-semibold text-[#667085]">Setor</span>
-              <select className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]">
-                {data.sectors.map((sector) => (
+              <select
+                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                onChange={(event) => setSectorId(event.target.value)}
+                value={sectorId}
+              >
+                <option value="">Selecione</option>
+                {availableSectors.map((sector) => (
                   <option key={sector.id} value={sector.id}>
                     {sector.name}
                   </option>
                 ))}
               </select>
             </label>
-            <button
-              className="inline-flex h-10 cursor-not-allowed items-center justify-center rounded-md bg-[#d9e0e7] px-3 text-sm font-semibold text-[#667085]"
-              disabled
-              type="button"
-            >
-              Vincular em breve
-            </button>
+            <UserStatusSelect onChange={setStatus} value={status} />
           </div>
-        </div>
+          <FormActions
+            disabled={
+              !departmentId ||
+              !email.trim() ||
+              !fullName.trim() ||
+              password.trim().length < 8 ||
+              !sectorId ||
+              isSaving
+            }
+            onCancel={onClose}
+            submitLabel={isSaving ? "Criando..." : "Criar usuario"}
+          />
+        </form>
       </div>
     </div>
   );
@@ -827,11 +919,13 @@ function SetupFormCard({
 }
 
 function TextInput({
+  inputType = "text",
   label,
   onChange,
   placeholder,
   value,
 }: {
+  inputType?: "email" | "password" | "text";
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -844,8 +938,61 @@ function TextInput({
         className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none placeholder:text-[#98a2b3] focus:border-[#A07C3B]"
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        type={inputType}
         value={value}
       />
+    </label>
+  );
+}
+
+function ProfileSelect({
+  onChange,
+  value,
+}: {
+  onChange: (value: SetupOperationalProfileRole) => void;
+  value: SetupOperationalProfileRole;
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-xs font-semibold text-[#667085]">Perfil</span>
+      <select
+        className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+        onChange={(event) =>
+          onChange(event.target.value as SetupOperationalProfileRole)
+        }
+        value={value}
+      >
+        <option value="op1">op1</option>
+        <option value="op2">op2</option>
+        <option value="op3">op3</option>
+        <option value="ldr">ldr</option>
+        <option value="cdr">cdr</option>
+        <option value="adm">adm</option>
+      </select>
+    </label>
+  );
+}
+
+function UserStatusSelect({
+  onChange,
+  value,
+}: {
+  onChange: (value: CreateOperationalUserInput["status"]) => void;
+  value: CreateOperationalUserInput["status"];
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-xs font-semibold text-[#667085]">Status</span>
+      <select
+        className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+        onChange={(event) =>
+          onChange(event.target.value as CreateOperationalUserInput["status"])
+        }
+        value={value}
+      >
+        <option value="active">active</option>
+        <option value="disabled">disabled</option>
+      </select>
     </label>
   );
 }
@@ -897,9 +1044,11 @@ function StatusSelect({
 function FormActions({
   disabled,
   onCancel,
+  submitLabel = "Salvar",
 }: {
   disabled: boolean;
   onCancel: () => void;
+  submitLabel?: string;
 }) {
   return (
     <div className="flex items-center justify-end gap-2">
@@ -916,7 +1065,7 @@ function FormActions({
         type="submit"
       >
         <Plus aria-hidden="true" size={15} />
-        Salvar
+        {submitLabel}
       </button>
     </div>
   );
@@ -924,7 +1073,7 @@ function FormActions({
 
 function getFriendlySetupError(error: unknown, action: "load" | "save") {
   if (error instanceof Error && action === "save") {
-    return "Nao foi possivel salvar. Tente novamente.";
+    return error.message || "Nao foi possivel salvar. Tente novamente.";
   }
 
   if (error instanceof Error) {

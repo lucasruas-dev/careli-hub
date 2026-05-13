@@ -1,3 +1,11 @@
+export type SetupOperationalProfileRole =
+  | "op1"
+  | "op2"
+  | "op3"
+  | "ldr"
+  | "cdr"
+  | "adm";
+
 export type SetupDepartment = {
   createdAt?: string;
   description?: string;
@@ -23,6 +31,7 @@ export type SetupUser = {
   displayName: string;
   email: string;
   id: string;
+  operationalProfile: SetupOperationalProfileRole;
   role: "admin" | "leader" | "operator" | "viewer";
   sectorName?: string;
   status: "active" | "archived" | "disabled";
@@ -97,4 +106,14 @@ export type CreatePulseXChannelInput = {
   name: string;
   sectorId?: string;
   status: SetupRecordStatus;
+};
+
+export type CreateOperationalUserInput = {
+  departmentId: string;
+  email: string;
+  fullName: string;
+  password: string;
+  profile: SetupOperationalProfileRole;
+  sectorId: string;
+  status: "active" | "disabled";
 };

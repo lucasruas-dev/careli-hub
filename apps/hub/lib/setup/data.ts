@@ -3,12 +3,14 @@
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   CreateDepartmentInput,
+  CreateOperationalUserInput,
   CreatePulseXChannelInput,
   CreateSectorInput,
   SetupData,
   SetupDepartment,
   SetupDepartmentModule,
   SetupModule,
+  SetupOperationalProfileRole,
   SetupPermission,
   SetupPulseXChannel,
   SetupSector,
@@ -48,6 +50,7 @@ type UserRow = {
     hub_sectors?: { name: string } | null;
   }[];
   id: string;
+  operational_profile?: SetupOperationalProfileRole | null;
   role: SetupUser["role"];
   status: SetupUser["status"];
 };
@@ -110,12 +113,7 @@ export async function loadSetupData(): Promise<SetupData> {
       .from("hub_sectors")
       .select("id,department_id,slug,name,description,status,hub_departments(name)")
       .order("name"),
-    client
-      .from("hub_users")
-      .select(
-        "id,email,display_name,avatar_url,role,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
-      )
-      .order("display_name"),
+    loadUsersQuery(client),
     client.from("hub_modules").select("id,name,base_path,status,order").order("order"),
     client
       .from("hub_department_modules")
@@ -307,6 +305,37 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
   return mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
 }
 
+export async function createOperationalUser(input: CreateOperationalUserInput) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    throw new Error("Sessao administrativa indisponivel.");
+  }
+
+  const response = await fetch("/api/setup/users", {
+    body: JSON.stringify(input),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+  } | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Nao foi possivel criar usuario.");
+  }
+}
+
 export const saveDepartment = createDepartment;
 export const saveSector = createSector;
 
@@ -330,6 +359,30 @@ function readRows<Row>(result: unknown): Row[] {
   }
 
   return queryResult.data ?? [];
+}
+
+async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {
+  if (!client) {
+    return { data: [], error: null } satisfies QueryResult<UserRow[]>;
+  }
+
+  const result = await client
+    .from("hub_users")
+    .select(
+      "id,email,display_name,avatar_url,role,operational_profile,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
+    )
+    .order("display_name");
+
+  if (!result.error) {
+    return result;
+  }
+
+  return client
+    .from("hub_users")
+    .select(
+      "id,email,display_name,avatar_url,role,status,hub_user_assignments(hub_departments(name),hub_sectors(name))",
+    )
+    .order("display_name");
 }
 
 function getSetupErrorMessage(label: string) {
@@ -380,10 +433,25 @@ function mapUser(row: UserRow): SetupUser {
     displayName: row.display_name,
     email: row.email,
     id: row.id,
+    operationalProfile: row.operational_profile ?? mapRoleToOperationalProfile(row.role),
     role: row.role,
     sectorName: assignment?.hub_sectors?.name,
     status: row.status,
   };
+}
+
+function mapRoleToOperationalProfile(
+  role: SetupUser["role"],
+): SetupOperationalProfileRole {
+  if (role === "admin") {
+    return "adm";
+  }
+
+  if (role === "leader") {
+    return "ldr";
+  }
+
+  return "op1";
 }
 
 function mapPulseXChannel(row: PulseXChannelRow | null): SetupPulseXChannel {
