@@ -5,23 +5,24 @@ import {
   hasSupabaseAuthConfig,
 } from "@repo/auth";
 
-const supabaseConfig = {
+export const hubSupabaseConfig = {
   anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  workspaceId: process.env.NEXT_PUBLIC_SUPABASE_WORKSPACE_ID ?? "careli",
 };
 
 let browserClient: ReturnType<typeof createSupabaseAuthClient> | null = null;
 
 export function hasHubSupabaseConfig() {
-  return hasSupabaseAuthConfig(supabaseConfig);
+  return hasSupabaseAuthConfig(hubSupabaseConfig);
 }
 
 export function getHubSupabaseClient() {
-  if (!hasSupabaseAuthConfig(supabaseConfig)) {
+  if (!hasSupabaseAuthConfig(hubSupabaseConfig)) {
     return null;
   }
 
-  browserClient ??= createSupabaseAuthClient(supabaseConfig);
+  browserClient ??= createSupabaseAuthClient(hubSupabaseConfig);
 
   return browserClient;
 }

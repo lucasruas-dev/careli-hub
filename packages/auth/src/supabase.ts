@@ -16,6 +16,7 @@ import type {
 
 export type SupabaseAuthConfig = {
   anonKey?: string;
+  client?: SupabaseClient;
   url?: string;
   workspaceId?: string;
 };
@@ -33,7 +34,7 @@ export type SupabaseAuthAdapter = AuthAdapter & {
 
 const HUB_USER_ROLES = ["admin", "leader", "operator", "viewer"] as const;
 const HUB_USER_STATUSES = ["active", "archived", "disabled"] as const;
-const SUPABASE_AUTH_TIMEOUT_MS = 10_000;
+const SUPABASE_AUTH_TIMEOUT_MS = 30_000;
 
 type HubUserProfileStatus = (typeof HUB_USER_STATUSES)[number];
 
@@ -73,7 +74,7 @@ export function createSupabaseAuthAdapter(
     );
   }
 
-  const client = createSupabaseAuthClient(config);
+  const client = config.client ?? createSupabaseAuthClient(config);
 
   return {
     provider: "supabase",
@@ -342,8 +343,22 @@ async function loadHubUserProfile(
 ): Promise<AuthActionResult<HubUserProfileRow>> {
   const userId = authUser.id;
   const email = authUser.email;
+  const profileQuery = {
+    filters: {
+      id: userId,
+    },
+    schema: "public",
+    select: "id,email,display_name,avatar_url,role,status",
+    table: "hub_users",
+  };
 
   try {
+    logAuthDebug("hub user profile query", {
+      authEmail: email,
+      authUserId: userId,
+      query: profileQuery,
+    });
+
     const result = await withTimeout(
       client
         .from("hub_users")
@@ -357,10 +372,11 @@ async function loadHubUserProfile(
 
     if (error) {
       logAuthError("auth error", {
-        email,
-        message: error.message,
+        authEmail: email,
+        authUserId: userId,
+        query: profileQuery,
         queryResult: "error",
-        userId,
+        supabaseError: serializeSupabaseError(error),
       });
 
       return {
@@ -378,9 +394,11 @@ async function loadHubUserProfile(
 
     if (!data) {
       logAuthDebug("hub user profile missing", {
-        email,
+        authEmail: email,
+        authUserId: userId,
+        data,
+        query: profileQuery,
         queryResult: "missing",
-        userId,
       });
 
       const createResult = await createDevelopmentHubUserProfile(
@@ -390,9 +408,10 @@ async function loadHubUserProfile(
 
       if (createResult.ok) {
         logAuthDebug("hub user profile loaded", {
-          email: createResult.data.email,
+          authEmail: email,
+          authUserId: userId,
+          profile: serializeHubUserProfile(createResult.data),
           queryResult: "created",
-          userId: createResult.data.id,
         });
 
         return createResult;
@@ -415,10 +434,11 @@ async function loadHubUserProfile(
 
     if (!isHubUserRole(data.role)) {
       logAuthError("auth error", {
-        email,
+        authEmail: email,
+        authUserId: userId,
+        profile: serializeHubUserProfile(data),
         queryResult: "found",
         reason: "invalid hub user role",
-        userId,
       });
 
       return {
@@ -437,10 +457,11 @@ async function loadHubUserProfile(
 
     if (!isHubUserStatus(data.status)) {
       logAuthError("auth error", {
-        email,
+        authEmail: email,
+        authUserId: userId,
+        profile: serializeHubUserProfile(data),
         queryResult: "found",
         reason: "invalid hub user status",
-        userId,
       });
 
       return {
@@ -459,11 +480,11 @@ async function loadHubUserProfile(
 
     if (data.status !== "active") {
       logAuthError("auth error", {
-        email,
+        authEmail: email,
+        authUserId: userId,
+        profile: serializeHubUserProfile(data),
         queryResult: "found",
         reason: "inactive hub user profile",
-        status: data.status,
-        userId,
       });
 
       return {
@@ -481,11 +502,11 @@ async function loadHubUserProfile(
     }
 
     logAuthDebug("hub user profile loaded", {
-      email: data.email,
+      authEmail: email,
+      authUserId: userId,
+      profile: serializeHubUserProfile(data),
+      query: profileQuery,
       queryResult: "found",
-      role: data.role,
-      status: data.status,
-      userId: data.id,
     });
 
     return {
@@ -499,10 +520,11 @@ async function loadHubUserProfile(
     );
 
     logAuthError("auth error", {
-      email,
+      authEmail: email,
+      authUserId: userId,
       message,
+      query: profileQuery,
       queryResult: "error",
-      userId,
     });
 
     return {
@@ -689,6 +711,37 @@ function createAuthErrorDetails(
   return Object.fromEntries(
     Object.entries(details).filter(([, value]) => value !== undefined),
   ) as AuthErrorDetails;
+}
+
+function serializeHubUserProfile(profile: HubUserProfileRow) {
+  return {
+    email: profile.email,
+    id: profile.id,
+    role: profile.role,
+    status: profile.status,
+  };
+}
+
+function serializeSupabaseError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return error;
+  }
+
+  const maybeError = error as {
+    code?: unknown;
+    details?: unknown;
+    hint?: unknown;
+    message?: unknown;
+    name?: unknown;
+  };
+
+  return {
+    code: maybeError.code,
+    details: maybeError.details,
+    hint: maybeError.hint,
+    message: maybeError.message,
+    name: maybeError.name,
+  };
 }
 
 function getAuthUserDisplayName(user: User): string {

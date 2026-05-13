@@ -6,7 +6,6 @@ import {
   createMockAuthState,
   createSupabaseAuthAdapter,
   createUnauthenticatedAuthState,
-  hasSupabaseAuthConfig,
   isAuthenticated,
   mapAuthUserToHubUserContext,
   type AuthActionResult,
@@ -16,6 +15,11 @@ import {
   type PasswordAuthCredentials,
   type SupabaseAuthAdapter,
 } from "@repo/auth";
+import {
+  getHubSupabaseClient,
+  hasHubSupabaseConfig,
+  hubSupabaseConfig,
+} from "@/lib/supabase/client";
 import type { HubUserContext } from "@repo/shared";
 import { AlertTriangle } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -38,13 +42,6 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const SUPABASE_AUTH_CONFIG = {
-  anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-  workspaceId: process.env.NEXT_PUBLIC_SUPABASE_WORKSPACE_ID ?? "careli",
-};
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 12_000;
-
 export function AuthProvider({
   children,
 }: Readonly<{
@@ -59,11 +56,20 @@ export function AuthProvider({
   });
   const isLoginRoute = pathname === "/login";
   const supabaseAuthAdapter = useMemo<SupabaseAuthAdapter | null>(() => {
-    if (!hasSupabaseAuthConfig(SUPABASE_AUTH_CONFIG)) {
+    if (!hasHubSupabaseConfig()) {
       return null;
     }
 
-    return createSupabaseAuthAdapter(SUPABASE_AUTH_CONFIG);
+    const client = getHubSupabaseClient();
+
+    if (!client) {
+      return null;
+    }
+
+    return createSupabaseAuthAdapter({
+      ...hubSupabaseConfig,
+      client,
+    });
   }, []);
   const hubUser = useMemo(
     () =>
@@ -75,10 +81,8 @@ export function AuthProvider({
     if (supabaseAuthAdapter) {
       let isMounted = true;
 
-      withTimeout(
-        supabaseAuthAdapter.getSession(),
-        "Tempo excedido ao carregar a sessao.",
-      )
+      supabaseAuthAdapter
+        .getSession()
         .then((result) => {
           if (!isMounted) {
             return;
@@ -165,13 +169,11 @@ export function AuthProvider({
       let result: AuthActionResult<AuthSession> | undefined;
 
       try {
-        result = await withTimeout(
-          supabaseAuthAdapter.signIn?.({
+        result =
+          (await supabaseAuthAdapter.signIn?.({
             email: normalizedEmail,
             password,
-          }) ?? Promise.resolve(undefined),
-          "Tempo excedido ao entrar no Hub.",
-        );
+          })) ?? undefined;
       } catch (error) {
         const technicalMessage = getErrorMessage(
           error,
@@ -342,28 +344,6 @@ function createAuthErrorState(
     errorDetails,
     status: "error",
   };
-}
-
-function withTimeout<Result>(
-  promise: PromiseLike<Result>,
-  message: string,
-): Promise<Result> {
-  return new Promise((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => {
-      reject(new Error(message));
-    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
-
-    promise.then(
-      (result) => {
-        window.clearTimeout(timeoutId);
-        resolve(result);
-      },
-      (error: unknown) => {
-        window.clearTimeout(timeoutId);
-        reject(error);
-      },
-    );
-  });
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {

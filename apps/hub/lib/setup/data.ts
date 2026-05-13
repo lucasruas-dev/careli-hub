@@ -140,18 +140,21 @@ export async function loadSetupData(): Promise<SetupData> {
   ];
 
   if (readableResults.every(hasQueryError)) {
+    readableResults.forEach((result, index) => {
+      logSetupQueryError(`setup:${index}`, result);
+    });
     throw new Error("Nao foi possivel carregar os dados. Tente atualizar.");
   }
 
   return {
-    channels: readRows<PulseXChannelRow>(channelsResult).map(mapPulseXChannel),
-    departmentModules: readRows<DepartmentModuleRow>(departmentModulesResult).map((access) => ({
+    channels: readRows<PulseXChannelRow>("pulsex_channels", channelsResult).map(mapPulseXChannel),
+    departmentModules: readRows<DepartmentModuleRow>("hub_department_modules", departmentModulesResult).map((access) => ({
       departmentId: access.department_id,
       moduleId: access.module_id,
       status: access.status,
     })),
-    departments: readRows<DepartmentRow>(departmentsResult).map(mapDepartment),
-    modules: readRows<ModuleRow>(modulesResult).map((module) => ({
+    departments: readRows<DepartmentRow>("hub_departments", departmentsResult).map(mapDepartment),
+    modules: readRows<ModuleRow>("hub_modules", modulesResult).map((module) => ({
         basePath: module.base_path,
         id: module.id,
         name: module.name,
@@ -159,15 +162,15 @@ export async function loadSetupData(): Promise<SetupData> {
         status: module.status,
       }),
     ),
-    permissions: readRows<PermissionRow>(permissionsResult).map((permission) => ({
+    permissions: readRows<PermissionRow>("hub_permissions", permissionsResult).map((permission) => ({
       description: permission.description ?? undefined,
       id: permission.id,
       key: permission.key,
       moduleId: permission.module_id ?? undefined,
       scope: permission.scope,
     })),
-    sectors: readRows<SectorRow>(sectorsResult).map(mapSector),
-    users: readRows<UserRow>(usersResult).map(mapUser),
+    sectors: readRows<SectorRow>("hub_sectors", sectorsResult).map(mapSector),
+    users: readRows<UserRow>("hub_users", usersResult).map(mapUser),
   };
 }
 
@@ -238,7 +241,7 @@ export async function createDepartment(input: CreateDepartmentInput) {
   const payload = {
     description: input.description?.trim() || null,
     name: input.name.trim(),
-    slug: input.slug.trim(),
+    slug: input.slug.trim() || createFallbackSlug(input.name),
     status: input.status,
   };
   const result = await client
@@ -263,7 +266,7 @@ export async function createSector(input: CreateSectorInput) {
     department_id: input.departmentId,
     description: input.description?.trim() || null,
     name: input.name.trim(),
-    slug: input.slug.trim(),
+    slug: input.slug.trim() || createFallbackSlug(input.name),
     status: input.status,
   };
   const result = await client
@@ -289,7 +292,7 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
     .insert({
       department_id: input.departmentId || null,
       description: input.description?.trim() || null,
-      id: input.id.trim(),
+      id: input.id.trim() || createFallbackSlug(input.name),
       kind: input.kind,
       name: input.name.trim(),
       sector_id: input.sectorId || null,
@@ -343,6 +346,7 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
   const queryResult = result as QueryResult<unknown>;
 
   if (queryResult.error) {
+    logSetupQueryError(label, result);
     throw new Error(getSetupErrorMessage(label));
   }
 }
@@ -351,14 +355,49 @@ function hasQueryError(result: unknown) {
   return Boolean((result as QueryResult<unknown>).error);
 }
 
-function readRows<Row>(result: unknown): Row[] {
+function readRows<Row>(label: string, result: unknown): Row[] {
   const queryResult = result as QueryResult<Row[]>;
 
   if (queryResult.error) {
+    logSetupQueryError(label, result);
     return [];
   }
 
   return queryResult.data ?? [];
+}
+
+function logSetupQueryError(label: string, result: unknown) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  const queryResult = result as QueryResult<unknown>;
+
+  if (queryResult.error) {
+    console.warn("[setup] Supabase query error", {
+      error: queryResult.error,
+      label,
+    });
+  }
+}
+
+function isLocalDevelopmentRuntime(): boolean {
+  if (typeof globalThis.location === "undefined") {
+    return false;
+  }
+
+  return ["localhost", "127.0.0.1"].includes(globalThis.location.hostname);
+}
+
+function createFallbackSlug(value: string) {
+  const normalizedValue = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalizedValue || `registro-${Date.now().toString(36)}`;
 }
 
 async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {
