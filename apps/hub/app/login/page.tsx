@@ -31,23 +31,20 @@ export default function LoginPage() {
 
   return (
     <main className="grid min-h-screen place-items-center bg-[#f3f6fa] px-6 py-10 text-[#101820]">
-      <section className="w-full max-w-[25rem]">
-        <div className="mb-10 grid justify-items-center text-center">
+      <section className="grid w-full max-w-[25rem] justify-items-center">
+        <div className="mb-12 grid justify-items-center">
           <Image
             alt="Careli"
-            className="h-auto w-28 object-contain"
-            height={112}
+            className="h-auto w-36 object-contain"
+            height={144}
             priority
             src="/logoc.png"
-            width={112}
+            width={144}
           />
-          <h1 className="m-0 mt-5 text-2xl font-medium tracking-normal text-[#101820]">
-            Ecossistema
-          </h1>
         </div>
 
         <form
-          className="grid gap-4 rounded-md border border-[#d9e0ea] bg-white p-6 shadow-[0_20px_55px_rgb(16_24_32_/_0.10)]"
+          className="grid w-full gap-4 rounded-md border border-[#d9e0ea] bg-white p-6 shadow-[0_20px_55px_rgb(16_24_32_/_0.10)]"
           onSubmit={handleSubmit}
         >
           <TextField
@@ -93,6 +90,9 @@ export default function LoginPage() {
             </Tooltip>
           </div>
         </form>
+        <p className="m-0 mt-7 text-xs font-medium uppercase tracking-[0.18em] text-[#8A682F]">
+          Ecossistema
+        </p>
       </section>
     </main>
   );
