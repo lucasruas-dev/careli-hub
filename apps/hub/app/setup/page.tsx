@@ -15,7 +15,7 @@ import type {
   SetupRecordStatus,
 } from "@/lib/setup/types";
 import { useAuth } from "@/providers/auth-provider";
-import { Badge, EmptyState, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
+import { Badge, EmptyState, Surface, WorkspaceLayout } from "@repo/uix";
 import {
   Building2,
   KeyRound,
@@ -25,6 +25,7 @@ import {
   Plus,
   RefreshCw,
   ShieldAlert,
+  X,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
@@ -40,7 +41,8 @@ type SetupTabId =
 type SetupActionId =
   | "new-channel"
   | "new-department"
-  | "new-sector";
+  | "new-sector"
+  | "new-user";
 
 const setupTabs = [
   { icon: Users, id: "usuarios", label: "Usuarios" },
@@ -61,14 +63,7 @@ export default function SetupPage() {
   if (!hubUser || hubUser.role !== "admin") {
     return (
       <HubShell layoutMode="module">
-        <WorkspaceLayout
-          header={
-            <WorkspaceHeader
-              description="Acesso restrito."
-              title="Setup"
-            />
-          }
-        >
+        <WorkspaceLayout>
           <Surface bordered className="border-[#d9e0e7] bg-white p-6">
             <EmptyState
               description="Entre com um perfil admin para visualizar usuarios, departamentos, setores e permissoes."
@@ -104,8 +99,8 @@ function SetupWorkspace() {
     } catch (setupError) {
       setError(
         setupError instanceof Error
-          ? setupError.message
-          : "Nao foi possivel carregar os dados do Setup.",
+          ? getFriendlySetupError(setupError, "load")
+          : "Nao foi possivel carregar os dados. Tente atualizar.",
       );
     } finally {
       setIsLoading(false);
@@ -136,7 +131,7 @@ function SetupWorkspace() {
       setActiveTab("departamentos");
       setActiveAction(null);
     } catch (saveError) {
-      setError(getFriendlySetupError(saveError));
+      setError(getFriendlySetupError(saveError, "save"));
     } finally {
       setIsSaving(false);
     }
@@ -152,7 +147,7 @@ function SetupWorkspace() {
       setActiveTab("setores");
       setActiveAction(null);
     } catch (saveError) {
-      setError(getFriendlySetupError(saveError));
+      setError(getFriendlySetupError(saveError, "save"));
     } finally {
       setIsSaving(false);
     }
@@ -168,7 +163,7 @@ function SetupWorkspace() {
       setActiveTab("pulsex");
       setActiveAction(null);
     } catch (saveError) {
-      setError(getFriendlySetupError(saveError));
+      setError(getFriendlySetupError(saveError, "save"));
     } finally {
       setIsSaving(false);
     }
@@ -177,21 +172,6 @@ function SetupWorkspace() {
   return (
     <WorkspaceLayout
       className="bg-[#f3f6fa]"
-      header={
-        <WorkspaceHeader
-          actions={
-            <button
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              onClick={() => void refreshSetupData()}
-              type="button"
-            >
-              <RefreshCw aria-hidden="true" size={15} />
-              Atualizar
-            </button>
-          }
-          title="Setup"
-        />
-      }
     >
       <section className="grid grid-cols-4 gap-3">
         {summary.map((item) => (
@@ -212,7 +192,8 @@ function SetupWorkspace() {
       ) : null}
 
       <Surface bordered className="border-[#d9e0e7] bg-white">
-        <div className="flex flex-wrap gap-1 border-b border-[#e5eaf0] p-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e5eaf0] p-2">
+          <div className="flex flex-wrap gap-1">
           {setupTabs.map((tab) => {
             const TabIcon = tab.icon;
 
@@ -232,6 +213,15 @@ function SetupWorkspace() {
               </button>
             );
           })}
+          </div>
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            onClick={() => void refreshSetupData()}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={15} />
+            Atualizar
+          </button>
         </div>
         <div className="p-5">
           {isLoading ? (
@@ -287,7 +277,20 @@ function SetupTabContent({
 
   if (activeTab === "usuarios") {
     return (
-      <TabPanel title="Usuarios">
+      <TabPanel
+        action={
+          <ActionButton onClick={() => onOpenAction("new-user")}>
+            Novo usuario
+          </ActionButton>
+        }
+        title="Usuarios"
+      >
+        {activeAction === "new-user" ? (
+          <UserInfoModal
+            data={data}
+            onClose={onCloseAction}
+          />
+        ) : null}
         <DataGrid
           empty="Nenhum usuario sincronizado em hub_users."
           headers={["Nome", "Email", "Role", "Status"]}
@@ -729,13 +732,78 @@ function ActionButton({
 }) {
   return (
     <button
-      className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#182431] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
       onClick={onClick}
       type="button"
     >
       <Plus aria-hidden="true" size={15} />
       {children}
     </button>
+  );
+}
+
+function UserInfoModal({
+  data,
+  onClose,
+}: {
+  data: SetupData;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/25 px-4">
+      <div className="w-full max-w-xl rounded-md border border-[#d9e0e7] bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
+          <h2 className="m-0 text-base font-semibold text-[#101820]">
+            Novo usuario
+          </h2>
+          <button
+            aria-label="Fechar"
+            className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={16} />
+          </button>
+        </div>
+        <div className="grid gap-4 p-5">
+          <p className="m-0 text-sm leading-6 text-[#344054]">
+            Usuarios sao criados pelo Supabase Auth. Depois, vincule o usuario
+            a um setor.
+          </p>
+          <div className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#f8fafc] p-4">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold text-[#667085]">
+                Usuario existente
+              </span>
+              <select className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]">
+                {data.users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.displayName} / {user.email}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold text-[#667085]">Setor</span>
+              <select className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]">
+                {data.sectors.map((sector) => (
+                  <option key={sector.id} value={sector.id}>
+                    {sector.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="inline-flex h-10 cursor-not-allowed items-center justify-center rounded-md bg-[#d9e0e7] px-3 text-sm font-semibold text-[#667085]"
+              disabled
+              type="button"
+            >
+              Vincular em breve
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -839,7 +907,7 @@ function FormActions({
         Cancelar
       </button>
       <button
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#182431] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0e7] disabled:text-[#667085]"
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0e7] disabled:text-[#667085]"
         disabled={disabled}
         type="submit"
       >
@@ -850,12 +918,16 @@ function FormActions({
   );
 }
 
-function getFriendlySetupError(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
+function getFriendlySetupError(error: unknown, action: "load" | "save") {
+  if (error instanceof Error && action === "save") {
+    return "Nao foi possivel salvar. Tente novamente.";
   }
 
-  return "Nao foi possivel salvar.";
+  if (error instanceof Error) {
+    return "Nao foi possivel carregar os dados. Tente atualizar.";
+  }
+
+  return "Nao foi possivel salvar. Tente novamente.";
 }
 
 function slugify(value: string) {
