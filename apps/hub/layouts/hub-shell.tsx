@@ -41,9 +41,11 @@ import {
 import {
   canAccessModule,
   getHubModuleStatusLabel,
+  isHubModuleActive,
   orderedHubModules,
 } from "@repo/shared";
 import Image from "next/image";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -94,20 +96,20 @@ export function HubShell({
     pathname.startsWith(hubModule.basePath),
   );
   const moduleNavigationItems = orderedHubModules
+    .filter((hubModule) => isHubModuleActive(hubModule))
     .flatMap((hubModule) => {
-      const canOpenModule = hubUser
-        ? canAccessModule(hubUser, hubModule)
-        : false;
+      if (!hubUser || !canAccessModule(hubUser, hubModule)) {
+        return [];
+      }
 
       return hubModule.navigationItems.map((item) => ({
         ...item,
-        badge:
-          canOpenModule && hubModule.realtimeEnabled
-            ? "live"
-            : canOpenModule
-              ? ("badge" in item ? item.badge : undefined)
-              : "Em preparacao",
-        disabled: !canOpenModule,
+        badge: hubModule.realtimeEnabled
+          ? "live"
+          : "badge" in item
+            ? item.badge
+            : undefined,
+        disabled: false,
         icon: moduleIconMap[hubModule.id] ?? (
           <FileText aria-hidden="true" size={18} />
         ),
@@ -118,17 +120,21 @@ export function HubShell({
     .sort((firstItem, secondItem) =>
       firstItem.label.localeCompare(secondItem.label, "pt-BR"),
     );
-  const commands = orderedHubModules.flatMap((hubModule) => {
+  const commands = orderedHubModules
+    .filter((hubModule) => isHubModuleActive(hubModule))
+    .flatMap((hubModule) => {
     const canOpenModule = hubUser ? canAccessModule(hubUser, hubModule) : false;
 
+    if (!canOpenModule) {
+      return [];
+    }
+
     return hubModule.routes.map((route) => ({
-      disabled: !canOpenModule,
+      disabled: false,
       group: hubModule.name,
       id: route.id,
       keywords: [hubModule.id, hubModule.name, route.label],
-      label: canOpenModule
-        ? `Abrir ${hubModule.name} - ${route.label}`
-        : `${hubModule.name} - Em preparacao`,
+      label: `Abrir ${hubModule.name} - ${route.label}`,
       path: route.path,
       shortcut: `G ${hubModule.iconKey.slice(0, 1).toUpperCase()}`,
     }));
@@ -229,7 +235,11 @@ export function HubShell({
             header={
               isSidebarCollapsed ? (
                 <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
-                  <span className="grid h-9 w-9 place-items-center text-[#c9d1dc]">
+                  <Link
+                    aria-label="Voltar para a Home do Hub"
+                    className="grid h-9 w-9 place-items-center rounded-md text-[#c9d1dc] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                    href="/"
+                  >
                     <span
                       aria-hidden="true"
                       className="h-7 w-7 bg-current"
@@ -244,7 +254,7 @@ export function HubShell({
                         maskSize: "contain",
                       }}
                     />
-                  </span>
+                  </Link>
                   <Tooltip content="Expandir menu" placement="right">
                     <button
                       aria-label="Expandir sidebar"
@@ -259,10 +269,10 @@ export function HubShell({
               ) : (
                 <div className="grid min-h-11 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-3 pb-1 pt-0.5">
                   <span aria-hidden="true" />
-                  <div
+                  <Link
                     aria-label="Careli C2X"
                     className="flex min-w-0 items-center justify-center text-[#c9d1dc]"
-                    role="img"
+                    href="/"
                   >
                     <span
                       aria-hidden="true"
@@ -278,7 +288,7 @@ export function HubShell({
                         maskSize: "contain",
                       }}
                     />
-                  </div>
+                  </Link>
                   <Tooltip content="Recolher menu" placement="right">
                     <button
                       aria-label="Recolher sidebar"
@@ -421,7 +431,11 @@ export function HubShell({
             className="fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-14 gap-2 rounded-lg border border-white/[0.08] bg-[#0b0d11] p-2 shadow-2xl"
           >
             <Tooltip content="Careli Hub" placement="right">
-              <span className="grid h-10 w-10 place-items-center rounded-md border border-white/[0.08] bg-white/[0.04]">
+              <Link
+                aria-label="Voltar para a Home do Hub"
+                className="grid h-10 w-10 place-items-center rounded-md border border-white/[0.08] bg-white/[0.04] outline-none transition hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                href="/"
+              >
                 <Image
                   alt=""
                   aria-hidden="true"
@@ -430,7 +444,7 @@ export function HubShell({
                   src="/logocbr.png"
                   width={32}
                 />
-              </span>
+              </Link>
             </Tooltip>
             <div className="my-1 h-px bg-white/[0.08]" />
             {moduleNavigationItems.map((item) => (

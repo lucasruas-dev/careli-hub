@@ -1,3 +1,5 @@
+import type { Department, OperationalUserProfile, Sector } from "../access-model";
+
 export type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
 export type HubPermission =
@@ -24,10 +26,13 @@ export type PermissionScope = {
 };
 
 export type HubUserContext = {
+  department?: Department;
   id: string;
   name: string;
+  operationalProfile?: OperationalUserProfile;
   permissions: readonly HubPermission[];
   role: HubUserRole;
+  sector?: Sector;
   workspaceId?: string;
 };
 
