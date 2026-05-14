@@ -181,3 +181,35 @@ export type PulseXCallSession = {
   title: string;
   type: PulseXCallType;
 };
+
+export type PulseXCallSignalKind =
+  | "answer"
+  | "decline"
+  | "end"
+  | "ice-candidate"
+  | "invite"
+  | "join"
+  | "leave"
+  | "offer";
+
+export type PulseXCallRealtimeSignal = {
+  callId: PulseXCallSession["id"];
+  candidate?: RTCIceCandidateInit | null;
+  channelId: PulseXChannel["id"];
+  description?: RTCSessionDescriptionInit;
+  fromUserId: PulseXPresenceUser["id"];
+  id: string;
+  kind: PulseXCallSignalKind;
+  participant?: PulseXCallParticipant;
+  sentAt: string;
+  session?: PulseXCallSession;
+  targetUserIds?: readonly PulseXPresenceUser["id"][];
+  toUserId?: PulseXPresenceUser["id"];
+};
+
+export type PulseXCallRealtimeSignalInput = Omit<
+  PulseXCallRealtimeSignal,
+  "fromUserId" | "id" | "sentAt"
+> & {
+  fromUserId?: PulseXPresenceUser["id"];
+};
