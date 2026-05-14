@@ -70,6 +70,8 @@ export function MessageComposer({
   const [attachment, setAttachment] = useState<PulseXMessageAttachment | null>(
     null,
   );
+  const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const mentionOptions = useMemo(() => {
@@ -101,6 +103,16 @@ export function MessageComposer({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape") {
+      if (isMentionOpen || isAgentPanelOpen || isEmojiPickerOpen) {
+        event.preventDefault();
+        closeMentionMenu();
+        setIsAgentPanelOpen(false);
+        setIsEmojiPickerOpen(false);
+      }
+      return;
+    }
+
     if (isMentionOpen) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -124,11 +136,6 @@ export function MessageComposer({
         return;
       }
 
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeMentionMenu();
-        return;
-      }
     }
 
     if (event.key === "Enter" && !event.shiftKey) {
@@ -200,6 +207,36 @@ export function MessageComposer({
   function closeMentionMenu() {
     setActiveMention(null);
     setActiveOptionIndex(0);
+  }
+
+  function insertTextAtCaret(insertedText: string) {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const nextValue = `${value.slice(0, start)}${insertedText}${value.slice(end)}`;
+    const nextCaretIndex = start + insertedText.length;
+    const nextMentions = mentions.filter((mention) =>
+      nextValue.includes(mention.displayName),
+    );
+
+    onChange(nextValue, nextMentions);
+    updateActiveMention(nextValue, nextCaretIndex);
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextCaretIndex, nextCaretIndex);
+    });
+  }
+
+  function handleSelectEmoji(emoji: string) {
+    insertTextAtCaret(emoji);
+    setIsEmojiPickerOpen(false);
+  }
+
+  function handleSelectAgentPrompt(prompt: string) {
+    const prefix = value.trim().length > 0 ? "\n@Agente C2X " : "@Agente C2X ";
+
+    insertTextAtCaret(`${prefix}${prompt}`);
+    setIsAgentPanelOpen(false);
   }
 
   async function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
@@ -305,13 +342,39 @@ export function MessageComposer({
         ref={fileInputRef}
         type="file"
       />
-      <ComposerAction ariaLabel="Abrir emojis" icon={<Smile size={18} />} />
+      <div className="relative">
+        <ComposerAction
+          active={isEmojiPickerOpen}
+          ariaLabel="Abrir emojis"
+          icon={<Smile size={18} />}
+          onClick={() => {
+            setIsEmojiPickerOpen((currentValue) => !currentValue);
+            setIsAgentPanelOpen(false);
+          }}
+        />
+        {isEmojiPickerOpen ? (
+          <EmojiPicker onSelect={handleSelectEmoji} />
+        ) : null}
+      </div>
       <ComposerAction
         ariaLabel="Anexar arquivo"
         icon={<Paperclip size={18} />}
         onClick={() => fileInputRef.current?.click()}
       />
-      <ComposerAction ariaLabel="Acionar IA" icon={<Bot size={18} />} />
+      <div className="relative">
+        <ComposerAction
+          active={isAgentPanelOpen}
+          ariaLabel="Acionar agente"
+          icon={<Bot size={18} />}
+          onClick={() => {
+            setIsAgentPanelOpen((currentValue) => !currentValue);
+            setIsEmojiPickerOpen(false);
+          }}
+        />
+        {isAgentPanelOpen ? (
+          <AgentPromptMenu onSelect={handleSelectAgentPrompt} />
+        ) : null}
+      </div>
       <div className="relative flex-1">
         {isMentionOpen ? (
           <MentionAutocomplete
@@ -415,6 +478,58 @@ export function MessageComposer({
         <Send aria-hidden="true" size={18} />
       </button>
     </form>
+  );
+}
+
+function EmojiPicker({
+  onSelect,
+}: {
+  onSelect: (emoji: string) => void;
+}) {
+  return (
+    <div className="absolute bottom-full left-0 z-40 mb-2 w-64 rounded-md border border-[#d9e0ea] bg-white p-2 shadow-xl">
+      <div className="grid grid-cols-8 gap-1">
+        {composerEmojiOptions.map((emoji) => (
+          <button
+            aria-label={`Inserir ${emoji}`}
+            className="grid h-8 w-8 place-items-center rounded-md text-lg outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            key={emoji}
+            onClick={() => onSelect(emoji)}
+            type="button"
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AgentPromptMenu({
+  onSelect,
+}: {
+  onSelect: (prompt: string) => void;
+}) {
+  return (
+    <div className="absolute bottom-full left-0 z-40 mb-2 w-72 overflow-hidden rounded-md border border-[#d9e0ea] bg-white shadow-xl">
+      <div className="border-b border-[#eef2f7] px-3 py-2">
+        <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#A07C3B]">
+          Agente C2X
+        </p>
+      </div>
+      <div className="grid p-1.5">
+        {agentPromptOptions.map((option) => (
+          <button
+            className="rounded-md px-2.5 py-2 text-left text-sm font-medium text-[#17202f] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            key={option.label}
+            onClick={() => onSelect(option.prompt)}
+            type="button"
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -590,6 +705,64 @@ function getPresenceDotClassName(status: PulseXPresenceUser["status"]) {
 
   return classNames[status];
 }
+
+const composerEmojiOptions = [
+  "😀",
+  "😄",
+  "😂",
+  "🙂",
+  "😉",
+  "😍",
+  "🤝",
+  "👏",
+  "👍",
+  "👎",
+  "🙏",
+  "💪",
+  "👀",
+  "✅",
+  "⚠️",
+  "🚨",
+  "🔥",
+  "🚀",
+  "📌",
+  "📝",
+  "📎",
+  "📅",
+  "⏰",
+  "💬",
+  "💡",
+  "🎯",
+  "🏁",
+  "⭐",
+  "❤️",
+  "💙",
+  "🟢",
+  "🟡",
+] as const;
+
+const agentPromptOptions = [
+  {
+    label: "Conectar agente",
+    prompt: "",
+  },
+  {
+    label: "Resumir conversa",
+    prompt: "resuma os principais pontos deste canal.",
+  },
+  {
+    label: "Criar tarefa",
+    prompt: "transforme esta conversa em uma tarefa com responsavel e prazo.",
+  },
+  {
+    label: "Melhorar texto",
+    prompt: "melhore este texto mantendo o tom profissional:",
+  },
+  {
+    label: "Cobrar retorno",
+    prompt: "prepare uma cobranca de retorno objetiva e educada.",
+  },
+] as const;
 
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
