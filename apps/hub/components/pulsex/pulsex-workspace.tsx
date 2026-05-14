@@ -62,10 +62,10 @@ const PULSEX_CALL_SIGNAL_TOPIC = "pulsex:calls";
 const PULSEX_CALL_SOUND_STORAGE_KEY = "careli:pulsex:call-sound";
 
 const pulsexCallSoundOptions = [
-  { id: "soft-wave", label: "Suave" },
-  { id: "office-bell", label: "Profissional" },
-  { id: "digital-pulse", label: "Digital" },
-  { id: "warm-chime", label: "Calmo" },
+  { id: "classic-phone", label: "Telefone classico" },
+  { id: "desk-phone", label: "Telefone de mesa" },
+  { id: "soft-phone", label: "Telefone discreto" },
+  { id: "mobile-phone", label: "Celular tocando" },
 ] as const satisfies readonly PulseXCallSoundOption[];
 
 type PulseXCallSoundId = (typeof pulsexCallSoundOptions)[number]["id"];
@@ -1724,96 +1724,75 @@ function playPulseXMessageSound() {
 
 function playPulseXCallSound(soundId: PulseXCallSoundId) {
   const soundMap = {
-    "digital-pulse": [
+    "classic-phone": [
       {
-        duration: 0.1,
-        frequency: 620,
-        gain: 0.055,
+        duration: 0.42,
+        frequency: [440, 480],
+        gain: 0.038,
         start: 0,
-        type: "triangle",
+        type: "square",
       },
       {
-        duration: 0.13,
-        frequency: 830,
-        gain: 0.05,
-        start: 0.13,
-        type: "triangle",
-      },
-      {
-        duration: 0.16,
-        frequency: 740,
-        gain: 0.035,
-        start: 0.3,
-        type: "sine",
+        duration: 0.42,
+        frequency: [440, 480],
+        gain: 0.038,
+        start: 0.58,
+        type: "square",
       },
     ],
-    "office-bell": [
+    "desk-phone": [
       {
-        duration: 0.16,
-        frequency: 523,
-        gain: 0.05,
+        duration: 0.5,
+        frequency: [390, 450],
+        gain: 0.042,
         start: 0,
-        type: "sine",
+        type: "square",
       },
       {
-        duration: 0.17,
-        frequency: 659,
-        gain: 0.046,
-        start: 0.17,
-        type: "sine",
-      },
-      {
-        duration: 0.2,
-        frequency: 784,
-        gain: 0.036,
-        start: 0.36,
-        type: "triangle",
+        duration: 0.5,
+        frequency: [390, 450],
+        gain: 0.042,
+        start: 0.72,
+        type: "square",
       },
     ],
-    "soft-wave": [
+    "mobile-phone": [
       {
         duration: 0.18,
-        frequency: 440,
-        gain: 0.046,
-        start: 0,
-        type: "sine",
-      },
-      {
-        duration: 0.2,
-        frequency: 554,
-        gain: 0.04,
-        start: 0.2,
-        type: "triangle",
-      },
-      {
-        duration: 0.24,
-        frequency: 659,
-        gain: 0.034,
-        start: 0.43,
-        type: "sine",
-      },
-    ],
-    "warm-chime": [
-      {
-        duration: 0.18,
-        frequency: 392,
-        gain: 0.045,
-        start: 0,
-        type: "triangle",
-      },
-      {
-        duration: 0.19,
-        frequency: 523,
-        gain: 0.04,
-        start: 0.2,
-        type: "sine",
-      },
-      {
-        duration: 0.22,
-        frequency: 659,
+        frequency: [659, 880],
         gain: 0.032,
-        start: 0.43,
-        type: "sine",
+        start: 0,
+        type: "triangle",
+      },
+      {
+        duration: 0.18,
+        frequency: [659, 880],
+        gain: 0.032,
+        start: 0.26,
+        type: "triangle",
+      },
+      {
+        duration: 0.18,
+        frequency: [659, 880],
+        gain: 0.032,
+        start: 0.52,
+        type: "triangle",
+      },
+    ],
+    "soft-phone": [
+      {
+        duration: 0.36,
+        frequency: [420, 470],
+        gain: 0.028,
+        start: 0,
+        type: "sawtooth",
+      },
+      {
+        duration: 0.36,
+        frequency: [420, 470],
+        gain: 0.028,
+        start: 0.52,
+        type: "sawtooth",
       },
     ],
   } as const satisfies Record<PulseXCallSoundId, readonly ToneSpec[]>;
@@ -1823,7 +1802,7 @@ function playPulseXCallSound(soundId: PulseXCallSoundId) {
 
 type ToneSpec = {
   duration: number;
-  frequency: number;
+  frequency: number | readonly number[];
   gain: number;
   start: number;
   type: OscillatorType;
@@ -1851,21 +1830,27 @@ function playToneSequence(notes: readonly ToneSpec[]) {
     masterGain.connect(audioContext.destination);
 
     notes.forEach((note) => {
-      const oscillator = audioContext.createOscillator();
       const noteGain = audioContext.createGain();
       const startAt = audioContext.currentTime + note.start;
       const endAt = startAt + note.duration;
+      const frequencies = Array.isArray(note.frequency)
+        ? note.frequency
+        : [note.frequency];
 
-      oscillator.type = note.type;
-      oscillator.frequency.setValueAtTime(note.frequency, startAt);
       noteGain.gain.setValueAtTime(0.0001, startAt);
       noteGain.gain.exponentialRampToValueAtTime(note.gain, startAt + 0.025);
       noteGain.gain.exponentialRampToValueAtTime(0.0001, endAt);
-
-      oscillator.connect(noteGain);
       noteGain.connect(masterGain);
-      oscillator.start(startAt);
-      oscillator.stop(endAt + 0.02);
+
+      frequencies.forEach((frequency) => {
+        const chordOscillator = audioContext.createOscillator();
+
+        chordOscillator.type = note.type;
+        chordOscillator.frequency.setValueAtTime(frequency, startAt);
+        chordOscillator.connect(noteGain);
+        chordOscillator.start(startAt);
+        chordOscillator.stop(endAt + 0.02);
+      });
     });
 
     window.setTimeout(() => {
