@@ -1,6 +1,9 @@
 "use client";
 
-import { getHubSupabaseClient } from "@/lib/supabase/client";
+import {
+  getHubSupabaseClient,
+  getHubSupabaseDiagnostics,
+} from "@/lib/supabase/client";
 import type {
   CreateDepartmentInput,
   CreateOperationalUserInput,
@@ -24,8 +27,11 @@ import type {
 
 type QueryResult<T> = {
   data: T | null;
-  error: { code?: string; message: string } | null;
+  error: { code?: string; message: string; name?: string; stack?: string } | null;
 };
+
+const SUPABASE_CONNECTION_ERROR_MESSAGE =
+  "Nao foi possivel conectar ao Supabase. Verifique a conexao e tente novamente.";
 
 type HubProfileDebugRow = {
   email: string;
@@ -124,6 +130,7 @@ export async function loadSetupData(): Promise<SetupData> {
   }
 
   await logCurrentSetupAuthContext(client);
+  await runSetupConnectivityProbe(client);
 
   const [
     departmentsResult,
@@ -195,7 +202,15 @@ export async function loadSetupData(): Promise<SetupData> {
     readableResults.forEach((result, index) => {
       logSetupQueryError(`setup:${index}`, result);
     });
-    throw new Error("Nao foi possivel carregar os dados. Tente atualizar.");
+    const hasNetworkFailure = readableResults.some((result) =>
+      isNetworkFailure((result as QueryResult<unknown>).error),
+    );
+
+    throw new Error(
+      hasNetworkFailure
+        ? SUPABASE_CONNECTION_ERROR_MESSAGE
+        : "Nao foi possivel carregar os dados. Tente atualizar.",
+    );
   }
 
   return {
@@ -639,13 +654,60 @@ async function runSetupQuery<Result>(
   label: string,
   query: PromiseLike<unknown>,
 ): Promise<QueryResult<Result>> {
-  logSetupDebug(`${label} start`);
+  logSetupDebug(`${label} start`, {
+    supabase: getHubSupabaseDiagnostics(),
+  });
 
-  const result = (await query) as QueryResult<Result>;
+  try {
+    const result = (await query) as QueryResult<Result>;
 
-  logSetupQueryResult(label, result);
+    logSetupQueryResult(label, result);
 
-  return result;
+    return result;
+  } catch (error) {
+    const queryError = serializeThrownError(error);
+    const result = {
+      data: null,
+      error: queryError,
+    } satisfies QueryResult<Result>;
+
+    logSetupQueryError(label, result);
+
+    return result;
+  }
+}
+
+async function runSetupConnectivityProbe(
+  client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+) {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  const probes = [
+    {
+      label: "probe hub_departments",
+      query: client.from("hub_departments").select("id").limit(1),
+    },
+    {
+      label: "probe hub_sectors",
+      query: client.from("hub_sectors").select("id").limit(1),
+    },
+    {
+      label: "probe pulsex_channels",
+      query: client.from("pulsex_channels").select("id").limit(1),
+    },
+  ];
+
+  await Promise.all(
+    probes.map(async (probe) => {
+      const result = await runSetupQuery(probe.label, probe.query);
+
+      if (result.error) {
+        logSetupQueryError(probe.label, result);
+      }
+    }),
+  );
 }
 
 async function logCurrentSetupAuthContext(
@@ -723,6 +785,7 @@ function logSetupQueryError(label: string, result: unknown) {
     console.warn("[setup] Supabase query error", {
       error: queryResult.error,
       label,
+      supabase: getHubSupabaseDiagnostics(),
     });
   }
 }
@@ -752,6 +815,42 @@ function createFallbackSlug(value: string) {
     .replace(/^-+|-+$/g, "");
 
   return normalizedValue || `registro-${Date.now().toString(36)}`;
+}
+
+function serializeThrownError(error: unknown): NonNullable<QueryResult<unknown>["error"]> {
+  if (error instanceof Error) {
+    return {
+      message: error.message || "Erro de rede ao consultar Supabase.",
+      name: error.name,
+      stack: error.stack,
+    };
+  }
+
+  if (typeof error === "string") {
+    return {
+      message: error,
+      name: "Error",
+    };
+  }
+
+  return {
+    message: "Erro de rede ao consultar Supabase.",
+    name: "UnknownError",
+  };
+}
+
+function isNetworkFailure(error: QueryResult<unknown>["error"]) {
+  if (!error) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("network") ||
+    message.includes("fetch")
+  );
 }
 
 async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {

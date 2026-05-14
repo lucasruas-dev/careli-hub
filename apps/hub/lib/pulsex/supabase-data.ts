@@ -1,6 +1,9 @@
 "use client";
 
-import { getHubSupabaseClient } from "@/lib/supabase/client";
+import {
+  getHubSupabaseClient,
+  getHubSupabaseDiagnostics,
+} from "@/lib/supabase/client";
 import type {
   PulseXChannel,
   PulseXDepartment,
@@ -11,7 +14,7 @@ import type {
 
 type QueryResult<T> = {
   data: T | null;
-  error: { message: string } | null;
+  error: { message: string; name?: string; stack?: string } | null;
 };
 
 export type PulseXOperationalData = {
@@ -94,14 +97,25 @@ export async function loadPulseXOperationalData(input: {
     return createPulseXFallback();
   }
 
-  const [departments, sectors, assignments, allChannels, users] =
+  await runPulseXConnectivityProbe();
+
+  const [departmentsLoad, sectorsLoad, assignmentsLoad, channelsLoad, usersLoad] =
     await Promise.all([
-      listDepartments(),
-      listSectors(),
-      listUserAssignments(input.currentUserId),
-      listPulseXChannels(),
-      listDirectUsers(),
+      safePulseXLoad("departments", listDepartments, []),
+      safePulseXLoad("sectors", listSectors, []),
+      safePulseXLoad(
+        "assignments",
+        () => listUserAssignments(input.currentUserId),
+        [],
+      ),
+      safePulseXLoad("channels", listPulseXChannels, []),
+      safePulseXLoad("users", listDirectUsers, []),
     ]);
+  const departments = departmentsLoad.data;
+  const sectors = sectorsLoad.data;
+  const assignments = assignmentsLoad.data;
+  const allChannels = channelsLoad.data;
+  const users = usersLoad.data;
   logPulseXDebug("current user", {
     id: input.currentUserId,
   });
@@ -127,6 +141,17 @@ export async function loadPulseXOperationalData(input: {
       filtered: channels.length,
       total: allChannels.length,
     });
+    if (
+      departmentsLoad.failed ||
+      sectorsLoad.failed ||
+      channelsLoad.failed ||
+      usersLoad.failed
+    ) {
+      throw new Error(
+        "Nao foi possivel conectar ao Supabase. Verifique a conexao e tente novamente.",
+      );
+    }
+
     return createPulseXFallback();
   }
 
@@ -198,7 +223,9 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
     return [];
   }
 
-  logPulseXDebug("list channels start");
+  logPulseXDebug("list channels start", {
+    supabase: getHubSupabaseDiagnostics(),
+  });
 
   const result = await client
     .from("pulsex_channels")
@@ -211,7 +238,9 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
   if ((result as QueryResult<PulseXChannelRow[]>).error) {
     logPulseXDebug("list channels error", {
       message: (result as QueryResult<PulseXChannelRow[]>).error?.message,
+      stack: (result as QueryResult<PulseXChannelRow[]>).error?.stack,
       retry: "without members relation",
+      supabase: getHubSupabaseDiagnostics(),
     });
 
     const fallbackResult = await client
@@ -501,9 +530,113 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
     logPulseXDebug("list channels error", {
       label,
       message: queryResult.error.message,
+      name: queryResult.error.name,
+      stack: queryResult.error.stack,
+      supabase: getHubSupabaseDiagnostics(),
     });
     throw new Error(`Nao foi possivel carregar ${label}: ${queryResult.error.message}`);
   }
+}
+
+async function safePulseXLoad<Result>(
+  label: string,
+  loader: () => Promise<Result>,
+  fallback: Result,
+) {
+  try {
+    return {
+      data: await loader(),
+      failed: false,
+    };
+  } catch (error) {
+    logPulseXDebug(`${label} error`, {
+      error: serializeThrownError(error),
+      supabase: getHubSupabaseDiagnostics(),
+    });
+
+    return {
+      data: fallback,
+      failed: true,
+    };
+  }
+}
+
+async function runPulseXConnectivityProbe() {
+  if (!isLocalDevelopmentRuntime()) {
+    return;
+  }
+
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    logPulseXDebug("connectivity probe", {
+      client: "missing",
+      supabase: getHubSupabaseDiagnostics(),
+    });
+    return;
+  }
+
+  const probes = [
+    {
+      label: "probe hub_departments",
+      query: client.from("hub_departments").select("id").limit(1),
+    },
+    {
+      label: "probe hub_sectors",
+      query: client.from("hub_sectors").select("id").limit(1),
+    },
+    {
+      label: "probe pulsex_channels",
+      query: client.from("pulsex_channels").select("id").limit(1),
+    },
+  ];
+
+  await Promise.all(
+    probes.map(async (probe) => {
+      try {
+        const result = (await probe.query) as QueryResult<unknown[]>;
+
+        if (result.error) {
+          logPulseXDebug(`${probe.label} error`, {
+            error: result.error,
+            supabase: getHubSupabaseDiagnostics(),
+          });
+          return;
+        }
+
+        logPulseXDebug(`${probe.label} result`, {
+          rowCount: result.data?.length ?? 0,
+        });
+      } catch (error) {
+        logPulseXDebug(`${probe.label} error`, {
+          error: serializeThrownError(error),
+          supabase: getHubSupabaseDiagnostics(),
+        });
+      }
+    }),
+  );
+}
+
+function serializeThrownError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+    };
+  }
+
+  if (typeof error === "string") {
+    return {
+      message: error,
+      name: "Error",
+    };
+  }
+
+  return {
+    message: "Erro desconhecido.",
+    name: "UnknownError",
+  };
 }
 
 function logPulseXDebug(event: string, detail?: unknown) {

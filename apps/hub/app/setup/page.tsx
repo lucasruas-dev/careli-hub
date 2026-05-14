@@ -1956,6 +1956,13 @@ function FormActions({
 }
 
 function getFriendlySetupError(error: unknown, action: "load" | "save") {
+  if (
+    error instanceof Error &&
+    error.message.includes("Nao foi possivel conectar ao Supabase")
+  ) {
+    return error.message;
+  }
+
   if (error instanceof Error && action === "save") {
     return error.message || "Nao foi possivel salvar. Tente novamente.";
   }
