@@ -30,8 +30,6 @@ type MessageItemProps = {
   users?: readonly PulseXPresenceUser[];
 };
 
-const mentionPattern = /(@[A-Za-z0-9_-]+)/g;
-
 const tagStyles = {
   acompanhar: "border-sky-200 bg-sky-50 text-sky-700",
   importante: "border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7b5f2d]",
@@ -47,23 +45,6 @@ const tagLabels = {
   resolvido: "Resolvido",
   urgente: "Urgente",
 } as const satisfies Record<PulseXMessageTag, string>;
-
-function renderMessageBody(body: string) {
-  return body.split(mentionPattern).map((part, index) => {
-    if (part.match(mentionPattern)) {
-      return (
-        <span
-          className="font-semibold text-[var(--uix-brand-primary)]"
-          key={`${part}-${index}`}
-        >
-          {part}
-        </span>
-      );
-    }
-
-    return <span key={`${part}-${index}`}>{part}</span>;
-  });
-}
 
 export function MessageItem({
   author,
@@ -126,7 +107,7 @@ export function MessageItem({
           </div>
         ) : null}
         <p className="m-0 whitespace-pre-wrap text-sm leading-6">
-          {message.deletedAt ? "Mensagem apagada" : renderMessageBody(message.body)}
+          {message.deletedAt ? "Mensagem apagada" : renderMessageBody(message)}
         </p>
         <div className="mt-1 flex items-center justify-end gap-2 text-[0.66rem] opacity-60">
           {message.editedAt ? <span>editada</span> : null}
@@ -199,6 +180,7 @@ function MessageInfoPanel({
 }) {
   const deliveredUsers = getUsersById(users, message.deliveredTo);
   const readUsers = getUsersById(users, message.readBy);
+  const mentionedUsers = getUsersById(users, message.mentionUserIds);
 
   return (
     <div className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-md border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-lg">
@@ -216,6 +198,12 @@ function MessageInfoPanel({
         label="Entregue para"
         value={formatUserList(deliveredUsers)}
       />
+      {mentionedUsers.length > 0 ? (
+        <InfoRow
+          label="Mencoes"
+          value={formatUserList(mentionedUsers)}
+        />
+      ) : null}
       {message.tags?.length ? (
         <div className="mt-2">
           <p className="m-0 mb-1 text-[0.68rem] font-semibold uppercase text-[#667085]">
@@ -269,4 +257,63 @@ function formatUserList(users: readonly PulseXPresenceUser[]) {
   }
 
   return users.map((user) => user.label).join(", ");
+}
+
+function renderMessageBody(message: PulseXMessage) {
+  const body = message.body;
+  const mentions = message.mentions ?? [];
+  const ranges = mentions
+    .map((mention) => {
+      const start = body.indexOf(mention.displayName);
+
+      if (start < 0) {
+        return null;
+      }
+
+      return {
+        end: start + mention.displayName.length,
+        mention,
+        start,
+      };
+    })
+    .filter((range): range is NonNullable<typeof range> => Boolean(range))
+    .sort((firstRange, secondRange) => firstRange.start - secondRange.start);
+
+  if (ranges.length === 0) {
+    return body;
+  }
+
+  const fragments = [];
+  let cursor = 0;
+
+  ranges.forEach((range, index) => {
+    if (range.start < cursor) {
+      return;
+    }
+
+    if (range.start > cursor) {
+      fragments.push(
+        <span key={`text-${index}-${cursor}`}>
+          {body.slice(cursor, range.start)}
+        </span>,
+      );
+    }
+
+    fragments.push(
+      <span
+        className="rounded-sm bg-[#A07C3B]/10 px-0.5 font-semibold text-[#7b5f2d]"
+        data-user-id={range.mention.userId}
+        key={`mention-${range.mention.userId}-${range.start}`}
+      >
+        {range.mention.displayName}
+      </span>,
+    );
+    cursor = range.end;
+  });
+
+  if (cursor < body.length) {
+    fragments.push(<span key={`text-tail-${cursor}`}>{body.slice(cursor)}</span>);
+  }
+
+  return fragments;
 }

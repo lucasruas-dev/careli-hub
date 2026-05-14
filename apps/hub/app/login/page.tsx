@@ -3,7 +3,6 @@
 import { useAuth } from "@/providers/auth-provider";
 import { TextField, Tooltip } from "@repo/uix";
 import { KeyRound, Lock, LogIn, Mail } from "lucide-react";
-import Image from "next/image";
 import { useState, type FormEvent } from "react";
 
 export default function LoginPage() {
@@ -33,13 +32,14 @@ export default function LoginPage() {
     <main className="grid min-h-screen place-items-center bg-[#f3f6fa] px-6 py-10 text-[#101820]">
       <section className="grid w-full max-w-[25rem] justify-items-center">
         <div className="mb-5 grid justify-items-center">
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element -- query string cache busting is intentional here. */}
+          <img
             alt="Careli"
             className="h-auto w-40 object-contain"
-            height={160}
-            priority
-            src="/logoc.png"
-            width={160}
+            decoding="async"
+            height="160"
+            src="/logo-careli-c2x.png?v=1"
+            width="160"
           />
         </div>
 

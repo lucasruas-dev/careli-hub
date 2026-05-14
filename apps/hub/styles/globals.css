@@ -19,3 +19,42 @@ body {
 button {
   font: inherit;
 }
+
+.careli-hub-shell .uix-sidebar {
+  --uix-text-primary: #f7f8fa;
+  --uix-text-secondary: #dce2ea;
+  --uix-text-muted: #a5afbd;
+  --uix-border-subtle: rgb(255 255 255 / 0.075);
+  border-right-color: #252a35;
+  background: #101820;
+  box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.035);
+}
+
+.careli-hub-shell .uix-sidebar-item {
+  color: #c9d1dc;
+}
+
+.careli-hub-shell .uix-sidebar-item:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.07);
+  color: #ffffff;
+}
+
+.careli-hub-shell .uix-sidebar-item[data-active="true"] {
+  border-color: rgb(160 124 59 / 0.55);
+  background: rgb(160 124 59 / 0.18);
+  color: #ffffff;
+}
+
+.careli-hub-shell .uix-sidebar-item__badge {
+  background: rgb(160 124 59 / 0.2);
+  color: #f2d79b;
+}
+
+.careli-home .uix-workspace-layout__body {
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 22rem);
+  gap: 1.25rem;
+}
+
+.careli-home .uix-workspace-layout__content {
+  gap: 1.25rem;
+}

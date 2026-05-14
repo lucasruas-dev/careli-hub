@@ -318,7 +318,12 @@ export async function createDepartment(input: CreateDepartmentInput) {
     slug: input.slug.trim() || createFallbackSlug(input.name),
     status: input.status,
   };
-  logSetupDebug("create department payload", payload);
+  logSupabaseDiagnostic("setup", "create department payload", {
+    function: "createDepartment",
+    payload,
+    supabase: getHubSupabaseDiagnostics(),
+    table: "hub_departments",
+  });
   const result = await runSetupMutation<DepartmentRow>(
     "create department",
     client
@@ -328,6 +333,19 @@ export async function createDepartment(input: CreateDepartmentInput) {
       .single(),
   );
   logSetupQueryResult("create department", result);
+
+  if (isNetworkFailure(result.error)) {
+    logSupabaseDiagnostic("setup", "create department direct insert failed", {
+      error: result.error,
+      fallback: "/api/setup/departments",
+      function: "createDepartment",
+      payload,
+      supabase: getHubSupabaseDiagnostics(),
+      table: "hub_departments",
+    });
+
+    return createDepartmentViaApi(client, payload);
+  }
 
   assertQuery("salvar departamento", result);
 
@@ -693,6 +711,84 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
 
 export const saveDepartment = createDepartment;
 export const saveSector = createSector;
+
+async function createDepartmentViaApi(
+  client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+  payload: {
+    description: string | null;
+    name: string;
+    slug: string;
+    status: SetupDepartment["status"];
+  },
+) {
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    logSupabaseDiagnostic("setup", "create department fallback auth error", {
+      error: sessionResult.error
+        ? serializeDiagnosticError(sessionResult.error)
+        : null,
+      function: "createDepartmentViaApi",
+      table: "hub_departments",
+    });
+    throw new Error("Sessao administrativa indisponivel.");
+  }
+
+  let response: Response;
+
+  try {
+    logSupabaseDiagnostic("setup", "create department api start", {
+      endpoint: "/api/setup/departments",
+      function: "createDepartmentViaApi",
+      payload,
+      table: "hub_departments",
+    });
+    response = await fetch("/api/setup/departments", {
+      body: JSON.stringify(payload),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+  } catch (error) {
+    logSupabaseDiagnostic("setup", "create department api error", {
+      endpoint: "/api/setup/departments",
+      error: serializeDiagnosticError(error),
+      function: "createDepartmentViaApi",
+      payload,
+      table: "hub_departments",
+    });
+    throw new Error(SUPABASE_CONNECTION_ERROR_MESSAGE);
+  }
+
+  const responsePayload = (await response.json().catch(() => null)) as
+    | { data?: DepartmentRow; error?: string }
+    | null;
+
+  if (!response.ok || !responsePayload?.data) {
+    logSupabaseDiagnostic("setup", "create department api error", {
+      endpoint: "/api/setup/departments",
+      function: "createDepartmentViaApi",
+      payload,
+      response: responsePayload,
+      status: response.status,
+      statusText: response.statusText,
+      table: "hub_departments",
+    });
+    throw new Error(responsePayload?.error ?? "Nao foi possivel salvar departamento.");
+  }
+
+  logSupabaseDiagnostic("setup", "create department api result", {
+    endpoint: "/api/setup/departments",
+    function: "createDepartmentViaApi",
+    id: responsePayload.data.id,
+    table: "hub_departments",
+  });
+
+  return mapDepartment(responsePayload.data);
+}
 
 function assertQuery(label: string, result: unknown): asserts result is QueryResult<unknown> {
   const queryResult = result as QueryResult<unknown>;
