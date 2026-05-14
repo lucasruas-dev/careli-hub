@@ -1,0 +1,7 @@
+{
+  "name": "@repo/guardian",
+  "version": "0.0.0-import",
+  "private": true,
+  "description": "Imported Guardian source from careli-nexus for analysis before Hub integration.",
+  "scripts": {}
+}
