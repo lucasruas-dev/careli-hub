@@ -27,11 +27,8 @@ type MediaDeviceOption = {
 
 const defaultDeviceValue = "__default__";
 const peerConnectionConfig = {
-  iceServers: [
-    {
-      urls: "stun:stun.l.google.com:19302",
-    },
-  ],
+  iceCandidatePoolSize: 4,
+  iceServers: createIceServers(),
 } satisfies RTCConfiguration;
 
 export function CallPanel({
@@ -230,13 +227,22 @@ export function CallPanel({
   );
 
   const getPeerConnection = useCallback(
-    (remoteUserId: string) => {
+    (
+      remoteUserId: string,
+      options?: {
+        prepareOfferTransceivers?: boolean;
+      },
+    ) => {
       const existingConnection = peerConnectionsRef.current.get(remoteUserId);
 
       if (
         existingConnection &&
         existingConnection.connectionState !== "closed"
       ) {
+        if (options?.prepareOfferTransceivers) {
+          ensurePeerTransceiver(existingConnection, "audio");
+          ensurePeerTransceiver(existingConnection, "video");
+        }
         return existingConnection;
       }
 
@@ -247,8 +253,10 @@ export function CallPanel({
 
       const peerConnection = new RTCPeerConnection(peerConnectionConfig);
 
-      ensurePeerTransceiver(peerConnection, "audio");
-      ensurePeerTransceiver(peerConnection, "video");
+      if (options?.prepareOfferTransceivers) {
+        ensurePeerTransceiver(peerConnection, "audio");
+        ensurePeerTransceiver(peerConnection, "video");
+      }
 
       peerConnection.onicecandidate = (event) => {
         onSendSignal({
@@ -319,7 +327,9 @@ export function CallPanel({
           return;
         }
 
-        const peerConnection = getPeerConnection(remoteUserId);
+        const peerConnection = getPeerConnection(remoteUserId, {
+          prepareOfferTransceivers: true,
+        });
 
         if (!peerConnection) {
           return;
@@ -370,12 +380,12 @@ export function CallPanel({
         return;
       }
 
-      await attachLocalTracks(peerConnection, stream);
       await peerConnection.setRemoteDescription(signal.description);
-      await flushPendingIceCandidates(signal.fromUserId);
+      await attachLocalTracks(peerConnection, stream);
 
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
+      await flushPendingIceCandidates(signal.fromUserId);
 
       if (!peerConnection.localDescription) {
         return;
@@ -448,13 +458,15 @@ export function CallPanel({
 
       if (signal.kind === "ice-candidate") {
         try {
-          const peerConnection = getPeerConnection(signal.fromUserId);
-
-          if (!peerConnection || !signal.candidate) {
+          if (!signal.candidate) {
             return;
           }
 
-          if (!peerConnection.remoteDescription) {
+          const peerConnection = peerConnectionsRef.current.get(
+            signal.fromUserId,
+          );
+
+          if (!peerConnection || !peerConnection.remoteDescription) {
             const currentCandidates =
               pendingIceCandidatesRef.current.get(signal.fromUserId) ?? [];
             pendingIceCandidatesRef.current.set(signal.fromUserId, [
@@ -1001,5 +1013,58 @@ function isKnownDevice(
   return (
     deviceId === defaultDeviceValue ||
     devices.some((device) => device.deviceId === deviceId)
+  );
+}
+
+function createIceServers(): RTCIceServer[] {
+  const configuredTurnUrls = parsePublicEnvList(
+    process.env.NEXT_PUBLIC_PULSEX_TURN_URLS,
+  );
+  const configuredTurnUsername =
+    process.env.NEXT_PUBLIC_PULSEX_TURN_USERNAME?.trim();
+  const configuredTurnCredential =
+    process.env.NEXT_PUBLIC_PULSEX_TURN_CREDENTIAL?.trim();
+  const iceServers: RTCIceServer[] = [
+    {
+      urls: ["stun:stun.l.google.com:19302", "stun:openrelay.metered.ca:80"],
+    },
+  ];
+
+  if (configuredTurnUrls.length > 0) {
+    const configuredTurnServer: RTCIceServer = {
+      urls: configuredTurnUrls,
+    };
+
+    if (configuredTurnUsername) {
+      configuredTurnServer.username = configuredTurnUsername;
+    }
+
+    if (configuredTurnCredential) {
+      configuredTurnServer.credential = configuredTurnCredential;
+    }
+
+    iceServers.push(configuredTurnServer);
+    return iceServers;
+  }
+
+  iceServers.push({
+    credential: "openrelayproject",
+    urls: [
+      "turn:openrelay.metered.ca:80",
+      "turn:openrelay.metered.ca:443",
+      "turn:openrelay.metered.ca:443?transport=tcp",
+    ],
+    username: "openrelayproject",
+  });
+
+  return iceServers;
+}
+
+function parsePublicEnvList(value: string | undefined) {
+  return (
+    value
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter(Boolean) ?? []
   );
 }

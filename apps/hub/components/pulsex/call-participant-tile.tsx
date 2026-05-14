@@ -2,7 +2,7 @@
 
 import type { PulseXCallParticipant } from "@/lib/pulsex";
 import { Mic, MicOff, MonitorUp, Video, VideoOff } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type CallParticipantTileProps = {
   isLocalMedia?: boolean;
@@ -17,6 +17,7 @@ export function CallParticipantTile({
 }: CallParticipantTileProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [needsAudioUnlock, setNeedsAudioUnlock] = useState(false);
   const showVideo = Boolean(
     mediaStream?.getVideoTracks().length && participant.isCameraOn,
   );
@@ -32,7 +33,10 @@ export function CallParticipantTile({
     audioElement.muted = false;
 
     if (mediaStream && !isLocalMedia) {
-      void audioElement.play().catch(() => undefined);
+      void audioElement
+        .play()
+        .then(() => setNeedsAudioUnlock(false))
+        .catch(() => setNeedsAudioUnlock(true));
     }
   }, [isLocalMedia, mediaStream]);
 
@@ -56,6 +60,20 @@ export function CallParticipantTile({
           </span>
         ) : null}
       </div>
+      {!isLocalMedia && needsAudioUnlock ? (
+        <button
+          className="absolute left-3 top-3 z-20 rounded-md bg-[#A07C3B] px-2 py-1 text-[0.68rem] font-semibold text-white shadow-lg transition hover:bg-[#8f6f35] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2d79f]"
+          onClick={() => {
+            void audioRef.current
+              ?.play()
+              .then(() => setNeedsAudioUnlock(false))
+              .catch(() => setNeedsAudioUnlock(true));
+          }}
+          type="button"
+        >
+          Ativar audio
+        </button>
+      ) : null}
       {showVideo ? (
         <video
           autoPlay
