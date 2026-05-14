@@ -15,10 +15,26 @@ export function CallParticipantTile({
   mediaStream,
   participant,
 }: CallParticipantTileProps) {
+  const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const showVideo = Boolean(
     mediaStream?.getVideoTracks().length && participant.isCameraOn,
   );
+
+  useEffect(() => {
+    const audioElement = audioRef.current;
+
+    if (!audioElement) {
+      return;
+    }
+
+    audioElement.srcObject = isLocalMedia ? null : (mediaStream ?? null);
+    audioElement.muted = false;
+
+    if (mediaStream && !isLocalMedia) {
+      void audioElement.play().catch(() => undefined);
+    }
+  }, [isLocalMedia, mediaStream]);
 
   useEffect(() => {
     if (!videoRef.current) {
@@ -30,6 +46,7 @@ export function CallParticipantTile({
 
   return (
     <article className="relative min-h-36 overflow-hidden rounded-lg border border-white/10 bg-[#141923] p-3 text-white shadow-sm">
+      {!isLocalMedia ? <audio autoPlay ref={audioRef} /> : null}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
         <CallStateIcon enabled={!participant.isMuted} type="mic" />
         <CallStateIcon enabled={Boolean(participant.isCameraOn)} type="camera" />
@@ -43,7 +60,7 @@ export function CallParticipantTile({
         <video
           autoPlay
           className="absolute inset-0 h-full w-full object-cover"
-          muted={isLocalMedia}
+          muted
           playsInline
           ref={videoRef}
         />

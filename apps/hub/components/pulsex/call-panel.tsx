@@ -242,6 +242,7 @@ export function CallPanel({
 
       const peerConnection = new RTCPeerConnection(peerConnectionConfig);
 
+      ensurePeerTransceiver(peerConnection, "audio");
       ensurePeerTransceiver(peerConnection, "video");
 
       peerConnection.onicecandidate = (event) => {
