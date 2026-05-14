@@ -22,7 +22,7 @@ export function IncomingCallBanner({
     session.status === "ringing" ? "Chamada recebida" : "Ligando...";
 
   return (
-    <aside className="mx-4 mt-4 flex items-center justify-between gap-3 rounded-lg border border-[#d9e0ea] bg-white px-4 py-3 shadow-sm">
+    <aside className="pointer-events-auto mx-4 mt-4 flex items-center justify-between gap-3 rounded-lg border border-[#d9e0ea] bg-white px-4 py-3 shadow-lg">
       <div className="flex min-w-0 items-center gap-3">
         <span className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-[#101820] text-sm font-semibold text-white">
           {caller?.avatarUrl ? (

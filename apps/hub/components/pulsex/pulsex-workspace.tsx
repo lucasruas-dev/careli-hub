@@ -450,6 +450,21 @@ export function PulseXWorkspace() {
     };
   }, [currentUserId, dataStatus, handleIncomingCallSignal]);
 
+  useEffect(() => {
+    if (!incomingCall) {
+      return;
+    }
+
+    playPulseXNotificationSound();
+    const intervalId = window.setInterval(() => {
+      playPulseXNotificationSound();
+    }, 1_800);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [incomingCall]);
+
   const notifyIncomingMessages = useCallback(
     (newMessages: readonly PulseXMessage[]) => {
       if (newMessages.length === 0) {
@@ -1107,14 +1122,16 @@ export function PulseXWorkspace() {
           onStartCall={handleStartCall}
           presenceUsers={channelPresenceUsers}
         />
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
-          {incomingCall ? (
+        {incomingCall ? (
+          <div className="pointer-events-none absolute inset-x-0 top-16 z-30">
             <IncomingCallBanner
               onAccept={handleAcceptIncomingCall}
               onDecline={handleDeclineIncomingCall}
               session={incomingCall}
             />
-          ) : null}
+          </div>
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
           <MessageList
             currentUserId={currentUserId}
             filter={activeMessageFilter}

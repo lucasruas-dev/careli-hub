@@ -5,11 +5,13 @@ import { Mic, MicOff, MonitorUp, Video, VideoOff } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 type CallParticipantTileProps = {
+  isLocalMedia?: boolean;
   mediaStream?: MediaStream | null;
   participant: PulseXCallParticipant;
 };
 
 export function CallParticipantTile({
+  isLocalMedia = false,
   mediaStream,
   participant,
 }: CallParticipantTileProps) {
@@ -41,7 +43,7 @@ export function CallParticipantTile({
         <video
           autoPlay
           className="absolute inset-0 h-full w-full object-cover"
-          muted
+          muted={isLocalMedia}
           playsInline
           ref={videoRef}
         />

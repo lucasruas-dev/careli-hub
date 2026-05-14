@@ -590,6 +590,7 @@ export function CallPanel({
 
           return (
             <CallParticipantTile
+              isLocalMedia={isLocalParticipant}
               key={participant.id}
               mediaStream={isLocalParticipant ? localStream : remoteStream}
               participant={{
