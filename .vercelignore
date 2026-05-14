@@ -1,0 +1,19 @@
+# Local dependencies and build caches
+node_modules
+**/node_modules
+.turbo
+**/.turbo
+.next
+**/.next
+
+# Local Vercel state
+.vercel
+
+# Local env and debug files
+.env
+.env.*
+*.log
+*.tmp
+*.temp
+.cache
+**/.cache
