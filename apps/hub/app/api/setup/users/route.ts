@@ -23,7 +23,18 @@ export async function POST(request: NextRequest) {
   const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
 
+  logSetupUsersApi("start", {
+    endpoint: "/api/setup/users",
+    hasServiceRoleKey: Boolean(serviceRoleKey),
+    supabaseUrl: maskSupabaseUrl(supabaseUrl),
+  });
+
   if (!supabaseUrl || !serviceRoleKey) {
+    logSetupUsersApi("error", {
+      reason: "missing server env",
+      hasServiceRoleKey: Boolean(serviceRoleKey),
+      supabaseUrl: maskSupabaseUrl(supabaseUrl),
+    });
     return NextResponse.json(
       {
         error:
@@ -36,12 +47,19 @@ export async function POST(request: NextRequest) {
   const accessToken = getBearerToken(request);
 
   if (!accessToken) {
+    logSetupUsersApi("error", {
+      reason: "missing bearer token",
+    });
     return NextResponse.json({ error: "Sessao administrativa ausente." }, { status: 401 });
   }
 
   const payload = parsePayload(await request.json().catch(() => null));
 
   if (!payload.ok) {
+    logSetupUsersApi("error", {
+      reason: "invalid payload",
+      message: payload.error,
+    });
     return NextResponse.json({ error: payload.error }, { status: 400 });
   }
 
@@ -56,6 +74,10 @@ export async function POST(request: NextRequest) {
   );
 
   if (authError || !authData.user) {
+    logSetupUsersApi("error", {
+      error: serializeServerError(authError),
+      reason: "invalid admin session",
+    });
     return NextResponse.json({ error: "Sessao administrativa invalida." }, { status: 401 });
   }
 
@@ -66,6 +88,13 @@ export async function POST(request: NextRequest) {
     .maybeSingle<{ id: string; role: HubUserRole; status: string }>();
 
   if (currentUserError || currentUser?.role !== "admin" || currentUser.status !== "active") {
+    logSetupUsersApi("error", {
+      currentUser,
+      error: serializeServerError(currentUserError),
+      reason: "admin profile denied",
+      table: "hub_users",
+      userId: authData.user.id,
+    });
     return NextResponse.json({ error: "Apenas administradores podem criar usuarios." }, { status: 403 });
   }
 
@@ -77,6 +106,11 @@ export async function POST(request: NextRequest) {
     .maybeSingle<{ department_id: string; id: string }>();
 
   if (sectorError || !sector) {
+    logSetupUsersApi("error", {
+      error: serializeServerError(sectorError),
+      reason: "invalid sector",
+      table: "hub_sectors",
+    });
     return NextResponse.json(
       { error: "Selecione um setor valido para o departamento." },
       { status: 400 },
@@ -100,6 +134,10 @@ export async function POST(request: NextRequest) {
     });
 
   if (createAuthError || !createdAuthUser.user) {
+    logSetupUsersApi("error", {
+      error: serializeServerError(createAuthError),
+      reason: "auth user create failed",
+    });
     return NextResponse.json(
       { error: getCreateAuthErrorMessage(createAuthError?.message) },
       { status: 400 },
@@ -133,6 +171,11 @@ export async function POST(request: NextRequest) {
     if (fallbackProfileError) {
       await adminClient.auth.admin.deleteUser(createdAuthUser.user.id);
 
+      logSetupUsersApi("error", {
+        error: serializeServerError(fallbackProfileError),
+        reason: "hub profile create failed",
+        table: "hub_users",
+      });
       return NextResponse.json(
         { error: "Nao foi possivel criar o perfil operacional." },
         { status: 500 },
@@ -161,11 +204,21 @@ export async function POST(request: NextRequest) {
   if (assignmentError) {
     await adminClient.auth.admin.deleteUser(createdAuthUser.user.id);
 
+    logSetupUsersApi("error", {
+      error: serializeServerError(assignmentError),
+      reason: "assignment create failed",
+      table: "hub_user_assignments",
+    });
     return NextResponse.json(
       { error: "Nao foi possivel vincular o usuario ao setor." },
       { status: 500 },
     );
   }
+
+  logSetupUsersApi("done", {
+    createdUserId: createdAuthUser.user.id,
+    table: "hub_users",
+  });
 
   return NextResponse.json({
     user: {
@@ -177,6 +230,51 @@ export async function POST(request: NextRequest) {
       status: payload.data.status,
     },
   });
+}
+
+function logSetupUsersApi(event: string, detail?: unknown) {
+  const logger = event.includes("error") ? console.warn : console.debug;
+  logger(`[setup-api] users ${event}`, detail ?? "");
+}
+
+function serializeServerError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return error;
+  }
+
+  const maybeError = error as {
+    code?: unknown;
+    details?: unknown;
+    hint?: unknown;
+    message?: unknown;
+    name?: unknown;
+  };
+
+  return {
+    code: maybeError.code,
+    details: maybeError.details,
+    hint: maybeError.hint,
+    message: maybeError.message,
+    name: maybeError.name,
+  };
+}
+
+function maskSupabaseUrl(url?: string) {
+  if (!url) {
+    return "missing";
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    const [projectRef = "unknown"] = parsedUrl.hostname.split(".");
+
+    return `${parsedUrl.protocol}//${projectRef.slice(0, 4)}...${projectRef.slice(-4)}.${parsedUrl.hostname
+      .split(".")
+      .slice(1)
+      .join(".")}`;
+  } catch {
+    return "invalid-url";
+  }
 }
 
 function getBearerToken(request: NextRequest) {

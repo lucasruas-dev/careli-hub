@@ -3,6 +3,8 @@
 import {
   getHubSupabaseClient,
   getHubSupabaseDiagnostics,
+  logSupabaseDiagnostic,
+  serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import type {
   PulseXChannel,
@@ -94,6 +96,10 @@ export async function loadPulseXOperationalData(input: {
   const client = getHubSupabaseClient();
 
   if (!client) {
+    logSupabaseDiagnostic("pulsex", "client missing", {
+      function: "loadPulseXOperationalData",
+      supabase: getHubSupabaseDiagnostics(),
+    });
     return createPulseXFallback();
   }
 
@@ -176,11 +182,15 @@ export async function listDepartments(): Promise<PulseXDepartment[]> {
     return [];
   }
 
-  const result = await client
-    .from("hub_departments")
-    .select("id,name,slug,status")
-    .eq("status", "active")
-    .order("name");
+  const result = await runPulseXQuery<DepartmentRow[]>(
+    "list departments",
+    "hub_departments",
+    client
+      .from("hub_departments")
+      .select("id,name,slug,status")
+      .eq("status", "active")
+      .order("name"),
+  );
 
   assertQuery("departamentos", result);
 
@@ -200,11 +210,15 @@ export async function listSectors(): Promise<PulseXSector[]> {
     return [];
   }
 
-  const result = await client
-    .from("hub_sectors")
-    .select("id,department_id,name,slug,status")
-    .eq("status", "active")
-    .order("name");
+  const result = await runPulseXQuery<SectorRow[]>(
+    "list sectors",
+    "hub_sectors",
+    client
+      .from("hub_sectors")
+      .select("id,department_id,name,slug,status")
+      .eq("status", "active")
+      .order("name"),
+  );
 
   assertQuery("setores", result);
 
@@ -224,16 +238,22 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
   }
 
   logPulseXDebug("list channels start", {
+    function: "listPulseXChannels",
     supabase: getHubSupabaseDiagnostics(),
+    table: "pulsex_channels",
   });
 
-  const result = await client
-    .from("pulsex_channels")
-    .select(
-      "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug),pulsex_channel_members(user_id)",
-    )
-    .eq("status", "active")
-    .order("order");
+  const result = await runPulseXQuery<PulseXChannelRow[]>(
+    "list channels",
+    "pulsex_channels",
+    client
+      .from("pulsex_channels")
+      .select(
+        "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug),pulsex_channel_members(user_id)",
+      )
+      .eq("status", "active")
+      .order("order"),
+  );
 
   if ((result as QueryResult<PulseXChannelRow[]>).error) {
     logPulseXDebug("list channels error", {
@@ -243,13 +263,17 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
       supabase: getHubSupabaseDiagnostics(),
     });
 
-    const fallbackResult = await client
-      .from("pulsex_channels")
-      .select(
-        "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug)",
-      )
-      .eq("status", "active")
-      .order("order");
+    const fallbackResult = await runPulseXQuery<PulseXChannelRow[]>(
+      "list channels fallback without members",
+      "pulsex_channels",
+      client
+        .from("pulsex_channels")
+        .select(
+          "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug)",
+        )
+        .eq("status", "active")
+        .order("order"),
+    );
 
     assertQuery("canais PulseX", fallbackResult);
 
@@ -283,13 +307,17 @@ export async function listDirectUsers(): Promise<PulseXPresenceUser[]> {
     return [];
   }
 
-  const result = await client
-    .from("hub_users")
-    .select(
-      "id,email,display_name,role,status,hub_user_assignments(department_id,sector_id,status,hub_departments(name),hub_sectors(name))",
-    )
-    .eq("status", "active")
-    .order("display_name");
+  const result = await runPulseXQuery<HubUserRow[]>(
+    "list direct users",
+    "hub_users",
+    client
+      .from("hub_users")
+      .select(
+        "id,email,display_name,role,status,hub_user_assignments(department_id,sector_id,status,hub_departments(name),hub_sectors(name))",
+      )
+      .eq("status", "active")
+      .order("display_name"),
+  );
 
   assertQuery("usuarios PulseX", result);
 
@@ -305,12 +333,16 @@ export async function listChannelMessages(
     return [];
   }
 
-  const result = await client
-    .from("pulsex_messages")
-    .select("id,channel_id,author_user_id,body,created_at,deleted_at")
-    .eq("channel_id", channelId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+  const result = await runPulseXQuery<PulseXMessageRow[]>(
+    "list channel messages",
+    "pulsex_messages",
+    client
+      .from("pulsex_messages")
+      .select("id,channel_id,author_user_id,body,created_at,deleted_at")
+      .eq("channel_id", channelId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true }),
+  );
 
   assertQuery("mensagens PulseX", result);
 
@@ -330,15 +362,19 @@ export async function createPulseXMessage(input: {
     throw new Error("Supabase nao configurado.");
   }
 
-  const result = await client
-    .from("pulsex_messages")
-    .insert({
-      author_user_id: input.authorUserId,
-      body: input.body,
-      channel_id: input.channelId,
-    })
-    .select("id,channel_id,author_user_id,body,created_at,deleted_at")
-    .single();
+  const result = await runPulseXQuery<PulseXMessageRow>(
+    "create message",
+    "pulsex_messages",
+    client
+      .from("pulsex_messages")
+      .insert({
+        author_user_id: input.authorUserId,
+        body: input.body,
+        channel_id: input.channelId,
+      })
+      .select("id,channel_id,author_user_id,body,created_at,deleted_at")
+      .single(),
+  );
 
   assertQuery("enviar mensagem", result);
 
@@ -354,11 +390,15 @@ async function listUserAssignments(
     return [];
   }
 
-  const result = await client
-    .from("hub_user_assignments")
-    .select("department_id,sector_id,status")
-    .eq("user_id", userId)
-    .eq("status", "active");
+  const result = await runPulseXQuery<HubUserAssignmentRow[]>(
+    "list user assignments",
+    "hub_user_assignments",
+    client
+      .from("hub_user_assignments")
+      .select("department_id,sector_id,status")
+      .eq("user_id", userId)
+      .eq("status", "active"),
+  );
 
   assertQuery("vinculos PulseX", result);
 
@@ -538,6 +578,54 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
   }
 }
 
+async function runPulseXQuery<Result>(
+  label: string,
+  table: string,
+  query: PromiseLike<unknown>,
+): Promise<QueryResult<Result>> {
+  logSupabaseDiagnostic("pulsex", `${label} start`, {
+    function: `pulsex.${label}`,
+    supabase: getHubSupabaseDiagnostics(),
+    table,
+  });
+
+  try {
+    const result = (await query) as QueryResult<Result>;
+
+    if (result.error) {
+      logSupabaseDiagnostic("pulsex", `${label} error`, {
+        error: serializeDiagnosticError(result.error),
+        function: `pulsex.${label}`,
+        supabase: getHubSupabaseDiagnostics(),
+        table,
+      });
+      return result;
+    }
+
+    logSupabaseDiagnostic("pulsex", `${label} result`, {
+      function: `pulsex.${label}`,
+      rowCount: Array.isArray(result.data) ? result.data.length : result.data ? 1 : 0,
+      table,
+    });
+
+    return result;
+  } catch (error) {
+    const result = {
+      data: null,
+      error: serializeThrownError(error),
+    } satisfies QueryResult<Result>;
+
+    logSupabaseDiagnostic("pulsex", `${label} error`, {
+      error: result.error,
+      function: `pulsex.${label}`,
+      supabase: getHubSupabaseDiagnostics(),
+      table,
+    });
+
+    return result;
+  }
+}
+
 async function safePulseXLoad<Result>(
   label: string,
   loader: () => Promise<Result>,
@@ -618,25 +706,7 @@ async function runPulseXConnectivityProbe() {
 }
 
 function serializeThrownError(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-    };
-  }
-
-  if (typeof error === "string") {
-    return {
-      message: error,
-      name: "Error",
-    };
-  }
-
-  return {
-    message: "Erro desconhecido.",
-    name: "UnknownError",
-  };
+  return serializeDiagnosticError(error);
 }
 
 function logPulseXDebug(event: string, detail?: unknown) {

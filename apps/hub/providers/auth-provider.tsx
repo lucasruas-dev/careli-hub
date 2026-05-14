@@ -14,8 +14,12 @@ import {
   type PasswordAuthCredentials,
 } from "@repo/auth";
 import {
+  checkSupabaseHealth,
   getHubSupabaseClient,
+  getHubSupabaseDiagnostics,
   hasHubSupabaseConfig,
+  logSupabaseDiagnostic,
+  serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import {
   getPermissionsForRole,
@@ -85,6 +89,8 @@ export function AuthProvider({
         return;
       }
 
+      logSupabaseDiagnostic("auth", "env", getHubSupabaseDiagnostics());
+      void checkSupabaseHealth("auth-provider boot");
       logAuthTiming("session start");
       withMeasuredTimeout(
         client.auth.getSession(),
@@ -98,7 +104,11 @@ export function AuthProvider({
           }
 
           if (error) {
-            logAuthDebug("session error", error.message);
+            logSupabaseDiagnostic("auth", "session error", {
+              error: serializeDiagnosticError(error),
+              function: "AuthProvider.getSession",
+              supabase: getHubSupabaseDiagnostics(),
+            });
             setAuthState(createAuthErrorState(error.message));
             return;
           }
@@ -121,7 +131,12 @@ export function AuthProvider({
             "Nao foi possivel carregar a sessao.",
           );
 
-          logAuthDebug("session error", message);
+          logSupabaseDiagnostic("auth", "session error", {
+            error: serializeDiagnosticError(error),
+            function: "AuthProvider.getSession",
+            message,
+            supabase: getHubSupabaseDiagnostics(),
+          });
           setAuthState(createAuthErrorState(message));
         });
 
@@ -201,6 +216,11 @@ export function AuthProvider({
 
       try {
         logAuthTiming("session start");
+        logSupabaseDiagnostic("auth", "signIn start", {
+          email: normalizedEmail,
+          function: "AuthProvider.signIn",
+          supabase: getHubSupabaseDiagnostics(),
+        });
         const { data, error } = await withMeasuredTimeout(
           client.auth.signInWithPassword({
             email: normalizedEmail,
@@ -213,6 +233,12 @@ export function AuthProvider({
 
         if (error || !data.session) {
           const message = getFriendlyAuthMessage(error?.message);
+          logSupabaseDiagnostic("auth", "signIn error", {
+            email: normalizedEmail,
+            error: error ? serializeDiagnosticError(error) : null,
+            function: "AuthProvider.signIn",
+            supabase: getHubSupabaseDiagnostics(),
+          });
           setAuthState(createAuthErrorState(message));
 
           return {
@@ -241,7 +267,13 @@ export function AuthProvider({
         );
         const message = getFriendlyAuthMessage(technicalMessage);
 
-        logAuthDebug("auth error", technicalMessage);
+        logSupabaseDiagnostic("auth", "signIn error", {
+          email: normalizedEmail,
+          error: serializeDiagnosticError(error),
+          function: "AuthProvider.signIn",
+          message: technicalMessage,
+          supabase: getHubSupabaseDiagnostics(),
+        });
         setAuthState(createAuthErrorState(message));
 
         return {
@@ -284,9 +316,18 @@ export function AuthProvider({
       const client = getHubSupabaseClient();
 
       if (client) {
+        logSupabaseDiagnostic("auth", "signOut start", {
+          function: "AuthProvider.signOut",
+          supabase: getHubSupabaseDiagnostics(),
+        });
         const { error } = await client.auth.signOut();
 
         if (error) {
+          logSupabaseDiagnostic("auth", "signOut error", {
+            error: serializeDiagnosticError(error),
+            function: "AuthProvider.signOut",
+            supabase: getHubSupabaseDiagnostics(),
+          });
           return {
             error: error.message,
             ok: false,
@@ -437,6 +478,13 @@ async function loadHubProfileInBackground({
     email: session.user.email,
     userId: session.user.id,
   });
+  logSupabaseDiagnostic("auth", "profile start", {
+    email: session.user.email,
+    function: "loadHubProfileInBackground",
+    table: "hub_users",
+    userId: session.user.id,
+    supabase: getHubSupabaseDiagnostics(),
+  });
 
   try {
     const { data, error } = await withMeasuredTimeout(
@@ -451,7 +499,16 @@ async function loadHubProfileInBackground({
     );
 
     if (error || !data || data.status !== "active") {
-      logAuthDebug("profile error", error?.message ?? "profile unavailable");
+      logSupabaseDiagnostic("auth", "profile error", {
+        email: session.user.email,
+        error: error ? serializeDiagnosticError(error) : null,
+        function: "loadHubProfileInBackground",
+        reason: !data ? "profile unavailable" : "profile inactive",
+        status: data?.status,
+        table: "hub_users",
+        userId: session.user.id,
+        supabase: getHubSupabaseDiagnostics(),
+      });
       setProfileStatus("error");
       return;
     }
@@ -465,8 +522,22 @@ async function loadHubProfileInBackground({
       role: data.role,
       userId: data.id,
     });
+    logSupabaseDiagnostic("auth", "profile done", {
+      elapsedMs: Math.round(performance.now() - startedAt),
+      function: "loadHubProfileInBackground",
+      role: data.role,
+      table: "hub_users",
+      userId: data.id,
+    });
   } catch (error) {
-    logAuthDebug("profile error", getErrorMessage(error, "profile failed"));
+    logSupabaseDiagnostic("auth", "profile error", {
+      email: session.user.email,
+      error: serializeDiagnosticError(error),
+      function: "loadHubProfileInBackground",
+      table: "hub_users",
+      userId: session.user.id,
+      supabase: getHubSupabaseDiagnostics(),
+    });
     setProfileStatus("error");
   }
 }
@@ -549,9 +620,11 @@ function withMeasuredTimeout<Result>(
       },
       (error: unknown) => {
         window.clearTimeout(timeoutId);
-        logAuthDebug(`${label} error`, {
+        logSupabaseDiagnostic("auth", `${label} error`, {
           elapsedMs: Math.round(performance.now() - startedAt),
+          error: serializeDiagnosticError(error),
           message: getErrorMessage(error, "Erro desconhecido."),
+          supabase: getHubSupabaseDiagnostics(),
         });
         reject(error);
       },

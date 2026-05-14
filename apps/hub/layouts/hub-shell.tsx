@@ -3,7 +3,10 @@
 import { useAuth } from "@/providers/auth-provider";
 import {
   getHubSupabaseClient,
+  getHubSupabaseDiagnostics,
   hasHubSupabaseConfig,
+  logSupabaseDiagnostic,
+  serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import { useRealtime } from "@/providers/realtime-provider";
 import {
@@ -183,7 +186,11 @@ export function HubShell({
     }
 
     setReleasedModuleIds(createMinimumReleasedModuleIds());
-    logShellDebug("modules start");
+    logSupabaseDiagnostic("shell", "modules start", {
+      function: "HubShell.loadReleasedModules",
+      supabase: getHubSupabaseDiagnostics(),
+      tables: ["hub_modules", "hub_department_modules"],
+    });
 
     withShellTimeout(Promise.all([
       client.from("hub_modules").select("id").eq("status", "active"),
@@ -194,9 +201,16 @@ export function HubShell({
     ]), "modules", 8_000)
       .then(([modulesResult, accessResult]) => {
         if (!isMounted || modulesResult.error || accessResult.error) {
-          logShellDebug("modules error", {
-            accessError: accessResult.error?.message,
-            modulesError: modulesResult.error?.message,
+          logSupabaseDiagnostic("shell", "modules error", {
+            accessError: accessResult.error
+              ? serializeDiagnosticError(accessResult.error)
+              : null,
+            function: "HubShell.loadReleasedModules",
+            modulesError: modulesResult.error
+              ? serializeDiagnosticError(modulesResult.error)
+              : null,
+            supabase: getHubSupabaseDiagnostics(),
+            tables: ["hub_modules", "hub_department_modules"],
           });
           return;
         }
@@ -222,12 +236,19 @@ export function HubShell({
         });
 
         setReleasedModuleIds(nextReleasedIds);
-        logShellDebug("modules done", {
+        logSupabaseDiagnostic("shell", "modules done", {
+          function: "HubShell.loadReleasedModules",
           count: nextReleasedIds.size,
         });
       })
       .catch((error: unknown) => {
-        logShellDebug("modules error", getShellErrorMessage(error));
+        logSupabaseDiagnostic("shell", "modules error", {
+          error: serializeDiagnosticError(error),
+          function: "HubShell.loadReleasedModules",
+          message: getShellErrorMessage(error),
+          supabase: getHubSupabaseDiagnostics(),
+          tables: ["hub_modules", "hub_department_modules"],
+        });
         if (isMounted) {
           setReleasedModuleIds(createMinimumReleasedModuleIds());
         }

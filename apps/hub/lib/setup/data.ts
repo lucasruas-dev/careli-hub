@@ -3,6 +3,9 @@
 import {
   getHubSupabaseClient,
   getHubSupabaseDiagnostics,
+  isSupabaseNetworkError,
+  logSupabaseDiagnostic,
+  serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import type {
   CreateDepartmentInput,
@@ -316,11 +319,14 @@ export async function createDepartment(input: CreateDepartmentInput) {
     status: input.status,
   };
   logSetupDebug("create department payload", payload);
-  const result = await client
-    .from("hub_departments")
-    .insert(payload)
-    .select("id,slug,name,description,status,created_at")
-    .single();
+  const result = await runSetupMutation<DepartmentRow>(
+    "create department",
+    client
+      .from("hub_departments")
+      .insert(payload)
+      .select("id,slug,name,description,status,created_at")
+      .single(),
+  );
   logSetupQueryResult("create department", result);
 
   assertQuery("salvar departamento", result);
@@ -344,12 +350,15 @@ export async function updateDepartment(input: UpdateDepartmentInput) {
     id: input.id,
     ...payload,
   });
-  const result = await client
-    .from("hub_departments")
-    .update(payload)
-    .eq("id", input.id)
-    .select("id,slug,name,description,status,created_at")
-    .single();
+  const result = await runSetupMutation<DepartmentRow>(
+    "update department",
+    client
+      .from("hub_departments")
+      .update(payload)
+      .eq("id", input.id)
+      .select("id,slug,name,description,status,created_at")
+      .single(),
+  );
   logSetupQueryResult("update department", result);
 
   assertQuery("salvar departamento", result);
@@ -372,11 +381,14 @@ export async function createSector(input: CreateSectorInput) {
     status: input.status,
   };
   logSetupDebug("create sector payload", payload);
-  const result = await client
-    .from("hub_sectors")
-    .insert(payload)
-    .select("id,department_id,slug,name,description,status,hub_departments(name)")
-    .single();
+  const result = await runSetupMutation<SectorRow>(
+    "create sector",
+    client
+      .from("hub_sectors")
+      .insert(payload)
+      .select("id,department_id,slug,name,description,status,hub_departments(name)")
+      .single(),
+  );
   logSetupQueryResult("create sector", result);
 
   assertQuery("salvar setor", result);
@@ -401,12 +413,15 @@ export async function updateSector(input: UpdateSectorInput) {
     id: input.id,
     ...payload,
   });
-  const result = await client
-    .from("hub_sectors")
-    .update(payload)
-    .eq("id", input.id)
-    .select("id,department_id,slug,name,description,status,hub_departments(name)")
-    .single();
+  const result = await runSetupMutation<SectorRow>(
+    "update sector",
+    client
+      .from("hub_sectors")
+      .update(payload)
+      .eq("id", input.id)
+      .select("id,department_id,slug,name,description,status,hub_departments(name)")
+      .single(),
+  );
   logSetupQueryResult("update sector", result);
 
   assertQuery("salvar setor", result);
@@ -431,13 +446,16 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
     status: input.status,
   };
   logSetupDebug("create pulsex channel payload", payload);
-  const result = await client
-    .from("pulsex_channels")
-    .insert(payload)
-    .select(
-      "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
-    )
-    .single();
+  const result = await runSetupMutation<PulseXChannelRow>(
+    "create pulsex channel",
+    client
+      .from("pulsex_channels")
+      .insert(payload)
+      .select(
+        "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+      )
+      .single(),
+  );
   logSetupQueryResult("create pulsex channel", result);
 
   assertQuery("salvar canal PulseX", result);
@@ -469,14 +487,17 @@ export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
     id: input.id,
     ...payload,
   });
-  const result = await client
-    .from("pulsex_channels")
-    .update(payload)
-    .eq("id", input.id)
-    .select(
-      "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
-    )
-    .single();
+  const result = await runSetupMutation<PulseXChannelRow>(
+    "update pulsex channel",
+    client
+      .from("pulsex_channels")
+      .update(payload)
+      .eq("id", input.id)
+      .select(
+        "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+      )
+      .single(),
+  );
   logSetupQueryResult("update pulsex channel", result);
 
   assertQuery("salvar canal PulseX", result);
@@ -500,10 +521,13 @@ export async function syncPulseXChannelMembers(
     throw new Error("Conexao indisponivel.");
   }
 
-  const deleteResult = await client
-    .from("pulsex_channel_members")
-    .delete()
-    .eq("channel_id", channelId);
+  const deleteResult = await runSetupMutation<unknown>(
+    "sync pulsex channel members delete",
+    client
+      .from("pulsex_channel_members")
+      .delete()
+      .eq("channel_id", channelId),
+  );
 
   logSetupQueryResult("sync pulsex channel members delete", deleteResult);
   assertQuery("salvar participantes", deleteResult);
@@ -514,11 +538,14 @@ export async function syncPulseXChannelMembers(
     return;
   }
 
-  const insertResult = await client.from("pulsex_channel_members").insert(
-    uniqueUserIds.map((userId) => ({
-      channel_id: channelId,
-      user_id: userId,
-    })),
+  const insertResult = await runSetupMutation<unknown>(
+    "sync pulsex channel members insert",
+    client.from("pulsex_channel_members").insert(
+      uniqueUserIds.map((userId) => ({
+        channel_id: channelId,
+        user_id: userId,
+      })),
+    ),
   );
 
   logSetupQueryResult("sync pulsex channel members insert", insertResult);
@@ -532,6 +559,11 @@ export async function createOperationalUser(input: CreateOperationalUserInput) {
     throw new Error("Conexao indisponivel.");
   }
 
+  logSupabaseDiagnostic("setup", "create user auth session start", {
+    endpoint: "/api/setup/users",
+    function: "createOperationalUser",
+    supabase: getHubSupabaseDiagnostics(),
+  });
   const sessionResult = await client.auth.getSession();
   const accessToken = sessionResult.data.session?.access_token;
 
@@ -539,19 +571,45 @@ export async function createOperationalUser(input: CreateOperationalUserInput) {
     throw new Error("Sessao administrativa indisponivel.");
   }
 
-  const response = await fetch("/api/setup/users", {
-    body: JSON.stringify(input),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  });
+  let response: Response;
+
+  try {
+    logSupabaseDiagnostic("setup", "create user api start", {
+      endpoint: "/api/setup/users",
+      function: "createOperationalUser",
+    });
+    response = await fetch("/api/setup/users", {
+      body: JSON.stringify(input),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+  } catch (error) {
+    logSupabaseDiagnostic("setup", "create user api error", {
+      endpoint: "/api/setup/users",
+      error: serializeDiagnosticError(error),
+      function: "createOperationalUser",
+    });
+    throw new Error(
+      isSupabaseNetworkError(error)
+        ? SUPABASE_CONNECTION_ERROR_MESSAGE
+        : "Nao foi possivel criar usuario.",
+    );
+  }
   const payload = (await response.json().catch(() => null)) as {
     error?: string;
   } | null;
 
   if (!response.ok) {
+    logSupabaseDiagnostic("setup", "create user api error", {
+      endpoint: "/api/setup/users",
+      function: "createOperationalUser",
+      status: response.status,
+      statusText: response.statusText,
+      response: payload,
+    });
     throw new Error(payload?.error ?? "Nao foi possivel criar usuario.");
   }
 }
@@ -573,21 +631,27 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
     ...userPayload,
   });
 
-  const userResult = await client
-    .from("hub_users")
-    .update(userPayload)
-    .eq("id", input.userId);
+  const userResult = await runSetupMutation<unknown>(
+    "link user profile",
+    client
+      .from("hub_users")
+      .update(userPayload)
+      .eq("id", input.userId),
+  );
 
   logSetupQueryResult("link user profile", userResult);
 
   if ((userResult as QueryResult<unknown>).error?.message.includes("operational_profile")) {
-    const legacyUserResult = await client
-      .from("hub_users")
-      .update({
-        role: userPayload.role,
-        status: userPayload.status,
-      })
-      .eq("id", input.userId);
+    const legacyUserResult = await runSetupMutation<unknown>(
+      "link user profile legacy",
+      client
+        .from("hub_users")
+        .update({
+          role: userPayload.role,
+          status: userPayload.status,
+        })
+        .eq("id", input.userId),
+    );
 
     logSetupQueryResult("link user profile legacy", legacyUserResult);
     assertQuery("vincular usuario", legacyUserResult);
@@ -595,12 +659,15 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
     assertQuery("vincular usuario", userResult);
   }
 
-  const archiveResult = await client
-    .from("hub_user_assignments")
-    .update({ status: "archived" })
-    .eq("user_id", input.userId)
-    .eq("is_primary", true)
-    .eq("status", "active");
+  const archiveResult = await runSetupMutation<unknown>(
+    "archive user assignments",
+    client
+      .from("hub_user_assignments")
+      .update({ status: "archived" })
+      .eq("user_id", input.userId)
+      .eq("is_primary", true)
+      .eq("status", "active"),
+  );
 
   logSetupQueryResult("archive user assignments", archiveResult);
   assertQuery("vincular usuario", archiveResult);
@@ -615,9 +682,10 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
   };
   logSetupDebug("link user assignment payload", assignmentPayload);
 
-  const assignmentResult = await client
-    .from("hub_user_assignments")
-    .insert(assignmentPayload);
+  const assignmentResult = await runSetupMutation<unknown>(
+    "link user assignment",
+    client.from("hub_user_assignments").insert(assignmentPayload),
+  );
 
   logSetupQueryResult("link user assignment", assignmentResult);
   assertQuery("vincular usuario", assignmentResult);
@@ -654,8 +722,10 @@ async function runSetupQuery<Result>(
   label: string,
   query: PromiseLike<unknown>,
 ): Promise<QueryResult<Result>> {
-  logSetupDebug(`${label} start`, {
+  logSupabaseDiagnostic("setup", `${label} start`, {
+    function: `setup.${label}`,
     supabase: getHubSupabaseDiagnostics(),
+    table: getSetupQueryTable(label),
   });
 
   try {
@@ -710,6 +780,30 @@ async function runSetupConnectivityProbe(
   );
 }
 
+async function runSetupMutation<Result>(
+  label: string,
+  query: PromiseLike<unknown>,
+): Promise<QueryResult<Result>> {
+  logSupabaseDiagnostic("setup", `${label} start`, {
+    function: `setup.${label}`,
+    supabase: getHubSupabaseDiagnostics(),
+    table: getSetupQueryTable(label),
+  });
+
+  try {
+    return (await query) as QueryResult<Result>;
+  } catch (error) {
+    const result = {
+      data: null,
+      error: serializeThrownError(error),
+    } satisfies QueryResult<Result>;
+
+    logSetupQueryError(label, result);
+
+    return result;
+  }
+}
+
 async function logCurrentSetupAuthContext(
   client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
 ) {
@@ -717,7 +811,22 @@ async function logCurrentSetupAuthContext(
     return;
   }
 
-  const authResult = await client.auth.getUser();
+  logSupabaseDiagnostic("setup", "current auth user start", {
+    function: "logCurrentSetupAuthContext",
+    supabase: getHubSupabaseDiagnostics(),
+  });
+  let authResult: Awaited<ReturnType<typeof client.auth.getUser>>;
+
+  try {
+    authResult = await client.auth.getUser();
+  } catch (error) {
+    logSupabaseDiagnostic("setup", "current auth user error", {
+      error: serializeDiagnosticError(error),
+      function: "logCurrentSetupAuthContext",
+      supabase: getHubSupabaseDiagnostics(),
+    });
+    return;
+  }
 
   if (authResult.error || !authResult.data.user) {
     console.warn("[setup] current auth user error", authResult.error);
@@ -731,11 +840,28 @@ async function logCurrentSetupAuthContext(
     id: currentUser.id,
   });
 
-  const profileResult = await client
-    .from("hub_users")
-    .select("id,email,role,status,operational_profile")
-    .eq("id", currentUser.id)
-    .maybeSingle<HubProfileDebugRow>();
+  logSupabaseDiagnostic("setup", "current hub profile start", {
+    function: "logCurrentSetupAuthContext",
+    table: "hub_users",
+    userId: currentUser.id,
+  });
+  let profileResult: QueryResult<HubProfileDebugRow>;
+
+  try {
+    profileResult = (await client
+      .from("hub_users")
+      .select("id,email,role,status,operational_profile")
+      .eq("id", currentUser.id)
+      .maybeSingle<HubProfileDebugRow>()) as QueryResult<HubProfileDebugRow>;
+  } catch (error) {
+    logSupabaseDiagnostic("setup", "current hub profile error", {
+      error: serializeDiagnosticError(error),
+      function: "logCurrentSetupAuthContext",
+      table: "hub_users",
+      userId: currentUser.id,
+    });
+    return;
+  }
 
   if (profileResult.error) {
     console.warn("[setup] current hub profile error", profileResult.error);
@@ -782,10 +908,12 @@ function logSetupQueryError(label: string, result: unknown) {
   const queryResult = result as QueryResult<unknown>;
 
   if (queryResult.error) {
-    console.warn("[setup] Supabase query error", {
+    logSupabaseDiagnostic("setup", "Supabase query error", {
       error: queryResult.error,
+      function: `setup.${label}`,
       label,
       supabase: getHubSupabaseDiagnostics(),
+      table: getSetupQueryTable(label),
     });
   }
 }
@@ -818,39 +946,62 @@ function createFallbackSlug(value: string) {
 }
 
 function serializeThrownError(error: unknown): NonNullable<QueryResult<unknown>["error"]> {
-  if (error instanceof Error) {
-    return {
-      message: error.message || "Erro de rede ao consultar Supabase.",
-      name: error.name,
-      stack: error.stack,
-    };
-  }
-
-  if (typeof error === "string") {
-    return {
-      message: error,
-      name: "Error",
-    };
-  }
+  const serialized = serializeDiagnosticError(error);
 
   return {
-    message: "Erro de rede ao consultar Supabase.",
-    name: "UnknownError",
+    message: serialized.message || "Erro de rede ao consultar Supabase.",
+    name: serialized.name,
+    stack: serialized.stack,
   };
 }
 
 function isNetworkFailure(error: QueryResult<unknown>["error"]) {
-  if (!error) {
-    return false;
+  return Boolean(error && isSupabaseNetworkError(error));
+}
+
+function getSetupQueryTable(label: string) {
+  const normalizedLabel = label.toLowerCase();
+
+  if (normalizedLabel.includes("department module")) {
+    return "hub_department_modules";
   }
 
-  const message = error.message.toLowerCase();
+  if (normalizedLabel.includes("department")) {
+    return "hub_departments";
+  }
 
-  return (
-    message.includes("failed to fetch") ||
-    message.includes("network") ||
-    message.includes("fetch")
-  );
+  if (normalizedLabel.includes("sector")) {
+    return "hub_sectors";
+  }
+
+  if (normalizedLabel.includes("user assignment")) {
+    return "hub_user_assignments";
+  }
+
+  if (normalizedLabel.includes("user")) {
+    return "hub_users";
+  }
+
+  if (
+    normalizedLabel.includes("channel member") ||
+    normalizedLabel.includes("participantes")
+  ) {
+    return "pulsex_channel_members";
+  }
+
+  if (normalizedLabel.includes("pulsex") || normalizedLabel.includes("canal")) {
+    return "pulsex_channels";
+  }
+
+  if (normalizedLabel.includes("module")) {
+    return "hub_modules";
+  }
+
+  if (normalizedLabel.includes("permission")) {
+    return "hub_permissions";
+  }
+
+  return "unknown";
 }
 
 async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {
