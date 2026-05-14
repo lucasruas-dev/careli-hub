@@ -23,6 +23,7 @@ type MarkPresenceOptions = {
 };
 
 const manualHoldStatuses = new Set<HubPresenceStatus>([
+  "away",
   "agenda",
   "lunch",
   "offline",
@@ -121,11 +122,24 @@ export function useHubPresenceController({
       }
 
       const isIdle = Date.now() - lastActivityAtRef.current >= HUB_IDLE_TIMEOUT_MS;
-      const nextStatus =
-        document.visibilityState === "hidden" || isIdle ? "away" : "online";
-      const reason = nextStatus === "away" ? "idle" : "heartbeat";
 
-      runPresenceUpdate(nextStatus, reason);
+      if (isIdle) {
+        runPresenceUpdate("away", "idle");
+        return;
+      }
+
+      if (document.visibilityState === "visible") {
+        runPresenceUpdate("online", "heartbeat");
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        handleActivity();
+        return;
+      }
+
+      updateAutomaticPresence();
     }
 
     const activityEvents = [
@@ -144,7 +158,7 @@ export function useHubPresenceController({
       window.addEventListener(eventName, handleActivity, { passive: true });
     }
 
-    document.addEventListener("visibilitychange", updateAutomaticPresence);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const intervalId = window.setInterval(
       updateAutomaticPresence,
@@ -154,7 +168,7 @@ export function useHubPresenceController({
     return () => {
       disposed = true;
       window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", updateAutomaticPresence);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
 
       for (const eventName of activityEvents) {
         window.removeEventListener(eventName, handleActivity);
