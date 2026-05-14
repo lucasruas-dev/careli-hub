@@ -62,6 +62,9 @@ export function CallPanel({
   const pendingOfferUserIdsRef = useRef<Set<PulseXPresenceUser["id"]>>(
     new Set(),
   );
+  const pendingAnswerSignalsRef = useRef<
+    Map<PulseXPresenceUser["id"], PulseXCallRealtimeSignal>
+  >(new Map());
   const pendingIceCandidatesRef = useRef<
     Map<PulseXPresenceUser["id"], RTCIceCandidateInit[]>
   >(new Map());
@@ -355,6 +358,50 @@ export function CallPanel({
     ],
   );
 
+  const sendAnswerToOffer = useCallback(
+    async (signal: PulseXCallRealtimeSignal, stream: MediaStream) => {
+      if (!signal.description) {
+        return;
+      }
+
+      const peerConnection = getPeerConnection(signal.fromUserId);
+
+      if (!peerConnection) {
+        return;
+      }
+
+      await attachLocalTracks(peerConnection, stream);
+      await peerConnection.setRemoteDescription(signal.description);
+      await flushPendingIceCandidates(signal.fromUserId);
+
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      if (!peerConnection.localDescription) {
+        return;
+      }
+
+      onSendSignal({
+        callId: session.id,
+        channelId: session.channelId,
+        description: {
+          sdp: peerConnection.localDescription.sdp,
+          type: peerConnection.localDescription.type,
+        },
+        kind: "answer",
+        toUserId: signal.fromUserId,
+      });
+    },
+    [
+      attachLocalTracks,
+      flushPendingIceCandidates,
+      getPeerConnection,
+      onSendSignal,
+      session.channelId,
+      session.id,
+    ],
+  );
+
   const handleCallRealtimeSignal = useCallback(
     async (signal: PulseXCallRealtimeSignal) => {
       if (signal.callId !== session.id || signal.fromUserId === currentUserId) {
@@ -369,36 +416,14 @@ export function CallPanel({
       if (signal.kind === "offer" && signal.description) {
         try {
           const stream = await waitForLocalStream();
-          const peerConnection = getPeerConnection(signal.fromUserId);
 
-          if (!peerConnection) {
+          if (!stream) {
+            pendingAnswerSignalsRef.current.set(signal.fromUserId, signal);
+            setMediaError("Aguardando microfone para responder a chamada.");
             return;
           }
 
-          if (stream) {
-            await attachLocalTracks(peerConnection, stream);
-          }
-
-          await peerConnection.setRemoteDescription(signal.description);
-          await flushPendingIceCandidates(signal.fromUserId);
-
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-
-          if (!peerConnection.localDescription) {
-            return;
-          }
-
-          onSendSignal({
-            callId: session.id,
-            channelId: session.channelId,
-            description: {
-              sdp: peerConnection.localDescription.sdp,
-              type: peerConnection.localDescription.type,
-            },
-            kind: "answer",
-            toUserId: signal.fromUserId,
-          });
+          await sendAnswerToOffer(signal, stream);
         } catch {
           setMediaError("Nao foi possivel responder a chamada.");
         }
@@ -451,18 +476,17 @@ export function CallPanel({
         signal.kind === "end" ||
         signal.kind === "leave"
       ) {
+        pendingAnswerSignalsRef.current.delete(signal.fromUserId);
         closePeerConnection(signal.fromUserId);
       }
     },
     [
-      attachLocalTracks,
       closePeerConnection,
       currentUserId,
       flushPendingIceCandidates,
       getPeerConnection,
-      onSendSignal,
+      sendAnswerToOffer,
       sendOfferToParticipant,
-      session.channelId,
       session.id,
       waitForLocalStream,
     ],
@@ -636,12 +660,20 @@ export function CallPanel({
       void attachLocalTracks(peerConnection, localStream);
     });
 
+    const pendingAnswerSignals = [...pendingAnswerSignalsRef.current.values()];
+    pendingAnswerSignalsRef.current.clear();
+    pendingAnswerSignals.forEach((signal) => {
+      void sendAnswerToOffer(signal, localStream).catch(() => {
+        setMediaError("Nao foi possivel responder a chamada.");
+      });
+    });
+
     const pendingUserIds = [...pendingOfferUserIdsRef.current];
     pendingOfferUserIdsRef.current.clear();
     pendingUserIds.forEach((userId) => {
       void sendOfferToParticipant(userId);
     });
-  }, [attachLocalTracks, localStream, sendOfferToParticipant]);
+  }, [attachLocalTracks, localStream, sendAnswerToOffer, sendOfferToParticipant]);
 
   useEffect(() => {
     localStream
