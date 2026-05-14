@@ -94,12 +94,22 @@ export function ThreadPanel({
         {replies.map((reply) => {
           const author = users.find((user) => user.id === reply.authorId);
           const isOwn = reply.authorId === currentUserId;
+          const authorName = author?.label ?? reply.authorName ?? "PulseX";
+          const authorAvatarUrl = author?.avatarUrl ?? reply.authorAvatarUrl;
+          const authorInitials = author?.initials ?? getInitials(authorName);
 
           return (
             <div
-              className={`flex ${isOwn ? "justify-end" : "justify-start"} px-4 py-1`}
+              className={`flex items-end gap-2 ${isOwn ? "justify-end" : "justify-start"} px-4 py-1`}
               key={reply.id}
             >
+              {!isOwn ? (
+                <ThreadReplyAvatar
+                  avatarUrl={authorAvatarUrl}
+                  initials={authorInitials}
+                  name={authorName}
+                />
+              ) : null}
               <div
                 className={`max-w-[78%] rounded-md border px-4 py-2 text-sm shadow-sm ${
                   isOwn
@@ -107,16 +117,18 @@ export function ThreadPanel({
                     : "border-[#d9e0ea] bg-white text-[var(--uix-text-primary)]"
                 }`}
               >
-                {!isOwn ? (
-                  <p className="m-0 mb-1 text-xs font-semibold text-[var(--uix-brand-primary)]">
-                    {author?.label ?? "PulseX"}
-                  </p>
-                ) : null}
                 <p className="m-0 whitespace-pre-wrap leading-6">{reply.body}</p>
                 <p className="m-0 mt-1 text-right text-[0.68rem] opacity-70">
                   {reply.timestamp}
                 </p>
               </div>
+              {isOwn ? (
+                <ThreadReplyAvatar
+                  avatarUrl={authorAvatarUrl}
+                  initials={authorInitials}
+                  name={authorName}
+                />
+              ) : null}
             </div>
           );
         })}
@@ -145,4 +157,43 @@ export function ThreadPanel({
       </form>
     </aside>
   );
+}
+
+function ThreadReplyAvatar({
+  avatarUrl,
+  initials,
+  name,
+}: {
+  avatarUrl?: string;
+  initials: string;
+  name: string;
+}) {
+  return (
+    <span
+      aria-label={`Foto de ${name}`}
+      className="mb-1 grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full border border-[#d9e0ea] bg-[#101820] text-[0.62rem] font-semibold text-white shadow-sm"
+      role="img"
+      style={
+        avatarUrl
+          ? {
+              backgroundImage: `url(${avatarUrl})`,
+              backgroundPosition: "center",
+              backgroundSize: "cover",
+            }
+          : undefined
+      }
+      title={name}
+    >
+      {avatarUrl ? null : initials}
+    </span>
+  );
+}
+
+function getInitials(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }

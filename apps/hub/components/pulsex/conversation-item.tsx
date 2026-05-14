@@ -1,19 +1,10 @@
 import type { PulseXChannel } from "@/lib/pulsex";
 import {
   Bot,
-  Cpu,
   Hash,
-  HeartHandshake,
+  Megaphone,
   Users,
 } from "lucide-react";
-
-const channelIconMap = {
-  direct: Users,
-  operations: Hash,
-  relation: HeartHandshake,
-  system: Bot,
-  technology: Cpu,
-} as const;
 
 type ConversationItemProps = {
   active?: boolean;
@@ -26,19 +17,19 @@ export function ConversationItem({
   channel,
   onSelect,
 }: ConversationItemProps) {
-  const ChannelIcon = channelIconMap[channel.kind];
+  const ChannelIcon = getChannelIcon(channel);
   const isDirect = channel.kind === "direct";
 
   return (
     <button
       aria-current={active ? "page" : undefined}
-      className="grid w-full grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3 border-l-2 border-transparent px-4 py-2.5 text-left outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:border-[#A07C3B] data-[active=true]:bg-[#A07C3B]/[0.18]"
+      className="grid w-full grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-3 border-l-2 border-transparent px-4 py-2 text-left outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:border-[#A07C3B] data-[active=true]:bg-[#A07C3B]/[0.18]"
       data-active={active}
       onClick={() => onSelect?.(channel.id)}
       type="button"
     >
       <span
-        className={`relative grid h-10 w-10 place-items-center border border-white/[0.085] bg-white/[0.06] text-[#f7f8fa] ${
+        className={`relative grid h-9 w-9 place-items-center border border-white/[0.085] bg-white/[0.06] text-[#f7f8fa] ${
           isDirect ? "rounded-full text-xs font-semibold" : "rounded-md"
         }`}
       >
@@ -47,26 +38,18 @@ export function ConversationItem({
         ) : (
           <ChannelIcon aria-hidden="true" size={17} />
         )}
-        {channel.status ? (
+        {isDirect && channel.status ? (
           <span
             aria-hidden="true"
-            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#101820] data-[status=away]:bg-amber-400 data-[status=busy]:bg-[#A07C3B] data-[status=offline]:bg-zinc-500 data-[status=online]:bg-emerald-500"
+            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#101820] data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-500 data-[status=online]:bg-emerald-500"
             data-status={channel.status}
           />
         ) : null}
       </span>
-      <span className="min-w-0 border-b border-white/[0.065] pb-2.5">
+      <span className="min-w-0 border-b border-white/[0.065] py-1.5">
         <span className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-semibold text-[#f7f8fa]">
             {channel.name}
-          </span>
-          <span className="text-[0.68rem] text-[#a5afbd]">
-            {channel.lastMessageAt}
-          </span>
-        </span>
-        <span className="mt-1 flex items-center justify-between gap-3">
-          <span className="truncate text-xs text-[#c9d1dc]">
-            {channel.preview}
           </span>
           {channel.unreadCount ? (
             <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-[#A07C3B] px-1.5 text-[0.68rem] font-semibold text-white">
@@ -76,5 +59,30 @@ export function ConversationItem({
         </span>
       </span>
     </button>
+  );
+}
+
+function getChannelIcon(channel: PulseXChannel) {
+  if (channel.kind === "direct") {
+    return Users;
+  }
+
+  if (channel.kind === "system") {
+    return Bot;
+  }
+
+  if (isAnnouncementChannel(channel)) {
+    return Megaphone;
+  }
+
+  return Hash;
+}
+
+function isAnnouncementChannel(channel: PulseXChannel) {
+  const normalizedName = channel.name.trim().toLowerCase();
+
+  return (
+    normalizedName === "comunicados" ||
+    channel.id.toLowerCase().endsWith("-comunicados")
   );
 }

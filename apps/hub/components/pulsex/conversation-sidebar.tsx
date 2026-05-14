@@ -6,7 +6,6 @@ import type {
   PulseXMessage,
   PulseXMessageFilter,
   PulseXPresenceUser,
-  PulseXSector,
 } from "@/lib/pulsex";
 import { Tooltip } from "@repo/uix";
 import {
@@ -32,13 +31,13 @@ type ConversationSidebarProps = {
   activeChannelId: string;
   activeMessageFilter: PulseXMessageFilter;
   channels: readonly PulseXChannel[];
+  currentUserId: PulseXPresenceUser["id"];
   dataStatus?: "fallback" | "loading" | "ready";
   departments: readonly PulseXDepartment[];
   messages: readonly PulseXMessage[];
   onSelectChannel?: (channelId: PulseXChannel["id"]) => void;
   onSelectMessageFilter?: (filter: PulseXMessageFilter) => void;
   onRefresh?: () => void;
-  sectors: readonly PulseXSector[];
   users: readonly PulseXPresenceUser[];
 };
 
@@ -46,6 +45,7 @@ type SidebarGroupId = string;
 
 const messageFilters = [
   { id: "all", label: "Todas" },
+  { id: "mentions", label: "Mencoes" },
   { id: "urgente", label: "Urgentes" },
   { id: "importante", label: "Importantes" },
   { id: "pendente", label: "Pendentes" },
@@ -60,12 +60,13 @@ export function ConversationSidebar({
   activeChannelId,
   activeMessageFilter,
   channels,
+  currentUserId,
   dataStatus = "ready",
   departments,
+  messages,
   onSelectChannel,
   onSelectMessageFilter,
   onRefresh,
-  sectors,
   users,
 }: ConversationSidebarProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<
@@ -77,7 +78,9 @@ export function ConversationSidebar({
     (total, channel) => total + (channel.unreadCount ?? 0),
     0,
   );
-  const mentionsCount = 2;
+  const mentionsCount = messages.filter((message) =>
+    isMessageMentioningUser(message, currentUserId),
+  ).length;
   const favoritesCount = 0;
   const shortcutsCount = unreadCount + mentionsCount + favoritesCount;
   const activeFilterLabel =
@@ -88,7 +91,6 @@ export function ConversationSidebar({
   const departmentGroups = buildDepartmentGroups({
     channels: channels.filter((channel) => channel.kind !== "direct"),
     departments,
-    sectors,
   });
 
   function toggleGroup(groupId: SidebarGroupId) {
@@ -240,16 +242,20 @@ export function ConversationSidebar({
                 <QuickAction
                   icon={<MessageCircle size={15} />}
                   label="Nao lidas"
+                  onClick={() => onSelectMessageFilter?.("all")}
                   value={unreadCount}
                 />
                 <QuickAction
+                  active={activeMessageFilter === "mentions"}
                   icon={<AtSign size={15} />}
                   label="Mencoes"
+                  onClick={() => onSelectMessageFilter?.("mentions")}
                   value={mentionsCount}
                 />
                 <QuickAction
                   icon={<Star size={15} />}
                   label="Favoritos"
+                  onClick={() => onSelectMessageFilter?.("all")}
                   value={favoritesCount}
                 />
               </div>
@@ -271,9 +277,11 @@ export function ConversationSidebar({
               <div className="grid gap-2">
                 {group.sectors.map((sector) => (
                   <div className="grid gap-1" key={sector.id}>
-                    <p className="m-0 px-4 text-[0.66rem] font-semibold uppercase text-[#7f8a99]">
-                      {sector.name}
-                    </p>
+                    {sector.name ? (
+                      <p className="m-0 px-4 text-[0.66rem] font-semibold uppercase text-[#7f8a99]">
+                        {sector.name}
+                      </p>
+                    ) : null}
                     <ConversationList
                       activeChannelId={activeChannelId}
                       channels={sector.channels}
@@ -328,11 +336,9 @@ export function ConversationSidebar({
 function buildDepartmentGroups({
   channels,
   departments,
-  sectors,
 }: {
   channels: readonly PulseXChannel[];
   departments: readonly PulseXDepartment[];
-  sectors: readonly PulseXSector[];
 }) {
   const knownDepartments = departments.map((department) => ({
     id: department.id,
@@ -356,24 +362,15 @@ function buildDepartmentGroups({
           channel.departmentId === department.id ||
           (!channel.departmentId && department.name === "Geral"),
       );
-      const departmentSectors = sectors.filter(
-        (sector) => sector.departmentId === department.id,
-      );
-      const fallbackSector = {
-        channels: departmentChannels.filter((channel) => !channel.sectorId),
-        id: `${department.id}-department`,
-        name: "Departamento",
-      };
-      const sectorGroups = [
-        ...departmentSectors.map((sector) => ({
-          channels: departmentChannels.filter(
-            (channel) => channel.sectorId === sector.id,
-          ),
-          id: sector.id,
-          name: sector.name,
-        })),
-        fallbackSector,
-      ].filter((sector) => sector.channels.length > 0);
+      const sectorGroups = departmentChannels.length
+        ? [
+            {
+              channels: departmentChannels,
+              id: `${department.id}-channels`,
+              name: "",
+            },
+          ]
+        : [];
       const unreadCount = departmentChannels.reduce(
         (total, channel) => total + (channel.unreadCount ?? 0),
         0,
@@ -390,17 +387,23 @@ function buildDepartmentGroups({
 }
 
 function QuickAction({
+  active = false,
   icon,
   label,
+  onClick,
   value,
 }: {
+  active?: boolean;
   icon: ReactNode;
   label: string;
+  onClick?: () => void;
   value: number;
 }) {
   return (
     <button
-      className="grid min-h-[4.75rem] grid-rows-[auto_1fr] rounded-md border border-white/[0.075] bg-white/[0.055] p-2 text-left text-[#c9d1dc] outline-none transition hover:border-white/[0.13] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+      aria-pressed={active}
+      className="grid min-h-[4.75rem] grid-rows-[auto_1fr] rounded-md border border-white/[0.075] bg-white/[0.055] p-2 text-left text-[#c9d1dc] outline-none transition hover:border-white/[0.13] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69] aria-pressed:border-[#A07C3B]/55 aria-pressed:bg-[#A07C3B]/20 aria-pressed:text-white"
+      onClick={onClick}
       type="button"
     >
       <span className="flex min-w-0 items-center gap-1.5 text-xs">
@@ -411,6 +414,16 @@ function QuickAction({
         {value}
       </span>
     </button>
+  );
+}
+
+function isMessageMentioningUser(
+  message: PulseXMessage,
+  userId: PulseXPresenceUser["id"],
+) {
+  return (
+    message.authorId !== userId &&
+    Boolean(message.mentionUserIds?.includes(userId))
   );
 }
 

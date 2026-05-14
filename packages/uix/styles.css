@@ -1575,6 +1575,10 @@
   padding: 0 var(--uix-space-6);
 }
 
+.uix-topbar:not(:has(.uix-topbar__command)) {
+  grid-template-columns: minmax(12rem, 1fr) minmax(12rem, auto);
+}
+
 .uix-topbar__command {
   min-width: 0;
 }

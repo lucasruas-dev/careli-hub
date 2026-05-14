@@ -17,13 +17,18 @@ export default function LoginPage() {
     setError(null);
     setIsSubmitting(true);
 
-    const result = await signIn({
-      email,
-      password,
-    });
+    try {
+      const result = await signIn({
+        email,
+        password,
+      });
 
-    if (!result.ok) {
-      setError(result.error);
+      if (!result.ok) {
+        setError(result.error);
+        setIsSubmitting(false);
+      }
+    } catch (error) {
+      setError(getLoginErrorMessage(error));
       setIsSubmitting(false);
     }
   }
@@ -96,4 +101,20 @@ export default function LoginPage() {
       </section>
     </main>
   );
+}
+
+function getLoginErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    const normalizedMessage = error.message.trim().toLowerCase();
+
+    if (
+      normalizedMessage.includes("failed to fetch") ||
+      normalizedMessage.includes("fetch failed") ||
+      normalizedMessage.includes("network")
+    ) {
+      return "Não foi possível conectar ao Supabase agora. Verifique sua conexão e tente novamente.";
+    }
+  }
+
+  return "Não foi possível validar seu acesso ao Hub Careli. Tente novamente.";
 }

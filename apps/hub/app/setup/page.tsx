@@ -8,9 +8,11 @@ import {
   createSector,
   linkUserAssignment,
   loadSetupData,
+  syncPulseXChannelMembers,
   updateDepartment,
   updatePulseXChannel,
   updateSector,
+  uploadUserAvatar,
 } from "@/lib/setup/data";
 import type {
   HubUserContext,
@@ -48,7 +50,6 @@ import {
   KeyRound,
   Layers3,
   Link2,
-  MessageSquareText,
   MoreVertical,
   PackageCheck,
   Pencil,
@@ -56,21 +57,27 @@ import {
   RefreshCw,
   Settings2,
   ShieldAlert,
+  Upload,
   X,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 
 type SetupTabId =
   | "usuarios"
   | "departamentos"
   | "setores"
   | "modulos"
-  | "permissoes"
-  | "pulsex";
+  | "permissoes";
 
 type SetupActionId =
-  | "new-channel"
   | "new-department"
   | "new-sector"
   | "new-user";
@@ -86,7 +93,6 @@ const setupTabs = [
   { icon: Layers3, id: "setores", label: "Setores" },
   { icon: PackageCheck, id: "modulos", label: "Modulos" },
   { icon: KeyRound, id: "permissoes", label: "Permissoes" },
-  { icon: MessageSquareText, id: "pulsex", label: "PulseX" },
 ] as const satisfies readonly {
   icon: typeof Users;
   id: SetupTabId;
@@ -210,7 +216,7 @@ function SetupWorkspace() {
       { label: "usuarios", value: data.users.length },
       { label: "departamentos", value: data.departments.length },
       { label: "setores", value: data.sectors.length },
-      { label: "canais PulseX", value: data.channels.length },
+      { label: "modulos", value: data.modules.length },
     ],
     [data],
   );
@@ -269,24 +275,6 @@ function SetupWorkspace() {
     }
   }
 
-  async function handleCreatePulseXChannel(input: CreatePulseXChannelInput) {
-    setIsSaving(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      await createPulseXChannel(input);
-      await refreshSetupData();
-      setActiveTab("pulsex");
-      setActiveAction(null);
-      setSuccess("Canal PulseX cadastrado.");
-    } catch (saveError) {
-      setError(getFriendlySetupError(saveError, "save"));
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
   async function handleCreatePulseXModuleChannel(
     input: CreatePulseXChannelInput,
   ) {
@@ -315,7 +303,7 @@ function SetupWorkspace() {
       await refreshSetupData();
       setActiveTab("usuarios");
       setLinkUserTarget(null);
-      setSuccess("Usuario vinculado ao setor.");
+      setSuccess("Usuario atualizado.");
     } catch (saveError) {
       setError(getFriendlySetupError(saveError, "save"));
     } finally {
@@ -374,11 +362,30 @@ function SetupWorkspace() {
     }
   }
 
+  async function handleSyncPulseXChannelMembers(
+    channelId: string,
+    participantUserIds: readonly string[],
+  ) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await syncPulseXChannelMembers(channelId, participantUserIds);
+      await refreshSetupData();
+      setSuccess("Participantes atualizados.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <WorkspaceLayout
       className="bg-[#f3f6fa]"
     >
-      <section className="grid grid-cols-4 gap-3">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {summary.map((item) => (
           <Surface bordered className="border-[#d9e0e7] bg-white p-4" key={item.label}>
             <p className="m-0 text-2xl font-semibold text-[#101820]">{item.value}</p>
@@ -447,17 +454,21 @@ function SetupWorkspace() {
             <SetupTabContent
               activeTab={activeTab}
               data={data}
+              error={error}
               activeAction={activeAction}
               isSaving={isSaving}
               onCloseAction={() => setActiveAction(null)}
               onCreateDepartment={handleCreateDepartment}
               onCreateOperationalUser={handleCreateOperationalUser}
-              onCreatePulseXChannel={handleCreatePulseXChannel}
               onCreateSector={handleCreateSector}
               onEditRecord={setEditTarget}
               onLinkUser={setLinkUserTarget}
               onConfigureModule={setModuleConfigTarget}
-              onOpenAction={setActiveAction}
+              onOpenAction={(action) => {
+                setError(null);
+                setSuccess(null);
+                setActiveAction(action);
+              }}
             />
           )}
         </div>
@@ -488,6 +499,10 @@ function SetupWorkspace() {
           isSaving={isSaving}
           onClose={() => setModuleConfigTarget(null)}
           onCreateChannel={handleCreatePulseXModuleChannel}
+          onEditChannel={(channel) =>
+            setEditTarget({ record: channel, type: "channel" })
+          }
+          onSyncMembers={handleSyncPulseXChannelMembers}
         />
       ) : null}
     </WorkspaceLayout>
@@ -498,11 +513,11 @@ function SetupTabContent({
   activeTab,
   activeAction,
   data,
+  error,
   isSaving,
   onCloseAction,
   onCreateDepartment,
   onCreateOperationalUser,
-  onCreatePulseXChannel,
   onCreateSector,
   onConfigureModule,
   onEditRecord,
@@ -512,11 +527,11 @@ function SetupTabContent({
   activeTab: SetupTabId;
   activeAction: SetupActionId | null;
   data: SetupData;
+  error: string | null;
   isSaving: boolean;
   onCloseAction: () => void;
   onCreateDepartment: (input: CreateDepartmentInput) => Promise<void>;
   onCreateOperationalUser: (input: CreateOperationalUserInput) => Promise<void>;
-  onCreatePulseXChannel: (input: CreatePulseXChannelInput) => Promise<void>;
   onCreateSector: (input: CreateSectorInput) => Promise<void>;
   onConfigureModule: (module: SetupModule) => void;
   onEditRecord: (target: SetupEditTarget) => void;
@@ -537,6 +552,7 @@ function SetupTabContent({
         {activeAction === "new-user" ? (
           <CreateOperationalUserModal
             data={data}
+            error={error}
             isSaving={isSaving}
             onClose={onCloseAction}
             onSubmit={onCreateOperationalUser}
@@ -651,19 +667,19 @@ function SetupTabContent({
       <TabPanel title="Modulos">
         <DataGrid
           empty="Nenhum modulo cadastrado."
-          headers={["Modulo", "Rota", "Status", "Departamentos liberados", "Acoes"]}
+          headers={["Modulo", "Acoes", "Rota", "Status", "Departamentos liberados"]}
           rows={data.modules.map((module) => [
             module.name,
-            module.basePath,
-            module.status,
-            data.departmentModules.filter(
-              (access) => access.moduleId === module.id && access.status === "enabled",
-            ).length,
             <ModuleConfigAction
               disabled={module.id !== "pulsex" || module.status === "planned"}
               key={module.id}
               onClick={() => onConfigureModule(module)}
             />,
+            module.basePath,
+            module.status,
+            data.departmentModules.filter(
+              (access) => access.moduleId === module.id && access.status === "enabled",
+            ).length,
           ])}
         />
       </TabPanel>
@@ -687,47 +703,7 @@ function SetupTabContent({
     );
   }
 
-  return (
-    <TabPanel
-      action={
-        <ActionButton
-          label="Novo canal"
-          onClick={() => onOpenAction("new-channel")}
-        />
-      }
-      title="PulseX"
-    >
-      {activeAction === "new-channel" ? (
-        <CreatePulseXChannelForm
-          data={data}
-          isSaving={isSaving}
-          onCancel={onCloseAction}
-          onSubmit={onCreatePulseXChannel}
-        />
-      ) : null}
-      <DataGrid
-        empty="Nenhum canal PulseX cadastrado."
-        headers={["Canal", "Tipo", "Departamento", "Setor", "Status", "Acoes"]}
-        rows={data.channels.map((channel) => [
-          channel.name,
-          getPulseXChannelTypeLabel(channel.type),
-          channel.departmentName ?? "-",
-          channel.sectorName ?? "-",
-          channel.status,
-          <RowActions
-            key={channel.id}
-            onArchive={() =>
-              onEditRecord({
-                record: { ...channel, status: "archived" },
-                type: "channel",
-              })
-            }
-            onEdit={() => onEditRecord({ record: channel, type: "channel" })}
-          />,
-        ])}
-      />
-    </TabPanel>
-  );
+  return null;
 }
 
 function CreateDepartmentForm({
@@ -838,114 +814,159 @@ function CreateSectorForm({
   );
 }
 
-function CreatePulseXChannelForm({
+function PulseXCreateChannelPanel({
+  activeDepartmentId,
   data,
   isSaving,
-  onCancel,
+  onCreated,
   onSubmit,
 }: {
+  activeDepartmentId: string;
   data: SetupData;
   isSaving: boolean;
-  onCancel: () => void;
+  onCreated: (channelId: string) => void;
   onSubmit: (input: CreatePulseXChannelInput) => Promise<void>;
 }) {
-  const [departmentId, setDepartmentId] = useState(data.departments[0]?.id ?? "");
+  const [departmentId, setDepartmentId] = useState(activeDepartmentId);
   const [description, setDescription] = useState("");
-  const [name, setName] = useState("");
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [name, setName] = useState("Comunicados");
   const [sectorId, setSectorId] = useState("");
   const [status, setStatus] = useState<SetupRecordStatus>("active");
-  const [type, setType] = useState<CreatePulseXChannelInput["type"]>("sector_channel");
-  const [participantUserIds, setParticipantUserIds] = useState<string[]>([]);
+  const [type, setType] = useState<CreatePulseXChannelInput["type"]>(
+    "department_channel",
+  );
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
 
+  useEffect(() => {
+    setDepartmentId(activeDepartmentId);
+    setSectorId("");
+  }, [activeDepartmentId]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const channelId = createPulseXChannelId({
+      data,
+      departmentId,
+      name,
+      sectorId,
+      type,
+    });
+
     await onSubmit({
       departmentId,
       description,
-      id: slugify(name),
+      id: channelId,
       name,
-      participantUserIds,
       sectorId: sectorId || undefined,
       status,
       type,
     });
+    onCreated(channelId);
     setDescription("");
-    setName("");
-    setParticipantUserIds([]);
+    setName("Comunicados");
     setSectorId("");
     setStatus("active");
+    setType("department_channel");
+    setIsExpanded(false);
   }
 
   return (
-    <SetupFormCard title="Novo canal">
-      <form className="grid gap-3" onSubmit={handleSubmit}>
-        <TextInput label="Nome" onChange={setName} value={name} />
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Departamento</span>
-          <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
-            onChange={(event) => {
-              setDepartmentId(event.target.value);
-              setSectorId("");
-            }}
-            value={departmentId}
-          >
-            {data.departments.map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Setor</span>
-          <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
-            onChange={(event) => setSectorId(event.target.value)}
-            value={sectorId}
-          >
-            <option value="">Departamento</option>
-            {availableSectors.map((sector) => (
-              <option key={sector.id} value={sector.id}>
-                {sector.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Tipo</span>
-          <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
-            onChange={(event) =>
-              setType(event.target.value as CreatePulseXChannelInput["type"])
-            }
-            value={type}
-          >
-            <option value="sector_channel">Canal de setor</option>
-            <option value="department_channel">Canal de departamento</option>
-            <option value="private_group">Grupo privado</option>
-          </select>
-        </label>
-        <TextAreaInput
-          label="Descricao"
-          onChange={setDescription}
-          value={description}
-        />
-        <StatusSelect onChange={setStatus} value={status} />
-        <ParticipantPicker
-          onChange={setParticipantUserIds}
-          selectedUserIds={participantUserIds}
-          users={data.users}
-        />
-        <FormActions
-          disabled={!departmentId || !name.trim() || isSaving}
-          onCancel={onCancel}
-        />
-      </form>
-    </SetupFormCard>
+    <section className="rounded-md border border-[#d9e0e7] bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-4 py-3">
+        <div>
+          <h3 className="m-0 text-sm font-semibold text-[#101820]">
+            Canais e grupos
+          </h3>
+          <p className="m-0 mt-1 text-xs text-[#667085]">PulseX</p>
+        </div>
+        <button
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#1f2933] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          onClick={() => setIsExpanded((current) => !current)}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={14} />
+          Novo
+        </button>
+      </div>
+      {isExpanded ? (
+        <form className="grid gap-3 p-4" onSubmit={handleSubmit}>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <TextInput label="Nome" onChange={setName} value={name} />
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold text-[#667085]">
+                Departamento
+              </span>
+              <select
+                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                onChange={(event) => {
+                  setDepartmentId(event.target.value);
+                  setSectorId("");
+                }}
+                value={departmentId}
+              >
+                {data.departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold text-[#667085]">Tipo</span>
+              <select
+                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                onChange={(event) => {
+                  const nextType = event.target.value as CreatePulseXChannelInput["type"];
+
+                  setType(nextType);
+
+                  if (nextType === "department_channel" && !name.trim()) {
+                    setName("Comunicados");
+                  }
+
+                  if (nextType !== "department_channel" && name === "Comunicados") {
+                    setName("");
+                  }
+                }}
+                value={type}
+              >
+                <option value="department_channel">Canal de departamento</option>
+                <option value="sector_channel">Canal de setor</option>
+                <option value="private_group">Grupo privado</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold text-[#667085]">Setor</span>
+              <select
+                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                onChange={(event) => setSectorId(event.target.value)}
+                value={sectorId}
+              >
+                <option value="">Departamento</option>
+                {availableSectors.map((sector) => (
+                  <option key={sector.id} value={sector.id}>
+                    {sector.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <TextAreaInput
+            label="Descricao"
+            onChange={setDescription}
+            value={description}
+          />
+          <StatusSelect onChange={setStatus} value={status} />
+          <FormActions
+            disabled={!departmentId || !name.trim() || isSaving}
+            onCancel={() => setIsExpanded(false)}
+          />
+        </form>
+      ) : null}
+    </section>
   );
 }
 
@@ -1109,7 +1130,7 @@ function ModuleConfigAction({
   onClick: () => void;
 }) {
   return (
-    <div className="flex items-center justify-end">
+    <div className="flex items-center justify-start">
       <Tooltip content={disabled ? "Modulo ainda sem configuracao" : "Configurar modulo"}>
         <button
           aria-label="Configurar modulo"
@@ -1128,16 +1149,16 @@ function ModuleConfigAction({
 
 function UserAssignmentAction({ onClick }: { onClick: () => void }) {
   return (
-    <div className="flex items-center justify-end">
-      <Tooltip content="Vincular setor">
+    <div className="flex items-center justify-start">
+      <Tooltip content="Editar usuario">
         <button
-          aria-label="Vincular setor"
+          aria-label="Editar usuario"
           className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onClick}
-          title="Vincular setor"
+          title="Editar usuario"
           type="button"
         >
-          <Link2 aria-hidden="true" size={14} />
+          <Pencil aria-hidden="true" size={14} />
         </button>
       </Tooltip>
     </div>
@@ -1318,6 +1339,9 @@ function EditPulseXChannelModal({
 }) {
   const [departmentId, setDepartmentId] = useState(record.departmentId ?? "");
   const [name, setName] = useState(record.name);
+  const [participantUserIds, setParticipantUserIds] = useState<string[]>(
+    getPulseXChannelMemberIds(data, record.id),
+  );
   const [sectorId, setSectorId] = useState(record.sectorId ?? "");
   const [status, setStatus] = useState<SetupRecordStatus>(record.status);
   const [type, setType] = useState<SetupPulseXChannel["type"]>(record.type);
@@ -1331,6 +1355,7 @@ function EditPulseXChannelModal({
       departmentId,
       id: record.id,
       name,
+      participantUserIds,
       sectorId: sectorId || undefined,
       status,
       type,
@@ -1389,6 +1414,11 @@ function EditPulseXChannelModal({
           </select>
         </label>
         <StatusSelect onChange={setStatus} value={status} />
+        <ParticipantPicker
+          onChange={setParticipantUserIds}
+          selectedUserIds={participantUserIds}
+          users={data.users}
+        />
         <FormActions
           disabled={!name.trim() || isSaving}
           onCancel={onClose}
@@ -1407,15 +1437,20 @@ function SetupModal({
 }: {
   children: ReactNode;
   onClose: () => void;
-  size?: "default" | "wide";
+  size?: "default" | "full" | "wide";
   title: string;
 }) {
+  const sizeClass =
+    size === "full"
+      ? "max-w-[86rem]"
+      : size === "wide"
+        ? "max-w-5xl"
+        : "max-w-xl";
+
   return (
     <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/25 px-4">
       <div
-        className={`w-full rounded-md border border-[#d9e0e7] bg-white shadow-2xl ${
-          size === "wide" ? "max-w-5xl" : "max-w-xl"
-        }`}
+        className={`w-full rounded-md border border-[#d9e0e7] bg-white shadow-2xl ${sizeClass}`}
       >
         <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
           <h2 className="m-0 text-base font-semibold text-[#101820]">{title}</h2>
@@ -1439,110 +1474,411 @@ function PulseXModuleConfigModal({
   isSaving,
   onClose,
   onCreateChannel,
+  onEditChannel,
+  onSyncMembers,
 }: {
   data: SetupData;
   isSaving: boolean;
   onClose: () => void;
   onCreateChannel: (input: CreatePulseXChannelInput) => Promise<void>;
+  onEditChannel: (channel: SetupPulseXChannel) => void;
+  onSyncMembers: (
+    channelId: string,
+    participantUserIds: readonly string[],
+  ) => Promise<void>;
 }) {
-  const pulsexDepartmentIds = new Set(
-    data.departmentModules
-      .filter((access) => access.moduleId === "pulsex" && access.status === "enabled")
-      .map((access) => access.departmentId),
+  const activeDepartments = data.departments.filter(
+    (department) => department.status === "active",
   );
-  const releasedDepartments = data.departments.filter((department) =>
-    pulsexDepartmentIds.has(department.id),
-  );
-  const departmentChannels = data.channels.filter(
-    (channel) => channel.type === "department_channel",
-  );
-  const groupChannels = data.channels.filter(
-    (channel) => channel.type !== "department_channel",
-  );
+  const fallbackDepartmentId = activeDepartments[0]?.id ?? data.departments[0]?.id ?? "";
+  const [selectedDepartmentId, setSelectedDepartmentId] =
+    useState(fallbackDepartmentId);
+  const [selectedChannelId, setSelectedChannelId] = useState("");
   const memberCountByChannel = getMemberCountByChannel(data);
+  const scopedChannels = data.channels.filter((channel) =>
+    selectedDepartmentId ? channel.departmentId === selectedDepartmentId : true,
+  );
+  const selectedDepartment = data.departments.find(
+    (department) => department.id === selectedDepartmentId,
+  );
+  const selectedChannel =
+    scopedChannels.find((channel) => channel.id === selectedChannelId) ??
+    scopedChannels[0];
+  const usersForSelectedDepartment = getUsersForPulseXDepartment(
+    data,
+    selectedDepartmentId,
+  );
+
+  useEffect(() => {
+    if (!selectedDepartmentId && fallbackDepartmentId) {
+      setSelectedDepartmentId(fallbackDepartmentId);
+      return;
+    }
+
+    if (
+      selectedDepartmentId &&
+      !data.departments.some((department) => department.id === selectedDepartmentId)
+    ) {
+      setSelectedDepartmentId(fallbackDepartmentId);
+    }
+  }, [data.departments, fallbackDepartmentId, selectedDepartmentId]);
+
+  useEffect(() => {
+    if (scopedChannels.length === 0) {
+      if (selectedChannelId) {
+        setSelectedChannelId("");
+      }
+
+      return;
+    }
+
+    if (!selectedChannelId || !scopedChannels.some((channel) => channel.id === selectedChannelId)) {
+      const firstChannel = scopedChannels[0];
+
+      if (firstChannel) {
+        setSelectedChannelId(firstChannel.id);
+      }
+    }
+  }, [scopedChannels, selectedChannelId]);
+
+  async function handleUpdateMembers(
+    channel: SetupPulseXChannel,
+    participantUserIds: string[],
+  ) {
+    await onSyncMembers(channel.id, participantUserIds);
+  }
 
   return (
-    <SetupModal onClose={onClose} size="wide" title="Configurar PulseX">
-      <div className="grid max-h-[82vh] gap-5 overflow-auto p-5">
-        <CreatePulseXChannelForm
+    <SetupModal onClose={onClose} size="full" title="Setup PulseX">
+      <div className="grid max-h-[82vh] overflow-auto lg:grid-cols-[18rem_minmax(0,1fr)_22rem]">
+        <PulseXDepartmentList
+          data={data}
+          memberCountByChannel={memberCountByChannel}
+          onSelectDepartment={(departmentId) => {
+            setSelectedDepartmentId(departmentId);
+            setSelectedChannelId("");
+          }}
+          selectedDepartmentId={selectedDepartmentId}
+        />
+        <main className="grid content-start gap-4 border-b border-[#edf0f4] p-4 lg:border-b-0 lg:border-r">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="m-0 text-xs font-semibold uppercase text-[#667085]">
+                Departamento
+              </p>
+              <h3 className="m-0 mt-1 text-lg font-semibold text-[#101820]">
+                {selectedDepartment?.name ?? "Sem departamento"}
+              </h3>
+            </div>
+            <Badge variant="neutral">
+              {scopedChannels.length} canais
+            </Badge>
+          </div>
+          <PulseXCreateChannelPanel
+            activeDepartmentId={selectedDepartmentId}
+            data={data}
+            isSaving={isSaving}
+            onCreated={setSelectedChannelId}
+            onSubmit={onCreateChannel}
+          />
+          <PulseXChannelList
+            channels={scopedChannels}
+            memberCountByChannel={memberCountByChannel}
+            onArchive={(channel) =>
+              onEditChannel({ ...channel, status: "archived" })
+            }
+            onEdit={onEditChannel}
+            onSelectChannel={setSelectedChannelId}
+            selectedChannelId={selectedChannel?.id ?? ""}
+          />
+        </main>
+        <PulseXMembersPanel
+          channel={selectedChannel}
           data={data}
           isSaving={isSaving}
-          onCancel={onClose}
-          onSubmit={onCreateChannel}
+          onEditChannel={onEditChannel}
+          onSubmit={handleUpdateMembers}
+          users={usersForSelectedDepartment}
         />
-        <SetupConfigSection title="Departamentos liberados">
-          <DataGrid
-            empty="Nenhum departamento liberado."
-            headers={["Departamento", "Status"]}
-            rows={releasedDepartments.map((department) => [
-              department.name,
-              department.status,
-            ])}
-          />
-        </SetupConfigSection>
-        <SetupConfigSection title="Canais gerais por departamento">
-          <DataGrid
-            empty="Nenhum canal geral cadastrado."
-            headers={["Canal", "Departamento", "Status", "Participantes"]}
-            rows={departmentChannels.map((channel) => [
-              channel.name,
-              channel.departmentName ?? "-",
-              channel.status,
-              memberCountByChannel.get(channel.id) ?? 0,
-            ])}
-          />
-        </SetupConfigSection>
-        <SetupConfigSection title="Grupos de conversa">
-          <DataGrid
-            empty="Nenhum grupo cadastrado."
-            headers={["Grupo", "Tipo", "Departamento", "Setor", "Status", "Participantes"]}
-            rows={groupChannels.map((channel) => [
-              channel.name,
-              getPulseXChannelTypeLabel(channel.type),
-              channel.departmentName ?? "-",
-              channel.sectorName ?? "-",
-              channel.status,
-              memberCountByChannel.get(channel.id) ?? 0,
-            ])}
-          />
-        </SetupConfigSection>
-        <SetupConfigSection title="Participantes">
-          <DataGrid
-            empty="Nenhum participante vinculado."
-            headers={["Canal", "Usuario", "Email"]}
-            rows={data.channelMembers.map((member) => {
-              const channel = data.channels.find(
-                (candidate) => candidate.id === member.channelId,
-              );
-              const user = data.users.find(
-                (candidate) => candidate.id === member.userId,
-              );
-
-              return [
-                channel?.name ?? member.channelId,
-                user?.displayName ?? member.userId,
-                user?.email ?? "-",
-              ];
-            })}
-          />
-        </SetupConfigSection>
       </div>
     </SetupModal>
   );
 }
 
-function SetupConfigSection({
-  children,
-  title,
+function PulseXDepartmentList({
+  data,
+  memberCountByChannel,
+  onSelectDepartment,
+  selectedDepartmentId,
 }: {
-  children: ReactNode;
-  title: string;
+  data: SetupData;
+  memberCountByChannel: ReadonlyMap<string, number>;
+  onSelectDepartment: (departmentId: string) => void;
+  selectedDepartmentId: string;
 }) {
+  const departments = data.departments.filter(
+    (department) => department.status === "active",
+  );
+
+  return (
+    <aside className="border-b border-[#edf0f4] bg-[#f8fafc] p-4 lg:border-b-0 lg:border-r">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="m-0 text-sm font-semibold text-[#101820]">
+          Departamentos
+        </h3>
+        <Badge variant="neutral">{departments.length}</Badge>
+      </div>
+      {departments.length === 0 ? (
+        <p className="m-0 rounded-md border border-dashed border-[#d9e0e7] bg-white p-4 text-sm text-[#667085]">
+          Nenhum departamento ativo.
+        </p>
+      ) : (
+        <div className="grid gap-2">
+          {departments.map((department) => {
+            const channels = data.channels.filter(
+              (channel) => channel.departmentId === department.id,
+            );
+            const participantCount = channels.reduce(
+              (count, channel) =>
+                count + (memberCountByChannel.get(channel.id) ?? 0),
+              0,
+            );
+            const isSelected = selectedDepartmentId === department.id;
+
+            return (
+              <button
+                className={`rounded-md border p-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                  isSelected
+                    ? "border-[#A07C3B] bg-white shadow-sm"
+                    : "border-[#e5eaf0] bg-white/70 hover:bg-white"
+                }`}
+                key={department.id}
+                onClick={() => onSelectDepartment(department.id)}
+                type="button"
+              >
+                <span className="block text-sm font-semibold text-[#101820]">
+                  {department.name}
+                </span>
+                <span className="mt-2 flex flex-wrap gap-2 text-xs text-[#667085]">
+                  <span>{channels.length} canais</span>
+                  <span>{participantCount} pessoas</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function PulseXChannelList({
+  channels,
+  memberCountByChannel,
+  onArchive,
+  onEdit,
+  onSelectChannel,
+  selectedChannelId,
+}: {
+  channels: readonly SetupPulseXChannel[];
+  memberCountByChannel: ReadonlyMap<string, number>;
+  onArchive: (channel: SetupPulseXChannel) => void;
+  onEdit: (channel: SetupPulseXChannel) => void;
+  onSelectChannel: (channelId: string) => void;
+  selectedChannelId: string;
+}) {
+  if (channels.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-[#d9e0e7] bg-white p-6 text-center">
+        <h3 className="m-0 text-base font-semibold text-[#101820]">
+          Nenhum canal
+        </h3>
+        <p className="m-0 mt-1 text-sm text-[#667085]">
+          Crie o primeiro canal desse departamento.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <section className="grid gap-3">
-      <h3 className="m-0 text-sm font-semibold text-[#101820]">{title}</h3>
-      {children}
+      {channels.map((channel) => {
+        const isSelected = selectedChannelId === channel.id;
+
+        return (
+          <article
+            className={`rounded-md border bg-white p-3 transition ${
+              isSelected
+                ? "border-[#A07C3B] shadow-sm"
+                : "border-[#e5eaf0] hover:border-[#cfd8e3]"
+            }`}
+            key={channel.id}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <button
+                aria-pressed={isSelected}
+                className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                onClick={() => onSelectChannel(channel.id)}
+                type="button"
+              >
+                <span className="block truncate text-sm font-semibold text-[#101820]">
+                  {channel.name}
+                </span>
+                <span className="mt-1 flex flex-wrap gap-2 text-xs text-[#667085]">
+                  <span>{getPulseXChannelTypeLabel(channel.type)}</span>
+                  <span>{channel.sectorName ?? "Departamento"}</span>
+                  <span>
+                    {memberCountByChannel.get(channel.id) ?? 0} pessoas
+                  </span>
+                </span>
+              </button>
+              <RowActions
+                onArchive={() => onArchive(channel)}
+                onEdit={() => onEdit(channel)}
+              />
+            </div>
+            {channel.description ? (
+              <p className="m-0 mt-2 line-clamp-2 text-xs text-[#667085]">
+                {channel.description}
+              </p>
+            ) : null}
+          </article>
+        );
+      })}
     </section>
+  );
+}
+
+function PulseXMembersPanel({
+  channel,
+  data,
+  isSaving,
+  onEditChannel,
+  onSubmit,
+  users,
+}: {
+  channel?: SetupPulseXChannel;
+  data: SetupData;
+  isSaving: boolean;
+  onEditChannel: (channel: SetupPulseXChannel) => void;
+  onSubmit: (
+    channel: SetupPulseXChannel,
+    participantUserIds: string[],
+  ) => Promise<void>;
+  users: readonly SetupUser[];
+}) {
+  const memberIds = useMemo(
+    () => (channel ? getPulseXChannelMemberIds(data, channel.id) : []),
+    [channel, data],
+  );
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>(memberIds);
+  const listedUsers = mergeUsersById([
+    ...users,
+    ...data.users.filter((user) => memberIds.includes(user.id)),
+  ]);
+
+  useEffect(() => {
+    setSelectedUserIds(memberIds);
+  }, [memberIds]);
+
+  if (!channel) {
+    return (
+      <aside className="bg-white p-4">
+        <EmptyState
+          description="Selecione ou crie um canal."
+          title="Pessoas"
+        />
+      </aside>
+    );
+  }
+
+  const currentChannel = channel;
+
+  function toggleUser(userId: string) {
+    const nextUserIds = selectedUserIds.includes(userId)
+      ? selectedUserIds.filter((candidate) => candidate !== userId)
+      : [...selectedUserIds, userId];
+
+    setSelectedUserIds(nextUserIds);
+    void onSubmit(currentChannel, nextUserIds);
+  }
+
+  async function handleSaveMembers() {
+    await onSubmit(currentChannel, selectedUserIds);
+  }
+
+  return (
+    <aside className="bg-white p-4">
+      <div className="grid h-full content-start gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="m-0 text-xs font-semibold uppercase text-[#667085]">
+              Pessoas
+            </p>
+            <h3 className="m-0 mt-1 truncate text-base font-semibold text-[#101820]">
+              {currentChannel.name}
+            </h3>
+            <p className="m-0 mt-1 text-xs text-[#667085]">
+              {selectedUserIds.length} vinculadas
+            </p>
+          </div>
+          <Tooltip content="Editar canal">
+            <button
+              aria-label="Editar canal"
+              className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={() => onEditChannel(currentChannel)}
+              type="button"
+            >
+              <Pencil aria-hidden="true" size={14} />
+            </button>
+          </Tooltip>
+        </div>
+
+        {listedUsers.length === 0 ? (
+          <EmptyState
+            description="Nenhum usuario ativo."
+            title="Sem pessoas"
+          />
+        ) : (
+          <div className="grid max-h-[44vh] gap-2 overflow-auto pr-1">
+            {listedUsers.map((user) => (
+              <label
+                className="flex cursor-pointer items-start gap-3 rounded-md border border-[#e5eaf0] bg-[#f8fafc] p-3 text-sm transition hover:bg-white"
+                key={user.id}
+              >
+                <input
+                  checked={selectedUserIds.includes(user.id)}
+                  className="mt-1 h-4 w-4 rounded border-[#cfd8e3] accent-[#A07C3B]"
+                  disabled={isSaving}
+                  onChange={() => toggleUser(user.id)}
+                  type="checkbox"
+                />
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-[#101820]">
+                    {user.displayName}
+                  </span>
+                  <span className="block truncate text-xs text-[#667085]">
+                    {user.sectorName ?? user.departmentName ?? user.email}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        <button
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0e7] disabled:text-[#667085]"
+          disabled={isSaving}
+          onClick={() => {
+            void handleSaveMembers();
+          }}
+          type="button"
+        >
+          <Link2 aria-hidden="true" size={15} />
+          {isSaving ? "Salvando..." : "Salvar vinculos"}
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -1603,13 +1939,69 @@ function getMemberCountByChannel(data: SetupData) {
   return counts;
 }
 
+function getPulseXChannelMemberIds(data: SetupData, channelId: string) {
+  return data.channelMembers
+    .filter((member) => member.channelId === channelId)
+    .map((member) => member.userId);
+}
+
+function createPulseXChannelId({
+  data,
+  departmentId,
+  name,
+  sectorId,
+  type,
+}: {
+  data: SetupData;
+  departmentId: string;
+  name: string;
+  sectorId: string;
+  type: CreatePulseXChannelInput["type"];
+}) {
+  const nameSlug = slugify(name);
+  const departmentSlug =
+    data.departments.find((department) => department.id === departmentId)?.slug ??
+    departmentId.slice(0, 8);
+  const sectorSlug = sectorId
+    ? data.sectors.find((sector) => sector.id === sectorId)?.slug ??
+      sectorId.slice(0, 8)
+    : "";
+
+  if (type === "sector_channel" && sectorSlug) {
+    return `${departmentSlug}-${sectorSlug}-${nameSlug}`;
+  }
+
+  return `${departmentSlug}-${nameSlug}`;
+}
+
+function getUsersForPulseXDepartment(data: SetupData, departmentId: string) {
+  const activeUsers = data.users.filter((user) => user.status === "active");
+  const departmentUsers = activeUsers.filter(
+    (user) => user.departmentId === departmentId,
+  );
+
+  return departmentUsers.length > 0 ? departmentUsers : activeUsers;
+}
+
+function mergeUsersById(users: readonly SetupUser[]) {
+  const usersById = new Map<string, SetupUser>();
+
+  for (const user of users) {
+    usersById.set(user.id, user);
+  }
+
+  return [...usersById.values()];
+}
+
 function CreateOperationalUserModal({
   data,
+  error,
   isSaving,
   onClose,
   onSubmit,
 }: {
   data: SetupData;
+  error?: string | null;
   isSaving: boolean;
   onClose: () => void;
   onSubmit: (input: CreateOperationalUserInput) => Promise<void>;
@@ -1655,6 +2047,14 @@ function CreateOperationalUserModal({
           </button>
         </div>
         <form className="grid gap-4 p-5" onSubmit={handleSubmit}>
+          {error ? (
+            <div
+              className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800"
+              role="alert"
+            >
+              {error}
+            </div>
+          ) : null}
           <div className="grid gap-3 md:grid-cols-2">
             <TextInput label="Nome completo" onChange={setFullName} value={fullName} />
             <TextInput
@@ -1738,6 +2138,11 @@ function LinkUserAssignmentModal({
   const [departmentId, setDepartmentId] = useState(
     user.departmentId ?? data.departments[0]?.id ?? "",
   );
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? "");
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [email, setEmail] = useState(user.email);
+  const [fullName, setFullName] = useState(user.displayName);
   const [profile, setProfile] = useState<SetupOperationalProfileRole>(
     user.operationalProfile,
   );
@@ -1745,7 +2150,7 @@ function LinkUserAssignmentModal({
   const [status, setStatus] = useState<LinkUserAssignmentInput["status"]>(
     user.status === "disabled" ? "disabled" : "active",
   );
-  const [userId, setUserId] = useState(user.id);
+  const userId = user.id;
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
@@ -1753,7 +2158,10 @@ function LinkUserAssignmentModal({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await onSubmit({
+      avatarUrl,
       departmentId,
+      email,
+      fullName,
       profile,
       sectorId,
       status,
@@ -1761,34 +2169,95 @@ function LinkUserAssignmentModal({
     });
   }
 
+  async function handleAvatarImport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setAvatarError(null);
+
+    if (file.type !== "image/png") {
+      setAvatarError("Importe uma imagem PNG.");
+      event.target.value = "";
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+
+    try {
+      const nextAvatarUrl = await uploadUserAvatar({ file, userId });
+      setAvatarUrl(nextAvatarUrl);
+    } catch (uploadError) {
+      setAvatarError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Nao foi possivel importar a foto.",
+      );
+    } finally {
+      setIsUploadingAvatar(false);
+      event.target.value = "";
+    }
+  }
+
   return (
-    <SetupModal onClose={onClose} title="Vincular setor">
+    <SetupModal onClose={onClose} title="Editar usuario">
       <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
-        <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Usuario</span>
-          <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
-            onChange={(event) => {
-              const nextUser = data.users.find(
-                (candidate) => candidate.id === event.target.value,
-              );
-              setUserId(event.target.value);
-              if (nextUser) {
-                setDepartmentId(nextUser.departmentId ?? data.departments[0]?.id ?? "");
-                setSectorId(nextUser.sectorId ?? "");
-                setProfile(nextUser.operationalProfile);
-                setStatus(nextUser.status === "disabled" ? "disabled" : "active");
-              }
-            }}
-            value={userId}
-          >
-            {data.users.map((setupUser) => (
-              <option key={setupUser.id} value={setupUser.id}>
-                {setupUser.displayName} · {setupUser.email}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <TextInput
+            label="Nome completo"
+            onChange={setFullName}
+            value={fullName}
+          />
+          <TextInput
+            inputType="email"
+            label="E-mail"
+            onChange={setEmail}
+            value={email}
+          />
+          <div className="grid gap-1.5 md:col-span-2">
+            <span className="text-xs font-semibold text-[#667085]">
+              Foto do perfil
+            </span>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border border-[#d9e0e7] bg-[#fafbfc] p-3">
+              <span
+                aria-label={`Foto de ${fullName}`}
+                className="grid h-12 w-12 place-items-center rounded-full bg-[#101820] bg-cover bg-center text-sm font-semibold text-white"
+                role="img"
+                style={
+                  avatarUrl
+                    ? {
+                        backgroundImage: `url(${avatarUrl})`,
+                      }
+                    : undefined
+                }
+              >
+                {avatarUrl ? null : fullName.trim().charAt(0).toUpperCase()}
+              </span>
+              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] outline-none transition hover:border-[#A07C3B]/45 hover:bg-[#fbf7ef]">
+                <Upload aria-hidden="true" size={15} />
+                {isUploadingAvatar ? "Importando..." : "Importar PNG"}
+                <input
+                  accept="image/png"
+                  className="sr-only"
+                  disabled={isUploadingAvatar || isSaving}
+                  onChange={handleAvatarImport}
+                  type="file"
+                />
+              </label>
+            </div>
+            {avatarError ? (
+              <p className="m-0 text-xs font-semibold text-red-700">
+                {avatarError}
+              </p>
+            ) : (
+              <p className="m-0 text-xs text-[#667085]">
+                Use um PNG quadrado de ate 2 MB.
+              </p>
+            )}
+          </div>
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1.5">
             <span className="text-xs font-semibold text-[#667085]">Departamento</span>
@@ -1826,9 +2295,17 @@ function LinkUserAssignmentModal({
           <UserStatusSelect onChange={setStatus} value={status} />
         </div>
         <FormActions
-          disabled={!userId || !departmentId || !sectorId || isSaving}
+          disabled={
+            !userId ||
+            !fullName.trim() ||
+            !email.trim() ||
+            !departmentId ||
+            !sectorId ||
+            isUploadingAvatar ||
+            isSaving
+          }
           onCancel={onClose}
-          submitLabel={isSaving ? "Salvando..." : "Vincular setor"}
+          submitLabel={isSaving ? "Salvando..." : "Salvar usuario"}
         />
       </form>
     </SetupModal>
@@ -1857,7 +2334,7 @@ function TextInput({
   placeholder,
   value,
 }: {
-  inputType?: "email" | "password" | "text";
+  inputType?: "email" | "password" | "text" | "url";
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;

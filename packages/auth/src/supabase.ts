@@ -62,6 +62,9 @@ export function createSupabaseAuthClient(
       detectSessionInUrl: true,
       persistSession: true,
     },
+    global: {
+      fetch: createSupabaseFetchWithNetworkFallback(),
+    },
   });
 }
 
@@ -86,10 +89,15 @@ export function createSupabaseAuthAdapter(
         );
 
         if (error) {
-          logAuthError("auth error", error.message);
+          const message = getSupabaseAuthErrorMessage(
+            error,
+            "Supabase indisponivel ao carregar a sessao.",
+          );
+
+          logAuthError("auth error", message);
 
           return {
-            error: error.message,
+            error: message,
             ok: false,
           };
         }
@@ -117,10 +125,15 @@ export function createSupabaseAuthAdapter(
         );
 
         if (error) {
-          logAuthError("auth error", error.message);
+          const message = getSupabaseAuthErrorMessage(
+            error,
+            "Supabase indisponivel ao renovar a sessao.",
+          );
+
+          logAuthError("auth error", message);
 
           return {
-            error: error.message,
+            error: message,
             ok: false,
           };
         }
@@ -160,10 +173,15 @@ export function createSupabaseAuthAdapter(
         );
 
         if (error) {
-          logAuthError("auth error", error.message);
+          const message = getSupabaseAuthErrorMessage(
+            error,
+            "Supabase indisponivel ao autenticar.",
+          );
+
+          logAuthError("auth error", message);
 
           return {
-            error: error.message,
+            error: message,
             ok: false,
           };
         }
@@ -218,10 +236,15 @@ export function createSupabaseAuthAdapter(
         );
 
         if (error) {
-          logAuthError("auth error", error.message);
+          const message = getSupabaseAuthErrorMessage(
+            error,
+            "Supabase indisponivel ao encerrar a sessao.",
+          );
+
+          logAuthError("auth error", message);
 
           return {
-            error: error.message,
+            error: message,
             ok: false,
           };
         }
@@ -687,6 +710,102 @@ function getErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+function getSupabaseAuthErrorMessage(
+  error: unknown,
+  fallback: string,
+): string {
+  const message = getErrorMessage(error, fallback);
+
+  if (isSupabaseAuthNetworkError(error, message)) {
+    return "Nao foi possivel conectar ao Supabase.";
+  }
+
+  return message;
+}
+
+function isSupabaseAuthNetworkError(error: unknown, message: string) {
+  const normalizedMessage = message.trim().toLowerCase();
+
+  if (
+    normalizedMessage.includes("failed to fetch") ||
+    normalizedMessage.includes("fetch failed") ||
+    normalizedMessage.includes("network request failed") ||
+    normalizedMessage.includes("networkerror") ||
+    normalizedMessage.includes("nao foi possivel conectar ao supabase") ||
+    normalizedMessage.includes("supabase network unavailable") ||
+    normalizedMessage.includes("supabase_network_unavailable")
+  ) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as {
+    code?: unknown;
+    name?: unknown;
+    status?: unknown;
+  };
+  const errorName =
+    typeof maybeError.name === "string"
+      ? maybeError.name.trim().toLowerCase()
+      : "";
+  const status =
+    typeof maybeError.status === "number" ? maybeError.status : undefined;
+
+  return (
+    errorName === "authretryablefetcherror" ||
+    maybeError.code === "supabase_network_unavailable" ||
+    status === 0 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    status === 520 ||
+    status === 521 ||
+    status === 522 ||
+    status === 523 ||
+    status === 524 ||
+    status === 530
+  );
+}
+
+function createSupabaseFetchWithNetworkFallback(): typeof fetch {
+  return async (input, init) => {
+    try {
+      return await globalThis.fetch(input, init);
+    } catch (error) {
+      const message = getErrorMessage(
+        error,
+        "Nao foi possivel conectar ao Supabase.",
+      );
+
+      return createSupabaseNetworkErrorResponse(message);
+    }
+  };
+}
+
+function createSupabaseNetworkErrorResponse(message: string): Response {
+  return new Response(
+    JSON.stringify({
+      code: "supabase_network_unavailable",
+      details: "The browser could not reach the Supabase API endpoint.",
+      error: "supabase_network_unavailable",
+      error_description: message,
+      hint: "Verifique a conexao, VPN, DNS, firewall ou bloqueios do navegador.",
+      message,
+      msg: message,
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      status: 503,
+      statusText: "Supabase network unavailable",
+    },
+  );
 }
 
 function createMissingHubProfileMessage({

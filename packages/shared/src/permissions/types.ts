@@ -28,6 +28,7 @@ export type PermissionScope = {
 };
 
 export type HubUserContext = {
+  avatarUrl?: string;
   department?: Department;
   id: string;
   name: string;

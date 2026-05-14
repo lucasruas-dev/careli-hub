@@ -23,12 +23,13 @@ export type PulseXChannel = {
   id: string;
   kind: PulseXChannelKind;
   lastMessageAt: string;
+  memberReadAtByUserId?: Readonly<Record<string, string>>;
   memberUserIds?: readonly string[];
   name: string;
   preview: string;
   sectorId?: string;
   sectorName?: string;
-  status?: "online" | "away" | "busy" | "offline";
+  status?: "online" | "away" | "busy" | "lunch" | "agenda" | "offline";
   unreadCount?: number;
 };
 
@@ -46,6 +47,7 @@ export type PulseXSector = {
 };
 
 export type PulseXPresenceUser = {
+  avatarUrl?: string;
   channelIds: readonly PulseXChannel["id"][];
   departmentId?: string;
   departmentName?: string;
@@ -57,7 +59,7 @@ export type PulseXPresenceUser = {
   role: string;
   sectorId?: string;
   sectorName?: string;
-  status: "online" | "away" | "busy" | "offline";
+  status: "online" | "away" | "busy" | "lunch" | "agenda" | "offline";
   username?: string;
 };
 
@@ -76,7 +78,7 @@ export type PulseXMessageTag =
   | "resolvido"
   | "urgente";
 
-export type PulseXMessageFilter = "all" | PulseXMessageTag;
+export type PulseXMessageFilter = "all" | "mentions" | PulseXMessageTag;
 
 export type PulseXMessageMention = {
   displayName: string;
@@ -84,14 +86,23 @@ export type PulseXMessageMention = {
   userId: PulseXPresenceUser["id"];
 };
 
+export type PulseXMessageAttachment = {
+  durationSeconds?: number;
+  label: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  type: "audio" | "file" | "image" | "video";
+  url?: string;
+};
+
 export type PulseXMessage = {
-  attachment?: {
-    label: string;
-    type: "file" | "image" | "audio";
-  };
+  attachment?: PulseXMessageAttachment;
+  authorAvatarUrl?: string;
   authorId: PulseXPresenceUser["id"];
+  authorName?: string;
   body: string;
   channelId: PulseXChannel["id"];
+  createdAt?: string;
   deletedAt?: string;
   deliveredTo?: readonly PulseXPresenceUser["id"][];
   editedAt?: string;
@@ -105,13 +116,17 @@ export type PulseXMessage = {
   reactions?: readonly PulseXReaction[];
   status?: ActivityFeedEventStatus;
   tags?: readonly PulseXMessageTag[];
+  threadParentMessageId?: string;
   threadCount?: number;
   timestamp: string;
 };
 
 export type PulseXThreadReply = {
+  authorAvatarUrl?: string;
   authorId: PulseXPresenceUser["id"];
+  authorName?: string;
   body: string;
+  createdAt?: string;
   id: string;
   messageId: PulseXMessage["id"];
   timestamp: string;

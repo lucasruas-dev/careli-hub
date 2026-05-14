@@ -6,13 +6,22 @@ import {
   logSupabaseDiagnostic,
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
+import {
+  listHubPresence,
+  markHubPresence,
+} from "@/lib/hub-presence";
 import type {
   PulseXChannel,
   PulseXDepartment,
   PulseXMessage,
+  PulseXMessageAttachment,
+  PulseXMessageMention,
+  PulseXMessageTag,
   PulseXPresenceUser,
   PulseXSector,
+  PulseXThreadReply,
 } from "./types";
+import { normalizePulseXMessageTags } from "./message-tags";
 
 type QueryResult<T> = {
   data: T | null;
@@ -43,6 +52,8 @@ type SectorRow = {
 };
 
 type ChannelMemberRow = {
+  last_read_at?: string | null;
+  status?: "active" | "archived" | "disabled";
   user_id: string;
 };
 
@@ -65,7 +76,13 @@ type PulseXMessageRow = {
   channel_id: string;
   created_at: string;
   deleted_at?: string | null;
+  hub_users?: {
+    avatar_url?: string | null;
+    display_name?: string | null;
+    email?: string | null;
+  } | null;
   id: string;
+  metadata?: Record<string, unknown> | null;
 };
 
 type HubUserAssignmentRow = {
@@ -75,6 +92,7 @@ type HubUserAssignmentRow = {
 };
 
 type HubUserRow = {
+  avatar_url?: string | null;
   display_name: string;
   email: string;
   hub_user_assignments?: {
@@ -105,8 +123,25 @@ export async function loadPulseXOperationalData(input: {
 
   await runPulseXConnectivityProbe();
 
-  const [departmentsLoad, sectorsLoad, assignmentsLoad, channelsLoad, usersLoad] =
-    await Promise.all([
+  await markHubPresence({
+    reason: "heartbeat",
+    source: "pulsex-load",
+    status: "online",
+  }).catch((error: unknown) => {
+    logPulseXDebug("presence heartbeat error", {
+      error: serializeThrownError(error),
+      supabase: getHubSupabaseDiagnostics(),
+    });
+  });
+
+  const [
+    departmentsLoad,
+    sectorsLoad,
+    assignmentsLoad,
+    channelsLoad,
+    usersLoad,
+    presenceLoad,
+  ] = await Promise.all([
       safePulseXLoad("departments", listDepartments, []),
       safePulseXLoad("sectors", listSectors, []),
       safePulseXLoad(
@@ -116,12 +151,16 @@ export async function loadPulseXOperationalData(input: {
       ),
       safePulseXLoad("channels", listPulseXChannels, []),
       safePulseXLoad("users", listDirectUsers, []),
+      safePulseXLoad("presence", listHubPresence, {}),
     ]);
   const departments = departmentsLoad.data;
   const sectors = sectorsLoad.data;
   const assignments = assignmentsLoad.data;
   const allChannels = channelsLoad.data;
-  const users = usersLoad.data;
+  const users = usersLoad.data.map((user) => ({
+    ...user,
+    status: presenceLoad.data[user.id] ?? "offline",
+  }));
   logPulseXDebug("current user", {
     id: input.currentUserId,
   });
@@ -132,9 +171,21 @@ export async function loadPulseXOperationalData(input: {
     currentUserId: input.currentUserId,
     userRole: input.userRole,
   });
-  const activeChannelId = channels[0]?.id;
-  const messages = activeChannelId
-    ? await listChannelMessages(activeChannelId)
+  const messages = channels.length
+    ? (
+        await Promise.all(
+          channels.map((channel) =>
+            listChannelMessages(channel.id).catch((error: unknown) => {
+              logPulseXDebug("list channel messages error", {
+                channelId: channel.id,
+                error: serializeThrownError(error),
+              });
+
+              return [];
+            }),
+          ),
+        )
+      ).flat()
     : [];
   const hasRealStructure =
     departments.length > 0 ||
@@ -249,7 +300,7 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
     client
       .from("pulsex_channels")
       .select(
-        "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug),pulsex_channel_members(user_id)",
+        "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug),pulsex_channel_members(user_id,last_read_at,status)",
       )
       .eq("status", "active")
       .order("order"),
@@ -313,11 +364,27 @@ export async function listDirectUsers(): Promise<PulseXPresenceUser[]> {
     client
       .from("hub_users")
       .select(
-        "id,email,display_name,role,status,hub_user_assignments(department_id,sector_id,status,hub_departments(name),hub_sectors(name))",
+        "id,email,display_name,avatar_url,role,status,hub_user_assignments(department_id,sector_id,status,hub_departments(name),hub_sectors(name))",
       )
       .eq("status", "active")
       .order("display_name"),
   );
+
+  if ((result as QueryResult<HubUserRow[]>).error) {
+    const fallbackResult = await runPulseXQuery<HubUserRow[]>(
+      "list direct users fallback",
+      "hub_users",
+      client
+        .from("hub_users")
+        .select("id,email,display_name,avatar_url,role,status")
+        .eq("status", "active")
+        .order("display_name"),
+    );
+
+    assertQuery("usuarios PulseX", fallbackResult);
+
+    return ((fallbackResult as QueryResult<HubUserRow[]>).data ?? []).map(mapUser);
+  }
 
   assertQuery("usuarios PulseX", result);
 
@@ -333,12 +400,18 @@ export async function listChannelMessages(
     return [];
   }
 
+  const apiMessages = await listChannelMessagesViaApi(client, channelId);
+
+  if (apiMessages) {
+    return apiMessages;
+  }
+
   const result = await runPulseXQuery<PulseXMessageRow[]>(
     "list channel messages",
     "pulsex_messages",
     client
       .from("pulsex_messages")
-      .select("id,channel_id,author_user_id,body,created_at,deleted_at")
+      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
       .eq("channel_id", channelId)
       .is("deleted_at", null)
       .order("created_at", { ascending: true }),
@@ -346,15 +419,20 @@ export async function listChannelMessages(
 
   assertQuery("mensagens PulseX", result);
 
-  return ((result as QueryResult<PulseXMessageRow[]>).data ?? []).map(
-    mapMessage,
+  return mapChannelMessages(
+    (result as QueryResult<PulseXMessageRow[]>).data ?? [],
   );
 }
 
 export async function createPulseXMessage(input: {
+  attachment?: PulseXMessageAttachment;
   authorUserId?: string;
   body: string;
   channelId: string;
+  mentionUserIds?: readonly string[];
+  mentions?: readonly PulseXMessageMention[];
+  tags?: readonly PulseXMessageTag[];
+  threadParentMessageId?: PulseXMessage["id"];
 }): Promise<PulseXMessage> {
   const client = getHubSupabaseClient();
 
@@ -362,6 +440,13 @@ export async function createPulseXMessage(input: {
     throw new Error("Supabase nao configurado.");
   }
 
+  const apiMessage = await createPulseXMessageViaApi(client, input);
+
+  if (apiMessage) {
+    return apiMessage;
+  }
+
+  const tags = normalizePulseXMessageTags(input.tags);
   const result = await runPulseXQuery<PulseXMessageRow>(
     "create message",
     "pulsex_messages",
@@ -371,14 +456,250 @@ export async function createPulseXMessage(input: {
         author_user_id: input.authorUserId,
         body: input.body,
         channel_id: input.channelId,
+        metadata: {
+          ...(input.attachment ? { attachment: input.attachment } : {}),
+          mentionUserIds: input.mentionUserIds ?? [],
+          mentions: input.mentions ?? [],
+          tags,
+          ...(input.threadParentMessageId
+            ? { threadParentMessageId: input.threadParentMessageId }
+            : {}),
+        },
       })
-      .select("id,channel_id,author_user_id,body,created_at,deleted_at")
+      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
       .single(),
   );
 
   assertQuery("enviar mensagem", result);
 
   return mapMessage((result as QueryResult<PulseXMessageRow>).data);
+}
+
+export async function listPulseXThreadReplies(input: {
+  messageId: PulseXMessage["id"];
+}): Promise<PulseXThreadReply[]> {
+  const client = getHubSupabaseClient();
+
+  if (!client || input.messageId.startsWith("local-")) {
+    return [];
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (!sessionResult.error && accessToken) {
+    const response = await fetch(
+      `/api/pulsex/messages?threadParentMessageId=${encodeURIComponent(input.messageId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { data?: PulseXMessageRow[]; error?: string }
+      | null;
+
+    if (response.ok && payload?.data && payload.data.length > 0) {
+      return payload.data.map(mapThreadReply);
+    }
+  }
+
+  const result = await runPulseXQuery<PulseXMessageRow[]>(
+    "list thread replies",
+    "pulsex_messages",
+    client
+      .from("pulsex_messages")
+      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true }),
+  );
+
+  assertQuery("respostas PulseX", result);
+
+  return ((result as QueryResult<PulseXMessageRow[]>).data ?? [])
+    .filter(
+      (message) =>
+        getString(getMessageMetadata(message.metadata).threadParentMessageId) ===
+        input.messageId,
+    )
+    .map(mapThreadReply);
+}
+
+export async function createPulseXThreadReply(input: {
+  authorUserId?: string;
+  body: string;
+  channelId: PulseXChannel["id"];
+  messageId: PulseXMessage["id"];
+}): Promise<PulseXThreadReply> {
+  const message = await createPulseXMessage({
+    authorUserId: input.authorUserId,
+    body: input.body,
+    channelId: input.channelId,
+    threadParentMessageId: input.messageId,
+  });
+
+  return mapThreadReplyFromMessage(message, input.messageId);
+}
+
+export async function updatePulseXMessageTags(input: {
+  messageId: PulseXMessage["id"];
+  tags: readonly PulseXMessageTag[];
+}): Promise<PulseXMessage | null> {
+  const client = getHubSupabaseClient();
+
+  if (!client || input.messageId.startsWith("local-")) {
+    return null;
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    return null;
+  }
+
+  const response = await fetch("/api/pulsex/messages", {
+    body: JSON.stringify({
+      messageId: input.messageId,
+      tags: input.tags,
+    }),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: PulseXMessageRow; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.data) {
+    return null;
+  }
+
+  return mapMessage(payload.data);
+}
+
+export async function markPulseXChannelRead(input: {
+  channelId: PulseXChannel["id"];
+}): Promise<{ channelId: string; lastReadAt: string; userId: string } | null> {
+  const client = getHubSupabaseClient();
+
+  if (!client || input.channelId.startsWith("direct-")) {
+    return null;
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    return null;
+  }
+
+  const response = await fetch("/api/pulsex/messages", {
+    body: JSON.stringify({
+      action: "mark-read",
+      channelId: input.channelId,
+    }),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        data?: {
+          channelId: string;
+          lastReadAt: string;
+          userId: string;
+        };
+        error?: string;
+      }
+    | null;
+
+  if (!response.ok || !payload?.data) {
+    return null;
+  }
+
+  return payload.data;
+}
+
+async function listChannelMessagesViaApi(
+  client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+  channelId: PulseXChannel["id"],
+) {
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    return null;
+  }
+
+  const response = await fetch(
+    `/api/pulsex/messages?channelId=${encodeURIComponent(channelId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: PulseXMessageRow[]; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.data) {
+    return null;
+  }
+
+  return mapChannelMessages(payload.data);
+}
+
+async function createPulseXMessageViaApi(
+  client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+  input: {
+    attachment?: PulseXMessageAttachment;
+    body: string;
+    channelId: string;
+    mentionUserIds?: readonly string[];
+    mentions?: readonly PulseXMessageMention[];
+    tags?: readonly PulseXMessageTag[];
+    threadParentMessageId?: PulseXMessage["id"];
+  },
+) {
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    return null;
+  }
+
+  const response = await fetch("/api/pulsex/messages", {
+    body: JSON.stringify({
+      body: input.body,
+      channelId: input.channelId,
+      attachment: input.attachment,
+      mentionUserIds: input.mentionUserIds ?? [],
+      mentions: input.mentions ?? [],
+      tags: input.tags ?? [],
+      threadParentMessageId: input.threadParentMessageId,
+    }),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: PulseXMessageRow; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.data) {
+    return null;
+  }
+
+  return mapMessage(payload.data);
 }
 
 async function listUserAssignments(
@@ -426,58 +747,59 @@ function filterChannelsForUser({
     userRole: userRole ?? "unknown",
   });
 
-  if (isAdmin) {
-    return [...channels];
-  }
-
-  if (assignments.length === 0) {
-    return channels.filter(
-      (channel) =>
-        channel.memberUserIds?.includes(currentUserId),
-    );
-  }
-
-  const departmentIds = new Set(
-    assignments
-      .map((assignment) => assignment.department_id)
-      .filter((id): id is string => Boolean(id)),
-  );
-  const sectorIds = new Set(
-    assignments
-      .map((assignment) => assignment.sector_id)
-      .filter((id): id is string => Boolean(id)),
-  );
+  const memberDepartmentIds = getDepartmentIdsFromChannelMembership({
+    channels,
+    userId: currentUserId,
+  });
 
   return channels.filter((channel) => {
     if (channel.memberUserIds?.includes(currentUserId)) {
       return true;
     }
 
-    if (channel.accessType === "private_group") {
-      return false;
-    }
-
-    if (
-      channel.accessType === "sector_channel" &&
-      channel.sectorId &&
-      sectorIds.has(channel.sectorId)
-    ) {
-      return true;
-    }
-
     return Boolean(
       channel.accessType === "department_channel" &&
         channel.departmentId &&
-        departmentIds.has(channel.departmentId),
+        memberDepartmentIds.has(channel.departmentId),
     );
   });
+}
+
+function getDepartmentIdsFromChannelMembership({
+  channels,
+  userId,
+}: {
+  channels: readonly PulseXChannel[];
+  userId: string;
+}) {
+  const departmentIds = new Set<string>();
+
+  for (const channel of channels) {
+    if (
+      channel.departmentId &&
+      channel.accessType !== "department_channel" &&
+      channel.memberUserIds?.includes(userId)
+    ) {
+      departmentIds.add(channel.departmentId);
+    }
+  }
+
+  return departmentIds;
 }
 
 function mapChannel(row: PulseXChannelRow): PulseXChannel {
   const unit = row.hub_sectors?.name ?? row.hub_departments?.name ?? "PulseX";
   const kind = mapChannelKind(row.kind, row.hub_departments?.name);
-  const memberUserIds =
-    row.pulsex_channel_members?.map((member) => member.user_id) ?? [];
+  const members =
+    row.pulsex_channel_members?.filter(
+      (member) => !member.status || member.status === "active",
+    ) ?? [];
+  const memberUserIds = members.map((member) => member.user_id);
+  const memberReadAtByUserId = Object.fromEntries(
+    members
+      .filter((member) => Boolean(member.last_read_at))
+      .map((member) => [member.user_id, member.last_read_at as string]),
+  );
 
   return {
     accessType: mapChannelAccessType(row.kind),
@@ -494,12 +816,13 @@ function mapChannel(row: PulseXChannelRow): PulseXChannel {
     id: row.id,
     kind,
     lastMessageAt: "-",
+    memberReadAtByUserId,
     memberUserIds,
     name: row.name,
     preview: row.description ?? "Canal operacional",
     sectorId: row.sector_id ?? undefined,
     sectorName: row.hub_sectors?.name,
-    status: "online",
+    status: "offline",
   };
 }
 
@@ -529,6 +852,7 @@ function mapUser(row: HubUserRow): PulseXPresenceUser {
     row.role;
 
   return {
+    avatarUrl: row.avatar_url ?? undefined,
     channelIds: [],
     departmentId: primaryAssignment?.department_id ?? undefined,
     departmentName: primaryAssignment?.hub_departments?.name ?? undefined,
@@ -539,9 +863,33 @@ function mapUser(row: HubUserRow): PulseXPresenceUser {
     role,
     sectorId: primaryAssignment?.sector_id ?? undefined,
     sectorName: primaryAssignment?.hub_sectors?.name ?? undefined,
-    status: "online",
+    status: "offline",
     username: row.email.split("@")[0],
   };
+}
+
+function mapChannelMessages(rows: readonly PulseXMessageRow[]): PulseXMessage[] {
+  const messages = rows.map(mapMessage);
+  const replyCountByMessageId = new Map<string, number>();
+
+  for (const message of messages) {
+    if (!message.threadParentMessageId) {
+      continue;
+    }
+
+    replyCountByMessageId.set(
+      message.threadParentMessageId,
+      (replyCountByMessageId.get(message.threadParentMessageId) ?? 0) + 1,
+    );
+  }
+
+  return messages
+    .filter((message) => !message.threadParentMessageId)
+    .map((message) => ({
+      ...message,
+      threadCount:
+        (message.threadCount ?? 0) + (replyCountByMessageId.get(message.id) ?? 0),
+    }));
 }
 
 function mapMessage(row: PulseXMessageRow | null): PulseXMessage {
@@ -549,18 +897,146 @@ function mapMessage(row: PulseXMessageRow | null): PulseXMessage {
     throw new Error("Mensagem inexistente.");
   }
 
+  const metadata = getMessageMetadata(row.metadata);
+  const attachment = normalizeMessageAttachment(metadata.attachment);
+  const mentions = normalizeMessageMentions(metadata.mentions);
+  const mentionUserIds =
+    normalizeStringList(metadata.mentionUserIds) ??
+    mentions.map((mention) => mention.userId);
+
   return {
+    authorAvatarUrl: row.hub_users?.avatar_url ?? undefined,
     authorId: row.author_user_id ?? "system",
+    authorName:
+      row.hub_users?.display_name ??
+      row.hub_users?.email?.split("@")[0] ??
+      undefined,
+    attachment,
     body: row.body,
     channelId: row.channel_id,
+    createdAt: row.created_at,
     deletedAt: row.deleted_at ?? undefined,
     id: row.id,
+    mentionUserIds,
+    mentions,
     reactions: [],
     status: "neutral",
-    tags: [],
+    tags: normalizePulseXMessageTags(metadata.tags),
+    threadParentMessageId: getString(metadata.threadParentMessageId) || undefined,
     threadCount: 0,
     timestamp: formatMessageTime(row.created_at),
   };
+}
+
+function mapThreadReply(row: PulseXMessageRow): PulseXThreadReply {
+  const message = mapMessage(row);
+  const parentMessageId = message.threadParentMessageId;
+
+  if (!parentMessageId) {
+    throw new Error("Resposta PulseX sem mensagem principal.");
+  }
+
+  return mapThreadReplyFromMessage(message, parentMessageId);
+}
+
+function mapThreadReplyFromMessage(
+  message: PulseXMessage,
+  parentMessageId: PulseXMessage["id"],
+): PulseXThreadReply {
+  return {
+    authorAvatarUrl: message.authorAvatarUrl,
+    authorId: message.authorId,
+    authorName: message.authorName,
+    body: message.body,
+    createdAt: message.createdAt,
+    id: message.id,
+    messageId: parentMessageId,
+    timestamp: message.timestamp,
+  };
+}
+
+function getMessageMetadata(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function normalizeMessageAttachment(
+  value: unknown,
+): PulseXMessageAttachment | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const maybeAttachment = value as Record<string, unknown>;
+  const label = getString(maybeAttachment.label);
+  const type = getString(maybeAttachment.type);
+
+  if (!label || !isMessageAttachmentType(type)) {
+    return undefined;
+  }
+
+  return {
+    durationSeconds: getPositiveNumber(maybeAttachment.durationSeconds),
+    label,
+    mimeType: getString(maybeAttachment.mimeType) || undefined,
+    sizeBytes: getPositiveNumber(maybeAttachment.sizeBytes),
+    type,
+    url: getString(maybeAttachment.url) || undefined,
+  };
+}
+
+function normalizeMessageMentions(value: unknown): PulseXMessageMention[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((mention) => {
+      if (!mention || typeof mention !== "object") {
+        return null;
+      }
+
+      const maybeMention = mention as Record<string, unknown>;
+      const displayName = getString(maybeMention.displayName);
+      const trigger = getString(maybeMention.trigger);
+      const userId = getString(maybeMention.userId);
+
+      if (!displayName || !trigger || !userId) {
+        return null;
+      }
+
+      return {
+        displayName,
+        trigger,
+        userId,
+      };
+    })
+    .filter((mention): mention is PulseXMessageMention => Boolean(mention));
+}
+
+function normalizeStringList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return [...new Set(value.filter((item): item is string => typeof item === "string"))];
+}
+
+function isMessageAttachmentType(
+  value: string,
+): value is PulseXMessageAttachment["type"] {
+  return ["audio", "file", "image", "video"].includes(value);
+}
+
+function getPositiveNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
+function getString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function assertQuery(label: string, result: unknown): asserts result is QueryResult<unknown> {

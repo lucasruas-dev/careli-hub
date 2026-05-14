@@ -16,8 +16,32 @@ body {
   font-family: var(--uix-font-sans);
 }
 
+html:has(.careli-hub-shell[data-layout-mode="fullscreen"]),
+body:has(.careli-hub-shell[data-layout-mode="fullscreen"]) {
+  height: 100%;
+  overflow: hidden;
+}
+
 button {
   font: inherit;
+}
+
+.careli-hub-shell[data-layout-mode="fullscreen"] {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  width: 100%;
+  min-height: 0;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.careli-hub-shell[data-layout-mode="fullscreen"] .uix-app-shell__main,
+.careli-hub-shell[data-layout-mode="fullscreen"] .uix-content-area {
+  height: 100%;
+  min-height: 0;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 .careli-hub-shell .uix-sidebar {

@@ -14,13 +14,14 @@ import {
   type PasswordAuthCredentials,
 } from "@repo/auth";
 import {
-  checkSupabaseHealth,
   getHubSupabaseClient,
   getHubSupabaseDiagnostics,
   hasHubSupabaseConfig,
+  hubSupabaseConfig,
   logSupabaseDiagnostic,
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
+import { markHubPresence } from "@/lib/hub-presence";
 import {
   getPermissionsForRole,
   type HubUserContext,
@@ -62,6 +63,14 @@ type ProfileFallbackResponse = {
   profile?: HubProfileRow;
 };
 
+type PasswordSignInFallbackResponse = {
+  error?: string;
+  session?: {
+    access_token?: unknown;
+    refresh_token?: unknown;
+  };
+};
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({
   children,
@@ -75,6 +84,7 @@ export function AuthProvider({
     status: "loading",
     user: null,
   });
+  const [authRetryKey, setAuthRetryKey] = useState(0);
   const [profileStatus, setProfileStatus] =
     useState<AuthContextValue["profileStatus"]>("idle");
   const isLoginRoute = pathname === "/login";
@@ -89,19 +99,25 @@ export function AuthProvider({
       let isMounted = true;
       const client = getHubSupabaseClient();
 
+      setAuthState({
+        session: null,
+        status: "loading",
+        user: null,
+      });
+      setProfileStatus("idle");
+
       if (!client) {
         setAuthState(createUnauthenticatedAuthState());
         return;
       }
 
       logSupabaseDiagnostic("auth", "env", getHubSupabaseDiagnostics());
-      void checkSupabaseHealth("auth-provider boot");
       logAuthTiming("session start");
       withMeasuredTimeout(
         client.auth.getSession(),
         "Tempo excedido ao carregar a sessao Supabase.",
         "session",
-        8_000,
+        20_000,
       )
         .then(({ data, error }) => {
           if (!isMounted) {
@@ -114,7 +130,7 @@ export function AuthProvider({
               function: "AuthProvider.getSession",
               supabase: getHubSupabaseDiagnostics(),
             });
-            setAuthState(createAuthErrorState(error.message));
+            setAuthState(createAuthErrorState(getFriendlySupabaseError(error)));
             return;
           }
 
@@ -179,7 +195,7 @@ export function AuthProvider({
       logAuthDebug("auth error", "invalid mock session");
       setAuthState(createUnauthenticatedAuthState());
     }
-  }, []);
+  }, [authRetryKey]);
 
   useEffect(() => {
     if (authState.status === "loading" || authState.status === "error") {
@@ -237,7 +253,27 @@ export function AuthProvider({
         );
 
         if (error || !data.session) {
-          const message = getFriendlyAuthMessage(error?.message);
+          if (error && isSupabaseAuthNetworkError(error)) {
+            const fallbackResult = await signInViaApiFallback({
+              client,
+              normalizedEmail,
+              password,
+              setAuthState,
+              setProfileStatus,
+            });
+
+            if (fallbackResult.ok) {
+              return fallbackResult;
+            }
+
+            setAuthState(createAuthErrorState(fallbackResult.error));
+
+            return fallbackResult;
+          }
+
+          const message = error
+            ? getFriendlySupabaseError(error)
+            : getFriendlyAuthMessage();
           logSupabaseDiagnostic("auth", "signIn error", {
             email: normalizedEmail,
             error: error ? serializeDiagnosticError(error) : null,
@@ -266,6 +302,24 @@ export function AuthProvider({
           ok: true,
         };
       } catch (error) {
+        if (isSupabaseAuthNetworkError(error)) {
+          const fallbackResult = await signInViaApiFallback({
+            client,
+            normalizedEmail,
+            password,
+            setAuthState,
+            setProfileStatus,
+          });
+
+          if (fallbackResult.ok) {
+            return fallbackResult;
+          }
+
+          setAuthState(createAuthErrorState(fallbackResult.error));
+
+          return fallbackResult;
+        }
+
         const technicalMessage = getErrorMessage(
           error,
           "Nao foi possivel entrar no Hub.",
@@ -317,15 +371,50 @@ export function AuthProvider({
   }
 
   async function signOut(): Promise<AuthActionResult> {
-    if (hasHubSupabaseConfig()) {
-      const client = getHubSupabaseClient();
+    const client = hasHubSupabaseConfig() ? getHubSupabaseClient() : null;
 
-      if (client) {
+    if (client) {
+      void markHubPresence({
+        reason: "logout",
+        source: "auth-provider",
+        status: "offline",
+      }).catch((error: unknown) => {
+        logSupabaseDiagnostic("auth", "presence logout error", {
+          error: serializeDiagnosticError(error),
+          function: "AuthProvider.signOut",
+          supabase: getHubSupabaseDiagnostics(),
+        });
+      });
+    }
+
+    clearLocalAuthStorage();
+    setProfileStatus("idle");
+    setAuthState(createUnauthenticatedAuthState());
+    router.replace("/login");
+
+    if (client) {
+      void signOutSupabaseInBackground(client);
+    }
+
+    return {
+      data: undefined,
+      ok: true,
+    };
+  }
+
+  async function signOutSupabaseInBackground(client: SupabaseClient) {
+    if (hasHubSupabaseConfig()) {
+      try {
         logSupabaseDiagnostic("auth", "signOut start", {
           function: "AuthProvider.signOut",
           supabase: getHubSupabaseDiagnostics(),
         });
-        const { error } = await client.auth.signOut();
+        const { error } = await withMeasuredTimeout(
+          client.auth.signOut({ scope: "local" }),
+          "Tempo excedido ao encerrar a sessao Supabase.",
+          "signOut",
+          5_000,
+        );
 
         if (error) {
           logSupabaseDiagnostic("auth", "signOut error", {
@@ -333,22 +422,15 @@ export function AuthProvider({
             function: "AuthProvider.signOut",
             supabase: getHubSupabaseDiagnostics(),
           });
-          return {
-            error: error.message,
-            ok: false,
-          };
         }
+      } catch (error) {
+        logSupabaseDiagnostic("auth", "signOut error", {
+          error: serializeDiagnosticError(error),
+          function: "AuthProvider.signOut",
+          supabase: getHubSupabaseDiagnostics(),
+        });
       }
     }
-
-    window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
-    setAuthState(createUnauthenticatedAuthState());
-    router.replace("/login");
-
-    return {
-      data: undefined,
-      ok: true,
-    };
   }
 
   if (authState.status === "loading" && !isLoginRoute) {
@@ -359,6 +441,9 @@ export function AuthProvider({
     return (
       <AuthGateMessage
         message={getAuthGateMessage(authState)}
+        onRetry={() => {
+          setAuthRetryKey((currentKey) => currentKey + 1);
+        }}
         onSignOut={() => {
           void signOut();
         }}
@@ -393,6 +478,132 @@ export function useAuth() {
   }
 
   return context;
+}
+
+async function signInViaApiFallback({
+  client,
+  normalizedEmail,
+  password,
+  setAuthState,
+  setProfileStatus,
+}: {
+  client: SupabaseClient;
+  normalizedEmail: string;
+  password: string;
+  setAuthState: (state: AuthState) => void;
+  setProfileStatus: (status: AuthContextValue["profileStatus"]) => void;
+}): Promise<AuthActionResult<AuthSession>> {
+  try {
+    logSupabaseDiagnostic("auth", "signIn api fallback start", {
+      email: normalizedEmail,
+      endpoint: "/api/auth/password",
+      function: "signInViaApiFallback",
+    });
+
+    const response = await withMeasuredTimeout(
+      fetch("/api/auth/password", {
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      }),
+      "Tempo excedido ao autenticar com Supabase pelo servidor.",
+      "session",
+      25_000,
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | PasswordSignInFallbackResponse
+      | null;
+
+    if (
+      !response.ok ||
+      typeof payload?.session?.access_token !== "string" ||
+      typeof payload.session.refresh_token !== "string"
+    ) {
+      const message = getFriendlyAuthMessage(payload?.error);
+
+      logSupabaseDiagnostic("auth", "signIn api fallback error", {
+        email: normalizedEmail,
+        endpoint: "/api/auth/password",
+        response: payload,
+        status: response.status,
+        statusText: response.statusText,
+      });
+
+      return {
+        error: message,
+        ok: false,
+      };
+    }
+
+    const { data, error } = await withMeasuredTimeout(
+      client.auth.setSession({
+        access_token: payload.session.access_token,
+        refresh_token: payload.session.refresh_token,
+      }),
+      "Tempo excedido ao gravar a sessao Supabase.",
+      "session",
+      10_000,
+    );
+
+    if (error || !data.session) {
+      const message = error
+        ? getFriendlySupabaseError(error)
+        : "Nao foi possivel iniciar a sessao Supabase.";
+
+      logSupabaseDiagnostic("auth", "signIn api fallback error", {
+        email: normalizedEmail,
+        endpoint: "/api/auth/password",
+        error: error ? serializeDiagnosticError(error) : null,
+        reason: "setSession failed",
+      });
+
+      return {
+        error: message,
+        ok: false,
+      };
+    }
+
+    const session = createPartialAuthSession(data.session);
+
+    setAuthState(createAuthStateFromSession(session));
+    loadHubProfileInBackground({
+      client,
+      session: data.session,
+      setAuthState,
+      setProfileStatus,
+    });
+
+    logSupabaseDiagnostic("auth", "signIn api fallback done", {
+      email: normalizedEmail,
+      endpoint: "/api/auth/password",
+      userId: data.session.user.id,
+    });
+
+    return {
+      data: session,
+      ok: true,
+    };
+  } catch (error) {
+    const message = getFriendlyAuthMessage(
+      getErrorMessage(error, "Nao foi possivel autenticar com Supabase."),
+    );
+
+    logSupabaseDiagnostic("auth", "signIn api fallback error", {
+      email: normalizedEmail,
+      endpoint: "/api/auth/password",
+      error: serializeDiagnosticError(error),
+    });
+
+    return {
+      error: message,
+      ok: false,
+    };
+  }
 }
 
 function getMockDisplayName(email: string): string {
@@ -691,7 +902,7 @@ function getUserMetadataString(user: User, key: string): string | undefined {
 function withMeasuredTimeout<Result>(
   promise: PromiseLike<Result>,
   message: string,
-  label: "profile" | "session",
+  label: "profile" | "session" | "signOut",
   timeoutMs: number,
 ): Promise<Result> {
   const startedAt = performance.now();
@@ -727,6 +938,33 @@ function withMeasuredTimeout<Result>(
   });
 }
 
+function clearLocalAuthStorage() {
+  window.localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
+
+  const supabaseStorageKey = getSupabaseAuthStorageKey(hubSupabaseConfig.url);
+
+  if (!supabaseStorageKey) {
+    return;
+  }
+
+  window.localStorage.removeItem(supabaseStorageKey);
+  window.localStorage.removeItem(`${supabaseStorageKey}-code-verifier`);
+}
+
+function getSupabaseAuthStorageKey(url?: string) {
+  if (!url?.trim()) {
+    return null;
+  }
+
+  try {
+    const projectRef = new URL(url).hostname.split(".")[0];
+
+    return projectRef ? `sb-${projectRef}-auth-token` : null;
+  } catch {
+    return null;
+  }
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
@@ -737,6 +975,63 @@ function getErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+function getFriendlySupabaseError(error: unknown): string {
+  if (isSupabaseAuthNetworkError(error)) {
+    return "Não foi possível conectar ao Supabase agora. Verifique sua conexão e tente novamente.";
+  }
+
+  return getFriendlyAuthMessage(
+    getErrorMessage(error, "Não foi possível validar seu acesso ao Hub Careli."),
+  );
+}
+
+function isSupabaseAuthNetworkError(error: unknown) {
+  const message = getErrorMessage(error, "").trim().toLowerCase();
+
+  if (
+    message.includes("failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("network request failed") ||
+    message.includes("networkerror") ||
+    message.includes("nao foi possivel conectar ao supabase") ||
+    message.includes("supabase network unavailable") ||
+    message.includes("supabase_network_unavailable")
+  ) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as {
+    code?: unknown;
+    name?: unknown;
+    status?: unknown;
+  };
+  const errorName =
+    typeof maybeError.name === "string"
+      ? maybeError.name.trim().toLowerCase()
+      : "";
+  const status =
+    typeof maybeError.status === "number" ? maybeError.status : undefined;
+
+  return (
+    errorName === "authretryablefetcherror" ||
+    maybeError.code === "supabase_network_unavailable" ||
+    status === 0 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    status === 520 ||
+    status === 521 ||
+    status === 522 ||
+    status === 523 ||
+    status === 524 ||
+    status === 530
+  );
 }
 
 function logAuthDebug(event: string, detail?: unknown) {
@@ -801,6 +1096,25 @@ function getFriendlyAuthMessage(
     return "Serviço de autenticação indisponível. Tente novamente.";
   }
 
+  if (
+    normalizedError.includes("failed to fetch") ||
+    normalizedError.includes("fetch failed") ||
+    normalizedError.includes("network request failed") ||
+    normalizedError.includes("networkerror") ||
+    normalizedError.includes("nao foi possivel conectar ao supabase") ||
+    normalizedError.includes("supabase network unavailable") ||
+    normalizedError.includes("supabase_network_unavailable")
+  ) {
+    return "Não foi possível conectar ao Supabase agora. Verifique sua conexão e tente novamente.";
+  }
+
+  if (
+    normalizedError.includes("tempo excedido") &&
+    normalizedError.includes("supabase")
+  ) {
+    return "Não foi possível conectar ao Supabase agora. Verifique sua conexão e tente novamente.";
+  }
+
   if (normalizedError.includes("tempo excedido")) {
     return "Não foi possível validar seu acesso agora. Tente novamente.";
   }
@@ -810,9 +1124,11 @@ function getFriendlyAuthMessage(
 
 function AuthGateMessage({
   message,
+  onRetry,
   onSignOut,
 }: {
   message: string;
+  onRetry?: () => void;
   onSignOut?: () => void;
 }) {
   return (
@@ -824,14 +1140,27 @@ function AuthGateMessage({
         <p className="m-0 text-sm font-medium text-[var(--uix-text-primary)]">
           {message}
         </p>
-        {onSignOut ? (
-          <button
-            className="mt-4 rounded-md bg-[#101820] px-4 py-2 text-sm font-semibold text-white outline-none transition hover:bg-[#182431] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-            onClick={onSignOut}
-            type="button"
-          >
-            Sair
-          </button>
+        {onRetry || onSignOut ? (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            {onRetry ? (
+              <button
+                className="rounded-md bg-[#101820] px-4 py-2 text-sm font-semibold text-white outline-none transition hover:bg-[#182431] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+                onClick={onRetry}
+                type="button"
+              >
+                Tentar novamente
+              </button>
+            ) : null}
+            {onSignOut ? (
+              <button
+                className="rounded-md border border-[#d9e0e7] bg-white px-4 py-2 text-sm font-semibold text-[#344054] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+                onClick={onSignOut}
+                type="button"
+              >
+                Sair
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>

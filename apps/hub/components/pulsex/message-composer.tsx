@@ -6,18 +6,30 @@ import type {
   ChangeEvent,
   ReactNode,
 } from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
+  FileText,
+  Image as ImageIcon,
   Mic,
   Paperclip,
   Send,
   Smile,
+  Square,
+  Tag,
+  Video,
+  X,
 } from "lucide-react";
 import type {
+  PulseXMessageAttachment,
   PulseXMessageMention,
+  PulseXMessageTag,
   PulseXPresenceUser,
 } from "@/lib/pulsex";
+import {
+  getPulseXMessageTagClassName,
+  pulseXMessageTagOptions,
+} from "@/lib/pulsex/message-tags";
 
 type MessageComposerProps = {
   channelName: string;
@@ -26,7 +38,9 @@ type MessageComposerProps = {
     value: string,
     mentions: readonly PulseXMessageMention[],
   ) => void;
-  onSubmit: () => void;
+  onSubmit: (input?: { attachment?: PulseXMessageAttachment }) => void;
+  onToggleTag?: (tag: PulseXMessageTag) => void;
+  selectedTags?: readonly PulseXMessageTag[];
   users: readonly PulseXPresenceUser[];
   value: string;
 };
@@ -36,9 +50,15 @@ export function MessageComposer({
   mentions,
   onChange,
   onSubmit,
+  onToggleTag,
+  selectedTags = [],
   users,
   value,
 }: MessageComposerProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioStartedAtRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeMention, setActiveMention] = useState<{
     end: number;
@@ -47,6 +67,11 @@ export function MessageComposer({
     trigger: string;
   } | null>(null);
   const [activeOptionIndex, setActiveOptionIndex] = useState(0);
+  const [attachment, setAttachment] = useState<PulseXMessageAttachment | null>(
+    null,
+  );
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const mentionOptions = useMemo(() => {
     if (!activeMention) {
       return [];
@@ -58,9 +83,21 @@ export function MessageComposer({
   }, [activeMention, users]);
   const isMentionOpen = Boolean(activeMention && mentionOptions.length > 0);
 
+  useEffect(() => {
+    return () => {
+      mediaRecorderRef.current?.stop();
+      stopAudioStream();
+    };
+  }, []);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSubmit();
+    if (isRecordingAudio) {
+      return;
+    }
+
+    onSubmit(attachment ? { attachment } : undefined);
+    setAttachment(null);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -96,7 +133,10 @@ export function MessageComposer({
 
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      onSubmit();
+      if (!isRecordingAudio) {
+        onSubmit(attachment ? { attachment } : undefined);
+        setAttachment(null);
+      }
     }
   }
 
@@ -162,15 +202,115 @@ export function MessageComposer({
     setActiveOptionIndex(0);
   }
 
-  const isEmpty = value.trim().length === 0;
+  async function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setMediaError("Arquivo acima de 8 MB.");
+      return;
+    }
+
+    const nextAttachment = await createAttachmentFromBlob(file, {
+      label: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    });
+
+    setAttachment(nextAttachment);
+    setMediaError(null);
+  }
+
+  async function handleToggleAudioRecording() {
+    if (isRecordingAudio) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setMediaError("Gravacao de audio indisponivel neste navegador.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks: BlobPart[] = [];
+      const recorder = new MediaRecorder(stream);
+
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioStartedAtRef.current = Date.now();
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      });
+      recorder.addEventListener("stop", () => {
+        const durationSeconds = audioStartedAtRef.current
+          ? Math.max(1, Math.round((Date.now() - audioStartedAtRef.current) / 1000))
+          : undefined;
+        const blob = new Blob(chunks, {
+          type: recorder.mimeType || "audio/webm",
+        });
+
+        stopAudioStream();
+        setIsRecordingAudio(false);
+        createAttachmentFromBlob(blob, {
+          durationSeconds,
+          label: `Audio ${formatAttachmentTime(new Date())}`,
+          mimeType: blob.type,
+          sizeBytes: blob.size,
+          type: "audio",
+        })
+          .then((nextAttachment) => {
+            setAttachment(nextAttachment);
+            setMediaError(null);
+          })
+          .catch(() => setMediaError("Nao foi possivel preparar o audio."));
+      });
+      recorder.start();
+      setIsRecordingAudio(true);
+      setMediaError(null);
+    } catch {
+      stopAudioStream();
+      setIsRecordingAudio(false);
+      setMediaError("Permita o microfone para gravar audio.");
+    }
+  }
+
+  function stopAudioStream() {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    audioStartedAtRef.current = null;
+  }
+
+  const isEmpty =
+    value.trim().length === 0 && !attachment && !isRecordingAudio;
 
   return (
     <form
-      className="relative flex min-h-16 items-end gap-1.5 border-t border-[#d9e0ea] bg-white px-3 py-2"
+      className="relative flex min-h-16 shrink-0 items-end gap-1.5 border-t border-[#d9e0ea] bg-white px-3 py-2"
       onSubmit={handleSubmit}
     >
+      <input
+        accept="audio/*,image/*,video/*,.doc,.docx,.pdf,.ppt,.pptx,.xls,.xlsx,.txt"
+        className="hidden"
+        onChange={handleFileInputChange}
+        ref={fileInputRef}
+        type="file"
+      />
       <ComposerAction ariaLabel="Abrir emojis" icon={<Smile size={18} />} />
-      <ComposerAction ariaLabel="Anexar arquivo" icon={<Paperclip size={18} />} />
+      <ComposerAction
+        ariaLabel="Anexar arquivo"
+        icon={<Paperclip size={18} />}
+        onClick={() => fileInputRef.current?.click()}
+      />
       <ComposerAction ariaLabel="Acionar IA" icon={<Bot size={18} />} />
       <div className="relative flex-1">
         {isMentionOpen ? (
@@ -194,6 +334,49 @@ export function MessageComposer({
             ))}
           </div>
         ) : null}
+        {attachment || mediaError || isRecordingAudio ? (
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            {attachment ? (
+              <AttachmentChip
+                attachment={attachment}
+                onRemove={() => setAttachment(null)}
+              />
+            ) : null}
+            {isRecordingAudio ? (
+              <span className="inline-flex h-7 items-center gap-2 rounded-full border border-red-200 bg-red-50 px-2.5 text-xs font-semibold text-red-700">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                Gravando audio
+              </span>
+            ) : null}
+            {mediaError ? (
+              <span className="text-xs font-medium text-red-600">
+                {mediaError}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="mb-1 flex flex-wrap gap-1.5">
+          {pulseXMessageTagOptions.map((tag) => {
+            const selected = selectedTags.includes(tag.id);
+
+            return (
+              <button
+                aria-pressed={selected}
+                className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[0.68rem] font-semibold outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
+                  selected
+                    ? getPulseXMessageTagClassName(tag.id)
+                    : "border-[#d9e0ea] bg-white text-[#667085]"
+                }`}
+                key={tag.id}
+                onClick={() => onToggleTag?.(tag.id)}
+                type="button"
+              >
+                <Tag aria-hidden="true" size={11} />
+                {tag.label}
+              </button>
+            );
+          })}
+        </div>
         <textarea
           aria-autocomplete="list"
           aria-controls={isMentionOpen ? "pulsex-mention-listbox" : undefined}
@@ -211,11 +394,18 @@ export function MessageComposer({
           }
           placeholder={`Mensagem para ${channelName}`}
           ref={textareaRef}
-          rows={mentions.length > 0 ? 2 : 1}
+          rows={mentions.length > 0 || selectedTags.length > 0 ? 2 : 1}
           value={value}
         />
       </div>
-      <ComposerAction ariaLabel="Gravar audio" icon={<Mic size={18} />} />
+      <ComposerAction
+        ariaLabel={isRecordingAudio ? "Parar gravacao" : "Gravar audio"}
+        active={isRecordingAudio}
+        icon={isRecordingAudio ? <Square size={17} /> : <Mic size={18} />}
+        onClick={() => {
+          void handleToggleAudioRecording();
+        }}
+      />
       <button
         aria-label="Enviar mensagem"
         className="mb-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#e6ebf2] disabled:text-[#8b98aa]"
@@ -276,20 +466,56 @@ function MentionAutocomplete({
 }
 
 function ComposerAction({
+  active = false,
   ariaLabel,
   icon,
+  onClick,
 }: {
+  active?: boolean;
   ariaLabel: string;
   icon: ReactNode;
+  onClick?: () => void;
 }) {
   return (
     <button
       aria-label={ariaLabel}
-      className="mb-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[#eef2f7] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+      aria-pressed={active || undefined}
+      className="mb-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[#eef2f7] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-red-50 aria-pressed:text-red-600"
+      onClick={onClick}
       type="button"
     >
       {icon}
     </button>
+  );
+}
+
+function AttachmentChip({
+  attachment,
+  onRemove,
+}: {
+  attachment: PulseXMessageAttachment;
+  onRemove: () => void;
+}) {
+  const Icon = getAttachmentIcon(attachment.type);
+
+  return (
+    <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#d9e0ea] bg-[#f8fafc] px-2.5 py-1 text-xs text-[#485466]">
+      <Icon aria-hidden="true" size={14} />
+      <span className="truncate font-semibold">{attachment.label}</span>
+      {attachment.durationSeconds ? (
+        <span className="text-[#667085]">
+          {formatAttachmentDuration(attachment.durationSeconds)}
+        </span>
+      ) : null}
+      <button
+        aria-label="Remover anexo"
+        className="grid h-5 w-5 place-items-center rounded-full text-[#667085] transition hover:bg-[#e6ebf2] hover:text-[#101820]"
+        onClick={onRemove}
+        type="button"
+      >
+        <X aria-hidden="true" size={13} />
+      </button>
+    </span>
   );
 }
 
@@ -341,8 +567,10 @@ function normalizeSearchValue(value: string) {
 
 function getPresenceLabel(status: PulseXPresenceUser["status"]) {
   const labels = {
+    agenda: "agenda",
     away: "ausente",
-    busy: "ocupado",
+    busy: "agenda",
+    lunch: "almoco",
     offline: "offline",
     online: "online",
   } as const satisfies Record<PulseXPresenceUser["status"], string>;
@@ -352,11 +580,97 @@ function getPresenceLabel(status: PulseXPresenceUser["status"]) {
 
 function getPresenceDotClassName(status: PulseXPresenceUser["status"]) {
   const classNames = {
-    away: "bg-amber-400",
-    busy: "bg-rose-500",
+    agenda: "bg-sky-500",
+    away: "bg-red-500",
+    busy: "bg-sky-500",
+    lunch: "bg-yellow-400",
     offline: "bg-slate-300",
     online: "bg-emerald-500",
   } as const satisfies Record<PulseXPresenceUser["status"], string>;
 
   return classNames[status];
+}
+
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+
+async function createAttachmentFromBlob(
+  blob: Blob,
+  options: {
+    durationSeconds?: number;
+    label: string;
+    mimeType?: string;
+    sizeBytes?: number;
+    type?: PulseXMessageAttachment["type"];
+  },
+): Promise<PulseXMessageAttachment> {
+  const mimeType = options.mimeType || blob.type || "application/octet-stream";
+  const url = await readBlobAsDataUrl(blob);
+
+  return {
+    durationSeconds: options.durationSeconds,
+    label: options.label,
+    mimeType,
+    sizeBytes: options.sizeBytes ?? blob.size,
+    type: options.type ?? getAttachmentType(mimeType),
+    url,
+  };
+}
+
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.addEventListener("load", () => {
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    });
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function getAttachmentType(mimeType: string): PulseXMessageAttachment["type"] {
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+
+  if (mimeType.startsWith("image/")) {
+    return "image";
+  }
+
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+
+  return "file";
+}
+
+function getAttachmentIcon(type: PulseXMessageAttachment["type"]) {
+  if (type === "audio") {
+    return Mic;
+  }
+
+  if (type === "image") {
+    return ImageIcon;
+  }
+
+  if (type === "video") {
+    return Video;
+  }
+
+  return FileText;
+}
+
+function formatAttachmentDuration(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const restSeconds = seconds % 60;
+
+  return `${minutes}:${restSeconds.toString().padStart(2, "0")}`;
+}
+
+function formatAttachmentTime(value: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(value);
 }

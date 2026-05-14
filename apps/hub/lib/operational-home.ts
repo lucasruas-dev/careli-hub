@@ -232,7 +232,35 @@ export const operationalActivities: readonly OperationalActivity[] = [
   },
 ];
 
+// Every visible Codex delivery should add a concise entry here.
 export const hubImprovements: readonly HubImprovement[] = [
+  {
+    date: "14/05",
+    description:
+      "Home passou a organizar ritmo da equipe, painel do dia, historico de status e acesso rapido a foto do perfil.",
+    id: "hub-home-operational-center",
+    moduleId: "hub",
+    title: "Central inicial do Hub",
+    type: "melhoria",
+  },
+  {
+    date: "14/05",
+    description:
+      "Status ausente agora respeita 10 minutos sem atividade e fica alinhado ao controle macro do Hub.",
+    id: "hub-presence-ten-minute-idle",
+    moduleId: "hub",
+    title: "Presenca com regra de 10 minutos",
+    type: "correcao",
+  },
+  {
+    date: "14/05",
+    description:
+      "PulseX recebeu respostas, tags, anexos, audio, chamadas e indicadores de leitura preparados para operacao diaria.",
+    id: "pulsex-operations-suite",
+    moduleId: "pulsex",
+    title: "PulseX mais completo",
+    type: "novo recurso",
+  },
   {
     date: "13/05",
     description: "Sidebar recebeu logo C2X, Guardian dedicado e ordenacao alfabetica.",

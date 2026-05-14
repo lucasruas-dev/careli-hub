@@ -190,7 +190,22 @@ export type HubPresenceRecord = {
   id: string;
   lastSeenAt: CanonicalTimestamp;
   moduleId?: HubModuleRecord["id"];
-  status: "online" | "away" | "busy" | "offline";
+  status: "online" | "away" | "busy" | "lunch" | "agenda" | "offline";
+  userId: HubUserRecord["id"];
+  workspaceId?: HubWorkspaceRecord["id"];
+};
+
+export type HubPresenceEventRecord = {
+  createdAt: CanonicalTimestamp;
+  endedAt?: CanonicalTimestamp;
+  id: string;
+  metadata?: Record<string, unknown>;
+  moduleId?: HubModuleRecord["id"];
+  nextStatus: HubPresenceRecord["status"];
+  previousStatus?: HubPresenceRecord["status"];
+  reason: string;
+  source: string;
+  startedAt: CanonicalTimestamp;
   userId: HubUserRecord["id"];
   workspaceId?: HubWorkspaceRecord["id"];
 };
@@ -232,6 +247,7 @@ export type CanonicalDatabaseSchema = {
   hub_notifications: HubNotificationRecord;
   hub_permissions: HubPermissionRecord;
   hub_presence: HubPresenceRecord;
+  hub_presence_events: HubPresenceEventRecord;
   hub_user_assignments: HubUserAssignmentRecord;
   hub_user_permissions: HubUserPermissionRecord;
   hub_users: HubUserRecord;
@@ -258,6 +274,7 @@ export const canonicalDatabaseTableNames = [
   "hub_activity_events",
   "hub_notifications",
   "hub_presence",
+  "hub_presence_events",
   "hub_files",
   "hub_integrations",
   "pulsex_channels",

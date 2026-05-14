@@ -11,7 +11,20 @@ exception
 end $$;
 
 alter table public.hub_users
-  add column if not exists operational_profile hub_operational_profile_role not null default 'op1';
+  add column if not exists operational_profile hub_operational_profile_role;
+
+update public.hub_users
+set operational_profile = case role::text
+  when 'admin' then 'adm'::hub_operational_profile_role
+  when 'leader' then 'ldr'::hub_operational_profile_role
+  when 'operator' then 'op1'::hub_operational_profile_role
+  else 'op1'::hub_operational_profile_role
+end
+where operational_profile is null;
+
+alter table public.hub_users
+  alter column operational_profile set default 'op1',
+  alter column operational_profile set not null;
 
 comment on column public.hub_users.operational_profile is
   'Careli operational profile used by Setup Central: op1, op2, op3, ldr, cdr, adm.';

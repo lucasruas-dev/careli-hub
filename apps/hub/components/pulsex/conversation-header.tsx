@@ -29,8 +29,10 @@ export function ConversationHeader({
     (user) => user.status === "online",
   ).length;
   const presenceLabelMap = {
+    agenda: "Agenda",
     away: "Ausente",
-    busy: "Em reuniao",
+    busy: "Agenda",
+    lunch: "Almoco",
     offline: "Offline",
     online: "Online",
   } as const satisfies Record<NonNullable<PulseXChannel["status"]>, string>;
@@ -50,7 +52,7 @@ export function ConversationHeader({
           <p className="m-0 mt-0.5 flex items-center gap-2 truncate text-xs text-[var(--uix-text-muted)]">
             <span
               aria-hidden="true"
-              className="h-2 w-2 rounded-full data-[status=away]:bg-amber-400 data-[status=busy]:bg-[#A07C3B] data-[status=offline]:bg-zinc-400 data-[status=online]:bg-emerald-500"
+              className="h-2 w-2 rounded-full data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-400 data-[status=online]:bg-emerald-500"
               data-status={presenceStatus}
             />
             {presenceLabel}
@@ -102,17 +104,30 @@ function ParticipantStack({
   return (
     <div
       aria-label="Participantes da conversa"
-      className="flex min-w-0 items-center justify-end"
+      className="flex min-w-0 items-center justify-end gap-2"
     >
       <div className="flex items-center">
         {visibleUsers.map((user) => (
           <Tooltip content={`${user.label} / ${getPresenceLabel(user.status)}`} key={user.id}>
             <span className="-ml-2 first:ml-0">
-              <span className="relative grid h-8 w-8 place-items-center rounded-full border-2 border-white bg-[#eef2f7] text-[0.68rem] font-semibold text-[#344054] shadow-sm">
-                {user.initials}
+              <span
+                aria-label={`${user.label} - ${getPresenceLabel(user.status)}`}
+                className="relative grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 border-white bg-[#101820] text-[0.68rem] font-semibold text-white shadow-sm"
+                role="img"
+                style={
+                  user.avatarUrl
+                    ? {
+                        backgroundImage: `url(${user.avatarUrl})`,
+                        backgroundPosition: "center",
+                        backgroundSize: "cover",
+                      }
+                    : undefined
+                }
+              >
+                {user.avatarUrl ? null : user.initials}
                 <span
                   aria-hidden="true"
-                  className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white data-[status=away]:bg-amber-400 data-[status=busy]:bg-indigo-500 data-[status=offline]:bg-zinc-400 data-[status=online]:bg-emerald-500"
+                  className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-400 data-[status=online]:bg-emerald-500"
                   data-status={user.status}
                 />
               </span>
@@ -131,8 +146,10 @@ function ParticipantStack({
 
 function getPresenceLabel(status: PulseXPresenceUser["status"]) {
   const labels = {
+    agenda: "Agenda",
     away: "Ausente",
-    busy: "Em reuniao",
+    busy: "Agenda",
+    lunch: "Almoco",
     offline: "Offline",
     online: "Online",
   } as const satisfies Record<PulseXPresenceUser["status"], string>;

@@ -204,6 +204,24 @@ export const databaseConstraintDrafts = [
     table: "hub_presence",
   },
   {
+    columns: ["id"],
+    description: "Identificador canonico de evento de presenca.",
+    kind: "primary_key",
+    name: "hub_presence_events_pkey",
+    table: "hub_presence_events",
+  },
+  {
+    columns: ["user_id"],
+    description: "Evento de presenca pertence a um usuario do Hub.",
+    kind: "foreign_key",
+    name: "hub_presence_events_user_id_fkey",
+    references: {
+      columns: ["id"],
+      table: "hub_users",
+    },
+    table: "hub_presence_events",
+  },
+  {
     columns: ["user_id", "workspace_id", "module_id"],
     description: "Uma presenca ativa por usuario em cada contexto operacional.",
     kind: "unique",
@@ -285,6 +303,18 @@ export const databaseIndexDrafts = [
     table: "hub_presence",
   },
   {
+    columns: ["user_id", "started_at"],
+    description: "Linha do tempo de presenca por usuario.",
+    name: "hub_presence_events_user_started_at_idx",
+    table: "hub_presence_events",
+  },
+  {
+    columns: ["workspace_id", "module_id", "started_at"],
+    description: "Auditoria de presenca por contexto operacional.",
+    name: "hub_presence_events_context_started_at_idx",
+    table: "hub_presence_events",
+  },
+  {
     columns: ["workspace_id", "module_id", "created_at"],
     description: "Listagem de arquivos por contexto.",
     name: "hub_files_context_created_at_idx",
@@ -353,6 +383,13 @@ export const databaseTablePolicyDrafts = [
     softDelete: "none",
     table: "hub_presence",
     timestamps: ["last_seen_at"],
+    workspaceScoped: true,
+  },
+  {
+    moduleScoped: true,
+    softDelete: "none",
+    table: "hub_presence_events",
+    timestamps: ["created_at", "started_at", "ended_at"],
     workspaceScoped: true,
   },
   {

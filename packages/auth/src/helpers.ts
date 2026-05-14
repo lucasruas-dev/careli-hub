@@ -102,6 +102,7 @@ export function getUserInitials(user: AuthUser | null): string {
 
 export function mapAuthUserToHubUserContext(user: AuthUser): HubUserContext {
   return {
+    avatarUrl: user.avatarUrl,
     id: user.id,
     name: getUserDisplayName(user),
     permissions: user.permissions,

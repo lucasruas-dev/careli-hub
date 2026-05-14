@@ -11,8 +11,10 @@ export function PresenceList({ users }: PresenceListProps) {
     PulseXPresenceUser["status"],
     StatusIndicatorVariant
   > = {
-    away: "warning",
+    agenda: "processing",
+    away: "danger",
     busy: "processing",
+    lunch: "warning",
     offline: "offline",
     online: "online",
   };
@@ -28,7 +30,13 @@ export function PresenceList({ users }: PresenceListProps) {
             Usuarios online simulados.
           </p>
         </div>
-        <PresenceStack limit={3} users={users} />
+        <PresenceStack
+          limit={3}
+          users={users.map((user) => ({
+            ...user,
+            status: getPresenceStackStatus(user.status),
+          }))}
+        />
       </div>
       <div className="grid gap-3">
         {users.map((user) => (
@@ -53,4 +61,12 @@ export function PresenceList({ users }: PresenceListProps) {
       </div>
     </Surface>
   );
+}
+
+function getPresenceStackStatus(status: PulseXPresenceUser["status"]) {
+  if (status === "agenda" || status === "lunch") {
+    return "busy";
+  }
+
+  return status;
 }

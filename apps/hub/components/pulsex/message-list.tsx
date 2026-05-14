@@ -3,8 +3,8 @@
 import type {
   PulseXMessage,
   PulseXMessageFilter,
+  PulseXMessageTag,
   PulseXPresenceUser,
-  PulseXReactionEmoji,
 } from "@/lib/pulsex";
 import { EmptyState } from "@repo/uix";
 import { useEffect, useRef } from "react";
@@ -15,11 +15,10 @@ type MessageListProps = {
   filter?: PulseXMessageFilter;
   messages: readonly PulseXMessage[];
   onOpenThread?: (messageId: PulseXMessage["id"]) => void;
-  onToggleReaction?: (
+  onToggleTag?: (
     messageId: PulseXMessage["id"],
-    emoji: PulseXReactionEmoji,
+    tag: PulseXMessageTag,
   ) => void;
-  reactionOptions?: readonly PulseXReactionEmoji[];
   users: readonly PulseXPresenceUser[];
 };
 
@@ -28,8 +27,7 @@ export function MessageList({
   filter = "all",
   messages,
   onOpenThread,
-  onToggleReaction,
-  reactionOptions,
+  onToggleTag,
   users,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -48,10 +46,16 @@ export function MessageList({
         description={
           filter === "all"
             ? "As mensagens deste canal aparecerao aqui."
+            : filter === "mentions"
+              ? "Nenhuma mensagem marcou voce neste canal."
             : "Nenhuma mensagem desta conversa possui a tag selecionada."
         }
         title={
-          filter === "all" ? "Nenhuma mensagem" : "Nenhuma mensagem no filtro"
+          filter === "all"
+            ? "Nenhuma mensagem"
+            : filter === "mentions"
+              ? "Nenhuma mencao"
+              : "Nenhuma mensagem no filtro"
         }
       />
     );
@@ -70,8 +74,7 @@ export function MessageList({
           key={message.id}
           message={message}
           onOpenThread={onOpenThread}
-          onToggleReaction={onToggleReaction}
-          reactionOptions={reactionOptions}
+          onToggleTag={onToggleTag}
           users={users}
         />
       ))}

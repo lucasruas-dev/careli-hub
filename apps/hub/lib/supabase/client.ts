@@ -96,6 +96,7 @@ export function serializeDiagnosticError(error: unknown) {
       message?: unknown;
       name?: unknown;
       stack?: unknown;
+      status?: unknown;
     };
 
     return {
@@ -108,6 +109,7 @@ export function serializeDiagnosticError(error: unknown) {
           : "Erro desconhecido.",
       name: typeof maybeError.name === "string" ? maybeError.name : "Error",
       stack: typeof maybeError.stack === "string" ? maybeError.stack : undefined,
+      status: maybeError.status,
     };
   }
 

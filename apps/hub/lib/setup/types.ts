@@ -154,7 +154,10 @@ export type CreateOperationalUserInput = {
 };
 
 export type LinkUserAssignmentInput = {
+  avatarUrl?: string;
   departmentId: string;
+  email: string;
+  fullName: string;
   profile: SetupOperationalProfileRole;
   sectorId: string;
   status: "active" | "disabled";

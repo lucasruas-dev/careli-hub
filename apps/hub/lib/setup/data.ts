@@ -539,35 +539,145 @@ export async function syncPulseXChannelMembers(
     throw new Error("Conexao indisponivel.");
   }
 
-  const deleteResult = await runSetupMutation<unknown>(
-    "sync pulsex channel members delete",
+  const uniqueUserIds = [...new Set(participantUserIds)].filter(Boolean);
+  const currentMembersResult = await runSetupQuery<PulseXChannelMemberRow[]>(
+    "list pulsex channel members for sync",
     client
       .from("pulsex_channel_members")
-      .delete()
+      .select("channel_id,user_id")
       .eq("channel_id", channelId),
   );
 
-  logSetupQueryResult("sync pulsex channel members delete", deleteResult);
-  assertQuery("salvar participantes", deleteResult);
+  if (currentMembersResult.error) {
+    logSupabaseDiagnostic("setup", "sync pulsex members direct read failed", {
+      channelId,
+      error: currentMembersResult.error,
+      fallback: "/api/setup/pulsex/channel-members",
+      function: "syncPulseXChannelMembers",
+      table: "pulsex_channel_members",
+    });
 
-  const uniqueUserIds = [...new Set(participantUserIds)].filter(Boolean);
-
-  if (uniqueUserIds.length === 0) {
-    return;
+    return syncPulseXChannelMembersViaApi(client, channelId, uniqueUserIds);
   }
 
-  const insertResult = await runSetupMutation<unknown>(
-    "sync pulsex channel members insert",
-    client.from("pulsex_channel_members").insert(
-      uniqueUserIds.map((userId) => ({
-        channel_id: channelId,
-        user_id: userId,
-      })),
-    ),
+  const currentUserIds = new Set(
+    (currentMembersResult.data ?? []).map((member) => member.user_id),
+  );
+  const targetUserIds = new Set(uniqueUserIds);
+  const userIdsToInsert = uniqueUserIds.filter(
+    (userId) => !currentUserIds.has(userId),
+  );
+  const userIdsToDelete = [...currentUserIds].filter(
+    (userId) => !targetUserIds.has(userId),
   );
 
-  logSetupQueryResult("sync pulsex channel members insert", insertResult);
-  assertQuery("salvar participantes", insertResult);
+  if (userIdsToInsert.length > 0) {
+    const insertResult = await runSetupMutation<unknown>(
+      "sync pulsex channel members insert",
+      client.from("pulsex_channel_members").insert(
+        userIdsToInsert.map((userId) => ({
+          channel_id: channelId,
+          user_id: userId,
+        })),
+      ),
+    );
+
+    logSetupQueryResult("sync pulsex channel members insert", insertResult);
+    if (insertResult.error) {
+      logSupabaseDiagnostic("setup", "sync pulsex members direct insert failed", {
+        channelId,
+        error: insertResult.error,
+        fallback: "/api/setup/pulsex/channel-members",
+        function: "syncPulseXChannelMembers",
+        table: "pulsex_channel_members",
+      });
+
+      return syncPulseXChannelMembersViaApi(client, channelId, uniqueUserIds);
+    }
+  }
+
+  if (userIdsToDelete.length > 0) {
+    const deleteResult = await runSetupMutation<unknown>(
+      "sync pulsex channel members delete",
+      client
+        .from("pulsex_channel_members")
+        .delete()
+        .eq("channel_id", channelId)
+        .in("user_id", userIdsToDelete),
+    );
+
+    logSetupQueryResult("sync pulsex channel members delete", deleteResult);
+    if (deleteResult.error) {
+      logSupabaseDiagnostic("setup", "sync pulsex members direct delete failed", {
+        channelId,
+        error: deleteResult.error,
+        fallback: "/api/setup/pulsex/channel-members",
+        function: "syncPulseXChannelMembers",
+        table: "pulsex_channel_members",
+      });
+
+      return syncPulseXChannelMembersViaApi(client, channelId, uniqueUserIds);
+    }
+  }
+}
+
+async function syncPulseXChannelMembersViaApi(
+  client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+  channelId: string,
+  participantUserIds: readonly string[],
+) {
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    throw new Error("Sessao administrativa indisponivel.");
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch("/api/setup/pulsex/channel-members", {
+      body: JSON.stringify({
+        channelId,
+        participantUserIds,
+      }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+  } catch (error) {
+    logSupabaseDiagnostic("setup", "sync pulsex members api error", {
+      channelId,
+      endpoint: "/api/setup/pulsex/channel-members",
+      error: serializeDiagnosticError(error),
+      function: "syncPulseXChannelMembersViaApi",
+      table: "pulsex_channel_members",
+    });
+    throw new Error(
+      isSupabaseNetworkError(error)
+        ? SUPABASE_CONNECTION_ERROR_MESSAGE
+        : "Nao foi possivel salvar participantes.",
+    );
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: string }
+    | null;
+
+  if (!response.ok) {
+    logSupabaseDiagnostic("setup", "sync pulsex members api failed", {
+      channelId,
+      endpoint: "/api/setup/pulsex/channel-members",
+      function: "syncPulseXChannelMembersViaApi",
+      response: payload,
+      status: response.status,
+      statusText: response.statusText,
+      table: "pulsex_channel_members",
+    });
+    throw new Error(payload?.error ?? "Nao foi possivel salvar participantes.");
+  }
 }
 
 export async function createOperationalUser(input: CreateOperationalUserInput) {
@@ -639,7 +749,35 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
     throw new Error("Conexao indisponivel.");
   }
 
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (!sessionResult.error && accessToken) {
+    const response = await fetch("/api/setup/users", {
+      body: JSON.stringify(input),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null;
+
+    if (response.ok) {
+      return;
+    }
+
+    if (response.status !== 503) {
+      throw new Error(payload?.error ?? "Nao foi possivel atualizar usuario.");
+    }
+  }
+
   const userPayload = {
+    avatar_url: input.avatarUrl?.trim() || null,
+    display_name: input.fullName.trim(),
+    email: input.email.trim().toLowerCase(),
     operational_profile: input.profile,
     role: mapOperationalProfileToRole(input.profile),
     status: input.status,
@@ -665,6 +803,9 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
       client
         .from("hub_users")
         .update({
+          avatar_url: userPayload.avatar_url,
+          display_name: userPayload.display_name,
+          email: userPayload.email,
           role: userPayload.role,
           status: userPayload.status,
         })
@@ -707,6 +848,45 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
 
   logSetupQueryResult("link user assignment", assignmentResult);
   assertQuery("vincular usuario", assignmentResult);
+}
+
+export async function uploadUserAvatar(input: {
+  file: File;
+  userId: string;
+}) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    throw new Error("Sessao administrativa ausente.");
+  }
+
+  const formData = new FormData();
+  formData.set("file", input.file);
+  formData.set("userId", input.userId);
+
+  const response = await fetch("/api/setup/users/avatar", {
+    body: formData,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { avatarUrl?: string; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.avatarUrl) {
+    throw new Error(payload?.error ?? "Nao foi possivel importar a foto.");
+  }
+
+  return payload.avatarUrl;
 }
 
 export const saveDepartment = createDepartment;
@@ -1133,12 +1313,18 @@ async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {
     client
       .from("hub_user_assignments")
       .select(
-        "user_id,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+        "user_id,department_id,sector_id,status,hub_departments(name),hub_sectors:hub_sectors!hub_user_assignments_sector_department_fk(name)",
       )
       .order("created_at", { ascending: false }),
   );
 
   if (assignments.error) {
+    const apiResult = await loadUsersViaApi(client);
+
+    if (apiResult) {
+      return apiResult;
+    }
+
     return users;
   }
 
@@ -1157,6 +1343,59 @@ async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {
     })),
     error: null,
   } satisfies QueryResult<UserRow[]>;
+}
+
+async function loadUsersViaApi(
+  client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+) {
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    return null;
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch("/api/setup/users", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+  } catch (error) {
+    logSupabaseDiagnostic("setup", "list users api error", {
+      endpoint: "/api/setup/users",
+      error: serializeDiagnosticError(error),
+      function: "loadUsersViaApi",
+      table: "hub_users",
+    });
+    return null;
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: UserRow[]; error?: string }
+    | null;
+
+  if (response.ok && payload?.data) {
+    return {
+      data: payload.data,
+      error: null,
+    } satisfies QueryResult<UserRow[]>;
+  }
+
+  if (response.status !== 503) {
+    logSupabaseDiagnostic("setup", "list users api error", {
+      endpoint: "/api/setup/users",
+      function: "loadUsersViaApi",
+      response: payload,
+      status: response.status,
+      statusText: response.statusText,
+      table: "hub_users",
+    });
+  }
+
+  return null;
 }
 
 function getSetupErrorMessage(label: string) {
