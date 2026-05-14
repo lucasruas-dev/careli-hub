@@ -109,17 +109,19 @@ export function CallPanel({
   }, [refreshDevices]);
 
   const attachLocalTracks = useCallback(
-    (peerConnection: RTCPeerConnection, stream: MediaStream) => {
-      stream.getTracks().forEach((track) => {
-        const sender = findPeerSender(peerConnection, track.kind);
+    async (peerConnection: RTCPeerConnection, stream: MediaStream) => {
+      await Promise.all(
+        stream.getTracks().map(async (track) => {
+          const sender = findPeerSender(peerConnection, track.kind);
 
-        if (sender) {
-          void sender.replaceTrack(track);
-          return;
-        }
+          if (sender) {
+            await sender.replaceTrack(track);
+            return;
+          }
 
-        peerConnection.addTrack(track, stream);
-      });
+          peerConnection.addTrack(track, stream);
+        }),
+      );
     },
     [],
   );
@@ -255,12 +257,28 @@ export function CallPanel({
         });
       };
       peerConnection.ontrack = (event) => {
-        const stream = event.streams[0] ?? new MediaStream([event.track]);
+        const incomingTracks = event.streams[0]?.getTracks() ?? [event.track];
 
-        setRemoteStreamsByUserId((currentStreams) => ({
-          ...currentStreams,
-          [remoteUserId]: stream,
-        }));
+        setRemoteStreamsByUserId((currentStreams) => {
+          const currentStream =
+            currentStreams[remoteUserId] ?? new MediaStream();
+          const nextStream = new MediaStream(currentStream.getTracks());
+
+          incomingTracks.forEach((track) => {
+            if (
+              !nextStream
+                .getTracks()
+                .some((currentTrack) => currentTrack.id === track.id)
+            ) {
+              nextStream.addTrack(track);
+            }
+          });
+
+          return {
+            ...currentStreams,
+            [remoteUserId]: nextStream,
+          };
+        });
       };
       peerConnection.onconnectionstatechange = () => {
         if (
@@ -273,7 +291,7 @@ export function CallPanel({
       };
 
       if (localStreamRef.current) {
-        attachLocalTracks(peerConnection, localStreamRef.current);
+        void attachLocalTracks(peerConnection, localStreamRef.current);
       }
 
       peerConnectionsRef.current.set(remoteUserId, peerConnection);
@@ -304,7 +322,7 @@ export function CallPanel({
           return;
         }
 
-        attachLocalTracks(peerConnection, stream);
+        await attachLocalTracks(peerConnection, stream);
 
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
@@ -358,7 +376,7 @@ export function CallPanel({
           }
 
           if (stream) {
-            attachLocalTracks(peerConnection, stream);
+            await attachLocalTracks(peerConnection, stream);
           }
 
           await peerConnection.setRemoteDescription(signal.description);
@@ -615,7 +633,7 @@ export function CallPanel({
     waiters.forEach((resolve) => resolve(localStream));
 
     peerConnectionsRef.current.forEach((peerConnection) => {
-      attachLocalTracks(peerConnection, localStream);
+      void attachLocalTracks(peerConnection, localStream);
     });
 
     const pendingUserIds = [...pendingOfferUserIdsRef.current];
@@ -812,38 +830,65 @@ async function requestCallMedia({
   videoInputId: string;
 }) {
   const needsVideo = sessionType === "video" && cameraEnabled;
+  const audioTrack = await requestCallAudioTrack(audioInputId);
+
+  if (!needsVideo) {
+    return new MediaStream([audioTrack]);
+  }
 
   try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio: createDeviceConstraint(audioInputId),
-      video: needsVideo ? createDeviceConstraint(videoInputId) : false,
-    });
-  } catch (error) {
-    if (!needsVideo) {
-      throw error;
-    }
-
-    try {
-      return await navigator.mediaDevices.getUserMedia({
-        audio: createDeviceConstraint(audioInputId),
-        video: true,
-      });
-    } catch {
-      return navigator.mediaDevices.getUserMedia({
-        audio: createDeviceConstraint(audioInputId),
-        video: false,
-      });
-    }
+    const videoTrack = await requestCallVideoTrack(videoInputId);
+    return new MediaStream([audioTrack, videoTrack]);
+  } catch {
+    return new MediaStream([audioTrack]);
   }
 }
 
-async function requestCallVideoTrack(videoInputId: string) {
+async function requestCallAudioTrack(audioInputId: string) {
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: createDeviceConstraint(videoInputId),
+    audio: createDeviceConstraint(audioInputId),
+    video: false,
   });
 
-  return stream.getVideoTracks()[0] ?? null;
+  const audioTrack = stream.getAudioTracks()[0];
+
+  if (!audioTrack) {
+    throw new Error("Missing audio track");
+  }
+
+  return audioTrack;
+}
+
+async function requestCallVideoTrack(videoInputId: string) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: createDeviceConstraint(videoInputId),
+    });
+    const videoTrack = stream.getVideoTracks()[0];
+
+    if (!videoTrack) {
+      throw new Error("Missing video track");
+    }
+
+    return videoTrack;
+  } catch (error) {
+    if (videoInputId === defaultDeviceValue) {
+      throw error;
+    }
+
+    const fallbackStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: true,
+    });
+    const fallbackVideoTrack = fallbackStream.getVideoTracks()[0];
+
+    if (!fallbackVideoTrack) {
+      throw new Error("Missing fallback video track");
+    }
+
+    return fallbackVideoTrack;
+  }
 }
 
 function replacePeerVideoTrack(
