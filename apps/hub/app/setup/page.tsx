@@ -1553,7 +1553,6 @@ function PulseXModuleConfigModal({
       <div className="grid max-h-[82vh] overflow-auto lg:grid-cols-[18rem_minmax(0,1fr)_22rem]">
         <PulseXDepartmentList
           data={data}
-          memberCountByChannel={memberCountByChannel}
           onSelectDepartment={(departmentId) => {
             setSelectedDepartmentId(departmentId);
             setSelectedChannelId("");
@@ -1607,12 +1606,10 @@ function PulseXModuleConfigModal({
 
 function PulseXDepartmentList({
   data,
-  memberCountByChannel,
   onSelectDepartment,
   selectedDepartmentId,
 }: {
   data: SetupData;
-  memberCountByChannel: ReadonlyMap<string, number>;
   onSelectDepartment: (departmentId: string) => void;
   selectedDepartmentId: string;
 }) {
@@ -1638,11 +1635,12 @@ function PulseXDepartmentList({
             const channels = data.channels.filter(
               (channel) => channel.departmentId === department.id,
             );
-            const participantCount = channels.reduce(
-              (count, channel) =>
-                count + (memberCountByChannel.get(channel.id) ?? 0),
-              0,
-            );
+            const channelIds = new Set(channels.map((channel) => channel.id));
+            const participantCount = new Set(
+              data.channelMembers
+                .filter((member) => channelIds.has(member.channelId))
+                .map((member) => member.userId),
+            ).size;
             const isSelected = selectedDepartmentId === department.id;
 
             return (
@@ -1976,11 +1974,17 @@ function createPulseXChannelId({
 
 function getUsersForPulseXDepartment(data: SetupData, departmentId: string) {
   const activeUsers = data.users.filter((user) => user.status === "active");
-  const departmentUsers = activeUsers.filter(
-    (user) => user.departmentId === departmentId,
-  );
 
-  return departmentUsers.length > 0 ? departmentUsers : activeUsers;
+  return [...activeUsers].sort((firstUser, secondUser) => {
+    const firstPriority = firstUser.departmentId === departmentId ? 0 : 1;
+    const secondPriority = secondUser.departmentId === departmentId ? 0 : 1;
+
+    if (firstPriority !== secondPriority) {
+      return firstPriority - secondPriority;
+    }
+
+    return firstUser.displayName.localeCompare(secondUser.displayName, "pt-BR");
+  });
 }
 
 function mergeUsersById(users: readonly SetupUser[]) {
