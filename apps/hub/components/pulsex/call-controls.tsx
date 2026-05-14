@@ -63,7 +63,9 @@ export function CallControls({
           {cameraEnabled ? <Video size={18} /> : <VideoOff size={18} />}
         </button>
       </Tooltip>
-      <Tooltip content="Compartilhar tela">
+      <Tooltip
+        content={isScreenSharing ? "Parar compartilhamento" : "Compartilhar tela"}
+      >
         <button
           aria-pressed={isScreenSharing}
           className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/15 aria-pressed:bg-[#A07C3B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"

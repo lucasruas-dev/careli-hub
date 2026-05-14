@@ -11,18 +11,11 @@ import {
   markPulseXChannelRead,
   updatePulseXMessageTags,
 } from "@/lib/pulsex/supabase-data";
-import {
-  getHubSupabaseClient,
-  hasHubSupabaseConfig,
-  logSupabaseDiagnostic,
-  serializeDiagnosticError,
-} from "@/lib/supabase/client";
+import { hasHubSupabaseConfig } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
+import { usePulseXCall } from "@/providers/pulsex-call-provider";
 import { Bell, X } from "lucide-react";
 import type {
-  PulseXCallRealtimeSignal,
-  PulseXCallRealtimeSignalInput,
-  PulseXCallSignalKind,
   PulseXCallSession,
   PulseXCallType,
   PulseXChannel,
@@ -36,14 +29,9 @@ import type {
   PulseXReactionEmoji,
   PulseXThreadReply,
 } from "@/lib/pulsex";
-import { CallPanel } from "./call-panel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ConversationHeader,
-  type PulseXCallSoundOption,
-} from "./conversation-header";
+import { ConversationHeader } from "./conversation-header";
 import { ConversationSidebar } from "./conversation-sidebar";
-import { IncomingCallBanner } from "./incoming-call-banner";
 import { MessageComposer } from "./message-composer";
 import { MessageList } from "./message-list";
 import { ThreadPanel } from "./thread-panel";
@@ -57,23 +45,16 @@ type PulseXToastNotification = {
 };
 
 const PULSEX_PRESENCE_REFRESH_MS = 5_000;
-const PULSEX_CALL_SIGNAL_EVENT = "call-signal";
-const PULSEX_CALL_SIGNAL_TOPIC = "pulsex:calls";
-const PULSEX_CALL_SOUND_STORAGE_KEY = "careli:pulsex:call-sound";
-
-const pulsexCallSoundOptions = [
-  { id: "classic-phone", label: "Telefone classico" },
-  { id: "desk-phone", label: "Telefone de mesa" },
-  { id: "soft-phone", label: "Telefone discreto" },
-  { id: "mobile-phone", label: "Celular tocando" },
-] as const satisfies readonly PulseXCallSoundOption[];
-
-type PulseXCallSoundId = (typeof pulsexCallSoundOptions)[number]["id"];
-type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
-type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
 export function PulseXWorkspace() {
   const { hubUser, profileStatus } = useAuth();
+  const {
+    callSoundId,
+    callSoundOptions,
+    previewCallSound,
+    setCallSoundId,
+    startCall,
+  } = usePulseXCall();
   const currentUserId = hubUser?.id ?? "ana";
   const [activeChannelId, setActiveChannelId] =
     useState<PulseXChannel["id"]>(emptyPulseXChannel.id);
@@ -89,12 +70,6 @@ export function PulseXWorkspace() {
   >(null);
   const [activeMessageFilter, setActiveMessageFilter] =
     useState<PulseXMessageFilter>("all");
-  const [activeCall, setActiveCall] = useState<PulseXCallSession | null>(null);
-  const [callSoundId, setCallSoundId] = useState<PulseXCallSoundId>(
-    pulsexCallSoundOptions[0].id,
-  );
-  const [callSignals, setCallSignals] = useState<PulseXCallRealtimeSignal[]>([]);
-  const [incomingCall, setIncomingCall] = useState<PulseXCallSession | null>(null);
   const [composerValue, setComposerValue] = useState("");
   const [composerMentions, setComposerMentions] = useState<
     readonly PulseXMessageMention[]
@@ -106,11 +81,6 @@ export function PulseXWorkspace() {
   );
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
-  const activeCallRef = useRef<PulseXCallSession | null>(null);
-  const channelsRef = useRef<readonly PulseXChannel[]>([]);
-  const incomingCallRef = useRef<PulseXCallSession | null>(null);
-  const presenceUsersRef = useRef<readonly PulseXPresenceUser[]>([]);
-  const callRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
   const [notifications, setNotifications] = useState<PulseXToastNotification[]>(
     [],
   );
@@ -160,32 +130,6 @@ export function PulseXWorkspace() {
     },
     [activeChannel.id, channelMessages, presenceUsers],
   );
-
-  useEffect(() => {
-    activeCallRef.current = activeCall;
-  }, [activeCall]);
-
-  useEffect(() => {
-    channelsRef.current = channels;
-  }, [channels]);
-
-  useEffect(() => {
-    incomingCallRef.current = incomingCall;
-  }, [incomingCall]);
-
-  useEffect(() => {
-    presenceUsersRef.current = presenceUsers;
-  }, [presenceUsers]);
-
-  useEffect(() => {
-    const savedSoundId = window.localStorage.getItem(
-      PULSEX_CALL_SOUND_STORAGE_KEY,
-    );
-
-    if (isPulseXCallSoundId(savedSoundId)) {
-      setCallSoundId(savedSoundId);
-    }
-  }, []);
 
   const loadOperationalData = useCallback(() => {
     if (profileStatus === "loading") {
@@ -306,188 +250,6 @@ export function PulseXWorkspace() {
       window.clearInterval(intervalId);
     };
   }, [dataStatus, refreshPresenceStatuses]);
-
-  const appendCallSignal = useCallback((signal: PulseXCallRealtimeSignal) => {
-    setCallSignals((currentSignals) =>
-      [...currentSignals.filter((item) => item.id !== signal.id), signal].slice(
-        -160,
-      ),
-    );
-  }, []);
-
-  const sendCallSignal = useCallback(
-    (input: PulseXCallRealtimeSignalInput) => {
-      const signal = {
-        ...input,
-        fromUserId: input.fromUserId ?? currentUserId,
-        id: createPulseXCallSignalId(input.kind),
-        sentAt: new Date().toISOString(),
-      } satisfies PulseXCallRealtimeSignal;
-      const realtimeChannel = callRealtimeChannelRef.current;
-
-      if (!realtimeChannel) {
-        logSupabaseDiagnostic("pulsex", "call signal skipped", {
-          kind: signal.kind,
-          reason: "missing-realtime-channel",
-        });
-        return signal;
-      }
-
-      realtimeChannel
-        .send({
-          event: PULSEX_CALL_SIGNAL_EVENT,
-          payload: signal,
-          type: "broadcast",
-        })
-        .then((response) => {
-          logSupabaseDiagnostic("pulsex", "call signal sent", {
-            kind: signal.kind,
-            response,
-          });
-        })
-        .catch((error: unknown) => {
-          logSupabaseDiagnostic("pulsex", "call signal error", {
-            error: serializeDiagnosticError(error),
-            kind: signal.kind,
-          });
-        });
-
-      return signal;
-    },
-    [currentUserId],
-  );
-
-  const handleIncomingCallSignal = useCallback(
-    (signal: PulseXCallRealtimeSignal) => {
-      appendCallSignal(signal);
-
-      if (signal.kind === "invite" && signal.session) {
-        if (
-          activeCallRef.current?.id === signal.callId ||
-          incomingCallRef.current?.id === signal.callId
-        ) {
-          return;
-        }
-
-        setIncomingCall(signal.session);
-        showBrowserPulseXNotification({
-          body: `${getCallCallerLabel(signal.session)} chamou em ${signal.session.title}.`,
-          title: "Chamada no PulseX",
-        });
-        return;
-      }
-
-      if (signal.kind === "join" && signal.participant) {
-        const participant = signal.participant;
-
-        setActiveCall((currentCall) =>
-          currentCall?.id === signal.callId
-            ? upsertCallParticipant(currentCall, participant, "joined")
-            : currentCall,
-        );
-        return;
-      }
-
-      if (signal.kind === "decline" || signal.kind === "leave") {
-        setActiveCall((currentCall) =>
-          currentCall?.id === signal.callId
-            ? updateCallParticipantStatus(
-                currentCall,
-                signal.fromUserId,
-                "left",
-              )
-            : currentCall,
-        );
-        return;
-      }
-
-      if (signal.kind === "end") {
-        setIncomingCall((currentCall) =>
-          currentCall?.id === signal.callId ? null : currentCall,
-        );
-        setActiveCall((currentCall) =>
-          currentCall?.id === signal.callId ? null : currentCall,
-        );
-      }
-    },
-    [appendCallSignal],
-  );
-
-  useEffect(() => {
-    if (!hasHubSupabaseConfig() || dataStatus !== "ready") {
-      return;
-    }
-
-    const client = getHubSupabaseClient();
-
-    if (!client) {
-      return;
-    }
-
-    const realtimeChannel = client.channel(PULSEX_CALL_SIGNAL_TOPIC, {
-      config: {
-        broadcast: {
-          ack: true,
-          self: false,
-        },
-      },
-    });
-
-    callRealtimeChannelRef.current = realtimeChannel;
-    realtimeChannel
-      .on(
-        "broadcast",
-        {
-          event: PULSEX_CALL_SIGNAL_EVENT,
-        },
-        (message: { payload?: unknown }) => {
-          const signal = parsePulseXCallSignal(message.payload);
-
-          if (
-            !signal ||
-            !shouldHandleCallSignalForCurrentUser({
-              activeCall: activeCallRef.current,
-              channels: channelsRef.current,
-              currentUserId,
-              incomingCall: incomingCallRef.current,
-              signal,
-            })
-          ) {
-            return;
-          }
-
-          handleIncomingCallSignal(signal);
-        },
-      )
-      .subscribe((status) => {
-        logSupabaseDiagnostic("pulsex", "call realtime status", {
-          status,
-        });
-      });
-
-    return () => {
-      if (callRealtimeChannelRef.current === realtimeChannel) {
-        callRealtimeChannelRef.current = null;
-      }
-
-      void client.removeChannel(realtimeChannel);
-    };
-  }, [currentUserId, dataStatus, handleIncomingCallSignal]);
-
-  useEffect(() => {
-    if (!incomingCall) {
-      return;
-    }
-
-    playPulseXCallSound(callSoundId);
-    const intervalId = window.setInterval(() => {
-      playPulseXCallSound(callSoundId);
-    }, 2_200);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [callSoundId, incomingCall]);
 
   const notifyIncomingMessages = useCallback(
     (newMessages: readonly PulseXMessage[]) => {
@@ -735,87 +497,14 @@ export function PulseXWorkspace() {
       participants: channelPresenceUsers,
       type,
     });
+    const targetUserIds = session.participants
+      .map((participant) => participant.userId)
+      .filter(
+        (userId): userId is PulseXPresenceUser["id"] =>
+          Boolean(userId) && userId !== currentUserId,
+      );
 
-    setActiveCall(session);
-    setIncomingCall(null);
-    sendCallSignal({
-      callId: session.id,
-      channelId: session.channelId,
-      kind: "invite",
-      session,
-      targetUserIds: session.participants
-        .map((participant) => participant.userId)
-        .filter(
-          (userId): userId is PulseXPresenceUser["id"] =>
-            Boolean(userId) && userId !== currentUserId,
-        ),
-    });
-  }
-
-  function handleAcceptIncomingCall() {
-    if (!incomingCall) {
-      return;
-    }
-
-    const currentParticipant = getCallParticipantForUser(
-      incomingCall,
-      currentUserId,
-    );
-    const acceptedCall = updateCallParticipantStatus(
-      {
-        ...incomingCall,
-        durationLabel: "00:00",
-        status: "active",
-      },
-      currentUserId,
-      "joined",
-    );
-
-    setActiveCall(acceptedCall);
-    setActiveChannelId(incomingCall.channelId);
-    setIncomingCall(null);
-    sendCallSignal({
-      callId: incomingCall.id,
-      channelId: incomingCall.channelId,
-      kind: "join",
-      participant: currentParticipant
-        ? {
-            ...currentParticipant,
-            status: "joined",
-          }
-        : undefined,
-    });
-  }
-
-  function handleDeclineIncomingCall() {
-    if (!incomingCall) {
-      return;
-    }
-
-    sendCallSignal({
-      callId: incomingCall.id,
-      channelId: incomingCall.channelId,
-      kind: "decline",
-    });
-    setIncomingCall(null);
-  }
-
-  function handleEndActiveCall() {
-    const call = activeCallRef.current;
-
-    if (call) {
-      sendCallSignal({
-        callId: call.id,
-        channelId: call.channelId,
-        kind: call.initiatedByUserId === currentUserId ? "end" : "leave",
-      });
-    }
-
-    setActiveCall(null);
-  }
-
-  function handleCloseActiveCall() {
-    handleEndActiveCall();
+    startCall({ session, targetUserIds });
   }
 
   async function handleSendMessage(input?: {
@@ -1142,34 +831,14 @@ export function PulseXWorkspace() {
       />
       <main className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#f3f6fa]">
         <ConversationHeader
-          callSoundOptions={pulsexCallSoundOptions}
+          callSoundOptions={callSoundOptions}
           channel={activeChannel}
-          onChangeCallSound={(soundId) => {
-            if (!isPulseXCallSoundId(soundId)) {
-              return;
-            }
-
-            setCallSoundId(soundId);
-            window.localStorage.setItem(PULSEX_CALL_SOUND_STORAGE_KEY, soundId);
-          }}
-          onPreviewCallSound={(soundId) => {
-            if (isPulseXCallSoundId(soundId)) {
-              playPulseXCallSound(soundId);
-            }
-          }}
+          onChangeCallSound={setCallSoundId}
+          onPreviewCallSound={previewCallSound}
           onStartCall={handleStartCall}
           presenceUsers={channelPresenceUsers}
           selectedCallSoundId={callSoundId}
         />
-        {incomingCall ? (
-          <div className="pointer-events-none absolute inset-x-0 top-16 z-30">
-            <IncomingCallBanner
-              onAccept={handleAcceptIncomingCall}
-              onDecline={handleDeclineIncomingCall}
-              session={incomingCall}
-            />
-          </div>
-        ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
           <MessageList
             currentUserId={currentUserId}
@@ -1190,16 +859,6 @@ export function PulseXWorkspace() {
           users={presenceUsers}
           value={composerValue}
         />
-        {activeCall ? (
-          <CallPanel
-            currentUserId={currentUserId}
-            onClose={handleCloseActiveCall}
-            onEnd={handleEndActiveCall}
-            onSendSignal={sendCallSignal}
-            realtimeSignals={callSignals}
-            session={activeCall}
-          />
-        ) : null}
         <PulseXNotificationStack
           notifications={notifications}
           onDismiss={(notificationId) =>
@@ -1233,169 +892,6 @@ export function PulseXWorkspace() {
       </main>
     </div>
   );
-}
-
-const pulseXCallSignalKinds = new Set<PulseXCallSignalKind>([
-  "answer",
-  "decline",
-  "end",
-  "ice-candidate",
-  "invite",
-  "join",
-  "leave",
-  "offer",
-]);
-
-function createPulseXCallSignalId(kind: PulseXCallSignalKind) {
-  return `call-signal-${kind}-${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
-}
-
-function getCallCallerLabel(session: PulseXCallSession) {
-  return (
-    session.participants.find(
-      (participant) => participant.userId === session.initiatedByUserId,
-    )?.label ?? "Alguem"
-  );
-}
-
-function getCallParticipantForUser(
-  session: PulseXCallSession,
-  userId: PulseXPresenceUser["id"],
-) {
-  return session.participants.find((participant) => participant.userId === userId);
-}
-
-function parsePulseXCallSignal(
-  value: unknown,
-): PulseXCallRealtimeSignal | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const maybeSignal = value as Partial<PulseXCallRealtimeSignal>;
-
-  if (
-    typeof maybeSignal.callId !== "string" ||
-    typeof maybeSignal.channelId !== "string" ||
-    typeof maybeSignal.fromUserId !== "string" ||
-    typeof maybeSignal.id !== "string" ||
-    typeof maybeSignal.kind !== "string" ||
-    typeof maybeSignal.sentAt !== "string" ||
-    !pulseXCallSignalKinds.has(maybeSignal.kind as PulseXCallSignalKind)
-  ) {
-    return null;
-  }
-
-  return maybeSignal as PulseXCallRealtimeSignal;
-}
-
-function shouldHandleCallSignalForCurrentUser({
-  activeCall,
-  channels,
-  currentUserId,
-  incomingCall,
-  signal,
-}: {
-  activeCall: PulseXCallSession | null;
-  channels: readonly PulseXChannel[];
-  currentUserId: PulseXPresenceUser["id"];
-  incomingCall: PulseXCallSession | null;
-  signal: PulseXCallRealtimeSignal;
-}) {
-  if (signal.fromUserId === currentUserId) {
-    return false;
-  }
-
-  if (signal.toUserId && signal.toUserId !== currentUserId) {
-    return false;
-  }
-
-  if (signal.kind === "invite") {
-    const targetUserIds = signal.targetUserIds ?? [];
-
-    if (targetUserIds.includes(currentUserId)) {
-      return true;
-    }
-
-    return Boolean(
-      signal.session?.participants.some(
-        (participant) => participant.userId === currentUserId,
-      ),
-    );
-  }
-
-  if (
-    signal.kind === "offer" ||
-    signal.kind === "answer" ||
-    signal.kind === "ice-candidate"
-  ) {
-    return signal.toUserId === currentUserId;
-  }
-
-  if (activeCall?.id === signal.callId || incomingCall?.id === signal.callId) {
-    return true;
-  }
-
-  return channels.some(
-    (channel) =>
-      channel.id === signal.channelId &&
-      (channel.memberUserIds ?? []).includes(currentUserId),
-  );
-}
-
-function updateCallParticipantStatus(
-  session: PulseXCallSession,
-  userId: PulseXPresenceUser["id"],
-  status: PulseXCallSession["participants"][number]["status"],
-): PulseXCallSession {
-  return {
-    ...session,
-    participants: session.participants.map((participant) =>
-      participant.userId === userId
-        ? {
-            ...participant,
-            status,
-          }
-        : participant,
-    ),
-  };
-}
-
-function upsertCallParticipant(
-  session: PulseXCallSession,
-  participant: PulseXCallSession["participants"][number],
-  status: PulseXCallSession["participants"][number]["status"],
-): PulseXCallSession {
-  const existingUserId = participant.userId;
-  const hasParticipant = session.participants.some(
-    (currentParticipant) =>
-      currentParticipant.userId === existingUserId ||
-      currentParticipant.id === participant.id,
-  );
-
-  return {
-    ...session,
-    participants: hasParticipant
-      ? session.participants.map((currentParticipant) =>
-          currentParticipant.userId === existingUserId ||
-          currentParticipant.id === participant.id
-            ? {
-                ...currentParticipant,
-                ...participant,
-                status,
-              }
-            : currentParticipant,
-        )
-      : [
-          ...session.participants,
-          {
-            ...participant,
-            status,
-          },
-        ],
-  };
 }
 
 function withDirectUserChannels(
@@ -1696,13 +1192,6 @@ function isMessageMentioningUser(
   );
 }
 
-function isPulseXCallSoundId(value: unknown): value is PulseXCallSoundId {
-  return (
-    typeof value === "string" &&
-    pulsexCallSoundOptions.some((option) => option.id === value)
-  );
-}
-
 function playPulseXMessageSound() {
   playToneSequence([
     {
@@ -1720,84 +1209,6 @@ function playPulseXMessageSound() {
       type: "triangle",
     },
   ]);
-}
-
-function playPulseXCallSound(soundId: PulseXCallSoundId) {
-  const soundMap = {
-    "classic-phone": [
-      {
-        duration: 0.42,
-        frequency: [440, 480],
-        gain: 0.038,
-        start: 0,
-        type: "square",
-      },
-      {
-        duration: 0.42,
-        frequency: [440, 480],
-        gain: 0.038,
-        start: 0.58,
-        type: "square",
-      },
-    ],
-    "desk-phone": [
-      {
-        duration: 0.5,
-        frequency: [390, 450],
-        gain: 0.042,
-        start: 0,
-        type: "square",
-      },
-      {
-        duration: 0.5,
-        frequency: [390, 450],
-        gain: 0.042,
-        start: 0.72,
-        type: "square",
-      },
-    ],
-    "mobile-phone": [
-      {
-        duration: 0.18,
-        frequency: [659, 880],
-        gain: 0.032,
-        start: 0,
-        type: "triangle",
-      },
-      {
-        duration: 0.18,
-        frequency: [659, 880],
-        gain: 0.032,
-        start: 0.26,
-        type: "triangle",
-      },
-      {
-        duration: 0.18,
-        frequency: [659, 880],
-        gain: 0.032,
-        start: 0.52,
-        type: "triangle",
-      },
-    ],
-    "soft-phone": [
-      {
-        duration: 0.36,
-        frequency: [420, 470],
-        gain: 0.028,
-        start: 0,
-        type: "sawtooth",
-      },
-      {
-        duration: 0.36,
-        frequency: [420, 470],
-        gain: 0.028,
-        start: 0.52,
-        type: "sawtooth",
-      },
-    ],
-  } as const satisfies Record<PulseXCallSoundId, readonly ToneSpec[]>;
-
-  playToneSequence(soundMap[soundId]);
 }
 
 type ToneSpec = {

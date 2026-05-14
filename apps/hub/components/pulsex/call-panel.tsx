@@ -66,6 +66,7 @@ export function CallPanel({
     Map<PulseXPresenceUser["id"], RTCIceCandidateInit[]>
   >(new Map());
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const CallIcon = session.type === "video" ? Video : Phone;
 
   const refreshDevices = useCallback(async () => {
@@ -109,12 +110,8 @@ export function CallPanel({
 
   const attachLocalTracks = useCallback(
     (peerConnection: RTCPeerConnection, stream: MediaStream) => {
-      const senders = peerConnection.getSenders();
-
       stream.getTracks().forEach((track) => {
-        const sender = senders.find(
-          (currentSender) => currentSender.track?.kind === track.kind,
-        );
+        const sender = findPeerSender(peerConnection, track.kind);
 
         if (sender) {
           void sender.replaceTrack(track);
@@ -122,6 +119,33 @@ export function CallPanel({
         }
 
         peerConnection.addTrack(track, stream);
+      });
+    },
+    [],
+  );
+
+  const replaceLocalVideoTrack = useCallback(
+    (nextTrack: MediaStreamTrack | null) => {
+      const currentStream = localStreamRef.current;
+      const currentAudioTracks = currentStream?.getAudioTracks() ?? [];
+      const currentVideoTracks = currentStream?.getVideoTracks() ?? [];
+
+      currentVideoTracks.forEach((track) => {
+        if (track !== nextTrack) {
+          track.stop();
+        }
+      });
+
+      const nextStream = new MediaStream([
+        ...currentAudioTracks,
+        ...(nextTrack ? [nextTrack] : []),
+      ]);
+
+      localStreamRef.current = nextStream;
+      setLocalStream(nextStream);
+
+      peerConnectionsRef.current.forEach((peerConnection) => {
+        replacePeerVideoTrack(peerConnection, nextStream, nextTrack);
       });
     },
     [],
@@ -218,6 +242,8 @@ export function CallPanel({
 
       const peerConnection = new RTCPeerConnection(peerConnectionConfig);
 
+      ensurePeerTransceiver(peerConnection, "video");
+
       peerConnection.onicecandidate = (event) => {
         onSendSignal({
           callId: session.id,
@@ -228,11 +254,7 @@ export function CallPanel({
         });
       };
       peerConnection.ontrack = (event) => {
-        const [stream] = event.streams;
-
-        if (!stream) {
-          return;
-        }
+        const stream = event.streams[0] ?? new MediaStream([event.track]);
 
         setRemoteStreamsByUserId((currentStreams) => ({
           ...currentStreams,
@@ -438,9 +460,100 @@ export function CallPanel({
     });
   }, [handleCallRealtimeSignal, realtimeSignals]);
 
+  const restoreCameraAfterScreenShare = useCallback(async () => {
+    if (session.type !== "video" || !cameraEnabled) {
+      replaceLocalVideoTrack(null);
+      return;
+    }
+
+    try {
+      const cameraTrack = await requestCallVideoTrack(videoInputId);
+
+      if (!cameraTrack) {
+        replaceLocalVideoTrack(null);
+        setCameraEnabled(false);
+        return;
+      }
+
+      replaceLocalVideoTrack(cameraTrack);
+    } catch {
+      replaceLocalVideoTrack(null);
+      setCameraEnabled(false);
+      setMediaError("Nao foi possivel restaurar a camera.");
+    }
+  }, [cameraEnabled, replaceLocalVideoTrack, session.type, videoInputId]);
+
+  const stopScreenSharing = useCallback(() => {
+    const screenTrack = screenTrackRef.current;
+
+    screenTrackRef.current = null;
+
+    if (screenTrack && screenTrack.readyState !== "ended") {
+      screenTrack.stop();
+    }
+
+    setIsScreenSharing(false);
+    void restoreCameraAfterScreenShare();
+  }, [restoreCameraAfterScreenShare]);
+
+  const startScreenSharing = useCallback(async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setMediaError("Compartilhamento de tela indisponivel neste navegador.");
+      return;
+    }
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        audio: false,
+        video: true,
+      });
+      const [screenTrack] = displayStream.getVideoTracks();
+
+      if (!screenTrack) {
+        setMediaError("Nao foi possivel capturar a tela.");
+        return;
+      }
+
+      screenTrackRef.current?.stop();
+      screenTrackRef.current = screenTrack;
+      screenTrack.addEventListener(
+        "ended",
+        () => {
+          if (screenTrackRef.current !== screenTrack) {
+            return;
+          }
+
+          screenTrackRef.current = null;
+          setIsScreenSharing(false);
+          void restoreCameraAfterScreenShare();
+        },
+        { once: true },
+      );
+
+      replaceLocalVideoTrack(screenTrack);
+      setIsScreenSharing(true);
+      setMediaError(null);
+    } catch {
+      setMediaError("Nao foi possivel compartilhar a tela.");
+    }
+  }, [replaceLocalVideoTrack, restoreCameraAfterScreenShare]);
+
+  const handleToggleScreenShare = useCallback(() => {
+    if (isScreenSharing) {
+      stopScreenSharing();
+      return;
+    }
+
+    void startScreenSharing();
+  }, [isScreenSharing, startScreenSharing, stopScreenSharing]);
+
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setMediaError("Midia indisponivel neste navegador.");
+      return;
+    }
+
+    if (isScreenSharing) {
       return;
     }
 
@@ -483,6 +596,7 @@ export function CallPanel({
   }, [
     audioInputId,
     cameraEnabled,
+    isScreenSharing,
     refreshDevices,
     session.type,
     videoInputId,
@@ -520,9 +634,10 @@ export function CallPanel({
 
   useEffect(() => {
     return () => {
-      localStream?.getTracks().forEach((track) => track.stop());
+      screenTrackRef.current?.stop();
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [localStream]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -533,7 +648,7 @@ export function CallPanel({
   return (
     <section
       aria-label="Chamada PulseX"
-      className="absolute inset-x-4 top-20 z-20 overflow-hidden rounded-xl border border-white/10 bg-[#0b1017] text-white shadow-2xl"
+      className="fixed inset-x-4 top-20 z-[70] overflow-hidden rounded-xl border border-white/10 bg-[#0b1017] text-white shadow-2xl"
     >
       <header className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
@@ -596,7 +711,7 @@ export function CallPanel({
               participant={{
                 ...participant,
                 isCameraOn: isLocalParticipant
-                  ? cameraEnabled
+                  ? cameraEnabled || isScreenSharing
                   : Boolean(remoteStream?.getVideoTracks().length) ||
                     participant.isCameraOn,
                 isMuted: isLocalParticipant ? isMuted : participant.isMuted,
@@ -621,7 +736,7 @@ export function CallPanel({
         onEnd={onEnd}
         onToggleCamera={() => setCameraEnabled((current) => !current)}
         onToggleMicrophone={() => setIsMuted((current) => !current)}
-        onToggleScreenShare={() => setIsScreenSharing((current) => !current)}
+        onToggleScreenShare={handleToggleScreenShare}
       />
     </section>
   );
@@ -719,6 +834,64 @@ async function requestCallMedia({
       });
     }
   }
+}
+
+async function requestCallVideoTrack(videoInputId: string) {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: createDeviceConstraint(videoInputId),
+  });
+
+  return stream.getVideoTracks()[0] ?? null;
+}
+
+function replacePeerVideoTrack(
+  peerConnection: RTCPeerConnection,
+  stream: MediaStream,
+  track: MediaStreamTrack | null,
+) {
+  const videoSender = findPeerSender(peerConnection, "video");
+
+  if (videoSender) {
+    void videoSender.replaceTrack(track);
+    return;
+  }
+
+  if (track) {
+    peerConnection.addTrack(track, stream);
+  }
+}
+
+function ensurePeerTransceiver(
+  peerConnection: RTCPeerConnection,
+  kind: "audio" | "video",
+) {
+  const hasTransceiver = peerConnection.getTransceivers().some(
+    (transceiver) =>
+      transceiver.sender.track?.kind === kind ||
+      transceiver.receiver.track.kind === kind,
+  );
+
+  if (!hasTransceiver) {
+    peerConnection.addTransceiver(kind, { direction: "sendrecv" });
+  }
+}
+
+function findPeerSender(
+  peerConnection: RTCPeerConnection,
+  kind: MediaStreamTrack["kind"],
+) {
+  const sender = peerConnection
+    .getSenders()
+    .find((currentSender) => currentSender.track?.kind === kind);
+
+  if (sender) {
+    return sender;
+  }
+
+  return peerConnection
+    .getTransceivers()
+    .find((transceiver) => transceiver.receiver.track.kind === kind)?.sender;
 }
 
 function createDeviceConstraint(deviceId: string): boolean | MediaTrackConstraints {
