@@ -13,6 +13,16 @@ import {
   updateSector,
 } from "@/lib/setup/data";
 import type {
+  HubUserContext,
+  HubUserRole,
+  OperationalProfileRole,
+  VisibilityScope,
+} from "@repo/shared";
+import {
+  getVisibilityScopeForProfile,
+  mapLegacyRoleToOperationalProfile,
+} from "@repo/shared";
+import type {
   CreateDepartmentInput,
   CreateOperationalUserInput,
   CreatePulseXChannelInput,
@@ -85,8 +95,9 @@ const setupTabs = [
 
 export default function SetupPage() {
   const { hubUser, profileStatus } = useAuth();
+  const access = getSetupAccess(hubUser);
 
-  if (profileStatus === "loading" && hubUser?.role !== "admin") {
+  if (profileStatus === "loading" && !access.canManageSetup) {
     return (
       <HubShell layoutMode="module">
         <WorkspaceLayout>
@@ -101,14 +112,20 @@ export default function SetupPage() {
     );
   }
 
-  if (!hubUser || hubUser.role !== "admin") {
+  if (!access.canManageSetup) {
+    const isProfileError = profileStatus === "error";
+
     return (
       <HubShell layoutMode="module">
         <WorkspaceLayout>
           <Surface bordered className="border-[#d9e0e7] bg-white p-6">
             <EmptyState
-              description="Entre com um perfil admin para visualizar usuarios, departamentos, setores e permissoes."
-              title="Acesso negado"
+              description={
+                isProfileError
+                  ? "Nao foi possivel carregar seu perfil admin. Verifique os logs do console e tente atualizar."
+                  : "Entre com um perfil admin para visualizar usuarios, departamentos, setores e permissoes."
+              }
+              title={isProfileError ? "Perfil indisponivel" : "Acesso negado"}
             />
           </Surface>
         </WorkspaceLayout>
@@ -121,6 +138,37 @@ export default function SetupPage() {
       <SetupWorkspace />
     </HubShell>
   );
+}
+
+type SetupAccessProfile = OperationalProfileRole | "readonly";
+
+type SetupAccess = {
+  canManageSetup: boolean;
+  profileRole: SetupAccessProfile;
+  visibilityScope: VisibilityScope | "readonly";
+};
+
+function getSetupAccess(user: HubUserContext | null): SetupAccess {
+  const profileRole = mapHubRoleToSetupProfile(user?.role);
+
+  return {
+    canManageSetup: user?.role === "admin" || profileRole === "adm",
+    profileRole,
+    visibilityScope:
+      profileRole === "readonly"
+        ? "readonly"
+        : getVisibilityScopeForProfile(profileRole),
+  };
+}
+
+function mapHubRoleToSetupProfile(
+  role?: HubUserRole,
+): SetupAccessProfile {
+  if (!role || role === "viewer") {
+    return "readonly";
+  }
+
+  return mapLegacyRoleToOperationalProfile(role);
 }
 
 function SetupWorkspace() {

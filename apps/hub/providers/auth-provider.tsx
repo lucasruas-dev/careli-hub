@@ -57,6 +57,11 @@ type HubProfileRow = {
   status: "active" | "archived" | "disabled";
 };
 
+type ProfileFallbackResponse = {
+  error?: string;
+  profile?: HubProfileRow;
+};
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({
   children,
@@ -509,6 +514,21 @@ async function loadHubProfileInBackground({
         userId: session.user.id,
         supabase: getHubSupabaseDiagnostics(),
       });
+
+      if (error || !data) {
+        const fallbackProfile = await loadHubProfileViaApi(session);
+
+        if (fallbackProfile?.status === "active") {
+          setAuthState(
+            createAuthStateFromSession(
+              createAuthSessionFromProfile(session, fallbackProfile),
+            ),
+          );
+          setProfileStatus("ready");
+          return;
+        }
+      }
+
       setProfileStatus("error");
       return;
     }
@@ -538,7 +558,82 @@ async function loadHubProfileInBackground({
       userId: session.user.id,
       supabase: getHubSupabaseDiagnostics(),
     });
+    const fallbackProfile = await loadHubProfileViaApi(session);
+
+    if (fallbackProfile?.status === "active") {
+      setAuthState(
+        createAuthStateFromSession(
+          createAuthSessionFromProfile(session, fallbackProfile),
+        ),
+      );
+      setProfileStatus("ready");
+      return;
+    }
+
     setProfileStatus("error");
+  }
+}
+
+async function loadHubProfileViaApi(
+  session: Session,
+): Promise<HubProfileRow | null> {
+  if (!session.access_token) {
+    return null;
+  }
+
+  try {
+    logSupabaseDiagnostic("auth", "profile api fallback start", {
+      endpoint: "/api/auth/profile",
+      function: "loadHubProfileViaApi",
+      table: "hub_users",
+      userId: session.user.id,
+    });
+
+    const response = await withMeasuredTimeout(
+      fetch("/api/auth/profile", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      }),
+      "Tempo excedido ao carregar o perfil operacional pelo servidor.",
+      "profile",
+      10_000,
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | ProfileFallbackResponse
+      | null;
+
+    if (!response.ok || !payload?.profile) {
+      logSupabaseDiagnostic("auth", "profile api fallback error", {
+        endpoint: "/api/auth/profile",
+        function: "loadHubProfileViaApi",
+        response: payload,
+        status: response.status,
+        statusText: response.statusText,
+        table: "hub_users",
+        userId: session.user.id,
+      });
+      return null;
+    }
+
+    logSupabaseDiagnostic("auth", "profile api fallback done", {
+      endpoint: "/api/auth/profile",
+      function: "loadHubProfileViaApi",
+      role: payload.profile.role,
+      table: "hub_users",
+      userId: payload.profile.id,
+    });
+
+    return payload.profile;
+  } catch (error) {
+    logSupabaseDiagnostic("auth", "profile api fallback error", {
+      endpoint: "/api/auth/profile",
+      error: serializeDiagnosticError(error),
+      function: "loadHubProfileViaApi",
+      table: "hub_users",
+      userId: session.user.id,
+    });
+    return null;
   }
 }
 
