@@ -36,6 +36,7 @@ type MessagePayload = {
   attachment?: unknown;
   body?: unknown;
   channelId?: unknown;
+  clientMessageId?: unknown;
   mentionUserIds?: unknown;
   mentions?: unknown;
   tags?: unknown;
@@ -258,6 +259,9 @@ export async function POST(request: NextRequest) {
       channel_id: payload.data.channelId,
       metadata: {
         ...(payload.data.attachment ? { attachment: payload.data.attachment } : {}),
+        ...(payload.data.clientMessageId
+          ? { clientMessageId: payload.data.clientMessageId }
+          : {}),
         mentionUserIds: payload.data.mentionUserIds,
         mentions: payload.data.mentions,
         tags: payload.data.tags,
@@ -542,6 +546,7 @@ function parseMessagePayload(payload: unknown):
       data: {
         body: string;
         channelId: string;
+        clientMessageId: string;
         attachment?: MessageAttachment;
         mentionUserIds: string[];
         mentions: { displayName: string; trigger: string; userId: string }[];
@@ -559,6 +564,7 @@ function parseMessagePayload(payload: unknown):
   const attachment = normalizeAttachment(input.attachment);
   const body = getString(input.body);
   const channelId = getString(input.channelId);
+  const clientMessageId = getString(input.clientMessageId);
   const threadParentMessageId = getString(input.threadParentMessageId);
 
   if ((!body && !attachment) || !channelId) {
@@ -570,6 +576,7 @@ function parseMessagePayload(payload: unknown):
       attachment,
       body: body || attachment?.label || "Anexo",
       channelId,
+      clientMessageId,
       mentionUserIds: normalizeStringList(input.mentionUserIds),
       mentions: normalizeMentions(input.mentions),
       tags: normalizePulseXMessageTags(input.tags),

@@ -102,6 +102,7 @@ export type PulseXMessage = {
   authorName?: string;
   body: string;
   channelId: PulseXChannel["id"];
+  clientMessageId?: string;
   createdAt?: string;
   deletedAt?: string;
   deliveredTo?: readonly PulseXPresenceUser["id"][];

@@ -11,7 +11,11 @@ import {
   markPulseXChannelRead,
   updatePulseXMessageTags,
 } from "@/lib/pulsex/supabase-data";
-import { hasHubSupabaseConfig } from "@/lib/supabase/client";
+import {
+  getHubSupabaseClient,
+  hasHubSupabaseConfig,
+  logSupabaseDiagnostic,
+} from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
 import { usePulseXCall } from "@/providers/pulsex-call-provider";
 import { Bell, X } from "lucide-react";
@@ -45,6 +49,11 @@ type PulseXToastNotification = {
 };
 
 const PULSEX_PRESENCE_REFRESH_MS = 5_000;
+const PULSEX_MESSAGE_REFRESH_MS = 4_000;
+const PULSEX_MESSAGE_BROADCAST_EVENT = "message-created";
+
+type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
+type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
 export function PulseXWorkspace() {
   const { hubUser, profileStatus } = useAuth();
@@ -81,6 +90,7 @@ export function PulseXWorkspace() {
   );
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
+  const messageRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
   const [notifications, setNotifications] = useState<PulseXToastNotification[]>(
     [],
   );
@@ -328,12 +338,14 @@ export function PulseXWorkspace() {
             );
           }
 
-          setMessages((currentMessages) => [
-            ...currentMessages.filter(
-              (message) => message.channelId !== activeChannel.id,
-            ),
-            ...nextDeliveredMessages,
-          ]);
+          setMessages((currentMessages) =>
+            mergePulseXChannelMessages({
+              channelId: activeChannel.id,
+              currentMessages,
+              nextMessages: nextDeliveredMessages,
+              replaceChannel: true,
+            }),
+          );
         })
         .catch((error: unknown) => {
           if (isLocalDevelopmentRuntime()) {
@@ -364,13 +376,108 @@ export function PulseXWorkspace() {
     loadActiveChannelMessages(() => isMounted);
     const intervalId = window.setInterval(() => {
       loadActiveChannelMessages(() => isMounted);
-    }, 8_000);
+    }, PULSEX_MESSAGE_REFRESH_MS);
 
     return () => {
       isMounted = false;
       window.clearInterval(intervalId);
     };
   }, [activeChannel.id, activeChannel.kind, loadActiveChannelMessages]);
+
+  useEffect(() => {
+    if (
+      !hasHubSupabaseConfig() ||
+      dataStatus !== "ready" ||
+      activeChannel.kind === "direct" ||
+      activeChannel.id === emptyPulseXChannel.id
+    ) {
+      return;
+    }
+
+    const client = getHubSupabaseClient();
+
+    if (!client) {
+      return;
+    }
+
+    const realtimeChannel = client.channel(
+      getPulseXMessageRealtimeTopic(activeChannel.id),
+      {
+        config: {
+          broadcast: {
+            ack: true,
+            self: false,
+          },
+        },
+      },
+    );
+
+    messageRealtimeChannelRef.current = realtimeChannel;
+    realtimeChannel
+      .on(
+        "broadcast",
+        {
+          event: PULSEX_MESSAGE_BROADCAST_EVENT,
+        },
+        (payload: { payload?: unknown }) => {
+          const broadcastMessage = parsePulseXMessageBroadcastPayload(
+            payload.payload,
+          );
+
+          if (
+            !broadcastMessage ||
+            broadcastMessage.channelId !== activeChannel.id
+          ) {
+            return;
+          }
+
+          const [nextDeliveredMessage] = withMessageDeliveryData(
+            [broadcastMessage],
+            channels,
+          );
+
+          if (!nextDeliveredMessage) {
+            return;
+          }
+
+          knownMessageIdsRef.current.add(nextDeliveredMessage.id);
+          loadedChannelIdsRef.current.add(nextDeliveredMessage.channelId);
+          setMessages((currentMessages) =>
+            mergePulseXChannelMessages({
+              channelId: activeChannel.id,
+              currentMessages,
+              nextMessages: [nextDeliveredMessage],
+              replaceChannel: false,
+            }),
+          );
+
+          if (nextDeliveredMessage.authorId !== currentUserId) {
+            notifyIncomingMessages([nextDeliveredMessage]);
+          }
+        },
+      )
+      .subscribe((status) => {
+        logSupabaseDiagnostic("pulsex", "message realtime status", {
+          channelId: activeChannel.id,
+          status,
+        });
+      });
+
+    return () => {
+      if (messageRealtimeChannelRef.current === realtimeChannel) {
+        messageRealtimeChannelRef.current = null;
+      }
+
+      void client.removeChannel(realtimeChannel);
+    };
+  }, [
+    activeChannel.id,
+    activeChannel.kind,
+    channels,
+    currentUserId,
+    dataStatus,
+    notifyIncomingMessages,
+  ]);
 
   useEffect(() => {
     if (
@@ -529,6 +636,9 @@ export function PulseXWorkspace() {
       minute: "2-digit",
     }).format(new Date());
     const createdAt = new Date().toISOString();
+    const clientMessageId = `client-${activeChannel.id}-${Date.now().toString(
+      36,
+    )}-${Math.random().toString(36).slice(2, 8)}`;
     const deliveredTo = getMessageRecipientUserIds({
       channel: activeChannel,
       messageAuthorId: currentUserId,
@@ -541,6 +651,7 @@ export function PulseXWorkspace() {
       attachment,
       body: body || attachment?.label || "Anexo",
       channelId: activeChannel.id,
+      clientMessageId,
       createdAt,
       deliveredTo,
       id: `local-${activeChannel.id}-${Date.now()}`,
@@ -582,22 +693,30 @@ export function PulseXWorkspace() {
         attachment,
         body: body || attachment?.label || "Anexo",
         channelId: activeChannel.id,
+        clientMessageId,
         mentionUserIds: mentions.map((mention) => mention.userId),
         mentions,
         tags,
       });
 
       knownMessageIdsRef.current.add(savedMessage.id);
+      const savedDeliveredMessage = {
+        ...savedMessage,
+        deliveredTo,
+        readBy: [],
+      };
+
       setMessages((currentMessages) =>
-        currentMessages.map((message) =>
-          message.id === localMessage.id
-            ? {
-                ...savedMessage,
-                deliveredTo,
-                readBy: [],
-              }
-            : message,
-        ),
+        mergePulseXChannelMessages({
+          channelId: activeChannel.id,
+          currentMessages,
+          nextMessages: [savedDeliveredMessage],
+          replaceChannel: false,
+        }),
+      );
+      void broadcastPulseXMessage(
+        savedDeliveredMessage,
+        messageRealtimeChannelRef.current,
       );
     } catch (error) {
       if (isLocalDevelopmentRuntime()) {
@@ -982,6 +1101,135 @@ function PulseXNotificationStack({
       ))}
     </div>
   );
+}
+
+function getPulseXMessageRealtimeTopic(channelId: PulseXChannel["id"]) {
+  return `pulsex:messages:${channelId}`;
+}
+
+async function broadcastPulseXMessage(
+  message: PulseXMessage,
+  realtimeChannel: HubRealtimeChannel | null,
+) {
+  if (!realtimeChannel) {
+    return;
+  }
+
+  try {
+    await realtimeChannel.send({
+      event: PULSEX_MESSAGE_BROADCAST_EVENT,
+      payload: { message },
+      type: "broadcast",
+    });
+  } catch (error: unknown) {
+    logSupabaseDiagnostic("pulsex", "message broadcast error", {
+      error,
+      messageId: message.id,
+    });
+  }
+}
+
+function parsePulseXMessageBroadcastPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const message = (payload as { message?: unknown }).message;
+
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+
+  const maybeMessage = message as Partial<PulseXMessage>;
+
+  if (
+    !maybeMessage.id ||
+    !maybeMessage.authorId ||
+    !maybeMessage.body ||
+    !maybeMessage.channelId ||
+    !maybeMessage.timestamp
+  ) {
+    return null;
+  }
+
+  return {
+    ...maybeMessage,
+    authorId: maybeMessage.authorId,
+    body: maybeMessage.body,
+    channelId: maybeMessage.channelId,
+    id: maybeMessage.id,
+    reactions: maybeMessage.reactions ?? [],
+    status: maybeMessage.status ?? "neutral",
+    tags: maybeMessage.tags ?? [],
+    timestamp: maybeMessage.timestamp,
+  } satisfies PulseXMessage;
+}
+
+function mergePulseXChannelMessages({
+  channelId,
+  currentMessages,
+  nextMessages,
+  replaceChannel,
+}: {
+  channelId: PulseXChannel["id"];
+  currentMessages: readonly PulseXMessage[];
+  nextMessages: readonly PulseXMessage[];
+  replaceChannel: boolean;
+}) {
+  const nextIds = new Set(nextMessages.map((message) => message.id));
+  const nextClientMessageIds = new Set(
+    nextMessages
+      .map((message) => message.clientMessageId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const retainedMessages = currentMessages.filter((message) => {
+    if (message.channelId !== channelId) {
+      return true;
+    }
+
+    if (nextIds.has(message.id)) {
+      return false;
+    }
+
+    if (
+      message.clientMessageId &&
+      nextClientMessageIds.has(message.clientMessageId)
+    ) {
+      return false;
+    }
+
+    return replaceChannel ? isLocalPendingPulseXMessage(message) : true;
+  });
+
+  return [...retainedMessages, ...nextMessages].sort(comparePulseXMessages);
+}
+
+function isLocalPendingPulseXMessage(message: PulseXMessage) {
+  return message.id.startsWith("local-");
+}
+
+function comparePulseXMessages(
+  firstMessage: PulseXMessage,
+  secondMessage: PulseXMessage,
+) {
+  const firstTime = getPulseXMessageSortTime(firstMessage);
+  const secondTime = getPulseXMessageSortTime(secondMessage);
+
+  if (firstTime !== secondTime) {
+    return firstTime - secondTime;
+  }
+
+  return firstMessage.id.localeCompare(secondMessage.id);
+}
+
+function getPulseXMessageSortTime(message: PulseXMessage) {
+  if (!message.createdAt) {
+    return 0;
+  }
+
+  const time = Date.parse(message.createdAt);
+
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function isLocalDevelopmentRuntime() {

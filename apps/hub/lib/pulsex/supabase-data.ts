@@ -429,6 +429,7 @@ export async function createPulseXMessage(input: {
   authorUserId?: string;
   body: string;
   channelId: string;
+  clientMessageId?: string;
   mentionUserIds?: readonly string[];
   mentions?: readonly PulseXMessageMention[];
   tags?: readonly PulseXMessageTag[];
@@ -458,6 +459,7 @@ export async function createPulseXMessage(input: {
         channel_id: input.channelId,
         metadata: {
           ...(input.attachment ? { attachment: input.attachment } : {}),
+          ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
           mentionUserIds: input.mentionUserIds ?? [],
           mentions: input.mentions ?? [],
           tags,
@@ -662,6 +664,7 @@ async function createPulseXMessageViaApi(
     attachment?: PulseXMessageAttachment;
     body: string;
     channelId: string;
+    clientMessageId?: string;
     mentionUserIds?: readonly string[];
     mentions?: readonly PulseXMessageMention[];
     tags?: readonly PulseXMessageTag[];
@@ -680,6 +683,7 @@ async function createPulseXMessageViaApi(
       body: input.body,
       channelId: input.channelId,
       attachment: input.attachment,
+      clientMessageId: input.clientMessageId,
       mentionUserIds: input.mentionUserIds ?? [],
       mentions: input.mentions ?? [],
       tags: input.tags ?? [],
@@ -914,6 +918,7 @@ function mapMessage(row: PulseXMessageRow | null): PulseXMessage {
     attachment,
     body: row.body,
     channelId: row.channel_id,
+    clientMessageId: getString(metadata.clientMessageId) || undefined,
     createdAt: row.created_at,
     deletedAt: row.deleted_at ?? undefined,
     id: row.id,
