@@ -1,5 +1,6 @@
 "use client";
 
+import { listHubPresence } from "@/lib/hub-presence";
 import { pulsexReactionOptions } from "@/lib/pulsex";
 import {
   createPulseXMessage,
@@ -43,6 +44,8 @@ type PulseXToastNotification = {
   mentioned: boolean;
   title: string;
 };
+
+const PULSEX_PRESENCE_REFRESH_MS = 5_000;
 
 export function PulseXWorkspace() {
   const { hubUser, profileStatus } = useAuth();
@@ -194,6 +197,55 @@ export function PulseXWorkspace() {
   }, [currentUserId, hubUser?.role, profileStatus]);
 
   useEffect(() => loadOperationalData(), [loadOperationalData]);
+
+  const refreshPresenceStatuses = useCallback(
+    (shouldApply: () => boolean = () => true) => {
+      if (!hasHubSupabaseConfig()) {
+        return;
+      }
+
+      listHubPresence()
+        .then((presenceByUserId) => {
+          if (!shouldApply()) {
+            return;
+          }
+
+          setPresenceUsers((currentUsers) =>
+            applyPresenceStatusesToUsers(currentUsers, presenceByUserId),
+          );
+          setChannels((currentChannels) =>
+            applyPresenceStatusesToDirectChannels(
+              currentChannels,
+              presenceByUserId,
+            ),
+          );
+        })
+        .catch((error: unknown) => {
+          if (isLocalDevelopmentRuntime()) {
+            console.warn("[pulsex] refresh presence error", error);
+          }
+        });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!hasHubSupabaseConfig() || dataStatus !== "ready") {
+      return;
+    }
+
+    let isMounted = true;
+
+    refreshPresenceStatuses(() => isMounted);
+    const intervalId = window.setInterval(() => {
+      refreshPresenceStatuses(() => isMounted);
+    }, PULSEX_PRESENCE_REFRESH_MS);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [dataStatus, refreshPresenceStatuses]);
 
   const notifyIncomingMessages = useCallback(
     (newMessages: readonly PulseXMessage[]) => {
@@ -948,6 +1000,57 @@ function PulseXNotificationStack({
 
 function isLocalDevelopmentRuntime() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
+function applyPresenceStatusesToUsers(
+  users: PulseXPresenceUser[],
+  presenceByUserId: Record<PulseXPresenceUser["id"], PulseXPresenceUser["status"]>,
+): PulseXPresenceUser[] {
+  let hasChanges = false;
+  const nextUsers = users.map((user) => {
+    const nextStatus = presenceByUserId[user.id] ?? "offline";
+
+    if (user.status === nextStatus) {
+      return user;
+    }
+
+    hasChanges = true;
+
+    return {
+      ...user,
+      status: nextStatus,
+    };
+  });
+
+  return hasChanges ? nextUsers : users;
+}
+
+function applyPresenceStatusesToDirectChannels(
+  channels: PulseXChannel[],
+  presenceByUserId: Record<PulseXPresenceUser["id"], PulseXPresenceUser["status"]>,
+): PulseXChannel[] {
+  let hasChanges = false;
+  const nextChannels = channels.map((channel) => {
+    if (channel.kind !== "direct") {
+      return channel;
+    }
+
+    const userId = channel.id.replace(/^direct-/, "");
+    const nextStatus = presenceByUserId[userId] ?? "offline";
+
+    if (channel.status === nextStatus) {
+      return channel;
+    }
+
+    hasChanges = true;
+
+    return {
+      ...channel,
+      status: nextStatus,
+    };
+  });
+
+  return hasChanges ? nextChannels : channels;
 }
 
 function withMessageDeliveryData(

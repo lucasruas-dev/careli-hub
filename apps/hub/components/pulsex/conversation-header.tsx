@@ -36,7 +36,7 @@ export function ConversationHeader({
     offline: "Offline",
     online: "Online",
   } as const satisfies Record<NonNullable<PulseXChannel["status"]>, string>;
-  const presenceStatus = channel.status ?? "offline";
+  const presenceStatus = getChannelPresenceStatus(presenceUsers);
   const presenceLabel = presenceLabelMap[presenceStatus];
 
   return (
@@ -91,6 +91,28 @@ export function ConversationHeader({
       </div>
     </header>
   );
+}
+
+function getChannelPresenceStatus(
+  users: readonly PulseXPresenceUser[],
+): NonNullable<PulseXChannel["status"]> {
+  if (users.some((user) => user.status === "online")) {
+    return "online";
+  }
+
+  if (users.some((user) => user.status === "agenda" || user.status === "busy")) {
+    return "agenda";
+  }
+
+  if (users.some((user) => user.status === "lunch")) {
+    return "lunch";
+  }
+
+  if (users.some((user) => user.status === "away")) {
+    return "away";
+  }
+
+  return "offline";
 }
 
 function ParticipantStack({
