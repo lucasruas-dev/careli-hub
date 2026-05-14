@@ -1,3 +1,5 @@
+"use client";
+
 import type {
   PulseXChannel,
   PulseXCallType,
@@ -10,21 +12,37 @@ import {
   Star,
   Users,
   Video,
+  Volume2,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import type { ReactNode } from "react";
+import { useState } from "react";
+
+export type PulseXCallSoundOption = {
+  id: string;
+  label: string;
+};
 
 type ConversationHeaderProps = {
+  callSoundOptions: readonly PulseXCallSoundOption[];
   channel: PulseXChannel;
+  onChangeCallSound: (soundId: string) => void;
+  onPreviewCallSound: (soundId: string) => void;
   onStartCall: (type: PulseXCallType) => void;
   presenceUsers: readonly PulseXPresenceUser[];
+  selectedCallSoundId: string;
 };
 
 export function ConversationHeader({
+  callSoundOptions,
   channel,
+  onChangeCallSound,
+  onPreviewCallSound,
   onStartCall,
   presenceUsers,
+  selectedCallSoundId,
 }: ConversationHeaderProps) {
+  const [isSoundMenuOpen, setIsSoundMenuOpen] = useState(false);
   const onlineCount = presenceUsers.filter(
     (user) => user.status === "online",
   ).length;
@@ -74,6 +92,24 @@ export function ConversationHeader({
       <div className="flex items-center gap-1">
         <HeaderAction ariaLabel="Favoritar" icon={<Star size={17} />} />
         <HeaderAction ariaLabel="Buscar" icon={<Search size={17} />} />
+        <div className="relative">
+          <HeaderAction
+            ariaLabel="Som de chamada"
+            icon={<Volume2 size={17} />}
+            onClick={() => setIsSoundMenuOpen((current) => !current)}
+          />
+          {isSoundMenuOpen ? (
+            <CallSoundMenu
+              onChange={(soundId) => {
+                onChangeCallSound(soundId);
+                onPreviewCallSound(soundId);
+              }}
+              onPreview={onPreviewCallSound}
+              options={callSoundOptions}
+              selectedSoundId={selectedCallSoundId}
+            />
+          ) : null}
+        </div>
         <HeaderAction
           ariaLabel="Chamada de audio"
           icon={<Phone size={17} />}
@@ -90,6 +126,54 @@ export function ConversationHeader({
         />
       </div>
     </header>
+  );
+}
+
+function CallSoundMenu({
+  onChange,
+  onPreview,
+  options,
+  selectedSoundId,
+}: {
+  onChange: (soundId: string) => void;
+  onPreview: (soundId: string) => void;
+  options: readonly PulseXCallSoundOption[];
+  selectedSoundId: string;
+}) {
+  return (
+    <div className="absolute right-0 top-10 z-40 w-64 rounded-lg border border-[#d9e0ea] bg-white p-2 text-xs shadow-xl">
+      <div className="px-2 py-1.5">
+        <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-wide text-[#667085]">
+          Sons da chamada
+        </p>
+      </div>
+      <div className="grid gap-1">
+        {options.map((option) => (
+          <div
+            className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[#f3f6fa]"
+            key={option.id}
+          >
+            <button
+              className="min-w-0 text-left font-semibold text-[#101820] outline-none focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              onClick={() => onChange(option.id)}
+              type="button"
+            >
+              <span className="block truncate">{option.label}</span>
+              <span className="mt-0.5 block text-[0.68rem] font-normal text-[#667085]">
+                {selectedSoundId === option.id ? "Selecionado" : "Disponivel"}
+              </span>
+            </button>
+            <button
+              className="h-7 rounded-md border border-[#cfd8e3] px-2 font-semibold text-[#344054] outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              onClick={() => onPreview(option.id)}
+              type="button"
+            >
+              Testar
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

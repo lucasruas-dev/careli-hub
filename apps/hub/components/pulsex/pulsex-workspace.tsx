@@ -38,7 +38,10 @@ import type {
 } from "@/lib/pulsex";
 import { CallPanel } from "./call-panel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConversationHeader } from "./conversation-header";
+import {
+  ConversationHeader,
+  type PulseXCallSoundOption,
+} from "./conversation-header";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { IncomingCallBanner } from "./incoming-call-banner";
 import { MessageComposer } from "./message-composer";
@@ -56,7 +59,16 @@ type PulseXToastNotification = {
 const PULSEX_PRESENCE_REFRESH_MS = 5_000;
 const PULSEX_CALL_SIGNAL_EVENT = "call-signal";
 const PULSEX_CALL_SIGNAL_TOPIC = "pulsex:calls";
+const PULSEX_CALL_SOUND_STORAGE_KEY = "careli:pulsex:call-sound";
 
+const pulsexCallSoundOptions = [
+  { id: "soft-wave", label: "Suave" },
+  { id: "office-bell", label: "Profissional" },
+  { id: "digital-pulse", label: "Digital" },
+  { id: "warm-chime", label: "Calmo" },
+] as const satisfies readonly PulseXCallSoundOption[];
+
+type PulseXCallSoundId = (typeof pulsexCallSoundOptions)[number]["id"];
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
@@ -78,6 +90,9 @@ export function PulseXWorkspace() {
   const [activeMessageFilter, setActiveMessageFilter] =
     useState<PulseXMessageFilter>("all");
   const [activeCall, setActiveCall] = useState<PulseXCallSession | null>(null);
+  const [callSoundId, setCallSoundId] = useState<PulseXCallSoundId>(
+    pulsexCallSoundOptions[0].id,
+  );
   const [callSignals, setCallSignals] = useState<PulseXCallRealtimeSignal[]>([]);
   const [incomingCall, setIncomingCall] = useState<PulseXCallSession | null>(null);
   const [composerValue, setComposerValue] = useState("");
@@ -161,6 +176,16 @@ export function PulseXWorkspace() {
   useEffect(() => {
     presenceUsersRef.current = presenceUsers;
   }, [presenceUsers]);
+
+  useEffect(() => {
+    const savedSoundId = window.localStorage.getItem(
+      PULSEX_CALL_SOUND_STORAGE_KEY,
+    );
+
+    if (isPulseXCallSoundId(savedSoundId)) {
+      setCallSoundId(savedSoundId);
+    }
+  }, []);
 
   const loadOperationalData = useCallback(() => {
     if (profileStatus === "loading") {
@@ -345,7 +370,6 @@ export function PulseXWorkspace() {
         }
 
         setIncomingCall(signal.session);
-        playPulseXNotificationSound();
         showBrowserPulseXNotification({
           body: `${getCallCallerLabel(signal.session)} chamou em ${signal.session.title}.`,
           title: "Chamada no PulseX",
@@ -455,15 +479,15 @@ export function PulseXWorkspace() {
       return;
     }
 
-    playPulseXNotificationSound();
+    playPulseXCallSound(callSoundId);
     const intervalId = window.setInterval(() => {
-      playPulseXNotificationSound();
-    }, 1_800);
+      playPulseXCallSound(callSoundId);
+    }, 2_200);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [incomingCall]);
+  }, [callSoundId, incomingCall]);
 
   const notifyIncomingMessages = useCallback(
     (newMessages: readonly PulseXMessage[]) => {
@@ -471,7 +495,7 @@ export function PulseXWorkspace() {
         return;
       }
 
-      playPulseXNotificationSound();
+      playPulseXMessageSound();
 
       newMessages.forEach((message) => {
         const mentioned = isMessageMentioningUser(message, currentUserId);
@@ -1118,9 +1142,24 @@ export function PulseXWorkspace() {
       />
       <main className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#f3f6fa]">
         <ConversationHeader
+          callSoundOptions={pulsexCallSoundOptions}
           channel={activeChannel}
+          onChangeCallSound={(soundId) => {
+            if (!isPulseXCallSoundId(soundId)) {
+              return;
+            }
+
+            setCallSoundId(soundId);
+            window.localStorage.setItem(PULSEX_CALL_SOUND_STORAGE_KEY, soundId);
+          }}
+          onPreviewCallSound={(soundId) => {
+            if (isPulseXCallSoundId(soundId)) {
+              playPulseXCallSound(soundId);
+            }
+          }}
           onStartCall={handleStartCall}
           presenceUsers={channelPresenceUsers}
+          selectedCallSoundId={callSoundId}
         />
         {incomingCall ? (
           <div className="pointer-events-none absolute inset-x-0 top-16 z-30">
@@ -1657,7 +1696,140 @@ function isMessageMentioningUser(
   );
 }
 
-function playPulseXNotificationSound() {
+function isPulseXCallSoundId(value: unknown): value is PulseXCallSoundId {
+  return (
+    typeof value === "string" &&
+    pulsexCallSoundOptions.some((option) => option.id === value)
+  );
+}
+
+function playPulseXMessageSound() {
+  playToneSequence([
+    {
+      duration: 0.11,
+      frequency: 660,
+      gain: 0.035,
+      start: 0,
+      type: "sine",
+    },
+    {
+      duration: 0.14,
+      frequency: 880,
+      gain: 0.028,
+      start: 0.11,
+      type: "triangle",
+    },
+  ]);
+}
+
+function playPulseXCallSound(soundId: PulseXCallSoundId) {
+  const soundMap = {
+    "digital-pulse": [
+      {
+        duration: 0.1,
+        frequency: 620,
+        gain: 0.055,
+        start: 0,
+        type: "triangle",
+      },
+      {
+        duration: 0.13,
+        frequency: 830,
+        gain: 0.05,
+        start: 0.13,
+        type: "triangle",
+      },
+      {
+        duration: 0.16,
+        frequency: 740,
+        gain: 0.035,
+        start: 0.3,
+        type: "sine",
+      },
+    ],
+    "office-bell": [
+      {
+        duration: 0.16,
+        frequency: 523,
+        gain: 0.05,
+        start: 0,
+        type: "sine",
+      },
+      {
+        duration: 0.17,
+        frequency: 659,
+        gain: 0.046,
+        start: 0.17,
+        type: "sine",
+      },
+      {
+        duration: 0.2,
+        frequency: 784,
+        gain: 0.036,
+        start: 0.36,
+        type: "triangle",
+      },
+    ],
+    "soft-wave": [
+      {
+        duration: 0.18,
+        frequency: 440,
+        gain: 0.046,
+        start: 0,
+        type: "sine",
+      },
+      {
+        duration: 0.2,
+        frequency: 554,
+        gain: 0.04,
+        start: 0.2,
+        type: "triangle",
+      },
+      {
+        duration: 0.24,
+        frequency: 659,
+        gain: 0.034,
+        start: 0.43,
+        type: "sine",
+      },
+    ],
+    "warm-chime": [
+      {
+        duration: 0.18,
+        frequency: 392,
+        gain: 0.045,
+        start: 0,
+        type: "triangle",
+      },
+      {
+        duration: 0.19,
+        frequency: 523,
+        gain: 0.04,
+        start: 0.2,
+        type: "sine",
+      },
+      {
+        duration: 0.22,
+        frequency: 659,
+        gain: 0.032,
+        start: 0.43,
+        type: "sine",
+      },
+    ],
+  } as const satisfies Record<PulseXCallSoundId, readonly ToneSpec[]>;
+
+  playToneSequence(soundMap[soundId]);
+}
+
+type ToneSpec = {
+  duration: number;
+  frequency: number;
+  gain: number;
+  start: number;
+  type: OscillatorType;
+};
+
+function playToneSequence(notes: readonly ToneSpec[]) {
   try {
     const AudioContextConstructor =
       window.AudioContext ||
@@ -1669,25 +1841,36 @@ function playPulseXNotificationSound() {
     }
 
     const audioContext = new AudioContextConstructor();
-    const oscillator = audioContext.createOscillator();
-    const gain = audioContext.createGain();
+    const masterGain = audioContext.createGain();
+    const longestNoteEnd = notes.reduce(
+      (maxEnd, note) => Math.max(maxEnd, note.start + note.duration),
+      0,
+    );
 
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(740, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(
-      520,
-      audioContext.currentTime + 0.16,
-    );
-    gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.09, audioContext.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      audioContext.currentTime + 0.2,
-    );
-    oscillator.connect(gain);
-    gain.connect(audioContext.destination);
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.22);
+    masterGain.gain.setValueAtTime(0.9, audioContext.currentTime);
+    masterGain.connect(audioContext.destination);
+
+    notes.forEach((note) => {
+      const oscillator = audioContext.createOscillator();
+      const noteGain = audioContext.createGain();
+      const startAt = audioContext.currentTime + note.start;
+      const endAt = startAt + note.duration;
+
+      oscillator.type = note.type;
+      oscillator.frequency.setValueAtTime(note.frequency, startAt);
+      noteGain.gain.setValueAtTime(0.0001, startAt);
+      noteGain.gain.exponentialRampToValueAtTime(note.gain, startAt + 0.025);
+      noteGain.gain.exponentialRampToValueAtTime(0.0001, endAt);
+
+      oscillator.connect(noteGain);
+      noteGain.connect(masterGain);
+      oscillator.start(startAt);
+      oscillator.stop(endAt + 0.02);
+    });
+
+    window.setTimeout(() => {
+      void audioContext.close();
+    }, Math.ceil((longestNoteEnd + 0.2) * 1_000));
   } catch {
     // Browser can block audio before the user interacts with the page.
   }
