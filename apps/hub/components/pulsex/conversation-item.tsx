@@ -23,13 +23,18 @@ export function ConversationItem({
   return (
     <button
       aria-current={active ? "page" : undefined}
-      className="grid w-full grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-3 border-l-2 border-transparent px-4 py-2 text-left outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:border-[#A07C3B] data-[active=true]:bg-[#A07C3B]/[0.18]"
+      className="relative grid w-full grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-3 rounded-lg px-4 py-2 text-left outline-none transition hover:bg-[#2A2B32]/80 focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-[#2A2B32]"
       data-active={active}
       onClick={() => onSelect?.(channel.id)}
       type="button"
     >
+      {active ? (
+        <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
+      ) : null}
       <span
-        className={`relative grid h-9 w-9 place-items-center border border-white/[0.085] bg-white/[0.06] text-[#f7f8fa] ${
+        className={`relative grid h-9 w-9 place-items-center border border-white/[0.085] bg-white/[0.06] ${
+          active ? "text-[#D5B46F]" : "text-[#f7f8fa]"
+        } ${
           isDirect ? "rounded-full text-xs font-semibold" : "rounded-md"
         }`}
       >
@@ -41,7 +46,7 @@ export function ConversationItem({
         {isDirect && channel.status ? (
           <span
             aria-hidden="true"
-            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#101820] data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-500 data-[status=online]:bg-emerald-500"
+            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#343541] data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-500 data-[status=online]:bg-emerald-500"
             data-status={channel.status}
           />
         ) : null}

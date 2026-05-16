@@ -67,8 +67,26 @@ type PasswordSignInFallbackResponse = {
   error?: string;
   session?: {
     access_token?: unknown;
+    expires_at?: unknown;
+    expires_in?: unknown;
     refresh_token?: unknown;
   };
+};
+
+type SessionRecoveryResponse = {
+  error?: string;
+  profile?: HubProfileRow;
+  session?: {
+    access_token?: unknown;
+    expires_at?: unknown;
+    expires_in?: unknown;
+    refresh_token?: unknown;
+  };
+};
+
+type CachedSupabaseSession = {
+  accessToken?: string;
+  refreshToken?: string;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -113,16 +131,34 @@ export function AuthProvider({
 
       logSupabaseDiagnostic("auth", "env", getHubSupabaseDiagnostics());
       logAuthTiming("session start");
-      withMeasuredTimeout(
-        client.auth.getSession(),
-        "Tempo excedido ao carregar a sessao Supabase.",
-        "session",
-        20_000,
-      )
-        .then(({ data, error }) => {
+      recoverHubSessionViaApiFallback({
+        client,
+        isMounted: () => isMounted,
+        setAuthState,
+        setProfileStatus,
+      })
+        .then((recovered) => {
+          if (!isMounted || recovered) {
+            return null;
+          }
+
+          return withMeasuredTimeout(
+            client.auth.getSession(),
+            "Tempo excedido ao carregar a sessao Supabase.",
+            "session",
+            20_000,
+          );
+        })
+        .then(async (sessionResult) => {
           if (!isMounted) {
             return;
           }
+
+          if (!sessionResult) {
+            return;
+          }
+
+          const { data, error } = sessionResult;
 
           if (error) {
             logSupabaseDiagnostic("auth", "session error", {
@@ -130,6 +166,25 @@ export function AuthProvider({
               function: "AuthProvider.getSession",
               supabase: getHubSupabaseDiagnostics(),
             });
+
+            if (isSupabaseAuthNetworkError(error)) {
+              const recovered = await recoverHubSessionViaApiFallback({
+                client,
+                isMounted: () => isMounted,
+                setAuthState,
+                setProfileStatus,
+              });
+
+              if (recovered) {
+                return;
+              }
+
+              clearLocalAuthStorage();
+              setProfileStatus("idle");
+              setAuthState(createUnauthenticatedAuthState());
+              return;
+            }
+
             setAuthState(createAuthErrorState(getFriendlySupabaseError(error)));
             return;
           }
@@ -142,7 +197,7 @@ export function AuthProvider({
             setProfileStatus,
           });
         })
-        .catch((error: unknown) => {
+        .catch(async (error: unknown) => {
           if (!isMounted) {
             return;
           }
@@ -158,6 +213,25 @@ export function AuthProvider({
             message,
             supabase: getHubSupabaseDiagnostics(),
           });
+
+          if (isSupabaseAuthNetworkError(error)) {
+            const recovered = await recoverHubSessionViaApiFallback({
+              client,
+              isMounted: () => isMounted,
+              setAuthState,
+              setProfileStatus,
+            });
+
+            if (recovered) {
+              return;
+            }
+
+            clearLocalAuthStorage();
+            setProfileStatus("idle");
+            setAuthState(createUnauthenticatedAuthState());
+            return;
+          }
+
           setAuthState(createAuthErrorState(message));
         });
 
@@ -198,7 +272,18 @@ export function AuthProvider({
   }, [authRetryKey]);
 
   useEffect(() => {
-    if (authState.status === "loading" || authState.status === "error") {
+    if (authState.status === "loading") {
+      return;
+    }
+
+    if (authState.status === "error") {
+      if (!isLoginRoute && shouldResetSessionAfterAuthError(authState.error)) {
+        resetBrokenSessionToLogin({
+          setAuthState,
+          setProfileStatus,
+        });
+      }
+
       return;
     }
 
@@ -438,10 +523,21 @@ export function AuthProvider({
   }
 
   if (authState.status === "error" && !isLoginRoute) {
+    const authGateMessage = getAuthGateMessage(authState);
+    const shouldResetSession = shouldResetSessionAfterAuthError(authGateMessage);
+
     return (
       <AuthGateMessage
-        message={getAuthGateMessage(authState)}
+        message={authGateMessage}
         onRetry={() => {
+          if (shouldResetSession) {
+            resetBrokenSessionToLogin({
+              setAuthState,
+              setProfileStatus,
+            });
+            return;
+          }
+
           setAuthRetryKey((currentKey) => currentKey + 1);
         }}
         onSignOut={() => {
@@ -603,6 +699,87 @@ async function signInViaApiFallback({
       error: message,
       ok: false,
     };
+  }
+}
+
+async function recoverHubSessionViaApiFallback({
+  client,
+  isMounted,
+  setAuthState,
+  setProfileStatus,
+}: {
+  client: SupabaseClient;
+  isMounted: () => boolean;
+  setAuthState: (state: AuthState) => void;
+  setProfileStatus: (status: AuthContextValue["profileStatus"]) => void;
+}) {
+  const cachedSession = getCachedSupabaseSessionFromStorage();
+
+  if (!cachedSession) {
+    logSupabaseDiagnostic("auth", "session api recovery skipped", {
+      endpoint: "/api/auth/session",
+      reason: "cached session missing",
+    });
+    return false;
+  }
+
+  try {
+    logSupabaseDiagnostic("auth", "session api recovery start", {
+      endpoint: "/api/auth/session",
+      function: "recoverHubSessionViaApiFallback",
+    });
+
+    const response = await withMeasuredTimeout(
+      fetch("/api/auth/session", {
+        body: JSON.stringify(cachedSession),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      }),
+      "Tempo excedido ao recuperar a sessao pelo servidor.",
+      "session",
+      20_000,
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | SessionRecoveryResponse
+      | null;
+
+    if (!response.ok || !payload?.profile) {
+      logSupabaseDiagnostic("auth", "session api recovery error", {
+        endpoint: "/api/auth/session",
+        response: payload,
+        status: response.status,
+        statusText: response.statusText,
+      });
+      return false;
+    }
+
+    if (!isMounted()) {
+      return true;
+    }
+
+    setAuthState(
+      createAuthStateFromSession(
+        createAuthSessionFromRecoveredProfile(payload.profile, payload.session),
+      ),
+    );
+    setProfileStatus("ready");
+    syncRecoveredSupabaseSession(client, payload.session);
+
+    logSupabaseDiagnostic("auth", "session api recovery done", {
+      endpoint: "/api/auth/session",
+      role: payload.profile.role,
+      userId: payload.profile.id,
+    });
+
+    return true;
+  } catch (error) {
+    logSupabaseDiagnostic("auth", "session api recovery error", {
+      endpoint: "/api/auth/session",
+      error: serializeDiagnosticError(error),
+    });
+    return false;
   }
 }
 
@@ -893,6 +1070,165 @@ function createAuthSessionFromProfile(
   };
 }
 
+function createAuthSessionFromRecoveredProfile(
+  profile: HubProfileRow,
+  session?: SessionRecoveryResponse["session"],
+): AuthSession {
+  return {
+    accessToken:
+      typeof session?.access_token === "string"
+        ? session.access_token
+        : undefined,
+    expiresAt: normalizeRecoveredExpiresAt(session),
+    provider: "supabase",
+    user: {
+      avatarUrl: profile.avatar_url ?? undefined,
+      email: profile.email,
+      fullName: profile.display_name,
+      id: profile.id,
+      permissions: getPermissionsForRole(profile.role),
+      role: profile.role,
+      status: profile.status,
+      workspaceId: "careli",
+    },
+  };
+}
+
+function normalizeRecoveredExpiresAt(
+  session?: SessionRecoveryResponse["session"],
+) {
+  if (typeof session?.expires_at === "number") {
+    return new Date(session.expires_at * 1000).toISOString();
+  }
+
+  if (typeof session?.expires_at === "string" && session.expires_at.trim()) {
+    const numericValue = Number(session.expires_at);
+
+    if (Number.isFinite(numericValue)) {
+      return new Date(numericValue * 1000).toISOString();
+    }
+
+    return session.expires_at;
+  }
+
+  if (typeof session?.expires_in === "number") {
+    return new Date(Date.now() + session.expires_in * 1000).toISOString();
+  }
+
+  return undefined;
+}
+
+function syncRecoveredSupabaseSession(
+  client: SupabaseClient,
+  session?: SessionRecoveryResponse["session"],
+) {
+  if (
+    typeof session?.access_token !== "string" ||
+    typeof session.refresh_token !== "string"
+  ) {
+    return;
+  }
+
+  void withMeasuredTimeout(
+    client.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    }),
+    "Tempo excedido ao sincronizar a sessao Supabase.",
+    "session",
+    8_000,
+  ).catch((error: unknown) => {
+    logSupabaseDiagnostic("auth", "session sync error", {
+      error: serializeDiagnosticError(error),
+      function: "syncRecoveredSupabaseSession",
+      supabase: getHubSupabaseDiagnostics(),
+    });
+  });
+}
+
+function getCachedSupabaseSessionFromStorage(): CachedSupabaseSession | null {
+  const storageKey = getSupabaseAuthStorageKey(hubSupabaseConfig.url);
+  const candidateKeys = new Set<string>();
+
+  if (storageKey) {
+    candidateKeys.add(storageKey);
+  }
+
+  const projectRef = getSupabaseProjectRef(hubSupabaseConfig.url);
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+
+    if (
+      key &&
+      (key.includes("auth-token") ||
+        key.includes("supabase") ||
+        Boolean(projectRef && key.includes(projectRef)))
+    ) {
+      candidateKeys.add(key);
+    }
+  }
+
+  for (const key of candidateKeys) {
+    const rawSession = window.localStorage.getItem(key);
+
+    if (!rawSession) {
+      continue;
+    }
+
+    try {
+      const parsedSession = JSON.parse(rawSession) as unknown;
+      const session = extractCachedSupabaseSession(parsedSession);
+
+      if (session?.accessToken || session?.refreshToken) {
+        logSupabaseDiagnostic("auth", "cached session found", {
+          key: maskStorageKey(key),
+        });
+        return session;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function extractCachedSupabaseSession(
+  input: unknown,
+): CachedSupabaseSession | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const maybeSession = input as {
+    access_token?: unknown;
+    currentSession?: unknown;
+    refresh_token?: unknown;
+    session?: unknown;
+  };
+  const nestedSession =
+    extractCachedSupabaseSession(maybeSession.currentSession) ??
+    extractCachedSupabaseSession(maybeSession.session);
+  const accessToken =
+    typeof maybeSession.access_token === "string"
+      ? maybeSession.access_token
+      : nestedSession?.accessToken;
+  const refreshToken =
+    typeof maybeSession.refresh_token === "string"
+      ? maybeSession.refresh_token
+      : nestedSession?.refreshToken;
+
+  if (!accessToken && !refreshToken) {
+    return null;
+  }
+
+  return {
+    accessToken,
+    refreshToken,
+  };
+}
+
 function getUserMetadataString(user: User, key: string): string | undefined {
   const value = user.user_metadata[key] ?? user.app_metadata[key];
 
@@ -952,17 +1288,29 @@ function clearLocalAuthStorage() {
 }
 
 function getSupabaseAuthStorageKey(url?: string) {
+  const projectRef = getSupabaseProjectRef(url);
+
+  return projectRef ? `sb-${projectRef}-auth-token` : null;
+}
+
+function getSupabaseProjectRef(url?: string) {
   if (!url?.trim()) {
     return null;
   }
 
   try {
-    const projectRef = new URL(url).hostname.split(".")[0];
-
-    return projectRef ? `sb-${projectRef}-auth-token` : null;
+    return new URL(url).hostname.split(".")[0] || null;
   } catch {
     return null;
   }
+}
+
+function maskStorageKey(key: string) {
+  if (key.length <= 12) {
+    return key;
+  }
+
+  return `${key.slice(0, 6)}...${key.slice(-6)}`;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -1052,6 +1400,39 @@ function isLocalDevelopmentRuntime(): boolean {
 
 function getAuthGateMessage(authState: AuthState): string {
   return getFriendlyAuthMessage(authState.error, authState.errorDetails);
+}
+
+function shouldResetSessionAfterAuthError(error?: string) {
+  const normalizedError = (error ?? "").trim().toLowerCase();
+
+  return (
+    normalizedError.includes("failed to fetch") ||
+    normalizedError.includes("fetch failed") ||
+    normalizedError.includes("network request failed") ||
+    normalizedError.includes("networkerror") ||
+    normalizedError.includes("nao foi possivel conectar ao supabase") ||
+    normalizedError.includes("não foi possível conectar ao supabase") ||
+    normalizedError.includes("supabase network unavailable") ||
+    normalizedError.includes("supabase_network_unavailable") ||
+    (normalizedError.includes("tempo excedido") &&
+      normalizedError.includes("supabase"))
+  );
+}
+
+function resetBrokenSessionToLogin({
+  setAuthState,
+  setProfileStatus,
+}: {
+  setAuthState: (state: AuthState) => void;
+  setProfileStatus: (status: AuthContextValue["profileStatus"]) => void;
+}) {
+  clearLocalAuthStorage();
+  setProfileStatus("idle");
+  setAuthState(createUnauthenticatedAuthState());
+
+  if (window.location.pathname !== "/login") {
+    window.location.assign("/login");
+  }
 }
 
 function getFriendlyAuthMessage(

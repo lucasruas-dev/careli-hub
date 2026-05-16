@@ -7,6 +7,8 @@ const allPermissions = [
   "setup:manage",
   "guardian:view",
   "guardian:manage",
+  "caredesk:view",
+  "caredesk:manage",
   "pulsex:view",
   "pulsex:manage",
   "agenda:view",
@@ -26,6 +28,7 @@ export const rolePermissionMatrix = {
   leader: [
     "hub:view",
     "guardian:view",
+    "caredesk:view",
     "pulsex:view",
     "agenda:view",
     "agenda:manage",
@@ -40,6 +43,7 @@ export const rolePermissionMatrix = {
   operator: [
     "hub:view",
     "guardian:view",
+    "caredesk:view",
     "pulsex:view",
     "agenda:view",
     "drive:view",
@@ -49,6 +53,7 @@ export const rolePermissionMatrix = {
   viewer: [
     "hub:view",
     "guardian:view",
+    "caredesk:view",
     "pulsex:view",
     "agenda:view",
     "drive:view",

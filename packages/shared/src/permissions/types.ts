@@ -9,6 +9,8 @@ export type HubPermission =
   | "setup:manage"
   | "guardian:view"
   | "guardian:manage"
+  | "caredesk:view"
+  | "caredesk:manage"
   | "pulsex:view"
   | "pulsex:manage"
   | "agenda:view"

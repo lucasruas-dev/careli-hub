@@ -49,12 +49,13 @@ button {
   --uix-text-secondary: #dce2ea;
   --uix-text-muted: #a5afbd;
   --uix-border-subtle: rgb(255 255 255 / 0.075);
-  border-right-color: #252a35;
-  background: #101820;
+  border-right-color: #2a2b32;
+  background: #343541;
   box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.035);
 }
 
 .careli-hub-shell .uix-sidebar-item {
+  position: relative;
   color: #c9d1dc;
 }
 
@@ -64,9 +65,20 @@ button {
 }
 
 .careli-hub-shell .uix-sidebar-item[data-active="true"] {
-  border-color: rgb(160 124 59 / 0.55);
-  background: rgb(160 124 59 / 0.18);
+  border-color: transparent;
+  background: #2a2b32;
   color: #ffffff;
+}
+
+.careli-hub-shell .uix-sidebar-item[data-active="true"]::before {
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  width: 0.125rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  background: #a07c3b;
+  content: "";
 }
 
 .careli-hub-shell .uix-sidebar-item__badge {

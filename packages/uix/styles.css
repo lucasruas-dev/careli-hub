@@ -1376,8 +1376,8 @@
   max-width: 100%;
   flex-direction: column;
   overflow-x: hidden;
-  border-right: 1px solid #203b5a;
-  background: #10243a;
+  border-right: 1px solid #2a2b32;
+  background: #343541;
   color: #f7f8fa;
 }
 
@@ -1400,8 +1400,8 @@
   inset: 3.75rem auto 0 0;
   z-index: var(--uix-z-sticky);
   width: 3.5rem;
-  border-right-color: #242833;
-  background: #0b0d11;
+  border-right-color: #2a2b32;
+  background: #343541;
   box-shadow:
     inset -1px 0 0 rgb(255 255 255 / 0.035),
     var(--uix-shadow-md);
@@ -1428,8 +1428,8 @@
 }
 
 .uix-app-shell[data-layout-mode="fullscreen"] .uix-sidebar-item[data-active="true"] {
-  border-color: rgb(160 124 59 / 0.65);
-  background: rgb(160 124 59 / 0.22);
+  border-color: transparent;
+  background: #2a2b32;
   color: #ffffff;
 }
 
@@ -1495,6 +1495,7 @@
 }
 
 .uix-sidebar-item {
+  position: relative;
   display: grid;
   min-height: var(--uix-density-control-height);
   min-width: 0;
@@ -1523,9 +1524,21 @@
 }
 
 .uix-sidebar-item[data-active="true"] {
-  background: color-mix(in srgb, var(--uix-color-brand-primary) 18%, #163554);
+  border-color: transparent;
+  background: #2a2b32;
   color: #ffffff;
   font-weight: var(--uix-font-weight-semibold);
+}
+
+.uix-sidebar-item[data-active="true"]::before {
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  width: 0.125rem;
+  height: 1.75rem;
+  border-radius: var(--uix-radius-full);
+  background: var(--uix-color-brand-primary);
+  content: "";
 }
 
 .uix-sidebar-item[data-collapsed="true"] {

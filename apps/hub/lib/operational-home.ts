@@ -76,7 +76,7 @@ export const operationalSectors: readonly Sector[] = [
   {
     departmentId: "dep-operations",
     id: "sec-desk",
-    name: "Desk",
+    name: "CareDesk",
     slug: "desk",
   },
   {
@@ -163,7 +163,7 @@ export const operationalTeam: readonly OperationalTeamMember[] = [
     lastSignal: "almoco",
     name: "Larissa Alves",
     profileRole: "op1",
-    roleLabel: "Desk",
+    roleLabel: "CareDesk",
     sectorId: "sec-desk",
     status: "lunch",
   },
@@ -196,9 +196,9 @@ export const operationalActivities: readonly OperationalActivity[] = [
     assigneeId: "user-gustavo",
     due: "09:40",
     id: "activity-desk-returns",
-    moduleId: "pulsex",
+    moduleId: "caredesk",
     status: "overdue",
-    title: "Retornos pendentes do Desk",
+    title: "Retornos pendentes do CareDesk",
   },
   {
     assigneeId: "user-nivea",

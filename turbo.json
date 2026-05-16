@@ -1,5 +1,15 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "globalEnv": [
+    "ASAAS_API_BASE_URL",
+    "ASAAS_API_KEY",
+    "D4SIGN_CRYPT_KEY",
+    "D4SIGN_TOKEN_API",
+    "GUARDIAN_SYNC_SECRET",
+    "HUB_AI_MODEL",
+    "OPENAI_API_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY"
+  ],
   "ui": "tui",
   "tasks": {
     "build": {

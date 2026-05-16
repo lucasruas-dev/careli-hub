@@ -38,11 +38,14 @@ import {
   ContactRound,
   FileText,
   FolderKanban,
+  Headphones,
+  Home,
   LogOut,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  ShieldCheck,
   ShoppingCart,
 } from "lucide-react";
 import {
@@ -56,7 +59,6 @@ import {
   orderedHubModules,
   type HubUserContext,
 } from "@repo/shared";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -71,23 +73,15 @@ const moduleIconMap: Record<string, ReactNode> = {
   agenda: <CalendarDays aria-hidden="true" size={18} />,
   compras: <ShoppingCart aria-hidden="true" size={18} />,
   contatos: <ContactRound aria-hidden="true" size={18} />,
+  caredesk: <Headphones aria-hidden="true" size={18} />,
   drive: <FolderKanban aria-hidden="true" size={18} />,
   financeiro: <CircleDollarSign aria-hidden="true" size={18} />,
-  guardian: (
-    <Image
-      alt=""
-      aria-hidden="true"
-      className="h-[1.125rem] w-[1.125rem] object-contain"
-      height={18}
-      src="/logog.png"
-      width={18}
-    />
-  ),
+  guardian: <ShieldCheck aria-hidden="true" size={18} />,
   pulsex: <MessageSquareText aria-hidden="true" size={18} />,
   setup: <Settings aria-hidden="true" size={18} />,
 };
 
-const minimumReleasedModuleIds = ["pulsex", "setup"] as const;
+const minimumReleasedModuleIds = ["guardian", "caredesk", "pulsex", "setup"] as const;
 
 export function HubShell({
   children,
@@ -237,9 +231,7 @@ export function HubShell({
         );
 
         minimumReleasedModuleIds.forEach((moduleId) => {
-          if (activeIds.size === 0 || activeIds.has(moduleId)) {
-            nextReleasedIds.add(moduleId);
-          }
+          nextReleasedIds.add(moduleId);
         });
 
         setReleasedModuleIds(nextReleasedIds);
@@ -580,22 +572,21 @@ export function HubShell({
           />
           <aside
             aria-label="Launcher de módulos"
-            className="fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-14 gap-2 rounded-lg border border-white/[0.08] bg-[#0b0d11] p-2 shadow-2xl"
+            className="fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-56 gap-2 rounded-lg border border-white/[0.08] bg-[#343541] p-2 shadow-2xl"
           >
             <Tooltip content="Careli Hub" placement="right">
               <Link
                 aria-label="Voltar para a Home do Hub"
-                className="grid h-10 w-10 place-items-center rounded-md border border-white/[0.08] bg-white/[0.04] outline-none transition hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                className="flex h-11 items-center gap-3 rounded-md border border-white/[0.08] bg-white/[0.04] px-2 text-[#d7dee8] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                 href="/"
+                onClick={() => setIsOperationalRailOpen(false)}
               >
-                <Image
-                  alt=""
-                  aria-hidden="true"
-                  className="h-8 w-8 object-contain"
-                  height={32}
-                  src="/logocbr.png"
-                  width={32}
-                />
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.06] text-[#A07C3B]">
+                  <Home aria-hidden="true" size={17} />
+                </span>
+                <span className="min-w-0 truncate text-sm font-semibold">
+                  Careli Hub
+                </span>
               </Link>
             </Tooltip>
             <div className="my-1 h-px bg-white/[0.08]" />
@@ -608,23 +599,39 @@ export function HubShell({
                 {item.disabled ? (
                   <button
                     aria-label={`${item.label} em preparacao`}
-                    className="relative grid h-10 w-10 cursor-not-allowed place-items-center rounded-md border border-transparent text-[#687386] opacity-60 outline-none"
+                    className="relative flex h-11 w-full cursor-not-allowed items-center gap-3 rounded-md border border-transparent px-2 text-[#687386] opacity-60 outline-none"
                     disabled
                     type="button"
                   >
-                    {item.icon}
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.04]">
+                      {item.icon}
+                    </span>
+                    <span className="min-w-0 truncate text-sm font-semibold">
+                      {item.label}
+                    </span>
                   </button>
                 ) : (
-                  <a
-                    aria-current={pathname === item.path ? "page" : undefined}
-                    className="relative grid h-10 w-10 place-items-center rounded-md border border-transparent text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] aria-[current=page]:border-[#A07C3B]/60 aria-[current=page]:bg-[#A07C3B]/20 aria-[current=page]:text-white"
+                  <Link
+                    aria-current={
+                      isShellPathActive(pathname, item.path) ? "page" : undefined
+                    }
+                    className="relative flex h-11 items-center gap-3 rounded-md border border-transparent px-2 text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] aria-[current=page]:bg-[#2A2B32] aria-[current=page]:text-white"
                     href={item.path}
+                    onClick={() => setIsOperationalRailOpen(false)}
                   >
-                    {item.icon}
-                    {item.badge ? (
-                      <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-[#0b0d11] bg-[#A07C3B]" />
+                    {isShellPathActive(pathname, item.path) ? (
+                      <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
                     ) : null}
-                  </a>
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.055] text-[#d7dee8]">
+                      {item.icon}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                      {item.label}
+                    </span>
+                    {item.badge ? (
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#A07C3B]" />
+                    ) : null}
+                  </Link>
                 )}
               </Tooltip>
             ))}
@@ -632,13 +639,18 @@ export function HubShell({
             <Tooltip content="Sair" placement="right">
               <button
                 aria-label="Sair"
-                className="grid h-10 w-10 place-items-center rounded-md border border-transparent text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                className="flex h-11 w-full items-center gap-3 rounded-md border border-transparent px-2 text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                 onClick={() => {
                   void signOut();
                 }}
                 type="button"
               >
-                <LogOut aria-hidden="true" size={17} />
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.055]">
+                  <LogOut aria-hidden="true" size={17} />
+                </span>
+                <span className="min-w-0 truncate text-sm font-semibold">
+                  Sair
+                </span>
               </button>
             </Tooltip>
           </aside>
@@ -772,6 +784,14 @@ function getInitials(name: string) {
 
 function isLocalhostRuntime() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
+function isShellPathActive(pathname: string, itemPath: string) {
+  if (itemPath === "/") {
+    return pathname === "/";
+  }
+
+  return pathname === itemPath || pathname.startsWith(`${itemPath}/`);
 }
 
 function canOpenShellModule(

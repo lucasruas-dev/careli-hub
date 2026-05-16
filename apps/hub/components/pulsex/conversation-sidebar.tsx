@@ -105,8 +105,8 @@ export function ConversationSidebar({
   }
 
   return (
-    <aside className="flex h-full flex-col overflow-hidden border-l border-white/[0.035] border-r border-[#252a35] bg-[#101820] shadow-[inset_1px_0_0_rgb(255_255_255_/_0.035)]">
-      <div className="shrink-0 border-b border-white/[0.075] bg-[#101820] px-4 py-3">
+    <aside className="flex h-full flex-col overflow-hidden border-l border-white/[0.035] border-r border-[#2A2B32] bg-[#343541] shadow-[inset_1px_0_0_rgb(255_255_255_/_0.035)]">
+      <div className="shrink-0 border-b border-white/[0.075] bg-[#343541] px-4 py-3">
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2">
           <Tooltip content="Abrir modulos" placement="bottom">
             <button
@@ -172,7 +172,7 @@ export function ConversationSidebar({
             )}
           </button>
           {isFilterOpen ? (
-            <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-white/[0.085] bg-[#121b26] py-1 shadow-xl">
+            <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-white/[0.085] bg-[#2A2B32] py-1 shadow-xl">
               {messageFilters.map((filter) => (
                 <button
                   className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-[#c9d1dc] outline-none transition hover:bg-white/[0.065] hover:text-white focus-visible:bg-white/[0.065] data-[active=true]:text-white"
