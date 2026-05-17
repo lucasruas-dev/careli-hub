@@ -44,6 +44,13 @@ export type GuardianDistributionBucket = {
   total: number;
 };
 
+export type GuardianEnterpriseDistributions = {
+  billingComposition: GuardianDistributionBucket[];
+  enterpriseName: string;
+  generatedAt: string;
+  overdueAging: GuardianDistributionBucket[];
+};
+
 export type GuardianEnterprisePerformance = {
   delinquencyBaseAmount: number;
   enterpriseName: string;
@@ -144,6 +151,10 @@ type DistributionRow = RowDataPacket & {
   label: string;
   sort_order: number | string;
   total: number | string;
+};
+
+type EnterpriseDistributionRow = DistributionRow & {
+  enterprise_name: string;
 };
 
 type EnterprisePerformanceRow = RowDataPacket & {
@@ -258,6 +269,103 @@ const validEnterpriseWhere = `
     and upper(trim(coalesce(e.code, ''))) not in ('LBR', 'LBP', 'LBF')
   )
 `;
+
+const overdueAgingLabels = [
+  "1 a 15 dias",
+  "16 a 30 dias",
+  "31 a 60 dias",
+  "61 a 90 dias",
+  "90+ dias",
+];
+
+const billingCompositionLabels = ["Ato", "Sinal", "Parcela"];
+
+export async function loadGuardianEnterpriseDistributions(
+  enterpriseName: string,
+): Promise<
+  | { data: GuardianEnterpriseDistributions; ok: true }
+  | { missing: string[]; ok: false }
+> {
+  const poolResult = getGuardianDbPool();
+
+  if (!poolResult.ok) {
+    return poolResult;
+  }
+
+  const { pool } = poolResult;
+  const [overdueAgingResult, billingCompositionResult] = await Promise.all([
+    pool.query<EnterpriseDistributionRow[]>(`
+      select bucket.enterprise_name, bucket.label, count(*) as total, bucket.sort_order
+      from (
+        select
+          ${enterpriseDisplayExpression} as enterprise_name,
+          case
+            when datediff(curdate(), p.due_date) between 1 and 15 then '1 a 15 dias'
+            when datediff(curdate(), p.due_date) between 16 and 30 then '16 a 30 dias'
+            when datediff(curdate(), p.due_date) between 31 and 60 then '31 a 60 dias'
+            when datediff(curdate(), p.due_date) between 61 and 90 then '61 a 90 dias'
+            else '90+ dias'
+          end as label,
+          case
+            when datediff(curdate(), p.due_date) between 1 and 15 then 1
+            when datediff(curdate(), p.due_date) between 16 and 30 then 2
+            when datediff(curdate(), p.due_date) between 31 and 60 then 3
+            when datediff(curdate(), p.due_date) between 61 and 90 then 4
+            else 5
+          end as sort_order
+        from payments p
+        left join acquisition_requests ar on ar.id = p.acquisition_request_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where p.payment_status_id = 7
+          and p.due_date is not null
+          and ${activePaymentWhere}
+          and ${validEnterpriseWhere}
+      ) bucket
+      group by bucket.enterprise_name, bucket.label, bucket.sort_order
+      order by bucket.enterprise_name asc, bucket.sort_order asc
+    `),
+    pool.query<EnterpriseDistributionRow[]>(`
+      select
+        ${enterpriseDisplayExpression} as enterprise_name,
+        pt.name as label,
+        count(p.id) as total,
+        pt.id as sort_order
+      from payments p
+      left join parcel_types pt on pt.id = p.parcel_type_id
+      left join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where pt.id in (1, 2, 3)
+        and p.payment_status_id in (5, 6, 7)
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+      group by enterprise_name, pt.id, pt.name
+      order by enterprise_name asc, pt.id asc
+    `),
+  ]);
+  const filteredAgingRows = filterEnterpriseDistributionRows(
+    overdueAgingResult[0],
+    enterpriseName,
+  );
+  const filteredCompositionRows = filterEnterpriseDistributionRows(
+    billingCompositionResult[0],
+    enterpriseName,
+  );
+
+  return {
+    data: {
+      billingComposition: completeDistribution(
+        filteredCompositionRows,
+        billingCompositionLabels,
+      ),
+      enterpriseName,
+      generatedAt: new Date().toISOString(),
+      overdueAging: completeDistribution(filteredAgingRows, overdueAgingLabels),
+    },
+    ok: true,
+  };
+}
 
 export async function loadGuardianOverview(): Promise<
   | { data: GuardianOverviewSnapshot; ok: true }
@@ -543,13 +651,7 @@ export async function loadGuardianOverview(): Promise<
       ),
       generatedAt: new Date().toISOString(),
       overduePayments: overduePaymentResult[0].map(mapPayment),
-      overdueAging: completeDistribution(overdueAgingResult[0], [
-        "1 a 15 dias",
-        "16 a 30 dias",
-        "31 a 60 dias",
-        "61 a 90 dias",
-        "90+ dias",
-      ]),
+      overdueAging: completeDistribution(overdueAgingResult[0], overdueAgingLabels),
       paymentStatuses: paymentStatusResult[0].map(mapPaymentStatus),
       recentProposals: recentProposalResult[0].map(mapProposal),
       signatureQueue: signatureQueueResult[0].map(mapSignature),
@@ -610,6 +712,17 @@ function completeDistribution(rows: DistributionRow[], labels: string[]) {
     label,
     total: totalsByLabel.get(label) ?? 0,
   }));
+}
+
+function filterEnterpriseDistributionRows(
+  rows: EnterpriseDistributionRow[],
+  enterpriseName: string,
+) {
+  const targetName = formatEnterpriseName(enterpriseName);
+
+  return rows.filter(
+    (row) => formatEnterpriseName(row.enterprise_name) === targetName,
+  );
 }
 
 function mapEnterprisePerformance(

@@ -1,9 +1,26 @@
 "use client";
 
 import { getHubSupabaseClient } from "@/lib/supabase/client";
-import type { GuardianOverviewSnapshot } from "@/lib/guardian/overview";
+import type {
+  GuardianEnterpriseDistributions,
+  GuardianOverviewSnapshot,
+} from "@/lib/guardian/overview";
 
 export async function getGuardianOverviewSnapshot(): Promise<GuardianOverviewSnapshot> {
+  return fetchGuardianOverviewData<GuardianOverviewSnapshot>("/api/guardian/overview");
+}
+
+export async function getGuardianOverviewEnterpriseDistributions(
+  enterpriseName: string,
+): Promise<GuardianEnterpriseDistributions> {
+  const params = new URLSearchParams({ enterprise: enterpriseName });
+
+  return fetchGuardianOverviewData<GuardianEnterpriseDistributions>(
+    `/api/guardian/overview?${params.toString()}`,
+  );
+}
+
+async function fetchGuardianOverviewData<Result>(url: string): Promise<Result> {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -17,14 +34,14 @@ export async function getGuardianOverviewSnapshot(): Promise<GuardianOverviewSna
     throw new Error("Sessao administrativa ausente.");
   }
 
-  const response = await fetch("/api/guardian/overview", {
+  const response = await fetch(url, {
     cache: "no-store",
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
   });
   const payload = (await response.json().catch(() => null)) as
-    | { data?: GuardianOverviewSnapshot; error?: string }
+    | { data?: Result; error?: string }
     | null;
 
   if (!response.ok || !payload?.data) {

@@ -20,9 +20,13 @@ import { KpiCard } from "@/components/guardian/dashboard/KpiCard";
 import { MainLayout } from "@/components/guardian/layout/MainLayout";
 import type {
   GuardianDistributionBucket,
+  GuardianEnterpriseDistributions,
   GuardianEnterprisePerformance,
 } from "@/lib/guardian/overview";
-import { getGuardianOverviewSnapshot } from "@/lib/guardian/overview-client";
+import {
+  getGuardianOverviewEnterpriseDistributions,
+  getGuardianOverviewSnapshot,
+} from "@/lib/guardian/overview-client";
 import { guardianMockClients } from "@/modules/guardian/guardianMockData";
 
 type DashboardKpiId =
@@ -175,6 +179,13 @@ export default function GuardianPage() {
   const [dateEnd, setDateEnd] = useState("");
   const [selectedKpi, setSelectedKpi] = useState<DashboardKpiId | null>(null);
   const [realKpis, setRealKpis] = useState<RealGuardianKpis | null>(null);
+  const [enterpriseDistributions, setEnterpriseDistributions] = useState<
+    Record<string, GuardianEnterpriseDistributions>
+  >({});
+  const [enterpriseDistributionLoading, setEnterpriseDistributionLoading] =
+    useState<string | null>(null);
+  const [enterpriseDistributionError, setEnterpriseDistributionError] =
+    useState<string | null>(null);
   const [realKpisError, setRealKpisError] = useState<string | null>(null);
   const [expandedPanels, setExpandedPanels] = useState<Record<DashboardPanelId, boolean>>({
     financial: true,
@@ -239,6 +250,69 @@ export default function GuardianPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const selectedEnterpriseName =
+      enterprise === "Todos"
+        ? null
+        : realKpis?.enterprisePerformance.find((item) => item.enterpriseName === enterprise)
+            ?.enterpriseName ?? null;
+
+    if (!selectedEnterpriseName) {
+      setEnterpriseDistributionError(null);
+      setEnterpriseDistributionLoading(null);
+      return;
+    }
+
+    if (enterpriseDistributions[selectedEnterpriseName]) {
+      setEnterpriseDistributionError(null);
+      setEnterpriseDistributionLoading(null);
+      return;
+    }
+
+    const enterpriseToLoad = selectedEnterpriseName;
+    let isMounted = true;
+    setEnterpriseDistributionLoading(enterpriseToLoad);
+    setEnterpriseDistributionError(null);
+
+    async function loadEnterpriseDistributions() {
+      try {
+        const distributions = await getGuardianOverviewEnterpriseDistributions(
+          enterpriseToLoad,
+        );
+
+        if (!isMounted) {
+          return;
+        }
+
+        setEnterpriseDistributions((current) => ({
+          ...current,
+          [enterpriseToLoad]: distributions,
+        }));
+        setEnterpriseDistributionError(null);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setEnterpriseDistributionError(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel carregar o recorte do empreendimento.",
+        );
+      } finally {
+        if (isMounted) {
+          setEnterpriseDistributionLoading(null);
+        }
+      }
+    }
+
+    void loadEnterpriseDistributions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [enterprise, enterpriseDistributions, realKpis]);
+
   const filtered = useMemo(
     () =>
       contracts.filter((item) => {
@@ -283,8 +357,22 @@ export default function GuardianPage() {
       : "carregando dados reais";
   const financialEnterpriseRows =
     realKpis?.enterprisePerformance ?? [];
-  const overdueAgingRows = realKpis?.overdueAging ?? [];
-  const billingCompositionRows = realKpis?.billingComposition ?? [];
+  const selectedEnterpriseDistributions = selectedEnterprisePerformance
+    ? enterpriseDistributions[selectedEnterprisePerformance.enterpriseName] ?? null
+    : null;
+  const isLoadingEnterpriseDistributions =
+    selectedEnterprisePerformance?.enterpriseName === enterpriseDistributionLoading;
+  const distributionEmptyMessage = isLoadingEnterpriseDistributions
+    ? "Carregando recorte do empreendimento."
+    : enterpriseDistributionError
+      ? "Nao foi possivel carregar o recorte do empreendimento."
+      : "Aguardando dados reais do C2X.";
+  const overdueAgingRows = selectedEnterprisePerformance
+    ? selectedEnterpriseDistributions?.overdueAging ?? []
+    : realKpis?.overdueAging ?? [];
+  const billingCompositionRows = selectedEnterprisePerformance
+    ? selectedEnterpriseDistributions?.billingComposition ?? []
+    : realKpis?.billingComposition ?? [];
   const financialEnterpriseOptions = useMemo(
     () => [
       "Todos",
@@ -425,8 +513,16 @@ export default function GuardianPage() {
               onSelect={(value) => setEnterprise((current) => (current === value ? "Todos" : value))}
             />
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-1">
-              <DistributionCard title="Aging da inadimplência" data={overdueAgingRows} />
-              <DistributionCard title="Composição da cobrança" data={billingCompositionRows} />
+              <DistributionCard
+                title="Aging da inadimplência"
+                data={overdueAgingRows}
+                emptyMessage={distributionEmptyMessage}
+              />
+              <DistributionCard
+                title="Composição da cobrança"
+                data={billingCompositionRows}
+                emptyMessage={distributionEmptyMessage}
+              />
             </div>
           </section>
         </DashboardPanel>
@@ -1130,9 +1226,11 @@ function getRatio(value: number, total: number) {
 function DistributionCard({
   title,
   data,
+  emptyMessage = "Aguardando dados reais do C2X.",
 }: {
   title: string;
   data: GuardianDistributionBucket[];
+  emptyMessage?: string;
 }) {
   const total = Math.max(
     data.reduce((subtotal, item) => subtotal + item.total, 0),
@@ -1159,7 +1257,7 @@ function DistributionCard({
           })
         ) : (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
-            Aguardando dados reais do C2X.
+            {emptyMessage}
           </div>
         )}
       </div>

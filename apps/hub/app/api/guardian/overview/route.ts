@@ -2,7 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { sanitizeGuardianDbError } from "@/lib/guardian/db";
-import { loadGuardianOverview } from "@/lib/guardian/overview";
+import {
+  loadGuardianEnterpriseDistributions,
+  loadGuardianOverview,
+} from "@/lib/guardian/overview";
 import { loadGuardianOverviewReadModel } from "@/lib/guardian/read-model";
 
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
@@ -39,6 +42,27 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const enterpriseName = request.nextUrl.searchParams.get("enterprise")?.trim();
+
+    if (enterpriseName && enterpriseName !== "Todos") {
+      const enterpriseResult = await loadGuardianEnterpriseDistributions(enterpriseName);
+
+      if (!enterpriseResult.ok) {
+        return NextResponse.json(
+          {
+            error: "Configure a conexao server-side do Guardian.",
+            missing: enterpriseResult.missing,
+          },
+          { status: 503 },
+        );
+      }
+
+      return NextResponse.json({
+        data: enterpriseResult.data,
+        source: "guardian-db",
+      });
+    }
+
     const readModelSnapshot = await loadGuardianOverviewReadModel();
 
     if (readModelSnapshot) {
