@@ -2602,3 +2602,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: release consolidada tem blast radius maior que um hotfix isolado; PulseX chamadas/realtime ainda deve ser validado em dois usuarios/duas maquinas; D4Sign depende de `SUPABASE_SERVICE_ROLE_KEY`, `D4SIGN_TOKEN_API` e `D4SIGN_CRYPT_KEY` no ambiente de producao; build segue com warning conhecido do Turbopack/NFT envolvendo leitura filesystem do Engineering Operations pela rota SquadOps.
 - Status operacional: `AGUARDANDO DEPLOY`.
 - Proxima squad recomendada: `Hub ReleaseOps` para executar deploy Vercel, healthchecks de producao e registro final.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy producao consolidado 03cc036`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 13:10:09 -03:00.
+- Tipo da alteracao: `RELEASE` - deploy de producao e healthcheck pos-deploy.
+- Motivo da mudanca: concluir a publicacao autorizada por Lucas para o pacote consolidado commitado em `03cc036`.
+- Arquivos/modulos afetados: producao Vercel `https://c2x.app.br`; deployment `dpl_snNqKxnEji6kbz54roX9fRkktTkA`; HubOps/SquadOps, PulseX, Hub Shell, Guardian/D4Sign e Engineering Operations.
+- Como foi feito: executei deploy de producao via Vercel CLI a partir do workspace limpo apos commit, aguardei estado `READY`, confirmei alias de producao e rodei healthchecks HTTP, Supabase Auth, Guardian DB, endpoints protegidos e logs recentes da Vercel.
+- Logica utilizada: ReleaseOps publicou somente depois de commit e validacoes locais. Os endpoints protegidos foram considerados saudaveis quando retornaram 401/405 sem sessao ou metodo invalido esperado, enquanto rotas publicas e healthchecks tecnicos retornaram 200.
+- Validacao executada: Vercel env ls confirmou variaveis de producao criptografadas para Supabase, Guardian DB, D4Sign, Asaas e OpenAI; `npx.cmd vercel deploy --prod --yes` concluiu `READY`; `npx.cmd vercel inspect` confirmou target `production` e aliases `https://c2x.app.br` e URLs Vercel; `npx.cmd vercel logs --since 10m` nao exibiu erro critico, apenas healthchecks 200 e respostas protegidas esperadas.
+- Resultado dos healthchecks: `GET /`, `/login`, `/pulsex`, `/squadops`, `/guardian` e `/guardian/atendimento` retornaram 200; `GET /api/guardian/db/health` retornou 200 com `status=connected` no banco `prod_careli`; `GET /api/squadops/operations` retornou 200; Supabase Auth `auth/v1/health` retornou 200; `POST /api/squadops/copilot` sem sessao retornou 401 esperado; `GET /api/hub/home`, `/api/guardian/overview`, `/api/hub/presence` e `/api/pulsex/messages` sem sessao retornaram 401 esperado; `GET /api/squadops/copilot` e `GET /api/auth/session` retornaram 405 esperado; rota D4Sign sem bearer retornou 401 esperado.
+- Resumo macro: release consolidada levou para producao o Operations Center/HubOps com leitura do Engineering Operations e PO AI, refinamentos de prompts e timeline, ajustes de launcher/shell, melhorias PulseX de chamada/sidebar/notificacoes/mensagens, endurecimento server-side da rota D4Sign e refinamentos visuais Guardian.
+- Pendencias ou riscos conhecidos: warning de build Turbopack/NFT em SquadOps permanece conhecido; Vercel alertou `npm audit` com 1 vulnerabilidade moderada e 1 alta; Vercel/Turbo alertou variaveis de ambiente nao declaradas em `turbo.json`; Node `engines >=18` pode auto-atualizar em major futuro; PulseX chamada/realtime ainda precisa validacao real multiusuario; D4Sign real depende de teste autenticado com contrato valido.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps` para monitoramento pos-deploy e `Hub ReleaseOps` para separar/acompanhar riscos tecnicos de `turbo.json`, auditoria npm e warning NFT.
