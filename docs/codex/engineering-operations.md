@@ -2619,3 +2619,185 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: warning de build Turbopack/NFT em SquadOps permanece conhecido; Vercel alertou `npm audit` com 1 vulnerabilidade moderada e 1 alta; Vercel/Turbo alertou variaveis de ambiente nao declaradas em `turbo.json`; Node `engines >=18` pode auto-atualizar em major futuro; PulseX chamada/realtime ainda precisa validacao real multiusuario; D4Sign real depende de teste autenticado com contrato valido.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para monitoramento pos-deploy e `Hub ReleaseOps` para separar/acompanhar riscos tecnicos de `turbo.json`, auditoria npm e warning NFT.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Correcao de vazamento dos cards no Operations Center`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 16:01:22 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL`.
+- Motivo da mudanca: Lucas reportou que o layout da visao geral do HubOps ficou quebrado, com cards da coluna `Agora precisa de atencao` vazando por baixo da timeline `Ultimos movimentos`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: ajustei a grade principal da visao geral para manter a coluna de atencao como painel compacto, adicionei `min-w-0`, `overflow-hidden`, `w-full` e limites de largura nos cards, badges e textos longos, alem de rolagem interna na lista de atencao.
+- Logica utilizada: os registros do Engineering Operations podem gerar assuntos, status e resumos longos; por isso cada card precisa conter seu proprio conteudo, truncar ou quebrar texto dentro do limite e nunca forcar a coluna a invadir a area da timeline.
+- Validacao executada: `npm.cmd run check-types:hub`; `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops`; smoke HTTP de `http://localhost:3001/api/squadops/operations`.
+- Pendencias ou riscos conhecidos: validacao visual automatizada nao foi executada porque Playwright/Chromium nao esta instalado no ambiente local disponivel; Lucas deve atualizar a aba (`Ctrl+F5` se necessario) para confirmar visualmente na sessao autenticada. O build segue passando com o warning conhecido Turbopack/NFT da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o hotfix visual e organizar publicacao.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Restricao de acesso ao perfil adm`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 16:12:51 -03:00.
+- Tipo da alteracao: `SEGURANCA/CONTROLE DE ACESSO`.
+- Motivo da mudanca: Lucas solicitou deixar a tela HubOps/SquadOps liberada somente para o perfil `adm`, por se tratar do Operations Center da engenharia IA e expor diario operacional, riscos, releases e PO AI.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/api/squadops/operations/route.ts`, `apps/hub/app/api/squadops/copilot/route.ts`, `apps/hub/lib/squadops/admin-access.ts`, `apps/hub/layouts/hub-shell.tsx`, `packages/shared/src/permissions/matrix.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: apliquei guarda client-side na tela HubOps usando o perfil autenticado do Hub, fechei as APIs internas de operations e PO AI com validacao server-side via Supabase service role, removi `squadops:view` dos perfis nao admin na matriz de permissoes e ajustei o sidebar do Hub para exibir/abrir HubOps apenas para admin/adm.
+- Logica utilizada: a restricao nao pode ser apenas visual; a rota da tela, o menu e as APIs que leem o Engineering Operations precisam usar a mesma regra operacional. `role=admin` e `operational_profile=adm` sao tratados como equivalentes para este acesso.
+- Validacao executada: `npm.cmd run build --workspace @repo/shared`; lint focado de HubOps, APIs e shell; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run check-types --workspace @repo/shared`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `/squadops` retornou 200; smoke sem sessao de `/api/squadops/operations` retornou 401 esperado; smoke sem sessao de `/api/squadops/copilot` retornou 401 esperado; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: confirmacao visual final deve ser feita com usuario nao admin e com usuario adm em sessao autenticada do Lucas. O build segue passando com o warning conhecido Turbopack/NFT da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar o hotfix de acesso restrito.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Correcao EADDRINUSE e EmptyState duplicado no HubOps`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 16:12:01 -03:00.
+- Tipo da alteracao: `TROUBLESHOOTING DEV LOCAL` - bloqueio de inicializacao do terminal.
+- Motivo da mudanca: Lucas reportou que `npm run dev` falhava com `EADDRINUSE` na porta `3001` e que a tela indicava build error por `the name EmptyState is defined multiple times` em `apps/hub/modules/squadops/SquadOpsPage.tsx`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: identifiquei processo `next dev --port 3001` ainda segurando a porta `3001`, corrigi a duplicidade de simbolo renomeando o import do UIX para `UixEmptyState` e preservei o helper local `EmptyState` usado pelos cards internos do HubOps. Depois encerrei a arvore local do dev server que ocupava a porta.
+- Logica utilizada: havia duas causas independentes. `EADDRINUSE` impedia iniciar outra instancia do Next porque ja existia listener ativo em `3001`; a duplicidade de `EmptyState` era erro de compilacao Ecmascript por conflito entre import nomeado do `@repo/uix` e funcao local homonima no mesmo modulo.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke temporario com `npm.cmd run dev` retornando `GET http://localhost:3001/squadops` 200 e verificacao final `PORT_3001_FREE`.
+- Pendencias ou riscos conhecidos: o build segue passando com o warning conhecido Turbopack/NFT da rota que le o diario operacional via filesystem. Como o dev server temporario foi encerrado ao final do smoke, Lucas pode executar `npm run dev` novamente no terminal.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub ReleaseOps` caso Lucas queira publicar o hotfix; `Hub SupportOps` para monitorar recorrencia de porta presa no dev local.
+
+Registro de diario:
+
+- Assunto: `[Operations Center] Database Monitoring realtime e Ops Watcher`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 16:40:07 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - monitoramento realtime controlado.
+- Motivo da mudanca: Lucas solicitou evoluir o HubOps/Operations Center para deixar de depender principalmente do Markdown no estado operacional realtime, passando a monitorar fontes reais como APIs internas, Supabase, healthchecks, Vercel quando disponivel, alertas, watcher e Ops Copilot.
+- Arquivos/modulos afetados: `apps/hub/lib/operations/data-sources.ts`, `apps/hub/lib/operations/monitoring.ts`, `apps/hub/app/api/operations/monitoring/route.ts`, `apps/hub/app/api/operations/watcher/route.ts`, `apps/hub/app/api/squadops/copilot/route.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/api/squadops/operations/route.ts`, `apps/hub/lib/squadops/admin-access.ts`, `apps/hub/layouts/hub-shell.tsx`, `packages/shared/src/permissions/matrix.ts` e este diario.
+- Como foi feito: criei camada server-side de fontes reais para checar C2X, Guardian queue com limites seguros `20` e `50`, APIs protegidas sem bearer, Supabase Auth/REST/Realtime e Vercel production quando houver URL configurada; criei consolidacao de snapshot, classificacao de tempo/payload/risco, geracao de alertas e decisao do Ops Watcher; expus APIs protegidas por perfil adm em `/api/operations/monitoring` e `/api/operations/watcher`; evolui o Ops Copilot para receber snapshot realtime como contexto complementar ao Engineering Operations; e adicionei a aba `Database Monitoring` na tela HubOps com cards, alertas, historico de checks, intervalo `10s/30s/60s/manual`, botao `Atualizar agora`, botao `Analisar agora` e copia de comando para agente.
+- Logica utilizada: o Markdown permanece como memoria viva, timeline e contexto historico, mas o estado operacional atual vem de checks reais. O polling padrao ficou em 30 segundos, sem chamada automatica para `limit=1000`, com timeouts por fonte e falha parcial tratada como metrica/alerta em vez de quebrar a tela. O watcher usa deduplicacao por `dedupeKey`, cooldown por criticidade e historico local de notificacoes para evitar ruido.
+- Validacao executada: lint focado dos arquivos de operations, watcher, monitoring, copilot e tela HubOps; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; smoke sem sessao de `/api/operations/monitoring`, `/api/operations/watcher` e `/api/squadops/copilot` retornou 401 esperado; `POST /api/operations/watcher` sem sessao retornou 401 esperado; `GET /api/guardian/db/health` retornou 200; Guardian queue `limit=20` e `limit=50` retornaram 200 sem chamar `limit=1000`; Supabase Auth retornou 200, REST retornou 401 esperado para endpoint raiz e Realtime retornou 403 esperado para endpoint protegido; `git diff --check` passou.
+- Resultado dos healthchecks: a rota `/api/operations/monitoring` e `/api/operations/watcher` foram incluidas no build como rotas dinamicas Node.js; os endpoints administrativos ficaram protegidos por bearer/admin; os checks internos do snapshot foram estruturados para registrar HTTP status, tempo, payload aproximado, timestamp, resultado esperado/recebido e nivel de risco.
+- Pendencias ou riscos conhecidos: validacao visual completa em sessao autenticada adm do Lucas ainda deve confirmar a experiencia do Database Monitoring; smoke autenticado das APIs novas depende de bearer real de usuario adm; Supabase Realtime pode variar por endpoint/ambiente e gerar alerta se o health endpoint nao estiver disponivel; o build segue passando com warning conhecido Turbopack/NFT da rota que le o Engineering Operations via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte HubOps/Operations Center e preparar publicacao; `Hub SupportOps` deve acompanhar falsos positivos de healthcheck/realtime apos uso autenticado.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Rolagem individual em paineis grandes`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 16:48:16 -03:00.
+- Tipo da alteracao: `AJUSTE UX OPERACIONAL`.
+- Motivo da mudanca: Lucas apontou que a tela de registros estruturados e paineis grandes do Operations Center precisavam de rolagem propria para evitar que listas extensas empurrassem a pagina inteira e prejudicassem a leitura.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei rolagem vertical individual na tabela de `Registros estruturados`, mantendo rolagem horizontal quando necessario e cabecalho fixo; tambem apliquei rolagem interna nas listas operacionais laterais e no bloco de grupos das auditorias.
+- Logica utilizada: cada painel operacional grande deve conter seu proprio volume de dados, mantendo o shell e os outros paineis visiveis. Isso preserva a experiencia executiva do HubOps e evita que registros longos ou listas extensas quebrem a navegacao visual.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser confirmada na sessao autenticada adm do Lucas, especialmente no tamanho de tela usado para operar o HubOps. O build segue passando com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar o ajuste visual junto ao recorte HubOps pendente.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Resposta PO AI em bullets elegantes`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:28:28 -03:00.
+- Tipo da alteracao: `AJUSTE UX OPERACIONAL`.
+- Motivo da mudanca: Lucas apontou que a resposta do PO AI ficou ruim por separar cada frase em baloes individuais, dificultando a leitura executiva.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/api/squadops/copilot/route.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: alterei o render das respostas do PO AI para usar um card unico por frente/secao, com bullets discretos e subitens elegantes, removendo os baloes isolados por frase; tambem ajustei as instrucoes server-side do PO AI para preferir bullets agrupados, sem quebrar cada frase como resposta separada.
+- Logica utilizada: o PO AI deve parecer um canal executivo de leitura, nao uma lista fragmentada de cards. A resposta continua organizada por frente/modulo, mas agora o conteudo fica dentro de uma estrutura editorial mais limpa.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx app/api/squadops/copilot/route.ts --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita na sessao autenticada adm do Lucas com uma resposta real do PO AI. O build segue passando com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar o ajuste visual do PO AI.
+
+Registro de diario:
+
+- Assunto: `[HubOps] PO AI prioriza monitoramento real`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:30:41 -03:00.
+- Tipo da alteracao: `AJUSTE UX/IA OPERACIONAL`.
+- Motivo da mudanca: Lucas apontou que, para pergunta sobre performance de banco de dados, o PO AI parecia estar lendo o Engineering Operations como fonte principal, quando o diario deve ser historico e o estado atual deve vir do monitoramento real.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/api/squadops/copilot/route.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: ajustei os chips, texto inicial, placeholder e mensagem de carregamento do PO AI para deixar claro que banco/performance usa `monitoramento real` e que o diario e historico; tambem troquei o atalho `Codigo` por `Banco`, com pergunta pronta orientando a IA a usar o snapshot realtime e o diario apenas como contexto. No servidor, atualizei as instrucoes para priorizar `monitoramentoRealtime` em perguntas sobre banco, performance, APIs, filas, payload, Supabase, C2X e alertas, e acrescentei um campo explicito `fonteDoEstadoAtual` no contexto enviado para a OpenAI.
+- Logica utilizada: o Engineering Operations continua sendo memoria viva, auditoria e rastreabilidade, mas nao pode sustentar afirmacao de estado atual de banco quando existe snapshot realtime. Para operacao atual, a fonte principal deve ser o Database Monitoring.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx app/api/squadops/copilot/route.ts --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: validacao final deve ser feita com pergunta real autenticada no PO AI para confirmar que a resposta cita o snapshot realtime e trata o diario como historico. O build segue passando com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar o ajuste de UX/IA do PO AI.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Remocao do cabecalho grande`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:32:47 -03:00.
+- Tipo da alteracao: `AJUSTE UX OPERACIONAL`.
+- Motivo da mudanca: Lucas solicitou remover o bloco grande do topo com `SquadOps Core`, titulo `HubOps` e descricao, pois ocupava espaco visual desnecessario na tela.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: removi o `WorkspaceHeader` da tela HubOps e preservei as acoes essenciais em uma barra compacta no inicio da pagina, mantendo fonte do diario, data de atualizacao, botao `Modulos do Hub`, botao `PO AI` e badges operacionais.
+- Logica utilizada: o Operations Center deve abrir direto na leitura operacional, com menos area institucional e mais espaco para painéis, timeline, registros e monitoramento.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: confirmacao visual final deve ser feita na sessao autenticada do Lucas. O build segue passando com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar o ajuste visual.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Botao flutuante do PO AI`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:34:50 -03:00.
+- Tipo da alteracao: `AJUSTE UX OPERACIONAL`.
+- Motivo da mudanca: Lucas solicitou colocar o botao do agente como botao flutuante, deixando o PO AI sempre acessivel sem ocupar espaco na barra compacta ou nos paineis.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: removi o botao `PO AI` da barra compacta superior e criei um botao flutuante fixo no canto inferior direito, com icone de agente, indicador online e acao para abrir o drawer do PO AI. O botao some enquanto o drawer esta aberto para evitar duplicidade visual.
+- Logica utilizada: o agente deve ser uma camada transversal do Operations Center, sempre disponivel, mas fora do fluxo principal de leitura operacional.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita na sessao autenticada do Lucas para confirmar posicao do botao em diferentes alturas de tela. O build segue passando com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar o ajuste visual.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Prompt de deploy ReleaseOps preenchido`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:38:47 -03:00.
+- Tipo da alteracao: `AJUSTE OPERACIONAL` - melhoria de handoff ReleaseOps.
+- Motivo da mudanca: Lucas informou que o dev ReleaseOps recusou o deploy porque o prompt anterior ainda tinha placeholders, sem recorte definido, escopo real, validacoes e arquivos concretos.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: substitui o template generico `Deploy / ReleaseOps` por `Deploy HubOps`, preenchido com o recorte real `HubOps / Operations Center`, escopo, arquivos principais, validacoes executadas, pontos de atencao, solicitacao objetiva, healthchecks esperados e status esperado. O texto agora declara explicitamente que nao e template com placeholders.
+- Logica utilizada: ReleaseOps so deve bloquear quando houver motivo tecnico concreto; o handoff precisa entregar modulo/frente, ambiente, status, escopo, validacoes, riscos e arquivos para permitir revisao, commit, deploy e rastreabilidade.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: o prompt deve ser reenviado ao `Hub ReleaseOps`; caso existam diffs fora do recorte HubOps no worktree, ReleaseOps deve isolar ou bloquear apenas essa mistura. O build segue passando com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte preenchido e executar commit/deploy se o diff estiver coerente.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Preparacao deploy HubOps Operations Center`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 17:42:45 -03:00.
+- Tipo da alteracao: `RELEASE` - revisao e preparacao de deploy.
+- Motivo da mudanca: Lucas acionou ReleaseOps com recorte preenchido para publicar HubOps / SquadOps / Operations Center com Database Monitoring realtime, Ops Watcher, PO AI priorizando monitoramento real, acesso adm e refinamentos de UX.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/api/operations/monitoring/route.ts`, `apps/hub/app/api/operations/watcher/route.ts`, `apps/hub/lib/operations/data-sources.ts`, `apps/hub/lib/operations/monitoring.ts`, `apps/hub/app/api/squadops/copilot/route.ts`, `apps/hub/app/api/squadops/operations/route.ts`, `apps/hub/lib/squadops/admin-access.ts`, `apps/hub/layouts/hub-shell.tsx`, `packages/shared/src/permissions/matrix.ts` e este Engineering Operations.
+- Como foi feito: revisei o worktree, confirmei que os diffs pertencem ao recorte HubOps/Operations Center, validei APIs protegidas por `authorizeSquadOpsAdminRequest`, confirmei que `limit=1000` nao e chamado automaticamente, revisei alertas e thresholds de Guardian Queue, Supabase, protected APIs e payload, rodei validacoes locais e preparei o pacote para commit/deploy.
+- Logica utilizada: a release deve publicar uma central operacional realtime baseada em fontes reais sem transformar o Engineering Operations em fonte principal do estado atual. O diario permanece como historico e contexto complementar para Ops Copilot, enquanto o estado atual vem de `/api/operations/monitoring` e fontes server-side.
+- Validacao executada: varredura simples de secrets nos arquivos alterados sem encontrar valores sensiveis; `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; `npx.cmd turbo build --filter=@repo/hub` passou; smoke local `GET /squadops` retornou 200; `GET /api/operations/monitoring`, `GET /api/operations/watcher`, `POST /api/operations/watcher` e `POST /api/squadops/copilot` sem sessao retornaram 401 esperado; `GET /api/guardian/db/health` retornou 200; Guardian Queue `limit=20` e `limit=50` retornaram 200; Supabase Auth retornou 200, REST 401 esperado e Realtime 403 esperado.
+- Resultado dos healthchecks: Guardian DB conectado ao banco `prod_careli`; fila Guardian `limit=20` carregou 20 itens com payload aproximado de 103681 bytes; fila `limit=50` carregou 50 itens com payload aproximado de 239154 bytes; APIs administrativas novas bloquearam acesso sem bearer; rotas `api/operations/monitoring` e `api/operations/watcher` aparecem no build como dinamicas Node.js.
+- Pendencias ou riscos conhecidos: build segue com warning conhecido Turbopack/NFT da rota que le Engineering Operations via filesystem; smoke autenticado completo das APIs novas depende de bearer real adm; validacao visual final deve ser feita por Lucas em sessao adm autenticada; Supabase Realtime pode variar por endpoint/ambiente e gerar alerta se o health endpoint protegido responder de forma diferente.
+- Status operacional: `AGUARDANDO DEPLOY`.
+- Proxima squad recomendada: `Hub ReleaseOps` para commit, deploy Vercel e healthchecks pos-deploy.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Prompts operacionais sem placeholders`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:41:58 -03:00.
+- Tipo da alteracao: `AJUSTE OPERACIONAL` - melhoria de comandos para agentes.
+- Motivo da mudanca: Lucas pediu aplicar aos demais prompts o mesmo tratamento feito no prompt de deploy, porque o acionamento anterior foi recusado por conter placeholders e nao deixar recorte, escopo e validacoes claros.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: atualizei os prompts `Atividade diaria`, `Atividade semanal` e `Atividade mensal` para sairem preenchidos com periodo, fonte historica, fonte realtime, frentes obrigatorias, regras de leitura, riscos conhecidos, formato esperado e status esperado. Mantive o `Deploy HubOps` ja preenchido para ReleaseOps.
+- Logica utilizada: prompts operacionais do HubOps nao devem funcionar como modelos genericos com campos vazios. Eles precisam orientar o agente com contexto real, diferenciar `Engineering Operations` como historico/rastreabilidade e `Database Monitoring` como fonte de estado atual, e impedir deploy, commit ou comandos automaticos quando a funcao for apenas consolidar leitura.
+- Validacao executada: busca por resquicios de placeholders antigos nos prompts; validacoes tecnicas completas serao executadas na sequencia deste recorte.
+- Pendencias ou riscos conhecidos: caso o periodo operacional mude, Lucas ou HubOps deve atualizar os prompts para refletir o novo dia/semana/mes antes de acionar outro agente. O release ainda depende de revisao do `Hub ReleaseOps`.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte HubOps completo e preparar publicacao se os diffs estiverem coerentes.

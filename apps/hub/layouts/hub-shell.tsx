@@ -124,7 +124,7 @@ export function HubShell({
     }
 
     if (isHubOpsModuleId(hubModule.id)) {
-      return isHubModuleActive(hubModule);
+      return isHubModuleActive(hubModule) && canAccessHubOpsModule(hubUser);
     }
 
     if (!releasedModuleIds) {
@@ -847,7 +847,7 @@ function canOpenShellModule(
   profileStatus: "error" | "idle" | "loading" | "ready",
 ) {
   if (isHubOpsModuleId(moduleId)) {
-    return true;
+    return canAccessHubOpsModule(hubUser);
   }
 
   if (hubUser && canAccessModule(hubUser, hubModule)) {
@@ -875,6 +875,13 @@ function isVisibleInCurrentEnvironment(moduleId: string) {
 
 function isHubOpsModuleId(moduleId: string) {
   return moduleId === "squadops";
+}
+
+function canAccessHubOpsModule(hubUser: HubUserContext | null) {
+  return (
+    hubUser?.role === "admin" ||
+    hubUser?.operationalProfile?.profileRole === "adm"
+  );
 }
 
 function withShellTimeout<Result>(

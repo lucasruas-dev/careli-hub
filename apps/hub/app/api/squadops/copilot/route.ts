@@ -1,9 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { collectOperationsDataSources } from "@/lib/operations/data-sources";
+import {
+  buildOperationsMonitoringSnapshot,
+  type OperationsMonitoringSnapshot,
+} from "@/lib/operations/monitoring";
 import {
   loadHubCodeContext,
   type HubCodeContext,
 } from "@/lib/squadops/hub-code-context";
+import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 import { loadEngineeringOperationsFromFile } from "@/lib/squadops/engineering-operations-source";
 import type {
   EngineeringAuditRoutine,
@@ -20,10 +26,6 @@ type CopilotRequest = {
 type PoAiMessage = {
   content: string;
   role: "assistant" | "user";
-};
-
-type SupabaseUserPayload = {
-  id?: unknown;
 };
 
 const DEFAULT_MODEL = "gpt-5.5";
@@ -49,10 +51,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsedRequest.error }, { status: 400 });
   }
 
-  const auth = await authorizeCopilotRequest(request);
+  const auth = await authorizeSquadOpsAdminRequest(request);
 
   if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
+    return auth.response;
   }
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -73,6 +75,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const monitoringSnapshot = buildOperationsMonitoringSnapshot(
+    await collectOperationsDataSources({
+      origin: new URL(request.url).origin,
+    }),
+  );
   const codeContext = await loadHubCodeContext(parsedRequest.data.question);
 
   try {
@@ -81,6 +88,7 @@ export async function POST(request: NextRequest) {
       codeContext,
       messages: parsedRequest.data.messages,
       model: process.env.HUB_AI_MODEL?.trim() || DEFAULT_MODEL,
+      monitoringSnapshot,
       operations: operations.data,
       promptTarget: parsedRequest.data.promptTarget,
       question: parsedRequest.data.question,
@@ -146,6 +154,7 @@ async function createCopilotAnswer({
   codeContext,
   messages,
   model,
+  monitoringSnapshot,
   operations,
   promptTarget,
   question,
@@ -155,6 +164,7 @@ async function createCopilotAnswer({
   codeContext: HubCodeContext;
   messages: PoAiMessage[];
   model: string;
+  monitoringSnapshot: OperationsMonitoringSnapshot;
   operations: EngineeringOperationsResponse;
   promptTarget: (typeof promptTargets)[number] | null;
   question: string;
@@ -171,6 +181,7 @@ async function createCopilotAnswer({
             content: buildCopilotInput({
               codeContext,
               messages,
+              monitoringSnapshot,
               operations,
               promptTarget,
               question,
@@ -215,28 +226,34 @@ function buildCopilotInstructions() {
   return [
     "Você é o PO AI, o cérebro operacional do Careli Hub dentro do HubOps.",
     "Responda sempre em português do Brasil, com linguagem executiva, simples, instrucional e direta para Lucas.",
-    "Use somente o contexto recebido: diário Engineering Operations, histórico da conversa e mapa seguro do código do Hub.",
+    "Use somente o contexto recebido: monitoramentoRealtime, diário Engineering Operations, histórico da conversa e mapa seguro do código do Hub.",
+    "Para perguntas sobre banco de dados, performance, estabilidade, APIs, filas, payload, Supabase, C2X ou alertas, use `monitoramentoRealtime` como fonte principal do estado atual.",
+    "O diário Engineering Operations é histórico, auditoria e rastreabilidade. Não use o diário como fonte principal para afirmar estado atual de banco, tempo de resposta ou payload quando houver `monitoramentoRealtime` disponível.",
     "Você conhece arquitetura, módulos, rotas, componentes, APIs, riscos, pendências, deploys e decisões registradas quando esse conteúdo estiver no contexto.",
     "Quando o Lucas perguntar sobre código, use o mapa e os trechos de código recebidos. Se o trecho necessário não estiver no contexto, diga qual arquivo precisa ser aberto/indexado em seguida.",
     "Você pode explicar o que foi feito, impactos, riscos, pendências, squads recomendadas, validações faltantes, prompts para agentes e próximos passos.",
     "Você não pode alterar arquivos, executar comandos, fazer deploy, mudar status, chamar agentes automaticamente ou prometer ações feitas.",
     "Quando gerar prompt para agente, use exatamente: Assunto, Contexto, Objetivo, Tarefas, Validações esperadas e Retorno esperado.",
     "Nunca exponha nem peça chaves, tokens, senhas, variáveis .env ou credenciais. Se algo sensível for necessário, oriente Lucas a validar server-side sem revelar o valor.",
-    "Se faltar informação no contexto, diga que não está informado no diário/código recebido em vez de inventar.",
+    "Se faltar monitoramentoRealtime para uma pergunta de performance ou banco, diga que o dado real não está disponível no snapshot recebido em vez de inferir pelo diário.",
+    "Se faltar informação no contexto, diga que não está informado no monitoramento/diário/código recebido em vez de inventar.",
     "Responda em blocos curtos por frente ou módulo. Use títulos como `Frente: ReleaseOps / Engineering Operations`, `Frente: Guardian`, `Frente: PulseX`, `Frente: HubOps / SquadOps` ou `Frente: SupportOps` quando houver informação para aquela frente.",
-    "Evite markdown pesado. Prefira frases curtas, bullets simples e uma conclusão objetiva com risco, pendência e próximo passo.",
+    "Evite markdown pesado. Prefira bullets simples, agrupados e elegantes; nao quebre cada frase como se fosse uma resposta isolada.",
+    "Feche com uma conclusão objetiva contendo risco, pendência e próximo passo quando fizer sentido.",
   ].join("\n");
 }
 
 function buildCopilotInput({
   codeContext,
   messages,
+  monitoringSnapshot,
   operations,
   promptTarget,
   question,
 }: {
   codeContext: HubCodeContext;
   messages: PoAiMessage[];
+  monitoringSnapshot: OperationsMonitoringSnapshot;
   operations: EngineeringOperationsResponse;
   promptTarget: (typeof promptTargets)[number] | null;
   question: string;
@@ -244,7 +261,10 @@ function buildCopilotInput({
   const context = {
     auditorias: operations.auditRoutines.map(summarizeRoutine),
     codigoDoHub: summarizeCodeContext(codeContext),
+    fonteDoEstadoAtual:
+      "Para banco, performance, APIs, filas, payload, Supabase, C2X e alertas, use monitoramentoRealtime como fonte principal. Engineering Operations e historico/auditoria/rastreabilidade.",
     historicoDaConversa: messages.slice(-8),
+    monitoramentoRealtime: summarizeMonitoringSnapshot(monitoringSnapshot),
     perguntaDoLucas: question,
     pendenciasCriticas: operations.criticalRecords.slice(0, 10).map(summarizeRecord),
     promptTarget,
@@ -257,61 +277,33 @@ function buildCopilotInput({
   return JSON.stringify(context, null, 2).slice(0, MAX_CONTEXT_CHARS);
 }
 
-async function authorizeCopilotRequest(request: NextRequest): Promise<
-  | { ok: true; userId: string }
-  | { error: string; ok: false; status: number }
-> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !anonKey) {
-    return {
-      ok: true,
-      userId: "local-squadops-po",
-    };
-  }
-
-  const accessToken = getBearerToken(request);
-
-  if (!accessToken) {
-    return {
-      error: "Sessão ausente para usar o PO AI.",
-      ok: false,
-      status: 401,
-    };
-  }
-
-  try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        apikey: anonKey,
-      },
-    });
-    const payload = (await response.json().catch(() => null)) as
-      | SupabaseUserPayload
-      | null;
-
-    if (!response.ok || typeof payload?.id !== "string") {
-      return {
-        error: "Sessão inválida para usar o PO AI.",
-        ok: false,
-        status: response.status === 400 ? 401 : response.status,
-      };
-    }
-
-    return {
-      ok: true,
-      userId: payload.id,
-    };
-  } catch {
-    return {
-      error: "Não foi possível validar a sessão do PO AI.",
-      ok: false,
-      status: 503,
-    };
-  }
+function summarizeMonitoringSnapshot(snapshot: OperationsMonitoringSnapshot) {
+  return {
+    alertasAtivos: snapshot.alerts.slice(0, 12).map((alert) => ({
+      agenteRecomendado: alert.recommendedAgent,
+      impacto: alert.impact,
+      modulo: alert.module,
+      nivel: alert.level,
+      origem: alert.origin,
+      recomendacao: alert.recommendation,
+      titulo: alert.title,
+      tipo: alert.type,
+    })),
+    checksRecentes: snapshot.checks.map((check) => ({
+      endpoint: check.endpoint,
+      esperado: check.expected.description,
+      modulo: check.module,
+      payloadBytes: check.payloadBytes,
+      recebido: check.received,
+      risco: check.risk,
+      statusHttp: check.statusCode,
+      tempoMs: check.responseMs,
+    })),
+    geradoEm: snapshot.generatedAt,
+    metricas: snapshot.metrics,
+    statusGeral: snapshot.cards.status,
+    supabase: snapshot.cards.supabase,
+  };
 }
 
 function summarizeRecord(record: EngineeringOperationRecord) {
@@ -393,16 +385,6 @@ function parsePoAiMessages(value: unknown): PoAiMessage[] {
     })
     .filter((message): message is PoAiMessage => Boolean(message?.content))
     .slice(-10);
-}
-
-function getBearerToken(request: NextRequest) {
-  const authorization = request.headers.get("authorization");
-
-  if (!authorization?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  return authorization.slice("Bearer ".length).trim() || null;
 }
 
 function extractOutputText(payload: Record<string, unknown> | null) {

@@ -2,20 +2,37 @@
 
 import { HubShell } from "@/layouts/hub-shell";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import type {
+  OperationsAlert,
+  OperationsCheckMetric,
+  OperationsMonitoringSnapshot,
+  OperationsRiskLevel,
+  OpsWatcherDecision,
+} from "@/lib/operations/monitoring";
 import {
   UNKNOWN_OPERATION_VALUE,
   type EngineeringAuditRoutine,
   type EngineeringOperationRecord,
   type EngineeringOperationsResponse,
 } from "@/lib/squadops/engineering-operations-parser";
-import { Badge, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
+import { useAuth } from "@/providers/auth-provider";
+import type { HubUserContext } from "@repo/shared";
+import {
+  Badge,
+  EmptyState as UixEmptyState,
+  Surface,
+  WorkspaceLayout,
+} from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
 import {
   AlertTriangle,
+  Activity,
+  BellRing,
   Bot,
   CalendarDays,
   ClipboardCheck,
   Copy,
+  Database,
   FileText,
   GitCommitHorizontal,
   History,
@@ -23,17 +40,22 @@ import {
   LayoutGrid,
   Loader2,
   MessageSquareText,
+  RefreshCcw,
   Rocket,
   Search,
   Send,
+  ServerCog,
   ShieldAlert,
   Sparkles,
   WandSparkles,
+  Wifi,
   X,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type ReactNode,
@@ -49,7 +71,7 @@ type OperationsFilters = {
   type: string;
 };
 
-type HubOpsView = "overview" | "timeline" | "audits" | "records";
+type HubOpsView = "overview" | "monitoring" | "timeline" | "audits" | "records";
 
 type CopilotAnswerSection = {
   id: string;
@@ -63,6 +85,12 @@ type PoAiChatMessage = {
   createdAt: string;
   id: string;
   role: "assistant" | "user";
+};
+
+type MonitoringIntervalMs = 0 | 10_000 | 30_000 | 60_000;
+
+type WatcherApiResponse = {
+  watcher?: OpsWatcherDecision;
 };
 
 const allFilterValue = "__all";
@@ -98,53 +126,99 @@ type PromptTemplate = {
 const promptTemplates: PromptTemplate[] = [
   {
     id: "deploy-releaseops",
-    label: "Deploy / ReleaseOps",
-    description: "Handoff pronto para publicar um recorte validado do Hub.",
+    label: "Deploy HubOps",
+    description: "Handoff preenchido para publicar o recorte HubOps atual.",
     target: "Hub ReleaseOps",
     type: "deploy",
     body: `Assunto:
-[ReleaseOps] Deploy do recorte [modulo/frente]
+[ReleaseOps] Deploy do recorte HubOps / Operations Center
 
-Dev responsavel, solicito preparar o deploy deste recorte.
+Hub ReleaseOps, solicito revisar, commitar e publicar o recorte HubOps / Operations Center abaixo.
+
+Este pedido NAO e um template com placeholders. O recorte ja esta preenchido.
 
 Contexto:
-- Modulo/frente: [informar modulo ou squad]
-- Ambiente atual: [local/homologacao/producao]
-- Status no Engineering Operations: [AGUARDANDO RELEASEOPS / outro]
-- Link, branch ou commit relacionado: [informar se existir]
+- Modulo/frente: HubOps / SquadOps / Operations Center.
+- Ambiente atual: local validado em http://localhost:3001/squadops.
+- Status no Engineering Operations: AGUARDANDO RELEASEOPS.
+- Origem: ajustes solicitados por Lucas para transformar HubOps em centro operacional real.
+- Objetivo do release: publicar o pacote HubOps com monitoramento real, PO AI melhorado, watcher, acesso adm e refinamentos de UX.
 
 Escopo do deploy:
-- [alteracao principal 1]
-- [alteracao principal 2]
-- [alteracao principal 3]
+- Database Monitoring com fonte principal em APIs reais e healthchecks, nao no Markdown.
+- APIs novas: /api/operations/monitoring e /api/operations/watcher.
+- Camada server-side de coleta/classificacao: apps/hub/lib/operations/data-sources.ts e apps/hub/lib/operations/monitoring.ts.
+- Ops Watcher com deduplicacao, cooldown, notificacoes locais e comando sugerido para agente.
+- PO AI usando monitoramentoRealtime como fonte principal para banco/performance; Engineering Operations apenas como historico/rastreabilidade.
+- Botao flutuante do PO AI fora dos paineis principais.
+- Restricao HubOps para perfil adm/admin no client, sidebar e APIs internas.
+- Ajustes visuais do Operations Center: remocao do cabecalho grande, rolagem individual em paineis grandes, bullets elegantes no PO AI e layout mais compacto.
+
+Arquivos principais do recorte:
+- apps/hub/modules/squadops/SquadOpsPage.tsx
+- apps/hub/app/api/operations/monitoring/route.ts
+- apps/hub/app/api/operations/watcher/route.ts
+- apps/hub/lib/operations/data-sources.ts
+- apps/hub/lib/operations/monitoring.ts
+- apps/hub/app/api/squadops/copilot/route.ts
+- apps/hub/app/api/squadops/operations/route.ts
+- apps/hub/lib/squadops/admin-access.ts
+- apps/hub/layouts/hub-shell.tsx
+- packages/shared/src/permissions/matrix.ts
+- docs/codex/engineering-operations.md
 
 Validacoes ja executadas:
-- [check-types/lint/build/smoke/validacao visual]
-- [resultado objetivo]
+- npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0: passou.
+- npx.cmd eslint modules/squadops/SquadOpsPage.tsx app/api/squadops/copilot/route.ts --max-warnings 0: passou.
+- npm.cmd run check-types:hub: passou.
+- npm.cmd run lint:hub: passou.
+- npm.cmd run build --workspace @repo/hub: passou.
+- Smoke HTTP de http://localhost:3001/squadops: retornou 200.
+- Smoke sem sessao de /api/operations/monitoring: retornou 401 esperado.
+- Smoke sem sessao de /api/operations/watcher: retornou 401 esperado.
+- Smoke sem sessao de /api/squadops/copilot: retornou 401 esperado.
+- GET /api/guardian/db/health: retornou 200.
+- Guardian queue limit=20 e limit=50: retornaram 200; limit=1000 nao foi chamado automaticamente.
+- Supabase Auth retornou 200; REST 401 esperado no endpoint raiz; Realtime 403 esperado no endpoint protegido.
+- git diff --check: passou.
 
 Pontos de atencao:
-- [risco tecnico ou operacional]
-- [pendencia conhecida, se houver]
+- Build passa com warning conhecido Turbopack/NFT causado pela leitura filesystem do Engineering Operations.
+- Validacao visual final deve ser feita por Lucas em sessao adm autenticada.
+- Smoke autenticado completo das APIs novas depende de bearer real adm.
+- Nao misturar este release com Guardian/D4Sign, PulseX ou CareDesk fora do recorte HubOps.
+- Se houver diffs fora deste escopo no worktree, separar antes de commitar/publicar ou sinalizar bloqueio parcial.
 
 Solicitacao:
-- Revisar escopo e diffs envolvidos.
-- Confirmar se ha risco de regressao operacional.
-- Organizar commit/release com rastreabilidade.
-- Executar deploy e healthchecks necessarios.
-- Registrar resultado final no Engineering Operations.
+- Revisar os diffs do recorte HubOps listado acima.
+- Confirmar que nao ha secrets/tokens expostos.
+- Criar commit semantico do recorte HubOps se os diffs estiverem coerentes.
+- Executar deploy Vercel de producao.
+- Rodar healthchecks pos-deploy:
+  - GET /
+  - GET /squadops
+  - GET /api/guardian/db/health
+  - GET /api/operations/monitoring sem sessao deve retornar 401
+  - GET /api/operations/watcher sem sessao deve retornar 401
+  - POST /api/squadops/copilot sem sessao deve retornar 401
+- Registrar commit, URL/deployment, healthchecks, riscos e status final no Engineering Operations.
 
 Formato esperado da resposta:
-- Problema/entrega identificada
-- Origem
-- Impacto
-- Recomendacao tecnica
-- Criticidade operacional
-- Status final`,
+- Escopo revisado
+- Arquivos incluidos
+- Commit realizado
+- Deploy realizado
+- Healthchecks executados
+- Riscos ou pendencias
+- Status final
+
+Status esperado:
+EM PRODUCAO ou BLOQUEADO com motivo tecnico concreto.`,
   },
   {
     id: "daily-activity",
     label: "Atividade diaria",
-    description: "Resumo operacional do dia com foco em continuidade.",
+    description: "Comando preenchido para consolidar o dia operacional atual.",
     target: "SquadOps Core",
     type: "daily",
     body: `Assunto:
@@ -152,39 +226,46 @@ Formato esperado da resposta:
 
 Dev responsavel, solicito consolidar a leitura operacional diaria do Careli Hub.
 
+Este pedido NAO e um template com placeholders. Use os registros reais do Engineering Operations e, para estado atual de banco/APIs, use o Database Monitoring.
+
 Periodo analisado:
-- Data: [dd/mm/aaaa]
-- Fonte principal: Engineering Operations
-- Modulos relevantes: [Guardian/CareDesk/PulseX/HubOps/Setup]
+- Data: 17/05/2026.
+- Fonte historica: docs/codex/engineering-operations.md.
+- Fonte de estado atual: Database Monitoring / APIs reais / healthchecks.
+- Modulos relevantes: HubOps/SquadOps, Guardian, PulseX, SupportOps, ReleaseOps e CareDesk quando houver registro no diario.
 
-Atividades do dia:
-- [atividade 1]
-- [atividade 2]
-- [atividade 3]
+Objetivo:
+- Consolidar o que foi implementado, corrigido, validado ou bloqueado no dia.
+- Separar entregas por modulo/frente.
+- Identificar riscos, pendencias e proximas squads.
+- Nao alterar codigo, nao fazer deploy e nao executar comandos destrutivos.
 
-Decisoes ou mudancas registradas:
-- [decisao/mudanca 1]
-- [decisao/mudanca 2]
+Foco da leitura:
+- HubOps / Operations Center: Database Monitoring, Ops Watcher, PO AI, prompts, layout, sidebar e acesso adm.
+- ReleaseOps: itens aguardando publicacao, recortes que precisam de commit/deploy e healthchecks esperados.
+- SupportOps: gargalos, falhas locais, riscos de build, APIs ou performance.
+- Guardian/PulseX/CareDesk: citar somente o que estiver registrado no diario ou nos checks reais.
 
-Riscos e bloqueios:
-- [risco/bloqueio 1]
-- [risco/bloqueio 2]
-
-Proximas acoes:
-- [acao 1 e squad responsavel]
-- [acao 2 e squad responsavel]
+Regras:
+- Se um dado nao estiver no diario ou no monitoramento, escrever "nao informado".
+- Para banco, APIs, payload e tempo de resposta, priorizar o snapshot real do monitoring.
+- Nao misturar recortes de deploy sem indicar claramente a frente responsavel.
 
 Formato esperado da resposta:
-- Resumo executivo
-- Impacto operacional
-- Pendencias
-- Proxima squad recomendada
-- Status`,
+- Resumo executivo do dia.
+- Entregas por modulo.
+- Riscos e gargalos.
+- Pendencias para continuidade.
+- Proxima squad recomendada.
+- Status operacional final.
+
+Status esperado:
+AGUARDANDO RELEASEOPS quando houver entrega local pendente de publicacao; FINALIZADO apenas se for leitura sem acao pendente.`,
   },
   {
     id: "weekly-activity",
     label: "Atividade semanal",
-    description: "Consolidado semanal por frente, risco e entrega.",
+    description: "Comando preenchido para consolidar a semana operacional.",
     target: "SquadOps Core",
     type: "weekly",
     body: `Assunto:
@@ -192,31 +273,38 @@ Formato esperado da resposta:
 
 Dev responsavel, solicito consolidar a atividade semanal da engenharia Careli Hub.
 
+Este pedido NAO e um template com placeholders. A semana e o escopo ja estao definidos.
+
 Periodo analisado:
-- Semana: [dd/mm a dd/mm]
-- Fonte principal: Engineering Operations
+- Semana: 11/05/2026 a 17/05/2026.
+- Fonte historica: docs/codex/engineering-operations.md.
+- Fonte de estado atual: Database Monitoring / APIs reais / healthchecks.
 - Objetivo: identificar entregas, riscos, gargalos e proximos passos.
 
-Entregas por frente:
-- Guardian: [resumo]
-- CareDesk: [resumo]
-- PulseX: [resumo]
-- HubOps/SquadOps: [resumo]
-- SupportOps: [resumo]
-- ReleaseOps: [resumo]
+Frentes obrigatorias:
+- Guardian: consolidar apenas registros e riscos presentes no diario.
+- CareDesk: apontar estado atual e lacunas registradas.
+- PulseX: consolidar correcoes, validacoes pendentes e riscos de realtime/chamadas.
+- HubOps/SquadOps: consolidar Operations Center, Database Monitoring, Ops Watcher, PO AI, prompts e UX.
+- SupportOps: consolidar gargalos, troubleshooting, EADDRINUSE, build errors, APIs e performance.
+- ReleaseOps: consolidar itens aguardando publicacao, commits/deploys e healthchecks.
 
-Riscos operacionais:
-- [risco 1 com impacto]
-- [risco 2 com impacto]
+Riscos a observar:
+- Recortes locais aguardando ReleaseOps podem se misturar se nao houver stage/commit por responsabilidade.
+- Guardian queue limit=1000 nao deve ser chamado automaticamente.
+- Validacoes visuais autenticadas ainda dependem de Lucas quando o diario indicar pendencia.
+- Warning Turbopack/NFT da leitura filesystem do Engineering Operations segue conhecido.
 
-Pendencias para continuidade:
-- [pendencia 1 e responsavel]
-- [pendencia 2 e responsavel]
+Regras:
+- Para estado atual de banco, APIs, payload e tempo, usar Database Monitoring.
+- Para historico, decisoes e rastreabilidade, usar Engineering Operations.
+- Se nao houver evidencia, responder "nao informado".
+- Nao executar deploy, commit ou comando; apenas consolidar e orientar.
 
-Recomendacao para a proxima semana:
-- [prioridade 1]
-- [prioridade 2]
-- [prioridade 3]
+Recomendacao esperada:
+- Prioridade 1: separar/publicar recortes HubOps que ja estao AGUARDANDO RELEASEOPS.
+- Prioridade 2: acompanhar riscos tecnicos de build, realtime e payload.
+- Prioridade 3: reforcar governanca de prompts, healthchecks e registros operacionais.
 
 Formato esperado da resposta:
 - Resumo executivo semanal
@@ -224,12 +312,15 @@ Formato esperado da resposta:
 - Riscos e gargalos
 - Decisoes relevantes
 - Proximas prioridades
-- Criticidade operacional`,
+- Criticidade operacional
+
+Status esperado:
+AGUARDANDO RELEASEOPS se houver recorte local pendente; OPERACIONAL COM ATENCAO se a semana tiver riscos sem bloqueio.`,
   },
   {
     id: "monthly-activity",
     label: "Atividade mensal",
-    description: "Fechamento mensal para rastreabilidade e planejamento.",
+    description: "Comando preenchido para fechamento mensal parcial.",
     target: "SquadOps Core",
     type: "monthly",
     body: `Assunto:
@@ -237,38 +328,44 @@ Formato esperado da resposta:
 
 Dev responsavel, solicito preparar o fechamento mensal operacional da engenharia Careli Hub.
 
+Este pedido NAO e um template com placeholders. O fechamento e parcial do mes corrente.
+
 Periodo analisado:
-- Mes: [mes/aaaa]
-- Fonte principal: Engineering Operations
+- Mes: maio/2026, acumulado ate 17/05/2026.
+- Fonte historica: docs/codex/engineering-operations.md.
+- Fonte de estado atual: Database Monitoring / APIs reais / healthchecks.
 - Objetivo: consolidar entregas, estabilidade, riscos e prioridades.
 
-Resumo do mes:
-- [tema principal 1]
-- [tema principal 2]
-- [tema principal 3]
+Temas principais:
+- Evolucao do HubOps/SquadOps para Operations Center.
+- Implantacao de Database Monitoring, Ops Watcher e PO AI orientado por monitoramento real.
+- Ajustes de governanca ReleaseOps e rastreabilidade no Engineering Operations.
+- Pendencias tecnicas e operacionais em Guardian, PulseX, SupportOps e build quando registradas.
 
 Entregas e evolucoes:
-- Guardian: [resultado]
-- CareDesk: [resultado]
-- PulseX: [resultado]
-- HubOps/SquadOps: [resultado]
-- SupportOps/ReleaseOps: [resultado]
+- Guardian: consolidar estado, pendencias D4Sign/fila/performance e riscos somente com evidencia registrada.
+- CareDesk: registrar estado atual e lacunas de evolucao real quando constarem no diario.
+- PulseX: consolidar realtime/chamadas, queries, experiencia de conversa e validacoes pendentes.
+- HubOps/SquadOps: consolidar Operations Center, Database Monitoring, PO AI, prompts, UX e acesso adm.
+- SupportOps/ReleaseOps: consolidar troubleshooting, releases, deploys, healthchecks e bloqueios.
 
 Estabilidade operacional:
-- Bugs relevantes: [informar]
-- Incidentes ou lentidao: [informar]
-- APIs/integracoes afetadas: [informar]
-- Regressao identificada: [sim/nao + contexto]
+- Bugs relevantes: levantar do Engineering Operations.
+- Incidentes ou lentidao: cruzar diario com Database Monitoring.
+- APIs/integracoes afetadas: citar endpoints e healthchecks reais quando disponiveis.
+- Regressao identificada: responder apenas com evidencia; caso contrario, "nao informado".
 
-Riscos para o proximo mes:
-- [risco 1]
-- [risco 2]
-- [risco 3]
+Riscos para o proximo ciclo:
+- Mistura de recortes locais se ReleaseOps nao separar commits por frente.
+- Validacoes visuais autenticadas pendentes.
+- Risco de payload/performance em filas se limites seguros forem ignorados.
+- Warning Turbopack/NFT e pendencias tecnicas de build/auditoria devem ser acompanhados.
 
 Prioridades recomendadas:
-- [prioridade 1]
-- [prioridade 2]
-- [prioridade 3]
+- Publicar recortes HubOps ja validados e AGUARDANDO RELEASEOPS.
+- Consolidar monitoramento real como fonte primaria de estado operacional.
+- Resolver pendencias de ReleaseOps/SupportOps antes de ampliar automacoes.
+- Manter o Engineering Operations como historico, auditoria e memoria viva.
 
 Formato esperado da resposta:
 - Problemas identificados
@@ -276,18 +373,25 @@ Formato esperado da resposta:
 - Impacto operacional
 - Recomendacao tecnica
 - Criticidade
-- Status executivo do mes`,
+- Status executivo do mes
+
+Status esperado:
+OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quando houver recortes locais prontos para publicacao.`,
   },
 ];
 
 const hubOpsViews = [
   { id: "overview", label: "Visão geral" },
+  { id: "monitoring", label: "Database Monitoring" },
   { id: "timeline", label: "Timeline" },
   { id: "audits", label: "Auditorias" },
   { id: "records", label: "Registros" },
 ] as const satisfies readonly { id: HubOpsView; label: string }[];
 
 export function SquadOpsPage() {
+  const { authState, hubUser, profileStatus } = useAuth();
+  const canAccessHubOps = canAccessHubOpsAsAdmin(hubUser);
+  const authAccessToken = authState.session?.accessToken ?? null;
   const [operations, setOperations] =
     useState<EngineeringOperationsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -301,7 +405,7 @@ export function SquadOpsPage() {
   const [poAiMessages, setPoAiMessages] = useState<PoAiChatMessage[]>(() => [
     createPoAiMessage(
       "assistant",
-      "Sou o PO AI, o cérebro operacional do Hub. Posso cruzar diário, código, módulos, riscos, pendências e próximos passos. Não executo comandos nem exponho segredos.",
+      "Sou o PO AI, o cérebro operacional do Hub. Para banco, performance e estabilidade eu priorizo o monitoramento real; o diário fica como histórico e rastreabilidade. Não executo comandos nem exponho segredos.",
     ),
   ]);
   const [copilotError, setCopilotError] = useState<string | null>(null);
@@ -314,8 +418,35 @@ export function SquadOpsPage() {
     promptTemplates[0]!.id,
   );
   const [activeView, setActiveView] = useState<HubOpsView>("overview");
+  const [monitoringSnapshot, setMonitoringSnapshot] =
+    useState<OperationsMonitoringSnapshot | null>(null);
+  const [monitoringHistory, setMonitoringHistory] = useState<
+    OperationsCheckMetric[]
+  >([]);
+  const [monitoringError, setMonitoringError] = useState<string | null>(null);
+  const [isMonitoringLoading, setIsMonitoringLoading] = useState(false);
+  const [monitoringIntervalMs, setMonitoringIntervalMs] =
+    useState<MonitoringIntervalMs>(30_000);
+  const [watcherDecision, setWatcherDecision] =
+    useState<OpsWatcherDecision | null>(null);
+  const [watcherNotifications, setWatcherNotifications] = useState<
+    OpsWatcherDecision[]
+  >([]);
+  const [copiedCommandId, setCopiedCommandId] = useState<string | null>(null);
+  const watcherCooldownsRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
+    if (profileStatus === "loading") {
+      return;
+    }
+
+    if (!canAccessHubOps) {
+      setIsLoading(false);
+      setError(null);
+      setOperations(null);
+      return;
+    }
+
     let isActive = true;
 
     async function loadOperations() {
@@ -323,8 +454,16 @@ export function SquadOpsPage() {
       setError(null);
 
       try {
+        const accessToken = authAccessToken ?? (await getAccessToken());
+        const headers: Record<string, string> = {};
+
+        if (accessToken) {
+          headers.Authorization = `Bearer ${accessToken}`;
+        }
+
         const response = await fetch("/api/squadops/operations", {
           cache: "no-store",
+          headers,
         });
         const payload = (await response.json().catch(() => null)) as
           | EngineeringOperationsResponse
@@ -367,7 +506,149 @@ export function SquadOpsPage() {
     return () => {
       isActive = false;
     };
+  }, [authAccessToken, canAccessHubOps, profileStatus]);
+
+  const registerWatcherDecision = useCallback((decision: OpsWatcherDecision) => {
+    setWatcherDecision(decision);
+
+    if (!decision.notifyLucas) {
+      return;
+    }
+
+    const now = Date.now();
+    const lastNotifiedAt = watcherCooldownsRef.current[decision.dedupeKey] ?? 0;
+
+    if (now - lastNotifiedAt < decision.cooldownSeconds * 1000) {
+      return;
+    }
+
+    watcherCooldownsRef.current[decision.dedupeKey] = now;
+    setWatcherNotifications((current) => [decision, ...current].slice(0, 12));
   }, []);
+
+  const runOpsWatcher = useCallback(
+    async (snapshot: OperationsMonitoringSnapshot) => {
+      const accessToken = authAccessToken ?? (await getAccessToken());
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/operations/watcher", {
+        body: JSON.stringify({ snapshot }),
+        cache: "no-store",
+        headers,
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | WatcherApiResponse
+        | { error?: string }
+        | null;
+
+      if (!response.ok || !payload || !("watcher" in payload) || !payload.watcher) {
+        const message =
+          payload && "error" in payload && typeof payload.error === "string"
+            ? payload.error
+            : "Nao foi possivel analisar o Ops Watcher.";
+        throw new Error(message);
+      }
+
+      registerWatcherDecision(payload.watcher);
+    },
+    [authAccessToken, registerWatcherDecision],
+  );
+
+  const loadMonitoringSnapshot = useCallback(
+    async ({ analyze = false }: { analyze?: boolean } = {}) => {
+      if (!canAccessHubOps || profileStatus === "loading") {
+        return;
+      }
+
+      setIsMonitoringLoading(true);
+      setMonitoringError(null);
+
+      try {
+        const accessToken = authAccessToken ?? (await getAccessToken());
+        const headers: Record<string, string> = {};
+
+        if (accessToken) {
+          headers.Authorization = `Bearer ${accessToken}`;
+        }
+
+        const response = await fetch("/api/operations/monitoring", {
+          cache: "no-store",
+          headers,
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | OperationsMonitoringSnapshot
+          | { error?: string }
+          | null;
+
+        if (!response.ok || !isMonitoringSnapshot(payload)) {
+          const message =
+            payload && "error" in payload && typeof payload.error === "string"
+              ? payload.error
+              : "Nao foi possivel carregar Database Monitoring.";
+          throw new Error(message);
+        }
+
+        setMonitoringSnapshot(payload);
+        setMonitoringHistory((current) =>
+          [...payload.checks, ...current].slice(0, 120),
+        );
+
+        if (
+          analyze ||
+          payload.alerts.some(
+            (alert) => alert.level === "alto" || alert.level === "critico",
+          )
+        ) {
+          await runOpsWatcher(payload);
+        }
+      } catch (monitoringLoadError) {
+        setMonitoringError(
+          monitoringLoadError instanceof Error
+            ? monitoringLoadError.message
+            : "Nao foi possivel carregar Database Monitoring.",
+        );
+      } finally {
+        setIsMonitoringLoading(false);
+      }
+    },
+    [authAccessToken, canAccessHubOps, profileStatus, runOpsWatcher],
+  );
+
+  useEffect(() => {
+    if (!canAccessHubOps || profileStatus === "loading") {
+      return;
+    }
+
+    void loadMonitoringSnapshot({ analyze: true });
+  }, [canAccessHubOps, loadMonitoringSnapshot, profileStatus]);
+
+  useEffect(() => {
+    if (
+      !canAccessHubOps ||
+      profileStatus === "loading" ||
+      monitoringIntervalMs === 0
+    ) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void loadMonitoringSnapshot();
+    }, monitoringIntervalMs);
+
+    return () => window.clearInterval(interval);
+  }, [
+    canAccessHubOps,
+    loadMonitoringSnapshot,
+    monitoringIntervalMs,
+    profileStatus,
+  ]);
 
   const records = useMemo(() => operations?.records ?? [], [operations]);
   const auditRoutines = useMemo(
@@ -406,6 +687,24 @@ export function SquadOpsPage() {
       (template) => template.id === selectedPromptTemplateId,
     ) ?? promptTemplates[0]!;
 
+  if (profileStatus === "loading" && !canAccessHubOps) {
+    return (
+      <HubOpsAccessState
+        description="Carregando perfil operacional para validar permissao adm."
+        title="Preparando HubOps"
+      />
+    );
+  }
+
+  if (!canAccessHubOps) {
+    return (
+      <HubOpsAccessState
+        description="HubOps e o Operations Center da engenharia IA e fica liberado somente para perfil adm."
+        title="Acesso restrito"
+      />
+    );
+  }
+
   async function askCopilot(question: string, target?: string | null) {
     const normalizedQuestion = question.trim();
 
@@ -423,7 +722,7 @@ export function SquadOpsPage() {
     setCopilotError(null);
 
     try {
-      const accessToken = await getAccessToken();
+      const accessToken = authAccessToken ?? (await getAccessToken());
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -465,50 +764,40 @@ export function SquadOpsPage() {
     }
   }
 
+  async function copyAgentCommand(command: string, id: string) {
+    await navigator.clipboard.writeText(command);
+    setCopiedCommandId(id);
+    window.setTimeout(() => {
+      setCopiedCommandId((currentId) => (currentId === id ? null : currentId));
+    }, 1800);
+  }
+
   return (
     <HubShell layoutMode="module">
-      <WorkspaceLayout
-        header={
-          <WorkspaceHeader
-            actions={
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                  onClick={openHubModulesSidebar}
-                  type="button"
-                >
-                  <LayoutGrid aria-hidden="true" className="size-4 text-[#A07C3B]" />
-                  Módulos do Hub
-                </button>
-                <button
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-xs font-semibold text-[#7A5E2C] shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                  onClick={() => setIsPoAiOpen(true)}
-                  type="button"
-                >
-                  <Bot aria-hidden="true" className="size-4" />
-                  PO AI
-                </button>
-                <Badge variant="warning">AGUARDANDO RELEASEOPS</Badge>
-                <Badge variant="info">Engineering Operations</Badge>
-              </div>
-            }
-            description="Leitura operacional do diário oficial da engenharia IA do Careli Hub."
-            eyebrow="SquadOps Core"
-            title="HubOps"
-          />
-        }
-      >
+      <WorkspaceLayout>
         <section className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
               <FileText className="size-4 text-[#A07C3B]" />
               {operations?.sourcePath ?? "docs/codex/engineering-operations.md"}
             </span>
-            <span className="text-xs font-semibold text-slate-500">
-              {operations
-                ? `Atualizado: ${formatGeneratedAt(operations.generatedAt)}`
-                : "Aguardando leitura"}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                onClick={openHubModulesSidebar}
+                type="button"
+              >
+                <LayoutGrid aria-hidden="true" className="size-4 text-[#A07C3B]" />
+                Módulos do Hub
+              </button>
+              <Badge variant="warning">AGUARDANDO RELEASEOPS</Badge>
+              <Badge variant="info">Engineering Operations</Badge>
+              <span className="text-xs font-semibold text-slate-500">
+                {operations
+                  ? `Atualizado: ${formatGeneratedAt(operations.generatedAt)}`
+                  : "Aguardando leitura"}
+              </span>
+            </div>
           </div>
         </section>
 
@@ -531,19 +820,21 @@ export function SquadOpsPage() {
           onOpenAudits={() => setActiveView("audits")}
           onOpenTimeline={() => setActiveView("timeline")}
           onOpenCritical={() => setActiveView("overview")}
+          onOpenMonitoring={() => setActiveView("monitoring")}
         />
 
         <HubOpsViewTabs
           activeView={activeView}
           actionCount={actionCount}
           filteredCount={filteredRecords.length}
+          monitoringAlertCount={monitoringSnapshot?.alerts.length ?? 0}
           onChange={setActiveView}
           routineCount={auditRoutines.length}
         />
 
         {activeView === "overview" ? (
           <>
-            <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(22rem,0.38fr)_minmax(0,1fr)]">
+            <section className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
               <CriticalOperationsPanel
                 onSelectRecord={setSelectedRecord}
                 onSelectRoutine={setSelectedRoutine}
@@ -581,6 +872,24 @@ export function SquadOpsPage() {
               />
             </section>
           </>
+        ) : null}
+
+        {activeView === "monitoring" ? (
+          <DatabaseMonitoringView
+            copiedCommandId={copiedCommandId}
+            error={monitoringError}
+            history={monitoringHistory}
+            intervalMs={monitoringIntervalMs}
+            isLoading={isMonitoringLoading}
+            notifications={watcherNotifications}
+            onAnalyze={() => void loadMonitoringSnapshot({ analyze: true })}
+            onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
+            onIntervalChange={setMonitoringIntervalMs}
+            onRefresh={() => void loadMonitoringSnapshot()}
+            onOpenPoAi={() => setIsPoAiOpen(true)}
+            snapshot={monitoringSnapshot}
+            watcher={watcherDecision}
+          />
         ) : null}
 
         {activeView === "timeline" ? (
@@ -684,8 +993,69 @@ export function SquadOpsPage() {
         selectedTemplate={selectedPromptTemplate}
         templates={promptTemplates}
       />
+      <FloatingPoAiButton
+        isHidden={isPoAiOpen}
+        onClick={() => setIsPoAiOpen(true)}
+      />
     </HubShell>
   );
+}
+
+function FloatingPoAiButton({
+  isHidden,
+  onClick,
+}: {
+  isHidden: boolean;
+  onClick: () => void;
+}) {
+  if (isHidden) {
+    return null;
+  }
+
+  return (
+    <button
+      aria-label="Abrir PO AI"
+      className="fixed bottom-6 right-6 z-40 inline-flex h-12 items-center gap-3 rounded-2xl border border-[#A07C3B]/25 bg-white px-4 text-sm font-semibold text-[#7A5E2C] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="relative grid size-8 place-items-center rounded-xl bg-[#A07C3B]/10 text-[#A07C3B]">
+        <Bot className="size-4" aria-hidden="true" />
+        <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+      </span>
+      PO AI
+    </button>
+  );
+}
+
+function HubOpsAccessState({
+  description,
+  title,
+}: {
+  description: string;
+  title: string;
+}) {
+  return (
+    <HubShell layoutMode="module">
+      <WorkspaceLayout>
+        <Surface bordered className="border-slate-200/70 bg-white p-6">
+          <UixEmptyState
+            description={description}
+            title={title}
+            visual={
+              <span className="flex size-12 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+                <ShieldAlert className="size-5" />
+              </span>
+            }
+          />
+        </Surface>
+      </WorkspaceLayout>
+    </HubShell>
+  );
+}
+
+function canAccessHubOpsAsAdmin(user: HubUserContext | null) {
+  return user?.role === "admin" || user?.operationalProfile?.profileRole === "adm";
 }
 
 function getPoAiErrorMessage(error: Error) {
@@ -729,6 +1099,7 @@ function HubOpsCommandCenter({
   onOpenPoAi,
   onOpenAudits,
   onOpenCritical,
+  onOpenMonitoring,
   onOpenTimeline,
 }: {
   actionCount: number;
@@ -739,6 +1110,7 @@ function HubOpsCommandCenter({
   onOpenPoAi: () => void;
   onOpenAudits: () => void;
   onOpenCritical: () => void;
+  onOpenMonitoring: () => void;
   onOpenTimeline: () => void;
 }) {
   return (
@@ -828,6 +1200,14 @@ function HubOpsCommandCenter({
             </button>
             <button
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              onClick={onOpenMonitoring}
+              type="button"
+            >
+              <Database className="size-4 text-[#A07C3B]" />
+              Monitoring
+            </button>
+            <button
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
               onClick={onOpenAudits}
               type="button"
             >
@@ -874,21 +1254,473 @@ function FocusMetric({
   );
 }
 
+function DatabaseMonitoringView({
+  copiedCommandId,
+  error,
+  history,
+  intervalMs,
+  isLoading,
+  notifications,
+  onAnalyze,
+  onCopyCommand,
+  onIntervalChange,
+  onOpenPoAi,
+  onRefresh,
+  snapshot,
+  watcher,
+}: {
+  copiedCommandId: string | null;
+  error: string | null;
+  history: OperationsCheckMetric[];
+  intervalMs: MonitoringIntervalMs;
+  isLoading: boolean;
+  notifications: OpsWatcherDecision[];
+  onAnalyze: () => void;
+  onCopyCommand: (command: string, id: string) => void;
+  onIntervalChange: (intervalMs: MonitoringIntervalMs) => void;
+  onOpenPoAi: () => void;
+  onRefresh: () => void;
+  snapshot: OperationsMonitoringSnapshot | null;
+  watcher: OpsWatcherDecision | null;
+}) {
+  const latestNotification = notifications[0] ?? null;
+
+  return (
+    <section className="grid gap-5">
+      <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <PanelTitle
+            eyebrow="fontes reais / 30s padrao"
+            icon={<Database size={18} />}
+            title="Database Monitoring"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <MonitoringIntervalControl
+              intervalMs={intervalMs}
+              onChange={onIntervalChange}
+            />
+            <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              onClick={onRefresh}
+              type="button"
+            >
+              <RefreshCcw className={`size-4 text-[#A07C3B] ${isLoading ? "animate-spin" : ""}`} />
+              Atualizar agora
+            </button>
+            <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#1b2533]"
+              onClick={onAnalyze}
+              type="button"
+            >
+              <Activity className="size-4" />
+              Analisar agora
+            </button>
+            <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+              onClick={onOpenPoAi}
+              type="button"
+            >
+              <Bot className="size-4" />
+              Ops Copilot
+            </button>
+          </div>
+        </div>
+
+        {error ? (
+          <p className="mt-4 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700">
+            {error}
+          </p>
+        ) : null}
+
+        {latestNotification ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="m-0 text-xs font-semibold uppercase text-amber-700">
+                  Ops Watcher
+                </p>
+                <p className="m-0 mt-1 text-sm font-semibold text-amber-950">
+                  {latestNotification.message}
+                </p>
+              </div>
+              <Badge variant={riskToBadgeVariant(latestNotification.risk)}>
+                {latestNotification.risk}
+              </Badge>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <MonitoringCard
+            detail={snapshot?.cards.status.label ?? "Aguardando primeiro check"}
+            icon={<Activity size={17} />}
+            label="Status geral"
+            status={snapshot?.cards.status.value}
+            value={snapshot?.cards.status.label ?? "..."}
+          />
+          <MonitoringCard
+            detail={`DB ${snapshot?.cards.c2x.database ?? "nao informado"} / ${snapshot?.cards.c2x.responseMs ?? 0}ms`}
+            icon={<ServerCog size={17} />}
+            label="C2X"
+            status={snapshot?.cards.c2x.status}
+            value={generalStatusLabel(snapshot?.cards.c2x.status)}
+          />
+          <MonitoringCard
+            detail={`Auth ${generalStatusLabel(snapshot?.cards.supabase.auth)} / REST ${generalStatusLabel(snapshot?.cards.supabase.rest)} / RT ${generalStatusLabel(snapshot?.cards.supabase.realtime)}`}
+            icon={<Wifi size={17} />}
+            label="Supabase"
+            status={snapshot?.cards.supabase.auth}
+            value={`${snapshot?.cards.supabase.responseMs ?? 0}ms`}
+          />
+          <MonitoringCard
+            detail={`limites ${(snapshot?.cards.guardianQueue.usedLimits ?? []).join(", ") || "20, 50"} / payload ${formatBytes(snapshot?.cards.guardianQueue.payloadBytes ?? 0)}`}
+            icon={<Database size={17} />}
+            label="Guardian Queue"
+            status={riskToGeneralStatus(snapshot?.cards.guardianQueue.risk)}
+            value={`${snapshot?.cards.guardianQueue.loadedCount ?? 0} itens`}
+          />
+          <MonitoringCard
+            detail={`${snapshot?.cards.protectedApis.expectedUnauthorized ?? 0}/${snapshot?.cards.protectedApis.total ?? 0} retornaram 401 esperado`}
+            icon={<ShieldAlert size={17} />}
+            label="APIs protegidas"
+            status={
+              snapshot?.cards.protectedApis.unexpected
+                ? "operacional_com_atencao"
+                : "operacional"
+            }
+            value={`${snapshot?.cards.protectedApis.unexpected ?? 0} desvios`}
+          />
+          <MonitoringCard
+            detail={snapshot?.cards.activeAlerts.lastAlert ?? "Sem alerta ativo"}
+            icon={<BellRing size={17} />}
+            label="Alertas ativos"
+            status={riskToGeneralStatus(snapshot?.cards.activeAlerts.highestLevel)}
+            value={snapshot?.cards.activeAlerts.total ?? 0}
+          />
+        </div>
+      </Surface>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.38fr)]">
+        <OperationsAlertsPanel
+          alerts={snapshot?.alerts ?? []}
+          copiedCommandId={copiedCommandId}
+          onCopyCommand={onCopyCommand}
+        />
+        <OpsWatcherPanel
+          copiedCommandId={copiedCommandId}
+          notifications={notifications}
+          onCopyCommand={onCopyCommand}
+          watcher={watcher}
+        />
+      </div>
+
+      <ChecksHistoryPanel checks={history} />
+    </section>
+  );
+}
+
+function MonitoringIntervalControl({
+  intervalMs,
+  onChange,
+}: {
+  intervalMs: MonitoringIntervalMs;
+  onChange: (intervalMs: MonitoringIntervalMs) => void;
+}) {
+  const options = [
+    { label: "10s", value: 10_000 },
+    { label: "30s", value: 30_000 },
+    { label: "60s", value: 60_000 },
+    { label: "Manual", value: 0 },
+  ] as const satisfies readonly {
+    label: string;
+    value: MonitoringIntervalMs;
+  }[];
+
+  return (
+    <div className="inline-flex rounded-lg border border-slate-200/70 bg-white p-1">
+      {options.map((option) => (
+        <button
+          className={`h-7 rounded-md px-2.5 text-xs font-semibold transition-colors ${
+            intervalMs === option.value
+              ? "bg-[#101820] text-white"
+              : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+          }`}
+          key={option.value}
+          onClick={() => onChange(option.value)}
+          type="button"
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MonitoringCard({
+  detail,
+  icon,
+  label,
+  status,
+  value,
+}: {
+  detail: string;
+  icon: ReactNode;
+  label: string;
+  status?: OperationsMonitoringSnapshot["cards"]["status"]["value"];
+  value: number | string;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+            {label}
+          </p>
+          <p className="m-0 mt-2 truncate text-lg font-semibold text-slate-950">
+            {value}
+          </p>
+        </div>
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+          {icon}
+        </span>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <Badge variant={statusToBadgeVariant(status)}>{generalStatusLabel(status)}</Badge>
+      </div>
+      <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
+        {detail}
+      </p>
+    </div>
+  );
+}
+
+function OperationsAlertsPanel({
+  alerts,
+  copiedCommandId,
+  onCopyCommand,
+}: {
+  alerts: OperationsAlert[];
+  copiedCommandId: string | null;
+  onCopyCommand: (command: string, id: string) => void;
+}) {
+  return (
+    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <PanelTitle
+        eyebrow={`${alerts.length} alertas`}
+        icon={<BellRing size={18} />}
+        title="Alertas operacionais"
+      />
+      <div className="mt-4 grid max-h-[54vh] gap-3 overflow-y-auto pr-1">
+        {alerts.length > 0 ? (
+          alerts.map((alert) => (
+            <article
+              className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+              key={alert.id}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold text-slate-950">
+                    {alert.title}
+                  </p>
+                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+                    {alert.module} / {alert.origin}
+                  </p>
+                </div>
+                <Badge variant={riskToBadgeVariant(alert.level)}>
+                  {alert.level}
+                </Badge>
+              </div>
+              <p className="m-0 mt-3 text-xs leading-5 text-slate-600">
+                {alert.impact}
+              </p>
+              <p className="m-0 mt-2 rounded-lg bg-slate-50/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
+                {alert.recommendation}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-500">
+                  Agente: {alert.recommendedAgent}
+                </span>
+                <button
+                  className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+                  onClick={() => onCopyCommand(alert.command, alert.id)}
+                  type="button"
+                >
+                  <Copy className="size-3.5" />
+                  {copiedCommandId === alert.id
+                    ? "Copiado"
+                    : "Gerar comando para agente"}
+                </button>
+              </div>
+            </article>
+          ))
+        ) : (
+          <EmptyState message="Sem alerta operacional ativo." />
+        )}
+      </div>
+    </Surface>
+  );
+}
+
+function OpsWatcherPanel({
+  copiedCommandId,
+  notifications,
+  onCopyCommand,
+  watcher,
+}: {
+  copiedCommandId: string | null;
+  notifications: OpsWatcherDecision[];
+  onCopyCommand: (command: string, id: string) => void;
+  watcher: OpsWatcherDecision | null;
+}) {
+  return (
+    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <PanelTitle
+        eyebrow={watcher ? watcher.status : "aguardando"}
+        icon={<Activity size={18} />}
+        title="Ops Watcher"
+      />
+      {watcher ? (
+        <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <p className="m-0 text-sm font-semibold leading-6 text-slate-950">
+              {watcher.message}
+            </p>
+            <Badge variant={riskToBadgeVariant(watcher.risk)}>
+              {watcher.risk}
+            </Badge>
+          </div>
+          <p className="m-0 mt-3 text-xs leading-5 text-slate-600">
+            Motivo: {watcher.reason}
+          </p>
+          <p className="m-0 mt-2 text-xs font-semibold text-slate-500">
+            Agente recomendado: {watcher.agent}
+          </p>
+          <button
+            className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#1b2533]"
+            onClick={() => onCopyCommand(watcher.command, watcher.dedupeKey)}
+            type="button"
+          >
+            <Copy className="size-4" />
+            {copiedCommandId === watcher.dedupeKey
+              ? "Comando copiado"
+              : "Copiar comando sugerido"}
+          </button>
+        </div>
+      ) : (
+        <EmptyState message="Clique em Analisar agora para rodar o watcher." />
+      )}
+
+      <div className="mt-5">
+        <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+          Historico de notificacoes
+        </p>
+        <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto pr-1">
+          {notifications.length > 0 ? (
+            notifications.map((notification) => (
+              <div
+                className="rounded-xl border border-slate-200/70 bg-white p-3 text-xs leading-5 text-slate-600"
+                key={`${notification.dedupeKey}-${notification.generatedAt}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-slate-950">
+                    {formatOperationDateTime(notification.generatedAt)}
+                  </span>
+                  <Badge variant={riskToBadgeVariant(notification.risk)}>
+                    {notification.risk}
+                  </Badge>
+                </div>
+                <p className="m-0 mt-2 line-clamp-3">{notification.message}</p>
+              </div>
+            ))
+          ) : (
+            <p className="m-0 rounded-xl bg-slate-50/70 p-3 text-xs text-slate-500 ring-1 ring-slate-200/70">
+              Sem notificacao enviada nesta sessao.
+            </p>
+          )}
+        </div>
+      </div>
+    </Surface>
+  );
+}
+
+function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
+  return (
+    <Surface bordered className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="border-b border-slate-100 p-5">
+        <PanelTitle
+          eyebrow={`${checks.length} checks nesta sessao`}
+          icon={<History size={18} />}
+          title="Historico de checks"
+        />
+      </div>
+      <div className="max-h-[42vh] overflow-auto">
+        <table className="min-w-[62rem] w-full border-collapse text-left text-sm">
+          <thead className="bg-slate-50/80 text-xs font-semibold uppercase text-slate-400">
+            <tr>
+              <th className="px-4 py-3">Horario</th>
+              <th className="px-4 py-3">Origem</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Tempo</th>
+              <th className="px-4 py-3">Payload</th>
+              <th className="px-4 py-3">Risco</th>
+              <th className="px-4 py-3">Alerta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {checks.slice(0, 80).map((check, index) => (
+              <tr
+                className="border-t border-slate-100"
+                key={`${check.id}-${check.checkedAt}-${index}`}
+              >
+                <td className="px-4 py-3 text-xs font-semibold text-slate-500">
+                  {formatOperationDateTime(check.checkedAt)}
+                </td>
+                <td className="px-4 py-3">
+                  <p className="m-0 font-semibold text-slate-950">{check.label}</p>
+                  <p className="m-0 mt-1 truncate text-xs text-slate-500">
+                    {check.module}
+                  </p>
+                </td>
+                <td className="px-4 py-3 text-slate-600">{check.received}</td>
+                <td className="px-4 py-3 text-slate-600">{check.responseMs}ms</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {formatBytes(check.payloadBytes)}
+                </td>
+                <td className="px-4 py-3">
+                  <Badge variant={riskToBadgeVariant(check.risk)}>
+                    {check.risk}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  {check.alertGenerated ? "sim" : "nao"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Surface>
+  );
+}
+
 function HubOpsViewTabs({
   activeView,
   actionCount,
   filteredCount,
+  monitoringAlertCount,
   onChange,
   routineCount,
 }: {
   activeView: HubOpsView;
   actionCount: number;
   filteredCount: number;
+  monitoringAlertCount: number;
   onChange: (view: HubOpsView) => void;
   routineCount: number;
 }) {
   const counters = {
     audits: routineCount,
+    monitoring: monitoringAlertCount,
     overview: actionCount,
     records: filteredCount,
     timeline: filteredCount,
@@ -945,7 +1777,7 @@ function TimelinePanel({
   title: string;
 }) {
   return (
-    <Surface bordered className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="border-b border-slate-100 p-5">
         <PanelTitle
           icon={<History size={18} />}
@@ -953,7 +1785,7 @@ function TimelinePanel({
           title={title}
         />
       </div>
-      <div className="grid max-h-[58vh] gap-3 overflow-y-auto overscroll-contain p-4 pr-3">
+      <div className="grid max-h-[58vh] min-w-0 gap-3 overflow-y-auto overscroll-contain p-4 pr-3">
         {records.length > 0 ? (
           records.slice(0, limit).map((record) => (
             <TimelineItem
@@ -986,9 +1818,9 @@ function RecordsTable({
           title="Registros estruturados"
         />
       </div>
-      <div className="overflow-x-auto">
+      <div className="max-h-[66vh] overflow-auto overscroll-contain">
         <table className="min-w-[62rem] w-full border-collapse text-left text-sm">
-          <thead className="bg-slate-50/80 text-xs font-semibold uppercase text-slate-400">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase text-slate-400 shadow-[0_1px_0_rgba(226,232,240,0.9)]">
             <tr>
               <th className="px-4 py-3">Assunto</th>
               <th className="px-4 py-3">Módulo</th>
@@ -1167,28 +1999,33 @@ function TimelineItem({
 }) {
   return (
     <button
-      className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] lg:grid-cols-[auto_minmax(0,1fr)_auto]"
       onClick={onSelect}
       type="button"
     >
       <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[#A07C3B]" />
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="m-0 truncate text-sm font-semibold text-[#101820]">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="m-0 min-w-0 flex-1 truncate text-sm font-semibold text-[#101820]">
             {record.subject}
           </p>
-          <Badge variant={statusVariant(record.status)}>{record.status}</Badge>
-          <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+          <Badge
+            className="max-w-[9.5rem] shrink-0 truncate"
+            variant={statusVariant(record.status)}
+          >
+            {record.status}
+          </Badge>
+          <span className="max-w-[12rem] truncate rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
             {record.type}
           </span>
         </div>
-        <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
+        <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-[#667085]">
           {record.shortSummary}
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-          <span>{record.squad}</span>
+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+          <span className="max-w-[11rem] truncate">{record.squad}</span>
           <span>/</span>
-          <span>{record.module}</span>
+          <span className="max-w-[11rem] truncate">{record.module}</span>
           {record.isCritical ? (
             <>
               <span>/</span>
@@ -1197,7 +2034,7 @@ function TimelineItem({
           ) : null}
         </div>
       </div>
-      <span className="whitespace-nowrap text-right text-xs font-semibold text-[#667085]">
+      <span className="whitespace-nowrap text-left text-xs font-semibold text-[#667085] lg:text-right">
         {formatOperationDateTime(record.localDateTime)}
       </span>
     </button>
@@ -1219,7 +2056,7 @@ function AuditRoutinesPanel({
     )?.lastExecution ?? UNKNOWN_OPERATION_VALUE;
 
   return (
-    <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PanelTitle
           eyebrow={`${routines.length} rotinas`}
@@ -1239,7 +2076,7 @@ function AuditRoutinesPanel({
         <AuditSummaryPill label="última execução" value={latestExecution} />
       </div>
 
-      <div className="mt-5 grid gap-5">
+      <div className="mt-5 grid max-h-[62vh] gap-5 overflow-y-auto overscroll-contain pr-1">
         {overdueRoutines.length > 0 ? (
           <AuditRoutineGroup
             onSelectRoutine={onSelectRoutine}
@@ -1383,7 +2220,10 @@ function PoAiChannelPanel({
         />
         <div className="mt-3 flex flex-wrap gap-2">
           <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
-            diário operacional
+            monitoramento real
+          </span>
+          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-100">
+            diário = histórico
           </span>
           <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-100">
             código do Hub
@@ -1404,7 +2244,7 @@ function PoAiChannelPanel({
               <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-2 text-sm font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin text-[#A07C3B]" />
-                  PO AI lendo diário e código do Hub
+                  PO AI consultando monitoramento real, histórico e código do Hub
                 </span>
               </div>
             </div>
@@ -1430,7 +2270,7 @@ function PoAiChannelPanel({
                   onAsk(question);
                 }
               }}
-              placeholder="Pergunte sobre código, risco, módulo, decisão, deploy ou próximo passo..."
+              placeholder="Pergunte sobre banco, APIs, monitoramento real, risco, decisão, deploy ou próximo passo..."
               value={question}
             />
           </label>
@@ -1471,11 +2311,11 @@ function PoAiChannelPanel({
             </button>
             <button
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-              onClick={() => onQuestionChange("Leia o código do Hub e me diga onde está o principal risco operacional agora.")}
+              onClick={() => onQuestionChange("Como está o banco de dados no monitoramento real agora? Use o diário apenas como histórico.")}
               type="button"
             >
-              <Bot className="size-4 text-[#A07C3B]" />
-              Código
+              <Database className="size-4 text-[#A07C3B]" />
+              Banco
             </button>
             <button
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
@@ -1802,11 +2642,11 @@ function CopilotAnswerBubbles({
       <div className={compact ? "grid gap-3" : "mt-4 grid gap-3"}>
         {sections.map((section) => (
           <article
-            className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3"
+            className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
             key={section.id}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="m-0 text-sm font-semibold text-slate-950">
+              <h3 className="m-0 text-[0.95rem] font-semibold text-slate-950">
                 {section.title}
               </h3>
               <span
@@ -1815,16 +2655,26 @@ function CopilotAnswerBubbles({
                 {copilotSectionLabel(section.type)}
               </span>
             </div>
-            <div className="mt-3 grid gap-2">
-              {section.items.map((item, index) => (
-                <p
-                  className="m-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
-                  key={`${section.id}-${index}`}
-                >
-                  {item}
-                </p>
-              ))}
-            </div>
+            <ul className="m-0 mt-3 grid list-none gap-2 p-0">
+              {section.items.map((item, index) =>
+                isCopilotSubheading(item) ? (
+                  <li
+                    className="pt-2 text-xs font-semibold uppercase text-[#7A5E2C]"
+                    key={`${section.id}-${index}`}
+                  >
+                    {item.replace(/:$/, "")}
+                  </li>
+                ) : (
+                  <li
+                    className="grid grid-cols-[0.45rem_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700"
+                    key={`${section.id}-${index}`}
+                  >
+                    <span className="mt-[0.62rem] size-1.5 rounded-full bg-[#A07C3B]" />
+                    <span className="min-w-0">{item}</span>
+                  </li>
+                ),
+              )}
+            </ul>
           </article>
         ))}
       </div>
@@ -1994,6 +2844,10 @@ function cleanCopilotItem(line: string) {
     .trim();
 }
 
+function isCopilotSubheading(item: string) {
+  return item.endsWith(":") && item.length <= 80;
+}
+
 function inferCopilotSectionType(title: string): CopilotAnswerSection["type"] {
   const normalizedTitle = normalizeSearchText(title);
 
@@ -2089,21 +2943,21 @@ function CriticalOperationsPanel({
   title: string;
 }) {
   return (
-    <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <PanelTitle
         eyebrow={`${records.length + routines.length} itens`}
         icon={<ShieldAlert size={18} />}
         title={title}
       />
-      <div className="mt-4 grid gap-2">
+      <div className="mt-4 grid max-h-[58vh] min-w-0 gap-2 overflow-y-auto overscroll-contain pr-1">
         {routines.map((routine) => (
           <button
-            className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-left transition-colors hover:border-amber-300 hover:bg-amber-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+            className="w-full min-w-0 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-3 text-left transition-colors hover:border-amber-300 hover:bg-amber-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
             key={routine.id}
             onClick={() => onSelectRoutine(routine)}
             type="button"
           >
-            <p className="m-0 text-sm font-semibold text-amber-900">
+            <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-amber-900">
               {routine.name}
             </p>
             <p className="m-0 mt-1 text-xs leading-5 text-amber-800">
@@ -2115,21 +2969,24 @@ function CriticalOperationsPanel({
         {records.length > 0 ? (
           records.map((record) => (
             <button
-              className="rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               key={record.id}
               onClick={() => onSelectRecord(record)}
               type="button"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                  <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-slate-950">
                     {record.subject}
                   </p>
-                  <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
+                  <p className="m-0 mt-1 truncate text-xs leading-5 text-slate-500">
                     {record.module} / {record.routine}
                   </p>
                 </div>
-                <Badge variant={statusVariant(record.status)}>
+                <Badge
+                  className="max-w-[9.5rem] shrink-0 truncate"
+                  variant={statusVariant(record.status)}
+                >
                   {record.status}
                 </Badge>
               </div>
@@ -2158,27 +3015,30 @@ function OperationalList({
   title: string;
 }) {
   return (
-    <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <PanelTitle eyebrow={`${records.length} itens`} icon={icon} title={title} />
-      <div className="mt-4 grid gap-2">
+      <div className="mt-4 grid max-h-[46vh] min-w-0 gap-2 overflow-y-auto overscroll-contain pr-1">
         {records.length > 0 ? (
           records.map((record) => (
             <button
-              className="rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               key={record.id}
               onClick={() => onSelectRecord(record)}
               type="button"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                  <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-slate-950">
                     {record.subject}
                   </p>
-                  <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
+                  <p className="m-0 mt-1 truncate text-xs leading-5 text-slate-500">
                     {record.module} / {record.type}
                   </p>
                 </div>
-                <Badge variant={statusVariant(record.status)}>
+                <Badge
+                  className="max-w-[9.5rem] shrink-0 truncate"
+                  variant={statusVariant(record.status)}
+                >
                   {record.status}
                 </Badge>
               </div>
@@ -2375,13 +3235,13 @@ function PanelTitle({
   title: string;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="flex size-10 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
         {icon}
       </span>
-      <div>
+      <div className="min-w-0">
         <p className="m-0 text-xs font-semibold text-slate-500">{eyebrow}</p>
-        <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
+        <h2 className="m-0 mt-1 line-clamp-2 text-base font-semibold text-slate-950">
           {title}
         </h2>
       </div>
@@ -2486,6 +3346,114 @@ function statusVariant(status: string): BadgeVariant {
   }
 
   return "neutral";
+}
+
+function isMonitoringSnapshot(value: unknown): value is OperationsMonitoringSnapshot {
+  const snapshot = value as Partial<OperationsMonitoringSnapshot> | null;
+
+  return Boolean(
+    snapshot &&
+      typeof snapshot === "object" &&
+      Array.isArray(snapshot.alerts) &&
+      Array.isArray(snapshot.checks) &&
+      snapshot.cards &&
+      typeof snapshot.cards === "object" &&
+      typeof snapshot.generatedAt === "string" &&
+      snapshot.metrics &&
+      typeof snapshot.metrics === "object",
+  );
+}
+
+function generalStatusLabel(
+  status?: OperationsMonitoringSnapshot["cards"]["status"]["value"],
+) {
+  if (status === "operacional") {
+    return "Operacional";
+  }
+
+  if (status === "operacional_com_atencao") {
+    return "Operacional com atencao";
+  }
+
+  if (status === "critico") {
+    return "Critico";
+  }
+
+  if (status === "indisponivel") {
+    return "Indisponivel";
+  }
+
+  return "Aguardando";
+}
+
+function statusToBadgeVariant(
+  status?: OperationsMonitoringSnapshot["cards"]["status"]["value"],
+): BadgeVariant {
+  if (status === "operacional") {
+    return "success";
+  }
+
+  if (status === "critico" || status === "indisponivel") {
+    return "danger";
+  }
+
+  if (status === "operacional_com_atencao") {
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+function riskToBadgeVariant(
+  risk?: OperationsRiskLevel | "nenhum",
+): BadgeVariant {
+  if (risk === "critico") {
+    return "danger";
+  }
+
+  if (risk === "alto" || risk === "medio") {
+    return "warning";
+  }
+
+  if (risk === "baixo") {
+    return "info";
+  }
+
+  return "neutral";
+}
+
+function riskToGeneralStatus(
+  risk?: OperationsRiskLevel | "nenhum",
+): OperationsMonitoringSnapshot["cards"]["status"]["value"] {
+  if (risk === "critico") {
+    return "critico";
+  }
+
+  if (risk === "alto" || risk === "medio") {
+    return "operacional_com_atencao";
+  }
+
+  if (risk === "baixo" || risk === "nenhum") {
+    return "operacional";
+  }
+
+  return "operacional_com_atencao";
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  const kilobytes = bytes / 1024;
+
+  if (kilobytes < 1024) {
+    return `${kilobytes.toFixed(kilobytes >= 100 ? 0 : 1)} KB`;
+  }
+
+  const megabytes = kilobytes / 1024;
+
+  return `${megabytes.toFixed(megabytes >= 10 ? 1 : 2)} MB`;
 }
 
 function normalizeSearchText(value: string) {

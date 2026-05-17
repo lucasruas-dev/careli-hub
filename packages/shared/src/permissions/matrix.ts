@@ -32,7 +32,6 @@ export const rolePermissionMatrix = {
     "guardian:view",
     "caredesk:view",
     "pulsex:view",
-    "squadops:view",
     "agenda:view",
     "agenda:manage",
     "financeiro:view",
