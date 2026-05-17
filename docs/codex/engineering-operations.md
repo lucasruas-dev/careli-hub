@@ -2812,7 +2812,7 @@ Registro de diario:
 - Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: alterei o template `Atividade semanal` para usar `target: Hub SupportOps`, assunto `[SupportOps] Consolidado semanal do Hub`, saudacao `Hub SupportOps` e declaracao explicita de agente executor.
 - Logica utilizada: `SquadOps Core` organiza a tela e a biblioteca de prompts, mas a analise semanal de riscos/gargalos deve ser tratada como frente de investigacao e consolidacao operacional do `Hub SupportOps`, sem executar deploy, commit ou comandos.
-- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `git diff --check`.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
 - Pendencias ou riscos conhecidos: se o consolidado identificar recorte pronto para publicacao, o encaminhamento final continua sendo `Hub ReleaseOps`.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para revisar o pacote HubOps completo antes de publicacao.
