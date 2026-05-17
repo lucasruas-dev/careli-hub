@@ -1169,3 +1169,17 @@ Registro de diario:
 - Logica utilizada: centralizar a regra no diario garante que agentes futuros saibam quando validar, commitar, registrar o commit, separar escopo e orientar o proximo fluxo operacional sem misturar responsabilidades ou arquivos de outras squads.
 - Validacao executada: leitura local do diario operacional, busca por regras existentes de commit/handoff e conferencia do worktree; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
 - Pendencias ou riscos conhecidos: o worktree possui muitas alteracoes pre-existentes de outras frentes. O commit desta decisao deve stagear somente `docs/codex/contexto-operacional.md` para evitar misturar responsabilidades.
+
+Registro de diario:
+
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 00:32:26 -03:00.
+- Tipo da alteracao: Correcao de responsividade mobile no dashboard Guardian.
+- Motivo da mudanca: QA aprovou o recorte por empreendimento com ajustes e apontou overflow horizontal global em viewport mobile `390x844`, alem da rolagem interna esperada da tabela `Performance por empreendimento`.
+- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx`, `apps/hub/components/guardian/layout/MainLayout.tsx`, `apps/hub/styles/globals.css` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: medi `documentElement.scrollWidth`, `body.scrollWidth` e `clientWidth` no navegador interno com viewport `390x844`; identifiquei que o `html { min-width: 1024px; }` global mantinha largura minima desktop no shell Guardian mobile e que o drawer fechado de KPI permanecia renderizado fora da tela. O shell Guardian recebeu classe de escopo `guardian-module-shell`, o CSS global passou a remover `min-width` apenas quando esse shell existe, o container Guardian passou a bloquear `overflow-x` global e o drawer de KPI passou a ser renderizado apenas quando houver KPI selecionado.
+- Logica utilizada: manter a rolagem horizontal somente dentro dos componentes tabulares e impedir que o documento inteiro ganhe barra horizontal. A tabela principal continua com `scrollWidth` interno para navegacao dos campos largos, mas `documentScrollWidth` e `bodyScrollWidth` passam a acompanhar a largura real da viewport mobile.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso; smoke local em `http://localhost:3001/guardian` retornou HTTP 200; validacao no navegador interno em `390x844` confirmou `documentScrollWidth=390`, `bodyScrollWidth=390`, `clientWidth=390` e `hasGlobalOverflow=false`, mantendo rolagem interna da tabela com `scrollWidth=1120`.
+- Pendencias ou riscos conhecidos: `Contratos criticos`, `Aging da inadimplencia` e `Composicao da cobranca` seguem sem recorte real por empreendimento por falta de origem granular no read model; acionar `Hub DataOps` se Lucas quiser esse nivel de detalhamento. O worktree ainda possui alteracoes nao relacionadas de outras squads/frentes, portanto o commit desta correcao deve stagear apenas os hunks deste ajuste.
+- Status operacional: `AGUARDANDO QA`.
+- Proxima squad recomendada: `Hub QA` para regressao mobile/desktop do dashboard Guardian.

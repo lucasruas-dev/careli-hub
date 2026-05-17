@@ -440,11 +440,13 @@ export default function GuardianPage() {
         </DashboardPanel>
       </div>
 
-      <DashboardKpiDrawer
-        items={drawerItems}
-        onClose={() => setSelectedKpi(null)}
-        title={selectedKpiMeta?.title ?? ""}
-      />
+      {selectedKpiMeta ? (
+        <DashboardKpiDrawer
+          items={drawerItems}
+          onClose={() => setSelectedKpi(null)}
+          title={selectedKpiMeta.title}
+        />
+      ) : null}
     </MainLayout>
   );
 }
@@ -680,7 +682,7 @@ function DashboardKpiDrawer({
   const isOpen = Boolean(title);
 
   return (
-    <div className={`fixed inset-0 z-50 transition ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!isOpen}>
+    <div className={`fixed inset-0 z-50 overflow-hidden transition ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!isOpen}>
       <button
         type="button"
         aria-label="Fechar detalhes do KPI"

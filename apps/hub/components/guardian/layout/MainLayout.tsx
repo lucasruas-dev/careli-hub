@@ -35,7 +35,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   return (
     <HubShell chrome="operational" layoutMode="module">
-      <div className="h-full min-h-screen overflow-auto bg-[#F8FAFC] text-slate-950">
+      <div className="guardian-module-shell h-full min-h-screen overflow-y-auto overflow-x-hidden bg-[#F8FAFC] text-slate-950">
         <Sidebar collapsed={collapsed} onToggle={toggleSidebar} />
         <div
           className={`min-h-screen transition-[margin-left] duration-300 ease-out ${
