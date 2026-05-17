@@ -78,6 +78,50 @@ Regra permanente: nenhum deploy deve ser considerado concluido sem:
 - status operacional;
 - rastreabilidade registrada neste arquivo.
 
+### Template de deploy por recorte
+
+Use este template quando Lucas acionar `Hub ReleaseOps` para publicar um recorte especifico de modulo ou frente. Se os campos vierem como placeholder, o deploy deve ficar `BLOQUEADO` ate o recorte ser preenchido.
+
+Contexto obrigatorio:
+
+- Modulo/frente: informar modulo ou squad.
+- Ambiente atual: local, homologacao ou producao.
+- Status no Engineering Operations: informar status atual, como `AGUARDANDO RELEASEOPS`.
+- Link, branch ou commit relacionado: informar quando existir.
+
+Escopo do deploy:
+
+- Alteracao principal 1.
+- Alteracao principal 2.
+- Alteracao principal 3.
+
+Validacoes ja executadas:
+
+- Check-types, lint, build, smoke ou validacao visual.
+- Resultado objetivo de cada validacao.
+
+Pontos de atencao:
+
+- Risco tecnico ou operacional.
+- Pendencia conhecida, se houver.
+
+Solicitacao para ReleaseOps:
+
+- Revisar escopo e diffs envolvidos.
+- Confirmar risco de regressao operacional.
+- Organizar commit/release com rastreabilidade.
+- Executar deploy e healthchecks necessarios.
+- Registrar resultado final no Engineering Operations.
+
+Resposta esperada:
+
+- Problema/entrega identificada.
+- Origem.
+- Impacto.
+- Recomendacao tecnica.
+- Criticidade operacional.
+- Status final.
+
 ## SupportOps
 
 `Hub SupportOps` e responsavel por investigacoes operacionais, bugs, gargalos, lentidao, APIs instaveis, comportamento inesperado, logs, regressao, integracoes e suporte tecnico quando Lucas acionar.
@@ -2065,6 +2109,51 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[SupportOps] Porta 3001 ocupada no dev local`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 11:16:35 -03:00.
+- Tipo da alteracao: Troubleshooting operacional local.
+- Motivo da analise: Lucas reportou falha ao executar `npm run dev` com erro `EADDRINUSE: address already in use :::3001`.
+- Arquivos/modulos afetados: ambiente local Windows/PowerShell; processo `next dev --port 3001`; sem alteracao de codigo de produto.
+- Como foi feito: verifiquei conexoes na porta 3001, confirmei que `http://localhost:3001` ainda respondia HTTP 200 mesmo com o novo `npm run dev` falhando, identifiquei via `netstat -ano` e `Win32_Process` a arvore `npm -> cmd -> next dev --port 3001 -> start-server.js` no workspace `careli-hub` e encerrei somente os PIDs dessa arvore para liberar a porta.
+- Logica utilizada: `EADDRINUSE` indica porta ocupada por outro servidor. Como o servidor existente era do proprio `careli-hub` e bloqueava a nova inicializacao, encerrar a arvore local do dev server removeu o conflito sem tocar em arquivos, banco, deploy ou dados.
+- Validacao executada: `netstat -ano | findstr :3001`; consulta de processos por `Win32_Process`; encerramento dos PIDs da arvore local; nova checagem com `Get-NetTCPConnection -LocalPort 3001 -State Listen`, sem processo ativo em escuta na porta 3001.
+- Pendencias ou riscos conhecidos: conexoes `TIME_WAIT` podem permanecer por alguns segundos no Windows e sao normais. Se o erro voltar, executar `netstat -ano | findstr :3001` e encerrar o PID em `LISTENING`, ou iniciar temporariamente em outra porta.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: nenhuma; repetir troubleshooting apenas se a porta voltar a ficar presa.
+
+Registro de diario:
+
+- Assunto: `[Hub Shell] Correcao de espacamento do menu C2X`.
+- Nome da squad/agente: `Dev Hub Shell`.
+- Data e hora local: 2026-05-17 11:16:05 -03:00.
+- Tipo da alteracao: `HOTFIX`.
+- Motivo da mudanca: Lucas apontou que, no sidebar expandido do Hub, o icone estava encostando/sobrepondo o nome do modulo, prejudicando leitura operacional.
+- Arquivos/modulos afetados: `apps/hub/styles/globals.css` e `docs/codex/engineering-operations.md`; impacto restrito ao espacamento visual dos itens do sidebar do Hub Shell.
+- Como foi feito: ajustei a grade dos itens `.uix-sidebar-item` no escopo `.careli-hub-shell` para reservar `2rem` reais para o icone e `0.75rem` de intervalo ate o texto. Tambem mantive regra especifica para o estado recolhido, preservando icone centralizado e sem label visivel.
+- Logica utilizada: o CSS base reservava uma coluna menor que o icone usado pelo Hub, permitindo colisao visual. O shell agora reserva a largura real do icone antes de renderizar o label.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` passaram. Smoke local em `http://localhost:3001/` e `http://localhost:3001/pulsex` retornou HTTP 200 apos reiniciar o dev server da porta 3001. No browser interno, a sidebar expandida mediu coluna de icone com `32px`, `column-gap=12px` e `gap=12px` entre icone e label para CareDesk, Guardian, PulseX e Setup.
+- Pendencias ou riscos conhecidos: build passou com o warning preexistente do Turbopack/NFT envolvendo `apps/hub/next.config.ts`, `apps/hub/lib/squadops/engineering-operations-source.ts` e `apps/hub/app/api/squadops/operations/route.ts`; nao bloqueia esta entrega e nao foi alterado neste pacote. O worktree segue com outros diffs locais que nao pertencem a esta correcao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o pacote Hub Shell e organizar commit/release quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[Hub Shell] Simplificacao do launcher de modulos`.
+- Nome da squad/agente: `Dev Hub Shell`.
+- Data e hora local: 2026-05-17 11:00:28 -03:00.
+- Tipo da alteracao: `MELHORIA`.
+- Motivo da mudanca: Lucas apontou que o launcher global estava com excesso visual: bolinhas de status, texto explicativo, titulo `Modulos`, linhas separadoras e cabecalho `Careli Hub` quando o esperado era um menu mais direto com `C2X`.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx`, `apps/hub/styles/globals.css`, `apps/hub/components/pulsex/conversation-sidebar.tsx`, `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/engineering-operations.md`; impacto restrito ao launcher/shell global e aos gatilhos visuais do launcher, sem alterar rotas, permissoes, dados ou comportamento interno de Guardian, PulseX, CareDesk, Setup ou SquadOps.
+- Como foi feito: troquei o rotulo do topo do launcher para `C2X`, removi o subtitulo explicativo, removi o titulo `Modulos`, retirei as linhas separadoras e eliminei os pontos/bolinhas de realtime do menu. Tambem removi o titulo `Modulos` da sidebar expandida do shell, troquei os tooltips/aria dos gatilhos para `Abrir menu` e removi o componente/CSS do badge visual que deixou de ser usado.
+- Logica utilizada: o launcher deve funcionar como acesso rapido, sem descricao redundante nem marcadores decorativos. A identidade `C2X` fica como ancora curta e os modulos aparecem diretamente como opcoes acionaveis.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` passaram. Smoke local em `http://localhost:3001/pulsex` e `http://localhost:3001/guardian/atendimento` retornou HTTP 200. No browser interno em `http://localhost:3001/pulsex`, o gatilho apareceu como `Abrir menu` e o launcher aberto exibiu `C2X`, sem bolinhas, sem texto explicativo, sem titulo `Modulos` e sem separadores.
+- Pendencias ou riscos conhecidos: build passou com warning preexistente do Turbopack/NFT envolvendo `apps/hub/next.config.ts`, `apps/hub/lib/squadops/engineering-operations-source.ts` e `apps/hub/app/api/squadops/operations/route.ts`; nao bloqueia esta entrega e nao foi alterado neste pacote. O worktree segue com outros diffs locais de Guardian/D4Sign e PulseX que nao pertencem a esta mudanca.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o pacote Hub Shell e organizar commit/release quando Lucas autorizar.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Estruturacao do Engineering Operations`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-17 10:42:32 -03:00.
@@ -2077,3 +2166,378 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o worktree segue com alteracoes locais fora desta estruturacao em Guardian/D4Sign e PulseX; as secoes executivas devem ser atualizadas quando uma pendencia critica for resolvida ou quando um modulo mudar de estado; registros historicos antigos nao foram reclassificados individualmente.
 - Status operacional: `FINALIZADO`.
 - Proxima squad recomendada: `Hub ReleaseOps` para manter a camada executiva atualizada em cada release, auditoria, healthcheck ou hotfix relevante.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Videos flutuantes na tela compartilhada`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 10:49:16 -03:00.
+- Tipo da alteracao: `MELHORIA` - refinamento visual da chamada com compartilhamento de tela.
+- Motivo da mudanca: Lucas validou que a projecao de tela ficou boa, mas indicou que o video ao lado ficou ruim visualmente. A composicao lateral fixa desperdicava area do palco e deixava os participantes pequenos/estranhos ao lado da tela projetada.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-participant-tile.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: removi a coluna lateral fixa do modo com tela compartilhada e mantive a apresentacao em um palco unico. Os demais participantes agora entram como tiles flutuantes no canto inferior direito do palco, com comportamento responsivo em faixa horizontal em telas menores. Tambem criei o layout `floating` para o tile de participante e removi a altura minima grande dos tiles compactos quando nao ha video ativo.
+- Logica utilizada: em compartilhamento de tela, o objeto principal e a tela projetada; os videos devem funcionar como apoio contextual, sem competir por espaco nem deformar o layout. O padrao de tiles flutuantes preserva a area util da apresentacao, aproxima a experiencia de picture-in-picture interno e reduz a sensacao de coluna vazia ao lado.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/components/pulsex/call-panel.tsx apps/hub/components/pulsex/call-participant-tile.tsx` passaram. No navegador interno em `http://localhost:3001/pulsex`, uma chamada local abriu com 3 participantes, sem erros de console, painel `1080x619`, cards padrao `510x287` e controles de chamada visiveis.
+- Pendencias ou riscos conhecidos: o seletor nativo de compartilhamento de tela nao foi automatizado nesta validacao, entao ainda e necessario teste real em chamada com tela compartilhada ativa para confirmar a percepcao visual final em dois usuarios/duas maquinas. O worktree continua com outros diffs locais de PulseX e Guardian/D4Sign que nao devem ser misturados sem revisao do ReleaseOps.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o pacote PulseX e organizar commit/release quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Sidebar recolhivel sem botao de nova conversa`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 11:05:39 -03:00.
+- Tipo da alteracao: `MELHORIA` - refinamento visual e ergonomico da navegacao do PulseX.
+- Motivo da mudanca: Lucas pediu remover o botao `+`, deixar a sidebar expansiva/recolhivel, remover as linhas separando canais e, quando recolhida, mostrar somente a primeira letra do canal.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/conversation-sidebar.tsx`, `apps/hub/components/pulsex/conversation-list.tsx`, `apps/hub/components/pulsex/conversation-item.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei estado de recolhimento no workspace para alternar o grid entre `21.5rem` e `5rem`, removi o botao de nova conversa do topo da sidebar, adicionei botao de recolher/expandir, ocultei busca/filtros/atalhos na versao recolhida e renderizei os canais em lista compacta. Nos itens recolhidos, canais mostram a primeira letra do nome e diretas mantem as iniciais do usuario. Removi a borda inferior dos itens de canal na sidebar expandida.
+- Logica utilizada: o PulseX deve continuar com leitura de chat compacta e operacional. O recolhimento precisa liberar area horizontal para a conversa sem perder acesso rapido aos canais; por isso a versao compacta prioriza letras curtas e acessiveis com `aria-label`/`title`, enquanto a versao expandida mantem nomes completos, filtros e busca.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e validacao no navegador interno em `http://localhost:3001/pulsex`. A validacao visual confirmou ausencia do botao `Nova conversa`, botao `Recolher sidebar`, largura expandida `344px`, largura recolhida `80px`, busca oculta no modo recolhido, canais recolhidos como `C`, `L`, `D`, `T`, `P` e diretas como iniciais, alem de `borderBottomWidth=0px` nos primeiros itens expandidos.
+- Pendencias ou riscos conhecidos: o build passou, mas exibiu aviso Turbopack relacionado a arquivos locais de SquadOps (`engineering-operations-source.ts` e rota `/api/squadops/operations`), fora do escopo desta mudanca PulseX. O worktree tambem segue com diffs locais de Guardian/D4Sign e pacote PulseX maior; ReleaseOps deve stagear por responsabilidade.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do pacote PulseX quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Centralizacao da logo na sidebar`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 11:03:28 -03:00.
+- Tipo da alteracao: `CORRECAO VISUAL`.
+- Motivo da mudanca: Lucas apontou que a logo do Guardian na sidebar estava descentralizada e visualmente ruim. Tambem confirmou que o botao pequeno da barra e o controle de recolher, entao a correcao deveria centralizar a marca sem mudar a semantica desse botao.
+- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: ajustei o link da marca no estado expandido para ocupar toda a largura do bloco superior e centralizar seu conteudo. No estado recolhido, mantive o botao quadrado e fixei a imagem do icone em `h-8 w-8` para evitar deslocamento por proporcao/auto width.
+- Logica utilizada: a marca precisa ficar visualmente centralizada no eixo da sidebar, enquanto os botoes de abrir modulos e recolher sidebar continuam como controles operacionais independentes logo abaixo. A mudanca atua apenas no alinhamento do bloco de marca, sem alterar rotas, itens de menu, permissoes ou comportamento de navegacao.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/components/guardian/layout/Sidebar.tsx docs/codex/engineering-operations.md`. O build passou; permaneceu apenas o aviso ja conhecido do Turbopack/NFT ligado a `apps/hub/next.config.ts` e `apps/hub/lib/squadops/engineering-operations-source.ts`, fora desta correcao visual.
+- Pendencias ou riscos conhecidos: validacao visual final em navegador autenticado deve ser feita pelo Lucas/ReleaseOps antes de publicar, principalmente para comparar os estados expandido e recolhido na maquina de operacao. O worktree possui outras alteracoes locais de Guardian, PulseX, Hub Shell e SquadOps que nao fazem parte deste ajuste.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte, evitar mistura com diffs nao relacionados e organizar commit/release quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Operations Center no sidebar do Hub`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 11:06:15 -03:00.
+- Tipo da alteracao: `MELHORIA` - navegacao operacional e acesso ao launcher global.
+- Motivo da mudanca: Lucas pediu colocar o Operations Center no sidebar e manter um botao para acessar o sidebar/launcher do Hub, onde ele escolhe outros modulos.
+- Arquivos/modulos afetados: `packages/shared/src/modules/registry.ts`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: atualizei o registro do modulo `squadops` para aparecer como `Operations Center` no sidebar e no command palette, adicionei no header do SquadOps o botao `Modulos do Hub` com icone `LayoutGrid` e expandi o listener `careli:toggle-module-launcher` no `HubShell` para tambem abrir o sidebar global quando o modulo usa o shell padrao.
+- Logica utilizada: o SquadOps deve funcionar como Operations Center da engenharia IA sem criar um menu paralelo. O botao da tela reaproveita o mesmo evento usado por Guardian e PulseX para abrir o launcher de modulos; quando o shell nao esta em modo operacional, o evento expande o sidebar global persistindo `careli:hub-sidebar=expanded`.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke local `GET http://localhost:3001/squadops` com HTTP 200 e `git diff --check -- apps/hub/layouts/hub-shell.tsx apps/hub/modules/squadops/SquadOpsPage.tsx packages/shared/src/modules/registry.ts`.
+- Pendencias ou riscos conhecidos: o build segue com o aviso Turbopack/NFT conhecido da rota SquadOps que le o diario operacional via filesystem; `git diff --check` retornou apenas avisos LF/CRLF do Windows; validacao visual autenticada final deve confirmar o clique no botao `Modulos do Hub` e a entrada `Operations Center` no sidebar antes de ReleaseOps publicar.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps`.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Center IA visivel no launcher do Hub`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 11:12:57 -03:00.
+- Tipo da alteracao: `CORRECAO VISUAL` - exibicao do modulo no sidebar/launcher global.
+- Motivo da mudanca: Lucas mostrou que o item do SquadOps/Operations Center nao aparecia no launcher do Hub e autorizou usar o nome `Center IA`.
+- Arquivos/modulos afetados: `packages/shared/src/modules/registry.ts`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: renomeei o modulo `squadops` para `Center IA` no registry, atualizei o titulo da tela, troquei o icone do launcher para `Bot` e ajustei a regra do `HubShell` para manter `squadops` visivel quando o perfil ainda nao sincronizou a permissao granular `squadops:view`.
+- Logica utilizada: `Center IA` e um modulo minimo liberado do Hub e nao deve sumir do launcher por falha de sincronizacao de permissao granular. A rota continua sendo `/squadops`, mas o nome exibido ao Lucas passa a ser `Center IA`.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke local `GET http://localhost:3001/squadops` com HTTP 200 e smoke local `GET http://localhost:3001/api/squadops/operations` com HTTP 200.
+- Pendencias ou riscos conhecidos: confirmar visualmente em sessao autenticada que `Center IA` aparece entre os modulos do launcher; o build segue com o aviso Turbopack/NFT conhecido da rota SquadOps que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` apos validacao final.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Renomeacao do launcher para HubOps`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 11:19:10 -03:00.
+- Tipo da alteracao: `CORRECAO VISUAL` - nomenclatura do modulo no Hub.
+- Motivo da mudanca: Lucas pediu trocar o nome exibido de `Center IA` para `HubOps`.
+- Arquivos/modulos afetados: `packages/shared/src/modules/registry.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: atualizei o nome e os labels do modulo `squadops` no registry compartilhado para `HubOps`, ajustei o titulo da tela e normalizei mensagens de erro visiveis para usar `HubOps`.
+- Logica utilizada: a rota e a permissao permanecem como `/squadops` e `squadops:view`, preservando compatibilidade tecnica; apenas a marca operacional exibida ao Lucas passa a ser `HubOps`.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke local `GET http://localhost:3001/squadops` com HTTP 200 e smoke local `GET http://localhost:3001/api/squadops/operations` com HTTP 200.
+- Pendencias ou riscos conhecidos: confirmar visualmente em sessao autenticada que o launcher global mostra `HubOps`; o build segue com o aviso Turbopack/NFT conhecido da rota SquadOps que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` apos validacao final.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Item fixo no sidebar do Hub`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 11:23:22 -03:00.
+- Tipo da alteracao: `CORRECAO` - exibicao obrigatoria do HubOps no launcher/sidebar global.
+- Motivo da mudanca: Lucas informou que o `HubOps` ainda nao aparecia no sidebar/menu do Hub, mesmo apos a renomeacao.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx` e `docs/codex/engineering-operations.md`; mantidos `packages/shared/src/modules/registry.ts` e `apps/hub/modules/squadops/SquadOpsPage.tsx` com o nome `HubOps`.
+- Como foi feito: ajustei o `HubShell` para tratar `squadops` como item fixo do menu global: ele passa pela composicao de `visibleHubModules`, entra em `moduleNavigationItems` e `commands` mesmo quando a sincronizacao dinamica de modulos/permissoes nao inclui o modulo, e `canOpenShellModule` libera o item pelo id.
+- Logica utilizada: `HubOps` e um modulo minimo do Hub e precisa aparecer junto de CareDesk, Guardian, PulseX e Setup no launcher/sidebar global. A rota continua `/squadops` e a permissao tecnica continua `squadops:view`, mas a navegacao do shell nao pode ocultar o item por falha temporaria de Supabase/perfil.
+- Validacao executada: `npm.cmd run check-types:hub` passou; lint escopado `npx.cmd eslint layouts/hub-shell.tsx modules/squadops/SquadOpsPage.tsx --max-warnings 0` passou dentro de `apps/hub`; `npm.cmd run build --workspace @repo/hub` passou; smoke local `GET http://localhost:3001/squadops` com HTTP 200; smoke local `GET http://localhost:3001/api/squadops/operations` com HTTP 200; `git diff --check` passou com apenas avisos LF/CRLF do Windows.
+- Pendencias ou riscos conhecidos: `npm.cmd run lint:hub` completo foi tentado e ficou bloqueado por warnings de `<img>` em arquivos PulseX ja modificados por outra frente (`conversation-header.tsx` e `conversation-item.tsx`), fora do escopo desta correcao; o build segue com o aviso Turbopack/NFT conhecido da rota SquadOps que le o diario operacional via filesystem; confirmar visualmente em sessao autenticada que o launcher mostra `HubOps`.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps`.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Rebuild do shared para refletir no sidebar`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 11:33:43 -03:00.
+- Tipo da alteracao: `CORRECAO` - runtime local do registry compartilhado.
+- Motivo da mudanca: Lucas ainda nao via `HubOps` no sidebar do Hub porque o app importa `@repo/shared` pelo pacote compilado em `packages/shared/dist`, enquanto a alteracao inicial tinha atualizado o `src`.
+- Arquivos/modulos afetados: `packages/shared/src/modules/registry.ts`, `packages/shared/dist/modules/registry.js`, `packages/shared/dist/modules/registry.d.ts`, `apps/hub/layouts/hub-shell.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: executei `npm.cmd run build --workspace @repo/shared` para regenerar o `dist` do pacote compartilhado, confirmei `HubOps` no `registry.js`/`registry.d.ts`, validei que os chunks dev do Hub contem `HubOps` e reiniciei o servidor local `next dev` da porta 3001 para eliminar cache de bundle antigo.
+- Logica utilizada: em desenvolvimento, o Hub consome o export de `@repo/shared` definido como `./dist/index.js`; portanto mudancas no registry compartilhado so aparecem no sidebar quando o `dist` e regenerado ou quando o pipeline de build recompila os pacotes dependentes.
+- Validacao executada: `npm.cmd run build --workspace @repo/shared`; `npm.cmd run check-types:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local `GET http://localhost:3001` com HTTP 200; smoke local `GET http://localhost:3001/squadops` com HTTP 200; smoke local `GET http://localhost:3001/api/squadops/operations` com HTTP 200; busca confirmou `HubOps` em `packages/shared/dist/modules/registry.js`, `packages/shared/dist/modules/registry.d.ts` e chunks dev do Hub.
+- Pendencias ou riscos conhecidos: `packages/shared/dist` e ignorado pelo Git, entao ReleaseOps deve garantir que o build de pacotes rode antes do Hub em ambientes limpos; usuario precisa atualizar a aba do navegador para carregar o bundle reiniciado. O build do Hub segue com o aviso Turbopack/NFT conhecido da rota SquadOps que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Fotos nas diretas da sidebar`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 11:09:31 -03:00.
+- Tipo da alteracao: `MELHORIA` - refinamento visual das conversas diretas.
+- Motivo da mudanca: Lucas pediu que a lista de diretas da sidebar trouxesse as fotos dos usuarios, em vez de exibir apenas iniciais quando ja existe foto cadastrada.
+- Arquivos/modulos afetados: `apps/hub/lib/pulsex/types.ts`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/conversation-item.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei `avatarUrl` ao tipo `PulseXChannel`, propaguei `user.avatarUrl` ao criar canais diretos em `withDirectUserChannels` e centralizei o avatar do item de conversa em um helper que usa a imagem como fundo circular quando existe URL. O fallback por iniciais permanece para usuarios sem foto e para canais nao diretos.
+- Logica utilizada: diretas representam pessoas, entao devem priorizar identidade visual humana. A foto melhora reconhecimento rapido sem alterar a estrutura de presenca, status, unread count, selecao de canal ou renderizacao compacta. Em modo recolhido, as diretas tambem usam a foto quando disponivel; canais continuam mostrando a primeira letra conforme pedido anterior.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/lib/pulsex/types.ts apps/hub/components/pulsex/pulsex-workspace.tsx apps/hub/components/pulsex/conversation-item.tsx docs/codex/engineering-operations.md` passaram. No navegador interno em `http://localhost:3001/pulsex`, as diretas `Catherine Faria`, `Cinthia Cruz` e `Nivea Careli` renderizaram `background-image` com URLs de `hub-avatars` tanto no modo expandido quanto no modo recolhido, sem erros de console.
+- Pendencias ou riscos conhecidos: o build segue passando com o mesmo aviso Turbopack/NFT de SquadOps (`engineering-operations-source.ts` e rota `/api/squadops/operations`), fora do escopo desta mudanca PulseX. Usuarios sem `avatarUrl` continuam com iniciais como fallback esperado.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do pacote PulseX quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Membros de canal por vinculo explicito`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 11:14:10 -03:00.
+- Tipo da alteracao: `CORRECAO` - regra de acesso e presenca por canal.
+- Motivo da mudanca: Lucas identificou que Catherine aparecia no canal `Diretoria` mesmo sem estar vinculada a esse canal no Setup. Ela participa de `Lideranca` e por isso pertence operacionalmente ao departamento, mas isso nao deve coloca-la automaticamente dentro de todos os canais do departamento.
+- Arquivos/modulos afetados: `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/components/pulsex/pulsex-workspace.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: removi o fallback que inferia acesso/presenca em canais de departamento a partir de participacao em outro canal do mesmo departamento. O filtro de canais e notificacoes agora considera somente `memberUserIds` vindo de `pulsex_channel_members`. O calculo local de `channelIds` dos usuarios no workspace tambem passou a incluir o usuario somente nos canais em que ele esta explicitamente vinculado; as conversas diretas mantem a regra propria.
+- Logica utilizada: `hub_user_assignments` define lotacao/departamento/setor do usuario; `pulsex_channel_members` define participacao em cada canal. Um usuario pode estar no departamento por participar de `Lideranca`, mas so deve aparecer no canal `Diretoria` se estiver marcado naquele canal. Isso preserva a configuracao feita no Setup PulseX e evita inflar participantes, presenca, chamadas e notificacoes de canais indevidos.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e validacao no navegador interno em `http://localhost:3001/pulsex`. Ao selecionar o canal `Diretoria`, o header exibiu `1 online`, com `Lucas Ruas / Online` e `Nivea Careli / Ausente`; Catherine permaneceu apenas na lista de diretas/sidebar e nao apareceu como participante do canal. Nao houve erros de console.
+- Pendencias ou riscos conhecidos: o build segue passando com o aviso Turbopack/NFT conhecido de SquadOps (`engineering-operations-source.ts` e rota `/api/squadops/operations`), fora do escopo desta correcao. ReleaseOps deve validar que usuarios com permissao administrativa continuam recebendo apenas canais explicitamente vinculados, conforme a regra operacional atual.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do pacote PulseX quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Foto principal nas conversas diretas`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 11:19:30 -03:00.
+- Tipo da alteracao: `MELHORIA VISUAL` - cabecalho de conversas diretas.
+- Motivo da mudanca: Lucas pediu que, nas diretas, a foto do usuario apareca no lugar das iniciais do avatar principal do cabecalho, em vez de ficar no lado direito.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/conversation-header.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei um renderizador especifico para o avatar do cabecalho. Quando o canal e do tipo `direct` e possui `avatarUrl`, o avatar principal passa a usar a foto como `background-image`, circular e centralizada. Para canais e diretas sem foto, o fallback continua sendo as iniciais/icone atual. Em diretas, a pilha lateral de participantes deixa de ser renderizada para evitar duplicacao da foto no lado direito.
+- Logica utilizada: em conversa direta, o avatar principal deve representar a pessoa da conversa. A pilha de participantes faz sentido para canais e grupos, mas em direta ela duplicava a mesma identidade visual e mantinha as iniciais no ponto de maior destaque.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e validacao no navegador interno em `http://localhost:3001/pulsex`. Ao abrir a direta `Nivea Careli`, o avatar do cabecalho exibiu a URL de `hub-avatars`, ficou circular, nao mostrou texto `NC` e a pilha `Participantes da conversa` nao foi renderizada no lado direito.
+- Pendencias ou riscos conhecidos: o build segue passando com o aviso Turbopack/NFT conhecido de SquadOps (`engineering-operations-source.ts` e rota `/api/squadops/operations`), fora do escopo desta melhoria. Diretas sem `avatarUrl` continuam exibindo iniciais como fallback.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do pacote PulseX quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Nitidez dos avatares diretos`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 11:26:57 -03:00.
+- Tipo da alteracao: `CORRECAO VISUAL` - renderizacao de fotos em conversas diretas.
+- Motivo da mudanca: Lucas apontou que as fotos pequenas das diretas estavam ruins e pareciam perder qualidade. Na primeira tentativa, a troca para `next/image` deixou a foto gigante na tela da conversa porque o container do avatar do cabecalho nao estava posicionado como relativo.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/conversation-item.tsx`, `apps/hub/components/pulsex/conversation-header.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: troquei os avatares diretos da sidebar e do cabecalho para `next/image` com `unoptimized`, preservando a imagem original do `hub-avatars` sem transformacao adicional. Aumentei o avatar direto expandido da sidebar para `40px`, mantive `36px` no modo recolhido e adicionei `relative` ao container do avatar do cabecalho para limitar corretamente o `fill` da imagem.
+- Logica utilizada: a foto de pessoa deve ser renderizada como imagem real, com `object-cover`, recorte circular e dimensoes estaveis. O `fill` do `next/image` exige container relativo; sem isso, a imagem ocupa um ancestral maior e estoura a tela.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check -- apps/hub/components/pulsex/conversation-item.tsx apps/hub/components/pulsex/conversation-header.tsx docs/codex/engineering-operations.md` e validacao no navegador interno em `http://localhost:3001/pulsex`. As diretas `Catherine Faria`, `Cinthia Cruz` e `Nivea Careli` renderizaram imagens de origem `320x320` em avatar de `40px`; ao abrir `Nivea Careli`, o cabecalho ficou com avatar `40x40`, sem imagem gigante e sem erros de console.
+- Pendencias ou riscos conhecidos: o build segue passando com o aviso Turbopack/NFT conhecido de SquadOps (`engineering-operations-source.ts` e rota `/api/squadops/operations`), fora do escopo desta correcao. Se a foto original enviada pelo usuario estiver com baixa resolucao, a renderizacao nao consegue recuperar qualidade acima do arquivo de origem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do pacote PulseX quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Correcao efetiva do alinhamento da logo`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 11:19:54 -03:00.
+- Tipo da alteracao: `CORRECAO VISUAL`.
+- Motivo da mudanca: Lucas validou que a primeira tentativa nao mudou o visual da logo na sidebar do Guardian. O problema real era que o `Tooltip` da marca encapsulava o link com largura baseada no conteudo, impedindo que `w-full` e `justify-center` tivessem efeito perceptivel.
+- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: mantive o ajuste de centralizacao no link da marca e adicionei `className`/`triggerClassName` com `w-full` no `Tooltip` da logo quando a sidebar esta expandida. Assim, o wrapper do tooltip passa a ocupar a largura disponivel e o link consegue centralizar a imagem no eixo real da sidebar. No estado recolhido, o comportamento compacto permanece inalterado.
+- Logica utilizada: em componentes com tooltip que criam wrapper de trigger, centralizar apenas o elemento interno pode nao surtir efeito se o wrapper continuar shrink-to-content. A correcao precisava ampliar o wrapper do tooltip, nao apenas o link ou a imagem. O botao de recolher segue como controle separado e nao foi reposicionado como parte da marca.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram. O build segue com o aviso Turbopack/NFT conhecido de SquadOps (`engineering-operations-source.ts` e rota `/api/squadops/operations`), fora do escopo desta correcao.
+- Pendencias ou riscos conhecidos: Lucas deve recarregar a tela ou aguardar o hot reload do dev server para confirmar visualmente. O worktree tem alteracoes locais de outras frentes, entao ReleaseOps deve stagear apenas o recorte Guardian/documentacao se for publicar esta correcao isolada.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte e organizar commit/release sem misturar alteracoes de PulseX, Hub Shell ou SquadOps.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Troca dos botoes da sidebar`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 11:26:25 -03:00.
+- Tipo da alteracao: `AJUSTE VISUAL`.
+- Motivo da mudanca: Lucas pediu para trocar o botao de expansao/recolhimento da sidebar do Guardian com o botao que abre o sidebar/menu do Hub, conforme a organizacao visual esperada no topo da navegacao.
+- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: inverti a ordem dos dois controles do bloco superior da sidebar. O botao de expandir/recolher passou a ocupar o primeiro controle quadrado com borda e fundo discreto; o botao de abrir o sidebar do Hub passou para o segundo controle, com tooltip e `aria-label` atualizados para `Abrir sidebar do Hub`.
+- Logica utilizada: o controle de estado da sidebar do Guardian deve ficar mais evidente e no primeiro ponto de acao do cabecalho, enquanto o acesso ao menu/sidebar do Hub fica como acao secundaria. A mudanca preserva os handlers existentes: `onToggle` continua controlando a sidebar do Guardian e `careli:toggle-module-launcher` continua abrindo o menu do Hub.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/components/guardian/layout/Sidebar.tsx docs/codex/engineering-operations.md`. O primeiro build encontrou outro `next build` ativo, aguardei e reexecutei com sucesso. Permanece apenas o aviso conhecido Turbopack/NFT de SquadOps, fora do escopo deste ajuste.
+- Pendencias ou riscos conhecidos: Lucas deve validar visualmente a ordem dos botoes em sidebar expandida e recolhida. O worktree ainda tem alteracoes locais de outras frentes, entao ReleaseOps deve manter este recorte isolado se for publicar.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release sem misturar diffs de PulseX, Hub Shell ou SquadOps.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Padrao correto dos botoes da sidebar`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 11:31:49 -03:00.
+- Tipo da alteracao: `CORRECAO VISUAL`.
+- Motivo da mudanca: Lucas validou que a troca anterior ainda nao seguia o padrao visual do Hub: o controle de recolher ficou solto na lateral esquerda com chevrons, enquanto o padrao usa icone de painel e botao dentro do bloco de cabecalho.
+- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: substitui `ChevronsLeft/ChevronsRight` por `PanelLeftClose/PanelLeftOpen`, reorganizei o topo da sidebar expandida em um bloco com tres areas (`Hub` a esquerda, logo Guardian central, recolher a direita) e mantive o estado recolhido com logo no topo e controles empilhados. O botao de abrir o sidebar do Hub manteve o icone `LayoutGrid` e o botao de recolher/expandir passou a seguir o icone/padrao do Hub.
+- Logica utilizada: o botao de expansao/recolhimento deve ser reconhecivel como controle de painel, consistente com o shell principal. O acesso ao sidebar/menu do Hub e uma acao distinta, por isso permanece com `LayoutGrid`; a logo fica no eixo central do bloco para preservar a identidade do Guardian sem deslocar os controles.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram. O build segue com o aviso Turbopack/NFT conhecido de SquadOps (`engineering-operations-source.ts` e rota `/api/squadops/operations`), fora do escopo deste ajuste.
+- Pendencias ou riscos conhecidos: validacao visual final pelo Lucas em `localhost:3001/guardian` apos refresh/hot reload. ReleaseOps deve evitar misturar este recorte Guardian com diffs pendentes de PulseX, Hub Shell ou SquadOps.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte e organizar commit/release quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Separacao das logos por estado da sidebar`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 11:50:06 -03:00.
+- Tipo da alteracao: `CORRECAO VISUAL`.
+- Motivo da mudanca: Lucas apontou que as duas logos do Guardian estavam aparecendo ao mesmo tempo: a logo compacta do estado recolhido e a logo completa do estado expandido. A regra correta e exibir apenas uma marca por estado, com a logo completa no topo e centralizada quando a sidebar estiver expandida.
+- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: troquei a ocultacao por classe do `Tooltip` por renderizacao condicional real. Quando `collapsed` e verdadeiro, apenas `logoiconbranca.png` e renderizada no topo. Quando `collapsed` e falso, apenas `logoCbranca.png` e renderizada no topo, centralizada, e os botoes ficam abaixo em uma grade separada.
+- Logica utilizada: esconder um wrapper de tooltip por classe nao era suficiente para garantir que a logo compacta nao aparecesse no estado expandido, porque o componente de tooltip controla seu proprio wrapper de trigger. A solucao correta e nao montar a logo compacta no DOM quando a sidebar esta expandida. Isso elimina duplicidade e deixa cada estado com sua marca propria.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram. O build segue com o aviso Turbopack/NFT conhecido de SquadOps (`engineering-operations-source.ts` e rota `/api/squadops/operations`), fora do escopo desta correcao.
+- Pendencias ou riscos conhecidos: validar visualmente no browser apos refresh/hot reload em `localhost:3001/guardian`; a alteracao e restrita ao cabecalho da sidebar do Guardian e deve ser stageada isoladamente por ReleaseOps para nao misturar com outros diffs locais.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte e organizar commit/release quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Sons de chamada e mencao`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 11:34:53 -03:00.
+- Tipo da alteracao: `MELHORIA` - avisos sonoros de mensagens, mencoes e chamada em andamento.
+- Motivo da mudanca: Lucas pediu ouvir som de chamar enquanto inicia uma chamada, receber avisos sonoros mais impactantes para mensagens e ter som diferente quando a mensagem mencionar o usuario atual.
+- Arquivos/modulos afetados: `apps/hub/lib/pulsex/notification-effects.ts`, `apps/hub/providers/pulsex-notification-provider.tsx`, `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: aumentei a presenca/volume dos tons de mensagem e chamada, criei `playPulseXMentionSound` para mencoes, criei `playPulseXIncomingMessageSound` com deduplicacao por `messageId`, acionei esse helper tanto no provider global de notificacoes quanto no workspace da conversa ativa e adicionei `playPulseXOutgoingCallSound` em loop enquanto a chamada iniciada pelo usuario ainda possui participantes com status `invited`.
+- Logica utilizada: mensagem comum, mencao e chamada em andamento precisam ter identidades sonoras diferentes. A deduplicacao evita toque duplicado quando o mesmo evento chega pelo realtime global e pela tela ativa. O som de chamar fica restrito ao usuario que iniciou a chamada e para quando nao houver mais participante convidado pendente.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check -- apps/hub/lib/pulsex/notification-effects.ts apps/hub/providers/pulsex-notification-provider.tsx apps/hub/providers/pulsex-call-provider.tsx apps/hub/components/pulsex/pulsex-workspace.tsx docs/codex/engineering-operations.md` e validacao no navegador interno em `http://localhost:3001/pulsex`. O primeiro build encontrou outro `next build` ativo; apos aguardar, a reexecucao passou. O PulseX carregou com sidebar, canais e composer, sem erros de console.
+- Pendencias ou riscos conhecidos: navegadores podem bloquear audio antes da primeira interacao do usuario com a pagina; o PulseX ja registra intencao de permissao de notificacao no primeiro clique/tecla, mas a permissao de notificacao do Windows/Chrome precisa estar liberada para popup nativo. O build segue passando com o aviso Turbopack/NFT conhecido de SquadOps, fora do escopo desta melhoria.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do pacote PulseX quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Experiencia guiada do Operations Center`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 11:42:02 -03:00.
+- Tipo da alteracao: `MELHORIA UX OPERACIONAL`.
+- Motivo da mudanca: Lucas informou que a tela estava confusa e que a camada de auditorias deixava a leitura perdida. A prioridade passou a ser orientar a primeira dobra para decisao executiva e mover detalhes densos para visoes especificas.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: reorganizei a tela HubOps com um centro de comando inicial, cards de foco, proximo encaminhamento, botoes de acesso rapido, abas de navegacao (`Visao geral`, `Timeline`, `Auditorias`, `Registros`) e filtros apenas nas visoes onde eles sao necessarios. A camada de auditorias deixou de aparecer como bloco dominante na primeira experiencia, ficou isolada na aba propria e foi separada entre rotinas vencidas e rotinas em acompanhamento.
+- Logica utilizada: a tela deve responder primeiro "o que precisa de atencao agora" e so depois abrir investigacao detalhada. A visao geral consolida pendencias, ultimos movimentos, Copiloto PO e listas curtas; timeline e registros viram areas de analise com filtro; auditorias ficam em uma trilha separada para reduzir carga cognitiva.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint layouts/hub-shell.tsx modules/squadops/SquadOpsPage.tsx app/api/squadops/operations/route.ts app/api/squadops/copilot/route.ts lib/squadops/engineering-operations-parser.ts lib/squadops/engineering-operations-source.ts --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke HTTP de `http://localhost:3001/squadops` e smoke HTTP de `http://localhost:3001/api/squadops/operations`.
+- Pendencias ou riscos conhecidos: a validacao visual automatizada com Edge headless nao conseguiu entrar na tela autenticada e parou em `Carregando sessao...`, portanto a confirmacao visual final deve ser feita pelo Lucas na sessao autenticada. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte HubOps e organizar commit/release quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Resposta do Copiloto PO em baloes por modulo`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 11:49:37 -03:00.
+- Tipo da alteracao: `MELHORIA UX OPERACIONAL` - leitura do Copiloto PO.
+- Motivo da mudanca: Lucas apontou que a resposta do Copiloto estava com fundo ruim, texto dificil de ler e conteudo longo sem separacao clara. A regra visual passou a ser fundo claro, leitura em baloes e organizacao por modulo/frente.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/api/squadops/copilot/route.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: substitui o bloco cru de resposta por um renderizador de baloes (`CopilotAnswerBubbles`) que limpa markdown simples, identifica titulos, reconhece linhas `Frente: ...`, separa bullets em cards legiveis e redistribui itens para frentes como ReleaseOps, Guardian, PulseX, HubOps/SquadOps, SupportOps, CareDesk e Setup quando possivel. Tambem ajustei as instrucoes server-side do Copiloto PO para pedir respostas curtas por frente/modulo e evitar markdown pesado.
+- Logica utilizada: a resposta da IA deve virar material operacional escaneavel, nao um texto corrido. O parser client-side trata respostas antigas com `##`/`###` e respostas novas com `Frente: ...`; quando a IA menciona um modulo dentro de um bullet, o item e agrupado na frente correspondente para reduzir carga cognitiva.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx app/api/squadops/copilot/route.ts --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` com `NODE_OPTIONS=--max-old-space-size=4096` apos parar temporariamente o dev server que consumia memoria, smoke HTTP de `http://localhost:3001/squadops`, smoke HTTP de `http://localhost:3001/api/squadops/operations` e smoke da API do Copiloto retornando `401 Unauthorized` sem sessao, comportamento esperado para endpoint protegido.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita na sessao autenticada do Lucas, pois o teste headless sem login nao renderiza a tela interna. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Biblioteca de prompts padrao do PO AI`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 12:44:54 -03:00.
+- Tipo da alteracao: `MELHORIA UX OPERACIONAL`.
+- Motivo da mudanca: Lucas apontou que o botao `Prompt` estava gerando uma resposta do PO AI quebrada em muitos baloes, quando a necessidade operacional era escolher um prompt pronto, organizado por tema e bullets, especialmente para deploy e rotinas periodicas.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei uma biblioteca de prompts prontos no drawer do PO AI. O botao `Prompt` agora abre uma janela de selecao com modelos para `Deploy / ReleaseOps`, `Atividade diaria`, `Atividade semanal` e `Atividade mensal`; cada modelo exibe o texto completo em formato estruturado, permite copiar e permite inserir o prompt no chat para revisao/envio.
+- Logica utilizada: prompts padrao nao devem depender de resposta gerada pela IA nem virar fragmentos de conversa. A biblioteca entrega um modelo unico e editavel no composer apos a selecao, preservando o PO AI como camada consultiva e mantendo o usuario no controle antes de enviar.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke HTTP de `http://localhost:3001/squadops` e smoke HTTP de `http://localhost:3001/api/squadops/operations`.
+- Pendencias ou riscos conhecidos: a validacao visual automatizada por Playwright nao foi executada porque a dependencia `playwright`/`@playwright/test` nao esta instalada no ambiente Node disponivel para o teste; confirmacao visual final deve ser feita na sessao autenticada do Lucas. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Rolagem e data curta na timeline`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 11:52:14 -03:00.
+- Tipo da alteracao: `AJUSTE UX OPERACIONAL`.
+- Motivo da mudanca: Lucas apontou que a timeline ocupava altura demais e que a data/hora em formato ISO dificultava a leitura operacional.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei rolagem interna ao corpo da timeline com altura maxima controlada e criei `formatOperationDateTime` para exibir data e hora no padrao `dd/mm/aa hh:mm`. A formatacao foi aplicada nos itens da timeline, na tabela de registros e no drawer de detalhe operacional.
+- Logica utilizada: a timeline precisa ser escaneavel sem empurrar todo o restante da tela para baixo. A data curta brasileira reduz ruido visual e preserva a rastreabilidade com dia, mes, ano curto, hora e minuto.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`, `npm.cmd run build --workspace @repo/hub` com `NODE_OPTIONS=--max-old-space-size=4096`, smoke HTTP de `http://localhost:3001/squadops` e smoke HTTP de `http://localhost:3001/api/squadops/operations`. O servidor local foi reiniciado na porta `3001` apos o build.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita na sessao autenticada do Lucas. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Limpeza de cache e erro bruto do PO AI`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 12:07:01 -03:00.
+- Tipo da alteracao: `CORRECAO UX/DEV LOCAL`.
+- Motivo da mudanca: Lucas reportou erro visual com a tela ainda exibindo o painel antigo `Copiloto PO` dentro do layout principal e mensagem bruta `Failed to fetch`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `packages/shared/src/modules/registry.ts`, `packages/shared/dist/modules/registry.js`, `packages/shared/dist/modules/registry.d.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: limpei o cache gerado `apps/hub/.next`, reiniciei o dev server na porta `3001`, atualizei a descricao do modulo HubOps no shared de `Copiloto PO` para `PO AI`, rebuild do pacote `@repo/shared` e adicionei tratamento para erro de fetch do PO AI exibir mensagem amigavel de reconexao.
+- Logica utilizada: o erro visual era consistente com navegador/chunk antigo ainda servido pelo ambiente local. O bundle recompilado passou a conter `PoAiDrawer` e `PO AI`, sem `Copiloto PO` nos chunks da tela. A mensagem amigavel evita expor erro tecnico cru quando a conexao cai durante reload do dev server.
+- Validacao executada: `npm.cmd run build --workspace @repo/shared`, `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` com `NODE_OPTIONS=--max-old-space-size=4096`, smoke HTTP de `http://localhost:3001/squadops`, smoke HTTP de `http://localhost:3001/api/squadops/operations` e smoke da API do PO AI retornando `401 Unauthorized` sem sessao, comportamento esperado para endpoint protegido.
+- Pendencias ou riscos conhecidos: Lucas deve fazer refresh forte (`Ctrl+F5`) na aba aberta para descartar qualquer JS antigo em memoria do navegador. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[HubOps] PO AI como cerebro operacional do Hub`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 11:58:33 -03:00.
+- Tipo da alteracao: `EVOLUCAO UX/IA OPERACIONAL`.
+- Motivo da mudanca: Lucas definiu que o painel nao deve mais ser tratado como "Copiloto", mas como `PO AI`, um canal de mensagens e cerebro operacional do Hub, com acesso amplo ao diario e ao codigo para orientar decisoes, riscos, prompts, handoffs e proximos passos.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/api/squadops/copilot/route.ts`, `apps/hub/lib/squadops/hub-code-context.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: transformei o painel em um canal de mensagens com historico, baloes de usuario/PO AI, area de rolagem, composer, atalhos e estado de carregamento. No backend, o endpoint passou a receber historico recente da conversa e a montar um contexto server-side com Engineering Operations mais um mapa seguro do codigo do Hub. Criei `hub-code-context.ts` para escanear o repositorio, ranquear arquivos por relevancia e enviar trechos uteis para a IA.
+- Logica utilizada: o PO AI deve funcionar como cerebro consultivo, nao como executor. Ele recebe diario, historico e codigo suficiente para raciocinar sobre o Hub, mas a camada de contexto exclui `.env`, chaves, tokens, credenciais, `.git`, `node_modules`, `.next`, `dist`, lockfiles grandes e arquivos binarios. Isso preserva a direcao de "acesso ao codigo" sem vazar segredos ou artefatos sensiveis.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx app/api/squadops/copilot/route.ts lib/squadops/hub-code-context.ts --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` com `NODE_OPTIONS=--max-old-space-size=4096`, smoke HTTP de `http://localhost:3001/squadops`, smoke HTTP de `http://localhost:3001/api/squadops/operations` e smoke da API do PO AI retornando `401 Unauthorized` sem sessao, comportamento esperado para endpoint protegido.
+- Pendencias ou riscos conhecidos: a validacao visual final deve ser feita na sessao autenticada do Lucas. O PO AI ainda nao possui indice persistente/vetorial do codigo; nesta V1 ele monta contexto sob demanda com mapa e trechos ranqueados. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[HubOps] PO AI fora do layout principal`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 12:03:01 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL`.
+- Motivo da mudanca: Lucas validou que o PO AI como coluna dentro da visao principal impactou negativamente o layout, comprimindo a leitura operacional e deslocando os blocos de timeline/listas.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: removi o `PoAiChannelPanel` da grade principal da visao geral, deixei `Agora precisa de atencao` e `Ultimos movimentos` ocupando a largura operacional e transformei o PO AI em drawer lateral aberto por botoes `PO AI` no topo e no centro de comando. O drawer preserva o canal de mensagens, historico, composer, atalhos e contexto de codigo/diario sem ocupar espaco fixo na tela.
+- Logica utilizada: o Operations Center deve priorizar leitura de operacao; o PO AI e uma camada consultiva acionavel sob demanda. Assim, o cerebro do Hub continua acessivel, mas nao interfere no layout dos cards, timeline e listas.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` com `NODE_OPTIONS=--max-old-space-size=4096`, smoke HTTP de `http://localhost:3001/squadops`, smoke HTTP de `http://localhost:3001/api/squadops/operations` e smoke da API do PO AI retornando `401 Unauthorized` sem sessao, comportamento esperado para endpoint protegido.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita na sessao autenticada do Lucas. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Template de deploy por recorte`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 12:45:43 -03:00.
+- Tipo da alteracao: `DECISAO` - padronizacao de acionamento ReleaseOps.
+- Motivo da mudanca: Lucas enviou o formato operacional esperado para solicitar deploy de um recorte por modulo/frente, com contexto, escopo, validacoes, pontos de atencao, solicitacao para ReleaseOps e resposta esperada.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; fluxo operacional de `Hub ReleaseOps`; handoffs de Guardian, CareDesk, PulseX, HubOps/SquadOps e futuras frentes.
+- Como foi feito: registrei o template oficial na secao `ReleaseOps`, com regra de bloqueio quando os campos vierem como placeholder e com os blocos obrigatorios para contexto, escopo, validacoes, pontos de atencao, solicitacao e resposta final.
+- Logica utilizada: ReleaseOps so deve executar deploy quando o recorte estiver definido, validado e rastreavel. Um template unico reduz ambiguidade, evita deploy sem escopo e facilita identificar origem, impacto, criticidade e status final.
+- Validacao executada: leitura do Engineering Operations; revisao do status atual do worktree; atualizacao documental do template. Nao houve build, lint, typecheck ou deploy porque a solicitacao veio como template com placeholders, sem modulo/frente concreta para publicar.
+- Pendencias ou riscos conhecidos: nenhum deploy foi executado nesta etapa; o worktree segue com diversos recortes locais `AGUARDANDO RELEASEOPS` que devem ser avaliados separadamente usando este template antes de qualquer publicacao.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub ReleaseOps` quando Lucas preencher um recorte real para deploy.
