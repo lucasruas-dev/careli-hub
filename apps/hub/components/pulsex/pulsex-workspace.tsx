@@ -22,6 +22,7 @@ import {
   parsePulseXMessageBroadcastPayload,
 } from "@/lib/pulsex/realtime";
 import { playPulseXIncomingMessageSound } from "@/lib/pulsex/notification-effects";
+import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import {
   getHubSupabaseClient,
   hasHubSupabaseConfig,
@@ -30,6 +31,7 @@ import {
 import { useAuth } from "@/providers/auth-provider";
 import { usePulseXCall } from "@/providers/pulsex-call-provider";
 import { Bell, X } from "lucide-react";
+import Image from "next/image";
 import type {
   PulseXCallSession,
   PulseXCallType,
@@ -114,6 +116,8 @@ export function PulseXWorkspace() {
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
   const messageRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
+  const cacaAgentPanelRef = useRef<HTMLDivElement>(null);
+  const threadPanelRef = useRef<HTMLDivElement>(null);
   const [notifications, setNotifications] = useState<PulseXToastNotification[]>(
     [],
   );
@@ -121,6 +125,23 @@ export function PulseXWorkspace() {
     channels.find((channel) => channel.id === activeChannelId) ??
     channels[0] ??
     emptyPulseXChannel;
+
+  useOutsideDismiss({
+    enabled: isCacaAgentOpen,
+    onDismiss: () => {
+      setIsCacaAgentOpen(false);
+      setCacaFocusedMessageId(null);
+    },
+    ref: cacaAgentPanelRef,
+  });
+  useOutsideDismiss({
+    enabled: Boolean(activeThreadMessageId),
+    onDismiss: () => {
+      setActiveThreadMessageId(null);
+      setThreadComposerValue("");
+    },
+    ref: threadPanelRef,
+  });
   const favoriteChannelIdsSet = useMemo(
     () => new Set(favoriteChannelIds),
     [favoriteChannelIds],
@@ -1199,14 +1220,8 @@ export function PulseXWorkspace() {
           </div>
           <MessageComposer
             channelName={activeChannel.name}
-            isAgentOpen={isCacaAgentOpen}
             mentions={composerMentions}
             onChange={handleComposerChange}
-            onCloseAgent={() => {
-              setIsCacaAgentOpen(false);
-              setCacaFocusedMessageId(null);
-            }}
-            onOpenAgent={handleOpenCacaAgent}
             onSubmit={handleSendMessage}
             onToggleTag={handleToggleComposerTag}
             selectedTags={composerTags}
@@ -1224,8 +1239,29 @@ export function PulseXWorkspace() {
             }
             onSelect={(channelId) => handleSelectChannel(channelId)}
           />
+          {!isCacaAgentOpen && !activeThreadMessage ? (
+            <button
+              aria-label="Abrir Caca"
+              className="absolute bottom-20 right-5 z-20 grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.20)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={handleOpenCacaAgent}
+              title="Abrir Caca"
+              type="button"
+            >
+              <Image
+                alt=""
+                className="size-full object-cover"
+                height={56}
+                src="/caca-profile.png"
+                width={56}
+              />
+              <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
+            </button>
+          ) : null}
           {isCacaAgentOpen ? (
-            <div className="absolute inset-y-0 right-0 z-20 w-[24rem] shadow-2xl">
+            <div
+              className="absolute inset-y-0 right-0 z-20 w-[24rem] shadow-2xl"
+              ref={cacaAgentPanelRef}
+            >
               <CacaAgentPanel
                 channel={activeChannel}
                 currentUserId={currentUserId}
@@ -1241,7 +1277,10 @@ export function PulseXWorkspace() {
               />
             </div>
           ) : activeThreadMessage ? (
-            <div className="absolute inset-y-0 right-0 z-10 w-[24rem] shadow-2xl">
+            <div
+              className="absolute inset-y-0 right-0 z-10 w-[24rem] shadow-2xl"
+              ref={threadPanelRef}
+            >
               <ThreadPanel
                 currentUserId={currentUserId}
                 message={activeThreadMessage}

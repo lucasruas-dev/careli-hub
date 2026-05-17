@@ -9,7 +9,6 @@ import type {
 } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot,
   FileText,
   Image as ImageIcon,
   Mic,
@@ -21,6 +20,7 @@ import {
   Video,
   X,
 } from "lucide-react";
+import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import type {
   PulseXMessageAttachment,
   PulseXMessageMention,
@@ -34,14 +34,11 @@ import {
 
 type MessageComposerProps = {
   channelName: string;
-  isAgentOpen?: boolean;
   mentions: readonly PulseXMessageMention[];
   onChange: (
     value: string,
     mentions: readonly PulseXMessageMention[],
   ) => void;
-  onCloseAgent?: () => void;
-  onOpenAgent?: () => void;
   onSubmit: (input?: { attachment?: PulseXMessageAttachment }) => void;
   onToggleTag?: (tag: PulseXMessageTag) => void;
   selectedTags?: readonly PulseXMessageTag[];
@@ -51,11 +48,8 @@ type MessageComposerProps = {
 
 export function MessageComposer({
   channelName,
-  isAgentOpen = false,
   mentions,
   onChange,
-  onCloseAgent,
-  onOpenAgent,
   onSubmit,
   onToggleTag,
   selectedTags = [],
@@ -99,31 +93,11 @@ export function MessageComposer({
     };
   }, []);
 
-  useEffect(() => {
-    if (!isEmojiPickerOpen) {
-      return;
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-
-      if (!(target instanceof Node)) {
-        return;
-      }
-
-      if (emojiPickerRef.current?.contains(target)) {
-        return;
-      }
-
-      setIsEmojiPickerOpen(false);
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [isEmojiPickerOpen]);
+  useOutsideDismiss({
+    enabled: isEmojiPickerOpen,
+    onDismiss: () => setIsEmojiPickerOpen(false),
+    ref: emojiPickerRef,
+  });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -137,10 +111,9 @@ export function MessageComposer({
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Escape") {
-      if (isMentionOpen || isAgentOpen || isEmojiPickerOpen) {
+      if (isMentionOpen || isEmojiPickerOpen) {
         event.preventDefault();
         closeMentionMenu();
-        onCloseAgent?.();
         setIsEmojiPickerOpen(false);
       }
       return;
@@ -411,21 +384,6 @@ export function MessageComposer({
         icon={<Paperclip size={18} />}
         onClick={() => fileInputRef.current?.click()}
       />
-      <div className="relative">
-        <ComposerAction
-          active={isAgentOpen}
-          ariaLabel="Acionar Cacá"
-          icon={<Bot size={18} />}
-          onClick={() => {
-            if (isAgentOpen) {
-              onCloseAgent?.();
-            } else {
-              onOpenAgent?.();
-            }
-            setIsEmojiPickerOpen(false);
-          }}
-        />
-      </div>
       <div className="relative flex-1">
         {isMentionOpen ? (
           <MentionAutocomplete

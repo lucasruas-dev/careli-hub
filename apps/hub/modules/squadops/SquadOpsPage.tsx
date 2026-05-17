@@ -1,9 +1,14 @@
 "use client";
 
 import { HubShell } from "@/layouts/hub-shell";
+import { loadHubItTickets } from "@/lib/hub-it-tickets/client";
+import type { HubItTicket } from "@/lib/hub-it-tickets/types";
+import { HubItTicketsBoard } from "@/modules/squadops/HubItTicketsBoard";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   OperationsAlert,
+  OperationsAlertFeedbackStatus,
+  OperationsAlertProtocolSummary,
   OperationsCheckMetric,
   OperationsMonitoringSnapshot,
   OperationsRiskLevel,
@@ -33,6 +38,7 @@ import {
   ClipboardCheck,
   Copy,
   Database,
+  EyeOff,
   FileText,
   GitCommitHorizontal,
   History,
@@ -71,7 +77,14 @@ type OperationsFilters = {
   type: string;
 };
 
-type HubOpsView = "overview" | "monitoring" | "timeline" | "audits" | "records";
+type HubOpsView =
+  | "overview"
+  | "monitoring"
+  | "itTickets"
+  | "deploys"
+  | "timeline"
+  | "audits"
+  | "records";
 
 type CopilotAnswerSection = {
   id: string;
@@ -93,7 +106,97 @@ type WatcherApiResponse = {
   watcher?: OpsWatcherDecision;
 };
 
+type AlertProtocolsApiResponse = {
+  protocols?: OperationsAlertProtocolSummary[];
+};
+
+type AlertFeedbackApiResponse = {
+  protocol?: OperationsAlertProtocolSummary;
+  error?: string;
+};
+
+type StructuredOperationApiRecord = {
+  affectedFiles: string | null;
+  changeCategory: string;
+  commit: string | null;
+  createdAt: string;
+  deploy: string | null;
+  healthchecks: string | null;
+  how: string | null;
+  id: string;
+  isCritical: boolean;
+  isModuleImprovement: boolean;
+  isRelease: boolean;
+  isSupportInvestigation: boolean;
+  lineStart: number;
+  localDateTime: string | null;
+  localOccurredAt: string | null;
+  logic: string | null;
+  macroSummary: string | null;
+  module: string;
+  nextSquad: string | null;
+  protocol: string;
+  rawContent: string;
+  reason: string | null;
+  risks: string | null;
+  routine: string | null;
+  screen: string;
+  shortSummary: string | null;
+  sourceIndex: number;
+  sourcePath: string;
+  squad: string;
+  status: string;
+  subject: string;
+  type: string;
+  updatedAt: string;
+  validation: string | null;
+};
+
+type StructuredSyncRun = {
+  created_at: string;
+  error_message: string | null;
+  executed_by_user_id: string | null;
+  handoffs_upserted: number;
+  healthchecks_upserted: number;
+  id: string;
+  records_total: number;
+  records_upserted: number;
+  releases_upserted: number;
+  source_path: string;
+  status: string;
+};
+
+type StructuredOperationsApiResponse = {
+  error?: string;
+  storage?: {
+    records?: StructuredOperationApiRecord[];
+    status?: string;
+    syncRuns?: StructuredSyncRun[];
+  };
+};
+
+type OperationsSourceState = {
+  description: string;
+  error: string | null;
+  label: string;
+  mode: "structured" | "fallback" | "loading";
+  recordsCount: number;
+  status: string;
+  syncRuns: StructuredSyncRun[];
+};
+
 const allFilterValue = "__all";
+const hubTimeZone = "America/Sao_Paulo";
+
+const initialOperationsSourceState: OperationsSourceState = {
+  description: "Aguardando leitura da fonte operacional.",
+  error: null,
+  label: "Carregando fonte",
+  mode: "loading",
+  recordsCount: 0,
+  status: "pendente",
+  syncRuns: [],
+};
 
 const initialFilters: OperationsFilters = {
   keyword: "",
@@ -113,6 +216,18 @@ const promptTargets = [
   "Hub SupportOps",
   "Hub ReleaseOps",
 ] as const;
+
+const alertFeedbackOptions = [
+  { label: "Em analise", value: "em_analise" },
+  { label: "Persiste", value: "persiste" },
+  { label: "Corrigido", value: "corrigido" },
+  { label: "Nao observado", value: "nao_observado" },
+  { label: "Bloqueado", value: "bloqueado" },
+  { label: "Falso positivo", value: "falso_positivo" },
+] as const satisfies readonly {
+  label: string;
+  value: OperationsAlertFeedbackStatus;
+}[];
 
 type PromptTemplate = {
   body: string;
@@ -429,8 +544,10 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
 ];
 
 const hubOpsViews = [
+  { id: "itTickets", label: "Ticket TI" },
   { id: "overview", label: "Visão geral" },
   { id: "monitoring", label: "Database Monitoring" },
+  { id: "deploys", label: "Deploys" },
   { id: "timeline", label: "Timeline" },
   { id: "audits", label: "Auditorias" },
   { id: "records", label: "Registros" },
@@ -442,7 +559,13 @@ export function SquadOpsPage() {
   const authAccessToken = authState.session?.accessToken ?? null;
   const [operations, setOperations] =
     useState<EngineeringOperationsResponse | null>(null);
+  const [structuredOperations, setStructuredOperations] =
+    useState<EngineeringOperationsResponse | null>(null);
+  const [operationsSource, setOperationsSource] = useState<OperationsSourceState>(
+    initialOperationsSourceState,
+  );
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncingOperations, setIsSyncingOperations] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<OperationsFilters>(initialFilters);
   const [selectedRecord, setSelectedRecord] =
@@ -480,6 +603,24 @@ export function SquadOpsPage() {
   const [watcherNotifications, setWatcherNotifications] = useState<
     OpsWatcherDecision[]
   >([]);
+  const [alertProtocols, setAlertProtocols] = useState<
+    OperationsAlertProtocolSummary[]
+  >([]);
+  const [selectedAlertProtocol, setSelectedAlertProtocol] =
+    useState<OperationsAlertProtocolSummary | null>(null);
+  const [itTicketCount, setItTicketCount] = useState(0);
+  const [itTicketAttentionCount, setItTicketAttentionCount] = useState(0);
+  const [alertFeedbackStatus, setAlertFeedbackStatus] =
+    useState<OperationsAlertFeedbackStatus>("em_analise");
+  const [alertFeedbackText, setAlertFeedbackText] = useState("");
+  const [alertFeedbackError, setAlertFeedbackError] = useState<string | null>(
+    null,
+  );
+  const [isAlertFeedbackSaving, setIsAlertFeedbackSaving] = useState(false);
+  const [acknowledgingProtocol, setAcknowledgingProtocol] = useState<string | null>(
+    null,
+  );
+  const [ignoringProtocol, setIgnoringProtocol] = useState<string | null>(null);
   const [copiedCommandId, setCopiedCommandId] = useState<string | null>(null);
   const watcherCooldownsRef = useRef<Record<string, number>>({});
 
@@ -555,6 +696,156 @@ export function SquadOpsPage() {
       isActive = false;
     };
   }, [authAccessToken, canAccessHubOps, profileStatus]);
+
+  const loadStructuredOperations = useCallback(async () => {
+    if (!canAccessHubOps || profileStatus === "loading") {
+      return;
+    }
+
+    try {
+      const accessToken = authAccessToken ?? (await getAccessToken());
+      const headers: Record<string, string> = {};
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const result = await fetchStructuredOperationsSnapshot(headers);
+
+      if (result.ok && result.records.length > 0) {
+        setStructuredOperations(
+          buildOperationsResponseFromStructuredRecords({
+            fallback: operations,
+            records: result.records,
+            syncRuns: result.syncRuns,
+          }),
+        );
+        setOperationsSource({
+          description:
+            "Fonte principal: tabelas Supabase estruturadas. O diario segue como memoria e fallback.",
+          error: null,
+          label: "Supabase estruturado",
+          mode: "structured",
+          recordsCount: result.records.length,
+          status: result.status,
+          syncRuns: result.syncRuns,
+        });
+        return;
+      }
+
+      setStructuredOperations(null);
+      const structuredError = result.ok
+        ? null
+        : getStructuredOperationsFriendlyError(result.error);
+      setOperationsSource({
+        description:
+          "Fallback ativo: diario lido porque a base estruturada esta vazia ou indisponivel.",
+        error: structuredError,
+        label: "Fallback Engineering Operations",
+        mode: "fallback",
+        recordsCount: operations?.records.length ?? 0,
+        status: result.ok
+          ? "estrutura vazia"
+          : isStructuredOperationsMigrationMissingError(result.error)
+            ? "migration pendente"
+            : "indisponivel",
+        syncRuns: result.ok ? result.syncRuns : [],
+      });
+    } catch {
+      setStructuredOperations(null);
+      const errorMessage = "Falha de conexao com a base estruturada.";
+      setOperationsSource({
+        description:
+          "Falha ao consultar a base estruturada; a tela preserva o fallback do diario.",
+        error: getStructuredOperationsFriendlyError(errorMessage),
+        label: "Fallback Engineering Operations",
+        mode: "fallback",
+        recordsCount: operations?.records.length ?? 0,
+        status: "indisponivel",
+        syncRuns: [],
+      });
+    }
+  }, [authAccessToken, canAccessHubOps, operations, profileStatus]);
+
+  useEffect(() => {
+    void loadStructuredOperations();
+  }, [loadStructuredOperations]);
+
+  const loadAlertProtocols = useCallback(async () => {
+    if (!canAccessHubOps || profileStatus === "loading") {
+      return;
+    }
+
+    try {
+      const accessToken = authAccessToken ?? (await getAccessToken());
+      const headers: Record<string, string> = {};
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/operations/alert-protocols?limit=60", {
+        cache: "no-store",
+        headers,
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | AlertProtocolsApiResponse
+        | { error?: string }
+        | null;
+
+      if (
+        !response.ok ||
+        !payload ||
+        !("protocols" in payload) ||
+        !Array.isArray(payload.protocols)
+      ) {
+        return;
+      }
+
+      setAlertProtocols(payload.protocols);
+    } catch {
+      setAlertProtocols((current) => current);
+    }
+  }, [authAccessToken, canAccessHubOps, profileStatus]);
+
+  useEffect(() => {
+    void loadAlertProtocols();
+  }, [loadAlertProtocols]);
+
+  const loadItTicketSummary = useCallback(async () => {
+    if (!canAccessHubOps || profileStatus === "loading") {
+      return;
+    }
+
+    try {
+      const tickets = await loadHubItTickets({
+        accessToken: authAccessToken,
+        scope: "all",
+      });
+
+      setItTicketCount(countOpenItTickets(tickets));
+      setItTicketAttentionCount(countItTicketsWaitingForHubOps(tickets));
+    } catch {
+      setItTicketCount((current) => current);
+      setItTicketAttentionCount((current) => current);
+    }
+  }, [authAccessToken, canAccessHubOps, profileStatus]);
+
+  useEffect(() => {
+    void loadItTicketSummary();
+  }, [loadItTicketSummary]);
+
+  useEffect(() => {
+    if (!canAccessHubOps || profileStatus === "loading") {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadItTicketSummary();
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [canAccessHubOps, loadItTicketSummary, profileStatus]);
 
   const registerWatcherDecision = useCallback((decision: OpsWatcherDecision) => {
     setWatcherDecision(decision);
@@ -644,6 +935,9 @@ export function SquadOpsPage() {
         }
 
         setMonitoringSnapshot(payload);
+        setAlertProtocols((current) =>
+          mergeAlertProtocols(payload.alertProtocols ?? [], current),
+        );
         setMonitoringHistory((current) =>
           [...payload.checks, ...current].slice(0, 120),
         );
@@ -698,16 +992,19 @@ export function SquadOpsPage() {
     profileStatus,
   ]);
 
-  const records = useMemo(() => operations?.records ?? [], [operations]);
+  const activeOperations = structuredOperations ?? operations;
+  const records = useMemo(() => activeOperations?.records ?? [], [activeOperations]);
   const auditRoutines = useMemo(
-    () => operations?.auditRoutines ?? [],
-    [operations],
+    () => activeOperations?.auditRoutines ?? [],
+    [activeOperations],
   );
   const filteredRecords = useMemo(
     () => records.filter((record) => matchesFilters(record, filters)),
     [filters, records],
   );
-  const latestDeploys = (operations?.releaseRecords ?? records)
+  const allReleaseRecords =
+    activeOperations?.releaseRecords ?? records.filter((record) => record.isRelease);
+  const latestDeploys = allReleaseRecords
     .filter((record) => record.deploy !== UNKNOWN_OPERATION_VALUE)
     .slice(0, 5);
   const supportInvestigations = records
@@ -716,12 +1013,10 @@ export function SquadOpsPage() {
   const moduleImprovements = records
     .filter((record) => record.isModuleImprovement)
     .slice(0, 5);
-  const criticalRecords = (operations?.criticalRecords ?? records)
+  const criticalRecords = (activeOperations?.criticalRecords ?? records)
     .filter((record) => record.isCritical)
     .slice(0, 6);
-  const releaseRecords = (operations?.releaseRecords ?? records)
-    .filter((record) => record.isRelease)
-    .slice(0, 6);
+  const releaseRecords = allReleaseRecords.slice(0, 6);
   const overdueRoutines = auditRoutines.filter((routine) => routine.isOverdue);
   const latestRecord = records[0] ?? null;
   const actionCount = criticalRecords.length + overdueRoutines.length;
@@ -812,12 +1107,336 @@ export function SquadOpsPage() {
     }
   }
 
+  function openAlertProtocol(protocol: OperationsAlertProtocolSummary) {
+    setSelectedAlertProtocol(protocol);
+    setAlertFeedbackStatus(
+      protocol.technicalFeedbackStatus === "pendente"
+        ? "em_analise"
+        : protocol.technicalFeedbackStatus,
+    );
+    setAlertFeedbackText(protocol.technicalFeedback ?? "");
+    setAlertFeedbackError(null);
+  }
+
+  function openAlertProtocolFromCode(protocolCode?: string) {
+    if (!protocolCode) {
+      return;
+    }
+
+    const protocol =
+      alertProtocols.find((item) => item.protocol === protocolCode) ??
+      monitoringSnapshot?.alerts
+        .map(alertToProtocolSummary)
+        .find((item) => item.protocol === protocolCode);
+
+    if (protocol) {
+      openAlertProtocol(protocol);
+    }
+  }
+
+  async function saveAlertFeedback() {
+    if (!selectedAlertProtocol) {
+      return;
+    }
+
+    if (!alertFeedbackText.trim()) {
+      setAlertFeedbackError("Cole ou escreva a devolutiva tecnica do dev.");
+      return;
+    }
+
+    setIsAlertFeedbackSaving(true);
+    setAlertFeedbackError(null);
+
+    try {
+      const accessToken = authAccessToken ?? (await getAccessToken());
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/operations/alert-protocols", {
+        body: JSON.stringify({
+          feedback: alertFeedbackText,
+          protocol: selectedAlertProtocol.protocol,
+          status: alertFeedbackStatus,
+        }),
+        cache: "no-store",
+        headers,
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | AlertFeedbackApiResponse
+        | null;
+
+      if (!response.ok || !payload?.protocol) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel registrar a devolutiva tecnica.",
+        );
+      }
+
+      setAlertProtocols((current) =>
+        mergeAlertProtocols([payload.protocol!], current),
+      );
+      setMonitoringSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              alertProtocols: mergeAlertProtocols(
+                [payload.protocol!],
+                current.alertProtocols ?? [],
+              ),
+              alerts: current.alerts.map((alert) =>
+                alert.protocol === payload.protocol!.protocol
+                  ? mergeProtocolIntoAlert(alert, payload.protocol!)
+                  : alert,
+              ),
+            }
+          : current,
+      );
+      setWatcherNotifications((current) =>
+        shouldHideProtocolAlert(payload.protocol!)
+          ? current.filter(
+              (notification) =>
+                notification.protocol !== payload.protocol!.protocol,
+            )
+          : current.map((notification) =>
+              notification.protocol === payload.protocol!.protocol
+                ? {
+                    ...notification,
+                    command: payload.protocol!.command,
+                  }
+                : notification,
+            ),
+      );
+      setSelectedAlertProtocol(payload.protocol);
+      setAlertFeedbackText(payload.protocol.technicalFeedback ?? "");
+    } catch (error) {
+      setAlertFeedbackError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel registrar a devolutiva tecnica.",
+      );
+    } finally {
+      setIsAlertFeedbackSaving(false);
+    }
+  }
+
+  async function acknowledgeAlertProtocol(protocolCode?: string) {
+    if (!protocolCode) {
+      return;
+    }
+
+    setAcknowledgingProtocol(protocolCode);
+
+    try {
+      const accessToken = authAccessToken ?? (await getAccessToken());
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/operations/alert-protocols", {
+        body: JSON.stringify({
+          action: "acknowledge",
+          protocol: protocolCode,
+        }),
+        cache: "no-store",
+        headers,
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | AlertFeedbackApiResponse
+        | null;
+
+      if (!response.ok || !payload?.protocol) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel confirmar leitura do alerta.",
+        );
+      }
+
+      setAlertProtocols((current) =>
+        mergeAlertProtocols([payload.protocol!], current),
+      );
+      setMonitoringSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              alertProtocols: mergeAlertProtocols(
+                [payload.protocol!],
+                current.alertProtocols ?? [],
+              ),
+              alerts: current.alerts.map((alert) =>
+                alert.protocol === payload.protocol!.protocol
+                  ? mergeProtocolIntoAlert(alert, payload.protocol!)
+                  : alert,
+              ),
+            }
+          : current,
+      );
+      setWatcherNotifications((current) =>
+        current.filter(
+          (notification) => notification.protocol !== payload.protocol!.protocol,
+        ),
+      );
+      setWatcherDecision((current) =>
+        current?.protocol === payload.protocol!.protocol
+          ? {
+              ...current,
+              notifyLucas: false,
+              reason: "Leitura confirmada por Lucas.",
+              status: "silencioso",
+            }
+          : current,
+      );
+    } catch (error) {
+      setMonitoringError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel confirmar leitura do alerta.",
+      );
+    } finally {
+      setAcknowledgingProtocol(null);
+    }
+  }
+
+  async function ignoreAlertProtocol(protocolCode?: string) {
+    if (!protocolCode) {
+      return;
+    }
+
+    setIgnoringProtocol(protocolCode);
+
+    try {
+      const accessToken = authAccessToken ?? (await getAccessToken());
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/operations/alert-protocols", {
+        body: JSON.stringify({
+          action: "ignore",
+          protocol: protocolCode,
+        }),
+        cache: "no-store",
+        headers,
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | AlertFeedbackApiResponse
+        | null;
+
+      if (!response.ok || !payload?.protocol) {
+        throw new Error(payload?.error ?? "Nao foi possivel ignorar o alerta.");
+      }
+
+      setAlertProtocols((current) =>
+        mergeAlertProtocols([payload.protocol!], current),
+      );
+      setMonitoringSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              alertProtocols: mergeAlertProtocols(
+                [payload.protocol!],
+                current.alertProtocols ?? [],
+              ),
+              alerts: current.alerts.map((alert) =>
+                alert.protocol === payload.protocol!.protocol
+                  ? mergeProtocolIntoAlert(alert, payload.protocol!)
+                  : alert,
+              ),
+            }
+          : current,
+      );
+      setWatcherNotifications((current) =>
+        current.filter(
+          (notification) => notification.protocol !== payload.protocol!.protocol,
+        ),
+      );
+      setWatcherDecision((current) =>
+        current?.protocol === payload.protocol!.protocol
+          ? {
+              ...current,
+              notifyLucas: false,
+              reason: "Alerta ignorado por Lucas.",
+              status: "silencioso",
+            }
+          : current,
+      );
+    } catch (error) {
+      setMonitoringError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel ignorar o alerta.",
+      );
+    } finally {
+      setIgnoringProtocol(null);
+    }
+  }
+
   async function copyAgentCommand(command: string, id: string) {
     await navigator.clipboard.writeText(command);
     setCopiedCommandId(id);
     window.setTimeout(() => {
       setCopiedCommandId((currentId) => (currentId === id ? null : currentId));
     }, 1800);
+  }
+
+  async function syncStructuredOperations() {
+    setIsSyncingOperations(true);
+    setError(null);
+
+    try {
+      const accessToken = authAccessToken ?? (await getAccessToken());
+      const headers: Record<string, string> = {};
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/squadops/operations/structured", {
+        cache: "no-store",
+        headers,
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | StructuredOperationsApiResponse
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel sincronizar para o Supabase.",
+        );
+      }
+
+      await loadStructuredOperations();
+    } catch (syncError) {
+      const syncErrorMessage =
+        syncError instanceof Error
+          ? syncError.message
+          : "Nao foi possivel sincronizar para o Supabase.";
+      setOperationsSource((current) => ({
+        ...current,
+        description:
+          "A sincronizacao precisa da migration estruturada aplicada no Supabase real. O fallback pelo diario continua ativo.",
+        error: getStructuredOperationsFriendlyError(syncErrorMessage),
+        status: isStructuredOperationsMigrationMissingError(syncErrorMessage)
+          ? "migration pendente"
+          : "sync indisponivel",
+      }));
+    } finally {
+      setIsSyncingOperations(false);
+    }
   }
 
   return (
@@ -827,7 +1446,9 @@ export function SquadOpsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
               <FileText className="size-4 text-[#A07C3B]" />
-              {operations?.sourcePath ?? "docs/codex/engineering-operations.md"}
+              {operationsSource.mode === "structured"
+                ? "hub_engineering_operation_records"
+                : (activeOperations?.sourcePath ?? "docs/codex/engineering-operations.md")}
             </span>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -841,13 +1462,19 @@ export function SquadOpsPage() {
               <Badge variant="warning">AGUARDANDO RELEASEOPS</Badge>
               <Badge variant="info">Engineering Operations</Badge>
               <span className="text-xs font-semibold text-slate-500">
-                {operations
-                  ? `Atualizado: ${formatGeneratedAt(operations.generatedAt)}`
+                {activeOperations
+                  ? `Atualizado: ${formatGeneratedAt(activeOperations.generatedAt)}`
                   : "Aguardando leitura"}
               </span>
             </div>
           </div>
         </section>
+
+        <OperationsSourcePanel
+          isSyncing={isSyncingOperations}
+          onSync={() => void syncStructuredOperations()}
+          source={operationsSource}
+        />
 
         {error ? (
           <Surface bordered className="border-red-100 bg-red-50 p-4">
@@ -862,7 +1489,7 @@ export function SquadOpsPage() {
           actionCount={actionCount}
           isLoading={isLoading}
           latestRecord={latestRecord}
-          metrics={operations?.metrics}
+          metrics={activeOperations?.metrics}
           nextSquad={nextSquad}
           onOpenPoAi={() => setIsPoAiOpen(true)}
           onOpenAudits={() => setActiveView("audits")}
@@ -874,11 +1501,23 @@ export function SquadOpsPage() {
         <HubOpsViewTabs
           activeView={activeView}
           actionCount={actionCount}
+          deployCount={allReleaseRecords.length}
           filteredCount={filteredRecords.length}
+          itTicketAttentionCount={itTicketAttentionCount}
+          itTicketCount={itTicketCount}
           monitoringAlertCount={monitoringSnapshot?.alerts.length ?? 0}
           onChange={setActiveView}
           routineCount={auditRoutines.length}
         />
+
+        {activeView === "itTickets" ? (
+          <HubItTicketsBoard
+            accessToken={authAccessToken}
+            isActive={activeView === "itTickets"}
+            onTicketAttentionCountChange={setItTicketAttentionCount}
+            onTicketCountChange={setItTicketCount}
+          />
+        ) : null}
 
         {activeView === "overview" ? (
           <>
@@ -924,15 +1563,24 @@ export function SquadOpsPage() {
 
         {activeView === "monitoring" ? (
           <DatabaseMonitoringView
+            acknowledgingProtocol={acknowledgingProtocol}
+            alertProtocols={alertProtocols}
             copiedCommandId={copiedCommandId}
             error={monitoringError}
             history={monitoringHistory}
+            ignoringProtocol={ignoringProtocol}
             intervalMs={monitoringIntervalMs}
             isLoading={isMonitoringLoading}
             notifications={watcherNotifications}
             onAnalyze={() => void loadMonitoringSnapshot({ analyze: true })}
+            onAcknowledgeProtocol={(protocol) =>
+              void acknowledgeAlertProtocol(protocol)
+            }
             onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
+            onIgnoreProtocol={(protocol) => void ignoreAlertProtocol(protocol)}
             onIntervalChange={setMonitoringIntervalMs}
+            onOpenAlertProtocol={openAlertProtocol}
+            onOpenAlertProtocolByCode={openAlertProtocolFromCode}
             onRefresh={() => void loadMonitoringSnapshot()}
             onOpenPoAi={() => setIsPoAiOpen(true)}
             snapshot={monitoringSnapshot}
@@ -940,11 +1588,26 @@ export function SquadOpsPage() {
           />
         ) : null}
 
+        {activeView === "deploys" ? (
+          <>
+            <OperationsFiltersBar
+              filters={filters}
+              options={activeOperations?.filters}
+              onChange={setFilters}
+            />
+            <DeployProtocolsView
+              deployRecords={allReleaseRecords}
+              onSelectRecord={setSelectedRecord}
+              records={filteredRecords}
+            />
+          </>
+        ) : null}
+
         {activeView === "timeline" ? (
           <>
             <OperationsFiltersBar
               filters={filters}
-              options={operations?.filters}
+              options={activeOperations?.filters}
               onChange={setFilters}
             />
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.36fr)]">
@@ -985,7 +1648,7 @@ export function SquadOpsPage() {
           <>
             <OperationsFiltersBar
               filters={filters}
-              options={operations?.filters}
+              options={activeOperations?.filters}
               onChange={setFilters}
             />
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.36fr)]">
@@ -1041,6 +1704,17 @@ export function SquadOpsPage() {
         selectedTemplate={selectedPromptTemplate}
         templates={promptTemplates}
       />
+      <AlertProtocolFeedbackDrawer
+        error={alertFeedbackError}
+        feedback={alertFeedbackText}
+        isSaving={isAlertFeedbackSaving}
+        onClose={() => setSelectedAlertProtocol(null)}
+        onFeedbackChange={setAlertFeedbackText}
+        onSave={() => void saveAlertFeedback()}
+        onStatusChange={setAlertFeedbackStatus}
+        protocol={selectedAlertProtocol}
+        status={alertFeedbackStatus}
+      />
       <FloatingPoAiButton
         isHidden={isPoAiOpen}
         onClick={() => setIsPoAiOpen(true)}
@@ -1063,7 +1737,7 @@ function FloatingPoAiButton({
   return (
     <button
       aria-label="Abrir PO AI"
-      className="fixed bottom-6 right-6 z-40 inline-flex h-12 items-center gap-3 rounded-2xl border border-[#A07C3B]/25 bg-white px-4 text-sm font-semibold text-[#7A5E2C] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      className="fixed bottom-6 right-40 z-40 inline-flex h-12 items-center gap-3 rounded-2xl border border-[#A07C3B]/25 bg-white px-4 text-sm font-semibold text-[#7A5E2C] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
       onClick={onClick}
       type="button"
     >
@@ -1073,6 +1747,150 @@ function FloatingPoAiButton({
       </span>
       PO AI
     </button>
+  );
+}
+
+function AlertProtocolFeedbackDrawer({
+  error,
+  feedback,
+  isSaving,
+  onClose,
+  onFeedbackChange,
+  onSave,
+  onStatusChange,
+  protocol,
+  status,
+}: {
+  error: string | null;
+  feedback: string;
+  isSaving: boolean;
+  onClose: () => void;
+  onFeedbackChange: (feedback: string) => void;
+  onSave: () => void;
+  onStatusChange: (status: OperationsAlertFeedbackStatus) => void;
+  protocol: OperationsAlertProtocolSummary | null;
+  status: OperationsAlertFeedbackStatus;
+}) {
+  if (!protocol) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        aria-label="Fechar devolutiva tecnica"
+        className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1px]"
+        onClick={onClose}
+        type="button"
+      />
+      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col overflow-hidden border-l border-slate-200/80 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+          <div>
+            <p className="m-0 text-xs font-semibold uppercase text-[#7A5E2C]">
+              Devolutiva tecnica
+            </p>
+            <h2 className="m-0 mt-1 text-xl font-semibold text-slate-950">
+              {protocol.protocol}
+            </h2>
+            <p className="m-0 mt-2 text-sm leading-6 text-slate-600">
+              {protocol.title}
+            </p>
+          </div>
+          <button
+            aria-label="Fechar"
+            className="inline-flex size-10 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          <div className="grid gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 text-sm leading-6 text-slate-700">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={riskToBadgeVariant(protocol.level)}>
+                {protocol.level}
+              </Badge>
+              <Badge variant={alertFeedbackStatusVariant(status)}>
+                {alertFeedbackStatusLabel(status)}
+              </Badge>
+              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                {protocol.occurrenceCount} ocorrencias
+              </span>
+            </div>
+            <p className="m-0">
+              <span className="font-semibold text-slate-950">Origem: </span>
+              {protocol.module} / {protocol.origin}
+            </p>
+            <p className="m-0">
+              <span className="font-semibold text-slate-950">Impacto: </span>
+              {protocol.impact}
+            </p>
+            <p className="m-0">
+              <span className="font-semibold text-slate-950">Recomendacao: </span>
+              {protocol.recommendation}
+            </p>
+          </div>
+
+          <label className="mt-5 block">
+            <span className="text-xs font-semibold uppercase text-slate-500">
+              Status do parecer
+            </span>
+            <select
+              className="mt-2 h-11 w-full rounded-lg border border-slate-200/80 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/15"
+              onChange={(event) =>
+                onStatusChange(event.target.value as OperationsAlertFeedbackStatus)
+              }
+              value={status}
+            >
+              {alertFeedbackOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="mt-4 block">
+            <span className="text-xs font-semibold uppercase text-slate-500">
+              Parecer do dev
+            </span>
+            <textarea
+              className="mt-2 min-h-40 w-full resize-y rounded-xl border border-slate-200/80 bg-white p-3 text-sm leading-6 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/15"
+              onChange={(event) => onFeedbackChange(event.target.value)}
+              placeholder="Cole aqui a devolutiva: persiste, corrigido, nao observado, bloqueio, evidencia e proxima acao."
+              value={feedback}
+            />
+          </label>
+
+          {error ? (
+            <p className="mt-3 rounded-lg border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700">
+              {error}
+            </p>
+          ) : null}
+
+          {protocol.technicalFeedbackAt ? (
+            <p className="m-0 mt-4 text-xs font-semibold text-slate-500">
+              Ultima devolutiva:{" "}
+              {formatOperationDateTime(protocol.technicalFeedbackAt)}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="border-t border-slate-100 p-5">
+          <button
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533] disabled:cursor-not-allowed disabled:bg-slate-400"
+            disabled={isSaving}
+            onClick={onSave}
+            type="button"
+          >
+            {isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
+            Registrar parecer
+          </button>
+        </div>
+      </aside>
+    </div>
   );
 }
 
@@ -1136,6 +1954,72 @@ function createPoAiMessage(
     id,
     role,
   };
+}
+
+function OperationsSourcePanel({
+  isSyncing,
+  onSync,
+  source,
+}: {
+  isSyncing: boolean;
+  onSync: () => void;
+  source: OperationsSourceState;
+}) {
+  const latestSync = source.syncRuns[0] ?? null;
+  const isStructured = source.mode === "structured";
+
+  return (
+    <section className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+              {isStructured ? <Database className="size-5" /> : <FileText className="size-5" />}
+            </span>
+            <div className="min-w-0">
+              <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+                fonte operacional
+              </p>
+              <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
+                {source.label}
+              </h2>
+              <p className="m-0 mt-1 text-sm leading-6 text-slate-600">
+                {source.description}
+              </p>
+              {source.error ? (
+                <p className="m-0 mt-2 text-xs font-semibold text-amber-700">
+                  {source.error}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <Badge variant={isStructured ? "success" : "warning"}>
+            {source.status}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="grid min-w-[18rem] gap-2 rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+          <span>{source.recordsCount} registros</span>
+          <span>
+            {latestSync
+              ? `sync ${formatGeneratedAt(latestSync.created_at)}`
+              : "sem sync registrado"}
+          </span>
+        </div>
+        <button
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={isSyncing}
+          onClick={onSync}
+          type="button"
+        >
+          <RefreshCcw className={`size-4 text-[#A07C3B] ${isSyncing ? "animate-spin" : ""}`} />
+          {isSyncing ? "Sincronizando" : "Sincronizar diario"}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 function HubOpsCommandCenter({
@@ -1303,35 +2187,68 @@ function FocusMetric({
 }
 
 function DatabaseMonitoringView({
+  acknowledgingProtocol,
+  alertProtocols,
   copiedCommandId,
   error,
   history,
+  ignoringProtocol,
   intervalMs,
   isLoading,
   notifications,
   onAnalyze,
+  onAcknowledgeProtocol,
   onCopyCommand,
+  onIgnoreProtocol,
   onIntervalChange,
+  onOpenAlertProtocol,
+  onOpenAlertProtocolByCode,
   onOpenPoAi,
   onRefresh,
   snapshot,
   watcher,
 }: {
+  acknowledgingProtocol: string | null;
+  alertProtocols: OperationsAlertProtocolSummary[];
   copiedCommandId: string | null;
   error: string | null;
   history: OperationsCheckMetric[];
+  ignoringProtocol: string | null;
   intervalMs: MonitoringIntervalMs;
   isLoading: boolean;
   notifications: OpsWatcherDecision[];
   onAnalyze: () => void;
+  onAcknowledgeProtocol: (protocolCode?: string) => void;
   onCopyCommand: (command: string, id: string) => void;
+  onIgnoreProtocol: (protocolCode?: string) => void;
   onIntervalChange: (intervalMs: MonitoringIntervalMs) => void;
+  onOpenAlertProtocol: (protocol: OperationsAlertProtocolSummary) => void;
+  onOpenAlertProtocolByCode: (protocolCode?: string) => void;
   onOpenPoAi: () => void;
   onRefresh: () => void;
   snapshot: OperationsMonitoringSnapshot | null;
   watcher: OpsWatcherDecision | null;
 }) {
-  const latestNotification = notifications[0] ?? null;
+  const visibleAlerts = (snapshot?.alerts ?? []).filter(
+    (alert) => !isProtocolCleared(alert.protocol, alertProtocols),
+  );
+  const visibleNotifications = notifications.filter(
+    (notification) =>
+      !notification.protocol ||
+      !isProtocolCleared(notification.protocol, alertProtocols),
+  );
+  const highestVisibleAlert = visibleAlerts.reduce<OperationsAlert | null>(
+    (highest, alert) =>
+      !highest || riskPriority(alert.level) > riskPriority(highest.level)
+        ? alert
+        : highest,
+    null,
+  );
+  const visibleWatcher =
+    watcher?.protocol && isProtocolCleared(watcher.protocol, alertProtocols)
+      ? null
+      : watcher;
+  const bannerNotification = visibleWatcher?.notifyLucas ? visibleWatcher : null;
 
   return (
     <section className="grid gap-5">
@@ -1380,7 +2297,7 @@ function DatabaseMonitoringView({
           </p>
         ) : null}
 
-        {latestNotification ? (
+        {bannerNotification ? (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -1388,12 +2305,32 @@ function DatabaseMonitoringView({
                   Ops Watcher
                 </p>
                 <p className="m-0 mt-1 text-sm font-semibold text-amber-950">
-                  {latestNotification.message}
+                  {bannerNotification.message}
                 </p>
               </div>
-              <Badge variant={riskToBadgeVariant(latestNotification.risk)}>
-                {latestNotification.risk}
-              </Badge>
+              <div className="flex items-center gap-2">
+                {bannerNotification.protocol ? (
+                  <button
+                    aria-label={`Confirmar leitura do protocolo ${bannerNotification.protocol}`}
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-amber-200 bg-white text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={acknowledgingProtocol === bannerNotification.protocol}
+                    onClick={() =>
+                      onAcknowledgeProtocol(bannerNotification.protocol)
+                    }
+                    title="Confirmar leitura"
+                    type="button"
+                  >
+                    {acknowledgingProtocol === bannerNotification.protocol ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ClipboardCheck className="size-4" />
+                    )}
+                  </button>
+                ) : null}
+                <Badge variant={riskToBadgeVariant(bannerNotification.risk)}>
+                  {bannerNotification.risk}
+                </Badge>
+              </div>
             </div>
           </div>
         ) : null}
@@ -1439,29 +2376,45 @@ function DatabaseMonitoringView({
             value={`${snapshot?.cards.protectedApis.unexpected ?? 0} desvios`}
           />
           <MonitoringCard
-            detail={snapshot?.cards.activeAlerts.lastAlert ?? "Sem alerta ativo"}
+            detail={highestVisibleAlert?.title ?? "Sem alerta ativo"}
             icon={<BellRing size={17} />}
             label="Alertas ativos"
-            status={riskToGeneralStatus(snapshot?.cards.activeAlerts.highestLevel)}
-            value={snapshot?.cards.activeAlerts.total ?? 0}
+            status={riskToGeneralStatus(highestVisibleAlert?.level ?? "nenhum")}
+            value={visibleAlerts.length}
           />
         </div>
       </Surface>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.38fr)]">
         <OperationsAlertsPanel
-          alerts={snapshot?.alerts ?? []}
+          alerts={visibleAlerts}
+          acknowledgingProtocol={acknowledgingProtocol}
           copiedCommandId={copiedCommandId}
+          ignoringProtocol={ignoringProtocol}
+          onAcknowledgeProtocol={onAcknowledgeProtocol}
           onCopyCommand={onCopyCommand}
+          onIgnoreProtocol={onIgnoreProtocol}
+          onOpenProtocol={(alert) => onOpenAlertProtocol(alertToProtocolSummary(alert))}
         />
         <OpsWatcherPanel
+          acknowledgingProtocol={acknowledgingProtocol}
           copiedCommandId={copiedCommandId}
-          notifications={notifications}
+          ignoringProtocol={ignoringProtocol}
+          notifications={visibleNotifications}
+          onAcknowledgeProtocol={onAcknowledgeProtocol}
           onCopyCommand={onCopyCommand}
-          watcher={watcher}
+          onIgnoreProtocol={onIgnoreProtocol}
+          onOpenProtocol={onOpenAlertProtocolByCode}
+          watcher={visibleWatcher}
         />
       </div>
 
+      <AlertProtocolsHistoryPanel
+        copiedCommandId={copiedCommandId}
+        onCopyCommand={onCopyCommand}
+        onOpenProtocol={onOpenAlertProtocol}
+        protocols={alertProtocols}
+      />
       <ChecksHistoryPanel checks={history} />
     </section>
   );
@@ -1543,13 +2496,23 @@ function MonitoringCard({
 }
 
 function OperationsAlertsPanel({
+  acknowledgingProtocol,
   alerts,
   copiedCommandId,
+  ignoringProtocol,
+  onAcknowledgeProtocol,
   onCopyCommand,
+  onIgnoreProtocol,
+  onOpenProtocol,
 }: {
+  acknowledgingProtocol: string | null;
   alerts: OperationsAlert[];
   copiedCommandId: string | null;
+  ignoringProtocol: string | null;
+  onAcknowledgeProtocol: (protocolCode?: string) => void;
   onCopyCommand: (command: string, id: string) => void;
+  onIgnoreProtocol: (protocolCode?: string) => void;
+  onOpenProtocol: (alert: OperationsAlert) => void;
 }) {
   return (
     <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -1573,6 +2536,30 @@ function OperationsAlertsPanel({
                   <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
                     {alert.module} / {alert.origin}
                   </p>
+                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+                    Registro: {formatOperationDateTime(alert.generatedAt)}
+                    {alert.lastSeenAt && alert.lastSeenAt !== alert.generatedAt
+                      ? ` / ultima: ${formatOperationDateTime(alert.lastSeenAt)}`
+                      : ""}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="rounded-full bg-[#A07C3B]/10 px-2 py-1 text-[0.68rem] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                      {alert.protocol}
+                    </span>
+                    <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                      {alertFeedbackStatusLabel(
+                        alert.technicalFeedbackStatus ?? "pendente",
+                      )}
+                    </span>
+                    {alert.occurrenceCount ? (
+                      <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                        {alert.occurrenceCount}x
+                      </span>
+                    ) : null}
+                    <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                      Analise: {alert.analysis.label}
+                    </span>
+                  </div>
                 </div>
                 <Badge variant={riskToBadgeVariant(alert.level)}>
                   {alert.level}
@@ -1588,16 +2575,56 @@ function OperationsAlertsPanel({
                 <span className="text-xs font-semibold text-slate-500">
                   Agente: {alert.recommendedAgent}
                 </span>
-                <button
-                  className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
-                  onClick={() => onCopyCommand(alert.command, alert.id)}
-                  type="button"
-                >
-                  <Copy className="size-3.5" />
-                  {copiedCommandId === alert.id
-                    ? "Copiado"
-                    : "Gerar comando para agente"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    aria-label={`Confirmar leitura do protocolo ${alert.protocol}`}
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={acknowledgingProtocol === alert.protocol}
+                    onClick={() => onAcknowledgeProtocol(alert.protocol)}
+                    title="Confirmar leitura"
+                    type="button"
+                  >
+                    {acknowledgingProtocol === alert.protocol ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ClipboardCheck className="size-4" />
+                    )}
+                  </button>
+                  <button
+                    aria-label={`Registrar devolutiva tecnica do protocolo ${alert.protocol}`}
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                    onClick={() => onOpenProtocol(alert)}
+                    title="Registrar devolutiva tecnica"
+                    type="button"
+                  >
+                    <MessageSquareText className="size-4" />
+                  </button>
+                  <button
+                    aria-label={`Ignorar protocolo ${alert.protocol}`}
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={ignoringProtocol === alert.protocol}
+                    onClick={() => onIgnoreProtocol(alert.protocol)}
+                    title="Ignorar alerta"
+                    type="button"
+                  >
+                    {ignoringProtocol === alert.protocol ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <EyeOff className="size-4" />
+                    )}
+                  </button>
+                  <button
+                    aria-label={`Criar prompt para ${alert.recommendedAgent}`}
+                    className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                      copiedCommandId === alert.id ? "bg-[#A07C3B]/10" : ""
+                    }`}
+                    onClick={() => onCopyCommand(alert.command, alert.id)}
+                    title="Criar prompt para agente"
+                    type="button"
+                  >
+                    <WandSparkles className="size-4" />
+                  </button>
+                </div>
               </div>
             </article>
           ))
@@ -1610,14 +2637,24 @@ function OperationsAlertsPanel({
 }
 
 function OpsWatcherPanel({
+  acknowledgingProtocol,
   copiedCommandId,
+  ignoringProtocol,
   notifications,
+  onAcknowledgeProtocol,
   onCopyCommand,
+  onIgnoreProtocol,
+  onOpenProtocol,
   watcher,
 }: {
+  acknowledgingProtocol: string | null;
   copiedCommandId: string | null;
+  ignoringProtocol: string | null;
   notifications: OpsWatcherDecision[];
+  onAcknowledgeProtocol: (protocolCode?: string) => void;
   onCopyCommand: (command: string, id: string) => void;
+  onIgnoreProtocol: (protocolCode?: string) => void;
+  onOpenProtocol: (protocolCode?: string) => void;
   watcher: OpsWatcherDecision | null;
 }) {
   return (
@@ -1643,16 +2680,67 @@ function OpsWatcherPanel({
           <p className="m-0 mt-2 text-xs font-semibold text-slate-500">
             Agente recomendado: {watcher.agent}
           </p>
-          <button
-            className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#1b2533]"
-            onClick={() => onCopyCommand(watcher.command, watcher.dedupeKey)}
-            type="button"
-          >
-            <Copy className="size-4" />
-            {copiedCommandId === watcher.dedupeKey
-              ? "Comando copiado"
-              : "Copiar comando sugerido"}
-          </button>
+          {watcher.protocol ? (
+            <span className="mt-3 inline-flex rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+              {watcher.protocol}
+            </span>
+          ) : null}
+          <div className="mt-4 flex items-center gap-2">
+            {watcher.protocol ? (
+              <>
+                <button
+                  aria-label={`Confirmar leitura do protocolo ${watcher.protocol}`}
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={acknowledgingProtocol === watcher.protocol}
+                  onClick={() => onAcknowledgeProtocol(watcher.protocol)}
+                  title="Confirmar leitura"
+                  type="button"
+                >
+                  {acknowledgingProtocol === watcher.protocol ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ClipboardCheck className="size-4" />
+                  )}
+                </button>
+                <button
+                  aria-label={`Registrar devolutiva tecnica do protocolo ${watcher.protocol}`}
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                  onClick={() => onOpenProtocol(watcher.protocol)}
+                  title="Registrar devolutiva tecnica"
+                  type="button"
+                >
+                  <MessageSquareText className="size-4" />
+                </button>
+                <button
+                  aria-label={`Ignorar protocolo ${watcher.protocol}`}
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={ignoringProtocol === watcher.protocol}
+                  onClick={() => onIgnoreProtocol(watcher.protocol)}
+                  title="Ignorar alerta"
+                  type="button"
+                >
+                  {ignoringProtocol === watcher.protocol ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <EyeOff className="size-4" />
+                  )}
+                </button>
+              </>
+            ) : null}
+            <button
+              aria-label={`Criar prompt para ${watcher.agent}`}
+              className={`inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white transition-colors hover:bg-[#1b2533] ${
+                copiedCommandId === watcher.dedupeKey
+                  ? "ring-2 ring-[#A07C3B]/30"
+                  : ""
+              }`}
+              onClick={() => onCopyCommand(watcher.command, watcher.dedupeKey)}
+              title="Criar prompt para agente"
+              type="button"
+            >
+              <WandSparkles className="size-4" />
+            </button>
+          </div>
         </div>
       ) : (
         <EmptyState message="Clique em Analisar agora para rodar o watcher." />
@@ -1673,10 +2761,75 @@ function OpsWatcherPanel({
                   <span className="font-semibold text-slate-950">
                     {formatOperationDateTime(notification.generatedAt)}
                   </span>
-                  <Badge variant={riskToBadgeVariant(notification.risk)}>
-                    {notification.risk}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {notification.protocol ? (
+                      <>
+                        <button
+                          aria-label={`Confirmar leitura do protocolo ${notification.protocol}`}
+                          className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={acknowledgingProtocol === notification.protocol}
+                          onClick={() =>
+                            onAcknowledgeProtocol(notification.protocol)
+                          }
+                          title="Confirmar leitura"
+                          type="button"
+                        >
+                          {acknowledgingProtocol === notification.protocol ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <ClipboardCheck className="size-4" />
+                          )}
+                        </button>
+                        <button
+                          aria-label={`Registrar devolutiva tecnica do protocolo ${notification.protocol}`}
+                          className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                          onClick={() => onOpenProtocol(notification.protocol)}
+                          title="Registrar devolutiva tecnica"
+                          type="button"
+                        >
+                          <MessageSquareText className="size-4" />
+                        </button>
+                        <button
+                          aria-label={`Ignorar protocolo ${notification.protocol}`}
+                          className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={ignoringProtocol === notification.protocol}
+                          onClick={() => onIgnoreProtocol(notification.protocol)}
+                          title="Ignorar alerta"
+                          type="button"
+                        >
+                          {ignoringProtocol === notification.protocol ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <EyeOff className="size-4" />
+                          )}
+                        </button>
+                      </>
+                    ) : null}
+                    <Badge variant={riskToBadgeVariant(notification.risk)}>
+                      {notification.risk}
+                    </Badge>
+                    <button
+                      aria-label={`Criar prompt para ${notification.agent}`}
+                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                        copiedCommandId === notification.dedupeKey
+                          ? "bg-[#A07C3B]/10"
+                          : ""
+                      }`}
+                      onClick={() =>
+                        onCopyCommand(notification.command, notification.dedupeKey)
+                      }
+                      title="Criar prompt para agente"
+                      type="button"
+                    >
+                      <WandSparkles className="size-4" />
+                    </button>
+                  </div>
                 </div>
+                {notification.protocol ? (
+                  <p className="m-0 mt-1 text-[0.68rem] font-semibold text-[#7A5E2C]">
+                    {notification.protocol}
+                  </p>
+                ) : null}
                 <p className="m-0 mt-2 line-clamp-3">{notification.message}</p>
               </div>
             ))
@@ -1686,6 +2839,107 @@ function OpsWatcherPanel({
             </p>
           )}
         </div>
+      </div>
+    </Surface>
+  );
+}
+
+function AlertProtocolsHistoryPanel({
+  copiedCommandId,
+  onCopyCommand,
+  onOpenProtocol,
+  protocols,
+}: {
+  copiedCommandId: string | null;
+  onCopyCommand: (command: string, id: string) => void;
+  onOpenProtocol: (protocol: OperationsAlertProtocolSummary) => void;
+  protocols: OperationsAlertProtocolSummary[];
+}) {
+  return (
+    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="border-b border-slate-100 p-5">
+        <PanelTitle
+          eyebrow={`${protocols.length} protocolos`}
+          icon={<MessageSquareText size={18} />}
+          title="Protocolos de alertas e devolutivas"
+        />
+      </div>
+      <div className="grid max-h-[46vh] gap-3 overflow-y-auto p-4 pr-3">
+        {protocols.length > 0 ? (
+          protocols.map((protocol) => (
+            <article
+              className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+              key={protocol.id}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                      {protocol.protocol}
+                    </span>
+                    <Badge
+                      variant={alertFeedbackStatusVariant(
+                        protocol.technicalFeedbackStatus,
+                      )}
+                    >
+                      {alertFeedbackStatusLabel(protocol.technicalFeedbackStatus)}
+                    </Badge>
+                    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                      {protocol.occurrenceCount} ocorrencias
+                    </span>
+                    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                      Analise: {protocol.analysis.label}
+                    </span>
+                  </div>
+                  <p className="m-0 mt-3 text-sm font-semibold text-slate-950">
+                    {protocol.title}
+                  </p>
+                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+                    {protocol.module} / {protocol.origin} / ultimo:{" "}
+                    {formatOperationDateTime(protocol.lastSeenAt)}
+                  </p>
+                </div>
+                <Badge variant={riskToBadgeVariant(protocol.level)}>
+                  {protocol.level}
+                </Badge>
+              </div>
+              <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-slate-600">
+                {protocol.technicalFeedback
+                  ? protocol.technicalFeedback
+                  : "Aguardando devolutiva tecnica do dev responsavel."}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-500">
+                  Agente: {protocol.recommendedAgent}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    aria-label={`Registrar devolutiva tecnica do protocolo ${protocol.protocol}`}
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                    onClick={() => onOpenProtocol(protocol)}
+                    title="Registrar devolutiva tecnica"
+                    type="button"
+                  >
+                    <MessageSquareText className="size-4" />
+                  </button>
+                  <button
+                    aria-label={`Criar prompt para ${protocol.recommendedAgent}`}
+                    className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                      copiedCommandId === protocol.protocol ? "bg-[#A07C3B]/10" : ""
+                    }`}
+                    onClick={() => onCopyCommand(protocol.command, protocol.protocol)}
+                    title="Criar prompt para agente"
+                    type="button"
+                  >
+                    <WandSparkles className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))
+        ) : (
+          <EmptyState message="Nenhum protocolo de alerta persistido ainda." />
+        )}
       </div>
     </Surface>
   );
@@ -1702,7 +2956,7 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
         />
       </div>
       <div className="max-h-[42vh] overflow-auto">
-        <table className="min-w-[62rem] w-full border-collapse text-left text-sm">
+        <table className="min-w-[68rem] w-full border-collapse text-left text-sm">
           <thead className="bg-slate-50/80 text-xs font-semibold uppercase text-slate-400">
             <tr>
               <th className="px-4 py-3">Horario</th>
@@ -1754,20 +3008,28 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
 function HubOpsViewTabs({
   activeView,
   actionCount,
+  deployCount,
   filteredCount,
+  itTicketAttentionCount,
+  itTicketCount,
   monitoringAlertCount,
   onChange,
   routineCount,
 }: {
   activeView: HubOpsView;
   actionCount: number;
+  deployCount: number;
   filteredCount: number;
+  itTicketAttentionCount: number;
+  itTicketCount: number;
   monitoringAlertCount: number;
   onChange: (view: HubOpsView) => void;
   routineCount: number;
 }) {
   const counters = {
     audits: routineCount,
+    deploys: deployCount,
+    itTickets: itTicketCount,
     monitoring: monitoringAlertCount,
     overview: actionCount,
     records: filteredCount,
@@ -1781,26 +3043,41 @@ function HubOpsViewTabs({
     >
       {hubOpsViews.map((view) => {
         const isActive = activeView === view.id;
+        const hasNewTickets =
+          view.id === "itTickets" && itTicketAttentionCount > 0;
+        const buttonClassName = isActive
+          ? "bg-[#101820] text-white shadow-sm"
+          : hasNewTickets
+            ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/25 hover:bg-[#A07C3B]/15 hover:text-[#101820]"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950";
+        const counterClassName = isActive
+          ? "bg-white/15 text-white"
+          : hasNewTickets
+            ? "bg-[#A07C3B]/15 text-[#7A5E2C]"
+            : "bg-slate-100 text-slate-500";
 
         return (
           <button
             aria-pressed={isActive}
-            className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${
-              isActive
-                ? "bg-[#101820] text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
-            }`}
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${buttonClassName}`}
             key={view.id}
             onClick={() => onChange(view.id)}
+            title={
+              hasNewTickets
+                ? `${itTicketAttentionCount} ticket(s) novo(s) aguardando HubOps`
+                : undefined
+            }
             type="button"
           >
+            {hasNewTickets ? (
+              <span
+                aria-hidden="true"
+                className="size-2 rounded-full bg-[#A07C3B]"
+              />
+            ) : null}
             {view.label}
             <span
-              className={`rounded-full px-1.5 py-0.5 text-[0.65rem] ${
-                isActive
-                  ? "bg-white/15 text-white"
-                  : "bg-slate-100 text-slate-500"
-              }`}
+              className={`rounded-full px-1.5 py-0.5 text-[0.65rem] ${counterClassName}`}
             >
               {counters[view.id]}
             </span>
@@ -1808,6 +3085,208 @@ function HubOpsViewTabs({
         );
       })}
     </nav>
+  );
+}
+
+function DeployProtocolsView({
+  deployRecords,
+  onSelectRecord,
+  records,
+}: {
+  deployRecords: EngineeringOperationRecord[];
+  onSelectRecord: (record: EngineeringOperationRecord) => void;
+  records: EngineeringOperationRecord[];
+}) {
+  const deploys = deployRecords.slice(0, 12);
+  const moduleGroups = buildProtocolModuleGroups(records.slice(0, 120));
+
+  return (
+    <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]">
+      <div className="grid content-start gap-5">
+        <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <PanelTitle
+            eyebrow={`${deploys.length} releases`}
+            icon={<Rocket size={18} />}
+            title="Deploys macro"
+          />
+          <p className="m-0 mt-3 text-sm leading-6 text-slate-600">
+            O deploy deve citar protocolos. O detalhe de cada alteracao fica no
+            protocolo consultavel por modulo, tela e tipo.
+          </p>
+
+          <div className="mt-4 grid max-h-[58vh] gap-3 overflow-y-auto pr-1">
+            {deploys.length > 0 ? (
+              deploys.map((record) => {
+                const relatedProtocols = getRelatedProtocolRecords(record, records);
+
+                return (
+                  <button
+                    className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                    key={record.id}
+                    onClick={() => onSelectRecord(record)}
+                    type="button"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="m-0 line-clamp-2 text-sm font-semibold text-slate-950">
+                          {record.subject}
+                        </p>
+                        <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+                          {record.module} / {formatOperationDateTime(record.localDateTime)}
+                        </p>
+                      </div>
+                      <Badge variant={statusVariant(record.status)}>
+                        {record.status}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                        {record.protocol}
+                      </span>
+                      <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+                        {record.screen}
+                      </span>
+                    </div>
+                    <p className="m-0 mt-3 line-clamp-3 text-xs leading-5 text-slate-600">
+                      {getRecordChangeSummary(record)}
+                    </p>
+                    <div className="mt-3 rounded-lg bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
+                      <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
+                        Protocolos relacionados
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {relatedProtocols.map((protocolRecord) => (
+                          <span
+                            className="rounded-full bg-white px-2 py-1 text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70"
+                            key={`${record.id}-${protocolRecord.protocol}`}
+                          >
+                            {protocolRecord.protocol}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <EmptyState message="Sem deploy registrado para os filtros atuais." />
+            )}
+          </div>
+        </Surface>
+
+        <Surface bordered className="border-slate-200/70 bg-slate-50/60 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <PanelTitle
+            eyebrow="Regra V1"
+            icon={<GitCommitHorizontal size={18} />}
+            title="Como o protocolo nasce"
+          />
+          <ul className="m-0 mt-4 grid list-none gap-2 p-0 text-sm leading-6 text-slate-600">
+            <li>Atividade operacional: AT-0001.</li>
+            <li>Alerta operacional: AL-0001.</li>
+            <li>Modulo, tela, tipo e motivo ficam nos campos estruturados.</li>
+            <li>O dev nao inventa codigo; ele cita o protocolo recebido.</li>
+            <li>O HubOps sincroniza o registro para o Supabase estruturado.</li>
+            <li>ReleaseOps cita os protocolos no deploy macro.</li>
+            <li>A tabela `hub_engineering_operation_records` vira a busca oficial.</li>
+          </ul>
+        </Surface>
+      </div>
+
+      <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="border-b border-slate-100 p-5">
+          <PanelTitle
+            eyebrow={`${records.length} protocolos`}
+            icon={<Layers3 size={18} />}
+            title="Protocolos por modulo e tipo"
+          />
+        </div>
+        <div className="grid max-h-[72vh] gap-5 overflow-y-auto p-5 pr-4">
+          {moduleGroups.length > 0 ? (
+            moduleGroups.map((moduleGroup) => (
+              <section className="grid gap-3" key={moduleGroup.module}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="m-0 text-base font-semibold text-slate-950">
+                    {moduleGroup.module}
+                  </h3>
+                  <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                    {moduleGroup.count} protocolos
+                  </span>
+                </div>
+                <div className="grid gap-3">
+                  {moduleGroup.categories.map((category) => (
+                    <div
+                      className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-3"
+                      key={`${moduleGroup.module}-${category.category}`}
+                    >
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <Badge variant={protocolCategoryVariant(category.category)}>
+                          {category.category}
+                        </Badge>
+                        <span className="text-xs font-semibold text-slate-500">
+                          {category.records.length} alteracoes
+                        </span>
+                      </div>
+                      <div className="grid gap-2">
+                        {category.records.map((record) => (
+                          <ProtocolRecordCard
+                            key={record.id}
+                            onSelect={() => onSelectRecord(record)}
+                            record={record}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))
+          ) : (
+            <EmptyState message="Sem protocolo encontrado para os filtros atuais." />
+          )}
+        </div>
+      </Surface>
+    </section>
+  );
+}
+
+function ProtocolRecordCard({
+  onSelect,
+  record,
+}: {
+  onSelect: () => void;
+  record: EngineeringOperationRecord;
+}) {
+  return (
+    <button
+      className="w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-colors hover:border-[#A07C3B]/25 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      onClick={onSelect}
+      type="button"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="m-0 text-xs font-semibold text-[#7A5E2C]">
+            {record.protocol}
+          </p>
+          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+            {record.subject}
+          </p>
+          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+            {record.screen} / {formatOperationDateTime(record.localDateTime)}
+          </p>
+        </div>
+        <Badge variant={statusVariant(record.status)}>{record.status}</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-600">
+        <p className="m-0">
+          <span className="font-semibold text-slate-800">O que mudou: </span>
+          {getRecordChangeSummary(record)}
+        </p>
+        <p className="m-0">
+          <span className="font-semibold text-slate-800">Por que: </span>
+          {getRecordReasonSummary(record)}
+        </p>
+      </div>
+    </button>
   );
 }
 
@@ -1870,6 +3349,7 @@ function RecordsTable({
         <table className="min-w-[62rem] w-full border-collapse text-left text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase text-slate-400 shadow-[0_1px_0_rgba(226,232,240,0.9)]">
             <tr>
+              <th className="px-4 py-3">Protocolo</th>
               <th className="px-4 py-3">Assunto</th>
               <th className="px-4 py-3">Módulo</th>
               <th className="px-4 py-3">Squad</th>
@@ -1887,6 +3367,11 @@ function RecordsTable({
                 key={record.id}
                 onClick={() => onSelectRecord(record)}
               >
+                <td className="whitespace-nowrap px-4 py-3">
+                  <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                    {record.protocol}
+                  </span>
+                </td>
                 <td className="max-w-64 px-4 py-3">
                   <p className="m-0 truncate font-semibold text-slate-950">
                     {record.subject}
@@ -2054,6 +3539,9 @@ function TimelineItem({
       <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[#A07C3B]" />
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="shrink-0 rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+            {record.protocol}
+          </span>
           <p className="m-0 min-w-0 flex-1 truncate text-sm font-semibold text-[#101820]">
             {record.subject}
           </p>
@@ -2102,6 +3590,7 @@ function AuditRoutinesPanel({
     routines.find(
       (routine) => routine.lastExecution !== UNKNOWN_OPERATION_VALUE,
     )?.lastExecution ?? UNKNOWN_OPERATION_VALUE;
+  const latestExecutionFormatted = formatOperationDateTime(latestExecution);
 
   return (
     <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -2121,7 +3610,7 @@ function AuditRoutinesPanel({
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         <AuditSummaryPill label="vencidas" value={overdueRoutines.length} />
         <AuditSummaryPill label="em acompanhamento" value={stableRoutines.length} />
-        <AuditSummaryPill label="última execução" value={latestExecution} />
+        <AuditSummaryPill label="última execução" value={latestExecutionFormatted} />
       </div>
 
       <div className="mt-5 grid max-h-[62vh] gap-5 overflow-y-auto overscroll-contain pr-1">
@@ -2221,7 +3710,7 @@ function AuditRoutineCard({
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
         <span className="rounded-full bg-slate-50 px-2.5 py-1 ring-1 ring-slate-200/70">
-          Última: {routine.lastExecution}
+          Última: {formatOperationDateTime(routine.lastExecution)}
         </span>
         <span className="rounded-full bg-slate-50 px-2.5 py-1 ring-1 ring-slate-200/70">
           Histórico: {routine.history.length}
@@ -2425,7 +3914,13 @@ function PoAiDrawer({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/20 backdrop-blur-[1px]">
-      <aside className="absolute inset-y-0 right-0 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-slate-50 p-4 shadow-2xl">
+      <button
+        aria-label="Fechar PO AI"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-slate-50 p-4 shadow-2xl">
         <button
           className="absolute right-7 top-7 z-10 grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 hover:text-slate-950"
           onClick={onClose}
@@ -2484,10 +3979,16 @@ function PromptLibraryModal({
 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-950/35 p-4 backdrop-blur-[2px]">
+      <button
+        aria-label="Fechar biblioteca de prompts"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
       <div
         aria-label="Biblioteca de prompts do PO AI"
         aria-modal="true"
-        className="mx-auto flex h-full max-h-[48rem] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="relative z-10 mx-auto flex h-full max-h-[48rem] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
         role="dialog"
       >
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 p-5">
@@ -2985,6 +4486,95 @@ function getRecordCardSummary(record: EngineeringOperationRecord) {
   return summary ?? "Resumo operacional nao informado.";
 }
 
+function getRecordChangeSummary(record: EngineeringOperationRecord) {
+  return getKnownRecordValue([
+    record.macroSummary,
+    record.how,
+    record.shortSummary,
+    record.affectedFiles,
+  ]);
+}
+
+function getRecordReasonSummary(record: EngineeringOperationRecord) {
+  return getKnownRecordValue([record.reason, record.logic, record.risks]);
+}
+
+function getKnownRecordValue(values: string[]) {
+  return (
+    values.find(
+      (value) => value.trim() && value.trim() !== UNKNOWN_OPERATION_VALUE,
+    ) ?? "Nao informado."
+  );
+}
+
+function getRelatedProtocolRecords(
+  deployRecord: EngineeringOperationRecord,
+  records: EngineeringOperationRecord[],
+) {
+  const related = records.filter(
+    (record) =>
+      record.id === deployRecord.id ||
+      (record.module === deployRecord.module &&
+        record.localDateTime <= deployRecord.localDateTime),
+  );
+
+  return related.slice(0, 6);
+}
+
+function buildProtocolModuleGroups(records: EngineeringOperationRecord[]) {
+  const moduleMap = new Map<string, Map<string, EngineeringOperationRecord[]>>();
+
+  for (const record of records) {
+    const moduleName = record.module || UNKNOWN_OPERATION_VALUE;
+    const categoryName = record.changeCategory || record.type || UNKNOWN_OPERATION_VALUE;
+    const categoryMap = moduleMap.get(moduleName) ?? new Map<string, EngineeringOperationRecord[]>();
+    const categoryRecords = categoryMap.get(categoryName) ?? [];
+
+    categoryRecords.push(record);
+    categoryMap.set(categoryName, categoryRecords);
+    moduleMap.set(moduleName, categoryMap);
+  }
+
+  return Array.from(moduleMap.entries()).map(([moduleName, categoryMap]) => {
+    const categories = Array.from(categoryMap.entries()).map(
+      ([category, categoryRecords]) => ({
+        category,
+        records: categoryRecords.slice(0, 8),
+      }),
+    );
+
+    return {
+      categories,
+      count: categories.reduce((total, category) => total + category.records.length, 0),
+      module: moduleName,
+    };
+  });
+}
+
+function protocolCategoryVariant(category: string): BadgeVariant {
+  const normalizedCategory = normalizeSearchText(category);
+
+  if (normalizedCategory.includes("release")) {
+    return "success";
+  }
+
+  if (
+    normalizedCategory.includes("correcao") ||
+    normalizedCategory.includes("investigacao")
+  ) {
+    return "warning";
+  }
+
+  if (
+    normalizedCategory.includes("melhoria") ||
+    normalizedCategory.includes("criacao")
+  ) {
+    return "info";
+  }
+
+  return "neutral";
+}
+
 function CriticalOperationsPanel({
   onSelectRecord,
   onSelectRoutine,
@@ -3018,7 +4608,7 @@ function CriticalOperationsPanel({
             </p>
             <p className="m-0 mt-1 text-xs leading-5 text-amber-800">
               Rotina vencida ou não executada. Última execução:{" "}
-              {routine.lastExecution}.
+              {formatOperationDateTime(routine.lastExecution)}.
             </p>
           </button>
         ))}
@@ -3124,7 +4714,13 @@ function AuditRoutineDetailDrawer({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/20 backdrop-blur-[1px]">
-      <aside className="absolute inset-y-0 right-0 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-2xl">
+      <button
+        aria-label="Fechar rotina de auditoria"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
           <PanelTitle
             eyebrow={routine.frequency}
@@ -3151,7 +4747,10 @@ function AuditRoutineDetailDrawer({
 
           <div className="mt-5 grid grid-cols-2 gap-3">
             <DetailField label="Responsavel" value={routine.responsible} />
-            <DetailField label="Ultima execucao" value={routine.lastExecution} />
+            <DetailField
+              label="Ultima execucao"
+              value={formatOperationDateTime(routine.lastExecution)}
+            />
             <DetailField label="Frequencia" value={routine.frequency} />
             <DetailField label="Historico" value={`${routine.history.length} registros`} />
           </div>
@@ -3217,7 +4816,13 @@ function OperationDetailDrawer({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/20 backdrop-blur-[1px]">
-      <aside className="absolute inset-y-0 right-0 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-2xl">
+      <button
+        aria-label="Fechar detalhe operacional"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
           <PanelTitle
             icon={<FileText size={18} />}
@@ -3234,6 +4839,9 @@ function OperationDetailDrawer({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+              {record.protocol}
+            </span>
             <Badge variant={statusVariant(record.status)}>{record.status}</Badge>
             <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
               {record.type}
@@ -3249,36 +4857,118 @@ function OperationDetailDrawer({
             {record.shortSummary}
           </p>
 
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <DetailField label="Squad/agente" value={record.squad} />
-            <DetailField label="Próxima squad" value={record.nextSquad} />
-            <DetailField label="Commit" value={record.commit} />
-            <DetailField label="Deploy" value={record.deploy} />
-          </div>
+          <OperationalDetailSummary record={record} />
 
-          <div className="mt-5 grid gap-3">
-            <DetailBlock label="Motivo da mudança" value={record.reason} />
-            <DetailBlock label="Arquivos/módulos afetados" value={record.affectedFiles} />
-            <DetailBlock label="Como foi feito" value={record.how} />
-            <DetailBlock label="Lógica utilizada" value={record.logic} />
-            <DetailBlock label="Validação executada" value={record.validation} />
-            <DetailBlock label="Pendências ou riscos conhecidos" value={record.risks} />
-            <DetailBlock label="Resultado dos healthchecks" value={record.healthchecks} />
-            <DetailBlock label="Resumo macro" value={record.macroSummary} />
-          </div>
-
-          <div className="mt-5 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <p className="m-0 text-xs font-semibold uppercase text-slate-400">
-              Conteúdo bruto do registro
-            </p>
-            <pre className="m-0 mt-3 max-h-80 whitespace-pre-wrap text-xs leading-5 text-slate-700">
+          <details className="mt-5 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
+            <summary className="cursor-pointer text-xs font-semibold uppercase text-slate-500">
+              Conteudo bruto do registro
+            </summary>
+            <pre className="m-0 mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-700">
               {record.rawContent}
             </pre>
-          </div>
+          </details>
         </div>
       </aside>
     </div>
   );
+}
+
+function OperationalDetailSummary({
+  record,
+}: {
+  record: EngineeringOperationRecord;
+}) {
+  const metadata = [
+    { label: "Tela", value: record.screen },
+    { label: "Categoria", value: record.changeCategory },
+    { label: "Squad", value: record.squad },
+    { label: "Proxima squad", value: record.nextSquad },
+    { label: "Commit", value: record.commit },
+    { label: "Deploy", value: record.deploy },
+  ].filter((item) => isKnownDetailValue(item.value));
+
+  const sections = [
+    {
+      items: [record.reason],
+      title: "Por que mudou",
+    },
+    {
+      items: [record.macroSummary, record.affectedFiles],
+      title: "O que foi alterado",
+    },
+    {
+      items: [record.how, record.logic],
+      title: "Como foi conduzido",
+    },
+    {
+      items: [record.validation, record.healthchecks],
+      title: "Validacao e deploy",
+    },
+    {
+      items: [record.risks],
+      title: "Riscos e pendencias",
+    },
+  ]
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(isKnownDetailValue),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  return (
+    <div className="mt-5 rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap gap-2">
+        {metadata.length > 0 ? (
+          metadata.map((item) => (
+            <span
+              className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70"
+              key={`${item.label}-${item.value}`}
+            >
+              {item.label}: {item.value}
+            </span>
+          ))
+        ) : (
+          <span className="text-sm text-slate-500">
+            Dados principais nao informados.
+          </span>
+        )}
+      </div>
+
+      <div className="mt-5 grid gap-4">
+        {sections.length > 0 ? (
+          sections.map((section) => (
+            <section
+              className="border-t border-slate-100 pt-4 first:border-t-0 first:pt-0"
+              key={section.title}
+            >
+              <h3 className="m-0 text-sm font-semibold text-slate-950">
+                {section.title}
+              </h3>
+              <ul className="m-0 mt-2 grid list-none gap-2 p-0 text-sm leading-6 text-slate-700">
+                {section.items.map((item, index) => (
+                  <li
+                    className="grid grid-cols-[0.45rem_minmax(0,1fr)] gap-3"
+                    key={`${section.title}-${index}`}
+                  >
+                    <span className="mt-[0.62rem] size-1.5 rounded-full bg-[#A07C3B]" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))
+        ) : (
+          <p className="m-0 text-sm text-slate-500">
+            Detalhamento operacional nao informado.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function isKnownDetailValue(value: string) {
+  return Boolean(value.trim() && value.trim() !== UNKNOWN_OPERATION_VALUE);
 }
 
 function PanelTitle({
@@ -3376,6 +5066,399 @@ function isOperationsResponse(
   );
 }
 
+function isStructuredOperationsMigrationMissingError(error: string) {
+  const normalizedError = normalizeSearchText(error);
+
+  return (
+    normalizedError.includes("hub_engineering_operation_records") &&
+    (normalizedError.includes("schema cache") ||
+      normalizedError.includes("could not find the table") ||
+      normalizedError.includes("does not exist"))
+  );
+}
+
+function getStructuredOperationsFriendlyError(error: string | null) {
+  if (!error) {
+    return null;
+  }
+
+  if (isStructuredOperationsMigrationMissingError(error)) {
+    return "Migration 0013 ainda nao aplicada no Supabase real. A tela continua usando o fallback do Engineering Operations.";
+  }
+
+  return error;
+}
+
+type StructuredOperationsFetchResult =
+  | {
+      ok: true;
+      records: EngineeringOperationRecord[];
+      status: string;
+      syncRuns: StructuredSyncRun[];
+    }
+  | { error: string; ok: false };
+
+async function fetchStructuredOperationsSnapshot(
+  headers: Record<string, string>,
+): Promise<StructuredOperationsFetchResult> {
+  const response = await fetch("/api/squadops/operations/structured?limit=500", {
+    cache: "no-store",
+    headers,
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | StructuredOperationsApiResponse
+    | null;
+
+  if (!response.ok || !payload?.storage) {
+    return {
+      error: payload?.error ?? "Base estruturada de operacoes indisponivel.",
+      ok: false,
+    };
+  }
+
+  return {
+    ok: true,
+    records: (payload.storage.records ?? []).map(mapStructuredApiRecordToRecord),
+    status: payload.storage.status ?? "sincronizado",
+    syncRuns: payload.storage.syncRuns ?? [],
+  };
+}
+
+function buildOperationsResponseFromStructuredRecords({
+  fallback,
+  records,
+  syncRuns,
+}: {
+  fallback: EngineeringOperationsResponse | null;
+  records: EngineeringOperationRecord[];
+  syncRuns: StructuredSyncRun[];
+}): EngineeringOperationsResponse {
+  const sortedRecords = [...records].sort(compareOperationRecordsDesc);
+  const generatedAt =
+    syncRuns[0]?.created_at ?? fallback?.generatedAt ?? new Date().toISOString();
+  const auditRoutines = buildStructuredAuditRoutines(sortedRecords, generatedAt);
+  const metrics = buildStructuredMetrics(sortedRecords, auditRoutines);
+
+  return {
+    auditRoutines,
+    criticalRecords: sortedRecords.filter((record) => record.isCritical),
+    filters: buildStructuredFilters(sortedRecords),
+    generatedAt,
+    metrics,
+    records: sortedRecords,
+    releaseRecords: sortedRecords.filter((record) => record.isRelease),
+    sourcePath: "Supabase: public.hub_engineering_operation_records",
+    statusConsolidated: buildStructuredStatus(metrics),
+  };
+}
+
+function mapStructuredApiRecordToRecord(
+  record: StructuredOperationApiRecord,
+): EngineeringOperationRecord {
+  const rawContent = normalizeStructuredText(record.rawContent);
+  const reason = normalizeStructuredText(record.reason);
+  const how = normalizeStructuredText(record.how);
+  const macroSummary = normalizeStructuredText(record.macroSummary);
+  const risks = normalizeStructuredText(record.risks);
+  const shortSummary = normalizeStructuredText(record.shortSummary);
+  const type = normalizeStructuredText(record.type);
+  const status = normalizeStructuredText(record.status);
+  const deploy = normalizeStructuredText(record.deploy);
+  const commit = normalizeStructuredText(record.commit);
+  const moduleName = normalizeStructuredText(record.module);
+
+  return {
+    affectedFiles: normalizeStructuredText(record.affectedFiles),
+    changeCategory: normalizeStructuredText(record.changeCategory),
+    commit,
+    deploy,
+    healthchecks: normalizeStructuredText(record.healthchecks),
+    how,
+    id: `structured-${record.id}`,
+    isCritical:
+      record.isCritical || hasStructuredCriticalSignal(status, risks, rawContent),
+    isModuleImprovement:
+      record.isModuleImprovement ||
+      normalizeSearchText(type).includes("melhoria") ||
+      normalizeSearchText(record.changeCategory).includes("melhoria"),
+    isRelease:
+      record.isRelease ||
+      isKnownOperationValue(deploy) ||
+      isKnownOperationValue(commit) ||
+      normalizeSearchText(type).includes("release"),
+    isSupportInvestigation:
+      record.isSupportInvestigation ||
+      normalizeSearchText(`${moduleName} ${type}`).includes("supportops") ||
+      normalizeSearchText(type).includes("investigacao"),
+    lineStart: record.lineStart,
+    localDateTime: normalizeStructuredText(
+      record.localOccurredAt ?? record.localDateTime,
+    ),
+    logic: normalizeStructuredText(record.logic),
+    macroSummary,
+    module: moduleName,
+    nextSquad: normalizeStructuredText(record.nextSquad),
+    protocol: normalizeStructuredText(record.protocol),
+    rawContent,
+    reason,
+    risks,
+    routine: normalizeStructuredText(record.routine),
+    screen: normalizeStructuredText(record.screen),
+    shortSummary: isKnownOperationValue(shortSummary)
+      ? shortSummary
+      : compactStructuredSummary(
+          getKnownRecordValue([macroSummary, reason, how, risks, rawContent]),
+        ),
+    sourceIndex: record.sourceIndex,
+    squad: normalizeStructuredText(record.squad),
+    status,
+    subject: normalizeStructuredText(record.subject),
+    type,
+    validation: normalizeStructuredText(record.validation),
+  };
+}
+
+function buildStructuredMetrics(
+  records: EngineeringOperationRecord[],
+  auditRoutines: EngineeringAuditRoutine[],
+): EngineeringOperationsResponse["metrics"] {
+  return {
+    latestDeploys: records.filter((record) => isKnownOperationValue(record.deploy))
+      .length,
+    moduleImprovements: records.filter((record) => record.isModuleImprovement)
+      .length,
+    productionRecords: records.filter((record) =>
+      normalizeSearchText(record.status).includes("em producao"),
+    ).length,
+    riskRecords: records.filter((record) => record.isCritical).length,
+    routinesOverdue: auditRoutines.filter((routine) => routine.isOverdue).length,
+    supportInvestigations: records.filter(
+      (record) => record.isSupportInvestigation,
+    ).length,
+    totalRecords: records.length,
+    waitingReleaseOps: records.filter((record) =>
+      normalizeSearchText(record.status).includes("aguardando releaseops"),
+    ).length,
+  };
+}
+
+function buildStructuredFilters(
+  records: EngineeringOperationRecord[],
+): EngineeringOperationsResponse["filters"] {
+  return {
+    modules: uniqueStructuredValues(records.map((record) => record.module)),
+    routines: uniqueStructuredValues(records.map((record) => record.routine)),
+    squads: uniqueStructuredValues(records.map((record) => record.squad)),
+    statuses: uniqueStructuredValues(records.map((record) => record.status)),
+    types: uniqueStructuredValues(records.map((record) => record.type)),
+  };
+}
+
+function buildStructuredAuditRoutines(
+  records: EngineeringOperationRecord[],
+  generatedAt: string,
+): EngineeringAuditRoutine[] {
+  const definitions = [
+    {
+      frequency: "Diaria",
+      id: "daily-audit",
+      name: "Auditoria diaria",
+      responsible: "Hub ReleaseOps",
+      script:
+        "Revisar registros das ultimas 24h, status abertos, pendencias criticas e handoffs para ReleaseOps.",
+    },
+    {
+      frequency: "Semanal",
+      id: "weekly-audit",
+      name: "Auditoria semanal",
+      responsible: "Hub ReleaseOps",
+      script:
+        "Consolidar releases da semana, modulos com maior risco, bugs recorrentes e prioridades.",
+    },
+    {
+      frequency: "Mensal",
+      id: "monthly-audit",
+      name: "Auditoria mensal",
+      responsible: "Hub ReleaseOps",
+      script:
+        "Revisar evolucao mensal, saude dos modulos, riscos estruturais e qualidade das releases.",
+    },
+    {
+      frequency: "Diaria",
+      id: "operational-healthcheck",
+      name: "Healthcheck operacional",
+      responsible: "Hub ReleaseOps",
+      script:
+        "Checar rotas principais, APIs protegidas, Supabase, Vercel e logs criticos.",
+    },
+    {
+      frequency: "Por release",
+      id: "deploy-audit",
+      name: "Auditoria de deploy",
+      responsible: "Hub ReleaseOps",
+      script:
+        "Confirmar commit, deploy, ambiente, healthchecks, logs e status final da release.",
+    },
+    {
+      frequency: "Sob demanda",
+      id: "bugs-bottlenecks-audit",
+      name: "Auditoria de bugs/gargalos",
+      responsible: "Hub SupportOps",
+      script:
+        "Separar evidencia de hipotese, revisar logs, APIs instaveis e gargalos.",
+    },
+    {
+      frequency: "Diaria",
+      id: "critical-pending-audit",
+      name: "Auditoria de pendencias criticas",
+      responsible: "Hub ReleaseOps",
+      script:
+        "Consolidar riscos conhecidos, status criticos, pendencias e rotinas vencidas.",
+    },
+  ];
+
+  return definitions.map((definition) => {
+    const history = records
+      .filter(
+        (record) =>
+          normalizeSearchText(record.routine) ===
+          normalizeSearchText(definition.name),
+      )
+      .slice(0, 6);
+    const lastRecord = history[0];
+    const lastExecution = lastRecord?.localDateTime ?? UNKNOWN_OPERATION_VALUE;
+
+    return {
+      consolidatedResult:
+        lastRecord?.shortSummary ??
+        "Rotina ainda nao possui registro estruturado explicito.",
+      frequency: definition.frequency,
+      history,
+      id: definition.id,
+      isOverdue: isStructuredRoutineOverdue(
+        definition.frequency,
+        lastExecution,
+        generatedAt,
+      ),
+      lastExecution,
+      lastStatus: lastRecord?.status ?? "nao executada",
+      name: definition.name,
+      responsible: definition.responsible,
+      script: definition.script,
+    };
+  });
+}
+
+function buildStructuredStatus(
+  metrics: EngineeringOperationsResponse["metrics"],
+) {
+  if (metrics.riskRecords > 0 || metrics.routinesOverdue > 0) {
+    return "OPERACIONAL COM ATENCAO";
+  }
+
+  if (metrics.waitingReleaseOps > 0) {
+    return "AGUARDANDO RELEASEOPS";
+  }
+
+  return "FINALIZADO";
+}
+
+function compareOperationRecordsDesc(
+  first: EngineeringOperationRecord,
+  second: EngineeringOperationRecord,
+) {
+  const firstTime = parseLocalDateTime(first.localDateTime)?.getTime() ?? 0;
+  const secondTime = parseLocalDateTime(second.localDateTime)?.getTime() ?? 0;
+
+  if (secondTime !== firstTime) {
+    return secondTime - firstTime;
+  }
+
+  return second.sourceIndex - first.sourceIndex;
+}
+
+function uniqueStructuredValues(values: string[]) {
+  return Array.from(
+    new Set(values.filter((value) => isKnownOperationValue(value))),
+  ).sort((first, second) => first.localeCompare(second, "pt-BR"));
+}
+
+function normalizeStructuredText(value: string | null | undefined) {
+  const trimmed = value?.trim();
+
+  return trimmed ? trimmed : UNKNOWN_OPERATION_VALUE;
+}
+
+function isKnownOperationValue(value: string) {
+  return Boolean(value.trim() && value.trim() !== UNKNOWN_OPERATION_VALUE);
+}
+
+function compactStructuredSummary(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  if (!normalized) {
+    return "Resumo operacional nao informado.";
+  }
+
+  return normalized.length > 220
+    ? `${normalized.slice(0, 217).trim()}...`
+    : normalized;
+}
+
+function hasStructuredCriticalSignal(
+  status: string,
+  risks: string,
+  rawContent: string,
+) {
+  const text = normalizeSearchText(`${status} ${risks} ${rawContent}`);
+
+  return (
+    text.includes("necessita correcao") ||
+    text.includes("operacional com atencao") ||
+    text.includes("bloqueado") ||
+    text.includes("aguardando releaseops") ||
+    text.includes("risco")
+  );
+}
+
+function isStructuredRoutineOverdue(
+  frequency: string,
+  lastExecution: string,
+  generatedAt: string,
+) {
+  if (lastExecution === UNKNOWN_OPERATION_VALUE) {
+    return true;
+  }
+
+  if (frequency === "Sob demanda" || frequency === "Por release") {
+    return false;
+  }
+
+  const lastDate = parseLocalDateTime(lastExecution);
+  const currentDate = new Date(generatedAt);
+
+  if (!lastDate || Number.isNaN(currentDate.getTime())) {
+    return true;
+  }
+
+  const elapsedDays =
+    (currentDate.getTime() - lastDate.getTime()) / (24 * 60 * 60 * 1000);
+
+  if (frequency === "Diaria") {
+    return elapsedDays > 1.5;
+  }
+
+  if (frequency === "Semanal") {
+    return elapsedDays > 8;
+  }
+
+  if (frequency === "Mensal") {
+    return elapsedDays > 35;
+  }
+
+  return false;
+}
+
 function statusVariant(status: string): BadgeVariant {
   const normalizedStatus = normalizeSearchText(status);
 
@@ -3418,6 +5501,99 @@ function isMonitoringSnapshot(value: unknown): value is OperationsMonitoringSnap
       snapshot.metrics &&
       typeof snapshot.metrics === "object",
   );
+}
+
+function mergeAlertProtocols(
+  incoming: OperationsAlertProtocolSummary[],
+  current: OperationsAlertProtocolSummary[],
+) {
+  const protocolsByCode = new Map<string, OperationsAlertProtocolSummary>();
+
+  [...incoming, ...current].forEach((protocol) => {
+    if (!protocolsByCode.has(protocol.protocol)) {
+      protocolsByCode.set(protocol.protocol, protocol);
+    }
+  });
+
+  return Array.from(protocolsByCode.values())
+    .sort(
+      (first, second) =>
+        new Date(second.lastSeenAt).getTime() - new Date(first.lastSeenAt).getTime(),
+    )
+    .slice(0, 80);
+}
+
+function isProtocolCleared(
+  protocolCode: string,
+  protocols: OperationsAlertProtocolSummary[],
+) {
+  const protocol = protocols.find((item) => item.protocol === protocolCode);
+
+  return protocol ? shouldHideProtocolAlert(protocol) : false;
+}
+
+function shouldHideProtocolAlert(protocol: OperationsAlertProtocolSummary) {
+  return (
+    protocol.status === "em_analise" ||
+    protocol.status === "monitorando" ||
+    protocol.status === "silenciado" ||
+    protocol.status === "tratado"
+  );
+}
+
+function alertToProtocolSummary(
+  alert: OperationsAlert,
+): OperationsAlertProtocolSummary {
+  return {
+    acknowledgedAt: null,
+    analysis: alert.analysis,
+    command: alert.command,
+    createdAt: alert.generatedAt,
+    endpoint: alert.endpoint,
+    expectedResult: alert.expectedResult,
+    fingerprint: alert.fingerprint,
+    firstSeenAt: alert.generatedAt,
+    httpStatus: alert.httpStatus,
+    id: alert.protocolId ?? alert.id,
+    impact: alert.impact,
+    lastSeenAt: alert.lastSeenAt ?? alert.generatedAt,
+    level: alert.level,
+    module: alert.module,
+    occurrenceCount: alert.occurrenceCount ?? 1,
+    origin: alert.origin,
+    payloadBytes: alert.payloadBytes,
+    protocol: alert.protocol,
+    receivedResult: alert.receivedResult,
+    recommendation: alert.recommendation,
+    recommendedAgent: alert.recommendedAgent,
+    responseMs: alert.responseMs,
+    status: alert.protocolStatus ?? (alert.technicalFeedbackStatus ? "em_analise" : "ativo"),
+    technicalFeedback: alert.technicalFeedback ?? null,
+    technicalFeedbackAt: alert.technicalFeedbackAt ?? null,
+    technicalFeedbackStatus: alert.technicalFeedbackStatus ?? "pendente",
+    title: alert.title,
+    treatedAt: null,
+    type: alert.type,
+    updatedAt: alert.lastSeenAt ?? alert.generatedAt,
+  };
+}
+
+function mergeProtocolIntoAlert(
+  alert: OperationsAlert,
+  protocol: OperationsAlertProtocolSummary,
+): OperationsAlert {
+  return {
+    ...alert,
+    analysis: protocol.analysis,
+    command: protocol.command,
+    lastSeenAt: protocol.lastSeenAt,
+    occurrenceCount: protocol.occurrenceCount,
+    protocolStatus: protocol.status,
+    protocolId: protocol.id,
+    technicalFeedback: protocol.technicalFeedback,
+    technicalFeedbackAt: protocol.technicalFeedbackAt,
+    technicalFeedbackStatus: protocol.technicalFeedbackStatus,
+  };
 }
 
 function generalStatusLabel(
@@ -3478,6 +5654,54 @@ function riskToBadgeVariant(
   return "neutral";
 }
 
+function riskPriority(risk?: OperationsRiskLevel | "nenhum") {
+  const priorities = {
+    alto: 3,
+    baixo: 1,
+    critico: 4,
+    medio: 2,
+    nenhum: 0,
+  } as const satisfies Record<OperationsRiskLevel | "nenhum", number>;
+
+  return priorities[risk ?? "nenhum"];
+}
+
+function alertFeedbackStatusLabel(status: OperationsAlertFeedbackStatus) {
+  const labels = {
+    bloqueado: "Bloqueado",
+    corrigido: "Corrigido",
+    em_analise: "Em analise",
+    falso_positivo: "Falso positivo",
+    nao_observado: "Nao observado",
+    pendente: "Pendente",
+    persiste: "Persiste",
+  } as const satisfies Record<OperationsAlertFeedbackStatus, string>;
+
+  return labels[status];
+}
+
+function alertFeedbackStatusVariant(
+  status: OperationsAlertFeedbackStatus,
+): BadgeVariant {
+  if (status === "corrigido" || status === "nao_observado") {
+    return "success";
+  }
+
+  if (status === "bloqueado" || status === "persiste") {
+    return "warning";
+  }
+
+  if (status === "falso_positivo") {
+    return "neutral";
+  }
+
+  if (status === "em_analise") {
+    return "info";
+  }
+
+  return "neutral";
+}
+
 function riskToGeneralStatus(
   risk?: OperationsRiskLevel | "nenhum",
 ): OperationsMonitoringSnapshot["cards"]["status"]["value"] {
@@ -3532,6 +5756,7 @@ function formatGeneratedAt(value: string) {
     hour: "2-digit",
     minute: "2-digit",
     month: "2-digit",
+    timeZone: hubTimeZone,
   });
 }
 
@@ -3546,11 +5771,13 @@ function formatOperationDateTime(value: string) {
     date.toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
+      timeZone: hasExplicitTimeZone(value) ? hubTimeZone : undefined,
       year: "2-digit",
     }),
     date.toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: hasExplicitTimeZone(value) ? hubTimeZone : undefined,
     }),
   ].join(" ");
 }
@@ -3569,6 +5796,22 @@ async function getAccessToken() {
   } catch {
     return null;
   }
+}
+
+function countOpenItTickets(tickets: readonly HubItTicket[]) {
+  return tickets.filter((ticket) => isOpenItTicket(ticket)).length;
+}
+
+function countItTicketsWaitingForHubOps(tickets: readonly HubItTicket[]) {
+  return tickets.filter((ticket) => isItTicketWaitingForHubOps(ticket)).length;
+}
+
+function isOpenItTicket(ticket: HubItTicket) {
+  return ticket.status !== "resolvido" && ticket.status !== "fechado";
+}
+
+function isItTicketWaitingForHubOps(ticket: HubItTicket) {
+  return ticket.status === "novo" || ticket.status === "em_revisao";
 }
 
 function matchesPeriod(localDateTime: string, period: string) {
@@ -3606,6 +5849,15 @@ function matchesPeriod(localDateTime: string, period: string) {
 }
 
 function parseLocalDateTime(value: string) {
+  const normalizedValue = normalizeDateTimeForParsing(value);
+  const parsedWithTimeZone = hasExplicitTimeZone(value)
+    ? new Date(normalizedValue)
+    : null;
+
+  if (parsedWithTimeZone && !Number.isNaN(parsedWithTimeZone.getTime())) {
+    return parsedWithTimeZone;
+  }
+
   const match = value.match(
     /(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(\d{2}):(\d{2}):(\d{2}))?/,
   );
@@ -3624,6 +5876,19 @@ function parseLocalDateTime(value: string) {
     Number(minute),
     Number(second),
   );
+}
+
+function hasExplicitTimeZone(value: string) {
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim());
+}
+
+function normalizeDateTimeForParsing(value: string) {
+  return value
+    .trim()
+    .replace(
+      /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}(?::\d{2})?)\s+([+-]\d{2}:?\d{2})$/,
+      "$1T$2$3",
+    );
 }
 
 const fieldClassName =

@@ -24,6 +24,36 @@ export type OperationsAlertType =
   | "supabase_instavel"
   | "sync_atrasado";
 
+export type OperationsAlertFeedbackStatus =
+  | "bloqueado"
+  | "corrigido"
+  | "em_analise"
+  | "falso_positivo"
+  | "nao_observado"
+  | "pendente"
+  | "persiste";
+
+export type OperationsAlertProtocolStatus =
+  | "ativo"
+  | "em_analise"
+  | "monitorando"
+  | "silenciado"
+  | "tratado";
+
+export type OperationsAlertAnalysisStatus =
+  | "em_tratamento"
+  | "ignorado"
+  | "novo"
+  | "repetido"
+  | "tratado";
+
+export type OperationsAlertAnalysis = {
+  action: "acompanhar" | "acionar" | "ignorar";
+  label: string;
+  reason: string;
+  status: OperationsAlertAnalysisStatus;
+};
+
 export type OperationsCheckMetric = OperationsRawCheck & {
   alertGenerated: boolean;
   payloadRisk: OperationsPayloadRisk;
@@ -31,18 +61,66 @@ export type OperationsCheckMetric = OperationsRawCheck & {
   timeRisk: OperationsTimeRisk;
 };
 
-export type OperationsAlert = {
+export type OperationsAlertProtocolSummary = {
+  acknowledgedAt: string | null;
+  analysis: OperationsAlertAnalysis;
   command: string;
+  createdAt: string;
+  endpoint: string | null;
+  expectedResult: string | null;
   fingerprint: string;
-  generatedAt: string;
+  firstSeenAt: string;
+  httpStatus: number | null;
   id: string;
   impact: string;
+  lastSeenAt: string;
   level: OperationsRiskLevel;
   module: string;
+  occurrenceCount: number;
   origin: string;
+  payloadBytes: number;
+  protocol: string;
+  receivedResult: string | null;
   recommendation: string;
   recommendedAgent: OperationsAgent;
+  responseMs: number;
+  status: OperationsAlertProtocolStatus;
+  technicalFeedback: string | null;
+  technicalFeedbackAt: string | null;
+  technicalFeedbackStatus: OperationsAlertFeedbackStatus;
+  title: string;
+  treatedAt: string | null;
+  type: OperationsAlertType;
+  updatedAt: string;
+};
+
+export type OperationsAlert = {
+  analysis: OperationsAlertAnalysis;
+  command: string;
+  endpoint: string;
+  expectedResult: string;
+  fingerprint: string;
+  generatedAt: string;
+  httpStatus: number;
+  id: string;
+  impact: string;
+  lastSeenAt?: string;
+  level: OperationsRiskLevel;
+  module: string;
+  occurrenceCount?: number;
+  origin: string;
+  payloadBytes: number;
+  protocol: string;
+  protocolStatus?: OperationsAlertProtocolStatus;
+  protocolId?: string;
+  receivedResult: string;
+  recommendation: string;
+  recommendedAgent: OperationsAgent;
+  responseMs: number;
   status: "ativo" | "observando";
+  technicalFeedback?: string | null;
+  technicalFeedbackAt?: string | null;
+  technicalFeedbackStatus?: OperationsAlertFeedbackStatus;
   title: string;
   type: OperationsAlertType;
 };
@@ -56,6 +134,7 @@ export type OperationsAgent =
   | "SquadOps Core";
 
 export type OperationsMonitoringSnapshot = {
+  alertProtocols: OperationsAlertProtocolSummary[];
   alerts: OperationsAlert[];
   cards: {
     activeAlerts: {
@@ -103,6 +182,7 @@ export type OperationsMonitoringSnapshot = {
     slowChecks: number;
     totalChecks: number;
   };
+  protocolSyncStatus: "indisponivel" | "nao_executado" | "sem_alertas" | "sincronizado";
 };
 
 export type OpsWatcherDecision = {
@@ -114,9 +194,11 @@ export type OpsWatcherDecision = {
   impact: string;
   message: string;
   notifyLucas: boolean;
+  protocol?: string;
   reason: string;
   risk: OperationsRiskLevel;
   sourceAlertIds: string[];
+  sourceAlertProtocols: string[];
   status: "notificar" | "silencioso";
 };
 
@@ -141,6 +223,7 @@ export function buildOperationsMonitoringSnapshot(
   const overallStatus = getOverallStatus(checks, alerts);
 
   return {
+    alertProtocols: [],
     alerts,
     cards: {
       activeAlerts: {
@@ -202,6 +285,7 @@ export function buildOperationsMonitoringSnapshot(
       ).length,
       totalChecks: checks.length,
     },
+    protocolSyncStatus: alerts.length > 0 ? "nao_executado" : "sem_alertas",
   };
 }
 
@@ -227,6 +311,7 @@ export function buildOpsWatcherDecision(
       reason: "Sem alerta acionavel no snapshot realtime.",
       risk: "baixo",
       sourceAlertIds: [],
+      sourceAlertProtocols: [],
       status: "silencioso",
     };
   }
@@ -240,12 +325,20 @@ export function buildOpsWatcherDecision(
     impact: primaryAlert.impact,
     message: buildWatcherMessage(primaryAlert),
     notifyLucas: actionableAlerts.length > 0,
+    protocol: primaryAlert.protocol,
     reason:
       actionableAlerts.length > 0
         ? "Alerta alto ou critico identificado."
         : "Alerta medio/baixo agrupado para observacao.",
     risk: primaryAlert.level,
-    sourceAlertIds: actionableAlerts.map((alert) => alert.id),
+    sourceAlertIds:
+      actionableAlerts.length > 0
+        ? actionableAlerts.map((alert) => alert.id)
+        : [primaryAlert.id],
+    sourceAlertProtocols:
+      actionableAlerts.length > 0
+        ? actionableAlerts.map((alert) => alert.protocol)
+        : [primaryAlert.protocol],
     status: actionableAlerts.length > 0 ? "notificar" : "silencioso",
   };
 }
@@ -394,6 +487,20 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
         type: "api_lenta",
       }),
     );
+  } else if (
+    check.timeRisk === "lento" &&
+    !alerts.some((alert) => alert.type === "api_lenta")
+  ) {
+    alerts.push(
+      createAlert(check, {
+        impact: "Resposta entre 1,5s e 3s exige observacao operacional.",
+        level: "medio",
+        recommendation:
+          "Observar recorrencia e acionar SupportOps se a lentidao se repetir.",
+        title: `${check.label} lento`,
+        type: "api_lenta",
+      }),
+    );
   }
 
   return alerts;
@@ -411,27 +518,49 @@ function createAlert(
 ): OperationsAlert {
   const agent = getRecommendedAgent(check.module, input.type);
   const fingerprint = `${input.type}:${check.id}:${input.level}`;
+  const protocol = buildAlertProtocol({
+    fingerprint,
+  });
 
   return {
+    analysis: buildInitialAlertAnalysis(),
     command: buildAgentCommand({
       agent,
       check,
       impact: input.impact,
+      protocol,
       recommendation: input.recommendation,
+      risk: input.level,
       title: input.title,
     }),
+    endpoint: check.endpoint,
+    expectedResult: check.expected.description,
     fingerprint,
     generatedAt: new Date().toISOString(),
+    httpStatus: check.statusCode,
     id: `${fingerprint}:${check.checkedAt}`,
     impact: input.impact,
     level: input.level,
     module: check.module,
     origin: check.label,
+    payloadBytes: check.payloadBytes,
+    protocol,
+    receivedResult: check.received,
     recommendation: input.recommendation,
     recommendedAgent: agent,
+    responseMs: check.responseMs,
     status: "ativo",
     title: input.title,
     type: input.type,
+  };
+}
+
+function buildInitialAlertAnalysis(): OperationsAlertAnalysis {
+  return {
+    action: "acionar",
+    label: "Novo",
+    reason: "Alerta recem-detectado no snapshot realtime.",
+    status: "novo",
   };
 }
 
@@ -439,13 +568,17 @@ function buildAgentCommand({
   agent,
   check,
   impact,
+  protocol,
   recommendation,
+  risk,
   title,
 }: {
   agent: OperationsAgent;
   check: OperationsCheckMetric;
   impact: string;
+  protocol: string;
   recommendation: string;
+  risk: OperationsRiskLevel;
   title: string;
 }) {
   return `Assunto:
@@ -453,12 +586,13 @@ function buildAgentCommand({
 
 Contexto:
 O Operations Center identificou um alerta realtime em ${check.label}.
+Protocolo do alerta: ${protocol}
 Endpoint: ${check.endpoint}
 Resultado esperado: ${check.expected.description}
 Resultado recebido: ${check.received}
 Tempo: ${check.responseMs}ms
 Payload aproximado: ${formatBytes(check.payloadBytes)}
-Risco: ${check.risk}
+Risco: ${risk}
 
 Objetivo:
 Investigar a origem do alerta, reduzir risco operacional e orientar o proximo handoff.
@@ -476,6 +610,10 @@ Validacoes esperadas:
 
 Retorno esperado:
 Origem, impacto, correcao proposta ou executada, validacoes, riscos restantes e proxima squad recomendada.
+
+Devolutiva tecnica obrigatoria:
+Informar se o alerta PERSISTE, foi CORRIGIDO, NAO FOI OBSERVADO, esta EM_ANALISE, ficou BLOQUEADO ou e FALSO_POSITIVO.
+Responder citando o protocolo ${protocol} para o HubOps agrupar alerta e parecer tecnico.
 
 Status esperado:
 AGUARDANDO RELEASEOPS
@@ -522,6 +660,9 @@ FINALIZADO`;
 function buildWatcherMessage(alert: OperationsAlert) {
   return `Lucas, o ambiente precisa de atencao em ${alert.module}: ${alert.title}.
 
+Protocolo:
+${alert.protocol}
+
 Impacto:
 ${alert.impact}
 
@@ -533,6 +674,27 @@ ${alert.recommendedAgent}
 
 Recomendacao:
 ${alert.recommendation}`;
+}
+
+function buildAlertProtocol({
+  fingerprint,
+}: {
+  fingerprint: string;
+}) {
+  const sequence = shortNumericHash(fingerprint);
+
+  return `AL-${sequence}`;
+}
+
+function shortNumericHash(value: string) {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+
+  return String((Math.abs(hash) % 9999) + 1).padStart(4, "0");
 }
 
 function getRecommendedAgent(
@@ -635,11 +797,11 @@ function classifyPayload(payloadBytes: number): OperationsPayloadRisk {
 }
 
 function timeRiskToRisk(timeRisk: OperationsTimeRisk): OperationsRiskLevel {
-  if (timeRisk === "critico" || timeRisk === "lento") {
+  if (timeRisk === "critico") {
     return "alto";
   }
 
-  if (timeRisk === "atencao") {
+  if (timeRisk === "lento" || timeRisk === "atencao") {
     return "medio";
   }
 

@@ -2883,6 +2883,21 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[PulseX] Validacao realtime e chamadas`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 17:54:27 -03:00.
+- Tipo da alteracao: `VALIDACAO OPERACIONAL` - riscos semanais de realtime, presenca e chamadas.
+- Motivo da mudanca: Lucas solicitou confirmar mensagens, presenca e chamadas em cenario real apos os ajustes recentes de sidebar, notificacoes e chamadas, informando se o PulseX esta pronto para ReleaseOps ou se precisa correcao.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/*`, `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/providers/pulsex-notification-provider.tsx`, `apps/hub/lib/pulsex/*`, `apps/hub/app/api/pulsex/messages/route.ts`, `apps/hub/app/api/hub/presence/route.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: revisei o worktree e confirmei que nao havia diff runtime pendente de PulseX neste recorte; rodei validacoes tecnicas do Hub; subi `http://localhost:3001/pulsex`; validei carregamento de canais, diretas, usuarios, mensagem existente, participante online, botoes de audio/video e ausencia de erros de console. Abri chamada de audio, confirmei painel, controles, microfone, compartilhamento de tela e encerramento limpo. Abri chamada de video, confirmei painel, tela cheia, picture-in-picture, compartilhamento de tela e encerramento limpo.
+- Logica utilizada: a validacao precisava cobrir regressao de interface e contratos operacionais sem poluir canais reais com nova mensagem de teste. A tela provou leitura de mensagens reais e presenca real do usuario autenticado; o fluxo de chamada provou montagem/fechamento do painel e sinais locais sem erro. O cenario multiusuario real completo exige segundo login/dispositivo autenticado, portanto fica como homologacao recomendada, nao como correcao obrigatoria encontrada.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke HTTP `GET http://localhost:3001/pulsex` com 200, validacao no navegador interno de `/pulsex`, abertura/fechamento de chamada de audio e video, checagem de console sem erros e `git diff --check`.
+- Pendencias ou riscos conhecidos: nao foi criada mensagem nova para evitar sujeira operacional em canal real; nao foi possivel confirmar dois usuarios reais simultaneos neste ambiente local. Validacao recomendada para ReleaseOps/homologacao: dois usuarios autenticados em dispositivos ou browsers separados enviando mensagem, recebendo mencao, entrando em chamada e testando compartilhamento de tela. Foi observado apenas o warning conhecido de shell `modules error Object`, fora do recorte PulseX e sem erro bloqueante na tela validada.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte e seguir com release se aceitar a ressalva de homologacao multiusuario real.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Publicacao recorte HubOps deploy por recorte`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-17 18:10:47 -03:00.
@@ -2900,6 +2915,36 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[HubOps] Protocolos e aba de deploys`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 18:08:14 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - rastreabilidade por protocolo.
+- Motivo da mudanca: Lucas apontou que as datas das auditorias estavam dificeis de ler e que faltava um local macro para visualizar deploys, pontos alterados por modulo/tela/tipo e detalhes consultaveis por protocolo.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/engineering-operations-parser.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei geracao automatica de protocolo para cada registro parseado do Engineering Operations, no formato `MODULO-TIPO-DDMMAA-SEQUENCIA`; acrescentei categoria da alteracao e tela inferida no parser; criei a aba `Deploys` no HubOps com deploys macro e protocolos agrupados por modulo e tipo; e ajustei datas de auditoria para exibirem `dd/mm/aa hh:mm` em vez do timestamp cru.
+- Logica utilizada: na V1, o dev do modulo nao precisa inventar protocolo. Ele registra a alteracao no diario e o HubOps gera um identificador deterministico a partir de modulo, tipo, data e ordem do registro, por exemplo `HUBOPS-MEL-170526-0042`. Em etapa futura, essa sequencia deve migrar para tabela Supabase para virar protocolo oficial persistido.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx lib/squadops/engineering-operations-parser.ts --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: protocolos atuais sao deterministicos a partir do diario e podem mudar se a ordem historica do arquivo for reescrita; a persistencia oficial deve ser modelada depois em Supabase para travar sequencia e permitir busca historica independente do Markdown.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar a nova rastreabilidade de deploy/protocolos antes de publicacao.
+
+Registro de diario:
+
+- Assunto: `[Hub UI] Padronizacao de fechamento externo`.
+- Nome da squad/agente: `Dev Hub Shell`.
+- Data e hora local: 2026-05-17 18:03:40 -03:00.
+- Tipo da alteracao: `MELHORIA UX OPERACIONAL` - padrao de fechamento de popups, modais e drawers.
+- Motivo da mudanca: Lucas pediu revisar os modulos e telas do Hub para que tudo que abre uma janela feche ao clicar fora, sem exigir clicar novamente no botao de origem.
+- Arquivos/modulos afetados: `apps/hub/hooks/use-outside-dismiss.ts`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/components/pulsex/conversation-sidebar.tsx`, `apps/hub/components/pulsex/conversation-header.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/app/setup/page.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx` e este Engineering Operations.
+- Como foi feito: criei o hook `useOutsideDismiss` para menus/popovers pequenos e apliquei em notificacoes/presenca do Hub Shell, filtros/atalhos/som/emoji/painel Caca/thread do PulseX. Para modais e drawers, adicionei backdrop clicavel em Setup, SquadOps e janelas operacionais do atendimento WhatsApp Guardian. Superficies que ja tinham backdrop funcional foram preservadas.
+- Logica utilizada: menus pequenos fecham por `pointerdown` em capture quando o clique ocorre fora do container controlado, preservando cliques internos. Modais e drawers usam botao de fundo com conteudo em `z-10`, mantendo o clique interno dentro da janela e fechando somente quando o operador clica fora.
+- Validacao executada: `git diff --check`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; confirmacao de `localhost:3001` rodando `next dev --port 3001`; validacao no navegador de PulseX filtros/atalhos/som, painel Caca, modal Setup, notificacoes/presenca do topo e drawer PO AI do SquadOps fechando ao clicar fora; console do navegador sem erros.
+- Pendencias ou riscos conhecidos: build segue com warning conhecido Turbopack/NFT ligado a leitura filesystem do Engineering Operations pelo SquadOps; paineis que ja eram estados operacionais completos, como chamada ativa, nao foram convertidos em fechamento por clique externo para nao encerrar fluxo em andamento por acidente.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte, separar de outros diffs pendentes do worktree e publicar se estiver coerente.
+
+Registro de diario:
+
 - Assunto: `[HubOps] Persistencia estruturada do Engineering Operations`.
 - Nome da squad/agente: `Dev HubOps/DataOps`.
 - Data e hora local: 2026-05-17 18:37:50 -03:00.
@@ -2908,7 +2953,350 @@ Registro de diario:
 - Arquivos/modulos afetados: `packages/database/migrations/0013_hub_engineering_operations_records.sql`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/app/api/squadops/operations/structured/route.ts` e `docs/codex/engineering-operations.md`.
 - Como foi feito: criei uma migration Supabase com tabelas estruturadas para registros operacionais, releases, healthchecks, handoffs e execucoes de sincronizacao; adicionei uma camada server-side que transforma os registros parseados do Engineering Operations em linhas normalizadas e faz upsert idempotente por `source_key`; criei a API interna protegida `/api/squadops/operations/structured` para consultar a base estruturada via `GET` e sincronizar o Markdown para Supabase via `POST`.
 - Logica utilizada: o Markdown continua sendo a memoria viva e fonte narrativa append-only, mas deixa de ser a unica estrutura consultavel. A base Supabase passa a ser a camada preparada para filtros, protocolos, releases, auditorias e healthchecks, sempre por rota server-side protegida por `authorizeSquadOpsAdminRequest`. A V1 nao expoe secrets no cliente e usa RLS/admin para defesa em profundidade.
-- Validacao executada: leitura do Engineering Operations; revisao do pacote local ja existente de protocolos HubOps para evitar duplicacao; consulta ao changelog/documentacao Supabase sobre RLS e exposicao Data API; `supabase --version` confirmou CLI indisponivel neste ambiente, entao a migration foi criada manualmente com numeracao sequencial; `npx.cmd eslint lib/squadops/engineering-operations-store.ts app/api/squadops/operations/structured/route.ts --max-warnings 0` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; smokes sem sessao de `GET /api/squadops/operations/structured` e `POST /api/squadops/operations/structured` retornaram 401 esperado; `git diff --check` focado nos novos arquivos passou.
+- Validacao executada: leitura do Engineering Operations; revisao do pacote local ja existente de protocolos HubOps para evitar duplicacao; consulta ao changelog/documentacao Supabase sobre RLS e exposicao Data API; `supabase --version` confirmou CLI indisponivel neste ambiente, entao a migration foi criada manualmente com numeracao sequencial; `npx.cmd eslint lib/squadops/engineering-operations-store.ts app/api/squadops/operations/structured/route.ts --max-warnings 0` passou; `npm.cmd run check-types:hub` passou; `git diff --check` focado nos novos arquivos passou.
 - Pendencias ou riscos conhecidos: migration ainda nao foi aplicada no Supabase real; smoke autenticado da sincronizacao depende de bearer adm e das tabelas criadas; a API retorna 503 enquanto as tabelas nao existirem ou `SUPABASE_SERVICE_ROLE_KEY` nao estiver disponivel; o worktree possui outros recortes locais fora desta entrega e ReleaseOps deve publicar por recorte; em etapa futura, o HubOps pode trocar a leitura principal de registros para Supabase e usar o Markdown como fallback historico.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para revisar commit/migration e publicar por recorte; `Hub DataOps` para aplicar/validar migration em Supabase e executar primeira sincronizacao autenticada.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Fuso horario e prompt nas notificacoes`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 18:13:02 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - horario e acao de alerta.
+- Motivo da mudanca: Lucas apontou que as notificacoes de monitoramento apareciam 3 horas a frente e pediu que cada notificacao tivesse uma acao simples, apenas com icone, para criar/copiar o prompt do dev responsavel.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/lib/squadops/engineering-operations-parser.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: ajustei a formatacao de datas do HubOps para converter timestamps com `Z` ou offset explicito para `America/Sao_Paulo`; normalizei strings como `2026-05-17 10:23:33 -03:00` antes do parse; repliquei a leitura correta no parser do Engineering Operations; e troquei os botoes textuais de comando nas areas de alertas, watcher e historico de notificacoes por botoes somente com icone de criacao de prompt.
+- Logica utilizada: timestamps gerados pelo monitoramento chegam em ISO/UTC e nao podem ser tratados como hora local ja convertida. Quando ha fuso explicito, a UI deve exibir hora de Sao Paulo; quando nao ha fuso, mantem leitura local do registro. O prompt do dev responsavel continua sendo copiado, mas a interface fica mais limpa e usa apenas icone com `aria-label`.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npx.cmd eslint modules/squadops/SquadOpsPage.tsx lib/squadops/engineering-operations-parser.ts --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou; teste local de conversao `2026-05-18T00:04:00.000Z` para `America/Sao_Paulo` retornou `17/05/26, 21:04`.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita em sessao adm autenticada do Lucas, clicando no icone de prompt dentro de uma notificacao real do Ops Watcher para confirmar copia para a area de transferencia.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar o recorte HubOps de fuso/notificacoes.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Detalhe operacional sem blocos quebrados`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 18:19:29 -03:00.
+- Tipo da alteracao: `AJUSTE UX OPERACIONAL` - leitura de protocolo.
+- Motivo da mudanca: Lucas apontou que o detalhe do protocolo estava quebrado por muitos blocos, com cada campo separado em cards grandes e leitura pouco fluida.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: substitui a grade de `DetailField` e a pilha de `DetailBlock` no detalhe operacional por uma leitura consolidada `OperationalDetailSummary`, com metadados em chips e secoes editoriais em bullets: por que mudou, o que foi alterado, como foi conduzido, validacao/deploy e riscos/pendencias. O conteudo bruto ficou recolhivel em `details`.
+- Logica utilizada: o detalhe do protocolo deve funcionar como leitura operacional, nao como formulario. Campos nao informados deixam de ocupar cards grandes e o conteudo principal passa a aparecer agrupado por sentido operacional.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita em sessao adm autenticada de Lucas abrindo um protocolo real na aba `Deploys`.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar o ajuste visual do detalhe operacional.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Investigacao alerta Supabase API lenta`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 18:17:02 -03:00.
+- Tipo da alteracao: `TROUBLESHOOTING OPERACIONAL` - alerta de Database Monitoring.
+- Motivo da mudanca: Lucas recebeu alerta do Ops Watcher informando `Supabase: API com tempo critico`, impacto de resposta acima de 3s e recomendacao para SupportOps medir origem da lentidao.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; investigacao sobre `apps/hub/lib/operations/data-sources.ts`, `apps/hub/lib/operations/monitoring.ts`, `/api/operations/monitoring`, Supabase Auth/REST/Realtime e healthchecks de producao.
+- Como foi feito: li os registros recentes do Engineering Operations e o codigo do Database Monitoring; medi endpoints Supabase Auth, REST root, REST `hub_users`, REST `pulsex_channels`, Realtime health, Guardian DB health, Guardian Queue `limit=20`, Guardian Queue `limit=50`, `/squadops` e `/api/operations/monitoring` sem sessao; conferi logs Vercel recentes e status publico da Supabase.
+- Evidencias coletadas: Supabase Auth ficou entre 182ms e 502ms em 8 amostras; REST root ficou entre 31ms e 135ms; REST `hub_users?limit=1` ficou entre 202ms e 267ms em 3 amostras; REST `pulsex_channels?limit=1` ficou entre 260ms e 470ms em 3 amostras; Supabase Realtime health retornou 403 esperado entre 2201ms e 2467ms em 8 amostras; Guardian DB health producao retornou 200 com `elapsedMs` interno entre 113ms e 583ms; Guardian Queue `limit=20` ficou entre 347ms e 759ms com payload de aproximadamente 103KB; Guardian Queue `limit=50` ficou entre 472ms e 509ms com payload de aproximadamente 239KB; `/squadops` respondeu 200 entre 51ms e 58ms; `/api/operations/monitoring` sem sessao respondeu 401 esperado entre 176ms e 193ms. Logs Vercel dos ultimos 30 minutos mostraram healthchecks e rotas operacionais 200/401 esperados, sem erro critico registrado.
+- Logica utilizada: o alerta `API com tempo critico` e gerado pelo Database Monitoring quando um check passa de 3000ms. Nas medicoes atuais, nenhum endpoint reproduziu acima de 3s; o ponto mais lento foi `Supabase Realtime`, ainda abaixo do gatilho critico, mas suficientemente alto para cruzar 3s em pico transitorio. Como Auth e REST ficaram normais, nao ha evidencia atual de lentidao generalizada do banco ou Data API.
+- Validacao executada: medicoes HTTP diretas com `Invoke-WebRequest` sem expor chaves, consulta a logs Vercel com `npx.cmd vercel logs https://c2x.app.br --since 30m`, leitura do codigo de classificacao de risco e consulta ao status publico da Supabase. Nao houve deploy, commit ou alteracao de codigo.
+- Pendencias ou riscos conhecidos: o endpoint autenticado `/api/operations/monitoring` nao foi consultado com bearer adm nesta investigacao, portanto a fotografia exata que gerou o alerta nao foi recuperada. A pagina publica de status da Supabase indica componentes operacionais, mas mantem incidente identificado de acesso por alguns provedores no Brasil; isso pode produzir latencia/intermitencia regional. Realtime health pode gerar falso positivo quando oscila acima de 3s.
+- Status operacional: `HIPOTESE`.
+- Proxima squad recomendada: `Hub SupportOps` para repetir a medicao caso o alerta reapareca e, se possivel, capturar o snapshot autenticado do Database Monitoring; `Hub ReleaseOps` somente se for necessario publicar ajuste futuro para detalhar a origem do alerta no texto do Ops Watcher.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Otimizacao Guardian Queue limit 20`.
+- Nome da squad/agente: `Guardian Core`.
+- Data e hora local: 2026-05-17 18:19:15 -03:00.
+- Tipo da alteracao: `CORRECAO PERFORMANCE OPERACIONAL` - fila operacional Guardian.
+- Motivo da mudanca: Lucas recebeu alerta operacional informando `Guardian Queue limit=20 lenta`, com impacto de abertura lenta da fila mesmo usando limite seguro e risco alto para a operacao.
+- Arquivos/modulos afetados: `apps/hub/app/api/guardian/attendance/queue/route.ts`, `apps/hub/lib/guardian/read-model.ts`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: revisei a rota `/api/guardian/attendance/queue`, o read model Supabase `c2x_guardian_attendance_queue` e o consumidor da IA do Hub; removi a consulta separada de contagem e passei a usar `select(..., { count: "exact" })`; adicionei cache server-side curto de 10 segundos por limite com header `X-Guardian-Queue-Cache`; separei o read model em modo compacto padrao, sem carregar `metadata` na fila inicial; e ajustei o endpoint de IA para consumir o novo retorno `{ clients, count }`.
+- Logica utilizada: a tela inicial da fila precisa de lista operacional, prioridade, atraso, saldo, empreendimento principal e total; dados 360 completos, historico e unidades detalhadas pertencem ao endpoint individual do cliente. Ao tirar `metadata` do carregamento inicial, o payload bruto da query Supabase caiu de aproximadamente 80KB para 9KB em 20 clientes. O cache curto reduz reaberturas e navegacoes repetidas sem comprometer atualizacao operacional relevante.
+- Evidencias coletadas: antes do ajuste, a rota local `limit=20` respondia com cerca de 102KB e medicoes entre 388ms e 495ms; em producao, amostras ficaram entre 409ms e 1002ms. A query direta Supabase com metadata retornou aproximadamente 80KB; sem metadata retornou aproximadamente 9KB. A rota local compacta retornou 36KB para 20 clientes, `source=supabase-c2x`, `loaded=20`, `count=548`; um limite frio novo (`limit=21`) respondeu `MISS` em 268ms e os acessos seguintes responderam `HIT` em aproximadamente 20ms.
+- Validacao executada: `npx.cmd prettier --write apps/hub/app/api/guardian/attendance/queue/route.ts apps/hub/lib/guardian/read-model.ts apps/hub/app/api/ai/chat/route.ts`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP `GET http://localhost:3001/guardian/atendimento` retornou 200; smoke JSON da fila confirmou `clients`, `loaded=20`, `count=548`, `dados360`, unidade, `workflow.history` e `agreement.dueDates` presentes; tentativa de screenshot via Playwright nao executou porque o pacote `playwright` nao esta instalado neste ambiente.
+- Pendencias ou riscos conhecidos: a primeira chamada sem cache ainda depende da latencia regional do Supabase e do runtime Next; o cache e apenas em memoria por instancia aquecida; `limit=1000` continua fora do carregamento inicial por risco de payload alto; validacao visual autenticada final em navegador do Lucas segue recomendada para confirmar a troca imediata do resumo compacto pelo detalhe individual do cliente.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte Guardian, organizar commit/release por responsabilidade e publicar sem misturar diffs locais de PulseX, Setup, HubOps ou Hub Shell.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Protocolos persistidos para alertas`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 18:35:04 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - rastreabilidade de alertas e devolutivas tecnicas.
+- Motivo da mudanca: Lucas alinhou que os alertas gerados pelo Operations Center tambem precisam virar protocolos no banco, para copiar o prompt ao dev responsavel, receber o parecer tecnico e manter alerta + devolutiva agrupados pelo mesmo motivo.
+- Arquivos/modulos afetados: `packages/database/migrations/0012_hub_operations_alert_protocols.sql`, `apps/hub/lib/operations/monitoring.ts`, `apps/hub/lib/operations/alert-protocols.ts`, `apps/hub/app/api/operations/monitoring/route.ts`, `apps/hub/app/api/operations/watcher/route.ts`, `apps/hub/app/api/operations/alert-protocols/route.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei modelagem Supabase para `hub_operations_alert_protocols` e `hub_operations_alert_feedbacks`, com RLS, grants para `authenticated`, politicas adm/admin, enums de status do alerta e da devolutiva tecnica; adicionei geracao de protocolo no monitoramento no formato `ALERTA-MODULO-TIPO-DDMMAA-HASH`; sincronizei alertas da API de monitoring com o banco por `fingerprint`; criei endpoint admin para listar protocolos e registrar parecer tecnico; e atualizei a tela Database Monitoring para mostrar protocolo, historico de devolutivas e drawer de registro do parecer.
+- Logica utilizada: o alerta recorrente nao deve criar varios itens soltos. O `fingerprint` deduplica a mesma origem/risco, atualiza `last_seen_at` e `occurrence_count`, e preserva o protocolo para que Lucas copie o prompt, mande ao dev e depois registre o parecer como `EM_ANALISE`, `PERSISTE`, `CORRIGIDO`, `NAO_OBSERVADO`, `BLOQUEADO` ou `FALSO_POSITIVO`.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx lib/operations/monitoring.ts lib/operations/alert-protocols.ts app/api/operations/monitoring/route.ts app/api/operations/watcher/route.ts app/api/operations/alert-protocols/route.ts --max-warnings 0`; `npm.cmd run check-types:hub`.
+- Pendencias ou riscos conhecidos: a migration precisa ser aplicada no Supabase pelo fluxo de release/migracao antes de a persistencia remota ficar ativa em producao; enquanto a tabela nao existir, a API de monitoring mantem fallback de protocolo gerado em runtime e nao quebra a tela. Smoke autenticado de gravacao depende da migration aplicada e de sessao adm.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para aplicar a migration, revisar o recorte HubOps e publicar; `Hub SupportOps` para acompanhar se os protocolos de alerta estao agrupando corretamente recorrencias e pareceres.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Investigacao Supabase Realtime instavel`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 18:32:59 -03:00.
+- Tipo da alteracao: `TROUBLESHOOTING OPERACIONAL` - alerta de Supabase Realtime no Ops Watcher.
+- Motivo da mudanca: Lucas recebeu alerta informando `Supabase Realtime instavel`, impacto em funcionalidades autenticadas, REST ou realtime, risco alto e recomendacao para Hub SupportOps validar Supabase e variaveis server-side.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; investigacao sobre `apps/hub/lib/operations/data-sources.ts`, `apps/hub/lib/operations/monitoring.ts`, Supabase Auth, REST, Realtime, Vercel logs e variaveis de ambiente.
+- Como foi feito: li a regra que gera os checks Supabase e confirmei que `supabase-realtime-health` chama `/realtime/v1/api/health` com timeout de 4000ms e aceita status `200` ou `403`; confirmei que alertas `Supabase Realtime instavel` sao gerados quando o check Supabase nao fica `ok`; medi Auth, REST e Realtime em 10 amostras cada; executei smoke real de inscricao Realtime com `@supabase/supabase-js`; conferi logs de erro recentes da Vercel; validei presenca de variaveis Supabase locais e no ambiente Production da Vercel sem expor valores.
+- Evidencias coletadas: Supabase Auth respondeu 200 em 10/10 amostras entre 179ms e 1022ms, media 329ms; Supabase REST root respondeu 401 esperado em 10/10 entre 30ms e 120ms, media 62ms; Supabase Realtime health respondeu 403 esperado em 10/10 entre 2238ms e 3425ms, media 2441ms; smoke real de canal Realtime chegou a `SUBSCRIBED` em 591ms; Vercel logs de erro dos ultimos 20 minutos nao retornaram erros; variaveis locais `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` estao presentes; Vercel Production lista `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` como encrypted.
+- Logica utilizada: como o Realtime health retornou status esperado e o smoke de websocket assinou canal com sucesso, nao ha evidencia atual de queda ou configuracao ausente. A latencia do endpoint `/realtime/v1/api/health` ficou alta e uma amostra ultrapassou 3000ms, entao a origem mais provavel e oscilacao transitoria/regional ou falso positivo do health HTTP, nao falha confirmada de variavel server-side. O status publico da Supabase mostra componentes operacionais, mas ainda registra incidente identificado de acesso por alguns provedores no Brasil, o que pode afetar latencia regional.
+- Validacao executada: medicoes HTTP diretas com `Invoke-WebRequest`, smoke Realtime com `@supabase/supabase-js`, `npx.cmd vercel logs https://c2x.app.br --since 20m --level error`, `npx.cmd vercel env ls`, leitura do codigo de classificacao e consulta ao status publico da Supabase. Nao houve deploy, commit ou alteracao de codigo.
+- Pendencias ou riscos conhecidos: o snapshot autenticado exato do Ops Watcher que disparou o alerta nao foi recuperado sem sessao adm; se o alerta reaparecer, deve-se capturar status, tempo e endpoint do alerta no momento do disparo. Recomendacao futura: trocar ou complementar o health HTTP do Realtime por smoke de canal websocket e exigir falhas consecutivas antes de classificar como `instavel`, reduzindo falso positivo.
+- Status operacional: `HIPOTESE`.
+- Proxima squad recomendada: `Hub SupportOps` para acompanhar recorrencia e repetir coleta no momento do alerta; `HubOps`/`ReleaseOps` somente se Lucas autorizar ajuste futuro no criterio do watcher.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Parecer alerta Realtime HKA2`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 19:17:26 -03:00.
+- Tipo da alteracao: `TROUBLESHOOTING COM CORRECAO PEQUENA` - protocolo `ALERTA-SUPABASE-API-170526-HKA2`.
+- Motivo da mudanca: Lucas solicitou investigar o alerta `Supabase Realtime lento`, validar endpoint, logs, payload, tempo de resposta e contrato de seguranca, e devolver parecer tecnico para o HubOps agrupar o protocolo.
+- Arquivos/modulos afetados: `apps/hub/lib/operations/monitoring.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: medi o endpoint `https://bxgukywoxgivlrhjkwjx.supabase.co/realtime/v1/api/health` com headers Supabase sem expor chaves; confirmei o contrato do check `supabase-realtime-health`; executei smoke real de canal Realtime com `@supabase/supabase-js`; consultei logs de erro Vercel recentes; revisei a montagem do prompt operacional do alerta; ajustei o `buildAgentCommand` para exibir o nivel do alerta, nao o risco bruto do check; e alinhei `timeRiskToRisk` para classificar `lento` como risco medio e manter `critico` como alto.
+- Evidencias coletadas: o protocolo original recebeu 403 esperado em 2682ms; em 15 amostras, o endpoint retornou 403 esperado em 15/15, entre 2240ms e 4543ms, media 2523ms; em nova rodada de 8 amostras, retornou 403 esperado em 8/8, entre 2226ms e 2521ms, media 2332ms; payload permaneceu 0 B; smoke de canal Realtime chegou a `SUBSCRIBED` em 924ms; logs de erro da Vercel dos ultimos 30 minutos nao retornaram erros; status publico da Supabase marcou Realtime como operacional, com incidente identificado de acesso por alguns provedores no Brasil ainda aberto.
+- Origem identificada: a lentidao esta no endpoint HTTP de health do Supabase Realtime/rede regional, nao em banco, payload, REST, auth ou integracao do Hub. O alerta nao indica quebra de contrato porque 403 e esperado. Foi identificada tambem uma inconsistencia local: o alerta lento tinha nivel medio, mas o prompt exibia `Risco: alto` por usar `check.risk` em vez do nivel do alerta.
+- Impacto operacional: funcionalidades realtime seguem funcionais no smoke, mas o health HTTP permanece na faixa de observacao entre 1,5s e 3s, com possibilidade de picos acima de 3s. O prompt anterior podia superdimensionar a criticidade para o dev.
+- Correcao executada: ajuste local em `apps/hub/lib/operations/monitoring.ts` para o prompt usar o nivel real do alerta e para checks `lento` ficarem como risco medio; nenhuma alteracao em Guardian, PulseX, CareDesk, Setup, banco ou variaveis.
+- Validacao executada: `npx.cmd eslint lib/operations/monitoring.ts --max-warnings 0` passou; `npm.cmd run lint:hub` passou; smoke do endpoint Realtime passou com 403 esperado; smoke de canal Realtime passou com `SUBSCRIBED`; `npx.cmd vercel logs https://c2x.app.br --since 30m --level error` nao retornou erro.
+- Validacao bloqueada: `npm.cmd run check-types:hub` e `npm.cmd run build --workspace @repo/hub` ficaram bloqueados por erros TypeScript preexistentes fora do recorte, em Hub IT Tickets (`aguardando_usuario`/status undefined). O build compilou, mas falhou na etapa de typecheck pelo mesmo erro externo.
+- Devolutiva tecnica do protocolo: `PERSISTE` como lentidao observacional do health HTTP; classificacao de risco do prompt foi `CORRIGIDA` localmente e esta aguardando publicacao.
+- Pendencias ou riscos conhecidos: enquanto o incidente regional da Supabase Brasil estiver aberto, pode haver oscilacao. Recomendacao futura: complementar o health HTTP com smoke real de canal Realtime e nao acionar SupportOps como alto quando o status for esperado, payload 0 B e tempo estiver apenas na faixa de observacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte pequeno de `monitoring.ts`, considerar o bloqueio externo de typecheck em Hub IT Tickets e publicar quando o pacote estiver apto.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Correção build Hub Support Dock`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 19:23:05 -03:00.
+- Tipo da alteracao: `TROUBLESHOOTING COM CORRECAO` - erro de build por modulo nao encontrado.
+- Motivo da mudanca: Lucas reportou erro `Module not found: Can't resolve '@/components/hub-support/hub-support-dock'` ao buildar rota que passa pelo `HubShell`.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx`, `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: confirmei que o `HubShell` importa `HubSupportDock`; validei que a pasta `apps/hub/components/hub-support/` existe localmente, mas estava inteira como arquivo nao rastreado pelo Git, o que explica o erro em build/deploy que nao leva arquivos untracked; limpei o import `ReactNode` nao utilizado em `hub-user-tickets-panel.tsx` para zerar lint; e rodei validacoes completas do Hub.
+- Origem identificada: import versionado apontando para componente ainda nao versionado/incluido no recorte de release. Localmente, com a pasta presente, o build resolve o modulo; sem incluir `apps/hub/components/hub-support/`, o erro volta no ambiente de build.
+- Impacto operacional: build/deploy do Hub pode falhar em qualquer rota que monta `HubShell`, incluindo PulseX, se o recorte publicar `hub-shell.tsx` sem os componentes `hub-support`.
+- Correcao executada: limpeza de lint em `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`; nenhum ajuste em Guardian, PulseX, CareDesk ou Setup.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou e nao reproduziu o `Module not found`. O build manteve apenas o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations pela rota SquadOps.
+- Pendencias ou riscos conhecidos: ReleaseOps deve incluir a pasta untracked `apps/hub/components/hub-support/` junto do recorte que alterou `apps/hub/layouts/hub-shell.tsx`; se publicar somente o import do shell, o build volta a quebrar. Worktree segue com outros recortes locais pendentes fora deste ajuste.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para separar o recorte Hub Support Dock e publicar com os arquivos novos correspondentes.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Correcao runtime Caca composer`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 20:12:25 -03:00.
+- Tipo da alteracao: `CORRECAO RUNTIME` - erro no composer do PulseX.
+- Motivo da mudanca: Lucas reportou `Runtime ReferenceError: isAgentOpen is not defined` em `apps/hub/components/pulsex/message-composer.tsx`, acionado ao renderizar o composer do PulseX.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-composer.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: confirmei que `MessageComposerProps` ja possuia `isAgentOpen`, `onOpenAgent` e `onCloseAgent`, e que `PulseXWorkspace` ja enviava essas props; a falha estava no destructuring do `MessageComposer`, que nao recebia esses valores antes de usa-los no botao da Caca. Ajustei o componente para receber `isAgentOpen` com fallback `false`, `onOpenAgent` e `onCloseAgent`, e garanti o import do icone `Bot`.
+- Origem identificada: regressao local no componente do composer: props declaradas e passadas pelo pai, mas nao extraidas na funcao do componente antes do uso em JSX.
+- Impacto operacional: abertura da tela `/pulsex` quebrava em runtime antes do operador conseguir usar o composer, mentions, anexos, audio ou acionar a Caca.
+- Correcao executada: `MessageComposer` agora le as props do agente e o botao da Caca alterna abertura/fechamento sem ReferenceError; o fluxo de mensagem, mencoes, tags, anexo e audio foi preservado.
+- Validacao executada: `npx.cmd eslint components/pulsex/message-composer.tsx --max-warnings 0` passou; smoke HTTP `GET http://localhost:3001/pulsex` retornou 200; `git diff --check` focado passou com aviso CRLF conhecido.
+- Validacao bloqueada: `npm.cmd run check-types:hub` e `npm.cmd run build --workspace @repo/hub` compilaram ate a etapa de TypeScript, mas falharam por erro externo ao recorte em `apps/hub/app/api/hub/it-tickets/evidence-analysis/route.ts`, onde `analysisDataUrls` esta tipado como `(string | undefined)[]` e precisa virar `string[]`.
+- Pendencias ou riscos conhecidos: validacao visual autenticada em `/pulsex` ainda e recomendada apos resolver o blocker separado de Ticket TI; worktree segue com recortes locais nao publicados.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte PulseX junto ao estado atual do worktree; `Hub SupportOps` se o erro visual persistir apos refresh forte.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Confirmacao de leitura e tratamento de alertas`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 18:43:37 -03:00.
+- Tipo da alteracao: `AJUSTE OPERACIONAL` - ciclo de vida de alertas.
+- Motivo da mudanca: Lucas apontou que, alem de gerar alertas e protocolos, o HubOps precisa permitir validar que o alerta foi lido e tratado para sair do destaque ativo sem perder rastreabilidade.
+- Arquivos/modulos afetados: `packages/database/migrations/0012_hub_operations_alert_protocols.sql`, `apps/hub/lib/operations/monitoring.ts`, `apps/hub/lib/operations/alert-protocols.ts`, `apps/hub/app/api/operations/alert-protocols/route.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: acrescentei campos de confirmacao `acknowledged_at`, `acknowledged_by_user_id`, `treated_at` e `treated_by_user_id` na modelagem; criei acao server-side para confirmar leitura do protocolo e mover o alerta para `monitorando`; filtrei alertas/notificacoes com status `monitorando`, `tratado` ou `silenciado` dos paineis ativos; e adicionei botoes por icone para confirmar leitura sem poluir o painel visual.
+- Logica utilizada: confirmar leitura nao apaga o alerta nem remove historico, apenas tira o destaque ativo e deixa o protocolo em acompanhamento. Registrar devolutiva tecnica como `corrigido`, `nao_observado` ou `falso_positivo` marca o protocolo como `tratado`. Se o mesmo alerta voltar a ser detectado depois de tratado, o monitoramento pode reabrir o status para `ativo`, sinalizando recorrencia real.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx lib/operations/monitoring.ts lib/operations/alert-protocols.ts app/api/operations/alert-protocols/route.ts --max-warnings 0`; `npm.cmd run check-types:hub`.
+- Pendencias ou riscos conhecidos: a persistencia depende da migration 0012 ser aplicada em Supabase; ate la, o botao de confirmacao pode falhar se o protocolo existir apenas como fallback runtime sem tabela. Validacao visual autenticada final deve ser feita por Lucas em `/squadops`, confirmando leitura de um alerta real.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para aplicar migration e publicar o recorte HubOps; `Hub SupportOps` para acompanhar recorrencias depois que Lucas marcar alertas como lidos/tratados.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Coerencia entre status de atencao e alertas`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 18:46:52 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - consistencia do Database Monitoring.
+- Motivo da mudanca: Lucas apontou que o status geral estava `Operacional com atencao`, mas a lista de `Alertas operacionais` mostrava zero alertas, deixando a leitura contraditoria.
+- Arquivos/modulos afetados: `apps/hub/lib/operations/monitoring.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: passei a gerar alerta de observacao quando um check entra em `timeRisk=lento` entre 1501ms e 3000ms, mesmo sem chegar ao gatilho critico; ajustei o card `Alertas ativos` para contar os alertas visiveis apos confirmacao/tratamento; e limitei o banner superior do Ops Watcher ao alerta acionavel atual, evitando mostrar notificacao antiga quando o watcher atual esta silencioso.
+- Logica utilizada: `Operacional com atencao` precisa ter uma causa visivel. Checks lentos devem aparecer como alerta medio/observacional para rastreabilidade, enquanto o watcher continua sem notificar Lucas agressivamente se nao houver alerta alto ou critico. Historico antigo fica em `Historico de notificacoes`, nao no banner principal.
+- Validacao executada: pendente nesta entrada; sera executado lint, typecheck e build apos o ajuste.
+- Pendencias ou riscos conhecidos: como alertas medios passam a gerar protocolo, pode haver mais registros de observacao; a confirmacao de leitura/tratamento continua sendo o mecanismo para tirar da area ativa sem apagar historico.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar a correcao de consistencia visual junto ao recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Operations Center com fonte estruturada`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 19:03:16 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - leitura estruturada pelo Supabase.
+- Motivo da mudanca: Lucas recebeu o handoff do `Hub ReleaseOps` com a V1 da persistencia estruturada do Engineering Operations e solicitou preparar a tela para abandonar o arquivo gigante como fonte operacional principal, mantendo o Markdown apenas como memoria viva, historico narrativo e fallback.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/app/api/squadops/copilot/route.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: ampliei a store estruturada para retornar tambem motivo, como foi feito, logica, riscos, resumo macro, conteudo bruto, flags operacionais e metadados; a tela HubOps passou a consultar `/api/squadops/operations/structured?limit=500` e usar esses registros como fonte principal quando existirem; mantive fallback claro para `/api/squadops/operations` enquanto a migration 0013 ou o sync ainda nao estiverem aplicados; adicionei painel de fonte operacional com status, quantidade de registros, ultima sincronizacao e botao `Sincronizar diario`; e o PO AI passou a receber `baseEstruturadaSupabase` como contexto principal de historico estruturado.
+- Logica utilizada: o estado realtime de banco, APIs e payload continua vindo do Database Monitoring; o historico operacional consultavel passa a vir do Supabase estruturado; o Engineering Operations permanece como memoria viva, auditoria narrativa e origem de sincronizacao. Se a tabela estiver vazia ou indisponivel, a tela nao quebra e deixa explicito que esta usando fallback do diario.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx lib/squadops/engineering-operations-store.ts app/api/squadops/copilot/route.ts --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local `GET /squadops` retornou 200; smokes sem sessao para `GET /api/squadops/operations/structured`, `POST /api/squadops/operations/structured` e `POST /api/squadops/copilot` retornaram 401 esperado; `git diff --check` passou com warnings CRLF conhecidos.
+- Pendencias ou riscos conhecidos: `npm.cmd run lint:hub` geral falhou por warnings em recorte local nao relacionado de `apps/hub/lib/hub-it-tickets/server.ts` e `apps/hub/modules/squadops/HubItTicketsBoard.tsx`; validacao autenticada do sync depende de bearer adm e da migration 0013 aplicada no Supabase real; build segue com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations; Playwright nao esta instalado neste ambiente, entao a validacao visual automatizada nao foi executada.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para aplicar a migration 0013 no Supabase real, executar sync autenticado e publicar o recorte HubOps; `Hub SupportOps` para acompanhar warnings externos de lint/build e validar se a base estruturada passa a alimentar a tela em producao.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Data visivel nos alertas operacionais`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 19:07:40 -03:00.
+- Tipo da alteracao: `AJUSTE UX OPERACIONAL` - rastreabilidade visual de alertas.
+- Motivo da mudanca: Lucas apontou que os cards de `Alertas operacionais` exibiam protocolo, status e ocorrencia, mas nao mostravam claramente a data do registro do alerta.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei uma linha no card de alerta com `Registro: dd/mm/aa hh:mm`, usando `generatedAt` do alerta; quando existir `lastSeenAt` diferente, a tela tambem exibe a ultima ocorrencia no mesmo formato.
+- Logica utilizada: o alerta precisa ser rastreavel sem exigir abrir o protocolo. A data do registro aparece junto da origem/modulo, mantendo o card simples e preservando os icones de confirmar leitura, devolutiva e prompt para agente.
+- Validacao executada: pendente nesta entrada; sera executado lint focado apos o ajuste.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita em sessao adm do Lucas com alerta real carregado.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar junto ao recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Fallback sem erro bruto de migration`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 19:16:40 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - estado de fonte estruturada pendente.
+- Motivo da mudanca: Lucas mostrou que a tela exibia o erro bruto `Could not find the table public.hub_engineering_operation_records in the schema cache` em vermelho, mesmo com o fallback pelo Engineering Operations funcionando.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: traduzi o erro conhecido de tabela ausente para o estado operacional `migration pendente`, mantive a mensagem no painel da fonte operacional e removi o uso do erro global vermelho quando o fallback continua ativo. O botao `Sincronizar diario` tambem passa a registrar a pendencia no painel em vez de quebrar a leitura principal.
+- Logica utilizada: ausencia da tabela estruturada antes da migration 0013 ser aplicada nao e falha da tela, e sim pendencia de ReleaseOps/DataOps. A tela deve continuar lendo o diario e deixar claro que a base estruturada ainda precisa ser criada no Supabase real.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; smoke local `GET /squadops` retornou 200; `git diff --check` passou com warnings CRLF conhecidos.
+- Pendencias ou riscos conhecidos: `npm.cmd run check-types:hub` falhou por erros em recorte local nao relacionado de `components/hub-support/hub-support-dock.tsx`, `lib/hub-it-tickets/server.ts` e `modules/squadops/HubItTicketsBoard.tsx`, todos ligados ao status `aguardando_usuario`/tickets TI; migration 0013 ainda precisa ser aplicada para ativar a fonte estruturada real.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para aplicar a migration 0013 e publicar o recorte HubOps; `Hub SupportOps`/dev responsavel por Tickets TI para resolver os erros de tipagem desse recorte separado.
+
+Registro de diario:
+
+- Assunto: `[Hub Core] Tickets TI via Caca e HubOps`.
+- Nome da squad/agente: `Dev Hub Core`.
+- Data e hora local: 2026-05-17 19:07:15 -03:00.
+- Tipo da alteracao: `MELHORIA` - canal operacional de tickets, bugs, erros, melhorias e sugestoes.
+- Motivo da mudanca: Lucas solicitou uma forma global para usuarios relatarem erros, bugs, melhorias e sugestoes dentro do Hub, com apoio da Caca para transformar o relato em formulario tecnico, captura de print/gravacao, protocolo e acompanhamento das devolutivas pelo proprio usuario.
+- Arquivos/modulos afetados: `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/app/api/hub/it-tickets/route.ts`, `apps/hub/lib/hub-it-tickets/client.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/lib/hub-it-tickets/types.ts`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `packages/database/migrations/0014_hub_it_tickets.sql` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei a modelagem Supabase `hub_it_tickets`, `hub_it_ticket_events` e `hub_it_ticket_attachments`, com enums de categoria, prioridade, status e eventos; implementei API protegida por bearer para criar/listar/atualizar tickets; adicionei fallback local em desenvolvimento quando a migration ainda nao existir; integrei um dock global da Caca no `HubShell`; criei aba `Ticket TI` e `Meus tickets` para abertura/acompanhamento pelo usuario; e adicionei board `Ticket TI` no HubOps para Lucas tratar fila, responder devolutivas, mudar status e registrar o que foi feito.
+- Logica utilizada: o relato do usuario permanece simples, enquanto a Caca gera uma leitura tecnica deterministica com modulo, rota, tipo, impacto, relato original e orientacao de triagem. O protocolo segue formato `TI-DDMMAA-HASH`; usuarios autenticados veem apenas seus tickets; HubOps adm ve todos e registra respostas visiveis ao solicitante. Prints e gravacoes curtas ficam como anexos pequenos em data URL nesta V1; arquivos maiores devem evoluir para Supabase Storage em etapa futura.
+- Validacao executada: `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; `git diff --check`; validacao visual local em `http://localhost:3001/` confirmou botao flutuante `Caca TI`, abertura da aba `Ticket TI`, botoes `Print`, `Gravar tela` e `Anexar`, fechamento ao clicar fora e aba `Ticket TI` no HubOps com fila, protocolo e devolutiva.
+- Pendencias ou riscos conhecidos: a persistencia remota depende da migration `0014_hub_it_tickets.sql` ser aplicada por ReleaseOps no Supabase antes de producao; anexos em data URL sao adequados para prints/gravacoes curtas e devem migrar para Storage se Lucas quiser evidencias maiores; o build manteve o warning conhecido Turbopack/NFT ligado a leitura filesystem do Engineering Operations, sem bloquear compilacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte Hub Core/HubOps, aplicar a migration 0014, organizar commit/release e publicar; `Hub SupportOps` somente se aparecer falha de captura, permissao ou persistencia apos a migration.
+
+Registro de diario:
+
+- Assunto: `[Hub Core] Ciclo operacional do Ticket TI`.
+- Nome da squad/agente: `Dev Hub Core`.
+- Data e hora local: 2026-05-17 19:25:42 -03:00.
+- Tipo da alteracao: `MELHORIA` - ciclo de devolutiva, revisao e encerramento pelo solicitante.
+- Motivo da mudanca: Lucas refinou a regra do Ticket TI: a Home precisa ter aba propria de historico; a Caca deve manter Ticket TI dentro do agente, com foto e evidencias; HubOps deve devolver sempre como `Aguardando cliente`; e o encerramento final deve ser feito pelo usuario que abriu o ticket, com opcao de voltar para `Em revisao`.
+- Arquivos/modulos afetados: `apps/hub/app/page.tsx`, `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`, `apps/hub/app/api/hub/it-tickets/route.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/lib/hub-it-tickets/types.ts`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `packages/database/migrations/0014_hub_it_tickets.sql` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei a aba `Ticket TI` na Home com historico e filtros por status; criei painel compartilhado para o usuario acompanhar devolutivas, ver solicitante/tratador, encerrar o ticket ou devolver para revisao; atualizei a Caca global para usar foto, manter Ticket TI dentro do agente, aceitar print, video, audio e anexo; e ajustei a API/modelo/migration para os status `aguardando_cliente` e `em_revisao`, eventos `closed` e `review_requested`, e metadados de quem tratou/quem respondeu.
+- Logica utilizada: HubOps pode triar/executar e responder, mas qualquer devolutiva com resposta ou resumo volta para `Aguardando cliente`. O solicitante decide o fim do ciclo: se resolveu, encerra como `Fechado`; se nao resolveu, envia observacao e o ticket volta para `Em revisao`. As evidencias ficam visiveis antes do envio e entram na leitura tecnica da Caca como contexto operacional do ticket.
+- Validacao executada: `npm.cmd run check-types --workspace @repo/hub`; `npm.cmd run lint --workspace @repo/hub`; `npm.cmd run build --workspace @repo/hub`; `git diff --check`; validacao visual local em `http://localhost:3001/` confirmou aba `Ticket TI` na Home, Caca com botao geral `Caca`, foto, abas `Ticket TI`/`Meus tickets`, acoes `Print`, `Gravar tela`, `Audio` e `Anexar`, fechamento por clique fora e board HubOps com `Aguardando cliente` e `Em revisao`.
+- Pendencias ou riscos conhecidos: a migration `0014_hub_it_tickets.sql` precisa ser aplicada por ReleaseOps no Supabase real; anexos continuam em data URL nesta V1 e devem migrar para Storage se os arquivos crescerem; a Caca considera relato e metadados/previews das evidencias, mas leitura semantica profunda de imagem, video ou audio depende de integracao multimodal futura.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte Hub Core/HubOps, aplicar a migration 0014, organizar commit/release e publicar.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Protocolos curtos para atividades e alertas`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 19:30:01 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - padrao de protocolos.
+- Motivo da mudanca: Lucas apontou que os protocolos de alertas ficaram grandes e pouco operacionais, e reforcou que tambem precisa enxergar protocolos das atividades com formato simples, de duas letras e numero sequencial.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/engineering-operations-parser.ts`, `apps/hub/lib/operations/monitoring.ts`, `apps/hub/lib/operations/alert-protocols.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `packages/database/migrations/0012_hub_operations_alert_protocols.sql`, `packages/database/migrations/0013_hub_engineering_operations_records.sql`, `packages/database/migrations/0015_hubops_short_protocol_codes.sql` e `docs/codex/engineering-operations.md`.
+- Como foi feito: simplifiquei protocolos de atividades para `AT-0001`, derivados da ordem do registro no Engineering Operations enquanto o sync estruturado ainda parte do Markdown; simplifiquei protocolos de alertas para `AL-0001`, preparando sequence Supabase e funcao server-side para gerar o proximo codigo real no banco; criei migration incremental para normalizar registros antigos; e passei a mostrar o protocolo da atividade diretamente na timeline e na tabela de registros.
+- Logica utilizada: o codigo do protocolo deve ser curto e facil de falar/copiar. O significado operacional fica nos campos estruturados: modulo, squad, tela, tipo, status, motivo, risco, deploy e devolutiva. O dev nao inventa protocolo; o HubOps gera o codigo e o dev apenas cita esse codigo no handoff, parecer tecnico ou devolutiva.
+- Validacao executada: `npx.cmd eslint lib\operations\monitoring.ts lib\operations\alert-protocols.ts lib\squadops\engineering-operations-parser.ts modules\squadops\SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `git diff --check` focado nos arquivos alterados passou com warnings CRLF conhecidos; smoke local `GET /squadops` retornou 200; smoke sem sessao `GET /api/operations/monitoring` retornou 401 esperado.
+- Pendencias ou riscos conhecidos: a sequencia oficial de alertas `AL-0001` depende da migration `0015_hubops_short_protocol_codes.sql` ser aplicada no Supabase real; antes da migration, o monitoramento usa fallback curto `AL-1234` derivado do fingerprint para nao quebrar a tela. Registros ja persistidos com protocolos antigos serao normalizados pela migration. `npm.cmd run build --workspace @repo/hub` compilou, mas falhou no typecheck de build por erro externo ao recorte em `components/pulsex/caca-agent-panel.tsx`, onde `getUserLabel` nao esta definido; o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations tambem permanece.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para aplicar a migration 0015, revisar o recorte HubOps e publicar a padronizacao de protocolos.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Analise de repeticao e ignorar alertas`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 19:40:03 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - agente analisador de alertas.
+- Motivo da mudanca: Lucas pediu que os protocolos fossem sequenciais por data de chegada e que alertas repetidos nao virassem varios itens soltos, com opcao de ignorar quando o mesmo problema ja estiver sendo tratado ou nao precisar de acao.
+- Arquivos/modulos afetados: `apps/hub/lib/operations/monitoring.ts`, `apps/hub/lib/operations/alert-protocols.ts`, `apps/hub/app/api/operations/alert-protocols/route.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `packages/database/migrations/0015_hubops_short_protocol_codes.sql` e `docs/codex/engineering-operations.md`.
+- Como foi feito: acrescentei uma camada server-side de analise de alertas, classificando cada protocolo como `Novo`, `Repetido`, `Em tratamento`, `Tratado` ou `Ignorado`; preservei deduplicacao por `fingerprint`; mantive protocolos `AL-0001` sequenciais pela chegada no banco; ajustei a migration para normalizar historico por `created_at`/chegada; criei acao `ignore` na API de protocolos; e adicionei botao por icone para ignorar/silenciar alertas no painel ativo, watcher e historico de notificacoes.
+- Logica utilizada: alerta repetido nao cria novo protocolo se tiver o mesmo `fingerprint`; ele incrementa ocorrencias e reaproveita o protocolo existente. Se o protocolo estiver `em_analise`, `monitorando`, `tratado` ou `silenciado`, a tela nao o trata como novo alerta ativo. Ignorar muda o status para `silenciado`, tira o alerta do destaque e preserva o historico para auditoria.
+- Validacao executada: `npx.cmd eslint lib\operations\monitoring.ts lib\operations\alert-protocols.ts app\api\operations\alert-protocols\route.ts modules\squadops\SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local `GET /squadops` retornou 200; smoke sem sessao `GET /api/operations/monitoring` retornou 401 esperado; `git diff --check` focado passou com warnings CRLF conhecidos.
+- Pendencias ou riscos conhecidos: a acao `ignore` depende da migration de protocolos aplicada no Supabase real; se a tabela nao existir, o fallback runtime ainda mostra o alerta, mas nao consegue persistir o silenciamento. Build passou com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para aplicar/publicar a migration 0015 e revisar o recorte HubOps; `Hub SupportOps` para observar se a analise reduz ruido dos alertas repetidos em producao.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Contador e destaque de Ticket TI`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 19:46:25 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - contagem e sinalizacao da aba Ticket TI.
+- Motivo da mudanca: Lucas apontou que existia ticket TI aberto, mas a aba `Ticket TI` do HubOps mostrava contador `0`, e pediu destaque visual quando houver tickets novos.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: a pagina HubOps passou a carregar o resumo de tickets pela API real `/api/hub/it-tickets?scope=all` mesmo quando a aba `Ticket TI` nao esta aberta; o board de tickets agora devolve tambem a quantidade de tickets aguardando HubOps; e a aba `Ticket TI` recebe destaque visual quando houver tickets em `novo` ou `em_revisao`.
+- Logica utilizada: o badge da aba deve refletir tickets abertos, nao apenas o estado local do board montado. Tickets em `novo` ou `em_revisao` indicam nova acao do HubOps e por isso destacam a aba. Tickets resolvidos ou fechados nao entram na contagem operacional aberta.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx modules/squadops/HubItTicketsBoard.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local `GET /squadops` retornou 200; smoke sem sessao `GET /api/hub/it-tickets?scope=all` retornou 401 esperado.
+- Pendencias ou riscos conhecidos: a contagem remota depende da migration `0014_hub_it_tickets.sql` aplicada no Supabase real; em desenvolvimento, o fallback local continua sendo usado quando a tabela ainda nao existe. Build passou com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o ajuste HubOps junto ao recorte de Ticket TI.
+
+Registro de diario:
+
+- Assunto: `[Hub Core] Caca Ticket TI sem duplicidade`.
+- Nome da squad/agente: `Dev Hub Core`.
+- Data e hora local: 2026-05-17 19:43:32 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - agente nativo e abertura de Ticket TI.
+- Motivo da mudanca: Lucas mostrou que a tela `/guardian/cobranca` estava com dois agentes ao mesmo tempo: o assistente nativo de cobranca e o painel global da Caca. A regra oficial ficou: onde existir agente nativo, adicionar apenas a aba `Ticket TI`; onde nao existir agente, manter a Caca global; no HubOps manter `PO AI`.
+- Arquivos/modulos afetados: `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/modules/guardian/attendance/components/AiCopilotDrawer.tsx`, `apps/hub/lib/hub-it-tickets/server.ts`, `packages/database/migrations/0014_hub_it_tickets.sql`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: extraido o formulario de abertura para `HubTicketOpenForm`; o dock global passou a ser apenas foto da Caca, sem texto no botao, e foi ocultado nas rotas com agente nativo ou PO AI; o agente nativo da cobranca e o agente do PulseX receberam abas `Agente` e `Ticket TI`; o agente exibe somente abertura de ticket, sem `Meus tickets`; a gestao do solicitante permanece na aba `Ticket TI` da Home; e os protocolos de Ticket TI passaram ao formato sequencial `TI-000001`.
+- Logica utilizada: a Caca global e fallback para telas sem agente proprio. Em telas com agente operacional, o usuario permanece no contexto nativo da tela e usa `Ticket TI` dentro desse agente. O HubOps continua com `PO AI` e com a fila de tratamento. Tickets sao encerrados pelo solicitante na Home; devolutivas de HubOps voltam como `Aguardando cliente`, e retorno do usuario volta para `Em revisao`.
+- Validacao executada: `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; `git diff --check`; validacao visual local em `http://localhost:3001/guardian/cobranca` confirmou somente o agente nativo com abas `Agente` e `Ticket TI`; validacao visual em `/pulsex` confirmou agente nativo com `Ticket TI` e sem Caca global; validacao visual em `/` confirmou botao global apenas com foto e gestao de tickets na Home; validacao visual em `/squadops` confirmou ausencia da Caca global e preservacao do `PO AI`; validacao visual em `/caredesk` confirmou Caca global mantida por nao haver agente nativo aberto.
+- Pendencias ou riscos conhecidos: a persistencia remota e o protocolo sequencial oficial dependem da migration `0014_hub_it_tickets.sql` aplicada por Hub ReleaseOps no Supabase real; anexos continuam em data URL nesta V1 e devem migrar para Storage se Lucas quiser evidencias maiores. Build passou com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte Hub Core/HubOps, aplicar a migration 0014 e publicar.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Planejamento de deploy por recorte`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 20:23:10 -03:00.
+- Tipo da alteracao: `AUDITORIA DE RELEASE` - bloqueio preventivo de publicacao.
+- Motivo da mudanca: Lucas solicitou que o deploy fosse planejado e executado somente por recorte operacional autorizado, cruzando Engineering Operations com Git antes de qualquer publicacao.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/lib/operations/monitoring.ts`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/app/api/guardian/attendance/queue/route.ts`, `apps/hub/lib/guardian/read-model.ts`, `apps/hub/app/api/ai/chat/route.ts`, migrations `0012`, `0013`, `0014` e `0015`, alem de arquivos locais nao rastreados de Hub Support, Hub IT Tickets e alert protocols.
+- Como foi feito: li os registros recentes do Engineering Operations, identifiquei entradas `AGUARDANDO RELEASEOPS`, consultei `git status --short`, `git diff --name-status`, `git diff --stat`, `git log --oneline -12` e cruzei os arquivos citados no diario com os diffs reais do worktree.
+- Logica utilizada: apesar de existirem recortes elegiveis, o worktree atual mistura Guardian, HubOps, Hub Core, Hub Shell, PulseX, Setup e SupportOps, com arquivos compartilhados carregando mais de uma responsabilidade. Pela regra de deploy por recorte, nao e seguro criar commit/deploy amplo nem publicar somente parte visual sem isolar as dependencias do mesmo recorte.
+- Validacao executada: leitura do diario operacional; leitura das instrucoes de Vercel Deployments/CICD; `git status --short`; `git diff --name-status`; `git diff --stat`; `git log --oneline -12`; `rg "loadGuardianAttendanceQueueReadModel|countGuardianAttendanceQueueReadModel" apps/hub -n`; `git diff --check` focado no recorte Guardian Queue. Nao houve build, commit ou deploy porque a decisao foi de bloqueio preventivo antes da etapa de publicacao.
+- Pendencias ou riscos conhecidos: `SquadOpsPage.tsx` concentra alteracoes de protocolos, fonte estruturada, Ticket TI, deploys, alertas e UX; `docs/codex/engineering-operations.md` possui registros pendentes de varios recortes no mesmo diff; `message-composer.tsx` mistura ajuste PulseX com fechamento externo global; `hub-shell.tsx` depende de arquivos novos `components/hub-support`; HubOps depende das migrations `0012`, `0013`, `0015`; Ticket TI depende da migration `0014`; ha diffs locais Guardian fora da otimizacao de fila. Publicar sem separar pode levar funcionalidade incompleta, migration ausente ou regressao intermodular.
+- Status operacional: `AGUARDANDO RECORTE`.
+- Proxima squad recomendada: `Hub ReleaseOps` para solicitar recorte autorizado unico e preparar commit/deploy isolado; `Hub DataOps` somente quando o recorte selecionado exigir aplicar migration Supabase antes da publicacao.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Release consolidada Hub operacional`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 20:29:44 -03:00.
+- Tipo da alteracao: `RELEASE` - consolidacao autorizada de recortes pendentes.
+- Motivo da mudanca: Lucas autorizou seguir com o pacote completo apos o bloqueio preventivo por recortes misturados, permitindo consolidar os diffs pendentes em uma release unica desde que as validacoes minimas passassem.
+- Arquivos/modulos afetados: HubOps/Operations Center, Guardian Queue, PulseX, Setup, Hub Shell, Hub Core Ticket TI, APIs de operacoes, APIs de Ticket TI, `turbo.json`, migrations `0012`, `0013`, `0014`, `0015` e `docs/codex/engineering-operations.md`.
+- Como foi feito: corrigi o bloqueio TypeScript do Ticket TI normalizando `analysisDataUrls` como `string[]`, evitando propriedades opcionais com `undefined` explicito na analise de evidencias e garantindo `userId` nos anexos de revisao; registrei a env `HUB_IT_TICKET_TRANSCRIPTION_MODEL` no `turbo.json`; troquei o avatar flutuante da Caca no PulseX para `next/image`; mantive os demais recortes ja implementados e validados localmente.
+- Logica utilizada: como Lucas autorizou a release consolidada, o escopo deixou de ser um recorte isolado e passou a ser o pacote operacional pendente inteiro. Mesmo assim, a validacao manteve travas de seguranca: nao expor secrets, nao chamar `limit=1000`, nao executar migration destrutiva automaticamente e publicar somente apos typecheck, lint, build e smokes locais.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations; smokes locais retornaram `/` 200, `/squadops` 200, `/pulsex` 200, `/api/guardian/db/health` 200, `/api/operations/monitoring` sem sessao 401 esperado, `/api/operations/watcher` sem sessao 401 esperado, `/api/squadops/copilot` sem sessao com payload valido 401 esperado, `/api/hub/it-tickets?scope=all` sem sessao 401 esperado, Guardian Queue `limit=20` 200 com 20 itens e payload aproximado de 36KB, Guardian Queue `limit=50` 200 com 50 itens e payload aproximado de 92KB; `git diff --check` nao apontou erro bloqueante, apenas avisos CRLF do Windows; varredura textual nao encontrou padrao de secret exposto, apenas falsos positivos de texto `desk`.
+- Pendencias ou riscos conhecidos: migrations Supabase `0012`, `0013`, `0014` e `0015` precisam ser aplicadas/validadas no Supabase real para ativar persistencia remota de protocolos, fonte estruturada e Ticket TI; sem migrations, as rotas usam fallback quando previsto ou retornam estado de migration pendente. A validacao visual autenticada completa em sessao adm do Lucas segue recomendada para HubOps/Ticket TI/PulseX por envolver estados de usuario e permissao real.
+- Status operacional: `AGUARDANDO DEPLOY`.
+- Proxima squad recomendada: `Hub ReleaseOps` para commitar, publicar em producao Vercel e executar healthchecks pos-deploy; `Hub DataOps` para aplicar as migrations Supabase pendentes em janela controlada.

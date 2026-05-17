@@ -1,6 +1,8 @@
 "use client";
 
 import { useHubPresenceController } from "@/hooks/use-hub-presence";
+import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import { HubSupportDock } from "@/components/hub-support/hub-support-dock";
 import {
   getHubPresenceLabel,
   hubPresenceStatusOptions,
@@ -62,7 +64,7 @@ import {
 } from "@repo/shared";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type HubShellProps = Readonly<{
   children: ReactNode;
@@ -105,6 +107,7 @@ export function HubShell({
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isPresenceMenuOpen, setIsPresenceMenuOpen] = useState(false);
+  const notificationPanelRef = useRef<HTMLDivElement>(null);
   const [releasedModuleIds, setReleasedModuleIds] =
     useState<Set<string> | null>(null);
   const { hubUser, profileStatus, signOut } = useAuth();
@@ -118,6 +121,12 @@ export function HubShell({
   const activeModule = orderedHubModules.find((hubModule) =>
     pathname.startsWith(hubModule.basePath),
   );
+
+  useOutsideDismiss({
+    enabled: isNotificationPanelOpen,
+    onDismiss: () => setIsNotificationPanelOpen(false),
+    ref: notificationPanelRef,
+  });
   const visibleHubModules = orderedHubModules.filter((hubModule) => {
     if (!isVisibleInCurrentEnvironment(hubModule.id)) {
       return false;
@@ -477,7 +486,7 @@ export function HubShell({
             <Topbar
               actions={
                 <ActionGroup align="end">
-                  <div className="relative">
+                  <div className="relative" ref={notificationPanelRef}>
                     <Tooltip content="Notificacoes">
                       <button
                         aria-expanded={isNotificationPanelOpen}
@@ -706,6 +715,7 @@ export function HubShell({
         open={isCommandPaletteOpen}
         title="Comandos do Hub"
       />
+      <HubSupportDock />
     </>
   );
 }
@@ -722,9 +732,16 @@ function HubPresenceControl({
   status: HubPresenceStatus;
 }) {
   const tone = getPresenceTone(status);
+  const controlRef = useRef<HTMLDivElement>(null);
+
+  useOutsideDismiss({
+    enabled: open,
+    onDismiss: () => onOpenChange(false),
+    ref: controlRef,
+  });
 
   return (
-    <div className="relative">
+    <div className="relative" ref={controlRef}>
       <button
         aria-expanded={open}
         aria-label="Alterar status de presenca"

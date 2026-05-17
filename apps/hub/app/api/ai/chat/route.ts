@@ -240,11 +240,12 @@ async function enrichHubAiPayload(
 
 async function buildGuardianDatabaseContext(context: unknown) {
   try {
-    const clients = await loadGuardianAttendanceQueueReadModel({
+    const queueContext = await loadGuardianAttendanceQueueReadModel({
       limit: GUARDIAN_AI_DATABASE_CONTEXT_LIMIT,
     });
+    const clients = queueContext?.clients ?? [];
 
-    if (!clients?.length) {
+    if (!clients.length) {
       return {
         aviso:
           "Nao foi possivel carregar o read-model do Guardian para contexto geral do banco.",

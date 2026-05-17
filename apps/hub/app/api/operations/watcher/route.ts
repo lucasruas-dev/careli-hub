@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 
 import { collectOperationsDataSources } from "@/lib/operations/data-sources";
+import { syncOperationAlertProtocols } from "@/lib/operations/alert-protocols";
 import {
   buildOperationsMonitoringSnapshot,
   buildOpsWatcherDecision,
@@ -43,15 +44,28 @@ async function createWatcherResponse(
         origin: new URL(request.url).origin,
       }),
     );
-  const watcher = buildOpsWatcherDecision(snapshot);
+  const protocolSync = inputSnapshot
+    ? null
+    : await syncOperationAlertProtocols(snapshot.alerts, authorization.userId);
+  const snapshotWithProtocols = protocolSync
+    ? {
+        ...snapshot,
+        alertProtocols: protocolSync.protocols,
+        alerts: protocolSync.alerts,
+        protocolSyncStatus: protocolSync.status,
+      }
+    : snapshot;
+  const watcher = buildOpsWatcherDecision(snapshotWithProtocols);
 
   return Response.json(
     {
       snapshot: {
-        alerts: snapshot.alerts,
-        generatedAt: snapshot.generatedAt,
-        metrics: snapshot.metrics,
-        status: snapshot.cards.status,
+        alertProtocols: snapshotWithProtocols.alertProtocols,
+        alerts: snapshotWithProtocols.alerts,
+        generatedAt: snapshotWithProtocols.generatedAt,
+        metrics: snapshotWithProtocols.metrics,
+        protocolSyncStatus: snapshotWithProtocols.protocolSyncStatus,
+        status: snapshotWithProtocols.cards.status,
       },
       watcher,
     },

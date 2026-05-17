@@ -56,7 +56,7 @@ type AttendanceQueueRow = {
   enterprise_name: string | null;
   id: string;
   linked_party_name: string | null;
-  metadata: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
   overdue_amount: number | string | null;
   overdue_days: number | string | null;
   overdue_payments: number | string | null;
@@ -69,8 +69,37 @@ type AttendanceQueueRow = {
 };
 
 type AttendanceQueueReadModelOptions = {
+  includeMetadata?: boolean;
   limit?: number;
 };
+
+type AttendanceQueueReadModelResult = {
+  clients: QueueClient[];
+  count: number | null;
+};
+
+const ATTENDANCE_QUEUE_BASE_SELECT = `
+  id,
+  client_c2x_id,
+  client_name,
+  document,
+  enterprise_name,
+  linked_party_name,
+  overdue_amount,
+  overdue_days,
+  overdue_payments,
+  phone,
+  priority,
+  risk_score,
+  synced_at,
+  unit_label,
+  workflow_status
+`;
+
+const ATTENDANCE_QUEUE_DETAIL_SELECT = `
+  ${ATTENDANCE_QUEUE_BASE_SELECT},
+  metadata
+`;
 
 export async function loadGuardianOverviewReadModel(): Promise<GuardianOverviewSnapshot | null> {
   const adminClient = createSupabaseAdminClient();
@@ -113,7 +142,8 @@ export async function loadGuardianOverviewReadModel(): Promise<GuardianOverviewS
   return {
     billingComposition: mapDistributionRows(compositionResult.data ?? []),
     enterprisePerformance: mapEnterpriseRows(enterpriseResult.data ?? []),
-    generatedAt: snapshot.snapshot_at ?? snapshot.created_at ?? new Date().toISOString(),
+    generatedAt:
+      snapshot.snapshot_at ?? snapshot.created_at ?? new Date().toISOString(),
     overdueAging: mapDistributionRows(agingResult.data ?? []),
     overduePayments: [],
     paymentStatuses: [],
@@ -147,9 +177,7 @@ export async function loadGuardianOverviewReadModel(): Promise<GuardianOverviewS
 
 export async function loadGuardianAttendanceQueueReadModel(
   options: AttendanceQueueReadModelOptions = {},
-): Promise<
-  QueueClient[] | null
-> {
+): Promise<AttendanceQueueReadModelResult | null> {
   const adminClient = createSupabaseAdminClient();
 
   if (!adminClient) {
@@ -157,9 +185,15 @@ export async function loadGuardianAttendanceQueueReadModel(
   }
 
   const limit = normalizeQueueLimit(options.limit);
+  const includeMetadata = options.includeMetadata === true;
   let query = adminClient
     .from("c2x_guardian_attendance_queue")
-    .select("*")
+    .select(
+      includeMetadata
+        ? ATTENDANCE_QUEUE_DETAIL_SELECT
+        : ATTENDANCE_QUEUE_BASE_SELECT,
+      { count: "exact" },
+    )
     .eq("is_current", true)
     .order("overdue_payments", { ascending: false })
     .order("overdue_days", { ascending: false })
@@ -169,32 +203,18 @@ export async function loadGuardianAttendanceQueueReadModel(
     query = query.limit(limit);
   }
 
-  const { data, error } = await query.returns<AttendanceQueueRow[]>();
+  const { count, data, error } = await query.returns<AttendanceQueueRow[]>();
 
   if (error || !data?.length) {
     return null;
   }
 
-  return data.map(mapAttendanceQueueRow);
-}
-
-export async function countGuardianAttendanceQueueReadModel(): Promise<number | null> {
-  const adminClient = createSupabaseAdminClient();
-
-  if (!adminClient) {
-    return null;
-  }
-
-  const { count, error } = await adminClient
-    .from("c2x_guardian_attendance_queue")
-    .select("id", { count: "exact", head: true })
-    .eq("is_current", true);
-
-  if (error) {
-    return null;
-  }
-
-  return count ?? null;
+  return {
+    clients: data.map((row) =>
+      mapAttendanceQueueRow(row, { compact: !includeMetadata }),
+    ),
+    count: count ?? null,
+  };
 }
 
 function mapEnterpriseRows(
@@ -213,16 +233,24 @@ function mapEnterpriseRows(
   }));
 }
 
-function mapDistributionRows(rows: DistributionRow[]): GuardianDistributionBucket[] {
+function mapDistributionRows(
+  rows: DistributionRow[],
+): GuardianDistributionBucket[] {
   return [...rows]
-    .sort((first, second) => toNumber(first.sort_order) - toNumber(second.sort_order))
+    .sort(
+      (first, second) =>
+        toNumber(first.sort_order) - toNumber(second.sort_order),
+    )
     .map((row) => ({
       label: row.label,
       total: toNumber(row.payments),
     }));
 }
 
-function mapAttendanceQueueRow(row: AttendanceQueueRow): QueueClient {
+function mapAttendanceQueueRow(
+  row: AttendanceQueueRow,
+  options: { compact: boolean },
+): QueueClient {
   const clientName = row.client_name?.trim() || "Cliente C2X";
   const enterpriseName = row.enterprise_name?.trim() || "Empreendimento";
   const unitLabel = row.unit_label?.trim() || "Unidade vinculada";
@@ -231,16 +259,20 @@ function mapAttendanceQueueRow(row: AttendanceQueueRow): QueueClient {
   const overdueAmount = toNumber(row.overdue_amount);
   const overduePayments = toNumber(row.overdue_payments);
   const overdueDays = toNumber(row.overdue_days);
-  const riskScore = Math.min(Math.max(Math.round(toNumber(row.risk_score)), 0), 100);
+  const riskScore = Math.min(
+    Math.max(Math.round(toNumber(row.risk_score)), 0),
+    100,
+  );
   const priority = mapGuardianPriority(row.priority);
   const workflowStage = mapWorkflowStage(row.workflow_status);
   const nextAction = nextActionForStage(workflowStage, priority);
   const rowId = String(row.client_c2x_id ?? row.id);
-  const unitIds = metadataStringArray(row.metadata, "unitIds");
+  const metadata = options.compact ? null : (row.metadata ?? null);
+  const unitIds = metadataStringArray(metadata, "unitIds");
   const unitId = unitIds[0] ?? `c2x-unit-${rowId}`;
-  const metadataUnits = metadataRecordArray(row.metadata, "units");
+  const metadataUnits = metadataRecordArray(metadata, "units");
   const phone = row.phone?.trim() || "Sem telefone";
-  const dados360Metadata = metadataRecord(row.metadata, "dados360");
+  const dados360Metadata = metadataRecord(metadata, "dados360");
   const conjugeMetadata = metadataRecord(dados360Metadata, "conjugeDados");
   const fallbackUnit = {
     area: "-",
@@ -258,15 +290,34 @@ function mapAttendanceQueueRow(row: AttendanceQueueRow): QueueClient {
     metadataUnits.length > 0
       ? metadataUnits.map((unit, index) => ({
           area: metadataString(unit, "area", fallbackUnit.area),
-          empreendimento: metadataString(unit, "empreendimento", enterpriseName),
-          id: metadataString(unit, "id", unitIds[index] ?? `c2x-unit-${rowId}-${index + 1}`),
-          imobiliariaCorretor: metadataString(unit, "imobiliariaCorretor", linkedPartyName),
+          empreendimento: metadataString(
+            unit,
+            "empreendimento",
+            enterpriseName,
+          ),
+          id: metadataString(
+            unit,
+            "id",
+            unitIds[index] ?? `c2x-unit-${rowId}-${index + 1}`,
+          ),
+          imobiliariaCorretor: metadataString(
+            unit,
+            "imobiliariaCorretor",
+            linkedPartyName,
+          ),
           lote: metadataString(unit, "lote", fallbackUnit.lote),
-          matricula: metadataString(unit, "matricula", metadataString(unit, "unidadeLote", unitLabel)),
+          matricula: metadataString(
+            unit,
+            "matricula",
+            metadataString(unit, "unidadeLote", unitLabel),
+          ),
           quadra: metadataString(unit, "quadra", fallbackUnit.quadra),
-          signedContractDocumentId: metadataString(unit, "signedContractDocumentId", "") || undefined,
-          signedContractStatus: metadataString(unit, "signedContractStatus", "") || undefined,
-          signedContractUrl: metadataString(unit, "signedContractUrl", "") || undefined,
+          signedContractDocumentId:
+            metadataString(unit, "signedContractDocumentId", "") || undefined,
+          signedContractStatus:
+            metadataString(unit, "signedContractStatus", "") || undefined,
+          signedContractUrl:
+            metadataString(unit, "signedContractUrl", "") || undefined,
           statusVenda: metadataString(unit, "statusVenda", "Contrato ativo"),
           unidadeLote: metadataString(unit, "unidadeLote", unitLabel),
           valorTabela: metadataString(unit, "valorTabela", "-"),
@@ -294,80 +345,168 @@ function mapAttendanceQueueRow(row: AttendanceQueueRow): QueueClient {
     c2xInstallmentsLoaded: false,
     commitments: [],
     cpf: row.document?.trim() || "Nao informado",
-    dados360: {
-      bairro: metadataString(dados360Metadata, "bairro", "Nao informado"),
-      cep: metadataString(dados360Metadata, "cep", "Nao informado"),
-      cidade: metadataString(dados360Metadata, "cidade", "Nao informado"),
-      complementoEndereco: metadataString(dados360Metadata, "complementoEndereco", "Nao informado"),
-      conjuge: metadataString(dados360Metadata, "conjuge", "Nao informado"),
-      conjugeDados: {
-        cpf: metadataString(conjugeMetadata, "cpf", metadataString(dados360Metadata, "cpfConjuge", "Nao informado")),
-        documentoIdentidade: metadataString(conjugeMetadata, "documentoIdentidade", "Nao informado"),
-        email: metadataString(conjugeMetadata, "email", "Nao informado"),
-        endereco: metadataString(conjugeMetadata, "endereco", "Nao informado"),
-        idade: metadataString(conjugeMetadata, "idade", "Nao informado"),
-        nacionalidade: metadataString(conjugeMetadata, "nacionalidade", "Nao informado"),
-        nascimento: metadataString(conjugeMetadata, "nascimento", "Nao informado"),
-        naturalidade: metadataString(conjugeMetadata, "naturalidade", "Nao informado"),
-        nome: metadataString(conjugeMetadata, "nome", metadataString(dados360Metadata, "conjuge", "Nao informado")),
-        profissao: metadataString(conjugeMetadata, "profissao", "Nao informado"),
-        sexo: metadataString(conjugeMetadata, "sexo", "Nao informado"),
-        telefone: metadataString(conjugeMetadata, "telefone", "Nao informado"),
-      },
-      cpfConjuge: metadataString(dados360Metadata, "cpfConjuge", "Nao informado"),
-      documentoIdentidade: metadataString(dados360Metadata, "documentoIdentidade", "Nao informado"),
-      email: metadataString(dados360Metadata, "email", "Nao informado"),
-      endereco: metadataString(dados360Metadata, "endereco", "Nao informado"),
-      escolaridade: metadataString(dados360Metadata, "escolaridade", "Nao informado"),
-      estadoCivil: metadataString(dados360Metadata, "estadoCivil", "Nao informado"),
-      faixaSalarial: metadataString(dados360Metadata, "faixaSalarial", "Nao informado"),
-      idade: metadataString(dados360Metadata, "idade", "Nao informado"),
-      nacionalidade: metadataString(dados360Metadata, "nacionalidade", "Brasileira"),
-      nascimento: metadataString(dados360Metadata, "nascimento", "Nao informado"),
-      naturalidade: metadataString(dados360Metadata, "naturalidade", "Nao informado"),
-      nomeFantasia: metadataString(dados360Metadata, "nomeFantasia", "Nao informado"),
-      nomeMae: metadataString(dados360Metadata, "nomeMae", "Nao informado"),
-      numeroEndereco: metadataString(dados360Metadata, "numeroEndereco", "Nao informado"),
-      profissao: metadataString(dados360Metadata, "profissao", "Nao informado"),
-      razaoSocial: metadataString(dados360Metadata, "razaoSocial", "Nao informado"),
-      regimeBens: metadataString(dados360Metadata, "regimeBens", "Nao informado"),
-      relacionamento: metadataString(row.metadata, "relationship", "Cliente C2X"),
-      rg: metadataString(dados360Metadata, "rg", "Nao informado"),
-      sexo: metadataString(dados360Metadata, "sexo", "Nao informado"),
-      telefone: metadataString(dados360Metadata, "telefone", phone),
-      tipoPessoa: metadataString(dados360Metadata, "tipoPessoa", "Fisica"),
-    },
+    dados360: options.compact
+      ? buildCompactDados360(phone)
+      : buildQueueDados360(metadata, dados360Metadata, conjugeMetadata, phone),
     id: `c2x-client-${rowId}`,
     nome: clientName,
     parcelas: {
       abertas: overduePayments,
       proximaAcao: nextAction,
       ultimaParcela:
-        overduePayments > 0 ? toMoney(overdueAmount / overduePayments) : toMoney(0),
+        overduePayments > 0
+          ? toMoney(overdueAmount / overduePayments)
+          : toMoney(0),
       vencidas: overduePayments,
     },
     prioridade: priority,
     responsavel: "Sistema Guardian",
     saldoDevedor: toMoney(overdueAmount),
     scoreRisco: riskScore,
-    segmento: metadataString(row.metadata, "segment", "Cliente C2X"),
+    segmento: metadataString(metadata, "segment", "Cliente C2X"),
     timeline: [],
     workflow: {
-      history: [
-        {
-          changedAt: formatSyncedAt(row.synced_at),
-          from: "Entrada",
-          id: `c2x-workflow-${row.id}`,
-          operator: "Sistema Guardian",
-          reason: `${overduePayments} parcela(s) vencida(s) importada(s) do C2X para a fila operacional.`,
-          to: workflowStage,
-        },
-      ],
+      history: options.compact
+        ? []
+        : [
+            {
+              changedAt: formatSyncedAt(row.synced_at),
+              from: "Entrada",
+              id: `c2x-workflow-${row.id}`,
+              operator: "Sistema Guardian",
+              reason: `${overduePayments} parcela(s) vencida(s) importada(s) do C2X para a fila operacional.`,
+              to: workflowStage,
+            },
+          ],
       nextAction,
       owner: "Sistema Guardian",
       stage: workflowStage,
       updatedAt: formatSyncedAt(row.synced_at),
     },
+  };
+}
+
+function buildCompactDados360(phone: string): QueueClient["dados360"] {
+  return {
+    conjugeDados: {},
+    relacionamento: "Cliente C2X",
+    telefone: phone,
+    tipoPessoa: "Fisica",
+  } as QueueClient["dados360"];
+}
+
+function buildQueueDados360(
+  metadata: Record<string, unknown> | null,
+  dados360Metadata: Record<string, unknown> | null,
+  conjugeMetadata: Record<string, unknown> | null,
+  phone: string,
+): QueueClient["dados360"] {
+  return {
+    bairro: metadataString(dados360Metadata, "bairro", "Nao informado"),
+    cep: metadataString(dados360Metadata, "cep", "Nao informado"),
+    cidade: metadataString(dados360Metadata, "cidade", "Nao informado"),
+    complementoEndereco: metadataString(
+      dados360Metadata,
+      "complementoEndereco",
+      "Nao informado",
+    ),
+    conjuge: metadataString(dados360Metadata, "conjuge", "Nao informado"),
+    conjugeDados: {
+      cpf: metadataString(
+        conjugeMetadata,
+        "cpf",
+        metadataString(dados360Metadata, "cpfConjuge", "Nao informado"),
+      ),
+      documentoIdentidade: metadataString(
+        conjugeMetadata,
+        "documentoIdentidade",
+        "Nao informado",
+      ),
+      email: metadataString(conjugeMetadata, "email", "Nao informado"),
+      endereco: metadataString(conjugeMetadata, "endereco", "Nao informado"),
+      idade: metadataString(conjugeMetadata, "idade", "Nao informado"),
+      nacionalidade: metadataString(
+        conjugeMetadata,
+        "nacionalidade",
+        "Nao informado",
+      ),
+      nascimento: metadataString(
+        conjugeMetadata,
+        "nascimento",
+        "Nao informado",
+      ),
+      naturalidade: metadataString(
+        conjugeMetadata,
+        "naturalidade",
+        "Nao informado",
+      ),
+      nome: metadataString(
+        conjugeMetadata,
+        "nome",
+        metadataString(dados360Metadata, "conjuge", "Nao informado"),
+      ),
+      profissao: metadataString(conjugeMetadata, "profissao", "Nao informado"),
+      sexo: metadataString(conjugeMetadata, "sexo", "Nao informado"),
+      telefone: metadataString(conjugeMetadata, "telefone", "Nao informado"),
+    },
+    cpfConjuge: metadataString(dados360Metadata, "cpfConjuge", "Nao informado"),
+    documentoIdentidade: metadataString(
+      dados360Metadata,
+      "documentoIdentidade",
+      "Nao informado",
+    ),
+    email: metadataString(dados360Metadata, "email", "Nao informado"),
+    endereco: metadataString(dados360Metadata, "endereco", "Nao informado"),
+    escolaridade: metadataString(
+      dados360Metadata,
+      "escolaridade",
+      "Nao informado",
+    ),
+    estadoCivil: metadataString(
+      dados360Metadata,
+      "estadoCivil",
+      "Nao informado",
+    ),
+    faixaSalarial: metadataString(
+      dados360Metadata,
+      "faixaSalarial",
+      "Nao informado",
+    ),
+    idade: metadataString(dados360Metadata, "idade", "Nao informado"),
+    nacionalidade: metadataString(
+      dados360Metadata,
+      "nacionalidade",
+      "Brasileira",
+    ),
+    nascimento: metadataString(dados360Metadata, "nascimento", "Nao informado"),
+    naturalidade: metadataString(
+      dados360Metadata,
+      "naturalidade",
+      "Nao informado",
+    ),
+    nomeFantasia: metadataString(
+      dados360Metadata,
+      "nomeFantasia",
+      "Nao informado",
+    ),
+    nomeMae: metadataString(dados360Metadata, "nomeMae", "Nao informado"),
+    numeroEndereco: metadataString(
+      dados360Metadata,
+      "numeroEndereco",
+      "Nao informado",
+    ),
+    profissao: metadataString(dados360Metadata, "profissao", "Nao informado"),
+    razaoSocial: metadataString(
+      dados360Metadata,
+      "razaoSocial",
+      "Nao informado",
+    ),
+    regimeBens: metadataString(dados360Metadata, "regimeBens", "Nao informado"),
+    relacionamento: metadataString(metadata, "relationship", "Cliente C2X"),
+    rg: metadataString(dados360Metadata, "rg", "Nao informado"),
+    sexo: metadataString(dados360Metadata, "sexo", "Nao informado"),
+    telefone: metadataString(dados360Metadata, "telefone", phone),
+    tipoPessoa: metadataString(dados360Metadata, "tipoPessoa", "Fisica"),
   };
 }
 
@@ -422,7 +561,10 @@ function mapWorkflowStage(value: string | null): WorkflowStage {
     : "Primeiro contato";
 }
 
-function nextActionForStage(stage: WorkflowStage, priority: AttendancePriority) {
+function nextActionForStage(
+  stage: WorkflowStage,
+  priority: AttendancePriority,
+) {
   if (stage === "Jurídico") {
     return "Validar documentação e manter trilha amigável.";
   }
@@ -499,7 +641,9 @@ function buildEmptyAgreement(input: {
   };
 }
 
-function agreementRiskFromPriority(priority: AttendancePriority): AgreementRisk {
+function agreementRiskFromPriority(
+  priority: AttendancePriority,
+): AgreementRisk {
   if (priority === "Crítica") {
     return "Crítico";
   }
@@ -535,7 +679,10 @@ function metadataRecord(metadata: Record<string, unknown> | null, key: string) {
   return value as Record<string, unknown>;
 }
 
-function metadataStringArray(metadata: Record<string, unknown> | null, key: string) {
+function metadataStringArray(
+  metadata: Record<string, unknown> | null,
+  key: string,
+) {
   const value = metadata?.[key];
 
   if (!Array.isArray(value)) {
@@ -547,7 +694,10 @@ function metadataStringArray(metadata: Record<string, unknown> | null, key: stri
     .filter(Boolean);
 }
 
-function metadataRecordArray(metadata: Record<string, unknown> | null, key: string) {
+function metadataRecordArray(
+  metadata: Record<string, unknown> | null,
+  key: string,
+) {
   const value = metadata?.[key];
 
   if (!Array.isArray(value)) {

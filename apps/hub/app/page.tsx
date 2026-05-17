@@ -12,6 +12,7 @@ import {
   type HubHomeSnapshot,
   type HubHomeUser,
 } from "@/lib/hub-home";
+import { HubUserTicketsPanel } from "@/components/hub-support/hub-user-tickets-panel";
 import {
   hubImprovements,
   type HubImprovement,
@@ -74,6 +75,9 @@ const operationStatusStyle = {
 
 export default function HomePage() {
   const { hubUser } = useAuth();
+  const [activeHomeTab, setActiveHomeTab] = useState<"overview" | "tickets">(
+    "overview",
+  );
   const [snapshot, setSnapshot] = useState<HubHomeSnapshot | null>(null);
   const [homeError, setHomeError] = useState<string | null>(null);
   const displayName = getFirstName(hubUser?.name ?? "Operacao");
@@ -155,105 +159,153 @@ export default function HomePage() {
           </Surface>
         ) : null}
 
-        <section className="grid grid-cols-6 gap-3">
-          <PulseMetric icon={<CalendarCheck2 size={18} />} label="reunioes" value={meetingCount} />
-          <PulseMetric icon={<ListChecks size={18} />} label="tasks" value={taskCount} />
-          <PulseMetric icon={<MessageSquareText size={18} />} label="mensagens hoje" value={messagesTodayCount} />
-          <PulseMetric icon={<Bell size={18} />} label="notificacoes" value={unreadNotificationsCount} />
-          <PulseMetric icon={<Users size={18} />} label="usuarios ativos" value={peopleCount} />
-          <PulseMetric icon={<TimerReset size={18} />} label="modulos ativos" value={availableModules.length} />
-        </section>
+        <HomeTabs
+          activeTab={activeHomeTab}
+          onTabChange={setActiveHomeTab}
+        />
 
-        <section className="grid grid-cols-[minmax(0,1fr)_minmax(22rem,0.78fr)] gap-5">
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <PanelTitle
-                eyebrow={isAdmin ? "Central adm" : "Mapa operacional"}
-                title="Ritmo da equipe"
-              />
-              <Badge variant="info">ausente apos 10 min</Badge>
-            </div>
-            <div className="mt-4 grid grid-cols-5 gap-2">
-              <StatusPill label="online" value={onlineCount} variant="online" />
-              <StatusPill label="ausentes" value={awayCount} variant="away" />
-              <StatusPill label="almoco" value={lunchCount} variant="lunch" />
-              <StatusPill label="reuniao" value={meetingCount} variant="meeting" />
-              <StatusPill label="offline" value={offlineCount} variant="offline" />
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {teamMembers.map((member) => (
-                <article
-                  className="grid min-h-20 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
-                  key={member.id}
-                >
-                  <TeamAvatar member={member} />
-                  <div className="min-w-0">
-                    <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
-                      {member.name}
-                    </p>
-                    <p className="m-0 mt-1 truncate text-xs text-[#667085]">
-                      {member.scopeLabel} / {member.lastSignal}
-                    </p>
-                  </div>
-                  <span
-                    className={`rounded-full border px-2 py-1 text-xs font-semibold ${operationStatusStyle[member.status]}`}
-                  >
-                    {operationStatusLabel[member.status]}
-                  </span>
-                </article>
-              ))}
-              {teamMembers.length === 0 ? (
-                <div className="col-span-2 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
-                  Nenhum usuario ativo encontrado no Supabase.
+        {activeHomeTab === "tickets" ? (
+          <HubUserTicketsPanel title="Meus tickets TI" />
+        ) : (
+          <>
+            <section className="grid grid-cols-6 gap-3">
+              <PulseMetric icon={<CalendarCheck2 size={18} />} label="reunioes" value={meetingCount} />
+              <PulseMetric icon={<ListChecks size={18} />} label="tasks" value={taskCount} />
+              <PulseMetric icon={<MessageSquareText size={18} />} label="mensagens hoje" value={messagesTodayCount} />
+              <PulseMetric icon={<Bell size={18} />} label="notificacoes" value={unreadNotificationsCount} />
+              <PulseMetric icon={<Users size={18} />} label="usuarios ativos" value={peopleCount} />
+              <PulseMetric icon={<TimerReset size={18} />} label="modulos ativos" value={availableModules.length} />
+            </section>
+
+            <section className="grid grid-cols-[minmax(0,1fr)_minmax(22rem,0.78fr)] gap-5">
+              <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <PanelTitle
+                    eyebrow={isAdmin ? "Central adm" : "Mapa operacional"}
+                    title="Ritmo da equipe"
+                  />
+                  <Badge variant="info">ausente apos 10 min</Badge>
                 </div>
-              ) : null}
-            </div>
-          </Surface>
+                <div className="mt-4 grid grid-cols-5 gap-2">
+                  <StatusPill label="online" value={onlineCount} variant="online" />
+                  <StatusPill label="ausentes" value={awayCount} variant="away" />
+                  <StatusPill label="almoco" value={lunchCount} variant="lunch" />
+                  <StatusPill label="reuniao" value={meetingCount} variant="meeting" />
+                  <StatusPill label="offline" value={offlineCount} variant="offline" />
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  {teamMembers.map((member) => (
+                    <article
+                      className="grid min-h-20 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
+                      key={member.id}
+                    >
+                      <TeamAvatar member={member} />
+                      <div className="min-w-0">
+                        <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
+                          {member.name}
+                        </p>
+                        <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+                          {member.scopeLabel} / {member.lastSignal}
+                        </p>
+                      </div>
+                      <span
+                        className={`rounded-full border px-2 py-1 text-xs font-semibold ${operationStatusStyle[member.status]}`}
+                      >
+                        {operationStatusLabel[member.status]}
+                      </span>
+                    </article>
+                  ))}
+                  {teamMembers.length === 0 ? (
+                    <div className="col-span-2 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
+                      Nenhum usuario ativo encontrado no Supabase.
+                    </div>
+                  ) : null}
+                </div>
+              </Surface>
 
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)]">
-            <PanelTitle
-              eyebrow="Rotina"
-              title="Agenda e tarefas"
-            />
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              <DayMetric label="reunioes agora" value={meetingCount} />
-              <DayMetric label="tasks do dia" value={taskCount} note="em breve" />
-              <DayMetric label="mensagens PulseX" value={messagesTodayCount} />
-            </div>
-            <div className="mt-4 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4">
-              <p className="m-0 text-sm font-semibold text-[#101820]">
-                Task ainda nao implantado
-              </p>
-              <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
-                Quando o modulo Task entrar, este painel passa a mostrar
-                vencidas, pendentes, concluidas e responsaveis com dados reais.
-              </p>
-            </div>
-          </Surface>
-        </section>
-
-        <section className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1fr)] gap-5">
-          <PresenceTodayPanel />
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <PanelTitle
-                eyebrow="Produto"
-                title="Novidades do Hub"
-              />
-              <Badge variant="info">registro Codex</Badge>
-            </div>
-            <div className="mt-4 grid gap-3">
-              {hubImprovements.map((improvement) => (
-                <ImprovementCard
-                  improvement={improvement}
-                  key={improvement.id}
+              <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)]">
+                <PanelTitle
+                  eyebrow="Rotina"
+                  title="Agenda e tarefas"
                 />
-              ))}
-            </div>
-          </Surface>
-        </section>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <DayMetric label="reunioes agora" value={meetingCount} />
+                  <DayMetric label="tasks do dia" value={taskCount} note="em breve" />
+                  <DayMetric label="mensagens PulseX" value={messagesTodayCount} />
+                </div>
+                <div className="mt-4 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4">
+                  <p className="m-0 text-sm font-semibold text-[#101820]">
+                    Task ainda nao implantado
+                  </p>
+                  <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
+                    Quando o modulo Task entrar, este painel passa a mostrar
+                    vencidas, pendentes, concluidas e responsaveis com dados reais.
+                  </p>
+                </div>
+              </Surface>
+            </section>
+
+            <section className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1fr)] gap-5">
+              <PresenceTodayPanel />
+              <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)]">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <PanelTitle
+                    eyebrow="Produto"
+                    title="Novidades do Hub"
+                  />
+                  <Badge variant="info">registro Codex</Badge>
+                </div>
+                <div className="mt-4 grid gap-3">
+                  {hubImprovements.map((improvement) => (
+                    <ImprovementCard
+                      improvement={improvement}
+                      key={improvement.id}
+                    />
+                  ))}
+                </div>
+              </Surface>
+            </section>
+          </>
+        )}
       </WorkspaceLayout>
     </HubShell>
+  );
+}
+
+function HomeTabs({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: "overview" | "tickets";
+  onTabChange: (tab: "overview" | "tickets") => void;
+}) {
+  return (
+    <nav className="inline-grid w-fit grid-cols-2 rounded-lg border border-[#d9e0e7] bg-white p-1 shadow-[0_8px_22px_rgb(16_24_32_/_0.05)]">
+      <button
+        aria-pressed={activeTab === "overview"}
+        className={`h-9 rounded-md px-4 text-sm font-semibold transition ${
+          activeTab === "overview"
+            ? "bg-[#101820] text-white"
+            : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
+        }`}
+        onClick={() => onTabChange("overview")}
+        type="button"
+      >
+        Principal
+      </button>
+      <button
+        aria-pressed={activeTab === "tickets"}
+        className={`h-9 rounded-md px-4 text-sm font-semibold transition ${
+          activeTab === "tickets"
+            ? "bg-[#101820] text-white"
+            : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
+        }`}
+        onClick={() => onTabChange("tickets")}
+        type="button"
+      >
+        Ticket TI
+      </button>
+    </nav>
   );
 }
 

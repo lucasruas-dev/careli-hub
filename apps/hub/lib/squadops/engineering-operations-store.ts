@@ -163,13 +163,26 @@ export type StructuredEngineeringOperation = {
   createdAt: string;
   deploy: string | null;
   healthchecks: string | null;
+  how: string | null;
   id: string;
+  isCritical: boolean;
+  isModuleImprovement: boolean;
+  isRelease: boolean;
+  isSupportInvestigation: boolean;
+  lineStart: number;
   localDateTime: string | null;
   localOccurredAt: string | null;
+  logic: string | null;
+  macroSummary: string | null;
   module: string;
   nextSquad: string | null;
   protocol: string;
+  rawContent: string;
+  reason: string | null;
+  risks: string | null;
+  routine: string | null;
   screen: string;
+  shortSummary: string | null;
   sourceIndex: number;
   sourcePath: string;
   squad: string;
@@ -590,6 +603,8 @@ async function insertSyncRun(
 function mapStructuredRecordRow(
   row: StructuredRecordRow,
 ): StructuredEngineeringOperation {
+  const metadata = row.metadata ?? {};
+
   return {
     affectedFiles: row.affected_files,
     changeCategory: row.change_category,
@@ -597,13 +612,26 @@ function mapStructuredRecordRow(
     createdAt: row.created_at,
     deploy: row.deployment,
     healthchecks: row.healthchecks,
+    how: row.how,
     id: row.id,
+    isCritical: getMetadataBoolean(metadata, "isCritical"),
+    isModuleImprovement: getMetadataBoolean(metadata, "isModuleImprovement"),
+    isRelease: getMetadataBoolean(metadata, "isRelease"),
+    isSupportInvestigation: getMetadataBoolean(metadata, "isSupportInvestigation"),
+    lineStart: row.line_start,
     localDateTime: row.local_date_time,
     localOccurredAt: row.local_occurred_at,
+    logic: row.logic,
+    macroSummary: row.macro_summary,
     module: row.module,
     nextSquad: row.next_squad,
     protocol: row.protocol,
+    rawContent: row.raw_content,
+    reason: row.reason,
+    risks: row.risks,
+    routine: getMetadataText(metadata, "routine"),
     screen: row.screen,
+    shortSummary: getMetadataText(metadata, "shortSummary"),
     sourceIndex: row.source_index,
     sourcePath: row.source_path,
     squad: row.squad,
@@ -613,6 +641,19 @@ function mapStructuredRecordRow(
     updatedAt: row.updated_at,
     validation: row.validation,
   };
+}
+
+function getMetadataBoolean(
+  metadata: Record<string, unknown>,
+  key: string,
+) {
+  return metadata[key] === true;
+}
+
+function getMetadataText(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function buildSourceKey(sourcePath: string, record: EngineeringOperationRecord) {

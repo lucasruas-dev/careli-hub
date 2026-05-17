@@ -12,6 +12,7 @@ import {
   getPulseXShortcutCounts,
   type PulseXShortcutFilter,
 } from "@/lib/pulsex/shortcuts";
+import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { Tooltip } from "@repo/uix";
 import {
   AtSign,
@@ -30,7 +31,7 @@ import {
   Zap,
   Users,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ConversationList } from "./conversation-list";
 
 type ConversationSidebarProps = {
@@ -90,6 +91,8 @@ export function ConversationSidebar({
   >({});
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  const shortcutsRef = useRef<HTMLDivElement>(null);
   const shortcutCounts = getPulseXShortcutCounts({
     channels,
     currentUserId,
@@ -103,6 +106,17 @@ export function ConversationSidebar({
   const activeFilterLabel =
     messageFilters.find((filter) => filter.id === activeMessageFilter)?.label ??
     "Todas";
+
+  useOutsideDismiss({
+    enabled: isFilterOpen,
+    onDismiss: () => setIsFilterOpen(false),
+    ref: filtersRef,
+  });
+  useOutsideDismiss({
+    enabled: isShortcutsOpen,
+    onDismiss: () => setIsShortcutsOpen(false),
+    ref: shortcutsRef,
+  });
 
   const shortcutChannels = getPulseXShortcutChannels({
     channels,
@@ -209,7 +223,7 @@ export function ConversationSidebar({
                 />
               </span>
             </label>
-            <div className="relative mt-2">
+            <div className="relative mt-2" ref={filtersRef}>
               <button
                 aria-expanded={isFilterOpen}
                 className="flex h-8 w-full items-center justify-between rounded-md px-2 text-sm text-[#c9d1dc] outline-none transition hover:bg-white/[0.065] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
@@ -265,7 +279,7 @@ export function ConversationSidebar({
                 </div>
               ) : null}
             </div>
-            <div className="mt-2">
+            <div className="mt-2" ref={shortcutsRef}>
               <button
                 aria-controls="pulsex-shortcuts-panel"
                 aria-expanded={isShortcutsOpen}

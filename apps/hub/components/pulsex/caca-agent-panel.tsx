@@ -1,11 +1,13 @@
 "use client";
 
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { HubTicketOpenForm } from "@/components/hub-support/hub-ticket-open-form";
 import {
   Brain,
   BotMessageSquare,
+  Bug,
   ClipboardList,
   Leaf,
   ListChecks,
@@ -88,6 +90,7 @@ type CacaChatMessage = {
 };
 
 type CacaToneId = (typeof cacaToneOptions)[number]["id"];
+type CacaAgentTab = "agent" | "ticket";
 
 type CacaAgentPanelProps = {
   channel: PulseXChannel;
@@ -121,6 +124,8 @@ export function CacaAgentPanel({
   const hasFocusedMessage = Boolean(focusedMessage);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [activeAgentTab, setActiveAgentTab] =
+    useState<CacaAgentTab>("agent");
   const [selectedToneId, setSelectedToneId] = useState<CacaToneId>(
     DEFAULT_CACA_TONE_ID,
   );
@@ -285,6 +290,27 @@ export function CacaAgentPanel({
         </button>
       </header>
 
+      <nav className="grid shrink-0 grid-cols-2 gap-1 border-b border-[#eef2f7] bg-white p-2">
+        <AgentTabButton
+          active={activeAgentTab === "agent"}
+          icon={<Sparkles size={14} />}
+          label="Agente"
+          onClick={() => setActiveAgentTab("agent")}
+        />
+        <AgentTabButton
+          active={activeAgentTab === "ticket"}
+          icon={<Bug size={14} />}
+          label="Ticket TI"
+          onClick={() => setActiveAgentTab("ticket")}
+        />
+      </nav>
+
+      {activeAgentTab === "ticket" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] p-4">
+          <HubTicketOpenForm defaultModule="PulseX" />
+        </div>
+      ) : (
+        <>
       <div className="shrink-0 border-b border-[#eef2f7] px-4 py-3">
         {focusedMessage ? (
           <FocusedMessageCard focusedMessage={focusedMessage} users={users} />
@@ -356,6 +382,8 @@ export function CacaAgentPanel({
           <Send aria-hidden="true" size={17} />
         </button>
       </form>
+        </>
+      )}
     </aside>
   );
 }
@@ -407,6 +435,34 @@ function CacaBubble({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function AgentTabButton({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={`inline-flex h-9 items-center justify-center gap-2 rounded-md text-xs font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+        active
+          ? "bg-[#101820] text-white"
+          : "bg-[#f8fafc] text-[#667085] hover:bg-[#eef2f7] hover:text-[#101820]"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 

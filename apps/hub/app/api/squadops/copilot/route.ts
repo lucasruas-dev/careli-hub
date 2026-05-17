@@ -11,6 +11,10 @@ import {
 } from "@/lib/squadops/hub-code-context";
 import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 import { loadEngineeringOperationsFromFile } from "@/lib/squadops/engineering-operations-source";
+import {
+  loadStructuredEngineeringOperations,
+  type StructuredEngineeringOperation,
+} from "@/lib/squadops/engineering-operations-store";
 import type {
   EngineeringAuditRoutine,
   EngineeringOperationRecord,
@@ -75,6 +79,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const structuredOperations = await loadStructuredEngineeringOperations(120);
   const monitoringSnapshot = buildOperationsMonitoringSnapshot(
     await collectOperationsDataSources({
       origin: new URL(request.url).origin,
@@ -92,6 +97,10 @@ export async function POST(request: NextRequest) {
       operations: operations.data,
       promptTarget: parsedRequest.data.promptTarget,
       question: parsedRequest.data.question,
+      structuredOperations: structuredOperations.ok
+        ? structuredOperations.records
+        : [],
+      structuredStatus: structuredOperations.status,
       userId: auth.userId,
     });
 
@@ -158,6 +167,8 @@ async function createCopilotAnswer({
   operations,
   promptTarget,
   question,
+  structuredOperations,
+  structuredStatus,
   userId,
 }: {
   apiKey: string;
@@ -168,6 +179,8 @@ async function createCopilotAnswer({
   operations: EngineeringOperationsResponse;
   promptTarget: (typeof promptTargets)[number] | null;
   question: string;
+  structuredOperations: StructuredEngineeringOperation[];
+  structuredStatus: string;
   userId: string;
 }) {
   const controller = new AbortController();
@@ -185,6 +198,8 @@ async function createCopilotAnswer({
               operations,
               promptTarget,
               question,
+              structuredOperations,
+              structuredStatus,
             }),
             role: "user",
           },
@@ -228,6 +243,7 @@ function buildCopilotInstructions() {
     "Responda sempre em português do Brasil, com linguagem executiva, simples, instrucional e direta para Lucas.",
     "Use somente o contexto recebido: monitoramentoRealtime, diário Engineering Operations, histórico da conversa e mapa seguro do código do Hub.",
     "Para perguntas sobre banco de dados, performance, estabilidade, APIs, filas, payload, Supabase, C2X ou alertas, use `monitoramentoRealtime` como fonte principal do estado atual.",
+    "Para historico operacional, protocolos, releases, healthchecks e handoffs, use `baseEstruturadaSupabase` como fonte principal quando ela estiver preenchida.",
     "O diário Engineering Operations é histórico, auditoria e rastreabilidade. Não use o diário como fonte principal para afirmar estado atual de banco, tempo de resposta ou payload quando houver `monitoramentoRealtime` disponível.",
     "Você conhece arquitetura, módulos, rotas, componentes, APIs, riscos, pendências, deploys e decisões registradas quando esse conteúdo estiver no contexto.",
     "Quando o Lucas perguntar sobre código, use o mapa e os trechos de código recebidos. Se o trecho necessário não estiver no contexto, diga qual arquivo precisa ser aberto/indexado em seguida.",
@@ -250,6 +266,8 @@ function buildCopilotInput({
   operations,
   promptTarget,
   question,
+  structuredOperations,
+  structuredStatus,
 }: {
   codeContext: HubCodeContext;
   messages: PoAiMessage[];
@@ -257,12 +275,19 @@ function buildCopilotInput({
   operations: EngineeringOperationsResponse;
   promptTarget: (typeof promptTargets)[number] | null;
   question: string;
+  structuredOperations: StructuredEngineeringOperation[];
+  structuredStatus: string;
 }) {
   const context = {
     auditorias: operations.auditRoutines.map(summarizeRoutine),
+    baseEstruturadaSupabase: {
+      registros: structuredOperations.slice(0, 40).map(summarizeStructuredRecord),
+      status: structuredStatus,
+      totalRecebido: structuredOperations.length,
+    },
     codigoDoHub: summarizeCodeContext(codeContext),
     fonteDoEstadoAtual:
-      "Para banco, performance, APIs, filas, payload, Supabase, C2X e alertas, use monitoramentoRealtime como fonte principal. Engineering Operations e historico/auditoria/rastreabilidade.",
+      "Para banco, performance, APIs, filas, payload, Supabase, C2X e alertas, use monitoramentoRealtime como fonte principal. Para historico estruturado, protocolos, releases, healthchecks e handoffs, use baseEstruturadaSupabase quando preenchida. Engineering Operations e memoria narrativa/fallback.",
     historicoDaConversa: messages.slice(-8),
     monitoramentoRealtime: summarizeMonitoringSnapshot(monitoringSnapshot),
     perguntaDoLucas: question,
@@ -319,6 +344,26 @@ function summarizeRecord(record: EngineeringOperationRecord) {
     rotina: record.routine,
     squad: record.squad,
     status: record.status,
+    tipo: record.type,
+    validacao: record.validation,
+  };
+}
+
+function summarizeStructuredRecord(record: StructuredEngineeringOperation) {
+  return {
+    assunto: record.subject,
+    commit: record.commit,
+    dataHora: record.localOccurredAt ?? record.localDateTime,
+    deploy: record.deploy,
+    healthchecks: record.healthchecks,
+    modulo: record.module,
+    pendenciasOuRiscos: record.risks,
+    protocolo: record.protocol,
+    proximaSquad: record.nextSquad,
+    resumo: record.macroSummary ?? record.validation,
+    squad: record.squad,
+    status: record.status,
+    tela: record.screen,
     tipo: record.type,
     validacao: record.validation,
   };

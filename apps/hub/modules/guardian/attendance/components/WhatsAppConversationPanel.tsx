@@ -961,6 +961,7 @@ export function WhatsAppConversationPanel({
           client={client}
           defaultProfileId={ticket.profileId}
           mode={ticketIncomplete ? "complete" : "open"}
+          onClose={() => setTicketSetupOpen(false)}
           onOpenTicket={openTicket}
           selectedUnitId={selectedUnit?.id}
         />
@@ -1070,12 +1071,14 @@ function TicketSetupModal({
   client,
   defaultProfileId,
   mode = "open",
+  onClose,
   onOpenTicket,
   selectedUnitId,
 }: {
   client: QueueClient;
   defaultProfileId: string;
   mode?: "open" | "complete";
+  onClose: () => void;
   onOpenTicket: (profileId: string, unitId?: string, relatedInstallments?: string[]) => void;
   selectedUnitId?: string;
 }) {
@@ -1102,7 +1105,13 @@ function TicketSetupModal({
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
-      <section className="w-full max-w-4xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
+      <button
+        type="button"
+        aria-label="Fechar abertura de ticket"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default"
+      />
+      <section className="relative z-10 w-full max-w-4xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
         <header className="border-b border-slate-100 px-5 py-4">
           <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
             {mode === "complete" ? "Completar ticket" : "Abertura de ticket"}
@@ -1274,7 +1283,13 @@ function TicketCloseModal({
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
-      <section className="w-full max-w-xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
+      <button
+        type="button"
+        aria-label="Fechar encerramento de ticket"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default"
+      />
+      <section className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Encerrar atendimento</p>
@@ -1399,7 +1414,13 @@ function OperationDrawer({
 
   return (
     <div className="absolute inset-0 z-30 flex justify-end bg-slate-950/25 backdrop-blur-[2px]">
-      <aside className="flex h-full w-full max-w-xl flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+      <button
+        type="button"
+        aria-label="Fechar operacao"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default"
+      />
+      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
@@ -1791,7 +1812,13 @@ function TemplateModal({
 }) {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/20 px-4">
-      <section className="w-full max-w-2xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
+      <button
+        type="button"
+        aria-label="Fechar templates"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default"
+      />
+      <section className="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Templates WhatsApp</p>

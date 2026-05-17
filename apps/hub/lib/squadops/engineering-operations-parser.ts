@@ -2,6 +2,7 @@ export const UNKNOWN_OPERATION_VALUE = "não informado";
 
 export type EngineeringOperationRecord = {
   affectedFiles: string;
+  changeCategory: string;
   commit: string;
   deploy: string;
   healthchecks: string;
@@ -17,10 +18,12 @@ export type EngineeringOperationRecord = {
   macroSummary: string;
   module: string;
   nextSquad: string;
+  protocol: string;
   rawContent: string;
   reason: string;
   risks: string;
   routine: string;
+  screen: string;
   shortSummary: string;
   sourceIndex: number;
   squad: string;
@@ -254,8 +257,15 @@ function parseRecordBlock(
   const fields = collectFields(blockLines);
   const subject = getField(fields, ["assunto"]) || inferSubject(rawContent);
   const moduleName = inferModule(subject, rawContent);
+  const localDateTime = getField(fields, ["data e hora local"]);
   const status = normalizeStatus(getField(fields, ["status operacional"]));
   const type = normalizeType(getField(fields, ["tipo da alteracao"]), rawContent);
+  const changeCategory = inferChangeCategory(type, subject, rawContent);
+  const affectedFiles = getField(fields, [
+    "arquivos/modulos afetados",
+    "escopo avaliado",
+    "ambiente afetado",
+  ]);
   const risks = getField(fields, [
     "pendencias ou riscos conhecidos",
     "riscos operacionais",
@@ -290,11 +300,8 @@ function parseRecordBlock(
   });
 
   return {
-    affectedFiles: getField(fields, [
-      "arquivos/modulos afetados",
-      "escopo avaliado",
-      "ambiente afetado",
-    ]),
+    affectedFiles,
+    changeCategory,
     commit,
     deploy,
     healthchecks,
@@ -305,7 +312,7 @@ function parseRecordBlock(
     isRelease,
     isSupportInvestigation,
     lineStart: context.lineStart,
-    localDateTime: getField(fields, ["data e hora local"]),
+    localDateTime,
     logic: getField(fields, ["logica utilizada"]),
     macroSummary,
     module: moduleName,
@@ -314,10 +321,12 @@ function parseRecordBlock(
       "recomendacoes",
       "recomendacao tecnica",
     ]),
+    protocol: buildOperationProtocol(context.sourceIndex),
     rawContent: rawContent || UNKNOWN_OPERATION_VALUE,
     reason,
     risks,
     routine,
+    screen: inferScreen(subject, affectedFiles, rawContent),
     shortSummary: compactText(shortSummary, 220),
     sourceIndex: context.sourceIndex,
     squad: getField(fields, ["nome da squad/agente"]) || inferSquad(moduleName),
@@ -547,8 +556,17 @@ function isRoutineOverdue(
 }
 
 function parseLocalDateTime(value: string) {
+  const normalizedValue = normalizeDateTimeForParsing(value);
+  const parsedWithTimeZone = hasExplicitTimeZone(value)
+    ? new Date(normalizedValue)
+    : null;
+
+  if (parsedWithTimeZone && !Number.isNaN(parsedWithTimeZone.getTime())) {
+    return parsedWithTimeZone;
+  }
+
   const match = value.match(
-    /(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?/,
+    /(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(\d{2}):(\d{2}):(\d{2}))?/,
   );
 
   if (!match) {
@@ -565,6 +583,19 @@ function parseLocalDateTime(value: string) {
     Number(minute),
     Number(second),
   );
+}
+
+function hasExplicitTimeZone(value: string) {
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim());
+}
+
+function normalizeDateTimeForParsing(value: string) {
+  return value
+    .trim()
+    .replace(
+      /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}(?::\d{2})?)\s+([+-]\d{2}:?\d{2})$/,
+      "$1T$2$3",
+    );
 }
 
 function normalizeStatus(value: string) {
@@ -664,6 +695,93 @@ function inferModule(subject: string, rawContent: string) {
   );
 
   return match ?? UNKNOWN_OPERATION_VALUE;
+}
+
+function buildOperationProtocol(sourceIndex: number) {
+  return `AT-${String(Math.max(sourceIndex, 0)).padStart(4, "0")}`;
+}
+
+function inferScreen(subject: string, affectedFiles: string, rawContent: string) {
+  const text = normalizeSearchText(`${subject}\n${affectedFiles}\n${rawContent}`);
+
+  if (
+    text.includes("squadopspage") ||
+    text.includes("/squadops") ||
+    text.includes("operations center") ||
+    text.includes("hubops")
+  ) {
+    return "HubOps / Operations Center";
+  }
+
+  if (text.includes("pulsex") || text.includes("/pulsex")) {
+    return "PulseX";
+  }
+
+  if (text.includes("guardian") || text.includes("/guardian")) {
+    return "Guardian";
+  }
+
+  if (text.includes("caredesk") || text.includes("/caredesk")) {
+    return "CareDesk";
+  }
+
+  if (text.includes("setup") || text.includes("/setup")) {
+    return "Setup";
+  }
+
+  if (text.includes("hub-shell") || text.includes("sidebar")) {
+    return "Hub Shell";
+  }
+
+  if (text.includes("api/operations") || text.includes("database monitoring")) {
+    return "Operations APIs";
+  }
+
+  return UNKNOWN_OPERATION_VALUE;
+}
+
+function inferChangeCategory(type: string, subject: string, rawContent: string) {
+  const text = normalizeSearchText(`${type}\n${subject}\n${rawContent}`);
+
+  if (text.includes("release") || text.includes("deploy")) {
+    return "Release";
+  }
+
+  if (text.includes("correcao") || text.includes("hotfix")) {
+    return "Correcao";
+  }
+
+  if (
+    text.includes("criacao") ||
+    text.includes("novo") ||
+    text.includes("nova") ||
+    text.includes("implementacao")
+  ) {
+    return "Criacao";
+  }
+
+  if (
+    text.includes("melhoria") ||
+    text.includes("refinamento") ||
+    text.includes("ux") ||
+    text.includes("visual")
+  ) {
+    return "Melhoria";
+  }
+
+  if (text.includes("auditoria") || text.includes("healthcheck")) {
+    return "Auditoria";
+  }
+
+  if (text.includes("investigacao") || text.includes("supportops")) {
+    return "Investigacao";
+  }
+
+  if (text.includes("decisao") || text.includes("governanca")) {
+    return "Governanca";
+  }
+
+  return UNKNOWN_OPERATION_VALUE;
 }
 
 function inferSquad(moduleName: string) {

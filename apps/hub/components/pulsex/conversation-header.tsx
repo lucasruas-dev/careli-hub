@@ -5,6 +5,7 @@ import type {
   PulseXCallType,
   PulseXPresenceUser,
 } from "@/lib/pulsex";
+import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import {
   MoreHorizontal,
   Phone,
@@ -16,7 +17,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 
 export type PulseXCallSoundOption = {
@@ -48,6 +49,7 @@ export function ConversationHeader({
   selectedCallSoundId,
 }: ConversationHeaderProps) {
   const [isSoundMenuOpen, setIsSoundMenuOpen] = useState(false);
+  const soundMenuRef = useRef<HTMLDivElement>(null);
   const onlineCount = presenceUsers.filter(
     (user) => user.status === "online",
   ).length;
@@ -62,6 +64,12 @@ export function ConversationHeader({
   const presenceStatus = getChannelPresenceStatus(presenceUsers);
   const presenceLabel = presenceLabelMap[presenceStatus];
   const isDirectChannel = channel.kind === "direct";
+
+  useOutsideDismiss({
+    enabled: isSoundMenuOpen,
+    onDismiss: () => setIsSoundMenuOpen(false),
+    ref: soundMenuRef,
+  });
 
   return (
     <header className="grid h-16 grid-cols-[minmax(14rem,1fr)_auto_auto] items-center gap-4 border-b border-[#d9e0ea] bg-white px-4">
@@ -111,7 +119,7 @@ export function ConversationHeader({
           onClick={onToggleFavorite}
         />
         <HeaderAction ariaLabel="Buscar" icon={<Search size={17} />} />
-        <div className="relative">
+        <div className="relative" ref={soundMenuRef}>
           <HeaderAction
             ariaLabel="Som de chamada"
             icon={<Volume2 size={17} />}
@@ -122,6 +130,7 @@ export function ConversationHeader({
               onChange={(soundId) => {
                 onChangeCallSound(soundId);
                 onPreviewCallSound(soundId);
+                setIsSoundMenuOpen(false);
               }}
               onPreview={onPreviewCallSound}
               options={callSoundOptions}

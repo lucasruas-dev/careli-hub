@@ -3,7 +3,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BotMessageSquare, Send, X } from "lucide-react";
+import { BotMessageSquare, Bug, Send, X } from "lucide-react";
+import { HubTicketOpenForm } from "@/components/hub-support/hub-ticket-open-form";
 import { askHubAi, mapHubAiMessages } from "@/lib/hub-ai/client";
 import {
   buildHubAiUserContext,
@@ -64,6 +65,7 @@ export function AiCopilotDrawer({
 }: AiCopilotDrawerProps) {
   const { hubUser } = useAuth();
   const [open, setOpen] = useState(false);
+  const [activeAgentTab, setActiveAgentTab] = useState<"agent" | "ticket">("agent");
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [pendingBoletoAction, setPendingBoletoAction] =
@@ -433,14 +435,17 @@ export function AiCopilotDrawer({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Abrir assistente de cobrança"
-        className="fixed right-5 top-1/2 z-50 flex size-12 -translate-y-1/2 items-center justify-center rounded-2xl border border-[#A07C3B] bg-[#A07C3B] text-white shadow-[0_18px_50px_rgba(160,124,59,0.34)] transition-all hover:-translate-y-[calc(50%+2px)] hover:bg-[#8F6F35]"
-      >
-        <BotMessageSquare className="size-5" aria-hidden="true" />
-      </button>
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Abrir assistente de cobrança"
+          className="fixed bottom-5 right-5 z-50 flex size-14 items-center justify-center overflow-hidden rounded-full border border-[#A07C3B]/30 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5"
+        >
+          <img src={AI_AGENT_AVATAR} alt="" className="size-full object-cover" />
+          <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
+        </button>
+      ) : null}
 
       {open ? (
         <div className="fixed inset-0 z-50">
@@ -475,6 +480,41 @@ export function AiCopilotDrawer({
               </div>
             </header>
 
+            <nav className="grid shrink-0 grid-cols-2 gap-1 border-b border-slate-100 bg-white p-2">
+              <button
+                type="button"
+                aria-pressed={activeAgentTab === "agent"}
+                onClick={() => setActiveAgentTab("agent")}
+                className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition ${
+                  activeAgentTab === "agent"
+                    ? "bg-slate-950 text-white"
+                    : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-950"
+                }`}
+              >
+                <BotMessageSquare className="size-4" aria-hidden="true" />
+                Agente
+              </button>
+              <button
+                type="button"
+                aria-pressed={activeAgentTab === "ticket"}
+                onClick={() => setActiveAgentTab("ticket")}
+                className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition ${
+                  activeAgentTab === "ticket"
+                    ? "bg-slate-950 text-white"
+                    : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-950"
+                }`}
+              >
+                <Bug className="size-4" aria-hidden="true" />
+                Ticket TI
+              </button>
+            </nav>
+
+            {activeAgentTab === "ticket" ? (
+              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/55 px-5 py-5">
+                <HubTicketOpenForm defaultModule="Guardian" />
+              </div>
+            ) : (
+              <>
             <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/55 px-5 py-5">
               <div className="grid gap-2 sm:grid-cols-2">
                 {visibleSummaryCards.map(([label, value]) => (
@@ -570,6 +610,8 @@ export function AiCopilotDrawer({
                 </button>
               </div>
             </div>
+              </>
+            )}
           </aside>
         </div>
       ) : null}

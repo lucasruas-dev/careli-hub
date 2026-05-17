@@ -1449,8 +1449,14 @@ function SetupModal({
 
   return (
     <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/25 px-4">
+      <button
+        aria-label="Fechar janela"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
       <div
-        className={`w-full rounded-md border border-[#d9e0e7] bg-white shadow-2xl ${sizeClass}`}
+        className={`relative z-10 w-full rounded-md border border-[#d9e0e7] bg-white shadow-2xl ${sizeClass}`}
       >
         <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
           <h2 className="m-0 text-base font-semibold text-[#101820]">{title}</h2>
@@ -2036,7 +2042,13 @@ function CreateOperationalUserModal({
 
   return (
     <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/25 px-4">
-      <div className="w-full max-w-xl rounded-md border border-[#d9e0e7] bg-white shadow-2xl">
+      <button
+        aria-label="Fechar janela de novo usuario"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <div className="relative z-10 w-full max-w-xl rounded-md border border-[#d9e0e7] bg-white shadow-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
           <h2 className="m-0 text-base font-semibold text-[#101820]">
             Novo usuario

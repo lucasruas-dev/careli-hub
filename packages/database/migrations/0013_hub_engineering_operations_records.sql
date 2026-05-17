@@ -4,11 +4,17 @@
 
 begin;
 
+create sequence if not exists public.hub_engineering_operation_protocol_seq
+  as bigint
+  increment by 1
+  minvalue 1
+  start with 1;
+
 create table if not exists public.hub_engineering_operation_records (
   id uuid primary key default gen_random_uuid(),
   source_key text not null,
   content_hash text not null,
-  protocol text not null,
+  protocol text not null default ('AT-' || lpad(nextval('public.hub_engineering_operation_protocol_seq')::text, 4, '0')),
   source_path text not null default 'docs/codex/engineering-operations.md',
   source_index integer not null default 0 check (source_index >= 0),
   line_start integer not null default 0 check (line_start >= 0),
@@ -55,7 +61,7 @@ comment on column public.hub_engineering_operation_records.content_hash is
   'Hash do conteudo bruto do registro, usado para auditoria de alteracao documental.';
 
 comment on column public.hub_engineering_operation_records.protocol is
-  'Protocolo operacional gerado pelo HubOps para localizar o registro.';
+  'Codigo curto e sequencial da atividade operacional, no padrao AT-0001.';
 
 create table if not exists public.hub_engineering_operation_releases (
   id uuid primary key default gen_random_uuid(),
@@ -188,6 +194,9 @@ grant select, insert, update on
   public.hub_engineering_operation_healthchecks,
   public.hub_engineering_operation_handoffs,
   public.hub_engineering_operation_sync_runs
+to authenticated, service_role;
+
+grant usage, select on sequence public.hub_engineering_operation_protocol_seq
 to authenticated, service_role;
 
 drop policy if exists "hub engineering operation records admin read"

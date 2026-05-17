@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 
 import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 import { collectOperationsDataSources } from "@/lib/operations/data-sources";
+import { syncOperationAlertProtocols } from "@/lib/operations/alert-protocols";
 import { buildOperationsMonitoringSnapshot } from "@/lib/operations/monitoring";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,18 @@ export async function GET(request: NextRequest) {
     origin: new URL(request.url).origin,
   });
   const snapshot = buildOperationsMonitoringSnapshot(rawChecks);
+  const protocolSync = await syncOperationAlertProtocols(
+    snapshot.alerts,
+    authorization.userId,
+  );
+  const snapshotWithProtocols = {
+    ...snapshot,
+    alertProtocols: protocolSync.protocols,
+    alerts: protocolSync.alerts,
+    protocolSyncStatus: protocolSync.status,
+  };
 
-  return Response.json(snapshot, {
+  return Response.json(snapshotWithProtocols, {
     headers: {
       "Cache-Control": "no-store",
     },
