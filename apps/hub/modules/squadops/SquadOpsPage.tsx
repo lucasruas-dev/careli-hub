@@ -17,8 +17,10 @@ import type { BadgeVariant } from "@repo/uix";
 import {
   ArrowRight,
   Boxes,
+  ChevronDown,
   CheckCircle2,
   ClipboardCheck,
+  Filter,
   GitCommitHorizontal,
   GitPullRequestArrow,
   KanbanSquare,
@@ -99,37 +101,58 @@ export function SquadOpsPage() {
           />
         }
       >
+        <section className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+            type="button"
+          >
+            <Filter aria-hidden="true" className="size-4 text-[#A07C3B]" />
+            <span>Filtros</span>
+            <ChevronDown aria-hidden="true" className="size-4 text-[#A07C3B]" />
+          </button>
+        </section>
+
         <section className="grid grid-cols-4 gap-3">
           <MetricTile
             icon={<KanbanSquare size={18} />}
             label="demandas abertas"
+            note="em acompanhamento"
+            variation="3"
             value={squadOpsDemands.length}
           />
           <MetricTile
             icon={<UserRoundCheck size={18} />}
             label="squads ativas"
+            note="squads cadastradas"
+            variation={`${squadOpsSquads.length}`}
             value={squadOpsSquads.filter((squad) => squad.status === "ativa").length}
           />
           <MetricTile
             icon={<ClipboardCheck size={18} />}
             label="QA pendente"
+            note="aguardando validação"
+            variation="pendente"
             value={pendingQaCount}
           />
           <MetricTile
             icon={<GitCommitHorizontal size={18} />}
             label="commits em handoff"
+            note="registro ativo"
+            variation="handoff"
             value={pendingCommitCount}
           />
         </section>
 
         <section className="grid grid-cols-[minmax(0,1fr)_minmax(21rem,0.42fr)] gap-5">
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
+          <Surface bordered className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="border-b border-slate-100 p-5">
             <PanelTitle
               icon={<KanbanSquare size={18} />}
               eyebrow="Board"
               title="Demandas por status"
             />
-            <div className="mt-4 grid grid-cols-3 gap-3 xl:grid-cols-6">
+            </div>
+            <div className="grid grid-cols-3 gap-3 p-4 xl:grid-cols-6">
               {squadOpsStatusOrder.map((status) => {
                 const demands = squadOpsDemands.filter(
                   (demand) => demand.status === status,
@@ -137,33 +160,33 @@ export function SquadOpsPage() {
 
                 return (
                   <div
-                    className="min-h-64 rounded-md border border-[#e5e9ef] bg-[#f8fafc] p-3"
+                    className="min-h-64 rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                     key={status}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <p className="m-0 text-xs font-semibold text-[#101820]">
+                      <p className="m-0 text-xs font-semibold uppercase text-slate-400">
                         {squadOpsStatusLabels[status]}
                       </p>
-                      <span className="grid h-6 min-w-6 place-items-center rounded-full bg-white px-2 text-xs font-semibold text-[#526078]">
+                      <span className="grid h-6 min-w-6 place-items-center rounded-full bg-slate-50 px-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
                         {demands.length}
                       </span>
                     </div>
                     <div className="mt-3 grid gap-2">
                       {demands.map((demand) => (
                         <button
-                          className={`rounded-md border bg-white p-3 text-left shadow-sm outline-none transition hover:border-[#A07C3B] hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                          className={`rounded-xl border p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
                             selectedDemand.id === demand.id
-                              ? "border-[#A07C3B]"
-                              : "border-[#edf0f4]"
+                              ? "border-[#A07C3B]/30 bg-[#A07C3B]/5"
+                              : "border-slate-200/70 bg-white"
                           }`}
                           key={demand.id}
                           onClick={() => setSelectedDemandId(demand.id)}
                           type="button"
                         >
-                          <span className="text-[0.6875rem] font-semibold text-[#667085]">
+                          <span className="text-[0.6875rem] font-semibold text-slate-400">
                             {demand.protocol}
                           </span>
-                          <span className="mt-1 block text-sm font-semibold leading-5 text-[#101820]">
+                          <span className="mt-1 block text-sm font-semibold leading-5 text-slate-950">
                             {demand.title}
                           </span>
                           <span
@@ -180,7 +203,7 @@ export function SquadOpsPage() {
             </div>
           </Surface>
 
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)]">
+          <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <PanelTitle
               icon={<ShieldCheck size={18} />}
               eyebrow={selectedDemand.protocol}
@@ -209,7 +232,7 @@ export function SquadOpsPage() {
         </section>
 
         <section className="grid grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)] gap-5">
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)]">
+          <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <PanelTitle
               icon={<Boxes size={18} />}
               eyebrow="Squads"
@@ -218,7 +241,7 @@ export function SquadOpsPage() {
             <div className="mt-4 grid gap-3">
               {squadOpsSquads.map((squad) => (
                 <article
-                  className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-4"
+                  className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                   key={squad.id}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -230,7 +253,7 @@ export function SquadOpsPage() {
                         {squad.focus}
                       </p>
                     </div>
-                    <span className="rounded-full border border-[#d9e0e7] bg-white px-2 py-1 text-xs font-semibold text-[#526078]">
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
                       {squad.status}
                     </span>
                   </div>
@@ -241,7 +264,7 @@ export function SquadOpsPage() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {squad.members.map((member) => (
                       <span
-                        className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-[#17202f]"
+                        className="rounded-full bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70"
                         key={member}
                       >
                         {member}
@@ -253,7 +276,7 @@ export function SquadOpsPage() {
             </div>
           </Surface>
 
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)]">
+          <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <PanelTitle
               icon={<GitPullRequestArrow size={18} />}
               eyebrow="Timeline"
@@ -262,7 +285,7 @@ export function SquadOpsPage() {
             <div className="mt-4 grid gap-3">
               {selectedDemand.timeline.map((event) => (
                 <article
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                   key={event.id}
                 >
                   <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[#A07C3B]" />
@@ -292,7 +315,7 @@ export function SquadOpsPage() {
         </section>
 
         <section className="grid grid-cols-[minmax(0,0.68fr)_minmax(0,1fr)] gap-5">
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)]">
+          <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <PanelTitle
               icon={<Rocket size={18} />}
               eyebrow="Ambientes"
@@ -302,7 +325,7 @@ export function SquadOpsPage() {
               {Object.entries(selectedDemand.environment).map(
                 ([environment, status]) => (
                   <div
-                    className={`rounded-md border p-3 ${environmentStyle[status]}`}
+                    className={`rounded-xl border p-3 ${environmentStyle[status]}`}
                     key={environment}
                   >
                     <p className="m-0 text-xs font-semibold">
@@ -353,7 +376,7 @@ export function SquadOpsPage() {
             </div>
           </Surface>
 
-          <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)]">
+          <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <PanelTitle
               icon={<Sparkles size={18} />}
               eyebrow="Supabase futuro"
@@ -362,7 +385,7 @@ export function SquadOpsPage() {
             <div className="mt-4 grid grid-cols-2 gap-3">
               {squadOpsSupabaseModel.map((table) => (
                 <article
-                  className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-4"
+                  className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                   key={table.name}
                 >
                   <p className="m-0 font-mono text-xs font-semibold text-[#A07C3B]">
@@ -374,15 +397,17 @@ export function SquadOpsPage() {
                 </article>
               ))}
             </div>
-            <div className="mt-4 rounded-md border border-[#d9e0e7] bg-[#101820] p-4 text-white">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <CheckCircle2 size={16} />
+            <div className="mt-4 rounded-xl border border-[#A07C3B]/15 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+                  <CheckCircle2 className="size-4 stroke-[1.8]" />
+                </span>
                 <span>Protocolo automatico</span>
               </div>
-              <p className="m-0 mt-2 font-mono text-sm text-[#f2d79b]">
+              <p className="m-0 mt-3 font-mono text-sm font-semibold text-[#7A5E2C]">
                 {selectedDemand.protocol}
               </p>
-              <p className="m-0 mt-2 text-xs leading-5 text-[#d7dee8]">
+              <p className="m-0 mt-2 text-xs leading-5 text-slate-500">
                 Padrao inicial: prefixo da squad, data local e sequencial do dia.
               </p>
             </div>
@@ -396,21 +421,35 @@ export function SquadOpsPage() {
 function MetricTile({
   icon,
   label,
+  note,
+  variation,
   value,
 }: {
   icon: ReactNode;
   label: string;
-  value: number;
+  note: string;
+  value: number | string;
+  variation: string;
 }) {
   return (
-    <Surface bordered className="border-[#d9e0e7] bg-white p-4 shadow-[0_10px_28px_rgb(16_24_32_/_0.05)]">
-      <div className="flex items-center justify-between gap-3">
-        <span className="grid h-9 w-9 place-items-center rounded-md bg-[#101820] text-[#f2d79b]">
+    <Surface bordered className="rounded-xl border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+            {label}
+          </p>
+          <span className="mt-2 block text-xl font-semibold tracking-normal text-slate-950">
+            {value}
+          </span>
+        </div>
+        <span className="flex size-8 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
           {icon}
         </span>
-        <span className="text-2xl font-semibold text-[#101820]">{value}</span>
       </div>
-      <p className="m-0 mt-3 text-xs font-semibold text-[#667085]">{label}</p>
+      <div className="mt-3 flex items-center gap-2 text-xs">
+        <span className="font-medium text-[#A07C3B]">{variation}</span>
+        <span className="truncate text-slate-500">{note}</span>
+      </div>
     </Surface>
   );
 }
@@ -426,12 +465,12 @@ function PanelTitle({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="grid h-9 w-9 place-items-center rounded-md bg-[#f4efe6] text-[#A07C3B]">
+      <span className="flex size-10 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
         {icon}
       </span>
       <div>
-        <p className="m-0 text-xs font-semibold text-[#667085]">{eyebrow}</p>
-        <h2 className="m-0 mt-1 text-base font-semibold text-[#101820]">
+        <p className="m-0 text-xs font-semibold text-slate-500">{eyebrow}</p>
+        <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
           {title}
         </h2>
       </div>
@@ -459,11 +498,11 @@ function DetailGrid({
     <dl className="m-0 grid grid-cols-2 gap-3">
       {items.map(([label, value]) => (
         <div
-          className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
+          className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
           key={label}
         >
-          <dt className="text-xs font-semibold text-[#667085]">{label}</dt>
-          <dd className="m-0 mt-1 text-sm font-semibold leading-5 text-[#17202f]">
+          <dt className="text-xs font-semibold text-slate-500">{label}</dt>
+          <dd className="m-0 mt-1 text-sm font-semibold leading-5 text-slate-950">
             {value}
           </dd>
         </div>
@@ -474,18 +513,20 @@ function DetailGrid({
 
 function NextAgentCard({ demand }: { demand: SquadOpsDemand }) {
   return (
-    <div className="rounded-md border border-[#d9e0e7] bg-[#101820] p-4 text-white">
+    <div className="rounded-xl border border-[#A07C3B]/15 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <UserRoundCheck size={16} />
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+            <UserRoundCheck className="size-4 stroke-[1.8]" />
+          </span>
           <span>Proximo agente recomendado</span>
         </div>
-        <ArrowRight size={16} />
+        <ArrowRight className="size-4 text-[#A07C3B]" />
       </div>
-      <p className="m-0 mt-3 text-xl font-semibold text-[#f2d79b]">
+      <p className="m-0 mt-3 text-xl font-semibold text-slate-950">
         {demand.nextAgent}
       </p>
-      <p className="m-0 mt-2 text-xs leading-5 text-[#d7dee8]">
+      <p className="m-0 mt-2 text-xs leading-5 text-slate-500">
         Motivo: demanda em {squadOpsStatusLabels[demand.status].toLowerCase()}.
       </p>
     </div>
@@ -504,16 +545,18 @@ function RecordList({
   title: string;
 }) {
   return (
-    <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
+    <div className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-center gap-2 text-sm font-semibold text-[#101820]">
-        <span className="text-[#A07C3B]">{icon}</span>
+        <span className="flex size-8 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+          {icon}
+        </span>
         <span>{title}</span>
       </div>
       <div className="mt-3 grid gap-2">
         {items.length > 0 ? (
           items.map((item) => (
             <div
-              className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md bg-white p-3"
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg bg-slate-50/70 p-3 ring-1 ring-slate-200/70"
               key={`${item.title}-${item.value}`}
             >
               <div className="min-w-0">
@@ -530,7 +573,7 @@ function RecordList({
             </div>
           ))
         ) : (
-          <p className="m-0 rounded-md bg-white p-3 text-xs text-[#667085]">
+          <p className="m-0 rounded-lg bg-slate-50/70 p-3 text-xs text-[#667085] ring-1 ring-slate-200/70">
             {empty}
           </p>
         )}

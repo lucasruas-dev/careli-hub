@@ -1198,3 +1198,17 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: a tela usa dados mockados e ainda nao persiste cadastros, commits, QA ou deploys em Supabase; precisa de revisao do `Hub Architect` antes de criar schema/RLS e de validacao do `Hub QA` em desktop/mobile antes de deploy. O worktree possui alteracoes pre-existentes de outras frentes, entao o commit desta entrega deve stagear apenas os arquivos/hunks do SquadOps.
 - Status operacional: `AGUARDANDO ARCHITECT` e `AGUARDANDO QA`.
 - Proxima squad recomendada: `Hub Architect` para validar fronteira de modulo e modelagem Supabase; depois `Hub QA` para regressao visual e operacional do `/squadops`.
+
+Registro de diario:
+
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-17 00:58:01 -03:00.
+- Tipo da alteracao: Refinamento visual da tela SquadOps para seguir o padrao de cards e icones do Guardian.
+- Motivo da mudanca: Lucas apontou que os cards e icones do SquadOps deveriam manter o mesmo padrao visual mostrado no Guardian, com cards brancos, borda leve, icones pequenos em caixas arredondadas, acento dourado discreto e leitura operacional compacta.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: ajustei os KPIs superiores para a mesma anatomia dos cards Guardian, adicionei o pill de filtros com icone, removi blocos escuros, suavizei board, detalhe, timeline, squads, ambientes, registros e protocolo para cards claros com borda `slate`, sombra minima e icones em containers pequenos.
+- Logica utilizada: preservar o modulo proprio SquadOps e os dados mockados, mudando apenas a camada visual para reduzir divergencia com o padrao executivo do Hub sem tocar Guardian, CareDesk ou PulseX.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; smoke em `http://localhost:3001/squadops` retornou HTTP 200.
+- Pendencias ou riscos conhecidos: ainda falta QA visual humano em desktop/mobile para confirmar espacamento, responsividade e comparacao lado a lado com Guardian.
+- Status operacional: `AGUARDANDO QA`.
+- Proxima squad recomendada: `Hub QA` para validacao visual e responsiva da tela SquadOps.
