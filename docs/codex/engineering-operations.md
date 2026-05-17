@@ -2880,3 +2880,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: validacao visual final deve ser feita por Lucas em sessao adm autenticada; smoke autenticado completo das APIs novas depende de bearer real adm; build Vercel segue com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations; Vercel segue alertando `npm audit` com 1 moderada e 1 alta e envs nao declaradas no `turbo.json`; Supabase Realtime pode gerar falso positivo dependendo do endpoint/ambiente.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para monitoramento pos-deploy e acompanhamento dos riscos tecnicos mapeados; `Hub ReleaseOps` para tratar futuramente warnings `turbo.json`, `npm audit` e NFT.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Publicacao recorte HubOps deploy por recorte`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 18:10:47 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao isolada de recorte HubOps.
+- Motivo da mudanca: Lucas solicitou revisar e publicar os recortes HubOps que estavam `AGUARDANDO RELEASEOPS`, priorizando separacao por responsabilidade e evitando levar diffs locais de outras frentes no mesmo deploy.
+- Arquivos/modulos afetados: producao Vercel `https://c2x.app.br`; deployment `dpl_AkDAg3TqjykmMS3526dkdAMk9w56`; commit `c025858`; `apps/hub/modules/squadops/SquadOpsPage.tsx` e este Engineering Operations.
+- Como foi feito: identifiquei que o recorte HubOps pendente no diario era `[ReleaseOps] Prompt de deploy por recorte`; separei apenas o hunk do template de deploy por recorte e o registro correspondente, deixei fora os diffs locais de PulseX, Setup, Guardian, Hub Shell e fechamento externo de drawers, criei commit semantico e publiquei a partir de um worktree limpo baseado no commit `c025858`.
+- Logica utilizada: ReleaseOps deve publicar por recorte real, cruzando diario e Git. Como o worktree principal possuia varios diffs locais, o deploy direto poderia misturar frentes; por isso a publicacao foi feita em worktree limpo para garantir que somente o commit HubOps autorizado fosse enviado ao Vercel.
+- Validacao executada: no worktree limpo, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` passaram; deploy remoto Vercel tambem executou build com sucesso.
+- Resultado dos healthchecks: producao `GET /` retornou 200; `GET /squadops` retornou 200; `GET /api/guardian/db/health` retornou 200 com `status=connected`, banco `prod_careli` e `elapsedMs=605`; `GET /api/operations/monitoring` sem sessao retornou 401 esperado; `GET /api/operations/watcher` sem sessao retornou 401 esperado; `POST /api/squadops/copilot` sem sessao e com payload valido retornou 401 esperado; Vercel inspect confirmou deployment `READY`, target `production` e alias `https://c2x.app.br`; logs pelo alias oficial mostraram apenas os healthchecks e presence, sem erro critico.
+- Arquivos/recortes separados: permaneceram fora desta publicacao os diffs locais em `apps/hub/app/setup/page.tsx`, `apps/hub/components/pulsex/*`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`, `apps/hub/hooks/use-outside-dismiss.ts`, `apps/hub/lib/squadops/engineering-operations-parser.ts`, alteracoes de fechamento externo de drawers em HubOps e o registro PulseX pendente no diario.
+- Pendencias ou riscos conhecidos: validacao visual autenticada de Lucas ainda e recomendada para conferir a biblioteca de prompts em `/squadops`; o build segue com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations; Vercel segue alertando `npm audit` com 1 moderada e 1 alta e envs nao declaradas no `turbo.json`; existem recortes locais nao publicados que devem passar por ReleaseOps separadamente.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps` para monitoramento pos-deploy; `Hub ReleaseOps` para organizar os proximos recortes locais sem misturar responsabilidades.
