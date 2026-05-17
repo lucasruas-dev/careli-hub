@@ -126,94 +126,90 @@ type PromptTemplate = {
 const promptTemplates: PromptTemplate[] = [
   {
     id: "deploy-releaseops",
-    label: "Deploy HubOps",
-    description: "Handoff preenchido para publicar o recorte HubOps atual.",
+    label: "Deploy por recorte",
+    description: "ReleaseOps le o diario, separa recortes e publica apenas o que estiver autorizado.",
     target: "Hub ReleaseOps",
     type: "deploy",
     body: `Assunto:
-[ReleaseOps] Deploy do recorte HubOps / Operations Center
+[ReleaseOps] Planejamento de deploy por recorte
 
-Hub ReleaseOps, solicito revisar, commitar e publicar o recorte HubOps / Operations Center abaixo.
+Hub ReleaseOps, solicito planejar e executar deploy somente por recorte operacional autorizado.
 
-Este pedido NAO e um template com placeholders. O recorte ja esta preenchido.
+Este pedido NAO autoriza deploy de todo o worktree.
+O deploy deve ser programado a partir do Engineering Operations e confirmado contra o Git.
 
-Contexto:
-- Modulo/frente: HubOps / SquadOps / Operations Center.
-- Ambiente atual: local validado em http://localhost:3001/squadops.
-- Status no Engineering Operations: AGUARDANDO RELEASEOPS.
-- Origem: ajustes solicitados por Lucas para transformar HubOps em centro operacional real.
-- Objetivo do release: publicar o pacote HubOps com monitoramento real, PO AI melhorado, watcher, acesso adm e refinamentos de UX.
+Fontes obrigatorias:
+- Diario operacional: docs/codex/engineering-operations.md.
+- Git/worktree: git status, git diff, git log e arquivos alterados.
+- Validacoes locais registradas no diario.
+- Healthchecks e Vercel quando o recorte for publicado.
 
-Escopo do deploy:
-- Database Monitoring com fonte principal em APIs reais e healthchecks, nao no Markdown.
-- APIs novas: /api/operations/monitoring e /api/operations/watcher.
-- Camada server-side de coleta/classificacao: apps/hub/lib/operations/data-sources.ts e apps/hub/lib/operations/monitoring.ts.
-- Ops Watcher com deduplicacao, cooldown, notificacoes locais e comando sugerido para agente.
-- PO AI usando monitoramentoRealtime como fonte principal para banco/performance; Engineering Operations apenas como historico/rastreabilidade.
-- Botao flutuante do PO AI fora dos paineis principais.
-- Restricao HubOps para perfil adm/admin no client, sidebar e APIs internas.
-- Ajustes visuais do Operations Center: remocao do cabecalho grande, rolagem individual em paineis grandes, bullets elegantes no PO AI e layout mais compacto.
+Como descobrir o recorte:
+- Ler os registros mais recentes do Engineering Operations.
+- Identificar registros com status AGUARDANDO RELEASEOPS ou AGUARDANDO DEPLOY.
+- Agrupar por modulo/frente/squad: HubOps, Guardian, PulseX, CareDesk, Setup, SupportOps ou ReleaseOps.
+- Para cada grupo, listar assunto, arquivos/modulos afetados, validacoes, riscos e proxima squad.
+- Cruzar os arquivos citados no diario com o Git diff real.
+- Confirmar se o diff pertence ao mesmo modulo/frente.
+- Ignorar registros ja marcados como EM PRODUCAO, salvo se houver novo diff local relacionado.
 
-Arquivos principais do recorte:
-- apps/hub/modules/squadops/SquadOpsPage.tsx
-- apps/hub/app/api/operations/monitoring/route.ts
-- apps/hub/app/api/operations/watcher/route.ts
-- apps/hub/lib/operations/data-sources.ts
-- apps/hub/lib/operations/monitoring.ts
-- apps/hub/app/api/squadops/copilot/route.ts
-- apps/hub/app/api/squadops/operations/route.ts
-- apps/hub/lib/squadops/admin-access.ts
-- apps/hub/layouts/hub-shell.tsx
-- packages/shared/src/permissions/matrix.ts
-- docs/codex/engineering-operations.md
+Regras de release:
+- Nao usar deploy geral se houver mais de um recorte misturado.
+- Nao usar stage amplo de arquivos sem revisar o escopo.
+- Nao misturar Guardian, PulseX, CareDesk, Setup ou HubOps no mesmo commit/deploy sem autorizacao explicita do diario.
+- Nao publicar arquivos que nao estejam relacionados ao recorte aprovado.
+- Nao expor secrets, tokens, chaves ou valores sensiveis.
+- Nao chamar checks pesados como Guardian queue limit=1000 automaticamente.
+- Se houver duvida de escopo, bloquear com motivo tecnico concreto.
 
-Validacoes ja executadas:
-- npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0: passou.
-- npx.cmd eslint modules/squadops/SquadOpsPage.tsx app/api/squadops/copilot/route.ts --max-warnings 0: passou.
-- npm.cmd run check-types:hub: passou.
-- npm.cmd run lint:hub: passou.
-- npm.cmd run build --workspace @repo/hub: passou.
-- Smoke HTTP de http://localhost:3001/squadops: retornou 200.
-- Smoke sem sessao de /api/operations/monitoring: retornou 401 esperado.
-- Smoke sem sessao de /api/operations/watcher: retornou 401 esperado.
-- Smoke sem sessao de /api/squadops/copilot: retornou 401 esperado.
-- GET /api/guardian/db/health: retornou 200.
-- Guardian queue limit=20 e limit=50: retornaram 200; limit=1000 nao foi chamado automaticamente.
-- Supabase Auth retornou 200; REST 401 esperado no endpoint raiz; Realtime 403 esperado no endpoint protegido.
-- git diff --check: passou.
+Quando publicar:
+- Somente se o recorte tiver status AGUARDANDO RELEASEOPS ou AGUARDANDO DEPLOY.
+- Somente se os arquivos do Git baterem com o recorte do diario.
+- Somente se as validacoes minimas passarem: check-types, lint, build, smoke da rota afetada e healthchecks aplicaveis.
+- Criar commit semantico por recorte.
+- Fazer deploy Vercel apenas depois do commit coerente.
+- Executar healthchecks pos-deploy.
+- Atualizar o Engineering Operations com commit, deployment, healthchecks, riscos, pendencias e status final.
 
-Pontos de atencao:
-- Build passa com warning conhecido Turbopack/NFT causado pela leitura filesystem do Engineering Operations.
-- Validacao visual final deve ser feita por Lucas em sessao adm autenticada.
-- Smoke autenticado completo das APIs novas depende de bearer real adm.
-- Nao misturar este release com Guardian/D4Sign, PulseX ou CareDesk fora do recorte HubOps.
-- Se houver diffs fora deste escopo no worktree, separar antes de commitar/publicar ou sinalizar bloqueio parcial.
+Quando bloquear:
+- Recorte sem modulo/frente claro.
+- Arquivos alterados nao batem com o diario.
+- Diffs de varios modulos misturados sem autorizacao.
+- Validacao obrigatoria falhando.
+- Risco de secret exposto.
+- Dependencia de validacao visual/autenticada ainda pendente e essencial.
+- Status no diario diferente de AGUARDANDO RELEASEOPS ou AGUARDANDO DEPLOY.
 
-Solicitacao:
-- Revisar os diffs do recorte HubOps listado acima.
-- Confirmar que nao ha secrets/tokens expostos.
-- Criar commit semantico do recorte HubOps se os diffs estiverem coerentes.
-- Executar deploy Vercel de producao.
-- Rodar healthchecks pos-deploy:
-  - GET /
-  - GET /squadops
-  - GET /api/guardian/db/health
-  - GET /api/operations/monitoring sem sessao deve retornar 401
-  - GET /api/operations/watcher sem sessao deve retornar 401
-  - POST /api/squadops/copilot sem sessao deve retornar 401
-- Registrar commit, URL/deployment, healthchecks, riscos e status final no Engineering Operations.
+Saida esperada antes de agir:
+- Recortes encontrados no diario.
+- Recorte selecionado para deploy.
+- Arquivos incluidos.
+- Arquivos excluidos por pertencerem a outro recorte.
+- Validacoes que serao executadas.
+- Riscos ou pendencias.
+- Decisao: PUBLICAR, SEPARAR ou BLOQUEAR.
+
+Se a decisao for PUBLICAR:
+- Executar commit semantico do recorte.
+- Executar deploy.
+- Rodar healthchecks pos-deploy.
+- Registrar resultado no Engineering Operations.
 
 Formato esperado da resposta:
-- Escopo revisado
+- Recortes encontrados
+- Recorte selecionado
+- Coerencia diario x Git
 - Arquivos incluidos
-- Commit realizado
-- Deploy realizado
+- Arquivos separados ou bloqueados
+- Validacoes executadas
+- Commit realizado, se houver
+- Deploy realizado, se houver
 - Healthchecks executados
 - Riscos ou pendencias
 - Status final
 
 Status esperado:
-EM PRODUCAO ou BLOQUEADO com motivo tecnico concreto.`,
+EM PRODUCAO quando publicado; BLOQUEADO quando houver risco real; AGUARDANDO RECORTE quando o diario/Git nao permitirem separar o deploy com seguranca.`,
   },
   {
     id: "daily-activity",

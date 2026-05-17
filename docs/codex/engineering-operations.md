@@ -2851,6 +2851,21 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[ReleaseOps] Prompt de deploy por recorte`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:56:18 -03:00.
+- Tipo da alteracao: `AJUSTE OPERACIONAL` - governanca de release.
+- Motivo da mudanca: Lucas questionou se o dev deve fazer deploy de tudo ou somente do recorte, e alinhou que o `Hub ReleaseOps` deve ler o diario, identificar recortes prontos e programar o deploy sem publicar o worktree inteiro cegamente.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: atualizei o template `Deploy por recorte` para orientar o `Hub ReleaseOps` a ler `docs/codex/engineering-operations.md`, identificar registros `AGUARDANDO RELEASEOPS` ou `AGUARDANDO DEPLOY`, agrupar por modulo/frente, cruzar arquivos citados com `git status`, `git diff` e `git log`, separar arquivos fora do recorte e bloquear quando houver mistura ou risco tecnico.
+- Logica utilizada: ReleaseOps nao deve depender de um prompt manual perfeito nem publicar tudo que estiver no worktree. O diario define intencao, status e rastreabilidade; o Git confirma o conteudo real. O deploy so deve seguir quando diario e diff estiverem coerentes.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: se o diario e o Git divergirem, o status esperado do prompt passa a ser `AGUARDANDO RECORTE` ou `BLOQUEADO` com motivo concreto.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar a nova governanca do prompt e aplicar em proximos deploys por recorte.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Redeploy producao HubOps Operations Center`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-17 17:56:23 -03:00.
