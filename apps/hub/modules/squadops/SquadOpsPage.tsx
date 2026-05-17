@@ -265,15 +265,16 @@ AGUARDANDO RELEASEOPS quando houver entrega local pendente de publicacao; FINALI
   {
     id: "weekly-activity",
     label: "Atividade semanal",
-    description: "Comando preenchido para consolidar a semana operacional.",
-    target: "SquadOps Core",
+    description: "Comando preenchido para SupportOps consolidar a semana operacional.",
+    target: "Hub SupportOps",
     type: "weekly",
     body: `Assunto:
-[SquadOps] Consolidado semanal do Hub
+[SupportOps] Consolidado semanal do Hub
 
-Dev responsavel, solicito consolidar a atividade semanal da engenharia Careli Hub.
+Hub SupportOps, solicito consolidar a atividade semanal da engenharia Careli Hub.
 
 Este pedido NAO e um template com placeholders. A semana e o escopo ja estao definidos.
+Agente executor: Hub SupportOps.
 
 Periodo analisado:
 - Semana: 11/05/2026 a 17/05/2026.

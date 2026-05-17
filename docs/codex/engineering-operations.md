@@ -2801,3 +2801,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: caso o periodo operacional mude, Lucas ou HubOps deve atualizar os prompts para refletir o novo dia/semana/mes antes de acionar outro agente. O release ainda depende de revisao do `Hub ReleaseOps`.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte HubOps completo e preparar publicacao se os diffs estiverem coerentes.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Prompt semanal direcionado para SupportOps`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:43:46 -03:00.
+- Tipo da alteracao: `AJUSTE OPERACIONAL` - direcionamento de prompt.
+- Motivo da mudanca: Lucas solicitou que o prompt `Consolidado semanal do Hub` fosse executado por `Hub SupportOps`, pois a consolidacao semanal envolve gargalos, troubleshooting, APIs, performance, riscos e continuidade operacional.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: alterei o template `Atividade semanal` para usar `target: Hub SupportOps`, assunto `[SupportOps] Consolidado semanal do Hub`, saudacao `Hub SupportOps` e declaracao explicita de agente executor.
+- Logica utilizada: `SquadOps Core` organiza a tela e a biblioteca de prompts, mas a analise semanal de riscos/gargalos deve ser tratada como frente de investigacao e consolidacao operacional do `Hub SupportOps`, sem executar deploy, commit ou comandos.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `git diff --check`.
+- Pendencias ou riscos conhecidos: se o consolidado identificar recorte pronto para publicacao, o encaminhamento final continua sendo `Hub ReleaseOps`.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o pacote HubOps completo antes de publicacao.
