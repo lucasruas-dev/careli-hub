@@ -2833,3 +2833,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: validacao visual final deve ser feita por Lucas em sessao adm autenticada; smoke autenticado completo das APIs novas depende de bearer real adm; build Vercel segue com warning conhecido Turbopack/NFT por leitura filesystem do Engineering Operations; Vercel segue alertando `npm audit` com 1 moderada e 1 alta e envs nao declaradas no `turbo.json`; Supabase Realtime pode gerar falso positivo dependendo do endpoint/ambiente.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para monitoramento pos-deploy e observacao de falsos positivos do Database Monitoring; `Hub ReleaseOps` para tratar futuramente warnings `turbo.json`, `npm audit` e NFT.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Prompt de monitoramento tecnico SupportOps`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 17:49:08 -03:00.
+- Tipo da alteracao: `AJUSTE OPERACIONAL` - novo prompt de acompanhamento tecnico.
+- Motivo da mudanca: Lucas solicitou um prompt para `Hub SupportOps` acompanhar riscos tecnicos da semana em HubOps, incluindo warning Turbopack/NFT, porta `3001`, build errors e APIs/payload do Operations Center.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei o template `Monitoramento tecnico`, com `target: Hub SupportOps`, tipo visual `monitoramento`, fonte historica no Engineering Operations, fonte de estado atual no Database Monitoring, regras de nao execucao automatica e criterio para avisar Lucas quando risco virar bloqueio.
+- Logica utilizada: esse prompt pertence a SupportOps porque monitora gargalos, falhas locais, build, payload e comportamento de APIs. Ele nao publica release nem altera codigo; apenas acompanha, classifica impacto e recomenda agente quando houver bloqueio operacional.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: se o acompanhamento identificar item bloqueante, o retorno deve acionar `Hub SupportOps` para investigacao ou `Hub ReleaseOps` se o bloqueio estiver ligado a deploy/publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar a atualizacao da biblioteca de prompts.

@@ -120,7 +120,7 @@ type PromptTemplate = {
   id: string;
   label: string;
   target: (typeof promptTargets)[number];
-  type: "deploy" | "daily" | "weekly" | "monthly";
+  type: "deploy" | "daily" | "weekly" | "monthly" | "monitoring";
 };
 
 const promptTemplates: PromptTemplate[] = [
@@ -317,6 +317,57 @@ Formato esperado da resposta:
 
 Status esperado:
 AGUARDANDO RELEASEOPS se houver recorte local pendente; OPERACIONAL COM ATENCAO se a semana tiver riscos sem bloqueio.`,
+  },
+  {
+    id: "supportops-technical-monitoring",
+    label: "Monitoramento tecnico",
+    description: "Acompanhamento SupportOps dos riscos tecnicos HubOps.",
+    target: "Hub SupportOps",
+    type: "monitoring",
+    body: `Assunto:
+[SupportOps] Monitoramento tecnico HubOps
+
+Hub SupportOps, manter acompanhamento dos riscos tecnicos da semana.
+
+Este pedido NAO e um template com placeholders. O escopo de monitoramento ja esta definido.
+Agente executor: Hub SupportOps.
+
+Fonte historica:
+- docs/codex/engineering-operations.md.
+
+Fonte de estado atual:
+- Database Monitoring / APIs reais / healthchecks do Operations Center.
+
+Itens em acompanhamento:
+- Warning Turbopack/NFT da rota que le Engineering Operations.
+- Possivel recorrencia de porta 3001 ocupada no dev local.
+- Build errors em HubOps/SquadOps.
+- APIs e payload do Operations Center.
+
+Regras:
+- Nao executar deploy, commit ou alteracao de codigo.
+- Nao chamar Guardian queue limit=1000 automaticamente.
+- Usar monitoramento real para banco, APIs, payload, tempo de resposta e healthchecks.
+- Usar Engineering Operations apenas como historico, rastreabilidade e memoria operacional.
+- Se nao houver evidencia atual, responder "nao informado".
+
+Quando informar Lucas:
+- Se warning virar erro de build.
+- Se porta 3001 voltar a bloquear o dev local.
+- Se API protegida responder 200 sem bearer.
+- Se payload entrar em nivel pesado ou critico.
+- Se qualquer item virar bloqueio operacional.
+
+Formato esperado da resposta:
+- Estado atual dos riscos.
+- Evidencias observadas.
+- Impacto operacional.
+- Recomendacao tecnica.
+- Agente recomendado, se houver bloqueio.
+- Status final.
+
+Status esperado:
+OPERACIONAL COM ATENCAO quando houver risco sem bloqueio; BLOQUEADO se algum item impedir desenvolvimento, validacao ou release.`,
   },
   {
     id: "monthly-activity",
@@ -2557,6 +2608,10 @@ function promptTemplateIcon(template: PromptTemplate) {
     return <ClipboardCheck className="size-4" />;
   }
 
+  if (template.type === "monitoring") {
+    return <ServerCog className="size-4" />;
+  }
+
   return <CalendarDays className="size-4" />;
 }
 
@@ -2571,6 +2626,10 @@ function promptTemplateTypeLabel(type: PromptTemplate["type"]) {
 
   if (type === "weekly") {
     return "semanal";
+  }
+
+  if (type === "monitoring") {
+    return "monitoramento";
   }
 
   return "mensal";
