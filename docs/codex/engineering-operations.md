@@ -2797,7 +2797,7 @@ Registro de diario:
 - Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: atualizei os prompts `Atividade diaria`, `Atividade semanal` e `Atividade mensal` para sairem preenchidos com periodo, fonte historica, fonte realtime, frentes obrigatorias, regras de leitura, riscos conhecidos, formato esperado e status esperado. Mantive o `Deploy HubOps` ja preenchido para ReleaseOps.
 - Logica utilizada: prompts operacionais do HubOps nao devem funcionar como modelos genericos com campos vazios. Eles precisam orientar o agente com contexto real, diferenciar `Engineering Operations` como historico/rastreabilidade e `Database Monitoring` como fonte de estado atual, e impedir deploy, commit ou comandos automaticos quando a funcao for apenas consolidar leitura.
-- Validacao executada: busca por resquicios de placeholders antigos nos prompts; validacoes tecnicas completas serao executadas na sequencia deste recorte.
+- Validacao executada: busca por resquicios de placeholders antigos nos prompts; `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP de `http://localhost:3001/squadops` retornou 200; `git diff --check` passou.
 - Pendencias ou riscos conhecidos: caso o periodo operacional mude, Lucas ou HubOps deve atualizar os prompts para refletir o novo dia/semana/mes antes de acionar outro agente. O release ainda depende de revisao do `Hub ReleaseOps`.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte HubOps completo e preparar publicacao se os diffs estiverem coerentes.
