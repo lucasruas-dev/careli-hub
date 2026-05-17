@@ -13,6 +13,15 @@ import {
   updatePulseXMessageTags,
 } from "@/lib/pulsex/supabase-data";
 import {
+  getPulseXShortcutChannels,
+  type PulseXShortcutFilter,
+} from "@/lib/pulsex/shortcuts";
+import {
+  PULSEX_MESSAGE_BROADCAST_EVENT,
+  getPulseXMessageRealtimeTopic,
+  parsePulseXMessageBroadcastPayload,
+} from "@/lib/pulsex/realtime";
+import {
   getHubSupabaseClient,
   hasHubSupabaseConfig,
   logSupabaseDiagnostic,
@@ -35,6 +44,7 @@ import type {
   PulseXThreadReply,
 } from "@/lib/pulsex";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CacaAgentPanel } from "./caca-agent-panel";
 import { ConversationHeader } from "./conversation-header";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { MessageComposer } from "./message-composer";
@@ -51,7 +61,7 @@ type PulseXToastNotification = {
 
 const PULSEX_PRESENCE_REFRESH_MS = 5_000;
 const PULSEX_MESSAGE_REFRESH_MS = 4_000;
-const PULSEX_MESSAGE_BROADCAST_EVENT = "message-created";
+const PULSEX_FAVORITE_CHANNELS_STORAGE_KEY = "careli:pulsex:favorite-channels";
 
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
@@ -78,8 +88,14 @@ export function PulseXWorkspace() {
   const [activeThreadMessageId, setActiveThreadMessageId] = useState<
     PulseXMessage["id"] | null
   >(null);
+  const [isCacaAgentOpen, setIsCacaAgentOpen] = useState(false);
+  const [cacaFocusedMessageId, setCacaFocusedMessageId] = useState<
+    PulseXMessage["id"] | null
+  >(null);
   const [activeMessageFilter, setActiveMessageFilter] =
     useState<PulseXMessageFilter>("all");
+  const [activeShortcutFilter, setActiveShortcutFilter] =
+    useState<PulseXShortcutFilter | null>(null);
   const [composerValue, setComposerValue] = useState("");
   const [composerMentions, setComposerMentions] = useState<
     readonly PulseXMessageMention[]
@@ -89,6 +105,10 @@ export function PulseXWorkspace() {
   const [dataStatus, setDataStatus] = useState<"fallback" | "loading" | "ready">(
     "loading",
   );
+  const [favoriteChannelIds, setFavoriteChannelIds] = useState<
+    PulseXChannel["id"][]
+  >([]);
+  const [isFavoriteStorageReady, setIsFavoriteStorageReady] = useState(false);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
   const messageRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
@@ -99,6 +119,10 @@ export function PulseXWorkspace() {
     channels.find((channel) => channel.id === activeChannelId) ??
     channels[0] ??
     emptyPulseXChannel;
+  const favoriteChannelIdsSet = useMemo(
+    () => new Set(favoriteChannelIds),
+    [favoriteChannelIds],
+  );
   const activeThreadMessage = activeThreadMessageId
     ? messages.find((message) => message.id === activeThreadMessageId)
     : undefined;
@@ -108,6 +132,9 @@ export function PulseXWorkspace() {
   const channelMessages = messages.filter(
     (message) => message.channelId === activeChannel.id,
   );
+  const cacaFocusedMessage = cacaFocusedMessageId
+    ? channelMessages.find((message) => message.id === cacaFocusedMessageId)
+    : null;
   const filteredChannelMessages =
     activeMessageFilter === "all"
       ? channelMessages
@@ -213,6 +240,36 @@ export function PulseXWorkspace() {
 
   useEffect(() => loadOperationalData(), [loadOperationalData]);
 
+  useEffect(() => {
+    try {
+      const storedValue = window.localStorage.getItem(
+        PULSEX_FAVORITE_CHANNELS_STORAGE_KEY,
+      );
+      const parsedValue = storedValue ? JSON.parse(storedValue) : [];
+
+      setFavoriteChannelIds(
+        Array.isArray(parsedValue)
+          ? parsedValue.filter((item): item is string => typeof item === "string")
+          : [],
+      );
+    } catch {
+      setFavoriteChannelIds([]);
+    } finally {
+      setIsFavoriteStorageReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isFavoriteStorageReady) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      PULSEX_FAVORITE_CHANNELS_STORAGE_KEY,
+      JSON.stringify(favoriteChannelIds),
+    );
+  }, [favoriteChannelIds, isFavoriteStorageReady]);
+
   const refreshPresenceStatuses = useCallback(
     (shouldApply: () => boolean = () => true) => {
       if (!hasHubSupabaseConfig()) {
@@ -268,8 +325,6 @@ export function PulseXWorkspace() {
         return;
       }
 
-      playPulseXMessageSound();
-
       newMessages.forEach((message) => {
         const mentioned = isMessageMentioningUser(message, currentUserId);
         const title = mentioned
@@ -292,10 +347,6 @@ export function PulseXWorkspace() {
             currentNotifications.filter((item) => item.id !== notification.id),
           );
         }, 6_000);
-        showBrowserPulseXNotification({
-          body: description,
-          title,
-        });
       });
     },
     [activeChannel.name, currentUserId],
@@ -580,11 +631,10 @@ export function PulseXWorkspace() {
 
   function handleSelectChannel(channelId: PulseXChannel["id"]) {
     setActiveChannelId(channelId);
+    setIsCacaAgentOpen(false);
+    setCacaFocusedMessageId(null);
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
-    if (hasHubSupabaseConfig()) {
-      setMessages([]);
-    }
     setChannels((currentChannels) =>
       currentChannels.map((channel) =>
         channel.id === channelId ? { ...channel, unreadCount: 0 } : channel,
@@ -592,9 +642,99 @@ export function PulseXWorkspace() {
     );
   }
 
+  function handleSelectMessageFilter(filter: PulseXMessageFilter) {
+    setActiveShortcutFilter(null);
+    setActiveMessageFilter(filter);
+  }
+
+  function handleSelectShortcut(shortcut: PulseXShortcutFilter) {
+    const nextShortcut = activeShortcutFilter === shortcut ? null : shortcut;
+
+    setActiveShortcutFilter(nextShortcut);
+    setActiveMessageFilter(nextShortcut === "mentions" ? "mentions" : "all");
+
+    if (!nextShortcut) {
+      return;
+    }
+
+    const shortcutChannels = getPulseXShortcutChannels({
+      channels,
+      currentUserId,
+      favoriteChannelIds,
+      messages,
+      shortcut: nextShortcut,
+    });
+
+    const firstShortcutChannel = shortcutChannels[0];
+
+    if (
+      firstShortcutChannel &&
+      !shortcutChannels.some((channel) => channel.id === activeChannel.id)
+    ) {
+      handleSelectChannel(firstShortcutChannel.id);
+    }
+  }
+
+  function handleToggleFavoriteChannel() {
+    if (activeChannel.id === emptyPulseXChannel.id) {
+      return;
+    }
+
+    setFavoriteChannelIds((currentIds) =>
+      currentIds.includes(activeChannel.id)
+        ? currentIds.filter((channelId) => channelId !== activeChannel.id)
+        : [...currentIds, activeChannel.id],
+    );
+  }
+
   function handleOpenThread(messageId: PulseXMessage["id"]) {
+    setIsCacaAgentOpen(false);
+    setCacaFocusedMessageId(null);
     setActiveThreadMessageId(messageId);
     loadThreadReplies(messageId);
+  }
+
+  function handleOpenCacaAgent() {
+    setActiveThreadMessageId(null);
+    setThreadComposerValue("");
+    setCacaFocusedMessageId(null);
+    setIsCacaAgentOpen(true);
+  }
+
+  function handleOpenCacaAgentForMessage(messageId: PulseXMessage["id"]) {
+    setActiveThreadMessageId(null);
+    setThreadComposerValue("");
+    setCacaFocusedMessageId(messageId);
+    setIsCacaAgentOpen(true);
+  }
+
+  function handleUseCacaDraft(content: string) {
+    const nextContent = content.trim();
+
+    if (!nextContent) {
+      return;
+    }
+
+    if (cacaFocusedMessage) {
+      setThreadComposerValue((currentValue) =>
+        currentValue.trim()
+          ? `${currentValue.trimEnd()}\n\n${nextContent}`
+          : nextContent,
+      );
+      setActiveThreadMessageId(cacaFocusedMessage.id);
+      loadThreadReplies(cacaFocusedMessage.id);
+      setIsCacaAgentOpen(false);
+      setCacaFocusedMessageId(null);
+      return;
+    }
+
+    setComposerValue((currentValue) => {
+      return currentValue.trim()
+        ? `${currentValue.trimEnd()}\n\n${nextContent}`
+        : nextContent;
+    });
+    setIsCacaAgentOpen(false);
+    setCacaFocusedMessageId(null);
   }
 
   function handleStartCall(type: PulseXCallType) {
@@ -1001,81 +1141,111 @@ export function PulseXWorkspace() {
       <ConversationSidebar
         activeChannelId={activeChannel.id}
         activeMessageFilter={activeMessageFilter}
+        activeShortcutFilter={activeShortcutFilter}
         channels={channels}
         currentUserId={currentUserId}
         dataStatus={dataStatus}
         departments={departments}
+        favoriteChannelIds={favoriteChannelIds}
         users={presenceUsers}
         messages={messages}
-        onSelectMessageFilter={setActiveMessageFilter}
+        onSelectMessageFilter={handleSelectMessageFilter}
+        onSelectShortcut={handleSelectShortcut}
         onSelectChannel={handleSelectChannel}
         onRefresh={() => {
           loadOperationalData();
         }}
       />
-      <main className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#f3f6fa]">
-        <ConversationHeader
-          callSoundOptions={callSoundOptions}
-          channel={activeChannel}
-          onChangeCallSound={setCallSoundId}
-          onPreviewCallSound={previewCallSound}
-          onStartCall={handleStartCall}
-          presenceUsers={channelPresenceUsers}
-          selectedCallSoundId={callSoundId}
-        />
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
-          <MessageList
-            currentUserId={currentUserId}
-            filter={activeMessageFilter}
-            messages={filteredChannelMessages}
-            onEditMessage={handleEditMessage}
-            onOpenThread={handleOpenThread}
-            onToggleTag={handleToggleMessageTag}
-            users={presenceUsers}
+      <div className="min-h-0 min-w-0 p-3 pl-0">
+        <main className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-[#d9e0ea] bg-[#f3f6fa] shadow-[0_14px_36px_rgba(16,24,32,0.08)]">
+          <ConversationHeader
+            callSoundOptions={callSoundOptions}
+            channel={activeChannel}
+            isFavorite={favoriteChannelIdsSet.has(activeChannel.id)}
+            onChangeCallSound={setCallSoundId}
+            onPreviewCallSound={previewCallSound}
+            onStartCall={handleStartCall}
+            onToggleFavorite={handleToggleFavoriteChannel}
+            presenceUsers={channelPresenceUsers}
+            selectedCallSoundId={callSoundId}
           />
-        </div>
-        <MessageComposer
-          channelName={activeChannel.name}
-          mentions={composerMentions}
-          onChange={handleComposerChange}
-          onSubmit={handleSendMessage}
-          onToggleTag={handleToggleComposerTag}
-          selectedTags={composerTags}
-          users={presenceUsers}
-          value={composerValue}
-        />
-        <PulseXNotificationStack
-          notifications={notifications}
-          onDismiss={(notificationId) =>
-            setNotifications((currentNotifications) =>
-              currentNotifications.filter(
-                (notification) => notification.id !== notificationId,
-              ),
-            )
-          }
-          onSelect={(channelId) => handleSelectChannel(channelId)}
-        />
-        {activeThreadMessage ? (
-          <div className="absolute inset-y-0 right-0 z-10 w-[23rem] shadow-2xl">
-            <ThreadPanel
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
+            <MessageList
               currentUserId={currentUserId}
-              message={activeThreadMessage}
-              onChangeReply={setThreadComposerValue}
-              onClose={() => {
-                setActiveThreadMessageId(null);
-                setThreadComposerValue("");
-              }}
+              filter={activeMessageFilter}
+              messages={filteredChannelMessages}
+              onAskAiReply={handleOpenCacaAgentForMessage}
               onEditMessage={handleEditMessage}
-              onSubmitReply={handleSubmitThreadReply}
-              onToggleReaction={handleToggleReaction}
-              reactionOptions={pulsexReactionOptions}
-              replies={activeThreadReplies}
-              replyValue={threadComposerValue}
+              onOpenThread={handleOpenThread}
+              onToggleTag={handleToggleMessageTag}
               users={presenceUsers}
             />
           </div>
-        ) : null}
-      </main>
+          <MessageComposer
+            channelName={activeChannel.name}
+            isAgentOpen={isCacaAgentOpen}
+            mentions={composerMentions}
+            onChange={handleComposerChange}
+            onCloseAgent={() => {
+              setIsCacaAgentOpen(false);
+              setCacaFocusedMessageId(null);
+            }}
+            onOpenAgent={handleOpenCacaAgent}
+            onSubmit={handleSendMessage}
+            onToggleTag={handleToggleComposerTag}
+            selectedTags={composerTags}
+            users={presenceUsers}
+            value={composerValue}
+          />
+          <PulseXNotificationStack
+            notifications={notifications}
+            onDismiss={(notificationId) =>
+              setNotifications((currentNotifications) =>
+                currentNotifications.filter(
+                  (notification) => notification.id !== notificationId,
+                ),
+              )
+            }
+            onSelect={(channelId) => handleSelectChannel(channelId)}
+          />
+          {isCacaAgentOpen ? (
+            <div className="absolute inset-y-0 right-0 z-20 w-[24rem] shadow-2xl">
+              <CacaAgentPanel
+                channel={activeChannel}
+                currentUserId={currentUserId}
+                draftValue={composerValue}
+                focusedMessage={cacaFocusedMessage}
+                messages={channelMessages}
+                onClose={() => {
+                  setIsCacaAgentOpen(false);
+                  setCacaFocusedMessageId(null);
+                }}
+                onUseAsDraft={handleUseCacaDraft}
+                users={presenceUsers}
+              />
+            </div>
+          ) : activeThreadMessage ? (
+            <div className="absolute inset-y-0 right-0 z-10 w-[24rem] shadow-2xl">
+              <ThreadPanel
+                currentUserId={currentUserId}
+                message={activeThreadMessage}
+                onChangeReply={setThreadComposerValue}
+                onClose={() => {
+                  setActiveThreadMessageId(null);
+                  setThreadComposerValue("");
+                }}
+                onEditMessage={handleEditMessage}
+                onSubmitReply={handleSubmitThreadReply}
+                onToggleReaction={handleToggleReaction}
+                reactionOptions={pulsexReactionOptions}
+                replies={activeThreadReplies}
+                replyValue={threadComposerValue}
+                users={presenceUsers}
+              />
+            </div>
+          ) : null}
+        </main>
+      </div>
     </div>
   );
 }
@@ -1170,10 +1340,6 @@ function PulseXNotificationStack({
   );
 }
 
-function getPulseXMessageRealtimeTopic(channelId: PulseXChannel["id"]) {
-  return `pulsex:messages:${channelId}`;
-}
-
 async function broadcastPulseXMessage(
   message: PulseXMessage,
   realtimeChannel: HubRealtimeChannel | null,
@@ -1194,42 +1360,6 @@ async function broadcastPulseXMessage(
       messageId: message.id,
     });
   }
-}
-
-function parsePulseXMessageBroadcastPayload(payload: unknown) {
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-
-  const message = (payload as { message?: unknown }).message;
-
-  if (!message || typeof message !== "object") {
-    return null;
-  }
-
-  const maybeMessage = message as Partial<PulseXMessage>;
-
-  if (
-    !maybeMessage.id ||
-    !maybeMessage.authorId ||
-    !maybeMessage.body ||
-    !maybeMessage.channelId ||
-    !maybeMessage.timestamp
-  ) {
-    return null;
-  }
-
-  return {
-    ...maybeMessage,
-    authorId: maybeMessage.authorId,
-    body: maybeMessage.body,
-    channelId: maybeMessage.channelId,
-    id: maybeMessage.id,
-    reactions: maybeMessage.reactions ?? [],
-    status: maybeMessage.status ?? "neutral",
-    tags: maybeMessage.tags ?? [],
-    timestamp: maybeMessage.timestamp,
-  } satisfies PulseXMessage;
 }
 
 function mergePulseXChannelMessages({
@@ -1505,111 +1635,6 @@ function isMessageMentioningUser(
     message.authorId !== userId &&
     Boolean(message.mentionUserIds?.includes(userId))
   );
-}
-
-function playPulseXMessageSound() {
-  playToneSequence([
-    {
-      duration: 0.11,
-      frequency: 660,
-      gain: 0.035,
-      start: 0,
-      type: "sine",
-    },
-    {
-      duration: 0.14,
-      frequency: 880,
-      gain: 0.028,
-      start: 0.11,
-      type: "triangle",
-    },
-  ]);
-}
-
-type ToneSpec = {
-  duration: number;
-  frequency: number | readonly number[];
-  gain: number;
-  start: number;
-  type: OscillatorType;
-};
-
-function playToneSequence(notes: readonly ToneSpec[]) {
-  try {
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-
-    if (!AudioContextConstructor) {
-      return;
-    }
-
-    const audioContext = new AudioContextConstructor();
-    const masterGain = audioContext.createGain();
-    const longestNoteEnd = notes.reduce(
-      (maxEnd, note) => Math.max(maxEnd, note.start + note.duration),
-      0,
-    );
-
-    masterGain.gain.setValueAtTime(0.9, audioContext.currentTime);
-    masterGain.connect(audioContext.destination);
-
-    notes.forEach((note) => {
-      const noteGain = audioContext.createGain();
-      const startAt = audioContext.currentTime + note.start;
-      const endAt = startAt + note.duration;
-      const frequencies = Array.isArray(note.frequency)
-        ? note.frequency
-        : [note.frequency];
-
-      noteGain.gain.setValueAtTime(0.0001, startAt);
-      noteGain.gain.exponentialRampToValueAtTime(note.gain, startAt + 0.025);
-      noteGain.gain.exponentialRampToValueAtTime(0.0001, endAt);
-      noteGain.connect(masterGain);
-
-      frequencies.forEach((frequency) => {
-        const chordOscillator = audioContext.createOscillator();
-
-        chordOscillator.type = note.type;
-        chordOscillator.frequency.setValueAtTime(frequency, startAt);
-        chordOscillator.connect(noteGain);
-        chordOscillator.start(startAt);
-        chordOscillator.stop(endAt + 0.02);
-      });
-    });
-
-    window.setTimeout(() => {
-      void audioContext.close();
-    }, Math.ceil((longestNoteEnd + 0.2) * 1_000));
-  } catch {
-    // Browser can block audio before the user interacts with the page.
-  }
-}
-
-function showBrowserPulseXNotification({
-  body,
-  title,
-}: {
-  body: string;
-  title: string;
-}) {
-  if (!("Notification" in window)) {
-    return;
-  }
-
-  if (Notification.permission === "granted") {
-    new Notification(title, { body });
-    return;
-  }
-
-  if (Notification.permission === "default") {
-    Notification.requestPermission().then((permission) => {
-      if (permission === "granted") {
-        new Notification(title, { body });
-      }
-    });
-  }
 }
 
 const emptyPulseXChannel = {

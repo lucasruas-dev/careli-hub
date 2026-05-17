@@ -34,11 +34,14 @@ import {
 
 type MessageComposerProps = {
   channelName: string;
+  isAgentOpen?: boolean;
   mentions: readonly PulseXMessageMention[];
   onChange: (
     value: string,
     mentions: readonly PulseXMessageMention[],
   ) => void;
+  onCloseAgent?: () => void;
+  onOpenAgent?: () => void;
   onSubmit: (input?: { attachment?: PulseXMessageAttachment }) => void;
   onToggleTag?: (tag: PulseXMessageTag) => void;
   selectedTags?: readonly PulseXMessageTag[];
@@ -48,8 +51,11 @@ type MessageComposerProps = {
 
 export function MessageComposer({
   channelName,
+  isAgentOpen = false,
   mentions,
   onChange,
+  onCloseAgent,
+  onOpenAgent,
   onSubmit,
   onToggleTag,
   selectedTags = [],
@@ -60,6 +66,7 @@ export function MessageComposer({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioStartedAtRef = useRef<number | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeMention, setActiveMention] = useState<{
     end: number;
@@ -71,7 +78,6 @@ export function MessageComposer({
   const [attachment, setAttachment] = useState<PulseXMessageAttachment | null>(
     null,
   );
-  const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -93,6 +99,32 @@ export function MessageComposer({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isEmojiPickerOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (emojiPickerRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsEmojiPickerOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isEmojiPickerOpen]);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isRecordingAudio) {
@@ -105,10 +137,10 @@ export function MessageComposer({
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Escape") {
-      if (isMentionOpen || isAgentPanelOpen || isEmojiPickerOpen) {
+      if (isMentionOpen || isAgentOpen || isEmojiPickerOpen) {
         event.preventDefault();
         closeMentionMenu();
-        setIsAgentPanelOpen(false);
+        onCloseAgent?.();
         setIsEmojiPickerOpen(false);
       }
       return;
@@ -231,13 +263,6 @@ export function MessageComposer({
   function handleSelectEmoji(emoji: string) {
     insertTextAtCaret(emoji);
     setIsEmojiPickerOpen(false);
-  }
-
-  function handleSelectAgentPrompt(prompt: string) {
-    const prefix = value.trim().length > 0 ? "\n@Agente C2X " : "@Agente C2X ";
-
-    insertTextAtCaret(`${prefix}${prompt}`);
-    setIsAgentPanelOpen(false);
   }
 
   async function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
@@ -368,14 +393,13 @@ export function MessageComposer({
         ref={fileInputRef}
         type="file"
       />
-      <div className="relative">
+      <div className="relative" ref={emojiPickerRef}>
         <ComposerAction
           active={isEmojiPickerOpen}
           ariaLabel="Abrir emojis"
           icon={<Smile size={18} />}
           onClick={() => {
             setIsEmojiPickerOpen((currentValue) => !currentValue);
-            setIsAgentPanelOpen(false);
           }}
         />
         {isEmojiPickerOpen ? (
@@ -389,17 +413,18 @@ export function MessageComposer({
       />
       <div className="relative">
         <ComposerAction
-          active={isAgentPanelOpen}
-          ariaLabel="Acionar agente"
+          active={isAgentOpen}
+          ariaLabel="Acionar Cacá"
           icon={<Bot size={18} />}
           onClick={() => {
-            setIsAgentPanelOpen((currentValue) => !currentValue);
+            if (isAgentOpen) {
+              onCloseAgent?.();
+            } else {
+              onOpenAgent?.();
+            }
             setIsEmojiPickerOpen(false);
           }}
         />
-        {isAgentPanelOpen ? (
-          <AgentPromptMenu onSelect={handleSelectAgentPrompt} />
-        ) : null}
       </div>
       <div className="relative flex-1">
         {isMentionOpen ? (
@@ -525,34 +550,6 @@ function EmojiPicker({
             type="button"
           >
             {emoji}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function AgentPromptMenu({
-  onSelect,
-}: {
-  onSelect: (prompt: string) => void;
-}) {
-  return (
-    <div className="absolute bottom-full left-0 z-40 mb-2 w-72 overflow-hidden rounded-md border border-[#d9e0ea] bg-white shadow-xl">
-      <div className="border-b border-[#eef2f7] px-3 py-2">
-        <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#A07C3B]">
-          Agente C2X
-        </p>
-      </div>
-      <div className="grid p-1.5">
-        {agentPromptOptions.map((option) => (
-          <button
-            className="rounded-md px-2.5 py-2 text-left text-sm font-medium text-[#17202f] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-            key={option.label}
-            onClick={() => onSelect(option.prompt)}
-            type="button"
-          >
-            {option.label}
           </button>
         ))}
       </div>
@@ -844,35 +841,14 @@ const composerEmojiOptions = [
   "🎯",
   "🏁",
   "⭐",
+  "☀️",
+  "🌞",
   "❤️",
   "💙",
   "🟢",
   "🟡",
   "🔴",
   "⚫",
-] as const;
-
-const agentPromptOptions = [
-  {
-    label: "Conectar agente",
-    prompt: "",
-  },
-  {
-    label: "Resumir conversa",
-    prompt: "resuma os principais pontos deste canal.",
-  },
-  {
-    label: "Criar tarefa",
-    prompt: "transforme esta conversa em uma tarefa com responsavel e prazo.",
-  },
-  {
-    label: "Melhorar texto",
-    prompt: "melhore este texto mantendo o tom profissional:",
-  },
-  {
-    label: "Cobrar retorno",
-    prompt: "prepare uma cobranca de retorno objetiva e educada.",
-  },
 ] as const;
 
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;

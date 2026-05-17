@@ -18,6 +18,7 @@ type MessageListProps = {
     messageId: PulseXMessage["id"],
     body: string,
   ) => Promise<void> | void;
+  onAskAiReply?: (messageId: PulseXMessage["id"]) => void;
   onOpenThread?: (messageId: PulseXMessage["id"]) => void;
   onToggleTag?: (
     messageId: PulseXMessage["id"],
@@ -31,6 +32,7 @@ export function MessageList({
   filter = "all",
   messages,
   onEditMessage,
+  onAskAiReply,
   onOpenThread,
   onToggleTag,
   users,
@@ -78,6 +80,7 @@ export function MessageList({
           currentUserId={currentUserId}
           key={message.id}
           message={message}
+          onAskAiReply={onAskAiReply}
           onEditMessage={onEditMessage}
           onOpenThread={onOpenThread}
           onToggleTag={onToggleTag}

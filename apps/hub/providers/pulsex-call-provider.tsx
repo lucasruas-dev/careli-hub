@@ -14,6 +14,13 @@ import {
   logSupabaseDiagnostic,
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
+import {
+  isPulseXCallSoundId,
+  playPulseXCallSound,
+  pulsexCallSoundOptions,
+  showBrowserPulseXNotification,
+  type PulseXCallSoundId,
+} from "@/lib/pulsex/notification-effects";
 import { useAuth } from "@/providers/auth-provider";
 import { Tooltip } from "@repo/uix";
 import { Phone, PhoneOff } from "lucide-react";
@@ -47,16 +54,16 @@ type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
 const PULSEX_CALL_SIGNAL_EVENT = "call-signal";
 const PULSEX_CALL_SIGNAL_TOPIC = "pulsex:calls";
+const PULSEX_ACTIVE_CALL_STORAGE_KEY = "careli:pulsex:active-call";
 const PULSEX_CALL_SOUND_STORAGE_KEY = "careli:pulsex:call-sound";
+const PULSEX_ACTIVE_CALL_STORAGE_TTL_MS = 1000 * 60 * 60 * 4;
 
-const pulsexCallSoundOptions = [
-  { id: "classic-phone", label: "Telefone classico" },
-  { id: "desk-phone", label: "Telefone de mesa" },
-  { id: "soft-phone", label: "Telefone discreto" },
-  { id: "mobile-phone", label: "Celular tocando" },
-] as const satisfies readonly PulseXCallSoundOption[];
-
-type PulseXCallSoundId = (typeof pulsexCallSoundOptions)[number]["id"];
+type StoredPulseXActiveCall = {
+  currentUserId: PulseXPresenceUser["id"];
+  isCallPanelOpen: boolean;
+  savedAt: number;
+  session: PulseXCallSession;
+};
 
 const PulseXCallContext = createContext<PulseXCallContextValue | null>(null);
 
@@ -73,6 +80,8 @@ export function PulseXCallProvider({
     null,
   );
   const [isCallPanelOpen, setIsCallPanelOpen] = useState(true);
+  const [isCallRealtimeReady, setIsCallRealtimeReady] = useState(false);
+  const [restoredCallId, setRestoredCallId] = useState<string | null>(null);
   const [callSoundId, setInternalCallSoundId] = useState<PulseXCallSoundId>(
     pulsexCallSoundOptions[0].id,
   );
@@ -99,14 +108,50 @@ export function PulseXCallProvider({
   }, []);
 
   useEffect(() => {
-    if (hubUser) {
+    if (hubUser || profileStatus === "loading") {
       return;
     }
 
     setActiveCall(null);
     setIncomingCall(null);
     setCallSignals([]);
-  }, [hubUser]);
+    clearStoredPulseXActiveCall();
+  }, [hubUser, profileStatus]);
+
+  useEffect(() => {
+    if (!currentUserId || activeCallRef.current || profileStatus === "loading") {
+      return;
+    }
+
+    const restoredCall = readStoredPulseXActiveCall(currentUserId);
+
+    if (!restoredCall) {
+      return;
+    }
+
+    setActiveCall(restoredCall.session);
+    setIncomingCall(null);
+    setIsCallPanelOpen(restoredCall.isCallPanelOpen);
+    setRestoredCallId(restoredCall.session.id);
+  }, [currentUserId, profileStatus]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    if (!activeCall) {
+      clearStoredPulseXActiveCall();
+      return;
+    }
+
+    writeStoredPulseXActiveCall({
+      currentUserId,
+      isCallPanelOpen,
+      savedAt: Date.now(),
+      session: activeCall,
+    });
+  }, [activeCall, currentUserId, isCallPanelOpen]);
 
   const appendCallSignal = useCallback((signal: PulseXCallRealtimeSignal) => {
     setCallSignals((currentSignals) =>
@@ -271,6 +316,7 @@ export function PulseXCallProvider({
         logSupabaseDiagnostic("pulsex", "call realtime status", {
           status,
         });
+        setIsCallRealtimeReady(status === "SUBSCRIBED");
       });
 
     return () => {
@@ -278,6 +324,7 @@ export function PulseXCallProvider({
         callRealtimeChannelRef.current = null;
       }
 
+      setIsCallRealtimeReady(false);
       void client.removeChannel(realtimeChannel);
     };
   }, [currentUserId, handleIncomingCallSignal, profileStatus]);
@@ -367,6 +414,41 @@ export function PulseXCallProvider({
     setIncomingCall(null);
   }, [incomingCall, sendCallSignal]);
 
+  useEffect(() => {
+    if (
+      !activeCall ||
+      activeCall.id !== restoredCallId ||
+      !currentUserId ||
+      !isCallRealtimeReady
+    ) {
+      return;
+    }
+
+    const currentParticipant = getCallParticipantForUser(
+      activeCall,
+      currentUserId,
+    );
+
+    sendCallSignal({
+      callId: activeCall.id,
+      channelId: activeCall.channelId,
+      kind: "join",
+      participant: currentParticipant
+        ? {
+            ...currentParticipant,
+            status: "joined",
+          }
+        : undefined,
+    });
+    setRestoredCallId(null);
+  }, [
+    activeCall,
+    currentUserId,
+    isCallRealtimeReady,
+    restoredCallId,
+    sendCallSignal,
+  ]);
+
   const endActiveCall = useCallback(() => {
     const call = activeCallRef.current;
 
@@ -419,7 +501,10 @@ export function PulseXCallProvider({
         </div>
       ) : null}
       {activeCall ? (
-        <div className={isCallPanelOpen ? undefined : "hidden"}>
+        <div
+          aria-hidden={!isCallPanelOpen}
+          className={isCallPanelOpen ? undefined : "pointer-events-none invisible"}
+        >
           <CallPanel
             currentUserId={currentUserId}
             onClose={() => setIsCallPanelOpen(false)}
@@ -621,173 +706,81 @@ function upsertCallParticipant(
   };
 }
 
-function isPulseXCallSoundId(value: unknown): value is PulseXCallSoundId {
-  return (
-    typeof value === "string" &&
-    pulsexCallSoundOptions.some((option) => option.id === value)
-  );
-}
-
-function playPulseXCallSound(soundId: PulseXCallSoundId) {
-  const soundMap = {
-    "classic-phone": [
-      {
-        duration: 0.42,
-        frequency: [440, 480],
-        gain: 0.038,
-        start: 0,
-        type: "square",
-      },
-      {
-        duration: 0.42,
-        frequency: [440, 480],
-        gain: 0.038,
-        start: 0.58,
-        type: "square",
-      },
-    ],
-    "desk-phone": [
-      {
-        duration: 0.5,
-        frequency: [390, 450],
-        gain: 0.042,
-        start: 0,
-        type: "square",
-      },
-      {
-        duration: 0.5,
-        frequency: [390, 450],
-        gain: 0.042,
-        start: 0.72,
-        type: "square",
-      },
-    ],
-    "mobile-phone": [
-      {
-        duration: 0.18,
-        frequency: [659, 880],
-        gain: 0.032,
-        start: 0,
-        type: "triangle",
-      },
-      {
-        duration: 0.18,
-        frequency: [659, 880],
-        gain: 0.032,
-        start: 0.26,
-        type: "triangle",
-      },
-      {
-        duration: 0.18,
-        frequency: [659, 880],
-        gain: 0.032,
-        start: 0.52,
-        type: "triangle",
-      },
-    ],
-    "soft-phone": [
-      {
-        duration: 0.36,
-        frequency: [420, 470],
-        gain: 0.028,
-        start: 0,
-        type: "sawtooth",
-      },
-      {
-        duration: 0.36,
-        frequency: [420, 470],
-        gain: 0.028,
-        start: 0.52,
-        type: "sawtooth",
-      },
-    ],
-  } as const satisfies Record<PulseXCallSoundId, readonly ToneSpec[]>;
-
-  playToneSequence(soundMap[soundId]);
-}
-
-type ToneSpec = {
-  duration: number;
-  frequency: number | readonly number[];
-  gain: number;
-  start: number;
-  type: OscillatorType;
-};
-
-function playToneSequence(notes: readonly ToneSpec[]) {
+function readStoredPulseXActiveCall(currentUserId: PulseXPresenceUser["id"]) {
   try {
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-
-    if (!AudioContextConstructor) {
-      return;
-    }
-
-    const audioContext = new AudioContextConstructor();
-    const masterGain = audioContext.createGain();
-    const longestNoteEnd = notes.reduce(
-      (maxEnd, note) => Math.max(maxEnd, note.start + note.duration),
-      0,
+    const storedValue = window.sessionStorage.getItem(
+      PULSEX_ACTIVE_CALL_STORAGE_KEY,
     );
 
-    masterGain.gain.setValueAtTime(0.9, audioContext.currentTime);
-    masterGain.connect(audioContext.destination);
+    if (!storedValue) {
+      return null;
+    }
 
-    notes.forEach((note) => {
-      const noteGain = audioContext.createGain();
-      const startAt = audioContext.currentTime + note.start;
-      const endAt = startAt + note.duration;
-      const frequencies = Array.isArray(note.frequency)
-        ? note.frequency
-        : [note.frequency];
+    const parsedValue = JSON.parse(storedValue) as Partial<StoredPulseXActiveCall>;
+    const savedAt =
+      typeof parsedValue.savedAt === "number" ? parsedValue.savedAt : 0;
+    const isExpired =
+      !savedAt || Date.now() - savedAt > PULSEX_ACTIVE_CALL_STORAGE_TTL_MS;
 
-      noteGain.gain.setValueAtTime(0.0001, startAt);
-      noteGain.gain.exponentialRampToValueAtTime(note.gain, startAt + 0.025);
-      noteGain.gain.exponentialRampToValueAtTime(0.0001, endAt);
-      noteGain.connect(masterGain);
+    if (
+      isExpired ||
+      parsedValue.currentUserId !== currentUserId ||
+      !isStoredPulseXCallSession(parsedValue.session)
+    ) {
+      clearStoredPulseXActiveCall();
+      return null;
+    }
 
-      frequencies.forEach((frequency) => {
-        const chordOscillator = audioContext.createOscillator();
-
-        chordOscillator.type = note.type;
-        chordOscillator.frequency.setValueAtTime(frequency, startAt);
-        chordOscillator.connect(noteGain);
-        chordOscillator.start(startAt);
-        chordOscillator.stop(endAt + 0.02);
-      });
-    });
-
-    window.setTimeout(() => {
-      void audioContext.close();
-    }, Math.ceil((longestNoteEnd + 0.2) * 1_000));
+    return {
+      isCallPanelOpen: parsedValue.isCallPanelOpen !== false,
+      session: {
+        ...parsedValue.session,
+        status:
+          parsedValue.session.status === "ended"
+            ? "active"
+            : parsedValue.session.status,
+      },
+    };
   } catch {
-    // Browser can block audio before the user interacts with the page.
+    clearStoredPulseXActiveCall();
+    return null;
   }
 }
 
-function showBrowserPulseXNotification({
-  body,
-  title,
-}: {
-  body: string;
-  title: string;
-}) {
-  if (!("Notification" in window)) {
-    return;
+function writeStoredPulseXActiveCall(activeCall: StoredPulseXActiveCall) {
+  try {
+    window.sessionStorage.setItem(
+      PULSEX_ACTIVE_CALL_STORAGE_KEY,
+      JSON.stringify(activeCall),
+    );
+  } catch {
+    // Session persistence is a resilience layer; a blocked storage should not end calls.
+  }
+}
+
+function clearStoredPulseXActiveCall() {
+  try {
+    window.sessionStorage.removeItem(PULSEX_ACTIVE_CALL_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function isStoredPulseXCallSession(
+  value: unknown,
+): value is PulseXCallSession {
+  if (!value || typeof value !== "object") {
+    return false;
   }
 
-  if (Notification.permission === "granted") {
-    new Notification(title, { body });
-    return;
-  }
+  const maybeSession = value as Partial<PulseXCallSession>;
 
-  if (Notification.permission === "default") {
-    Notification.requestPermission().then((permission) => {
-      if (permission === "granted") {
-        new Notification(title, { body });
-      }
-    });
-  }
+  return (
+    typeof maybeSession.channelId === "string" &&
+    typeof maybeSession.id === "string" &&
+    Array.isArray(maybeSession.participants) &&
+    typeof maybeSession.status === "string" &&
+    typeof maybeSession.title === "string" &&
+    (maybeSession.type === "audio" || maybeSession.type === "video")
+  );
 }

@@ -2,27 +2,27 @@ import type { PulseXMessageTag } from "./types";
 
 export const pulseXMessageTagOptions = [
   {
-    className: "border-rose-200 bg-rose-50 text-rose-700",
+    className: "border-rose-300 bg-rose-100 text-rose-800",
     id: "urgente",
     label: "Urgente",
   },
   {
-    className: "border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7b5f2d]",
+    className: "border-amber-400 bg-amber-100 text-amber-900",
     id: "importante",
     label: "Importante",
   },
   {
-    className: "border-amber-200 bg-amber-50 text-amber-700",
+    className: "border-orange-300 bg-orange-100 text-orange-800",
     id: "pendente",
     label: "Pendente",
   },
   {
-    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    className: "border-emerald-300 bg-emerald-100 text-emerald-800",
     id: "resolvido",
     label: "Resolvido",
   },
   {
-    className: "border-sky-200 bg-sky-50 text-sky-700",
+    className: "border-sky-300 bg-sky-100 text-sky-800",
     id: "acompanhar",
     label: "Acompanhar",
   },

@@ -8,6 +8,8 @@ import type {
 } from "@/lib/pulsex";
 import { Send, X } from "lucide-react";
 import {
+  useEffect,
+  useRef,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
@@ -46,6 +48,22 @@ export function ThreadPanel({
   replyValue,
   users,
 }: ThreadPanelProps) {
+  const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const textarea = replyTextareaRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "0px";
+    textarea.style.height = `${Math.min(
+      Math.max(textarea.scrollHeight, 44),
+      144,
+    )}px`;
+  }, [replyValue]);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmitReply();
@@ -65,7 +83,7 @@ export function ThreadPanel({
   const isReplyEmpty = replyValue.trim().length === 0;
 
   return (
-    <aside className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] border-l border-[#d9e0ea] bg-white">
+    <aside className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-l-[1.15rem] border-l border-[#d9e0ea] bg-white">
       <header className="flex h-16 items-center justify-between border-b border-[#d9e0ea] px-5">
         <div>
           <p className="m-0 text-sm font-semibold text-[var(--uix-text-primary)]">
@@ -124,7 +142,7 @@ export function ThreadPanel({
                 }`}
               >
                 <p className="m-0 whitespace-pre-wrap leading-6">{reply.body}</p>
-                <p className="m-0 mt-1 text-right text-[0.68rem] opacity-70">
+                <p className="m-0 mt-1 text-right text-[0.68rem] font-bold text-[#101820]">
                   {reply.timestamp}
                 </p>
               </div>
@@ -140,26 +158,29 @@ export function ThreadPanel({
         })}
       </div>
       <form
-        className="flex items-end gap-2 border-t border-[#d9e0ea] px-4 py-3"
+        className="border-t border-[#d9e0ea] px-4 py-3"
         onSubmit={handleSubmit}
       >
-        <textarea
-          aria-label="Responder"
-          className="max-h-28 min-h-10 flex-1 resize-none rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-4 py-2.5 text-sm leading-5 text-[var(--uix-text-primary)] outline-none transition placeholder:text-[var(--uix-text-muted)] focus:border-[var(--uix-brand-primary)] focus:bg-white"
-          onChange={(event) => onChangeReply(event.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Responder"
-          rows={1}
-          value={replyValue}
-        />
-        <button
-          aria-label="Enviar resposta"
-          className="grid h-10 w-10 place-items-center rounded-md bg-[var(--uix-brand-primary)] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#e6ebf2] disabled:text-[#8b98aa]"
-          disabled={isReplyEmpty}
-          type="submit"
-        >
-          <Send aria-hidden="true" size={17} />
-        </button>
+        <div className="flex items-end gap-2 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] p-2 transition focus-within:border-[var(--uix-brand-primary)] focus-within:bg-white">
+          <textarea
+            aria-label="Responder"
+            className="max-h-36 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-1.5 text-sm leading-5 text-[var(--uix-text-primary)] outline-none placeholder:text-[var(--uix-text-muted)]"
+            onChange={(event) => onChangeReply(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Responder"
+            ref={replyTextareaRef}
+            rows={1}
+            value={replyValue}
+          />
+          <button
+            aria-label="Enviar resposta"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#A07C3B] text-white shadow-[0_8px_18px_rgba(160,124,59,0.28)] outline-none ring-1 ring-[#8c6b2f]/20 transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#efe4d2] disabled:text-[#8c6b2f] disabled:shadow-none disabled:ring-[#A07C3B]/35"
+            disabled={isReplyEmpty}
+            type="submit"
+          >
+            <Send aria-hidden="true" size={16} />
+          </button>
+        </div>
       </form>
     </aside>
   );

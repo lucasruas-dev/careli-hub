@@ -1,0 +1,265 @@
+export const pulsexCallSoundOptions = [
+  { id: "careli-signature", label: "Assinatura Careli" },
+  { id: "aurora", label: "Aurora" },
+  { id: "crystal", label: "Cristal" },
+  { id: "focus", label: "Focus" },
+] as const;
+
+export type PulseXCallSoundId = (typeof pulsexCallSoundOptions)[number]["id"];
+
+type ToneSpec = {
+  duration: number;
+  frequency: number | readonly number[];
+  gain: number;
+  start: number;
+  type: OscillatorType;
+};
+
+type PulseXNotificationInput = {
+  body: string;
+  onClickPath?: string;
+  tag?: string;
+  title: string;
+};
+
+export function isPulseXCallSoundId(value: unknown): value is PulseXCallSoundId {
+  return (
+    typeof value === "string" &&
+    pulsexCallSoundOptions.some((option) => option.id === value)
+  );
+}
+
+export function playPulseXMessageSound() {
+  playToneSequence([
+    {
+      duration: 0.1,
+      frequency: [739.99, 987.77],
+      gain: 0.018,
+      start: 0,
+      type: "sine",
+    },
+    {
+      duration: 0.17,
+      frequency: 1174.66,
+      gain: 0.014,
+      start: 0.09,
+      type: "triangle",
+    },
+  ]);
+}
+
+export function playPulseXCallSound(soundId: PulseXCallSoundId) {
+  const soundMap = {
+    aurora: [
+      {
+        duration: 0.32,
+        frequency: [440, 554.37],
+        gain: 0.026,
+        start: 0,
+        type: "sine",
+      },
+      {
+        duration: 0.38,
+        frequency: [493.88, 659.25],
+        gain: 0.024,
+        start: 0.38,
+        type: "triangle",
+      },
+      {
+        duration: 0.34,
+        frequency: [554.37, 739.99],
+        gain: 0.018,
+        start: 0.86,
+        type: "sine",
+      },
+    ],
+    "careli-signature": [
+      {
+        duration: 0.24,
+        frequency: [523.25, 659.25],
+        gain: 0.027,
+        start: 0,
+        type: "sine",
+      },
+      {
+        duration: 0.26,
+        frequency: [587.33, 739.99],
+        gain: 0.025,
+        start: 0.28,
+        type: "triangle",
+      },
+      {
+        duration: 0.36,
+        frequency: [659.25, 783.99],
+        gain: 0.021,
+        start: 0.72,
+        type: "sine",
+      },
+    ],
+    crystal: [
+      {
+        duration: 0.16,
+        frequency: [880, 1174.66],
+        gain: 0.022,
+        start: 0,
+        type: "sine",
+      },
+      {
+        duration: 0.22,
+        frequency: [987.77, 1318.51],
+        gain: 0.019,
+        start: 0.2,
+        type: "triangle",
+      },
+      {
+        duration: 0.28,
+        frequency: [783.99, 1046.5],
+        gain: 0.018,
+        start: 0.55,
+        type: "sine",
+      },
+    ],
+    focus: [
+      {
+        duration: 0.42,
+        frequency: [392, 493.88],
+        gain: 0.024,
+        start: 0,
+        type: "sine",
+      },
+      {
+        duration: 0.34,
+        frequency: [440, 587.33],
+        gain: 0.022,
+        start: 0.52,
+        type: "triangle",
+      },
+    ],
+  } as const satisfies Record<PulseXCallSoundId, readonly ToneSpec[]>;
+
+  playToneSequence(soundMap[soundId]);
+}
+
+export function registerPulseXNotificationPermissionIntent() {
+  if (
+    typeof window === "undefined" ||
+    !("Notification" in window) ||
+    Notification.permission !== "default"
+  ) {
+    return () => undefined;
+  }
+
+  const requestPermission = () => {
+    void Notification.requestPermission();
+    cleanup();
+  };
+  const cleanup = () => {
+    window.removeEventListener("keydown", requestPermission);
+    window.removeEventListener("pointerdown", requestPermission);
+  };
+
+  window.addEventListener("keydown", requestPermission, { once: true });
+  window.addEventListener("pointerdown", requestPermission, { once: true });
+
+  return cleanup;
+}
+
+export function showBrowserPulseXNotification({
+  body,
+  onClickPath,
+  tag,
+  title,
+}: PulseXNotificationInput) {
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    return;
+  }
+
+  const notify = () => {
+    const notification = new Notification(title, {
+      badge: "/logoc.png",
+      body,
+      icon: "/logo-careli-c2x.png",
+      tag,
+    });
+
+    notification.onclick = () => {
+      window.focus();
+
+      if (onClickPath) {
+        window.location.assign(onClickPath);
+      }
+
+      notification.close();
+    };
+  };
+
+  if (Notification.permission === "granted") {
+    notify();
+    return;
+  }
+
+  if (Notification.permission === "default") {
+    Notification.requestPermission().then((permission) => {
+      if (permission === "granted") {
+        notify();
+      }
+    });
+  }
+}
+
+function playToneSequence(notes: readonly ToneSpec[]) {
+  try {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+
+    if (!AudioContextConstructor) {
+      return;
+    }
+
+    const audioContext = new AudioContextConstructor();
+    const masterGain = audioContext.createGain();
+    const longestNoteEnd = notes.reduce(
+      (maxEnd, note) => Math.max(maxEnd, note.start + note.duration),
+      0,
+    );
+
+    masterGain.gain.setValueAtTime(0.82, audioContext.currentTime);
+    masterGain.connect(audioContext.destination);
+
+    notes.forEach((note) => {
+      const noteGain = audioContext.createGain();
+      const startAt = audioContext.currentTime + note.start;
+      const endAt = startAt + note.duration;
+      const frequencies = Array.isArray(note.frequency)
+        ? note.frequency
+        : [note.frequency];
+
+      noteGain.gain.setValueAtTime(0.0001, startAt);
+      noteGain.gain.exponentialRampToValueAtTime(note.gain, startAt + 0.03);
+      noteGain.gain.exponentialRampToValueAtTime(0.0001, endAt);
+      noteGain.connect(masterGain);
+
+      frequencies.forEach((frequency) => {
+        const chordOscillator = audioContext.createOscillator();
+
+        chordOscillator.type = note.type;
+        chordOscillator.frequency.setValueAtTime(frequency, startAt);
+        chordOscillator.connect(noteGain);
+        chordOscillator.start(startAt);
+        chordOscillator.stop(endAt + 0.03);
+      });
+    });
+
+    window.setTimeout(() => {
+      void audioContext.close();
+    }, Math.ceil((longestNoteEnd + 0.22) * 1_000));
+  } catch {
+    // Browser can block audio before the user interacts with the page.
+  }
+}

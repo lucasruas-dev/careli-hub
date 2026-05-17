@@ -26,9 +26,11 @@ export type PulseXCallSoundOption = {
 type ConversationHeaderProps = {
   callSoundOptions: readonly PulseXCallSoundOption[];
   channel: PulseXChannel;
+  isFavorite?: boolean;
   onChangeCallSound: (soundId: string) => void;
   onPreviewCallSound: (soundId: string) => void;
   onStartCall: (type: PulseXCallType) => void;
+  onToggleFavorite?: () => void;
   presenceUsers: readonly PulseXPresenceUser[];
   selectedCallSoundId: string;
 };
@@ -36,9 +38,11 @@ type ConversationHeaderProps = {
 export function ConversationHeader({
   callSoundOptions,
   channel,
+  isFavorite = false,
   onChangeCallSound,
   onPreviewCallSound,
   onStartCall,
+  onToggleFavorite,
   presenceUsers,
   selectedCallSoundId,
 }: ConversationHeaderProps) {
@@ -90,7 +94,18 @@ export function ConversationHeader({
       </div>
       <ParticipantStack users={presenceUsers} />
       <div className="flex items-center gap-1">
-        <HeaderAction ariaLabel="Favoritar" icon={<Star size={17} />} />
+        <HeaderAction
+          active={isFavorite}
+          ariaLabel={isFavorite ? "Remover favorito" : "Favoritar"}
+          icon={
+            <Star
+              aria-hidden="true"
+              fill={isFavorite ? "currentColor" : "none"}
+              size={17}
+            />
+          }
+          onClick={onToggleFavorite}
+        />
         <HeaderAction ariaLabel="Buscar" icon={<Search size={17} />} />
         <div className="relative">
           <HeaderAction
@@ -264,10 +279,12 @@ function getPresenceLabel(status: PulseXPresenceUser["status"]) {
 }
 
 function HeaderAction({
+  active = false,
   ariaLabel,
   icon,
   onClick,
 }: {
+  active?: boolean;
   ariaLabel: string;
   icon: ReactNode;
   onClick?: () => void;
@@ -275,7 +292,8 @@ function HeaderAction({
   return (
     <button
       aria-label={ariaLabel}
-      className="grid h-8 w-8 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[var(--uix-surface-muted)] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+      aria-pressed={active || undefined}
+      className="grid h-8 w-8 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[var(--uix-surface-muted)] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-[#f7f3eb] aria-pressed:text-[#A07C3B]"
       onClick={onClick}
       type="button"
     >

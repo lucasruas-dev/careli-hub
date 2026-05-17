@@ -226,6 +226,33 @@ export async function loadPulseXOperationalData(input: {
   };
 }
 
+export async function listPulseXNotificationChannels(input: {
+  currentUserId: string;
+  userRole?: string;
+}): Promise<PulseXChannel[]> {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    return [];
+  }
+
+  const [assignmentsLoad, channelsLoad] = await Promise.all([
+    safePulseXLoad(
+      "notification assignments",
+      () => listUserAssignments(input.currentUserId),
+      [],
+    ),
+    safePulseXLoad("notification channels", listPulseXChannels, []),
+  ]);
+
+  return filterChannelsForUser({
+    assignments: assignmentsLoad.data,
+    channels: channelsLoad.data,
+    currentUserId: input.currentUserId,
+    userRole: input.userRole,
+  }).filter((channel) => channel.kind !== "direct");
+}
+
 export async function listDepartments(): Promise<PulseXDepartment[]> {
   const client = getHubSupabaseClient();
 

@@ -83,7 +83,13 @@ const moduleIconMap: Record<string, ReactNode> = {
   squadops: <GitBranch aria-hidden="true" size={18} />,
 };
 
-const minimumReleasedModuleIds = ["guardian", "caredesk", "pulsex", "setup", "squadops"] as const;
+const minimumReleasedModuleIds = [
+  "guardian",
+  "caredesk",
+  "pulsex",
+  "setup",
+  "squadops",
+] as const;
 const hiddenProductionModuleIds = new Set(["caredesk"]);
 
 export function HubShell({
@@ -99,9 +105,8 @@ export function HubShell({
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isPresenceMenuOpen, setIsPresenceMenuOpen] = useState(false);
-  const [releasedModuleIds, setReleasedModuleIds] = useState<Set<string> | null>(
-    null,
-  );
+  const [releasedModuleIds, setReleasedModuleIds] =
+    useState<Set<string> | null>(null);
   const { hubUser, profileStatus, signOut } = useAuth();
   const hubPresence = useHubPresenceController({
     enabled: profileStatus === "ready" && Boolean(hubUser),
@@ -132,22 +137,25 @@ export function HubShell({
   const moduleNavigationItems = orderedHubModules
     .filter((hubModule) => visibleHubModules.includes(hubModule))
     .flatMap((hubModule) => {
-      if (!canOpenShellModule(hubModule.id, hubUser, hubModule, profileStatus)) {
+      if (
+        !canOpenShellModule(hubModule.id, hubUser, hubModule, profileStatus)
+      ) {
         return [];
       }
 
       return hubModule.navigationItems.map((item) => ({
         ...item,
-        badge: hubModule.realtimeEnabled
-          ? "live"
-          : "badge" in item
-            ? item.badge
-            : undefined,
+        badge: hubModule.realtimeEnabled ? (
+          <HubSidebarLiveBadge />
+        ) : "badge" in item ? (
+          item.badge
+        ) : undefined,
         disabled: false,
         icon: moduleIconMap[hubModule.id] ?? (
           <FileText aria-hidden="true" size={18} />
         ),
         moduleId: hubModule.id,
+        realtimeEnabled: hubModule.realtimeEnabled,
         statusLabel: getHubModuleStatusLabel(hubModule.status),
       }));
     })
@@ -157,27 +165,27 @@ export function HubShell({
   const commands = orderedHubModules
     .filter((hubModule) => visibleHubModules.includes(hubModule))
     .flatMap((hubModule) => {
-    const canOpenModule = canOpenShellModule(
-      hubModule.id,
-      hubUser,
-      hubModule,
-      profileStatus,
-    );
+      const canOpenModule = canOpenShellModule(
+        hubModule.id,
+        hubUser,
+        hubModule,
+        profileStatus,
+      );
 
-    if (!canOpenModule) {
-      return [];
-    }
+      if (!canOpenModule) {
+        return [];
+      }
 
-    return hubModule.routes.map((route) => ({
-      disabled: false,
-      group: hubModule.name,
-      id: route.id,
-      keywords: [hubModule.id, hubModule.name, route.label],
-      label: `Abrir ${hubModule.name} - ${route.label}`,
-      path: route.path,
-      shortcut: `G ${hubModule.iconKey.slice(0, 1).toUpperCase()}`,
-    }));
-  });
+      return hubModule.routes.map((route) => ({
+        disabled: false,
+        group: hubModule.name,
+        id: route.id,
+        keywords: [hubModule.id, hubModule.name, route.label],
+        label: `Abrir ${hubModule.name} - ${route.label}`,
+        path: route.path,
+        shortcut: `G ${hubModule.iconKey.slice(0, 1).toUpperCase()}`,
+      }));
+    });
 
   useEffect(() => {
     if (!hasHubSupabaseConfig()) {
@@ -200,13 +208,17 @@ export function HubShell({
       tables: ["hub_modules", "hub_department_modules"],
     });
 
-    withShellTimeout(Promise.all([
-      client.from("hub_modules").select("id").eq("status", "active"),
-      client
-        .from("hub_department_modules")
-        .select("module_id")
-        .eq("status", "enabled"),
-    ]), "modules", 8_000)
+    withShellTimeout(
+      Promise.all([
+        client.from("hub_modules").select("id").eq("status", "active"),
+        client
+          .from("hub_department_modules")
+          .select("module_id")
+          .eq("status", "enabled"),
+      ]),
+      "modules",
+      8_000,
+    )
       .then(([modulesResult, accessResult]) => {
         if (!isMounted || modulesResult.error || accessResult.error) {
           logSupabaseDiagnostic("shell", "modules error", {
@@ -350,219 +362,231 @@ export function HubShell({
         }
         sidebar={
           isOperationalChrome ? null : (
-          <Sidebar
-            collapsed={isSidebarCollapsed}
-            footer={
-              isSidebarCollapsed ? null : (
-                <StatusIndicator label="Realtime online" variant="online" />
-              )
-            }
-            header={
-              isSidebarCollapsed ? (
-                <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
-                  <Link
-                    aria-label="Voltar para a Home do Hub"
-                    className="grid h-9 w-9 place-items-center rounded-md text-[#c9d1dc] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
-                    href="/"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="h-7 w-7 bg-current"
-                      style={{
-                        WebkitMaskImage: "url('/logocbr.png')",
-                        WebkitMaskPosition: "center",
-                        WebkitMaskRepeat: "no-repeat",
-                        WebkitMaskSize: "contain",
-                        maskImage: "url('/logocbr.png')",
-                        maskPosition: "center",
-                        maskRepeat: "no-repeat",
-                        maskSize: "contain",
-                      }}
-                    />
-                  </Link>
-                  <Tooltip content="Expandir menu" placement="right">
-                    <button
-                      aria-label="Expandir sidebar"
-                      className="grid h-8 w-8 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
-                      onClick={handleToggleSidebar}
-                      type="button"
+            <Sidebar
+              collapsed={isSidebarCollapsed}
+              footer={
+                isSidebarCollapsed ? null : (
+                  <StatusIndicator label="Realtime online" variant="online" />
+                )
+              }
+              header={
+                isSidebarCollapsed ? (
+                  <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
+                    <Link
+                      aria-label="Voltar para a Home do Hub"
+                      className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                      href="/"
                     >
-                      <PanelLeftOpen aria-hidden="true" size={16} />
-                    </button>
-                  </Tooltip>
-                </div>
-              ) : (
-                <div className="grid min-h-11 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-3 pb-1 pt-0.5">
-                  <span aria-hidden="true" />
-                  <Link
-                    aria-label="Careli C2X"
-                    className="flex min-w-0 items-center justify-center text-[#c9d1dc]"
-                    href="/"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="h-[2.125rem] w-[6.875rem] bg-current"
-                      style={{
-                        WebkitMaskImage: "url('/logocb.png')",
-                        WebkitMaskPosition: "center",
-                        WebkitMaskRepeat: "no-repeat",
-                        WebkitMaskSize: "contain",
-                        maskImage: "url('/logocb.png')",
-                        maskPosition: "center",
-                        maskRepeat: "no-repeat",
-                        maskSize: "contain",
-                      }}
-                    />
-                  </Link>
-                  <Tooltip content="Recolher menu" placement="right">
-                    <button
-                      aria-label="Recolher sidebar"
-                      className="grid h-8 w-8 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
-                      onClick={handleToggleSidebar}
-                      type="button"
+                      <span
+                        aria-hidden="true"
+                        className="h-7 w-7 bg-current"
+                        style={{
+                          WebkitMaskImage: "url('/logocbr.png')",
+                          WebkitMaskPosition: "center",
+                          WebkitMaskRepeat: "no-repeat",
+                          WebkitMaskSize: "contain",
+                          maskImage: "url('/logocbr.png')",
+                          maskPosition: "center",
+                          maskRepeat: "no-repeat",
+                          maskSize: "contain",
+                        }}
+                      />
+                    </Link>
+                    <Tooltip content="Expandir menu" placement="right">
+                      <button
+                        aria-label="Expandir sidebar"
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[var(--uix-text-muted)] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                        onClick={handleToggleSidebar}
+                        type="button"
+                      >
+                        <PanelLeftOpen aria-hidden="true" size={16} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                ) : (
+                  <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-3 rounded-xl border border-white/[0.075] bg-white/[0.035] px-2.5 py-2">
+                    <Link
+                      aria-label="Careli C2X"
+                      className="flex min-w-0 items-center text-[#d5dde8] outline-none transition hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                      href="/"
                     >
-                      <PanelLeftClose aria-hidden="true" size={16} />
-                    </button>
+                      <span
+                        aria-hidden="true"
+                        className="h-[2.125rem] w-[6.875rem] bg-current"
+                        style={{
+                          WebkitMaskImage: "url('/logocb.png')",
+                          WebkitMaskPosition: "center",
+                          WebkitMaskRepeat: "no-repeat",
+                          WebkitMaskSize: "contain",
+                          maskImage: "url('/logocb.png')",
+                          maskPosition: "center",
+                          maskRepeat: "no-repeat",
+                          maskSize: "contain",
+                        }}
+                      />
+                    </Link>
+                    <Tooltip content="Recolher menu" placement="right">
+                      <button
+                        aria-label="Recolher sidebar"
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[var(--uix-text-muted)] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                        onClick={handleToggleSidebar}
+                        type="button"
+                      >
+                        <PanelLeftClose aria-hidden="true" size={16} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                )
+              }
+            >
+              <SidebarGroup title="Modulos">
+                {moduleNavigationItems.map((item) => (
+                  <Tooltip
+                    content={item.disabled ? item.statusLabel : item.label}
+                    key={`${item.moduleId}-${item.id}`}
+                    placement="right"
+                  >
+                    <SidebarItem
+                      active={
+                        !item.disabled && isShellPathActive(pathname, item.path)
+                      }
+                      badge={item.badge}
+                      collapsed={isSidebarCollapsed}
+                      disabled={item.disabled}
+                      href={item.disabled ? undefined : item.path}
+                      icon={item.icon}
+                      label={item.label}
+                    />
                   </Tooltip>
-                </div>
-              )
-            }
-          >
-            <SidebarGroup title="Modulos">
-              {moduleNavigationItems.map((item) => (
-                <Tooltip
-                  content={item.disabled ? item.statusLabel : item.label}
-                  key={`${item.moduleId}-${item.id}`}
-                  placement="right"
-                >
-                  <SidebarItem
-                    active={!item.disabled && pathname === item.path}
-                    badge={item.badge}
-                    collapsed={isSidebarCollapsed}
-                    disabled={item.disabled}
-                    href={item.disabled ? undefined : item.path}
-                    icon={item.icon}
-                    label={item.label}
-                  />
-                </Tooltip>
-              ))}
-            </SidebarGroup>
-          </Sidebar>
+                ))}
+              </SidebarGroup>
+            </Sidebar>
           )
         }
         topbar={
           isOperationalChrome ? null : (
-          <Topbar
-            actions={
-              <ActionGroup align="end">
-                <div className="relative">
-                  <Tooltip content="Notificacoes">
-                    <button
-                      aria-expanded={isNotificationPanelOpen}
-                      aria-label="Abrir notificacoes"
-                      className="relative grid h-8 w-8 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] outline-none transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                      onClick={() =>
-                        setIsNotificationPanelOpen(
-                          (currentValue) => !currentValue,
-                        )
-                      }
-                      type="button"
-                    >
-                      <Bell aria-hidden="true" size={17} />
-                      {unreadNotificationsCount > 0 ? (
-                        <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[0.625rem] font-bold leading-none text-white">
-                          {unreadNotificationsCount > 99
-                            ? "99+"
-                            : unreadNotificationsCount}
-                        </span>
-                      ) : null}
-                    </button>
-                  </Tooltip>
-                  {isNotificationPanelOpen ? (
-                    <NotificationPanel
-                      items={realtimeState.notifications.map((notification) => ({
-                        description: notification.moduleId
-                          ? `Modulo: ${notification.moduleId}`
-                          : "Hub Central",
-                        id: notification.id,
-                        read: notification.read,
-                        status: notification.severity,
-                        timestamp: notification.timestamp,
-                        title: notification.title,
-                      }))}
-                      title="Notificacoes"
-                      unreadCount={unreadNotificationsCount}
+            <Topbar
+              actions={
+                <ActionGroup align="end">
+                  <div className="relative">
+                    <Tooltip content="Notificacoes">
+                      <button
+                        aria-expanded={isNotificationPanelOpen}
+                        aria-label="Abrir notificacoes"
+                        className="relative grid h-8 w-8 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] outline-none transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                        onClick={() =>
+                          setIsNotificationPanelOpen(
+                            (currentValue) => !currentValue,
+                          )
+                        }
+                        type="button"
+                      >
+                        <Bell aria-hidden="true" size={17} />
+                        {unreadNotificationsCount > 0 ? (
+                          <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[0.625rem] font-bold leading-none text-white">
+                            {unreadNotificationsCount > 99
+                              ? "99+"
+                              : unreadNotificationsCount}
+                          </span>
+                        ) : null}
+                      </button>
+                    </Tooltip>
+                    {isNotificationPanelOpen ? (
+                      <NotificationPanel
+                        items={realtimeState.notifications.map(
+                          (notification) => ({
+                            description: notification.moduleId
+                              ? `Modulo: ${notification.moduleId}`
+                              : "Hub Central",
+                            id: notification.id,
+                            read: notification.read,
+                            status: notification.severity,
+                            timestamp: notification.timestamp,
+                            title: notification.title,
+                          }),
+                        )}
+                        title="Notificacoes"
+                        unreadCount={unreadNotificationsCount}
+                      />
+                    ) : null}
+                  </div>
+                  <Tooltip content="Ajustes">
+                    <IconButton
+                      aria-label="Abrir ajustes"
+                      icon={<Settings aria-hidden="true" size={17} />}
                     />
-                  ) : null}
+                  </Tooltip>
+                </ActionGroup>
+              }
+              context={
+                <div>
+                  <p className="m-0 text-base font-semibold text-[var(--uix-text-primary)]">
+                    {layoutMode === "module"
+                      ? (activeModule?.name ?? "Modulo")
+                      : "Home"}
+                  </p>
                 </div>
-                <Tooltip content="Ajustes">
-                  <IconButton
-                    aria-label="Abrir ajustes"
-                    icon={<Settings aria-hidden="true" size={17} />}
-                  />
-                </Tooltip>
-              </ActionGroup>
-            }
-            context={
-              <div>
-                <p className="m-0 text-base font-semibold text-[var(--uix-text-primary)]">
-                  {layoutMode === "module" ? (activeModule?.name ?? "Modulo") : "Home"}
-                </p>
-              </div>
-            }
-            realtime={
-              <RealtimePulse
-                label={realtimeState.connectionStatus}
-                state={mapConnectionStatusToPulseState(
-                  realtimeState.connectionStatus,
-                )}
-              />
-            }
-            user={
-              <div className="flex items-center gap-3">
-                <HubPresenceControl
-                  onChange={(nextStatus) => {
-                    setIsPresenceMenuOpen(false);
-                    void hubPresence.setStatus(nextStatus, {
-                      manual: true,
-                      reason: "manual",
-                    }).catch((error: unknown) => {
-                      if (isLocalhostRuntime()) {
-                        console.warn("[presence] manual update error", error);
-                      }
-                    });
-                  }}
-                  onOpenChange={setIsPresenceMenuOpen}
-                  open={isPresenceMenuOpen}
-                  status={hubPresence.status}
+              }
+              realtime={
+                <RealtimePulse
+                  label={realtimeState.connectionStatus}
+                  state={mapConnectionStatusToPulseState(
+                    realtimeState.connectionStatus,
+                  )}
                 />
-                <div className="flex items-center gap-2">
-                  <TopbarUserAvatar
-                    avatarUrl={hubUser?.avatarUrl}
-                    name={hubUser?.name ?? "Sessao"}
-                  />
-                  <span className="max-w-24 text-sm text-[var(--uix-text-muted)]">
-                    {hubUser?.name ?? "Sessao"}
-                  </span>
-                </div>
-                <Tooltip content="Sair">
-                  <IconButton
-                    aria-label="Sair"
-                    icon={<LogOut aria-hidden="true" size={17} />}
-                    onClick={() => {
-                      void signOut();
+              }
+              user={
+                <div className="flex items-center gap-3">
+                  <HubPresenceControl
+                    onChange={(nextStatus) => {
+                      setIsPresenceMenuOpen(false);
+                      void hubPresence
+                        .setStatus(nextStatus, {
+                          manual: true,
+                          reason: "manual",
+                        })
+                        .catch((error: unknown) => {
+                          if (isLocalhostRuntime()) {
+                            console.warn(
+                              "[presence] manual update error",
+                              error,
+                            );
+                          }
+                        });
                     }}
+                    onOpenChange={setIsPresenceMenuOpen}
+                    open={isPresenceMenuOpen}
+                    status={hubPresence.status}
                   />
-                </Tooltip>
-              </div>
-            }
-          />
+                  <div className="flex items-center gap-2">
+                    <TopbarUserAvatar
+                      avatarUrl={hubUser?.avatarUrl}
+                      name={hubUser?.name ?? "Sessao"}
+                    />
+                    <span className="max-w-24 text-sm text-[var(--uix-text-muted)]">
+                      {hubUser?.name ?? "Sessao"}
+                    </span>
+                  </div>
+                  <Tooltip content="Sair">
+                    <IconButton
+                      aria-label="Sair"
+                      icon={<LogOut aria-hidden="true" size={17} />}
+                      onClick={() => {
+                        void signOut();
+                      }}
+                    />
+                  </Tooltip>
+                </div>
+              }
+            />
           )
         }
       >
         <ContentArea
           className={
-            isOperationalChrome ? "h-[100dvh] max-h-[100dvh] min-h-0" : undefined
+            isOperationalChrome
+              ? "h-[100dvh] max-h-[100dvh] min-h-0"
+              : undefined
           }
           padded={layoutMode === "dashboard"}
         >
@@ -573,30 +597,39 @@ export function HubShell({
         <>
           <button
             aria-label="Fechar launcher de módulos"
-            className="fixed inset-0 z-[var(--uix-z-overlay)] cursor-default bg-black/10 outline-none"
+            className="fixed inset-0 z-[var(--uix-z-overlay)] cursor-default bg-black/[0.06] outline-none"
             onClick={() => setIsOperationalRailOpen(false)}
             type="button"
           />
           <aside
             aria-label="Launcher de módulos"
-            className="fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-56 gap-2 rounded-lg border border-white/[0.08] bg-[#343541] p-2 shadow-2xl"
+            className="careli-module-launcher fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-[15.25rem] gap-2 rounded-xl border border-white/[0.09] bg-[#232832] p-2.5 shadow-2xl"
           >
             <Tooltip content="Careli Hub" placement="right">
               <Link
                 aria-label="Voltar para a Home do Hub"
-                className="flex h-11 items-center gap-3 rounded-md border border-white/[0.08] bg-white/[0.04] px-2 text-[#d7dee8] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                className="careli-module-launcher__home flex h-12 items-center gap-3 rounded-lg border border-white/[0.075] bg-white/[0.04] px-2.5 text-[#d7dee8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                 href="/"
                 onClick={() => setIsOperationalRailOpen(false)}
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.06] text-[#A07C3B]">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#A07C3B]/15 text-[#D6B56F]">
                   <Home aria-hidden="true" size={17} />
                 </span>
-                <span className="min-w-0 truncate text-sm font-semibold">
-                  Careli Hub
+                <span className="grid min-w-0 gap-0.5">
+                  <span className="min-w-0 truncate text-sm font-semibold">
+                    Careli Hub
+                  </span>
+                  <span className="min-w-0 truncate text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#8894a5]">
+                    Módulos operacionais
+                  </span>
                 </span>
               </Link>
             </Tooltip>
-            <div className="my-1 h-px bg-white/[0.08]" />
+            <div className="flex items-center gap-2 px-1 pt-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#8894a5]">
+              <span className="h-px flex-1 bg-white/[0.075]" />
+              Módulos
+              <span className="h-px flex-1 bg-white/[0.075]" />
+            </div>
             {moduleNavigationItems.map((item) => (
               <Tooltip
                 content={item.disabled ? item.statusLabel : item.label}
@@ -606,11 +639,11 @@ export function HubShell({
                 {item.disabled ? (
                   <button
                     aria-label={`${item.label} em preparacao`}
-                    className="relative flex h-11 w-full cursor-not-allowed items-center gap-3 rounded-md border border-transparent px-2 text-[#687386] opacity-60 outline-none"
+                    className="relative flex h-11 w-full cursor-not-allowed items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#687386] opacity-60 outline-none"
                     disabled
                     type="button"
                   >
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.04]">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.04]">
                       {item.icon}
                     </span>
                     <span className="min-w-0 truncate text-sm font-semibold">
@@ -620,39 +653,39 @@ export function HubShell({
                 ) : (
                   <Link
                     aria-current={
-                      isShellPathActive(pathname, item.path) ? "page" : undefined
+                      isShellPathActive(pathname, item.path)
+                        ? "page"
+                        : undefined
                     }
-                    className="relative flex h-11 items-center gap-3 rounded-md border border-transparent px-2 text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] aria-[current=page]:bg-[#2A2B32] aria-[current=page]:text-white"
+                    className="careli-module-launcher__item relative flex h-11 items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#c5ceda] outline-none transition hover:border-white/[0.08] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] aria-[current=page]:border-[#A07C3B]/35 aria-[current=page]:bg-[#171b23] aria-[current=page]:text-white"
                     href={item.path}
                     onClick={() => setIsOperationalRailOpen(false)}
                   >
                     {isShellPathActive(pathname, item.path) ? (
-                      <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
+                      <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#D6B56F]" />
                     ) : null}
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.055] text-[#d7dee8]">
+                    <span className="careli-module-launcher__icon grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.055] text-[#d7dee8]">
                       {item.icon}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                       {item.label}
                     </span>
-                    {item.badge ? (
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#A07C3B]" />
-                    ) : null}
+                    {item.realtimeEnabled ? <HubSidebarLiveBadge /> : null}
                   </Link>
                 )}
               </Tooltip>
             ))}
-            <div className="my-1 h-px bg-white/[0.08]" />
+            <div className="my-0.5 h-px bg-white/[0.075]" />
             <Tooltip content="Sair" placement="right">
               <button
                 aria-label="Sair"
-                className="flex h-11 w-full items-center gap-3 rounded-md border border-transparent px-2 text-[#c5ceda] outline-none transition hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                className="flex h-10 w-full items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#aeb7c5] outline-none transition hover:border-white/[0.08] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                 onClick={() => {
                   void signOut();
                 }}
                 type="button"
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white/[0.055]">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.055]">
                   <LogOut aria-hidden="true" size={17} />
                 </span>
                 <span className="min-w-0 truncate text-sm font-semibold">
@@ -676,6 +709,10 @@ export function HubShell({
       />
     </>
   );
+}
+
+function HubSidebarLiveBadge() {
+  return <span aria-hidden="true" className="careli-sidebar-live-dot" />;
 }
 
 function HubPresenceControl({
@@ -716,8 +753,12 @@ function HubPresenceControl({
                 onClick={() => onChange(option)}
                 type="button"
               >
-                <span className={`h-2.5 w-2.5 rounded-full ${optionTone.dot}`} />
-                <span className="capitalize">{getHubPresenceLabel(option)}</span>
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${optionTone.dot}`}
+                />
+                <span className="capitalize">
+                  {getHubPresenceLabel(option)}
+                </span>
               </button>
             );
           })}
@@ -775,10 +816,13 @@ function getPresenceTone(status: HubPresenceStatus) {
       button: "border-emerald-200 bg-emerald-50 text-emerald-700",
       dot: "bg-emerald-500",
     },
-  } as const satisfies Record<Exclude<HubPresenceStatus, "busy">, {
-    button: string;
-    dot: string;
-  }>;
+  } as const satisfies Record<
+    Exclude<HubPresenceStatus, "busy">,
+    {
+      button: string;
+      dot: string;
+    }
+  >;
 
   return tones[normalizedStatus];
 }
@@ -824,7 +868,10 @@ function createMinimumReleasedModuleIds() {
 }
 
 function isVisibleInCurrentEnvironment(moduleId: string) {
-  return process.env.NODE_ENV !== "production" || !hiddenProductionModuleIds.has(moduleId);
+  return (
+    process.env.NODE_ENV !== "production" ||
+    !hiddenProductionModuleIds.has(moduleId)
+  );
 }
 
 function withShellTimeout<Result>(

@@ -6,6 +6,7 @@ import type {
   PulseXCallSession,
   PulseXPresenceUser,
 } from "@/lib/pulsex";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { Clock, Maximize2, Minimize2, Phone, Video, X } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -26,6 +27,29 @@ type MediaDeviceOption = {
   label: string;
 };
 
+type CallPanelPosition = {
+  left: number;
+  top: number;
+};
+
+type CallPanelDragState = {
+  offsetX: number;
+  offsetY: number;
+  panelHeight: number;
+  panelWidth: number;
+  pointerId: number;
+};
+
+type PictureInPictureDocument = Document & {
+  exitPictureInPicture?: () => Promise<void>;
+  pictureInPictureElement?: Element | null;
+  pictureInPictureEnabled?: boolean;
+};
+
+type PictureInPictureVideoElement = HTMLVideoElement & {
+  requestPictureInPicture?: () => Promise<unknown>;
+};
+
 const defaultDeviceValue = "__default__";
 const peerConnectionConfig = {
   iceCandidatePoolSize: 4,
@@ -43,6 +67,12 @@ export function CallPanel({
   const [isMuted, setIsMuted] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(session.type === "video");
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const [panelPosition, setPanelPosition] = useState<CallPanelPosition | null>(
+    null,
+  );
+  const [pictureInPictureParticipantId, setPictureInPictureParticipantId] =
+    useState<string | null>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [audioInputId, setAudioInputId] = useState(defaultDeviceValue);
   const [videoInputId, setVideoInputId] = useState(defaultDeviceValue);
@@ -54,6 +84,7 @@ export function CallPanel({
     Record<string, MediaStream>
   >({});
   const handledSignalIdsRef = useRef<Set<string>>(new Set());
+  const dragStateRef = useRef<CallPanelDragState | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const localStreamWaitersRef = useRef<
     Array<(stream: MediaStream | null) => void>
@@ -70,14 +101,106 @@ export function CallPanel({
   const panelRef = useRef<HTMLElement>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const videoElementsByParticipantIdRef = useRef<Map<string, HTMLVideoElement>>(
+    new Map(),
+  );
   const CallIcon = session.type === "video" ? Video : Phone;
   const panelClassName = isFullScreen
-    ? "fixed inset-0 z-[90] grid h-dvh w-screen grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-none border-0 bg-[#0b1017] text-white shadow-2xl"
-    : "fixed left-1/2 top-14 z-[70] grid h-[min(82vh,760px)] w-[min(92vw,1120px)] -translate-x-1/2 grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-xl border border-white/10 bg-[#0b1017] text-white shadow-2xl";
+    ? "fixed inset-0 z-[90] grid h-dvh w-screen grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-none border-0 bg-[#0b1017] text-white shadow-2xl"
+    : `fixed z-[70] grid h-[min(82vh,760px)] w-[min(92vw,1120px)] grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-xl border border-white/10 bg-[#0b1017] text-white shadow-2xl ${
+        isDraggingPanel ? "select-none" : ""
+      }`;
+  const panelStyle: CSSProperties | undefined = isFullScreen
+    ? undefined
+    : panelPosition
+      ? {
+          left: panelPosition.left,
+          top: panelPosition.top,
+        }
+      : {
+          left: "50%",
+          top: "3.5rem",
+          transform: "translateX(-50%)",
+        };
   const participantGridClassName =
     session.participants.length <= 2
       ? "grid min-h-0 gap-4 p-4 md:grid-cols-2"
       : "grid min-h-0 auto-rows-[minmax(18rem,1fr)] gap-3 overflow-auto p-4 sm:grid-cols-2 xl:grid-cols-3";
+  const isPictureInPictureAvailable =
+    session.type === "video" &&
+    typeof document !== "undefined" &&
+    Boolean((document as PictureInPictureDocument).pictureInPictureEnabled);
+
+  const clampPanelPosition = useCallback(
+    (
+      left: number,
+      top: number,
+      panelWidth: number,
+      panelHeight: number,
+    ): CallPanelPosition => {
+      const viewportMargin = 12;
+      const maxLeft = Math.max(
+        viewportMargin,
+        window.innerWidth - panelWidth - viewportMargin,
+      );
+      const maxTop = Math.max(
+        viewportMargin,
+        window.innerHeight - panelHeight - viewportMargin,
+      );
+
+      return {
+        left: Math.min(Math.max(viewportMargin, left), maxLeft),
+        top: Math.min(Math.max(viewportMargin, top), maxTop),
+      };
+    },
+    [],
+  );
+
+  const handlePanelDragStart = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (isFullScreen || event.button !== 0) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      if (
+        target.closest(
+          "button,a,input,select,textarea,[role='button'],[role='menu']",
+        )
+      ) {
+        return;
+      }
+
+      const panel = panelRef.current;
+
+      if (!panel) {
+        return;
+      }
+
+      const panelRect = panel.getBoundingClientRect();
+
+      dragStateRef.current = {
+        offsetX: event.clientX - panelRect.left,
+        offsetY: event.clientY - panelRect.top,
+        panelHeight: panelRect.height,
+        panelWidth: panelRect.width,
+        pointerId: event.pointerId,
+      };
+      setPanelPosition({
+        left: panelRect.left,
+        top: panelRect.top,
+      });
+      setIsDraggingPanel(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },
+    [isFullScreen],
+  );
 
   const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -103,6 +226,83 @@ export function CallPanel({
       isKnownDevice(currentId, nextVideoInputs) ? currentId : defaultDeviceValue,
     );
   }, []);
+
+  useEffect(() => {
+    if (!isDraggingPanel) {
+      return;
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      const dragState = dragStateRef.current;
+
+      if (!dragState || event.pointerId !== dragState.pointerId) {
+        return;
+      }
+
+      setPanelPosition(
+        clampPanelPosition(
+          event.clientX - dragState.offsetX,
+          event.clientY - dragState.offsetY,
+          dragState.panelWidth,
+          dragState.panelHeight,
+        ),
+      );
+    }
+
+    function stopDragging(event: PointerEvent) {
+      const dragState = dragStateRef.current;
+
+      if (dragState && event.pointerId !== dragState.pointerId) {
+        return;
+      }
+
+      dragStateRef.current = null;
+      setIsDraggingPanel(false);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDragging);
+    window.addEventListener("pointercancel", stopDragging);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopDragging);
+      window.removeEventListener("pointercancel", stopDragging);
+    };
+  }, [clampPanelPosition, isDraggingPanel]);
+
+  useEffect(() => {
+    if (isFullScreen || !panelPosition) {
+      return;
+    }
+
+    function handleWindowResize() {
+      const panel = panelRef.current;
+
+      if (!panel) {
+        return;
+      }
+
+      const panelRect = panel.getBoundingClientRect();
+
+      setPanelPosition((currentPosition) =>
+        currentPosition
+          ? clampPanelPosition(
+              currentPosition.left,
+              currentPosition.top,
+              panelRect.width,
+              panelRect.height,
+            )
+          : currentPosition,
+      );
+    }
+
+    window.addEventListener("resize", handleWindowResize);
+
+    return () => {
+      window.removeEventListener("resize", handleWindowResize);
+    };
+  }, [clampPanelPosition, isFullScreen, panelPosition]);
 
   useEffect(() => {
     void refreshDevices();
@@ -612,6 +812,98 @@ export function CallPanel({
     void startScreenSharing();
   }, [isScreenSharing, startScreenSharing, stopScreenSharing]);
 
+  const handleVideoElementChange = useCallback(
+    (participantId: string, videoElement: HTMLVideoElement | null) => {
+      if (videoElement) {
+        videoElementsByParticipantIdRef.current.set(participantId, videoElement);
+        return;
+      }
+
+      videoElementsByParticipantIdRef.current.delete(participantId);
+    },
+    [],
+  );
+
+  const getPictureInPictureTarget = useCallback(() => {
+    const remoteParticipant = session.participants.find(
+      (participant) =>
+        participant.userId !== currentUserId &&
+        videoElementsByParticipantIdRef.current.has(participant.id),
+    );
+    const localParticipant = session.participants.find(
+      (participant) =>
+        participant.userId === currentUserId &&
+        videoElementsByParticipantIdRef.current.has(participant.id),
+    );
+    const fallbackParticipant = session.participants.find((participant) =>
+      videoElementsByParticipantIdRef.current.has(participant.id),
+    );
+    const targetParticipant =
+      remoteParticipant ?? localParticipant ?? fallbackParticipant;
+
+    if (!targetParticipant) {
+      return null;
+    }
+
+    const videoElement = videoElementsByParticipantIdRef.current.get(
+      targetParticipant.id,
+    ) as PictureInPictureVideoElement | undefined;
+
+    return videoElement
+      ? {
+          participantId: targetParticipant.id,
+          videoElement,
+        }
+      : null;
+  }, [currentUserId, session.participants]);
+
+  const handleTogglePictureInPicture = useCallback(async () => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const pictureInPictureDocument = document as PictureInPictureDocument;
+
+    if (!pictureInPictureDocument.pictureInPictureEnabled) {
+      setMediaError("Picture-in-picture indisponivel neste navegador.");
+      return;
+    }
+
+    if (pictureInPictureDocument.pictureInPictureElement) {
+      await pictureInPictureDocument
+        .exitPictureInPicture?.()
+        .catch(() => undefined);
+      setPictureInPictureParticipantId(null);
+      return;
+    }
+
+    const target = getPictureInPictureTarget();
+
+    if (!target?.videoElement.requestPictureInPicture) {
+      setMediaError(
+        "Ative a camera ou aguarde um video remoto para abrir picture-in-picture.",
+      );
+      return;
+    }
+
+    try {
+      await target.videoElement.play().catch(() => undefined);
+      target.videoElement.addEventListener(
+        "leavepictureinpicture",
+        () => {
+          setPictureInPictureParticipantId(null);
+        },
+        { once: true },
+      );
+      await target.videoElement.requestPictureInPicture();
+      setPictureInPictureParticipantId(target.participantId);
+      setMediaError(null);
+    } catch {
+      setPictureInPictureParticipantId(null);
+      setMediaError("Nao foi possivel abrir picture-in-picture.");
+    }
+  }, [getPictureInPictureTarget]);
+
   const handleToggleFullScreen = useCallback(() => {
     const panel = panelRef.current;
 
@@ -762,8 +1054,15 @@ export function CallPanel({
       aria-label="Chamada PulseX"
       className={panelClassName}
       ref={panelRef}
+      style={panelStyle}
     >
-      <header className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
+      <header
+        className={`flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 ${
+          isFullScreen ? "" : "cursor-move select-none"
+        }`}
+        onPointerDown={handlePanelDragStart}
+        title={isFullScreen ? undefined : "Arraste para mover"}
+      >
         <div className="flex min-w-0 items-center gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#A07C3B] text-white">
             <CallIcon aria-hidden="true" size={18} />
@@ -798,7 +1097,7 @@ export function CallPanel({
             </button>
           </Tooltip>
           <button
-            aria-label="Fechar painel de chamada"
+            aria-label="Minimizar painel de chamada"
             className="grid h-8 w-8 place-items-center rounded-md text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             onClick={handleClosePanel}
             type="button"
@@ -807,23 +1106,6 @@ export function CallPanel({
           </button>
         </div>
       </header>
-      <div className="grid gap-3 border-b border-white/10 bg-[#0d131d] px-4 py-3 md:grid-cols-2">
-        <DeviceSelect
-          devices={audioInputs}
-          label="Microfone"
-          onChange={setAudioInputId}
-          value={audioInputId}
-        />
-        {session.type === "video" ? (
-          <DeviceSelect
-            devices={videoInputs}
-            disabled={!cameraEnabled}
-            label="Camera"
-            onChange={setVideoInputId}
-            value={videoInputId}
-          />
-        ) : null}
-      </div>
       <div className={participantGridClassName}>
         {session.participants.map((participant) => {
           const participantUserId = participant.userId;
@@ -837,6 +1119,7 @@ export function CallPanel({
               isLocalMedia={isLocalParticipant}
               key={participant.id}
               mediaStream={isLocalParticipant ? localStream : remoteStream}
+              onVideoElementChange={handleVideoElementChange}
               participant={{
                 ...participant,
                 isCameraOn: isLocalParticipant
@@ -858,14 +1141,23 @@ export function CallPanel({
         </p>
       ) : null}
       <CallControls
+        audioDevices={audioInputs}
         cameraEnabled={cameraEnabled}
         isAudioOnly={session.type === "audio"}
         isMuted={isMuted}
+        isPictureInPictureActive={Boolean(pictureInPictureParticipantId)}
+        isPictureInPictureAvailable={isPictureInPictureAvailable}
         isScreenSharing={isScreenSharing}
         onEnd={onEnd}
+        onSelectAudioDevice={setAudioInputId}
+        onSelectVideoDevice={setVideoInputId}
+        onTogglePictureInPicture={handleTogglePictureInPicture}
         onToggleCamera={() => setCameraEnabled((current) => !current)}
         onToggleMicrophone={() => setIsMuted((current) => !current)}
         onToggleScreenShare={handleToggleScreenShare}
+        selectedAudioDeviceId={audioInputId}
+        selectedVideoDeviceId={videoInputId}
+        videoDevices={videoInputs}
       />
     </section>
   );
@@ -885,47 +1177,6 @@ function getCallStatusLabel(status: PulseXCallSession["status"]) {
   } as const satisfies Record<PulseXCallSession["status"], string>;
 
   return labels[status];
-}
-
-function DeviceSelect({
-  devices,
-  disabled = false,
-  label,
-  onChange,
-  value,
-}: {
-  devices: readonly MediaDeviceOption[];
-  disabled?: boolean;
-  label: string;
-  onChange: (deviceId: string) => void;
-  value: string;
-}) {
-  return (
-    <label className="grid gap-1">
-      <span className="text-[0.68rem] font-semibold uppercase tracking-wide text-white/45">
-        {label}
-      </span>
-      <select
-        className="h-9 rounded-md border border-white/10 bg-white/10 px-2 text-sm text-white outline-none transition focus:border-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-45"
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        value={value}
-      >
-        <option className="text-[#101820]" value={defaultDeviceValue}>
-          Padrao do sistema
-        </option>
-        {devices.map((device) => (
-          <option
-            className="text-[#101820]"
-            key={device.deviceId}
-            value={device.deviceId}
-          >
-            {device.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
 }
 
 async function requestCallMedia({

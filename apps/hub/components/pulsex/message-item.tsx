@@ -2,11 +2,13 @@
 
 import type {
   PulseXMessage,
+  PulseXMessageMention,
   PulseXMessageTag,
   PulseXPresenceUser,
   PulseXReactionEmoji,
 } from "@/lib/pulsex";
 import {
+  BotMessageSquare,
   Check,
   CheckCheck,
   Download,
@@ -24,6 +26,7 @@ import {
 import { Tooltip } from "@repo/uix";
 import {
   useEffect,
+  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
@@ -40,6 +43,7 @@ type MessageItemProps = {
   currentUserId?: PulseXPresenceUser["id"];
   message: PulseXMessage;
   onOpenThread?: (messageId: PulseXMessage["id"]) => void;
+  onAskAiReply?: (messageId: PulseXMessage["id"]) => void;
   onEditMessage?: (
     messageId: PulseXMessage["id"],
     body: string,
@@ -61,6 +65,7 @@ export function MessageItem({
   currentUserId,
   message,
   onEditMessage,
+  onAskAiReply,
   onOpenThread,
   onToggleTag,
   users = [],
@@ -71,6 +76,7 @@ export function MessageItem({
   const [isEditing, setIsEditing] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isTagMenuOpen, setIsTagMenuOpen] = useState(false);
+  const messageItemRef = useRef<HTMLDivElement | null>(null);
   const isOwn = message.authorId === currentUserId;
   const authorName = getAuthorName(author, message);
   const authorAvatarUrl = author?.avatarUrl ?? message.authorAvatarUrl;
@@ -82,6 +88,56 @@ export function MessageItem({
       setEditValue(message.body);
     }
   }, [isEditing, message.body]);
+
+  useEffect(() => {
+    if (!isInfoOpen && !isTagMenuOpen) {
+      return;
+    }
+
+    function handleDocumentPointerDown(event: PointerEvent) {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (messageItemRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsInfoOpen(false);
+      setIsTagMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handleDocumentPointerDown,
+        true,
+      );
+    };
+  }, [isInfoOpen, isTagMenuOpen]);
+
+  const infoButton = (
+    <button
+      aria-expanded={isInfoOpen}
+      aria-label="Informações da mensagem"
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
+        isInfoOpen
+          ? "bg-[#A07C3B]/10 text-[#7b5f2d] opacity-100"
+          : "text-inherit opacity-65"
+      }`}
+      onClick={() => {
+        setIsTagMenuOpen(false);
+        setIsInfoOpen((currentValue) => !currentValue);
+      }}
+      type="button"
+    >
+      <Info aria-hidden="true" size={12} />
+    </button>
+  );
 
   async function handleSubmitEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -118,9 +174,10 @@ export function MessageItem({
 
   return (
     <div
-      className={`flex items-end gap-2 px-4 py-1 ${
+      className={`relative flex items-end gap-2 px-4 py-1 ${
         isOwn ? "justify-end" : "justify-start"
-      }`}
+      } ${isInfoOpen || isTagMenuOpen ? "z-40" : "z-0"}`}
+      ref={messageItemRef}
     >
       {!isOwn ? (
         <MessageAvatar
@@ -130,19 +187,29 @@ export function MessageItem({
         />
       ) : null}
       <div
-        className={`group max-w-[66%] border ${
+        className={`group relative max-w-[min(72%,46rem)] border px-3 py-2 shadow-[0_1px_2px_rgba(16,24,32,0.12)] ${
           isOwn
-            ? "border-[#A07C3B]/30 bg-[#f7f9fc] text-[#121722]"
-            : "border-[#d9e0ea] bg-white text-[var(--uix-text-primary)]"
-        } rounded-md px-3 py-2 shadow-sm`}
+            ? "rounded-2xl rounded-br-md border-[#d6e7df] bg-[#effaf5] text-[#101820]"
+            : "rounded-2xl rounded-bl-md border-[#e5e9ef] bg-white text-[var(--uix-text-primary)]"
+        }`}
       >
+        <span
+          aria-hidden="true"
+          className={`absolute bottom-0 h-3 w-3 rotate-45 ${
+            isOwn
+              ? "-right-1 border-r border-b border-[#d6e7df] bg-[#effaf5]"
+              : "-left-1 border-l border-b border-[#e5e9ef] bg-white"
+          }`}
+        />
         {message.tags?.length ? (
-          <div className="mb-2 flex flex-wrap gap-1">
+          <div className="relative z-10 mb-2 flex flex-wrap gap-1">
             {message.tags.map((tag) => (
               <span
-                className={`rounded-full border px-2 py-0.5 text-[0.64rem] font-semibold ${getPulseXMessageTagClassName(tag)}`}
+                aria-label={`Tag ${getPulseXMessageTagLabel(tag)}`}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.64rem] font-semibold shadow-sm ${getPulseXMessageTagClassName(tag)}`}
                 key={tag}
               >
+                <Tag aria-hidden="true" size={10} />
                 {getPulseXMessageTagLabel(tag)}
               </span>
             ))}
@@ -152,7 +219,7 @@ export function MessageItem({
           <MessageAttachmentPreview attachment={message.attachment} />
         ) : null}
         {isEditing ? (
-          <form className="grid gap-2" onSubmit={handleSubmitEdit}>
+          <form className="relative grid gap-2" onSubmit={handleSubmitEdit}>
             <textarea
               aria-label="Editar mensagem"
               className="max-h-32 min-h-20 resize-none rounded-md border border-[#d9e0ea] bg-white px-3 py-2 text-sm leading-5 text-[#121722] outline-none transition focus:border-[#A07C3B]"
@@ -192,13 +259,19 @@ export function MessageItem({
             </span>
           </form>
         ) : (
-          <p className="m-0 whitespace-pre-wrap text-sm leading-6">
-            {message.deletedAt ? "Mensagem apagada" : renderMessageBody(message)}
-          </p>
+          <div className="relative z-10 text-sm leading-6">
+            {message.deletedAt
+              ? "Mensagem apagada"
+              : renderMessageBody(message, users)}
+          </div>
         )}
-        <div className="mt-1 flex items-center justify-end gap-2 text-[0.66rem] opacity-70">
+        <div
+          className={`relative mt-1 flex items-center justify-end gap-2 text-[0.66rem] ${
+            isOwn ? "text-[#2f6b52]" : "text-[#667085]"
+          }`}
+        >
           {message.editedAt ? <span>editada</span> : null}
-          <span>{message.timestamp}</span>
+          <span className="font-bold text-[#101820]">{message.timestamp}</span>
           {isOwn ? (
             <Tooltip content={deliveryState.allRead ? "Todos leram" : "Enviado"}>
               <span
@@ -213,8 +286,12 @@ export function MessageItem({
             </Tooltip>
           ) : null}
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1 opacity-90">
-          <Tooltip content="Responder">
+        <div
+          className={`relative mt-1.5 flex flex-wrap items-center gap-1 opacity-90 ${
+            isOwn ? "justify-end text-[#2f6b52]" : "justify-start"
+          }`}
+        >
+          <Tooltip content="Responder" placement="bottom">
             <button
               aria-label={
                 message.threadCount
@@ -237,8 +314,20 @@ export function MessageItem({
               ) : null}
             </button>
           </Tooltip>
+          {onAskAiReply && !message.deletedAt ? (
+            <Tooltip content="Responder com Cacá" placement="bottom">
+              <button
+                aria-label="Responder com Cacá"
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+                onClick={() => onAskAiReply(message.id)}
+                type="button"
+              >
+                <BotMessageSquare aria-hidden="true" size={12} />
+              </button>
+            </Tooltip>
+          ) : null}
           {isOwn && onEditMessage && !message.deletedAt ? (
-            <Tooltip content="Editar mensagem">
+            <Tooltip content="Editar mensagem" placement="bottom">
               <button
                 aria-label="Editar mensagem"
                 className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
@@ -254,12 +343,15 @@ export function MessageItem({
             </Tooltip>
           ) : null}
           <div className="relative">
-            <Tooltip content="Marcar mensagem">
+            <Tooltip content="Marcar mensagem" placement="bottom">
               <button
                 aria-expanded={isTagMenuOpen}
                 aria-label="Marcar mensagem"
                 className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-                onClick={() => setIsTagMenuOpen((currentValue) => !currentValue)}
+                onClick={() => {
+                  setIsInfoOpen(false);
+                  setIsTagMenuOpen((currentValue) => !currentValue);
+                }}
                 type="button"
               >
                 <Tag aria-hidden="true" size={12} />
@@ -301,19 +393,16 @@ export function MessageItem({
             ) : null}
           </div>
           <div className="relative">
-            <Tooltip content="Informações da mensagem">
-              <button
-                aria-expanded={isInfoOpen}
-                aria-label="Informações da mensagem"
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-                onClick={() => setIsInfoOpen((currentValue) => !currentValue)}
-                type="button"
-              >
-                <Info aria-hidden="true" size={12} />
-              </button>
-            </Tooltip>
+            {isInfoOpen ? (
+              infoButton
+            ) : (
+              <Tooltip content="Informações da mensagem" placement="bottom">
+                {infoButton}
+              </Tooltip>
+            )}
             {isInfoOpen ? (
               <MessageInfoPanel
+                align={isOwn ? "left" : "right"}
                 author={author}
                 currentUserId={currentUserId}
                 message={message}
@@ -335,11 +424,13 @@ export function MessageItem({
 }
 
 function MessageInfoPanel({
+  align,
   author,
   currentUserId,
   message,
   users,
 }: {
+  align: "left" | "right";
   author?: PulseXPresenceUser;
   currentUserId?: PulseXPresenceUser["id"];
   message: PulseXMessage;
@@ -375,10 +466,16 @@ function MessageInfoPanel({
     message,
     userIds: readUserIds,
   });
+  const panelPositionClassName =
+    align === "left"
+      ? "right-full mr-2 origin-bottom-right"
+      : "left-full ml-2 origin-bottom-left";
 
   return (
-    <div className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-md border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-lg">
-      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#121722]">
+    <div
+      className={`absolute top-1/2 z-50 max-h-[min(18rem,calc(100vh-2rem))] w-72 max-w-[calc(100vw-2rem)] -translate-y-1/2 overflow-y-auto rounded-lg border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-[0_16px_40px_rgba(16,24,32,0.14)] ${panelPositionClassName}`}
+    >
+      <div className="mb-2 flex items-center gap-2 border-b border-[#eef2f7] pb-2 text-sm font-semibold text-[#121722]">
         <CheckCheck aria-hidden="true" size={15} />
         Informações
       </div>
@@ -754,61 +851,260 @@ function excludeAuthorUserIds({
   return [...new Set(userIds)].filter((userId) => userId !== message.authorId);
 }
 
-function renderMessageBody(message: PulseXMessage) {
+function renderMessageBody(
+  message: PulseXMessage,
+  users: readonly PulseXPresenceUser[],
+) {
   const body = message.body;
-  const mentions = message.mentions ?? [];
-  const ranges = mentions
-    .map((mention) => {
-      const start = body.indexOf(mention.displayName);
+  const ranges = getMentionRanges({ body, message, users });
+  const lines = body.split(/\r?\n/);
 
-      if (start < 0) {
-        return null;
+  if (lines.length > 1 || lines.some((line) => getBulletLineParts(line))) {
+    let cursor = 0;
+
+    return lines.map((line, index) => {
+      const lineStart = cursor;
+      const lineEnd = lineStart + line.length;
+      const bulletParts = getBulletLineParts(line);
+      const contentStart = bulletParts
+        ? lineStart + bulletParts.contentStart
+        : lineStart;
+      const content = bulletParts ? bulletParts.content : line;
+      const lineRanges = ranges.filter(
+        (range) => range.start < lineEnd && range.end > contentStart,
+      );
+
+      cursor = lineEnd + 1;
+
+      if (!line.trim()) {
+        return <div className="h-2" key={`line-${index}`} />;
       }
 
-      return {
-        end: start + mention.displayName.length,
-        mention,
-        start,
-      };
-    })
-    .filter((range): range is NonNullable<typeof range> => Boolean(range))
-    .sort((firstRange, secondRange) => firstRange.start - secondRange.start);
+      if (bulletParts) {
+        return (
+          <div
+            className="grid grid-cols-[0.85rem_minmax(0,1fr)] gap-1.5 py-0.5"
+            key={`line-${index}`}
+          >
+            <span className="pt-px text-center text-base font-black leading-5 text-[#101820]">
+              •
+            </span>
+            <span className="min-w-0">
+              {renderMessageTextInline({
+                body,
+                keyPrefix: `line-${index}`,
+                ranges: lineRanges,
+                text: content,
+                textStart: contentStart,
+              })}
+            </span>
+          </div>
+        );
+      }
+
+      return (
+        <div key={`line-${index}`}>
+          {renderMessageTextInline({
+            body,
+            keyPrefix: `line-${index}`,
+            ranges: lineRanges,
+            text: content,
+            textStart: contentStart,
+          })}
+        </div>
+      );
+    });
+  }
 
   if (ranges.length === 0) {
     return body;
+  }
+
+  return renderMessageTextInline({
+    body,
+    keyPrefix: "body",
+    ranges,
+    text: body,
+    textStart: 0,
+  });
+}
+
+function renderMessageTextInline({
+  body,
+  keyPrefix,
+  ranges,
+  text,
+  textStart,
+}: {
+  body: string;
+  keyPrefix: string;
+  ranges: ReturnType<typeof getMentionRanges>;
+  text: string;
+  textStart: number;
+}) {
+  if (ranges.length === 0) {
+    return text;
   }
 
   const fragments = [];
   let cursor = 0;
 
   ranges.forEach((range, index) => {
-    if (range.start < cursor) {
+    const start = Math.max(0, range.start - textStart);
+    const end = Math.min(text.length, range.end - textStart);
+
+    if (start < cursor || end <= 0 || start >= text.length) {
       return;
     }
 
-    if (range.start > cursor) {
+    if (start > cursor) {
       fragments.push(
-        <span key={`text-${index}-${cursor}`}>
-          {body.slice(cursor, range.start)}
+        <span key={`${keyPrefix}-text-${index}-${cursor}`}>
+          {text.slice(cursor, start)}
         </span>,
       );
     }
 
+    const mentionText = body.slice(range.start, range.end);
+
     fragments.push(
       <span
-        className="rounded-sm bg-[#A07C3B]/10 px-0.5 font-semibold text-[#7b5f2d]"
+        className="inline-flex items-baseline rounded-md border border-sky-300 bg-sky-100 px-1 font-semibold text-sky-900"
         data-user-id={range.mention.userId}
-        key={`mention-${range.mention.userId}-${range.start}`}
+        key={`${keyPrefix}-mention-${range.mention.userId}-${range.start}`}
       >
-        {range.mention.displayName}
+        <span aria-hidden="true">
+          {mentionText.trimStart().startsWith("@") ? "" : "@"}
+        </span>
+        {mentionText}
       </span>,
     );
-    cursor = range.end;
+    cursor = end;
   });
 
-  if (cursor < body.length) {
-    fragments.push(<span key={`text-tail-${cursor}`}>{body.slice(cursor)}</span>);
+  if (cursor < text.length) {
+    fragments.push(
+      <span key={`${keyPrefix}-text-tail-${cursor}`}>
+        {text.slice(cursor)}
+      </span>,
+    );
   }
 
   return fragments;
+}
+
+function getBulletLineParts(line: string) {
+  const match = line.match(/^(\s*)(?:[-*•])\s*(.+)$/);
+
+  if (!match?.[2]) {
+    return null;
+  }
+
+  const contentStart = line.indexOf(match[2]);
+
+  return {
+    content: match[2],
+    contentStart,
+  };
+}
+
+function getMentionRanges({
+  body,
+  message,
+  users,
+}: {
+  body: string;
+  message: PulseXMessage;
+  users: readonly PulseXPresenceUser[];
+}) {
+  const ranges: {
+    end: number;
+    mention: PulseXMessageMention;
+    start: number;
+  }[] = [];
+
+  function addMentionRange(mention: PulseXMessageMention) {
+    const range = findMentionRangeInBody(body, mention.displayName);
+
+    if (!range) {
+      return;
+    }
+
+    ranges.push({
+      end: range.end,
+      mention,
+      start: range.start,
+    });
+  }
+
+  (message.mentions ?? []).forEach(addMentionRange);
+
+  const knownMentionUserIds = new Set(
+    ranges.map((range) => range.mention.userId),
+  );
+
+  (message.mentionUserIds ?? []).forEach((userId) => {
+    if (knownMentionUserIds.has(userId)) {
+      return;
+    }
+
+    const user = users.find((currentUser) => currentUser.id === userId);
+    const displayName = user?.label;
+
+    if (!displayName) {
+      return;
+    }
+
+    addMentionRange({
+      displayName,
+      trigger: "@",
+      userId,
+    });
+  });
+
+  return ranges
+    .sort((firstRange, secondRange) => firstRange.start - secondRange.start)
+    .filter((range, index, allRanges) => {
+      const previousRange = allRanges[index - 1];
+
+      return !previousRange || range.start >= previousRange.end;
+    });
+}
+
+function findMentionRangeInBody(body: string, displayName: string) {
+  const candidates = [`@${displayName}`, displayName];
+
+  for (const candidate of candidates) {
+    const exactIndex = body.indexOf(candidate);
+
+    if (exactIndex >= 0) {
+      return {
+        end: exactIndex + candidate.length,
+        start: exactIndex,
+      };
+    }
+  }
+
+  const normalizedBody = normalizeMentionText(body);
+
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeMentionText(candidate);
+    const normalizedIndex = normalizedBody.indexOf(normalizedCandidate);
+
+    if (normalizedIndex >= 0) {
+      return {
+        end: normalizedIndex + candidate.length,
+        start: normalizedIndex,
+      };
+    }
+  }
+
+  return null;
+}
+
+function normalizeMentionText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
 }

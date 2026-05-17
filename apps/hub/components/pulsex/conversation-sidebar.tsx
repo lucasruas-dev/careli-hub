@@ -7,6 +7,11 @@ import type {
   PulseXMessageFilter,
   PulseXPresenceUser,
 } from "@/lib/pulsex";
+import {
+  getPulseXShortcutChannels,
+  getPulseXShortcutCounts,
+  type PulseXShortcutFilter,
+} from "@/lib/pulsex/shortcuts";
 import { Tooltip } from "@repo/uix";
 import {
   AtSign,
@@ -30,13 +35,16 @@ import { ConversationList } from "./conversation-list";
 type ConversationSidebarProps = {
   activeChannelId: string;
   activeMessageFilter: PulseXMessageFilter;
+  activeShortcutFilter: PulseXShortcutFilter | null;
   channels: readonly PulseXChannel[];
   currentUserId: PulseXPresenceUser["id"];
   dataStatus?: "fallback" | "loading" | "ready";
   departments: readonly PulseXDepartment[];
+  favoriteChannelIds: readonly PulseXChannel["id"][];
   messages: readonly PulseXMessage[];
   onSelectChannel?: (channelId: PulseXChannel["id"]) => void;
   onSelectMessageFilter?: (filter: PulseXMessageFilter) => void;
+  onSelectShortcut?: (shortcut: PulseXShortcutFilter) => void;
   onRefresh?: () => void;
   users: readonly PulseXPresenceUser[];
 };
@@ -59,13 +67,16 @@ const messageFilters = [
 export function ConversationSidebar({
   activeChannelId,
   activeMessageFilter,
+  activeShortcutFilter,
   channels,
   currentUserId,
   dataStatus = "ready",
   departments,
+  favoriteChannelIds,
   messages,
   onSelectChannel,
   onSelectMessageFilter,
+  onSelectShortcut,
   onRefresh,
   users,
 }: ConversationSidebarProps) {
@@ -74,22 +85,32 @@ export function ConversationSidebar({
   >({});
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
-  const unreadCount = channels.reduce(
-    (total, channel) => total + (channel.unreadCount ?? 0),
-    0,
-  );
-  const mentionsCount = messages.filter((message) =>
-    isMessageMentioningUser(message, currentUserId),
-  ).length;
-  const favoritesCount = 0;
+  const shortcutCounts = getPulseXShortcutCounts({
+    channels,
+    currentUserId,
+    favoriteChannelIds,
+    messages,
+  });
+  const unreadCount = shortcutCounts.unread;
+  const mentionsCount = shortcutCounts.mentions;
+  const favoritesCount = shortcutCounts.favorites;
   const shortcutsCount = unreadCount + mentionsCount + favoritesCount;
   const activeFilterLabel =
     messageFilters.find((filter) => filter.id === activeMessageFilter)?.label ??
     "Todas";
 
-  const directChannels = channels.filter((channel) => channel.kind === "direct");
+  const shortcutChannels = getPulseXShortcutChannels({
+    channels,
+    currentUserId,
+    favoriteChannelIds,
+    messages,
+    shortcut: activeShortcutFilter,
+  });
+  const directChannels = shortcutChannels.filter(
+    (channel) => channel.kind === "direct",
+  );
   const departmentGroups = buildDepartmentGroups({
-    channels: channels.filter((channel) => channel.kind !== "direct"),
+    channels: shortcutChannels.filter((channel) => channel.kind !== "direct"),
     departments,
   });
 
@@ -238,27 +259,31 @@ export function ConversationSidebar({
             id="pulsex-shortcuts-panel"
           >
             <div className="min-h-0 overflow-hidden">
-              <div className="grid grid-cols-3 gap-2 text-sm">
-                <QuickAction
-                  icon={<MessageCircle size={15} />}
-                  label="Nao lidas"
-                  onClick={() => onSelectMessageFilter?.("all")}
-                  value={unreadCount}
-                />
-                <QuickAction
-                  active={activeMessageFilter === "mentions"}
-                  icon={<AtSign size={15} />}
-                  label="Mencoes"
-                  onClick={() => onSelectMessageFilter?.("mentions")}
-                  value={mentionsCount}
-                />
-                <QuickAction
-                  icon={<Star size={15} />}
-                  label="Favoritos"
-                  onClick={() => onSelectMessageFilter?.("all")}
-                  value={favoritesCount}
-                />
-              </div>
+              {isShortcutsOpen ? (
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <QuickAction
+                    active={activeShortcutFilter === "unread"}
+                    icon={<MessageCircle size={15} />}
+                    label="Nao lidas"
+                    onClick={() => onSelectShortcut?.("unread")}
+                    value={unreadCount}
+                  />
+                  <QuickAction
+                    active={activeShortcutFilter === "mentions"}
+                    icon={<AtSign size={15} />}
+                    label="Mencoes"
+                    onClick={() => onSelectShortcut?.("mentions")}
+                    value={mentionsCount}
+                  />
+                  <QuickAction
+                    active={activeShortcutFilter === "favorites"}
+                    icon={<Star size={15} />}
+                    label="Favoritos"
+                    onClick={() => onSelectShortcut?.("favorites")}
+                    value={favoritesCount}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -294,7 +319,9 @@ export function ConversationSidebar({
           ))
         ) : (
           <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
-            {dataStatus === "fallback"
+            {activeShortcutFilter
+              ? "Nenhum canal neste atalho."
+              : dataStatus === "fallback"
               ? "Nao foi possivel carregar canais."
               : "Nenhum canal configurado."}
           </p>
@@ -317,7 +344,9 @@ export function ConversationSidebar({
             />
           ) : (
             <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
-              Nenhum usuario disponivel.
+              {activeShortcutFilter
+                ? "Nenhuma direta neste atalho."
+                : "Nenhum usuario disponivel."}
             </p>
           )}
         </SidebarSection>
@@ -414,16 +443,6 @@ function QuickAction({
         {value}
       </span>
     </button>
-  );
-}
-
-function isMessageMentioningUser(
-  message: PulseXMessage,
-  userId: PulseXPresenceUser["id"],
-) {
-  return (
-    message.authorId !== userId &&
-    Boolean(message.mentionUserIds?.includes(userId))
   );
 }
 

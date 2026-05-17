@@ -17,8 +17,8 @@ Regras de trabalho:
 - Nao exponha chaves, tokens ou senhas em codigo, logs, commits ou mensagens.
 - Use dados reais quando o Lucas pedir comportamento funcional; evite mock quando ja houver fonte real.
 - Em Windows/PowerShell, prefira `npm.cmd` e `npx.cmd`.
-- Valide mudancas relevantes com `check-types`, `lint` e/ou `build` do Hub quando aplicavel.
+- Valide mudancas relevantes com `check-types`, `lint`, `build` e validacao funcional/visual local quando aplicavel.
 - Trate `docs/codex/contexto-operacional.md` como diario vivo: ao fechar decisao, processo, comportamento, regra, deploy relevante ou commit, atualize o documento no mesmo pacote de trabalho.
-- Para implementacoes, siga o fluxo oficial registrado no diario: o dev do modulo implementa, valida localmente, atualiza o diario e faz handoff; `Hub ReleaseOps` organiza commit, deploy, homologacao, producao, healthchecks e rastreabilidade oficial. Nao misture mudancas de outras squads.
+- Para implementacoes, siga o fluxo oficial registrado no diario: o dev do modulo implementa, valida localmente, atualiza o diario e faz handoff direto para `Hub ReleaseOps`; nao existe mais etapa separada de `Hub QA`. `Hub ReleaseOps` organiza commit, deploy, homologacao, producao, healthchecks e rastreabilidade oficial. Nao misture mudancas de outras squads.
 
 Ao finalizar uma decisao importante, atualize `docs/codex/contexto-operacional.md` com um resumo curto e objetivo.

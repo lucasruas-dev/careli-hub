@@ -7,12 +7,17 @@ import { useEffect, useRef, useState } from "react";
 type CallParticipantTileProps = {
   isLocalMedia?: boolean;
   mediaStream?: MediaStream | null;
+  onVideoElementChange?: (
+    participantId: PulseXCallParticipant["id"],
+    videoElement: HTMLVideoElement | null,
+  ) => void;
   participant: PulseXCallParticipant;
 };
 
 export function CallParticipantTile({
   isLocalMedia = false,
   mediaStream,
+  onVideoElementChange,
   participant,
 }: CallParticipantTileProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -48,6 +53,21 @@ export function CallParticipantTile({
     videoRef.current.srcObject = mediaStream ?? null;
   }, [mediaStream]);
 
+  useEffect(() => {
+    if (!onVideoElementChange) {
+      return;
+    }
+
+    onVideoElementChange(
+      participant.id,
+      showVideo ? videoRef.current : null,
+    );
+
+    return () => {
+      onVideoElementChange(participant.id, null);
+    };
+  }, [onVideoElementChange, participant.id, showVideo]);
+
   return (
     <article className="relative min-h-[18rem] overflow-hidden rounded-lg border border-white/10 bg-[#141923] p-3 text-white shadow-sm">
       {!isLocalMedia ? <audio autoPlay ref={audioRef} /> : null}
@@ -78,6 +98,7 @@ export function CallParticipantTile({
         <video
           autoPlay
           className="absolute inset-0 h-full w-full object-cover"
+          disablePictureInPicture={false}
           muted
           playsInline
           ref={videoRef}

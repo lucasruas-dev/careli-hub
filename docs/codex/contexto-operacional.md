@@ -30,7 +30,7 @@ Filosofia do produto:
 Regras gerais obrigatorias:
 
 - Nunca perder contexto operacional: antes de implementar, ler este diario, revisar regras anteriores e validar impactos entre modulos.
-- Nao misturar escopos: Guardian nao altera PulseX; Infra nao altera UX; QA nao implementa feature; Security nao redefine regra de negocio; modulo nao redefine arquitetura global sem pedido explicito.
+- Nao misturar escopos: Guardian nao altera PulseX; ReleaseOps nao redefine UX; SupportOps nao implementa feature sem pedido explicito; Security nao redefine regra de negocio; modulo nao redefine arquitetura global sem pedido explicito.
 - Nao implementar sem analise: entender impacto, dependencias e riscos antes de editar.
 - Registrar tudo que for relevante: melhoria, correcao, decisao, deploy, validacao, descoberta tecnica, integracao ou comportamento operacional.
 - Nao expor secrets: nunca expor tokens, senhas, credenciais ou chaves; nao usar secrets client-side.
@@ -39,6 +39,7 @@ Regras gerais obrigatorias:
 Fluxo operacional oficial:
 
 - Fluxo padrao simplificado definido por Lucas em 2026-05-17: Lucas -> Dev do modulo implementa -> valida localmente -> Hub ReleaseOps realiza commit/deploy/homologacao/producao -> producao.
+- Regra atualizada por Lucas em 2026-05-17: nao existe mais handoff para `Hub QA`; o proprio dev do modulo deve executar a validacao tecnica, funcional e visual possivel antes de encaminhar para `Hub ReleaseOps`.
 - Nenhum deploy critico deve ocorrer sem validacao minima.
 - Producao e ambiente critico: validar antes, evitar alteracoes destrutivas, monitorar depois, preservar estabilidade e manter rastreabilidade.
 - Deploys devem preferir homologacao/teste antes de producao quando houver risco operacional.
@@ -60,7 +61,6 @@ Status operacionais obrigatorios:
 - `ANALISANDO`
 - `IMPLEMENTANDO`
 - `VALIDANDO`
-- `AGUARDANDO QA`
 - `AGUARDANDO ARCHITECT`
 - `AGUARDANDO RELEASEOPS`
 - `AGUARDANDO DEPLOY`
@@ -74,7 +74,7 @@ Fluxo de comunicacao e handoff:
 - Evitar assuntos genericos; o titulo deve facilitar rastreabilidade, busca futura, continuidade entre sessoes e localizacao de temas especificos.
 - Responder de forma objetiva, executiva e operacional.
 - Sempre informar o que foi feito, o que falta, dependencias de outro agente, proximo passo, riscos conhecidos e status atual.
-- Ao finalizar uma implementacao, indicar o status de handoff. Exemplo: `Status: AGUARDANDO QA`; solicitar validacao desktop, mobile, regressao e performance ao Hub QA; depois da aprovacao, solicitar commit/deploy/rastreabilidade ao Hub ReleaseOps.
+- Ao finalizar uma implementacao, indicar o status de handoff. Exemplo: `Status: AGUARDANDO RELEASEOPS`; informar validacoes tecnicas, funcionais e visuais executadas pelo proprio dev do modulo; depois encaminhar commit/deploy/rastreabilidade ao Hub ReleaseOps.
 
 Regra de orquestracao entre agentes:
 
@@ -1354,3 +1354,386 @@ Registro de diario:
 - Validacao executada: leitura local do diario operacional e busca por regra existente de resumo macro/deploy antes do registro. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual.
 - Pendencias ou riscos conhecidos: nenhuma pendencia tecnica. Proximos deploys devem incluir explicitamente a secao de resumo macro no fechamento e no registro relevante do diario.
 - Status operacional: `FINALIZADO`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Configuracoes de audio e video nos controles inferiores`.
+- Nome da squad/agente: `PulseX Core`.
+- Data e hora local: 2026-05-17 01:37:18 -03:00.
+- Tipo da alteracao: Melhoria de UX operacional em chamada.
+- Motivo da mudanca: Lucas pediu remover a configuracao fixa de microfone e camera do topo da chamada e abrir essas configuracoes pelos botoes inferiores, em um comportamento parecido com menus de chamada que aparecem no hover/foco dos controles.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-controls.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: removi a faixa superior com selects de microfone/camera do `CallPanel`, ajustei o grid da janela de chamada e passei as listas/selecoes de dispositivos para `CallControls`. Nos botoes inferiores de microfone e camera, adicionei menus flutuantes acionados por hover/foco com dispositivo padrao, dispositivos detectados, check visual no selecionado e acao rapida para ativar/desativar microfone ou camera.
+- Logica utilizada: manter a tela de video limpa e maior, concentrando ajustes de audio/video no mesmo ponto onde o operador ja controla a chamada. O clique principal dos botoes continua rapido para mutar/desmutar e ligar/desligar camera, enquanto o menu abre configuracoes sem ocupar espaco permanente no topo.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso; smoke local em `http://localhost:3001/pulsex` retornou HTTP 200. A tentativa de validacao visual no navegador interno ficou bloqueada em `Carregando sessao...` por ausencia de sessao autenticada, entao a validacao visual completa deve ocorrer com usuario logado.
+- Pendencias ou riscos conhecidos: Hub QA deve validar em sessao autenticada se o hover/foco dos botoes inferiores abre os menus de microfone e camera, se a selecao de dispositivos troca corretamente a fonte, se o menu nao fecha ao mover o mouse para as opcoes, e se desktop/mobile continuam sem sobreposicao visual. Hub ReleaseOps deve realizar commit/rastreabilidade quando QA aprovar ou quando Lucas decidir consolidar a entrega.
+- Status operacional: `AGUARDANDO QA`.
+- Proxima squad recomendada: `Hub QA` para validacao visual/funcional autenticada; depois `Hub ReleaseOps` para commit e release.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Fechar painel de emojis ao clicar fora`.
+- Nome da squad/agente: `PulseX Core`.
+- Data e hora local: 2026-05-17 01:38:50 -03:00.
+- Tipo da alteracao: Correcao de UX operacional no composer.
+- Motivo da mudanca: Lucas apontou que o painel de emojis permanecia aberto ao clicar fora e exigia clicar novamente no icone de emoji para fechar.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-composer.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: adicionei uma referencia ao container do seletor de emojis e um listener `pointerdown` ativo somente enquanto o painel esta aberto. Cliques dentro do container sao preservados; qualquer clique fora fecha o painel automaticamente.
+- Logica utilizada: manter o comportamento esperado de popover sem alterar envio de mensagem, mencoes, anexos, gravacao de audio ou selecao de emoji. O listener so existe durante a abertura do painel e e removido no cleanup para evitar efeito colateral.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
+- Pendencias ou riscos conhecidos: Hub QA deve validar em sessao autenticada que clicar fora do painel fecha o seletor e que clicar em um emoji ainda insere o emoji normalmente. Hub ReleaseOps deve consolidar commit/rastreabilidade quando a entrega for aprovada.
+- Status operacional: `AGUARDANDO QA`.
+- Proxima squad recomendada: `Hub QA` para validacao visual/funcional do composer; depois `Hub ReleaseOps` para commit e release.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Filtro por empreendimento em Aging e Composicao`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 01:41:38 -03:00.
+- Tipo da alteracao: Correcao funcional no dashboard financeiro do Guardian.
+- Motivo da mudanca: Lucas apontou que, ao clicar em um empreendimento na tabela de performance, os dados do painel financeiro eram recortados, mas `Aging da inadimplencia` e `Composicao da cobranca` continuavam exibindo os agregados globais.
+- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx`, `apps/hub/app/api/guardian/overview/route.ts`, `apps/hub/lib/guardian/overview.ts`, `apps/hub/lib/guardian/overview-client.ts` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: criei um recorte server-side em `/api/guardian/overview?enterprise=...` para retornar as distribuicoes de aging e composicao por empreendimento usando a conexao direta do Guardian com o banco C2X. No client, o dashboard passou a buscar esse recorte quando um empreendimento e selecionado, armazenar cache por empreendimento e renderizar os dois cards laterais com o mesmo escopo da tabela/KPIs.
+- Logica utilizada: o read model atual mantem `c2x_guardian_overdue_aging` e `c2x_guardian_billing_composition` apenas como agregados globais, sem dimensao de empreendimento. Para corrigir o comportamento sem criar migracao estrutural agora, o recorte granular ficou em uma consulta server-side autenticada, preservando dados reais, controle no servidor, cache leve no client e compatibilidade com o read model global existente.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso; smoke local de `http://localhost:3001/guardian` retornou HTTP 200; consulta real no C2X para `Lagoa Bonita - LBR` confirmou recorte proprio em Aging (`16 a 30`, `31 a 60`, `61 a 90`, `90+`) e Composicao (`Ato`, `Sinal`), com buckets ausentes preenchidos como zero pela camada do Guardian.
+- Pendencias ou riscos conhecidos: nao ha mais handoff para `Hub QA`; a validacao tecnica e de dados reais ficou sob responsabilidade do Dev Guardian. A validacao visual autenticada completa depende de sessao logada no navegador, mas a rota local do Guardian respondeu HTTP 200 e o build passou. Se Lucas quiser o recorte persistido no Supabase/read model, o proximo passo tecnico e criar dimensao por empreendimento para essas distribuicoes no pipeline de sincronizacao. `Contratos criticos` por empreendimento continua como recorte pendente, conforme comportamento atual da tela.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para commit, rastreabilidade oficial e deploy.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Dev do modulo assume validacao`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 01:45:21 -03:00.
+- Tipo da alteracao: Decisao operacional permanente e ajuste de fluxo.
+- Motivo da mudanca: Lucas corrigiu o fluxo informando que nao existe mais `Hub QA`; os proprios devs/agentes dos modulos devem executar essa parte de validacao.
+- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core e futuros modulos do Hub.
+- Como foi feito: atualizei o manifesto operacional para remover o handoff obrigatorio para `Hub QA` dos novos fluxos, ajustar os status atuais e registrar que o dev do modulo deve validar tecnica, funcional e visualmente a propria entrega antes de encaminhar para `Hub ReleaseOps`.
+- Logica utilizada: como os devs de modulo ja sao responsaveis por implementacao, UX operacional, consistencia tecnica e preservacao das regras do modulo, a validacao deixa de ser uma squad separada e passa a ser gate interno da propria entrega antes de release.
+- Validacao executada: leitura local do diario operacional, busca de referencias a `Hub QA` e atualizacao do fluxo vigente. Nao houve build, lint ou typecheck porque esta mudanca foi documental/processual.
+- Pendencias ou riscos conhecidos: registros historicos antigos podem mencionar `Hub QA` porque refletem o fluxo vigente no momento em que foram escritos; para novos handoffs, usar validacao pelo dev do modulo e `AGUARDANDO RELEASEOPS` quando a entrega estiver pronta para commit/deploy.
+- Status operacional: `FINALIZADO`.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Release do filtro por empreendimento`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 01:54:39 -03:00.
+- Tipo da alteracao: Commit, push e deploy automatico de correcao funcional do Guardian.
+- Motivo da mudanca: Lucas informou que o clique no empreendimento ainda nao filtrava `Aging da inadimplencia` e `Composicao da cobranca` no ambiente em uso; foi confirmado que a correcao estava local e ainda nao havia sido publicada.
+- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx`, `apps/hub/app/api/guardian/overview/route.ts`, `apps/hub/lib/guardian/overview.ts` e `apps/hub/lib/guardian/overview-client.ts`.
+- Como foi feito: stageei apenas os quatro arquivos de runtime do Guardian para evitar misturar mudancas paralelas de PulseX/Layout, criei commit semantico e enviei para `origin/main`, disparando deployment automatico de producao no Vercel.
+- Logica utilizada: separar o pacote do Guardian garante que a correcao operacional chegue rapido ao ambiente do Lucas sem carregar alteracoes de outras frentes que permanecem sujas no worktree.
+- Commit realizado: `f655199 fix(guardian): filter dashboard distributions by enterprise`.
+- Deploy: Vercel production automatico iniciado para `careli-hub-hub-i2bs-6kmgl3ygi-lucasruas-devs-projects.vercel.app`, deployment id `dpl_45N83sUjdJ5bPUTqhrDHbim9kHdP`.
+- Validacao executada antes do commit: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke local de `/guardian` com HTTP 200 e consulta real C2X para `Lagoa Bonita - LBR` confirmando recorte de Aging/Composicao. Lucas confirmou visualmente que o filtro passou a funcionar no ambiente.
+- Pendencias ou riscos conhecidos: a tentativa posterior de reinspecionar o deployment pelo `npx.cmd vercel inspect` falhou localmente com `EACCES` no npm cache, mas o deployment automatico ja havia sido criado e Lucas confirmou o comportamento corrigido. Worktree ainda possui mudancas nao relacionadas de PulseX/Layout/documentacao que nao entraram neste commit.
+- Status operacional: `FINALIZADO`.
+
+Registro de diario:
+
+- Assunto: `[Hub Shell] Refinamento visual do sidebar e launcher de modulos`.
+- Nome da squad/agente: `Dev Hub Shell`.
+- Data e hora local: 2026-05-17 01:46:36 -03:00.
+- Tipo da alteracao: Melhoria de UX operacional no shell global do Hub.
+- Motivo da mudanca: Lucas apontou que o sidebar/launcher do Hub nao estava agradando visualmente e pediu uma melhoria mantendo o Hub executivo, compacto e consistente.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx`, `apps/hub/styles/globals.css` e `docs/codex/contexto-operacional.md`; impacto restrito ao shell global e ao launcher de modulos, sem alterar regras, rotas, permissoes, dados ou comportamento interno de Guardian, PulseX, CareDesk, Setup ou SquadOps.
+- Como foi feito: refinei o header expandido/recolhido da sidebar, melhorei contraste, bordas, icones, item ativo, hover e badge realtime como ponto discreto. No launcher operacional exibido sobre telas como Guardian, ajustei superficie, espacamento, hierarquia visual, estado ativo, icones, divisorias e acao de sair para ficar mais limpo e alinhado ao padrao executivo do Hub. Tambem ajustei a marcacao ativa para considerar subrotas, preservando Guardian ativo em caminhos como `/guardian/atendimento`.
+- Logica utilizada: manter a navegacao curta, operacional e reconhecivel, reduzindo peso visual do bloco escuro anterior sem transformar o Hub em uma experiencia generica ou alterar contratos funcionais dos modulos. A mudanca ficou concentrada no shell e no CSS local do Hub.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; smoke local via HTTP retornou 200 em `/`, `/guardian/atendimento` e `/pulsex`.
+- Pendencias ou riscos conhecidos: validacao visual fina ainda deve ser conferida pelo Lucas em sessao autenticada, principalmente estado recolhido/expandido e abertura do launcher no Guardian; nao houve alteracao de dados, API, schema ou permissao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Logo fixa no topo do sidebar recolhido`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 01:50:19 -03:00.
+- Tipo da alteracao: Ajuste de UX operacional no sidebar interno do Guardian.
+- Motivo da mudanca: Lucas apontou que, no estado recolhido, a logo ficava visualmente no meio do bloco de controles e deveria estar sempre no topo do sidebar.
+- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/contexto-operacional.md`; impacto restrito ao layout do sidebar do Guardian, sem alterar regras de negocio, dados, APIs, permissoes ou fluxos de cobranca.
+- Como foi feito: reorganizei o header do sidebar para renderizar primeiro o link/logo de retorno ao Hub, tanto no estado recolhido quanto no expandido. O botao de abertura dos modulos e o controle de expandir/recolher passaram a ficar abaixo da logo no estado recolhido e em uma linha de controles abaixo da logo no estado expandido.
+- Logica utilizada: manter a identidade visual do Guardian como ancora superior do rail, com controles secundarios abaixo, preservando o launcher de modulos e a persistencia do estado recolhido/expandido.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; smoke local em `/guardian/atendimento` retornou HTTP 200.
+- Pendencias ou riscos conhecidos: validacao visual fina em sessao autenticada ainda deve confirmar se a logo permanece no topo no estado recolhido e se os controles abaixo continuam acessiveis e sem sobreposicao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Emoji do sol no seletor`.
+- Nome da squad/agente: `PulseX Core`.
+- Data e hora local: 2026-05-17 01:55:39 -03:00.
+- Tipo da alteracao: Melhoria de UX operacional no composer.
+- Motivo da mudanca: Lucas apontou que o seletor de emojis do PulseX ainda nao trazia o emoji do sol.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-composer.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: inclui `☀️` e `🌞` na lista `composerEmojiOptions`, posicionados junto aos emojis operacionais finais perto da estrela, sem alterar o comportamento de abertura, fechamento, mencoes, anexos ou envio de mensagem.
+- Logica utilizada: manter a lista enxuta e alinhada ao padrao visual do seletor ja existente, cobrindo tanto o sol classico quanto o sol com rosto para facilitar busca visual pelo operador.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
+- Pendencias ou riscos conhecidos: validacao visual fina em sessao autenticada ainda deve confirmar que os dois emojis aparecem no painel e sao inseridos corretamente na mensagem. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Janela de chamada arrastavel e Picture-in-Picture`.
+- Nome da squad/agente: `PulseX Core`.
+- Data e hora local: 2026-05-17 02:01:54 -03:00.
+- Tipo da alteracao: Melhoria de UX operacional em chamada de audio/video.
+- Motivo da mudanca: Lucas pediu para a tela de chamada deixar de ficar estatica no centro, poder ser arrastada para outro ponto da tela e oferecer uma opcao de picture-in-picture.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-controls.tsx`, `apps/hub/components/pulsex/call-participant-tile.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: transformei o topo da janela de chamada em area de arraste quando o painel nao esta em tela cheia, guardando posicao em estado local e limitando o movimento dentro da viewport. Tambem expus os elementos de video ativos dos participantes para o painel, adicionei um botao de `Picture-in-Picture` nos controles inferiores e conectei esse botao a API nativa do navegador, priorizando video remoto quando existir e usando o video local como fallback.
+- Logica utilizada: manter a chamada como janela operacional flexivel sem alterar WebRTC, sinalizacao realtime, selecao de dispositivos ou fluxo de encerramento. O arraste fica desativado em tela cheia para preservar o comportamento fullscreen, e o picture-in-picture so aparece habilitado quando o navegador e a chamada de video permitem.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
+- Pendencias ou riscos conhecidos: validacao visual/funcional completa ainda depende de sessao autenticada com permissao de camera/microfone para confirmar drag real, limites da janela, alternancia de tela cheia e abertura/fechamento de picture-in-picture no navegador do operador. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Chamada continua ao sair da tela`.
+- Nome da squad/agente: `PulseX Core`.
+- Data e hora local: 2026-05-17 02:05:18 -03:00.
+- Tipo da alteracao: Correcao de resiliencia operacional em chamada de audio/video.
+- Motivo da mudanca: Lucas informou que a chamada nao pode cair quando o operador sai da tela, minimiza a janela ou navega para outra area do Hub.
+- Arquivos/modulos afetados: `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/components/pulsex/call-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: ajustei o fechamento do painel para ser tratado como minimizacao, sem encerrar Picture-in-Picture e sem enviar `leave`/`end`. No provider global, o painel oculto deixou de usar `display:none` e passou a ficar invisivel mantendo o componente montado. Tambem adicionei persistencia temporaria da chamada ativa em `sessionStorage` por usuario e reentrada realtime com sinal `join` quando uma sessao ativa e restaurada apos remontagem curta do provider.
+- Logica utilizada: separar explicitamente os conceitos de `minimizar`, `navegar` e `encerrar chamada`. A chamada so deve terminar por acao de encerrar ou sinal remoto de fim; sair da tela deve preservar midia, conexoes e estado operacional. A persistencia em aba funciona como camada de resiliencia para oscilacoes de renderizacao/autenticacao, sem transformar isso em historico permanente de chamadas.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
+- Pendencias ou riscos conhecidos: validacao visual/funcional completa ainda depende de sessao autenticada com chamada real para confirmar que trocar de rota, minimizar painel, manter Picture-in-Picture e retornar ao PulseX nao derruba audio/video. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Bolhas de mensagem estilo WhatsApp`.
+- Nome da squad/agente: `PulseX Core`.
+- Data e hora local: 2026-05-17 02:07:27 -03:00.
+- Tipo da alteracao: Melhoria de UX visual no chat operacional.
+- Motivo da mudanca: Lucas apontou que as mensagens estavam com aspecto de quadrado/card e pediu cantos mais arredondados, cores diferentes para mensagens proprias e uma aproximacao visual ao padrao WhatsApp.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: ajustei a bolha principal da mensagem para usar cantos arredondados assimetricos, cauda visual discreta, sombra mais leve e largura controlada. Mensagens do usuario atual passaram a usar verde claro alinhado a direita; mensagens recebidas permanecem brancas alinhadas a esquerda. Metadados, tags, anexos, edicao, resposta e informacoes da mensagem foram preservados.
+- Logica utilizada: aproximar a leitura do PulseX do modelo mental de WhatsApp sem transformar o modulo em uma copia generica, mantendo densidade operacional, contraste, acoes existentes e diferenca clara entre mensagem enviada e recebida.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
+- Pendencias ou riscos conhecidos: validacao visual fina em sessao autenticada ainda deve confirmar leitura em mensagens longas, anexos, tags, edicao e estados de entrega/leitura. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Caca acoplada, notificacoes nativas e sons premium`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 02:21:55 -03:00.
+- Tipo da alteracao: Melhoria funcional, IA operacional, comunicacao e UX visual do PulseX.
+- Motivo da mudanca: Lucas pediu acoplar a Caca ao modulo PulseX como agente real, melhorar os sons de toque, ativar som/notificacao ao receber mensagem, exibir popup nativo do Windows quando o operador nao estiver na tela do PulseX e trocar a cor das mensagens proprias para uma tonalidade mais alinhada ao layout.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/app/api/ai/chat/route.ts`, `apps/hub/lib/pulsex/notification-effects.ts`, `apps/hub/lib/pulsex/realtime.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/providers/app-providers.tsx`, `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/providers/pulsex-notification-provider.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: criei um painel lateral da Caca dentro do PulseX, acionado pelo botao de agente no composer, usando o endpoint server-side existente `/api/ai/chat` com `module: "pulsex"`. O contexto enviado para a IA contem canal atual, participantes, conversa recente, rascunho e instrucao do usuario logado. No endpoint de IA, adicionei instrucoes especificas para a Caca atuar como agente do PulseX. Tambem extraí os eventos realtime de mensagem para um helper compartilhado, criei um provider global de notificacoes do PulseX, centralizei efeitos de audio/notificacao em um util proprio, substitui os toques antigos por sequencias mais suaves e ajustei as bolhas proprias para `#f7f3eb` com borda quente da paleta Careli.
+- Logica utilizada: transformar o antigo botao de agente, que apenas inseria um texto no campo, em uma Caca operacional de verdade sem criar outro backend nem expor chave no cliente. A Caca sugere, resume e prepara textos, mas nao envia automaticamente; o operador decide usar a resposta no composer. As notificacoes de mensagem ficaram globais para funcionar fora da rota `/pulsex` enquanto o Hub estiver aberto, e a notificacao nativa depende da permissao do navegador/Windows. A cor das mensagens proprias saiu do verde WhatsApp para uma tonalidade quente coerente com o PulseX e a marca Careli.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; `http://localhost:3001/pulsex` retornou HTTP 200; validacao visual no navegador interno confirmou o PulseX carregado, botao `Acionar Cacá` abrindo o painel lateral da Caca, acoes rapidas visiveis e sem erros/warnings de console relevantes.
+- Pendencias ou riscos conhecidos: popup nativo do Windows so aparece se o navegador e o Windows permitirem notificacoes para o site; a implementacao cobre Hub aberto em outra rota/aba, nao push notification com navegador totalmente fechado. A resposta real da Caca depende de `OPENAI_API_KEY`/modelo configurados no servidor, como ja ocorre no Guardian. Validacao funcional completa de notificacao sonora entre dois usuarios reais ainda deve ser feita em ambiente autenticado com outro remetente. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Correcao dos atalhos do sidebar`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 02:33:38 -03:00.
+- Tipo da alteracao: Correcao funcional e ajuste de UX operacional no sidebar do PulseX.
+- Motivo da mudanca: Lucas apontou que o bloco `Atalhos` nao estava funcionando. A verificacao mostrou que os cards eram parcialmente decorativos: `Nao lidas` e `Favoritos` nao filtravam canais reais, `Favoritos` nao tinha contador vivo e `Mencoes` dependia do filtro da conversa atual. Durante a validacao, tambem identifiquei que a troca de canal limpava o array global de mensagens, quebrando o calculo de mencoes logo apos selecionar o atalho.
+- Arquivos/modulos afetados: `apps/hub/lib/pulsex/shortcuts.ts`, `apps/hub/components/pulsex/conversation-sidebar.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/conversation-header.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: criei um helper de atalhos para calcular contadores e canais filtrados por `unread`, `mentions` e `favorites`; conectei os cards do sidebar a um estado real de atalho ativo; implementei persistencia local de canais favoritos usando a estrela do header; fiz o atalho selecionar o primeiro canal correspondente quando o canal atual nao pertence ao filtro; e impedi que os botoes internos continuem clicaveis quando o painel `Atalhos` estiver recolhido. Tambem removi a limpeza global de mensagens na troca de canal, mantendo a base de calculo de mencoes e a mesclagem/carregamento existente por canal.
+- Logica utilizada: transformar `Atalhos` em filtro operacional de canais, separado dos filtros de mensagem. `Mencoes` filtra canais que possuem mensagens mencionando o usuario atual e aplica o filtro de mensagens do canal selecionado; `Favoritos` usa a estrela como estado persistente por navegador; `Nao lidas` usa `unreadCount` dos canais. A lista lateral muda conforme o atalho ativo e a conversa principal acompanha quando existe canal correspondente.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; validacao no navegador interno em `http://localhost:3001/pulsex` confirmou `Mencoes 3` ativo filtrando os canais para `Lideranca` e `Tecnologia`, `Favoritos 1` filtrando apenas `Comunicados`, e `Nao lidas 0` exibindo estado vazio no sidebar.
+- Pendencias ou riscos conhecidos: favoritos ficam persistidos no `localStorage` do navegador do operador; se Lucas quiser favoritos sincronizados entre dispositivos/usuarios, sera necessario schema/tabela server-side em etapa futura. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Reforco visual de mencoes e tags`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 02:37:37 -03:00.
+- Tipo da alteracao: Correcao visual e resiliencia de renderizacao em mensagens do PulseX.
+- Motivo da mudanca: Lucas apontou que a mencao e a tag `Importante` sumiram na leitura das mensagens. A verificacao mostrou que mensagens antigas ou carregadas com `mentionUserIds`, mas sem array completo de `mentions`, podiam exibir o nome como texto comum. Tambem reforcei o destaque visual das tags para elas nao ficarem sutis demais dentro das novas bolhas arredondadas.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: ajustei a renderizacao do corpo da mensagem para reconstruir marcacoes de mencao usando `message.mentions` quando existir e, como fallback, `message.mentionUserIds` combinado com a lista de usuarios do canal. O nome mencionado agora aparece com prefixo visual `@`, borda e fundo mais claro. As tags da mensagem passaram a renderizar como chips com icone de tag, `aria-label` explicito e camada visual acima da cauda da bolha.
+- Logica utilizada: preservar a metadata ja existente sem alterar envio, API, banco ou regras de canal. A mencao deve aparecer mesmo quando o texto contem apenas o nome do usuario e a metadata guarda o ID; a tag deve ser imediatamente reconhecivel na bolha, especialmente `Importante`, sem depender do painel de informacoes.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; validacao no navegador interno em `http://localhost:3001/pulsex` confirmou mencoes renderizadas como `@Lucas Ruas` e `@Nivea Careli`, alem de tags acessiveis como `Tag Importante`, `Tag Urgente`, `Tag Pendente`, `Tag Resolvido` e `Tag Acompanhar`.
+- Pendencias ou riscos conhecidos: mensagens que nunca foram enviadas com tag na metadata continuarao sem chip de tag; caso Lucas queira recuperar tags historicas por texto/contexto, isso deve ser tratado em tarefa de dados/migracao. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Cores do chat e rascunho limpo da Caca`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 02:42:31 -03:00.
+- Tipo da alteracao: Ajuste de UX visual e refinamento operacional do agente Caca.
+- Motivo da mudanca: Lucas apontou que `mencao` e `Importante` estavam sumindo por causa das novas cores do chat, e tambem pediu que mensagens preparadas pela Caca fossem para o campo de envio sem cabecalho explicativo, deixando apenas o icone de uso no campo.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/lib/pulsex/message-tags.ts`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: reforcei a paleta dos chips de tags com cores mais contrastadas, mantive `Importante` em ambar forte, destaquei mencoes com fundo azul claro e texto escuro, e preservei a bolha propria em verde claro mais alinhado ao layout. No painel da Caca, o texto usado como rascunho agora extrai apenas o conteudo final da sugestao, sem frases como `Lucas, mensagem pronta...` ou observacoes de validacao; o botao de aplicar no campo ficou somente com icone, mantendo `aria-label` e `title`.
+- Logica utilizada: separar a resposta operacional da Caca do texto que vai para o composer. A Caca pode explicar no painel, mas o rascunho precisa ser uma mensagem pronta para envio humano. Para o visual, a prioridade foi aumentar contraste sem poluir o PulseX nem transformar as tags em elementos chamativos demais.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno confirmou chip `Importante` com classe `border-amber-400 bg-amber-100 text-amber-900`; a sessao atual carregou sem canais do Supabase, entao a validacao visual completa de mencoes em mensagens reais deve ser repetida em ambiente autenticado com dados carregados.
+- Pendencias ou riscos conhecidos: se a IA responder fora do padrao em texto sem aspas e sem marcador claro, o filtro remove os cabecalhos conhecidos, mas pode ser necessario ampliar os padroes depois de uso real. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Resposta por IA a partir da mensagem`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 02:50:11 -03:00.
+- Tipo da alteracao: Melhoria funcional e UX operacional do agente Caca no chat.
+- Motivo da mudanca: Lucas pediu um icone de agente nas mensagens para, quando quiser responder pela IA, clicar na bolha e pedir para a Caca formular uma resposta. Lucas reforcou que a mensagem precisa ser levada para a Caca ler e entender antes de formular o texto.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: adicionei o botao `Responder com Caca` nas acoes de cada mensagem nao apagada, usando icone de agente sem texto visivel. O clique abre o painel lateral da Caca, fecha thread ativa, marca a mensagem selecionada como foco e exibe um card `Mensagem em foco` com autor, horario e conteudo. O contexto enviado ao endpoint da IA agora inclui `mensagemEmFoco`, com corpo, autor, tags, anexo e horario, e a instrucao server-side do PulseX orienta a IA a usar essa mensagem como referencia principal.
+- Logica utilizada: a Caca nao deve adivinhar qual mensagem o operador quer responder. A mensagem clicada vira contexto explicito e prioritario, enquanto a conversa recente permanece como apoio para tom, participantes e continuidade. A resposta continua sendo apenas rascunho humano: a IA formula, mas o operador decide usar no composer e enviar.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o botao `Responder com Caca` em mensagem real, clique abrindo painel lateral, card `Mensagem em foco`, texto da mensagem selecionada visivel para a Caca e acao rapida `Responder mensagem`.
+- Pendencias ou riscos conhecidos: a formulacao real da resposta depende da configuracao server-side de IA (`OPENAI_API_KEY`/modelo) ja usada pelo Hub; QA deve validar em conversa real com diferentes autores, mensagens longas, anexos e tags. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Rascunho da Caca como resposta da mensagem`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 02:54:38 -03:00.
+- Tipo da alteracao: Correcao funcional no fluxo de resposta por IA.
+- Motivo da mudanca: Lucas apontou que, ao responder uma `Mensagem em foco` com a Caca, o texto gerado nao deve ir como nova mensagem solta no canal; ele precisa entrar como resposta da mensagem focada.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: ajustei `handleUseCacaDraft` para detectar quando existe `cacaFocusedMessage`. Nesse caso, o rascunho limpo da Caca passa a preencher `threadComposerValue`, abre o painel de respostas da mensagem focada com `setActiveThreadMessageId`, carrega as respostas existentes e fecha o painel da Caca. Quando nao existe mensagem em foco, o comportamento permanece igual: o texto continua indo para o composer principal do canal. Tambem alterei o rotulo acessivel do botao para `Usar como resposta` quando a Caca esta trabalhando sobre uma mensagem focada.
+- Logica utilizada: manter a decisao humana antes do envio, mas direcionar o rascunho para o destino operacional correto. Mensagem em foco significa intencao de resposta/thread; sem mensagem em foco significa rascunho de nova mensagem no canal.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno confirmou: botao `Responder com Caca` abriu a Caca com `Mensagem em foco`; a acao `Responder mensagem` gerou resposta; o botao `Usar como resposta` fechou a Caca, abriu o painel `Respostas`, manteve o composer principal vazio e preencheu o textarea `Responder` com o rascunho gerado.
+- Pendencias ou riscos conhecidos: QA deve validar com mensagens de outros autores, mensagens longas e respostas ja existentes para confirmar que o rascunho e anexado ao thread correto em todos os cenarios. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Tons de resposta da Caca`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 02:59:12 -03:00.
+- Tipo da alteracao: Melhoria de UX e controle de escrita no agente Caca.
+- Motivo da mudanca: Lucas pediu para conseguir mudar o tom das mensagens formuladas pela Caca, com opcoes como elegante, otimista, confiante, inteligente, corrigir e calmo.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: adicionei um seletor compacto `Tom da resposta` no painel da Caca com seis opcoes: `Elegante`, `Otimista`, `Confiante`, `Inteligente`, `Corrigir` e `Calmo`. Cada opcao possui uma instrucao propria, mantida no estado local do painel. O tom selecionado passa no contexto da IA como `tomSelecionado`, junto de `mensagemEmFoco`, conversa recente, participantes e rascunho atual. Tambem reforcei a instrucao server-side do PulseX para aplicar `tomSelecionado` ao texto final preparado para envio, sem alterar os fatos.
+- Logica utilizada: o tom deve afetar apenas a escrita, nao a decisao operacional nem o conteudo factual. A Caca continua sem enviar automaticamente; ela apenas prepara rascunhos com o estilo escolhido pelo operador. A opcao `Corrigir` funciona como modo de revisao de ortografia, gramatica, clareza e fluidez, preservando a intencao original.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o painel da Caca abrindo, os seis botoes de tom visiveis, `Inteligente` selecionado por padrao e a troca para `Calmo` atualizando `aria-pressed` sem erros de console.
+- Pendencias ou riscos conhecidos: QA deve validar a qualidade textual gerada por cada tom em cenarios reais, principalmente resposta de `Mensagem em foco`, correcao de rascunho existente e mensagens com contexto sensivel. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Composer de resposta da Caca visivel`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:03:15 -03:00.
+- Tipo da alteracao: Correcao de UX no painel de respostas e refinamento de instrucao da Caca.
+- Motivo da mudanca: Lucas apontou que, quando a resposta vinha da Caca para uma mensagem em foco, o texto ficava cortado e o botao de enviar resposta nao aparecia corretamente. Lucas tambem esclareceu que, ao escrever uma mensagem com um tom selecionado, a Caca deve entender que o objetivo e melhorar aquela mensagem usando o perfil escolhido.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: transformei o rodape do painel `Respostas` em grid com uma coluna fixa para o botao de envio e uma coluna flexivel para o textarea, evitando que o texto empurre o botao para fora da tela. O textarea de resposta passou a ajustar altura automaticamente conforme `replyValue`, com limite maximo e rolagem interna para textos longos. Tambem alinhei o painel de respostas para `24rem`, igual ao painel da Caca. Nas instrucoes da Caca, adicionei regra para tratar texto digitado sem comando claro como pedido de reescrita/melhoria usando `tomSelecionado`.
+- Logica utilizada: quando a Caca gera uma resposta de thread, o operador precisa revisar e enviar no mesmo painel, entao o botao de envio deve permanecer sempre visivel e o rascunho deve ser legivel. Para os tons, a escolha do operador deve ser aplicada ao texto escrito mesmo quando o pedido nao vem em formato de comando explicito.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno confirmou o fluxo completo: `Responder com Caca`, `Responder mensagem`, `Usar como resposta`, painel `Respostas` aberto, composer principal vazio, textarea `Responder` com o rascunho visivel, altura ajustada e botao `Enviar resposta` visivel.
+- Pendencias ou riscos conhecidos: QA deve validar em resolucoes menores e com respostas muito longas para confirmar rolagem interna e ausencia de sobreposicao no rodape do painel. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Listas da Caca com bolinhas`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:08:03 -03:00.
+- Tipo da alteracao: Melhoria de legibilidade e layout de mensagens geradas pela Caca.
+- Motivo da mudanca: Lucas pediu para melhorar o layout das respostas em lista, usando bolinhas em vez de traco e deixando as bolinhas visualmente em negrito.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: ajustei a renderizacao do corpo das mensagens do PulseX para identificar linhas iniciadas por `-`, `*` ou `•` e renderizar como uma linha de lista com bolinha `•` em `font-black`, separada do texto. A mesma renderizacao foi aplicada nas bolhas da Caca. Tambem normalizei o rascunho usado no composer para trocar marcadores `-` ou `*` por `•`, e reforcei as instrucoes da Caca para usar marcadores de bolinha quando listar pontos.
+- Logica utilizada: a melhoria nao depende apenas da IA seguir o prompt; a interface agora corrige a apresentacao de listas antigas ou novas. Assim, mesmo que uma resposta chegue com hifen, o operador ve bolinha forte e layout mais legivel, mantendo o texto limpo no composer.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno confirmou a Caca gerando lista com tres bolinhas visuais em peso `900`, sem linhas com hifen, e o botao `Usar no campo` aplicando rascunho com `•` no composer. O rascunho de teste foi limpo apos a validacao.
+- Pendencias ou riscos conhecidos: QA deve validar listas em mensagens longas, respostas em thread e mensagens com mencoes para confirmar que o destaque de mencao e a lista visual continuam coexistindo corretamente. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Horario das mensagens em preto`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:09:57 -03:00.
+- Tipo da alteracao: Ajuste visual de leitura nas mensagens do PulseX.
+- Motivo da mudanca: Lucas pediu para deixar a hora das mensagens em preto e negrito, porque o horario estava discreto demais nas bolhas.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: apliquei `font-bold text-[#101820]` no horario das mensagens principais e das respostas em thread, preservando o restante dos metadados, icones de leitura/envio e acoes da mensagem.
+- Logica utilizada: destacar apenas o horario, sem aumentar peso dos demais metadados, para melhorar leitura sem poluir a bolha nem alterar comportamento de envio, edicao, tags ou threads.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno confirmou horario `01:58` com cor `rgb(16, 24, 32)` e peso `700`.
+- Pendencias ou riscos conhecidos: QA deve conferir em mensagens proprias, recebidas e respostas com varios horarios para garantir que o destaque nao concorra visualmente com status de leitura. Hub ReleaseOps deve consolidar commit/rastreabilidade e deploy quando Lucas aprovar a publicacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Diagramação do painel de informações`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:19:11 -03:00.
+- Tipo da alteracao: Correcao de layout no popover de informacoes da mensagem.
+- Motivo da mudanca: Lucas apontou que o problema nao era o horario, mas a diagramacao do painel de informacoes e tooltip, que abriam sobre a mensagem e ficavam por baixo das bolhas seguintes.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: alinhei a barra de acoes conforme o lado da bolha, alterei os tooltips das acoes para abrir abaixo do icone, removi o tooltip do botao enquanto o painel de informacoes esta aberto, fechei o menu de tags ao abrir informacoes e reposicionei o painel como popover lateral centralizado no icone, com `z-50`, `z-40` no item ativo, altura maxima e rolagem interna.
+- Logica utilizada: a acao da mensagem deve ser contextual, mas nao pode competir com a leitura da bolha. O painel precisa abrir acima da pilha visual das mensagens e fora do fluxo principal, mantendo a tela compacta e evitando sobreposicao com o texto da conversa.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o painel `Informacoes` com `z-index: 50`, item ativo com `z-40`, dentro do viewport e sem ficar sob elementos vizinhos.
+- Pendencias ou riscos conhecidos: QA deve validar com mensagens longas, mensagens recebidas, mensagens proprias, resolucoes pequenas e thread aberta para confirmar que o popover lateral nao invade areas criticas.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Fechamento externo do painel de informacoes`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:22:46 -03:00.
+- Tipo da alteracao: Correcao de interacao no popover de informacoes e menu de tags.
+- Motivo da mudanca: Lucas apontou que o painel de informacoes continuava acumulando aberto e pediu que, ao clicar fora do balao, ele fechasse.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: adicionei uma referencia ao item da mensagem e um listener de `pointerdown` em captura enquanto `Informacoes` ou `Marcar mensagem` estiverem abertos. Se o clique acontecer fora da mensagem/painel atual, os estados `isInfoOpen` e `isTagMenuOpen` sao fechados. Cliques dentro do balao continuam preservados para permitir leitura e interacao.
+- Logica utilizada: cada mensagem controla seu proprio popover, mas qualquer clique fora do limite daquela mensagem deve encerrar o estado aberto. Assim, clicar no fundo, no composer ou em outra mensagem fecha paineis antigos e evita acúmulo visual.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou: painel abriu ao clicar em `Informacoes`; clique fora no composer fechou o painel; contagem de paineis passou de `1` para `0`.
+- Pendencias ou riscos conhecidos: QA deve validar o comportamento em conversas com muitas mensagens e com scroll ativo para confirmar fechamento consistente ao alternar entre bolhas.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Botao de envio fixo na resposta`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:25:31 -03:00.
+- Tipo da alteracao: Correcao de layout no composer do painel de respostas.
+- Motivo da mudanca: Lucas apontou que o painel de respostas estava sem botao de enviar visivel em largura estreita.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: removi a grade de duas colunas do rodape da thread e transformei o composer em um container relativo. O textarea agora ocupa a largura total com `pr-14`, e o botao `Enviar resposta` fica absoluto dentro do campo, no canto inferior direito, com tamanho compacto de `32px`.
+- Logica utilizada: o botao de envio nao deve depender de uma segunda coluna que pode sair da area visivel quando o painel esta estreito. Ao fixar o botao dentro do proprio composer, a acao permanece visivel e o texto ganha espaco reservado para nao ficar por baixo do icone.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o painel de respostas aberto, textarea `Responder` presente, botao `Enviar resposta` visivel dentro do viewport, absoluto no composer, com `32x32` e textarea com `padding-right: 56px`.
+- Pendencias ou riscos conhecidos: QA deve validar em painel estreito com texto longo e em mobile/resolucao baixa para confirmar que o botao continua acessivel e nao cobre o conteudo digitado.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Area principal do chat arredondada`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:28:12 -03:00.
+- Tipo da alteracao: Refinamento visual do container principal do PulseX.
+- Motivo da mudanca: Lucas pediu para aplicar no PulseX o mesmo conceito visual do campo de chat arredondado exibido na referencia, separando melhor a area de conversa da sidebar.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: envolvi o `main` do PulseX em um wrapper com respiro `p-3 pl-0` e transformei a area da conversa em uma superficie com `rounded-[1.35rem]`, borda `#d9e0ea`, sombra leve e `overflow-hidden`, preservando header, lista de mensagens, composer, painel da Caca, painel de respostas e notificacoes dentro do mesmo container.
+- Logica utilizada: arredondar o container da conversa, e nao cada secao interna, cria uma leitura de painel unico e executivo. O `overflow-hidden` garante que header/composer/overlays respeitem o raio sem criar cantos quadrados, enquanto o wrapper preserva a sidebar sem alterar sua navegacao.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou `border-radius: 21.6px`, borda aplicada, sombra leve, `overflow: hidden`, painel dentro do viewport e sem overflow horizontal global.
+- Pendencias ou riscos conhecidos: QA deve validar em resolucoes pequenas e com Caca/thread abertos para confirmar que os paineis laterais continuam respeitando o raio sem cortar conteudo essencial.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Botao circular e painel de respostas arredondado`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:31:00 -03:00.
+- Tipo da alteracao: Correcao visual e de acessibilidade do composer de respostas.
+- Motivo da mudanca: Lucas apontou que o painel de respostas continuava sem o botao de enviar visivel e pediu para deixar a area lateral com cara arredondada tambem.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: movi o botao `Enviar resposta` para dentro de um wrapper relativo do textarea, com posicao absoluta centralizada na direita, `z-20`, tamanho `36x36`, formato circular e cor da marca. O textarea ganhou `rounded-xl` e `padding-right: 64px` para o texto nao ficar sob o botao. O painel lateral de respostas passou a ter `rounded-l-[1.15rem]` e `overflow-hidden`.
+- Logica utilizada: o botao precisa estar na mesma superficie do campo para nao ser empurrado para fora em largura estreita. O raio no painel lateral mantem continuidade com a nova area principal arredondada do PulseX sem alterar a logica de thread, envio ou carregamento de respostas.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou thread aberta, botao `Enviar resposta` visivel no viewport com `36x36`, `z-index: 20`, border-radius circular, textarea com `border-radius: 12px` e painel `Respostas` com cantos esquerdos arredondados em `18.4px`.
+- Pendencias ou riscos conhecidos: QA deve validar com texto longo, painel estreito e envio real de resposta para confirmar que o botao permanece visivel durante digitacao e apos scroll interno.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Botao de resposta destacado dentro do campo`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 03:37:20 -03:00.
+- Tipo da alteracao: Correcao de layout e contraste do botao de envio em respostas.
+- Motivo da mudanca: Lucas apontou que o botao de enviar resposta ainda estava escondido e pediu para colocar dentro do campo ou destacar o botao.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: removi o posicionamento absoluto do botao de resposta e transformei o rodape em um composer flexivel com textarea e botao no mesmo contorno arredondado. O botao agora e um item `shrink-0`, circular, com `40x40`, sombra e cor da marca; quando desabilitado, continua visivel com fundo claro da marca e texto bronze, sem desaparecer no campo.
+- Logica utilizada: o botao de envio nao deve depender de sobreposicao sobre o textarea, porque scrollbar, largura estreita e clipping podem esconder a acao. Como item real do layout, ele permanece visivel ao lado do texto e o campo continua compacto.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou thread aberta com botao `Enviar resposta` presente no viewport, `40x40`, circular, dentro do composer flexivel; estado vazio visivel com `rgb(239, 228, 210)` e texto `rgb(140, 107, 47)`.
+- Pendencias ou riscos conhecidos: QA deve validar digitacao real no ambiente do Lucas e envio de resposta em thread para confirmar cor habilitada e comportamento apos envio.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
