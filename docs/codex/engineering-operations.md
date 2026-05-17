@@ -1,6 +1,6 @@
-# Contexto operacional do Careli Hub
+# Engineering Operations do Careli Hub
 
-Este documento e a memoria viva do projeto para novos agentes. Ele deve ser lido antes de qualquer mudanca no `careli-hub`, principalmente em trabalhos envolvendo C2X legado, Guardian, CareDesk, PulseX, Setup, Supabase, Vercel ou integracoes externas.
+Este documento e a central operacional viva da engenharia IA do Careli Hub. Ele deve ser lido antes de qualquer mudanca no `careli-hub`, principalmente em trabalhos envolvendo C2X legado, Guardian, CareDesk, PulseX, Setup, Supabase, Vercel ou integracoes externas.
 
 ## Como usar
 
@@ -54,7 +54,7 @@ Regra oficial de modulo, commit, release e rastreabilidade:
 - A regra de 2026-05-17 que dizia que todo agente de implementacao deveria realizar o proprio commit fica substituida por esta metodologia: dev de modulo implementa e valida localmente; Hub ReleaseOps realiza commit e deploy oficial.
 - Commits de release devem continuar semanticos, objetivos e com responsabilidade principal clara, sem misturar modulos ou responsabilidades sem necessidade real.
 - Ao concluir uma implementacao, o dev de modulo deve informar status operacional, validacoes locais, impactos, pendencias, riscos e orientar handoff para Hub ReleaseOps quando houver necessidade de commit/deploy.
-- Todos os modulos devem continuar usando obrigatoriamente `docs/codex/contexto-operacional.md` como memoria operacional oficial da engenharia Careli Hub.
+- Todos os modulos devem continuar usando obrigatoriamente `docs/codex/engineering-operations.md` como memoria operacional oficial da engenharia Careli Hub.
 
 Status operacionais obrigatorios:
 
@@ -793,7 +793,7 @@ Registro de diario:
 - `Dev PulseX`
 - Data e hora local: 2026-05-16 23:19:39 -03:00.
 - Motivo da mudanca: formalizar que Codex sera a frente senior responsavel por PulseX e registrar o formato obrigatorio de diario para proximas melhorias, construcoes, implementacoes e correcoes.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; estudo de `apps/hub/app/pulsex/page.tsx`, `apps/hub/components/pulsex/*`, `apps/hub/lib/pulsex/*`, `apps/hub/app/api/pulsex/messages/route.ts`, `apps/hub/app/setup/page.tsx` e migrations PulseX.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; estudo de `apps/hub/app/pulsex/page.tsx`, `apps/hub/components/pulsex/*`, `apps/hub/lib/pulsex/*`, `apps/hub/app/api/pulsex/messages/route.ts`, `apps/hub/app/setup/page.tsx` e migrations PulseX.
 - Como foi feito: leitura do diario operacional, revisao de memorias anteriores do Hub/PulseX e mapeamento dos pontos principais do modulo antes de registrar a decisao.
 - Logica usada: separar PulseX como chat interno corporativo do Hub, manter Setup Central como origem de departamentos/canais/pessoas, preservar contratos existentes de mencoes, tags, threads, leitura, presenca e chamadas, e nao misturar Guardian ou CareDesk sem escopo explicito.
 - Validacao executada ou motivo de nao validar: nao houve alteracao de codigo de produto; validacao limitada a leitura, mapeamento e atualizacao documental.
@@ -812,7 +812,7 @@ Registro de diario:
 - Data e hora local: 2026-05-16 23:31:56 -03:00.
 - Tipo: Diagnostico de conexoes, banco e performance.
 - Motivo da analise: Lucas pediu teste de conexoes, checagem de gargalo no banco de dados e velocidade das telas.
-- Arquivos/modulos afetados: leitura de `docs/codex/contexto-operacional.md`; analise de `apps/hub/app/api/guardian/db/health`, `apps/hub/app/api/guardian/attendance/queue/route.ts`, `apps/hub/modules/guardian/attendance/AttendancePage.tsx`, `apps/hub/modules/guardian/attendance/DeskPage.tsx`, `apps/hub/lib/guardian/read-model.ts` e migration `packages/database/migrations/0010_c2x_guardian_read_model.sql`.
+- Arquivos/modulos afetados: leitura de `docs/codex/engineering-operations.md`; analise de `apps/hub/app/api/guardian/db/health`, `apps/hub/app/api/guardian/attendance/queue/route.ts`, `apps/hub/modules/guardian/attendance/AttendancePage.tsx`, `apps/hub/modules/guardian/attendance/DeskPage.tsx`, `apps/hub/lib/guardian/read-model.ts` e migration `packages/database/migrations/0010_c2x_guardian_read_model.sql`.
 - Resultado: conexoes principais responderam. Supabase Auth respondeu HTTP 200; producao `https://c2x.app.br/api/guardian/db/health` respondeu HTTP 200 com banco `prod_careli` conectado; C2X/MySQL direto respondeu ping em 165 ms e sem fila relevante de processos ativos no momento do teste.
 - Gargalo encontrado: a API `/api/guardian/attendance/queue` e as telas que consomem `?limit=1000` carregam a fila inteira. Em local, a fila completa retornou 548 clientes e aproximadamente 1,99 MB, levando cerca de 1,4 s em cache quente; em producao, `limit=1000` levou cerca de 2,7 s. Com `limit=20`, a mesma rota ficou em cerca de 0,6-0,8 s e payload perto de 100 KB.
 - Banco/read-model: o read-model do Supabase esta ajudando; consulta dos primeiros 50 itens da fila ficou em cerca de 224 ms e o ultimo sync Guardian terminou com sucesso. No C2X/MySQL, a consulta agregada de inadimplencia ficou em 188 ms, mas contagens amplas em `payments` chegaram perto de 1,9 s.
@@ -849,7 +849,7 @@ Registro de diario:
 - Data e hora local: 2026-05-16 23:46:46 -03:00.
 - Tipo: Decisao operacional permanente.
 - Motivo da mudanca: Lucas definiu o Manifesto Operacional da Engenharia Careli Hub para coordenar todos os agentes como squad, com escopos claros, handoff, status obrigatorios, regras de producao, UX, arquitetura, seguranca, validacao e documentacao viva.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`.
 - Como foi feito: o manifesto foi consolidado em uma secao propria no inicio deste diario, antes dos detalhes por modulo, para que todo agente leia a regra macro antes de atuar em Guardian, PulseX, CareDesk, Setup, Infra, QA ou qualquer frente futura.
 - Logica usada: transformar a orientacao do Lucas em regra operacional transversal, sem alterar codigo de produto nem misturar escopos de modulo.
 - Validacao executada ou motivo de nao validar: alteracao documental validada por leitura local do arquivo; nao houve alteracao de codigo, build ou deploy.
@@ -871,10 +871,10 @@ Registro de diario:
 - Data e hora local: 2026-05-16 23:47:02 -03:00.
 - Tipo: Decisao operacional e regra de engenharia.
 - Motivo da mudanca: Lucas definiu o Manifesto Operacional da Engenharia Careli Hub como regra de atuacao da squad, reforcando modularidade, estabilidade, handoff, validacao, rastreabilidade, seguranca e padrao executivo do produto.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para Guardian, CareDesk, PulseX, Setup, Infra, QA, Architect, Security e demais frentes do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para Guardian, CareDesk, PulseX, Setup, Infra, QA, Architect, Security e demais frentes do Hub.
 - Como foi feito: o manifesto foi mantido no topo do diario como secao oficial de contexto e esta entrada registra sua adocao como regra operacional permanente para continuidade entre agentes.
 - Logica usada: centralizar o manifesto no diario evita perda de contexto entre sessoes e obriga cada agente a atuar dentro do proprio escopo, usando status operacionais, fluxo de handoff, validacao minima, protecao de producao e cuidado com secrets.
-- Validacao executada ou motivo de nao validar: validacao documental por leitura do `AGENTS.md` e do `docs/codex/contexto-operacional.md`; nao houve teste tecnico porque a mudanca e de processo/documentacao.
+- Validacao executada ou motivo de nao validar: validacao documental por leitura do `AGENTS.md` e do `docs/codex/engineering-operations.md`; nao houve teste tecnico porque a mudanca e de processo/documentacao.
 
 Regra permanente combinada com Lucas em 2026-05-16 23:46:52 -03:00 sobre o Manifesto Operacional da Engenharia Careli Hub:
 
@@ -898,7 +898,7 @@ Registro de diario:
 - Data e hora local: 2026-05-16 23:46:52 -03:00.
 - Tipo: Processo operacional e regra de engenharia.
 - Motivo da mudanca: Lucas definiu o Manifesto Operacional da Engenharia Careli Hub para alinhar todos os agentes como squad coordenada, preservar escopos, padronizar status/handoff e reforcar estabilidade, seguranca, rastreabilidade, validacao e documentacao viva.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra global aplicavel a todas as frentes do Careli Hub, incluindo PulseX, Guardian, CareDesk, Setup, Infra, QA, Architect, Security e demais modulos.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra global aplicavel a todas as frentes do Careli Hub, incluindo PulseX, Guardian, CareDesk, Setup, Infra, QA, Architect, Security e demais modulos.
 - Como foi feito: consolidei o manifesto no diario como regra permanente, mantendo os pontos operacionais essenciais sem replicar texto excessivo e preservando o documento como fonte rapida de continuidade.
 - Logica usada: registrar a decisao no contexto central evita perda de alinhamento entre sessoes e agentes, deixa claro que Lucas coordena as prioridades e handoffs, e reforca que cada frente deve atuar apenas no proprio escopo com validacao e registro.
 - Validacao executada ou motivo de nao validar: validacao limitada a leitura e atualizacao documental, pois nao houve alteracao de codigo, schema, deploy, comportamento de produto ou integracao. Status operacional: `FINALIZADO`.
@@ -909,14 +909,14 @@ Registro de diario:
 - Data e hora local: 2026-05-16 23:56:22 -03:00.
 - Tipo: Processo operacional e regra de responsabilidade.
 - Motivo da mudanca: Lucas definiu o `Guardian Core` como frente responsavel por desenvolver, evoluir e manter o modulo Guardian, cobrindo cobranca, carteira, inadimplencia, acordos, parcelas, contratos, atendimento operacional de cobranca e inteligencia operacional de recuperacao.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra aplicavel a `apps/hub/app/guardian`, `apps/hub/modules/guardian`, `apps/hub/components/guardian`, APIs e bibliotecas relacionadas ao Guardian, alem das integracoes controladas com CareDesk, C2X, Asaas, D4Sign e Caca.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra aplicavel a `apps/hub/app/guardian`, `apps/hub/modules/guardian`, `apps/hub/components/guardian`, APIs e bibliotecas relacionadas ao Guardian, alem das integracoes controladas com CareDesk, C2X, Asaas, D4Sign e Caca.
 - Como foi feito: adicionei a secao `Guardian Core` dentro do bloco `## Guardian`, consolidando escopo, responsabilidades, regras permanentes, momentos de acionamento e formato de handoff da frente Guardian.
 - Logica usada: manter a regra dentro do bloco do Guardian deixa claro o limite de atuacao do modulo, evita mistura com CareDesk/PulseX/Setup/Infra sem pedido explicito e reforca que toda evolucao do Guardian deve priorizar dados reais, regras financeiras, performance, UX operacional e validacao.
 - Validacao executada ou motivo de nao validar: validacao documental por leitura e busca local no diario. Nao houve alteracao de codigo, schema, integracao, build ou deploy. Status operacional: `FINALIZADO`.
 
 Regra permanente combinada com Lucas em 2026-05-16 23:49:24 -03:00 sobre o Diario Operacional da Engenharia:
 
-- Todos os agentes da engenharia Careli Hub devem utilizar obrigatoriamente `docs/codex/contexto-operacional.md` como diario operacional oficial do projeto.
+- Todos os agentes da engenharia Careli Hub devem utilizar obrigatoriamente `docs/codex/engineering-operations.md` como diario operacional oficial do projeto.
 - O diario e a memoria viva da engenharia e deve ser lido antes de iniciar qualquer atividade no repositorio.
 - O diario deve ser atualizado ao finalizar entrega relevante, incluindo implementacao, melhoria, correcao, decisao tecnica, deploy, descoberta importante, alteracao arquitetural, integracao, ajuste operacional, validacao relevante, risco identificado ou mudanca de comportamento do sistema.
 - Cada novo registro deve ser adicionado ao final do documento, sem apagar, sobrescrever ou reordenar historico anterior.
@@ -929,8 +929,8 @@ Registro de diario:
 - Nome da squad/agente: `Engenharia Careli Hub`.
 - Data e hora local: 2026-05-16 23:49:24 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e regra de processo.
-- Motivo da mudanca: Lucas definiu oficialmente que `docs/codex/contexto-operacional.md` e o diario operacional obrigatorio da engenharia Careli Hub e que todos os agentes devem le-lo antes de atuar e atualiza-lo ao concluir entregas relevantes.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todas as frentes, squads e agentes do Hub.
+- Motivo da mudanca: Lucas definiu oficialmente que `docs/codex/engineering-operations.md` e o diario operacional obrigatorio da engenharia Careli Hub e que todos os agentes devem le-lo antes de atuar e atualiza-lo ao concluir entregas relevantes.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para todas as frentes, squads e agentes do Hub.
 - Como foi feito: a regra foi adicionada ao final do diario, preservando todo o historico anterior e consolidando os gatilhos de registro, estrutura obrigatoria e restricoes de seguranca.
 - Logica utilizada: manter o diario como fonte unica de continuidade operacional evita perda de contexto, retrabalho e decisoes sem rastreabilidade, sem criar novo arquivo paralelo nem acoplar a regra a um modulo especifico.
 - Validacao executada: leitura local do diario antes da alteracao e registro documental ao final do arquivo. Nao houve alteracao de codigo, schema, deploy ou comportamento de produto.
@@ -950,7 +950,7 @@ Registro de diario:
 - Data e hora local: 2026-05-16 23:50:26 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e regra de processo.
 - Motivo da mudanca: Lucas definiu o papel do Hub InfraOps como responsavel por deploy, Vercel, CI/CD, ambientes, variaveis, dominio, build, runtime, observabilidade, monitoramento, homologacao e producao.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para operacao, deploy e estabilidade do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para operacao, deploy e estabilidade do Hub.
 - Como foi feito: a regra foi adicionada ao final do diario, sem alterar codigo de produto, schema, UX, Guardian, PulseX, CareDesk ou Setup.
 - Logica utilizada: registrar o escopo do InfraOps no diario garante continuidade operacional, separacao de responsabilidades, protecao de producao e handoff padronizado apos deploy ou validacao.
 - Validacao executada: leitura local do diario operacional e confirmacao de que o manifesto geral ja estava registrado; nao houve build, deploy ou teste tecnico porque a alteracao foi documental.
@@ -973,7 +973,7 @@ Registro de diario:
 - Data e hora local: 2026-05-16 23:57:55 -03:00.
 - Tipo: Processo operacional e regra de responsabilidade.
 - Motivo da mudanca: Lucas definiu o `PulseX Core` como frente responsavel por desenvolver, evoluir e manter o modulo PulseX, com foco em comunicacao interna operacional, realtime, produtividade, chamadas, uploads, notificacoes, presenca, canais, grupos, mensagens e threads.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra aplicavel a `apps/hub/app/pulsex`, `apps/hub/components/pulsex`, `apps/hub/lib/pulsex`, `apps/hub/app/api/pulsex`, Setup Central relacionado a canais/pessoas e integracoes controladas de realtime/uploads/notificacoes.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra aplicavel a `apps/hub/app/pulsex`, `apps/hub/components/pulsex`, `apps/hub/lib/pulsex`, `apps/hub/app/api/pulsex`, Setup Central relacionado a canais/pessoas e integracoes controladas de realtime/uploads/notificacoes.
 - Como foi feito: adicionei a regra `PulseX Core` ao diario operacional, consolidando escopo, responsabilidades, regras de produto, momentos de acionamento por Lucas e formato de handoff da frente.
 - Logica usada: registrar o PulseX Core no diario separa a frente de outros modulos, evita que o PulseX seja tratado como chat generico ou SaaS comum, preserva a identidade operacional validada e fixa o compromisso de evoluir comunicacao realtime sem poluir visual nem quebrar contratos existentes.
 - Validacao executada ou motivo de nao validar: validacao documental por leitura do diario e registro ao final do arquivo. Nao houve alteracao de codigo, schema, integracao, build ou deploy. Status operacional: `FINALIZADO`.
@@ -984,7 +984,7 @@ Registro de diario:
 - Data e hora local: 2026-05-16 23:57:01 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e regra de responsabilidade.
 - Motivo da mudanca: Lucas definiu o `CareDesk Core` como frente responsavel por desenvolver, evoluir e manter o modulo CareDesk, cobrindo atendimento, tickets, WhatsApp, comunicacao operacional, disparos, templates, SLA, filas, handoff e integracoes com Guardian e IA.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra aplicavel a `apps/hub/modules/caredesk`, rotas/telas futuras do CareDesk, APIs de atendimento, integracoes com Guardian, IA, Meta/WhatsApp, filas, tickets, disparos, templates, SLA e relatorios.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra aplicavel a `apps/hub/modules/caredesk`, rotas/telas futuras do CareDesk, APIs de atendimento, integracoes com Guardian, IA, Meta/WhatsApp, filas, tickets, disparos, templates, SLA e relatorios.
 - Como foi feito: adicionei a secao `CareDesk Core` dentro do bloco `## CareDesk`, consolidando escopo, responsabilidades, regras permanentes, momentos de acionamento e formato de handoff da frente CareDesk.
 - Logica utilizada: manter a regra dentro do bloco do CareDesk deixa claro o limite de atuacao do modulo, evita transformar o CareDesk em chat generico, preserva a operacao real da Careli e reforca que integracoes sensiveis devem ter confirmacao humana, rastreabilidade e controle server-side.
 - Validacao executada: leitura local do `AGENTS.md`, busca no diario operacional e confirmacao documental do novo bloco `CareDesk Core`. Nao houve alteracao de codigo, schema, integracao, build ou deploy porque a mudanca foi documental/processual.
@@ -1006,7 +1006,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:00:28 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e regra de orquestracao.
 - Motivo da mudanca: Lucas definiu a regra de orquestracao entre agentes para garantir que toda entrega informe proxima squad, validacoes, dependencias, riscos e pendencias, preservando escopo e continuidade entre frentes.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para Hub Architect, Hub InfraOps, Hub DataOps, Hub QA, Hub Security, Hub Support Engineer, Guardian Core, CareDesk Core, PulseX Core e futuras squads.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para Hub Architect, Hub InfraOps, Hub DataOps, Hub QA, Hub Security, Hub Support Engineer, Guardian Core, CareDesk Core, PulseX Core e futuras squads.
 - Como foi feito: a regra foi adicionada ao final do diario como politica permanente, conectando o manifesto operacional, o fluxo de handoff e os limites de escopo entre squads.
 - Logica utilizada: registrar a orquestracao no diario reduz risco de agentes concluirem tarefas sem indicar continuidade, evita invasao de escopo entre squads e melhora a passagem de contexto para QA, Architect, InfraOps, Security, DataOps, Support ou modulos especificos.
 - Validacao executada: leitura local do diario operacional, busca de regras existentes de handoff/squads e confirmacao documental do novo bloco. Nao houve alteracao de codigo, schema, UX, integracao, build ou deploy porque a mudanca foi documental/processual.
@@ -1018,7 +1018,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:00:37 -03:00.
 - Tipo da alteracao: Regra de orquestracao e handoff entre agentes.
 - Motivo da mudanca: Lucas definiu que todos os agentes fazem parte da engenharia coordenada do Careli Hub e que, ao concluir uma etapa, devem informar proxima squad necessaria, validacoes, dependencias, riscos e pendencias.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para `Hub Architect`, `Hub InfraOps`, `Hub DataOps`, `Hub QA`, `Hub Security`, `Hub Support Engineer`, `Guardian Core`, `CareDesk Core`, `PulseX Core` e futuras squads do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para `Hub Architect`, `Hub InfraOps`, `Hub DataOps`, `Hub QA`, `Hub Security`, `Hub Support Engineer`, `Guardian Core`, `CareDesk Core`, `PulseX Core` e futuras squads do Hub.
 - Como foi feito: adicionei a regra de orquestracao entre agentes dentro do manifesto operacional do Hub, junto ao fluxo de comunicacao e handoff, e registrei esta entrada no diario ao final do documento.
 - Logica utilizada: deixar a regra no manifesto garante que qualquer squad leia a obrigacao de handoff antes de implementar, evita atuacao isolada, preserva escopo entre frentes e facilita continuidade quando outro agente assumir a proxima etapa.
 - Validacao executada: leitura local do diario operacional, busca por regras de handoff/squad existentes e confirmacao documental da nova regra. Nao houve alteracao de codigo, schema, integracao, build ou deploy porque a mudanca foi de processo/documentacao.
@@ -1030,7 +1030,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:00:42 -03:00.
 - Tipo da alteracao: Regra de orquestracao e handoff entre agentes.
 - Motivo da mudanca: Lucas definiu que o Careli Hub opera por engenharia coordenada entre squads e que, ao concluir qualquer etapa, cada agente deve informar proxima squad necessaria, validacoes, dependencias, riscos e pendencias.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para `Hub Architect`, `Hub InfraOps`, `Hub DataOps`, `Hub QA`, `Hub Security`, `Hub Support Engineer`, `Guardian Core`, `CareDesk Core`, `PulseX Core` e futuras squads do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para `Hub Architect`, `Hub InfraOps`, `Hub DataOps`, `Hub QA`, `Hub Security`, `Hub Support Engineer`, `Guardian Core`, `CareDesk Core`, `PulseX Core` e futuras squads do Hub.
 - Como foi feito: confirmei que a regra de orquestracao foi registrada dentro do manifesto operacional e acrescentei este registro da frente CareDesk ao final do diario, preservando os registros de Engenharia Careli Hub e Guardian Core.
 - Logica utilizada: manter a regra global no manifesto e registrar tambem pela frente CareDesk garante que proximas entregas de atendimento, tickets, WhatsApp, disparos, SLA, filas e integracoes indiquem claramente continuidade, QA, riscos e dependencias sem invadir escopo de outras squads.
 - Validacao executada: leitura local do `AGENTS.md`, busca no diario por regras de handoff/squads e confirmacao documental da regra de orquestracao no manifesto. Nao houve alteracao de codigo, schema, UX, integracao, build ou deploy porque a mudanca foi documental/processual.
@@ -1042,7 +1042,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:12:21 -03:00.
 - Tipo da alteracao: Melhoria funcional de dashboard financeiro.
 - Motivo da mudanca: Lucas pediu incluir no painel `Performance por empreendimento` o campo `Carteira acumulada`, entendido como a carteira do primeiro boleto ate o boleto presente.
-- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: adicionei uma coluna ordenavel `Carteira acumulada` na tabela de performance por empreendimento, exibindo o valor via `MoneyValue` com tooltip de valor completo. A coluna usa o campo real `delinquencyBaseAmount`, ja carregado pelo overview/read-model do Guardian.
 - Logica utilizada: `delinquencyBaseAmount` representa a base acumulada usada para inadimplencia (`vencidas + liquidadas`), portanto mostra o valor acumulado ate o presente sem somar parcelas futuras da carteira total. A mudanca preserva a fonte real C2X/Supabase e nao altera calculos financeiros existentes, apenas expõe a base acumulada no painel.
 - Validacao executada: leitura do contexto operacional e das regras financeiras do Guardian; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Smoke local em `http://localhost:3001/guardian` retornou HTTP 200 usando a instancia dev ja ativa; a tentativa de iniciar outra instancia apenas indicou `EADDRINUSE` na porta 3001.
@@ -1054,7 +1054,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:16:47 -03:00.
 - Tipo da alteracao: Correcao funcional de filtro do dashboard.
 - Motivo da mudanca: Lucas apontou que, ao clicar em um empreendimento no dashboard, os dados do dash deveriam ser filtrados para o empreendimento selecionado.
-- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: mantive a tabela `Performance por empreendimento` com todos os empreendimentos para permitir troca rapida de recorte, mas passei a derivar os KPIs financeiros e o resumo do painel a partir da linha selecionada. O clique no empreendimento aplica o recorte; clicar novamente no mesmo empreendimento volta para `Todos`. O badge do painel financeiro passa a mostrar o empreendimento selecionado.
 - Logica utilizada: usei os campos reais ja presentes em `enterprisePerformance` (`totalPortfolioAmount`, `delinquencyBaseAmount`, `overduePrincipalAmount`, `overduePrincipalPayments`, `overdueClients`, `monthlyRecoveryAmount` e `monthlyRecoveryPayments`) para recalcular o snapshot do dash sem criar mock nem nova consulta. A base de inadimplencia continua respeitando `vencidas + liquidadas`. `Contratos criticos` fica sem valor especifico no recorte por empreendimento porque o read-model atual ainda nao entrega essa quebra com rastreabilidade suficiente.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Smoke local em `http://localhost:3001/guardian` retornou HTTP 200 usando a instancia dev ja ativa; a tentativa de iniciar outra instancia apenas indicou `EADDRINUSE` na porta 3001.
@@ -1080,7 +1080,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:19:56 -03:00.
 - Tipo da alteracao: Deploy operacional controlado, validacao de ambiente Vercel e healthchecks.
 - Motivo da mudanca: Lucas iniciou o primeiro deploy seguindo oficialmente a nova metodologia da engenharia Careli Hub, com objetivo de validar fluxo operacional de deploy, build, lint, typecheck, ambiente Vercel, variaveis, healthchecks, riscos e registro no diario antes de qualquer publicacao critica em producao.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; projeto Vercel `careli-hub-hub-i2bs`; deployment Preview `dpl_G9TRUX5eQNhzSgHsH4DQBndnsoUy`; deployment production-target com `--skip-domain` `dpl_BdjTVu3HtuDZ4Cr7vkHiLK7nvCjy`; dominio publico `https://c2x.app.br`.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; projeto Vercel `careli-hub-hub-i2bs`; deployment Preview `dpl_G9TRUX5eQNhzSgHsH4DQBndnsoUy`; deployment production-target com `--skip-domain` `dpl_BdjTVu3HtuDZ4Cr7vkHiLK7nvCjy`; dominio publico `https://c2x.app.br`.
 - Como foi feito: li o diario operacional, conferi `package.json`, `apps/hub/package.json`, `vercel.json`, `turbo.json` e `.vercel/project.json`; rodei validacoes locais; conferi projeto e variaveis Vercel via CLI sem expor valores; criei deploy Preview; criei deploy production-target com `--skip-domain` para validar build com variaveis de Production sem promover o dominio customizado; executei healthchecks no dominio publico e confirmei protecao dos dominios `.vercel.app`.
 - Logica utilizada: usar gates locais antes do Vercel, evitar promocao automatica do dominio `c2x.app.br`, preservar producao publica enquanto o artefato novo nao passa por QA/handoff, e validar healthchecks sem imprimir payloads sensiveis ou dados de clientes.
 - Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou localmente com Next 16.2.0; `npx.cmd vercel env ls` confirmou variaveis principais criptografadas em Production; `npx.cmd vercel project inspect careli-hub-hub-i2bs` confirmou Root Directory `.`, Node.js 24.x, Build Command `npx turbo build --filter=@repo/hub`, Output Directory `apps/hub/.next` e Install Command `npm install`; `npx.cmd vercel deploy --yes` criou Preview READY `dpl_G9TRUX5eQNhzSgHsH4DQBndnsoUy`; `npx.cmd vercel deploy --prod --skip-domain --yes` criou production-target READY `dpl_BdjTVu3HtuDZ4Cr7vkHiLK7nvCjy`; `npx.cmd vercel inspect careli-hub-hub-i2bs-6d53g80vl-lucasruas-devs-projects.vercel.app` confirmou target `production` e status Ready; `npx.cmd vercel alias ls` confirmou que `c2x.app.br` continuava apontando para deployment anterior; `npx.cmd vercel logs careli-hub-hub-i2bs-6d53g80vl-lucasruas-devs-projects.vercel.app --since 30m --level error` nao encontrou logs.
@@ -1095,7 +1095,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:23:03 -03:00.
 - Tipo da alteracao: Validacao operacional e regressao visual do dashboard Guardian.
 - Motivo da validacao: validar o handoff `AGUARDANDO QA` do recorte por empreendimento no dashboard Guardian, cobrindo clique em empreendimentos diferentes, retorno para `Todos`, badge do painel Financeiro e responsividade desktop/mobile.
-- Arquivos/modulos avaliados: `apps/hub/app/guardian/page.tsx`, `docs/codex/contexto-operacional.md` e rota local `http://localhost:3001/guardian`.
+- Arquivos/modulos avaliados: `apps/hub/app/guardian/page.tsx`, `docs/codex/engineering-operations.md` e rota local `http://localhost:3001/guardian`.
 - Como foi feito: a tela foi aberta no navegador interno em desktop `1280x720` e mobile `390x844`; em desktop foram clicados `Lavra do Ouro` e `Portal dos Vales`, confirmando mudanca dos KPIs financeiros, resumo e badge do painel; o segundo clique em `Portal dos Vales` voltou para `Todos`/`C2X`. Em mobile, o clique pela celula visivel do empreendimento tambem aplicou o recorte e o segundo clique voltou ao consolidado geral.
 - Logica utilizada: QA validou comportamento existente sem implementar feature. O recorte usa os campos reais ja presentes em `enterprisePerformance`; `Contratos criticos` fica como `--`/`recorte pendente` no recorte por empreendimento porque a origem granular ainda nao existe. `Aging da inadimplencia` e `Composicao da cobranca` permanecem gerais.
 - Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou na segunda tentativa. A primeira tentativa de build foi bloqueada por outro `next build` ativo/lock temporario, sem erro de compilacao. Smoke local em `http://localhost:3001/guardian` retornou HTTP 200.
@@ -1109,11 +1109,11 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:21:43 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e regra oficial de commit, validacao e handoff.
 - Motivo da mudanca: Lucas oficializou que a engenharia do Careli Hub deve seguir fluxo padronizado de implementacao, validacao basica, commit semantico da propria alteracao, atualizacao do diario, handoff, QA e deploy.
-- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/contexto-operacional.md`; regra transversal para todos os agentes e squads do Hub.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/engineering-operations.md`; regra transversal para todos os agentes e squads do Hub.
 - Como foi feito: confirmei que o diario ja continha a secao `Regra oficial de commit, validacao e rastreabilidade` no manifesto operacional, acrescentei um lembrete direto no `AGENTS.md` para agentes lerem antes de atuar e registrei esta entrada `Dev CareDesk` no final do diario.
 - Logica utilizada: manter a regra no manifesto e no guia obrigatorio de agentes evita implementacoes sem rastreabilidade, commits misturados, validacoes ausentes e handoffs incompletos. A regra tambem protege alteracoes de outras squads ao exigir commits por responsabilidade principal e stage apenas do proprio escopo.
 - Validacao executada: leitura do `AGENTS.md`, busca no diario operacional, confirmacao documental da regra oficial e `git status --short` para avaliar risco de commit. Nao rodei build/lint/typecheck porque a alteracao feita por esta frente foi documental/processual e nao altera codigo, schema, runtime, UX ou integracao.
-- Pendencias ou riscos conhecidos: nao realizei commit desta entrada porque o worktree ja possui muitas alteracoes nao commitadas de outras squads e `docs/codex/contexto-operacional.md` contem alteracoes concorrentes no mesmo arquivo; commitar agora sem uma separacao de staging revisada poderia incluir historico e mudancas fora do escopo do CareDesk. Proxima squad recomendada: `Hub InfraOps` ou o responsavel de Git deve organizar primeiro a rastreabilidade/base de commits do diario e das alteracoes pendentes; depois, novas implementacoes devem cumprir o fluxo completo com commit proprio.
+- Pendencias ou riscos conhecidos: nao realizei commit desta entrada porque o worktree ja possui muitas alteracoes nao commitadas de outras squads e `docs/codex/engineering-operations.md` contem alteracoes concorrentes no mesmo arquivo; commitar agora sem uma separacao de staging revisada poderia incluir historico e mudancas fora do escopo do CareDesk. Proxima squad recomendada: `Hub InfraOps` ou o responsavel de Git deve organizar primeiro a rastreabilidade/base de commits do diario e das alteracoes pendentes; depois, novas implementacoes devem cumprir o fluxo completo com commit proprio.
 
 Registro de diario:
 
@@ -1121,7 +1121,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:21:56 -03:00.
 - Tipo da alteracao: Decisao operacional permanente sobre commits, validacoes e handoff.
 - Motivo da mudanca: Lucas oficializou o fluxo padronizado em que agentes de implementacao validam localmente, realizam commit proprio, atualizam o diario operacional, fazem handoff para QA e seguem depois para deploy.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todas as squads de implementacao, validacao, arquitetura, seguranca, InfraOps, DataOps e modulos do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para todas as squads de implementacao, validacao, arquitetura, seguranca, InfraOps, DataOps e modulos do Hub.
 - Como foi feito: confirmei que a regra ja estava consolidada no manifesto operacional do diario e adicionei este registro ao final para preservar rastreabilidade da decisao.
 - Logica utilizada: manter commits pequenos, semanticos e com uma responsabilidade principal reduz regressao, preserva continuidade entre squads e evita misturar alteracoes do Lucas ou de outros agentes em um mesmo pacote.
 - Validacao executada: leitura local do diario operacional e busca por regras existentes de commit, validacao, handoff, QA e deploy. Nao houve build, lint, typecheck ou commit porque esta etapa foi apenas decisao documental/processual, sem implementacao de produto.
@@ -1134,7 +1134,7 @@ Regra permanente combinada com Lucas em 2026-05-17 00:21:22 -03:00 sobre commits
 - Antes do commit de implementacao, validar obrigatoriamente build, lint, typecheck e possiveis impactos operacionais.
 - O commit deve ter mensagem semantica, objetiva e representar apenas uma responsabilidade principal.
 - Nao misturar multiplos modulos ou responsabilidades no mesmo commit sem necessidade real e justificavel.
-- Fluxo operacional oficial: implementacao -> validacao basica -> commit -> atualizacao do diario operacional `docs/codex/contexto-operacional.md` -> handoff -> QA -> deploy.
+- Fluxo operacional oficial: implementacao -> validacao basica -> commit -> atualizacao do diario operacional `docs/codex/engineering-operations.md` -> handoff -> QA -> deploy.
 - Ao concluir implementacao, o agente deve informar commit realizado, status operacional, proxima squad recomendada, pendencias e riscos conhecidos.
 - Squads de validacao, arquitetura e seguranca normalmente nao devem realizar commits de implementacao, salvo quando executarem correcoes diretamente.
 - Objetivo da regra: preservar rastreabilidade, melhorar continuidade entre squads, reduzir regressao, melhorar estabilidade do Hub e organizar a engenharia operacional do ecossistema Careli Hub.
@@ -1145,7 +1145,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:21:22 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e padronizacao de commit, validacao e handoff.
 - Motivo da mudanca: Lucas definiu oficialmente que agentes de implementacao devem validar localmente, realizar o proprio commit, atualizar o diario operacional e entregar handoff estruturado antes de QA e deploy.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todas as squads de implementacao, validacao, arquitetura, seguranca, suporte, dados e infra do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para todas as squads de implementacao, validacao, arquitetura, seguranca, suporte, dados e infra do Hub.
 - Como foi feito: a regra foi adicionada ao final do diario operacional, preservando historico anterior e mantendo a orientacao como decisao global de engenharia, sem alterar codigo de produto, schema, UX, API ou deploy.
 - Logica utilizada: registrar o fluxo no diario oficial garante rastreabilidade entre sessoes, impede commits misturando responsabilidades, deixa claro quando a validacao deve ocorrer e padroniza o handoff entre implementacao, QA, arquitetura, infra e futuras squads.
 - Validacao executada: leitura local do diario operacional, busca de regras existentes sobre commit/handoff e verificacao de estado Git antes da alteracao. Nao houve validacao de build/lint/typecheck neste registro porque a mudanca foi documental/processual; essas validacoes passam a ser obrigatorias para commits de implementacao.
@@ -1159,7 +1159,7 @@ Regra permanente combinada com Lucas em 2026-05-17 00:21:45 -03:00 sobre commits
 - Todo agente responsavel por implementacao deve realizar o commit da propria alteracao apos validacao basica local.
 - Antes de commitar uma implementacao, validar obrigatoriamente build, lint, typecheck e possiveis impactos operacionais, registrando qualquer impossibilidade de validacao no handoff e no diario.
 - O commit deve ter mensagem semantica, objetiva e representar uma responsabilidade principal. Nao misturar multiplos modulos ou responsabilidades no mesmo commit sem necessidade real.
-- Fluxo operacional oficial de implementacao: implementacao -> validacao basica -> commit -> atualizacao do diario operacional `docs/codex/contexto-operacional.md` -> handoff -> QA -> deploy.
+- Fluxo operacional oficial de implementacao: implementacao -> validacao basica -> commit -> atualizacao do diario operacional `docs/codex/engineering-operations.md` -> handoff -> QA -> deploy.
 - Ao concluir uma implementacao, o agente deve informar obrigatoriamente o commit realizado, status operacional, proxima squad recomendada e pendencias ou riscos conhecidos.
 - Squads de validacao, arquitetura e seguranca normalmente nao devem realizar commits de implementacao, salvo quando executarem correcoes diretamente.
 - O objetivo da metodologia e preservar rastreabilidade, melhorar continuidade entre squads, reduzir regressoes, melhorar estabilidade do Hub e organizar a engenharia operacional do ecossistema Careli Hub.
@@ -1171,7 +1171,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:21:45 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e regra de commit/handoff.
 - Motivo da mudanca: Lucas definiu oficialmente que agentes responsaveis por implementacao devem validar localmente, commitar a propria alteracao com mensagem semantica, atualizar o diario operacional e entregar handoff com commit, status, proxima squad, pendencias e riscos.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todas as squads do Hub e para implementacoes em Guardian, CareDesk, PulseX, Setup, Infra, DataOps, Security, Architect, QA e futuras frentes.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para todas as squads do Hub e para implementacoes em Guardian, CareDesk, PulseX, Setup, Infra, DataOps, Security, Architect, QA e futuras frentes.
 - Como foi feito: registrei a metodologia de commit, validacao e handoff como regra permanente no diario operacional, mantendo a separacao entre implementacoes com commit obrigatorio e mudancas documentais/processuais sem alteracao tecnica.
 - Logica utilizada: a regra fortalece rastreabilidade e continuidade entre squads, evita commits mistos, cria um gate minimo de build/lint/typecheck antes de handoff e torna explicita a proxima etapa operacional antes de QA/deploy.
 - Validacao executada: leitura local do diario operacional, busca por regras existentes de commit, validacao e handoff, e confirmacao documental deste registro. Nao houve build, lint, typecheck ou deploy porque a mudanca foi apenas documental/processual.
@@ -1184,7 +1184,7 @@ Regra permanente combinada com Lucas em 2026-05-17 00:21:37 -03:00 sobre commits
 - Validacoes obrigatorias antes do commit: build, lint, typecheck e analise dos possiveis impactos operacionais. Em mudancas exclusivamente documentais, registrar o motivo de nao executar validacoes tecnicas.
 - O commit deve ter mensagem semantica e objetiva, com uma responsabilidade principal por commit.
 - Nao misturar multiplos modulos ou responsabilidades no mesmo commit sem necessidade real.
-- Fluxo oficial: implementacao -> validacao basica -> commit -> atualizacao do diario operacional `docs/codex/contexto-operacional.md` -> handoff -> QA -> deploy.
+- Fluxo oficial: implementacao -> validacao basica -> commit -> atualizacao do diario operacional `docs/codex/engineering-operations.md` -> handoff -> QA -> deploy.
 - A resposta final de uma implementacao deve informar o commit realizado, status operacional, proxima squad recomendada, pendencias e riscos conhecidos.
 - Squads de validacao, arquitetura e seguranca normalmente nao devem realizar commits de implementacao, salvo quando executarem correcoes diretamente.
 - Se houver alteracoes pre-existentes no worktree, o agente deve preservar essas mudancas e commitar apenas os arquivos do proprio escopo.
@@ -1195,11 +1195,11 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:21:37 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e regra de Git/entrega.
 - Motivo da mudanca: Lucas definiu oficialmente o fluxo padronizado de commits, validacoes e handoffs entre squads para preservar rastreabilidade, reduzir regressoes, melhorar continuidade e organizar a engenharia operacional do Careli Hub.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todas as squads do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para todas as squads do Hub.
 - Como foi feito: adicionei a regra no manifesto operacional, perto do fluxo oficial do Hub, e registrei esta entrada ao final do diario para continuidade entre agentes.
 - Logica utilizada: centralizar a regra no diario garante que agentes futuros saibam quando validar, commitar, registrar o commit, separar escopo e orientar o proximo fluxo operacional sem misturar responsabilidades ou arquivos de outras squads.
 - Validacao executada: leitura local do diario operacional, busca por regras existentes de commit/handoff e conferencia do worktree; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
-- Pendencias ou riscos conhecidos: o worktree possui muitas alteracoes pre-existentes de outras frentes. O commit desta decisao deve stagear somente `docs/codex/contexto-operacional.md` para evitar misturar responsabilidades.
+- Pendencias ou riscos conhecidos: o worktree possui muitas alteracoes pre-existentes de outras frentes. O commit desta decisao deve stagear somente `docs/codex/engineering-operations.md` para evitar misturar responsabilidades.
 
 Registro de diario:
 
@@ -1207,7 +1207,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:32:26 -03:00.
 - Tipo da alteracao: Correcao de responsividade mobile no dashboard Guardian.
 - Motivo da mudanca: QA aprovou o recorte por empreendimento com ajustes e apontou overflow horizontal global em viewport mobile `390x844`, alem da rolagem interna esperada da tabela `Performance por empreendimento`.
-- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx`, `apps/hub/components/guardian/layout/MainLayout.tsx`, `apps/hub/styles/globals.css` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx`, `apps/hub/components/guardian/layout/MainLayout.tsx`, `apps/hub/styles/globals.css` e `docs/codex/engineering-operations.md`.
 - Como foi feito: medi `documentElement.scrollWidth`, `body.scrollWidth` e `clientWidth` no navegador interno com viewport `390x844`; identifiquei que o `html { min-width: 1024px; }` global mantinha largura minima desktop no shell Guardian mobile e que o drawer fechado de KPI permanecia renderizado fora da tela. O shell Guardian recebeu classe de escopo `guardian-module-shell`, o CSS global passou a remover `min-width` apenas quando esse shell existe, o container Guardian passou a bloquear `overflow-x` global e o drawer de KPI passou a ser renderizado apenas quando houver KPI selecionado.
 - Logica utilizada: manter a rolagem horizontal somente dentro dos componentes tabulares e impedir que o documento inteiro ganhe barra horizontal. A tabela principal continua com `scrollWidth` interno para navegacao dos campos largos, mas `documentScrollWidth` e `bodyScrollWidth` passam a acompanhar a largura real da viewport mobile.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso; smoke local em `http://localhost:3001/guardian` retornou HTTP 200; validacao no navegador interno em `390x844` confirmou `documentScrollWidth=390`, `bodyScrollWidth=390`, `clientWidth=390` e `hasGlobalOverflow=false`, mantendo rolagem interna da tabela com `scrollWidth=1120`.
@@ -1221,7 +1221,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:49:01 -03:00.
 - Tipo da alteracao: Criacao da primeira versao operacional do modulo SquadOps.
 - Motivo da mudanca: Lucas criou a nova frente `SquadOps Core` para organizar demandas, squads, agentes, handoffs, commits, QA, deploys, status e protocolos da engenharia IA do Hub.
-- Arquivos/modulos afetados: `apps/hub/app/squadops/page.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/lib/squadops/mock-data.ts`, `packages/shared/src/modules/registry.ts`, `packages/shared/src/permissions/types.ts`, `packages/shared/src/permissions/matrix.ts`, `apps/hub/layouts/hub-shell.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/app/squadops/page.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/lib/squadops/mock-data.ts`, `packages/shared/src/modules/registry.ts`, `packages/shared/src/permissions/types.ts`, `packages/shared/src/permissions/matrix.ts`, `apps/hub/layouts/hub-shell.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: criei o modulo proprio `/squadops`, com dashboard de demandas, board por status, detalhe da demanda, timeline operacional, cadastro/visualizacao mockada de squads, protocolo automatico, registros de commits, QA e deploy, proximo agente recomendado e status por ambiente. Tambem registrei `SquadOps` no registry compartilhado, adicionei permissoes `squadops:view`/`squadops:manage` e inclui o modulo na sidebar do Hub sem alterar Guardian, CareDesk ou PulseX.
 - Logica utilizada: primeira versao local-first com dados mockados em `apps/hub/lib/squadops/mock-data.ts`, mantendo contrato visual executivo e preparando futura persistencia Supabase. Modelagem sugerida para a proxima etapa: `hub_squadops_demands`, `hub_squadops_squads`, `hub_squadops_timeline_events`, `hub_squadops_commits`, `hub_squadops_qa_records`, `hub_squadops_deploys` e `hub_squadops_agent_recommendations`, com RLS e permissao por papel antes de expor dados reais.
 - Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; smoke local em `http://localhost:3001/squadops` retornou HTTP 200.
@@ -1236,7 +1236,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 00:58:01 -03:00.
 - Tipo da alteracao: Refinamento visual da tela SquadOps para seguir o padrao de cards e icones do Guardian.
 - Motivo da mudanca: Lucas apontou que os cards e icones do SquadOps deveriam manter o mesmo padrao visual mostrado no Guardian, com cards brancos, borda leve, icones pequenos em caixas arredondadas, acento dourado discreto e leitura operacional compacta.
-- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: ajustei os KPIs superiores para a mesma anatomia dos cards Guardian, adicionei o pill de filtros com icone, removi blocos escuros, suavizei board, detalhe, timeline, squads, ambientes, registros e protocolo para cards claros com borda `slate`, sombra minima e icones em containers pequenos.
 - Logica utilizada: preservar o modulo proprio SquadOps e os dados mockados, mudando apenas a camada visual para reduzir divergencia com o padrao executivo do Hub sem tocar Guardian, CareDesk ou PulseX.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; smoke em `http://localhost:3001/squadops` retornou HTTP 200.
@@ -1253,7 +1253,7 @@ Regra permanente combinada com Lucas em 2026-05-17 01:19:31 -03:00 sobre simplif
 - Devs dos modulos nao devem mais realizar deploy oficial nem assumir responsabilidade principal sobre publicacao em producao.
 - Fluxo operacional oficial atualizado: Lucas -> Dev modulo implementa -> valida localmente -> Hub ReleaseOps realiza commit e deploy -> producao.
 - Em caso de bug, gargalo, erro inesperado, problema de integracao, lentidao ou comportamento estranho, Lucas aciona Hub SupportOps para investigacao.
-- `docs/codex/contexto-operacional.md` continua sendo a memoria operacional obrigatoria da engenharia Careli Hub para todos os modulos e squads.
+- `docs/codex/engineering-operations.md` continua sendo a memoria operacional obrigatoria da engenharia Careli Hub para todos os modulos e squads.
 
 Registro de diario:
 
@@ -1261,7 +1261,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:19:31 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e reorganizacao das responsabilidades entre squads.
 - Motivo da mudanca: Lucas simplificou a estrutura operacional para aumentar velocidade, continuidade e governanca, concentrando desenvolvimento nos devs dos modulos, investigacao no Hub SupportOps e commits/deploys/rastreabilidade oficial no Hub ReleaseOps.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core, futuros modulos, Hub SupportOps e Hub ReleaseOps.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core, futuros modulos, Hub SupportOps e Hub ReleaseOps.
 - Como foi feito: registrei a regra nova no diario operacional oficial, preservando historico anterior e deixando claro que ela substitui o fluxo anterior em que devs de modulo realizavam o proprio commit.
 - Logica utilizada: separar desenvolvimento, suporte investigativo e release reduz conflito de responsabilidade, evita deploy por squads de modulo, centraliza rastreabilidade oficial em ReleaseOps e mantem cada modulo responsavel pela propria qualidade operacional antes do handoff.
 - Validacao executada: leitura do diario operacional e registro documental da decisao; nao houve build, lint ou typecheck porque a mudanca foi exclusivamente processual/documental e nao alterou codigo, schema, runtime, UX ou integracao.
@@ -1275,7 +1275,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:19:26 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e realinhamento da metodologia de squads.
 - Motivo da mudanca: Lucas oficializou a simplificacao da engenharia Careli Hub: devs de modulo passam a atuar como squads completas do proprio modulo, Hub SupportOps fica responsavel por investigacao/suporte tecnico quando acionado, e Hub ReleaseOps fica responsavel por commits, deploys, homologacao, producao e rastreabilidade oficial.
-- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/contexto-operacional.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core, futuros modulos, Hub SupportOps e Hub ReleaseOps.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/engineering-operations.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core, futuros modulos, Hub SupportOps e Hub ReleaseOps.
 - Como foi feito: alinhei o lembrete do `AGENTS.md` ao novo fluxo, confirmei que o manifesto operacional ja continha a regra simplificada, ajustei o handoff para apontar commit/deploy ao `Hub ReleaseOps`, inclui `AGUARDANDO RELEASEOPS` como status operacional e registrei esta entrada da frente CareDesk no diario.
 - Logica utilizada: separar responsabilidades melhora velocidade e governanca: o dev de modulo foca produto, UX, regras e validacao local; SupportOps investiga bugs/gargalos quando Lucas acionar; ReleaseOps centraliza commit, deploy, Vercel, healthchecks e rastreabilidade, reduzindo risco de publicacao ou commits misturados por modulo.
 - Validacao executada: leitura do `AGENTS.md`, leitura/busca no diario operacional e confirmacao documental dos trechos de `Hub ReleaseOps`, `Hub SupportOps`, fluxo simplificado e status `AGUARDANDO RELEASEOPS`. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual e nao alterou codigo, schema, runtime, UX ou integracao.
@@ -1296,7 +1296,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:22:17 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e padronizacao de comunicacao.
 - Motivo da mudanca: Lucas definiu que toda resposta operacional deve ter assunto/titulo claro no inicio para melhorar rastreabilidade, busca futura, continuidade entre sessoes, localizacao de temas e organizacao operacional.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todos os modulos e squads do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para todos os modulos e squads do Hub.
 - Como foi feito: adicionei a regra no bloco `Fluxo de comunicacao e handoff` do manifesto e registrei a decisao ao final do diario operacional.
 - Logica utilizada: colocar a regra no fluxo de comunicacao garante que qualquer agente veja a obrigacao antes de responder ou fazer handoff, mantendo um padrao pesquisavel por modulo/squad.
 - Validacao executada: leitura local do diario operacional, busca por regras existentes de handoff/comunicacao e confirmacao documental da nova regra. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual.
@@ -1309,7 +1309,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:22:34 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e padronizacao de assunto nas respostas.
 - Motivo da mudanca: Lucas definiu que todos os direcionamentos, handoffs, analises, correcoes, implementacoes e respostas operacionais devem iniciar com `Assunto:` e titulo claro, curto e pesquisavel.
-- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/contexto-operacional.md`; regra transversal para CareDesk Core, Guardian Core, PulseX Core, SquadOps Core, Hub ReleaseOps, Hub SupportOps e futuras squads.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/engineering-operations.md`; regra transversal para CareDesk Core, Guardian Core, PulseX Core, SquadOps Core, Hub ReleaseOps, Hub SupportOps e futuras squads.
 - Como foi feito: confirmei que a regra ja estava registrada no manifesto operacional e acrescentei no `AGENTS.md` uma orientacao direta para que todo agente comece respostas operacionais com `Assunto:` incluindo o modulo ou squad relacionado. Tambem registrei esta entrada `Dev CareDesk` no diario.
 - Logica utilizada: o titulo no inicio da resposta cria uma chave pesquisavel e consistente para rastrear temas, localizar handoffs, retomar sessoes e separar responsabilidades por modulo ou squad.
 - Validacao executada: leitura do `AGENTS.md`, busca no diario operacional por regras de assunto/handoff e confirmacao documental da regra. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual e nao alterou codigo, schema, runtime, UX ou integracao.
@@ -1348,7 +1348,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:37:24 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e regra de comunicacao de release.
 - Motivo da mudanca: Lucas definiu que todo deploy deve trazer um resumo macro do que foi alterado, e que essa obrigacao deve ficar registrada no diario operacional.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todos os deploys conduzidos por Hub ReleaseOps.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para todos os deploys conduzidos por Hub ReleaseOps.
 - Como foi feito: adicionei a regra ao final do diario, preservando historico anterior e deixando claro que o resumo macro deve acompanhar o fechamento de deploy e o registro da release.
 - Logica utilizada: o resumo macro cria uma camada executiva de rastreabilidade sobre os detalhes tecnicos, permitindo localizar rapidamente quais modulos mudaram e qual foi o impacto principal de cada publicacao.
 - Validacao executada: leitura local do diario operacional e busca por regra existente de resumo macro/deploy antes do registro. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual.
@@ -1362,7 +1362,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:37:18 -03:00.
 - Tipo da alteracao: Melhoria de UX operacional em chamada.
 - Motivo da mudanca: Lucas pediu remover a configuracao fixa de microfone e camera do topo da chamada e abrir essas configuracoes pelos botoes inferiores, em um comportamento parecido com menus de chamada que aparecem no hover/foco dos controles.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-controls.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-controls.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: removi a faixa superior com selects de microfone/camera do `CallPanel`, ajustei o grid da janela de chamada e passei as listas/selecoes de dispositivos para `CallControls`. Nos botoes inferiores de microfone e camera, adicionei menus flutuantes acionados por hover/foco com dispositivo padrao, dispositivos detectados, check visual no selecionado e acao rapida para ativar/desativar microfone ou camera.
 - Logica utilizada: manter a tela de video limpa e maior, concentrando ajustes de audio/video no mesmo ponto onde o operador ja controla a chamada. O clique principal dos botoes continua rapido para mutar/desmutar e ligar/desligar camera, enquanto o menu abre configuracoes sem ocupar espaco permanente no topo.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso; smoke local em `http://localhost:3001/pulsex` retornou HTTP 200. A tentativa de validacao visual no navegador interno ficou bloqueada em `Carregando sessao...` por ausencia de sessao autenticada, entao a validacao visual completa deve ocorrer com usuario logado.
@@ -1377,7 +1377,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:38:50 -03:00.
 - Tipo da alteracao: Correcao de UX operacional no composer.
 - Motivo da mudanca: Lucas apontou que o painel de emojis permanecia aberto ao clicar fora e exigia clicar novamente no icone de emoji para fechar.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-composer.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-composer.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: adicionei uma referencia ao container do seletor de emojis e um listener `pointerdown` ativo somente enquanto o painel esta aberto. Cliques dentro do container sao preservados; qualquer clique fora fecha o painel automaticamente.
 - Logica utilizada: manter o comportamento esperado de popover sem alterar envio de mensagem, mencoes, anexos, gravacao de audio ou selecao de emoji. O listener so existe durante a abertura do painel e e removido no cleanup para evitar efeito colateral.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
@@ -1392,7 +1392,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:41:38 -03:00.
 - Tipo da alteracao: Correcao funcional no dashboard financeiro do Guardian.
 - Motivo da mudanca: Lucas apontou que, ao clicar em um empreendimento na tabela de performance, os dados do painel financeiro eram recortados, mas `Aging da inadimplencia` e `Composicao da cobranca` continuavam exibindo os agregados globais.
-- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx`, `apps/hub/app/api/guardian/overview/route.ts`, `apps/hub/lib/guardian/overview.ts`, `apps/hub/lib/guardian/overview-client.ts` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx`, `apps/hub/app/api/guardian/overview/route.ts`, `apps/hub/lib/guardian/overview.ts`, `apps/hub/lib/guardian/overview-client.ts` e `docs/codex/engineering-operations.md`.
 - Como foi feito: criei um recorte server-side em `/api/guardian/overview?enterprise=...` para retornar as distribuicoes de aging e composicao por empreendimento usando a conexao direta do Guardian com o banco C2X. No client, o dashboard passou a buscar esse recorte quando um empreendimento e selecionado, armazenar cache por empreendimento e renderizar os dois cards laterais com o mesmo escopo da tabela/KPIs.
 - Logica utilizada: o read model atual mantem `c2x_guardian_overdue_aging` e `c2x_guardian_billing_composition` apenas como agregados globais, sem dimensao de empreendimento. Para corrigir o comportamento sem criar migracao estrutural agora, o recorte granular ficou em uma consulta server-side autenticada, preservando dados reais, controle no servidor, cache leve no client e compatibilidade com o read model global existente.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso; smoke local de `http://localhost:3001/guardian` retornou HTTP 200; consulta real no C2X para `Lagoa Bonita - LBR` confirmou recorte proprio em Aging (`16 a 30`, `31 a 60`, `61 a 90`, `90+`) e Composicao (`Ato`, `Sinal`), com buckets ausentes preenchidos como zero pela camada do Guardian.
@@ -1407,7 +1407,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:45:21 -03:00.
 - Tipo da alteracao: Decisao operacional permanente e ajuste de fluxo.
 - Motivo da mudanca: Lucas corrigiu o fluxo informando que nao existe mais `Hub QA`; os proprios devs/agentes dos modulos devem executar essa parte de validacao.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core e futuros modulos do Hub.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core e futuros modulos do Hub.
 - Como foi feito: atualizei o manifesto operacional para remover o handoff obrigatorio para `Hub QA` dos novos fluxos, ajustar os status atuais e registrar que o dev do modulo deve validar tecnica, funcional e visualmente a propria entrega antes de encaminhar para `Hub ReleaseOps`.
 - Logica utilizada: como os devs de modulo ja sao responsaveis por implementacao, UX operacional, consistencia tecnica e preservacao das regras do modulo, a validacao deixa de ser uma squad separada e passa a ser gate interno da propria entrega antes de release.
 - Validacao executada: leitura local do diario operacional, busca de referencias a `Hub QA` e atualizacao do fluxo vigente. Nao houve build, lint ou typecheck porque esta mudanca foi documental/processual.
@@ -1432,12 +1432,27 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[Guardian] Protecao operacional da rota D4Sign`.
+- Nome da squad/agente: `Dev Guardian`.
+- Data e hora local: 2026-05-17 10:26:42 -03:00.
+- Tipo da alteracao: Correcao de seguranca operacional em rota de integracao externa.
+- Motivo da mudanca: SupportOps confirmou risco na rota D4Sign do Guardian porque a rota podia executar chamada externa para D4Sign antes de validar adequadamente a sessao/autorizacao do usuario.
+- Arquivos/modulos afetados: `apps/hub/app/api/guardian/d4sign/contracts/[documentId]/route.ts`, `apps/hub/modules/guardian/attendance/components/ClientDetailPanel.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei guarda server-side no inicio do `GET` da rota D4Sign, usando Supabase service role apenas no servidor para validar bearer token, usuario autenticado, registro em `hub_users` e status ativo antes de ler credenciais D4Sign ou executar qualquer `fetch` externo. Tambem ajustei o card de documentos do atendimento Guardian para abrir contratos via `fetch` autenticado com bearer da sessao e renderizar o blob em nova aba, preservando o fluxo de contratos validos apos a protecao.
+- Logica utilizada: a rota deve falhar fechado para usuario sem sessao, token invalido ou usuario inativo, evitando exposicao operacional e chamada desnecessaria a fornecedor externo. Como o fluxo antigo usava `href` direto, o client precisou passar a enviar `Authorization` explicitamente para nao quebrar operadores validos.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` nos arquivos alterados, smoke local sem bearer retornando HTTP 401 com `Sessao administrativa ausente` e smoke local com bearer invalido retornando HTTP 401 com `Sessao administrativa invalida`.
+- Pendencias ou riscos conhecidos: nao executei download real de contrato D4Sign com usuario autenticado porque nao havia sessao/token de operador disponivel no terminal; o fluxo valido foi preservado por mudanca client-side para enviar bearer e pela manutencao da logica externa original apos a guarda. Hub ReleaseOps deve realizar commit/deploy isolando estes arquivos das mudancas paralelas de PulseX que continuam no worktree.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para commit, rastreabilidade oficial e deploy controlado.
+
+Registro de diario:
+
 - Assunto: `[Hub Shell] Refinamento visual do sidebar e launcher de modulos`.
 - Nome da squad/agente: `Dev Hub Shell`.
 - Data e hora local: 2026-05-17 01:46:36 -03:00.
 - Tipo da alteracao: Melhoria de UX operacional no shell global do Hub.
 - Motivo da mudanca: Lucas apontou que o sidebar/launcher do Hub nao estava agradando visualmente e pediu uma melhoria mantendo o Hub executivo, compacto e consistente.
-- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx`, `apps/hub/styles/globals.css` e `docs/codex/contexto-operacional.md`; impacto restrito ao shell global e ao launcher de modulos, sem alterar regras, rotas, permissoes, dados ou comportamento interno de Guardian, PulseX, CareDesk, Setup ou SquadOps.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx`, `apps/hub/styles/globals.css` e `docs/codex/engineering-operations.md`; impacto restrito ao shell global e ao launcher de modulos, sem alterar regras, rotas, permissoes, dados ou comportamento interno de Guardian, PulseX, CareDesk, Setup ou SquadOps.
 - Como foi feito: refinei o header expandido/recolhido da sidebar, melhorei contraste, bordas, icones, item ativo, hover e badge realtime como ponto discreto. No launcher operacional exibido sobre telas como Guardian, ajustei superficie, espacamento, hierarquia visual, estado ativo, icones, divisorias e acao de sair para ficar mais limpo e alinhado ao padrao executivo do Hub. Tambem ajustei a marcacao ativa para considerar subrotas, preservando Guardian ativo em caminhos como `/guardian/atendimento`.
 - Logica utilizada: manter a navegacao curta, operacional e reconhecivel, reduzindo peso visual do bloco escuro anterior sem transformar o Hub em uma experiencia generica ou alterar contratos funcionais dos modulos. A mudanca ficou concentrada no shell e no CSS local do Hub.
 - Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; smoke local via HTTP retornou 200 em `/`, `/guardian/atendimento` e `/pulsex`.
@@ -1451,7 +1466,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:50:19 -03:00.
 - Tipo da alteracao: Ajuste de UX operacional no sidebar interno do Guardian.
 - Motivo da mudanca: Lucas apontou que, no estado recolhido, a logo ficava visualmente no meio do bloco de controles e deveria estar sempre no topo do sidebar.
-- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/contexto-operacional.md`; impacto restrito ao layout do sidebar do Guardian, sem alterar regras de negocio, dados, APIs, permissoes ou fluxos de cobranca.
+- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx` e `docs/codex/engineering-operations.md`; impacto restrito ao layout do sidebar do Guardian, sem alterar regras de negocio, dados, APIs, permissoes ou fluxos de cobranca.
 - Como foi feito: reorganizei o header do sidebar para renderizar primeiro o link/logo de retorno ao Hub, tanto no estado recolhido quanto no expandido. O botao de abertura dos modulos e o controle de expandir/recolher passaram a ficar abaixo da logo no estado recolhido e em uma linha de controles abaixo da logo no estado expandido.
 - Logica utilizada: manter a identidade visual do Guardian como ancora superior do rail, com controles secundarios abaixo, preservando o launcher de modulos e a persistencia do estado recolhido/expandido.
 - Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; smoke local em `/guardian/atendimento` retornou HTTP 200.
@@ -1465,7 +1480,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 01:55:39 -03:00.
 - Tipo da alteracao: Melhoria de UX operacional no composer.
 - Motivo da mudanca: Lucas apontou que o seletor de emojis do PulseX ainda nao trazia o emoji do sol.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-composer.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-composer.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: inclui `☀️` e `🌞` na lista `composerEmojiOptions`, posicionados junto aos emojis operacionais finais perto da estrela, sem alterar o comportamento de abertura, fechamento, mencoes, anexos ou envio de mensagem.
 - Logica utilizada: manter a lista enxuta e alinhada ao padrao visual do seletor ja existente, cobrindo tanto o sol classico quanto o sol com rosto para facilitar busca visual pelo operador.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
@@ -1479,7 +1494,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:01:54 -03:00.
 - Tipo da alteracao: Melhoria de UX operacional em chamada de audio/video.
 - Motivo da mudanca: Lucas pediu para a tela de chamada deixar de ficar estatica no centro, poder ser arrastada para outro ponto da tela e oferecer uma opcao de picture-in-picture.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-controls.tsx`, `apps/hub/components/pulsex/call-participant-tile.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-controls.tsx`, `apps/hub/components/pulsex/call-participant-tile.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: transformei o topo da janela de chamada em area de arraste quando o painel nao esta em tela cheia, guardando posicao em estado local e limitando o movimento dentro da viewport. Tambem expus os elementos de video ativos dos participantes para o painel, adicionei um botao de `Picture-in-Picture` nos controles inferiores e conectei esse botao a API nativa do navegador, priorizando video remoto quando existir e usando o video local como fallback.
 - Logica utilizada: manter a chamada como janela operacional flexivel sem alterar WebRTC, sinalizacao realtime, selecao de dispositivos ou fluxo de encerramento. O arraste fica desativado em tela cheia para preservar o comportamento fullscreen, e o picture-in-picture so aparece habilitado quando o navegador e a chamada de video permitem.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
@@ -1493,7 +1508,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:05:18 -03:00.
 - Tipo da alteracao: Correcao de resiliencia operacional em chamada de audio/video.
 - Motivo da mudanca: Lucas informou que a chamada nao pode cair quando o operador sai da tela, minimiza a janela ou navega para outra area do Hub.
-- Arquivos/modulos afetados: `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/components/pulsex/call-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/components/pulsex/call-panel.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: ajustei o fechamento do painel para ser tratado como minimizacao, sem encerrar Picture-in-Picture e sem enviar `leave`/`end`. No provider global, o painel oculto deixou de usar `display:none` e passou a ficar invisivel mantendo o componente montado. Tambem adicionei persistencia temporaria da chamada ativa em `sessionStorage` por usuario e reentrada realtime com sinal `join` quando uma sessao ativa e restaurada apos remontagem curta do provider.
 - Logica utilizada: separar explicitamente os conceitos de `minimizar`, `navegar` e `encerrar chamada`. A chamada so deve terminar por acao de encerrar ou sinal remoto de fim; sair da tela deve preservar midia, conexoes e estado operacional. A persistencia em aba funciona como camada de resiliencia para oscilacoes de renderizacao/autenticacao, sem transformar isso em historico permanente de chamadas.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
@@ -1507,7 +1522,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:07:27 -03:00.
 - Tipo da alteracao: Melhoria de UX visual no chat operacional.
 - Motivo da mudanca: Lucas apontou que as mensagens estavam com aspecto de quadrado/card e pediu cantos mais arredondados, cores diferentes para mensagens proprias e uma aproximacao visual ao padrao WhatsApp.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: ajustei a bolha principal da mensagem para usar cantos arredondados assimetricos, cauda visual discreta, sombra mais leve e largura controlada. Mensagens do usuario atual passaram a usar verde claro alinhado a direita; mensagens recebidas permanecem brancas alinhadas a esquerda. Metadados, tags, anexos, edicao, resposta e informacoes da mensagem foram preservados.
 - Logica utilizada: aproximar a leitura do PulseX do modelo mental de WhatsApp sem transformar o modulo em uma copia generica, mantendo densidade operacional, contraste, acoes existentes e diferenca clara entre mensagem enviada e recebida.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
@@ -1521,7 +1536,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:21:55 -03:00.
 - Tipo da alteracao: Melhoria funcional, IA operacional, comunicacao e UX visual do PulseX.
 - Motivo da mudanca: Lucas pediu acoplar a Caca ao modulo PulseX como agente real, melhorar os sons de toque, ativar som/notificacao ao receber mensagem, exibir popup nativo do Windows quando o operador nao estiver na tela do PulseX e trocar a cor das mensagens proprias para uma tonalidade mais alinhada ao layout.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/app/api/ai/chat/route.ts`, `apps/hub/lib/pulsex/notification-effects.ts`, `apps/hub/lib/pulsex/realtime.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/providers/app-providers.tsx`, `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/providers/pulsex-notification-provider.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/app/api/ai/chat/route.ts`, `apps/hub/lib/pulsex/notification-effects.ts`, `apps/hub/lib/pulsex/realtime.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/providers/app-providers.tsx`, `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/providers/pulsex-notification-provider.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: criei um painel lateral da Caca dentro do PulseX, acionado pelo botao de agente no composer, usando o endpoint server-side existente `/api/ai/chat` com `module: "pulsex"`. O contexto enviado para a IA contem canal atual, participantes, conversa recente, rascunho e instrucao do usuario logado. No endpoint de IA, adicionei instrucoes especificas para a Caca atuar como agente do PulseX. Tambem extraí os eventos realtime de mensagem para um helper compartilhado, criei um provider global de notificacoes do PulseX, centralizei efeitos de audio/notificacao em um util proprio, substitui os toques antigos por sequencias mais suaves e ajustei as bolhas proprias para `#f7f3eb` com borda quente da paleta Careli.
 - Logica utilizada: transformar o antigo botao de agente, que apenas inseria um texto no campo, em uma Caca operacional de verdade sem criar outro backend nem expor chave no cliente. A Caca sugere, resume e prepara textos, mas nao envia automaticamente; o operador decide usar a resposta no composer. As notificacoes de mensagem ficaram globais para funcionar fora da rota `/pulsex` enquanto o Hub estiver aberto, e a notificacao nativa depende da permissao do navegador/Windows. A cor das mensagens proprias saiu do verde WhatsApp para uma tonalidade quente coerente com o PulseX e a marca Careli.
 - Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; `http://localhost:3001/pulsex` retornou HTTP 200; validacao visual no navegador interno confirmou o PulseX carregado, botao `Acionar Cacá` abrindo o painel lateral da Caca, acoes rapidas visiveis e sem erros/warnings de console relevantes.
@@ -1535,7 +1550,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:33:38 -03:00.
 - Tipo da alteracao: Correcao funcional e ajuste de UX operacional no sidebar do PulseX.
 - Motivo da mudanca: Lucas apontou que o bloco `Atalhos` nao estava funcionando. A verificacao mostrou que os cards eram parcialmente decorativos: `Nao lidas` e `Favoritos` nao filtravam canais reais, `Favoritos` nao tinha contador vivo e `Mencoes` dependia do filtro da conversa atual. Durante a validacao, tambem identifiquei que a troca de canal limpava o array global de mensagens, quebrando o calculo de mencoes logo apos selecionar o atalho.
-- Arquivos/modulos afetados: `apps/hub/lib/pulsex/shortcuts.ts`, `apps/hub/components/pulsex/conversation-sidebar.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/conversation-header.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/lib/pulsex/shortcuts.ts`, `apps/hub/components/pulsex/conversation-sidebar.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/conversation-header.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: criei um helper de atalhos para calcular contadores e canais filtrados por `unread`, `mentions` e `favorites`; conectei os cards do sidebar a um estado real de atalho ativo; implementei persistencia local de canais favoritos usando a estrela do header; fiz o atalho selecionar o primeiro canal correspondente quando o canal atual nao pertence ao filtro; e impedi que os botoes internos continuem clicaveis quando o painel `Atalhos` estiver recolhido. Tambem removi a limpeza global de mensagens na troca de canal, mantendo a base de calculo de mencoes e a mesclagem/carregamento existente por canal.
 - Logica utilizada: transformar `Atalhos` em filtro operacional de canais, separado dos filtros de mensagem. `Mencoes` filtra canais que possuem mensagens mencionando o usuario atual e aplica o filtro de mensagens do canal selecionado; `Favoritos` usa a estrela como estado persistente por navegador; `Nao lidas` usa `unreadCount` dos canais. A lista lateral muda conforme o atalho ativo e a conversa principal acompanha quando existe canal correspondente.
 - Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; validacao no navegador interno em `http://localhost:3001/pulsex` confirmou `Mencoes 3` ativo filtrando os canais para `Lideranca` e `Tecnologia`, `Favoritos 1` filtrando apenas `Comunicados`, e `Nao lidas 0` exibindo estado vazio no sidebar.
@@ -1549,7 +1564,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:37:37 -03:00.
 - Tipo da alteracao: Correcao visual e resiliencia de renderizacao em mensagens do PulseX.
 - Motivo da mudanca: Lucas apontou que a mencao e a tag `Importante` sumiram na leitura das mensagens. A verificacao mostrou que mensagens antigas ou carregadas com `mentionUserIds`, mas sem array completo de `mentions`, podiam exibir o nome como texto comum. Tambem reforcei o destaque visual das tags para elas nao ficarem sutis demais dentro das novas bolhas arredondadas.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: ajustei a renderizacao do corpo da mensagem para reconstruir marcacoes de mencao usando `message.mentions` quando existir e, como fallback, `message.mentionUserIds` combinado com a lista de usuarios do canal. O nome mencionado agora aparece com prefixo visual `@`, borda e fundo mais claro. As tags da mensagem passaram a renderizar como chips com icone de tag, `aria-label` explicito e camada visual acima da cauda da bolha.
 - Logica utilizada: preservar a metadata ja existente sem alterar envio, API, banco ou regras de canal. A mencao deve aparecer mesmo quando o texto contem apenas o nome do usuario e a metadata guarda o ID; a tag deve ser imediatamente reconhecivel na bolha, especialmente `Importante`, sem depender do painel de informacoes.
 - Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; validacao no navegador interno em `http://localhost:3001/pulsex` confirmou mencoes renderizadas como `@Lucas Ruas` e `@Nivea Careli`, alem de tags acessiveis como `Tag Importante`, `Tag Urgente`, `Tag Pendente`, `Tag Resolvido` e `Tag Acompanhar`.
@@ -1563,7 +1578,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:42:31 -03:00.
 - Tipo da alteracao: Ajuste de UX visual e refinamento operacional do agente Caca.
 - Motivo da mudanca: Lucas apontou que `mencao` e `Importante` estavam sumindo por causa das novas cores do chat, e tambem pediu que mensagens preparadas pela Caca fossem para o campo de envio sem cabecalho explicativo, deixando apenas o icone de uso no campo.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/lib/pulsex/message-tags.ts`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/lib/pulsex/message-tags.ts`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/engineering-operations.md`.
 - Como foi feito: reforcei a paleta dos chips de tags com cores mais contrastadas, mantive `Importante` em ambar forte, destaquei mencoes com fundo azul claro e texto escuro, e preservei a bolha propria em verde claro mais alinhado ao layout. No painel da Caca, o texto usado como rascunho agora extrai apenas o conteudo final da sugestao, sem frases como `Lucas, mensagem pronta...` ou observacoes de validacao; o botao de aplicar no campo ficou somente com icone, mantendo `aria-label` e `title`.
 - Logica utilizada: separar a resposta operacional da Caca do texto que vai para o composer. A Caca pode explicar no painel, mas o rascunho precisa ser uma mensagem pronta para envio humano. Para o visual, a prioridade foi aumentar contraste sem poluir o PulseX nem transformar as tags em elementos chamativos demais.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno confirmou chip `Importante` com classe `border-amber-400 bg-amber-100 text-amber-900`; a sessao atual carregou sem canais do Supabase, entao a validacao visual completa de mencoes em mensagens reais deve ser repetida em ambiente autenticado com dados carregados.
@@ -1577,7 +1592,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:50:11 -03:00.
 - Tipo da alteracao: Melhoria funcional e UX operacional do agente Caca no chat.
 - Motivo da mudanca: Lucas pediu um icone de agente nas mensagens para, quando quiser responder pela IA, clicar na bolha e pedir para a Caca formular uma resposta. Lucas reforcou que a mensagem precisa ser levada para a Caca ler e entender antes de formular o texto.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/engineering-operations.md`.
 - Como foi feito: adicionei o botao `Responder com Caca` nas acoes de cada mensagem nao apagada, usando icone de agente sem texto visivel. O clique abre o painel lateral da Caca, fecha thread ativa, marca a mensagem selecionada como foco e exibe um card `Mensagem em foco` com autor, horario e conteudo. O contexto enviado ao endpoint da IA agora inclui `mensagemEmFoco`, com corpo, autor, tags, anexo e horario, e a instrucao server-side do PulseX orienta a IA a usar essa mensagem como referencia principal.
 - Logica utilizada: a Caca nao deve adivinhar qual mensagem o operador quer responder. A mensagem clicada vira contexto explicito e prioritario, enquanto a conversa recente permanece como apoio para tom, participantes e continuidade. A resposta continua sendo apenas rascunho humano: a IA formula, mas o operador decide usar no composer e enviar.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o botao `Responder com Caca` em mensagem real, clique abrindo painel lateral, card `Mensagem em foco`, texto da mensagem selecionada visivel para a Caca e acao rapida `Responder mensagem`.
@@ -1591,7 +1606,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:54:38 -03:00.
 - Tipo da alteracao: Correcao funcional no fluxo de resposta por IA.
 - Motivo da mudanca: Lucas apontou que, ao responder uma `Mensagem em foco` com a Caca, o texto gerado nao deve ir como nova mensagem solta no canal; ele precisa entrar como resposta da mensagem focada.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: ajustei `handleUseCacaDraft` para detectar quando existe `cacaFocusedMessage`. Nesse caso, o rascunho limpo da Caca passa a preencher `threadComposerValue`, abre o painel de respostas da mensagem focada com `setActiveThreadMessageId`, carrega as respostas existentes e fecha o painel da Caca. Quando nao existe mensagem em foco, o comportamento permanece igual: o texto continua indo para o composer principal do canal. Tambem alterei o rotulo acessivel do botao para `Usar como resposta` quando a Caca esta trabalhando sobre uma mensagem focada.
 - Logica utilizada: manter a decisao humana antes do envio, mas direcionar o rascunho para o destino operacional correto. Mensagem em foco significa intencao de resposta/thread; sem mensagem em foco significa rascunho de nova mensagem no canal.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno confirmou: botao `Responder com Caca` abriu a Caca com `Mensagem em foco`; a acao `Responder mensagem` gerou resposta; o botao `Usar como resposta` fechou a Caca, abriu o painel `Respostas`, manteve o composer principal vazio e preencheu o textarea `Responder` com o rascunho gerado.
@@ -1605,7 +1620,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 02:59:12 -03:00.
 - Tipo da alteracao: Melhoria de UX e controle de escrita no agente Caca.
 - Motivo da mudanca: Lucas pediu para conseguir mudar o tom das mensagens formuladas pela Caca, com opcoes como elegante, otimista, confiante, inteligente, corrigir e calmo.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/engineering-operations.md`.
 - Como foi feito: adicionei um seletor compacto `Tom da resposta` no painel da Caca com seis opcoes: `Elegante`, `Otimista`, `Confiante`, `Inteligente`, `Corrigir` e `Calmo`. Cada opcao possui uma instrucao propria, mantida no estado local do painel. O tom selecionado passa no contexto da IA como `tomSelecionado`, junto de `mensagemEmFoco`, conversa recente, participantes e rascunho atual. Tambem reforcei a instrucao server-side do PulseX para aplicar `tomSelecionado` ao texto final preparado para envio, sem alterar os fatos.
 - Logica utilizada: o tom deve afetar apenas a escrita, nao a decisao operacional nem o conteudo factual. A Caca continua sem enviar automaticamente; ela apenas prepara rascunhos com o estilo escolhido pelo operador. A opcao `Corrigir` funciona como modo de revisao de ortografia, gramatica, clareza e fluidez, preservando a intencao original.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o painel da Caca abrindo, os seis botoes de tom visiveis, `Inteligente` selecionado por padrao e a troca para `Calmo` atualizando `aria-pressed` sem erros de console.
@@ -1619,7 +1634,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:03:15 -03:00.
 - Tipo da alteracao: Correcao de UX no painel de respostas e refinamento de instrucao da Caca.
 - Motivo da mudanca: Lucas apontou que, quando a resposta vinha da Caca para uma mensagem em foco, o texto ficava cortado e o botao de enviar resposta nao aparecia corretamente. Lucas tambem esclareceu que, ao escrever uma mensagem com um tom selecionado, a Caca deve entender que o objetivo e melhorar aquela mensagem usando o perfil escolhido.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/engineering-operations.md`.
 - Como foi feito: transformei o rodape do painel `Respostas` em grid com uma coluna fixa para o botao de envio e uma coluna flexivel para o textarea, evitando que o texto empurre o botao para fora da tela. O textarea de resposta passou a ajustar altura automaticamente conforme `replyValue`, com limite maximo e rolagem interna para textos longos. Tambem alinhei o painel de respostas para `24rem`, igual ao painel da Caca. Nas instrucoes da Caca, adicionei regra para tratar texto digitado sem comando claro como pedido de reescrita/melhoria usando `tomSelecionado`.
 - Logica utilizada: quando a Caca gera uma resposta de thread, o operador precisa revisar e enviar no mesmo painel, entao o botao de envio deve permanecer sempre visivel e o rascunho deve ser legivel. Para os tons, a escolha do operador deve ser aplicada ao texto escrito mesmo quando o pedido nao vem em formato de comando explicito.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno confirmou o fluxo completo: `Responder com Caca`, `Responder mensagem`, `Usar como resposta`, painel `Respostas` aberto, composer principal vazio, textarea `Responder` com o rascunho visivel, altura ajustada e botao `Enviar resposta` visivel.
@@ -1633,7 +1648,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:08:03 -03:00.
 - Tipo da alteracao: Melhoria de legibilidade e layout de mensagens geradas pela Caca.
 - Motivo da mudanca: Lucas pediu para melhorar o layout das respostas em lista, usando bolinhas em vez de traco e deixando as bolinhas visualmente em negrito.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/caca-agent-panel.tsx`, `apps/hub/app/api/ai/chat/route.ts` e `docs/codex/engineering-operations.md`.
 - Como foi feito: ajustei a renderizacao do corpo das mensagens do PulseX para identificar linhas iniciadas por `-`, `*` ou `•` e renderizar como uma linha de lista com bolinha `•` em `font-black`, separada do texto. A mesma renderizacao foi aplicada nas bolhas da Caca. Tambem normalizei o rascunho usado no composer para trocar marcadores `-` ou `*` por `•`, e reforcei as instrucoes da Caca para usar marcadores de bolinha quando listar pontos.
 - Logica utilizada: a melhoria nao depende apenas da IA seguir o prompt; a interface agora corrige a apresentacao de listas antigas ou novas. Assim, mesmo que uma resposta chegue com hifen, o operador ve bolinha forte e layout mais legivel, mantendo o texto limpo no composer.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso. Validacao no navegador interno confirmou a Caca gerando lista com tres bolinhas visuais em peso `900`, sem linhas com hifen, e o botao `Usar no campo` aplicando rascunho com `•` no composer. O rascunho de teste foi limpo apos a validacao.
@@ -1647,7 +1662,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:09:57 -03:00.
 - Tipo da alteracao: Ajuste visual de leitura nas mensagens do PulseX.
 - Motivo da mudanca: Lucas pediu para deixar a hora das mensagens em preto e negrito, porque o horario estava discreto demais nas bolhas.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: apliquei `font-bold text-[#101820]` no horario das mensagens principais e das respostas em thread, preservando o restante dos metadados, icones de leitura/envio e acoes da mensagem.
 - Logica utilizada: destacar apenas o horario, sem aumentar peso dos demais metadados, para melhorar leitura sem poluir a bolha nem alterar comportamento de envio, edicao, tags ou threads.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno confirmou horario `01:58` com cor `rgb(16, 24, 32)` e peso `700`.
@@ -1661,7 +1676,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:19:11 -03:00.
 - Tipo da alteracao: Correcao de layout no popover de informacoes da mensagem.
 - Motivo da mudanca: Lucas apontou que o problema nao era o horario, mas a diagramacao do painel de informacoes e tooltip, que abriam sobre a mensagem e ficavam por baixo das bolhas seguintes.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: alinhei a barra de acoes conforme o lado da bolha, alterei os tooltips das acoes para abrir abaixo do icone, removi o tooltip do botao enquanto o painel de informacoes esta aberto, fechei o menu de tags ao abrir informacoes e reposicionei o painel como popover lateral centralizado no icone, com `z-50`, `z-40` no item ativo, altura maxima e rolagem interna.
 - Logica utilizada: a acao da mensagem deve ser contextual, mas nao pode competir com a leitura da bolha. O painel precisa abrir acima da pilha visual das mensagens e fora do fluxo principal, mantendo a tela compacta e evitando sobreposicao com o texto da conversa.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o painel `Informacoes` com `z-index: 50`, item ativo com `z-40`, dentro do viewport e sem ficar sob elementos vizinhos.
@@ -1675,7 +1690,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:22:46 -03:00.
 - Tipo da alteracao: Correcao de interacao no popover de informacoes e menu de tags.
 - Motivo da mudanca: Lucas apontou que o painel de informacoes continuava acumulando aberto e pediu que, ao clicar fora do balao, ele fechasse.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: adicionei uma referencia ao item da mensagem e um listener de `pointerdown` em captura enquanto `Informacoes` ou `Marcar mensagem` estiverem abertos. Se o clique acontecer fora da mensagem/painel atual, os estados `isInfoOpen` e `isTagMenuOpen` sao fechados. Cliques dentro do balao continuam preservados para permitir leitura e interacao.
 - Logica utilizada: cada mensagem controla seu proprio popover, mas qualquer clique fora do limite daquela mensagem deve encerrar o estado aberto. Assim, clicar no fundo, no composer ou em outra mensagem fecha paineis antigos e evita acúmulo visual.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou: painel abriu ao clicar em `Informacoes`; clique fora no composer fechou o painel; contagem de paineis passou de `1` para `0`.
@@ -1689,7 +1704,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:25:31 -03:00.
 - Tipo da alteracao: Correcao de layout no composer do painel de respostas.
 - Motivo da mudanca: Lucas apontou que o painel de respostas estava sem botao de enviar visivel em largura estreita.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: removi a grade de duas colunas do rodape da thread e transformei o composer em um container relativo. O textarea agora ocupa a largura total com `pr-14`, e o botao `Enviar resposta` fica absoluto dentro do campo, no canto inferior direito, com tamanho compacto de `32px`.
 - Logica utilizada: o botao de envio nao deve depender de uma segunda coluna que pode sair da area visivel quando o painel esta estreito. Ao fixar o botao dentro do proprio composer, a acao permanece visivel e o texto ganha espaco reservado para nao ficar por baixo do icone.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o painel de respostas aberto, textarea `Responder` presente, botao `Enviar resposta` visivel dentro do viewport, absoluto no composer, com `32x32` e textarea com `padding-right: 56px`.
@@ -1703,7 +1718,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:28:12 -03:00.
 - Tipo da alteracao: Refinamento visual do container principal do PulseX.
 - Motivo da mudanca: Lucas pediu para aplicar no PulseX o mesmo conceito visual do campo de chat arredondado exibido na referencia, separando melhor a area de conversa da sidebar.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: envolvi o `main` do PulseX em um wrapper com respiro `p-3 pl-0` e transformei a area da conversa em uma superficie com `rounded-[1.35rem]`, borda `#d9e0ea`, sombra leve e `overflow-hidden`, preservando header, lista de mensagens, composer, painel da Caca, painel de respostas e notificacoes dentro do mesmo container.
 - Logica utilizada: arredondar o container da conversa, e nao cada secao interna, cria uma leitura de painel unico e executivo. O `overflow-hidden` garante que header/composer/overlays respeitem o raio sem criar cantos quadrados, enquanto o wrapper preserva a sidebar sem alterar sua navegacao.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou `border-radius: 21.6px`, borda aplicada, sombra leve, `overflow: hidden`, painel dentro do viewport e sem overflow horizontal global.
@@ -1717,7 +1732,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:31:00 -03:00.
 - Tipo da alteracao: Correcao visual e de acessibilidade do composer de respostas.
 - Motivo da mudanca: Lucas apontou que o painel de respostas continuava sem o botao de enviar visivel e pediu para deixar a area lateral com cara arredondada tambem.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: movi o botao `Enviar resposta` para dentro de um wrapper relativo do textarea, com posicao absoluta centralizada na direita, `z-20`, tamanho `36x36`, formato circular e cor da marca. O textarea ganhou `rounded-xl` e `padding-right: 64px` para o texto nao ficar sob o botao. O painel lateral de respostas passou a ter `rounded-l-[1.15rem]` e `overflow-hidden`.
 - Logica utilizada: o botao precisa estar na mesma superficie do campo para nao ser empurrado para fora em largura estreita. O raio no painel lateral mantem continuidade com a nova area principal arredondada do PulseX sem alterar a logica de thread, envio ou carregamento de respostas.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou thread aberta, botao `Enviar resposta` visivel no viewport com `36x36`, `z-index: 20`, border-radius circular, textarea com `border-radius: 12px` e painel `Respostas` com cantos esquerdos arredondados em `18.4px`.
@@ -1731,7 +1746,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 03:37:20 -03:00.
 - Tipo da alteracao: Correcao de layout e contraste do botao de envio em respostas.
 - Motivo da mudanca: Lucas apontou que o botao de enviar resposta ainda estava escondido e pediu para colocar dentro do campo ou destacar o botao.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: removi o posicionamento absoluto do botao de resposta e transformei o rodape em um composer flexivel com textarea e botao no mesmo contorno arredondado. O botao agora e um item `shrink-0`, circular, com `40x40`, sombra e cor da marca; quando desabilitado, continua visivel com fundo claro da marca e texto bronze, sem desaparecer no campo.
 - Logica utilizada: o botao de envio nao deve depender de sobreposicao sobre o textarea, porque scrollbar, largura estreita e clipping podem esconder a acao. Como item real do layout, ele permanece visivel ao lado do texto e o campo continua compacto.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou thread aberta com botao `Enviar resposta` presente no viewport, `40x40`, circular, dentro do composer flexivel; estado vazio visivel com `rgb(239, 228, 210)` e texto `rgb(140, 107, 47)`.
@@ -1764,7 +1779,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 10:13:30 -03:00.
 - Tipo da alteracao: Validacao operacional diaria, healthchecks de producao e registro de riscos.
 - Motivo da mudanca: Lucas solicitou validar producao online, APIs principais, Supabase, autenticacao, realtime, ambiente Vercel, erros criticos, estabilidade pos-deploy e status geral das integracoes.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; ambiente Vercel production `careli-hub-hub-i2bs`; dominio `https://c2x.app.br`; APIs Guardian, Auth, Setup, PulseX, IA, Asaas e D4Sign.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; ambiente Vercel production `careli-hub-hub-i2bs`; dominio `https://c2x.app.br`; APIs Guardian, Auth, Setup, PulseX, IA, Asaas e D4Sign.
 - Como foi feito: li o diario operacional, conferi o estado do worktree, inspecionei o deployment em producao, listei variaveis Vercel sem expor valores, consultei logs de erro, executei healthchecks HTTP nas rotas principais, validei Supabase Auth, REST e Realtime, testei respostas esperadas de APIs protegidas e fiz smoke nao destrutivo das integracoes sensiveis.
 - Logica utilizada: o healthcheck priorizou sinais nao destrutivos e sem credenciais expostas: paginas devem responder HTTP 200; APIs protegidas devem rejeitar sem bearer; banco Guardian/C2X deve responder pelo endpoint de health; Supabase deve aceitar Auth/REST/Realtime; Vercel deve apontar para deployment `READY` e nao apresentar logs criticos recentes.
 - Validacao executada: `npx.cmd vercel inspect https://c2x.app.br`; `npx.cmd vercel project inspect careli-hub-hub-i2bs`; `npx.cmd vercel env ls`; `npx.cmd vercel logs https://c2x.app.br --since 1h --level error`; `npx.cmd vercel logs https://c2x.app.br --since 8h --level error`; healthchecks HTTP em producao; Supabase Auth `auth/v1/health`; Supabase REST `pulsex_channels`; smoke Realtime via `@supabase/supabase-js`; checks controlados em Auth, Asaas, D4Sign e IA.
@@ -1784,7 +1799,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 10:13:33 -03:00.
 - Tipo da alteracao: Melhoria de layout, acessibilidade e comunicacao realtime da chamada PulseX.
 - Motivo da mudanca: Lucas apontou que o video da chamada estava abrindo com leitura muito horizontal e pediu um comportamento melhor para compartilhamento de tela, com a tela projetada em destaque, possibilidade de zoom para quem assiste e videos dos participantes deslocados para apoio lateral.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-participant-tile.tsx`, `apps/hub/components/pulsex/call-controls.tsx`, `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/lib/pulsex/types.ts` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-participant-tile.tsx`, `apps/hub/components/pulsex/call-controls.tsx`, `apps/hub/providers/pulsex-call-provider.tsx`, `apps/hub/lib/pulsex/types.ts` e `docs/codex/engineering-operations.md`.
 - Como foi feito: reduzi o painel padrao da chamada para uma proporcao mais controlada, limitei o grid normal a no maximo duas colunas e deixei os cards de participantes em `aspect-video` sem altura minima forcada para evitar sobreposicao. Criei o modo de palco quando existe compartilhamento de tela: a tela compartilhada vira o foco principal, os demais participantes aparecem em miniaturas laterais e o espectador passa a ter controles de zoom de 100% a 225%. Tambem adicionei sinais realtime `screen-share-start` e `screen-share-stop` para marcar quem esta compartilhando e dei nomes acessiveis aos botoes de compartilhar tela, abrir picture-in-picture e encerrar chamada.
 - Logica utilizada: chamada normal precisa preservar leitura 16:9 sem abrir uma faixa horizontal excessiva; por isso o grid fica mais vertical e previsivel. Quando alguem projeta a tela, a prioridade operacional muda: o conteudo compartilhado deve ocupar o palco, enquanto os videos viram contexto lateral. O zoom e aplicado apenas ao video marcado como apresentacao, com `object-contain` para manter leitura da tela e `overflow-hidden` para nao quebrar o painel.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou painel de chamada aberto com 3 participantes, cards medindo `510x287` com proporcao `1.78`, sem sobreposicao, e controles `Compartilhar tela`, `Abrir picture-in-picture` e `Encerrar chamada` nomeados no DOM. O seletor nativo de compartilhamento de tela do navegador nao foi automatizado; validar em uso real se o chooser do Chrome abre e se os participantes remotos recebem o palco com zoom.
@@ -1800,7 +1815,7 @@ Registro de diario:
 - Tipo da alteracao: Investigacao operacional, analise de APIs, producao, gargalos, realtime e regressao.
 - Motivo da mudanca: Lucas solicitou uma investigacao operacional ampla do Careli Hub cobrindo bugs recentes, APIs instaveis, gargalos, lentidao, comportamento estranho, erros de producao, integracoes, realtime e possiveis regressoes.
 - Escopo avaliado: diario operacional, memoria do projeto, estado Git, diffs locais pendentes, validacoes locais do Hub, Vercel/producao, healthchecks HTTP, rota Guardian de fila, Supabase/PulseX, realtime de mensagens/chamadas, D4Sign e varredura basica de secrets.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; producao Vercel `https://c2x.app.br`; APIs Guardian, PulseX, D4Sign e Supabase; pacote local PulseX pendente em `apps/hub/components/pulsex/*`, `apps/hub/lib/pulsex/types.ts` e `apps/hub/providers/pulsex-call-provider.tsx`.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; producao Vercel `https://c2x.app.br`; APIs Guardian, PulseX, D4Sign e Supabase; pacote local PulseX pendente em `apps/hub/components/pulsex/*`, `apps/hub/lib/pulsex/types.ts` e `apps/hub/providers/pulsex-call-provider.tsx`.
 - Como foi feito: foram executadas validacoes locais do Hub, healthchecks HTTP em producao, consulta de logs Vercel, revisao de diffs locais, varredura basica de secrets e leitura de rotas/queries envolvidas nos achados.
 - Logica utilizada: a investigacao priorizou sinais nao destrutivos, sem exposicao de secrets, separando producao estavel de pendencias tecnicas que exigem correcao antes de novas releases.
 - Evidencias coletadas: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; Vercel confirmou producao `dpl_4xqZRyGPAWdXoETY6Wzgzz2rTh4k` em `Ready`; `npx.cmd vercel logs c2x.app.br --since 60m --level error` nao retornou logs; healthchecks em `https://c2x.app.br` retornaram HTTP 200 para `/`, `/login`, `/guardian`, `/guardian/atendimento`, `/pulsex`, `/squadops`, `/api/guardian/db/health` e `/api/guardian/attendance/queue`.
@@ -1825,7 +1840,7 @@ Registro de diario:
 - Data e hora local: 2026-05-17 10:18:29 -03:00.
 - Tipo da alteracao: Correcao de layout do painel de informacoes da mensagem.
 - Motivo da mudanca: Lucas mostrou que o painel `Informacoes` ainda estava sobrepondo outras mensagens no chat, ficando por cima do conteudo e prejudicando a leitura.
-- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e `docs/codex/engineering-operations.md`.
 - Como foi feito: removi o comportamento flutuante do painel de informacoes dentro do item da mensagem. O painel deixou de ser renderizado como popover `absolute` ao lado do icone e passou a ser renderizado em fluxo normal abaixo da barra de acoes do proprio balao, com `position: relative`, largura total do balao, borda, sombra leve e altura maxima com scroll interno.
 - Logica utilizada: esse painel nao deve competir por camada visual com outras mensagens; ele deve expandir a mensagem de origem. Assim, quando aberto, o balao aumenta de altura e empurra os demais itens para baixo, evitando colisao com mensagens vizinhas. O menu de tags continua como popover porque e uma acao curta, mas `Informacoes` virou detalhe inline.
 - Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso. Validacao no navegador interno em `http://localhost:3001/pulsex` confirmou o painel aberto com `position: relative`, dentro do proprio balao, `panelInsideBubbleVertical=true` e `panelOverlapsOtherMessage=false`.
@@ -1835,12 +1850,27 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[PulseX] Correcao PGRST201 em direct users e validacao de chamadas`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-17 10:28:35 -03:00.
+- Tipo da alteracao: Correcao Supabase/PostgREST e revisao operacional do fluxo de chamadas PulseX.
+- Motivo da mudanca: SupportOps confirmou erro Supabase `PGRST201` em `pulsex.list direct users`, causado por ambiguidade entre duas relacoes FK de `hub_user_assignments` para `hub_sectors`, e pediu revisar direct users, realtime, chamadas e tela compartilhada antes de qualquer publicacao.
+- Arquivos/modulos afetados: `apps/hub/lib/pulsex/supabase-data.ts`, diff local pendente de chamadas em `apps/hub/components/pulsex/call-panel.tsx`, `apps/hub/components/pulsex/call-controls.tsx`, `apps/hub/components/pulsex/call-participant-tile.tsx`, `apps/hub/lib/pulsex/types.ts`, `apps/hub/providers/pulsex-call-provider.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: corrigi a query `listDirectUsers` para usar a relacao nomeada `hub_sectors:hub_sectors!hub_user_assignments_sector_department_fk(name)` dentro do embed de `hub_user_assignments`, seguindo o mesmo padrao ja usado no Setup. Revisei o fluxo de direct users, que continua carregando usuarios ativos e fallback simples apenas se a query principal falhar. Revisei o diff local de chamadas e confirmei que os sinais `screen-share-start` e `screen-share-stop` estao tipados, parseados, enviados pelo painel e aplicados no provider para marcar o participante que compartilha tela.
+- Logica utilizada: a documentacao atual do Supabase/PostgREST orienta usar `relation!foreign_key` quando mais de uma FK pode resolver o mesmo relacionamento. Como `hub_user_assignments` possui FK simples por `sector_id` e FK composta por `sector_id,department_id`, o PulseX deve escolher explicitamente a FK composta para manter o setor coerente com o departamento do vinculo e eliminar o `PGRST201`.
+- Validacao executada: consulta controlada Supabase com a nova selecao retornou HTTP 200 sem `PGRST201`; no navegador interno em `http://localhost:3001/pulsex`, reload autenticado confirmou `4 usuarios carregados`, diretas visiveis e nenhum log novo relevante de `PGRST201`, `hub_sectors` ou `list direct users` apos `2026-05-17T13:26:34.961Z`. Realtime de chamadas assinou `pulsex:calls` com status `SUBSCRIBED` em 580 ms. Chamada local abriu com 3 participantes, controles `Compartilhar tela`, `Abrir picture-in-picture` e `Encerrar chamada` visiveis, cards 16:9 `510x287` e sem sobreposicao. `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` passaram.
+- Pendencias ou riscos conhecidos: o seletor nativo de compartilhamento de tela do Chrome nao foi automatizado, entao ainda e necessario teste real com dois usuarios/duas maquinas para validar WebRTC fim a fim, troca camera/tela, propagacao remota do palco, zoom do espectador e encerramento da tela compartilhada. `git diff --check` retornou apenas avisos LF/CRLF do Windows. Nao publicar em producao ate ReleaseOps revisar o pacote e Lucas confirmar estabilidade minima.
+- Status operacional: `AGUARDANDO RELEASEOPS COM QA OPERACIONAL ADICIONAL`.
+- Proxima squad recomendada: `Hub ReleaseOps` apenas apos validacao real de chamada/tela compartilhada; `Hub SupportOps` se surgir novo log PGRST, erro WebRTC ou instabilidade de realtime.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Ajustes operacionais da auditoria`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-17 10:23:33 -03:00.
 - Tipo da alteracao: Normalizacao documental, reconciliacao de handoffs, revisao de rastreabilidade e orientacao de pacote local pendente.
 - Motivo da mudanca: Lucas solicitou aplicar os ajustes identificados na auditoria diaria do diario operacional, consolidando entradas pendentes, normalizando fluxos antigos incompativeis com a metodologia atual, reforcando campos obrigatorios, padronizando status, revisando gaps de rastreabilidade e orientando o pacote PulseX local ainda fora da producao.
-- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; registros recentes de `Hub Shell`, `Guardian`, `PulseX`, `Hub ReleaseOps`, `Hub SupportOps`, `Hub Security` e `Guardian Core`; commit consolidado `fa095bd`; pacote local PulseX em `apps/hub/components/pulsex/*`, `apps/hub/lib/pulsex/types.ts` e `apps/hub/providers/pulsex-call-provider.tsx`.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; registros recentes de `Hub Shell`, `Guardian`, `PulseX`, `Hub ReleaseOps`, `Hub SupportOps`, `Hub Security` e `Guardian Core`; commit consolidado `fa095bd`; pacote local PulseX em `apps/hub/components/pulsex/*`, `apps/hub/lib/pulsex/types.ts` e `apps/hub/providers/pulsex-call-provider.tsx`.
 - Como foi feito: revisei os registros recentes, os commits de release (`fa095bd`, `abfb202`, `c3b43c1` e `f655199`), o status atual do worktree e os diffs locais PulseX. A normalizacao foi registrada de forma append-only, sem apagar ou reescrever historico anterior, para manter rastreabilidade e preservar o contexto original de cada squad.
 - Logica utilizada: registros historicos continuam refletindo o fluxo vigente no momento em que foram criados; a padronizacao atual deve reconciliar esses registros por meio de entradas consolidadas, evitando alterar evidencias antigas. Para novas entradas, o fluxo operacional valido fica: implementacao pelo modulo, validacao basica local, diario operacional, `AGUARDANDO RELEASEOPS`, ReleaseOps valida/commita/publica, healthcheck e status final.
 - Entradas `AGUARDANDO RELEASEOPS` absorvidas pelo deploy consolidado `fa095bd`: foram consideradas absorvidas pela release de producao `fa095bd chore(release): consolidate daily hub updates` as entradas recentes de `Hub Shell`, `Guardian` e `PulseX` registradas antes do deploy final do dia, incluindo `[Hub Shell] Refinamento visual do sidebar e launcher de modulos`, `[Guardian] Logo fixa no topo do sidebar recolhido`, `[PulseX] Emoji do sol no seletor`, `[PulseX] Janela de chamada arrastavel e Picture-in-Picture`, `[PulseX] Chamada continua ao sair da tela`, `[PulseX] Bolhas de mensagem estilo WhatsApp`, `[PulseX] Caca acoplada, notificacoes nativas e sons premium`, `[PulseX] Correcao dos atalhos do sidebar`, `[PulseX] Reforco visual de mencoes e tags`, `[PulseX] Cores do chat e rascunho limpo da Caca`, `[PulseX] Resposta por IA a partir da mensagem`, `[PulseX] Rascunho da Caca como resposta da mensagem`, `[PulseX] Tons de resposta da Caca`, `[PulseX] Composer de resposta da Caca visivel`, `[PulseX] Listas da Caca com bolinhas`, `[PulseX] Horario das mensagens em preto`, `[PulseX] Diagramacao do painel de informacoes`, `[PulseX] Fechamento externo do painel de informacoes`, `[PulseX] Botao de envio fixo na resposta`, `[PulseX] Area principal do chat arredondada`, `[PulseX] Botao circular e painel de respostas arredondado` e `[PulseX] Botao de resposta destacado dentro do campo`. O recorte Guardian do commit `f655199 fix(guardian): filter dashboard distributions by enterprise` ja estava commitado separadamente, mas tambem passou a compor a arvore publicada em producao pelo deploy `fa095bd`.
@@ -1865,10 +1895,55 @@ Registro de diario:
 - Data e hora local: 2026-05-17 10:26:04 -03:00.
 - Tipo da alteracao: Complemento documental sobre pendencias locais apos normalizacao.
 - Motivo da mudanca: ao revisar o estado final do worktree, surgiram alteracoes locais adicionais fora do commit documental, envolvendo D4Sign, query PulseX e painel Guardian. O diario precisava registrar que essas mudancas existem localmente, mas ainda nao foram validadas, commitadas ou publicadas por ReleaseOps.
-- Arquivos/modulos afetados: `apps/hub/app/api/guardian/d4sign/contracts/[documentId]/route.ts`; `apps/hub/lib/pulsex/supabase-data.ts`; `apps/hub/modules/guardian/attendance/components/ClientDetailPanel.tsx`; pacote local de chamada/mensagem PulseX; `docs/codex/contexto-operacional.md`.
+- Arquivos/modulos afetados: `apps/hub/app/api/guardian/d4sign/contracts/[documentId]/route.ts`; `apps/hub/lib/pulsex/supabase-data.ts`; `apps/hub/modules/guardian/attendance/components/ClientDetailPanel.tsx`; pacote local de chamada/mensagem PulseX; `docs/codex/engineering-operations.md`.
 - Como foi feito: revisei `git status --short` e `git diff --stat` apos o commit documental, sem alterar ou absorver codigo de modulo. Este complemento foi adicionado para preservar a rastreabilidade do estado local e evitar confundir mudanca nao publicada com release em producao.
 - Logica utilizada: mudancas locais de correcao tecnica ou UI nao devem ser tratadas como resolvidas ate passarem por validacao, commit semantico e deploy. Como existem diffs em mais de um modulo, a proxima release deve separar responsabilidades ou priorizar hotfix critico antes de pacote PulseX visual/experiencial.
 - Validacao executada: `git status --short`; `git diff --stat`; revisao documental do escopo local pendente. Nao executei build, lint ou typecheck neste complemento porque nenhum codigo foi commitado por ReleaseOps nesta etapa.
 - Pendencias ou riscos conhecidos: D4Sign aparenta ter ajuste local de guarda/autorizacao pendente de validacao; PulseX aparenta ter ajuste local da query `list direct users` pendente de validacao; Guardian possui diff local em `ClientDetailPanel`; pacote de chamada/mensagem PulseX segue pendente. Nenhuma dessas alteracoes foi publicada nesta etapa.
 - Status operacional: `OPERACIONAL COM ATENCAO`.
 - Proxima squad recomendada: `Hub ReleaseOps` para decidir se abre uma hotfix release separada para D4Sign/PulseX query antes do pacote de UI/chamada; `PulseX Core`, `Guardian Core` e `Hub Security` para validacao tecnica dos respectivos diffs.
+
+Registro de diario:
+
+- Assunto: `[Engenharia] Renomeacao oficial do diario operacional`.
+- Nome da squad/agente: `Engenharia Careli Hub`.
+- Data e hora local: 2026-05-17 10:30:58 -03:00.
+- Tipo da alteracao: Decisao operacional permanente e renomeacao documental oficial.
+- Motivo da mudanca: Lucas definiu que o antigo `docs/codex/engineering-operations.md` evoluiu de contexto operacional para central operacional da engenharia IA do Careli Hub, concentrando releases, auditorias, handoffs, deploys, troubleshooting, rastreabilidade, decisoes operacionais e continuidade da engenharia.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`, `docs/codex/engineering-operations.md` e `AGENTS.md`; regra transversal para todos os agentes, modulos e squads do Careli Hub.
+- Como foi feito: confirmei que o arquivo oficial agora e `docs/codex/engineering-operations.md`, que o antigo caminho aparece como renomeacao no Git, que `AGENTS.md` ja aponta para o novo arquivo e que nao existem referencias restantes ao caminho antigo fora do historico Git. O cabecalho do arquivo ja esta como `Engineering Operations do Careli Hub` e descreve o documento como central operacional viva.
+- Logica utilizada: centralizar todas as referencias no novo caminho evita que novos agentes leiam ou atualizem o arquivo antigo, preservando continuidade, rastreabilidade e governanca operacional em uma unica fonte oficial.
+- Validacao executada: `Get-ChildItem docs/codex`, busca `rg` por `contexto-operacional`, `docs/codex/contexto` e `Engineering Operations do Careli Hub`, leitura do inicio do novo arquivo e revisao de `git status --short`. Nao houve build, lint ou typecheck porque a mudanca e documental/processual.
+- Pendencias ou riscos conhecidos: o worktree continua com alteracoes locais de Guardian/D4Sign e PulseX nao relacionadas a esta renomeacao; qualquer commit deve stagear o rename/documentacao com cuidado para nao misturar pacotes funcionais. Registros historicos antigos podem conter a expressao generica `diario operacional`, mas o caminho oficial para novas referencias e `docs/codex/engineering-operations.md`.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub ReleaseOps` para consolidar commit/rastreabilidade quando organizar o pacote documental.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Renomeacao oficial do diario operacional`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 10:31:08 -03:00.
+- Tipo da alteracao: Migracao documental oficial, renomeacao de arquivo, atualizacao de referencias e preservacao de rastreabilidade.
+- Motivo da mudanca: Lucas definiu que o diario deixou de ser apenas contexto operacional e passou a representar oficialmente a central operacional da engenharia IA do Careli Hub.
+- Arquivos/modulos afetados: `AGENTS.md`; `docs/codex/engineering-operations.md`; referencias internas do diario; prompts e documentacoes operacionais que apontavam para o arquivo vivo.
+- Como foi feito: renomeei o arquivo no Git para preservar historico, atualizei o cabecalho para `Engineering Operations do Careli Hub`, substitui mecanicamente as referencias vivas para o novo caminho oficial e ajustei o `AGENTS.md` para orientar novos agentes a ler e atualizar a nova central operacional.
+- Logica utilizada: a migracao precisava manter continuidade entre sessoes sem criar caminho legado ativo. Por isso, referencias vivas passaram a apontar somente para `docs/codex/engineering-operations.md`, enquanto o historico do conteudo foi preservado no proprio arquivo renomeado.
+- Validacao executada: leitura do diario antes da alteracao; `rg` para mapear referencias ao caminho legado; `rg` confirmando ausencia de referencias ativas ao caminho legado; `rg` confirmando referencias ao novo caminho em `AGENTS.md` e no novo arquivo; revisao do cabecalho e da regra operacional principal. Build, lint e typecheck nao foram executados porque a migracao e exclusivamente documental e nao altera runtime, schema, API, UI ou integracao.
+- Pendencias ou riscos conhecidos: agentes ou sessoes antigas que tenham o caminho anterior em contexto podem precisar ser reorientados para o novo caminho oficial; o worktree segue com alteracoes locais de Guardian, PulseX e D4Sign fora desta migracao e elas nao foram publicadas nesta etapa.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub ReleaseOps` para manter o novo caminho como fonte oficial em commits/releases; todas as squads devem usar `docs/codex/engineering-operations.md` em novos handoffs e registros.
+
+Registro de diario:
+
+- Assunto: `[Engenharia] Renomeacao oficial do diario operacional`.
+- Nome da squad/agente: `Dev Engenharia`.
+- Data e hora local: 2026-05-17 10:30:56 -03:00.
+- Tipo da alteracao: Renomeacao documental e atualizacao de referencias operacionais.
+- Motivo da mudanca: Lucas oficializou que a memoria operacional da engenharia Careli Hub deixou de ser `docs/codex/engineering-operations.md` e passa a ser `docs/codex/engineering-operations.md`, por ter evoluido para central operacional da engenharia IA com releases, auditorias, handoffs, deploys, troubleshooting, rastreabilidade, decisoes e continuidade.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/engineering-operations.md`.
+- Como foi feito: confirmei que `docs/codex/engineering-operations.md` ja existe e que o Git reconhece a troca como rename do diario antigo. Atualizei as referencias do `AGENTS.md` e substitui as referencias internas ao caminho antigo dentro do novo diario para apontarem ao caminho oficial atual.
+- Logica utilizada: o arquivo de regras dos agentes e o proprio diario precisam apontar para a mesma fonte oficial para evitar que proximas sessoes leiam, atualizem ou citem um caminho obsoleto. A mudanca preserva o conteudo historico, mas normaliza a referencia de caminho para continuidade operacional.
+- Validacao executada: `rg -n "contexto-operacional\.md|docs/codex/engineering-operations\.md" AGENTS.md docs/codex/engineering-operations.md` confirmou ausencia do caminho antigo nesses arquivos e presenca do novo caminho oficial. Nao rodei build, lint ou typecheck porque a alteracao foi exclusivamente documental/processual.
+- Pendencias ou riscos conhecidos: o worktree segue com alteracoes locais pendentes de outras frentes, incluindo Guardian e PulseX, que nao foram modificadas por esta decisao. Hub ReleaseOps deve organizar commit/release sem misturar responsabilidades.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps`.
