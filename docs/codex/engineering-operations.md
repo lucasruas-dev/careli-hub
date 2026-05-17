@@ -2,6 +2,114 @@
 
 Este documento e a central operacional viva da engenharia IA do Careli Hub. Ele deve ser lido antes de qualquer mudanca no `careli-hub`, principalmente em trabalhos envolvendo C2X legado, Guardian, CareDesk, PulseX, Setup, Supabase, Vercel ou integracoes externas.
 
+## Indice operacional
+
+- [Manifesto operacional](#manifesto-operacional-da-engenharia-careli-hub)
+- [Fluxo oficial](#fluxo-oficial)
+- [Regras permanentes](#regras-permanentes)
+- [Guardian](#guardian)
+- [CareDesk](#caredesk)
+- [PulseX](#pulsex)
+- [SquadOps](#squadops)
+- [ReleaseOps](#releaseops)
+- [SupportOps](#supportops)
+- [Releases](#releases)
+- [Investigacoes](#investigacoes)
+- [Healthchecks](#healthchecks)
+- [Auditorias](#auditorias)
+- [Pendencias criticas](#pendencias-criticas-atuais)
+- [Estado atual dos modulos](#estado-atual-dos-modulos)
+- [Registros operacionais](#registros-operacionais-historicos)
+
+## Pendencias criticas atuais
+
+| Frente | Status operacional | Pendencia aberta | Proxima acao |
+| --- | --- | --- | --- |
+| Guardian / D4Sign | `AGUARDANDO RELEASEOPS` | Guarda/autorizacao server-side da rota D4Sign ja aparece como ajuste local, mas ainda precisa commit/deploy isolado e validacao com usuario autenticado real. | ReleaseOps deve validar pacote D4Sign sem misturar com PulseX e publicar hotfix se Lucas aprovar. |
+| PulseX realtime/chamadas | `AGUARDANDO RELEASEOPS` | Palco de compartilhamento de tela, zoom, sinais realtime e painel de informacoes estao em pacote local; ainda falta teste real com dois usuarios/duas maquinas. | Validar WebRTC/realtime fim a fim antes de producao. |
+| PulseX queries | `AGUARDANDO RELEASEOPS` | Query `list direct users` foi ajustada localmente para relacao nomeada Supabase, mas segue fora de producao ate release. | Consolidar em hotfix PulseX ou junto da release de chamadas, conforme risco. |
+| Guardian fila/performance | `OPERACIONAL COM ATENCAO` | `limit=1000` continua custoso e deve permanecer fora da abertura inicial de telas; monitorar payload/tempo da fila. | Manter abertura com limite reduzido e acompanhar gargalos em SupportOps. |
+| Vercel/build | `OPERACIONAL COM ATENCAO` | Avisos conhecidos de `npm audit`, variaveis ausentes em `turbo.json` e politica `engines.node >=18` com possivel auto-upgrade futuro. | Planejar ajuste tecnico sem bloquear releases funcionais de baixo risco. |
+| Rastreabilidade local | `OPERACIONAL COM ATENCAO` | Worktree possui diffs locais em Guardian/D4Sign e PulseX; risco de commit misturado se ReleaseOps nao separar pacotes. | Stagear por responsabilidade e criar commits semanticos pequenos. |
+
+## Estado atual dos modulos
+
+| Modulo | Ambiente | Status operacional | Observacao curta |
+| --- | --- | --- | --- |
+| Guardian | Producao `https://c2x.app.br` + diffs locais | `OPERACIONAL COM ATENCAO` | Producao responde; D4Sign e painel de cliente possuem pacote local pendente. |
+| PulseX | Producao `https://c2x.app.br` + diffs locais | `AGUARDANDO RELEASEOPS` | Direct users, chamada, tela compartilhada e painel de informacoes aguardam release/validacao real. |
+| CareDesk | Producao `https://c2x.app.br` | `OPERACIONAL COM ATENCAO` | Rota online; evolucao real ainda depende de tabelas Supabase e integracao Meta/WhatsApp. |
+| SquadOps | Producao `https://c2x.app.br` | `OPERACIONAL COM ATENCAO` | Modulo visual publicado; persistencia real ainda futura. |
+| ReleaseOps | Local + Vercel | `FINALIZADO` | Caminho oficial do diario ja migrado para `engineering-operations.md`; healthchecks seguem obrigatorios. |
+| SupportOps | Local + producao | `NECESSITA CORRECAO` | Ultima investigacao abriu pendencias D4Sign, PulseX e monitoramento Guardian. |
+
+## Fluxo oficial
+
+- Lucas define prioridade e escopo.
+- Dev do modulo implementa apenas dentro do proprio escopo e valida localmente.
+- Dev do modulo registra impacto, riscos, validacao e handoff para `Hub ReleaseOps`.
+- `Hub ReleaseOps` organiza commit, build, lint, typecheck, deploy, healthchecks, resumo macro e rastreabilidade.
+- `Hub SupportOps` investiga bugs, gargalos, lentidao, APIs instaveis, logs e regressao quando Lucas acionar.
+- Producao so deve ser considerada concluida quando houver healthcheck e registro completo neste arquivo.
+
+## Regras permanentes
+
+- Preservar modularidade: Guardian, CareDesk, PulseX, SquadOps, Setup e futuras frentes nao devem assumir escopo umas das outras sem pedido explicito.
+- Preservar rastreabilidade: toda decisao, release, hotfix, investigacao, incidente, melhoria, auditoria ou healthcheck relevante deve ser registrado neste arquivo.
+- Preservar seguranca: nunca registrar secrets, tokens, senhas, credenciais ou dados sensiveis desnecessarios.
+- Preservar historico: nao apagar registros antigos; novas normalizacoes devem ser feitas por entradas adicionais.
+- Preservar qualidade: validar impacto tecnico antes de concluir e registrar pendencias de forma objetiva.
+- Usar status principal unico por registro; detalhes secundarios ficam em `Pendencias ou riscos conhecidos`.
+- Status normalizados para novos registros: `ANALISANDO`, `IMPLEMENTANDO`, `VALIDANDO`, `AGUARDANDO RELEASEOPS`, `AGUARDANDO ARCHITECT`, `AGUARDANDO DEPLOY`, `FINALIZADO`, `BLOQUEADO`, `EM PRODUCAO`, `OPERACIONAL COM ATENCAO` e `NECESSITA CORRECAO`.
+
+## SquadOps
+
+SquadOps e o modulo operacional para demandas, squads, agentes, handoffs, commits, validacoes, deploys, status e protocolos da engenharia IA do Hub. O modulo ja possui tela publicada, mas a persistencia real ainda deve ser tratada em etapa futura com arquitetura e schema aprovados.
+
+## ReleaseOps
+
+`Hub ReleaseOps` e responsavel por commits, releases, build, lint, typecheck, Vercel, homologacao, producao, healthchecks e rastreabilidade oficial.
+
+Regra permanente: nenhum deploy deve ser considerado concluido sem:
+
+- healthcheck;
+- resumo macro;
+- riscos conhecidos;
+- status operacional;
+- rastreabilidade registrada neste arquivo.
+
+## SupportOps
+
+`Hub SupportOps` e responsavel por investigacoes operacionais, bugs, gargalos, lentidao, APIs instaveis, comportamento inesperado, logs, regressao, integracoes e suporte tecnico quando Lucas acionar.
+
+## Releases
+
+Bloco logico para registros de publicacao, deploy, homologacao, producao, rollback e consolidacao de commits. Novos registros de release devem conter commit, ambiente, resumo macro, validacoes, healthcheck, riscos, pendencias e status final.
+
+## Investigacoes
+
+Bloco logico para analises de bugs, gargalos, APIs, logs, integracoes, realtime, regressao e comportamento inesperado. Investigacoes devem separar evidencia confirmada de hipotese.
+
+## Healthchecks
+
+Bloco logico para validacoes recorrentes de producao, APIs principais, Supabase, auth, realtime, ambiente Vercel, logs criticos e integracoes externas. Healthchecks devem informar endpoints avaliados, resultado e riscos.
+
+## Auditorias
+
+Bloco logico para revisoes do proprio arquivo, rastreabilidade, handoffs, commits, deploys, gaps documentais, status inconsistentes e pendencias abertas.
+
+## Padrao de categorias de registros
+
+Novos registros devem usar uma categoria operacional no campo `Tipo da alteracao`, sem reescrever o historico antigo inteiro:
+
+- `RELEASE`: publicacao, deploy, promocao, rollback ou consolidacao de pacote.
+- `HOTFIX`: correcao pequena e direcionada para risco, bug ou regressao.
+- `INVESTIGACAO`: analise tecnica, suporte, logs, causa raiz ou diagnostico.
+- `INCIDENTE`: indisponibilidade, falha critica, degradacao ou erro operacional relevante.
+- `MELHORIA`: evolucao funcional, visual, UX, performance ou experiencia operacional.
+- `DECISAO`: regra, processo, arquitetura, escopo, metodologia ou padrao permanente.
+- `AUDITORIA`: revisao de rastreabilidade, diario, handoffs, commits, releases ou governanca.
+
 ## Como usar
 
 - Leia este arquivo antes de editar codigo.
@@ -61,11 +169,14 @@ Status operacionais obrigatorios:
 - `ANALISANDO`
 - `IMPLEMENTANDO`
 - `VALIDANDO`
-- `AGUARDANDO ARCHITECT`
 - `AGUARDANDO RELEASEOPS`
+- `AGUARDANDO ARCHITECT`
 - `AGUARDANDO DEPLOY`
 - `FINALIZADO`
 - `BLOQUEADO`
+- `EM PRODUCAO`
+- `OPERACIONAL COM ATENCAO`
+- `NECESSITA CORRECAO`
 
 Fluxo de comunicacao e handoff:
 
@@ -748,7 +859,7 @@ Regra permanente combinada com Lucas em 2026-05-16:
 - Este documento deve ser atualizado sempre que houver commit, deploy relevante, decisao de produto, regra de negocio, processo operacional, comportamento de tela, integracao, validacao importante ou descoberta tecnica que ajude outro agente a continuar.
 - O objetivo e funcionar como diario vivo de continuidade. Se a conversa definir algo que mudaria o trabalho de um proximo agente, registre aqui.
 - Nao registrar tokens, senhas, valores de secrets ou dados sensiveis desnecessarios.
-- Se uma pendencia for resolvida, mover ou reescrever a pendencia para refletir o estado real.
+- Se uma pendencia for resolvida, registrar uma nova entrada de atualizacao de status sem apagar o historico anterior.
 
 Regra permanente combinada com Lucas em 2026-05-16 23:14:08 -03:00 para Guardian:
 
@@ -805,6 +916,10 @@ Regra permanente combinada com Lucas em 2026-05-16 sobre correcoes:
 - O registro de correcao deve explicar de forma objetiva: erro observado, origem/causa identificada quando houver evidencia, arquivos ou modulos alterados, o que foi feito para corrigir e como foi validado.
 - Se a causa ainda nao estiver comprovada, registrar como hipotese ou investigacao pendente, sem cravar conclusao falsa.
 - O registro deve evitar dados sensiveis, tokens, senhas, dados pessoais desnecessarios e trechos de log que exponham segredo.
+
+## Registros operacionais historicos
+
+Os registros abaixo preservam o historico operacional em ordem de registro. Nao apagar nem reescrever entradas antigas; novas correcoes, normalizacoes, auditorias e encerramentos devem ser adicionados como novos registros, mantendo contexto, motivo, validacao, riscos, pendencias e status operacional.
 
 Registro de diario:
 
@@ -1947,3 +2062,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o worktree segue com alteracoes locais pendentes de outras frentes, incluindo Guardian e PulseX, que nao foram modificadas por esta decisao. Hub ReleaseOps deve organizar commit/release sem misturar responsabilidades.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps`.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Estruturacao do Engineering Operations`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 10:42:32 -03:00.
+- Tipo da alteracao: `DECISAO` - estruturacao documental e governanca operacional.
+- Motivo da mudanca: Lucas solicitou evoluir o arquivo oficial da engenharia IA para melhorar organizacao, navegabilidade, rastreabilidade e continuidade operacional sem apagar o historico anterior.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regras transversais de Guardian, CareDesk, PulseX, SquadOps, ReleaseOps, SupportOps, releases, investigacoes, healthchecks e auditorias.
+- Como foi feito: adicionei indice operacional no topo, bloco de pendencias criticas atuais, tabela de estado atual dos modulos, secoes executivas para fluxo oficial, regras permanentes, SquadOps, ReleaseOps, SupportOps, releases, investigacoes, healthchecks, auditorias e padrao de categorias de registros. Tambem marquei o inicio de `Registros operacionais historicos` para separar a camada executiva do historico append-only.
+- Logica utilizada: a estrutura nova cria uma camada de leitura rapida sem mover ou apagar registros antigos. As pendencias criticas refletem apenas riscos ainda relevantes no estado atual: D4Sign, PulseX realtime/chamadas, query PulseX, gargalo Guardian, avisos Vercel/build e risco de staging misturado em worktree local.
+- Validacao executada: leitura do arquivo atual; mapeamento de pendencias recentes; `rg` para confirmar novas secoes `Indice operacional`, `Pendencias criticas atuais`, `Estado atual dos modulos`, `Padrao de categorias de registros` e `Registros operacionais historicos`; revisao de `git status --short`. Build, lint e typecheck nao foram executados porque a mudanca e exclusivamente documental e nao altera runtime, schema, API, UI ou integracao.
+- Pendencias ou riscos conhecidos: o worktree segue com alteracoes locais fora desta estruturacao em Guardian/D4Sign e PulseX; as secoes executivas devem ser atualizadas quando uma pendencia critica for resolvida ou quando um modulo mudar de estado; registros historicos antigos nao foram reclassificados individualmente.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub ReleaseOps` para manter a camada executiva atualizada em cada release, auditoria, healthcheck ou hotfix relevante.
