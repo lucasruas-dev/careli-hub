@@ -2848,3 +2848,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: se o acompanhamento identificar item bloqueante, o retorno deve acionar `Hub SupportOps` para investigacao ou `Hub ReleaseOps` se o bloqueio estiver ligado a deploy/publicacao.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para revisar e publicar a atualizacao da biblioteca de prompts.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Redeploy producao HubOps Operations Center`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 17:56:23 -03:00.
+- Tipo da alteracao: `RELEASE` - redeploy de producao e healthcheck pos-deploy.
+- Motivo da mudanca: publicar o pacote final do recorte HubOps / Operations Center, incluindo o prompt adicional `Monitoramento tecnico` para `Hub SupportOps`, sem misturar Guardian/D4Sign, PulseX ou CareDesk fora do escopo HubOps.
+- Arquivos/modulos afetados: producao Vercel `https://c2x.app.br`; deployment `dpl_A11FKDwXrU1Pm7j1N4qa1kg5sUkM`; commits `d8db364`, `dfd3482`, `c42be66`, `8d40629`, `1929bd2` e `c68ae10`; `apps/hub/modules/squadops/SquadOpsPage.tsx` e este Engineering Operations.
+- Como foi feito: ReleaseOps revisou o diff pendente, confirmou que era limitado ao prompt de monitoramento tecnico e ao registro operacional, reexecutou validacoes locais, criou commit semantico `feat(hubops): add supportops monitoring prompt`, publicou com `npx.cmd vercel deploy --prod --yes`, confirmou estado `READY` e alias `https://c2x.app.br`.
+- Logica utilizada: o prompt pertence ao pacote HubOps porque melhora a orquestracao do Operations Center e direciona acompanhamento tecnico recorrente para `Hub SupportOps`, preservando ReleaseOps como frente de publicacao e healthcheck.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run build --workspace @repo/hub`; `git diff --check`; smoke local `GET /squadops`; smokes locais sem sessao para `/api/operations/monitoring`, `/api/operations/watcher` e `POST /api/squadops/copilot` com payload valido; `npx.cmd vercel inspect`; `npx.cmd vercel logs --since 5m`.
+- Resultado dos healthchecks: producao `GET /` retornou 200; `GET /squadops` retornou 200; `GET /api/guardian/db/health` retornou 200 com `status=connected`, banco `prod_careli` e `elapsedMs=728`; `GET /api/operations/monitoring` sem sessao retornou 401 esperado; `GET /api/operations/watcher` sem sessao retornou 401 esperado; `POST /api/squadops/copilot` sem sessao e com payload valido retornou 401 esperado; Vercel inspect confirmou deployment `READY`, target `production` e alias `https://c2x.app.br`; logs recentes mostraram os healthchecks executados sem erro critico.
+- Resumo macro: HubOps / Operations Center esta em producao com Database Monitoring baseado em fontes reais, APIs `/api/operations/monitoring` e `/api/operations/watcher`, Ops Watcher, PO AI priorizando monitoramento realtime, restricao adm/admin, biblioteca de prompts operacionais preenchidos e novo prompt de monitoramento tecnico para `Hub SupportOps`.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita por Lucas em sessao adm autenticada; smoke autenticado completo das APIs novas depende de bearer real adm; build Vercel segue com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations; Vercel segue alertando `npm audit` com 1 moderada e 1 alta e envs nao declaradas no `turbo.json`; Supabase Realtime pode gerar falso positivo dependendo do endpoint/ambiente.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps` para monitoramento pos-deploy e acompanhamento dos riscos tecnicos mapeados; `Hub ReleaseOps` para tratar futuramente warnings `turbo.json`, `npm audit` e NFT.
