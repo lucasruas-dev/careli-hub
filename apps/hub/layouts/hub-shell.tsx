@@ -38,6 +38,7 @@ import {
   ContactRound,
   FileText,
   FolderKanban,
+  GitBranch,
   Headphones,
   Home,
   LogOut,
@@ -79,9 +80,10 @@ const moduleIconMap: Record<string, ReactNode> = {
   guardian: <ShieldCheck aria-hidden="true" size={18} />,
   pulsex: <MessageSquareText aria-hidden="true" size={18} />,
   setup: <Settings aria-hidden="true" size={18} />,
+  squadops: <GitBranch aria-hidden="true" size={18} />,
 };
 
-const minimumReleasedModuleIds = ["guardian", "caredesk", "pulsex", "setup"] as const;
+const minimumReleasedModuleIds = ["guardian", "caredesk", "pulsex", "setup", "squadops"] as const;
 
 export function HubShell({
   children,

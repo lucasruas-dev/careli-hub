@@ -1183,3 +1183,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: `Contratos criticos`, `Aging da inadimplencia` e `Composicao da cobranca` seguem sem recorte real por empreendimento por falta de origem granular no read model; acionar `Hub DataOps` se Lucas quiser esse nivel de detalhamento. O worktree ainda possui alteracoes nao relacionadas de outras squads/frentes, portanto o commit desta correcao deve stagear apenas os hunks deste ajuste.
 - Status operacional: `AGUARDANDO QA`.
 - Proxima squad recomendada: `Hub QA` para regressao mobile/desktop do dashboard Guardian.
+
+Registro de diario:
+
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-17 00:49:01 -03:00.
+- Tipo da alteracao: Criacao da primeira versao operacional do modulo SquadOps.
+- Motivo da mudanca: Lucas criou a nova frente `SquadOps Core` para organizar demandas, squads, agentes, handoffs, commits, QA, deploys, status e protocolos da engenharia IA do Hub.
+- Arquivos/modulos afetados: `apps/hub/app/squadops/page.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/lib/squadops/mock-data.ts`, `packages/shared/src/modules/registry.ts`, `packages/shared/src/permissions/types.ts`, `packages/shared/src/permissions/matrix.ts`, `apps/hub/layouts/hub-shell.tsx` e `docs/codex/contexto-operacional.md`.
+- Como foi feito: criei o modulo proprio `/squadops`, com dashboard de demandas, board por status, detalhe da demanda, timeline operacional, cadastro/visualizacao mockada de squads, protocolo automatico, registros de commits, QA e deploy, proximo agente recomendado e status por ambiente. Tambem registrei `SquadOps` no registry compartilhado, adicionei permissoes `squadops:view`/`squadops:manage` e inclui o modulo na sidebar do Hub sem alterar Guardian, CareDesk ou PulseX.
+- Logica utilizada: primeira versao local-first com dados mockados em `apps/hub/lib/squadops/mock-data.ts`, mantendo contrato visual executivo e preparando futura persistencia Supabase. Modelagem sugerida para a proxima etapa: `hub_squadops_demands`, `hub_squadops_squads`, `hub_squadops_timeline_events`, `hub_squadops_commits`, `hub_squadops_qa_records`, `hub_squadops_deploys` e `hub_squadops_agent_recommendations`, com RLS e permissao por papel antes de expor dados reais.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou; smoke local em `http://localhost:3001/squadops` retornou HTTP 200.
+- Commit semantico planejado: `feat(hub): add squadops module`.
+- Pendencias ou riscos conhecidos: a tela usa dados mockados e ainda nao persiste cadastros, commits, QA ou deploys em Supabase; precisa de revisao do `Hub Architect` antes de criar schema/RLS e de validacao do `Hub QA` em desktop/mobile antes de deploy. O worktree possui alteracoes pre-existentes de outras frentes, entao o commit desta entrega deve stagear apenas os arquivos/hunks do SquadOps.
+- Status operacional: `AGUARDANDO ARCHITECT` e `AGUARDANDO QA`.
+- Proxima squad recomendada: `Hub Architect` para validar fronteira de modulo e modelagem Supabase; depois `Hub QA` para regressao visual e operacional do `/squadops`.
