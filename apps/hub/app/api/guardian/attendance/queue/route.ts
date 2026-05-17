@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 
 import { loadGuardianAttendanceQueue } from "@/lib/guardian/attendance";
 import { sanitizeGuardianDbError } from "@/lib/guardian/db";
-import { loadGuardianAttendanceQueueReadModel } from "@/lib/guardian/read-model";
+import {
+  countGuardianAttendanceQueueReadModel,
+  loadGuardianAttendanceQueueReadModel,
+} from "@/lib/guardian/read-model";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const DEFAULT_QUEUE_LIMIT = 1_000;
+const DEFAULT_QUEUE_LIMIT = 50;
 const MIN_QUEUE_LIMIT = 20;
 const MAX_QUEUE_LIMIT = 2_000;
 
@@ -15,14 +18,18 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const limit = parseQueueLimit(url.searchParams.get("limit"));
-    const readModelClients = await loadGuardianAttendanceQueueReadModel({ limit });
+    const [readModelClients, readModelCount] = await Promise.all([
+      loadGuardianAttendanceQueueReadModel({ limit }),
+      countGuardianAttendanceQueueReadModel(),
+    ]);
 
     if (readModelClients?.length) {
       return NextResponse.json({
         clients: readModelClients,
         meta: {
-          count: readModelClients.length,
+          count: readModelCount ?? readModelClients.length,
           limit,
+          loadedCount: readModelClients.length,
         },
         source: "supabase-c2x",
       });

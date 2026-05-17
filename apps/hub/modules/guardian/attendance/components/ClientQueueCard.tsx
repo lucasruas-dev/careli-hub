@@ -1,6 +1,7 @@
 ﻿/* eslint-disable */
 // @ts-nocheck
 import { MessageCircle } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { priorityStyles } from "@/modules/guardian/attendance/priority";
 import { workflowStageStyles } from "@/modules/guardian/attendance/workflow";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
@@ -32,14 +33,16 @@ export function ClientQueueCard({
           <p className="mt-1 text-xs text-slate-500">Responsável: {client.responsavel}</p>
         </button>
 
-        <button
-          type="button"
-          onClick={onOpenWhatsApp}
-          aria-label={`Abrir CareDesk de ${client.nome}`}
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
-        >
-          <MessageCircle className="size-4" aria-hidden="true" />
-        </button>
+        <Tooltip content={`Abrir CareDesk de ${client.nome}`} placement="top">
+          <button
+            type="button"
+            onClick={onOpenWhatsApp}
+            aria-label={`Abrir CareDesk de ${client.nome}`}
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
+          >
+            <MessageCircle className="size-4" aria-hidden="true" />
+          </button>
+        </Tooltip>
 
         <span
           className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
@@ -74,7 +77,11 @@ export function ClientQueueCard({
         </div>
         <div>
           <p className="text-xs text-slate-500">Saldo</p>
-          <p className="mt-1 text-sm font-medium text-slate-950">{formatCompactCurrency(client.saldoDevedor)}</p>
+          <Tooltip content={client.saldoDevedor} placement="top">
+            <span className="mt-1 block text-sm font-medium text-slate-950">
+              {formatCompactCurrency(client.saldoDevedor)}
+            </span>
+          </Tooltip>
         </div>
         <div>
           <p className="text-xs text-slate-500">Risco</p>
@@ -118,5 +125,3 @@ function parseCurrency(value: string) {
 
   return Number.parseFloat(normalized);
 }
-
-

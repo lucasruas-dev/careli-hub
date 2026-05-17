@@ -9,6 +9,7 @@ import {
   listPulseXThreadReplies,
   loadPulseXOperationalData,
   markPulseXChannelRead,
+  updatePulseXMessageBody,
   updatePulseXMessageTags,
 } from "@/lib/pulsex/supabase-data";
 import {
@@ -748,6 +749,70 @@ export function PulseXWorkspace() {
     );
   }
 
+  async function handleEditMessage(
+    messageId: PulseXMessage["id"],
+    body: string,
+  ) {
+    const nextBody = body.trim();
+    const previousMessage = messages.find((message) => message.id === messageId);
+
+    if (!previousMessage || !nextBody || previousMessage.body === nextBody) {
+      return;
+    }
+
+    const editedAt = new Date().toISOString();
+    const optimisticMessage = {
+      ...previousMessage,
+      body: nextBody,
+      editedAt,
+    } satisfies PulseXMessage;
+
+    setMessages((currentMessages) =>
+      currentMessages.map((message) =>
+        message.id === messageId ? optimisticMessage : message,
+      ),
+    );
+
+    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
+      return;
+    }
+
+    try {
+      const savedMessage = await updatePulseXMessageBody({
+        body: nextBody,
+        messageId,
+      });
+
+      if (!savedMessage) {
+        throw new Error("Mensagem nao atualizada.");
+      }
+
+      setMessages((currentMessages) =>
+        currentMessages.map((message) =>
+          message.id === messageId
+            ? {
+                ...savedMessage,
+                deliveredTo: message.deliveredTo,
+                readBy: message.readBy,
+              }
+            : message,
+        ),
+      );
+    } catch (error: unknown) {
+      setMessages((currentMessages) =>
+        currentMessages.map((message) =>
+          message.id === messageId ? previousMessage : message,
+        ),
+      );
+
+      if (isLocalDevelopmentRuntime()) {
+        console.warn("[pulsex] edit message error", error);
+      }
+
+      throw error;
+    }
+  }
+
   function handleToggleMessageTag(
     messageId: PulseXMessage["id"],
     tag: PulseXMessageTag,
@@ -963,6 +1028,7 @@ export function PulseXWorkspace() {
             currentUserId={currentUserId}
             filter={activeMessageFilter}
             messages={filteredChannelMessages}
+            onEditMessage={handleEditMessage}
             onOpenThread={handleOpenThread}
             onToggleTag={handleToggleMessageTag}
             users={presenceUsers}
@@ -999,6 +1065,7 @@ export function PulseXWorkspace() {
                 setActiveThreadMessageId(null);
                 setThreadComposerValue("");
               }}
+              onEditMessage={handleEditMessage}
               onSubmitReply={handleSubmitThreadReply}
               onToggleReaction={handleToggleReaction}
               reactionOptions={pulsexReactionOptions}

@@ -6,7 +6,8 @@ import type {
   PulseXCallSession,
   PulseXPresenceUser,
 } from "@/lib/pulsex";
-import { Clock, Phone, Video, X } from "lucide-react";
+import { Clock, Maximize2, Minimize2, Phone, Video, X } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CallControls } from "./call-controls";
 import { CallParticipantTile } from "./call-participant-tile";
@@ -41,6 +42,7 @@ export function CallPanel({
 }: CallPanelProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(session.type === "video");
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [audioInputId, setAudioInputId] = useState(defaultDeviceValue);
   const [videoInputId, setVideoInputId] = useState(defaultDeviceValue);
@@ -65,9 +67,17 @@ export function CallPanel({
   const pendingIceCandidatesRef = useRef<
     Map<PulseXPresenceUser["id"], RTCIceCandidateInit[]>
   >(new Map());
+  const panelRef = useRef<HTMLElement>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const CallIcon = session.type === "video" ? Video : Phone;
+  const panelClassName = isFullScreen
+    ? "fixed inset-0 z-[90] grid h-dvh w-screen grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-none border-0 bg-[#0b1017] text-white shadow-2xl"
+    : "fixed left-1/2 top-14 z-[70] grid h-[min(82vh,760px)] w-[min(92vw,1120px)] -translate-x-1/2 grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-xl border border-white/10 bg-[#0b1017] text-white shadow-2xl";
+  const participantGridClassName =
+    session.participants.length <= 2
+      ? "grid min-h-0 gap-4 p-4 md:grid-cols-2"
+      : "grid min-h-0 auto-rows-[minmax(18rem,1fr)] gap-3 overflow-auto p-4 sm:grid-cols-2 xl:grid-cols-3";
 
   const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -602,6 +612,45 @@ export function CallPanel({
     void startScreenSharing();
   }, [isScreenSharing, startScreenSharing, stopScreenSharing]);
 
+  const handleToggleFullScreen = useCallback(() => {
+    const panel = panelRef.current;
+
+    if (!isFullScreen) {
+      setIsFullScreen(true);
+      if (panel?.requestFullscreen) {
+        void panel.requestFullscreen().catch(() => undefined);
+      }
+      return;
+    }
+
+    setIsFullScreen(false);
+
+    if (document.fullscreenElement === panel) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+  }, [isFullScreen]);
+
+  const handleClosePanel = useCallback(() => {
+    if (document.fullscreenElement === panelRef.current) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+
+    setIsFullScreen(false);
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    function handleFullScreenChange() {
+      setIsFullScreen(document.fullscreenElement === panelRef.current);
+    }
+
+    document.addEventListener("fullscreenchange", handleFullScreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullScreenChange);
+    };
+  }, []);
+
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setMediaError("Midia indisponivel neste navegador.");
@@ -711,7 +760,8 @@ export function CallPanel({
   return (
     <section
       aria-label="Chamada PulseX"
-      className="fixed inset-x-4 top-20 z-[70] overflow-hidden rounded-xl border border-white/10 bg-[#0b1017] text-white shadow-2xl"
+      className={panelClassName}
+      ref={panelRef}
     >
       <header className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
@@ -732,14 +782,30 @@ export function CallPanel({
             </p>
           </div>
         </div>
-        <button
-          aria-label="Fechar painel de chamada"
-          className="grid h-8 w-8 place-items-center rounded-md text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-          onClick={onClose}
-          type="button"
-        >
-          <X size={17} />
-        </button>
+        <div className="flex items-center gap-1">
+          <Tooltip content={isFullScreen ? "Sair de tela cheia" : "Tela cheia"}>
+            <button
+              aria-label={isFullScreen ? "Sair de tela cheia" : "Tela cheia"}
+              className="grid h-8 w-8 place-items-center rounded-md text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={handleToggleFullScreen}
+              type="button"
+            >
+              {isFullScreen ? (
+                <Minimize2 aria-hidden="true" size={17} />
+              ) : (
+                <Maximize2 aria-hidden="true" size={17} />
+              )}
+            </button>
+          </Tooltip>
+          <button
+            aria-label="Fechar painel de chamada"
+            className="grid h-8 w-8 place-items-center rounded-md text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            onClick={handleClosePanel}
+            type="button"
+          >
+            <X size={17} />
+          </button>
+        </div>
       </header>
       <div className="grid gap-3 border-b border-white/10 bg-[#0d131d] px-4 py-3 md:grid-cols-2">
         <DeviceSelect
@@ -758,7 +824,7 @@ export function CallPanel({
           />
         ) : null}
       </div>
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className={participantGridClassName}>
         {session.participants.map((participant) => {
           const participantUserId = participant.userId;
           const isLocalParticipant = participantUserId === currentUserId;

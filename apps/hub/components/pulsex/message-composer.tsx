@@ -1,9 +1,10 @@
 "use client";
 
 import type {
+  ClipboardEvent,
+  ChangeEvent,
   FormEvent,
   KeyboardEvent,
-  ChangeEvent,
   ReactNode,
 } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -263,6 +264,31 @@ export function MessageComposer({
     setMediaError(null);
   }
 
+  async function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const imageFile = getClipboardImageFile(event.clipboardData);
+
+    if (!imageFile) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (imageFile.size > MAX_ATTACHMENT_BYTES) {
+      setMediaError("Imagem acima de 8 MB.");
+      return;
+    }
+
+    const nextAttachment = await createAttachmentFromBlob(imageFile, {
+      label: `Print ${formatAttachmentTime(new Date())}.${getImageExtension(imageFile.type)}`,
+      mimeType: imageFile.type,
+      sizeBytes: imageFile.size,
+      type: "image",
+    });
+
+    setAttachment(nextAttachment);
+    setMediaError(null);
+  }
+
   async function handleToggleAudioRecording() {
     if (isRecordingAudio) {
       mediaRecorderRef.current?.stop();
@@ -449,6 +475,7 @@ export function MessageComposer({
           onBlur={() => window.setTimeout(closeMentionMenu, 120)}
           onChange={handleValueChange}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           onSelect={(event) =>
             updateActiveMention(
               event.currentTarget.value,
@@ -487,12 +514,12 @@ function EmojiPicker({
   onSelect: (emoji: string) => void;
 }) {
   return (
-    <div className="absolute bottom-full left-0 z-40 mb-2 w-64 rounded-md border border-[#d9e0ea] bg-white p-2 shadow-xl">
+    <div className="absolute bottom-full left-0 z-40 mb-2 max-h-80 w-80 overflow-auto rounded-md border border-[#d9e0ea] bg-white p-2 shadow-xl">
       <div className="grid grid-cols-8 gap-1">
         {composerEmojiOptions.map((emoji) => (
           <button
             aria-label={`Inserir ${emoji}`}
-            className="grid h-8 w-8 place-items-center rounded-md text-lg outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            className="grid h-9 w-9 place-items-center rounded-md text-[1.35rem] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             key={emoji}
             onClick={() => onSelect(emoji)}
             type="button"
@@ -708,17 +735,99 @@ function getPresenceDotClassName(status: PulseXPresenceUser["status"]) {
 
 const composerEmojiOptions = [
   "😀",
+  "😃",
   "😄",
+  "😁",
+  "😆",
+  "😅",
   "😂",
+  "🤣",
+  "😊",
+  "😇",
   "🙂",
+  "🙃",
   "😉",
   "😍",
+  "🥰",
+  "😘",
+  "😗",
+  "😙",
+  "😚",
+  "😋",
+  "😛",
+  "😝",
+  "😜",
+  "🤪",
+  "🤨",
+  "🧐",
+  "🤓",
+  "😎",
+  "🥳",
+  "😏",
+  "😒",
+  "😞",
+  "😔",
+  "😟",
+  "😕",
+  "🙁",
+  "☹️",
+  "😣",
+  "😖",
+  "😫",
+  "😩",
+  "🥺",
+  "😢",
+  "😭",
+  "😤",
+  "😠",
+  "😡",
+  "🤯",
+  "😳",
+  "🥵",
+  "🥶",
+  "😱",
+  "😨",
+  "😰",
+  "😥",
+  "😓",
+  "🤗",
+  "🤔",
+  "🤭",
+  "🤫",
+  "🤥",
+  "😶",
+  "😐",
+  "😑",
+  "😬",
+  "🙄",
+  "😯",
+  "😦",
+  "😧",
+  "😮",
+  "😲",
+  "🥱",
+  "😴",
+  "🤤",
+  "😪",
+  "🤐",
+  "🥴",
+  "🤢",
+  "🤮",
+  "🤧",
+  "😷",
+  "🤒",
+  "🤕",
   "🤝",
   "👏",
+  "🙌",
+  "🫶",
   "👍",
   "👎",
   "🙏",
   "💪",
+  "👌",
+  "✌️",
+  "🤞",
   "👀",
   "✅",
   "⚠️",
@@ -739,6 +848,8 @@ const composerEmojiOptions = [
   "💙",
   "🟢",
   "🟡",
+  "🔴",
+  "⚫",
 ] as const;
 
 const agentPromptOptions = [
@@ -846,4 +957,38 @@ function formatAttachmentTime(value: Date) {
     minute: "2-digit",
     second: "2-digit",
   }).format(value);
+}
+
+function getClipboardImageFile(clipboardData: DataTransfer) {
+  const fileFromFiles = Array.from(clipboardData.files).find((file) =>
+    file.type.startsWith("image/"),
+  );
+
+  if (fileFromFiles) {
+    return fileFromFiles;
+  }
+
+  const imageItem = Array.from(clipboardData.items).find((item) =>
+    item.type.startsWith("image/"),
+  );
+
+  return imageItem?.getAsFile() ?? null;
+}
+
+function getImageExtension(mimeType: string) {
+  const normalizedType = mimeType.toLowerCase();
+
+  if (normalizedType.includes("jpeg") || normalizedType.includes("jpg")) {
+    return "jpg";
+  }
+
+  if (normalizedType.includes("webp")) {
+    return "webp";
+  }
+
+  if (normalizedType.includes("gif")) {
+    return "gif";
+  }
+
+  return "png";
 }

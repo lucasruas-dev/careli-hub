@@ -111,6 +111,7 @@ type PulseXMessagesApiDatabase = {
         ];
         Row: PulseXMessageRow;
         Update: {
+          body?: string;
           metadata?: Record<string, unknown>;
         };
       };
@@ -328,6 +329,65 @@ export async function PATCH(request: NextRequest) {
     });
   }
 
+  const editPayload = parseEditMessagePayload(rawPayload);
+
+  if (editPayload.ok) {
+    const { data: message, error: messageError } = await context.adminClient
+      .from("pulsex_messages")
+      .select("id,channel_id,author_user_id,metadata")
+      .eq("id", editPayload.data.messageId)
+      .is("deleted_at", null)
+      .maybeSingle<{
+        author_user_id?: string | null;
+        channel_id: string;
+        id: string;
+        metadata?: Record<string, unknown> | null;
+      }>();
+
+    if (messageError || !message) {
+      return NextResponse.json({ error: "Mensagem nao encontrada." }, { status: 404 });
+    }
+
+    if (message.author_user_id !== context.user.id) {
+      return NextResponse.json(
+        { error: "Somente o autor pode editar a mensagem." },
+        { status: 403 },
+      );
+    }
+
+    const access = await ensureChannelAccess(
+      context.adminClient,
+      context.user,
+      message.channel_id,
+    );
+
+    if (!access.ok) {
+      return access.response;
+    }
+
+    const { data, error } = await context.adminClient
+      .from("pulsex_messages")
+      .update({
+        body: editPayload.data.body,
+        metadata: {
+          ...(message.metadata ?? {}),
+          editedAt: new Date().toISOString(),
+        },
+      })
+      .eq("id", editPayload.data.messageId)
+      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+      .single<PulseXMessageRow>();
+
+    if (error || !data) {
+      return NextResponse.json(
+        { error: "Nao foi possivel editar a mensagem." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ data });
+  }
+
   const payload = parseUpdateTagsPayload(rawPayload);
 
   if (!payload.ok) {
@@ -400,6 +460,37 @@ function parseMarkReadPayload(payload: unknown):
   return {
     data: {
       channelId,
+    },
+    ok: true,
+  };
+}
+
+function parseEditMessagePayload(payload: unknown):
+  | {
+      data: {
+        body: string;
+        messageId: string;
+      };
+      ok: true;
+    }
+  | { ok: false } {
+  if (!payload || typeof payload !== "object") {
+    return { ok: false };
+  }
+
+  const input = payload as UpdateTagsPayload & { body?: unknown };
+  const action = getString(input.action);
+  const body = getString(input.body);
+  const messageId = getString(input.messageId);
+
+  if (action !== "edit-message" || !body || !messageId) {
+    return { ok: false };
+  }
+
+  return {
+    data: {
+      body,
+      messageId,
     },
     ok: true,
   };

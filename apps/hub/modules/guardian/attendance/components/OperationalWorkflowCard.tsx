@@ -1,6 +1,7 @@
 ﻿/* eslint-disable */
 // @ts-nocheck
 import { GitBranch, Sparkles } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import { workflowStageDots, workflowStageStyles } from "@/modules/guardian/attendance/workflow";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
@@ -23,14 +24,15 @@ export function OperationalWorkflowCard({ client }: OperationalWorkflowCardProps
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className={`size-2.5 rounded-full ${workflowStageDots[workflow.stage]}`} />
-                <span
-                  title={`Etapa atual: ${workflow.stage}`}
-                  className={`inline-flex h-7 items-center justify-center rounded-full px-2.5 text-xs font-semibold ring-1 ring-inset ${
-                    workflowStageStyles[workflow.stage]
-                  }`}
-                >
-                  {workflow.stage}
-                </span>
+                <Tooltip content={`Etapa atual: ${workflow.stage}`} placement="top">
+                  <span
+                    className={`inline-flex h-7 items-center justify-center rounded-full px-2.5 text-xs font-semibold ring-1 ring-inset ${
+                      workflowStageStyles[workflow.stage]
+                    }`}
+                  >
+                    {workflow.stage}
+                  </span>
+                </Tooltip>
                 <span className="text-xs text-slate-500">{workflow.updatedAt}</span>
               </div>
             </div>

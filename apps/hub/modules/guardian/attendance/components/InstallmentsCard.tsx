@@ -150,38 +150,42 @@ export function InstallmentsCard({
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm font-medium text-slate-700">Lista de parcelas</p>
           {canToggleInstallments ? (
+            <Tooltip content={showAllInstallments ? "Ver menos parcelas" : "Ver mais parcelas"} placement="bottom">
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedInstallmentsKey((current) =>
+                    current === installmentsKey ? null : installmentsKey
+                  )
+                }
+                aria-label={showAllInstallments ? "Ver menos parcelas" : "Ver mais parcelas"}
+                className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              >
+                <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${showAllInstallments ? "rotate-180" : ""}`} aria-hidden="true" />
+              </button>
+            </Tooltip>
+          ) : null}
+          <Tooltip content={filtersOpen ? "Recolher filtros" : "Expandir filtros"} placement="bottom">
             <button
               type="button"
-              onClick={() =>
-                setExpandedInstallmentsKey((current) =>
-                  current === installmentsKey ? null : installmentsKey
-                )
-              }
-              title={showAllInstallments ? "Ver menos parcelas" : "Ver mais parcelas"}
-              aria-label={showAllInstallments ? "Ver menos parcelas" : "Ver mais parcelas"}
-              className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              onClick={toggleFilters}
+              aria-label={filtersOpen ? "Recolher filtros" : "Expandir filtros"}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
             >
-              <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${showAllInstallments ? "rotate-180" : ""}`} aria-hidden="true" />
+              <Filter className="size-4 text-[#A07C3B]" aria-hidden="true" />
+              Filtros{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
+              <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${filtersOpen ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={toggleFilters}
-            title={filtersOpen ? "Recolher filtros" : "Expandir filtros"}
-            aria-label={filtersOpen ? "Recolher filtros" : "Expandir filtros"}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-          >
-            <Filter className="size-4 text-[#A07C3B]" aria-hidden="true" />
-            Filtros{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
-            <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${filtersOpen ? "rotate-180" : ""}`} aria-hidden="true" />
-          </button>
+          </Tooltip>
         </div>
         {activeFilters.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {activeFilters.map((filter) => (
-              <button key={`${filter.label}-${filter.value}`} type="button" onClick={filter.clear} title={`Remover ${filter.label}`} className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                <span className="truncate">{filter.value}</span><span aria-hidden="true">×</span>
-              </button>
+              <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
+                <button type="button" onClick={filter.clear} className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                  <span className="truncate">{filter.value}</span><span aria-hidden="true">×</span>
+                </button>
+              </Tooltip>
             ))}
           </div>
         ) : null}
@@ -426,29 +430,31 @@ function ActionIcon({
 }) {
   if (!href) {
     return (
-      <button
-        type="button"
-        aria-label={`${label} indisponível`}
-        title={`${label} indisponível`}
-        disabled
-        className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-lg border border-amber-200/80 bg-amber-50 text-amber-700"
-      >
-        <Icon className="size-4" aria-hidden="true" />
-      </button>
+      <Tooltip content={`${label} indisponível`} placement="left">
+        <button
+          type="button"
+          aria-label={`${label} indisponível`}
+          disabled
+          className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-lg border border-amber-200/80 bg-amber-50 text-amber-700"
+        >
+          <Icon className="size-4" aria-hidden="true" />
+        </button>
+      </Tooltip>
     );
   }
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      aria-label={label}
-      title={label}
-      className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800"
-    >
-      <Icon className="size-4" aria-hidden="true" />
-    </a>
+    <Tooltip content={label} placement="left">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={label}
+        className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800"
+      >
+        <Icon className="size-4" aria-hidden="true" />
+      </a>
+    </Tooltip>
   );
 }
 
@@ -528,7 +534,6 @@ function PaymentViewingIndicator({ installment }: { installment: Installment }) 
       <Tooltip content="Consultando visualização" placement="left">
         <span
           aria-label="Consultando visualização do boleto"
-          title="Consultando visualização do boleto"
           className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400"
         >
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -560,7 +565,6 @@ function PaymentViewingIndicator({ installment }: { installment: Installment }) 
     <Tooltip content={tooltipLabel} placement="left">
       <span
         aria-label={ariaLabel}
-        title={ariaLabel}
         className={`inline-flex size-8 items-center justify-center rounded-lg border ${className}`}
       >
         <Icon className="size-4" aria-hidden="true" />
@@ -610,6 +614,10 @@ function buildInstallments(client: QueueClient, unit?: PortfolioUnit): Installme
     });
   }
 
+  if (isC2xClient(client, unit)) {
+    return [];
+  }
+
   const total = unit?.id.endsWith("-2") ? 48 : 60;
   const liquidated = unit?.id.endsWith("-2") ? 18 : 12;
   const valueNumber = unit
@@ -649,6 +657,17 @@ function buildInstallments(client: QueueClient, unit?: PortfolioUnit): Installme
       overdueDaysNumber: days,
     };
   });
+}
+
+function isC2xClient(client: QueueClient, unit?: PortfolioUnit) {
+  return (
+    client.id.startsWith("c2x-") ||
+    Boolean(client.c2xAcquisitionRequestId) ||
+    Boolean(unit?.id.startsWith("c2x-unit-")) ||
+    client.carteira.unidades.some((portfolioUnit) =>
+      portfolioUnit.id.startsWith("c2x-unit-")
+    )
+  );
 }
 
 function parseDateInput(date: string) {

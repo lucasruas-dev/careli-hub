@@ -5,6 +5,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Tooltip } from "@repo/uix";
 import {
   BarChart3,
   Bot,
@@ -19,14 +20,15 @@ import {
 } from "lucide-react";
 
 const menuItems = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/guardian" },
-  { label: "Cobrança", icon: WalletCards, href: "/guardian/cobranca" },
-  { label: "CareDesk", icon: Inbox, href: "/caredesk", badge: "3" },
-  { label: "Inteligência", icon: Bot, href: "/guardian/inteligencia" },
-  { label: "Monitoramento", icon: LineChart, href: "/guardian/monitoramento" },
-  { label: "Relatórios", icon: BarChart3, href: "#" },
-  { label: "Setup", icon: Settings, href: "#" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/guardian", released: true },
+  { label: "Cobrança", icon: WalletCards, href: "/guardian/cobranca", released: true },
+  { label: "CareDesk", icon: Inbox, href: "/caredesk", badge: "3", released: false },
+  { label: "Inteligência", icon: Bot, href: "/guardian/inteligencia", released: false },
+  { label: "Monitoramento", icon: LineChart, href: "/guardian/monitoramento", released: false },
+  { label: "Relatórios", icon: BarChart3, href: "#", released: false },
+  { label: "Setup", icon: Settings, href: "#", released: false },
 ];
+const visibleMenuItems = menuItems.filter((item) => item.released);
 
 type SidebarProps = {
   collapsed: boolean;
@@ -54,82 +56,87 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               : "h-12 grid-cols-[2rem_minmax(0,1fr)_2rem] gap-3 px-0"
           }`}
         >
-          <button
-            type="button"
-            onClick={handleOpenModuleLauncher}
-            aria-label="Abrir modulos"
-            className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] bg-white/[0.055] text-[#C5C5D2] outline-none transition hover:bg-[#2A2B32]/80 hover:text-[#ECECF1] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-          >
-            <LayoutGrid className="size-[15px]" aria-hidden="true" />
-          </button>
-          <Link
-            aria-label="Voltar ao Hub"
-            href="/"
-            title="Voltar ao Hub"
-            className={`flex min-w-0 items-center justify-center rounded-lg outline-none transition hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
-              collapsed ? "h-9 w-9" : ""
-            }`}
-          >
-            {collapsed ? (
-              <Image
-                src="/logoiconbranca.png"
-                alt="Guardian"
-                width={1976}
-                height={2374}
-                priority
-                sizes="32px"
-                className="h-8 w-auto object-contain"
-              />
-            ) : (
-              <Image
-                src="/logoCbranca.png"
-                alt="Guardian"
-                width={3300}
-                height={2047}
-                priority
-                sizes="150px"
-                className="h-11 w-auto max-w-[150px] object-contain"
-              />
-            )}
-          </Link>
+          <Tooltip content="Abrir módulos" placement="bottom">
+            <button
+              type="button"
+              onClick={handleOpenModuleLauncher}
+              aria-label="Abrir módulos"
+              className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] bg-white/[0.055] text-[#C5C5D2] outline-none transition hover:bg-[#2A2B32]/80 hover:text-[#ECECF1] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            >
+              <LayoutGrid className="size-[15px]" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip content="Voltar ao Hub" placement="bottom">
+            <Link
+              aria-label="Voltar ao Hub"
+              href="/"
+              className={`flex min-w-0 items-center justify-center rounded-lg outline-none transition hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                collapsed ? "h-9 w-9" : ""
+              }`}
+            >
+              {collapsed ? (
+                <Image
+                  src="/logoiconbranca.png"
+                  alt="Guardian"
+                  width={1976}
+                  height={2374}
+                  priority
+                  sizes="32px"
+                  className="h-8 w-auto object-contain"
+                />
+              ) : (
+                <Image
+                  src="/logoCbranca.png"
+                  alt="Guardian"
+                  width={3300}
+                  height={2047}
+                  priority
+                  sizes="150px"
+                  className="h-11 w-auto max-w-[150px] object-contain"
+                />
+              )}
+            </Link>
+          </Tooltip>
 
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
-            className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-[#C5C5D2] transition-colors hover:bg-[#2A2B32]/80 hover:text-[#ECECF1] ${
-              collapsed ? "hidden" : ""
-            }`}
-          >
-            <ChevronsLeft className="size-4" aria-hidden="true" />
-          </button>
+          {!collapsed ? (
+          <Tooltip content="Recolher sidebar" placement="bottom">
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[#C5C5D2] transition-colors hover:bg-[#2A2B32]/80 hover:text-[#ECECF1]"
+            >
+              <ChevronsLeft className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          ) : null}
         </div>
 
         {collapsed ? (
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-label="Expandir sidebar"
-            className="mt-2 flex size-10 w-full items-center justify-center rounded-lg text-[#C5C5D2] transition-colors hover:bg-[#2A2B32]/80 hover:text-[#ECECF1]"
-          >
-            <ChevronsRight className="size-4" aria-hidden="true" />
-          </button>
+          <Tooltip content="Expandir sidebar" placement="right" className="mt-2 w-full" triggerClassName="w-full">
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-label="Expandir sidebar"
+              className="flex size-10 w-full items-center justify-center rounded-lg text-[#C5C5D2] transition-colors hover:bg-[#2A2B32]/80 hover:text-[#ECECF1]"
+            >
+              <ChevronsRight className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
         ) : null}
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive =
             item.href === "/guardian"
               ? pathname === "/guardian"
               : item.href !== "#" && pathname.startsWith(item.href);
 
-          return (
+          const link = (
             <Link
-              key={item.label}
               href={item.href}
-              title={collapsed ? item.label : undefined}
               className={`group relative flex h-11 items-center rounded-lg px-3 text-sm font-medium transition-colors duration-150 ${
                 collapsed ? "justify-center" : "gap-3"
               } ${
@@ -164,12 +171,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 </span>
               ) : null}
 
-              {collapsed ? (
-                <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 -translate-y-1/2 rounded-lg bg-[#202123] px-2.5 py-1.5 text-xs font-medium text-[#ECECF1] opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition-opacity group-hover:opacity-100">
-                  {item.label}
-                </span>
-              ) : null}
             </Link>
+          );
+
+          return collapsed ? (
+            <Tooltip key={item.label} content={item.label} placement="right" className="w-full" triggerClassName="w-full">
+              {link}
+            </Tooltip>
+          ) : (
+            <span key={item.label} className="block">{link}</span>
           );
         })}
       </nav>

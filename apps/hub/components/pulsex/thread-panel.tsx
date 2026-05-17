@@ -18,6 +18,10 @@ type ThreadPanelProps = {
   message?: PulseXMessage;
   onChangeReply: (value: string) => void;
   onClose: () => void;
+  onEditMessage?: (
+    messageId: PulseXMessage["id"],
+    body: string,
+  ) => Promise<void> | void;
   onSubmitReply: () => void;
   onToggleReaction: (
     messageId: PulseXMessage["id"],
@@ -34,6 +38,7 @@ export function ThreadPanel({
   message,
   onChangeReply,
   onClose,
+  onEditMessage,
   onSubmitReply,
   onToggleReaction,
   reactionOptions,
@@ -84,6 +89,7 @@ export function ThreadPanel({
           author={users.find((user) => user.id === message.authorId)}
           currentUserId={currentUserId}
           message={message}
+          onEditMessage={onEditMessage}
           onToggleReaction={onToggleReaction}
           reactionOptions={reactionOptions}
           users={users}

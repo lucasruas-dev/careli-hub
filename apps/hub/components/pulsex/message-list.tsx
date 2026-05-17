@@ -14,6 +14,10 @@ type MessageListProps = {
   currentUserId?: PulseXPresenceUser["id"];
   filter?: PulseXMessageFilter;
   messages: readonly PulseXMessage[];
+  onEditMessage?: (
+    messageId: PulseXMessage["id"],
+    body: string,
+  ) => Promise<void> | void;
   onOpenThread?: (messageId: PulseXMessage["id"]) => void;
   onToggleTag?: (
     messageId: PulseXMessage["id"],
@@ -26,6 +30,7 @@ export function MessageList({
   currentUserId,
   filter = "all",
   messages,
+  onEditMessage,
   onOpenThread,
   onToggleTag,
   users,
@@ -73,6 +78,7 @@ export function MessageList({
           currentUserId={currentUserId}
           key={message.id}
           message={message}
+          onEditMessage={onEditMessage}
           onOpenThread={onOpenThread}
           onToggleTag={onToggleTag}
           users={users}

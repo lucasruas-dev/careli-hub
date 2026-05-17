@@ -12,10 +12,10 @@ import type {
 } from "@/modules/guardian/attendance/types";
 
 type FinancialSnapshotRow = {
+  created_at: string | null;
   critical_contracts: number | string | null;
   delinquency_base_amount: number | string | null;
   delinquency_rate: number | string | null;
-  generated_at: string;
   liquidated_amount: number | string | null;
   liquidated_payments: number | string | null;
   monthly_recovery_amount: number | string | null;
@@ -25,6 +25,7 @@ type FinancialSnapshotRow = {
   overdue_payments: number | string | null;
   pending_amount: number | string | null;
   pending_payments: number | string | null;
+  snapshot_at: string;
   total_portfolio_amount: number | string | null;
   total_portfolio_payments: number | string | null;
   id: string;
@@ -112,7 +113,7 @@ export async function loadGuardianOverviewReadModel(): Promise<GuardianOverviewS
   return {
     billingComposition: mapDistributionRows(compositionResult.data ?? []),
     enterprisePerformance: mapEnterpriseRows(enterpriseResult.data ?? []),
-    generatedAt: snapshot.generated_at,
+    generatedAt: snapshot.snapshot_at ?? snapshot.created_at ?? new Date().toISOString(),
     overdueAging: mapDistributionRows(agingResult.data ?? []),
     overduePayments: [],
     paymentStatuses: [],
@@ -177,6 +178,25 @@ export async function loadGuardianAttendanceQueueReadModel(
   return data.map(mapAttendanceQueueRow);
 }
 
+export async function countGuardianAttendanceQueueReadModel(): Promise<number | null> {
+  const adminClient = createSupabaseAdminClient();
+
+  if (!adminClient) {
+    return null;
+  }
+
+  const { count, error } = await adminClient
+    .from("c2x_guardian_attendance_queue")
+    .select("id", { count: "exact", head: true })
+    .eq("is_current", true);
+
+  if (error) {
+    return null;
+  }
+
+  return count ?? null;
+}
+
 function mapEnterpriseRows(
   rows: EnterprisePerformanceRow[],
 ): GuardianEnterprisePerformance[] {
@@ -218,9 +238,40 @@ function mapAttendanceQueueRow(row: AttendanceQueueRow): QueueClient {
   const rowId = String(row.client_c2x_id ?? row.id);
   const unitIds = metadataStringArray(row.metadata, "unitIds");
   const unitId = unitIds[0] ?? `c2x-unit-${rowId}`;
+  const metadataUnits = metadataRecordArray(row.metadata, "units");
   const phone = row.phone?.trim() || "Sem telefone";
   const dados360Metadata = metadataRecord(row.metadata, "dados360");
   const conjugeMetadata = metadataRecord(dados360Metadata, "conjugeDados");
+  const fallbackUnit = {
+    area: "-",
+    empreendimento: enterpriseName,
+    id: unitId,
+    imobiliariaCorretor: linkedPartyName,
+    lote: parseLotFromUnitLabel(unitLabel),
+    matricula: unitLabel,
+    quadra: parseBlockFromUnitLabel(unitLabel),
+    statusVenda: "Contrato ativo",
+    unidadeLote: unitLabel,
+    valorTabela: "-",
+  };
+  const units =
+    metadataUnits.length > 0
+      ? metadataUnits.map((unit, index) => ({
+          area: metadataString(unit, "area", fallbackUnit.area),
+          empreendimento: metadataString(unit, "empreendimento", enterpriseName),
+          id: metadataString(unit, "id", unitIds[index] ?? `c2x-unit-${rowId}-${index + 1}`),
+          imobiliariaCorretor: metadataString(unit, "imobiliariaCorretor", linkedPartyName),
+          lote: metadataString(unit, "lote", fallbackUnit.lote),
+          matricula: metadataString(unit, "matricula", metadataString(unit, "unidadeLote", unitLabel)),
+          quadra: metadataString(unit, "quadra", fallbackUnit.quadra),
+          signedContractDocumentId: metadataString(unit, "signedContractDocumentId", "") || undefined,
+          signedContractStatus: metadataString(unit, "signedContractStatus", "") || undefined,
+          signedContractUrl: metadataString(unit, "signedContractUrl", "") || undefined,
+          statusVenda: metadataString(unit, "statusVenda", "Contrato ativo"),
+          unidadeLote: metadataString(unit, "unidadeLote", unitLabel),
+          valorTabela: metadataString(unit, "valorTabela", "-"),
+        }))
+      : [fallbackUnit];
 
   return {
     agreement: buildEmptyAgreement({
@@ -237,20 +288,7 @@ function mapAttendanceQueueRow(row: AttendanceQueueRow): QueueClient {
     carteira: {
       empreendimento: enterpriseName,
       imobiliariaCorretor: linkedPartyName,
-      unidades: [
-        {
-          area: "-",
-          empreendimento: enterpriseName,
-          id: unitId,
-          imobiliariaCorretor: linkedPartyName,
-          lote: "-",
-          matricula: unitLabel,
-          quadra: "-",
-          statusVenda: "Contrato ativo",
-          unidadeLote: unitLabel,
-          valorTabela: "-",
-        },
-      ],
+      unidades: units,
     },
     c2xInstallments: [],
     c2xInstallmentsLoaded: false,
@@ -339,10 +377,10 @@ function toNumber(value: number | string | null | undefined) {
 }
 
 function normalizeQueueLimit(value: number | null | undefined) {
-  const parsed = Number(value ?? 1_000);
+  const parsed = Number(value ?? 50);
 
   if (!Number.isFinite(parsed)) {
-    return 1_000;
+    return 50;
   }
 
   return Math.min(Math.max(Math.trunc(parsed), 20), 2_000);
@@ -507,6 +545,31 @@ function metadataStringArray(metadata: Record<string, unknown> | null, key: stri
   return value
     .map((item) => (typeof item === "string" ? item.trim() : ""))
     .filter(Boolean);
+}
+
+function metadataRecordArray(metadata: Record<string, unknown> | null, key: string) {
+  const value = metadata?.[key];
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is Record<string, unknown> =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item),
+  );
+}
+
+function parseBlockFromUnitLabel(value: string) {
+  const match = value.match(/\bQ(?:uadra)?\s*([A-Za-z0-9-]+)/i);
+
+  return match?.[1] ? `Q${match[1]}` : "-";
+}
+
+function parseLotFromUnitLabel(value: string) {
+  const match = value.match(/\bL(?:ote)?\s*([A-Za-z0-9-]+)/i);
+
+  return match?.[1] ? `L${match[1]}` : "-";
 }
 
 function formatSyncedAt(value: string | null) {

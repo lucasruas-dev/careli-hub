@@ -42,7 +42,10 @@ import type { OperationalTimelineEvent, PortfolioUnit, QueueClient } from "@/mod
 type ClientDetailPanelProps = {
   client: QueueClient;
   extraTimelineEvents?: OperationalTimelineEvent[];
+  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onCreateTimelineEvent?: (event: OperationalTimelineEvent) => Promise<void>;
   onOpenWhatsApp: () => void;
+  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
 };
 type WorkspaceTab = "overview" | "client" | "portfolio" | "timeline" | "agreements";
 type UnitSubtab = "summary" | "installments" | "agreements" | "timeline" | "risk" | "documents";
@@ -67,7 +70,10 @@ const unitSubtabs: Array<{ id: UnitSubtab; label: string; icon: typeof LayoutDas
 export function ClientDetailPanel({
   client,
   extraTimelineEvents = [],
+  onCreateCommitment,
+  onCreateTimelineEvent,
   onOpenWhatsApp,
+  onUpdateCommitment,
 }: ClientDetailPanelProps) {
   const firstUnitId = client.carteira.unidades[0]?.id ?? "";
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
@@ -144,12 +150,16 @@ export function ClientDetailPanel({
                 <MessageCircle className="size-4" aria-hidden="true" />
               </button>
             </Tooltip>
-            <span title={`Workflow: ${client.workflow.stage}`} className={`inline-flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset ${workflowStageStyles[client.workflow.stage]}`}>
-              WF
-            </span>
-            <span title={`Prioridade: ${client.prioridade}`} className={`inline-flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset ${priorityStyles[client.prioridade]}`}>
-              P
-            </span>
+            <Tooltip content={`Workflow: ${client.workflow.stage}`} placement="bottom">
+              <span className={`inline-flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset ${workflowStageStyles[client.workflow.stage]}`}>
+                WF
+              </span>
+            </Tooltip>
+            <Tooltip content={`Prioridade: ${client.prioridade}`} placement="bottom">
+              <span className={`inline-flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset ${priorityStyles[client.prioridade]}`}>
+                P
+              </span>
+            </Tooltip>
           </div>
         </div>
 
@@ -189,6 +199,8 @@ export function ClientDetailPanel({
             onGoToAgreements: goToAgreements,
             onOpenRiskAnalysis: () => setRiskModalOpen(true),
             onGoToTimeline: () => setActiveTab("timeline"),
+            onCreateCommitment,
+            onCreateTimelineEvent,
             onOpenAi: () => setAiModalOpen(true),
             onOpenPortfolio: openPortfolio,
             onOpenUnitSubtab: openUnitSubtab,
@@ -196,6 +208,7 @@ export function ClientDetailPanel({
             onTogglePortfolioMaximized: () => setPortfolioMaximized((current) => !current),
             onSetUnitSubtab: setUnitSubtab,
             onUnitFilterChange: setUnitFilterId,
+            onUpdateCommitment,
             portfolioListCollapsed,
             portfolioMaximized,
             portfolioUnit,
@@ -309,6 +322,8 @@ function renderWorkspaceTab(props: {
   onOpenWhatsApp: () => void;
   onGoToAgreements: (focus?: "default" | "recovery") => void;
   onGoToTimeline: () => void;
+  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onCreateTimelineEvent?: (event: OperationalTimelineEvent) => Promise<void>;
   onOpenAi: () => void;
   onOpenRiskAnalysis: () => void;
   onOpenPortfolio: (unitId?: string) => void;
@@ -317,6 +332,7 @@ function renderWorkspaceTab(props: {
   onTogglePortfolioMaximized: () => void;
   onSetUnitSubtab: (subtab: UnitSubtab) => void;
   onUnitFilterChange: (unitId: "all" | string) => void;
+  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
   portfolioListCollapsed: boolean;
   portfolioMaximized: boolean;
   portfolioUnit?: PortfolioUnit;
@@ -331,6 +347,8 @@ function renderWorkspaceTab(props: {
     onOpenWhatsApp,
     onGoToAgreements,
     onGoToTimeline,
+    onCreateCommitment,
+    onCreateTimelineEvent,
     onOpenAi,
     onOpenRiskAnalysis,
     onOpenPortfolio,
@@ -339,6 +357,7 @@ function renderWorkspaceTab(props: {
     onTogglePortfolioMaximized,
     onSetUnitSubtab,
     onUnitFilterChange,
+    onUpdateCommitment,
     portfolioListCollapsed,
     portfolioMaximized,
     portfolioUnit,
@@ -365,13 +384,20 @@ function renderWorkspaceTab(props: {
           selectedUnit={portfolioUnit}
           selectedSubtab={unitSubtab}
           timelineEvents={timelineEvents}
+          onCreateCommitment={onCreateCommitment}
+          onCreateTimelineEvent={onCreateTimelineEvent}
           onSelectSubtab={onSetUnitSubtab}
           onSelectUnit={(unitId) => onOpenUnitSubtab("summary", unitId)}
+          onUpdateCommitment={onUpdateCommitment}
         />
       );
     case "timeline":
       return (
-        <OperationalTimeline events={timelineEvents} />
+        <OperationalTimeline
+          client={client}
+          events={timelineEvents}
+          onCreateEvent={onCreateTimelineEvent}
+        />
       );
     case "agreements":
       return (
@@ -381,6 +407,8 @@ function renderWorkspaceTab(props: {
           <AgreementsCenterCard
             key={`${client.id}-${selectedAgreementUnit?.id ?? "all"}`}
             client={client}
+            onCreateCommitment={onCreateCommitment}
+            onUpdateCommitment={onUpdateCommitment}
             unit={selectedAgreementUnit}
           />
         </>
@@ -701,8 +729,11 @@ function PortfolioTab({
   maximized,
   onSelectSubtab,
   onSelectUnit,
+  onCreateCommitment,
+  onCreateTimelineEvent,
   onToggleCollapsed,
   onToggleMaximized,
+  onUpdateCommitment,
   selectedSubtab,
   selectedUnit,
   timelineEvents,
@@ -712,8 +743,11 @@ function PortfolioTab({
   maximized: boolean;
   onSelectSubtab: (subtab: UnitSubtab) => void;
   onSelectUnit: (unitId: string) => void;
+  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onCreateTimelineEvent?: (event: OperationalTimelineEvent) => Promise<void>;
   onToggleCollapsed: () => void;
   onToggleMaximized: () => void;
+  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
   selectedSubtab: UnitSubtab;
   selectedUnit?: PortfolioUnit;
   timelineEvents: OperationalTimelineEvent[];
@@ -752,22 +786,22 @@ function PortfolioTab({
           {listCollapsed ? (
             <div className="flex flex-col items-center gap-2">
               {client.carteira.unidades.map((unit, index) => (
-                <button
-                  key={unit.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectUnit(unit.id);
-                    onSelectSubtab("summary");
-                  }}
-                  title={`${unit.empreendimento} · ${unit.quadra} ${unit.lote}`}
-                  className={`flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset transition-colors ${
-                    selectedUnit.id === unit.id
-                      ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20"
-                      : "bg-slate-50 text-slate-500 ring-slate-200/70 hover:bg-[#A07C3B]/5"
-                  }`}
-                >
-                  {index + 1}
-                </button>
+                <Tooltip key={unit.id} content={`${unit.empreendimento} · ${unit.quadra} ${unit.lote}`} placement="right">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectUnit(unit.id);
+                      onSelectSubtab("summary");
+                    }}
+                    className={`flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset transition-colors ${
+                      selectedUnit.id === unit.id
+                        ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20"
+                        : "bg-slate-50 text-slate-500 ring-slate-200/70 hover:bg-[#A07C3B]/5"
+                    }`}
+                  >
+                    {index + 1}
+                  </button>
+                </Tooltip>
               ))}
             </div>
           ) : (
@@ -847,7 +881,17 @@ function PortfolioTab({
 
         <SubtabNav selectedSubtab={selectedSubtab} onSelectSubtab={onSelectSubtab} />
 
-        <div className="mt-5">{renderUnitSubtab(client, selectedUnit, selectedSubtab, timelineEvents)}</div>
+        <div className="mt-5">
+          {renderUnitSubtab({
+            client,
+            onCreateCommitment,
+            onCreateTimelineEvent,
+            onUpdateCommitment,
+            subtab: selectedSubtab,
+            timelineEvents,
+            unit: selectedUnit,
+          })}
+        </div>
       </DetailSection>
     </section>
   );
@@ -886,18 +930,35 @@ function SubtabNav({
   );
 }
 
-function renderUnitSubtab(
+function renderUnitSubtab({
+  client,
+  onCreateCommitment,
+  onCreateTimelineEvent,
+  onUpdateCommitment,
+  subtab,
+  timelineEvents,
+  unit,
+}: {
   client: QueueClient,
   unit: PortfolioUnit,
   subtab: UnitSubtab,
-  timelineEvents: OperationalTimelineEvent[]
-) {
+  timelineEvents: OperationalTimelineEvent[];
+  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onCreateTimelineEvent?: (event: OperationalTimelineEvent) => Promise<void>;
+  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+}) {
   if (subtab === "installments") return <InstallmentsCard client={client} unit={unit} />;
   if (subtab === "agreements") {
     return (
       <>
         <UnitContext label="Acordos filtrados pela unidade" unit={unit} />
-        <AgreementsCenterCard key={`${client.id}-${unit.id}`} client={client} unit={unit} />
+        <AgreementsCenterCard
+          key={`${client.id}-${unit.id}`}
+          client={client}
+          onCreateCommitment={onCreateCommitment}
+          onUpdateCommitment={onUpdateCommitment}
+          unit={unit}
+        />
       </>
     );
   }
@@ -905,7 +966,12 @@ function renderUnitSubtab(
     return (
       <>
         <UnitContext label="Timeline filtrada pela unidade" unit={unit} />
-        <OperationalTimeline events={timelineEvents} />
+        <OperationalTimeline
+          client={client}
+          defaultUnit={unit}
+          events={timelineEvents}
+          onCreateEvent={onCreateTimelineEvent}
+        />
       </>
     );
   }
@@ -1213,22 +1279,23 @@ function ActionMetric({
   value: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={`${label}: ${value}`}
-      className="group rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
-    >
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p
-        className={`mt-2 font-semibold tracking-normal ${
-          compact ? "line-clamp-2 text-sm leading-5" : "truncate text-lg"
-        } ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}
+    <Tooltip content={`${label}: ${value}`} placement="bottom" className="w-full" triggerClassName="w-full">
+      <button
+        type="button"
+        onClick={onClick}
+        className="group w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
       >
-        {value}
-      </p>
-      <ArrowRight className="mt-2 size-3.5 text-[#A07C3B] opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
-    </button>
+        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <p
+          className={`mt-2 font-semibold tracking-normal ${
+            compact ? "line-clamp-2 text-sm leading-5" : "truncate text-lg"
+          } ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}
+        >
+          {value}
+        </p>
+        <ArrowRight className="mt-2 size-3.5 text-[#A07C3B] opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -1256,9 +1323,11 @@ function MetricTile({
 
 function InfoPanel({ title, value }: { title: string; value: string }) {
   return (
-    <div title={value} className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+    <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
       <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{title}</p>
-      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">{value}</p>
+      <Tooltip content={value} placement="bottom">
+        <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">{value}</span>
+      </Tooltip>
     </div>
   );
 }

@@ -15,12 +15,20 @@ import {
   Image,
   Info,
   Mic,
+  Pencil,
   Reply,
   Tag,
   Video,
+  X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
-import { useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   getPulseXMessageTagClassName,
   getPulseXMessageTagLabel,
@@ -32,6 +40,10 @@ type MessageItemProps = {
   currentUserId?: PulseXPresenceUser["id"];
   message: PulseXMessage;
   onOpenThread?: (messageId: PulseXMessage["id"]) => void;
+  onEditMessage?: (
+    messageId: PulseXMessage["id"],
+    body: string,
+  ) => Promise<void> | void;
   onToggleTag?: (
     messageId: PulseXMessage["id"],
     tag: PulseXMessageTag,
@@ -48,17 +60,61 @@ export function MessageItem({
   author,
   currentUserId,
   message,
+  onEditMessage,
   onOpenThread,
   onToggleTag,
   users = [],
 }: MessageItemProps) {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState(message.body);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isTagMenuOpen, setIsTagMenuOpen] = useState(false);
   const isOwn = message.authorId === currentUserId;
   const authorName = getAuthorName(author, message);
   const authorAvatarUrl = author?.avatarUrl ?? message.authorAvatarUrl;
   const authorInitials = author?.initials ?? getInitials(authorName);
   const deliveryState = getDeliveryState({ message, users });
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditValue(message.body);
+    }
+  }, [isEditing, message.body]);
+
+  async function handleSubmitEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const nextBody = editValue.trim();
+
+    if (!nextBody || nextBody === message.body || !onEditMessage) {
+      setIsEditing(false);
+      setEditError(null);
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError(null);
+
+    try {
+      await onEditMessage(message.id, nextBody);
+      setIsEditing(false);
+    } catch {
+      setEditError("Nao foi possivel editar.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }
+
+  function handleEditKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setEditValue(message.body);
+      setEditError(null);
+      setIsEditing(false);
+    }
+  }
 
   return (
     <div
@@ -95,9 +151,51 @@ export function MessageItem({
         {message.attachment ? (
           <MessageAttachmentPreview attachment={message.attachment} />
         ) : null}
-        <p className="m-0 whitespace-pre-wrap text-sm leading-6">
-          {message.deletedAt ? "Mensagem apagada" : renderMessageBody(message)}
-        </p>
+        {isEditing ? (
+          <form className="grid gap-2" onSubmit={handleSubmitEdit}>
+            <textarea
+              aria-label="Editar mensagem"
+              className="max-h-32 min-h-20 resize-none rounded-md border border-[#d9e0ea] bg-white px-3 py-2 text-sm leading-5 text-[#121722] outline-none transition focus:border-[#A07C3B]"
+              disabled={isSavingEdit}
+              onChange={(event) => setEditValue(event.target.value)}
+              onKeyDown={handleEditKeyDown}
+              rows={3}
+              value={editValue}
+            />
+            {editError ? (
+              <span className="text-xs font-medium text-rose-600">
+                {editError}
+              </span>
+            ) : null}
+            <span className="flex justify-end gap-1.5">
+              <button
+                aria-label="Cancelar edicao"
+                className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                disabled={isSavingEdit}
+                onClick={() => {
+                  setEditValue(message.body);
+                  setEditError(null);
+                  setIsEditing(false);
+                }}
+                type="button"
+              >
+                <X aria-hidden="true" size={15} />
+              </button>
+              <button
+                aria-label="Salvar edicao"
+                className="grid h-8 w-8 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0ea]"
+                disabled={isSavingEdit || !editValue.trim()}
+                type="submit"
+              >
+                <Check aria-hidden="true" size={15} />
+              </button>
+            </span>
+          </form>
+        ) : (
+          <p className="m-0 whitespace-pre-wrap text-sm leading-6">
+            {message.deletedAt ? "Mensagem apagada" : renderMessageBody(message)}
+          </p>
+        )}
         <div className="mt-1 flex items-center justify-end gap-2 text-[0.66rem] opacity-70">
           {message.editedAt ? <span>editada</span> : null}
           <span>{message.timestamp}</span>
@@ -139,6 +237,22 @@ export function MessageItem({
               ) : null}
             </button>
           </Tooltip>
+          {isOwn && onEditMessage && !message.deletedAt ? (
+            <Tooltip content="Editar mensagem">
+              <button
+                aria-label="Editar mensagem"
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+                onClick={() => {
+                  setEditValue(message.body);
+                  setEditError(null);
+                  setIsEditing(true);
+                }}
+                type="button"
+              >
+                <Pencil aria-hidden="true" size={12} />
+              </button>
+            </Tooltip>
+          ) : null}
           <div className="relative">
             <Tooltip content="Marcar mensagem">
               <button

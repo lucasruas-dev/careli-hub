@@ -28,6 +28,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 
 type KpiId =
@@ -522,23 +523,24 @@ function MonitoringKpi({
   }[tone];
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={helper}
-      className="group rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#A07C3B]/20 hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{label}</p>
-          <p className="mt-2 text-xl font-semibold tracking-normal text-slate-950">{value}</p>
-          <p className="mt-1 line-clamp-1 text-xs text-slate-500">{helper}</p>
+    <Tooltip content={helper} placement="bottom" className="w-full" triggerClassName="w-full">
+      <button
+        type="button"
+        onClick={onClick}
+        className="group w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#A07C3B]/20 hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{label}</p>
+            <p className="mt-2 text-xl font-semibold tracking-normal text-slate-950">{value}</p>
+            <p className="mt-1 line-clamp-1 text-xs text-slate-500">{helper}</p>
+          </div>
+          <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform duration-200 group-hover:scale-105 ${toneClass}`}>
+            <Icon className="size-4" aria-hidden="true" />
+          </div>
         </div>
-        <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform duration-200 group-hover:scale-105 ${toneClass}`}>
-          <Icon className="size-4" aria-hidden="true" />
-        </div>
-      </div>
-    </button>
+      </button>
+    </Tooltip>
   );
 }
 
@@ -572,7 +574,6 @@ function OperationalPanel({
       <button
         type="button"
         onClick={() => onToggle(id)}
-        title={summary}
         className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-slate-50/70 lg:flex-row lg:items-center lg:justify-between"
         aria-expanded={expanded}
       >
@@ -585,15 +586,18 @@ function OperationalPanel({
               </span>
             ) : null}
           </div>
-          <p className="mt-1 line-clamp-1 text-xs text-slate-500">{summary}</p>
+          <Tooltip content={summary} placement="bottom">
+            <span className="mt-1 line-clamp-1 text-xs text-slate-500">{summary}</span>
+          </Tooltip>
         </div>
-        <span
-          title={expanded ? "Recolher painel" : "Expandir painel"}
-          aria-label={expanded ? "Recolher painel" : "Expandir painel"}
-          className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600"
-        >
-          <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
-        </span>
+        <Tooltip content={expanded ? "Recolher painel" : "Expandir painel"} placement="left">
+          <span
+            aria-label={expanded ? "Recolher painel" : "Expandir painel"}
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600"
+          >
+            <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+          </span>
+        </Tooltip>
       </button>
       <div
         className={`grid transition-all duration-300 ease-out ${

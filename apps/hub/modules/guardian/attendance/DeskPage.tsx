@@ -25,6 +25,7 @@ import {
   Wifi,
   X,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { TicketOperationsQueue } from "@/modules/guardian/attendance/components/TicketOperationsQueue";
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
@@ -38,6 +39,7 @@ type DeskPageProps = {
 };
 
 type CareDeskSignalTone = "live" | "gold" | "danger" | "neutral" | "blue";
+const INITIAL_QUEUE_LIMIT = 50;
 const emptyQueueClients: QueueClient[] = [];
 
 export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFromC2x = false }: DeskPageProps) {
@@ -69,7 +71,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
       setError(null);
 
       try {
-        const response = await fetch("/api/guardian/attendance/queue?limit=1000", {
+        const response = await fetch(`/api/guardian/attendance/queue?limit=${INITIAL_QUEUE_LIMIT}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${await getCareDeskAccessToken()}`,
@@ -257,16 +259,17 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
                   <p className="text-xs font-medium text-slate-500">Assistente Virtual da Careli</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => openWhatsApp(careDesk.focusClient?.id)}
-                disabled={!careDesk.focusClient}
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Abrir caso sugerido"
-                aria-label="Abrir caso sugerido"
-              >
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </button>
+              <Tooltip content="Abrir caso sugerido" placement="left">
+                <button
+                  type="button"
+                  onClick={() => openWhatsApp(careDesk.focusClient?.id)}
+                  disabled={!careDesk.focusClient}
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Abrir caso sugerido"
+                >
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
             </div>
 
             <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
@@ -331,25 +334,27 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
             </button>
           </div>
           <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => openWhatsApp(careDesk.focusClient?.id)}
-              title="Abrir atendimento"
-              aria-label="Abrir atendimento"
-              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35]"
-            >
-              <MessageCircle className="size-4" aria-hidden="true" />
-              Atender
-            </button>
-            <button
-              type="button"
-              onClick={() => setToastVisible(false)}
-              title="Ignorar"
-              aria-label="Ignorar"
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
+            <Tooltip content="Abrir atendimento" placement="top" className="flex-1" triggerClassName="w-full">
+              <button
+                type="button"
+                onClick={() => openWhatsApp(careDesk.focusClient?.id)}
+                aria-label="Abrir atendimento"
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+              >
+                <MessageCircle className="size-4" aria-hidden="true" />
+                Atender
+              </button>
+            </Tooltip>
+            <Tooltip content="Ignorar" placement="top">
+              <button
+                type="button"
+                onClick={() => setToastVisible(false)}
+                aria-label="Ignorar"
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
           </div>
         </div>
       ) : null}

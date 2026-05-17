@@ -49,7 +49,7 @@ export function CallParticipantTile({
   }, [mediaStream]);
 
   return (
-    <article className="relative min-h-36 overflow-hidden rounded-lg border border-white/10 bg-[#141923] p-3 text-white shadow-sm">
+    <article className="relative min-h-[18rem] overflow-hidden rounded-lg border border-white/10 bg-[#141923] p-3 text-white shadow-sm">
       {!isLocalMedia ? <audio autoPlay ref={audioRef} /> : null}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
         <CallStateIcon enabled={!participant.isMuted} type="mic" />
@@ -88,7 +88,7 @@ export function CallParticipantTile({
           <ParticipantCaption participant={participant} compact />
         </div>
       ) : (
-        <div className="relative flex h-full min-h-28 flex-col items-center justify-center gap-3">
+        <div className="relative flex h-full min-h-64 flex-col items-center justify-center gap-3">
           <ParticipantAvatar participant={participant} />
           <ParticipantCaption participant={participant} />
         </div>

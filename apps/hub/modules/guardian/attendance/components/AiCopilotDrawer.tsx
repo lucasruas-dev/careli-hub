@@ -51,9 +51,17 @@ type PendingBoletoAction = {
 
 type AiCopilotDrawerProps = {
   client: QueueClient;
+  filteredQueueClients?: QueueClient[];
+  queueClients?: QueueClient[];
+  queueTotalCount?: number;
 };
 
-export function AiCopilotDrawer({ client }: AiCopilotDrawerProps) {
+export function AiCopilotDrawer({
+  client,
+  filteredQueueClients,
+  queueClients,
+  queueTotalCount,
+}: AiCopilotDrawerProps) {
   const { hubUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -165,10 +173,18 @@ export function AiCopilotDrawer({ client }: AiCopilotDrawerProps) {
       const response = await askHubAi({
         context: {
           ...buildGuardianClientAiContext(client),
+          escopoDaResposta:
+            "O cliente aberto e o foco principal da tela. Se o operador perguntar sobre carteira, fila, total de clientes, risco geral, empreendimentos ou visao geral, use filaOperacional/contextoGeral antes de dizer que falta informacao.",
+          filaOperacional: buildGuardianQueueAiContext({
+            clients: queueClients ?? [client],
+            filteredClients: filteredQueueClients,
+            selectedClient: client,
+            totalCount: queueTotalCount,
+          }),
           instrucaoUsuarioLogado: getHubAiUserInstruction(aiUserContext),
           usuarioLogado: aiUserContext,
         },
-        feature: "Guardian / cobranca / detalhe do cliente",
+        feature: "Guardian / cobranca / detalhe do cliente e fila operacional",
         messages: mapHubAiMessages(history),
         module: "guardian",
         prompt: question,
@@ -842,8 +858,8 @@ function buildGuardianClientAiContext(client: QueueClient) {
         empreendimento: unit.empreendimento,
         lote: unit.lote,
         quadra: unit.quadra,
-        statusContrato: unit.statusContrato,
-        valor: unit.valor,
+        statusContrato: unit.signedContractStatus ?? unit.statusVenda,
+        valor: unit.valorTabela,
       })),
       empreendimentoPrincipal: client.carteira.empreendimento,
       regraContratos: "No Guardian, cada unidade vinculada representa um contrato operacional.",
@@ -853,8 +869,8 @@ function buildGuardianClientAiContext(client: QueueClient) {
         empreendimento: unit.empreendimento,
         lote: unit.lote,
         quadra: unit.quadra,
-        statusContrato: unit.statusContrato,
-        valor: unit.valor,
+        statusContrato: unit.signedContractStatus ?? unit.statusVenda,
+        valor: unit.valorTabela,
       })),
     },
     cliente: {
@@ -873,6 +889,7 @@ function buildGuardianClientAiContext(client: QueueClient) {
       idade: client.dados360.idade,
       nacionalidade: client.dados360.nacionalidade,
       naturalidade: client.dados360.naturalidade,
+      id: client.id,
       nome: client.nome,
       nomeFantasia: client.dados360.nomeFantasia,
       nomeMae: client.dados360.nomeMae,
@@ -902,6 +919,152 @@ function buildGuardianClientAiContext(client: QueueClient) {
       proximaAcao: client.workflow.nextAction,
     },
   };
+}
+
+function buildGuardianQueueAiContext({
+  clients,
+  filteredClients,
+  selectedClient,
+  totalCount,
+}: {
+  clients: QueueClient[];
+  filteredClients?: QueueClient[];
+  selectedClient: QueueClient;
+  totalCount?: number;
+}) {
+  const uniqueClients = dedupeAiClientsById(clients);
+  const uniqueFilteredClients = filteredClients
+    ? dedupeAiClientsById(filteredClients)
+    : uniqueClients;
+  const overdueClients = uniqueClients.filter((client) => client.parcelas.vencidas > 0);
+  const overdueInstallments = overdueClients.reduce(
+    (total, client) => total + Number(client.parcelas.vencidas ?? 0),
+    0,
+  );
+  const overdueAmount = overdueClients.reduce(
+    (total, client) => total + parseAiCurrency(client.saldoDevedor),
+    0,
+  );
+
+  return {
+    aviso:
+      "Este snapshot e o contexto geral da fila/carteira carregada no Guardian. Use para perguntas gerais sem abandonar o cliente aberto como foco principal.",
+    clienteAberto: {
+      atrasoDias: selectedClient.atrasoDias,
+      id: selectedClient.id,
+      nome: selectedClient.nome,
+      parcelasVencidas: selectedClient.parcelas.vencidas,
+      prioridade: selectedClient.prioridade,
+      saldoVencido: selectedClient.saldoDevedor,
+    },
+    filtrosAtuais: {
+      clientesNoFiltroAtual: uniqueFilteredClients.length,
+      topClientesNoFiltro: summarizeAiClients(uniqueFilteredClients, 8),
+    },
+    porEmpreendimento: summarizeAiByEnterprise(uniqueClients),
+    porRisco: summarizeAiByPriority(uniqueClients),
+    topClientesPorRisco: summarizeAiClients(
+      [...uniqueClients].sort(compareAiQueueRisk),
+      12,
+    ),
+    totais: {
+      clientesCarregadosNoContexto: uniqueClients.length,
+      clientesEmAtraso: overdueClients.length,
+      clientesNaFila: totalCount ?? uniqueClients.length,
+      parcelasVencidas: overdueInstallments,
+      saldoEmAtraso: formatAiCurrency(overdueAmount),
+    },
+  };
+}
+
+function dedupeAiClientsById(clients: QueueClient[]) {
+  const clientsById = new Map<string, QueueClient>();
+
+  clients.forEach((client) => {
+    clientsById.set(client.id, client);
+  });
+
+  return [...clientsById.values()];
+}
+
+function summarizeAiByPriority(clients: QueueClient[]) {
+  return ["Crítica", "Alta", "Média", "Baixa"].map((priority) => {
+    const priorityClients = clients.filter((client) => client.prioridade === priority);
+
+    return {
+      clientes: priorityClients.length,
+      parcelasVencidas: priorityClients.reduce(
+        (total, client) => total + Number(client.parcelas.vencidas ?? 0),
+        0,
+      ),
+      risco: priority,
+      saldoEmAtraso: formatAiCurrency(
+        priorityClients.reduce(
+          (total, client) => total + parseAiCurrency(client.saldoDevedor),
+          0,
+        ),
+      ),
+    };
+  });
+}
+
+function summarizeAiByEnterprise(clients: QueueClient[]) {
+  const enterprises = new Map<string, QueueClient[]>();
+
+  clients.forEach((client) => {
+    const name = client.carteira.empreendimento || "Sem empreendimento";
+    enterprises.set(name, [...(enterprises.get(name) ?? []), client]);
+  });
+
+  return [...enterprises.entries()]
+    .map(([enterprise, enterpriseClients]) => ({
+      clientes: enterpriseClients.length,
+      empreendimento: enterprise,
+      parcelasVencidas: enterpriseClients.reduce(
+        (total, client) => total + Number(client.parcelas.vencidas ?? 0),
+        0,
+      ),
+      saldoEmAtraso: formatAiCurrency(
+        enterpriseClients.reduce(
+          (total, client) => total + parseAiCurrency(client.saldoDevedor),
+          0,
+        ),
+      ),
+    }))
+    .sort((first, second) => second.parcelasVencidas - first.parcelasVencidas)
+    .slice(0, 12);
+}
+
+function summarizeAiClients(clients: QueueClient[], limit: number) {
+  return clients.slice(0, limit).map((client) => ({
+    atrasoDias: client.atrasoDias,
+    empreendimento: client.carteira.empreendimento,
+    id: client.id,
+    nome: client.nome,
+    parcelasVencidas: client.parcelas.vencidas,
+    prioridade: client.prioridade,
+    saldoVencido: client.saldoDevedor,
+    unidadePrincipal: client.carteira.unidades[0]?.unidadeLote ?? "-",
+  }));
+}
+
+function compareAiQueueRisk(first: QueueClient, second: QueueClient) {
+  return (
+    Number(second.parcelas.vencidas ?? 0) - Number(first.parcelas.vencidas ?? 0) ||
+    Number(second.atrasoDias ?? 0) - Number(first.atrasoDias ?? 0) ||
+    parseAiCurrency(second.saldoDevedor) - parseAiCurrency(first.saldoDevedor)
+  );
+}
+
+function parseAiCurrency(value: string) {
+  const normalized = value
+    .replace(/\s/g, "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function buildDetailedInstallmentContext(client: QueueClient) {

@@ -18,6 +18,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { agreementRiskStyles, agreementStatusStyles } from "@/modules/guardian/attendance/agreements";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import type {
@@ -38,6 +39,8 @@ type EditableCommitment = {
 
 type AgreementsCenterCardProps = {
   client: QueueClient;
+  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
   unit?: PortfolioUnit;
 };
 
@@ -55,8 +58,14 @@ const typeStyles: Record<CommitmentType, string> = {
   Acordo: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
 };
 
-export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps) {
+export function AgreementsCenterCard({
+  client,
+  onCreateCommitment,
+  onUpdateCommitment,
+  unit,
+}: AgreementsCenterCardProps) {
   const [records, setRecords] = useState(client.commitments);
+  const [feedback, setFeedback] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<"Todos" | CommitmentType>("Todos");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [operatorFilter, setOperatorFilter] = useState("Todos");
@@ -96,6 +105,10 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    setRecords(client.commitments);
+  }, [client.commitments]);
+
   function toggleFilters() {
     setFiltersExpanded((current) => {
       const next = !current;
@@ -104,9 +117,41 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
     });
   }
 
-  function addMockRecord(mode: Exclude<CommitmentDrawerMode, "Editar compromisso">) {
+  async function persistCreatedCommitment(record: Commitment) {
+    if (!onCreateCommitment) {
+      return;
+    }
+
+    try {
+      await onCreateCommitment(record);
+      setFeedback("Compromisso salvo no histórico operacional.");
+    } catch (error) {
+      console.error("[guardian-agreements] commitment save failed", error);
+      setFeedback("Nao foi possivel salvar o compromisso agora.");
+    }
+  }
+
+  async function persistUpdatedCommitment(record: Commitment) {
+    if (!onUpdateCommitment) {
+      return;
+    }
+
+    try {
+      await onUpdateCommitment(record);
+      setFeedback("Compromisso atualizado no histórico operacional.");
+    } catch (error) {
+      console.error("[guardian-agreements] commitment update failed", error);
+      setFeedback("Nao foi possivel atualizar o compromisso agora.");
+    }
+  }
+
+  function addMockRecord(
+    mode: Exclude<CommitmentDrawerMode, "Editar compromisso">,
+    draft?: EditableCommitment,
+  ) {
     const baseUnit = unit ?? client.carteira.unidades[0];
-    const now = "11/05/2026 12:10";
+    const now = nowForDisplay();
+    const operator = draft?.operator || client.responsavel;
 
     if (mode === "Nova promessa") {
       const record: Commitment = {
@@ -117,11 +162,11 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
         unitCode: baseUnit.matricula,
         unitLabel: `${baseUnit.unidadeLote} · ${baseUnit.area}`,
         relatedInstallments: "04/60, 05/60",
-        promisedValue: client.parcelas.ultimaParcela,
-        promisedDate: "20/05/2026",
+        promisedValue: draft?.primaryValue || client.parcelas.ultimaParcela,
+        promisedDate: draft?.primaryDate || nowShortDate(),
         contactChannel: "WhatsApp",
-        operator: client.responsavel,
-        note: "Promessa criada pelo operador após contato positivo e validação de capacidade de pagamento.",
+        operator,
+        note: draft?.note || "Promessa criada manualmente pelo operador.",
         protocol: guardianProtocol(records.length + 101),
         status: "Promessa realizada",
         history: [
@@ -130,14 +175,15 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
             protocol: guardianProtocol(records.length + 102),
             action: "Promessa criada",
             occurredAt: now,
-            operator: client.responsavel,
-            description: "Evento automático disponível para Timeline operacional e Workflow.",
+            operator,
+            description: draft?.note || "Registro manual de promessa no Guardian.",
           },
         ],
       };
 
       setRecords((current) => [record, ...current]);
       setDrawer({ mode: "Editar compromisso", record });
+      void persistCreatedCommitment(record);
       return;
     }
 
@@ -152,14 +198,14 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
       includedInstallments: "03/60, 04/60, 05/60",
       originalValue: client.agreement.originalDebt,
       discount: client.agreement.discount,
-      negotiatedValue: client.agreement.negotiatedValue,
+      negotiatedValue: draft?.primaryValue || client.agreement.negotiatedValue,
       entry: client.agreement.entry,
-      entryDueDate: "18/05/2026",
+      entryDueDate: draft?.primaryDate || nowShortDate(),
       installmentsCount: client.agreement.installmentsCount,
       installmentValue: firstDue?.amount ?? client.parcelas.ultimaParcela,
       firstDueDate: firstDue?.dueDate ?? "10/06/2026",
-      operator: client.responsavel,
-      note: client.agreement.aiSuggestion.composition,
+      operator,
+      note: draft?.note || client.agreement.aiSuggestion.composition,
       protocol: guardianProtocol(records.length + 201),
       status: "Em negociação",
       risk: client.agreement.risk,
@@ -169,14 +215,15 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
           protocol: guardianProtocol(records.length + 202),
           action: "Acordo criado",
           occurredAt: now,
-          operator: client.responsavel,
-          description: "Evento automático disponível para Timeline operacional e Workflow.",
+          operator,
+          description: draft?.note || "Registro manual de acordo no Guardian.",
         },
       ],
     };
 
     setRecords((current) => [record, ...current]);
     setDrawer({ mode: "Editar compromisso", record });
+    void persistCreatedCommitment(record);
   }
 
   function updateStatus(record: Commitment, status: Commitment["status"], action: string) {
@@ -188,7 +235,7 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
           id: `${record.id}-${record.history.length + 1}`,
           protocol: guardianProtocol(record.history.length + 301),
           action,
-          occurredAt: "11/05/2026 12:24",
+          occurredAt: nowForDisplay(),
           operator: client.responsavel,
           description: `${action} registrada na Central de Compromissos para integração com Timeline e Workflow.`,
         },
@@ -198,6 +245,7 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
 
     setRecords((current) => current.map((item) => (item.id === record.id ? updatedRecord : item)));
     setDrawer((current) => (current?.record?.id === record.id ? { ...current, record: updatedRecord } : current));
+    void persistUpdatedCommitment(updatedRecord);
   }
 
   function updateRecord(record: Commitment, draft: EditableCommitment) {
@@ -219,7 +267,7 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
           id: `${record.id}-edit-${record.history.length + 1}`,
           protocol: guardianProtocol(record.history.length + 401),
           action: "Edição registrada",
-          occurredAt: "11/05/2026 12:32",
+          occurredAt: nowForDisplay(),
           operator: draft.operator,
           description: "Compromisso atualizado com trilha auditável para Timeline operacional.",
         },
@@ -229,6 +277,7 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
 
     setRecords((current) => current.map((item) => (item.id === record.id ? updatedRecord : item)));
     setDrawer((current) => (current?.record?.id === record.id ? { ...current, record: updatedRecord } : current));
+    void persistUpdatedCommitment(updatedRecord);
   }
 
   return (
@@ -252,26 +301,34 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setDrawer({ mode: "Nova promessa" })}
-            title="Nova promessa"
-            aria-label="Nova promessa"
-            className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
-          >
-            <Plus className="size-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setDrawer({ mode: "Novo acordo" })}
-            title="Novo acordo"
-            aria-label="Novo acordo"
-            className="inline-flex size-9 items-center justify-center rounded-lg bg-[#A07C3B] text-white shadow-[0_8px_18px_rgba(160,124,59,0.22)] transition-colors hover:bg-[#8E6F35]"
-          >
-            <Plus className="size-4" aria-hidden="true" />
-          </button>
+          <Tooltip content="Nova promessa" placement="bottom">
+            <button
+              type="button"
+              onClick={() => setDrawer({ mode: "Nova promessa" })}
+              aria-label="Nova promessa"
+              className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+            >
+              <Plus className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip content="Novo acordo" placement="bottom">
+            <button
+              type="button"
+              onClick={() => setDrawer({ mode: "Novo acordo" })}
+              aria-label="Novo acordo"
+              className="inline-flex size-9 items-center justify-center rounded-lg bg-[#A07C3B] text-white shadow-[0_8px_18px_rgba(160,124,59,0.22)] transition-colors hover:bg-[#8E6F35]"
+            >
+              <Plus className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
         </div>
       </div>
+
+      {feedback ? (
+        <div className="mb-3 rounded-lg border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+          {feedback}
+        </div>
+      ) : null}
 
       <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Promessas abertas" value={`${summary.openPromises}`} tone="gold" />
@@ -291,9 +348,11 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
               <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${filtersExpanded ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
             {activeFilters.map((filter) => (
-              <button key={`${filter.label}-${filter.value}`} type="button" onClick={filter.clear} title={`Remover ${filter.label}`} className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                <span className="truncate">{filter.value}</span><span aria-hidden="true">×</span>
-              </button>
+              <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
+                <button type="button" onClick={filter.clear} className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                  <span className="truncate">{filter.value}</span><span aria-hidden="true">×</span>
+                </button>
+              </Tooltip>
             ))}
           </div>
           <div className={`grid transition-all duration-300 ease-out ${filtersExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
@@ -402,22 +461,26 @@ export function AgreementsCenterCard({ client, unit }: AgreementsCenterCardProps
                 </div>
 
                 <div className="flex justify-end gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setDrawer({ mode: "Editar compromisso", record })}
-                    className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#A07C3B]"
-                    aria-label="Editar compromisso"
-                  >
-                    <Edit3 className="size-4" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePrimaryAction(record, updateStatus)}
-                    className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#A07C3B]"
-                    aria-label="Alterar status"
-                  >
-                    <RefreshCw className="size-4" aria-hidden="true" />
-                  </button>
+                  <Tooltip content="Editar compromisso" placement="top">
+                    <button
+                      type="button"
+                      onClick={() => setDrawer({ mode: "Editar compromisso", record })}
+                      className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#A07C3B]"
+                      aria-label="Editar compromisso"
+                    >
+                      <Edit3 className="size-4" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="Alterar status" placement="top">
+                    <button
+                      type="button"
+                      onClick={() => handlePrimaryAction(record, updateStatus)}
+                      className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#A07C3B]"
+                      aria-label="Alterar status"
+                    >
+                      <RefreshCw className="size-4" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
                 </div>
               </article>
             ))}
@@ -505,7 +568,10 @@ function CommitmentDrawer({
   client: QueueClient;
   mode: CommitmentDrawerMode;
   onClose: () => void;
-  onCreate: (mode: Exclude<CommitmentDrawerMode, "Editar compromisso">) => void;
+  onCreate: (
+    mode: Exclude<CommitmentDrawerMode, "Editar compromisso">,
+    draft: EditableCommitment,
+  ) => void;
   onSave: (record: Commitment, draft: EditableCommitment) => void;
   onStatusChange: (record: Commitment, status: Commitment["status"], action: string) => void;
   record?: Commitment;
@@ -559,38 +625,63 @@ function CreateCommitmentForm({
 }: {
   client: QueueClient;
   mode: Exclude<CommitmentDrawerMode, "Editar compromisso">;
-  onCreate: (mode: Exclude<CommitmentDrawerMode, "Editar compromisso">) => void;
+  onCreate: (
+    mode: Exclude<CommitmentDrawerMode, "Editar compromisso">,
+    draft: EditableCommitment,
+  ) => void;
 }) {
   const unit = client.carteira.unidades[0];
   const isPromise = mode === "Nova promessa";
+  const [draft, setDraft] = useState<EditableCommitment>({
+    note: isPromise
+      ? "Promessa registrada manualmente após contato com o cliente."
+      : client.agreement.aiSuggestion.composition,
+    operator: client.responsavel,
+    primaryDate: nowShortDate(),
+    primaryValue: isPromise
+      ? client.parcelas.ultimaParcela
+      : client.agreement.negotiatedValue,
+  });
 
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <ReadonlyField label="Cliente" value={client.nome} />
-        <ReadonlyField label="Operador responsável" value={client.responsavel} />
+        <EditableField
+          label="Operador responsável"
+          value={draft.operator}
+          onChange={(value) => setDraft((current) => ({ ...current, operator: value }))}
+        />
         <ReadonlyField label="Empreendimento" value={unit.empreendimento} />
         <ReadonlyField label="Cod. unidade" value={unit.matricula} />
         <ReadonlyField label="Unidade/lote" value={unit.unidadeLote} />
         <ReadonlyField label="Parcelas relacionadas" value={isPromise ? "04/60, 05/60" : "03/60, 04/60, 05/60"} />
-        <ReadonlyField label={isPromise ? "Valor prometido" : "Valor negociado"} value={isPromise ? client.parcelas.ultimaParcela : client.agreement.negotiatedValue} />
-        <ReadonlyField label={isPromise ? "Data prometida" : "Vencimento da entrada"} value={isPromise ? "20/05/2026" : "18/05/2026"} />
+        <EditableField
+          label={isPromise ? "Valor prometido" : "Valor negociado"}
+          value={draft.primaryValue}
+          onChange={(value) => setDraft((current) => ({ ...current, primaryValue: value }))}
+        />
+        <EditableField
+          label={isPromise ? "Data prometida" : "Vencimento da entrada"}
+          value={draft.primaryDate}
+          onChange={(value) => setDraft((current) => ({ ...current, primaryDate: value }))}
+        />
         <ReadonlyField label={isPromise ? "Canal do contato" : "Quantidade de parcelas"} value={isPromise ? "WhatsApp" : `${client.agreement.installmentsCount}`} />
         <ReadonlyField label={isPromise ? "Status da promessa" : "Status do acordo"} value={isPromise ? "Promessa realizada" : "Em negociação"} />
       </div>
 
       <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
         <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Observação</p>
-        <p className="mt-2 text-sm leading-6 text-slate-700">
-          {isPromise
-            ? "Promessa criada a partir de contato positivo, com registro automático previsto para Timeline e Workflow."
-            : client.agreement.aiSuggestion.composition}
-        </p>
+        <textarea
+          value={draft.note}
+          onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
+          className="mt-2 min-h-24 w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+        />
       </div>
 
       <button
         type="button"
-        onClick={() => onCreate(mode)}
+        onClick={() => onCreate(mode, draft)}
         className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35]"
       >
         <CheckCircle2 className="size-4" aria-hidden="true" />
@@ -915,6 +1006,24 @@ function parseMoney(value: string) {
 
 function formatMoney(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function nowForDisplay() {
+  return new Date().toLocaleString("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function nowShortDate() {
+  return new Date().toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 function guardianProtocol(seed: number) {

@@ -38,21 +38,22 @@ Regras gerais obrigatorias:
 
 Fluxo operacional oficial:
 
-- Fluxo padrao: Implementacao -> QA -> Revisao Arquitetural -> Infra/Deploy -> Producao -> Monitoramento.
+- Fluxo padrao simplificado definido por Lucas em 2026-05-17: Lucas -> Dev do modulo implementa -> valida localmente -> Hub ReleaseOps realiza commit/deploy/homologacao/producao -> producao.
 - Nenhum deploy critico deve ocorrer sem validacao minima.
 - Producao e ambiente critico: validar antes, evitar alteracoes destrutivas, monitorar depois, preservar estabilidade e manter rastreabilidade.
 - Deploys devem preferir homologacao/teste antes de producao quando houver risco operacional.
 
-Regra oficial de commit, validacao e rastreabilidade:
+Regra oficial de modulo, commit, release e rastreabilidade:
 
-- Todo agente responsavel por implementacao deve realizar o commit da propria alteracao apos validacao basica local.
-- Antes do commit, validar obrigatoriamente build, lint, typecheck e possiveis impactos operacionais, salvo quando a mudanca for estritamente documental; nesse caso, registrar o motivo de nao rodar validacoes tecnicas.
-- O commit deve ter mensagem semantica, objetiva e representar apenas uma responsabilidade principal.
-- Nao misturar multiplos modulos ou responsabilidades no mesmo commit sem necessidade real.
-- Se o worktree tiver alteracoes de outra squad, de outro agente ou do Lucas, o agente deve stagear e commitar somente os arquivos do proprio escopo.
-- Fluxo operacional oficial de entrega implementada: Implementacao -> validacao basica -> commit -> atualizacao do diario operacional com commit/mensagem/impacto -> handoff -> QA -> deploy.
-- Ao concluir uma implementacao, o agente deve informar commit realizado, status operacional, proxima squad recomendada, pendencias e riscos conhecidos.
-- Squads de validacao, arquitetura e seguranca normalmente nao devem realizar commits de implementacao, salvo quando executarem correcoes diretamente.
+- Guardian Core, CareDesk Core, PulseX Core, SquadOps Core e futuros modulos do Hub passam a operar como squads completas de desenvolvimento do proprio modulo.
+- Cada dev de modulo e responsavel por implementacao, evolucao, UX operacional, organizacao tecnica, consistencia visual, analise de impacto do proprio modulo, validacoes locais e preservacao das regras operacionais.
+- Devs dos modulos nao devem mais realizar deploy oficial nem assumir responsabilidade principal sobre publicacao em producao.
+- Hub ReleaseOps e responsavel por commits, deploys, build, homologacao, producao, Vercel, healthchecks, organizacao do diario operacional e rastreabilidade oficial das releases.
+- Hub SupportOps e responsavel por bugs, troubleshooting, gargalos, APIs, integracoes, lentidao, investigacao tecnica, comportamento inesperado e suporte operacional do Hub; deve ser acionado apenas quando necessario pelo Lucas.
+- A regra de 2026-05-17 que dizia que todo agente de implementacao deveria realizar o proprio commit fica substituida por esta metodologia: dev de modulo implementa e valida localmente; Hub ReleaseOps realiza commit e deploy oficial.
+- Commits de release devem continuar semanticos, objetivos e com responsabilidade principal clara, sem misturar modulos ou responsabilidades sem necessidade real.
+- Ao concluir uma implementacao, o dev de modulo deve informar status operacional, validacoes locais, impactos, pendencias, riscos e orientar handoff para Hub ReleaseOps quando houver necessidade de commit/deploy.
+- Todos os modulos devem continuar usando obrigatoriamente `docs/codex/contexto-operacional.md` como memoria operacional oficial da engenharia Careli Hub.
 
 Status operacionais obrigatorios:
 
@@ -61,23 +62,27 @@ Status operacionais obrigatorios:
 - `VALIDANDO`
 - `AGUARDANDO QA`
 - `AGUARDANDO ARCHITECT`
+- `AGUARDANDO RELEASEOPS`
 - `AGUARDANDO DEPLOY`
 - `FINALIZADO`
 - `BLOQUEADO`
 
 Fluxo de comunicacao e handoff:
 
+- Toda resposta operacional, direcionamento, handoff, analise, correcao ou implementacao deve comecar com `Assunto:` seguido de um titulo curto, objetivo e pesquisavel.
+- O assunto deve incluir o modulo ou squad relacionado, por exemplo `[Guardian]`, `[CareDesk]`, `[PulseX]`, `[SquadOps]`, `[ReleaseOps]` ou `[SupportOps]`.
+- Evitar assuntos genericos; o titulo deve facilitar rastreabilidade, busca futura, continuidade entre sessoes e localizacao de temas especificos.
 - Responder de forma objetiva, executiva e operacional.
 - Sempre informar o que foi feito, o que falta, dependencias de outro agente, proximo passo, riscos conhecidos e status atual.
-- Ao finalizar uma implementacao, indicar o status de handoff. Exemplo: `Status: AGUARDANDO QA`; solicitar validacao desktop, mobile, regressao e performance ao Hub QA; depois da aprovacao, solicitar deploy ao Hub InfraOps.
+- Ao finalizar uma implementacao, indicar o status de handoff. Exemplo: `Status: AGUARDANDO QA`; solicitar validacao desktop, mobile, regressao e performance ao Hub QA; depois da aprovacao, solicitar commit/deploy/rastreabilidade ao Hub ReleaseOps.
 
 Regra de orquestracao entre agentes:
 
 - Todo agente faz parte da engenharia coordenada do Careli Hub e nao atua de forma isolada.
 - Ao concluir uma etapa, informar claramente a proxima squad recomendada, validacoes necessarias, dependencias, riscos conhecidos e pendencias.
-- Squads reconhecidas no fluxo operacional: `Hub Architect`, `Hub InfraOps`, `Hub DataOps`, `Hub QA`, `Hub Security`, `Hub Support Engineer`, `Guardian Core`, `CareDesk Core`, `PulseX Core` e futuras squads do Hub.
+- Squads reconhecidas no fluxo operacional simplificado: `Guardian Core`, `CareDesk Core`, `PulseX Core`, `SquadOps Core`, futuros modulos do Hub, `Hub ReleaseOps` e `Hub SupportOps`.
 - Nunca executar tarefa claramente pertencente a outra squad sem solicitacao explicita do Lucas.
-- Exemplos de limite de escopo: QA nao implementa feature; InfraOps nao altera UX; modulo nao redefine arquitetura global; Security nao altera regra operacional; Architect nao realiza deploy operacional.
+- Exemplos de limite de escopo: modulo nao assume deploy oficial; Hub ReleaseOps nao redefine UX de modulo; Hub SupportOps nao implementa feature sem pedido explicito; modulo nao redefine arquitetura global sem direcao do Lucas.
 - Operar sempre considerando continuidade entre sessoes, continuidade entre squads, preservacao do diario operacional, estabilidade do ecossistema e possibilidade de outro agente continuar a etapa seguinte.
 
 Regras de UX e interface:
@@ -1086,6 +1091,32 @@ Registro de diario:
 
 Registro de diario:
 
+- Nome da squad/agente: `Hub QA`.
+- Data e hora local: 2026-05-17 00:23:03 -03:00.
+- Tipo da alteracao: Validacao operacional e regressao visual do dashboard Guardian.
+- Motivo da validacao: validar o handoff `AGUARDANDO QA` do recorte por empreendimento no dashboard Guardian, cobrindo clique em empreendimentos diferentes, retorno para `Todos`, badge do painel Financeiro e responsividade desktop/mobile.
+- Arquivos/modulos avaliados: `apps/hub/app/guardian/page.tsx`, `docs/codex/contexto-operacional.md` e rota local `http://localhost:3001/guardian`.
+- Como foi feito: a tela foi aberta no navegador interno em desktop `1280x720` e mobile `390x844`; em desktop foram clicados `Lavra do Ouro` e `Portal dos Vales`, confirmando mudanca dos KPIs financeiros, resumo e badge do painel; o segundo clique em `Portal dos Vales` voltou para `Todos`/`C2X`. Em mobile, o clique pela celula visivel do empreendimento tambem aplicou o recorte e o segundo clique voltou ao consolidado geral.
+- Logica utilizada: QA validou comportamento existente sem implementar feature. O recorte usa os campos reais ja presentes em `enterprisePerformance`; `Contratos criticos` fica como `--`/`recorte pendente` no recorte por empreendimento porque a origem granular ainda nao existe. `Aging da inadimplencia` e `Composicao da cobranca` permanecem gerais.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou na segunda tentativa. A primeira tentativa de build foi bloqueada por outro `next build` ativo/lock temporario, sem erro de compilacao. Smoke local em `http://localhost:3001/guardian` retornou HTTP 200.
+- Problemas encontrados: no mobile `390x844`, o dashboard ainda apresenta overflow horizontal global (`document/body scrollWidth` maior que a viewport), alem da rolagem interna esperada da tabela. Impacto operacional: em celular, o operador pode arrastar a pagina inteira lateralmente, o que reduz estabilidade visual.
+- Pendencias ou riscos conhecidos: corrigir overflow horizontal global no mobile antes de aprovar como experiencia responsiva plena. Acionar `Hub DataOps` se Lucas quiser recorte granular por empreendimento para `Contratos criticos`, `Aging da inadimplencia` e `Composicao da cobranca`.
+- Status operacional: `APROVADO COM AJUSTES`.
+
+Registro de diario:
+
+- Nome da squad/agente: `Dev CareDesk`.
+- Data e hora local: 2026-05-17 00:21:43 -03:00.
+- Tipo da alteracao: Decisao operacional permanente e regra oficial de commit, validacao e handoff.
+- Motivo da mudanca: Lucas oficializou que a engenharia do Careli Hub deve seguir fluxo padronizado de implementacao, validacao basica, commit semantico da propria alteracao, atualizacao do diario, handoff, QA e deploy.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/contexto-operacional.md`; regra transversal para todos os agentes e squads do Hub.
+- Como foi feito: confirmei que o diario ja continha a secao `Regra oficial de commit, validacao e rastreabilidade` no manifesto operacional, acrescentei um lembrete direto no `AGENTS.md` para agentes lerem antes de atuar e registrei esta entrada `Dev CareDesk` no final do diario.
+- Logica utilizada: manter a regra no manifesto e no guia obrigatorio de agentes evita implementacoes sem rastreabilidade, commits misturados, validacoes ausentes e handoffs incompletos. A regra tambem protege alteracoes de outras squads ao exigir commits por responsabilidade principal e stage apenas do proprio escopo.
+- Validacao executada: leitura do `AGENTS.md`, busca no diario operacional, confirmacao documental da regra oficial e `git status --short` para avaliar risco de commit. Nao rodei build/lint/typecheck porque a alteracao feita por esta frente foi documental/processual e nao altera codigo, schema, runtime, UX ou integracao.
+- Pendencias ou riscos conhecidos: nao realizei commit desta entrada porque o worktree ja possui muitas alteracoes nao commitadas de outras squads e `docs/codex/contexto-operacional.md` contem alteracoes concorrentes no mesmo arquivo; commitar agora sem uma separacao de staging revisada poderia incluir historico e mudancas fora do escopo do CareDesk. Proxima squad recomendada: `Hub InfraOps` ou o responsavel de Git deve organizar primeiro a rastreabilidade/base de commits do diario e das alteracoes pendentes; depois, novas implementacoes devem cumprir o fluxo completo com commit proprio.
+
+Registro de diario:
+
 - Nome da squad/agente: `Engenharia Careli Hub`.
 - Data e hora local: 2026-05-17 00:21:56 -03:00.
 - Tipo da alteracao: Decisao operacional permanente sobre commits, validacoes e handoff.
@@ -1212,3 +1243,75 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: ainda falta QA visual humano em desktop/mobile para confirmar espacamento, responsividade e comparacao lado a lado com Guardian.
 - Status operacional: `AGUARDANDO QA`.
 - Proxima squad recomendada: `Hub QA` para validacao visual e responsiva da tela SquadOps.
+
+Regra permanente combinada com Lucas em 2026-05-17 01:19:31 -03:00 sobre simplificacao das squads e redistribuicao de responsabilidades:
+
+- Guardian Core, CareDesk Core, PulseX Core, SquadOps Core e futuros modulos do Hub passam a operar como squads completas de desenvolvimento do proprio modulo.
+- Devs dos modulos sao responsaveis por implementacao, evolucao do modulo, UX operacional, organizacao tecnica, consistencia visual, analise de impacto do proprio modulo, validacoes locais e preservacao das regras operacionais.
+- Hub SupportOps fica responsavel por bugs, troubleshooting, gargalos, APIs, integracoes, lentidao, investigacao tecnica, comportamento inesperado e suporte operacional do Hub, sendo acionado pelo Lucas quando necessario.
+- Hub ReleaseOps fica responsavel por commits, deploys, build, homologacao, producao, Vercel, healthchecks, organizacao do diario operacional e rastreabilidade oficial das releases.
+- Devs dos modulos nao devem mais realizar deploy oficial nem assumir responsabilidade principal sobre publicacao em producao.
+- Fluxo operacional oficial atualizado: Lucas -> Dev modulo implementa -> valida localmente -> Hub ReleaseOps realiza commit e deploy -> producao.
+- Em caso de bug, gargalo, erro inesperado, problema de integracao, lentidao ou comportamento estranho, Lucas aciona Hub SupportOps para investigacao.
+- `docs/codex/contexto-operacional.md` continua sendo a memoria operacional obrigatoria da engenharia Careli Hub para todos os modulos e squads.
+
+Registro de diario:
+
+- Nome da squad/agente: `Engenharia Careli Hub`.
+- Data e hora local: 2026-05-17 01:19:31 -03:00.
+- Tipo da alteracao: Decisao operacional permanente e reorganizacao das responsabilidades entre squads.
+- Motivo da mudanca: Lucas simplificou a estrutura operacional para aumentar velocidade, continuidade e governanca, concentrando desenvolvimento nos devs dos modulos, investigacao no Hub SupportOps e commits/deploys/rastreabilidade oficial no Hub ReleaseOps.
+- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core, futuros modulos, Hub SupportOps e Hub ReleaseOps.
+- Como foi feito: registrei a regra nova no diario operacional oficial, preservando historico anterior e deixando claro que ela substitui o fluxo anterior em que devs de modulo realizavam o proprio commit.
+- Logica utilizada: separar desenvolvimento, suporte investigativo e release reduz conflito de responsabilidade, evita deploy por squads de modulo, centraliza rastreabilidade oficial em ReleaseOps e mantem cada modulo responsavel pela propria qualidade operacional antes do handoff.
+- Validacao executada: leitura do diario operacional e registro documental da decisao; nao houve build, lint ou typecheck porque a mudanca foi exclusivamente processual/documental e nao alterou codigo, schema, runtime, UX ou integracao.
+- Pendencias ou riscos conhecidos: `AGENTS.md` ainda aparece modificado no worktree e pode conter orientacoes antigas sobre commit por dev de modulo; Hub ReleaseOps deve consolidar o guia de agentes e commitar esta regra sem misturar alteracoes de produto ou de outras squads.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para organizar commit/rastreabilidade oficial desta atualizacao e alinhar o guia operacional dos agentes.
+
+Registro de diario:
+
+- Nome da squad/agente: `Dev CareDesk`.
+- Data e hora local: 2026-05-17 01:19:26 -03:00.
+- Tipo da alteracao: Decisao operacional permanente e realinhamento da metodologia de squads.
+- Motivo da mudanca: Lucas oficializou a simplificacao da engenharia Careli Hub: devs de modulo passam a atuar como squads completas do proprio modulo, Hub SupportOps fica responsavel por investigacao/suporte tecnico quando acionado, e Hub ReleaseOps fica responsavel por commits, deploys, homologacao, producao e rastreabilidade oficial.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/contexto-operacional.md`; regra transversal para Guardian Core, CareDesk Core, PulseX Core, SquadOps Core, futuros modulos, Hub SupportOps e Hub ReleaseOps.
+- Como foi feito: alinhei o lembrete do `AGENTS.md` ao novo fluxo, confirmei que o manifesto operacional ja continha a regra simplificada, ajustei o handoff para apontar commit/deploy ao `Hub ReleaseOps`, inclui `AGUARDANDO RELEASEOPS` como status operacional e registrei esta entrada da frente CareDesk no diario.
+- Logica utilizada: separar responsabilidades melhora velocidade e governanca: o dev de modulo foca produto, UX, regras e validacao local; SupportOps investiga bugs/gargalos quando Lucas acionar; ReleaseOps centraliza commit, deploy, Vercel, healthchecks e rastreabilidade, reduzindo risco de publicacao ou commits misturados por modulo.
+- Validacao executada: leitura do `AGENTS.md`, leitura/busca no diario operacional e confirmacao documental dos trechos de `Hub ReleaseOps`, `Hub SupportOps`, fluxo simplificado e status `AGUARDANDO RELEASEOPS`. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual e nao alterou codigo, schema, runtime, UX ou integracao.
+- Pendencias ou riscos conhecidos: nao realizei commit nem deploy, pois pela nova metodologia isso pertence ao `Hub ReleaseOps`. Proxima squad recomendada: `Hub ReleaseOps` para consolidar commit/rastreabilidade desta atualizacao sem misturar alteracoes de produto ou de outras squads.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Regra permanente combinada com Lucas em 2026-05-17 01:22:17 -03:00 sobre assunto obrigatorio em respostas operacionais:
+
+- Todos os direcionamentos, handoffs, analises, correcoes, implementacoes e respostas operacionais da engenharia Careli Hub devem iniciar com `Assunto:`.
+- O assunto deve ser curto, objetivo, consistente e pesquisavel, sempre incluindo o modulo ou squad relacionado.
+- Exemplos de padrao esperado: `[Guardian] Melhoria fila operacional`, `[CareDesk] Integracao WhatsApp`, `[PulseX] Correcao upload de imagens`, `[SquadOps] Estrutura inicial do PMO IA`, `[ReleaseOps] Deploy producao Guardian`, `[SupportOps] Investigacao lentidao dashboard`.
+- Evitar assuntos genericos. O titulo deve melhorar rastreabilidade, pesquisas futuras, continuidade entre sessoes, localizacao de temas especificos e organizacao operacional da engenharia.
+- A regra vale para todas as squads atuais e futuras, incluindo Guardian Core, CareDesk Core, PulseX Core, SquadOps Core, Hub ReleaseOps e Hub SupportOps.
+
+Registro de diario:
+
+- Nome da squad/agente: `Engenharia Careli Hub`.
+- Data e hora local: 2026-05-17 01:22:17 -03:00.
+- Tipo da alteracao: Decisao operacional permanente e padronizacao de comunicacao.
+- Motivo da mudanca: Lucas definiu que toda resposta operacional deve ter assunto/titulo claro no inicio para melhorar rastreabilidade, busca futura, continuidade entre sessoes, localizacao de temas e organizacao operacional.
+- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todos os modulos e squads do Hub.
+- Como foi feito: adicionei a regra no bloco `Fluxo de comunicacao e handoff` do manifesto e registrei a decisao ao final do diario operacional.
+- Logica utilizada: colocar a regra no fluxo de comunicacao garante que qualquer agente veja a obrigacao antes de responder ou fazer handoff, mantendo um padrao pesquisavel por modulo/squad.
+- Validacao executada: leitura local do diario operacional, busca por regras existentes de handoff/comunicacao e confirmacao documental da nova regra. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual.
+- Pendencias ou riscos conhecidos: `AGENTS.md` ainda deve ser consolidado pelo Hub ReleaseOps caso contenha orientacoes antigas ou incompletas. Proxima squad recomendada: `Hub ReleaseOps` para commit/rastreabilidade oficial desta regra junto das demais atualizacoes processuais.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+
+Registro de diario:
+
+- Nome da squad/agente: `Dev CareDesk`.
+- Data e hora local: 2026-05-17 01:22:34 -03:00.
+- Tipo da alteracao: Decisao operacional permanente e padronizacao de assunto nas respostas.
+- Motivo da mudanca: Lucas definiu que todos os direcionamentos, handoffs, analises, correcoes, implementacoes e respostas operacionais devem iniciar com `Assunto:` e titulo claro, curto e pesquisavel.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/contexto-operacional.md`; regra transversal para CareDesk Core, Guardian Core, PulseX Core, SquadOps Core, Hub ReleaseOps, Hub SupportOps e futuras squads.
+- Como foi feito: confirmei que a regra ja estava registrada no manifesto operacional e acrescentei no `AGENTS.md` uma orientacao direta para que todo agente comece respostas operacionais com `Assunto:` incluindo o modulo ou squad relacionado. Tambem registrei esta entrada `Dev CareDesk` no diario.
+- Logica utilizada: o titulo no inicio da resposta cria uma chave pesquisavel e consistente para rastrear temas, localizar handoffs, retomar sessoes e separar responsabilidades por modulo ou squad.
+- Validacao executada: leitura do `AGENTS.md`, busca no diario operacional por regras de assunto/handoff e confirmacao documental da regra. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual e nao alterou codigo, schema, runtime, UX ou integracao.
+- Pendencias ou riscos conhecidos: nao realizei commit nem deploy, pois pela metodologia vigente isso pertence ao `Hub ReleaseOps`. Proxima squad recomendada: `Hub ReleaseOps` para consolidar commit/rastreabilidade desta atualizacao junto das demais regras processuais.
+- Status operacional: `AGUARDANDO RELEASEOPS`.

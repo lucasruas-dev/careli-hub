@@ -84,6 +84,7 @@ const moduleIconMap: Record<string, ReactNode> = {
 };
 
 const minimumReleasedModuleIds = ["guardian", "caredesk", "pulsex", "setup", "squadops"] as const;
+const hiddenProductionModuleIds = new Set(["caredesk"]);
 
 export function HubShell({
   children,
@@ -113,6 +114,10 @@ export function HubShell({
     pathname.startsWith(hubModule.basePath),
   );
   const visibleHubModules = orderedHubModules.filter((hubModule) => {
+    if (!isVisibleInCurrentEnvironment(hubModule.id)) {
+      return false;
+    }
+
     if (!releasedModuleIds) {
       return (
         isHubModuleActive(hubModule) &&
@@ -816,6 +821,10 @@ function canOpenShellModule(
 
 function createMinimumReleasedModuleIds() {
   return new Set<string>(minimumReleasedModuleIds);
+}
+
+function isVisibleInCurrentEnvironment(moduleId: string) {
+  return process.env.NODE_ENV !== "production" || !hiddenProductionModuleIds.has(moduleId);
 }
 
 function withShellTimeout<Result>(

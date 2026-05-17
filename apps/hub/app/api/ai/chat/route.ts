@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { loadGuardianAttendanceQueueReadModel } from "@/lib/guardian/read-model";
+import type { QueueClient } from "@/modules/guardian/attendance/types";
+
 type HubAiModule = "guardian" | "hub" | "pulsex" | "setup" | "desk";
 
 type HubAiMessage = {
@@ -14,6 +17,8 @@ type HubAiRequest = {
   module?: HubAiModule;
   prompt?: string;
 };
+type ParsedHubAiRequest = Required<Pick<HubAiRequest, "module" | "prompt">> &
+  Omit<HubAiRequest, "module" | "prompt">;
 
 type SupabaseUserPayload = {
   email?: unknown;
@@ -21,6 +26,7 @@ type SupabaseUserPayload = {
 };
 
 const DEFAULT_MODEL = "gpt-5.5";
+const GUARDIAN_AI_DATABASE_CONTEXT_LIMIT = 1_000;
 const OPENAI_TIMEOUT_MS = 45_000;
 const MAX_CONTEXT_CHARS = 80_000;
 const MAX_HISTORY_ITEMS = 8;
@@ -56,10 +62,11 @@ export async function POST(request: NextRequest) {
   const model = process.env.HUB_AI_MODEL?.trim() || DEFAULT_MODEL;
 
   try {
+    const payload = await enrichHubAiPayload(body.data);
     const response = await createOpenAiResponse({
       apiKey,
       model,
-      payload: body.data,
+      payload,
       userId: auth.userId,
     });
 
@@ -163,8 +170,7 @@ async function createOpenAiResponse({
 }: {
   apiKey: string;
   model: string;
-  payload: Required<Pick<HubAiRequest, "module" | "prompt">> &
-    Omit<HubAiRequest, "module" | "prompt">;
+  payload: ParsedHubAiRequest;
   userId: string;
 }) {
   const controller = new AbortController();
@@ -211,6 +217,247 @@ async function createOpenAiResponse({
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function enrichHubAiPayload(
+  payload: ParsedHubAiRequest,
+): Promise<ParsedHubAiRequest> {
+  if (payload.module !== "guardian") {
+    return payload;
+  }
+
+  const databaseContext = await buildGuardianDatabaseContext(payload.context);
+
+  return {
+    ...payload,
+    context: mergeAiContext(payload.context, {
+      bancoDadosGuardian: databaseContext,
+      regraDeEscopo:
+        "Use o cliente aberto como prioridade. Para perguntas gerais sobre fila, carteira, risco, empreendimento, totais ou operacao, use bancoDadosGuardian e o contexto geral antes de dizer que falta informacao.",
+    }),
+  };
+}
+
+async function buildGuardianDatabaseContext(context: unknown) {
+  try {
+    const clients = await loadGuardianAttendanceQueueReadModel({
+      limit: GUARDIAN_AI_DATABASE_CONTEXT_LIMIT,
+    });
+
+    if (!clients?.length) {
+      return {
+        aviso:
+          "Nao foi possivel carregar o read-model do Guardian para contexto geral do banco.",
+        fonte: "supabase-c2x-read-model",
+        status: "indisponivel",
+      };
+    }
+
+    const selectedClient = findSelectedGuardianClient(clients, context);
+    const overdueClients = clients.filter((client) => client.parcelas.vencidas > 0);
+    const overdueInstallments = overdueClients.reduce(
+      (total, client) => total + Number(client.parcelas.vencidas ?? 0),
+      0,
+    );
+    const overdueAmount = overdueClients.reduce(
+      (total, client) => total + parseGuardianAiCurrency(client.saldoDevedor),
+      0,
+    );
+
+    return {
+      aviso:
+        "Contexto server-side de leitura do banco/read-model do Guardian. Use para perguntas gerais da fila/carteira. Nao invente campos que nao estejam aqui.",
+      clienteAbertoNoBanco: selectedClient
+        ? summarizeGuardianAiClient(selectedClient)
+        : null,
+      fonte: "supabase-c2x-read-model",
+      limiteClientesConsultados: GUARDIAN_AI_DATABASE_CONTEXT_LIMIT,
+      porEmpreendimento: summarizeGuardianAiByEnterprise(clients),
+      porRisco: summarizeGuardianAiByPriority(clients),
+      status: "carregado",
+      topClientesPorRisco: clients
+        .slice()
+        .sort(compareGuardianAiQueueRisk)
+        .slice(0, 15)
+        .map(summarizeGuardianAiClient),
+      totais: {
+        clientesCarregados: clients.length,
+        clientesEmAtraso: overdueClients.length,
+        parcelasVencidas: overdueInstallments,
+        saldoEmAtraso: formatGuardianAiCurrency(overdueAmount),
+      },
+    };
+  } catch {
+    return {
+      aviso:
+        "Falha ao carregar contexto server-side do banco para a Cacá. Responda usando apenas o contexto da tela e diga se faltar informacao geral.",
+      fonte: "supabase-c2x-read-model",
+      status: "erro",
+    };
+  }
+}
+
+function mergeAiContext(
+  context: unknown,
+  addition: Record<string, unknown>,
+) {
+  if (isRecord(context)) {
+    return {
+      ...context,
+      ...addition,
+    };
+  }
+
+  return {
+    contextoDaTela: context ?? null,
+    ...addition,
+  };
+}
+
+function findSelectedGuardianClient(clients: QueueClient[], context: unknown) {
+  const selectedId =
+    readNestedString(context, ["filaOperacional", "clienteAberto", "id"]) ??
+    readNestedString(context, ["cliente", "id"]);
+  const selectedName =
+    readNestedString(context, ["filaOperacional", "clienteAberto", "nome"]) ??
+    readNestedString(context, ["cliente", "nome"]);
+
+  if (selectedId) {
+    const matchById = clients.find((client) => client.id === selectedId);
+
+    if (matchById) {
+      return matchById;
+    }
+  }
+
+  if (selectedName) {
+    const normalizedName = normalizeGuardianAiText(selectedName);
+
+    return clients.find(
+      (client) => normalizeGuardianAiText(client.nome) === normalizedName,
+    );
+  }
+
+  return null;
+}
+
+function readNestedString(value: unknown, path: string[]) {
+  let current: unknown = value;
+
+  for (const key of path) {
+    if (!isRecord(current)) {
+      return null;
+    }
+
+    current = current[key];
+  }
+
+  return typeof current === "string" && current.trim() ? current.trim() : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function summarizeGuardianAiByPriority(clients: QueueClient[]) {
+  return ["Crítica", "Alta", "Média", "Baixa"].map((priority) => {
+    const priorityClients = clients.filter((client) => client.prioridade === priority);
+
+    return {
+      clientes: priorityClients.length,
+      parcelasVencidas: priorityClients.reduce(
+        (total, client) => total + Number(client.parcelas.vencidas ?? 0),
+        0,
+      ),
+      risco: priority,
+      saldoEmAtraso: formatGuardianAiCurrency(
+        priorityClients.reduce(
+          (total, client) => total + parseGuardianAiCurrency(client.saldoDevedor),
+          0,
+        ),
+      ),
+    };
+  });
+}
+
+function summarizeGuardianAiByEnterprise(clients: QueueClient[]) {
+  const clientsByEnterprise = new Map<string, QueueClient[]>();
+
+  clients.forEach((client) => {
+    const enterprise = client.carteira.empreendimento || "Sem empreendimento";
+    clientsByEnterprise.set(enterprise, [
+      ...(clientsByEnterprise.get(enterprise) ?? []),
+      client,
+    ]);
+  });
+
+  return [...clientsByEnterprise.entries()]
+    .map(([enterprise, enterpriseClients]) => ({
+      clientes: enterpriseClients.length,
+      empreendimento: enterprise,
+      parcelasVencidas: enterpriseClients.reduce(
+        (total, client) => total + Number(client.parcelas.vencidas ?? 0),
+        0,
+      ),
+      saldoEmAtraso: formatGuardianAiCurrency(
+        enterpriseClients.reduce(
+          (total, client) => total + parseGuardianAiCurrency(client.saldoDevedor),
+          0,
+        ),
+      ),
+    }))
+    .sort((first, second) => second.parcelasVencidas - first.parcelasVencidas)
+    .slice(0, 15);
+}
+
+function summarizeGuardianAiClient(client: QueueClient) {
+  return {
+    atrasoDias: client.atrasoDias,
+    documento: client.cpf,
+    empreendimento: client.carteira.empreendimento,
+    id: client.id,
+    nome: client.nome,
+    parcelasVencidas: client.parcelas.vencidas,
+    prioridade: client.prioridade,
+    saldoVencido: client.saldoDevedor,
+    scoreRisco: client.scoreRisco,
+    unidadePrincipal: client.carteira.unidades[0]?.unidadeLote ?? "-",
+  };
+}
+
+function compareGuardianAiQueueRisk(first: QueueClient, second: QueueClient) {
+  return (
+    Number(second.parcelas.vencidas ?? 0) - Number(first.parcelas.vencidas ?? 0) ||
+    Number(second.atrasoDias ?? 0) - Number(first.atrasoDias ?? 0) ||
+    parseGuardianAiCurrency(second.saldoDevedor) -
+      parseGuardianAiCurrency(first.saldoDevedor)
+  );
+}
+
+function parseGuardianAiCurrency(value: string) {
+  const normalized = value
+    .replace(/\s/g, "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatGuardianAiCurrency(value: number) {
+  return value.toLocaleString("pt-BR", {
+    currency: "BRL",
+    style: "currency",
+  });
+}
+
+function normalizeGuardianAiText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 }
 
 function formatHistory(messages?: HubAiMessage[]) {
@@ -268,7 +515,9 @@ function buildSystemInstructions(module: HubAiModule, feature?: string) {
       "Ao criar mensagens para clientes no CareDesk, WhatsApp ou cobranca, sempre escreva como equipe Careli. Nunca use equipe do empreendimento, equipe de atendimento do empreendimento ou equipe do Lavra/Lagoa/Portal/etc.",
       "Para acoes como reenviar boleto, sempre peca confirmacao humana antes e nunca afirme que enviou se a tela nao retornar sucesso da acao.",
       "Nunca responda parcelas em tabela markdown com barras verticais. Use blocos curtos, uma parcela por bloco, com no maximo 5 campos por linha visual.",
-      "Se o usuario fizer pergunta geral de carteira, priorize snapshots, fila operacional, perfis e empreendimentos presentes no contexto.",
+      "Se o usuario fizer pergunta geral de carteira, priorize bancoDadosGuardian, snapshots, fila operacional, perfis e empreendimentos presentes no contexto.",
+      "O cliente aberto tem prioridade quando a pergunta for sobre o atendimento atual. Se a pergunta for maior, como total de clientes, fila, carteira, empreendimentos, risco ou comparativos, responda com o contexto geral do banco quando ele estiver presente.",
+      "Nao diga que falta contexto geral se bancoDadosGuardian ou filaOperacional estiverem carregados.",
     );
   }
 

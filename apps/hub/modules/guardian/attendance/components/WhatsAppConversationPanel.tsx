@@ -26,6 +26,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import type {
   OperationalTimelineEvent,
   PortfolioUnit,
@@ -705,12 +706,11 @@ export function WhatsAppConversationPanel({
                     {ticketIncomplete ? (
                       <>
                         <span aria-hidden="true">•</span>
-                        <span
-                          title="Ticket criado automaticamente após mensagem recebida."
-                          className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
-                        >
-                          ⚡ Autoaberto
-                        </span>
+                        <Tooltip content="Ticket criado automaticamente após mensagem recebida." placement="bottom">
+                          <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                            ⚡ Autoaberto
+                          </span>
+                        </Tooltip>
                       </>
                     ) : null}
                   </div>
@@ -878,16 +878,17 @@ export function WhatsAppConversationPanel({
               <ComposerIconButton disabled={!operationReady} label="Enviar áudio" onClick={() => sendMessage("audio")}>
                 <Mic className="size-4" aria-hidden="true" />
               </ComposerIconButton>
-              <button
-                type="button"
-                disabled={!operationReady}
-                onClick={() => sendMessage("text")}
-                title={operationReady ? "Enviar mensagem" : blockedTooltip}
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
-                aria-label={operationReady ? "Enviar mensagem" : blockedTooltip}
-              >
-                <Send className="size-4" aria-hidden="true" />
-              </button>
+              <Tooltip content={operationReady ? "Enviar mensagem" : blockedTooltip} placement="top">
+                <button
+                  type="button"
+                  disabled={!operationReady}
+                  onClick={() => sendMessage("text")}
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  aria-label={operationReady ? "Enviar mensagem" : blockedTooltip}
+                >
+                  <Send className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
             </div>
           </footer>
         </main>
@@ -899,15 +900,16 @@ export function WhatsAppConversationPanel({
         >
           {contextCollapsed ? (
             <div className="flex h-full flex-col items-center gap-3 p-2">
-              <button
-                type="button"
-                onClick={() => setContextCollapsed(false)}
-                title="Expandir contexto"
-                className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                aria-label="Expandir contexto"
-              >
-                <PanelRightOpen className="size-4" aria-hidden="true" />
-              </button>
+              <Tooltip content="Expandir contexto" placement="left">
+                <button
+                  type="button"
+                  onClick={() => setContextCollapsed(false)}
+                  className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                  aria-label="Expandir contexto"
+                >
+                  <PanelRightOpen className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
               <div className="flex size-9 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
                 <Bot className="size-4" aria-hidden="true" />
               </div>
@@ -1609,32 +1611,33 @@ function ClientContextPanel({
             <h3 className="mt-1 truncate text-sm font-semibold text-slate-950">{client.nome}</h3>
             <p className="mt-0.5 text-xs text-slate-500">{client.dados360.telefone}</p>
           </div>
-          <button
-            type="button"
-            onClick={onCollapse}
-            title="Recolher contexto"
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
-            aria-label="Recolher contexto"
-          >
-            <PanelRightClose className="size-4" aria-hidden="true" />
-          </button>
+          <Tooltip content="Recolher contexto" placement="bottom">
+            <button
+              type="button"
+              onClick={onCollapse}
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+              aria-label="Recolher contexto"
+            >
+              <PanelRightClose className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
         </div>
         <div className="mt-3 flex gap-1 overflow-x-auto rounded-lg bg-slate-100/70 p-1 [scrollbar-width:none]">
           {contextTabs.map((tab) => {
             const Icon = tab.icon;
             return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                title={tab.label}
-                aria-label={tab.label}
-                className={`flex size-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-                  activeTab === tab.id ? "bg-white text-[#7A5E2C] shadow-sm" : "text-slate-500 hover:bg-white/70"
-                }`}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-              </button>
+              <Tooltip key={tab.id} content={tab.label} placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  aria-label={tab.label}
+                  className={`flex size-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+                    activeTab === tab.id ? "bg-white text-[#7A5E2C] shadow-sm" : "text-slate-500 hover:bg-white/70"
+                  }`}
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
             );
           })}
         </div>
@@ -1701,14 +1704,15 @@ function ClientContextPanel({
               </div>
             ) : null}
             {ticketIncomplete ? (
-              <button
-                type="button"
-                title="Completar perfil, unidade e parcelas do ticket autoaberto."
-                onClick={onCompleteTicket}
-                className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35]"
-              >
-                Completar ticket
-              </button>
+              <Tooltip content="Completar perfil, unidade e parcelas do ticket autoaberto." placement="top" className="w-full" triggerClassName="w-full">
+                <button
+                  type="button"
+                  onClick={onCompleteTicket}
+                  className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+                >
+                  Completar ticket
+                </button>
+              </Tooltip>
             ) : null}
             <OperationalToolbar
               disabled={!operationReady}
@@ -1831,18 +1835,16 @@ function HeaderToolbarButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className="group relative flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/20"
-    >
-      <Icon className="size-4" aria-hidden="true" />
-      <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 shadow-[0_10px_30px_rgba(15,23,42,0.12)] group-hover:block">
-        {label}
-      </span>
-    </button>
+    <Tooltip content={label} placement="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/20"
+      >
+        <Icon className="size-4" aria-hidden="true" />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -1906,19 +1908,17 @@ function ToolbarIconButton({
   tooltip: string;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      title={tooltip}
-      aria-label={tooltip}
-      className="group relative flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
-    >
-      <Icon className="size-4" aria-hidden="true" />
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 shadow-[0_10px_30px_rgba(15,23,42,0.12)] group-hover:block">
-        {label}
-      </span>
-    </button>
+    <Tooltip content={tooltip} placement="top">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        aria-label={tooltip}
+        className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+      >
+        <Icon className="size-4" aria-hidden="true" />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -1934,18 +1934,18 @@ function TicketChecklist({
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${className}`}>
       {items.map((item) => (
-        <span
-          key={item.id}
-          title={item.ok ? `${item.label} validado` : `${item.label} obrigatório`}
-          className={`inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-semibold ring-1 ${
-            item.ok
-              ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-              : "bg-amber-50 text-amber-800 ring-amber-200"
-          } ${compact ? "px-1.5" : ""}`}
-        >
-          <span aria-hidden="true">{item.ok ? "✔" : "⚠"}</span>
-          {item.label}
-        </span>
+        <Tooltip key={item.id} content={item.ok ? `${item.label} validado` : `${item.label} obrigatório`} placement="top">
+          <span
+            className={`inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-semibold ring-1 ${
+              item.ok
+                ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+                : "bg-amber-50 text-amber-800 ring-amber-200"
+            } ${compact ? "px-1.5" : ""}`}
+          >
+            <span aria-hidden="true">{item.ok ? "✓" : "!"}</span>
+            {item.label}
+          </span>
+        </Tooltip>
       ))}
     </div>
   );
@@ -1963,16 +1963,17 @@ function ComposerIconButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className="flex size-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-white hover:text-[#A07C3B] disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
-    >
-      {children}
-    </button>
+    <Tooltip content={label} placement="top">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        aria-label={label}
+        className="flex size-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-white hover:text-[#A07C3B] disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 

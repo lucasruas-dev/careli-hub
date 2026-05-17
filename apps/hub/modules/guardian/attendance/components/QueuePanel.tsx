@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronDown, Filter, Search, X } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { ClientQueueCard } from "@/modules/guardian/attendance/components/ClientQueueCard";
 import { workflowStageDots, workflowStages, workflowStageStyles } from "@/modules/guardian/attendance/workflow";
 import type { AttendancePriority, QueueClient, WorkflowStage } from "@/modules/guardian/attendance/types";
@@ -112,27 +113,28 @@ export function QueuePanel({
             </button>
             <span className="text-xs font-medium text-slate-500">{clients.length} na fila</span>
             {activeFilters.map((filter) => (
-              <button
-                key={`${filter.label}-${filter.value}`}
-                type="button"
-                onClick={filter.clear}
-                title={`Remover ${filter.label}`}
-                className="inline-flex h-7 max-w-40 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
-              >
-                <span className="truncate">{filter.value}</span>
-                <span aria-hidden="true">×</span>
-              </button>
+              <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
+                <button
+                  type="button"
+                  onClick={filter.clear}
+                  className="inline-flex h-7 max-w-40 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
+                >
+                  <span className="truncate">{filter.value}</span>
+                  <span aria-hidden="true">×</span>
+                </button>
+              </Tooltip>
             ))}
             {activeFilters.length > 0 ? (
-              <button
-                type="button"
-                onClick={clearFilters}
-                title="Limpar filtros"
-                aria-label="Limpar filtros"
-                className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-              >
-                <X className="size-4" aria-hidden="true" />
-              </button>
+              <Tooltip content="Limpar filtros" placement="bottom">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  aria-label="Limpar filtros"
+                  className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
             ) : null}
           </div>
 
@@ -157,20 +159,20 @@ export function QueuePanel({
 
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {priorities.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => onPriorityChange(item)}
-                    title={`Prioridade: ${item}`}
-                    aria-label={`Prioridade: ${item}`}
-                    className={`inline-flex h-8 shrink-0 items-center justify-center rounded-full px-2.5 text-xs font-semibold transition-colors ${
-                      selectedPriority === item
-                        ? "border border-[#A07C3B]/20 bg-[#A07C3B]/8 text-[#7A5E2C]"
-                        : "border border-slate-200/70 bg-white text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {item}
-                  </button>
+                  <Tooltip key={item} content={`Prioridade: ${item}`} placement="top">
+                    <button
+                      type="button"
+                      onClick={() => onPriorityChange(item)}
+                      aria-label={`Prioridade: ${item}`}
+                      className={`inline-flex h-8 shrink-0 items-center justify-center rounded-full px-2.5 text-xs font-semibold transition-colors ${
+                        selectedPriority === item
+                          ? "border border-[#A07C3B]/20 bg-[#A07C3B]/8 text-[#7A5E2C]"
+                          : "border border-slate-200/70 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  </Tooltip>
                 ))}
               </div>
 
@@ -298,20 +300,21 @@ function StageFilterButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={`${label}: ${count}`}
-      aria-label={`${label}: ${count}`}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold ring-1 ring-inset transition-colors ${
-        active ? "border border-[#A07C3B]/20 bg-[#A07C3B]/8 text-[#7A5E2C]" : className
-      }`}
-    >
-      <span>{label}</span>
-      <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500 ring-1 ring-slate-200/70">
-        {count}
-      </span>
-    </button>
+    <Tooltip content={`${label}: ${count}`} placement="top">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={`${label}: ${count}`}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold ring-1 ring-inset transition-colors ${
+          active ? "border border-[#A07C3B]/20 bg-[#A07C3B]/8 text-[#7A5E2C]" : className
+        }`}
+      >
+        <span>{label}</span>
+        <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500 ring-1 ring-slate-200/70">
+          {count}
+        </span>
+      </button>
+    </Tooltip>
   );
 }
 

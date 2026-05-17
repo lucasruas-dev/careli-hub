@@ -205,3 +205,25 @@ Lucas aprovou a tela de Atendimento anterior como base visual:
 - Formulario/modal de abertura de ticket para fluxo ativo.
 
 Nada dessa estrutura deve ser substituido por uma tela diferente sem validacao do Lucas.
+
+## Atualizacao 2026-05-16 - Setup de motivos/perfis
+
+O que mudou:
+
+- `apps/hub/modules/caredesk/CareDeskPage.tsx` agora carrega todos os registros de `caredesk_ticket_profiles`, alem de tickets, filas, canais, templates e disparos.
+- A aba Setup ganhou uma area operacional de motivos/perfis com lista filtravel por fila e formulario real para criar/editar motivo, categoria, prioridade, SLA, status e campos obrigatorios.
+- O salvamento usa a tabela existente `caredesk_ticket_profiles`; criacao usa `upsert` por `queue_id,slug` e edicao usa `update` por `id`.
+- A estrutura aprovada de Atendimento foi preservada.
+
+Validacoes:
+
+- `npm.cmd run check-types:hub`
+- `npm.cmd run lint:hub`
+- `npm.cmd run build --workspace @repo/hub`
+- Verificacao visual em `http://localhost:3001/caredesk`: Setup abriu, carregou 15 motivos reais, edicao preencheu o formulario e nao houve erro de console.
+
+Pendencias recomendadas:
+
+- Testar salvamento real com usuario `admin` ou `leader` autenticado para confirmar a policy de RLS em `caredesk_ticket_profiles`.
+- Evoluir metricas agregadas do CareDesk a partir de tickets, mensagens e eventos.
+- Depois enriquecer Atendimento com contexto 360 do cliente sem acoplar CareDesk ao Guardian.

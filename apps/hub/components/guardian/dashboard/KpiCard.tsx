@@ -1,10 +1,12 @@
 ﻿/* eslint-disable */
 // @ts-nocheck
 import type { LucideIcon } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 
 type KpiCardProps = {
   title: string;
   value: string;
+  valueTitle?: string;
   variation: string;
   description: string;
   icon: LucideIcon;
@@ -14,6 +16,7 @@ type KpiCardProps = {
 export function KpiCard({
   title,
   value,
+  valueTitle,
   variation,
   description,
   icon: Icon,
@@ -32,7 +35,6 @@ export function KpiCard({
     <Wrapper
       type={onClick ? "button" : undefined}
       onClick={onClick}
-      title={description}
       className={`w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
         onClick
           ? "cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-[#A07C3B]/20 hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
@@ -42,7 +44,11 @@ export function KpiCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{title}</p>
-          <p className="mt-2 text-xl font-semibold tracking-normal text-slate-950">{value}</p>
+          <Tooltip content={valueTitle ?? value} placement="top">
+            <span className="mt-2 block text-xl font-semibold tracking-normal text-slate-950">
+              {value}
+            </span>
+          </Tooltip>
         </div>
         <div className="flex size-8 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
           <Icon className="size-4 stroke-[1.8]" aria-hidden="true" />

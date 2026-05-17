@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import type { LucideIcon } from "lucide-react";
 
@@ -67,20 +68,21 @@ export function ExpandableDetailSection({
         </div>
       ) : null}
 
-      <button
-        type="button"
-        onClick={() => setExpanded((current) => !current)}
-        title={expanded ? "Ver menos" : buttonLabel}
-        aria-label={expanded ? "Ver menos" : buttonLabel}
-        className="mt-4 inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-      >
-        <ChevronDown
-          className={`size-4 text-[#A07C3B] transition-transform ${
-            expanded ? "rotate-180" : ""
-          }`}
-          aria-hidden="true"
-        />
-      </button>
+      <Tooltip content={expanded ? "Ver menos" : buttonLabel} placement="bottom">
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          aria-label={expanded ? "Ver menos" : buttonLabel}
+          className="mt-4 inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+        >
+          <ChevronDown
+            className={`size-4 text-[#A07C3B] transition-transform ${
+              expanded ? "rotate-180" : ""
+            }`}
+            aria-hidden="true"
+          />
+        </button>
+      </Tooltip>
     </DetailSection>
   );
 }
@@ -97,14 +99,15 @@ function InfoBlock({
   return (
     <div className="min-w-0 rounded-xl border border-slate-200/70 bg-slate-50/60 px-3 py-2.5">
       <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p
-        title={value}
-        className={`mt-1 text-sm font-semibold text-slate-950 ${
-          truncateValue ? "truncate" : ""
-        }`}
-      >
-        {value}
-      </p>
+      <Tooltip content={value} placement="top">
+        <span
+          className={`mt-1 block text-sm font-semibold text-slate-950 ${
+            truncateValue ? "truncate" : ""
+          }`}
+        >
+          {value}
+        </span>
+      </Tooltip>
     </div>
   );
 }

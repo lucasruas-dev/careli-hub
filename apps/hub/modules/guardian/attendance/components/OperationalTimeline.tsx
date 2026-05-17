@@ -1,5 +1,8 @@
 ﻿/* eslint-disable */
 // @ts-nocheck
+"use client";
+
+import { useState } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -14,6 +17,7 @@ import {
   ShieldAlert,
   UserRoundPen,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import type {
   TimelineEventStatus,
@@ -22,7 +26,10 @@ import type {
 } from "@/modules/guardian/attendance/types";
 
 type OperationalTimelineProps = {
+  client?: QueueClient;
+  defaultUnit?: QueueClient["carteira"]["unidades"][number];
   events: QueueClient["timeline"];
+  onCreateEvent?: (event: QueueClient["timeline"][number]) => Promise<void>;
 };
 
 const actionItems = [
@@ -110,7 +117,84 @@ const statusStyles: Record<TimelineEventStatus, string> = {
   IA: "bg-violet-50 text-violet-700 ring-violet-100",
 };
 
-export function OperationalTimeline({ events }: OperationalTimelineProps) {
+const manualEventTypes: TimelineEventType[] = [
+  "WhatsApp enviado",
+  "Ligação realizada",
+  "Promessa de pagamento",
+  "Acordo gerado",
+  "Boleto C2X",
+  "Observação operacional",
+  "Acionamento jurídico",
+];
+
+const eventStatusByType: Record<TimelineEventType, TimelineEventStatus> = {
+  "Acordo gerado": "Gerado",
+  "Acionamento jurídico": "Jurídico",
+  "Alteração de risco": "Elevado",
+  "Atualização cadastral": "Atualizado",
+  "Boleto C2X": "Enviado",
+  "Interação da IA": "IA",
+  "Ligação realizada": "Realizado",
+  "Observação operacional": "Registrado",
+  "Promessa de pagamento": "Prometido",
+  "Quebra de acordo": "Quebrado",
+  "WhatsApp enviado": "Enviado",
+};
+
+export function OperationalTimeline({
+  client,
+  defaultUnit,
+  events,
+  onCreateEvent,
+}: OperationalTimelineProps) {
+  const [drawerType, setDrawerType] = useState<TimelineEventType | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate(input: {
+    description: string;
+    occurredAt: string;
+    operator: string;
+    title: string;
+    type: TimelineEventType;
+    unitId: string;
+  }) {
+    const unit =
+      client?.carteira.unidades.find((item) => item.id === input.unitId) ??
+      defaultUnit ??
+      client?.carteira.unidades[0];
+    const event = {
+      actionType: "Registro manual",
+      description: input.description,
+      id: `${client?.id ?? "guardian"}-manual-${Date.now()}`,
+      occurredAt: input.occurredAt || nowForInputDisplay(),
+      operator: input.operator || client?.responsavel || "Operador Guardian",
+      status: eventStatusByType[input.type],
+      title: input.title,
+      type: input.type,
+      unitCode: unit?.matricula,
+      unitLabel: unit?.unidadeLote,
+    };
+
+    if (!onCreateEvent) {
+      return;
+    }
+
+    setFeedback(null);
+    setSaving(true);
+
+    try {
+      await onCreateEvent(event);
+      setDrawerType(null);
+      setFeedback("Evento registrado na timeline operacional.");
+    } catch (error) {
+      console.error("[guardian-timeline] manual event save failed", error);
+      setFeedback("Nao foi possivel salvar o evento agora.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <DetailSection title="Timeline operacional do cliente" icon={ClipboardList} accent>
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -126,11 +210,13 @@ export function OperationalTimeline({ events }: OperationalTimelineProps) {
         <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
           {actionItems.map((action) => {
             const Icon = action.icon;
+            const type = manualTypeForAction(action.label);
 
             return (
               <button
                 key={action.label}
                 type="button"
+                onClick={() => setDrawerType(type)}
                 className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
               >
                 <Icon className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
@@ -140,6 +226,12 @@ export function OperationalTimeline({ events }: OperationalTimelineProps) {
           })}
         </div>
       </div>
+
+      {feedback ? (
+        <div className="mb-3 rounded-lg border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+          {feedback}
+        </div>
+      ) : null}
 
       <div className="max-h-[640px] overflow-y-auto pr-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
         <div className="relative space-y-3 before:absolute before:left-[18px] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-slate-200">
@@ -155,7 +247,7 @@ export function OperationalTimeline({ events }: OperationalTimelineProps) {
                   </div>
                 </div>
 
-                <div title={event.description} className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300">
+                <div className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -170,7 +262,9 @@ export function OperationalTimeline({ events }: OperationalTimelineProps) {
                         </span>
                       </div>
 
-                      <p className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500">{event.description}</p>
+                      <Tooltip content={event.description} placement="bottom">
+                        <span className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500">{event.description}</span>
+                      </Tooltip>
                       {event.protocol || event.unitCode ? (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {event.protocol ? (
@@ -214,13 +308,212 @@ export function OperationalTimeline({ events }: OperationalTimelineProps) {
 
       <button
         type="button"
+        onClick={() => setDrawerType("Observação operacional")}
         className="mt-3 inline-flex h-8 items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-slate-950"
       >
         <Plus className="size-4 text-[#A07C3B]" aria-hidden="true" />
         Adicionar evento operacional
       </button>
+
+      {drawerType ? (
+        <ManualTimelineDrawer
+          client={client}
+          defaultType={drawerType}
+          defaultUnit={defaultUnit}
+          onClose={() => setDrawerType(null)}
+          onSave={handleCreate}
+          saving={saving}
+        />
+      ) : null}
     </DetailSection>
   );
+}
+
+function ManualTimelineDrawer({
+  client,
+  defaultType,
+  defaultUnit,
+  onClose,
+  onSave,
+  saving,
+}: {
+  client?: QueueClient;
+  defaultType: TimelineEventType;
+  defaultUnit?: QueueClient["carteira"]["unidades"][number];
+  onClose: () => void;
+  onSave: (input: {
+    description: string;
+    occurredAt: string;
+    operator: string;
+    title: string;
+    type: TimelineEventType;
+    unitId: string;
+  }) => void;
+  saving: boolean;
+}) {
+  const units = client?.carteira.unidades ?? [];
+  const [draft, setDraft] = useState({
+    description: "",
+    occurredAt: nowForInputDisplay(),
+    operator: client?.responsavel ?? "Operador Guardian",
+    title: titleForType(defaultType),
+    type: defaultType,
+    unitId: defaultUnit?.id ?? units[0]?.id ?? "",
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button
+        type="button"
+        aria-label="Fechar registro operacional"
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-950/25 backdrop-blur-[2px]"
+      />
+      <aside className="relative z-10 flex h-full w-full max-w-lg flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+              Guardian manual
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">
+              Registrar atividade
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {client?.nome ?? "Cliente selecionado"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar drawer"
+            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+          >
+            x
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-slate-500">Tipo</span>
+            <select
+              value={draft.type}
+              onChange={(event) => {
+                const type = event.target.value as TimelineEventType;
+                setDraft((current) => ({
+                  ...current,
+                  title: titleForType(type),
+                  type,
+                }));
+              }}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+            >
+              {manualEventTypes.map((type) => (
+                <option key={type}>{type}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-slate-500">Unidade</span>
+            <select
+              value={draft.unitId}
+              onChange={(event) => setDraft((current) => ({ ...current, unitId: event.target.value }))}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+            >
+              {units.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.matricula} · {unit.empreendimento}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-slate-500">Titulo</span>
+            <input
+              value={draft.title}
+              onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-slate-500">Data e hora</span>
+            <input
+              value={draft.occurredAt}
+              onChange={(event) => setDraft((current) => ({ ...current, occurredAt: event.target.value }))}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-slate-500">Operador</span>
+            <input
+              value={draft.operator}
+              onChange={(event) => setDraft((current) => ({ ...current, operator: event.target.value }))}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-slate-500">Registro</span>
+            <textarea
+              value={draft.description}
+              onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+              placeholder="Descreva o contato, cobrança, retorno, observação ou encaminhamento."
+              className="min-h-32 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+            />
+          </label>
+
+          <button
+            type="button"
+            disabled={saving || !draft.title.trim() || !draft.description.trim()}
+            onClick={() => onSave(draft)}
+            className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {saving ? "Salvando..." : "Salvar registro"}
+          </button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function manualTypeForAction(label: string): TimelineEventType {
+  if (label === "WhatsApp") return "WhatsApp enviado";
+  if (label === "Ligação") return "Ligação realizada";
+  if (label === "Acordo") return "Acordo gerado";
+  if (label === "Boleto") return "Boleto C2X";
+
+  return "Observação operacional";
+}
+
+function titleForType(type: TimelineEventType) {
+  const titles: Record<TimelineEventType, string> = {
+    "Acordo gerado": "Acordo registrado",
+    "Acionamento jurídico": "Acionamento jurídico registrado",
+    "Alteração de risco": "Risco operacional atualizado",
+    "Atualização cadastral": "Cadastro atualizado",
+    "Boleto C2X": "Boleto registrado",
+    "Interação da IA": "Interação da Cacá registrada",
+    "Ligação realizada": "Ligação realizada",
+    "Observação operacional": "Observação operacional",
+    "Promessa de pagamento": "Promessa de pagamento registrada",
+    "Quebra de acordo": "Quebra de acordo registrada",
+    "WhatsApp enviado": "Contato por WhatsApp registrado",
+  };
+
+  return titles[type] ?? "Registro operacional";
+}
+
+function nowForInputDisplay() {
+  return new Date().toLocaleString("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 

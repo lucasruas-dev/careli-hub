@@ -107,8 +107,10 @@ type AttendanceInstallmentRow = RowDataPacket & {
 
 type AttendanceQueueOptions = {
   clientId?: string;
+  includeClientsWithoutOverdue?: boolean;
   includeInstallments?: boolean;
   limit?: number;
+  strict?: boolean;
 };
 
 const activePaymentWhere =
@@ -158,21 +160,34 @@ const validEnterpriseWhere = `
   )
 `;
 
+function guardianDbConfigError(missing: string[]) {
+  return Object.assign(
+    new Error(`Configuracao do banco C2X ausente: ${missing.join(", ")}`),
+    { code: "GUARDIAN_DB_CONFIG_MISSING" },
+  );
+}
+
 export async function loadGuardianAttendanceQueue(
   options: AttendanceQueueOptions = {},
 ): Promise<QueueClient[]> {
   const poolResult = getGuardianDbPool();
 
   if (!poolResult.ok) {
+    if (options.strict) {
+      throw guardianDbConfigError(poolResult.missing);
+    }
+
     return [];
   }
 
   const { pool } = poolResult;
   const c2xClientId = c2xClientIdFromQueueId(options.clientId);
+  const includeClientsWithoutOverdue = options.includeClientsWithoutOverdue ?? false;
   const includeInstallments = options.includeInstallments ?? false;
   const queueLimit = normalizeQueueLimit(options.limit);
   const queryParams: Array<number | string> = [];
   const clientFilter = c2xClientId ? "and ar.client_id = ?" : "";
+  const overdueFilter = includeClientsWithoutOverdue ? "" : "having overdue_payments > 0";
   const limitClause = c2xClientId ? "" : "limit ?";
 
   if (c2xClientId) {
@@ -408,7 +423,7 @@ export async function loadGuardianAttendanceQueue(
       e.code,
       e.name,
       e.divulgation_name
-    having overdue_payments > 0
+    ${overdueFilter}
     order by overdue_payments desc, max_overdue_days desc, overdue_amount desc, ar.id desc
     ${limitClause}
     `, queryParams);
@@ -432,6 +447,10 @@ export async function loadGuardianAttendanceQueue(
     return buildQueueClientsFromSources(sourceClients);
   } catch (error) {
     console.error("[guardian-attendance] C2X query failed", sanitizeGuardianDbError(error));
+    if (options.strict) {
+      throw error;
+    }
+
     return [];
   }
 }
@@ -439,7 +458,9 @@ export async function loadGuardianAttendanceQueue(
 export async function loadGuardianAttendanceClient(clientId: string) {
   const clients = await loadGuardianAttendanceQueue({
     clientId,
+    includeClientsWithoutOverdue: true,
     includeInstallments: true,
+    strict: true,
   });
 
   return clients[0] ?? null;

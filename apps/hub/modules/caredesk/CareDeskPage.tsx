@@ -27,7 +27,9 @@ import {
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   Route,
+  Save,
   Search,
   Send,
   Settings2,
@@ -119,6 +121,21 @@ type CareDeskQueueConfig = {
   status: string;
 };
 
+type CareDeskTicketProfileConfig = {
+  category: string;
+  description?: string | null;
+  id: string;
+  name: string;
+  priority: CareDeskPriority;
+  queueId?: string | null;
+  queueLabel: string;
+  requiredFields: string[];
+  slaFirstResponseMinutes: number;
+  slaResolutionMinutes: number;
+  slug: string;
+  status: string;
+};
+
 type CareDeskTemplate = {
   category: string;
   channelKind: string;
@@ -138,6 +155,7 @@ type CareDeskBroadcast = {
 type CareDeskData = {
   broadcasts: CareDeskBroadcast[];
   channels: Array<{ id: string; kind: string; name: string; status: string }>;
+  profiles: CareDeskTicketProfileConfig[];
   queues: CareDeskQueueConfig[];
   templates: CareDeskTemplate[];
   tickets: CareDeskTicket[];
@@ -146,6 +164,7 @@ type CareDeskData = {
 const emptyCareDeskData: CareDeskData = {
   broadcasts: [],
   channels: [],
+  profiles: [],
   queues: [],
   templates: [],
   tickets: [],
@@ -179,6 +198,14 @@ const priorityLabel: Record<CareDeskPriority, string> = {
   high: "Alta",
   low: "Baixa",
   medium: "Media",
+};
+const priorityOptions: CareDeskPriority[] = ["low", "medium", "high", "critical"];
+const setupStatusOptions = ["planned", "active", "paused", "archived"];
+const setupStatusLabel: Record<string, string> = {
+  active: "Ativo",
+  archived: "Arquivado",
+  paused: "Pausado",
+  planned: "Planejado",
 };
 
 export function CareDeskPage({
@@ -279,6 +306,13 @@ export function CareDeskPage({
             }
           : ticket,
       ),
+    }));
+  }
+
+  function handleProfilesChanged(profiles: CareDeskTicketProfileConfig[]) {
+    setCareDeskData((current) => ({
+      ...current,
+      profiles,
     }));
   }
 
@@ -403,7 +437,11 @@ export function CareDeskPage({
             ) : activeView === "disparos" ? (
               <BroadcastView data={careDeskData} snapshot={snapshot} />
             ) : activeView === "setup" ? (
-              <SetupView data={careDeskData} snapshot={snapshot} />
+              <SetupView
+                data={careDeskData}
+                snapshot={snapshot}
+                onProfilesChanged={handleProfilesChanged}
+              />
             ) : (
               <ReportsView data={careDeskData} snapshot={snapshot} />
             )}
@@ -1579,81 +1617,435 @@ function BroadcastView({
 
 function SetupView({
   data,
+  onProfilesChanged,
   snapshot,
 }: {
   data: CareDeskData;
+  onProfilesChanged: (profiles: CareDeskTicketProfileConfig[]) => void;
   snapshot: ReturnType<typeof buildCareDeskSnapshot>;
 }) {
+  const firstQueueId = data.queues[0]?.id ?? "";
+  const queueById = useMemo(
+    () => new Map(data.queues.map((queue) => [queue.id, queue])),
+    [data.queues],
+  );
+  const [selectedQueueId, setSelectedQueueId] = useState("all");
+  const [editingProfileId, setEditingProfileId] = useState("");
+  const [profileForm, setProfileForm] = useState(() => createProfileForm(firstQueueId));
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!profileForm.queueId && firstQueueId) {
+      setProfileForm((current) => ({
+        ...current,
+        queueId: firstQueueId,
+      }));
+    }
+  }, [firstQueueId, profileForm.queueId]);
+
+  const visibleProfiles = useMemo(
+    () =>
+      data.profiles
+        .filter((profile) => selectedQueueId === "all" || profile.queueId === selectedQueueId)
+        .sort(sortCareDeskProfiles),
+    [data.profiles, selectedQueueId],
+  );
+  const activeProfiles = data.profiles.filter((profile) => profile.status === "active").length;
+  const categories = unique(data.profiles.map((profile) => profile.category).filter(Boolean));
+
+  function updateProfileForm(field: string, value: string) {
+    setProfileFeedback(null);
+    setProfileForm((current) => {
+      const next = {
+        ...current,
+        [field]: value,
+      };
+
+      if (field === "name" && !editingProfileId) {
+        next.slug = slugifyCareDeskProfile(value);
+      }
+
+      return next;
+    });
+  }
+
+  function startNewProfile() {
+    setEditingProfileId("");
+    setProfileFeedback(null);
+    setProfileForm(createProfileForm(firstQueueId));
+  }
+
+  function startEditProfile(profile: CareDeskTicketProfileConfig) {
+    setEditingProfileId(profile.id);
+    setProfileFeedback(null);
+    setProfileForm(profileToForm(profile));
+  }
+
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!profileForm.queueId) {
+      setProfileFeedback("Selecione uma fila antes de salvar o motivo.");
+      return;
+    }
+
+    if (!profileForm.name.trim() || !profileForm.slug.trim() || !profileForm.category.trim()) {
+      setProfileFeedback("Preencha nome, slug e categoria do motivo.");
+      return;
+    }
+
+    setSavingProfile(true);
+    setProfileFeedback(null);
+
+    try {
+      const savedRow = await saveCareDeskTicketProfile(profileForm);
+      const savedProfile = mapTicketProfileRow(
+        savedRow,
+        savedRow.queue_id ? queueById.get(savedRow.queue_id) : null,
+      );
+      const nextProfiles = [
+        ...data.profiles.filter(
+          (profile) =>
+            profile.id !== savedProfile.id &&
+            !(profile.queueId === savedProfile.queueId && profile.slug === savedProfile.slug),
+        ),
+        savedProfile,
+      ].sort(sortCareDeskProfiles);
+
+      onProfilesChanged(nextProfiles);
+      setEditingProfileId(savedProfile.id);
+      setProfileForm(profileToForm(savedProfile));
+      setProfileFeedback("Motivo de atendimento salvo no CareDesk.");
+    } catch (error) {
+      setProfileFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar o motivo do CareDesk.",
+      );
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
   return (
-    <div className="grid grid-cols-3 gap-4">
-      <SetupSection
-        icon={Workflow}
-        title="Filas"
-        items={
-          data.queues.length
-            ? data.queues.map((queue) => [
-                queue.name,
-                `${priorityLabel[queue.defaultPriority]} | ${queue.slaFirstResponseMinutes} min`,
-              ])
-            : [["Nenhuma fila", "Configurar setup"]]
-        }
-      />
-      <SetupSection
-        icon={Route}
-        title="Roteamento"
-        items={[
-          ["Prioridade", "Fila + perfil + SLA"],
-          ["Handoff", "Modulo origem abre ticket"],
-          ["Distribuicao", "Operador online"],
-          ["Escalada", "Coordenacao"],
-        ]}
-      />
-      <SetupSection
-        icon={MessageSquareText}
-        title="Templates"
-        items={
-          data.templates.length
-            ? data.templates.map((template) => [
-                template.name,
-                `${template.category} | ${template.channelKind}`,
-              ])
-            : [["Nenhum template", "Configurar setup"]]
-        }
-      />
-      <SetupSection
-        icon={Clock3}
-        title="SLA"
-        items={[
-          ["Primeira resposta", snapshot.firstResponseLabel],
-          ["Critico", `${formatCount(snapshot.slaCritical)} tickets`],
-          ["Sem resposta", `${formatCount(snapshot.unanswered)} tickets`],
-          ["Aguardando operador", `${formatCount(snapshot.waitingOperator)} tickets`],
-        ]}
-      />
-      <SetupSection
-        icon={Network}
-        title="Canais"
-        items={
-          data.channels.length
-            ? data.channels.map((channel) => [channel.name, channel.kind])
-            : [
-                ["WhatsApp", "Preparado"],
-                ["E-mail", "Preparado"],
-                ["Web chat", "Preparado"],
-                ["Telefonia", "Preparado"],
-              ]
-        }
-      />
-      <SetupSection
-        icon={DatabaseZap}
-        title="Dados"
-        items={[
-          ["CareDesk", "Tickets e auditoria"],
-          ["Contatos", `${formatCount(snapshot.contacts)} registrados`],
-          ["Mensagens", `${formatCount(snapshot.messages)} registradas`],
-          ["Disparos", `${formatCount(data.broadcasts.length)} campanhas`],
-        ]}
-      />
+    <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
+      <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-white p-4">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#A07C3B]">
+              Motivos e perfis
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-[#101820]">
+              Configuracao operacional do atendimento
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#63708a]">
+              Cada motivo define fila, categoria, prioridade e SLA. Essa configuracao alimenta
+              triagem, metricas e abertura de ticket sem depender de outro modulo.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={startNewProfile}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Novo motivo
+          </button>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 space-y-3">
+            <div className="grid gap-2 rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-2 sm:grid-cols-[minmax(0,1fr)_180px]">
+              <label className="flex h-10 items-center gap-2 rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm text-[#63708a]">
+                <Search className="h-4 w-4 text-[#A07C3B]" aria-hidden="true" />
+                <span className="font-semibold">
+                  {formatCount(visibleProfiles.length)} motivos visiveis
+                </span>
+              </label>
+              <FilterSelect
+                label="Fila"
+                value={selectedQueueId}
+                options={[
+                  "all",
+                  ...data.queues.map((queue) => queue.id),
+                ]}
+                optionLabels={{
+                  all: "Todas",
+                  ...Object.fromEntries(data.queues.map((queue) => [queue.id, queue.name])),
+                }}
+                onChange={setSelectedQueueId}
+              />
+            </div>
+
+            <div className="max-h-[620px] overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+              <div className="space-y-2">
+                {visibleProfiles.length > 0 ? (
+                  visibleProfiles.map((profile) => (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      onClick={() => startEditProfile(profile)}
+                      className={[
+                        "w-full rounded-xl border p-3 text-left transition-colors",
+                        editingProfileId === profile.id
+                          ? "border-[#A07C3B]/45 bg-[#fbf6ec]"
+                          : "border-[#e4eaf3] bg-[#fbfcfe] hover:border-[#A07C3B]/30 hover:bg-white",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[#101820]">
+                            {profile.name}
+                          </p>
+                          <p className="mt-1 text-xs font-medium text-[#63708a]">
+                            {profile.queueLabel} | {profile.category} | {profile.slug}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                          {setupStatusLabel[profile.status] ?? profile.status}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                          {priorityLabel[profile.priority]}
+                        </span>
+                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                          1a resposta {profile.slaFirstResponseMinutes} min
+                        </span>
+                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                          Resolucao {formatSlaMinutes(profile.slaResolutionMinutes)}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <EmptyState
+                    icon={Route}
+                    title="Nenhum motivo configurado"
+                    description="Crie motivos de atendimento para padronizar fila, prioridade, SLA e metricas do CareDesk."
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={saveProfile} className="rounded-xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
+                <Settings2 className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div>
+                <h4 className="text-sm font-semibold text-[#101820]">
+                  {editingProfileId ? "Editar motivo" : "Novo motivo"}
+                </h4>
+                <p className="text-xs text-[#63708a]">
+                  Salvo em caredesk_ticket_profiles
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <SetupField label="Fila">
+                <select
+                  value={profileForm.queueId}
+                  onChange={(event) => updateProfileForm("queueId", event.target.value)}
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                >
+                  <option value="">Selecione</option>
+                  {data.queues.map((queue) => (
+                    <option key={queue.id} value={queue.id}>
+                      {queue.name}
+                    </option>
+                  ))}
+                </select>
+              </SetupField>
+
+              <SetupField label="Nome do motivo">
+                <input
+                  value={profileForm.name}
+                  onChange={(event) => updateProfileForm("name", event.target.value)}
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  placeholder="Ex.: Segunda via de boleto"
+                />
+              </SetupField>
+
+              <div className="grid grid-cols-2 gap-2">
+                <SetupField label="Slug">
+                  <input
+                    value={profileForm.slug}
+                    onChange={(event) => updateProfileForm("slug", slugifyCareDeskProfile(event.target.value))}
+                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    placeholder="segunda-via-boleto"
+                  />
+                </SetupField>
+                <SetupField label="Categoria">
+                  <input
+                    value={profileForm.category}
+                    onChange={(event) => updateProfileForm("category", event.target.value)}
+                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    placeholder="Financeiro"
+                  />
+                </SetupField>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <SetupField label="Prioridade">
+                  <select
+                    value={profileForm.priority}
+                    onChange={(event) => updateProfileForm("priority", event.target.value)}
+                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  >
+                    {priorityOptions.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {priorityLabel[priority]}
+                      </option>
+                    ))}
+                  </select>
+                </SetupField>
+                <SetupField label="Status">
+                  <select
+                    value={profileForm.status}
+                    onChange={(event) => updateProfileForm("status", event.target.value)}
+                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  >
+                    {setupStatusOptions.map((status) => (
+                      <option key={status} value={status}>
+                        {setupStatusLabel[status]}
+                      </option>
+                    ))}
+                  </select>
+                </SetupField>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <SetupField label="SLA 1a resposta">
+                  <input
+                    type="number"
+                    min="1"
+                    value={profileForm.slaFirstResponseMinutes}
+                    onChange={(event) => updateProfileForm("slaFirstResponseMinutes", event.target.value)}
+                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  />
+                </SetupField>
+                <SetupField label="SLA resolucao">
+                  <input
+                    type="number"
+                    min="1"
+                    value={profileForm.slaResolutionMinutes}
+                    onChange={(event) => updateProfileForm("slaResolutionMinutes", event.target.value)}
+                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  />
+                </SetupField>
+              </div>
+
+              <SetupField label="Campos obrigatorios">
+                <input
+                  value={profileForm.requiredFields}
+                  onChange={(event) => updateProfileForm("requiredFields", event.target.value)}
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  placeholder="contact_id, queue_id, priority"
+                />
+              </SetupField>
+
+              <SetupField label="Descricao">
+                <textarea
+                  value={profileForm.description}
+                  onChange={(event) => updateProfileForm("description", event.target.value)}
+                  className="min-h-20 w-full resize-none rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-sm font-medium text-[#34415a] outline-none"
+                  placeholder="Quando usar este motivo no atendimento."
+                />
+              </SetupField>
+            </div>
+
+            {profileFeedback ? (
+              <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
+                {profileFeedback}
+              </p>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={savingProfile}
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <Save className="h-4 w-4" aria-hidden="true" />
+              {savingProfile ? "Salvando..." : "Salvar motivo"}
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <aside className="space-y-4">
+        <SetupSection
+          icon={Workflow}
+          title="Filas"
+          items={
+            data.queues.length
+              ? data.queues.map((queue) => [
+                  queue.name,
+                  `${priorityLabel[queue.defaultPriority]} | ${queue.slaFirstResponseMinutes} min`,
+                ])
+              : [["Nenhuma fila", "Configurar setup"]]
+          }
+        />
+        <SetupSection
+          icon={Route}
+          title="Motivos"
+          items={[
+            ["Ativos", `${formatCount(activeProfiles)} motivos`],
+            ["Categorias", `${formatCount(categories.length)} categorias`],
+            ["Roteamento", "Fila + prioridade + SLA"],
+            ["Metricas", "Motivo obrigatorio"],
+          ]}
+        />
+        <SetupSection
+          icon={MessageSquareText}
+          title="Templates"
+          items={
+            data.templates.length
+              ? data.templates.slice(0, 5).map((template) => [
+                  template.name,
+                  `${template.category} | ${template.channelKind}`,
+                ])
+              : [["Nenhum template", "Configurar setup"]]
+          }
+        />
+        <SetupSection
+          icon={Clock3}
+          title="SLA"
+          items={[
+            ["Primeira resposta", snapshot.firstResponseLabel],
+            ["Critico", `${formatCount(snapshot.slaCritical)} tickets`],
+            ["Sem resposta", `${formatCount(snapshot.unanswered)} tickets`],
+            ["Aguardando operador", `${formatCount(snapshot.waitingOperator)} tickets`],
+          ]}
+        />
+        <SetupSection
+          icon={Network}
+          title="Canais"
+          items={
+            data.channels.length
+              ? data.channels.map((channel) => [channel.name, channel.kind])
+              : [
+                  ["WhatsApp", "Preparado"],
+                  ["E-mail", "Preparado"],
+                  ["Web chat", "Preparado"],
+                  ["Telefonia", "Preparado"],
+                ]
+          }
+        />
+        <SetupSection
+          icon={DatabaseZap}
+          title="Dados"
+          items={[
+            ["CareDesk", "Tickets e auditoria"],
+            ["Contatos", `${formatCount(snapshot.contacts)} registrados`],
+            ["Mensagens", `${formatCount(snapshot.messages)} registradas`],
+            ["Disparos", `${formatCount(data.broadcasts.length)} campanhas`],
+          ]}
+        />
+      </aside>
     </div>
   );
 }
@@ -1906,6 +2298,23 @@ function SetupSection({
   );
 }
 
+function SetupField({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8a96aa]">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
 function ProgressLine({
   label,
   total,
@@ -1992,11 +2401,13 @@ function InsightCard({
 function FilterSelect({
   label,
   onChange,
+  optionLabels,
   options,
   value,
 }: {
   label: string;
   onChange: (value: string) => void;
+  optionLabels?: Record<string, string>;
   options: string[];
   value: string;
 }) {
@@ -2011,7 +2422,7 @@ function FilterSelect({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {optionLabels?.[option] ?? option}
           </option>
         ))}
       </select>
@@ -2215,7 +2626,7 @@ async function loadCareDeskData(): Promise<CareDeskData> {
     return emptyCareDeskData;
   }
 
-  const [ticketsResult, queuesResult, templatesResult, channelsResult, broadcastsResult] =
+  const [ticketsResult, queuesResult, profilesResult, templatesResult, channelsResult, broadcastsResult] =
     await Promise.all([
       supabase
         .from("caredesk_tickets")
@@ -2229,6 +2640,13 @@ async function loadCareDeskData(): Promise<CareDeskData> {
         .select(
           "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy",
         )
+        .order("name", { ascending: true }),
+      supabase
+        .from("caredesk_ticket_profiles")
+        .select(
+          "id,queue_id,name,slug,category,priority,sla_first_response_minutes,sla_resolution_minutes,description,required_fields,status",
+        )
+        .order("category", { ascending: true })
         .order("name", { ascending: true }),
       supabase
         .from("caredesk_templates")
@@ -2248,6 +2666,7 @@ async function loadCareDeskData(): Promise<CareDeskData> {
   const failedResult = [
     ticketsResult,
     queuesResult,
+    profilesResult,
     templatesResult,
     channelsResult,
     broadcastsResult,
@@ -2260,20 +2679,13 @@ async function loadCareDeskData(): Promise<CareDeskData> {
   const ticketsRows = ticketsResult.data ?? [];
   const ticketIds = ticketsRows.map((ticket) => ticket.id);
   const contactIds = unique(ticketsRows.map((ticket) => ticket.contact_id).filter(Boolean));
-  const profileIds = unique(ticketsRows.map((ticket) => ticket.profile_id).filter(Boolean));
 
-  const [contactsResult, profilesResult, messagesResult] = await Promise.all([
+  const [contactsResult, messagesResult] = await Promise.all([
     contactIds.length
       ? supabase
           .from("caredesk_contacts")
           .select("id,display_name,document,email,phone,whatsapp_phone")
           .in("id", contactIds)
-      : Promise.resolve({ data: [], error: null }),
-    profileIds.length
-      ? supabase
-          .from("caredesk_ticket_profiles")
-          .select("id,name,category,priority")
-          .in("id", profileIds)
       : Promise.resolve({ data: [], error: null }),
     ticketIds.length
       ? supabase
@@ -2284,7 +2696,7 @@ async function loadCareDeskData(): Promise<CareDeskData> {
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const failedNestedResult = [contactsResult, profilesResult, messagesResult].find(
+  const failedNestedResult = [contactsResult, messagesResult].find(
     (result) => result.error,
   );
 
@@ -2316,12 +2728,17 @@ async function loadCareDeskData(): Promise<CareDeskData> {
   const queueById = new Map(queues.map((queue) => [queue.id, queue]));
   const channelById = new Map(channels.map((channel) => [channel.id, channel]));
   const contactById = new Map((contactsResult.data ?? []).map((contact) => [contact.id, contact]));
-  const profileById = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile]));
+  const profileRows = profilesResult.data ?? [];
+  const profiles = profileRows.map((profile) =>
+    mapTicketProfileRow(profile, profile.queue_id ? queueById.get(profile.queue_id) : null),
+  );
+  const profileById = new Map(profileRows.map((profile) => [profile.id, profile]));
   const messagesByTicket = groupMessagesByTicket(messagesResult.data ?? []);
 
   return {
     broadcasts,
     channels,
+    profiles,
     queues,
     templates,
     tickets: ticketsRows.map((ticket) =>
@@ -2337,6 +2754,48 @@ async function loadCareDeskData(): Promise<CareDeskData> {
   };
 }
 
+async function saveCareDeskTicketProfile(form: ReturnType<typeof createProfileForm>) {
+  const supabase = getHubSupabaseClient();
+
+  if (!supabase) {
+    throw new Error("Conexao do Supabase indisponivel para salvar o motivo.");
+  }
+
+  const payload = {
+    category: form.category.trim(),
+    description: form.description.trim() || null,
+    name: form.name.trim(),
+    priority: normalizePriority(form.priority),
+    queue_id: form.queueId,
+    required_fields: parseRequiredFields(form.requiredFields),
+    sla_first_response_minutes: normalizePositiveInteger(form.slaFirstResponseMinutes, 60),
+    sla_resolution_minutes: normalizePositiveInteger(form.slaResolutionMinutes, 480),
+    slug: slugifyCareDeskProfile(form.slug || form.name),
+    status: setupStatusOptions.includes(form.status) ? form.status : "active",
+  };
+  const selectColumns =
+    "id,queue_id,name,slug,category,priority,sla_first_response_minutes,sla_resolution_minutes,description,required_fields,status";
+
+  const result = form.id
+    ? await supabase
+        .from("caredesk_ticket_profiles")
+        .update(payload)
+        .eq("id", form.id)
+        .select(selectColumns)
+        .single()
+    : await supabase
+        .from("caredesk_ticket_profiles")
+        .upsert(payload, { onConflict: "queue_id,slug" })
+        .select(selectColumns)
+        .single();
+
+  if (result.error || !result.data) {
+    throw new Error(result.error?.message ?? "Nao foi possivel salvar o motivo.");
+  }
+
+  return result.data;
+}
+
 function mapQueueRow(row: any): CareDeskQueueConfig {
   return {
     assignmentStrategy: row.assignment_strategy ?? "manual",
@@ -2349,6 +2808,26 @@ function mapQueueRow(row: any): CareDeskQueueConfig {
     slaResolutionMinutes: Number(row.sla_resolution_minutes ?? 480),
     slug: row.slug,
     status: row.status,
+  };
+}
+
+function mapTicketProfileRow(
+  row: any,
+  queue?: CareDeskQueueConfig | null,
+): CareDeskTicketProfileConfig {
+  return {
+    category: row.category ?? "Atendimento",
+    description: row.description ?? null,
+    id: row.id,
+    name: row.name ?? "Sem nome",
+    priority: normalizePriority(row.priority),
+    queueId: row.queue_id ?? null,
+    queueLabel: queue?.name ?? "Sem fila",
+    requiredFields: normalizeRequiredFields(row.required_fields),
+    slaFirstResponseMinutes: Number(row.sla_first_response_minutes ?? 60),
+    slaResolutionMinutes: Number(row.sla_resolution_minutes ?? 480),
+    slug: row.slug ?? "",
+    status: row.status ?? "active",
   };
 }
 
@@ -2482,6 +2961,103 @@ function sortCareDeskTickets(first: CareDeskTicket, second: CareDeskTicket) {
   }
 
   return dateValue(second.openedAt) - dateValue(first.openedAt);
+}
+
+function sortCareDeskProfiles(
+  first: CareDeskTicketProfileConfig,
+  second: CareDeskTicketProfileConfig,
+) {
+  return (
+    first.queueLabel.localeCompare(second.queueLabel, "pt-BR") ||
+    first.category.localeCompare(second.category, "pt-BR") ||
+    first.name.localeCompare(second.name, "pt-BR")
+  );
+}
+
+function createProfileForm(queueId = "") {
+  return {
+    category: "Atendimento",
+    description: "",
+    id: "",
+    name: "",
+    priority: "medium" as CareDeskPriority,
+    queueId,
+    requiredFields: "contact_id, queue_id",
+    slaFirstResponseMinutes: "60",
+    slaResolutionMinutes: "480",
+    slug: "",
+    status: "active",
+  };
+}
+
+function profileToForm(profile: CareDeskTicketProfileConfig) {
+  return {
+    category: profile.category,
+    description: profile.description ?? "",
+    id: profile.id,
+    name: profile.name,
+    priority: profile.priority,
+    queueId: profile.queueId ?? "",
+    requiredFields: profile.requiredFields.join(", "),
+    slaFirstResponseMinutes: String(profile.slaFirstResponseMinutes),
+    slaResolutionMinutes: String(profile.slaResolutionMinutes),
+    slug: profile.slug,
+    status: profile.status,
+  };
+}
+
+function normalizeRequiredFields(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map(String).map((item) => item.trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map(String).map((item) => item.trim()).filter(Boolean);
+      }
+    } catch {
+      return parseRequiredFields(value);
+    }
+  }
+
+  return [];
+}
+
+function parseRequiredFields(value: string) {
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizePositiveInteger(value: string | number, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
+}
+
+function slugifyCareDeskProfile(value: string) {
+  const slug = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "motivo-atendimento";
+}
+
+function formatSlaMinutes(minutes: number) {
+  if (minutes >= 1440) {
+    return `${Math.round(minutes / 1440)}d`;
+  }
+
+  if (minutes >= 60) {
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }
+
+  return `${minutes} min`;
 }
 
 function normalizePriority(value: unknown): CareDeskPriority {

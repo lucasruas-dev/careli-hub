@@ -16,6 +16,7 @@ import {
   TicketCheck,
   UserRoundCheck,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import type { AttendancePriority, QueueClient } from "@/modules/guardian/attendance/types";
 
 type TicketQueueStatus =
@@ -291,15 +292,17 @@ export function TicketOperationsQueue({
         </div>
 
         <aside className="space-y-3">
-          <div title="Priorizar tickets com SLA crítico, promessa vencendo e alto saldo." className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
+          <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
             <div className="flex items-center gap-2">
               <Bot className="size-4 text-[#A07C3B]" aria-hidden="true" />
               <p className="text-sm font-semibold text-slate-950">Cacá na fila</p>
             </div>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">
-              Priorizar tickets com SLA crítico, promessa vencendo e alto saldo. Há risco operacional concentrado em
-              negociações com cliente sem resposta após 24h.
-            </p>
+            <Tooltip content="Priorizar tickets com SLA crítico, promessa vencendo e alto saldo." placement="bottom">
+              <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">
+                Priorizar tickets com SLA crítico, promessa vencendo e alto saldo. Há risco operacional concentrado em
+                negociações com cliente sem resposta após 24h.
+              </span>
+            </Tooltip>
           </div>
 
           <InsightCard title="Tickets prioritários" value={`${kpis.critical + kpis.promiseDue}`} description="SLA crítico ou promessa vencendo hoje." />
@@ -383,15 +386,16 @@ function TicketQueueRow({
       <p className="text-sm font-medium text-slate-600">{ticket.nextFollowUp}</p>
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => onOpenWhatsApp(ticket.clientId)}
-          title="Abrir atendimento"
-          aria-label="Abrir atendimento do ticket"
-          className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
-        >
-          <MessageCircle className="size-4" aria-hidden="true" />
-        </button>
+        <Tooltip content="Abrir atendimento" placement="left">
+          <button
+            type="button"
+            onClick={() => onOpenWhatsApp(ticket.clientId)}
+            aria-label="Abrir atendimento do ticket"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+          >
+            <MessageCircle className="size-4" aria-hidden="true" />
+          </button>
+        </Tooltip>
       </div>
     </article>
   );
@@ -418,18 +422,17 @@ function KpiCard({
         : "bg-slate-50 text-slate-700 ring-slate-200";
 
   return (
-    <div
-      title={`${label}: ${value}`}
-      className="group flex min-h-14 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/55 px-3 py-2 transition-colors hover:border-[#A07C3B]/20 hover:bg-white"
-    >
-      <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform group-hover:scale-105 ${toneClass}`}>
-        <Icon className="size-4" aria-hidden="true" />
+    <Tooltip content={`${label}: ${value}`} placement="bottom" className="w-full" triggerClassName="w-full">
+      <span className="group flex min-h-14 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/55 px-3 py-2 transition-colors hover:border-[#A07C3B]/20 hover:bg-white">
+        <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform group-hover:scale-105 ${toneClass}`}>
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-base font-semibold leading-5 text-slate-950">{value}</span>
+          <span className="block truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">{shortLabel}</span>
+        </span>
       </span>
-      <div className="min-w-0">
-        <p className="truncate text-base font-semibold leading-5 text-slate-950">{value}</p>
-        <p className="truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">{shortLabel}</p>
-      </div>
-    </div>
+    </Tooltip>
   );
 }
 
@@ -444,28 +447,29 @@ function FilterSummaryBar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        onClick={onToggle}
-        title={expanded ? "Recolher filtros" : "Expandir filtros"}
-        className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-        aria-expanded={expanded}
-      >
-        <Filter className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
-        Filtros{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
-        <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
-      </button>
-      {activeFilters.map((filter) => (
+      <Tooltip content={expanded ? "Recolher filtros" : "Expandir filtros"} placement="bottom">
         <button
-          key={`${filter.label}-${filter.value}`}
           type="button"
-          onClick={filter.clear}
-          title={`Remover ${filter.label}`}
-          className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
+          onClick={onToggle}
+          className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+          aria-expanded={expanded}
         >
-          <span className="truncate">{filter.value}</span>
-          <span aria-hidden="true">×</span>
+          <Filter className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
+          Filtros{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
+          <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
         </button>
+      </Tooltip>
+      {activeFilters.map((filter) => (
+        <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
+          <button
+            type="button"
+            onClick={filter.clear}
+            className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
+          >
+            <span className="truncate">{filter.value}</span>
+            <span aria-hidden="true">×</span>
+          </button>
+        </Tooltip>
       ))}
     </div>
   );

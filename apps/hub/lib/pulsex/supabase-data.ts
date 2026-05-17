@@ -583,6 +583,46 @@ export async function updatePulseXMessageTags(input: {
   return mapMessage(payload.data);
 }
 
+export async function updatePulseXMessageBody(input: {
+  body: string;
+  messageId: PulseXMessage["id"];
+}): Promise<PulseXMessage | null> {
+  const client = getHubSupabaseClient();
+
+  if (!client || input.messageId.startsWith("local-")) {
+    return null;
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    return null;
+  }
+
+  const response = await fetch("/api/pulsex/messages", {
+    body: JSON.stringify({
+      action: "edit-message",
+      body: input.body,
+      messageId: input.messageId,
+    }),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: PulseXMessageRow; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.data) {
+    return null;
+  }
+
+  return mapMessage(payload.data);
+}
+
 export async function markPulseXChannelRead(input: {
   channelId: PulseXChannel["id"];
 }): Promise<{ channelId: string; lastReadAt: string; userId: string } | null> {
@@ -921,6 +961,7 @@ function mapMessage(row: PulseXMessageRow | null): PulseXMessage {
     clientMessageId: getString(metadata.clientMessageId) || undefined,
     createdAt: row.created_at,
     deletedAt: row.deleted_at ?? undefined,
+    editedAt: getString(metadata.editedAt) || undefined,
     id: row.id,
     mentionUserIds,
     mentions,

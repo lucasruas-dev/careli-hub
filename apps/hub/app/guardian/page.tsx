@@ -14,6 +14,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 
 import { KpiCard } from "@/components/guardian/dashboard/KpiCard";
 import { MainLayout } from "@/components/guardian/layout/MainLayout";
@@ -82,6 +83,7 @@ type EnterprisePerformanceItem = {
 type EnterprisePerformanceSortKey =
   | "enterpriseName"
   | "totalPortfolioAmount"
+  | "delinquencyBaseAmount"
   | "overduePrincipalAmount"
   | "overduePrincipalPayments"
   | "overdueClients"
@@ -140,6 +142,29 @@ function writeCachedRealKpis(kpis: RealGuardianKpis) {
   } catch {
     // Cache is only a UX fallback; failing to persist it should not block the dashboard.
   }
+}
+
+function buildEnterpriseScopedKpis(
+  kpis: RealGuardianKpis,
+  enterprise: GuardianEnterprisePerformance,
+): RealGuardianKpis {
+  const liquidatedAmount = Math.max(
+    enterprise.delinquencyBaseAmount - enterprise.overduePrincipalAmount,
+    0,
+  );
+
+  return {
+    ...kpis,
+    liquidatedAmount,
+    liquidatedPayments: 0,
+    monthlyRecoveryAmount: enterprise.monthlyRecoveryAmount,
+    monthlyRecoveryPayments: enterprise.monthlyRecoveryPayments,
+    overdueClients: enterprise.overdueClients,
+    overduePrincipalAmount: enterprise.overduePrincipalAmount,
+    overduePrincipalPayments: enterprise.overduePrincipalPayments,
+    totalPortfolioAmount: enterprise.totalPortfolioAmount,
+    totalPortfolioPayments: enterprise.totalPortfolioPayments,
+  };
 }
 
 export default function GuardianPage() {
@@ -232,14 +257,29 @@ export default function GuardianPage() {
 
   const criticos = filtered.filter((item) => item.risco === "Crítica");
 
-  const realTotalCarteira = realKpis?.totalPortfolioAmount ?? null;
-  const realTotalAtraso = realKpis?.overduePrincipalAmount ?? null;
+  const selectedEnterprisePerformance = useMemo(
+    () =>
+      enterprise === "Todos"
+        ? null
+        : realKpis?.enterprisePerformance.find((item) => item.enterpriseName === enterprise) ?? null,
+    [enterprise, realKpis],
+  );
+  const scopedRealKpis = realKpis
+    ? selectedEnterprisePerformance
+      ? buildEnterpriseScopedKpis(realKpis, selectedEnterprisePerformance)
+      : realKpis
+    : null;
+  const isEnterpriseScoped = Boolean(selectedEnterprisePerformance);
+  const realTotalCarteira = scopedRealKpis?.totalPortfolioAmount ?? null;
+  const realTotalAtraso = scopedRealKpis?.overduePrincipalAmount ?? null;
   const realBaseInadimplencia =
-    realKpis ? realKpis.liquidatedAmount + realKpis.overduePrincipalAmount : null;
+    scopedRealKpis ? scopedRealKpis.liquidatedAmount + scopedRealKpis.overduePrincipalAmount : null;
   const realDataDescription = realKpisError
     ? "falha ao carregar dados reais"
-    : realKpis
-      ? "dados reais"
+    : scopedRealKpis
+      ? isEnterpriseScoped
+        ? `dados reais de ${enterprise}`
+        : "dados reais"
       : "carregando dados reais";
   const financialEnterpriseRows =
     realKpis?.enterprisePerformance ?? [];
@@ -254,62 +294,85 @@ export default function GuardianPage() {
     ],
     [realKpis],
   );
-  const financialSummary = realKpis
-    ? `${money(realKpis.overduePrincipalAmount)} em atraso | ${money(
-        realKpis.monthlyRecoveryAmount,
+  const financialSummary = scopedRealKpis
+    ? `${money(scopedRealKpis.overduePrincipalAmount)} em atraso | ${money(
+        scopedRealKpis.monthlyRecoveryAmount,
       )} recuperado no mes | ${pct(
-        realKpis.monthlyRecoveryAmount,
-        realKpis.monthlyRecoveryAmount + realKpis.overduePrincipalAmount,
+        scopedRealKpis.monthlyRecoveryAmount,
+        scopedRealKpis.monthlyRecoveryAmount + scopedRealKpis.overduePrincipalAmount,
       )} recuperacao`
     : "R$ -- em atraso | R$ -- recuperado no mes | -- recuperacao";
+  const financialSummaryTitle = scopedRealKpis
+    ? `${isEnterpriseScoped ? `${enterprise} | ` : ""}${fullMoney(scopedRealKpis.overduePrincipalAmount)} em atraso | ${fullMoney(
+        scopedRealKpis.monthlyRecoveryAmount,
+      )} recuperado no mes | ${pct(
+        scopedRealKpis.monthlyRecoveryAmount,
+        scopedRealKpis.monthlyRecoveryAmount + scopedRealKpis.overduePrincipalAmount,
+      )} recuperacao`
+    : financialSummary;
 
   const kpis = [
     {
       id: "totalPortfolio" as const,
       title: "Carteira total",
       value: realTotalCarteira === null ? "..." : money(realTotalCarteira),
-      variation: realKpis ? formatCount(realKpis.totalPortfolioPayments) : "--",
-      description: realKpis ? "parcelas na carteira" : realDataDescription,
+      valueTitle: realTotalCarteira === null ? undefined : fullMoney(realTotalCarteira),
+      variation: scopedRealKpis ? formatCount(scopedRealKpis.totalPortfolioPayments) : "--",
+      description: scopedRealKpis ? "parcelas na carteira" : realDataDescription,
       icon: Banknote,
     },
     {
       id: "delinquency" as const,
       title: "Inadimplência",
       value: realBaseInadimplencia === null || realTotalAtraso === null ? "..." : pct(realTotalAtraso, realBaseInadimplencia, 2),
-      variation: realKpis ? "vencidas" : "--",
-      description: realKpis ? "sobre vencidas + liquidadas" : realDataDescription,
+      valueTitle:
+        realBaseInadimplencia === null || realTotalAtraso === null
+          ? undefined
+          : `${pct(realTotalAtraso, realBaseInadimplencia, 2)} sobre ${fullMoney(realBaseInadimplencia)}`,
+      variation: scopedRealKpis ? "vencidas" : "--",
+      description: scopedRealKpis ? "sobre vencidas + liquidadas" : realDataDescription,
       icon: Percent,
     },
     {
       id: "overdueAmount" as const,
       title: "Valor em atraso",
       value: realTotalAtraso === null ? "..." : money(realTotalAtraso),
-      variation: realKpis ? formatCount(realKpis.overduePrincipalPayments) : "--",
-      description: realKpis ? "parcelas vencidas" : realDataDescription,
+      valueTitle: realTotalAtraso === null ? undefined : fullMoney(realTotalAtraso),
+      variation: scopedRealKpis ? formatCount(scopedRealKpis.overduePrincipalPayments) : "--",
+      description: scopedRealKpis ? "parcelas vencidas" : realDataDescription,
       icon: CircleDollarSign,
     },
     {
       id: "monthlyRecovery" as const,
       title: "Recuperação mensal",
-      value: realKpis ? money(realKpis.monthlyRecoveryAmount) : "...",
-      variation: realKpis ? formatCount(realKpis.monthlyRecoveryPayments) : "--",
-      description: realKpis ? "pagas apos 10 dias" : realDataDescription,
+      value: scopedRealKpis ? money(scopedRealKpis.monthlyRecoveryAmount) : "...",
+      valueTitle: scopedRealKpis ? fullMoney(scopedRealKpis.monthlyRecoveryAmount) : undefined,
+      variation: scopedRealKpis ? formatCount(scopedRealKpis.monthlyRecoveryPayments) : "--",
+      description: scopedRealKpis ? "pagas apos 10 dias" : realDataDescription,
       icon: TrendingUp,
     },
     {
       id: "overdueClients" as const,
       title: "Clientes em atraso",
-      value: realKpis ? formatCount(realKpis.overdueClients) : "...",
-      variation: realKpis ? "clientes" : "--",
-      description: realKpis ? "clientes distintos" : realDataDescription,
+      value: scopedRealKpis ? formatCount(scopedRealKpis.overdueClients) : "...",
+      variation: scopedRealKpis ? "clientes" : "--",
+      description: scopedRealKpis ? "clientes distintos" : realDataDescription,
       icon: Users,
     },
     {
       id: "criticalContracts" as const,
       title: "Contratos críticos",
-      value: realKpis ? formatCount(realKpis.criticalContracts) : "...",
-      variation: realKpis ? "> 3 parcelas" : "--",
-      description: realKpis ? "contratos em atraso" : realDataDescription,
+      value: scopedRealKpis
+        ? isEnterpriseScoped
+          ? "--"
+          : formatCount(scopedRealKpis.criticalContracts)
+        : "...",
+      variation: scopedRealKpis ? (isEnterpriseScoped ? "geral" : "> 3 parcelas") : "--",
+      description: scopedRealKpis
+        ? isEnterpriseScoped
+          ? "recorte pendente"
+          : "contratos em atraso"
+        : realDataDescription,
       icon: AlertTriangle,
     },
   ];
@@ -345,11 +408,12 @@ export default function GuardianPage() {
         </section>
 
         <DashboardPanel
-          badge={realKpis ? "C2X" : "Aguardando C2X"}
+          badge={isEnterpriseScoped ? enterprise : realKpis ? "C2X" : "Aguardando C2X"}
           expanded={expandedPanels.financial}
           id="financial"
           onToggle={togglePanel}
           summary={financialSummary}
+          summaryTitle={financialSummaryTitle}
           title="Financeiro"
           tone="gold"
         >
@@ -358,7 +422,7 @@ export default function GuardianPage() {
               data={financialEnterpriseRows}
               error={realKpisError}
               selected={enterprise}
-              onSelect={setEnterprise}
+              onSelect={(value) => setEnterprise((current) => (current === value ? "Todos" : value))}
             />
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-1">
               <DistributionCard title="Aging da inadimplência" data={overdueAgingRows} />
@@ -458,6 +522,7 @@ function DashboardPanel({
   id,
   onToggle,
   summary,
+  summaryTitle,
   title,
   tone = "neutral",
 }: {
@@ -467,6 +532,7 @@ function DashboardPanel({
   id: DashboardPanelId;
   onToggle: (id: DashboardPanelId) => void;
   summary: string;
+  summaryTitle?: string;
   title: string;
   tone?: "danger" | "gold" | "neutral";
 }) {
@@ -481,7 +547,6 @@ function DashboardPanel({
       <button
         type="button"
         onClick={() => onToggle(id)}
-        title={summary}
         className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-slate-50/70 lg:flex-row lg:items-center lg:justify-between"
         aria-expanded={expanded}
       >
@@ -490,15 +555,20 @@ function DashboardPanel({
             <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
             {badge ? <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${badgeClass}`}>{badge}</span> : null}
           </div>
-          <p className="mt-1 truncate text-xs text-slate-500">{summary}</p>
+          <Tooltip content={summaryTitle ?? summary} placement="bottom">
+            <span className="mt-1 block truncate text-xs text-slate-500">
+              {summary}
+            </span>
+          </Tooltip>
         </div>
-        <span
-          title={expanded ? "Recolher painel" : "Expandir painel"}
-          aria-label={expanded ? "Recolher painel" : "Expandir painel"}
-          className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600"
-        >
-          <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
-        </span>
+        <Tooltip content={expanded ? "Recolher painel" : "Expandir painel"} placement="left">
+          <span
+            aria-label={expanded ? "Recolher painel" : "Expandir painel"}
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600"
+          >
+            <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+          </span>
+        </Tooltip>
       </button>
       <div className={`grid transition-all duration-300 ease-out ${expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
         <div className="min-h-0 overflow-hidden">
@@ -513,20 +583,20 @@ function ActionMetricGrid({ metrics }: { metrics: Array<[string, string, string,
   return (
     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
       {metrics.map(([label, value, action, tone]) => (
-        <button
-          key={`${label}-${value}`}
-          type="button"
-          title={action}
-          className="group rounded-xl border border-slate-200/70 bg-slate-50/50 p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
-        >
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{label}</p>
-            <ArrowUpRight className="size-3.5 text-[#A07C3B] opacity-70 transition-opacity group-hover:opacity-100" aria-hidden="true" />
-          </div>
-          <p className={`mt-1.5 text-xl font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
-            {value}
-          </p>
-        </button>
+        <Tooltip key={`${label}-${value}`} content={action} placement="bottom" className="w-full" triggerClassName="w-full">
+          <button
+            type="button"
+            className="group w-full rounded-xl border border-slate-200/70 bg-slate-50/50 p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{label}</p>
+              <ArrowUpRight className="size-3.5 text-[#A07C3B] opacity-70 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+            </div>
+            <p className={`mt-1.5 text-xl font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
+              {value}
+            </p>
+          </button>
+        </Tooltip>
       ))}
     </div>
   );
@@ -570,7 +640,6 @@ function InsightCard({
 }) {
   return (
     <article
-      title={text}
       className={`rounded-xl border p-3 ${
         tone === "danger"
           ? "border-rose-100 bg-rose-50"
@@ -583,7 +652,9 @@ function InsightCard({
       <p className={`mt-1.5 text-lg font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
         {value}
       </p>
-      <p className="mt-1 text-xs leading-5 text-slate-600">{text}</p>
+      <Tooltip content={text} placement="bottom">
+        <span className="mt-1 block text-xs leading-5 text-slate-600">{text}</span>
+      </Tooltip>
     </article>
   );
 }
@@ -632,27 +703,28 @@ function GlobalFilters(props: {
           <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
         </button>
         {activeFilters.map((filter) => (
-          <button
-            key={`${filter.label}-${filter.value}`}
-            type="button"
-            onClick={filter.clear}
-            title={`Remover ${filter.label}`}
-            className="inline-flex h-7 max-w-48 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
-          >
-            <span className="truncate">{filter.value}</span>
-            <X className="size-3" aria-hidden="true" />
-          </button>
+          <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
+            <button
+              type="button"
+              onClick={filter.clear}
+              className="inline-flex h-7 max-w-48 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
+            >
+              <span className="truncate">{filter.value}</span>
+              <X className="size-3" aria-hidden="true" />
+            </button>
+          </Tooltip>
         ))}
         {activeFilters.length > 0 ? (
-          <button
-            type="button"
-            onClick={clear}
-            title="Limpar filtros"
-            aria-label="Limpar filtros"
-            className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
+          <Tooltip content="Limpar filtros" placement="bottom">
+            <button
+              type="button"
+              onClick={clear}
+              aria-label="Limpar filtros"
+              className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
         ) : null}
       </div>
       <div className={`grid transition-all duration-300 ease-out ${expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
@@ -873,7 +945,7 @@ function EnterprisePerformanceTable({
         </div>
       ) : null}
       <div className="max-h-[408px] overflow-auto">
-        <table className="w-full min-w-[960px] text-left text-sm">
+        <table className="w-full min-w-[1120px] text-left text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
             <tr>
               <SortableEnterpriseHeader
@@ -886,6 +958,12 @@ function EnterprisePerformanceTable({
                 activeSort={sort}
                 label="Carteira"
                 sortKey="totalPortfolioAmount"
+                onSort={sortBy}
+              />
+              <SortableEnterpriseHeader
+                activeSort={sort}
+                label="Carteira acumulada"
+                sortKey="delinquencyBaseAmount"
                 onSort={sortBy}
               />
               <SortableEnterpriseHeader
@@ -929,9 +1007,16 @@ function EnterprisePerformanceTable({
                   className={`cursor-pointer transition-colors hover:bg-slate-50/60 ${selected === item.enterpriseName ? "bg-[#A07C3B]/5" : ""}`}
                 >
                   <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-950">{item.enterpriseName}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">{money(item.totalPortfolioAmount)}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
+                    <MoneyValue value={item.totalPortfolioAmount} />
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
+                    <MoneyValue value={item.delinquencyBaseAmount} />
+                  </td>
                   <td className="whitespace-nowrap px-5 py-3 text-slate-600">{pct(item.overduePrincipalAmount, item.delinquencyBaseAmount, 2)}</td>
-                  <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-900">{money(item.overduePrincipalAmount)}</td>
+                  <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-900">
+                    <MoneyValue value={item.overduePrincipalAmount} />
+                  </td>
                   <td className="whitespace-nowrap px-5 py-3 text-slate-600">{formatCount(item.overduePrincipalPayments)}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-slate-600">{formatCount(item.overdueClients)}</td>
                   <td className="whitespace-nowrap px-5 py-3">
@@ -940,7 +1025,7 @@ function EnterprisePerformanceTable({
                         {pct(item.monthlyRecoveryAmount, item.monthlyRecoveryAmount + item.overduePrincipalAmount)}
                       </span>
                       <span className="text-xs text-slate-500">
-                        {money(item.monthlyRecoveryAmount)} | {formatCount(item.monthlyRecoveryPayments)} pagas
+                        <MoneyValue value={item.monthlyRecoveryAmount} /> | {formatCount(item.monthlyRecoveryPayments)} pagas
                       </span>
                     </div>
                   </td>
@@ -948,7 +1033,7 @@ function EnterprisePerformanceTable({
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-sm text-slate-500">
+                <td colSpan={8} className="px-5 py-8 text-center text-sm text-slate-500">
                   Aguardando dados reais do C2X.
                 </td>
               </tr>
@@ -957,6 +1042,16 @@ function EnterprisePerformanceTable({
         </table>
       </div>
     </section>
+  );
+}
+
+function MoneyValue({ value }: { value: number }) {
+  return (
+    <Tooltip content={fullMoney(value)} placement="top">
+      <span aria-label={fullMoney(value)}>
+        {money(value)}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -1135,6 +1230,10 @@ function formatDate(date: string) {
 function money(value: number) {
   if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1).replace(".", ",")} mi`;
   if (value >= 1000) return `R$ ${Math.round(value / 1000)} mil`;
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function fullMoney(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 

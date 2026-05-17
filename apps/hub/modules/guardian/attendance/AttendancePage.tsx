@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Inbox, MapPinned, MessageCircle } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
 import { AiCopilotDrawer } from "@/modules/guardian/attendance/components/AiCopilotDrawer";
 import { QueuePanel } from "@/modules/guardian/attendance/components/QueuePanel";
@@ -27,12 +28,21 @@ const priorities: Array<AttendancePriority | "Todos"> = [
 ];
 
 type AttendanceSection = "queue" | "desk" | "portfolio";
+type ManualGuardianOperations = {
+  commitments: QueueClient["commitments"];
+  events: OperationalTimelineEvent[];
+};
 
 const attendanceSections: Array<{ id: AttendanceSection; label: string; badge?: string; icon: typeof Inbox }> = [
   { id: "queue", label: "Fila operacional", icon: Inbox },
   { id: "desk", label: "CareDesk", badge: "3", icon: MessageCircle },
   { id: "portfolio", label: "Carteira", icon: MapPinned },
 ];
+const INITIAL_QUEUE_LIMIT = 50;
+const emptyManualOperations: ManualGuardianOperations = {
+  commitments: [],
+  events: [],
+};
 
 type AttendancePageProps = {
   clients?: QueueClient[];
@@ -42,6 +52,7 @@ type AttendancePageProps = {
 export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageProps) {
   const initialClients = clients ?? queueClients;
   const [sourceClients, setSourceClients] = useState(initialClients);
+  const [queueTotalCount, setQueueTotalCount] = useState(initialClients.length);
   const [queueLoading, setQueueLoading] = useState(loadFromC2x && initialClients.length === 0);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState(sourceClients[0]?.id ?? "");
@@ -54,9 +65,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [timelineEventsByClient, setTimelineEventsByClient] = useState<
     Record<string, OperationalTimelineEvent[]>
   >({});
+  const [manualOperationsByClient, setManualOperationsByClient] = useState<
+    Record<string, ManualGuardianOperations>
+  >({});
 
   useEffect(() => {
     setSourceClients(initialClients);
+    setQueueTotalCount(initialClients.length);
     setSelectedId((current) =>
       initialClients.some((client) => client.id === current)
         ? current
@@ -77,14 +92,14 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
 
       try {
         const accessToken = await getGuardianAccessToken();
-        const response = await fetch("/api/guardian/attendance/queue?limit=1000", {
+        const response = await fetch(`/api/guardian/attendance/queue?limit=${INITIAL_QUEUE_LIMIT}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
         });
         const payload = (await response.json().catch(() => null)) as
-          | { clients?: QueueClient[]; error?: string }
+          | { clients?: QueueClient[]; error?: string; meta?: { count?: number; loadedCount?: number } }
           | null;
 
         if (cancelled) {
@@ -96,6 +111,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
         }
 
         setSourceClients(payload.clients);
+        setQueueTotalCount(payload.meta?.count ?? payload.clients.length);
         setSelectedId(payload.clients[0]?.id ?? "");
       } catch (error) {
         console.error("[guardian-attendance] queue load failed", error);
@@ -184,6 +200,58 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     };
   }, [selectedId, sourceClients]);
 
+  useEffect(() => {
+    if (!selectedId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadManualOperations() {
+      try {
+        const response = await fetch(
+          `/api/guardian/attendance/manual-events?clientId=${encodeURIComponent(selectedId)}`,
+          {
+            cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${await getGuardianAccessToken()}`,
+            },
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | ManualGuardianOperations
+          | { error?: string }
+          | null;
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.ok || !payload || "error" in payload) {
+          throw new Error(
+            payload?.error ?? "Nao foi possivel carregar registros manuais.",
+          );
+        }
+
+        setManualOperationsByClient((current) => ({
+          ...current,
+          [selectedId]: {
+            commitments: payload.commitments ?? [],
+            events: payload.events ?? [],
+          },
+        }));
+      } catch (error) {
+        console.error("[guardian-attendance] manual operations load failed", error);
+      }
+    }
+
+    void loadManualOperations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
   const enterpriseOptions = useMemo(() => {
     const enterprises = sourceClients
       .flatMap((client) => [
@@ -233,6 +301,21 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     filteredClients[0] ??
     sourceClients.find((client) => client.id === selectedId) ??
     sourceClients[0];
+  const selectedManualOperations =
+    manualOperationsByClient[selectedClient?.id ?? ""] ?? emptyManualOperations;
+  const selectedClientWithManualOperations = selectedClient
+    ? {
+        ...selectedClient,
+        commitments: mergeCommitments(
+          selectedManualOperations.commitments,
+          selectedClient.commitments,
+        ),
+      }
+    : selectedClient;
+  const selectedExtraTimelineEvents = dedupeTimelineEvents([
+    ...selectedManualOperations.events,
+    ...(timelineEventsByClient[selectedClient?.id ?? ""] ?? []),
+  ]);
   const whatsAppClient = whatsAppClientId
     ? sourceClients.find((client) => client.id === whatsAppClientId) ?? selectedClient
     : selectedClient;
@@ -252,11 +335,134 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     setWhatsAppClientId(clientId);
   }
 
+  async function saveManualTimelineEvent(
+    clientId: string,
+    event: OperationalTimelineEvent,
+  ) {
+    const clientForEvent =
+      sourceClients.find((client) => client.id === clientId) ?? selectedClient;
+
+    if (!clientForEvent) {
+      return;
+    }
+
+    const response = await fetch("/api/guardian/attendance/manual-events", {
+      body: JSON.stringify({
+        client: {
+          c2xAcquisitionRequestId: clientForEvent.c2xAcquisitionRequestId,
+          id: clientForEvent.id,
+          name: clientForEvent.nome,
+        },
+        event,
+        kind: "timeline",
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${await getGuardianAccessToken()}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | ManualGuardianOperations
+      | { error?: string }
+      | null;
+
+    if (!response.ok || !payload || "error" in payload) {
+      throw new Error(payload?.error ?? "Nao foi possivel salvar evento manual.");
+    }
+
+    upsertManualOperations(clientForEvent.id, payload);
+  }
+
   function addTimelineEvent(clientId: string, event: OperationalTimelineEvent) {
-    setTimelineEventsByClient((current) => ({
-      ...current,
-      [clientId]: [event, ...(current[clientId] ?? [])],
-    }));
+    void saveManualTimelineEvent(clientId, event).catch((error) => {
+      console.error("[guardian-attendance] manual event save failed", error);
+      setTimelineEventsByClient((current) => ({
+        ...current,
+        [clientId]: [event, ...(current[clientId] ?? [])],
+      }));
+    });
+  }
+
+  async function saveManualCommitment(record: QueueClient["commitments"][number]) {
+    const response = await fetch("/api/guardian/attendance/manual-events", {
+      body: JSON.stringify({
+        client: {
+          c2xAcquisitionRequestId: selectedClient.c2xAcquisitionRequestId,
+          id: selectedClient.id,
+          name: selectedClient.nome,
+        },
+        commitment: record,
+        kind: "commitment",
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${await getGuardianAccessToken()}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | ManualGuardianOperations
+      | { error?: string }
+      | null;
+
+    if (!response.ok || !payload || "error" in payload) {
+      throw new Error(payload?.error ?? "Nao foi possivel salvar compromisso.");
+    }
+
+    upsertManualOperations(selectedClient.id, payload);
+  }
+
+  async function updateManualCommitment(record: QueueClient["commitments"][number]) {
+    const isPersistedRecord = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(record.id);
+
+    if (!isPersistedRecord) {
+      await saveManualCommitment(record);
+      return;
+    }
+
+    const response = await fetch("/api/guardian/attendance/manual-events", {
+      body: JSON.stringify({
+        commitment: record,
+        id: record.id,
+        kind: "commitment",
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${await getGuardianAccessToken()}`,
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | ManualGuardianOperations
+      | { error?: string }
+      | null;
+
+    if (!response.ok || !payload || "error" in payload) {
+      throw new Error(payload?.error ?? "Nao foi possivel atualizar compromisso.");
+    }
+
+    upsertManualOperations(selectedClient.id, payload);
+  }
+
+  function upsertManualOperations(clientId: string, payload: ManualGuardianOperations) {
+    setManualOperationsByClient((current) => {
+      const currentOperations = current[clientId] ?? emptyManualOperations;
+
+      return {
+        ...current,
+        [clientId]: {
+          commitments: upsertById(
+            payload.commitments ?? [],
+            currentOperations.commitments,
+          ),
+          events: upsertById(payload.events ?? [], currentOperations.events),
+        },
+      };
+    });
   }
 
   return (
@@ -277,25 +483,25 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
               const active = activeSection === section.id;
 
               return (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => setActiveSection(section.id)}
-                  title={section.label}
-                  aria-label={section.label}
-                  className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                    active
-                      ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/20"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  <Icon className="size-4" aria-hidden="true" />
-                  {section.badge ? (
-                    <span className="absolute -right-1 -top-1 rounded-full bg-[#A07C3B] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                      {section.badge}
-                    </span>
-                  ) : null}
-                </button>
+                <Tooltip key={section.id} content={section.label} placement="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSection(section.id)}
+                    aria-label={section.label}
+                    className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                      active
+                        ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/20"
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                    }`}
+                  >
+                    <Icon className="size-4" aria-hidden="true" />
+                    {section.badge ? (
+                      <span className="absolute -right-1 -top-1 rounded-full bg-[#A07C3B] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                        {section.badge}
+                      </span>
+                    ) : null}
+                  </button>
+                </Tooltip>
               );
             })}
           </nav>
@@ -323,17 +529,47 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
               />
               <ClientDetailPanel
                 key={selectedClient.id}
-                client={selectedClient}
-                extraTimelineEvents={timelineEventsByClient[selectedClient.id] ?? []}
+                client={selectedClientWithManualOperations}
+                extraTimelineEvents={selectedExtraTimelineEvents}
+                onCreateCommitment={saveManualCommitment}
+                onCreateTimelineEvent={(event) =>
+                  saveManualTimelineEvent(selectedClient.id, event)
+                }
                 onOpenWhatsApp={() => openWhatsApp(selectedClient.id)}
+                onUpdateCommitment={updateManualCommitment}
               />
             </div>
           )}
         </div>
       )}
-      <AiCopilotDrawer client={selectedClient} />
+      <AiCopilotDrawer
+        client={selectedClientWithManualOperations}
+        filteredQueueClients={filteredClients}
+        queueClients={sourceClients}
+        queueTotalCount={queueTotalCount}
+      />
     </>
   );
+}
+
+function upsertById<T extends { id: string }>(nextRows: T[], currentRows: T[]) {
+  const nextIds = new Set(nextRows.map((row) => row.id));
+
+  return [
+    ...nextRows,
+    ...currentRows.filter((row) => !nextIds.has(row.id)),
+  ];
+}
+
+function mergeCommitments(
+  manualCommitments: QueueClient["commitments"],
+  baseCommitments: QueueClient["commitments"],
+) {
+  return upsertById(manualCommitments, baseCommitments);
+}
+
+function dedupeTimelineEvents(events: OperationalTimelineEvent[]) {
+  return upsertById(events, []);
 }
 
 async function getGuardianAccessToken() {
