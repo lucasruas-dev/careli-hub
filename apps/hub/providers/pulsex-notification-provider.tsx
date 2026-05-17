@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import {
-  playPulseXMessageSound,
+  playPulseXIncomingMessageSound,
   registerPulseXNotificationPermissionIntent,
   showBrowserPulseXNotification,
 } from "@/lib/pulsex/notification-effects";
@@ -95,12 +95,17 @@ export function PulseXNotificationProvider({
                 }
 
                 notifiedMessageIdsRef.current.add(message.id);
-                playPulseXMessageSound();
+                const mentioned = message.mentionUserIds?.includes(currentUserId);
+
+                playPulseXIncomingMessageSound({
+                  mentioned,
+                  messageId: message.id,
+                });
                 showBrowserPulseXNotification({
                   body: `${message.authorName ?? "PulseX"}: ${truncateNotificationBody(message.body)}`,
                   onClickPath: "/pulsex",
                   tag: `pulsex-message-${message.id}`,
-                  title: message.mentionUserIds?.includes(currentUserId)
+                  title: mentioned
                     ? "Voce foi mencionado no PulseX"
                     : `Nova mensagem em ${channel.name}`,
                 });

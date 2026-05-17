@@ -17,6 +17,7 @@ import {
 import { Tooltip } from "@repo/uix";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import Image from "next/image";
 
 export type PulseXCallSoundOption = {
   id: string;
@@ -60,13 +61,12 @@ export function ConversationHeader({
   } as const satisfies Record<NonNullable<PulseXChannel["status"]>, string>;
   const presenceStatus = getChannelPresenceStatus(presenceUsers);
   const presenceLabel = presenceLabelMap[presenceStatus];
+  const isDirectChannel = channel.kind === "direct";
 
   return (
     <header className="grid h-16 grid-cols-[minmax(14rem,1fr)_auto_auto] items-center gap-4 border-b border-[#d9e0ea] bg-white px-4">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#A07C3B] text-sm font-semibold text-white">
-          {channel.avatar}
-        </span>
+        <ChannelAvatar channel={channel} />
         <div className="min-w-0">
           <h1 className="m-0 truncate text-sm font-semibold text-[var(--uix-text-primary)]">
             {channel.name}
@@ -92,7 +92,11 @@ export function ConversationHeader({
           </p>
         </div>
       </div>
-      <ParticipantStack users={presenceUsers} />
+      {isDirectChannel ? (
+        <span aria-hidden="true" />
+      ) : (
+        <ParticipantStack users={presenceUsers} />
+      )}
       <div className="flex items-center gap-1">
         <HeaderAction
           active={isFavorite}
@@ -141,6 +145,34 @@ export function ConversationHeader({
         />
       </div>
     </header>
+  );
+}
+
+function ChannelAvatar({ channel }: { channel: PulseXChannel }) {
+  const isDirectChannel = channel.kind === "direct";
+
+  return (
+    <span
+      aria-label={channel.name}
+      className={`relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden bg-[#A07C3B] text-sm font-semibold text-white ${
+        isDirectChannel ? "rounded-full" : "rounded-md"
+      }`}
+      role="img"
+    >
+      {isDirectChannel && channel.avatarUrl ? (
+        <Image
+          alt=""
+          className="object-cover"
+          draggable={false}
+          fill
+          sizes="40px"
+          src={channel.avatarUrl}
+          unoptimized
+        />
+      ) : (
+        channel.avatar
+      )}
+    </span>
   );
 }
 

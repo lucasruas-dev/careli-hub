@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { AgreementsCenterCard } from "@/modules/guardian/attendance/components/AgreementsCenterCard";
 import { AiSuggestionsModal } from "@/modules/guardian/attendance/components/AiSuggestionsModal";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
@@ -1057,6 +1058,8 @@ function RiskTab({ client, unit }: { client: QueueClient; unit?: PortfolioUnit }
 }
 
 function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioUnit }) {
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [documentError, setDocumentError] = useState<string | null>(null);
   const selectedUnit = unit ?? client.carteira.unidades[0];
   const contractCode = selectedUnit?.matricula ?? "Sem cod. unidade";
   const contractDocumentId = selectedUnit?.signedContractDocumentId;
@@ -1112,8 +1115,65 @@ function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioU
       title: "Histórico de cobrança",
     },
   ];
+
+  async function openGuardianDocument(documentUrl: string, documentId: string) {
+    const previewWindow = window.open("about:blank", "_blank");
+
+    if (previewWindow) {
+      previewWindow.opener = null;
+    }
+
+    try {
+      setOpeningDocumentId(documentId);
+      setDocumentError(null);
+
+      const accessToken = await getGuardianDocumentAccessToken();
+      const response = await fetch(documentUrl, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+
+        throw new Error(payload?.error ?? "Nao foi possivel abrir o documento.");
+      }
+
+      const documentBlob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(documentBlob);
+
+      if (previewWindow) {
+        previewWindow.location.href = objectUrl;
+      } else {
+        window.open(objectUrl, "_blank", "noreferrer");
+      }
+
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(objectUrl);
+      }, 60000);
+    } catch (error) {
+      previewWindow?.close();
+      setDocumentError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel abrir o documento.",
+      );
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  }
+
   return (
     <DetailSection title="Documentos" icon={FileText} accent>
+      {documentError ? (
+        <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+          {documentError}
+        </p>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-2">
         {documents.map((document) => (
           <article key={document.id} className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
@@ -1121,15 +1181,15 @@ function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioU
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-950">{document.title}</p>
                 {document.href ? (
-                  <a
-                    href={document.href}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    disabled={openingDocumentId === document.id}
+                    onClick={() => void openGuardianDocument(document.href, document.id)}
                     className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-white px-2 py-1 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
                   >
                     <span className="truncate">{document.detail}</span>
                     <ExternalLink className="size-3" aria-hidden="true" />
-                  </a>
+                  </button>
                 ) : (
                   <p className="mt-1 truncate text-xs text-slate-500">{document.detail}</p>
                 )}
@@ -1153,6 +1213,23 @@ function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioU
       </div>
     </DetailSection>
   );
+}
+
+async function getGuardianDocumentAccessToken() {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Sessao administrativa ausente.");
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (!accessToken) {
+    throw new Error("Sessao administrativa ausente.");
+  }
+
+  return accessToken;
 }
 
 function RiskAnalysisModal({

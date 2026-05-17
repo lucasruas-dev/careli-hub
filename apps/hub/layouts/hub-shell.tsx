@@ -32,13 +32,13 @@ import {
 } from "@repo/uix";
 import {
   Bell,
+  Bot,
   CalendarDays,
   ChevronDown,
   CircleDollarSign,
   ContactRound,
   FileText,
   FolderKanban,
-  GitBranch,
   Headphones,
   Home,
   LogOut,
@@ -80,7 +80,7 @@ const moduleIconMap: Record<string, ReactNode> = {
   guardian: <ShieldCheck aria-hidden="true" size={18} />,
   pulsex: <MessageSquareText aria-hidden="true" size={18} />,
   setup: <Settings aria-hidden="true" size={18} />,
-  squadops: <GitBranch aria-hidden="true" size={18} />,
+  squadops: <Bot aria-hidden="true" size={18} />,
 };
 
 const minimumReleasedModuleIds = [
@@ -123,6 +123,10 @@ export function HubShell({
       return false;
     }
 
+    if (isHubOpsModuleId(hubModule.id)) {
+      return isHubModuleActive(hubModule);
+    }
+
     if (!releasedModuleIds) {
       return (
         isHubModuleActive(hubModule) &&
@@ -135,7 +139,11 @@ export function HubShell({
     return isHubModuleActive(hubModule) && releasedModuleIds.has(hubModule.id);
   });
   const moduleNavigationItems = orderedHubModules
-    .filter((hubModule) => visibleHubModules.includes(hubModule))
+    .filter(
+      (hubModule) =>
+        isHubOpsModuleId(hubModule.id) ||
+        visibleHubModules.includes(hubModule),
+    )
     .flatMap((hubModule) => {
       if (
         !canOpenShellModule(hubModule.id, hubUser, hubModule, profileStatus)
@@ -145,17 +153,12 @@ export function HubShell({
 
       return hubModule.navigationItems.map((item) => ({
         ...item,
-        badge: hubModule.realtimeEnabled ? (
-          <HubSidebarLiveBadge />
-        ) : "badge" in item ? (
-          item.badge
-        ) : undefined,
+        badge: undefined,
         disabled: false,
         icon: moduleIconMap[hubModule.id] ?? (
           <FileText aria-hidden="true" size={18} />
         ),
         moduleId: hubModule.id,
-        realtimeEnabled: hubModule.realtimeEnabled,
         statusLabel: getHubModuleStatusLabel(hubModule.status),
       }));
     })
@@ -163,7 +166,11 @@ export function HubShell({
       firstItem.label.localeCompare(secondItem.label, "pt-BR"),
     );
   const commands = orderedHubModules
-    .filter((hubModule) => visibleHubModules.includes(hubModule))
+    .filter(
+      (hubModule) =>
+        isHubOpsModuleId(hubModule.id) ||
+        visibleHubModules.includes(hubModule),
+    )
     .flatMap((hubModule) => {
       const canOpenModule = canOpenShellModule(
         hubModule.id,
@@ -300,12 +307,14 @@ export function HubShell({
   }, [isOperationalChrome, layoutMode]);
 
   useEffect(() => {
-    if (!isOperationalChrome) {
-      return;
-    }
-
     function handleToggleModuleLauncher() {
-      setIsOperationalRailOpen((currentValue) => !currentValue);
+      if (isOperationalChrome) {
+        setIsOperationalRailOpen((currentValue) => !currentValue);
+        return;
+      }
+
+      setIsSidebarCollapsed(false);
+      window.localStorage.setItem("careli:hub-sidebar", "expanded");
     }
 
     window.addEventListener(
@@ -439,7 +448,7 @@ export function HubShell({
                 )
               }
             >
-              <SidebarGroup title="Modulos">
+              <SidebarGroup>
                 {moduleNavigationItems.map((item) => (
                   <Tooltip
                     content={item.disabled ? item.statusLabel : item.label}
@@ -596,18 +605,18 @@ export function HubShell({
       {isOperationalChrome && isOperationalRailOpen ? (
         <>
           <button
-            aria-label="Fechar launcher de módulos"
+            aria-label="Fechar menu C2X"
             className="fixed inset-0 z-[var(--uix-z-overlay)] cursor-default bg-black/[0.06] outline-none"
             onClick={() => setIsOperationalRailOpen(false)}
             type="button"
           />
           <aside
-            aria-label="Launcher de módulos"
+            aria-label="Menu C2X"
             className="careli-module-launcher fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-[15.25rem] gap-2 rounded-xl border border-white/[0.09] bg-[#232832] p-2.5 shadow-2xl"
           >
-            <Tooltip content="Careli Hub" placement="right">
+            <Tooltip content="C2X" placement="right">
               <Link
-                aria-label="Voltar para a Home do Hub"
+                aria-label="Voltar para a Home do C2X"
                 className="careli-module-launcher__home flex h-12 items-center gap-3 rounded-lg border border-white/[0.075] bg-white/[0.04] px-2.5 text-[#d7dee8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                 href="/"
                 onClick={() => setIsOperationalRailOpen(false)}
@@ -617,19 +626,11 @@ export function HubShell({
                 </span>
                 <span className="grid min-w-0 gap-0.5">
                   <span className="min-w-0 truncate text-sm font-semibold">
-                    Careli Hub
-                  </span>
-                  <span className="min-w-0 truncate text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#8894a5]">
-                    Módulos operacionais
+                    C2X
                   </span>
                 </span>
               </Link>
             </Tooltip>
-            <div className="flex items-center gap-2 px-1 pt-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#8894a5]">
-              <span className="h-px flex-1 bg-white/[0.075]" />
-              Módulos
-              <span className="h-px flex-1 bg-white/[0.075]" />
-            </div>
             {moduleNavigationItems.map((item) => (
               <Tooltip
                 content={item.disabled ? item.statusLabel : item.label}
@@ -670,12 +671,10 @@ export function HubShell({
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                       {item.label}
                     </span>
-                    {item.realtimeEnabled ? <HubSidebarLiveBadge /> : null}
                   </Link>
                 )}
               </Tooltip>
             ))}
-            <div className="my-0.5 h-px bg-white/[0.075]" />
             <Tooltip content="Sair" placement="right">
               <button
                 aria-label="Sair"
@@ -709,10 +708,6 @@ export function HubShell({
       />
     </>
   );
-}
-
-function HubSidebarLiveBadge() {
-  return <span aria-hidden="true" className="careli-sidebar-live-dot" />;
 }
 
 function HubPresenceControl({
@@ -851,6 +846,10 @@ function canOpenShellModule(
   hubModule: (typeof orderedHubModules)[number],
   profileStatus: "error" | "idle" | "loading" | "ready",
 ) {
+  if (isHubOpsModuleId(moduleId)) {
+    return true;
+  }
+
   if (hubUser && canAccessModule(hubUser, hubModule)) {
     return true;
   }
@@ -872,6 +871,10 @@ function isVisibleInCurrentEnvironment(moduleId: string) {
     process.env.NODE_ENV !== "production" ||
     !hiddenProductionModuleIds.has(moduleId)
   );
+}
+
+function isHubOpsModuleId(moduleId: string) {
+  return moduleId === "squadops";
 }
 
 function withShellTimeout<Result>(

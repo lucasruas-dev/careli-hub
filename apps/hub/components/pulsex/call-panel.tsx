@@ -7,7 +7,16 @@ import type {
   PulseXPresenceUser,
 } from "@/lib/pulsex";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { Clock, Maximize2, Minimize2, Phone, Video, X } from "lucide-react";
+import {
+  Clock,
+  Maximize2,
+  Minimize2,
+  Phone,
+  Video,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CallControls } from "./call-controls";
@@ -74,6 +83,10 @@ export function CallPanel({
   const [pictureInPictureParticipantId, setPictureInPictureParticipantId] =
     useState<string | null>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenShareZoom, setScreenShareZoom] = useState(1);
+  const [remoteScreenSharingUserIds, setRemoteScreenSharingUserIds] = useState<
+    PulseXPresenceUser["id"][]
+  >([]);
   const [audioInputId, setAudioInputId] = useState(defaultDeviceValue);
   const [videoInputId, setVideoInputId] = useState(defaultDeviceValue);
   const [audioInputs, setAudioInputs] = useState<MediaDeviceOption[]>([]);
@@ -107,7 +120,7 @@ export function CallPanel({
   const CallIcon = session.type === "video" ? Video : Phone;
   const panelClassName = isFullScreen
     ? "fixed inset-0 z-[90] grid h-dvh w-screen grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-none border-0 bg-[#0b1017] text-white shadow-2xl"
-    : `fixed z-[70] grid h-[min(82vh,760px)] w-[min(92vw,1120px)] grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-xl border border-white/10 bg-[#0b1017] text-white shadow-2xl ${
+    : `fixed z-[70] grid h-[min(86vh,780px)] w-[min(88vw,1080px)] grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden rounded-xl border border-white/10 bg-[#0b1017] text-white shadow-2xl ${
         isDraggingPanel ? "select-none" : ""
       }`;
   const panelStyle: CSSProperties | undefined = isFullScreen
@@ -122,10 +135,6 @@ export function CallPanel({
           top: "3.5rem",
           transform: "translateX(-50%)",
         };
-  const participantGridClassName =
-    session.participants.length <= 2
-      ? "grid min-h-0 gap-4 p-4 md:grid-cols-2"
-      : "grid min-h-0 auto-rows-[minmax(18rem,1fr)] gap-3 overflow-auto p-4 sm:grid-cols-2 xl:grid-cols-3";
   const isPictureInPictureAvailable =
     session.type === "video" &&
     typeof document !== "undefined" &&
@@ -628,6 +637,22 @@ export function CallPanel({
         return;
       }
 
+      if (
+        signal.kind === "screen-share-start" ||
+        signal.kind === "screen-share-stop"
+      ) {
+        setRemoteScreenSharingUserIds((currentUserIds) => {
+          if (signal.kind === "screen-share-start") {
+            return currentUserIds.includes(signal.fromUserId)
+              ? currentUserIds
+              : [...currentUserIds, signal.fromUserId];
+          }
+
+          return currentUserIds.filter((userId) => userId !== signal.fromUserId);
+        });
+        return;
+      }
+
       if (signal.kind === "join") {
         await sendOfferToParticipant(signal.fromUserId);
         return;
@@ -699,6 +724,9 @@ export function CallPanel({
         signal.kind === "leave"
       ) {
         pendingAnswerSignalsRef.current.delete(signal.fromUserId);
+        setRemoteScreenSharingUserIds((currentUserIds) =>
+          currentUserIds.filter((userId) => userId !== signal.fromUserId),
+        );
         closePeerConnection(signal.fromUserId);
       }
     },
@@ -758,8 +786,13 @@ export function CallPanel({
     }
 
     setIsScreenSharing(false);
+    onSendSignal({
+      callId: session.id,
+      channelId: session.channelId,
+      kind: "screen-share-stop",
+    });
     void restoreCameraAfterScreenShare();
-  }, [restoreCameraAfterScreenShare]);
+  }, [onSendSignal, restoreCameraAfterScreenShare, session.channelId, session.id]);
 
   const startScreenSharing = useCallback(async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) {
@@ -790,6 +823,11 @@ export function CallPanel({
 
           screenTrackRef.current = null;
           setIsScreenSharing(false);
+          onSendSignal({
+            callId: session.id,
+            channelId: session.channelId,
+            kind: "screen-share-stop",
+          });
           void restoreCameraAfterScreenShare();
         },
         { once: true },
@@ -797,11 +835,22 @@ export function CallPanel({
 
       replaceLocalVideoTrack(screenTrack);
       setIsScreenSharing(true);
+      onSendSignal({
+        callId: session.id,
+        channelId: session.channelId,
+        kind: "screen-share-start",
+      });
       setMediaError(null);
     } catch {
       setMediaError("Nao foi possivel compartilhar a tela.");
     }
-  }, [replaceLocalVideoTrack, restoreCameraAfterScreenShare]);
+  }, [
+    onSendSignal,
+    replaceLocalVideoTrack,
+    restoreCameraAfterScreenShare,
+    session.channelId,
+    session.id,
+  ]);
 
   const handleToggleScreenShare = useCallback(() => {
     if (isScreenSharing) {
@@ -1049,6 +1098,43 @@ export function CallPanel({
     };
   }, [cleanupPeerConnections]);
 
+  const callParticipants = session.participants.map((participant) => {
+    const participantUserId = participant.userId;
+    const isLocalParticipant = participantUserId === currentUserId;
+    const remoteStream = participantUserId
+      ? remoteStreamsByUserId[participantUserId]
+      : null;
+
+    return {
+      ...participant,
+      isCameraOn: isLocalParticipant
+        ? cameraEnabled || isScreenSharing
+        : Boolean(remoteStream?.getVideoTracks().length) ||
+          participant.isCameraOn,
+      isLocalParticipant,
+      isMuted: isLocalParticipant ? isMuted : participant.isMuted,
+      isScreenSharing: isLocalParticipant
+        ? isScreenSharing
+        : Boolean(
+            participantUserId &&
+              remoteScreenSharingUserIds.includes(participantUserId),
+          ) || participant.isScreenSharing,
+      mediaStream: isLocalParticipant ? localStream : remoteStream,
+    };
+  });
+  const screenShareParticipant = callParticipants.find(
+    (participant) => participant.isScreenSharing,
+  );
+  const companionParticipants = screenShareParticipant
+    ? callParticipants.filter(
+        (participant) => participant.id !== screenShareParticipant.id,
+      )
+    : callParticipants;
+  const standardGridClassName =
+    callParticipants.length <= 2
+      ? "grid min-h-0 content-center items-center gap-4 overflow-auto p-4 lg:grid-cols-2"
+      : "grid min-h-0 auto-rows-min gap-3 overflow-auto p-4 sm:grid-cols-2";
+
   return (
     <section
       aria-label="Chamada PulseX"
@@ -1106,35 +1192,93 @@ export function CallPanel({
           </button>
         </div>
       </header>
-      <div className={participantGridClassName}>
-        {session.participants.map((participant) => {
-          const participantUserId = participant.userId;
-          const isLocalParticipant = participantUserId === currentUserId;
-          const remoteStream = participantUserId
-            ? remoteStreamsByUserId[participantUserId]
-            : null;
-
-          return (
+      {screenShareParticipant ? (
+        <div className="relative min-h-0 overflow-hidden p-4">
+          <div className="relative h-full min-h-0 overflow-hidden">
             <CallParticipantTile
-              isLocalMedia={isLocalParticipant}
-              key={participant.id}
-              mediaStream={isLocalParticipant ? localStream : remoteStream}
+              isLocalMedia={screenShareParticipant.isLocalParticipant}
+              layout="spotlight"
+              mediaStream={screenShareParticipant.mediaStream}
               onVideoElementChange={handleVideoElementChange}
-              participant={{
-                ...participant,
-                isCameraOn: isLocalParticipant
-                  ? cameraEnabled || isScreenSharing
-                  : Boolean(remoteStream?.getVideoTracks().length) ||
-                    participant.isCameraOn,
-                isMuted: isLocalParticipant ? isMuted : participant.isMuted,
-                isScreenSharing: isLocalParticipant
-                  ? isScreenSharing
-                  : participant.isScreenSharing,
-              }}
+              participant={screenShareParticipant}
+              presentationZoom={screenShareZoom}
             />
-          );
-        })}
-      </div>
+            <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-white/10 bg-black/55 p-1 shadow-xl backdrop-blur">
+              <Tooltip content="Diminuir zoom">
+                <button
+                  aria-label="Diminuir zoom da tela"
+                  className="grid h-8 w-8 place-items-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                  disabled={screenShareZoom <= 1}
+                  onClick={() =>
+                    setScreenShareZoom((currentZoom) =>
+                      Math.max(1, Number((currentZoom - 0.25).toFixed(2))),
+                    )
+                  }
+                  type="button"
+                >
+                  <ZoomOut aria-hidden="true" size={16} />
+                </button>
+              </Tooltip>
+              <button
+                className="h-8 rounded-full px-2 text-xs font-semibold text-white/85 transition hover:bg-white/10 hover:text-white"
+                onClick={() => setScreenShareZoom(1)}
+                type="button"
+              >
+                {Math.round(screenShareZoom * 100)}%
+              </button>
+              <Tooltip content="Aumentar zoom">
+                <button
+                  aria-label="Aumentar zoom da tela"
+                  className="grid h-8 w-8 place-items-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                  disabled={screenShareZoom >= 2.25}
+                  onClick={() =>
+                    setScreenShareZoom((currentZoom) =>
+                      Math.min(
+                        2.25,
+                        Number((currentZoom + 0.25).toFixed(2)),
+                      ),
+                    )
+                  }
+                  type="button"
+                >
+                  <ZoomIn aria-hidden="true" size={16} />
+                </button>
+              </Tooltip>
+            </div>
+            {companionParticipants.length > 0 ? (
+              <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex max-h-40 gap-3 overflow-x-auto pb-1 sm:inset-x-auto sm:right-4 sm:max-h-[calc(100%-6rem)] sm:w-64 sm:flex-col-reverse sm:overflow-x-hidden sm:overflow-y-auto sm:pb-0">
+                {companionParticipants.map((participant) => (
+                  <div
+                    className="pointer-events-auto w-52 shrink-0 sm:w-full"
+                    key={participant.id}
+                  >
+                    <CallParticipantTile
+                      isLocalMedia={participant.isLocalParticipant}
+                      layout="floating"
+                      mediaStream={participant.mediaStream}
+                      onVideoElementChange={handleVideoElementChange}
+                      participant={participant}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <div className={standardGridClassName}>
+          {callParticipants.map((participant) => (
+            <CallParticipantTile
+              isLocalMedia={participant.isLocalParticipant}
+              key={participant.id}
+              layout="standard"
+              mediaStream={participant.mediaStream}
+              onVideoElementChange={handleVideoElementChange}
+              participant={participant}
+            />
+          ))}
+        </div>
+      )}
       {mediaError ? (
         <p className="m-0 border-t border-white/10 px-4 py-2 text-xs text-amber-200">
           {mediaError}

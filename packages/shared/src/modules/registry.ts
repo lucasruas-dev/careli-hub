@@ -121,8 +121,8 @@ export const hubModules = [
   },
   {
     id: "squadops",
-    name: "SquadOps",
-    description: "Orquestracao de squads, demandas, handoffs, QA e deploys da engenharia IA.",
+    name: "HubOps",
+    description: "Central operacional de engenharia IA, auditorias, releases, riscos e handoffs.",
     category: "core",
     status: "active",
     basePath: "/squadops",
@@ -133,15 +133,15 @@ export const hubModules = [
     routes: [
       {
         id: "squadops-overview",
-        label: "Operacao",
+        label: "HubOps",
         path: "/squadops",
-        description: "Painel operacional das squads de engenharia IA.",
+        description: "Historico operacional, auditorias e PO AI da engenharia IA.",
       },
     ],
     navigationItems: [
       {
         id: "squadops-overview",
-        label: "SquadOps",
+        label: "HubOps",
         path: "/squadops",
         iconKey: "squadops",
         order: 10,

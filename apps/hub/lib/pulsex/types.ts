@@ -10,6 +10,7 @@ export type PulseXChannelKind =
 export type PulseXChannel = {
   accessType?: "department_channel" | "private_group" | "sector_channel";
   avatar: string;
+  avatarUrl?: string;
   context: {
     filesCount: number;
     owner: string;
@@ -191,7 +192,9 @@ export type PulseXCallSignalKind =
   | "invite"
   | "join"
   | "leave"
-  | "offer";
+  | "offer"
+  | "screen-share-start"
+  | "screen-share-stop";
 
 export type PulseXCallRealtimeSignal = {
   callId: PulseXCallSession["id"];

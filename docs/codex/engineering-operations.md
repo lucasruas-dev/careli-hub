@@ -2469,6 +2469,36 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[HubOps] Cards com resumo e detalhe completo`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 12:50:55 -03:00.
+- Tipo da alteracao: `AJUSTE UX OPERACIONAL`.
+- Motivo da mudanca: Lucas apontou que as listas do Operations Center poderiam exibir apenas um resumo no card e abrir todo o texto ao clicar, reduzindo poluicao visual sem perder acesso ao detalhe operacional completo.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: converti os cards de `Agora precisa de atencao`, `Releases e deploys`, `Investigacoes SupportOps`, `Melhorias por modulo` e listas laterais em itens clicaveis. Os cards agora usam `shortSummary` como resumo principal e abrem o drawer de detalhe do registro completo. Para rotinas de auditoria, adicionei um drawer proprio com status, responsavel, ultima execucao, resultado consolidado, script e historico relacionado.
+- Logica utilizada: a tela principal deve ser escaneavel e mostrar somente a leitura executiva. O detalhe completo fica sob demanda no clique, preservando rastreabilidade sem repetir textos longos em cada card.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke HTTP de `http://localhost:3001/squadops` e smoke HTTP de `http://localhost:3001/api/squadops/operations`.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita na sessao autenticada do Lucas. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Prompts copiaveis para envio ao dev`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 12:52:52 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL`.
+- Motivo da mudanca: Lucas esclareceu que os prompts padrao nao devem aparecer como mensagem enviada no chat nem como tarefa para ele executar; devem ser apenas textos prontos para copiar, colar e enviar ao dev responsavel.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: removi a acao `Usar no chat` da biblioteca de prompts, deixei a acao principal como `Copiar para enviar ao dev` e ajustei o texto dos modelos para serem solicitacoes ao `Dev responsavel`, sem direcionar a execucao ao Lucas.
+- Logica utilizada: a biblioteca de prompts e um gerador de texto operacional copiavel, nao uma conversa com o PO AI. O PO AI continua disponivel para consulta, mas o fluxo de prompt padrao fica separado e controlado pelo Lucas para envio manual ao dev/squad.
+- Validacao executada: `npm.cmd run check-types:hub`, `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke HTTP de `http://localhost:3001/squadops` e smoke HTTP de `http://localhost:3001/api/squadops/operations`.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita na sessao autenticada do Lucas. O build segue passando com o aviso Turbopack/NFT conhecido da rota que le o diario operacional via filesystem.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e organizar commit/release do recorte HubOps.
+
+Registro de diario:
+
 - Assunto: `[HubOps] Rolagem e data curta na timeline`.
 - Nome da squad/agente: `Dev HubOps`.
 - Data e hora local: 2026-05-17 11:52:14 -03:00.
@@ -2541,3 +2571,34 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nenhum deploy foi executado nesta etapa; o worktree segue com diversos recortes locais `AGUARDANDO RELEASEOPS` que devem ser avaliados separadamente usando este template antes de qualquer publicacao.
 - Status operacional: `FINALIZADO`.
 - Proxima squad recomendada: `Hub ReleaseOps` quando Lucas preencher um recorte real para deploy.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Consolidado semanal do Hub`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 13:03:24 -03:00.
+- Tipo da alteracao: `CONSOLIDADO OPERACIONAL`.
+- Motivo da mudanca: Lucas solicitou consolidar a atividade semanal da engenharia Careli Hub com base no Engineering Operations, identificando entregas, riscos, gargalos, decisoes e proximos passos.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; leitura operacional de `Guardian`, `CareDesk`, `PulseX`, `HubOps/SquadOps`, `SupportOps` e `ReleaseOps`.
+- Como foi feito: revisei os registros recentes do diario operacional e consolidei a semana de `11/05 a 17/05`, com maior concentracao de atividade registrada em `16/05` e `17/05`, agrupando as entregas por frente e destacando riscos operacionais e prioridades de continuidade.
+- Logica utilizada: o consolidado semanal deve servir como leitura executiva para Lucas e como handoff para ReleaseOps, sem criar alteracao funcional, deploy, automacao ou mistura de recortes entre modulos.
+- Validacao executada: leitura do Engineering Operations e verificacao de que nao havia registro previo do consolidado semanal por `Consolidado semanal`, `atividade semanal` ou `Resumo executivo semanal`.
+- Pendencias ou riscos conhecidos: ha volume relevante de registros `AGUARDANDO RELEASEOPS`, risco de mistura de recortes no worktree, validacoes visuais finais pendentes em sessao autenticada e validacao real PulseX ainda dependente de teste multiusuario/navegador.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para separar recortes por modulo, revisar pendencias e preparar commits/releases isolados.
+- Resumo macro: semana produtiva e com evolucao forte de HubOps/SquadOps como centro operacional, melhorias visuais e funcionais em Guardian e PulseX, atuacao SupportOps em gargalos locais e consolidacao de regras ReleaseOps; criticidade operacional alta controlada por acumulacao de pendencias aguardando release.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy consolidado HubOps PulseX Guardian`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 13:03:22 -03:00.
+- Tipo da alteracao: `RELEASE` - preparacao de deploy consolidado.
+- Motivo da mudanca: Lucas autorizou ReleaseOps a executar deploy do pacote local pendente depois da padronizacao do template de deploy por recorte.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/api/squadops/*`, `apps/hub/lib/squadops/*`, `packages/shared/src/modules/registry.ts`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/styles/globals.css`, componentes PulseX de chamadas/sidebar/mensagens/notificacoes, `apps/hub/app/api/guardian/d4sign/contracts/[documentId]/route.ts`, `apps/hub/components/guardian/layout/Sidebar.tsx`, `apps/hub/modules/guardian/attendance/components/ClientDetailPanel.tsx` e este Engineering Operations.
+- Como foi feito: ReleaseOps consolidou os recortes locais `AGUARDANDO RELEASEOPS`, revisou o escopo por diff, manteve o pacote como release ampla de operacao do Hub, preparou commit unico para publicacao e preservou a rastreabilidade no diario oficial.
+- Logica utilizada: apesar de envolver multiplas frentes, os recortes estavam acumulados no mesmo workspace e Lucas autorizou o deploy. A release foi tratada como consolidada para evitar deixar parte da tela HubOps/PO AI ou do launcher sem arquivos complementares, mantendo D4Sign, PulseX e Hub Shell sob o mesmo ciclo de validacao/deploy.
+- Validacao executada: `git diff --check` passou; varredura de caminhos por possiveis secrets apontou apenas nomes de variaveis/headers esperados em codigo server-side, sem valor sensivel exposto; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/shared` passou; `npm.cmd run build --workspace @repo/hub` passou; `npx.cmd turbo build --filter=@repo/hub` passou e reproduziu o build command da Vercel.
+- Pendencias ou riscos conhecidos: release consolidada tem blast radius maior que um hotfix isolado; PulseX chamadas/realtime ainda deve ser validado em dois usuarios/duas maquinas; D4Sign depende de `SUPABASE_SERVICE_ROLE_KEY`, `D4SIGN_TOKEN_API` e `D4SIGN_CRYPT_KEY` no ambiente de producao; build segue com warning conhecido do Turbopack/NFT envolvendo leitura filesystem do Engineering Operations pela rota SquadOps.
+- Status operacional: `AGUARDANDO DEPLOY`.
+- Proxima squad recomendada: `Hub ReleaseOps` para executar deploy Vercel, healthchecks de producao e registro final.

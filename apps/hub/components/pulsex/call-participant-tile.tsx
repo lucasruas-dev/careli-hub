@@ -6,19 +6,23 @@ import { useEffect, useRef, useState } from "react";
 
 type CallParticipantTileProps = {
   isLocalMedia?: boolean;
+  layout?: "floating" | "spotlight" | "standard" | "thumbnail";
   mediaStream?: MediaStream | null;
   onVideoElementChange?: (
     participantId: PulseXCallParticipant["id"],
     videoElement: HTMLVideoElement | null,
   ) => void;
   participant: PulseXCallParticipant;
+  presentationZoom?: number;
 };
 
 export function CallParticipantTile({
   isLocalMedia = false,
+  layout = "standard",
   mediaStream,
   onVideoElementChange,
   participant,
+  presentationZoom = 1,
 }: CallParticipantTileProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -26,6 +30,23 @@ export function CallParticipantTile({
   const showVideo = Boolean(
     mediaStream?.getVideoTracks().length && participant.isCameraOn,
   );
+  const isPresentation = Boolean(participant.isScreenSharing);
+  const articleClassName =
+    layout === "spotlight"
+      ? "relative h-full min-h-[20rem] overflow-hidden rounded-xl border border-white/10 bg-[#101720] p-3 text-white shadow-sm"
+      : layout === "floating"
+        ? "relative aspect-video min-h-0 overflow-hidden rounded-xl border border-white/20 bg-[#141923] p-2 text-white shadow-2xl ring-1 ring-black/20"
+      : layout === "thumbnail"
+        ? "relative aspect-video min-h-0 overflow-hidden rounded-lg border border-white/15 bg-[#141923] p-2 text-white shadow-sm"
+        : "relative aspect-video min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#141923] p-3 text-white shadow-sm";
+  const avatarClassName =
+    layout === "thumbnail" || layout === "floating"
+      ? "h-11 w-11 text-xs"
+      : "h-14 w-14 text-sm";
+  const emptyMediaClassName =
+    layout === "thumbnail" || layout === "floating"
+      ? "relative flex h-full min-h-0 flex-col items-center justify-center gap-2 px-2 text-center"
+      : "relative flex h-full min-h-64 flex-col items-center justify-center gap-3";
 
   useEffect(() => {
     const audioElement = audioRef.current;
@@ -69,7 +90,7 @@ export function CallParticipantTile({
   }, [onVideoElementChange, participant.id, showVideo]);
 
   return (
-    <article className="relative min-h-[18rem] overflow-hidden rounded-lg border border-white/10 bg-[#141923] p-3 text-white shadow-sm">
+    <article className={articleClassName}>
       {!isLocalMedia ? <audio autoPlay ref={audioRef} /> : null}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
         <CallStateIcon enabled={!participant.isMuted} type="mic" />
@@ -97,11 +118,20 @@ export function CallParticipantTile({
       {showVideo ? (
         <video
           autoPlay
-          className="absolute inset-0 h-full w-full object-cover"
+          className={`absolute inset-0 h-full w-full transform-gpu bg-black ${
+            isPresentation ? "object-contain" : "object-cover"
+          }`}
           disablePictureInPicture={false}
           muted
           playsInline
           ref={videoRef}
+          style={
+            isPresentation && presentationZoom > 1
+              ? {
+                  transform: `scale(${presentationZoom})`,
+                }
+              : undefined
+          }
         />
       ) : null}
       {showVideo ? (
@@ -109,9 +139,12 @@ export function CallParticipantTile({
           <ParticipantCaption participant={participant} compact />
         </div>
       ) : (
-        <div className="relative flex h-full min-h-64 flex-col items-center justify-center gap-3">
-          <ParticipantAvatar participant={participant} />
-          <ParticipantCaption participant={participant} />
+        <div className={emptyMediaClassName}>
+          <ParticipantAvatar className={avatarClassName} participant={participant} />
+          <ParticipantCaption
+            compact={layout === "thumbnail" || layout === "floating"}
+            participant={participant}
+          />
         </div>
       )}
     </article>
@@ -119,12 +152,16 @@ export function CallParticipantTile({
 }
 
 function ParticipantAvatar({
+  className,
   participant,
 }: {
+  className: string;
   participant: PulseXCallParticipant;
 }) {
   return (
-    <span className="relative grid h-14 w-14 place-items-center rounded-full bg-[#273142] text-sm font-semibold text-white">
+    <span
+      className={`relative grid place-items-center rounded-full bg-[#273142] font-semibold text-white ${className}`}
+    >
       {participant.initials}
       <span
         aria-hidden="true"

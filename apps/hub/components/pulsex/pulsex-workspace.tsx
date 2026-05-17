@@ -21,6 +21,7 @@ import {
   getPulseXMessageRealtimeTopic,
   parsePulseXMessageBroadcastPayload,
 } from "@/lib/pulsex/realtime";
+import { playPulseXIncomingMessageSound } from "@/lib/pulsex/notification-effects";
 import {
   getHubSupabaseClient,
   hasHubSupabaseConfig,
@@ -89,6 +90,7 @@ export function PulseXWorkspace() {
     PulseXMessage["id"] | null
   >(null);
   const [isCacaAgentOpen, setIsCacaAgentOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [cacaFocusedMessageId, setCacaFocusedMessageId] = useState<
     PulseXMessage["id"] | null
   >(null);
@@ -339,6 +341,10 @@ export function PulseXWorkspace() {
           title,
         } satisfies PulseXToastNotification;
 
+        playPulseXIncomingMessageSound({
+          mentioned,
+          messageId: message.id,
+        });
         setNotifications((currentNotifications) =>
           [notification, ...currentNotifications].slice(0, 4),
         );
@@ -1137,7 +1143,13 @@ export function PulseXWorkspace() {
   }
 
   return (
-    <div className="grid h-full min-h-0 overflow-hidden bg-[#f3f6fa] [grid-template-columns:21.5rem_minmax(40rem,1fr)]">
+    <div
+      className={`grid h-full min-h-0 overflow-hidden bg-[#f3f6fa] transition-[grid-template-columns] duration-200 ease-out ${
+        isSidebarCollapsed
+          ? "[grid-template-columns:5rem_minmax(0,1fr)]"
+          : "[grid-template-columns:21.5rem_minmax(0,1fr)]"
+      }`}
+    >
       <ConversationSidebar
         activeChannelId={activeChannel.id}
         activeMessageFilter={activeMessageFilter}
@@ -1147,8 +1159,12 @@ export function PulseXWorkspace() {
         dataStatus={dataStatus}
         departments={departments}
         favoriteChannelIds={favoriteChannelIds}
+        isCollapsed={isSidebarCollapsed}
         users={presenceUsers}
         messages={messages}
+        onToggleCollapsed={() =>
+          setIsSidebarCollapsed((currentValue) => !currentValue)
+        }
         onSelectMessageFilter={handleSelectMessageFilter}
         onSelectShortcut={handleSelectShortcut}
         onSelectChannel={handleSelectChannel}
@@ -1260,6 +1276,7 @@ function withDirectUserChannels(
     .filter((user) => user.id !== currentUserId)
     .map((user) => ({
       avatar: user.initials,
+      avatarUrl: user.avatarUrl,
       context: {
         filesCount: 0,
         owner: user.label,
@@ -1569,11 +1586,6 @@ function withUserChannelAccess(
   currentUserId: PulseXPresenceUser["id"],
 ): PulseXPresenceUser[] {
   return users.map((user) => {
-    const memberDepartmentIds = getDepartmentIdsFromChannelMembership({
-      channels,
-      userId: user.id,
-    });
-
     return {
       ...user,
       channelIds: channels
@@ -1582,40 +1594,11 @@ function withUserChannelAccess(
             return user.id === currentUserId || channel.id === `direct-${user.id}`;
           }
 
-          return (
-            channel.memberUserIds?.includes(user.id) ||
-            Boolean(
-              channel.accessType === "department_channel" &&
-                channel.departmentId &&
-                memberDepartmentIds.has(channel.departmentId),
-            )
-          );
+          return channel.memberUserIds?.includes(user.id);
         })
         .map((channel) => channel.id),
     };
   });
-}
-
-function getDepartmentIdsFromChannelMembership({
-  channels,
-  userId,
-}: {
-  channels: readonly PulseXChannel[];
-  userId: PulseXPresenceUser["id"];
-}) {
-  const departmentIds = new Set<string>();
-
-  for (const channel of channels) {
-    if (
-      channel.departmentId &&
-      channel.accessType !== "department_channel" &&
-      channel.memberUserIds?.includes(userId)
-    ) {
-      departmentIds.add(channel.departmentId);
-    }
-  }
-
-  return departmentIds;
 }
 
 function getInitials(value: string) {

@@ -9,12 +9,12 @@ import { Tooltip } from "@repo/uix";
 import {
   BarChart3,
   Bot,
-  ChevronsLeft,
-  ChevronsRight,
   Inbox,
   LayoutDashboard,
   LayoutGrid,
   LineChart,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   WalletCards,
 } from "lucide-react";
@@ -75,20 +75,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       }`}
     >
       <div className="px-3 pb-5 pt-4">
-        <div
-          className={`relative grid rounded-lg ${
-            collapsed ? "justify-items-center gap-2" : "gap-2"
-          }`}
-        >
-          <Tooltip content="Voltar ao Hub" placement="bottom">
-            <Link
-              aria-label="Voltar ao Hub"
-              href="/"
-              className={`flex min-w-0 items-center rounded-lg outline-none transition hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
-                collapsed ? "h-10 w-10 justify-center" : "h-12 justify-start"
-              }`}
+        <div className="relative grid gap-2 rounded-lg">
+          {collapsed ? (
+            <Tooltip
+              content="Voltar ao Hub"
+              placement="right"
+              className="justify-self-center"
             >
-              {collapsed ? (
+              <Link
+                aria-label="Voltar ao Hub"
+                href="/"
+                className="flex h-10 w-10 min-w-0 items-center justify-center rounded-lg outline-none transition hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              >
                 <Image
                   src="/logoiconbranca.png"
                   alt="Guardian"
@@ -96,9 +94,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   height={2374}
                   priority
                   sizes="32px"
-                  className="h-8 w-auto object-contain"
+                  className="h-8 w-8 object-contain"
                 />
-              ) : (
+              </Link>
+            </Tooltip>
+          ) : (
+            <Tooltip
+              content="Voltar ao Hub"
+              placement="bottom"
+              className="w-full"
+              triggerClassName="w-full"
+            >
+              <Link
+                aria-label="Voltar ao Hub"
+                href="/"
+                className="flex h-12 min-w-0 items-center justify-center rounded-lg outline-none transition hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              >
                 <Image
                   src="/logoCbranca.png"
                   alt="Guardian"
@@ -108,19 +119,19 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   sizes="150px"
                   className="h-11 w-auto max-w-[150px] object-contain"
                 />
-              )}
-            </Link>
-          </Tooltip>
+              </Link>
+            </Tooltip>
+          )}
 
           <div
-            className={`grid ${
+            className={`grid items-center ${
               collapsed
                 ? "w-full justify-items-center gap-2"
                 : "grid-cols-2 gap-2"
             }`}
           >
             <Tooltip
-              content="Abrir módulos"
+              content="Abrir sidebar do Hub"
               placement={collapsed ? "right" : "bottom"}
               className={collapsed ? "w-full" : undefined}
               triggerClassName={collapsed ? "w-full" : undefined}
@@ -128,12 +139,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               <button
                 type="button"
                 onClick={handleOpenModuleLauncher}
-                aria-label="Abrir módulos"
-                className={`grid place-items-center rounded-lg border border-white/[0.075] bg-white/[0.055] text-[#C5C5D2] outline-none transition hover:bg-[#2A2B32]/80 hover:text-[#ECECF1] focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
-                  collapsed ? "h-10 w-full" : "h-9 w-full"
+                aria-label="Abrir sidebar do Hub"
+                className={`grid shrink-0 place-items-center rounded-lg border border-white/[0.075] bg-white/[0.055] text-[#C5C5D2] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-[#ECECF1] focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                  collapsed ? "h-10 w-full" : "h-8 w-8"
                 }`}
               >
-                <LayoutGrid className="size-[15px]" aria-hidden="true" />
+                  <LayoutGrid className="size-[15px]" aria-hidden="true" />
               </button>
             </Tooltip>
             <Tooltip
@@ -146,14 +157,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 type="button"
                 onClick={onToggle}
                 aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
-                className={`flex shrink-0 items-center justify-center rounded-lg text-[#C5C5D2] transition-colors hover:bg-[#2A2B32]/80 hover:text-[#ECECF1] ${
-                  collapsed ? "h-10 w-full" : "h-9 w-full"
+                className={`grid shrink-0 place-items-center rounded-lg border border-white/[0.075] text-[#C5C5D2] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-[#ECECF1] focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                  collapsed ? "h-10 w-full" : "h-8 w-8"
                 }`}
               >
                 {collapsed ? (
-                  <ChevronsRight className="size-4" aria-hidden="true" />
+                  <PanelLeftOpen className="size-4" aria-hidden="true" />
                 ) : (
-                  <ChevronsLeft className="size-4" aria-hidden="true" />
+                  <PanelLeftClose className="size-4" aria-hidden="true" />
                 )}
               </button>
             </Tooltip>

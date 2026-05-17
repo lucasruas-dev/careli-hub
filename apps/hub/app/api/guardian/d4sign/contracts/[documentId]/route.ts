@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -5,9 +6,32 @@ export const runtime = "nodejs";
 
 const D4SIGN_API_BASE_URL = "https://secure.d4sign.com.br/api/v1";
 
+type HubUserRole = "admin" | "leader" | "operator" | "viewer";
+
 type D4SignDownloadResponse = {
   message?: string;
   url?: string;
+};
+
+type GuardianD4SignApiDatabase = {
+  public: {
+    CompositeTypes: Record<string, never>;
+    Enums: Record<string, never>;
+    Functions: Record<string, never>;
+    Tables: {
+      hub_users: {
+        Insert: never;
+        Relationships: [];
+        Row: {
+          id: string;
+          role: HubUserRole;
+          status: string;
+        };
+        Update: never;
+      };
+    };
+    Views: Record<string, never>;
+  };
 };
 
 function inlinePdfHeaders(documentId: string, contentLength?: string | null) {
@@ -26,9 +50,15 @@ function inlinePdfHeaders(documentId: string, contentLength?: string | null) {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ documentId: string }> },
 ) {
+  const authorization = await createAuthorizedContext(request);
+
+  if (!authorization.ok) {
+    return authorization.response;
+  }
+
   const { documentId } = await context.params;
   const decodedDocumentId = decodeURIComponent(documentId ?? "").trim();
 
@@ -123,4 +153,87 @@ export async function GET(
       { status: 502 },
     );
   }
+}
+
+async function createAuthorizedContext(request: NextRequest) {
+  const serverEnv = process.env as Record<string, string | undefined>;
+  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Configure a chave server-side para abrir contratos do Guardian." },
+        { status: 503 },
+      ),
+    };
+  }
+
+  const accessToken = getBearerToken(request);
+
+  if (!accessToken) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Sessao administrativa ausente." },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const adminClient = createClient<GuardianD4SignApiDatabase>(
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    },
+  );
+  const { data: authData, error: authError } = await adminClient.auth.getUser(
+    accessToken,
+  );
+
+  if (authError || !authData.user) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Sessao administrativa invalida." },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const { data: user, error: userError } = await adminClient
+    .from("hub_users")
+    .select("id,role,status")
+    .eq("id", authData.user.id)
+    .maybeSingle<{ id: string; role: HubUserRole; status: string }>();
+
+  if (userError || !user || user.status !== "active") {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Usuario sem acesso ao Guardian." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    user,
+  };
+}
+
+function getBearerToken(request: NextRequest) {
+  const authorization = request.headers.get("authorization");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    return null;
+  }
+
+  return authorization.slice("Bearer ".length).trim() || null;
 }

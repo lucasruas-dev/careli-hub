@@ -391,7 +391,7 @@ export async function listDirectUsers(): Promise<PulseXPresenceUser[]> {
     client
       .from("hub_users")
       .select(
-        "id,email,display_name,avatar_url,role,status,hub_user_assignments(department_id,sector_id,status,hub_departments(name),hub_sectors(name))",
+        "id,email,display_name,avatar_url,role,status,hub_user_assignments(department_id,sector_id,status,hub_departments(name),hub_sectors:hub_sectors!hub_user_assignments_sector_department_fk(name))",
       )
       .eq("status", "active")
       .order("display_name"),
@@ -818,44 +818,9 @@ function filterChannelsForUser({
     userRole: userRole ?? "unknown",
   });
 
-  const memberDepartmentIds = getDepartmentIdsFromChannelMembership({
-    channels,
-    userId: currentUserId,
-  });
-
-  return channels.filter((channel) => {
-    if (channel.memberUserIds?.includes(currentUserId)) {
-      return true;
-    }
-
-    return Boolean(
-      channel.accessType === "department_channel" &&
-        channel.departmentId &&
-        memberDepartmentIds.has(channel.departmentId),
-    );
-  });
-}
-
-function getDepartmentIdsFromChannelMembership({
-  channels,
-  userId,
-}: {
-  channels: readonly PulseXChannel[];
-  userId: string;
-}) {
-  const departmentIds = new Set<string>();
-
-  for (const channel of channels) {
-    if (
-      channel.departmentId &&
-      channel.accessType !== "department_channel" &&
-      channel.memberUserIds?.includes(userId)
-    ) {
-      departmentIds.add(channel.departmentId);
-    }
-  }
-
-  return departmentIds;
+  return channels.filter((channel) =>
+    channel.memberUserIds?.includes(currentUserId),
+  );
 }
 
 function mapChannel(row: PulseXChannelRow): PulseXChannel {

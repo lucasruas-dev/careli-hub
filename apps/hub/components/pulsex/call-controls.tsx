@@ -119,6 +119,11 @@ export function CallControls({
         content={isScreenSharing ? "Parar compartilhamento" : "Compartilhar tela"}
       >
         <button
+          aria-label={
+            isScreenSharing
+              ? "Parar compartilhamento de tela"
+              : "Compartilhar tela"
+          }
           aria-pressed={isScreenSharing}
           className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/15 aria-pressed:bg-[#A07C3B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onToggleScreenShare}
@@ -135,6 +140,11 @@ export function CallControls({
         }
       >
         <button
+          aria-label={
+            isPictureInPictureActive
+              ? "Fechar picture-in-picture"
+              : "Abrir picture-in-picture"
+          }
           aria-disabled={!isPictureInPictureAvailable || isAudioOnly}
           aria-pressed={isPictureInPictureActive}
           className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/15 aria-pressed:bg-[#A07C3B] aria-disabled:cursor-not-allowed aria-disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
@@ -147,6 +157,7 @@ export function CallControls({
       </Tooltip>
       <Tooltip content="Encerrar chamada">
         <button
+          aria-label="Encerrar chamada"
           className="grid h-10 w-10 place-items-center rounded-full bg-rose-600 text-white transition hover:bg-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
           onClick={onEnd}
           type="button"

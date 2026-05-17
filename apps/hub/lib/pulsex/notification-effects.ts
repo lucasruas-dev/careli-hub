@@ -22,6 +22,14 @@ type PulseXNotificationInput = {
   title: string;
 };
 
+type PulseXIncomingMessageSoundInput = {
+  mentioned?: boolean;
+  messageId?: string;
+};
+
+const PULSEX_MESSAGE_SOUND_DEDUPE_MS = 12_000;
+const playedMessageSoundAtById = new Map<string, number>();
+
 export function isPulseXCallSoundId(value: unknown): value is PulseXCallSoundId {
   return (
     typeof value === "string" &&
@@ -32,20 +40,69 @@ export function isPulseXCallSoundId(value: unknown): value is PulseXCallSoundId 
 export function playPulseXMessageSound() {
   playToneSequence([
     {
-      duration: 0.1,
-      frequency: [739.99, 987.77],
-      gain: 0.018,
+      duration: 0.09,
+      frequency: [587.33, 880],
+      gain: 0.085,
       start: 0,
       type: "sine",
     },
     {
-      duration: 0.17,
-      frequency: 1174.66,
-      gain: 0.014,
-      start: 0.09,
+      duration: 0.12,
+      frequency: [739.99, 1174.66],
+      gain: 0.078,
+      start: 0.08,
+      type: "triangle",
+    },
+    {
+      duration: 0.2,
+      frequency: 987.77,
+      gain: 0.04,
+      start: 0.19,
+      type: "sine",
+    },
+  ]);
+}
+
+export function playPulseXMentionSound() {
+  playToneSequence([
+    {
+      duration: 0.12,
+      frequency: [392, 523.25],
+      gain: 0.09,
+      start: 0,
+      type: "triangle",
+    },
+    {
+      duration: 0.13,
+      frequency: [659.25, 987.77],
+      gain: 0.102,
+      start: 0.12,
+      type: "sine",
+    },
+    {
+      duration: 0.18,
+      frequency: [783.99, 1318.51],
+      gain: 0.095,
+      start: 0.28,
       type: "triangle",
     },
   ]);
+}
+
+export function playPulseXIncomingMessageSound({
+  mentioned = false,
+  messageId,
+}: PulseXIncomingMessageSoundInput = {}) {
+  if (messageId && shouldSkipRepeatedMessageSound(messageId)) {
+    return;
+  }
+
+  if (mentioned) {
+    playPulseXMentionSound();
+    return;
+  }
+
+  playPulseXMessageSound();
 }
 
 export function playPulseXCallSound(soundId: PulseXCallSoundId) {
@@ -54,21 +111,21 @@ export function playPulseXCallSound(soundId: PulseXCallSoundId) {
       {
         duration: 0.32,
         frequency: [440, 554.37],
-        gain: 0.026,
+        gain: 0.075,
         start: 0,
         type: "sine",
       },
       {
         duration: 0.38,
         frequency: [493.88, 659.25],
-        gain: 0.024,
+        gain: 0.068,
         start: 0.38,
         type: "triangle",
       },
       {
         duration: 0.34,
         frequency: [554.37, 739.99],
-        gain: 0.018,
+        gain: 0.052,
         start: 0.86,
         type: "sine",
       },
@@ -77,21 +134,21 @@ export function playPulseXCallSound(soundId: PulseXCallSoundId) {
       {
         duration: 0.24,
         frequency: [523.25, 659.25],
-        gain: 0.027,
+        gain: 0.082,
         start: 0,
         type: "sine",
       },
       {
         duration: 0.26,
         frequency: [587.33, 739.99],
-        gain: 0.025,
+        gain: 0.074,
         start: 0.28,
         type: "triangle",
       },
       {
         duration: 0.36,
         frequency: [659.25, 783.99],
-        gain: 0.021,
+        gain: 0.058,
         start: 0.72,
         type: "sine",
       },
@@ -100,21 +157,21 @@ export function playPulseXCallSound(soundId: PulseXCallSoundId) {
       {
         duration: 0.16,
         frequency: [880, 1174.66],
-        gain: 0.022,
+        gain: 0.078,
         start: 0,
         type: "sine",
       },
       {
         duration: 0.22,
         frequency: [987.77, 1318.51],
-        gain: 0.019,
+        gain: 0.068,
         start: 0.2,
         type: "triangle",
       },
       {
         duration: 0.28,
         frequency: [783.99, 1046.5],
-        gain: 0.018,
+        gain: 0.058,
         start: 0.55,
         type: "sine",
       },
@@ -123,14 +180,14 @@ export function playPulseXCallSound(soundId: PulseXCallSoundId) {
       {
         duration: 0.42,
         frequency: [392, 493.88],
-        gain: 0.024,
+        gain: 0.068,
         start: 0,
         type: "sine",
       },
       {
         duration: 0.34,
         frequency: [440, 587.33],
-        gain: 0.022,
+        gain: 0.062,
         start: 0.52,
         type: "triangle",
       },
@@ -138,6 +195,32 @@ export function playPulseXCallSound(soundId: PulseXCallSoundId) {
   } as const satisfies Record<PulseXCallSoundId, readonly ToneSpec[]>;
 
   playToneSequence(soundMap[soundId]);
+}
+
+export function playPulseXOutgoingCallSound() {
+  playToneSequence([
+    {
+      duration: 0.28,
+      frequency: [440, 554.37],
+      gain: 0.082,
+      start: 0,
+      type: "sine",
+    },
+    {
+      duration: 0.3,
+      frequency: [493.88, 622.25],
+      gain: 0.074,
+      start: 0.36,
+      type: "triangle",
+    },
+    {
+      duration: 0.18,
+      frequency: 880,
+      gain: 0.052,
+      start: 0.84,
+      type: "sine",
+    },
+  ]);
 }
 
 export function registerPulseXNotificationPermissionIntent() {
@@ -261,5 +344,27 @@ function playToneSequence(notes: readonly ToneSpec[]) {
     }, Math.ceil((longestNoteEnd + 0.22) * 1_000));
   } catch {
     // Browser can block audio before the user interacts with the page.
+  }
+}
+
+function shouldSkipRepeatedMessageSound(messageId: string) {
+  const now = Date.now();
+  const playedAt = playedMessageSoundAtById.get(messageId);
+
+  prunePlayedMessageSoundIds(now);
+
+  if (playedAt && now - playedAt < PULSEX_MESSAGE_SOUND_DEDUPE_MS) {
+    return true;
+  }
+
+  playedMessageSoundAtById.set(messageId, now);
+  return false;
+}
+
+function prunePlayedMessageSoundIds(now: number) {
+  for (const [messageId, playedAt] of playedMessageSoundAtById) {
+    if (now - playedAt > PULSEX_MESSAGE_SOUND_DEDUPE_MS) {
+      playedMessageSoundAtById.delete(messageId);
+    }
   }
 }

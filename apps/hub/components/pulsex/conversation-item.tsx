@@ -1,4 +1,6 @@
 import type { PulseXChannel } from "@/lib/pulsex";
+import type { ReactNode } from "react";
+import Image from "next/image";
 import {
   Bot,
   Hash,
@@ -9,21 +11,48 @@ import {
 type ConversationItemProps = {
   active?: boolean;
   channel: PulseXChannel;
+  collapsed?: boolean;
   onSelect?: (channelId: PulseXChannel["id"]) => void;
 };
 
 export function ConversationItem({
   active = false,
   channel,
+  collapsed = false,
   onSelect,
 }: ConversationItemProps) {
   const ChannelIcon = getChannelIcon(channel);
-  const isDirect = channel.kind === "direct";
+  const collapsedLabel = getCollapsedChannelLabel(channel);
+
+  if (collapsed) {
+    return (
+      <button
+        aria-current={active ? "page" : undefined}
+        aria-label={channel.name}
+        className="relative grid h-11 w-11 place-items-center rounded-xl text-left outline-none transition hover:bg-[#2A2B32]/80 focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-[#2A2B32]"
+        data-active={active}
+        onClick={() => onSelect?.(channel.id)}
+        title={channel.name}
+        type="button"
+      >
+        {active ? (
+          <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
+        ) : null}
+        <ChannelAvatar
+          active={active}
+          channel={channel}
+          collapsed={collapsed}
+          label={collapsedLabel}
+          showUnread
+        />
+      </button>
+    );
+  }
 
   return (
     <button
       aria-current={active ? "page" : undefined}
-      className="relative grid w-full grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-3 rounded-lg px-4 py-2 text-left outline-none transition hover:bg-[#2A2B32]/80 focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-[#2A2B32]"
+      className="relative grid w-full grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3 rounded-lg px-4 py-2 text-left outline-none transition hover:bg-[#2A2B32]/80 focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-[#2A2B32]"
       data-active={active}
       onClick={() => onSelect?.(channel.id)}
       type="button"
@@ -31,27 +60,14 @@ export function ConversationItem({
       {active ? (
         <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
       ) : null}
-      <span
-        className={`relative grid h-9 w-9 place-items-center border border-white/[0.085] bg-white/[0.06] ${
-          active ? "text-[#D5B46F]" : "text-[#f7f8fa]"
-        } ${
-          isDirect ? "rounded-full text-xs font-semibold" : "rounded-md"
-        }`}
-      >
-        {isDirect ? (
-          channel.avatar
-        ) : (
-          <ChannelIcon aria-hidden="true" size={17} />
-        )}
-        {isDirect && channel.status ? (
-          <span
-            aria-hidden="true"
-            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#343541] data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-500 data-[status=online]:bg-emerald-500"
-            data-status={channel.status}
-          />
-        ) : null}
-      </span>
-      <span className="min-w-0 border-b border-white/[0.065] py-1.5">
+      <ChannelAvatar
+        active={active}
+        channel={channel}
+        collapsed={collapsed}
+        icon={<ChannelIcon aria-hidden="true" size={17} />}
+        label={channel.avatar}
+      />
+      <span className="min-w-0 py-1.5">
         <span className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-semibold text-[#f7f8fa]">
             {channel.name}
@@ -64,6 +80,76 @@ export function ConversationItem({
         </span>
       </span>
     </button>
+  );
+}
+
+function getCollapsedChannelLabel(channel: PulseXChannel) {
+  if (channel.kind === "direct") {
+    return channel.avatar;
+  }
+
+  return channel.name.trim().charAt(0).toUpperCase() || "#";
+}
+
+function ChannelAvatar({
+  active,
+  channel,
+  collapsed = false,
+  icon,
+  label,
+  showUnread = false,
+}: {
+  active: boolean;
+  channel: PulseXChannel;
+  collapsed?: boolean;
+  icon?: ReactNode;
+  label: string;
+  showUnread?: boolean;
+}) {
+  const isDirect = channel.kind === "direct";
+  const avatarSizeClass = isDirect && !collapsed ? "h-10 w-10" : "h-9 w-9";
+
+  return (
+    <span
+      className={`relative grid ${avatarSizeClass} place-items-center overflow-visible border bg-white/[0.06] ${
+        active ? "text-[#D5B46F]" : "text-[#f7f8fa]"
+      } ${
+        isDirect
+          ? "rounded-full border-white/20 text-xs font-semibold shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+          : "rounded-md border-white/[0.085]"
+      }`}
+    >
+      {isDirect && channel.avatarUrl ? (
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 overflow-hidden rounded-full"
+        >
+          <Image
+            alt=""
+            className="object-cover"
+            draggable={false}
+            fill
+            sizes={isDirect && !collapsed ? "40px" : "36px"}
+            src={channel.avatarUrl}
+            unoptimized
+          />
+        </span>
+      ) : (
+        <span className="relative z-10">{isDirect ? label : icon}</span>
+      )}
+      {showUnread && channel.unreadCount ? (
+        <span className="absolute -right-1 -top-1 z-20 grid h-4 min-w-4 place-items-center rounded-full bg-[#A07C3B] px-1 text-[0.58rem] font-semibold text-white">
+          {channel.unreadCount}
+        </span>
+      ) : null}
+      {isDirect && channel.status ? (
+        <span
+          aria-hidden="true"
+          className="absolute -bottom-0.5 -right-0.5 z-20 h-3 w-3 rounded-full border-2 border-[#343541] data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-500 data-[status=online]:bg-emerald-500"
+          data-status={channel.status}
+        />
+      ) : null}
+    </span>
   );
 }
 

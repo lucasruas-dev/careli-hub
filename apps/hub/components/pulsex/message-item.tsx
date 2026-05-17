@@ -176,7 +176,7 @@ export function MessageItem({
     <div
       className={`relative flex items-end gap-2 px-4 py-1 ${
         isOwn ? "justify-end" : "justify-start"
-      } ${isInfoOpen || isTagMenuOpen ? "z-40" : "z-0"}`}
+      } ${isTagMenuOpen ? "z-40" : "z-0"}`}
       ref={messageItemRef}
     >
       {!isOwn ? (
@@ -400,17 +400,16 @@ export function MessageItem({
                 {infoButton}
               </Tooltip>
             )}
-            {isInfoOpen ? (
-              <MessageInfoPanel
-                align={isOwn ? "left" : "right"}
-                author={author}
-                currentUserId={currentUserId}
-                message={message}
-                users={users}
-              />
-            ) : null}
           </div>
         </div>
+        {isInfoOpen ? (
+          <MessageInfoPanel
+            author={author}
+            currentUserId={currentUserId}
+            message={message}
+            users={users}
+          />
+        ) : null}
       </div>
       {isOwn ? (
         <MessageAvatar
@@ -424,13 +423,11 @@ export function MessageItem({
 }
 
 function MessageInfoPanel({
-  align,
   author,
   currentUserId,
   message,
   users,
 }: {
-  align: "left" | "right";
   author?: PulseXPresenceUser;
   currentUserId?: PulseXPresenceUser["id"];
   message: PulseXMessage;
@@ -466,14 +463,10 @@ function MessageInfoPanel({
     message,
     userIds: readUserIds,
   });
-  const panelPositionClassName =
-    align === "left"
-      ? "right-full mr-2 origin-bottom-right"
-      : "left-full ml-2 origin-bottom-left";
 
   return (
     <div
-      className={`absolute top-1/2 z-50 max-h-[min(18rem,calc(100vh-2rem))] w-72 max-w-[calc(100vw-2rem)] -translate-y-1/2 overflow-y-auto rounded-lg border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-[0_16px_40px_rgba(16,24,32,0.14)] ${panelPositionClassName}`}
+      className="relative z-10 mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-[0_8px_18px_rgba(16,24,32,0.10)]"
     >
       <div className="mb-2 flex items-center gap-2 border-b border-[#eef2f7] pb-2 text-sm font-semibold text-[#121722]">
         <CheckCheck aria-hidden="true" size={15} />

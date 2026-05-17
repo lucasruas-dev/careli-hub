@@ -17,6 +17,7 @@ import {
 import {
   isPulseXCallSoundId,
   playPulseXCallSound,
+  playPulseXOutgoingCallSound,
   pulsexCallSoundOptions,
   showBrowserPulseXNotification,
   type PulseXCallSoundId,
@@ -251,6 +252,22 @@ export function PulseXCallProvider({
         return;
       }
 
+      if (
+        signal.kind === "screen-share-start" ||
+        signal.kind === "screen-share-stop"
+      ) {
+        setActiveCall((currentCall) =>
+          currentCall?.id === signal.callId
+            ? updateCallParticipantScreenShare(
+                currentCall,
+                signal.fromUserId,
+                signal.kind === "screen-share-start",
+              )
+            : currentCall,
+        );
+        return;
+      }
+
       if (signal.kind === "end") {
         setIncomingCall((currentCall) =>
           currentCall?.id === signal.callId ? null : currentCall,
@@ -343,6 +360,25 @@ export function PulseXCallProvider({
       window.clearInterval(intervalId);
     };
   }, [callSoundId, incomingCall]);
+
+  useEffect(() => {
+    if (
+      !activeCall ||
+      activeCall.initiatedByUserId !== currentUserId ||
+      !hasPendingInvitedCallParticipant(activeCall, currentUserId)
+    ) {
+      return;
+    }
+
+    playPulseXOutgoingCallSound();
+    const intervalId = window.setInterval(() => {
+      playPulseXOutgoingCallSound();
+    }, 2_500);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeCall, currentUserId]);
 
   const startCall = useCallback(
     ({
@@ -562,6 +598,8 @@ const pulseXCallSignalKinds = new Set<PulseXCallSignalKind>([
   "join",
   "leave",
   "offer",
+  "screen-share-start",
+  "screen-share-stop",
 ]);
 
 function createPulseXCallSignalId(kind: PulseXCallSignalKind) {
@@ -583,6 +621,16 @@ function getCallParticipantForUser(
   userId: PulseXPresenceUser["id"],
 ) {
   return session.participants.find((participant) => participant.userId === userId);
+}
+
+function hasPendingInvitedCallParticipant(
+  session: PulseXCallSession,
+  currentUserId: PulseXPresenceUser["id"],
+) {
+  return session.participants.some(
+    (participant) =>
+      participant.userId !== currentUserId && participant.status === "invited",
+  );
 }
 
 function parsePulseXCallSignal(
@@ -665,6 +713,24 @@ function updateCallParticipantStatus(
         ? {
             ...participant,
             status,
+          }
+        : participant,
+    ),
+  };
+}
+
+function updateCallParticipantScreenShare(
+  session: PulseXCallSession,
+  userId: PulseXPresenceUser["id"],
+  isScreenSharing: boolean,
+): PulseXCallSession {
+  return {
+    ...session,
+    participants: session.participants.map((participant) =>
+      participant.userId === userId
+        ? {
+            ...participant,
+            isScreenSharing,
           }
         : participant,
     ),
