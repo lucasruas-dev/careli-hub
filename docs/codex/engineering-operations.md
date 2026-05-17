@@ -2816,3 +2816,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: se o consolidado identificar recorte pronto para publicacao, o encaminhamento final continua sendo `Hub ReleaseOps`.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para revisar o pacote HubOps completo antes de publicacao.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy producao HubOps Operations Center`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 17:48:39 -03:00.
+- Tipo da alteracao: `RELEASE` - deploy de producao e healthcheck pos-deploy.
+- Motivo da mudanca: publicar o recorte HubOps / Operations Center solicitado por Lucas, incluindo Database Monitoring realtime, Ops Watcher, PO AI com monitoramento real como fonte principal, acesso adm e refinamentos de UX.
+- Arquivos/modulos afetados: producao Vercel `https://c2x.app.br`; deployment `dpl_DHQP9veUk5LUGPtUHpgEa6Gwir3x`; commits `d8db364`, `dfd3482`, `c42be66` e `8d40629`; HubOps/SquadOps, APIs `/api/operations/monitoring` e `/api/operations/watcher`, PO AI, sidebar/shell, matriz de permissoes e Engineering Operations.
+- Como foi feito: ReleaseOps revisou o escopo, validou ausencia de secrets expostos, confirmou que o recorte nao mistura Guardian/D4Sign, PulseX ou CareDesk fora do HubOps, criou commits semanticos, publicou em producao com `npx.cmd vercel deploy --prod --yes`, confirmou estado `READY` e alias `https://c2x.app.br`.
+- Logica utilizada: a release foi publicada somente apos validacoes locais e build Vercel. As APIs administrativas foram consideradas saudaveis quando bloquearam chamadas sem bearer com 401, preservando a regra de acesso adm/admin.
+- Validacao executada: `git diff --check`; varredura simples de secrets; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; `npx.cmd turbo build --filter=@repo/hub`; smoke local `GET /squadops`; smokes locais sem sessao para `/api/operations/monitoring`, `/api/operations/watcher`, `POST /api/operations/watcher` e `POST /api/squadops/copilot`; healthchecks de Guardian DB, Guardian Queue `limit=20` e `limit=50`, Supabase Auth/REST/Realtime; `npx.cmd vercel env ls`; `npx.cmd vercel inspect`; `npx.cmd vercel logs --since 5m`.
+- Resultado dos healthchecks: producao `GET /` retornou 200; `GET /squadops` retornou 200; `GET /api/guardian/db/health` retornou 200 com `status=connected`, banco `prod_careli` e `elapsedMs=693`; `GET /api/operations/monitoring` sem sessao retornou 401 esperado; `GET /api/operations/watcher` sem sessao retornou 401 esperado; `POST /api/squadops/copilot` sem sessao retornou 401 esperado; Vercel inspect confirmou deployment `READY`, target `production` e alias `https://c2x.app.br`; logs recentes mostraram apenas os healthchecks executados, sem erro critico registrado.
+- Resumo macro: Operations Center publicado com fonte realtime baseada em APIs/healthchecks server-side, snapshot operacional, cards de Database Monitoring, alertas, histórico de checks, Ops Watcher com dedupe/cooldown, comandos copiaveis para agentes, PO AI priorizando `monitoramentoRealtime` para banco/performance e restricao adm/admin no client/sidebar/APIs.
+- Pendencias ou riscos conhecidos: validacao visual final deve ser feita por Lucas em sessao adm autenticada; smoke autenticado completo das APIs novas depende de bearer real adm; build Vercel segue com warning conhecido Turbopack/NFT por leitura filesystem do Engineering Operations; Vercel segue alertando `npm audit` com 1 moderada e 1 alta e envs nao declaradas no `turbo.json`; Supabase Realtime pode gerar falso positivo dependendo do endpoint/ambiente.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps` para monitoramento pos-deploy e observacao de falsos positivos do Database Monitoring; `Hub ReleaseOps` para tratar futuramente warnings `turbo.json`, `npm audit` e NFT.
