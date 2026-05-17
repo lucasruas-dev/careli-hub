@@ -1167,5 +1167,5 @@ Registro de diario:
 - Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todas as squads do Hub.
 - Como foi feito: adicionei a regra no manifesto operacional, perto do fluxo oficial do Hub, e registrei esta entrada ao final do diario para continuidade entre agentes.
 - Logica utilizada: centralizar a regra no diario garante que agentes futuros saibam quando validar, commitar, registrar o commit, separar escopo e orientar o proximo fluxo operacional sem misturar responsabilidades ou arquivos de outras squads.
-- Validacao executada: leitura local do diario operacional, busca por regras existentes de commit/handoff e conferencia do worktree. Nao houve alteracao de codigo, schema, UX, API ou integracao; validacoes tecnicas de build/lint/typecheck nao foram executadas para esta mudanca exclusivamente documental.
+- Validacao executada: leitura local do diario operacional, busca por regras existentes de commit/handoff e conferencia do worktree; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` executados com sucesso.
 - Pendencias ou riscos conhecidos: o worktree possui muitas alteracoes pre-existentes de outras frentes. O commit desta decisao deve stagear somente `docs/codex/contexto-operacional.md` para evitar misturar responsabilidades.
