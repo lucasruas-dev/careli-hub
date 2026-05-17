@@ -1332,3 +1332,25 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: build remoto do Vercel seguiu com aviso de 2 vulnerabilidades no `npm audit` e warning do Turbo sobre variaveis Postgres/Supabase presentes no Vercel mas ausentes em `turbo.json`; o pacote inicial consolidou multiplas frentes em um commit de release por necessidade operacional do novo cenario, mas proximas releases devem voltar a commits menores por responsabilidade; validacao visual humana de QA ainda e recomendada para Guardian, CareDesk, PulseX e SquadOps em desktop/mobile.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub QA` para regressao funcional/visual pos-release; `Hub SupportOps` somente se aparecer erro, lentidao, gargalo ou comportamento inesperado; `Hub ReleaseOps` para acompanhar logs e organizar proxima release.
+
+Regra permanente combinada com Lucas em 2026-05-17 01:37:24 -03:00 sobre resumo macro obrigatorio em deploys:
+
+- Todo deploy realizado pelo Hub ReleaseOps deve retornar para Lucas um resumo macro do que foi alterado na release.
+- O resumo macro deve ser apresentado junto do fechamento do deploy e tambem registrado no diario operacional quando a release for relevante.
+- O resumo deve agrupar mudancas por modulo ou squad, por exemplo `Guardian`, `CareDesk`, `PulseX`, `SquadOps`, `IA`, `Infra/ReleaseOps`, `DataOps` ou outros modulos afetados.
+- O objetivo e facilitar rastreabilidade, leitura executiva, continuidade entre sessoes, investigacao futura e entendimento rapido do impacto operacional da publicacao.
+- O resumo macro nao substitui os dados tecnicos obrigatorios de ReleaseOps: commit, deployment, ambiente, validacoes, healthchecks, riscos, pendencias e proxima squad recomendada.
+- O resumo deve ser objetivo, sem listar diff linha a linha, sem expor dados sensiveis e sem inventar alteracoes que nao entraram no commit/deploy.
+
+Registro de diario:
+
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 01:37:24 -03:00.
+- Tipo da alteracao: Decisao operacional permanente e regra de comunicacao de release.
+- Motivo da mudanca: Lucas definiu que todo deploy deve trazer um resumo macro do que foi alterado, e que essa obrigacao deve ficar registrada no diario operacional.
+- Arquivos/modulos afetados: `docs/codex/contexto-operacional.md`; regra transversal para todos os deploys conduzidos por Hub ReleaseOps.
+- Como foi feito: adicionei a regra ao final do diario, preservando historico anterior e deixando claro que o resumo macro deve acompanhar o fechamento de deploy e o registro da release.
+- Logica utilizada: o resumo macro cria uma camada executiva de rastreabilidade sobre os detalhes tecnicos, permitindo localizar rapidamente quais modulos mudaram e qual foi o impacto principal de cada publicacao.
+- Validacao executada: leitura local do diario operacional e busca por regra existente de resumo macro/deploy antes do registro. Nao houve build, lint ou typecheck porque a mudanca foi exclusivamente documental/processual.
+- Pendencias ou riscos conhecidos: nenhuma pendencia tecnica. Proximos deploys devem incluir explicitamente a secao de resumo macro no fechamento e no registro relevante do diario.
+- Status operacional: `FINALIZADO`.
