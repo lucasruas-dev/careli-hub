@@ -40,26 +40,26 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 
 | Frente | Status operacional | Pendencia aberta | Proxima acao |
 | --- | --- | --- | --- |
-| Guardian / D4Sign | `AGUARDANDO RELEASEOPS` | Guarda/autorizacao server-side da rota D4Sign ja aparece como ajuste local, mas ainda precisa commit/deploy isolado e validacao com usuario autenticado real. | ReleaseOps deve validar pacote D4Sign sem misturar com PulseX e publicar hotfix se Lucas aprovar. |
+| Guardian / D4Sign | `OPERACIONAL COM ATENCAO` | Guarda/autorizacao server-side da rota D4Sign ja esta na arvore publicada; pendente apenas smoke autenticado real de contrato. | Guardian Core/SupportOps deve validar com sessao real quando Lucas disponibilizar cenario. |
 | Chronos V1 | `EM PRODUCAO COM ATENCAO` | Migration `0019_chronos_core.sql` aplicada e validada em homologacao e producao; rota segue protegida por auth e depende de smoke autenticado real. | Validar fluxo autenticado de Chronos com usuario real do Lucas. |
 | DataOps migrations 0012/0019/0020 | `EM PRODUCAO COM ATENCAO` | Homologacao e producao receberam `0012`, `0019` e `0020`, com historico Supabase reparado nos dois ambientes; Production usou a env `POSTGRES_Url`, pois `POSTGRES_URL` ainda veio vazia. | Normalizar env production para `POSTGRES_URL` correta e remover/evitar duplicidade `POSTGRES_Url` quando Lucas autorizar ajuste de env. |
-| PulseX realtime/chamadas | `AGUARDANDO RELEASEOPS` | Palco de compartilhamento de tela, zoom, sinais realtime e painel de informacoes estao em pacote local; ainda falta teste real com dois usuarios/duas maquinas. | Validar WebRTC/realtime fim a fim antes de producao. |
-| PulseX queries | `AGUARDANDO RELEASEOPS` | Query `list direct users` foi ajustada localmente para relacao nomeada Supabase, mas segue fora de producao ate release. | Consolidar em hotfix PulseX ou junto da release de chamadas, conforme risco. |
+| PulseX realtime/chamadas | `OPERACIONAL COM ATENCAO` | Pacotes anteriores de chamada/realtime foram absorvidos por releases posteriores; ainda falta teste real com dois usuarios/duas maquinas. | Validar WebRTC/realtime fim a fim antes de novas releases PulseX. |
+| PulseX queries | `OPERACIONAL COM ATENCAO` | Ajustes de direct users ja foram absorvidos por releases posteriores; monitorar warnings PGRST em uso real. | SupportOps deve reabrir incidente apenas se a falha persistir em producao/homologacao autenticada. |
 | Guardian fila/performance | `OPERACIONAL COM ATENCAO` | `limit=1000` continua custoso e deve permanecer fora da abertura inicial de telas; monitorar payload/tempo da fila. | Manter abertura com limite reduzido e acompanhar gargalos em SupportOps. |
 | Vercel/build | `OPERACIONAL COM ATENCAO` | Avisos conhecidos de `npm audit`, variaveis ausentes em `turbo.json` e politica `engines.node >=18` com possivel auto-upgrade futuro. | Planejar ajuste tecnico sem bloquear releases funcionais de baixo risco. |
-| Rastreabilidade local | `OPERACIONAL COM ATENCAO` | Worktree possui diffs locais em Guardian/D4Sign e PulseX; risco de commit misturado se ReleaseOps nao separar pacotes. | Stagear por responsabilidade e criar commits semanticos pequenos. |
+| Rastreabilidade local | `BLOQUEADO` | Worktree possui alteracoes locais nao classificadas em `package.json`, `apps/ops/` e marcador de modificacao em `SquadOpsPage.tsx`; nao ha corte publicavel sem triagem. | Classificar o pacote `apps/ops` ou separar/reverter em fluxo proprio antes de qualquer deploy geral. |
 
 ## Estado atual dos modulos
 
 | Modulo | Ambiente | Status operacional | Observacao curta |
 | --- | --- | --- | --- |
-| Guardian | Producao `https://c2x.app.br` + diffs locais | `OPERACIONAL COM ATENCAO` | Producao responde; D4Sign e painel de cliente possuem pacote local pendente. |
-| PulseX | Producao `https://c2x.app.br` + DB production | `AGUARDANDO RELEASEOPS` | Direct users, chamada, tela compartilhada e painel de informacoes aguardam release/validacao real; migration `0020` aplicada em homologacao e producao. |
+| Guardian | Producao `https://c2x.app.br` + C2X real | `OPERACIONAL COM ATENCAO` | Producao responde; D4Sign protegido; fila compacta publicada; smokes autenticados especificos ainda pendentes. |
+| PulseX | Producao `https://c2x.app.br` + DB production | `OPERACIONAL COM ATENCAO` | Pacotes anteriores publicados; validacao real multiusuario de chamadas/realtime ainda recomendada. |
 | Chronos | Producao `https://c2x.app.br` + DB production | `EM PRODUCAO COM ATENCAO` | V1 publicada como codigo; `0019` aplicada em homologacao e producao; smoke autenticado real ainda pendente. |
 | CareDesk | Producao `https://c2x.app.br` | `OPERACIONAL COM ATENCAO` | Rota online; evolucao real ainda depende de tabelas Supabase e integracao Meta/WhatsApp. |
-| SquadOps | Producao `https://c2x.app.br` + DB production | `EM PRODUCAO COM ATENCAO` | Modulo visual publicado; migration `0012` de alert-protocols validada em homologacao e producao. |
-| ReleaseOps | Local + Vercel | `FINALIZADO` | Caminho oficial do diario ja migrado para `engineering-operations.md`; healthchecks seguem obrigatorios. |
-| SupportOps | Local + producao | `NECESSITA CORRECAO` | Ultima investigacao abriu pendencias D4Sign, PulseX e monitoramento Guardian. |
+| SquadOps | Producao `https://c2x.app.br` + DB production | `OPERACIONAL COM ATENCAO` | Modulo publicado; migrations estruturadas validadas; ha marcador local em `SquadOpsPage.tsx` sem diff de conteudo. |
+| ReleaseOps | Local + Vercel | `OPERACIONAL COM ATENCAO` | Processo de recorte ativo; topologia do diario normalizada; worktree local precisa triagem antes de deploy geral. |
+| SupportOps | Local + producao | `OPERACIONAL COM ATENCAO` | Pendencias atuais sao smokes autenticados e monitoramento, nao cortes de release prontos. |
 
 ## Fluxo oficial
 
@@ -5157,3 +5157,19 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke autenticado completo de telas administrativas ainda depende de sessao real do Lucas; ambiente segue com atencao porque historicamente `POSTGRES_URL` canonico esteve vazio e a producao usou variavel alternativa `POSTGRES_Url`; nenhuma migration ou env foi alterada nesta rodada; `limit=1000` continua proibido automaticamente.
 - Status operacional: `OPERACIONAL COM ATENCAO`.
 - Proxima squad recomendada: `Hub ReleaseOps` somente se Lucas quiser forcar um redeploy manual apesar do recorte ja estar em producao; `Hub SupportOps` se surgir divergencia funcional autenticada em producao; `Hub DataOps`/`Hub InfraOps` para normalizar envs Postgres canonicas em janela aprovada.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Normalizacao cortes pendentes do diario`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 18:33:39 -03:00.
+- Tipo da alteracao: `AUDITORIA` - normalizacao documental do estado atual e remocao de falsos pendentes no bloco executivo.
+- Motivo da mudanca: Lucas autorizou seguir com a correcao da rastreabilidade do diario apos a auditoria indicar que o topo ainda marcava cortes como `AGUARDANDO RELEASEOPS`, embora registros posteriores e releases ja tivessem absorvido esses pacotes.
+- Arquivos/modulos afetados: `docs/operations/engineering-operations.md`, secoes `Pendencias criticas atuais` e `Estado atual dos modulos`.
+- Como foi feito: atualizei apenas o bloco executivo de estado atual, preservando os registros historicos antigos; marquei Guardian/D4Sign e PulseX como `OPERACIONAL COM ATENCAO` em vez de `AGUARDANDO RELEASEOPS`; registrei que o worktree local esta `BLOQUEADO` para deploy geral por conter alteracoes nao classificadas em `package.json`, `apps/ops/` e marcador local em `apps/hub/modules/squadops/SquadOpsPage.tsx`.
+- Logica utilizada: o diario continua append-only para evidencias historicas, mas o topo funciona como snapshot operacional vivo. Entradas antigas com `AGUARDANDO RELEASEOPS` nao devem ser reescritas individualmente; quando uma release posterior absorve o recorte, a reconciliacao deve acontecer por nova entrada e pelo bloco executivo atual.
+- Validacao executada: leitura de `AGENTS.md`, `docs/operations/README.md` e do topo do Engineering Operations; auditoria com `git status`, `git diff`, `git log` e buscas por pendencias; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless.
+- Pendencias ou riscos conhecidos: nao houve deploy, migration, alteracao de env, Supabase, Vercel ou banco; `POSTGRES_URL` canonico de Production segue pendente para InfraOps/DataOps com autorizacao explicita; smokes autenticados de D4Sign, Chronos, PulseX e SquadOps ainda dependem de sessao/cenario real; o pacote local `apps/ops` e scripts `ops` em `package.json` precisam ser classificados em recorte proprio antes de qualquer publicacao.
+- Status operacional: `FINALIZADO`.
+- Status consolidado atualizado: `OPERACIONAL COM ATENCAO`.
+- Proxima squad recomendada: `Hub ReleaseOps` para classificar o pacote local `apps/ops` se Lucas quiser transformar isso em release; `Hub InfraOps/DataOps` para normalizar envs Postgres somente com autorizacao explicita; `Hub SupportOps` para smokes autenticados e incidentes funcionais.
