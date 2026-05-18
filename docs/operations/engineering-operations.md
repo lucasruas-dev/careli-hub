@@ -4992,3 +4992,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: Preview segue sem Guardian DB/C2X configurado, portanto a validacao completa de fila em homologacao depende de InfraOps configurar `GUARDIAN_DB_*` no ambiente correto; payload de `limit=600` em producao ficou em aproximadamente `1 MB`, dentro de uso operacional pontual, mas a proxima evolucao deve implementar paginacao/infinite load se a carteira crescer; diferenca entre `537` e os `538` citados por Lucas deve ser monitorada no C2X.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para monitorar a fila em uso real; `Guardian Core` para evoluir paginacao/infinite load se a carteira crescer; `Hub InfraOps` para configurar Guardian DB no Preview se Lucas quiser healthcheck completo de homologacao.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Ticket TI Caca com envio orientativo`.
+- Nome da squad/agente: `SquadOps Core / Hub SupportOps`.
+- Data e hora local: 2026-05-18 17:15:43 -03:00.
+- Tipo da alteracao: `CORRECAO` - experiencia de abertura/envio de Ticket TI pelo agente Caca.
+- Motivo da mudanca: Lucas reportou que o time nao conseguia mandar tickets para TI e que, no PulseX, o botao ao menos abria o formulario. A captura mostrava o formulario aberto com o relato vazio e o botao de envio sem feedback operacional claro.
+- Ambiente: local; sem deploy, sem migration e sem escrita em banco.
+- Arquivos/modulos afetados: `apps/hub/components/hub-support/hub-ticket-open-form.tsx`.
+- Evidencia de banco: consulta server-side via Supabase configurado no projeto confirmou existencia das tabelas `hub_it_tickets`, `hub_it_ticket_events`, `hub_it_ticket_attachments` e `hub_it_ticket_operation_links`. A leitura do historico `supabase_migrations.schema_migrations` pela API REST nao ficou disponivel por schema cache, mas a existencia das tabelas usadas pela API foi confirmada.
+- Como foi feito: o botao de envio deixou de ficar completamente desabilitado quando o relato esta vazio; agora o clique aciona a validacao existente e exibe a orientacao `Descreva em poucas palavras ou anexe uma evidencia`. O tooltip tambem passou a informar se falta contexto ou se o ticket sera enviado para SquadOps. O erro e limpo quando o usuario volta a digitar ou anexa evidencia.
+- Logica utilizada: quando um botao fica desabilitado sem mensagem, o usuario interpreta como botao quebrado. A validacao deve continuar impedindo envio sem descricao/anexo, mas precisa responder de forma clara ao clique para orientar o time.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless.
+- Pendencias ou riscos conhecidos: o envio autenticado real ainda depende de sessao valida do usuario e de permissao ativa em `hub_users`; se algum usuario especifico ainda nao conseguir enviar, verificar token/sessao, vinculo do usuario no Hub e resposta da API `/api/hub/it-tickets`.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o ajuste pequeno de UX; `Hub SupportOps` se houver falha autenticada especifica apos deploy.

@@ -75,6 +75,10 @@ export function HubTicketOpenForm({
   const canSubmit = description.trim().length >= 3 || attachments.length > 0;
   const [isAnalyzingEvidence, setIsAnalyzingEvidence] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const submitNeedsContext = !canSubmit && !isSaving;
+  const submitTooltip = canSubmit
+    ? "Enviar ticket TI para SquadOps"
+    : "Descreva o que aconteceu ou anexe uma evidencia";
   const [recordingKind, setRecordingKind] = useState<RecordingKind | null>(
     null,
   );
@@ -456,6 +460,7 @@ export function HubTicketOpenForm({
   }
 
   function addAttachment(attachment: HubItTicketAttachmentInput) {
+    setError(null);
     setAttachments((currentAttachments) =>
       [attachment, ...currentAttachments].slice(0, maxAttachmentCount),
     );
@@ -513,7 +518,10 @@ export function HubTicketOpenForm({
         </span>
         <textarea
           className="min-h-28 resize-none rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition focus:border-[#A07C3B]/50 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
-          onChange={(event) => setDescription(event.target.value)}
+          onChange={(event) => {
+            setDescription(event.target.value);
+            setError(null);
+          }}
           placeholder="Escreva em poucas palavras. Ex.: tela lenta, erro ao salvar, botao nao abriu."
           value={description}
         />
@@ -615,11 +623,16 @@ export function HubTicketOpenForm({
       </label>
 
       <div className="flex justify-end">
-        <Tooltip content="Enviar para SquadOps" placement="top">
+        <Tooltip content={submitTooltip} placement="top">
           <button
             aria-label="Enviar para SquadOps"
-            className="grid size-11 place-items-center rounded-xl bg-[#A07C3B] text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isSaving || !canSubmit}
+            aria-disabled={isSaving || submitNeedsContext}
+            className={`grid size-11 place-items-center rounded-xl text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              submitNeedsContext
+                ? "bg-[#A07C3B]/55 hover:bg-[#A07C3B]/70"
+                : "bg-[#A07C3B] hover:bg-[#8f6f35]"
+            }`}
+            disabled={isSaving}
             onClick={() => void handleSubmit()}
             type="button"
           >
