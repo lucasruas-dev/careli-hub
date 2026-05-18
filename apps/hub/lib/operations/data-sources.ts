@@ -1,3 +1,8 @@
+import {
+  getServerSupabaseAnonKey,
+  getServerSupabaseUrl,
+} from "@/lib/supabase/server-config";
+
 export type OperationsSourceGroup =
   | "api"
   | "c2x"
@@ -131,8 +136,8 @@ function createProtectedEndpointChecks(origin: string): EndpointCheckConfig[] {
 }
 
 function createSupabaseChecks(): EndpointCheckConfig[] {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = getServerSupabaseUrl()?.replace(/\/+$/, "");
+  const anonKey = getServerSupabaseAnonKey();
 
   if (!supabaseUrl || !anonKey) {
     return [

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { createClient } from "@supabase/supabase-js";
 
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import {
   UNKNOWN_OPERATION_VALUE,
   type EngineeringOperationRecord,
@@ -369,8 +370,10 @@ export async function syncEngineeringOperationsToStore({
 }
 
 function createEngineeringOperationsStoreClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const {
+    serviceRoleKey,
+    url: supabaseUrl,
+  } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return null;

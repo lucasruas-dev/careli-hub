@@ -4224,3 +4224,33 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke autenticado final precisa ser feito pelo Lucas no navegador com sessao real, pois o CLI validou apenas disponibilidade e seguranca sem bearer; `SUPABASE_SERVICE_ROLE_KEY` ainda deve ser revisada por DataOps/InfraOps para rotinas administrativas de sync/persistencia; Guardian Queue segue lenta em producao apesar de 200; Guardian DB em Preview homolog segue 503 e e pendencia separada.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para acompanhar a validacao autenticada do Lucas; `Hub DataOps/InfraOps` para revisar `SUPABASE_SERVICE_ROLE_KEY` em Production/Preview sem expor secrets; `Guardian Core`/`Hub SupportOps` para continuar acompanhando latencia da Guardian Queue.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Compatibilidade env Supabase em producao`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-18 10:57:17 -03:00.
+- Tipo da alteracao: `CORRECAO` - leitura server-side dos nomes reais de variaveis Supabase em Production.
+- Motivo da mudanca: apos o deploy do fallback autenticado, Lucas validou producao e a tela passou a exibir `Configure a URL do Supabase para validar acesso ao SquadOps`. A auditoria de ambiente Vercel mostrou que Production possui `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY` e chaves publishable, enquanto `NEXT_PUBLIC_SUPABASE_URL` esta configurada apenas em Preview.
+- Arquivos/modulos afetados: `apps/hub/lib/supabase/server-config.ts`, `apps/hub/lib/squadops/admin-access.ts`, `apps/hub/lib/operations/data-sources.ts`, `apps/hub/lib/operations/alert-protocols.ts`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `turbo.json` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei um resolvedor server-side de Supabase que aceita `NEXT_PUBLIC_SUPABASE_URL` ou `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` ou `SUPABASE_ANON_KEY`/publishable, e `SUPABASE_SERVICE_ROLE_KEY` ou `SUPABASE_SECRET_KEY`. SquadOps admin-access, Database Monitoring, protocolos de alerta e store estruturado passaram a usar esse resolvedor. O `turbo.json` passou a declarar os nomes de env usados em Production para cache/build.
+- Logica utilizada: o client pode continuar usando os `NEXT_PUBLIC_*` quando existirem, mas rotas server-side publicadas no Vercel precisam aceitar os nomes reais injetados em Production. A validacao segue exigindo bearer real e perfil admin; nao ha fallback publico.
+- Validacao executada: `npx.cmd vercel env ls` confirmou nomes de env sem expor valores; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido do `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT do Engineering Operations.
+- Pendencias ou riscos conhecidos: precisa novo deploy por Hub ReleaseOps para refletir em producao. Apos publicar, Lucas deve validar `/squadops` autenticado novamente; se a base estruturada ainda aparecer indisponivel, a proxima pendencia sera schema/migration ou RLS, nao mais URL de Supabase.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar este hotfix curto; `Hub DataOps/InfraOps` para padronizar envs Supabase entre Preview e Production sem expor secrets.
+
+Registro de diario:
+
+- Assunto: `[PulseX] AI no lado direito do chat`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-18 10:52:11 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - reposicionamento do acionador da Caca no PulseX.
+- Motivo da mudanca: Lucas apontou que o acionador visual da AI/Caca aparecia no lado esquerdo do PulseX, proximo da sidebar recolhida, e pediu para colocar a AI no lado direito da tela.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: removi o posicionamento diretamente no componente `Tooltip`, que era sobrescrito pela classe base `.uix-tooltip`, e adicionei um wrapper absoluto proprio para o botao da Caca no canto inferior direito do workspace. Tambem fixei explicitamente a largura do painel lateral da Caca para abrir pela direita com 24rem e limite responsivo.
+- Logica utilizada: o Tooltip deve cuidar apenas da ajuda contextual, enquanto o wrapper controla a posicao operacional do acionador. Isso evita disputa de CSS com o `@repo/uix`, mantem a Caca afastada da sidebar e deixa o painel alinhado ao lado de acoes do composer.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido do `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de SquadOps. Browser do Codex em `http://localhost:3001/pulsex` confirmou o botao `Abrir Caca` a 37px do lado direito do palco e o painel lateral aberto a direita com 384px de largura.
+- Pendencias ou riscos conhecidos: a alteracao ainda nao foi publicada em `https://c2x.app.br`; o worktree local possui recortes paralelos de Chronos, Setup, Hub Core e migrations, entao ReleaseOps deve isolar apenas o recorte PulseX antes de commit/deploy.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar, stagear o recorte PulseX e publicar quando Lucas autorizar.
