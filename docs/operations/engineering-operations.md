@@ -5082,6 +5082,27 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[Guardian] AL-0001 C2X healthcheck homologacao`.
+- Nome da squad/agente: `Hub SupportOps` com encaminhamento para `Guardian Core` e `Hub InfraOps`.
+- Protocolo relacionado: `AL-0001`.
+- Data e hora local: 2026-05-18 17:50:19 -03:00.
+- Tipo da alteracao: `INCIDENTE` - investigacao de alerta C2X DB Health em homologacao.
+- Motivo da mudanca: Operations Center reportou `C2X indisponivel no healthcheck` no endpoint `https://homo.c2x.app.br/api/guardian/db/health`, com resultado recebido `401 Unauthorized`, tempo de `37 ms`, payload aproximado `14,2 KB` e risco critico; Lucas tambem mostrou a tela Guardian em homologacao com cards `falha ao carregar dados reais` e status `Aguardando C2X`.
+- Ambiente: Preview/Homologacao `https://homo.c2x.app.br`, deployment `dpl_HR5MxnzKRBTZCxbfj3mBPYNe7qSi`; comparacao somente leitura com producao `https://c2x.app.br`.
+- Problema identificado: o `401 Unauthorized` observado externamente nao e resposta da API Guardian, e sim barreira de autorizacao/protecao do Preview. Quando o endpoint foi validado por `vercel curl`, a funcao respondeu `{"ok":false,"status":"unconfigured","missing":["GUARDIAN_DB_HOST","GUARDIAN_DB_NAME","GUARDIAN_DB_USER","GUARDIAN_DB_PASSWORD"]}`; em paralelo, as envs de Preview da branch `homolog` nao possuem `GUARDIAN_DB_HOST`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER`, `GUARDIAN_DB_PASSWORD`, `GUARDIAN_DB_PORT` nem `GUARDIAN_DB_SSL` preenchidas.
+- Origem confirmada: configuracao ausente do banco Guardian/C2X no ambiente Preview/Homologacao. O alerta como `C2X indisponivel` por `401` e `FALSO_POSITIVO` para disponibilidade do C2X, mas a falha funcional do Guardian em homologacao `PERSISTE` por env ausente.
+- Impacto operacional: Guardian em homologacao nao consegue carregar dados reais do C2X, causando cards vazios, mensagens `falha ao carregar dados reais` e impedindo validacao completa de dashboard/cobranca/fila nesse ambiente. Producao nao apresentou indisponibilidade no smoke executado.
+- Validacoes executadas: request direto ao endpoint de homologacao retornou `401 Unauthorized`, content type `text/html`, em `202 ms`; `npx.cmd vercel curl https://homo.c2x.app.br/api/guardian/db/health` retornou body `unconfigured` com envs Guardian ausentes em `3216 ms`; `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou deployment Preview `Ready` `dpl_HR5MxnzKRBTZCxbfj3mBPYNe7qSi`; `npx.cmd vercel logs https://homo.c2x.app.br --since 30m --level error` nao encontrou logs; pull temporario de env Preview confirmou variaveis Guardian DB ausentes e o arquivo temporario foi removido; producao `https://c2x.app.br/api/guardian/db/health` retornou `200`, `ok=true`, `status=connected`, `database=prod_careli` em `1137 ms`.
+- Codigo revisado: `apps/hub/app/api/guardian/db/health/route.ts` retorna `503` e `status=unconfigured` quando `pingGuardianDb()` encontra env ausente; `apps/hub/lib/guardian/db.ts` exige `GUARDIAN_DB_HOST`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER`, `GUARDIAN_DB_PASSWORD` e valida porta a partir de `GUARDIAN_DB_PORT` com default `3306`.
+- Correcao recomendada: `Hub InfraOps` deve configurar as variaveis `GUARDIAN_DB_*` corretas para Preview/Homologacao, sem copiar secrets de producao para homologacao sem decisao explicita; depois `Guardian Core`/`Hub SupportOps` deve repetir smoke de `/api/guardian/db/health`, `/guardian` e endpoints Guardian dependentes do C2X. O Operations Center tambem deve classificar `401` externo de Preview protegido como `auth/protection`, nao como indisponibilidade direta do C2X.
+- Validacoes nao executadas: `check-types`, `lint` e `build` nao foram executados porque nao houve alteracao de codigo.
+- Riscos restantes: enquanto o Preview nao tiver `GUARDIAN_DB_*`, qualquer validacao autenticada do Guardian em homologacao ficara parcial; configurar banco real exige cuidado de ambiente para nao apontar homologacao para producao indevidamente.
+- Devolutiva tecnica: protocolo `AL-0001`; status do alerta externo por `401`: `FALSO_POSITIVO`; status da funcionalidade Guardian/C2X em homologacao: `PERSISTE`; criticidade operacional: `ALTA` em homologacao, `SEM EVIDENCIA DE IMPACTO EM PRODUCAO`.
+- Status operacional: `BLOQUEADO POR ENV`.
+- Proxima squad recomendada: `Hub InfraOps` para liberar/configurar envs Guardian DB de homologacao; depois `Guardian Core`/`Hub SupportOps` para smoke e encerramento do alerta.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Deploy registros SupportOps homologacao`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-18 17:48:32 -03:00.
@@ -5098,3 +5119,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o ajuste operacional de perfil em homologacao depende de Lucas renovar sessao/logout-login para refletir `admin/adm` no navegador; se voltar para `operator`, `Hub SupportOps` deve investigar fluxo Auth/Setup que possa sobrescrever metadata. Build remoto segue com warnings conhecidos de Turbopack/NFT e envs Postgres/Supabase JWT listadas fora do `turbo.json`, sem falha de build.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` somente se a sessao renovada em homologacao ainda exibir operador; `Hub Core` se Lucas quiser implementar o fluxo funcional de recuperacao de senha no login.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Resolucao AL-0001 C2X healthcheck homologacao`.
+- Nome da squad/agente: `Hub InfraOps` com execucao operacional por `Hub SupportOps`.
+- Protocolo relacionado: `AL-0001`.
+- Data e hora local: 2026-05-18 18:07:22 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - configuracao de ambiente Preview/Homologacao para Guardian/C2X.
+- Motivo da mudanca: Lucas autorizou configurar as variaveis `GUARDIAN_DB_*` no Vercel Preview `homolog` para resolver o alerta `AL-0001 C2X Healthcheck Homologacao`.
+- Ambiente: Preview/Homologacao `https://homo.c2x.app.br`, Vercel project `careli-hub-hub-i2bs`, branch `homolog`; nenhuma alteracao em Production.
+- Como foi feito: confirmei sem expor valores que `apps/hub/.env.local` possuia `GUARDIAN_DB_HOST`, `GUARDIAN_DB_PORT`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER` e `GUARDIAN_DB_PASSWORD`; gravei esses nomes como variaveis sensiveis no Vercel Preview da branch `homolog` via stdin; nao configurei `GUARDIAN_DB_SSL` porque nao existia valor local; redeployei o Preview `https://homo.c2x.app.br` para carregar as novas variaveis.
+- Logica utilizada: o endpoint `/api/guardian/db/health` falhava em homologacao por `status=unconfigured`, portanto a correcao exigia disponibilizar no runtime Preview as mesmas variaveis que o codigo `apps/hub/lib/guardian/db.ts` exige para abrir conexao C2X. A publicacao foi restrita ao Preview `homolog`, sem alterar codigo, banco, migration, dominio ou Production.
+- Validacao executada: `npx.cmd vercel env ls preview` confirmou as envs `GUARDIAN_DB_*` no target Preview branch `homolog`; `npx.cmd vercel redeploy https://homo.c2x.app.br --target preview` criou o deployment `dpl_5T9BBnneABK6NktWo1feb8Y81Ja9` em estado `Ready`; `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou aliases `https://homo.c2x.app.br` e `git-homolog`; via `vercel curl`, `/` retornou 200, `/guardian` 200, `/guardian/atendimento` 200, `/api/guardian/db/health` 200 com `status=connected`, `/api/guardian/attendance/queue?limit=20` 200, `/api/guardian/attendance/queue?limit=50` 200 e `/api/operations/monitoring` sem sessao 401 esperado; `npx.cmd vercel logs https://homo.c2x.app.br --since 20m --level error` retornou `No logs found`.
+- Resultado: `AL-0001` corrigido tecnicamente em homologacao; o C2X Healthcheck deixou de retornar `503 unconfigured` e passou a retornar `200 connected`.
+- Pendencias ou riscos conhecidos: a conexao configurada em homologacao aponta para o banco `prod_careli`, conforme resposta do healthcheck; isso desbloqueia validacao real do Guardian, mas deve ser tratado como uso controlado de C2X real em homologacao, sem testes destrutivos ou cargas pesadas. Para ambiente ideal, `Hub InfraOps`/`Hub DataOps` deve avaliar uma replica ou base dedicada de homologacao para Guardian/C2X. `limit=1000` continua proibido automaticamente.
+- Status operacional: `CORRIGIDO`.
+- Proxima squad recomendada: `Guardian Core`/`Hub SupportOps` para smoke visual autenticado do Guardian em homologacao; `Hub InfraOps` para avaliar replica C2X homologacao se Lucas quiser separar totalmente ambientes.
