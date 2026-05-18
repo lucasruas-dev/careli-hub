@@ -17,8 +17,12 @@ export const hubItTicketPriorities = [
 
 export const hubItTicketStatuses = [
   "novo",
+  "em_analise",
   "em_triagem",
+  "em_tratativa",
   "em_execucao",
+  "em_homologacao",
+  "em_producao",
   "aguardando_cliente",
   "em_revisao",
   "resolvido",
@@ -27,8 +31,12 @@ export const hubItTicketStatuses = [
 
 export const hubItTicketStatusLabels = {
   aguardando_cliente: "Aguardando cliente",
+  em_analise: "Em analise",
   em_execucao: "Em execucao",
+  em_homologacao: "Em homologacao",
+  em_producao: "Em producao",
   em_revisao: "Em revisao",
+  em_tratativa: "Em tratativa",
   em_triagem: "Em triagem",
   fechado: "Fechado",
   novo: "Novo",

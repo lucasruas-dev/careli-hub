@@ -255,7 +255,9 @@ function parseRecordBlock(
 ): EngineeringOperationRecord {
   const rawContent = trimBlankLines(blockLines).join("\n").trim();
   const fields = collectFields(blockLines);
-  const subject = getField(fields, ["assunto"]) || inferSubject(rawContent);
+  const subject = normalizeSquadOpsNaming(
+    getField(fields, ["assunto"]) || inferSubject(rawContent),
+  );
   const moduleName = inferModule(subject, rawContent);
   const localDateTime = getField(fields, ["data e hora local"]);
   const status = normalizeStatus(getField(fields, ["status operacional"]));
@@ -686,7 +688,7 @@ function inferModule(subject: string, rawContent: string) {
   const bracket = subject.match(/\[([^\]]+)\]/)?.[1];
 
   if (bracket) {
-    return cleanFieldValue(bracket);
+    return normalizeModuleAlias(cleanFieldValue(bracket));
   }
 
   const normalizedContent = normalizeSearchText(`${subject}\n${rawContent}`);
@@ -694,7 +696,15 @@ function inferModule(subject: string, rawContent: string) {
     normalizedContent.includes(normalizeSearchText(moduleName)),
   );
 
-  return match ?? UNKNOWN_OPERATION_VALUE;
+  return match ? normalizeModuleAlias(match) : UNKNOWN_OPERATION_VALUE;
+}
+
+function normalizeModuleAlias(moduleName: string) {
+  return normalizeSearchText(moduleName) === "hubops" ? "SquadOps" : moduleName;
+}
+
+function normalizeSquadOpsNaming(value: string) {
+  return value.replace(/\bHubOps\b/g, "SquadOps");
 }
 
 function buildOperationProtocol(sourceIndex: number) {

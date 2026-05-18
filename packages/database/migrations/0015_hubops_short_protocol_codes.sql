@@ -1,4 +1,4 @@
--- HubOps short protocol codes.
+-- SquadOps short protocol codes.
 -- Normalizes operational activity protocols to AT-0001 and alert protocols to AL-0001.
 
 begin;

@@ -1055,7 +1055,17 @@ function statusVariant(status: HubItTicketStatus): BadgeVariant {
     return "success";
   }
 
-  if (status === "em_execucao" || status === "em_revisao") {
+  if (status === "em_producao") {
+    return "success";
+  }
+
+  if (
+    status === "em_analise" ||
+    status === "em_execucao" ||
+    status === "em_homologacao" ||
+    status === "em_revisao" ||
+    status === "em_tratativa"
+  ) {
     return "info";
   }
 

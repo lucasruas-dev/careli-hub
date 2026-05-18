@@ -1614,9 +1614,9 @@ export function SquadOpsPage() {
               onChange={setFilters}
             />
             <DeployProtocolsView
-              deployRecords={allReleaseRecords}
+              filters={filters}
               onSelectRecord={setSelectedRecord}
-              records={filteredRecords}
+              records={records}
             />
           </>
         ) : null}
@@ -3260,17 +3260,24 @@ function SquadOpsViewTabs({
 }
 
 function DeployProtocolsView({
-  deployRecords,
+  filters,
   onSelectRecord,
   records,
 }: {
-  deployRecords: EngineeringOperationRecord[];
+  filters: OperationsFilters;
   onSelectRecord: (record: EngineeringOperationRecord) => void;
   records: EngineeringOperationRecord[];
 }) {
-  const releaseProtocols = buildReleaseProtocols(records).slice(0, 12);
-  const deployCount = releaseProtocols.length || deployRecords.length;
-  const moduleGroups = buildProtocolModuleGroups(records.slice(0, 120));
+  const filteredRecords = records.filter((record) =>
+    matchesFilters(record, filters),
+  );
+  const releaseProtocols = buildReleaseProtocols(records)
+    .filter((releaseProtocol) =>
+      matchesReleaseProtocolFilters(releaseProtocol, filters),
+    )
+    .slice(0, 12);
+  const deployCount = releaseProtocols.length;
+  const moduleGroups = buildProtocolModuleGroups(filteredRecords.slice(0, 120));
 
   return (
     <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]">
@@ -3279,7 +3286,7 @@ function DeployProtocolsView({
           <PanelTitle
             eyebrow={`${deployCount} releases`}
             icon={<Rocket size={18} />}
-            title="Release protocols"
+            title="Protocolos de deploy"
           />
           <p className="m-0 mt-3 text-sm leading-6 text-slate-600">
             Cada deploy deve ter um protocolo DP, citar os AT/AL incluidos no
@@ -3384,26 +3391,71 @@ function ReleaseProtocolCard({
   releaseProtocol: HubReleaseProtocol;
 }) {
   const commitTemplate = buildReleaseCommitTemplate(releaseProtocol);
+  const protocolRecords = new Map(
+    [releaseProtocol.record, ...releaseProtocol.records].map((record) => [
+      record.protocol,
+      record,
+    ]),
+  );
 
   return (
     <article className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <button
-          className="min-w-0 text-left"
-          onClick={() => onSelectRecord(releaseProtocol.record)}
-          type="button"
-        >
-          <p className="m-0 font-mono text-xs font-semibold text-[#7A5E2C]">
-            {releaseProtocol.protocol}
-          </p>
-          <h3 className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+        <div className="min-w-0">
+          <button
+            className="flex min-w-0 flex-wrap items-center gap-2 text-left"
+            onClick={() => onSelectRecord(releaseProtocol.record)}
+            type="button"
+          >
+            <span className="font-mono text-xs font-semibold text-[#7A5E2C]">
+              {releaseProtocol.protocol}
+            </span>
+            <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[0.68rem] font-semibold uppercase text-slate-500 ring-1 ring-slate-200/70">
+              Protocolo de deploy
+            </span>
+          </button>
+          <h3 className="m-0 mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
             {releaseProtocol.title}
           </h3>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button
+              className="rounded-full bg-white px-2 py-1 font-mono text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-[#F7F2EA] hover:text-[#7A5E2C] hover:ring-[#D8C7A8] focus-visible:bg-[#F7F2EA] focus-visible:text-[#7A5E2C] focus-visible:ring-[#D8C7A8]"
+              onClick={() => onSelectRecord(releaseProtocol.record)}
+              title={`Abrir ${releaseProtocol.protocol}`}
+              type="button"
+            >
+              {releaseProtocol.protocol}
+            </button>
+            {releaseProtocol.includedProtocols.map((protocol) => {
+              const protocolRecord = protocolRecords.get(protocol);
+
+              return (
+                <button
+                  className="rounded-full bg-white px-2 py-1 font-mono text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-[#F7F2EA] hover:text-[#7A5E2C] hover:ring-[#D8C7A8] focus-visible:bg-[#F7F2EA] focus-visible:text-[#7A5E2C] focus-visible:ring-[#D8C7A8] disabled:cursor-default disabled:opacity-70"
+                  disabled={!protocolRecord}
+                  key={`${releaseProtocol.protocol}-quick-${protocol}`}
+                  onClick={() => {
+                    if (protocolRecord) {
+                      onSelectRecord(protocolRecord);
+                    }
+                  }}
+                  title={
+                    protocolRecord
+                      ? `Abrir ${protocol}`
+                      : "Registro nao encontrado neste pacote"
+                  }
+                  type="button"
+                >
+                  {protocol}
+                </button>
+              );
+            })}
+          </div>
           <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
             {releaseProtocol.modules.join(", ") || releaseProtocol.module} /{" "}
             {formatOperationDateTime(releaseProtocol.plannedAt)}
           </p>
-        </button>
+        </div>
         <div className="flex flex-wrap justify-end gap-2">
           <Badge variant={releaseProtocolStatusVariant(releaseProtocol.status)}>
             {getReleaseProtocolStatusLabel(releaseProtocol.status)}
@@ -3423,18 +3475,12 @@ function ReleaseProtocolCard({
       <div className="mt-3 grid gap-3 rounded-lg bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
         <div>
           <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
-            Protocolos incluidos
+            Vinculo operacional
           </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {releaseProtocol.includedProtocols.map((protocol) => (
-              <span
-                className="rounded-full bg-white px-2 py-1 text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70"
-                key={`${releaseProtocol.protocol}-${protocol}`}
-              >
-                {protocol}
-              </span>
-            ))}
-          </div>
+          <p className="m-0 mt-1 text-xs leading-5 text-slate-600">
+            Este DP agrupa os protocolos AT/AL acima; clique no protocolo para
+            abrir o detalhe operacional.
+          </p>
         </div>
 
         <div className="grid gap-2 text-xs leading-5 text-slate-600">
@@ -3753,7 +3799,7 @@ function OperationsFiltersBar({
             <input
               className={`${fieldClassName} pl-9`}
               onChange={(event) => updateFilter("keyword", event.target.value)}
-              placeholder="Buscar assunto, módulo, risco..."
+              placeholder="Buscar protocolo, assunto, modulo, risco..."
               value={filters.keyword}
             />
           </span>
@@ -5315,6 +5361,7 @@ function matchesFilters(
 ) {
   const searchable = normalizeSearchText(
     [
+      record.protocol,
       record.subject,
       record.module,
       record.squad,
@@ -5323,6 +5370,8 @@ function matchesFilters(
       record.shortSummary,
       record.risks,
       record.nextSquad,
+      record.commit,
+      record.deploy,
       record.rawContent,
     ].join(" "),
   );
@@ -5334,6 +5383,56 @@ function matchesFilters(
     (filters.routine === allFilterValue || record.routine === filters.routine) &&
     (filters.status === allFilterValue || record.status === filters.status) &&
     matchesPeriod(record.localDateTime, filters.period) &&
+    (!keyword || searchable.includes(keyword))
+  );
+}
+
+function matchesReleaseProtocolFilters(
+  releaseProtocol: HubReleaseProtocol,
+  filters: OperationsFilters,
+) {
+  const relatedRecords = [releaseProtocol.record, ...releaseProtocol.records];
+  const searchable = normalizeSearchText(
+    [
+      releaseProtocol.protocol,
+      releaseProtocol.title,
+      releaseProtocol.summary,
+      releaseProtocol.module,
+      releaseProtocol.modules.join(" "),
+      releaseProtocol.includedProtocols.join(" "),
+      releaseProtocol.commit,
+      releaseProtocol.deployment,
+      releaseProtocol.healthchecks,
+      getReleaseProtocolStatusLabel(releaseProtocol.status),
+      getReleaseProtocolEnvironmentLabel(releaseProtocol.environment),
+      ...relatedRecords.flatMap((record) => [
+        record.protocol,
+        record.subject,
+        record.module,
+        record.squad,
+        record.type,
+        record.status,
+        record.shortSummary,
+        record.risks,
+      ]),
+    ].join(" "),
+  );
+  const keyword = normalizeSearchText(filters.keyword);
+
+  return (
+    (filters.module === allFilterValue ||
+      releaseProtocol.module === filters.module ||
+      releaseProtocol.modules.includes(filters.module) ||
+      relatedRecords.some((record) => record.module === filters.module)) &&
+    (filters.squad === allFilterValue ||
+      relatedRecords.some((record) => record.squad === filters.squad)) &&
+    (filters.type === allFilterValue ||
+      relatedRecords.some((record) => record.type === filters.type)) &&
+    (filters.routine === allFilterValue ||
+      relatedRecords.some((record) => record.routine === filters.routine)) &&
+    (filters.status === allFilterValue ||
+      relatedRecords.some((record) => record.status === filters.status)) &&
+    matchesPeriod(releaseProtocol.plannedAt, filters.period) &&
     (!keyword || searchable.includes(keyword))
   );
 }
@@ -5449,7 +5548,7 @@ function mapStructuredApiRecordToRecord(
   const status = normalizeStructuredText(record.status);
   const deploy = normalizeStructuredText(record.deploy);
   const commit = normalizeStructuredText(record.commit);
-  const moduleName = normalizeStructuredText(record.module);
+  const moduleName = normalizeModuleAlias(normalizeStructuredText(record.module));
 
   return {
     affectedFiles: normalizeStructuredText(record.affectedFiles),
@@ -5496,7 +5595,7 @@ function mapStructuredApiRecordToRecord(
     sourceIndex: record.sourceIndex,
     squad: normalizeStructuredText(record.squad),
     status,
-    subject: normalizeStructuredText(record.subject),
+    subject: normalizeSquadOpsNaming(normalizeStructuredText(record.subject)),
     type,
     validation: normalizeStructuredText(record.validation),
   };
@@ -5671,6 +5770,14 @@ function normalizeStructuredText(value: string | null | undefined) {
   const trimmed = value?.trim();
 
   return trimmed ? trimmed : UNKNOWN_OPERATION_VALUE;
+}
+
+function normalizeModuleAlias(moduleName: string) {
+  return normalizeSearchText(moduleName) === "hubops" ? "SquadOps" : moduleName;
+}
+
+function normalizeSquadOpsNaming(value: string) {
+  return value.replace(/\bHubOps\b/g, "SquadOps");
 }
 
 function isKnownOperationValue(value: string) {

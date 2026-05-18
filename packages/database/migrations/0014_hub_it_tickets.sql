@@ -103,7 +103,7 @@ create table if not exists public.hub_it_tickets (
 );
 
 comment on table public.hub_it_tickets is
-  'Tickets TI enviados pelos usuarios via Caca para triagem e devolutiva no HubOps.';
+  'Tickets TI enviados pelos usuarios via Caca para triagem e devolutiva no SquadOps.';
 
 comment on column public.hub_it_tickets.protocol is
   'Protocolo operacional sequencial do ticket, por exemplo TI-000001.';

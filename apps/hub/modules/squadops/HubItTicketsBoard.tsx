@@ -54,7 +54,7 @@ type TicketDraft = {
 const emptyDraft: TicketDraft = {
   adminResponse: "",
   resolutionSummary: "",
-  status: "em_triagem",
+  status: "em_analise",
 };
 
 export function HubItTicketsBoard({
@@ -78,7 +78,10 @@ export function HubItTicketsBoard({
     (ticket) => ticket.status !== "resolvido" && ticket.status !== "fechado",
   );
   const ticketsWaitingForSquadOps = tickets.filter(
-    (ticket) => ticket.status === "novo" || ticket.status === "em_revisao",
+    (ticket) =>
+      ticket.status === "novo" ||
+      ticket.status === "em_analise" ||
+      ticket.status === "em_revisao",
   );
   const urgentTickets = tickets.filter(
     (ticket) => ticket.priority === "critica" || ticket.priority === "alta",
@@ -149,7 +152,7 @@ export function HubItTicketsBoard({
       resolutionSummary: selectedTicket.resolutionSummary ?? "",
       status:
         selectedTicket.status === "novo"
-          ? "em_triagem"
+          ? "em_analise"
           : selectedTicket.status,
     });
   }, [selectedTicket]);
@@ -730,16 +733,22 @@ function statusVariant(status: HubItTicketStatus): BadgeVariant {
     return "success";
   }
 
-  if (status === "em_execucao") {
+  if (status === "em_producao") {
+    return "success";
+  }
+
+  if (
+    status === "em_analise" ||
+    status === "em_execucao" ||
+    status === "em_homologacao" ||
+    status === "em_revisao" ||
+    status === "em_tratativa"
+  ) {
     return "info";
   }
 
   if (status === "aguardando_cliente") {
     return "warning";
-  }
-
-  if (status === "em_revisao") {
-    return "info";
   }
 
   return "neutral";

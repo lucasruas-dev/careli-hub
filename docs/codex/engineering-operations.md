@@ -3422,3 +3422,33 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: a migration `0016` depende de aplicar antes as migrations `0013`/estrutura de operations no Supabase real; a aba `Deploys` ja deriva `DP-*` em memoria a partir dos registros atuais, mas a persistencia oficial de release protocols depende de Hub DataOps/ReleaseOps aplicar a migration. Build passou com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o recorte HubOps e `Hub DataOps` para aplicar as migrations `0013` a `0016` em ordem controlada no Supabase real.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Protocolos de deploy e vinculo Ticket TI`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 22:45:52 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - rastreabilidade entre Ticket TI, AT e DP.
+- Motivo da mudanca: Lucas pediu que os cards de deploy exibissem um titulo claro apos o protocolo DP, que os protocolos AT/AL ficassem clicaveis abaixo do titulo, e perguntou como conectar tickets TI ao fluxo operacional para que o status acompanhe analise, tratativa, homologacao e producao.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`, `apps/hub/lib/hub-it-tickets/types.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/app/api/hub/it-tickets/route.ts`, `apps/hub/lib/squadops/engineering-operations-parser.ts`, `packages/database/migrations/0017_squadops_ticket_operation_links.sql` e `docs/codex/engineering-operations.md`.
+- Como foi feito: ajustei os cards de `Protocolos de deploy` para mostrar `DP-*` com o rotulo `Protocolo de deploy`, titulo abaixo e chips `AT/AL` clicaveis que abrem o detalhe operacional correspondente; normalizei a leitura visual de registros antigos para exibir `SquadOps` em runtime sem reescrever o historico do diario; adicionei os status de Ticket TI `em_analise`, `em_tratativa`, `em_homologacao` e `em_producao`; e criei a migration `0017_squadops_ticket_operation_links.sql` com a tabela `hub_it_ticket_operation_links` para vincular `TI-*`, `AT-*` e `DP-*`.
+- Logica utilizada: o Ticket TI permanece como entrada do usuario; ao virar trabalho operacional, ele deve ser ligado a um registro `AT-*`; quando entrar em release/homologacao/producao, esse `AT-*` fica dentro de um `DP-*`. A partir desse vinculo, a automacao futura pode mapear `AT criado` para `Em analise`, `AT em execucao` para `Em tratativa`, `DP em homologacao` para `Em homologacao`, `DP em producao` para `Em producao`, e devolutiva final para `Aguardando cliente`, `Resolvido` ou `Fechado`.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx modules/squadops/HubItTicketsBoard.tsx components/hub-support/hub-user-tickets-panel.tsx lib/hub-it-tickets/server.ts lib/hub-it-tickets/types.ts app/api/hub/it-tickets/route.ts lib/squadops/engineering-operations-parser.ts --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local `/squadops` retornou 200; smoke sem sessao `/api/hub/it-tickets?scope=all` retornou 401 esperado; `git diff --check` focado passou com avisos CRLF conhecidos.
+- Pendencias ou riscos conhecidos: a sincronizacao automatica completa do status do Ticket TI ainda precisa de endpoint/worker que leia `hub_it_ticket_operation_links`, eventos `AT-*` e `DP-*` e aplique a transicao; a migration `0017` precisa ser aplicada no Supabase real junto das migrations anteriores de Ticket TI e Operations. Build passou com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o recorte SquadOps; `Hub DataOps` para aplicar as migrations de Ticket TI/Operations no Supabase real antes de ativar sincronizacao automatica em producao.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Filtro por protocolo operacional`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 22:52:48 -03:00.
+- Tipo da alteracao: `MELHORIA UX OPERACIONAL` - busca por protocolo.
+- Motivo da mudanca: Lucas pediu que o campo de palavra-chave tambem filtrasse por protocolo, facilitando localizar `AT-*`, `AL-*`, `DP-*` e referencias de commit/deploy.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: inclui `record.protocol`, `commit` e `deploy` no texto pesquisavel dos registros; a aba `Deploys` passou a filtrar `DP-*` diretamente nos release protocols antes da renderizacao; e o placeholder do campo passou a informar busca por protocolo.
+- Logica utilizada: `AT/AL` pertencem ao registro operacional e entram no filtro global; `DP` e derivado na camada de deploy, entao precisa de filtro especifico sobre `HubReleaseProtocol` para nao depender apenas dos registros filhos.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `git diff --check` focado passou com avisos CRLF conhecidos.
+- Pendencias ou riscos conhecidos: build completo ainda deve ser executado pelo ReleaseOps no recorte final; a busca por `TI-*` ficara completa quando a tela de vinculos Ticket TI -> AT -> DP estiver alimentando protocolos de ticket no mesmo fluxo.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o recorte SquadOps.

@@ -518,9 +518,10 @@ export async function updateHubItTicket({
     }
 
     const nextStatus =
-      normalizedInput.adminResponse || normalizedInput.resolutionSummary
+      normalizedInput.status ??
+      (normalizedInput.adminResponse || normalizedInput.resolutionSummary
         ? "aguardando_cliente"
-        : (normalizedInput.status ?? "em_triagem");
+        : "em_analise");
     const { data: ticket, error } = await adminClient
       .from("hub_it_tickets")
       .update({
@@ -1031,9 +1032,10 @@ async function updateLocalHubItTicket({
   }
 
   const nextStatus =
-    input.adminResponse || input.resolutionSummary
+    input.status ??
+    (input.adminResponse || input.resolutionSummary
       ? "aguardando_cliente"
-      : (input.status ?? "em_triagem");
+      : "em_analise");
   const isResolved = nextStatus === "resolvido" || nextStatus === "fechado";
   const nextTicket: HubItTicket = {
     ...currentTicket,
@@ -1224,6 +1226,9 @@ export function isHubItTicketsSchemaMissingError(error: unknown) {
     message.includes("hub_it_tickets") ||
     message.includes("hub_it_ticket_events") ||
     message.includes("hub_it_ticket_attachments") ||
+    message.includes("hub_it_ticket_operation_links") ||
+    message.includes("hub_it_ticket_status") ||
+    message.includes("invalid input value for enum") ||
     message.includes("Could not find the table") ||
     message.includes("relation") ||
     message.includes("does not exist")
