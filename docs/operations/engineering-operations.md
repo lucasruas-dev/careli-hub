@@ -4940,3 +4940,19 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o deploy do ajuste de codigo ainda precisa publicar a troca de fonte canonica na UI; smoke autenticado completo depende de sessao real do Lucas. O warning Turbopack/NFT permanece conhecido e nao bloqueia build.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para commit, push, deploy Preview/Production e healthchecks finais do recorte `0013`/SquadOps.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Publicacao correcao fallback Engineering Operations 0013`.
+- Nome da squad/agente: `Hub RescueOps` assumindo `Hub ReleaseOps`.
+- Protocolo relacionado: `RESCUE-20260518-1621-engineering-operations-0013`.
+- Data e hora local: 2026-05-18 16:28:06 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao do hotfix SquadOps/DataOps para fonte estruturada do Engineering Operations.
+- Ambiente: Preview/Homologacao e producao.
+- Arquivos/modulos afetados: commit `6e6fa34 fix(squadops): restore structured operations source`, `apps/hub/lib/squadops/engineering-operations-source.ts`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/lib/squadops/engineering-operations-parser.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `packages/database/migrations/0013_hub_engineering_operations_records.sql`, `docs/operations/engineering-operations.md`, Preview `dpl_EfzVDuv8Q7WCb7HHTXKESF5AeSjC`, Production `dpl_CUAEnDzQfgm4Jye5vupubybvfzUP` e alias `https://c2x.app.br`.
+- Como foi feito: commit semantico do recorte, push para `origin/homolog`, deploy Preview, healthcheck Preview, deploy Production e healthchecks finais em producao.
+- Validacao Preview executada: deployment `dpl_EfzVDuv8Q7WCb7HHTXKESF5AeSjC` ficou `READY`; via `vercel curl`, `/squadops` retornou 200 e `/api/squadops/operations/structured` sem sessao retornou 401 esperado.
+- Validacao Production executada: deployment `dpl_CUAEnDzQfgm4Jye5vupubybvfzUP` ficou `READY` e aliasado em `https://c2x.app.br`; `/` retornou 200; `/squadops` retornou 200; `/api/squadops/operations/structured` sem sessao retornou 401 esperado; `/api/guardian/db/health` retornou 200; `npx.cmd vercel logs https://c2x.app.br --since 10m --level error` nao encontrou logs.
+- Pendencias ou riscos conhecidos: smoke visual/autenticado final depende da sessao do Lucas para confirmar no navegador que o card passou de `Fallback Engineering Operations` para `hub_engineering_operation_records`. A validacao de banco ja confirma a base estruturada populada nos dois ambientes.
+- Status operacional: `INCIDENTE ENCERRADO`.
+- Proxima squad recomendada: nenhuma obrigatoria; `Hub SupportOps` somente se o card autenticado ainda exibir fallback apos refresh.
