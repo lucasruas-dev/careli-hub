@@ -67,12 +67,14 @@ type MonitoringStoreDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
     Enums: {
-      hub_operations_monitoring_status: OperationsGeneralStatus | "aguardando";
-      hub_operations_risk_level: OperationsRiskLevel;
+      hub_squadops_monitoring_status:
+        | OperationsGeneralStatus
+        | "aguardando";
+      hub_squadops_risk_level: OperationsRiskLevel;
     };
     Functions: Record<string, never>;
     Tables: {
-      hub_operations_monitoring_check_runs: {
+      hub_squadops_monitoring_check_runs: {
         Insert: MonitoringRunInsert;
         Relationships: [];
         Row: MonitoringRunInsert & {
@@ -81,7 +83,7 @@ type MonitoringStoreDatabase = {
         };
         Update: Partial<MonitoringRunInsert>;
       };
-      hub_operations_monitoring_checks: {
+      hub_squadops_monitoring_checks: {
         Insert: MonitoringCheckInsert;
         Relationships: [];
         Row: MonitoringCheckInsert & {
@@ -90,7 +92,7 @@ type MonitoringStoreDatabase = {
         };
         Update: Partial<MonitoringCheckInsert>;
       };
-      hub_operations_watcher_notifications: {
+      hub_squadops_watcher_notifications: {
         Insert: WatcherNotificationUpsert;
         Relationships: [];
         Row: WatcherNotificationUpsert & {
@@ -129,7 +131,7 @@ export async function persistOperationsMonitoringSnapshot({
         ? null
         : snapshot.cards.activeAlerts.highestLevel;
     const { data: run, error: runError } = await adminClient
-      .from("hub_operations_monitoring_check_runs")
+      .from("hub_squadops_monitoring_check_runs")
       .insert({
         alert_count: snapshot.alerts.length,
         created_by_user_id: userId,
@@ -142,7 +144,7 @@ export async function persistOperationsMonitoringSnapshot({
         },
         payload_critical: snapshot.metrics.payloadCritical,
         slow_checks: snapshot.metrics.slowChecks,
-        source: "squadops-center",
+        source: "squadops",
         status: snapshot.cards.status.value,
         total_checks: snapshot.metrics.totalChecks,
       })
@@ -159,7 +161,7 @@ export async function persistOperationsMonitoringSnapshot({
 
     if (checks.length > 0) {
       const { error: checksError } = await adminClient
-        .from("hub_operations_monitoring_checks")
+        .from("hub_squadops_monitoring_checks")
         .insert(checks);
 
       if (checksError) {
@@ -189,7 +191,7 @@ export async function persistOpsWatcherDecision({
 
   try {
     const { data: existingNotification } = await adminClient
-      .from("hub_operations_watcher_notifications")
+      .from("hub_squadops_watcher_notifications")
       .select("id, occurrence_count")
       .eq("dedupe_key", decision.dedupeKey)
       .maybeSingle();
@@ -218,7 +220,7 @@ export async function persistOpsWatcherDecision({
     };
 
     const { error } = await adminClient
-      .from("hub_operations_watcher_notifications")
+      .from("hub_squadops_watcher_notifications")
       .upsert(payload, {
         onConflict: "dedupe_key",
       });

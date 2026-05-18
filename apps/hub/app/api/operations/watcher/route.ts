@@ -7,7 +7,7 @@ import {
   buildOpsWatcherDecision,
   type OperationsMonitoringSnapshot,
 } from "@/lib/operations/monitoring";
-import { persistOpsWatcherDecision } from "@/lib/operations/monitoring-store";
+import { persistOpsWatcherDecision } from "@/lib/squadops/monitoring-store";
 import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 
 export const dynamic = "force-dynamic";

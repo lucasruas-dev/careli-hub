@@ -4,15 +4,14 @@
 
 O SquadOps Center e a camada operacional do Hub para controlar tickets, alertas, atividades, monitoramento, homologacao, releases, deploys, historico e rastreabilidade da engenharia IA Careli.
 
-Ele continua sendo o modulo `SquadOps` dentro do Hub. A entrada dedicada pode apontar para o mesmo runtime do Hub, por exemplo `ops.c2x.app.br` ou `squadops.c2x.app.br`, mas a tela e a governanca permanecem em `/squadops`.
+Ele continua sendo o modulo `SquadOps` dentro do Hub. A tela, a governanca, as permissoes e a persistencia ficam concentradas em `/squadops`, sem migrar o Hub inteiro para outro app ou dominio.
 
 ## Separacao de responsabilidades
 
-- `c2x.app.br`: produto em producao.
-- `homo.c2x.app.br`: ambiente de teste/homologacao.
-- `ops.c2x.app.br` ou `squadops.c2x.app.br`: entrada dedicada para o SquadOps Center dentro do Hub.
+- `c2x.app.br/squadops`: SquadOps em producao dentro do Hub.
+- `homo.c2x.app.br/squadops`: SquadOps no ambiente de teste/homologacao.
 
-Se a homologacao cair, o SquadOps Center deve continuar mostrando historico, protocolos, status de release, tickets vinculados, alertas e producao a partir do banco operacional.
+Se a homologacao cair, o SquadOps deve continuar mostrando historico, protocolos, status de release, tickets vinculados, alertas e producao a partir do banco operacional do proprio modulo.
 
 ## Fonte da verdade
 
@@ -118,9 +117,9 @@ Tabelas operacionais envolvidas:
 - `hub_release_protocol_items`: protocolos incluidos no deploy.
 - `hub_release_environment_events`: eventos por ambiente.
 - `hub_squadops_homologation_reviews`: validacao item a item feita por Lucas.
-- `hub_operations_monitoring_check_runs`: execucoes de monitoramento.
-- `hub_operations_monitoring_checks`: checks reais por execucao.
-- `hub_operations_watcher_notifications`: notificacoes deduplicadas do Ops Watcher.
+- `hub_squadops_monitoring_check_runs`: execucoes de monitoramento do SquadOps.
+- `hub_squadops_monitoring_checks`: checks reais por execucao do SquadOps.
+- `hub_squadops_watcher_notifications`: notificacoes deduplicadas do Ops Watcher do SquadOps.
 
 ## Regras de seguranca
 
@@ -141,4 +140,4 @@ A fila antiga de homologacao do SquadOps nao deve ser apagada. Ela deve ser reco
 
 ## Decisao V1
 
-O SquadOps Center fica dentro do Hub, com entrada dedicada por dominio quando configurada. A independencia vem da fonte de dados operacional e da rota dedicada, nao de um app separado.
+O SquadOps fica dentro do Hub como modulo proprio em `/squadops`. A independencia vem da fonte de dados operacional, da permissao admin e das tabelas com prefixo `hub_squadops_*`, nao de um app separado nem de uma migracao do Hub inteiro.

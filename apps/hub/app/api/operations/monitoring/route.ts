@@ -4,7 +4,7 @@ import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 import { collectOperationsDataSources } from "@/lib/operations/data-sources";
 import { syncOperationAlertProtocols } from "@/lib/operations/alert-protocols";
 import { buildOperationsMonitoringSnapshot } from "@/lib/operations/monitoring";
-import { persistOperationsMonitoringSnapshot } from "@/lib/operations/monitoring-store";
+import { persistOperationsMonitoringSnapshot } from "@/lib/squadops/monitoring-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
