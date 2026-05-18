@@ -2,7 +2,11 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$BaseUrl,
 
-  [int]$TimeoutSec = 30
+  [int]$TimeoutSec = 30,
+
+  [string]$VercelProtectionBypassSecret = $env:VERCEL_AUTOMATION_BYPASS_SECRET,
+
+  [switch]$UseVercelCurl
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,26 +36,65 @@ function Invoke-HubCheck {
   $errorMessage = $null
 
   try {
-    $headers = @{}
-    $parameters = @{
-      Headers = $headers
-      Method = $Method
-      TimeoutSec = $TimeoutSec
-      Uri = $uri
-      UseBasicParsing = $true
-    }
+    if ($UseVercelCurl -and -not $VercelProtectionBypassSecret) {
+      $curlArgs = @(
+        "vercel",
+        "curl",
+        $Path,
+        "--deployment",
+        $BaseUrl,
+        "--",
+        "--silent",
+        "--output",
+        "NUL",
+        "--write-out",
+        "%{http_code}"
+      )
 
-    if ($Body) {
-      $parameters.Body = $Body
-      $parameters.ContentType = "application/json"
-    }
+      if ($Method -ne "GET") {
+        $curlArgs += @("--request", $Method)
+      }
 
-    $response = Invoke-WebRequest @parameters
-    $statusCode = [int]$response.StatusCode
-    $payloadBytes = if ($response.Content) {
-      [System.Text.Encoding]::UTF8.GetByteCount([string]$response.Content)
+      if ($Body) {
+        $curlArgs += @("--header", "Content-Type: application/json", "--data", $Body)
+      }
+
+      $output = (& npx.cmd @curlArgs 2>$null)
+      $statusText = ($output -join "").Trim()
+      $statusMatch = [regex]::Match($statusText, "\d{3}")
+
+      if ($statusMatch.Success) {
+        $statusCode = [int]$statusMatch.Value
+      } else {
+        $errorMessage = "vercel curl nao retornou status HTTP."
+      }
     } else {
-      0
+      $headers = @{}
+
+      if ($VercelProtectionBypassSecret) {
+        $headers["x-vercel-protection-bypass"] = $VercelProtectionBypassSecret
+      }
+
+      $parameters = @{
+        Headers = $headers
+        Method = $Method
+        TimeoutSec = $TimeoutSec
+        Uri = $uri
+        UseBasicParsing = $true
+      }
+
+      if ($Body) {
+        $parameters.Body = $Body
+        $parameters.ContentType = "application/json"
+      }
+
+      $response = Invoke-WebRequest @parameters
+      $statusCode = [int]$response.StatusCode
+      $payloadBytes = if ($response.Content) {
+        [System.Text.Encoding]::UTF8.GetByteCount([string]$response.Content)
+      } else {
+        0
+      }
     }
   } catch {
     if ($_.Exception.Response) {
