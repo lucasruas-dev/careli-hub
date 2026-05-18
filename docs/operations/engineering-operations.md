@@ -5079,3 +5079,22 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: a tela ja aberta pode continuar exibindo estado antigo ate logout/login ou refresh forte, porque o `AuthProvider` carrega o perfil no inicio da sessao. Se voltar a `operator`, investigar fluxo de Setup/Auth que pode atualizar metadata sem role.
 - Status operacional: `CORRIGIDO`.
 - Proxima squad recomendada: nenhuma obrigatoria; `Hub SupportOps` somente se a sessao renovada ainda mostrar operador.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy registros SupportOps homologacao`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 17:48:32 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao dos registros SupportOps de login/perfil admin em homologacao.
+- Motivo da mudanca: Lucas autorizou publicar em homologacao e producao o corte SupportOps pendente, para manter o Operations Center e a rastreabilidade oficial alinhados aos incidentes e a correcao operacional do perfil admin em homologacao.
+- Ambiente: Preview/Homologacao e Producao.
+- Arquivos/modulos afetados: commit `fc97822 docs(supportops): record homolog auth resolution`, `docs/operations/engineering-operations.md`, Preview direto `dpl_8eZEkW8y2L9hdejyjo35WtxPugkh`, Homologacao alias `homo.c2x.app.br` em `dpl_HR5MxnzKRBTZCxbfj3mBPYNe7qSi`, Production `dpl_FCoKxwVN1YWvUKV47iAvdLXtaCzx` e alias `https://c2x.app.br`.
+- Como foi feito: confirmei que o recorte versionado era documental/operacional, stageei somente `docs/operations/engineering-operations.md`, criei commit semantico, publiquei `origin/homolog`, gerei snapshot limpo em `%TEMP%`, publiquei Preview e depois Production conforme autorizacao explicita do Lucas.
+- Logica utilizada: o deploy nao alterou codigo, env, chaves, migrations ou banco; ele apenas publica a memoria operacional com o diagnostico de senha, diagnostico de perfil admin e correcao pontual aplicada por SupportOps em homologacao. O arquivo gerado local `apps/hub/next-env.d.ts` apareceu durante validacao, foi limpo pelo build e nao entrou no commit.
+- Validacao local executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em SquadOps; `git diff --check` e `git diff --cached --check` passaram; varredura textual encontrou apenas mencoes historicas a nomes de env neste diario, sem valores sensiveis.
+- Healthcheck de homologacao/Preview: Preview direto `dpl_8eZEkW8y2L9hdejyjo35WtxPugkh` ficou `READY`; `/`, `/login` e `/squadops` retornaram 200; `/api/auth/profile` e `/api/squadops/operations/structured` sem sessao retornaram 401 esperado. No alias real `https://homo.c2x.app.br`, deployment `dpl_HR5MxnzKRBTZCxbfj3mBPYNe7qSi` ficou `Ready`; via `vercel curl`, `/`, `/login` e `/squadops` retornaram 200; `/api/auth/profile`, `/api/hub/home` e `/api/squadops/operations/structured` sem sessao retornaram 401 esperado; logs de erro dos ultimos 15 minutos nao retornaram ocorrencias.
+- Healthcheck de producao: Production `dpl_FCoKxwVN1YWvUKV47iAvdLXtaCzx` ficou `Ready` e aliasada em `https://c2x.app.br`; `/`, `/login` e `/squadops` retornaram 200; `/api/auth/profile`, `/api/hub/home` e `/api/squadops/operations/structured` sem sessao retornaram 401 esperado; `/api/guardian/db/health` retornou 200; `npx.cmd vercel logs https://c2x.app.br --since 15m --level error` retornou `No logs found`.
+- Rollback path: se surgir regressao operacional, promover o deployment anterior de producao `dpl_4ngRLegmRnwg2JrZp8Eazov6aZab` ou executar rollback Vercel para o ultimo deployment saudavel, sem alterar envs/chaves/banco.
+- Pendencias ou riscos conhecidos: o ajuste operacional de perfil em homologacao depende de Lucas renovar sessao/logout-login para refletir `admin/adm` no navegador; se voltar para `operator`, `Hub SupportOps` deve investigar fluxo Auth/Setup que possa sobrescrever metadata. Build remoto segue com warnings conhecidos de Turbopack/NFT e envs Postgres/Supabase JWT listadas fora do `turbo.json`, sem falha de build.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps` somente se a sessao renovada em homologacao ainda exibir operador; `Hub Core` se Lucas quiser implementar o fluxo funcional de recuperacao de senha no login.
