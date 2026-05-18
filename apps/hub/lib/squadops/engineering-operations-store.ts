@@ -9,7 +9,7 @@ import {
   type EngineeringOperationsResponse,
 } from "./engineering-operations-parser";
 
-const defaultSourcePath = "docs/codex/engineering-operations.md";
+const defaultSourcePath = "docs/operations/engineering-operations.md";
 const saoPauloOffset = "-03:00";
 
 type StructuredRecordRow = {

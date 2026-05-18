@@ -322,7 +322,7 @@ Este pedido NAO autoriza deploy de todo o worktree.
 O deploy deve ser programado a partir do Engineering Operations e confirmado contra o Git.
 
 Fontes obrigatorias:
-- Diario operacional: docs/codex/engineering-operations.md.
+- Diario operacional: docs/operations/engineering-operations.md.
 - Git/worktree: git status, git diff, git log e arquivos alterados.
 - Validacoes locais registradas no diario.
 - Healthchecks e Vercel quando o recorte for publicado.
@@ -419,7 +419,7 @@ Este pedido NAO e um template com placeholders. Use os registros reais do Engine
 
 Periodo analisado:
 - Data: 17/05/2026.
-- Fonte historica: docs/codex/engineering-operations.md.
+- Fonte historica: docs/operations/engineering-operations.md.
 - Fonte de estado atual: Database Monitoring / APIs reais / healthchecks.
 - Modulos relevantes: SquadOps, Guardian, PulseX, SupportOps, ReleaseOps e CareDesk quando houver registro no diario.
 
@@ -468,7 +468,7 @@ Agente executor: Hub SupportOps.
 
 Periodo analisado:
 - Semana: 11/05/2026 a 17/05/2026.
-- Fonte historica: docs/codex/engineering-operations.md.
+- Fonte historica: docs/operations/engineering-operations.md.
 - Fonte de estado atual: Database Monitoring / APIs reais / healthchecks.
 - Objetivo: identificar entregas, riscos, gargalos e proximos passos.
 
@@ -523,7 +523,7 @@ Este pedido NAO e um template com placeholders. O escopo de monitoramento ja est
 Agente executor: Hub SupportOps.
 
 Fonte historica:
-- docs/codex/engineering-operations.md.
+- docs/operations/engineering-operations.md.
 
 Fonte de estado atual:
 - Database Monitoring / APIs reais / healthchecks do Operations Center.
@@ -574,7 +574,7 @@ Este pedido NAO e um template com placeholders. O fechamento e parcial do mes co
 
 Periodo analisado:
 - Mes: maio/2026, acumulado ate 17/05/2026.
-- Fonte historica: docs/codex/engineering-operations.md.
+- Fonte historica: docs/operations/engineering-operations.md.
 - Fonte de estado atual: Database Monitoring / APIs reais / healthchecks.
 - Objetivo: consolidar entregas, estabilidade, riscos e prioridades.
 
@@ -1556,7 +1556,7 @@ export function SquadOpsPage() {
               {operationsSource.mode === "structured"
                 ? "hub_engineering_operation_records"
                 : (activeOperations?.sourcePath ??
-                  "docs/codex/engineering-operations.md")}
+                  "docs/operations/engineering-operations.md")}
             </span>
             <div className="flex flex-wrap items-center gap-2">
               <button

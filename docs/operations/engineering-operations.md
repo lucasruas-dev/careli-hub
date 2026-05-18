@@ -4917,3 +4917,26 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o arquivo anterior sem CNPJ segue preservado apenas para rastreabilidade, mas o artefato valido para uso agora e o `_com_cnpj.xlsx`.
 - Status operacional: `FINALIZADO`.
 - Proxima squad recomendada: `Hub DataOps` somente se Lucas solicitar novo recorte ou saneamento cadastral; sem necessidade de `Hub ReleaseOps` porque nao houve mudanca de produto/deploy.
+
+Registro de diario:
+
+- Assunto: `[Hub RescueOps] Correcao fallback Engineering Operations 0013`.
+- Nome da squad/agente: `Hub RescueOps` assumindo `Hub DataOps`, `Hub InfraOps`, `SquadOps Core` e `Hub ReleaseOps`.
+- Protocolo relacionado: `RESCUE-20260518-1621-engineering-operations-0013`.
+- Data e hora local: 2026-05-18 16:21:20 -03:00.
+- Tipo da alteracao: `INCIDENTE` - recuperacao do fallback do Engineering Operations estruturado.
+- Motivo da mudanca: Lucas reportou que a tela de SquadOps/Operations Center ainda mostrava `Fallback Engineering Operations` e o aviso `Migration 0013 ainda nao aplicada no Supabase real`.
+- Ambiente: homologacao e producao.
+- Problema identificado: a `0013` existia no historico dos bancos, mas as tabelas estruturadas estavam vazias; o default real de `hub_engineering_operation_records.source_path` ainda apontava para `docs/codex/engineering-operations.md`; o app tambem tinha referencias ativas ao caminho legado.
+- Causa raiz: a migracao do diario vivo para `docs/operations/engineering-operations.md` nao tinha sido refletida integralmente no fluxo estruturado da `0013`, e a sincronizacao dos registros nao havia populado as tabelas reais.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/engineering-operations-source.ts`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/lib/squadops/engineering-operations-parser.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `packages/database/migrations/0013_hub_engineering_operations_records.sql`, `docs/operations/engineering-operations.md`, Supabase/Postgres homologacao e Supabase/Postgres producao.
+- Como foi feito: corrigi o app para usar `docs/operations/engineering-operations.md` como fonte canonica; ajustei o default real da coluna `source_path` em homologacao e producao; sincronizei o diario canonico para as tabelas `hub_engineering_operation_*`; recarreguei o schema PostgREST; e endureci grants para manter apenas `select`, `insert` e `update` em `authenticated` e `service_role`.
+- Logica utilizada: a tela deve priorizar `hub_engineering_operation_records` quando houver base estruturada; o markdown fica como historico append-only e fallback seguro. Como a base real estava vazia, a UI mantinha fallback mesmo com a migration registrada. A correcao precisava combinar schema, dados estruturados e caminho canonico no codigo.
+- Evidencias confirmadas: antes da correcao, producao tinha `records=0`, `sync_runs=0`, `migration_0013=1` e default `docs/codex/engineering-operations.md`; homologacao tinha `records=0`, `sync_runs=1`, `migration_0013=1` e o mesmo default legado.
+- Validacao DB executada em producao: `248` registros canonicos em `hub_engineering_operation_records`; `51` releases; `244` healthchecks; `196` handoffs; `1` sync run com status `sincronizado`; `migration_0013=1`; default `docs/operations/engineering-operations.md`; RLS ativo nas cinco tabelas da `0013`; grants finais em `hub_engineering_operation_records`: `authenticated` e `service_role` com `INSERT`, `SELECT` e `UPDATE`.
+- Validacao DB executada em homologacao: `248` registros canonicos em `hub_engineering_operation_records`; `51` releases; `244` healthchecks; `196` handoffs; `1` sync run com status `sincronizado`; `migration_0013=1`; default `docs/operations/engineering-operations.md`; RLS ativo nas cinco tabelas da `0013`; grants finais em `hub_engineering_operation_records`: `authenticated` e `service_role` com `INSERT`, `SELECT` e `UPDATE`.
+- Validacao local executada: `npm.cmd --workspace @repo/hub run check-types` passou; `npm.cmd --workspace @repo/hub run lint` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd --workspace @repo/hub run build` passou com warning conhecido Turbopack/NFT da leitura filesystem de fallback; smoke local `http://localhost:3001/squadops` retornou 200.
+- Comandos sensiveis executados: consultas/aplicacoes SQL via runner temporario local usando `POSTGRES_URL`/`HOMOLOG_POSTGRES_URL` sem exibir valores; pull de envs Vercel para arquivos temporarios locais; nenhuma env foi criada, alterada, renomeada, removida ou exibida.
+- Pendencias ou riscos conhecidos: o deploy do ajuste de codigo ainda precisa publicar a troca de fonte canonica na UI; smoke autenticado completo depende de sessao real do Lucas. O warning Turbopack/NFT permanece conhecido e nao bloqueia build.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para commit, push, deploy Preview/Production e healthchecks finais do recorte `0013`/SquadOps.

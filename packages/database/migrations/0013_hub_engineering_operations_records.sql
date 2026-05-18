@@ -15,7 +15,7 @@ create table if not exists public.hub_engineering_operation_records (
   source_key text not null,
   content_hash text not null,
   protocol text not null default ('AT-' || lpad(nextval('public.hub_engineering_operation_protocol_seq')::text, 4, '0')),
-  source_path text not null default 'docs/codex/engineering-operations.md',
+  source_path text not null default 'docs/operations/engineering-operations.md',
   source_index integer not null default 0 check (source_index >= 0),
   line_start integer not null default 0 check (line_start >= 0),
   subject text not null,
@@ -187,6 +187,14 @@ alter table public.hub_engineering_operation_releases enable row level security;
 alter table public.hub_engineering_operation_healthchecks enable row level security;
 alter table public.hub_engineering_operation_handoffs enable row level security;
 alter table public.hub_engineering_operation_sync_runs enable row level security;
+
+revoke delete, truncate, references, trigger on
+  public.hub_engineering_operation_records,
+  public.hub_engineering_operation_releases,
+  public.hub_engineering_operation_healthchecks,
+  public.hub_engineering_operation_handoffs,
+  public.hub_engineering_operation_sync_runs
+from authenticated, service_role;
 
 grant select, insert, update on
   public.hub_engineering_operation_records,

@@ -5,7 +5,7 @@ import { parseEngineeringOperationsMarkdown } from "./engineering-operations-par
 
 const diaryRelativePath = path.join(
   "docs",
-  "codex",
+  "operations",
   "engineering-operations.md",
 );
 
@@ -16,7 +16,7 @@ export async function loadEngineeringOperationsFromFile() {
     return {
       data: null,
       error:
-        "Arquivo docs/codex/engineering-operations.md não encontrado no workspace.",
+        "Arquivo docs/operations/engineering-operations.md não encontrado no workspace.",
     };
   }
 

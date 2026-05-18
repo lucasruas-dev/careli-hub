@@ -241,7 +241,7 @@ export function parseEngineeringOperationsMarkdown(
     metrics,
     records,
     releaseRecords,
-    sourcePath: options.sourcePath ?? "docs/codex/engineering-operations.md",
+    sourcePath: options.sourcePath ?? "docs/operations/engineering-operations.md",
     statusConsolidated: buildStatusConsolidated(metrics),
   };
 }
