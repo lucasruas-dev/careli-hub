@@ -241,6 +241,8 @@ const allFilterValue = "__all";
 const hubTimeZone = "America/Sao_Paulo";
 const homologationStorageKey =
   "careli-hub:squadops:homologation-reviews:v1";
+const alertProtocolOverrideStorageKey =
+  "careli-hub:squadops:alert-protocol-overrides:v1";
 
 const initialOperationsSourceState: OperationsSourceState = {
   description: "Aguardando leitura da fonte operacional.",
@@ -685,7 +687,7 @@ export function SquadOpsPage() {
   >([]);
   const [alertProtocols, setAlertProtocols] = useState<
     OperationsAlertProtocolSummary[]
-  >([]);
+  >(() => readLocalAlertProtocolOverrides());
   const [selectedAlertProtocol, setSelectedAlertProtocol] =
     useState<OperationsAlertProtocolSummary | null>(null);
   const [itTicketCount, setItTicketCount] = useState(0);
@@ -906,7 +908,9 @@ export function SquadOpsPage() {
         return;
       }
 
-      setAlertProtocols(payload.protocols);
+      setAlertProtocols((current) =>
+        mergeAlertProtocols(payload.protocols ?? [], current),
+      );
     } catch {
       setAlertProtocols((current) => current);
     }
@@ -1136,6 +1140,9 @@ export function SquadOpsPage() {
   const releaseRecords = allReleaseRecords.slice(0, 6);
   const overdueRoutines = auditRoutines.filter((routine) => routine.isOverdue);
   const latestRecord = records[0] ?? null;
+  const visibleMonitoringAlertCount = (monitoringSnapshot?.alerts ?? []).filter(
+    (alert) => !isProtocolCleared(alert.protocol, alertProtocols),
+  ).length;
   const actionCount = criticalRecords.length + overdueRoutines.length;
   const nextSquad =
     criticalRecords[0]?.nextSquad ??
@@ -1255,6 +1262,80 @@ export function SquadOpsPage() {
     }
   }
 
+  function applyAlertProtocolUpdate(protocol: OperationsAlertProtocolSummary) {
+    setAlertProtocols((current) => mergeAlertProtocols([protocol], current));
+    setSelectedAlertProtocol((current) =>
+      current?.protocol === protocol.protocol ? protocol : current,
+    );
+    setMonitoringSnapshot((current) =>
+      current
+        ? {
+            ...current,
+            alertProtocols: mergeAlertProtocols(
+              [protocol],
+              current.alertProtocols ?? [],
+            ),
+            alerts: current.alerts.map((alert) =>
+              alert.protocol === protocol.protocol
+                ? mergeProtocolIntoAlert(alert, protocol)
+                : alert,
+            ),
+          }
+        : current,
+    );
+    setWatcherNotifications((current) =>
+      shouldHideProtocolAlert(protocol)
+        ? current.filter(
+            (notification) => notification.protocol !== protocol.protocol,
+          )
+        : current.map((notification) =>
+            notification.protocol === protocol.protocol
+              ? {
+                  ...notification,
+                  command: protocol.command,
+                }
+              : notification,
+          ),
+    );
+    setWatcherDecision((current) =>
+      current?.protocol === protocol.protocol && shouldHideProtocolAlert(protocol)
+        ? {
+            ...current,
+            notifyLucas: false,
+            reason:
+              protocol.status === "silenciado"
+                ? "Alerta ignorado por Lucas."
+                : "Leitura confirmada por Lucas.",
+            status: "silencioso",
+          }
+        : current,
+    );
+  }
+
+  function applyLocalAlertProtocolUpdate(
+    protocolCode: string,
+    status: "monitorando" | "silenciado",
+  ) {
+    const protocol = createLocalAlertProtocolOverride({
+      protocol:
+        alertProtocols.find((item) => item.protocol === protocolCode) ??
+        monitoringSnapshot?.alerts
+          .map(alertToProtocolSummary)
+          .find((item) => item.protocol === protocolCode),
+      status,
+    });
+
+    if (!protocol) {
+      return false;
+    }
+
+    saveLocalAlertProtocolOverride(protocol);
+    applyAlertProtocolUpdate(protocol);
+    setMonitoringError(null);
+
+    return true;
+  }
+
   async function saveAlertFeedback() {
     if (!selectedAlertProtocol) {
       return;
@@ -1298,48 +1379,11 @@ export function SquadOpsPage() {
         );
       }
 
-      setAlertProtocols((current) =>
-        mergeAlertProtocols([payload.protocol!], current),
-      );
-      setMonitoringSnapshot((current) =>
-        current
-          ? {
-              ...current,
-              alertProtocols: mergeAlertProtocols(
-                [payload.protocol!],
-                current.alertProtocols ?? [],
-              ),
-              alerts: current.alerts.map((alert) =>
-                alert.protocol === payload.protocol!.protocol
-                  ? mergeProtocolIntoAlert(alert, payload.protocol!)
-                  : alert,
-              ),
-            }
-          : current,
-      );
-      setWatcherNotifications((current) =>
-        shouldHideProtocolAlert(payload.protocol!)
-          ? current.filter(
-              (notification) =>
-                notification.protocol !== payload.protocol!.protocol,
-            )
-          : current.map((notification) =>
-              notification.protocol === payload.protocol!.protocol
-                ? {
-                    ...notification,
-                    command: payload.protocol!.command,
-                  }
-                : notification,
-            ),
-      );
+      applyAlertProtocolUpdate(payload.protocol);
       setSelectedAlertProtocol(payload.protocol);
       setAlertFeedbackText(payload.protocol.technicalFeedback ?? "");
     } catch (error) {
-      setAlertFeedbackError(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel registrar a devolutiva tecnica.",
-      );
+      setAlertFeedbackError(getAlertProtocolActionErrorMessage(error));
     } finally {
       setIsAlertFeedbackSaving(false);
     }
@@ -1381,47 +1425,17 @@ export function SquadOpsPage() {
         );
       }
 
-      setAlertProtocols((current) =>
-        mergeAlertProtocols([payload.protocol!], current),
-      );
-      setMonitoringSnapshot((current) =>
-        current
-          ? {
-              ...current,
-              alertProtocols: mergeAlertProtocols(
-                [payload.protocol!],
-                current.alertProtocols ?? [],
-              ),
-              alerts: current.alerts.map((alert) =>
-                alert.protocol === payload.protocol!.protocol
-                  ? mergeProtocolIntoAlert(alert, payload.protocol!)
-                  : alert,
-              ),
-            }
-          : current,
-      );
-      setWatcherNotifications((current) =>
-        current.filter(
-          (notification) =>
-            notification.protocol !== payload.protocol!.protocol,
-        ),
-      );
-      setWatcherDecision((current) =>
-        current?.protocol === payload.protocol!.protocol
-          ? {
-              ...current,
-              notifyLucas: false,
-              reason: "Leitura confirmada por Lucas.",
-              status: "silencioso",
-            }
-          : current,
-      );
+      applyAlertProtocolUpdate(payload.protocol);
     } catch (error) {
-      setMonitoringError(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel confirmar leitura do alerta.",
-      );
+      if (
+        error instanceof Error &&
+        isAlertProtocolSchemaMissingError(error.message) &&
+        applyLocalAlertProtocolUpdate(protocolCode, "monitorando")
+      ) {
+        return;
+      }
+
+      setMonitoringError(getAlertProtocolActionErrorMessage(error));
     } finally {
       setAcknowledgingProtocol(null);
     }
@@ -1461,47 +1475,17 @@ export function SquadOpsPage() {
         throw new Error(payload?.error ?? "Nao foi possivel ignorar o alerta.");
       }
 
-      setAlertProtocols((current) =>
-        mergeAlertProtocols([payload.protocol!], current),
-      );
-      setMonitoringSnapshot((current) =>
-        current
-          ? {
-              ...current,
-              alertProtocols: mergeAlertProtocols(
-                [payload.protocol!],
-                current.alertProtocols ?? [],
-              ),
-              alerts: current.alerts.map((alert) =>
-                alert.protocol === payload.protocol!.protocol
-                  ? mergeProtocolIntoAlert(alert, payload.protocol!)
-                  : alert,
-              ),
-            }
-          : current,
-      );
-      setWatcherNotifications((current) =>
-        current.filter(
-          (notification) =>
-            notification.protocol !== payload.protocol!.protocol,
-        ),
-      );
-      setWatcherDecision((current) =>
-        current?.protocol === payload.protocol!.protocol
-          ? {
-              ...current,
-              notifyLucas: false,
-              reason: "Alerta ignorado por Lucas.",
-              status: "silencioso",
-            }
-          : current,
-      );
+      applyAlertProtocolUpdate(payload.protocol);
     } catch (error) {
-      setMonitoringError(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel ignorar o alerta.",
-      );
+      if (
+        error instanceof Error &&
+        isAlertProtocolSchemaMissingError(error.message) &&
+        applyLocalAlertProtocolUpdate(protocolCode, "silenciado")
+      ) {
+        return;
+      }
+
+      setMonitoringError(getAlertProtocolActionErrorMessage(error));
     } finally {
       setIgnoringProtocol(null);
     }
@@ -1632,7 +1616,7 @@ export function SquadOpsPage() {
           filteredCount={filteredRecords.length}
           itTicketAttentionCount={itTicketAttentionCount}
           itTicketCount={itTicketCount}
-          monitoringAlertCount={monitoringSnapshot?.alerts.length ?? 0}
+          monitoringAlertCount={visibleMonitoringAlertCount}
           onChange={setActiveView}
           routineCount={auditRoutines.length}
         />
@@ -6827,7 +6811,17 @@ function mergeAlertProtocols(
   const protocolsByCode = new Map<string, OperationsAlertProtocolSummary>();
 
   [...incoming, ...current].forEach((protocol) => {
-    if (!protocolsByCode.has(protocol.protocol)) {
+    const existingProtocol = protocolsByCode.get(protocol.protocol);
+
+    if (!existingProtocol) {
+      protocolsByCode.set(protocol.protocol, protocol);
+      return;
+    }
+
+    if (
+      shouldHideProtocolAlert(protocol) &&
+      !shouldHideProtocolAlert(existingProtocol)
+    ) {
       protocolsByCode.set(protocol.protocol, protocol);
     }
   });
@@ -6839,6 +6833,113 @@ function mergeAlertProtocols(
         new Date(first.lastSeenAt).getTime(),
     )
     .slice(0, 80);
+}
+
+function readLocalAlertProtocolOverrides(): OperationsAlertProtocolSummary[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(alertProtocolOverrideStorageKey);
+    const parsedValue = rawValue ? (JSON.parse(rawValue) as unknown) : null;
+
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return parsedValue.filter(isAlertProtocolSummary).slice(0, 80);
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalAlertProtocolOverride(
+  protocol: OperationsAlertProtocolSummary,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const nextProtocols = mergeAlertProtocols(
+    [protocol],
+    readLocalAlertProtocolOverrides(),
+  ).slice(0, 80);
+
+  window.localStorage.setItem(
+    alertProtocolOverrideStorageKey,
+    JSON.stringify(nextProtocols),
+  );
+}
+
+function createLocalAlertProtocolOverride({
+  protocol,
+  status,
+}: {
+  protocol?: OperationsAlertProtocolSummary;
+  status: "monitorando" | "silenciado";
+}) {
+  if (!protocol) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const isIgnored = status === "silenciado";
+
+  return {
+    ...protocol,
+    acknowledgedAt: protocol.acknowledgedAt ?? now,
+    analysis: {
+      action: isIgnored ? "ignorar" : "acompanhar",
+      label: isIgnored ? "Ignorado" : "Lido",
+      reason: isIgnored
+        ? `O protocolo ${protocol.protocol} foi silenciado localmente por Lucas enquanto a migration de alertas esta pendente.`
+        : `Lucas confirmou leitura local do protocolo ${protocol.protocol} enquanto a migration de alertas esta pendente.`,
+      status: isIgnored ? "ignorado" : "em_tratamento",
+    },
+    status,
+    updatedAt: now,
+  } satisfies OperationsAlertProtocolSummary;
+}
+
+function isAlertProtocolSummary(
+  value: unknown,
+): value is OperationsAlertProtocolSummary {
+  const protocol = value as Partial<OperationsAlertProtocolSummary> | null;
+
+  return Boolean(
+    protocol &&
+      typeof protocol === "object" &&
+      typeof protocol.protocol === "string" &&
+      typeof protocol.title === "string" &&
+      typeof protocol.lastSeenAt === "string" &&
+      typeof protocol.status === "string",
+  );
+}
+
+function isAlertProtocolSchemaMissingError(message: string) {
+  const normalizedMessage = normalizeSearchText(message);
+
+  return (
+    normalizedMessage.includes("hub_operations_alert_protocols") &&
+    (normalizedMessage.includes("schema cache") ||
+      normalizedMessage.includes("could not find the table") ||
+      normalizedMessage.includes("tabela") ||
+      normalizedMessage.includes("migration"))
+  );
+}
+
+function getAlertProtocolActionErrorMessage(error: unknown) {
+  const message =
+    error instanceof Error && error.message.trim()
+      ? error.message
+      : "Nao foi possivel atualizar o protocolo do alerta.";
+
+  if (isAlertProtocolSchemaMissingError(message)) {
+    return "Persistencia de protocolos pendente: aplicar a migration 0012_hub_operations_alert_protocols no Supabase real.";
+  }
+
+  return message;
 }
 
 function isProtocolCleared(

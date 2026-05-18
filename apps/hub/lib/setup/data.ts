@@ -112,6 +112,7 @@ type PulseXChannelRow = {
   hub_sectors?: { name: string } | null;
   id: string;
   kind: SetupPulseXChannel["kind"];
+  metadata?: Record<string, unknown> | null;
   name: string;
   sector_id?: string | null;
   status: SetupPulseXChannel["status"];
@@ -182,7 +183,7 @@ export async function loadSetupData(): Promise<SetupData> {
       client
         .from("pulsex_channels")
         .select(
-          "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+          "id,name,description,kind,department_id,sector_id,status,metadata,hub_departments(name),hub_sectors(name)",
         )
         .order("order"),
     ),
@@ -221,7 +222,9 @@ export async function loadSetupData(): Promise<SetupData> {
       "pulsex_channel_members",
       channelMembersResult,
     ).map(mapPulseXChannelMember),
-    channels: readRows<PulseXChannelRow>("pulsex_channels", channelsResult).map(mapPulseXChannel),
+    channels: readRows<PulseXChannelRow>("pulsex_channels", channelsResult)
+      .filter((channel) => !isDepartmentAnnouncementChannel(channel))
+      .map(mapPulseXChannel),
     departmentModules: readRows<DepartmentModuleRow>("hub_department_modules", departmentModulesResult).map((access) => ({
       departmentId: access.department_id,
       moduleId: access.module_id,
@@ -294,15 +297,15 @@ export async function listPulseXChannels() {
   const result = await client
     .from("pulsex_channels")
     .select(
-      "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+      "id,name,description,kind,department_id,sector_id,status,metadata,hub_departments(name),hub_sectors(name)",
     )
     .order("order");
 
   assertQuery("canais PulseX", result);
 
-  return ((result as QueryResult<PulseXChannelRow[]>).data ?? []).map(
-    mapPulseXChannel,
-  );
+  return ((result as QueryResult<PulseXChannelRow[]>).data ?? [])
+    .filter((channel) => !isDepartmentAnnouncementChannel(channel))
+    .map(mapPulseXChannel);
 }
 
 export async function createDepartment(input: CreateDepartmentInput) {
@@ -470,7 +473,7 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
       .from("pulsex_channels")
       .insert(payload)
       .select(
-        "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+        "id,name,description,kind,department_id,sector_id,status,metadata,hub_departments(name),hub_sectors(name)",
       )
       .single(),
   );
@@ -512,7 +515,7 @@ export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
       .update(payload)
       .eq("id", input.id)
       .select(
-        "id,name,description,kind,department_id,sector_id,status,hub_departments(name),hub_sectors(name)",
+        "id,name,description,kind,department_id,sector_id,status,metadata,hub_departments(name),hub_sectors(name)",
       )
       .single(),
   );
@@ -1499,6 +1502,13 @@ function mapPulseXChannelMember(
   };
 }
 
+function isDepartmentAnnouncementChannel(row: PulseXChannelRow) {
+  return (
+    row.kind === "department" &&
+    getRecord(row.metadata).systemRole === "department_announcements"
+  );
+}
+
 function getRelationName(
   relation?: { name: string } | { name: string }[] | null,
 ) {
@@ -1507,6 +1517,12 @@ function getRelationName(
   }
 
   return relation?.name;
+}
+
+function getRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function mapChannelTypeToKind(

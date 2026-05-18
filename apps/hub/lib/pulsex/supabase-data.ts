@@ -64,6 +64,7 @@ type PulseXChannelRow = {
   hub_sectors?: { name: string; slug: string } | null;
   id: string;
   kind: "department" | "sector" | "direct" | "system";
+  metadata?: Record<string, unknown> | null;
   name: string;
   pulsex_channel_members?: ChannelMemberRow[];
   sector_id?: string | null;
@@ -327,7 +328,7 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
     client
       .from("pulsex_channels")
       .select(
-        "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug),pulsex_channel_members(user_id,last_read_at,status)",
+        "id,name,description,kind,department_id,sector_id,status,metadata,hub_departments(name,slug),hub_sectors(name,slug),pulsex_channel_members(user_id,last_read_at,status)",
       )
       .eq("status", "active")
       .order("order"),
@@ -347,7 +348,7 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
       client
         .from("pulsex_channels")
         .select(
-          "id,name,description,kind,department_id,sector_id,status,hub_departments(name,slug),hub_sectors(name,slug)",
+          "id,name,description,kind,department_id,sector_id,status,metadata,hub_departments(name,slug),hub_sectors(name,slug)",
         )
         .eq("status", "active")
         .order("order"),
@@ -355,8 +356,11 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
 
     assertQuery("canais PulseX", fallbackResult);
 
-    const fallbackChannels = ((fallbackResult as QueryResult<PulseXChannelRow[]>)
-      .data ?? []).map(mapChannel);
+    const fallbackChannels = (
+      (fallbackResult as QueryResult<PulseXChannelRow[]>).data ?? []
+    )
+      .filter((row) => !isDepartmentAnnouncementChannel(row))
+      .map(mapChannel);
 
     logPulseXDebug("list channels result", {
       count: fallbackChannels.length,
@@ -366,9 +370,9 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
     return fallbackChannels;
   }
 
-  const channels = ((result as QueryResult<PulseXChannelRow[]>).data ?? []).map(
-    mapChannel,
-  );
+  const channels = ((result as QueryResult<PulseXChannelRow[]>).data ?? [])
+    .filter((row) => !isDepartmentAnnouncementChannel(row))
+    .map(mapChannel);
 
   logPulseXDebug("list channels result", {
     count: channels.length,
@@ -862,6 +866,13 @@ function mapChannel(row: PulseXChannelRow): PulseXChannel {
   };
 }
 
+function isDepartmentAnnouncementChannel(row: PulseXChannelRow) {
+  return (
+    row.kind === "department" &&
+    getRecord(row.metadata).systemRole === "department_announcements"
+  );
+}
+
 function mapChannelAccessType(
   kind: PulseXChannelRow["kind"],
 ): PulseXChannel["accessType"] {
@@ -1071,6 +1082,12 @@ function getPositiveNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
     : undefined;
+}
+
+function getRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function getString(value: unknown) {

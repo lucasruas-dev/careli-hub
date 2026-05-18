@@ -40,10 +40,10 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Nao foi possivel carregar protocolos de alertas.",
+        error: getAlertProtocolApiErrorMessage(
+          error,
+          "Nao foi possivel carregar protocolos de alertas.",
+        ),
       },
       { status: 503 },
     );
@@ -95,10 +95,10 @@ export async function PATCH(request: NextRequest) {
     } catch (error) {
       return Response.json(
         {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Nao foi possivel confirmar leitura do alerta.",
+          error: getAlertProtocolApiErrorMessage(
+            error,
+            "Nao foi possivel confirmar leitura do alerta.",
+          ),
         },
         { status: 503 },
       );
@@ -123,10 +123,10 @@ export async function PATCH(request: NextRequest) {
     } catch (error) {
       return Response.json(
         {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Nao foi possivel ignorar o alerta.",
+          error: getAlertProtocolApiErrorMessage(
+            error,
+            "Nao foi possivel ignorar o alerta.",
+          ),
         },
         { status: 503 },
       );
@@ -166,10 +166,10 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Nao foi possivel registrar a devolutiva tecnica.",
+        error: getAlertProtocolApiErrorMessage(
+          error,
+          "Nao foi possivel registrar a devolutiva tecnica.",
+        ),
       },
       { status: 503 },
     );
@@ -184,5 +184,30 @@ function isAlertFeedbackStatus(
     operationsAlertFeedbackStatuses.includes(
       value as OperationsAlertFeedbackStatus,
     )
+  );
+}
+
+function getAlertProtocolApiErrorMessage(error: unknown, fallback: string) {
+  const message =
+    error instanceof Error && error.message.trim() ? error.message : fallback;
+
+  if (isMissingAlertProtocolSchemaError(message)) {
+    return "Persistencia de protocolos pendente: aplicar a migration 0012_hub_operations_alert_protocols no Supabase real.";
+  }
+
+  return message;
+}
+
+function isMissingAlertProtocolSchemaError(message: string) {
+  const normalizedMessage = message
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return (
+    normalizedMessage.includes("hub_operations_alert_protocols") &&
+    (normalizedMessage.includes("schema cache") ||
+      normalizedMessage.includes("could not find the table") ||
+      normalizedMessage.includes("tabela"))
   );
 }

@@ -862,7 +862,7 @@ function PulseXCreateChannelPanel({
   const [departmentId, setDepartmentId] = useState(activeDepartmentId);
   const [description, setDescription] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
-  const [name, setName] = useState("Comunicados");
+  const [name, setName] = useState("");
   const [sectorId, setSectorId] = useState("");
   const [status, setStatus] = useState<SetupRecordStatus>("active");
   const [type, setType] =
@@ -897,7 +897,7 @@ function PulseXCreateChannelPanel({
     });
     onCreated(channelId);
     setDescription("");
-    setName("Comunicados");
+    setName("");
     setSectorId("");
     setStatus("active");
     setType("department_channel");
@@ -954,17 +954,6 @@ function PulseXCreateChannelPanel({
                     .value as CreatePulseXChannelInput["type"];
 
                   setType(nextType);
-
-                  if (nextType === "department_channel" && !name.trim()) {
-                    setName("Comunicados");
-                  }
-
-                  if (
-                    nextType !== "department_channel" &&
-                    name === "Comunicados"
-                  ) {
-                    setName("");
-                  }
                 }}
                 value={type}
               >

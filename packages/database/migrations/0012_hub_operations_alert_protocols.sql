@@ -18,8 +18,10 @@ as $$
 $$;
 
 revoke all on function public.next_hub_operations_alert_protocol() from public;
-grant execute on function public.next_hub_operations_alert_protocol() to service_role;
-grant usage, select on sequence public.hub_operations_alert_protocol_seq to service_role;
+grant execute on function public.next_hub_operations_alert_protocol()
+to authenticated, service_role;
+grant usage, select on sequence public.hub_operations_alert_protocol_seq
+to authenticated, service_role;
 
 do $$
 begin
@@ -150,7 +152,7 @@ alter table public.hub_operations_alert_feedbacks enable row level security;
 grant select, insert, update on
   public.hub_operations_alert_protocols,
   public.hub_operations_alert_feedbacks
-to authenticated;
+to authenticated, service_role;
 
 drop policy if exists "hubops alert protocols admin read"
   on public.hub_operations_alert_protocols;

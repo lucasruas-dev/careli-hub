@@ -41,7 +41,8 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 | Frente | Status operacional | Pendencia aberta | Proxima acao |
 | --- | --- | --- | --- |
 | Guardian / D4Sign | `AGUARDANDO RELEASEOPS` | Guarda/autorizacao server-side da rota D4Sign ja aparece como ajuste local, mas ainda precisa commit/deploy isolado e validacao com usuario autenticado real. | ReleaseOps deve validar pacote D4Sign sem misturar com PulseX e publicar hotfix se Lucas aprovar. |
-| Chronos V1 | `AGUARDANDO DATAOPS` | V1 local implementada e fallback admin local corrigido para falhar fechado fora de desenvolvimento local com flag explicita; migration `0019_chronos_core.sql` ainda precisa parecer/aplicacao controlada. | Hub DataOps deve avaliar `0019`/RLS e liberar dry-run/homologacao; Hub ReleaseOps deve manter recorte Chronos isolado. |
+| Chronos V1 | `OPERACIONAL COM ATENCAO` | Migration `0019_chronos_core.sql` aplicada e validada em homologacao; producao autorizada por Lucas, mas bloqueada por ausencia de connection string/senha Postgres executavel no pull de envs. | Liberar credencial Supabase/POSTGRES_URL de producao ou login Supabase CLI para DataOps concluir o mesmo pacote em producao. |
+| DataOps migrations 0012/0019/0020 | `OPERACIONAL COM ATENCAO` | Homologacao recebeu `0012`, `0019` e `0020`, com historico Supabase reparado para `0019`/`0020`; producao nao foi alterada. | InfraOps/DataOps precisam disponibilizar acesso de banco de producao sem expor segredo no chat. |
 | PulseX realtime/chamadas | `AGUARDANDO RELEASEOPS` | Palco de compartilhamento de tela, zoom, sinais realtime e painel de informacoes estao em pacote local; ainda falta teste real com dois usuarios/duas maquinas. | Validar WebRTC/realtime fim a fim antes de producao. |
 | PulseX queries | `AGUARDANDO RELEASEOPS` | Query `list direct users` foi ajustada localmente para relacao nomeada Supabase, mas segue fora de producao ate release. | Consolidar em hotfix PulseX ou junto da release de chamadas, conforme risco. |
 | Guardian fila/performance | `OPERACIONAL COM ATENCAO` | `limit=1000` continua custoso e deve permanecer fora da abertura inicial de telas; monitorar payload/tempo da fila. | Manter abertura com limite reduzido e acompanhar gargalos em SupportOps. |
@@ -53,10 +54,10 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 | Modulo | Ambiente | Status operacional | Observacao curta |
 | --- | --- | --- | --- |
 | Guardian | Producao `https://c2x.app.br` + diffs locais | `OPERACIONAL COM ATENCAO` | Producao responde; D4Sign e painel de cliente possuem pacote local pendente. |
-| PulseX | Producao `https://c2x.app.br` + diffs locais | `AGUARDANDO RELEASEOPS` | Direct users, chamada, tela compartilhada e painel de informacoes aguardam release/validacao real. |
-| Chronos | Local + aguardando DataOps | `AGUARDANDO DATAOPS` | V1 local implementada; fallback admin local bloqueado em runtime publicado/production; migration 0019 e escopo RLS ainda pendentes de DataOps. |
+| PulseX | Producao `https://c2x.app.br` + homologacao DB | `AGUARDANDO RELEASEOPS` | Direct users, chamada, tela compartilhada e painel de informacoes aguardam release/validacao real; migration `0020` aplicada apenas em homologacao. |
+| Chronos | Homologacao DB + producao pendente | `OPERACIONAL COM ATENCAO` | V1 publicada como codigo; `0019` aplicada em homologacao; producao ainda sem apply por falta de credencial executavel. |
 | CareDesk | Producao `https://c2x.app.br` | `OPERACIONAL COM ATENCAO` | Rota online; evolucao real ainda depende de tabelas Supabase e integracao Meta/WhatsApp. |
-| SquadOps | Producao `https://c2x.app.br` | `OPERACIONAL COM ATENCAO` | Modulo visual publicado; persistencia real ainda futura. |
+| SquadOps | Producao `https://c2x.app.br` + homologacao DB | `OPERACIONAL COM ATENCAO` | Modulo visual publicado; migration `0012` de alert-protocols validada em homologacao, producao ainda pendente. |
 | ReleaseOps | Local + Vercel | `FINALIZADO` | Caminho oficial do diario ja migrado para `engineering-operations.md`; healthchecks seguem obrigatorios. |
 | SupportOps | Local + producao | `NECESSITA CORRECAO` | Ultima investigacao abriu pendencias D4Sign, PulseX e monitoramento Guardian. |
 
@@ -4792,3 +4793,56 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: migration `0019` nao foi aplicada e precisa de `Hub DataOps` para dry-run/homologacao/apply real somente com autorizacao explicita do Lucas; migration `0020` segue fora do deploy; recortes PulseX/Setup, SquadOps alert-protocols e app layout de homologacao permanecem no worktree para releases separadas; smoke autenticado de Chronos com usuario real depende da sessao do Lucas apos DataOps aplicar schema; Vercel remoto manteve warnings conhecidos de Turbopack/NFT, `npm audit` e envs Postgres/SUPABASE_JWT_SECRET fora de `turbo.json`.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub DataOps` para avaliar/aplicar `0019` em ambiente controlado quando Lucas autorizar; `Chronos Core` para smoke autenticado apos schema real; `Hub ReleaseOps` para seguir separando os demais recortes pendentes.
+
+Registro de diario:
+
+- Assunto: `[Hub RescueOps] Correcao dos recortes devolvidos pelo deploy Chronos`.
+- Nome da squad/agente: `Hub RescueOps`.
+- Protocolo: `RESCUE-20260518-1351-recortes-deploy-chronos`.
+- Data e hora local: 2026-05-18 13:51:46 -03:00.
+- Tipo da alteracao: `HOTFIX` - correcao local dos recortes que permaneceram fora do deploy `1b0bbe8`.
+- Motivo da mudanca: Lucas pediu que RescueOps lesse a devolutiva de ReleaseOps apos o deploy Rescue/Chronos e corrigisse tudo que ainda ficou de fora do pacote publicado.
+- Arquivos/modulos afetados: `apps/hub/app/api/operations/alert-protocols/route.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/layout.tsx`, `apps/hub/app/setup/page.tsx`, `apps/hub/lib/setup/data.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `packages/database/migrations/0020_remove_pulsex_department_announcement_channels.sql` e `turbo.json`.
+- Como foi feito: mantive o recorte local e corrigi os cortes de produto sem executar operacao sensivel. O SquadOps agora mostra mensagem operacional clara quando a persistencia de protocolos ainda depende da migration `0012`, preserva confirmacao/silenciamento local de alertas quando o schema real nao esta aplicado, atualiza o alerta selecionado depois de acoes de protocolo e nao perde overrides locais ao recarregar protocolos remotos. O Setup/PulseX deixou de sugerir automaticamente o canal `Comunicados`, filtra canais sistemicos `department_announcements` nas leituras principal e auxiliar e prepara a migration `0020` para remover o gatilho automatico e arquivar canais antigos. O layout do app identifica `Homo C2X` somente fora de producao explicita, evitando falso titulo de homologacao quando um production deploy vier da branch `homolog`. `turbo.json` recebeu apenas `VERCEL_ENV` como metadado de build permitido pelo lint, sem valor sensivel.
+- Logica utilizada: ReleaseOps publicou o recorte Chronos/Rescue e deixou PulseX/Setup, SquadOps alert-protocols, app layout de homologacao e migration `0020` para releases separadas. RescueOps corrigiu esses recortes localmente, mas manteve `BLOQUEADO` qualquer apply real de migration, Supabase, banco, env, Vercel, dominio, alias ou deploy production.
+- Validacao executada: `npm.cmd --workspace @repo/hub run check-types` passou; `npm.cmd --workspace @repo/hub run lint` passou, com warning conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou, com warning conhecido Turbopack/NFT em SquadOps; `git diff --check` passou; build local servido em `http://localhost:3013` retornou `/setup` 200, `/pulsex` 200, `/squadops` 200 e `/api/operations/alert-protocols` sem sessao 401; Browser local confirmou `/squadops`, `/pulsex` e `/setup` renderizando estado de acesso/carregamento sem erro de console.
+- Pendencias ou riscos conhecidos: nenhum deploy foi executado nesta rodada; nenhuma migration foi aplicada; nenhuma env/chave/Supabase/Vercel/banco/dominio/alias foi alterado. A migration `0020` ainda precisa avaliacao DataOps e aplicacao controlada somente com autorizacao explicita do Lucas; a persistencia real de alert-protocols continua dependente da migration `0012`; smoke autenticado de PulseX/Setup/SquadOps depende de sessao real para validar fluxo completo.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para versionar/publicar este recorte limpo se Lucas autorizar o release; `Hub DataOps` para avaliar migrations `0012` e `0020` sem apply real ate autorizacao explicita.
+
+Registro de diario:
+
+- Assunto: `[Hub RescueOps] Aplicacao DataOps homologacao 0012 0019 0020`.
+- Nome da squad/agente: `Hub RescueOps` atuando como `Hub DataOps`.
+- Protocolo: `RESCUE-20260518-1529-migrations-dataops`.
+- Data e hora local: 2026-05-18 15:29:04 -03:00.
+- Tipo da alteracao: `DATAOPS` - aplicacao controlada de migrations em banco real de homologacao.
+- Motivo da mudanca: Lucas autorizou executar os arquivos `0012`, `0019` e `0020` e criar as novas tabelas nos dois ambientes. RescueOps iniciou bloqueado por envolver banco/migration/producao, saiu do bloqueio apos autorizacao explicita do Lucas para homologacao e producao, e aplicou somente onde havia credencial executavel disponivel sem expor valores sensiveis.
+- Ambiente: homologacao aplicada; producao autorizada, mas nao aplicada por bloqueio tecnico de credencial.
+- Arquivos/modulos afetados: `packages/database/migrations/0012_hub_operations_alert_protocols.sql`, `packages/database/migrations/0019_chronos_core.sql`, `packages/database/migrations/0020_remove_pulsex_department_announcement_channels.sql`, `docs/operations/engineering-operations.md`, SquadOps alert-protocols, Chronos e PulseX/Setup.
+- Como foi feito: li as politicas obrigatorias, auditei os SQLs, corrigi localmente o `0012` para conceder grants tambem a `service_role`, listei apenas nomes de envs Vercel, puxei envs para arquivo temporario dentro de `.codex-tmp` sem exibir valores, validei que homologacao tinha `HOMOLOG_POSTGRES_URL`, apliquei `0012`, `0019` e `0020` em homologacao por runner Postgres temporario com `lock_timeout` e `statement_timeout`, e reparei o historico Supabase CLI para marcar `0019` e `0020` como aplicadas.
+- Evidencias confirmadas: antes da execucao, homologacao ja tinha tabelas de alert-protocols da `0012`, nao tinha `chronos_rooms`/`chronos_meetings`, tinha `pulsex_channels` e tinha historico `supabase_migrations`. A contagem de canais PulseX ativos `department_announcements` era `0`. A tentativa segura de `supabase db push --dry-run` foi descartada porque tentaria incluir a migration antiga `0003_setup_operational_access.sql`, fora do recorte autorizado.
+- Validacao executada: em homologacao, `hub_operations_alert_protocols`, `hub_operations_alert_feedbacks`, `chronos_rooms`, `chronos_meetings` e `chronos_minutes` existem; `chronos_rooms` possui 3 registros seed; canais PulseX ativos `department_announcements` permaneceram `0`; `service_role` tem `select` em alert-protocols; `authenticated` tem `insert` em alert-protocols; `authenticated` tem `execute` em `next_hub_operations_alert_protocol()`; RLS esta ativo em alert-protocols, feedbacks e nas tabelas Chronos principais; historico Supabase contem `0012`, `0019` e `0020`.
+- Acoes bloqueadas: producao nao recebeu `0012`, `0019` nem `0020`, apesar de autorizada, porque `vercel env pull --environment production` trouxe `POSTGRES_URL`, `POSTGRES_URL_NON_POOLING`, `POSTGRES_PRISMA_URL` e `POSTGRES_PASSWORD` vazios; `supabase projects list` tambem ficou bloqueado por ausencia de `SUPABASE_ACCESS_TOKEN`/login Supabase CLI. Nenhum valor sensivel foi registrado.
+- Riscos conhecidos: homologacao foi alterada em banco real; producao segue desalinhada ate DataOps/InfraOps disponibilizar connection string ou login Supabase CLI. O historico CLI de homologacao foi reparado para `0019`/`0020` apos execucao SQL direta, porque `db query --file` nao aceita multiplas instrucoes no CLI atual e `db push` misturaria migration fora de escopo.
+- Pendencias: concluir aplicacao em producao quando houver `POSTGRES_URL`/senha preenchida, `POSTGRES_URL_NON_POOLING` utilizavel ou `SUPABASE_ACCESS_TOKEN`/login Supabase CLI; depois validar endpoints reais de Chronos, SquadOps alert-protocols e PulseX em producao.
+- Status operacional: `OPERACIONAL COM ATENCAO`.
+- Proxima squad recomendada: `Hub InfraOps` para liberar acesso seguro de producao; depois `Hub DataOps`/`Hub RescueOps` para aplicar o mesmo pacote em producao e `Hub ReleaseOps` para healthchecks finais.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Export clientes faturados Lagoa Bonita`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 15:29:09 -03:00.
+- Tipo da alteracao: `EXTRACAO` - exportacao XLSX somente leitura a partir do banco Guardian/C2X.
+- Motivo da mudanca: Lucas solicitou a listagem dos clientes com contratos faturados nos empreendimentos `Lagoa Bonita - LBF`, `Lagoa Bonita - LBR` e `Lagoa Bonita - LBP`, trazendo Nome e CPF em arquivo `.xlsx`.
+- Ambiente: local conectado ao banco Guardian/C2X configurado para o Hub; nenhuma operacao em Supabase, Vercel, env, migration, seed, escrita ou Production deploy foi executada.
+- Arquivos/modulos afetados: gerado `outputs/dataops-lagoa-bonita-clientes-faturados-20260518/clientes_faturados_lagoa_bonita.xlsx` e script de apoio local em `outputs/dataops-lagoa-bonita-clientes-faturados-20260518/export-lagoa-bonita-clientes.mjs`.
+- Como foi feito: usei a mesma base financeira do Guardian (`payments` ligada a `acquisition_requests`, `users`, `enterprise_unities` e `enterprises`), filtrando `payment_status_id in (5, 6, 7)`, `payment_to_delete` ausente ou `0`, e `enterprise.code` em `LBF`, `LBR` e `LBP`; a planilha principal traz `Empreendimento`, `Nome` e `CPF`.
+- Logica utilizada: no padrao operacional atual do Guardian, os status C2X `5:Pago`, `6:Aguardando pagamento` e `7:Atrasado` compoem a carteira faturada/emitida usada nas leituras de contratos e parcelas. A extracao foi agrupada por empreendimento, nome e CPF para evitar repeticao por parcela.
+- Resultado agregado: `60` linhas exportadas; `Lagoa Bonita - LBF` com `17`, `Lagoa Bonita - LBR` com `37`, `Lagoa Bonita - LBP` com `6`; `54` CPFs distintos preenchidos e `4` linhas sem CPF preenchido na origem C2X.
+- Validacao executada: leitura de governanca e diario canonico; revisao do acesso de dados Guardian/C2X; execucao de consulta somente leitura; geracao XLSX via `@oai/artifact-tool`; renderizacao estrutural em memoria sem gravar preview com PII; importacao do XLSX gerado confirmou abas `Clientes` (`A1:C61`) e `Resumo` (`A1:B13`); arquivo final com `6550` bytes.
+- Protecao de dados: Nome e CPF nao foram impressos no chat, logs ou diario. O XLSX gerado contem PII e deve ser tratado como arquivo restrito ao pedido do Lucas.
+- Pendencias ou riscos conhecidos: se a regra desejada for "somente contratos pagos/liquidados", a consulta deve ser refeita apenas com `payment_status_id = 5`; com a leitura atual, `Aguardando pagamento` e `Atrasado` tambem entram por representarem parcelas/faturas emitidas no fluxo Guardian. Quatro linhas dependem de saneamento cadastral no C2X por CPF ausente.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub DataOps` apenas se Lucas solicitar recorte adicional, ajuste de criterio ou saneamento cadastral; sem necessidade de `Hub ReleaseOps` porque nao houve mudanca de produto/deploy.

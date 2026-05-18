@@ -1249,32 +1249,34 @@ export function PulseXWorkspace() {
             onSelect={(channelId) => handleSelectChannel(channelId)}
           />
           {!isCacaAgentOpen && !activeThreadMessage ? (
-            <Tooltip
-              className="absolute bottom-20 right-5 z-20"
-              content="Abrir Caca"
-              placement="left"
+            <div
+              className="absolute z-30"
+              style={{ bottom: "6rem", right: "1.5rem" }}
             >
-              <button
-                aria-label="Abrir Caca"
-                className="grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.20)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                onClick={handleOpenCacaAgent}
-                type="button"
-              >
-                <Image
-                  alt=""
-                  className="size-full object-cover"
-                  height={56}
-                  src="/caca-profile.png"
-                  width={56}
-                />
-                <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
-              </button>
-            </Tooltip>
+              <Tooltip content="Abrir Caca" placement="left">
+                <button
+                  aria-label="Abrir Caca"
+                  className="grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.20)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                  onClick={handleOpenCacaAgent}
+                  type="button"
+                >
+                  <Image
+                    alt=""
+                    className="size-full object-cover"
+                    height={56}
+                    src="/caca-profile.png"
+                    width={56}
+                  />
+                  <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
+                </button>
+              </Tooltip>
+            </div>
           ) : null}
           {isCacaAgentOpen ? (
             <div
-              className="absolute inset-y-0 right-0 z-20 w-[24rem] shadow-2xl"
+              className="absolute inset-y-0 right-0 z-30 shadow-2xl"
               ref={cacaAgentPanelRef}
+              style={{ maxWidth: "calc(100% - 1rem)", width: "24rem" }}
             >
               <CacaAgentPanel
                 channel={activeChannel}
