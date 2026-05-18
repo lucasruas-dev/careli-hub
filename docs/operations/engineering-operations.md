@@ -5136,3 +5136,24 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: a conexao configurada em homologacao aponta para o banco `prod_careli`, conforme resposta do healthcheck; isso desbloqueia validacao real do Guardian, mas deve ser tratado como uso controlado de C2X real em homologacao, sem testes destrutivos ou cargas pesadas. Para ambiente ideal, `Hub InfraOps`/`Hub DataOps` deve avaliar uma replica ou base dedicada de homologacao para Guardian/C2X. `limit=1000` continua proibido automaticamente.
 - Status operacional: `CORRIGIDO`.
 - Proxima squad recomendada: `Guardian Core`/`Hub SupportOps` para smoke visual autenticado do Guardian em homologacao; `Hub InfraOps` para avaliar replica C2X homologacao se Lucas quiser separar totalmente ambientes.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Auditoria DP-0175 aprovacao completa`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 18:11:48 -03:00.
+- Tipo da alteracao: `AUDITORIA DE RELEASE` - reconciliacao de aprovacao completa de homologacao contra producao.
+- Motivo da mudanca: Lucas solicitou publicar em producao o DP-0175 aprovado em homologacao, mas orientou avaliar primeiro o que ja havia sido feito porque esta foi a primeira rodada apos varios ajustes executados por fora do fluxo ideal.
+- Protocolo relacionado: `DP-0175`.
+- Ambiente: Producao `https://c2x.app.br`; branch operacional `homolog`; sem alteracao de env, chaves, migrations ou banco nesta auditoria.
+- Itens avaliados: `DP-0175`, `AT-0244`, `AT-0243`, `AT-0235`, `AT-0234`, `AT-0214`, `AT-0206`, `AT-0197`, `AT-0198`, `AT-0178`, `AT-0173`, `AT-0159` e `AT-0151`.
+- Arquivos/modulos afetados: registro documental em `docs/operations/engineering-operations.md`; recortes ja absorvidos envolveram `ReleaseOps`, `Hub RescueOps`, `DataOps`, `SquadOps`, `PulseX`, `Hub Core` e `Hub UIX`.
+- Como foi feito: cruzei os itens aprovados do DP-0175 com o historico do Engineering Operations, `git status`, `git log` e estado atual do alias de producao no Vercel; em seguida executei healthchecks de producao para confirmar que o ambiente atual continuava operacional.
+- Logica utilizada: nao executei novo deploy porque o recorte funcional do DP-0175 ja havia sido publicado em producao no deployment `dpl_Ec9F7b9rphUWwa1KM3MivpTV4jBB`, a producao atual esta no deployment mais recente `dpl_FCoKxwVN1YWvUKV47iAvdLXtaCzx`, e esse deployment atual inclui os commits posteriores que absorvem o pacote DP-0175 e suas correcoes subsequentes. O risco informado no prompt de homologacao sobre Production DB ainda nao ter recebido `0012`, `0019` e `0020` foi considerado desatualizado, pois registros posteriores indicam aplicacao controlada em producao e validacao DataOps.
+- Commit/deploy de referencia: commit funcional do pacote RescueOps `487363c fix(rescueops): stabilize pending hub recuts`; registro de deploy `8b6c52d docs(releaseops): record rescue recuts deploy`; registro de migrations em producao `4c97318 docs(dataops): record production migrations apply`; deployment de producao vigente `dpl_FCoKxwVN1YWvUKV47iAvdLXtaCzx` aliasado em `https://c2x.app.br`.
+- Validacao executada: `git status --short` retornou worktree limpo antes deste registro; `npx.cmd vercel inspect https://c2x.app.br` confirmou producao `Ready`; healthchecks retornaram `/` 200, `/setup` 200, `/pulsex` 200, `/squadops` 200, `/chronos` 200, `/api/guardian/db/health` 200, `/api/guardian/attendance/queue?limit=20` 200, `/api/operations/alert-protocols` 401 esperado sem sessao, `/api/operations/monitoring` 401 esperado sem sessao, `/api/auth/profile` 401 esperado sem sessao e `/api/chronos/meetings` 401 esperado sem sessao.
+- Validacao complementar: `https://c2x.app.br/login` exibiu titulo `C2X` e nao continha marcador de homologacao; `npx.cmd vercel logs https://c2x.app.br --since 20m --level error` nao encontrou logs de erro.
+- Resultado operacional: aprovacao completa do DP-0175 foi considerada ja absorvida por producao; nao houve novo deploy para evitar churn operacional, sobrescrita desnecessaria de alias e risco de misturar novo estado sem necessidade.
+- Pendencias ou riscos conhecidos: smoke autenticado completo de telas administrativas ainda depende de sessao real do Lucas; ambiente segue com atencao porque historicamente `POSTGRES_URL` canonico esteve vazio e a producao usou variavel alternativa `POSTGRES_Url`; nenhuma migration ou env foi alterada nesta rodada; `limit=1000` continua proibido automaticamente.
+- Status operacional: `OPERACIONAL COM ATENCAO`.
+- Proxima squad recomendada: `Hub ReleaseOps` somente se Lucas quiser forcar um redeploy manual apesar do recorte ja estar em producao; `Hub SupportOps` se surgir divergencia funcional autenticada em producao; `Hub DataOps`/`Hub InfraOps` para normalizar envs Postgres canonicas em janela aprovada.
