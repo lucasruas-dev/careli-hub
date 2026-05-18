@@ -5009,3 +5009,21 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o envio autenticado real ainda depende de sessao valida do usuario e de permissao ativa em `hub_users`; se algum usuario especifico ainda nao conseguir enviar, verificar token/sessao, vinculo do usuario no Hub e resposta da API `/api/hub/it-tickets`.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o ajuste pequeno de UX; `Hub SupportOps` se houver falha autenticada especifica apos deploy.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy Ticket TI Caca`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 17:30:01 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao do recorte SquadOps/Hub Support para feedback de envio do Ticket TI Caca.
+- Motivo da mudanca: Lucas solicitou publicar em homologacao e producao o corte que ajusta o botao de envio do Ticket TI, evitando a percepcao de botao morto quando falta descricao ou anexo.
+- Ambiente: Preview/Homologacao e Producao.
+- Arquivos/modulos afetados: commit `a4afe13 fix(squadops): clarify ticket submission feedback`, `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, este diario, Preview `dpl_5D1ENxjMDpXF4uiCBH8c1Q36gNmP`, Production `dpl_4ngRLegmRnwg2JrZp8Eazov6aZab` e alias `https://c2x.app.br`.
+- Como foi feito: li `AGENTS.md` e este diario; confirmei que o worktree possuia somente o recorte SquadOps/Ticket TI; executei validacoes locais; stageei apenas o componente e o registro operacional; criei commit semantico; publiquei `origin/homolog`; gerei snapshot limpo em `%TEMP%`; publiquei Preview; apos autorizacao explicita do Lucas, publiquei Production pelo mesmo snapshot.
+- Logica utilizada: a validacao do formulario continua impedindo envio sem contexto, mas o clique agora gera feedback operacional claro. O botao fica visualmente orientativo, mantem tooltip contextual e exibe a mensagem `Descreva em poucas palavras ou anexe uma evidencia` quando faltar descricao/anexo. O erro e limpo ao digitar ou anexar evidencia.
+- Validacao local executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em SquadOps; `git diff --check` e `git diff --cached --check` passaram; varredura textual nao encontrou valores sensiveis no recorte, apenas mencoes historicas a nomes de env neste diario; smoke local com `next start` retornou `/squadops` 200, `/api/hub/it-tickets?scope=all` 401 esperado sem sessao e `/api/squadops/operations/structured` 401 esperado sem sessao.
+- Healthcheck de homologacao/Preview: Preview `dpl_5D1ENxjMDpXF4uiCBH8c1Q36gNmP` ficou `READY`; via `vercel curl`, `/` retornou 200, `/squadops` retornou 200, `/api/hub/it-tickets?scope=all` retornou 401 esperado sem sessao e `/api/squadops/operations/structured` retornou 401 esperado sem sessao. `/api/guardian/db/health` retornou 503 no Preview por pendencia conhecida de ambiente Guardian DB/C2X, sem bloquear este recorte SquadOps.
+- Healthcheck de producao: Production `dpl_4ngRLegmRnwg2JrZp8Eazov6aZab` ficou `Ready` e aliasada em `https://c2x.app.br`; `/` retornou 200; `/squadops` retornou 200; `/api/hub/it-tickets?scope=all` retornou 401 esperado sem sessao; `/api/squadops/operations/structured` retornou 401 esperado sem sessao; `/api/guardian/db/health` retornou 200; `npx.cmd vercel logs https://c2x.app.br --since 15m --level error` nao encontrou logs.
+- Pendencias ou riscos conhecidos: smoke visual/autenticado final do envio real depende da sessao do Lucas ou de usuario autorizado; se o envio ainda falhar para um usuario especifico, `Hub SupportOps` deve validar sessao/token, vinculo em `hub_users` e resposta da API `/api/hub/it-tickets`. Preview segue com Guardian DB 503 por ambiente incompleto, pendencia separada de InfraOps.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps` somente se houver falha autenticada no envio real; `Hub InfraOps` para completar Guardian DB/C2X no Preview quando Lucas quiser homologacao com healthcheck Guardian completo.
