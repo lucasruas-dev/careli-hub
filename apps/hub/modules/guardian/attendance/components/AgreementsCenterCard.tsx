@@ -44,6 +44,8 @@ type AgreementsCenterCardProps = {
   unit?: PortfolioUnit;
 };
 
+const neutralPillStyle = "bg-slate-50 text-slate-500 ring-slate-200";
+
 const promiseStatusStyles: Record<PaymentPromiseStatus, string> = {
   "Promessa realizada": "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
   "Aguardando pagamento": "bg-indigo-50 text-indigo-700 ring-indigo-100",
@@ -145,7 +147,7 @@ export function AgreementsCenterCard({
     }
   }
 
-  function addMockRecord(
+  function addCommitmentRecord(
     mode: Exclude<CommitmentDrawerMode, "Editar compromisso">,
     draft?: EditableCommitment,
   ) {
@@ -161,12 +163,12 @@ export function AgreementsCenterCard({
         enterprise: baseUnit.empreendimento,
         unitCode: baseUnit.matricula,
         unitLabel: `${baseUnit.unidadeLote} · ${baseUnit.area}`,
-        relatedInstallments: "04/60, 05/60",
+        relatedInstallments: "-",
         promisedValue: draft?.primaryValue || client.parcelas.ultimaParcela,
         promisedDate: draft?.primaryDate || nowShortDate(),
         contactChannel: "WhatsApp",
         operator,
-        note: draft?.note || "Promessa criada manualmente pelo operador.",
+        note: draft?.note || "-",
         protocol: guardianProtocol(records.length + 101),
         status: "Promessa realizada",
         history: [
@@ -176,7 +178,7 @@ export function AgreementsCenterCard({
             action: "Promessa criada",
             occurredAt: now,
             operator,
-            description: draft?.note || "Registro manual de promessa no Guardian.",
+            description: draft?.note || "-",
           },
         ],
       };
@@ -195,7 +197,7 @@ export function AgreementsCenterCard({
       enterprise: baseUnit.empreendimento,
       unitCode: baseUnit.matricula,
       unitLabel: `${baseUnit.unidadeLote} · ${baseUnit.area}`,
-      includedInstallments: "03/60, 04/60, 05/60",
+      includedInstallments: "-",
       originalValue: client.agreement.originalDebt,
       discount: client.agreement.discount,
       negotiatedValue: draft?.primaryValue || client.agreement.negotiatedValue,
@@ -203,7 +205,7 @@ export function AgreementsCenterCard({
       entryDueDate: draft?.primaryDate || nowShortDate(),
       installmentsCount: client.agreement.installmentsCount,
       installmentValue: firstDue?.amount ?? client.parcelas.ultimaParcela,
-      firstDueDate: firstDue?.dueDate ?? "10/06/2026",
+      firstDueDate: firstDue?.dueDate ?? "-",
       operator,
       note: draft?.note || client.agreement.aiSuggestion.composition,
       protocol: guardianProtocol(records.length + 201),
@@ -501,7 +503,7 @@ export function AgreementsCenterCard({
           client={client}
           mode={drawer.mode}
           onClose={() => setDrawer(null)}
-          onCreate={addMockRecord}
+          onCreate={addCommitmentRecord}
           onSave={updateRecord}
           onStatusChange={updateStatus}
           record={drawer.record}
@@ -633,9 +635,7 @@ function CreateCommitmentForm({
   const unit = client.carteira.unidades[0];
   const isPromise = mode === "Nova promessa";
   const [draft, setDraft] = useState<EditableCommitment>({
-    note: isPromise
-      ? "Promessa registrada manualmente após contato com o cliente."
-      : client.agreement.aiSuggestion.composition,
+    note: isPromise ? "-" : client.agreement.aiSuggestion.composition,
     operator: client.responsavel,
     primaryDate: nowShortDate(),
     primaryValue: isPromise
@@ -655,7 +655,7 @@ function CreateCommitmentForm({
         <ReadonlyField label="Empreendimento" value={unit.empreendimento} />
         <ReadonlyField label="Cod. unidade" value={unit.matricula} />
         <ReadonlyField label="Unidade/lote" value={unit.unidadeLote} />
-        <ReadonlyField label="Parcelas relacionadas" value={isPromise ? "04/60, 05/60" : "03/60, 04/60, 05/60"} />
+        <ReadonlyField label="Parcelas relacionadas" value="-" />
         <EditableField
           label={isPromise ? "Valor prometido" : "Valor negociado"}
           value={draft.primaryValue}
@@ -666,8 +666,8 @@ function CreateCommitmentForm({
           value={draft.primaryDate}
           onChange={(value) => setDraft((current) => ({ ...current, primaryDate: value }))}
         />
-        <ReadonlyField label={isPromise ? "Canal do contato" : "Quantidade de parcelas"} value={isPromise ? "WhatsApp" : `${client.agreement.installmentsCount}`} />
-        <ReadonlyField label={isPromise ? "Status da promessa" : "Status do acordo"} value={isPromise ? "Promessa realizada" : "Em negociação"} />
+        <ReadonlyField label={isPromise ? "Canal do contato" : "Quantidade de parcelas"} value={isPromise ? "-" : `${client.agreement.installmentsCount}`} />
+        <ReadonlyField label={isPromise ? "Status da promessa" : "Status do acordo"} value="-" />
       </div>
 
       <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
@@ -715,7 +715,7 @@ function CommitmentDetail({
         </span>
         {renderStatusBadge(record)}
         {"risk" in record ? (
-          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${agreementRiskStyles[record.risk]}`}>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${agreementRiskStyles[record.risk] ?? neutralPillStyle}`}>
             Risco {record.risk}
           </span>
         ) : null}
@@ -844,7 +844,7 @@ function renderStatusBadge(record: Commitment) {
       : agreementStatusStyles[record.status];
 
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${style}`}>
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${style ?? neutralPillStyle}`}>
       {record.status}
     </span>
   );

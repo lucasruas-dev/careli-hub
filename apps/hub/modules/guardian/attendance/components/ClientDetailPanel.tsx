@@ -35,23 +35,52 @@ import { ExpandableDetailSection } from "@/modules/guardian/attendance/component
 import { InstallmentsCard } from "@/modules/guardian/attendance/components/InstallmentsCard";
 import { OperationalWorkflowCard } from "@/modules/guardian/attendance/components/OperationalWorkflowCard";
 import { OperationalTimeline } from "@/modules/guardian/attendance/components/OperationalTimeline";
-import { agreementRiskStyles, agreementStatusStyles } from "@/modules/guardian/attendance/agreements";
+import {
+  agreementRiskStyles,
+  agreementStatusStyles,
+} from "@/modules/guardian/attendance/agreements";
 import { priorityStyles } from "@/modules/guardian/attendance/priority";
 import { workflowStageStyles } from "@/modules/guardian/attendance/workflow";
-import type { OperationalTimelineEvent, PortfolioUnit, QueueClient } from "@/modules/guardian/attendance/types";
+import type {
+  OperationalTimelineEvent,
+  PortfolioUnit,
+  QueueClient,
+} from "@/modules/guardian/attendance/types";
+
+const EMPTY_FIELD = "-";
+const neutralPillStyle = "bg-slate-50 text-slate-500 ring-slate-200";
 
 type ClientDetailPanelProps = {
   client: QueueClient;
   extraTimelineEvents?: OperationalTimelineEvent[];
-  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onCreateCommitment?: (
+    record: QueueClient["commitments"][number],
+  ) => Promise<void>;
   onCreateTimelineEvent?: (event: OperationalTimelineEvent) => Promise<void>;
   onOpenWhatsApp: () => void;
-  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onUpdateCommitment?: (
+    record: QueueClient["commitments"][number],
+  ) => Promise<void>;
 };
-type WorkspaceTab = "overview" | "client" | "portfolio" | "timeline" | "agreements";
-type UnitSubtab = "summary" | "installments" | "agreements" | "timeline" | "risk" | "documents";
+type WorkspaceTab =
+  | "overview"
+  | "client"
+  | "portfolio"
+  | "timeline"
+  | "agreements";
+type UnitSubtab =
+  | "summary"
+  | "installments"
+  | "agreements"
+  | "timeline"
+  | "risk"
+  | "documents";
 
-const workspaceTabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboard }> = [
+const workspaceTabs: Array<{
+  id: WorkspaceTab;
+  label: string;
+  icon: typeof LayoutDashboard;
+}> = [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
   { id: "client", label: "Cliente", icon: Building2 },
   { id: "portfolio", label: "Carteira", icon: MapPinned },
@@ -59,7 +88,11 @@ const workspaceTabs: Array<{ id: WorkspaceTab; label: string; icon: typeof Layou
   { id: "agreements", label: "Acordos", icon: HandCoins },
 ];
 
-const unitSubtabs: Array<{ id: UnitSubtab; label: string; icon: typeof LayoutDashboard }> = [
+const unitSubtabs: Array<{
+  id: UnitSubtab;
+  label: string;
+  icon: typeof LayoutDashboard;
+}> = [
   { id: "summary", label: "Resumo da unidade", icon: LayoutDashboard },
   { id: "installments", label: "Parcelas", icon: ReceiptText },
   { id: "agreements", label: "Acordos", icon: HandCoins },
@@ -83,14 +116,17 @@ export function ClientDetailPanel({
   const [portfolioMaximized, setPortfolioMaximized] = useState(false);
   const [unitSubtab, setUnitSubtab] = useState<UnitSubtab>("summary");
   const [unitFilterId, setUnitFilterId] = useState<"all" | string>("all");
-  const [agreementFocus, setAgreementFocus] = useState<"default" | "recovery">("default");
+  const [agreementFocus, setAgreementFocus] = useState<"default" | "recovery">(
+    "default",
+  );
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [riskModalOpen, setRiskModalOpen] = useState(false);
 
   const paymentBehavior = buildPaymentBehavior(client);
   const PaymentBehaviorIcon = paymentBehavior.icon;
   const portfolioUnit =
-    client.carteira.unidades.find((unit) => unit.id === portfolioUnitId) ?? client.carteira.unidades[0];
+    client.carteira.unidades.find((unit) => unit.id === portfolioUnitId) ??
+    client.carteira.unidades[0];
   const timelineEvents = [...extraTimelineEvents, ...client.timeline];
 
   function openPortfolio(unitId?: string) {
@@ -106,7 +142,10 @@ export function ClientDetailPanel({
     setActiveTab("agreements");
   }
 
-  function openUnitSubtab(subtab: UnitSubtab, unitId = portfolioUnitId || firstUnitId) {
+  function openUnitSubtab(
+    subtab: UnitSubtab,
+    unitId = portfolioUnitId || firstUnitId,
+  ) {
     setPortfolioUnitId(unitId);
     setUnitSubtab(subtab);
     setActiveTab("portfolio");
@@ -122,7 +161,9 @@ export function ClientDetailPanel({
                 <Building2 className="size-4" aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <h2 className="truncate text-lg font-semibold tracking-normal text-slate-950">{client.nome}</h2>
+                <h2 className="truncate text-lg font-semibold tracking-normal text-slate-950">
+                  {client.nome}
+                </h2>
                 <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs">
                   <span className="truncate text-slate-500">
                     {client.segmento} · {client.carteira.empreendimento}
@@ -131,7 +172,10 @@ export function ClientDetailPanel({
                     <span
                       className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${paymentBehavior.className}`}
                     >
-                      <PaymentBehaviorIcon className="size-3.5" aria-hidden="true" />
+                      <PaymentBehaviorIcon
+                        className="size-3.5"
+                        aria-hidden="true"
+                      />
                       {paymentBehavior.label}
                     </span>
                   </Tooltip>
@@ -151,20 +195,33 @@ export function ClientDetailPanel({
                 <MessageCircle className="size-4" aria-hidden="true" />
               </button>
             </Tooltip>
-            <Tooltip content={`Workflow: ${client.workflow.stage}`} placement="bottom">
-              <span className={`inline-flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset ${workflowStageStyles[client.workflow.stage]}`}>
+            <Tooltip
+              content={`Workflow: ${client.workflow.stage}`}
+              placement="bottom"
+            >
+              <span
+                className={`inline-flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset ${workflowStageStyles[client.workflow.stage] ?? neutralPillStyle}`}
+              >
                 WF
               </span>
             </Tooltip>
-            <Tooltip content={`Prioridade: ${client.prioridade}`} placement="bottom">
-              <span className={`inline-flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset ${priorityStyles[client.prioridade]}`}>
+            <Tooltip
+              content={`Prioridade: ${client.prioridade}`}
+              placement="bottom"
+            >
+              <span
+                className={`inline-flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset ${priorityStyles[client.prioridade] ?? neutralPillStyle}`}
+              >
                 P
               </span>
             </Tooltip>
           </div>
         </div>
 
-        <nav className="mt-3 flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1" aria-label="Workspace operacional">
+        <nav
+          className="mt-3 flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1"
+          aria-label="Workspace operacional"
+        >
           {workspaceTabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -182,7 +239,9 @@ export function ClientDetailPanel({
                       : "bg-white text-slate-600 ring-slate-200/70 hover:bg-slate-50 hover:text-slate-950"
                   }`}
                 >
-                  <Icon className={`size-4 ${active ? "text-[#A07C3B]" : "text-slate-400"}`} />
+                  <Icon
+                    className={`size-4 ${active ? "text-[#A07C3B]" : "text-slate-400"}`}
+                  />
                 </button>
               </Tooltip>
             );
@@ -205,8 +264,10 @@ export function ClientDetailPanel({
             onOpenAi: () => setAiModalOpen(true),
             onOpenPortfolio: openPortfolio,
             onOpenUnitSubtab: openUnitSubtab,
-            onTogglePortfolioCollapsed: () => setPortfolioListCollapsed((current) => !current),
-            onTogglePortfolioMaximized: () => setPortfolioMaximized((current) => !current),
+            onTogglePortfolioCollapsed: () =>
+              setPortfolioListCollapsed((current) => !current),
+            onTogglePortfolioMaximized: () =>
+              setPortfolioMaximized((current) => !current),
             onSetUnitSubtab: setUnitSubtab,
             onUnitFilterChange: setUnitFilterId,
             onUpdateCommitment,
@@ -220,7 +281,11 @@ export function ClientDetailPanel({
         </div>
       </div>
 
-      <AiSuggestionsModal client={client} open={aiModalOpen} onClose={() => setAiModalOpen(false)} />
+      <AiSuggestionsModal
+        client={client}
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+      />
       <RiskAnalysisModal
         client={client}
         open={riskModalOpen}
@@ -235,7 +300,7 @@ function buildPaymentBehavior(client: QueueClient) {
     (installment) =>
       installment.status === "Liquidada" &&
       installment.paymentDateInput &&
-      (installment.dueDateOriginalInput || installment.dueDateInput)
+      (installment.dueDateOriginalInput || installment.dueDateInput),
   );
 
   if (client.c2xInstallmentsLoaded === false) {
@@ -243,7 +308,8 @@ function buildPaymentBehavior(client: QueueClient) {
       className: "bg-slate-50 text-slate-600 ring-slate-200",
       icon: Clock3,
       label: "Calculando histórico",
-      tooltip: "As parcelas reais ainda estao carregando para calcular o comportamento de pagamento.",
+      tooltip:
+        "As parcelas reais ainda estao carregando para calcular o comportamento de pagamento.",
     };
   }
 
@@ -252,15 +318,19 @@ function buildPaymentBehavior(client: QueueClient) {
       className: "bg-slate-50 text-slate-600 ring-slate-200",
       icon: Clock3,
       label: "Sem histórico pago",
-      tooltip: "Ainda nao ha parcelas liquidadas com data de pagamento para calcular a media.",
+      tooltip:
+        "Ainda nao ha parcelas liquidadas com data de pagamento para calcular a media.",
     };
   }
 
   const averageDelay =
     paidInstallments.reduce((total, installment) => {
-      const dueDateInput = installment.dueDateOriginalInput || installment.dueDateInput;
+      const dueDateInput =
+        installment.dueDateOriginalInput || installment.dueDateInput;
 
-      return total + daysBetweenDateOnly(dueDateInput, installment.paymentDateInput);
+      return (
+        total + daysBetweenDateOnly(dueDateInput, installment.paymentDateInput)
+      );
     }, 0) / paidInstallments.length;
   const roundedDays = Math.round(Math.abs(averageDelay));
   const baseTooltip = `${paidInstallments.length} parcela(s) liquidada(s) consideradas no historico.`;
@@ -269,7 +339,8 @@ function buildPaymentBehavior(client: QueueClient) {
     return {
       className: "bg-emerald-50 text-emerald-700 ring-emerald-200",
       icon: ThumbsUp,
-      label: roundedDays === 1 ? "Antecipa 1 dia" : `Antecipa ${roundedDays} dias`,
+      label:
+        roundedDays === 1 ? "Antecipa 1 dia" : `Antecipa ${roundedDays} dias`,
       tooltip: `${baseTooltip} Em media, paga antes do vencimento.`,
     };
   }
@@ -323,7 +394,9 @@ function renderWorkspaceTab(props: {
   onOpenWhatsApp: () => void;
   onGoToAgreements: (focus?: "default" | "recovery") => void;
   onGoToTimeline: () => void;
-  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onCreateCommitment?: (
+    record: QueueClient["commitments"][number],
+  ) => Promise<void>;
   onCreateTimelineEvent?: (event: OperationalTimelineEvent) => Promise<void>;
   onOpenAi: () => void;
   onOpenRiskAnalysis: () => void;
@@ -333,7 +406,9 @@ function renderWorkspaceTab(props: {
   onTogglePortfolioMaximized: () => void;
   onSetUnitSubtab: (subtab: UnitSubtab) => void;
   onUnitFilterChange: (unitId: "all" | string) => void;
-  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onUpdateCommitment?: (
+    record: QueueClient["commitments"][number],
+  ) => Promise<void>;
   portfolioListCollapsed: boolean;
   portfolioMaximized: boolean;
   portfolioUnit?: PortfolioUnit;
@@ -403,8 +478,14 @@ function renderWorkspaceTab(props: {
     case "agreements":
       return (
         <>
-          <UnitScopeControl client={client} selectedUnitId={unitFilterId} onChange={onUnitFilterChange} />
-          {agreementFocus === "recovery" ? <RecoveryFocus client={client} /> : null}
+          <UnitScopeControl
+            client={client}
+            selectedUnitId={unitFilterId}
+            onChange={onUnitFilterChange}
+          />
+          {agreementFocus === "recovery" ? (
+            <RecoveryFocus client={client} />
+          ) : null}
           <AgreementsCenterCard
             key={`${client.id}-${selectedAgreementUnit?.id ?? "all"}`}
             client={client}
@@ -426,11 +507,20 @@ function renderWorkspaceTab(props: {
             onGoToTimeline={onGoToTimeline}
             onOpenWhatsApp={onOpenWhatsApp}
           />
-          <CommitmentOverviewCards client={client} onGoToAgreements={() => onGoToAgreements()} />
-          <RiskCockpit client={client} onOpenRiskAnalysis={onOpenRiskAnalysis} />
+          <CommitmentOverviewCards
+            client={client}
+            onGoToAgreements={() => onGoToAgreements()}
+          />
+          <RiskCockpit
+            client={client}
+            onOpenRiskAnalysis={onOpenRiskAnalysis}
+          />
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <AiExecutiveCard client={client} onOpenAi={onOpenAi} />
-            <PortfolioSummaryCard client={client} onOpenPortfolio={() => onOpenPortfolio()} />
+            <PortfolioSummaryCard
+              client={client}
+              onOpenPortfolio={() => onOpenPortfolio()}
+            />
           </div>
           <OperationalWorkflowCard client={client} />
           <OverviewTimelineAndAlerts client={client} />
@@ -456,13 +546,47 @@ function ExecutiveCockpit({
 }) {
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      <ActionMetric label="Saldo em atraso" value={client.saldoDevedor} onClick={onOpenUnitInstallments} />
-      <ActionMetric label="Score de risco" value={`${client.scoreRisco}/100`} tone="danger" onClick={onOpenRiskAnalysis} />
-      <ActionMetric label="Status do acordo" value={client.agreement.status} tone="gold" onClick={() => onGoToAgreements()} />
-      <ActionMetric label="Valor recuperado" value={client.agreement.recoveredValue} tone="gold" onClick={() => onGoToAgreements("recovery")} />
-      <ActionMetric label="Parcelas vencidas" value={`${client.parcelas.vencidas}`} tone="danger" onClick={onOpenUnitInstallments} />
-      <ActionMetric label="Próxima ação" value={client.workflow.nextAction} onClick={onGoToTimeline} compact />
-      <ActionMetric label="CareDesk" value={client.dados360.telefone} tone="gold" onClick={onOpenWhatsApp} />
+      <ActionMetric
+        label="Saldo em atraso"
+        value={client.saldoDevedor}
+        onClick={onOpenUnitInstallments}
+      />
+      <ActionMetric
+        label="Score de risco"
+        value={`${client.scoreRisco}/100`}
+        tone="danger"
+        onClick={onOpenRiskAnalysis}
+      />
+      <ActionMetric
+        label="Status do acordo"
+        value={client.agreement.status}
+        tone="gold"
+        onClick={() => onGoToAgreements()}
+      />
+      <ActionMetric
+        label="Valor recuperado"
+        value={client.agreement.recoveredValue}
+        tone="gold"
+        onClick={() => onGoToAgreements("recovery")}
+      />
+      <ActionMetric
+        label="Parcelas vencidas"
+        value={`${client.parcelas.vencidas}`}
+        tone="danger"
+        onClick={onOpenUnitInstallments}
+      />
+      <ActionMetric
+        label="Próxima ação"
+        value={client.workflow.nextAction}
+        onClick={onGoToTimeline}
+        compact
+      />
+      <ActionMetric
+        label="CareDesk"
+        value={client.dados360.telefone}
+        tone="gold"
+        onClick={onOpenWhatsApp}
+      />
     </div>
   );
 }
@@ -474,55 +598,132 @@ function CommitmentOverviewCards({
   client: QueueClient;
   onGoToAgreements: () => void;
 }) {
-  const promises = client.commitments.filter((commitment) => commitment.type === "Promessa de pagamento");
-  const agreements = client.commitments.filter((commitment) => commitment.type === "Acordo");
-  const fulfilled = promises.filter((promise) => promise.status === "Cumprida").length;
-  const broken = promises.filter((promise) => promise.status === "Quebrada").length;
+  const promises = client.commitments.filter(
+    (commitment) => commitment.type === "Promessa de pagamento",
+  );
+  const agreements = client.commitments.filter(
+    (commitment) => commitment.type === "Acordo",
+  );
+  const fulfilled = promises.filter(
+    (promise) => promise.status === "Cumprida",
+  ).length;
+  const broken = promises.filter(
+    (promise) => promise.status === "Quebrada",
+  ).length;
   const open = promises.filter((promise) =>
-    ["Promessa realizada", "Aguardando pagamento", "Reagendada"].includes(promise.status)
+    ["Promessa realizada", "Aguardando pagamento", "Reagendada"].includes(
+      promise.status,
+    ),
   ).length;
   const activeAgreements = agreements.filter((agreement) =>
-    ["Ativo", "Formalizando", "Em negociação", "Reativado"].includes(agreement.status)
+    ["Ativo", "Formalizando", "Em negociação", "Reativado"].includes(
+      agreement.status,
+    ),
   ).length;
+  const hasCommitmentData = client.commitments.length > 0;
   const concluded = fulfilled + broken;
-  const fulfillmentRate = concluded > 0 ? Math.round((fulfilled / concluded) * 100) : 0;
-  const promisedValue = promises.reduce((total, promise) => total + parseMoney(promise.promisedValue), 0);
+  const fulfillmentRate =
+    concluded > 0 ? Math.round((fulfilled / concluded) * 100) : 0;
+  const promisedValue = promises.reduce(
+    (total, promise) => total + parseMoney(promise.promisedValue),
+    0,
+  );
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <ActionMetric label="Promessas em aberto" value={`${open}`} tone="gold" onClick={onGoToAgreements} />
-      <ActionMetric label="Promessas cumpridas" value={`${fulfilled}`} onClick={onGoToAgreements} />
-      <ActionMetric label="Promessas quebradas" value={`${broken}`} tone="danger" onClick={onGoToAgreements} />
-      <ActionMetric label="Acordos ativos" value={`${activeAgreements}`} tone="gold" onClick={onGoToAgreements} />
-      <ActionMetric label="Taxa de cumprimento" value={`${fulfillmentRate}%`} onClick={onGoToAgreements} />
-      <ActionMetric label="Valor prometido" value={formatMoney(promisedValue)} tone="gold" onClick={onGoToAgreements} />
-      <ActionMetric label="Valor recuperado" value={client.agreement.recoveredValue} tone="gold" onClick={onGoToAgreements} />
-      <ActionMetric label="Risco de quebra" value={`${client.agreement.aiSuggestion.breakChance}%`} tone="danger" onClick={onGoToAgreements} />
+      <ActionMetric
+        label="Promessas em aberto"
+        value={hasCommitmentData ? `${open}` : EMPTY_FIELD}
+        tone="gold"
+        onClick={onGoToAgreements}
+      />
+      <ActionMetric
+        label="Promessas cumpridas"
+        value={hasCommitmentData ? `${fulfilled}` : EMPTY_FIELD}
+        onClick={onGoToAgreements}
+      />
+      <ActionMetric
+        label="Promessas quebradas"
+        value={hasCommitmentData ? `${broken}` : EMPTY_FIELD}
+        tone="danger"
+        onClick={onGoToAgreements}
+      />
+      <ActionMetric
+        label="Acordos ativos"
+        value={hasCommitmentData ? `${activeAgreements}` : EMPTY_FIELD}
+        tone="gold"
+        onClick={onGoToAgreements}
+      />
+      <ActionMetric
+        label="Taxa de cumprimento"
+        value={hasCommitmentData ? `${fulfillmentRate}%` : EMPTY_FIELD}
+        onClick={onGoToAgreements}
+      />
+      <ActionMetric
+        label="Valor prometido"
+        value={hasCommitmentData ? formatMoney(promisedValue) : EMPTY_FIELD}
+        tone="gold"
+        onClick={onGoToAgreements}
+      />
+      <ActionMetric
+        label="Valor recuperado"
+        value={client.agreement.recoveredValue}
+        tone="gold"
+        onClick={onGoToAgreements}
+      />
+      <ActionMetric
+        label="Risco de quebra"
+        value={
+          client.agreement.risk === EMPTY_FIELD
+            ? EMPTY_FIELD
+            : `${client.agreement.aiSuggestion.breakChance}%`
+        }
+        tone="danger"
+        onClick={onGoToAgreements}
+      />
     </div>
   );
 }
 
-function AiExecutiveCard({ client, onOpenAi }: { client: QueueClient; onOpenAi: () => void }) {
+function AiExecutiveCard({
+  client,
+  onOpenAi,
+}: {
+  client: QueueClient;
+  onOpenAi: () => void;
+}) {
+  const diagnostic =
+    client.agreement.risk === EMPTY_FIELD
+      ? EMPTY_FIELD
+      : `Score ${client.scoreRisco}/100, risco de acordo ${client.agreement.risk} e ${client.agreement.aiSuggestion.breakChance}% de chance de quebra.`;
+
   return (
     <DetailSection title="IA da cobrança" icon={BotMessageSquare} accent>
       <div className="grid gap-3">
         <InfoPanel title="Análise executiva" value={client.aiSuggestion} />
         <InfoPanel
           title="Diagnóstico de risco"
-          value={`Score ${client.scoreRisco}/100, risco de acordo ${client.agreement.risk} e ${client.agreement.aiSuggestion.breakChance}% de chance de quebra.`}
+          value={diagnostic}
         />
-        <InfoPanel title="Recomendação de acordo" value={client.agreement.aiSuggestion.composition} />
-        <InfoPanel title="Alerta operacional" value={client.agreement.aiSuggestion.nextAction} />
+        <InfoPanel
+          title="Recomendação de acordo"
+          value={client.agreement.aiSuggestion.composition}
+        />
+        <InfoPanel
+          title="Alerta operacional"
+          value={client.agreement.aiSuggestion.nextAction}
+        />
       </div>
-      <button
-        type="button"
-        onClick={onOpenAi}
-        title="Abrir sugestões IA"
-        aria-label="Abrir sugestões IA"
-        className="mt-4 inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
-      >
-        <BotMessageSquare className="size-4" aria-hidden="true" />
-      </button>
+      <Tooltip content="Abrir sugestões IA" placement="top">
+        <button
+          type="button"
+          onClick={onOpenAi}
+          aria-label="Abrir sugestões IA"
+          className="mt-4 inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+        >
+          <BotMessageSquare className="size-4" aria-hidden="true" />
+        </button>
+      </Tooltip>
     </DetailSection>
   );
 }
@@ -534,52 +735,105 @@ function RiskCockpit({
   client: QueueClient;
   onOpenRiskAnalysis: () => void;
 }) {
-  const evasionTrend = Math.min(client.scoreRisco + Math.floor(client.atrasoDias / 3), 96);
-  const financialRisk = client.agreement.aiSuggestion.breakChance;
+  const evasionTrend = Math.min(
+    client.scoreRisco + Math.floor(client.atrasoDias / 3),
+    96,
+  );
+  const hasAgreementRisk = client.agreement.risk !== EMPTY_FIELD;
+  const financialRisk = hasAgreementRisk
+    ? `${client.agreement.aiSuggestion.breakChance}%`
+    : EMPTY_FIELD;
 
   return (
     <DetailSection title="Cockpit de risco" icon={ShieldAlert} accent>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <button
-          type="button"
-          onClick={onOpenRiskAnalysis}
-          title="Abrir análise de risco"
-          className="rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+        <Tooltip
+          content="Abrir análise de risco"
+          placement="top"
+          className="w-full"
+          triggerClassName="w-full"
         >
-          <p className="text-xs font-medium text-slate-500">Score de risco</p>
-          <p className="mt-2 text-lg font-semibold text-rose-700">{client.scoreRisco}/100</p>
-          <ArrowRight className="mt-2 size-3.5 text-[#A07C3B]" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          onClick={onOpenRiskAnalysis}
-          title="Abrir análise de risco"
-          className="rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+          <button
+            type="button"
+            onClick={onOpenRiskAnalysis}
+            className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+          >
+            <p className="text-xs font-medium text-slate-500">Score de risco</p>
+            <p className="mt-2 text-lg font-semibold text-rose-700">
+              {client.scoreRisco}/100
+            </p>
+            <ArrowRight
+              className="mt-2 size-3.5 text-[#A07C3B]"
+              aria-hidden="true"
+            />
+          </button>
+        </Tooltip>
+        <Tooltip
+          content="Abrir análise de risco"
+          placement="top"
+          className="w-full"
+          triggerClassName="w-full"
         >
-          <p className="text-xs font-medium text-slate-500">Tendência de evasão</p>
-          <p className="mt-2 text-lg font-semibold text-slate-950">{evasionTrend}%</p>
-          <p className="mt-2 text-xs text-slate-500">Baseada em atraso e resposta operacional</p>
-        </button>
-        <button
-          type="button"
-          onClick={onOpenRiskAnalysis}
-          title="Abrir análise de risco"
-          className="rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+          <button
+            type="button"
+            onClick={onOpenRiskAnalysis}
+            className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+          >
+            <p className="text-xs font-medium text-slate-500">
+              Tendência de evasão
+            </p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">
+              {evasionTrend}%
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Baseada em atraso e resposta operacional
+            </p>
+          </button>
+        </Tooltip>
+        <Tooltip
+          content="Abrir análise de risco"
+          placement="top"
+          className="w-full"
+          triggerClassName="w-full"
         >
-          <p className="text-xs font-medium text-slate-500">Risco operacional</p>
-          <p className="mt-2 text-lg font-semibold text-[#7A5E2C]">{client.workflow.stage}</p>
-          <p className="mt-2 text-xs text-slate-500">Etapa atual do workflow</p>
-        </button>
-        <button
-          type="button"
-          onClick={onOpenRiskAnalysis}
-          title="Abrir análise de risco"
-          className="rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+          <button
+            type="button"
+            onClick={onOpenRiskAnalysis}
+            className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+          >
+            <p className="text-xs font-medium text-slate-500">
+              Risco operacional
+            </p>
+            <p className="mt-2 text-lg font-semibold text-[#7A5E2C]">
+              {client.workflow.stage}
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Etapa atual do workflow
+            </p>
+          </button>
+        </Tooltip>
+        <Tooltip
+          content="Abrir análise de risco"
+          placement="top"
+          className="w-full"
+          triggerClassName="w-full"
         >
-          <p className="text-xs font-medium text-slate-500">Risco financeiro</p>
-          <p className="mt-2 text-lg font-semibold text-rose-700">{financialRisk}%</p>
-          <p className="mt-2 text-xs text-slate-500">Chance de quebra do acordo</p>
-        </button>
+          <button
+            type="button"
+            onClick={onOpenRiskAnalysis}
+            className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+          >
+            <p className="text-xs font-medium text-slate-500">
+              Risco financeiro
+            </p>
+            <p className="mt-2 text-lg font-semibold text-rose-700">
+              {financialRisk}
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Chance de quebra do acordo
+            </p>
+          </button>
+        </Tooltip>
       </div>
 
       <div className="mt-4 grid gap-3 xl:grid-cols-3">
@@ -590,12 +844,17 @@ function RiskCockpit({
         <InfoPanel
           title="Alerta crítico"
           value={
-            client.agreement.aiSuggestion.breakChance >= 50
-              ? "Acordo exige acompanhamento humano próximo e lembrete antes do vencimento."
-              : "Risco sob controle, manter régua preventiva e monitorar compensação."
+            hasAgreementRisk
+              ? client.agreement.aiSuggestion.breakChance >= 50
+                ? "Acordo exige acompanhamento humano próximo e lembrete antes do vencimento."
+                : "Risco sob controle, manter régua preventiva e monitorar compensação."
+              : EMPTY_FIELD
           }
         />
-        <InfoPanel title="Próxima ação recomendada" value={client.workflow.nextAction} />
+        <InfoPanel
+          title="Próxima ação recomendada"
+          value={client.workflow.nextAction}
+        />
       </div>
     </DetailSection>
   );
@@ -616,7 +875,10 @@ function ClientTab({ client }: { client: QueueClient }) {
           { label: "Cônjuge profissão", value: spouse.profissao },
           { label: "Cônjuge documento", value: spouse.documentoIdentidade },
           { label: "Cônjuge nacionalidade", value: spouse.nacionalidade },
-          { label: "Cônjuge naturalidade", value: spouse.naturalidade ?? "Não informado" },
+          {
+            label: "Cônjuge naturalidade",
+            value: spouse.naturalidade ?? EMPTY_FIELD,
+          },
           { label: "Cônjuge endereço", value: spouse.endereco },
         ]
       : [];
@@ -630,60 +892,104 @@ function ClientTab({ client }: { client: QueueClient }) {
         primaryItems={[
           { label: "Nome", value: client.nome },
           { label: "CPF/CNPJ", value: client.cpf },
-          { label: "Razão social", value: client.dados360.razaoSocial ?? "Não informado" },
-          { label: "Nome fantasia", value: client.dados360.nomeFantasia ?? "Não informado" },
+          {
+            label: "Razão social",
+            value: client.dados360.razaoSocial ?? EMPTY_FIELD,
+          },
+          {
+            label: "Nome fantasia",
+            value: client.dados360.nomeFantasia ?? EMPTY_FIELD,
+          },
           { label: "Telefone", value: client.dados360.telefone },
           { label: "E-mail", value: client.dados360.email },
-          { label: "Endereço", value: client.dados360.endereco ?? "Não informado" },
+          {
+            label: "Endereço",
+            value: client.dados360.endereco ?? EMPTY_FIELD,
+          },
         ]}
         expandedItems={[
           { label: "Tipo pessoa", value: client.dados360.tipoPessoa },
-          { label: "RG", value: client.dados360.rg ?? "Não informado" },
-          { label: "Documento", value: client.dados360.documentoIdentidade ?? "Não informado" },
+          { label: "RG", value: client.dados360.rg ?? EMPTY_FIELD },
+          {
+            label: "Documento",
+            value: client.dados360.documentoIdentidade ?? EMPTY_FIELD,
+          },
           { label: "Nascimento", value: client.dados360.nascimento },
           { label: "Idade", value: client.dados360.idade },
           { label: "Sexo", value: client.dados360.sexo },
           { label: "Estado civil", value: client.dados360.estadoCivil },
-          { label: "Regime de bens", value: client.dados360.regimeBens ?? "Não informado" },
+          {
+            label: "Regime de bens",
+            value: client.dados360.regimeBens ?? EMPTY_FIELD,
+          },
           { label: "Profissão", value: client.dados360.profissao },
           { label: "Renda", value: client.dados360.faixaSalarial },
           { label: "Escolaridade", value: client.dados360.escolaridade },
           { label: "Cidade", value: client.dados360.cidade },
-          { label: "CEP", value: client.dados360.cep ?? "Não informado" },
-          { label: "Bairro", value: client.dados360.bairro ?? "Não informado" },
-          { label: "Número", value: client.dados360.numeroEndereco ?? "Não informado" },
-          { label: "Complemento", value: client.dados360.complementoEndereco ?? "Não informado" },
+          { label: "CEP", value: client.dados360.cep ?? EMPTY_FIELD },
+          { label: "Bairro", value: client.dados360.bairro ?? EMPTY_FIELD },
+          {
+            label: "Número",
+            value: client.dados360.numeroEndereco ?? EMPTY_FIELD,
+          },
+          {
+            label: "Complemento",
+            value: client.dados360.complementoEndereco ?? EMPTY_FIELD,
+          },
           { label: "Naturalidade", value: client.dados360.naturalidade },
           { label: "Nacionalidade", value: client.dados360.nacionalidade },
-          { label: "Nome da mãe", value: client.dados360.nomeMae ?? "Não informado" },
+          {
+            label: "Nome da mãe",
+            value: client.dados360.nomeMae ?? EMPTY_FIELD,
+          },
           { label: "Relacionamento", value: client.dados360.relacionamento },
         ]}
         buttonLabel="Ver mais"
         expandedLayout="list"
       />
-      {spouseItems.length ? <SpouseDetailsBlock spouseName={client.dados360.conjuge} items={spouseItems} /> : null}
+      {spouseItems.length ? (
+        <SpouseDetailsBlock
+          spouseName={client.dados360.conjuge}
+          items={spouseItems}
+        />
+      ) : null}
       <DocumentsTab client={client} />
     </>
   );
 }
 
-function SpouseDetailsBlock({ spouseName, items }: { spouseName: string; items: Array<{ label: string; value: string }> }) {
+function SpouseDetailsBlock({
+  spouseName,
+  items,
+}: {
+  spouseName: string;
+  items: Array<{ label: string; value: string }>;
+}) {
   return (
     <details className="group rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-950">Dados do cônjuge</p>
+          <p className="text-sm font-semibold text-slate-950">
+            Dados do cônjuge
+          </p>
           <p className="mt-1 truncate text-xs text-slate-500">{spouseName}</p>
         </div>
         <span className="inline-flex items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C]">
           Expandir
-          <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+          <ChevronDown
+            className="size-3.5 transition-transform group-open:rotate-180"
+            aria-hidden="true"
+          />
         </span>
       </summary>
       <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
-            <InfoPanel key={item.label} title={item.label.replace("Cônjuge ", "")} value={item.value} />
+            <InfoPanel
+              key={item.label}
+              title={item.label.replace("Cônjuge ", "")}
+              value={item.value}
+            />
           ))}
         </div>
       </div>
@@ -698,19 +1004,41 @@ function isKnownValue(value?: string | null) {
 
   return Boolean(
     normalized &&
-      !["-", "nao informado", "não informado", "sem telefone", "sem e-mail", "sem email"].includes(normalized),
+    ![
+      "-",
+      "nao informado",
+      "não informado",
+      "sem telefone",
+      "sem e-mail",
+      "sem email",
+    ].includes(normalized),
   );
 }
 
-function PortfolioSummaryCard({ client, onOpenPortfolio }: { client: QueueClient; onOpenPortfolio: () => void }) {
+function PortfolioSummaryCard({
+  client,
+  onOpenPortfolio,
+}: {
+  client: QueueClient;
+  onOpenPortfolio: () => void;
+}) {
   const mainUnit = client.carteira.unidades[0];
 
   return (
     <DetailSection title="Resumo da carteira" icon={MapPinned}>
       <div className="grid gap-3">
-        <CompactInfo label="Unidades/lotes" value={`${client.carteira.unidades.length}`} />
-        <CompactInfo label="Empreendimento principal" value={mainUnit?.empreendimento ?? "-"} />
-        <CompactInfo label="Valor de tabela" value={mainUnit?.valorTabela ?? "-"} />
+        <CompactInfo
+          label="Unidades/lotes"
+          value={`${client.carteira.unidades.length}`}
+        />
+        <CompactInfo
+          label="Empreendimento principal"
+          value={mainUnit?.empreendimento ?? "-"}
+        />
+        <CompactInfo
+          label="Valor de tabela"
+          value={mainUnit?.valorTabela ?? "-"}
+        />
       </div>
       <button
         type="button"
@@ -744,11 +1072,15 @@ function PortfolioTab({
   maximized: boolean;
   onSelectSubtab: (subtab: UnitSubtab) => void;
   onSelectUnit: (unitId: string) => void;
-  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onCreateCommitment?: (
+    record: QueueClient["commitments"][number],
+  ) => Promise<void>;
   onCreateTimelineEvent?: (event: OperationalTimelineEvent) => Promise<void>;
   onToggleCollapsed: () => void;
   onToggleMaximized: () => void;
-  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onUpdateCommitment?: (
+    record: QueueClient["commitments"][number],
+  ) => Promise<void>;
   selectedSubtab: UnitSubtab;
   selectedUnit?: PortfolioUnit;
   timelineEvents: OperationalTimelineEvent[];
@@ -774,7 +1106,11 @@ function PortfolioTab({
           <button
             type="button"
             onClick={onToggleCollapsed}
-            aria-label={listCollapsed ? "Expandir lista de unidades" : "Recolher lista de unidades"}
+            aria-label={
+              listCollapsed
+                ? "Expandir lista de unidades"
+                : "Recolher lista de unidades"
+            }
             className="mb-3 flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-[#A07C3B] transition-colors hover:bg-[#A07C3B]/5"
           >
             {listCollapsed ? (
@@ -787,7 +1123,11 @@ function PortfolioTab({
           {listCollapsed ? (
             <div className="flex flex-col items-center gap-2">
               {client.carteira.unidades.map((unit, index) => (
-                <Tooltip key={unit.id} content={`${unit.empreendimento} · ${unit.quadra} ${unit.lote}`} placement="right">
+                <Tooltip
+                  key={unit.id}
+                  content={`${unit.empreendimento} · ${unit.quadra} ${unit.lote}`}
+                  placement="right"
+                >
                   <button
                     type="button"
                     onClick={() => {
@@ -808,35 +1148,45 @@ function PortfolioTab({
           ) : (
             <>
               <div className="mb-4">
-                <p className="text-sm font-semibold text-slate-950">Unidades e lotes</p>
-                <p className="mt-1 text-xs text-slate-500">Selecione uma unidade para operar.</p>
+                <p className="text-sm font-semibold text-slate-950">
+                  Unidades e lotes
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Selecione uma unidade para operar.
+                </p>
               </div>
 
               <div className="space-y-3">
-          {client.carteira.unidades.map((unit) => (
-            <button
-              type="button"
-              key={unit.id}
-              onClick={() => {
-                onSelectUnit(unit.id);
-                onSelectSubtab("summary");
-              }}
-              className={`group w-full rounded-xl border p-4 text-left transition-colors ${
-                selectedUnit.id === unit.id
-                  ? "border-[#A07C3B]/30 bg-[#A07C3B]/5"
-                  : "border-slate-200/70 bg-slate-50/60 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
-              }`}
-            >
-              <p className="text-sm font-semibold text-slate-950">{unit.empreendimento}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Quadra {unit.quadra} · Lote {formatLote(unit.lote)} · {unit.area}
-              </p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <CompactInfo label="Cod. unidade" value={unit.matricula} />
-                <CompactInfo label="Valor" value={unit.valorTabela} />
-              </div>
-            </button>
-          ))}
+                {client.carteira.unidades.map((unit) => (
+                  <button
+                    type="button"
+                    key={unit.id}
+                    onClick={() => {
+                      onSelectUnit(unit.id);
+                      onSelectSubtab("summary");
+                    }}
+                    className={`group w-full rounded-xl border p-4 text-left transition-colors ${
+                      selectedUnit.id === unit.id
+                        ? "border-[#A07C3B]/30 bg-[#A07C3B]/5"
+                        : "border-slate-200/70 bg-slate-50/60 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-slate-950">
+                      {unit.empreendimento}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Quadra {unit.quadra} · Lote {formatLote(unit.lote)} ·{" "}
+                      {unit.area}
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <CompactInfo
+                        label="Cod. unidade"
+                        value={unit.matricula}
+                      />
+                      <CompactInfo label="Valor" value={unit.valorTabela} />
+                    </div>
+                  </button>
+                ))}
               </div>
             </>
           )}
@@ -847,40 +1197,68 @@ function PortfolioTab({
         <div className="mb-5 flex flex-col gap-4 border-b border-slate-100 pb-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-semibold text-slate-950">{selectedUnit.empreendimento}</h3>
+              <h3 className="text-lg font-semibold text-slate-950">
+                {selectedUnit.empreendimento}
+              </h3>
               <span className="w-fit rounded-full border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-medium text-[#7A5E2C]">
                 {selectedUnit.statusVenda}
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-500">
-              Quadra {selectedUnit.quadra} · Lote {formatLote(selectedUnit.lote)} · {selectedUnit.area}
+              Quadra {selectedUnit.quadra} · Lote{" "}
+              {formatLote(selectedUnit.lote)} · {selectedUnit.area}
             </p>
           </div>
 
           <div className="flex flex-col gap-3 lg:items-end">
-            <Tooltip content={maximized ? "Sair do modo maximizado" : "Maximizar detalhe"} placement="bottom">
+            <Tooltip
+              content={
+                maximized ? "Sair do modo maximizado" : "Maximizar detalhe"
+              }
+              placement="bottom"
+            >
               <button
                 type="button"
                 onClick={onToggleMaximized}
-                aria-label={maximized ? "Sair do modo maximizado" : "Maximizar detalhe"}
+                aria-label={
+                  maximized ? "Sair do modo maximizado" : "Maximizar detalhe"
+                }
                 className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
               >
                 {maximized ? (
-                  <Minimize2 className="size-4 text-[#A07C3B]" aria-hidden="true" />
+                  <Minimize2
+                    className="size-4 text-[#A07C3B]"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Maximize2 className="size-4 text-[#A07C3B]" aria-hidden="true" />
+                  <Maximize2
+                    className="size-4 text-[#A07C3B]"
+                    aria-hidden="true"
+                  />
                 )}
               </button>
             </Tooltip>
             <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
-              <CompactInfo label="Cod. unidade" value={selectedUnit.matricula} />
-              <CompactInfo label="Valor de tabela" value={selectedUnit.valorTabela} />
-              <CompactInfo label="Imobiliária/corretor" value={selectedUnit.imobiliariaCorretor} />
+              <CompactInfo
+                label="Cod. unidade"
+                value={selectedUnit.matricula}
+              />
+              <CompactInfo
+                label="Valor de tabela"
+                value={selectedUnit.valorTabela}
+              />
+              <CompactInfo
+                label="Imobiliária/corretor"
+                value={selectedUnit.imobiliariaCorretor}
+              />
             </div>
           </div>
         </div>
 
-        <SubtabNav selectedSubtab={selectedSubtab} onSelectSubtab={onSelectSubtab} />
+        <SubtabNav
+          selectedSubtab={selectedSubtab}
+          onSelectSubtab={onSelectSubtab}
+        />
 
         <div className="mt-5">
           {renderUnitSubtab({
@@ -906,7 +1284,10 @@ function SubtabNav({
   selectedSubtab: UnitSubtab;
 }) {
   return (
-    <nav className="flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1" aria-label="Detalhes da unidade">
+    <nav
+      className="flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1"
+      aria-label="Detalhes da unidade"
+    >
       {unitSubtabs.map((tab) => {
         const Icon = tab.icon;
         const active = selectedSubtab === tab.id;
@@ -922,7 +1303,9 @@ function SubtabNav({
                   : "bg-white text-slate-600 ring-slate-200/70 hover:bg-slate-50"
               }`}
             >
-              <Icon className={`size-3.5 ${active ? "text-[#A07C3B]" : "text-slate-400"}`} />
+              <Icon
+                className={`size-3.5 ${active ? "text-[#A07C3B]" : "text-slate-400"}`}
+              />
             </button>
           </Tooltip>
         );
@@ -940,15 +1323,20 @@ function renderUnitSubtab({
   timelineEvents,
   unit,
 }: {
-  client: QueueClient,
-  unit: PortfolioUnit,
-  subtab: UnitSubtab,
+  client: QueueClient;
+  unit: PortfolioUnit;
+  subtab: UnitSubtab;
   timelineEvents: OperationalTimelineEvent[];
-  onCreateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onCreateCommitment?: (
+    record: QueueClient["commitments"][number],
+  ) => Promise<void>;
   onCreateTimelineEvent?: (event: OperationalTimelineEvent) => Promise<void>;
-  onUpdateCommitment?: (record: QueueClient["commitments"][number]) => Promise<void>;
+  onUpdateCommitment?: (
+    record: QueueClient["commitments"][number],
+  ) => Promise<void>;
 }) {
-  if (subtab === "installments") return <InstallmentsCard client={client} unit={unit} />;
+  if (subtab === "installments")
+    return <InstallmentsCard client={client} unit={unit} />;
   if (subtab === "agreements") {
     return (
       <>
@@ -977,7 +1365,8 @@ function renderUnitSubtab({
     );
   }
   if (subtab === "risk") return <RiskTab client={client} unit={unit} />;
-  if (subtab === "documents") return <DocumentsTab client={client} unit={unit} />;
+  if (subtab === "documents")
+    return <DocumentsTab client={client} unit={unit} />;
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <CompactInfo label="Empreendimento" value={unit.empreendimento} />
@@ -987,7 +1376,10 @@ function renderUnitSubtab({
       <CompactInfo label="Área" value={unit.area} />
       <CompactInfo label="Valor de tabela" value={unit.valorTabela} />
       <CompactInfo label="Status do contrato" value={unit.statusVenda} />
-      <CompactInfo label="Imobiliária/corretor" value={unit.imobiliariaCorretor} />
+      <CompactInfo
+        label="Imobiliária/corretor"
+        value={unit.imobiliariaCorretor}
+      />
     </div>
   );
 }
@@ -1013,7 +1405,8 @@ function UnitScopeControl({
           <option value="all">Todas as unidades/lotes</option>
           {client.carteira.unidades.map((unit) => (
             <option key={unit.id} value={unit.id}>
-              {unit.empreendimento} · Quadra {unit.quadra} · Lote {formatLote(unit.lote)}
+              {unit.empreendimento} · Quadra {unit.quadra} · Lote{" "}
+              {formatLote(unit.lote)}
             </option>
           ))}
         </select>
@@ -1022,33 +1415,60 @@ function UnitScopeControl({
   );
 }
 
-function RiskTab({ client, unit }: { client: QueueClient; unit?: PortfolioUnit }) {
+function RiskTab({
+  client,
+  unit,
+}: {
+  client: QueueClient;
+  unit?: PortfolioUnit;
+}) {
   return (
     <>
       <DetailSection title="Risco operacional" icon={Gauge} accent>
         {unit ? <UnitContext unit={unit} label="Unidade em análise" /> : null}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <MetricTile label="Score Guardian" value={`${client.scoreRisco}/100`} tone="danger" />
-          <MetricTile label="Prioridade" value={client.prioridade} tone="danger" />
-          <MetricTile label="Atraso médio" value={`${client.atrasoDias} dias`} />
-          <MetricTile label="Risco do acordo" value={client.agreement.risk} tone="gold" />
+          <MetricTile
+            label="Score Guardian"
+            value={`${client.scoreRisco}/100`}
+            tone="danger"
+          />
+          <MetricTile
+            label="Prioridade"
+            value={client.prioridade}
+            tone="danger"
+          />
+          <MetricTile
+            label="Atraso médio"
+            value={`${client.atrasoDias} dias`}
+          />
+          <MetricTile
+            label="Risco do acordo"
+            value={client.agreement.risk}
+            tone="gold"
+          />
         </div>
         <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${priorityStyles[client.prioridade]}`}>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${priorityStyles[client.prioridade] ?? neutralPillStyle}`}
+            >
               {client.prioridade}
             </span>
-            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${agreementRiskStyles[client.agreement.risk]}`}>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${agreementRiskStyles[client.agreement.risk] ?? neutralPillStyle}`}
+            >
               Acordo {client.agreement.risk}
             </span>
-            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${agreementStatusStyles[client.agreement.status]}`}>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${agreementStatusStyles[client.agreement.status] ?? neutralPillStyle}`}
+            >
               {client.agreement.status}
             </span>
           </div>
           <p className="text-sm leading-6 text-slate-600">
-            O cliente está em {client.workflow.stage.toLowerCase()}, com {client.parcelas.vencidas} parcela(s)
-            vencida(s), saldo em atraso de {client.saldoDevedor} e chance de quebra de acordo de{" "}
-            {client.agreement.aiSuggestion.breakChance}%.
+            {client.agreement.risk === EMPTY_FIELD
+              ? EMPTY_FIELD
+              : `O cliente está em ${client.workflow.stage.toLowerCase()}, com ${client.parcelas.vencidas} parcela(s) vencida(s), saldo em atraso de ${client.saldoDevedor} e chance de quebra de acordo de ${client.agreement.aiSuggestion.breakChance}%.`}
           </p>
         </div>
       </DetailSection>
@@ -1057,8 +1477,16 @@ function RiskTab({ client, unit }: { client: QueueClient; unit?: PortfolioUnit }
   );
 }
 
-function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioUnit }) {
-  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+function DocumentsTab({
+  client,
+  unit,
+}: {
+  client: QueueClient;
+  unit?: PortfolioUnit;
+}) {
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(
+    null,
+  );
   const [documentError, setDocumentError] = useState<string | null>(null);
   const selectedUnit = unit ?? client.carteira.unidades[0];
   const contractCode = selectedUnit?.matricula ?? "Sem cod. unidade";
@@ -1071,7 +1499,10 @@ function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioU
     : "Unidade não selecionada";
   const agreementDocuments = client.commitments
     .filter((commitment) => commitment.type === "Acordo")
-    .filter((agreement) => !selectedUnit || agreement.unitCode === selectedUnit.matricula)
+    .filter(
+      (agreement) =>
+        !selectedUnit || agreement.unitCode === selectedUnit.matricula,
+    )
     .map((agreement) => ({
       detail: agreement.protocol,
       id: agreement.id,
@@ -1086,7 +1517,9 @@ function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioU
       href: contractUrl,
       id: "contract",
       meta: unitLabel,
-      status: contractDocumentId ? selectedUnit?.signedContractStatus ?? "Assinado" : "Não localizado",
+      status: contractDocumentId
+        ? (selectedUnit?.signedContractStatus ?? "Assinado")
+        : "Não localizado",
       title: "Contrato",
       unitBadge: contractCode,
     },
@@ -1136,11 +1569,13 @@ function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioU
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: string }
-          | null;
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
 
-        throw new Error(payload?.error ?? "Nao foi possivel abrir o documento.");
+        throw new Error(
+          payload?.error ?? "Nao foi possivel abrir o documento.",
+        );
       }
 
       const documentBlob = await response.blob();
@@ -1176,25 +1611,36 @@ function DocumentsTab({ client, unit }: { client: QueueClient; unit?: PortfolioU
       ) : null}
       <div className="grid gap-3 md:grid-cols-2">
         {documents.map((document) => (
-          <article key={document.id} className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
+          <article
+            key={document.id}
+            className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-950">{document.title}</p>
+                <p className="truncate text-sm font-semibold text-slate-950">
+                  {document.title}
+                </p>
                 {document.href ? (
                   <button
                     type="button"
                     disabled={openingDocumentId === document.id}
-                    onClick={() => void openGuardianDocument(document.href, document.id)}
+                    onClick={() =>
+                      void openGuardianDocument(document.href, document.id)
+                    }
                     className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-white px-2 py-1 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
                   >
                     <span className="truncate">{document.detail}</span>
                     <ExternalLink className="size-3" aria-hidden="true" />
                   </button>
                 ) : (
-                  <p className="mt-1 truncate text-xs text-slate-500">{document.detail}</p>
+                  <p className="mt-1 truncate text-xs text-slate-500">
+                    {document.detail}
+                  </p>
                 )}
                 {document.meta ? (
-                  <p className="mt-1 truncate text-xs font-medium text-slate-500">{document.meta}</p>
+                  <p className="mt-1 truncate text-xs font-medium text-slate-500">
+                    {document.meta}
+                  </p>
                 ) : null}
               </div>
               <div className="flex shrink-0 flex-col items-end gap-2">
@@ -1245,7 +1691,10 @@ function RiskAnalysisModal({
     return null;
   }
 
-  const evasionTrend = Math.min(client.scoreRisco + Math.floor(client.atrasoDias / 3), 96);
+  const evasionTrend = Math.min(
+    client.scoreRisco + Math.floor(client.atrasoDias / 3),
+    96,
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -1263,7 +1712,9 @@ function RiskAnalysisModal({
               <ShieldAlert className="size-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-950">Análise de risco</h2>
+              <h2 className="text-base font-semibold text-slate-950">
+                Análise de risco
+              </h2>
               <p className="mt-1 text-sm text-slate-500">{client.nome}</p>
             </div>
           </div>
@@ -1279,13 +1730,37 @@ function RiskAnalysisModal({
         </header>
 
         <div className="grid gap-4 p-5 md:grid-cols-2">
-          <MetricTile label="Score de risco" value={`${client.scoreRisco}/100`} tone="danger" />
-          <MetricTile label="Tendência de evasão" value={`${evasionTrend}%`} tone="danger" />
-          <MetricTile label="Risco operacional" value={client.workflow.stage} tone="gold" />
-          <MetricTile label="Risco financeiro" value={`${client.agreement.aiSuggestion.breakChance}%`} tone="danger" />
+          <MetricTile
+            label="Score de risco"
+            value={`${client.scoreRisco}/100`}
+            tone="danger"
+          />
+          <MetricTile
+            label="Tendência de evasão"
+            value={`${evasionTrend}%`}
+            tone="danger"
+          />
+          <MetricTile
+            label="Risco operacional"
+            value={client.workflow.stage}
+            tone="gold"
+          />
+          <MetricTile
+            label="Risco financeiro"
+            value={
+              client.agreement.risk === EMPTY_FIELD
+                ? EMPTY_FIELD
+                : `${client.agreement.aiSuggestion.breakChance}%`
+            }
+            tone="danger"
+          />
           <InfoPanel
             title="Diagnóstico IA"
-            value={`O cliente combina ${client.atrasoDias} dias de atraso, ${client.parcelas.vencidas} parcela(s) vencida(s), acordo ${client.agreement.status.toLowerCase()} e risco ${client.agreement.risk.toLowerCase()}.`}
+            value={
+              client.agreement.risk === EMPTY_FIELD
+                ? EMPTY_FIELD
+                : `O cliente combina ${client.atrasoDias} dias de atraso, ${client.parcelas.vencidas} parcela(s) vencida(s), acordo ${client.agreement.status.toLowerCase()} e risco ${client.agreement.risk.toLowerCase()}.`
+            }
           />
           <InfoPanel
             title="Recomendação"
@@ -1293,11 +1768,11 @@ function RiskAnalysisModal({
           />
           <InfoPanel
             title="Comportamento do cliente"
-            value="Resposta operacional recente, histórico de pagamento e sensibilidade à entrada devem orientar a abordagem consultiva."
+            value={EMPTY_FIELD}
           />
           <InfoPanel
             title="Expansão futura"
-            value="Espaço preparado para séries históricas, modelos preditivos e explicabilidade do score."
+            value={EMPTY_FIELD}
           />
         </div>
       </section>
@@ -1311,21 +1786,47 @@ function OverviewTimelineAndAlerts({ client }: { client: QueueClient }) {
       <DetailSection title="Últimos eventos" icon={Clock3}>
         <div className="space-y-2">
           {client.timeline.slice(0, 4).map((event) => (
-            <div key={event.id} className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2">
+            <div
+              key={event.id}
+              className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2"
+            >
               <div className="flex items-center justify-between gap-3">
-                <p className="truncate text-sm font-semibold text-slate-950">{event.title}</p>
-                <span className="shrink-0 text-xs text-slate-400">{event.occurredAt}</span>
+                <p className="truncate text-sm font-semibold text-slate-950">
+                  {event.title}
+                </p>
+                <span className="shrink-0 text-xs text-slate-400">
+                  {event.occurredAt}
+                </span>
               </div>
-              <p className="mt-1 line-clamp-1 text-xs text-slate-500">{event.description}</p>
+              <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+                {event.description}
+              </p>
             </div>
           ))}
         </div>
       </DetailSection>
       <DetailSection title="Alertas importantes" icon={ShieldAlert} accent>
         <div className="space-y-2">
-          <InfoPanel title="Risco de quebra" value={`${client.agreement.aiSuggestion.breakChance}% de chance prevista no acordo atual.`} />
-          <InfoPanel title="Ação operacional" value={client.workflow.nextAction} />
-          <InfoPanel title="Acordo" value={`${client.agreement.status}, risco ${client.agreement.risk}.`} />
+          <InfoPanel
+            title="Risco de quebra"
+            value={
+              client.agreement.risk === EMPTY_FIELD
+                ? EMPTY_FIELD
+                : `${client.agreement.aiSuggestion.breakChance}% de chance prevista no acordo atual.`
+            }
+          />
+          <InfoPanel
+            title="Ação operacional"
+            value={client.workflow.nextAction}
+          />
+          <InfoPanel
+            title="Acordo"
+            value={
+              client.agreement.risk === EMPTY_FIELD
+                ? EMPTY_FIELD
+                : `${client.agreement.status}, risco ${client.agreement.risk}.`
+            }
+          />
         </div>
       </DetailSection>
     </div>
@@ -1335,9 +1836,20 @@ function OverviewTimelineAndAlerts({ client }: { client: QueueClient }) {
 function RecoveryFocus({ client }: { client: QueueClient }) {
   return (
     <div className="grid gap-3 md:grid-cols-3">
-      <MetricTile label="Valor recuperado" value={client.agreement.recoveredValue} tone="gold" />
-      <MetricTile label="Taxa de recuperação" value={`${client.agreement.recoveryRate}%`} tone="gold" />
-      <MetricTile label="Valor negociado" value={client.agreement.negotiatedValue} />
+      <MetricTile
+        label="Valor recuperado"
+        value={client.agreement.recoveredValue}
+        tone="gold"
+      />
+      <MetricTile
+        label="Taxa de recuperação"
+        value={`${client.agreement.recoveryRate}%`}
+        tone="gold"
+      />
+      <MetricTile
+        label="Valor negociado"
+        value={client.agreement.negotiatedValue}
+      />
     </div>
   );
 }
@@ -1356,7 +1868,12 @@ function ActionMetric({
   value: string;
 }) {
   return (
-    <Tooltip content={`${label}: ${value}`} placement="bottom" className="w-full" triggerClassName="w-full">
+    <Tooltip
+      content={`${label}: ${value}`}
+      placement="bottom"
+      className="w-full"
+      triggerClassName="w-full"
+    >
       <button
         type="button"
         onClick={onClick}
@@ -1370,7 +1887,10 @@ function ActionMetric({
         >
           {value}
         </p>
-        <ArrowRight className="mt-2 size-3.5 text-[#A07C3B] opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+        <ArrowRight
+          className="mt-2 size-3.5 text-[#A07C3B] opacity-0 transition-opacity group-hover:opacity-100"
+          aria-hidden="true"
+        />
       </button>
     </Tooltip>
   );
@@ -1393,7 +1913,9 @@ function MetricTile({
   return (
     <div className={`min-w-0 rounded-xl px-3 py-2.5 ring-1 ${toneClass}`}>
       <p className="truncate text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-lg font-semibold tracking-normal">{value}</p>
+      <p className="mt-1 truncate text-lg font-semibold tracking-normal">
+        {value}
+      </p>
     </div>
   );
 }
@@ -1401,9 +1923,13 @@ function MetricTile({
 function InfoPanel({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-      <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+        {title}
+      </p>
       <Tooltip content={value} placement="bottom">
-        <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">{value}</span>
+        <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">
+          {value}
+        </span>
       </Tooltip>
     </div>
   );
@@ -1413,7 +1939,9 @@ function CompactInfo({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200/70">
       <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">{value}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+        {value}
+      </p>
     </div>
   );
 }
@@ -1423,7 +1951,8 @@ function UnitContext({ label, unit }: { label: string; unit: PortfolioUnit }) {
     <div className="mb-4 rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-2.5">
       <p className="text-xs font-medium text-slate-500">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-slate-950">
-        {unit.empreendimento} · Quadra {unit.quadra} · Lote {formatLote(unit.lote)}
+        {unit.empreendimento} · Quadra {unit.quadra} · Lote{" "}
+        {formatLote(unit.lote)}
       </p>
     </div>
   );
@@ -1434,16 +1963,13 @@ function formatLote(lote: string) {
 }
 
 function parseMoney(value: string) {
-  const normalized = value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const normalized = value
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
   return Number.parseFloat(normalized) || 0;
 }
 
 function formatMoney(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
-
-
-
-
-
-

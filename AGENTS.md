@@ -20,5 +20,6 @@ Regras de trabalho:
 - Valide mudancas relevantes com `check-types`, `lint`, `build` e validacao funcional/visual local quando aplicavel.
 - Trate `docs/codex/engineering-operations.md` como central operacional viva: ao fechar decisao, processo, comportamento, regra, deploy relevante ou commit, atualize o documento no mesmo pacote de trabalho.
 - Para implementacoes, siga o fluxo oficial registrado no diario: o dev do modulo implementa, valida localmente, atualiza o diario e faz handoff direto para `Hub ReleaseOps`; nao existe mais etapa separada de `Hub QA`. `Hub ReleaseOps` organiza commit, deploy, homologacao, producao, healthchecks e rastreabilidade oficial. Nao misture mudancas de outras squads.
+- Ao final de devolutivas tecnicas ou operacionais, inclua uma secao `Conclusao` com explicacao didatica: o que aconteceu, impacto pratico, se precisa de acao agora, quem deve agir e qual o proximo passo.
 
 Ao finalizar uma decisao importante, atualize `docs/codex/engineering-operations.md` com um resumo curto e objetivo.

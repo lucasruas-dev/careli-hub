@@ -113,6 +113,8 @@ type AttendanceQueueOptions = {
   strict?: boolean;
 };
 
+const EMPTY_FIELD = "-";
+
 const activePaymentWhere =
   "(p.payment_to_delete is null or p.payment_to_delete = 0)";
 
@@ -714,7 +716,7 @@ function mapContractRowToSourceClient(
     totalPayments,
   });
   const priority = risk.priority;
-  const enterpriseName = formatName(row.enterprise_name ?? "Empreendimento");
+  const enterpriseName = formatName(row.enterprise_name ?? EMPTY_FIELD);
   const block = normalizeBlock(row.block);
   const lot = normalizeLot(row.lot);
   const unitId = buildUnitId(row.acquisition_request_id, row.unity_id);
@@ -738,18 +740,18 @@ function mapContractRowToSourceClient(
   });
   const clientCity = formatCityState(row.client_city_name, row.client_state_acronym);
   const spouseName = firstFilled(row.spouse_name);
-  const personType = formatName(firstFilled(row.person_type_name) ?? "Fisica");
+  const personType = formatName(firstFilled(row.person_type_name) ?? EMPTY_FIELD);
   const unit: GuardianAttendanceSourceUnit = {
     area: formatArea(row.area),
     empreendimento: enterpriseName,
     id: unitId,
     imobiliariaCorretor: formatPersonName(
-      firstFilled(row.vinculed_name, "Sem vinculo comercial") ?? "Sem vinculo comercial",
+      firstFilled(row.vinculed_name) ?? EMPTY_FIELD,
     ),
     lote: lot,
     matricula: row.unity_name ?? unitCode(row.enterprise_code, block, lot),
     quadra: block,
-    statusVenda: "Contrato ativo",
+    statusVenda: EMPTY_FIELD,
     signedContractDocumentId: firstFilled(row.signed_contract_document_id) ?? undefined,
     signedContractStatus: firstFilled(row.signed_contract_status) ?? undefined,
     signedContractUrl: firstFilled(row.signed_contract_url) ?? undefined,
@@ -759,16 +761,16 @@ function mapContractRowToSourceClient(
 
   return {
     id: `c2x-${requestId}`,
-    nome: formatPersonName(row.client_name ?? "Cliente sem nome"),
+    nome: formatPersonName(row.client_name ?? EMPTY_FIELD),
     cpf: formatDocument(firstFilled(row.cpf, row.cnpj)),
     telefone: formatPhone(firstFilled(row.contact_phone, row.cellphone, row.phone)),
     idade: ageFromBirthDate(row.birthday),
-    sexo: formatName(row.sex_name ?? "Nao informado"),
-    estadoCivil: formatName(row.civil_state_name ?? "Nao informado"),
-    profissao: formatName(row.profession_name ?? "Nao informado"),
-    renda: formatName(row.salary_range_name ?? "Nao informado"),
+    sexo: formatName(row.sex_name ?? EMPTY_FIELD),
+    estadoCivil: formatName(row.civil_state_name ?? EMPTY_FIELD),
+    profissao: formatName(row.profession_name ?? EMPTY_FIELD),
+    renda: formatName(row.salary_range_name ?? EMPTY_FIELD),
     cidade: clientCity,
-    escolaridade: formatName(row.schooling_name ?? "Nao informado"),
+    escolaridade: formatName(row.schooling_name ?? EMPTY_FIELD),
     empreendimento: enterpriseName,
     unidadeLote: unitLabel(block, lot, row.unity_name),
     quadra: block,
@@ -783,7 +785,7 @@ function mapContractRowToSourceClient(
     atrasoDias: maxOverdueDays,
     scoreRisco: risk.score,
     prioridade: priority,
-    responsavel: responsibleFor(requestId),
+    responsavel: EMPTY_FIELD,
     status: statusFor(priority, maxOverdueDays, overduePayments),
     perfilParcela: parcelProfile(row),
     vencimento: formatDateInput(toDate(row.oldest_due_date)),
@@ -795,36 +797,36 @@ function mapContractRowToSourceClient(
     email: row.client_email ?? undefined,
     tipoPessoa: personType,
     documentoIdentidade: formatDocumentLabel(row.document_type_name, row.identification_number),
-    rg: firstFilled(row.rg) ?? "Nao informado",
-    razaoSocial: formatPersonName(firstFilled(row.client_social_name) ?? "Nao informado"),
-    nomeFantasia: formatPersonName(firstFilled(row.client_fantasy_name) ?? "Nao informado"),
+    rg: firstFilled(row.rg) ?? EMPTY_FIELD,
+    razaoSocial: formatPersonName(firstFilled(row.client_social_name) ?? EMPTY_FIELD),
+    nomeFantasia: formatPersonName(firstFilled(row.client_fantasy_name) ?? EMPTY_FIELD),
     endereco: clientAddress,
     cep: formatZipcode(row.client_address_zipcode),
-    bairro: formatName(row.client_address_district ?? "Nao informado"),
-    numeroEndereco: firstFilled(row.client_address_number) ?? "Nao informado",
-    complementoEndereco: firstFilled(row.client_address_complement) ?? "Nao informado",
-    naturalidade: formatName(row.naturalness ?? "Nao informado"),
-    nacionalidade: formatName(row.nacionality ?? "Brasileira"),
-    nomeMae: formatPersonName(firstFilled(row.mother_name) ?? "Nao informado"),
-    regimeBens: formatName(row.property_regime_name ?? "Nao informado"),
-    conjuge: spouseName ? formatPersonName(spouseName) : "Nao informado",
+    bairro: formatName(row.client_address_district ?? EMPTY_FIELD),
+    numeroEndereco: firstFilled(row.client_address_number) ?? EMPTY_FIELD,
+    complementoEndereco: firstFilled(row.client_address_complement) ?? EMPTY_FIELD,
+    naturalidade: formatName(row.naturalness ?? EMPTY_FIELD),
+    nacionalidade: formatName(row.nacionality ?? EMPTY_FIELD),
+    nomeMae: formatPersonName(firstFilled(row.mother_name) ?? EMPTY_FIELD),
+    regimeBens: formatName(row.property_regime_name ?? EMPTY_FIELD),
+    conjuge: spouseName ? formatPersonName(spouseName) : EMPTY_FIELD,
     cpfConjuge: formatDocument(row.spouse_cpf),
     conjugeDados: {
       cpf: formatDocument(row.spouse_cpf),
       documentoIdentidade: formatDocumentLabel(row.spouse_document_type_name, row.spouse_identification_number),
-      email: firstFilled(row.spouse_email) ?? "Nao informado",
+      email: firstFilled(row.spouse_email) ?? EMPTY_FIELD,
       endereco: spouseAddress,
       idade: ageFromBirthDate(row.spouse_birthday),
-      nacionalidade: formatName(row.spouse_nacionality ?? "Nao informado"),
+      nacionalidade: formatName(row.spouse_nacionality ?? EMPTY_FIELD),
       nascimento: formatDate(toDate(row.spouse_birthday)),
-      nome: spouseName ? formatPersonName(spouseName) : "Nao informado",
-      profissao: formatName(row.spouse_profession_name ?? "Nao informado"),
-      naturalidade: "Nao informado",
-      sexo: formatName(row.spouse_sex_name ?? "Nao informado"),
+      nome: spouseName ? formatPersonName(spouseName) : EMPTY_FIELD,
+      profissao: formatName(row.spouse_profession_name ?? EMPTY_FIELD),
+      naturalidade: EMPTY_FIELD,
+      sexo: formatName(row.spouse_sex_name ?? EMPTY_FIELD),
       telefone: formatPhone(row.spouse_cellphone),
     },
     imobiliariaCorretor: formatPersonName(
-      firstFilled(row.vinculed_name, "Sem vinculo comercial") ?? "Sem vinculo comercial",
+      firstFilled(row.vinculed_name) ?? EMPTY_FIELD,
     ),
     matricula: row.unity_name ?? unitCode(row.enterprise_code, block, lot),
     nascimento: formatDate(toDate(row.birthday)),
@@ -974,10 +976,6 @@ function statusFor(
   return "Contato programado";
 }
 
-function responsibleFor(seed: string): "Gustavo Freitas" | "Cinthia Cruz" {
-  return toNumber(seed) % 2 === 0 ? "Gustavo Freitas" : "Cinthia Cruz";
-}
-
 function parcelProfile(row: AttendanceContractRow): GuardianAttendanceSourceClient["perfilParcela"] {
   const signal = toNumber(row.signal_payments);
   const parcel = toNumber(row.parcel_payments);
@@ -1075,7 +1073,7 @@ function formatLotForLabel(value: string) {
 function formatArea(value: number | string | null) {
   const area = toNumber(value);
 
-  return area > 0 ? `${area.toLocaleString("pt-BR")} m2` : "Nao informado";
+  return area > 0 ? `${area.toLocaleString("pt-BR")} m2` : EMPTY_FIELD;
 }
 
 function formatDocument(value: string | null | undefined) {
@@ -1090,14 +1088,14 @@ function formatDocument(value: string | null | undefined) {
     return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
   }
 
-  return rawValue || "Nao informado";
+  return rawValue || EMPTY_FIELD;
 }
 
 function formatDocumentLabel(type: string | null | undefined, number: string | null | undefined) {
   const cleanNumber = firstFilled(number);
 
   if (!cleanNumber) {
-    return "Nao informado";
+    return EMPTY_FIELD;
   }
 
   const cleanType = firstFilled(type);
@@ -1118,7 +1116,7 @@ function formatPhone(value: string | null) {
     return `(${clean.slice(0, 2)}) ${clean.slice(2, 6)}-${clean.slice(6)}`;
   }
 
-  return value?.trim() || "Sem telefone";
+  return value?.trim() || EMPTY_FIELD;
 }
 
 function formatZipcode(value: string | null | undefined) {
@@ -1129,7 +1127,7 @@ function formatZipcode(value: string | null | undefined) {
     return `${digits.slice(0, 2)}.${digits.slice(2, 5)}-${digits.slice(5)}`;
   }
 
-  return rawValue || "Nao informado";
+  return rawValue || EMPTY_FIELD;
 }
 
 function formatCityState(city: string | null | undefined, state: string | null | undefined) {
@@ -1148,7 +1146,7 @@ function formatCityState(city: string | null | undefined, state: string | null |
     return cleanState.trim().toUpperCase();
   }
 
-  return "Nao informado";
+  return EMPTY_FIELD;
 }
 
 function formatAddress({
@@ -1171,7 +1169,7 @@ function formatAddress({
   const street = firstFilled(address);
 
   if (!street) {
-    return "Nao informado";
+    return EMPTY_FIELD;
   }
 
   const districtValue = firstFilled(district);
@@ -1182,8 +1180,8 @@ function formatAddress({
     firstFilled(number),
     firstFilled(complement),
     districtValue ? formatName(districtValue) : null,
-    cityState !== "Nao informado" ? cityState : null,
-    zipcodeValue !== "Nao informado" ? `CEP ${zipcodeValue}` : null,
+    cityState !== EMPTY_FIELD ? cityState : null,
+    zipcodeValue !== EMPTY_FIELD ? `CEP ${zipcodeValue}` : null,
   ].filter(Boolean);
 
   return parts.join(" - ");
@@ -1213,7 +1211,7 @@ function ageFromBirthDate(value: Date | string | null) {
   const birthDate = toDate(value);
 
   if (!birthDate) {
-    return "Nao informado";
+    return EMPTY_FIELD;
   }
 
   const today = new Date();
@@ -1241,7 +1239,7 @@ function formatName(value: string) {
     .replace(/\s+/g, " ");
 
   if (!normalized) {
-    return "Nao informado";
+    return EMPTY_FIELD;
   }
 
   const preserved = new Set(["LBF", "LBP", "LBR", "C2X"]);
@@ -1273,7 +1271,7 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(value: Date | null) {
-  if (!value) return "Nao informado";
+  if (!value) return EMPTY_FIELD;
 
   return `${String(value.getDate()).padStart(2, "0")}/${String(value.getMonth() + 1).padStart(2, "0")}/${value.getFullYear()}`;
 }
@@ -1302,7 +1300,7 @@ function normalizeDateOnly(value: Date | string | null | undefined) {
 function formatDateFromDateOnly(value: string | null | undefined) {
   const clean = normalizeDateOnly(value);
 
-  if (!clean) return "Nao informado";
+  if (!clean) return EMPTY_FIELD;
 
   const [year, month, day] = clean.split("-");
 
@@ -1312,7 +1310,7 @@ function formatDateFromDateOnly(value: string | null | undefined) {
 function formatReferenceFromDateOnly(value: string | null | undefined) {
   const clean = normalizeDateOnly(value);
 
-  if (!clean) return "Sem referencia";
+  if (!clean) return EMPTY_FIELD;
 
   const [year, month] = clean.split("-");
 

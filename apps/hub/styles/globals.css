@@ -54,12 +54,22 @@ button {
   --uix-text-secondary: #dce2ea;
   --uix-text-muted: #a5afbd;
   --uix-border-subtle: rgb(255 255 255 / 0.075);
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: var(--uix-z-sticky);
+  width: var(--uix-shell-sidebar-width);
+  min-height: 100dvh;
+  max-height: 100dvh;
   border-right-color: rgb(16 24 32 / 0.28);
   background:
     linear-gradient(180deg, rgb(42 47 58 / 0.98), rgb(30 35 44 / 0.98)), #232832;
   box-shadow:
     inset -1px 0 0 rgb(255 255 255 / 0.045),
     12px 0 28px rgb(16 24 32 / 0.08);
+}
+
+.careli-hub-shell .uix-sidebar[data-collapsed="true"] {
+  width: var(--uix-shell-sidebar-collapsed-width);
 }
 
 .careli-hub-shell .uix-sidebar__header {

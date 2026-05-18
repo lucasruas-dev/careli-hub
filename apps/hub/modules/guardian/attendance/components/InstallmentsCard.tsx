@@ -614,60 +614,7 @@ function buildInstallments(client: QueueClient, unit?: PortfolioUnit): Installme
     });
   }
 
-  if (isC2xClient(client, unit)) {
-    return [];
-  }
-
-  const total = unit?.id.endsWith("-2") ? 48 : 60;
-  const liquidated = unit?.id.endsWith("-2") ? 18 : 12;
-  const valueNumber = unit
-    ? estimateInstallmentNumber(unit.valorTabela, total)
-    : Number(client.parcelas.ultimaParcela.replace(/\D/g, "")) / 100;
-  const value = formatCurrency(valueNumber);
-
-  return Array.from({ length: total }, (_, index) => {
-    const installmentIndex = index + 1;
-    const isLiquidated = installmentIndex <= liquidated;
-    const isOverdue =
-      !isLiquidated && installmentIndex <= liquidated + client.parcelas.vencidas;
-    const days = isOverdue
-      ? Math.max(client.atrasoDias - (installmentIndex - liquidated - 1) * 8, 1)
-      : 0;
-    const dueDate = getMockDueDate(index);
-
-    return {
-      number: `${String(installmentIndex).padStart(2, "0")}/${String(total).padStart(2, "0")}`,
-      installmentIndex,
-      reference: getMockReference(index),
-      referenceValue: getReferenceValue(index),
-      dueDate,
-      dueDateChanged: false,
-      dueDateInput: toDateInput(dueDate),
-      dueDateOriginal: dueDate,
-      dueDateOriginalInput: toDateInput(dueDate),
-      dueDateOriginalValue: parseBrazilianDate(dueDate),
-      dueDateValue: parseBrazilianDate(dueDate),
-      paymentDate: isLiquidated ? dueDate : "-",
-      paymentDateInput: isLiquidated ? toDateInput(dueDate) : "",
-      paymentDateValue: isLiquidated ? parseBrazilianDate(dueDate) : 0,
-      value,
-      valueNumber,
-      status: isLiquidated ? "Liquidada" : isOverdue ? "Vencida" : "A vencer",
-      overdueDays: `${days} dias`,
-      overdueDaysNumber: days,
-    };
-  });
-}
-
-function isC2xClient(client: QueueClient, unit?: PortfolioUnit) {
-  return (
-    client.id.startsWith("c2x-") ||
-    Boolean(client.c2xAcquisitionRequestId) ||
-    Boolean(unit?.id.startsWith("c2x-unit-")) ||
-    client.carteira.unidades.some((portfolioUnit) =>
-      portfolioUnit.id.startsWith("c2x-unit-")
-    )
-  );
+  return [];
 }
 
 function parseDateInput(date: string) {
@@ -780,11 +727,6 @@ function sumInstallments(installments: Installment[]) {
   return installments.reduce((total, installment) => total + installment.valueNumber, 0);
 }
 
-function estimateInstallmentNumber(valorTabela: string, total: number) {
-  const numericValue = Number(valorTabela.replace(/\D/g, "")) / 100;
-  return numericValue / Math.max(total, 1);
-}
-
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", {
     style: "currency",
@@ -816,16 +758,6 @@ function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function getMockReference(index: number) {
-  const date = new Date(2025, 0 + index, 1);
-  return `${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
-}
-
-function getReferenceValue(index: number) {
-  const date = new Date(2025, 0 + index, 1);
-  return date.getFullYear() * 100 + date.getMonth() + 1;
-}
-
 function parseReference(reference: string) {
   const match = reference.trim().match(/^(\d{2})\/(\d{4})$/);
 
@@ -834,11 +766,6 @@ function parseReference(reference: string) {
   }
 
   return Number(match[2]) * 100 + Number(match[1]);
-}
-
-function getMockDueDate(index: number) {
-  const date = new Date(2025, 0 + index, 10);
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
 function parseBrazilianDate(date: string) {

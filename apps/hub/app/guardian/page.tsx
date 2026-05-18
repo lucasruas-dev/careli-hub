@@ -95,7 +95,7 @@ type EnterprisePerformanceSortKey =
   | "delinquencyRate"
   | "recoveryRate";
 
-const REAL_KPIS_CACHE_KEY = "guardian:overview:real-kpis:v1";
+const MOCK_DASH = "-";
 
 const contracts: ContractRecord[] = guardianMockClients.map((client) => ({
   cliente: client.nome,
@@ -116,37 +116,6 @@ const contracts: ContractRecord[] = guardianMockClients.map((client) => ({
 
 const profileOptions = ["Todos", "Ato", "Sinal", "Parcela"];
 const statusOptions = ["Todos", "Vencidas", "A vencer", "Liquidadas"];
-
-function readCachedRealKpis() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const cached = window.sessionStorage.getItem(REAL_KPIS_CACHE_KEY);
-
-    if (!cached) {
-      return null;
-    }
-
-    const parsed = JSON.parse(cached) as RealGuardianKpis;
-    return typeof parsed.totalPortfolioAmount === "number" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeCachedRealKpis(kpis: RealGuardianKpis) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(REAL_KPIS_CACHE_KEY, JSON.stringify(kpis));
-  } catch {
-    // Cache is only a UX fallback; failing to persist it should not block the dashboard.
-  }
-}
 
 function buildEnterpriseScopedKpis(
   kpis: RealGuardianKpis,
@@ -197,11 +166,6 @@ export default function GuardianPage() {
 
   useEffect(() => {
     let isMounted = true;
-    const cachedKpis = readCachedRealKpis();
-
-    if (cachedKpis) {
-      setRealKpis(cachedKpis);
-    }
 
     async function refreshRealKpis() {
       try {
@@ -228,7 +192,6 @@ export default function GuardianPage() {
         };
 
         setRealKpis(nextKpis);
-        writeCachedRealKpis(nextKpis);
         setRealKpisError(null);
       } catch (error) {
         if (!isMounted) {
@@ -258,12 +221,6 @@ export default function GuardianPage() {
             ?.enterpriseName ?? null;
 
     if (!selectedEnterpriseName) {
-      setEnterpriseDistributionError(null);
-      setEnterpriseDistributionLoading(null);
-      return;
-    }
-
-    if (enterpriseDistributions[selectedEnterpriseName]) {
       setEnterpriseDistributionError(null);
       setEnterpriseDistributionLoading(null);
       return;
@@ -311,7 +268,7 @@ export default function GuardianPage() {
     return () => {
       isMounted = false;
     };
-  }, [enterprise, enterpriseDistributions, realKpis]);
+  }, [enterprise, realKpis]);
 
   const filtered = useMemo(
     () =>
@@ -328,8 +285,6 @@ export default function GuardianPage() {
       }),
     [dateEnd, dateStart, enterprise, profile, status],
   );
-
-  const criticos = filtered.filter((item) => item.risco === "Crítica");
 
   const selectedEnterprisePerformance = useMemo(
     () =>
@@ -389,7 +344,7 @@ export default function GuardianPage() {
         scopedRealKpis.monthlyRecoveryAmount,
         scopedRealKpis.monthlyRecoveryAmount + scopedRealKpis.overduePrincipalAmount,
       )} recuperacao`
-    : "R$ -- em atraso | R$ -- recuperado no mes | -- recuperacao";
+    : MOCK_DASH;
   const financialSummaryTitle = scopedRealKpis
     ? `${isEnterpriseScoped ? `${enterprise} | ` : ""}${fullMoney(scopedRealKpis.overduePrincipalAmount)} em atraso | ${fullMoney(
         scopedRealKpis.monthlyRecoveryAmount,
@@ -528,24 +483,24 @@ export default function GuardianPage() {
         </DashboardPanel>
 
         <DashboardPanel
-          badge="4 críticos"
+          badge={MOCK_DASH}
           expanded={expandedPanels.desk}
           id="desk"
           onToggle={togglePanel}
-          summary="42 tickets | SLA crítico 4 | TMR 4m18s | 11 sem resposta"
+          summary={MOCK_DASH}
           title="CareDesk"
           tone="danger"
         >
           <ActionMetricGrid
             metrics={[
-              ["Tickets abertos", "42", "Abrir CareDesk", "gold"],
-              ["SLA crítico", "4", "Ver críticos", "danger"],
-              ["Tempo médio resposta", "4m18s", "Monitorar SLA", "neutral"],
-              ["Mensagens sem resposta", "11", "Abrir fila", "danger"],
-              ["Operadores online", "5", "Ver operadores", "gold"],
-              ["Aguardando operador", "6", "Distribuir", "danger"],
-              ["Tickets prioritários", "14", "Priorizar", "gold"],
-              ["Encerrados hoje", "23", "Ver produtividade", "neutral"],
+              ["Tickets abertos", MOCK_DASH, "Abrir CareDesk", "gold"],
+              ["SLA crítico", MOCK_DASH, "Ver críticos", "danger"],
+              ["Tempo médio resposta", MOCK_DASH, "Monitorar SLA", "neutral"],
+              ["Mensagens sem resposta", MOCK_DASH, "Abrir fila", "danger"],
+              ["Operadores online", MOCK_DASH, "Ver operadores", "gold"],
+              ["Aguardando operador", MOCK_DASH, "Distribuir", "danger"],
+              ["Tickets prioritários", MOCK_DASH, "Priorizar", "gold"],
+              ["Encerrados hoje", MOCK_DASH, "Ver produtividade", "neutral"],
             ]}
           />
         </DashboardPanel>
@@ -554,18 +509,18 @@ export default function GuardianPage() {
           expanded={expandedPanels.workflow}
           id="workflow"
           onToggle={togglePanel}
-          summary="31 follow-ups vencendo | 8 clientes críticos | risco operacional elevado"
+          summary={MOCK_DASH}
           title="Workflow"
           tone="danger"
         >
           <ActionMetricGrid
             metrics={[
-              ["Workflow operacional", "76%", "Ver etapas", "neutral"],
-              ["Clientes críticos", String(criticos.length), "Abrir fila", "danger"],
-              ["Follow-ups vencendo", "31", "Priorizar", "gold"],
-              ["Promessas hoje", "18", "Abrir promessas", "gold"],
-              ["Risco operacional", "Alto", "Ver diagnóstico", "danger"],
-              ["Tickets prioritários", "14", "Abrir CareDesk", "danger"],
+              ["Workflow operacional", MOCK_DASH, "Ver etapas", "neutral"],
+              ["Clientes críticos", MOCK_DASH, "Abrir fila", "danger"],
+              ["Follow-ups vencendo", MOCK_DASH, "Priorizar", "gold"],
+              ["Promessas hoje", MOCK_DASH, "Abrir promessas", "gold"],
+              ["Risco operacional", MOCK_DASH, "Ver diagnóstico", "danger"],
+              ["Tickets prioritários", MOCK_DASH, "Abrir CareDesk", "danger"],
             ]}
           />
         </DashboardPanel>
@@ -574,7 +529,7 @@ export default function GuardianPage() {
           expanded={expandedPanels.ai}
           id="ai"
           onToggle={togglePanel}
-          summary="Previsão atraso 18% | quebra 12% | evasão 7% | redistribuir 4 tickets"
+          summary={MOCK_DASH}
           title="IA operacional"
           tone="gold"
         >
@@ -585,16 +540,16 @@ export default function GuardianPage() {
           expanded={expandedPanels.operators}
           id="operators"
           onToggle={togglePanel}
-          summary="5 online | 18 tickets em atendimento | Gustavo lidera recuperação"
+          summary={MOCK_DASH}
           title="Operadores"
           tone="neutral"
         >
           <ActionMetricGrid
             metrics={[
-              ["Operadores online", "5", "Ver escala", "gold"],
-              ["Em atendimento", "18", "Abrir CareDesk", "neutral"],
-              ["Sobrecarregados", "1", "Redistribuir", "danger"],
-              ["Produtividade", "+12%", "Ver ranking", "gold"],
+              ["Operadores online", MOCK_DASH, "Ver escala", "gold"],
+              ["Em atendimento", MOCK_DASH, "Abrir CareDesk", "neutral"],
+              ["Sobrecarregados", MOCK_DASH, "Redistribuir", "danger"],
+              ["Produtividade", MOCK_DASH, "Ver ranking", "gold"],
             ]}
           />
         </DashboardPanel>
@@ -703,20 +658,20 @@ function ExecutiveAiBlock() {
     <div className="grid gap-3 lg:grid-cols-3">
       <InsightCard
         title="Gargalo"
-        value="CareDesk em atenção"
-        text="SLA crítico concentrado em tickets sem primeira resposta e operador sobrecarregado."
+        value={MOCK_DASH}
+        text={MOCK_DASH}
         tone="danger"
       />
       <InsightCard
         title="Previsões"
-        value="Atraso 18%"
-        text="Quebra prevista em 12% e risco de evasão em 7% nos clientes críticos."
+        value={MOCK_DASH}
+        text={MOCK_DASH}
         tone="gold"
       />
       <InsightCard
         title="Recomendação IA"
-        value="Redistribuir"
-        text="Mover 4 tickets para operadores com menor carga e priorizar promessas vencendo hoje."
+        value={MOCK_DASH}
+        text={MOCK_DASH}
         tone="neutral"
       />
     </div>

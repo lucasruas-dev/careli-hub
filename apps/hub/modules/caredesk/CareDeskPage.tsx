@@ -42,6 +42,7 @@ import {
   Workflow,
   Wifi,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
@@ -199,7 +200,12 @@ const priorityLabel: Record<CareDeskPriority, string> = {
   low: "Baixa",
   medium: "Media",
 };
-const priorityOptions: CareDeskPriority[] = ["low", "medium", "high", "critical"];
+const priorityOptions: CareDeskPriority[] = [
+  "low",
+  "medium",
+  "high",
+  "critical",
+];
 const setupStatusOptions = ["planned", "active", "paused", "archived"];
 const setupStatusLabel: Record<string, string> = {
   active: "Ativo",
@@ -249,7 +255,9 @@ export function CareDeskPage({
         }
 
         setCareDeskData(nextData);
-        setSelectedTicketId((current) => current || nextData.tickets[0]?.id || "");
+        setSelectedTicketId(
+          (current) => current || nextData.tickets[0]?.id || "",
+        );
       } catch (error) {
         console.error("[caredesk] nao foi possivel carregar a operacao", error);
         if (active) {
@@ -354,22 +362,28 @@ export function CareDeskPage({
                 </p>
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed((current) => !current)}
-              aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-              title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-              className={[
-                "grid h-8 w-8 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]",
-                sidebarCollapsed ? "" : "ml-auto",
-              ].join(" ")}
+            <Tooltip
+              content={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+              placement="right"
             >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen aria-hidden="true" size={16} />
-              ) : (
-                <PanelLeftClose aria-hidden="true" size={16} />
-              )}
-            </button>
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed((current) => !current)}
+                aria-label={
+                  sidebarCollapsed ? "Expandir menu" : "Recolher menu"
+                }
+                className={[
+                  "grid h-8 w-8 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]",
+                  sidebarCollapsed ? "" : "ml-auto",
+                ].join(" ")}
+              >
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen aria-hidden="true" size={16} />
+                ) : (
+                  <PanelLeftClose aria-hidden="true" size={16} />
+                )}
+              </button>
+            </Tooltip>
           </div>
 
           <nav className="space-y-1">
@@ -396,16 +410,23 @@ export function CareDeskPage({
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <MiniStat label="Tickets" value={formatCount(snapshot.total)} />
-                <MiniStat label="SLA" value={formatCount(snapshot.slaCritical)} />
+                <MiniStat
+                  label="SLA"
+                  value={formatCount(snapshot.slaCritical)}
+                />
               </div>
             </div>
           ) : (
-            <div
-              title="Operacao online"
-              className="mt-auto flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-emerald-200"
+            <Tooltip
+              content="Operacao online"
+              placement="right"
+              className="mt-auto w-full"
+              triggerClassName="w-full"
             >
-              <Wifi className="h-4 w-4" />
-            </div>
+              <div className="flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-emerald-200">
+                <Wifi className="h-4 w-4" />
+              </div>
+            </Tooltip>
           )}
         </aside>
 
@@ -488,8 +509,17 @@ function CareDeskTopbar({
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <HeaderMetric icon={Wifi} label="Operacao" value="Online" tone="green" />
-          <HeaderMetric icon={TicketCheck} label="Tickets" value={formatCount(snapshot.total)} />
+          <HeaderMetric
+            icon={Wifi}
+            label="Operacao"
+            value="Online"
+            tone="green"
+          />
+          <HeaderMetric
+            icon={TicketCheck}
+            label="Tickets"
+            value={formatCount(snapshot.total)}
+          />
           <HeaderMetric
             icon={ShieldAlert}
             label="SLA critico"
@@ -622,7 +652,10 @@ function CareDeskTicketQueue({
     [tickets],
   );
   const statuses = useMemo(
-    () => ["Todos", ...unique(tickets.map((ticket) => statusLabel[ticket.status]))],
+    () => [
+      "Todos",
+      ...unique(tickets.map((ticket) => statusLabel[ticket.status])),
+    ],
     [tickets],
   );
 
@@ -714,8 +747,18 @@ function CareDeskTicketQueue({
                 className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
               />
             </label>
-            <FilterSelect label="Fila" value={queue} options={queues} onChange={setQueue} />
-            <FilterSelect label="Status" value={status} options={statuses} onChange={setStatus} />
+            <FilterSelect
+              label="Fila"
+              value={queue}
+              options={queues}
+              onChange={setQueue}
+            />
+            <FilterSelect
+              label="Status"
+              value={status}
+              options={statuses}
+              onChange={setStatus}
+            />
             <FilterSelect
               label="Prioridade"
               value={priority}
@@ -759,10 +802,14 @@ function CareDeskTicketQueue({
           <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
             <div className="flex items-center gap-2">
               <Bot className="size-4 text-[#A07C3B]" aria-hidden="true" />
-              <p className="text-sm font-semibold text-slate-950">Caca na fila</p>
+              <p className="text-sm font-semibold text-slate-950">
+                Caca na fila
+              </p>
             </div>
             <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-700">
-              Priorizar cliente sem resposta, SLA vencendo e tickets sem responsavel. O CareDesk mede a operacao de atendimento, independente do modulo que originou o contato.
+              Priorizar cliente sem resposta, SLA vencendo e tickets sem
+              responsavel. O CareDesk mede a operacao de atendimento,
+              independente do modulo que originou o contato.
             </p>
           </div>
 
@@ -846,7 +893,9 @@ function CareDeskTicketRow({
       </div>
 
       <div>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${slaClasses(ticket)}`}>
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${slaClasses(ticket)}`}
+        >
           {slaLabel(ticket)}
         </span>
         <p className="mt-1 text-xs text-slate-400">
@@ -855,7 +904,10 @@ function CareDeskTicketRow({
       </div>
 
       <div>
-        <StatusPill label={statusLabel[ticket.status]} tone={statusTone(ticket.status)} />
+        <StatusPill
+          label={statusLabel[ticket.status]}
+          tone={statusTone(ticket.status)}
+        />
         <p className="mt-1 truncate text-xs text-slate-500">
           {ticket.lastMessagePreview}
         </p>
@@ -939,7 +991,8 @@ function CareDeskConversationPanel({
   const [feedback, setFeedback] = useState("");
   const [search, setSearch] = useState("");
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
-  const [conversationListCollapsed, setConversationListCollapsed] = useState(false);
+  const [conversationListCollapsed, setConversationListCollapsed] =
+    useState(false);
 
   const conversations = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -957,7 +1010,12 @@ function CareDeskConversationPanel({
         }
 
         if (conversationFilter === "Pendentes") {
-          return ["new", "waiting_operator", "waiting_customer", "pending"].includes(item.status);
+          return [
+            "new",
+            "waiting_operator",
+            "waiting_customer",
+            "pending",
+          ].includes(item.status);
         }
 
         if (conversationFilter === "Encerradas") {
@@ -977,7 +1035,10 @@ function CareDeskConversationPanel({
           ? item.contactId === ticket.contactId
           : item.contactLabel === ticket.contactLabel,
       )
-      .sort((first, second) => dateValue(second.openedAt) - dateValue(first.openedAt));
+      .sort(
+        (first, second) =>
+          dateValue(second.openedAt) - dateValue(first.openedAt),
+      );
   }, [ticket.contactId, ticket.contactLabel, ticket.id, tickets]);
 
   const ticketChecklist = buildTicketChecklist(ticket);
@@ -1057,7 +1118,11 @@ function CareDeskConversationPanel({
           conversationListCollapsed ? "w-14" : "w-72",
         ].join(" ")}
       >
-        <div className={conversationListCollapsed ? "p-2" : "border-b border-slate-100 p-3"}>
+        <div
+          className={
+            conversationListCollapsed ? "p-2" : "border-b border-slate-100 p-3"
+          }
+        >
           {conversationListCollapsed ? (
             <div className="flex flex-col items-center gap-2">
               <button
@@ -1083,7 +1148,9 @@ function CareDeskConversationPanel({
                   <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                     Inbox WhatsApp
                   </p>
-                  <h2 className="mt-1 text-sm font-semibold text-slate-950">Conversas</h2>
+                  <h2 className="mt-1 text-sm font-semibold text-slate-950">
+                    Conversas
+                  </h2>
                 </div>
                 <button
                   type="button"
@@ -1180,12 +1247,14 @@ function CareDeskConversationPanel({
                   {ticketIncomplete ? (
                     <>
                       <span aria-hidden="true">-</span>
-                      <span
-                        title="Ticket criado e aguardando dados operacionais."
-                        className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
+                      <Tooltip
+                        content="Ticket criado e aguardando dados operacionais."
+                        placement="bottom"
                       >
-                        Autoaberto
-                      </span>
+                        <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                          Autoaberto
+                        </span>
+                      </Tooltip>
                     </>
                   ) : null}
                 </div>
@@ -1205,31 +1274,34 @@ function CareDeskConversationPanel({
                 </select>
               </label>
               <div className="flex w-fit items-center gap-1 rounded-lg border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  title="Voltar para o board"
-                  aria-label="Voltar para o board"
-                  className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
-                >
-                  <ArrowLeft className="size-4" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  title="Protocolo"
-                  aria-label="Protocolo"
-                  className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
-                >
-                  <FileText className="size-4" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  title="SLA"
-                  aria-label="SLA"
-                  className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
-                >
-                  <Clock3 className="size-4" aria-hidden="true" />
-                </button>
+                <Tooltip content="Voltar para o board" placement="bottom">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Voltar para o board"
+                    className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+                  >
+                    <ArrowLeft className="size-4" aria-hidden="true" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Protocolo" placement="bottom">
+                  <button
+                    type="button"
+                    aria-label="Protocolo"
+                    className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+                  >
+                    <FileText className="size-4" aria-hidden="true" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="SLA" placement="bottom">
+                  <button
+                    type="button"
+                    aria-label="SLA"
+                    className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+                  >
+                    <Clock3 className="size-4" aria-hidden="true" />
+                  </button>
+                </Tooltip>
               </div>
             </div>
           </div>
@@ -1260,7 +1332,11 @@ function CareDeskConversationPanel({
             {showPreviousTickets ? (
               <div className="space-y-3">
                 {previousTickets.slice(0, 5).map((previousTicket) => (
-                  <TicketSeparator key={previousTicket.id} ticket={previousTicket} compact />
+                  <TicketSeparator
+                    key={previousTicket.id}
+                    ticket={previousTicket}
+                    compact
+                  />
                 ))}
               </div>
             ) : null}
@@ -1298,7 +1374,9 @@ function CareDeskConversationPanel({
 
           <div className="mb-2 flex items-center justify-between gap-2">
             <OperationalToolbar disabled={!operationReady} />
-            {operationReady ? <TicketChecklist items={ticketChecklist} compact /> : null}
+            {operationReady ? (
+              <TicketChecklist items={ticketChecklist} compact />
+            ) : null}
           </div>
 
           <div
@@ -1314,29 +1392,45 @@ function CareDeskConversationPanel({
             >
               <Smile className="size-4" aria-hidden="true" />
             </ComposerIconButton>
-            <ComposerIconButton disabled={!operationReady} label="Anexar arquivo" onClick={() => undefined}>
+            <ComposerIconButton
+              disabled={!operationReady}
+              label="Anexar arquivo"
+              onClick={() => undefined}
+            >
               <Paperclip className="size-4" aria-hidden="true" />
             </ComposerIconButton>
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder={operationReady ? "Escrever mensagem WhatsApp..." : "Ticket incompleto"}
+              placeholder={
+                operationReady
+                  ? "Escrever mensagem WhatsApp..."
+                  : "Ticket incompleto"
+              }
               disabled={!operationReady}
               className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
             />
-            <ComposerIconButton disabled={!operationReady} label="Enviar audio" onClick={() => undefined}>
+            <ComposerIconButton
+              disabled={!operationReady}
+              label="Enviar audio"
+              onClick={() => undefined}
+            >
               <Mic className="size-4" aria-hidden="true" />
             </ComposerIconButton>
-            <button
-              type="button"
-              disabled={sending || !draft.trim() || !operationReady}
-              onClick={sendMessage}
-              title={operationReady ? "Enviar mensagem" : blockedTooltip}
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
-              aria-label={operationReady ? "Enviar mensagem" : blockedTooltip}
+            <Tooltip
+              content={operationReady ? "Enviar mensagem" : blockedTooltip}
+              placement="top"
             >
-              <Send className="size-4" aria-hidden="true" />
-            </button>
+              <button
+                type="button"
+                disabled={sending || !draft.trim() || !operationReady}
+                onClick={sendMessage}
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                aria-label={operationReady ? "Enviar mensagem" : blockedTooltip}
+              >
+                <Send className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
           </div>
         </footer>
       </main>
@@ -1355,34 +1449,49 @@ function CareDeskConversationPanel({
                 {ticket.contactPhone ?? "Sem telefone"}
               </p>
             </div>
-            <MessageSquareText className="size-4 text-slate-300" aria-hidden="true" />
+            <MessageSquareText
+              className="size-4 text-slate-300"
+              aria-hidden="true"
+            />
           </div>
           <div className="mt-3 grid grid-cols-4 gap-1 rounded-lg bg-slate-100/70 p-1">
-            {[FileText, CalendarClock, ClipboardList, Clock3].map((Icon, index) => (
-              <button
-                key={index}
-                type="button"
-                className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-[#7A5E2C]"
-                aria-label="Atalho de contexto"
-                title="Atalho de contexto"
-              >
-                <Icon className="size-4" aria-hidden="true" />
-              </button>
-            ))}
+            {[FileText, CalendarClock, ClipboardList, Clock3].map(
+              (Icon, index) => (
+                <Tooltip
+                  content="Atalho de contexto"
+                  key={index}
+                  placement="bottom"
+                >
+                  <button
+                    type="button"
+                    className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-[#7A5E2C]"
+                    aria-label="Atalho de contexto"
+                  >
+                    <Icon className="size-4" aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              ),
+            )}
           </div>
         </div>
 
         <div className="min-h-0 space-y-2 overflow-y-auto p-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
           <ContextItem label="Cliente" value={ticket.contactLabel} />
           <ContextItem label="Telefone" value={ticket.contactPhone ?? "-"} />
-          <ContextItem label="Documento" value={ticket.contactDocument ?? "-"} />
+          <ContextItem
+            label="Documento"
+            value={ticket.contactDocument ?? "-"}
+          />
           <ContextItem label="E-mail" value={ticket.contactEmail ?? "-"} />
           <ContextItem label="Fila" value={ticket.queueLabel} />
           <ContextItem label="Operador" value={ticket.assignedToLabel} />
           <ContextItem label="Protocolo" value={ticket.protocol} />
           <ContextItem label="Perfil" value={ticket.profileLabel} />
           <ContextItem label="SLA" value={slaLabel(ticket)} />
-          <ContextItem label="Prioridade" value={priorityLabel[ticket.priority]} />
+          <ContextItem
+            label="Prioridade"
+            value={priorityLabel[ticket.priority]}
+          />
           <ContextItem label="Origem" value={ticket.sourceLabel} />
           <ContextItem label="Canal" value={ticket.channelLabel} />
 
@@ -1429,9 +1538,12 @@ function TicketSeparator({
         </div>
         {!compact ? (
           <>
-            <p className="mt-2 text-sm font-semibold text-slate-950">{ticket.profileLabel}</p>
+            <p className="mt-2 text-sm font-semibold text-slate-950">
+              {ticket.profileLabel}
+            </p>
             <p className="mt-1 text-xs font-medium text-slate-500">
-              {formatDateTime(ticket.openedAt)} - {ticket.queueLabel} - {ticket.channelLabel}
+              {formatDateTime(ticket.openedAt)} - {ticket.queueLabel} -{" "}
+              {ticket.channelLabel}
             </p>
           </>
         ) : (
@@ -1456,16 +1568,16 @@ function OperationalToolbar({ disabled }: { disabled: boolean }) {
   return (
     <div className="flex items-center gap-1">
       {tools.map((tool) => (
-        <button
-          key={tool.label}
-          type="button"
-          disabled={disabled}
-          title={tool.label}
-          aria-label={tool.label}
-          className="flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-400 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          <tool.icon className="size-4" aria-hidden="true" />
-        </button>
+        <Tooltip content={tool.label} key={tool.label} placement="top">
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label={tool.label}
+            className="flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-400 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <tool.icon className="size-4" aria-hidden="true" />
+          </button>
+        </Tooltip>
       ))}
     </div>
   );
@@ -1483,16 +1595,17 @@ function ComposerIconButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
-    >
-      {children}
-    </button>
+    <Tooltip content={label} placement="top">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        aria-label={label}
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -1546,8 +1659,18 @@ function BroadcastView({
             title="Base apta"
             value={formatCount(snapshot.contacts)}
           />
-          <SignalCard icon={Clock3} title="Janela" value="09h-18h" tone="blue" />
-          <SignalCard icon={CheckCircle2} title="Aprovacao" value="Obrigatoria" tone="green" />
+          <SignalCard
+            icon={Clock3}
+            title="Janela"
+            value="09h-18h"
+            tone="blue"
+          />
+          <SignalCard
+            icon={CheckCircle2}
+            title="Aprovacao"
+            value="Obrigatoria"
+            tone="green"
+          />
         </div>
 
         <div className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
@@ -1568,7 +1691,9 @@ function BroadcastView({
                   <div>
                     <p className="font-semibold">{campaign.name}</p>
                     <p className="text-xs text-[#63708a]">
-                      {campaign.scheduledAt ? formatDateTime(campaign.scheduledAt) : "Sem agendamento"}
+                      {campaign.scheduledAt
+                        ? formatDateTime(campaign.scheduledAt)
+                        : "Sem agendamento"}
                     </p>
                   </div>
                   <span className="text-sm text-[#34415a]">WhatsApp</span>
@@ -1631,7 +1756,9 @@ function SetupView({
   );
   const [selectedQueueId, setSelectedQueueId] = useState("all");
   const [editingProfileId, setEditingProfileId] = useState("");
-  const [profileForm, setProfileForm] = useState(() => createProfileForm(firstQueueId));
+  const [profileForm, setProfileForm] = useState(() =>
+    createProfileForm(firstQueueId),
+  );
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
 
@@ -1647,12 +1774,19 @@ function SetupView({
   const visibleProfiles = useMemo(
     () =>
       data.profiles
-        .filter((profile) => selectedQueueId === "all" || profile.queueId === selectedQueueId)
+        .filter(
+          (profile) =>
+            selectedQueueId === "all" || profile.queueId === selectedQueueId,
+        )
         .sort(sortCareDeskProfiles),
     [data.profiles, selectedQueueId],
   );
-  const activeProfiles = data.profiles.filter((profile) => profile.status === "active").length;
-  const categories = unique(data.profiles.map((profile) => profile.category).filter(Boolean));
+  const activeProfiles = data.profiles.filter(
+    (profile) => profile.status === "active",
+  ).length;
+  const categories = unique(
+    data.profiles.map((profile) => profile.category).filter(Boolean),
+  );
 
   function updateProfileForm(field: string, value: string) {
     setProfileFeedback(null);
@@ -1690,7 +1824,11 @@ function SetupView({
       return;
     }
 
-    if (!profileForm.name.trim() || !profileForm.slug.trim() || !profileForm.category.trim()) {
+    if (
+      !profileForm.name.trim() ||
+      !profileForm.slug.trim() ||
+      !profileForm.category.trim()
+    ) {
       setProfileFeedback("Preencha nome, slug e categoria do motivo.");
       return;
     }
@@ -1708,7 +1846,10 @@ function SetupView({
         ...data.profiles.filter(
           (profile) =>
             profile.id !== savedProfile.id &&
-            !(profile.queueId === savedProfile.queueId && profile.slug === savedProfile.slug),
+            !(
+              profile.queueId === savedProfile.queueId &&
+              profile.slug === savedProfile.slug
+            ),
         ),
         savedProfile,
       ].sort(sortCareDeskProfiles);
@@ -1740,8 +1881,9 @@ function SetupView({
               Configuracao operacional do atendimento
             </h3>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[#63708a]">
-              Cada motivo define fila, categoria, prioridade e SLA. Essa configuracao alimenta
-              triagem, metricas e abertura de ticket sem depender de outro modulo.
+              Cada motivo define fila, categoria, prioridade e SLA. Essa
+              configuracao alimenta triagem, metricas e abertura de ticket sem
+              depender de outro modulo.
             </p>
           </div>
           <button
@@ -1766,13 +1908,12 @@ function SetupView({
               <FilterSelect
                 label="Fila"
                 value={selectedQueueId}
-                options={[
-                  "all",
-                  ...data.queues.map((queue) => queue.id),
-                ]}
+                options={["all", ...data.queues.map((queue) => queue.id)]}
                 optionLabels={{
                   all: "Todas",
-                  ...Object.fromEntries(data.queues.map((queue) => [queue.id, queue.name])),
+                  ...Object.fromEntries(
+                    data.queues.map((queue) => [queue.id, queue.name]),
+                  ),
                 }}
                 onChange={setSelectedQueueId}
               />
@@ -1799,7 +1940,8 @@ function SetupView({
                             {profile.name}
                           </p>
                           <p className="mt-1 text-xs font-medium text-[#63708a]">
-                            {profile.queueLabel} | {profile.category} | {profile.slug}
+                            {profile.queueLabel} | {profile.category} |{" "}
+                            {profile.slug}
                           </p>
                         </div>
                         <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
@@ -1814,7 +1956,8 @@ function SetupView({
                           1a resposta {profile.slaFirstResponseMinutes} min
                         </span>
                         <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
-                          Resolucao {formatSlaMinutes(profile.slaResolutionMinutes)}
+                          Resolucao{" "}
+                          {formatSlaMinutes(profile.slaResolutionMinutes)}
                         </span>
                       </div>
                     </button>
@@ -1830,7 +1973,10 @@ function SetupView({
             </div>
           </div>
 
-          <form onSubmit={saveProfile} className="rounded-xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+          <form
+            onSubmit={saveProfile}
+            className="rounded-xl border border-[#dbe3ef] bg-[#fbfcfe] p-3"
+          >
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
                 <Settings2 className="h-4 w-4" aria-hidden="true" />
@@ -1849,7 +1995,9 @@ function SetupView({
               <SetupField label="Fila">
                 <select
                   value={profileForm.queueId}
-                  onChange={(event) => updateProfileForm("queueId", event.target.value)}
+                  onChange={(event) =>
+                    updateProfileForm("queueId", event.target.value)
+                  }
                   className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                 >
                   <option value="">Selecione</option>
@@ -1864,7 +2012,9 @@ function SetupView({
               <SetupField label="Nome do motivo">
                 <input
                   value={profileForm.name}
-                  onChange={(event) => updateProfileForm("name", event.target.value)}
+                  onChange={(event) =>
+                    updateProfileForm("name", event.target.value)
+                  }
                   className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                   placeholder="Ex.: Segunda via de boleto"
                 />
@@ -1874,7 +2024,12 @@ function SetupView({
                 <SetupField label="Slug">
                   <input
                     value={profileForm.slug}
-                    onChange={(event) => updateProfileForm("slug", slugifyCareDeskProfile(event.target.value))}
+                    onChange={(event) =>
+                      updateProfileForm(
+                        "slug",
+                        slugifyCareDeskProfile(event.target.value),
+                      )
+                    }
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                     placeholder="segunda-via-boleto"
                   />
@@ -1882,7 +2037,9 @@ function SetupView({
                 <SetupField label="Categoria">
                   <input
                     value={profileForm.category}
-                    onChange={(event) => updateProfileForm("category", event.target.value)}
+                    onChange={(event) =>
+                      updateProfileForm("category", event.target.value)
+                    }
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                     placeholder="Financeiro"
                   />
@@ -1893,7 +2050,9 @@ function SetupView({
                 <SetupField label="Prioridade">
                   <select
                     value={profileForm.priority}
-                    onChange={(event) => updateProfileForm("priority", event.target.value)}
+                    onChange={(event) =>
+                      updateProfileForm("priority", event.target.value)
+                    }
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                   >
                     {priorityOptions.map((priority) => (
@@ -1906,7 +2065,9 @@ function SetupView({
                 <SetupField label="Status">
                   <select
                     value={profileForm.status}
-                    onChange={(event) => updateProfileForm("status", event.target.value)}
+                    onChange={(event) =>
+                      updateProfileForm("status", event.target.value)
+                    }
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                   >
                     {setupStatusOptions.map((status) => (
@@ -1924,7 +2085,12 @@ function SetupView({
                     type="number"
                     min="1"
                     value={profileForm.slaFirstResponseMinutes}
-                    onChange={(event) => updateProfileForm("slaFirstResponseMinutes", event.target.value)}
+                    onChange={(event) =>
+                      updateProfileForm(
+                        "slaFirstResponseMinutes",
+                        event.target.value,
+                      )
+                    }
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                   />
                 </SetupField>
@@ -1933,7 +2099,12 @@ function SetupView({
                     type="number"
                     min="1"
                     value={profileForm.slaResolutionMinutes}
-                    onChange={(event) => updateProfileForm("slaResolutionMinutes", event.target.value)}
+                    onChange={(event) =>
+                      updateProfileForm(
+                        "slaResolutionMinutes",
+                        event.target.value,
+                      )
+                    }
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                   />
                 </SetupField>
@@ -1942,7 +2113,9 @@ function SetupView({
               <SetupField label="Campos obrigatorios">
                 <input
                   value={profileForm.requiredFields}
-                  onChange={(event) => updateProfileForm("requiredFields", event.target.value)}
+                  onChange={(event) =>
+                    updateProfileForm("requiredFields", event.target.value)
+                  }
                   className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                   placeholder="contact_id, queue_id, priority"
                 />
@@ -1951,7 +2124,9 @@ function SetupView({
               <SetupField label="Descricao">
                 <textarea
                   value={profileForm.description}
-                  onChange={(event) => updateProfileForm("description", event.target.value)}
+                  onChange={(event) =>
+                    updateProfileForm("description", event.target.value)
+                  }
                   className="min-h-20 w-full resize-none rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-sm font-medium text-[#34415a] outline-none"
                   placeholder="Quando usar este motivo no atendimento."
                 />
@@ -2004,10 +2179,12 @@ function SetupView({
           title="Templates"
           items={
             data.templates.length
-              ? data.templates.slice(0, 5).map((template) => [
-                  template.name,
-                  `${template.category} | ${template.channelKind}`,
-                ])
+              ? data.templates
+                  .slice(0, 5)
+                  .map((template) => [
+                    template.name,
+                    `${template.category} | ${template.channelKind}`,
+                  ])
               : [["Nenhum template", "Configurar setup"]]
           }
         />
@@ -2018,7 +2195,10 @@ function SetupView({
             ["Primeira resposta", snapshot.firstResponseLabel],
             ["Critico", `${formatCount(snapshot.slaCritical)} tickets`],
             ["Sem resposta", `${formatCount(snapshot.unanswered)} tickets`],
-            ["Aguardando operador", `${formatCount(snapshot.waitingOperator)} tickets`],
+            [
+              "Aguardando operador",
+              `${formatCount(snapshot.waitingOperator)} tickets`,
+            ],
           ]}
         />
         <SetupSection
@@ -2058,25 +2238,67 @@ function ReportsView({
   snapshot: ReturnType<typeof buildCareDeskSnapshot>;
 }) {
   const priorityRows = [
-    ["Critica", data.tickets.filter((ticket) => ticket.priority === "critical").length, snapshot.total],
-    ["Alta", data.tickets.filter((ticket) => ticket.priority === "high").length, snapshot.total],
-    ["Media", data.tickets.filter((ticket) => ticket.priority === "medium").length, snapshot.total],
-    ["Baixa", data.tickets.filter((ticket) => ticket.priority === "low").length, snapshot.total],
+    [
+      "Critica",
+      data.tickets.filter((ticket) => ticket.priority === "critical").length,
+      snapshot.total,
+    ],
+    [
+      "Alta",
+      data.tickets.filter((ticket) => ticket.priority === "high").length,
+      snapshot.total,
+    ],
+    [
+      "Media",
+      data.tickets.filter((ticket) => ticket.priority === "medium").length,
+      snapshot.total,
+    ],
+    [
+      "Baixa",
+      data.tickets.filter((ticket) => ticket.priority === "low").length,
+      snapshot.total,
+    ],
   ];
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-4">
       <section className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
-        <h3 className="mb-4 text-base font-semibold">Performance operacional</h3>
+        <h3 className="mb-4 text-base font-semibold">
+          Performance operacional
+        </h3>
         <div className="grid grid-cols-4 gap-3">
-          <SignalCard icon={TicketCheck} title="Tickets" value={formatCount(snapshot.total)} />
-          <SignalCard icon={ShieldAlert} title="Criticos" value={formatCount(snapshot.critical)} tone="red" />
-          <SignalCard icon={MessageCircle} title="Sem resposta" value={formatCount(snapshot.unanswered)} tone="gold" />
-          <SignalCard icon={Sparkles} title="Acoes IA" value={formatCount(snapshot.aiActions)} tone="blue" />
+          <SignalCard
+            icon={TicketCheck}
+            title="Tickets"
+            value={formatCount(snapshot.total)}
+          />
+          <SignalCard
+            icon={ShieldAlert}
+            title="Criticos"
+            value={formatCount(snapshot.critical)}
+            tone="red"
+          />
+          <SignalCard
+            icon={MessageCircle}
+            title="Sem resposta"
+            value={formatCount(snapshot.unanswered)}
+            tone="gold"
+          />
+          <SignalCard
+            icon={Sparkles}
+            title="Acoes IA"
+            value={formatCount(snapshot.aiActions)}
+            tone="blue"
+          />
         </div>
         <div className="mt-5 space-y-3">
           {priorityRows.map(([label, value, total]) => (
-            <ProgressLine key={label} label={label} value={value} total={total} />
+            <ProgressLine
+              key={label}
+              label={label}
+              value={value}
+              total={total}
+            />
           ))}
         </div>
       </section>
@@ -2121,31 +2343,43 @@ function CareDeskNavButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={collapsed ? label : undefined}
-      className={[
-        "flex h-11 w-full items-center rounded-xl text-sm font-semibold transition",
-        collapsed ? "justify-center px-0" : "gap-3 px-3",
-        active
-          ? "bg-[#242431] text-white shadow-[inset_3px_0_0_#A07C3B]"
-          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
-      ].join(" ")}
+    <Tooltip
+      className="w-full"
+      content={label}
+      placement={collapsed ? "right" : "top"}
+      triggerClassName="w-full"
     >
-      <Icon className={active ? "h-4 w-4 text-[#c8a766]" : "h-4 w-4 text-white/45"} />
-      {!collapsed ? <span>{label}</span> : null}
-      {active && !collapsed ? (
-        <ChevronRight className="ml-auto h-4 w-4 text-white/45" />
-      ) : null}
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        className={[
+          "flex h-11 w-full items-center rounded-xl text-sm font-semibold transition",
+          collapsed ? "justify-center px-0" : "gap-3 px-3",
+          active
+            ? "bg-[#242431] text-white shadow-[inset_3px_0_0_#A07C3B]"
+            : "text-white/70 hover:bg-white/[0.06] hover:text-white",
+        ].join(" ")}
+      >
+        <Icon
+          className={
+            active ? "h-4 w-4 text-[#c8a766]" : "h-4 w-4 text-white/45"
+          }
+        />
+        {!collapsed ? <span>{label}</span> : null}
+        {active && !collapsed ? (
+          <ChevronRight className="ml-auto h-4 w-4 text-white/45" />
+        ) : null}
+      </button>
+    </Tooltip>
   );
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl bg-white/[0.06] p-2">
-      <p className="text-[10px] uppercase tracking-[0.14em] text-white/45">{label}</p>
+      <p className="text-[10px] uppercase tracking-[0.14em] text-white/45">
+        {label}
+      </p>
       <p className="mt-1 text-sm font-semibold text-white">{value}</p>
     </div>
   );
@@ -2164,7 +2398,12 @@ function HeaderMetric({
 }) {
   return (
     <div className="flex h-10 min-w-[118px] items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3">
-      <span className={["flex h-7 w-7 items-center justify-center rounded-lg", toneBg(tone)].join(" ")}>
+      <span
+        className={[
+          "flex h-7 w-7 items-center justify-center rounded-lg",
+          toneBg(tone),
+        ].join(" ")}
+      >
         <Icon className={["h-4 w-4", toneText(tone)].join(" ")} />
       </span>
       <div>
@@ -2191,7 +2430,12 @@ function SignalCard({
   return (
     <div className="rounded-2xl border border-[#dbe3ef] bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <span className={["flex h-10 w-10 items-center justify-center rounded-xl", toneBg(tone)].join(" ")}>
+        <span
+          className={[
+            "flex h-10 w-10 items-center justify-center rounded-xl",
+            toneBg(tone),
+          ].join(" ")}
+        >
           <Icon className={["h-5 w-5", toneText(tone)].join(" ")} />
         </span>
         <span className="rounded-full bg-[#f4f6fa] px-2 py-1 text-[11px] font-semibold text-[#63708a]">
@@ -2222,12 +2466,17 @@ function ActionPanel({
       </div>
       <div className="space-y-2">
         {items.map((item) => (
-          <div key={item.title} className="rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3">
+          <div
+            key={item.title}
+            className="rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3"
+          >
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8a96aa]">
               {item.title}
             </p>
             <p className="mt-1 text-sm font-semibold">{item.value}</p>
-            <p className="mt-1 line-clamp-2 text-xs text-[#63708a]">{item.detail}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-[#63708a]">
+              {item.detail}
+            </p>
           </div>
         ))}
       </div>
@@ -2254,7 +2503,10 @@ function BuilderCard({
       </div>
       <div className="divide-y divide-[#edf1f6]">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-4 py-2 text-sm">
+          <div
+            key={label}
+            className="flex items-center justify-between gap-4 py-2 text-sm"
+          >
             <span className="text-[#63708a]">{label}</span>
             <span className="text-right font-semibold">{value}</span>
           </div>
@@ -2365,18 +2617,28 @@ function KpiCard({
         : "bg-slate-50 text-slate-700 ring-slate-200";
 
   return (
-    <div
-      title={`${label}: ${value}`}
-      className="group flex min-h-14 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/55 px-3 py-2 transition-colors hover:border-[#A07C3B]/20 hover:bg-white"
+    <Tooltip
+      className="w-full"
+      content={`${label}: ${value}`}
+      placement="top"
+      triggerClassName="w-full"
     >
-      <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform group-hover:scale-105 ${toneClass}`}>
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
-      <div className="min-w-0">
-        <p className="truncate text-base font-semibold leading-5 text-slate-950">{value}</p>
-        <p className="truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">{shortLabel}</p>
+      <div className="group flex min-h-14 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/55 px-3 py-2 transition-colors hover:border-[#A07C3B]/20 hover:bg-white">
+        <span
+          className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform group-hover:scale-105 ${toneClass}`}
+        >
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-base font-semibold leading-5 text-slate-950">
+            {value}
+          </p>
+          <p className="truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">
+            {shortLabel}
+          </p>
+        </div>
       </div>
-    </div>
+    </Tooltip>
   );
 }
 
@@ -2391,7 +2653,9 @@ function InsightCard({
 }) {
   return (
     <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+        {title}
+      </p>
       <p className="mt-1 text-base font-semibold text-slate-950">{value}</p>
       <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
     </div>
@@ -2432,7 +2696,8 @@ function FilterSelect({
 
 function MessageBubble({ message }: { message: CareDeskMessage }) {
   const outbound = message.direction === "outbound";
-  const internal = message.direction === "internal" || message.senderType === "system";
+  const internal =
+    message.direction === "internal" || message.senderType === "system";
 
   if (internal) {
     return (
@@ -2467,7 +2732,9 @@ function ContextItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
       <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">{value}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+        {value}
+      </p>
     </div>
   );
 }
@@ -2486,7 +2753,9 @@ function EmptyState({
       <div>
         <Icon className="mx-auto h-8 w-8 text-[#A07C3B]" />
         <h3 className="mt-3 text-base font-semibold text-slate-950">{title}</h3>
-        <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{description}</p>
+        <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+          {description}
+        </p>
       </div>
     </div>
   );
@@ -2509,7 +2778,9 @@ function StatusPill({
           : "border-[#eadcc2] bg-[#fbf6ec] text-[#8a682f]";
 
   return (
-    <span className={`inline-flex w-fit rounded-full border px-2 py-1 text-xs font-semibold ${classes}`}>
+    <span
+      className={`inline-flex w-fit rounded-full border px-2 py-1 text-xs font-semibold ${classes}`}
+    >
       {label}
     </span>
   );
@@ -2526,7 +2797,9 @@ function PriorityPill({ priority }: { priority: CareDeskPriority }) {
           : "bg-emerald-50 text-emerald-700 ring-emerald-100";
 
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${classes}`}>
+    <span
+      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${classes}`}
+    >
       {priorityLabel[priority]}
     </span>
   );
@@ -2626,42 +2899,48 @@ async function loadCareDeskData(): Promise<CareDeskData> {
     return emptyCareDeskData;
   }
 
-  const [ticketsResult, queuesResult, profilesResult, templatesResult, channelsResult, broadcastsResult] =
-    await Promise.all([
-      supabase
-        .from("caredesk_tickets")
-        .select(
-          "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at",
-        )
-        .order("opened_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("caredesk_queues")
-        .select(
-          "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy",
-        )
-        .order("name", { ascending: true }),
-      supabase
-        .from("caredesk_ticket_profiles")
-        .select(
-          "id,queue_id,name,slug,category,priority,sla_first_response_minutes,sla_resolution_minutes,description,required_fields,status",
-        )
-        .order("category", { ascending: true })
-        .order("name", { ascending: true }),
-      supabase
-        .from("caredesk_templates")
-        .select("id,name,slug,category,channel_kind,status")
-        .order("name", { ascending: true }),
-      supabase
-        .from("caredesk_channels")
-        .select("id,name,kind,status")
-        .order("name", { ascending: true }),
-      supabase
-        .from("caredesk_broadcasts")
-        .select("id,name,status,scheduled_at")
-        .order("created_at", { ascending: false })
-        .limit(50),
-    ]);
+  const [
+    ticketsResult,
+    queuesResult,
+    profilesResult,
+    templatesResult,
+    channelsResult,
+    broadcastsResult,
+  ] = await Promise.all([
+    supabase
+      .from("caredesk_tickets")
+      .select(
+        "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at",
+      )
+      .order("opened_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("caredesk_queues")
+      .select(
+        "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy",
+      )
+      .order("name", { ascending: true }),
+    supabase
+      .from("caredesk_ticket_profiles")
+      .select(
+        "id,queue_id,name,slug,category,priority,sla_first_response_minutes,sla_resolution_minutes,description,required_fields,status",
+      )
+      .order("category", { ascending: true })
+      .order("name", { ascending: true }),
+    supabase
+      .from("caredesk_templates")
+      .select("id,name,slug,category,channel_kind,status")
+      .order("name", { ascending: true }),
+    supabase
+      .from("caredesk_channels")
+      .select("id,name,kind,status")
+      .order("name", { ascending: true }),
+    supabase
+      .from("caredesk_broadcasts")
+      .select("id,name,status,scheduled_at")
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ]);
 
   const failedResult = [
     ticketsResult,
@@ -2678,7 +2957,9 @@ async function loadCareDeskData(): Promise<CareDeskData> {
 
   const ticketsRows = ticketsResult.data ?? [];
   const ticketIds = ticketsRows.map((ticket) => ticket.id);
-  const contactIds = unique(ticketsRows.map((ticket) => ticket.contact_id).filter(Boolean));
+  const contactIds = unique(
+    ticketsRows.map((ticket) => ticket.contact_id).filter(Boolean),
+  );
 
   const [contactsResult, messagesResult] = await Promise.all([
     contactIds.length
@@ -2690,7 +2971,9 @@ async function loadCareDeskData(): Promise<CareDeskData> {
     ticketIds.length
       ? supabase
           .from("caredesk_messages")
-          .select("id,ticket_id,body,direction,sender_type,delivery_status,created_at,sent_at")
+          .select(
+            "id,ticket_id,body,direction,sender_type,delivery_status,created_at,sent_at",
+          )
           .in("ticket_id", ticketIds)
           .order("created_at", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
@@ -2727,12 +3010,19 @@ async function loadCareDeskData(): Promise<CareDeskData> {
   }));
   const queueById = new Map(queues.map((queue) => [queue.id, queue]));
   const channelById = new Map(channels.map((channel) => [channel.id, channel]));
-  const contactById = new Map((contactsResult.data ?? []).map((contact) => [contact.id, contact]));
+  const contactById = new Map(
+    (contactsResult.data ?? []).map((contact) => [contact.id, contact]),
+  );
   const profileRows = profilesResult.data ?? [];
   const profiles = profileRows.map((profile) =>
-    mapTicketProfileRow(profile, profile.queue_id ? queueById.get(profile.queue_id) : null),
+    mapTicketProfileRow(
+      profile,
+      profile.queue_id ? queueById.get(profile.queue_id) : null,
+    ),
   );
-  const profileById = new Map(profileRows.map((profile) => [profile.id, profile]));
+  const profileById = new Map(
+    profileRows.map((profile) => [profile.id, profile]),
+  );
   const messagesByTicket = groupMessagesByTicket(messagesResult.data ?? []);
 
   return {
@@ -2754,7 +3044,9 @@ async function loadCareDeskData(): Promise<CareDeskData> {
   };
 }
 
-async function saveCareDeskTicketProfile(form: ReturnType<typeof createProfileForm>) {
+async function saveCareDeskTicketProfile(
+  form: ReturnType<typeof createProfileForm>,
+) {
   const supabase = getHubSupabaseClient();
 
   if (!supabase) {
@@ -2768,8 +3060,14 @@ async function saveCareDeskTicketProfile(form: ReturnType<typeof createProfileFo
     priority: normalizePriority(form.priority),
     queue_id: form.queueId,
     required_fields: parseRequiredFields(form.requiredFields),
-    sla_first_response_minutes: normalizePositiveInteger(form.slaFirstResponseMinutes, 60),
-    sla_resolution_minutes: normalizePositiveInteger(form.slaResolutionMinutes, 480),
+    sla_first_response_minutes: normalizePositiveInteger(
+      form.slaFirstResponseMinutes,
+      60,
+    ),
+    sla_resolution_minutes: normalizePositiveInteger(
+      form.slaResolutionMinutes,
+      480,
+    ),
     slug: slugifyCareDeskProfile(form.slug || form.name),
     status: setupStatusOptions.includes(form.status) ? form.status : "active",
   };
@@ -2790,7 +3088,9 @@ async function saveCareDeskTicketProfile(form: ReturnType<typeof createProfileFo
         .single();
 
   if (result.error || !result.data) {
-    throw new Error(result.error?.message ?? "Nao foi possivel salvar o motivo.");
+    throw new Error(
+      result.error?.message ?? "Nao foi possivel salvar o motivo.",
+    );
   }
 
   return result.data;
@@ -2843,7 +3143,9 @@ function mapTicketRow(input: {
   const sourceModule = String(input.row.source_module ?? "").trim();
 
   return {
-    assignedToLabel: input.row.assigned_to_user_id ? "Operador vinculado" : "Sem responsavel",
+    assignedToLabel: input.row.assigned_to_user_id
+      ? "Operador vinculado"
+      : "Sem responsavel",
     channelId: input.row.channel_id,
     channelLabel: input.channel?.name ?? "Canal nao definido",
     contactDocument: input.contact?.document ?? null,
@@ -2855,7 +3157,8 @@ function mapTicketRow(input: {
     firstRespondedAt: input.row.first_responded_at,
     firstResponseDueAt: input.row.first_response_due_at,
     id: input.row.id,
-    lastMessageAt: lastMessage?.createdAt ?? input.row.updated_at ?? input.row.opened_at,
+    lastMessageAt:
+      lastMessage?.createdAt ?? input.row.updated_at ?? input.row.opened_at,
     lastMessagePreview: lastMessage?.body ?? "Sem mensagens registradas",
     messages: input.messages,
     openedAt: input.row.opened_at,
@@ -2867,11 +3170,12 @@ function mapTicketRow(input: {
     resolutionDueAt: input.row.resolution_due_at,
     sourceLabel: sourceModule ? labelForSource(sourceModule) : "Entrada direta",
     status: normalizeStatus(input.row.status),
-    subject: input.row.subject ?? input.profile?.category ?? "Atendimento ao cliente",
+    subject:
+      input.row.subject ?? input.profile?.category ?? "Atendimento ao cliente",
     unread: Boolean(
       lastMessage &&
-        lastMessage.direction === "inbound" &&
-        !["closed", "resolved", "cancelled"].includes(input.row.status),
+      lastMessage.direction === "inbound" &&
+      !["closed", "resolved", "cancelled"].includes(input.row.status),
     ),
   };
 }
@@ -2914,13 +3218,20 @@ function buildCareDeskSnapshot(data: CareDeskData) {
   const slaCritical = tickets.filter(isSlaCritical).length;
   const unanswered = tickets.filter(isWaitingForCareDesk).length;
   const waitingOperator = tickets.filter(
-    (ticket) => ticket.status === "waiting_operator" || ticket.assignedToLabel === "Sem responsavel",
+    (ticket) =>
+      ticket.status === "waiting_operator" ||
+      ticket.assignedToLabel === "Sem responsavel",
   ).length;
   const inbox = tickets.filter(
     (ticket) => ticket.status === "new" || ticket.status === "waiting_operator",
   ).length;
-  const contacts = unique(tickets.map((ticket) => ticket.contactId).filter(Boolean)).length;
-  const messages = tickets.reduce((totalMessages, ticket) => totalMessages + ticket.messages.length, 0);
+  const contacts = unique(
+    tickets.map((ticket) => ticket.contactId).filter(Boolean),
+  ).length;
+  const messages = tickets.reduce(
+    (totalMessages, ticket) => totalMessages + ticket.messages.length,
+    0,
+  );
   const topTicket = [...tickets].sort(scoreTicketForAction)[0] ?? null;
 
   return {
@@ -3008,14 +3319,20 @@ function profileToForm(profile: CareDeskTicketProfileConfig) {
 
 function normalizeRequiredFields(value: unknown) {
   if (Array.isArray(value)) {
-    return value.map(String).map((item) => item.trim()).filter(Boolean);
+    return value
+      .map(String)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
       if (Array.isArray(parsed)) {
-        return parsed.map(String).map((item) => item.trim()).filter(Boolean);
+        return parsed
+          .map(String)
+          .map((item) => item.trim())
+          .filter(Boolean);
       }
     } catch {
       return parseRequiredFields(value);
@@ -3061,7 +3378,12 @@ function formatSlaMinutes(minutes: number) {
 }
 
 function normalizePriority(value: unknown): CareDeskPriority {
-  if (value === "critical" || value === "high" || value === "medium" || value === "low") {
+  if (
+    value === "critical" ||
+    value === "high" ||
+    value === "medium" ||
+    value === "low"
+  ) {
     return value;
   }
 
@@ -3095,20 +3417,24 @@ function isClosedToday(ticket: CareDeskTicket) {
   }
 
   const today = new Date().toDateString();
-  return new Date(ticket.lastMessageAt ?? ticket.openedAt).toDateString() === today;
+  return (
+    new Date(ticket.lastMessageAt ?? ticket.openedAt).toDateString() === today
+  );
 }
 
 function isWaitingForCareDesk(ticket: CareDeskTicket) {
   return (
     !isClosedTicket(ticket) &&
-    (ticket.unread || ticket.status === "new" || ticket.status === "waiting_operator")
+    (ticket.unread ||
+      ticket.status === "new" ||
+      ticket.status === "waiting_operator")
   );
 }
 
 function isSlaCritical(ticket: CareDeskTicket) {
   const due = ticket.firstRespondedAt
     ? ticket.resolutionDueAt
-    : ticket.firstResponseDueAt ?? ticket.resolutionDueAt;
+    : (ticket.firstResponseDueAt ?? ticket.resolutionDueAt);
 
   if (!due || isClosedTicket(ticket)) {
     return false;
@@ -3124,13 +3450,15 @@ function slaLabel(ticket: CareDeskTicket) {
 
   const due = ticket.firstRespondedAt
     ? ticket.resolutionDueAt
-    : ticket.firstResponseDueAt ?? ticket.resolutionDueAt;
+    : (ticket.firstResponseDueAt ?? ticket.resolutionDueAt);
 
   if (!due) {
     return "Sem SLA";
   }
 
-  const diffMinutes = Math.round((new Date(due).getTime() - Date.now()) / 60000);
+  const diffMinutes = Math.round(
+    (new Date(due).getTime() - Date.now()) / 60000,
+  );
 
   if (diffMinutes <= 0) {
     return "Vencido";
@@ -3180,7 +3508,14 @@ function estimateFirstResponse(tickets: CareDeskTicket[]) {
 
   const averageMinutes =
     responded.reduce((total, ticket) => {
-      return total + Math.max(0, dateValue(ticket.firstRespondedAt) - dateValue(ticket.openedAt)) / 60000;
+      return (
+        total +
+        Math.max(
+          0,
+          dateValue(ticket.firstRespondedAt) - dateValue(ticket.openedAt),
+        ) /
+          60000
+      );
     }, 0) / responded.length;
 
   return formatDuration(averageMinutes);
@@ -3197,7 +3532,11 @@ function estimateAverageResponse(tickets: CareDeskTicket[]) {
     withMessages.reduce((total, ticket) => {
       const first = ticket.messages[0];
       const last = ticket.messages[ticket.messages.length - 1];
-      return total + Math.max(0, dateValue(last.createdAt) - dateValue(first.createdAt)) / 60000;
+      return (
+        total +
+        Math.max(0, dateValue(last.createdAt) - dateValue(first.createdAt)) /
+          60000
+      );
     }, 0) / withMessages.length;
 
   return formatDuration(averageMinutes);

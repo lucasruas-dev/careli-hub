@@ -34,6 +34,7 @@ import {
   Badge,
   EmptyState as UixEmptyState,
   Surface,
+  Tooltip,
   WorkspaceLayout,
 } from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
@@ -193,8 +194,50 @@ type OperationsSourceState = {
   syncRuns: StructuredSyncRun[];
 };
 
+type HomologationReviewStatus =
+  | "aguardando_teste"
+  | "em_teste"
+  | "aprovado"
+  | "reprovado"
+  | "bloqueado";
+
+type HomologationItemReview = {
+  note: string;
+  status: HomologationReviewStatus;
+  updatedAt: string;
+};
+
+type HomologationReviewState = Record<
+  string,
+  Record<string, HomologationItemReview>
+>;
+
+type HomologationItem = {
+  kind: "alerta" | "atividade" | "deploy";
+  module: string;
+  protocol: string;
+  record: EngineeringOperationRecord | null;
+  title: string;
+  type: string;
+};
+
+type HomologationSummary = {
+  approved: number;
+  blocked: number;
+  canGeneratePrompt: boolean;
+  hasBlocker: boolean;
+  inTest: number;
+  isReady: boolean;
+  isPartial: boolean;
+  rejected: number;
+  total: number;
+  waiting: number;
+};
+
 const allFilterValue = "__all";
 const hubTimeZone = "America/Sao_Paulo";
+const homologationStorageKey =
+  "careli-hub:squadops:homologation-reviews:v1";
 
 const initialOperationsSourceState: OperationsSourceState = {
   description: "Aguardando leitura da fonte operacional.",
@@ -215,6 +258,17 @@ const initialFilters: OperationsFilters = {
   status: allFilterValue,
   type: allFilterValue,
 };
+
+const homologationStatusOptions = [
+  { label: "Aguardando teste", value: "aguardando_teste" },
+  { label: "Em teste", value: "em_teste" },
+  { label: "Aprovado", value: "aprovado" },
+  { label: "Reprovado", value: "reprovado" },
+  { label: "Bloqueado", value: "bloqueado" },
+] as const satisfies readonly {
+  label: string;
+  value: HomologationReviewStatus;
+}[];
 
 const promptTargets = [
   "Guardian Core",
@@ -250,7 +304,8 @@ const promptTemplates: PromptTemplate[] = [
   {
     id: "deploy-releaseops",
     label: "Deploy por recorte",
-    description: "ReleaseOps le o diario, separa recortes e publica apenas o que estiver autorizado.",
+    description:
+      "ReleaseOps le o diario, separa recortes e publica apenas o que estiver autorizado.",
     target: "Hub ReleaseOps",
     type: "deploy",
     body: `Assunto:
@@ -394,7 +449,8 @@ AGUARDANDO RELEASEOPS quando houver entrega local pendente de publicacao; FINALI
   {
     id: "weekly-activity",
     label: "Atividade semanal",
-    description: "Comando preenchido para SupportOps consolidar a semana operacional.",
+    description:
+      "Comando preenchido para SupportOps consolidar a semana operacional.",
     target: "Hub SupportOps",
     type: "weekly",
     body: `Assunto:
@@ -579,9 +635,8 @@ export function SquadOpsPage() {
     useState<EngineeringOperationsResponse | null>(null);
   const [structuredOperations, setStructuredOperations] =
     useState<EngineeringOperationsResponse | null>(null);
-  const [operationsSource, setOperationsSource] = useState<OperationsSourceState>(
-    initialOperationsSourceState,
-  );
+  const [operationsSource, setOperationsSource] =
+    useState<OperationsSourceState>(initialOperationsSourceState);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncingOperations, setIsSyncingOperations] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -635,9 +690,9 @@ export function SquadOpsPage() {
     null,
   );
   const [isAlertFeedbackSaving, setIsAlertFeedbackSaving] = useState(false);
-  const [acknowledgingProtocol, setAcknowledgingProtocol] = useState<string | null>(
-    null,
-  );
+  const [acknowledgingProtocol, setAcknowledgingProtocol] = useState<
+    string | null
+  >(null);
   const [ignoringProtocol, setIgnoringProtocol] = useState<string | null>(null);
   const [copiedCommandId, setCopiedCommandId] = useState<string | null>(null);
   const watcherCooldownsRef = useRef<Record<string, number>>({});
@@ -865,23 +920,27 @@ export function SquadOpsPage() {
     return () => window.clearInterval(intervalId);
   }, [canAccessSquadOps, loadItTicketSummary, profileStatus]);
 
-  const registerWatcherDecision = useCallback((decision: OpsWatcherDecision) => {
-    setWatcherDecision(decision);
+  const registerWatcherDecision = useCallback(
+    (decision: OpsWatcherDecision) => {
+      setWatcherDecision(decision);
 
-    if (!decision.notifyLucas) {
-      return;
-    }
+      if (!decision.notifyLucas) {
+        return;
+      }
 
-    const now = Date.now();
-    const lastNotifiedAt = watcherCooldownsRef.current[decision.dedupeKey] ?? 0;
+      const now = Date.now();
+      const lastNotifiedAt =
+        watcherCooldownsRef.current[decision.dedupeKey] ?? 0;
 
-    if (now - lastNotifiedAt < decision.cooldownSeconds * 1000) {
-      return;
-    }
+      if (now - lastNotifiedAt < decision.cooldownSeconds * 1000) {
+        return;
+      }
 
-    watcherCooldownsRef.current[decision.dedupeKey] = now;
-    setWatcherNotifications((current) => [decision, ...current].slice(0, 12));
-  }, []);
+      watcherCooldownsRef.current[decision.dedupeKey] = now;
+      setWatcherNotifications((current) => [decision, ...current].slice(0, 12));
+    },
+    [],
+  );
 
   const runOpsWatcher = useCallback(
     async (snapshot: OperationsMonitoringSnapshot) => {
@@ -905,7 +964,12 @@ export function SquadOpsPage() {
         | { error?: string }
         | null;
 
-      if (!response.ok || !payload || !("watcher" in payload) || !payload.watcher) {
+      if (
+        !response.ok ||
+        !payload ||
+        !("watcher" in payload) ||
+        !payload.watcher
+      ) {
         const message =
           payload && "error" in payload && typeof payload.error === "string"
             ? payload.error
@@ -1011,7 +1075,10 @@ export function SquadOpsPage() {
   ]);
 
   const activeOperations = structuredOperations ?? operations;
-  const records = useMemo(() => activeOperations?.records ?? [], [activeOperations]);
+  const records = useMemo(
+    () => activeOperations?.records ?? [],
+    [activeOperations],
+  );
   const auditRoutines = useMemo(
     () => activeOperations?.auditRoutines ?? [],
     [activeOperations],
@@ -1021,7 +1088,8 @@ export function SquadOpsPage() {
     [filters, records],
   );
   const allReleaseRecords =
-    activeOperations?.releaseRecords ?? records.filter((record) => record.isRelease);
+    activeOperations?.releaseRecords ??
+    records.filter((record) => record.isRelease);
   const latestDeploys = allReleaseRecords
     .filter((record) => record.deploy !== UNKNOWN_OPERATION_VALUE)
     .slice(0, 5);
@@ -1094,7 +1162,10 @@ export function SquadOpsPage() {
 
       const response = await fetch("/api/squadops/copilot", {
         body: JSON.stringify({
-          messages: nextMessages.map(({ content, role }) => ({ content, role })),
+          messages: nextMessages.map(({ content, role }) => ({
+            content,
+            role,
+          })),
           promptTarget: target ?? null,
           question: normalizedQuestion,
         }),
@@ -1102,9 +1173,10 @@ export function SquadOpsPage() {
         headers,
         method: "POST",
       });
-      const payload = (await response.json().catch(() => null)) as
-        | { answer?: string; error?: string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        answer?: string;
+        error?: string;
+      } | null;
 
       if (!response.ok || !payload?.answer) {
         throw new Error(payload?.error ?? "PO AI não respondeu.");
@@ -1185,9 +1257,9 @@ export function SquadOpsPage() {
         headers,
         method: "PATCH",
       });
-      const payload = (await response.json().catch(() => null)) as
-        | AlertFeedbackApiResponse
-        | null;
+      const payload = (await response
+        .json()
+        .catch(() => null)) as AlertFeedbackApiResponse | null;
 
       if (!response.ok || !payload?.protocol) {
         throw new Error(
@@ -1268,9 +1340,9 @@ export function SquadOpsPage() {
         headers,
         method: "PATCH",
       });
-      const payload = (await response.json().catch(() => null)) as
-        | AlertFeedbackApiResponse
-        | null;
+      const payload = (await response
+        .json()
+        .catch(() => null)) as AlertFeedbackApiResponse | null;
 
       if (!response.ok || !payload?.protocol) {
         throw new Error(
@@ -1299,7 +1371,8 @@ export function SquadOpsPage() {
       );
       setWatcherNotifications((current) =>
         current.filter(
-          (notification) => notification.protocol !== payload.protocol!.protocol,
+          (notification) =>
+            notification.protocol !== payload.protocol!.protocol,
         ),
       );
       setWatcherDecision((current) =>
@@ -1349,9 +1422,9 @@ export function SquadOpsPage() {
         headers,
         method: "PATCH",
       });
-      const payload = (await response.json().catch(() => null)) as
-        | AlertFeedbackApiResponse
-        | null;
+      const payload = (await response
+        .json()
+        .catch(() => null)) as AlertFeedbackApiResponse | null;
 
       if (!response.ok || !payload?.protocol) {
         throw new Error(payload?.error ?? "Nao foi possivel ignorar o alerta.");
@@ -1378,7 +1451,8 @@ export function SquadOpsPage() {
       );
       setWatcherNotifications((current) =>
         current.filter(
-          (notification) => notification.protocol !== payload.protocol!.protocol,
+          (notification) =>
+            notification.protocol !== payload.protocol!.protocol,
         ),
       );
       setWatcherDecision((current) =>
@@ -1427,9 +1501,9 @@ export function SquadOpsPage() {
         headers,
         method: "POST",
       });
-      const payload = (await response.json().catch(() => null)) as
-        | StructuredOperationsApiResponse
-        | null;
+      const payload = (await response
+        .json()
+        .catch(() => null)) as StructuredOperationsApiResponse | null;
 
       if (!response.ok) {
         throw new Error(
@@ -1466,7 +1540,8 @@ export function SquadOpsPage() {
               <FileText className="size-4 text-[#A07C3B]" />
               {operationsSource.mode === "structured"
                 ? "hub_engineering_operation_records"
-                : (activeOperations?.sourcePath ?? "docs/codex/engineering-operations.md")}
+                : (activeOperations?.sourcePath ??
+                  "docs/codex/engineering-operations.md")}
             </span>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -1474,7 +1549,10 @@ export function SquadOpsPage() {
                 onClick={openHubModulesSidebar}
                 type="button"
               >
-                <LayoutGrid aria-hidden="true" className="size-4 text-[#A07C3B]" />
+                <LayoutGrid
+                  aria-hidden="true"
+                  className="size-4 text-[#A07C3B]"
+                />
                 Módulos do Hub
               </button>
               <Badge variant="warning">AGUARDANDO RELEASEOPS</Badge>
@@ -1614,7 +1692,9 @@ export function SquadOpsPage() {
               onChange={setFilters}
             />
             <DeployProtocolsView
+              copiedCommandId={copiedCommandId}
               filters={filters}
+              onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
               onSelectRecord={setSelectedRecord}
               records={records}
             />
@@ -1846,7 +1926,9 @@ function AlertProtocolFeedbackDrawer({
               {protocol.impact}
             </p>
             <p className="m-0">
-              <span className="font-semibold text-slate-950">Recomendacao: </span>
+              <span className="font-semibold text-slate-950">
+                Recomendacao:{" "}
+              </span>
               {protocol.recommendation}
             </p>
           </div>
@@ -1858,7 +1940,9 @@ function AlertProtocolFeedbackDrawer({
             <select
               className="mt-2 h-11 w-full rounded-lg border border-slate-200/80 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/15"
               onChange={(event) =>
-                onStatusChange(event.target.value as OperationsAlertFeedbackStatus)
+                onStatusChange(
+                  event.target.value as OperationsAlertFeedbackStatus,
+                )
               }
               value={status}
             >
@@ -1939,14 +2023,13 @@ function SquadOpsAccessState({
 }
 
 function canAccessSquadOpsAsAdmin(user: HubUserContext | null) {
-  return user?.role === "admin" || user?.operationalProfile?.profileRole === "adm";
+  return (
+    user?.role === "admin" || user?.operationalProfile?.profileRole === "adm"
+  );
 }
 
 function getPoAiErrorMessage(error: Error) {
-  if (
-    error.message === "Failed to fetch" ||
-    error.message.includes("fetch")
-  ) {
+  if (error.message === "Failed to fetch" || error.message.includes("fetch")) {
     return "Não foi possível conectar ao PO AI. Recarregue a página e tente novamente.";
   }
 
@@ -1992,7 +2075,11 @@ function OperationsSourcePanel({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
-              {isStructured ? <Database className="size-5" /> : <FileText className="size-5" />}
+              {isStructured ? (
+                <Database className="size-5" />
+              ) : (
+                <FileText className="size-5" />
+              )}
             </span>
             <div className="min-w-0">
               <p className="m-0 text-xs font-semibold uppercase text-slate-400">
@@ -2032,7 +2119,9 @@ function OperationsSourcePanel({
           onClick={onSync}
           type="button"
         >
-          <RefreshCcw className={`size-4 text-[#A07C3B] ${isSyncing ? "animate-spin" : ""}`} />
+          <RefreshCcw
+            className={`size-4 text-[#A07C3B] ${isSyncing ? "animate-spin" : ""}`}
+          />
           {isSyncing ? "Sincronizando" : "Sincronizar diario"}
         </button>
       </div>
@@ -2064,7 +2153,10 @@ function SquadOpsCommandCenter({
   onOpenTimeline: () => void;
 }) {
   return (
-    <Surface bordered className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_25rem]">
         <div className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2081,7 +2173,9 @@ function SquadOpsCommandCenter({
               </p>
             </div>
             <Badge variant={actionCount > 0 ? "warning" : "success"}>
-              {actionCount > 0 ? `${actionCount} pontos de atenção` : "sem alerta crítico"}
+              {actionCount > 0
+                ? `${actionCount} pontos de atenção`
+                : "sem alerta crítico"}
             </Badge>
           </div>
 
@@ -2121,7 +2215,8 @@ function SquadOpsCommandCenter({
             {nextSquad}
           </p>
           <p className="m-0 mt-3 line-clamp-3 text-sm leading-6 text-slate-600">
-            {latestRecord?.shortSummary ?? "Aguardando leitura do diário operacional."}
+            {latestRecord?.shortSummary ??
+              "Aguardando leitura do diário operacional."}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button
@@ -2266,11 +2361,16 @@ function DatabaseMonitoringView({
     watcher?.protocol && isProtocolCleared(watcher.protocol, alertProtocols)
       ? null
       : watcher;
-  const bannerNotification = visibleWatcher?.notifyLucas ? visibleWatcher : null;
+  const bannerNotification = visibleWatcher?.notifyLucas
+    ? visibleWatcher
+    : null;
 
   return (
     <section className="grid gap-5">
-      <Surface bordered className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <Surface
+        bordered
+        className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <PanelTitle
             eyebrow="fontes reais / 30s padrao"
@@ -2287,7 +2387,9 @@ function DatabaseMonitoringView({
               onClick={onRefresh}
               type="button"
             >
-              <RefreshCcw className={`size-4 text-[#A07C3B] ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCcw
+                className={`size-4 text-[#A07C3B] ${isLoading ? "animate-spin" : ""}`}
+              />
               Atualizar agora
             </button>
             <button
@@ -2328,22 +2430,25 @@ function DatabaseMonitoringView({
               </div>
               <div className="flex items-center gap-2">
                 {bannerNotification.protocol ? (
-                  <button
-                    aria-label={`Confirmar leitura do protocolo ${bannerNotification.protocol}`}
-                    className="inline-flex size-9 items-center justify-center rounded-lg border border-amber-200 bg-white text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={acknowledgingProtocol === bannerNotification.protocol}
-                    onClick={() =>
-                      onAcknowledgeProtocol(bannerNotification.protocol)
-                    }
-                    title="Confirmar leitura"
-                    type="button"
-                  >
-                    {acknowledgingProtocol === bannerNotification.protocol ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <ClipboardCheck className="size-4" />
-                    )}
-                  </button>
+                  <Tooltip content="Confirmar leitura" placement="bottom">
+                    <button
+                      aria-label={`Confirmar leitura do protocolo ${bannerNotification.protocol}`}
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-amber-200 bg-white text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={
+                        acknowledgingProtocol === bannerNotification.protocol
+                      }
+                      onClick={() =>
+                        onAcknowledgeProtocol(bannerNotification.protocol)
+                      }
+                      type="button"
+                    >
+                      {acknowledgingProtocol === bannerNotification.protocol ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <ClipboardCheck className="size-4" />
+                      )}
+                    </button>
+                  </Tooltip>
                 ) : null}
                 <Badge variant={riskToBadgeVariant(bannerNotification.risk)}>
                   {bannerNotification.risk}
@@ -2412,7 +2517,9 @@ function DatabaseMonitoringView({
           onAcknowledgeProtocol={onAcknowledgeProtocol}
           onCopyCommand={onCopyCommand}
           onIgnoreProtocol={onIgnoreProtocol}
-          onOpenProtocol={(alert) => onOpenAlertProtocol(alertToProtocolSummary(alert))}
+          onOpenProtocol={(alert) =>
+            onOpenAlertProtocol(alertToProtocolSummary(alert))
+          }
         />
         <OpsWatcherPanel
           acknowledgingProtocol={acknowledgingProtocol}
@@ -2504,7 +2611,9 @@ function MonitoringCard({
         </span>
       </div>
       <div className="mt-3 flex items-center gap-2">
-        <Badge variant={statusToBadgeVariant(status)}>{generalStatusLabel(status)}</Badge>
+        <Badge variant={statusToBadgeVariant(status)}>
+          {generalStatusLabel(status)}
+        </Badge>
       </div>
       <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
         {detail}
@@ -2533,7 +2642,10 @@ function OperationsAlertsPanel({
   onOpenProtocol: (alert: OperationsAlert) => void;
 }) {
   return (
-    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <PanelTitle
         eyebrow={`${alerts.length} alertas`}
         icon={<BellRing size={18} />}
@@ -2594,54 +2706,61 @@ function OperationsAlertsPanel({
                   Agente: {alert.recommendedAgent}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    aria-label={`Confirmar leitura do protocolo ${alert.protocol}`}
-                    className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={acknowledgingProtocol === alert.protocol}
-                    onClick={() => onAcknowledgeProtocol(alert.protocol)}
-                    title="Confirmar leitura"
-                    type="button"
+                  <Tooltip content="Confirmar leitura" placement="top">
+                    <button
+                      aria-label={`Confirmar leitura do protocolo ${alert.protocol}`}
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={acknowledgingProtocol === alert.protocol}
+                      onClick={() => onAcknowledgeProtocol(alert.protocol)}
+                      type="button"
+                    >
+                      {acknowledgingProtocol === alert.protocol ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <ClipboardCheck className="size-4" />
+                      )}
+                    </button>
+                  </Tooltip>
+                  <Tooltip
+                    content="Registrar devolutiva tecnica"
+                    placement="top"
                   >
-                    {acknowledgingProtocol === alert.protocol ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <ClipboardCheck className="size-4" />
-                    )}
-                  </button>
-                  <button
-                    aria-label={`Registrar devolutiva tecnica do protocolo ${alert.protocol}`}
-                    className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                    onClick={() => onOpenProtocol(alert)}
-                    title="Registrar devolutiva tecnica"
-                    type="button"
-                  >
-                    <MessageSquareText className="size-4" />
-                  </button>
-                  <button
-                    aria-label={`Ignorar protocolo ${alert.protocol}`}
-                    className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={ignoringProtocol === alert.protocol}
-                    onClick={() => onIgnoreProtocol(alert.protocol)}
-                    title="Ignorar alerta"
-                    type="button"
-                  >
-                    {ignoringProtocol === alert.protocol ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <EyeOff className="size-4" />
-                    )}
-                  </button>
-                  <button
-                    aria-label={`Criar prompt para ${alert.recommendedAgent}`}
-                    className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
-                      copiedCommandId === alert.id ? "bg-[#A07C3B]/10" : ""
-                    }`}
-                    onClick={() => onCopyCommand(alert.command, alert.id)}
-                    title="Criar prompt para agente"
-                    type="button"
-                  >
-                    <WandSparkles className="size-4" />
-                  </button>
+                    <button
+                      aria-label={`Registrar devolutiva tecnica do protocolo ${alert.protocol}`}
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                      onClick={() => onOpenProtocol(alert)}
+                      type="button"
+                    >
+                      <MessageSquareText className="size-4" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="Ignorar alerta" placement="top">
+                    <button
+                      aria-label={`Ignorar protocolo ${alert.protocol}`}
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={ignoringProtocol === alert.protocol}
+                      onClick={() => onIgnoreProtocol(alert.protocol)}
+                      type="button"
+                    >
+                      {ignoringProtocol === alert.protocol ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <EyeOff className="size-4" />
+                      )}
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="Criar prompt para agente" placement="top">
+                    <button
+                      aria-label={`Criar prompt para ${alert.recommendedAgent}`}
+                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                        copiedCommandId === alert.id ? "bg-[#A07C3B]/10" : ""
+                      }`}
+                      onClick={() => onCopyCommand(alert.command, alert.id)}
+                      type="button"
+                    >
+                      <WandSparkles className="size-4" />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </article>
@@ -2676,7 +2795,10 @@ function OpsWatcherPanel({
   watcher: OpsWatcherDecision | null;
 }) {
   return (
-    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <PanelTitle
         eyebrow={watcher ? watcher.status : "aguardando"}
         icon={<Activity size={18} />}
@@ -2706,58 +2828,64 @@ function OpsWatcherPanel({
           <div className="mt-4 flex items-center gap-2">
             {watcher.protocol ? (
               <>
-                <button
-                  aria-label={`Confirmar leitura do protocolo ${watcher.protocol}`}
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={acknowledgingProtocol === watcher.protocol}
-                  onClick={() => onAcknowledgeProtocol(watcher.protocol)}
-                  title="Confirmar leitura"
-                  type="button"
-                >
-                  {acknowledgingProtocol === watcher.protocol ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <ClipboardCheck className="size-4" />
-                  )}
-                </button>
-                <button
-                  aria-label={`Registrar devolutiva tecnica do protocolo ${watcher.protocol}`}
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                  onClick={() => onOpenProtocol(watcher.protocol)}
-                  title="Registrar devolutiva tecnica"
-                  type="button"
-                >
-                  <MessageSquareText className="size-4" />
-                </button>
-                <button
-                  aria-label={`Ignorar protocolo ${watcher.protocol}`}
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={ignoringProtocol === watcher.protocol}
-                  onClick={() => onIgnoreProtocol(watcher.protocol)}
-                  title="Ignorar alerta"
-                  type="button"
-                >
-                  {ignoringProtocol === watcher.protocol ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <EyeOff className="size-4" />
-                  )}
-                </button>
+                <Tooltip content="Confirmar leitura" placement="top">
+                  <button
+                    aria-label={`Confirmar leitura do protocolo ${watcher.protocol}`}
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={acknowledgingProtocol === watcher.protocol}
+                    onClick={() => onAcknowledgeProtocol(watcher.protocol)}
+                    type="button"
+                  >
+                    {acknowledgingProtocol === watcher.protocol ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ClipboardCheck className="size-4" />
+                    )}
+                  </button>
+                </Tooltip>
+                <Tooltip content="Registrar devolutiva tecnica" placement="top">
+                  <button
+                    aria-label={`Registrar devolutiva tecnica do protocolo ${watcher.protocol}`}
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                    onClick={() => onOpenProtocol(watcher.protocol)}
+                    type="button"
+                  >
+                    <MessageSquareText className="size-4" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Ignorar alerta" placement="top">
+                  <button
+                    aria-label={`Ignorar protocolo ${watcher.protocol}`}
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={ignoringProtocol === watcher.protocol}
+                    onClick={() => onIgnoreProtocol(watcher.protocol)}
+                    type="button"
+                  >
+                    {ignoringProtocol === watcher.protocol ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <EyeOff className="size-4" />
+                    )}
+                  </button>
+                </Tooltip>
               </>
             ) : null}
-            <button
-              aria-label={`Criar prompt para ${watcher.agent}`}
-              className={`inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white transition-colors hover:bg-[#1b2533] ${
-                copiedCommandId === watcher.dedupeKey
-                  ? "ring-2 ring-[#A07C3B]/30"
-                  : ""
-              }`}
-              onClick={() => onCopyCommand(watcher.command, watcher.dedupeKey)}
-              title="Criar prompt para agente"
-              type="button"
-            >
-              <WandSparkles className="size-4" />
-            </button>
+            <Tooltip content="Criar prompt para agente" placement="top">
+              <button
+                aria-label={`Criar prompt para ${watcher.agent}`}
+                className={`inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white transition-colors hover:bg-[#1b2533] ${
+                  copiedCommandId === watcher.dedupeKey
+                    ? "ring-2 ring-[#A07C3B]/30"
+                    : ""
+                }`}
+                onClick={() =>
+                  onCopyCommand(watcher.command, watcher.dedupeKey)
+                }
+                type="button"
+              >
+                <WandSparkles className="size-4" />
+              </button>
+            </Tooltip>
           </div>
         </div>
       ) : (
@@ -2782,65 +2910,83 @@ function OpsWatcherPanel({
                   <div className="flex items-center gap-2">
                     {notification.protocol ? (
                       <>
-                        <button
-                          aria-label={`Confirmar leitura do protocolo ${notification.protocol}`}
-                          className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={acknowledgingProtocol === notification.protocol}
-                          onClick={() =>
-                            onAcknowledgeProtocol(notification.protocol)
-                          }
-                          title="Confirmar leitura"
-                          type="button"
+                        <Tooltip content="Confirmar leitura" placement="top">
+                          <button
+                            aria-label={`Confirmar leitura do protocolo ${notification.protocol}`}
+                            className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={
+                              acknowledgingProtocol === notification.protocol
+                            }
+                            onClick={() =>
+                              onAcknowledgeProtocol(notification.protocol)
+                            }
+                            type="button"
+                          >
+                            {acknowledgingProtocol === notification.protocol ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <ClipboardCheck className="size-4" />
+                            )}
+                          </button>
+                        </Tooltip>
+                        <Tooltip
+                          content="Registrar devolutiva tecnica"
+                          placement="top"
                         >
-                          {acknowledgingProtocol === notification.protocol ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <ClipboardCheck className="size-4" />
-                          )}
-                        </button>
-                        <button
-                          aria-label={`Registrar devolutiva tecnica do protocolo ${notification.protocol}`}
-                          className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                          onClick={() => onOpenProtocol(notification.protocol)}
-                          title="Registrar devolutiva tecnica"
-                          type="button"
-                        >
-                          <MessageSquareText className="size-4" />
-                        </button>
-                        <button
-                          aria-label={`Ignorar protocolo ${notification.protocol}`}
-                          className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={ignoringProtocol === notification.protocol}
-                          onClick={() => onIgnoreProtocol(notification.protocol)}
-                          title="Ignorar alerta"
-                          type="button"
-                        >
-                          {ignoringProtocol === notification.protocol ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <EyeOff className="size-4" />
-                          )}
-                        </button>
+                          <button
+                            aria-label={`Registrar devolutiva tecnica do protocolo ${notification.protocol}`}
+                            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                            onClick={() =>
+                              onOpenProtocol(notification.protocol)
+                            }
+                            type="button"
+                          >
+                            <MessageSquareText className="size-4" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="Ignorar alerta" placement="top">
+                          <button
+                            aria-label={`Ignorar protocolo ${notification.protocol}`}
+                            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={
+                              ignoringProtocol === notification.protocol
+                            }
+                            onClick={() =>
+                              onIgnoreProtocol(notification.protocol)
+                            }
+                            type="button"
+                          >
+                            {ignoringProtocol === notification.protocol ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <EyeOff className="size-4" />
+                            )}
+                          </button>
+                        </Tooltip>
                       </>
                     ) : null}
                     <Badge variant={riskToBadgeVariant(notification.risk)}>
                       {notification.risk}
                     </Badge>
-                    <button
-                      aria-label={`Criar prompt para ${notification.agent}`}
-                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
-                        copiedCommandId === notification.dedupeKey
-                          ? "bg-[#A07C3B]/10"
-                          : ""
-                      }`}
-                      onClick={() =>
-                        onCopyCommand(notification.command, notification.dedupeKey)
-                      }
-                      title="Criar prompt para agente"
-                      type="button"
-                    >
-                      <WandSparkles className="size-4" />
-                    </button>
+                    <Tooltip content="Criar prompt para agente" placement="top">
+                      <button
+                        aria-label={`Criar prompt para ${notification.agent}`}
+                        className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                          copiedCommandId === notification.dedupeKey
+                            ? "bg-[#A07C3B]/10"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          onCopyCommand(
+                            notification.command,
+                            notification.dedupeKey,
+                          )
+                        }
+                        type="button"
+                      >
+                        <WandSparkles className="size-4" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
                 {notification.protocol ? (
@@ -2874,7 +3020,10 @@ function AlertProtocolsHistoryPanel({
   protocols: OperationsAlertProtocolSummary[];
 }) {
   return (
-    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <div className="border-b border-slate-100 p-5">
         <PanelTitle
           eyebrow={`${protocols.length} protocolos`}
@@ -2900,7 +3049,9 @@ function AlertProtocolsHistoryPanel({
                         protocol.technicalFeedbackStatus,
                       )}
                     >
-                      {alertFeedbackStatusLabel(protocol.technicalFeedbackStatus)}
+                      {alertFeedbackStatusLabel(
+                        protocol.technicalFeedbackStatus,
+                      )}
                     </Badge>
                     <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
                       {protocol.occurrenceCount} ocorrencias
@@ -2931,26 +3082,35 @@ function AlertProtocolsHistoryPanel({
                   Agente: {protocol.recommendedAgent}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    aria-label={`Registrar devolutiva tecnica do protocolo ${protocol.protocol}`}
-                    className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                    onClick={() => onOpenProtocol(protocol)}
-                    title="Registrar devolutiva tecnica"
-                    type="button"
+                  <Tooltip
+                    content="Registrar devolutiva tecnica"
+                    placement="top"
                   >
-                    <MessageSquareText className="size-4" />
-                  </button>
-                  <button
-                    aria-label={`Criar prompt para ${protocol.recommendedAgent}`}
-                    className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
-                      copiedCommandId === protocol.protocol ? "bg-[#A07C3B]/10" : ""
-                    }`}
-                    onClick={() => onCopyCommand(protocol.command, protocol.protocol)}
-                    title="Criar prompt para agente"
-                    type="button"
-                  >
-                    <WandSparkles className="size-4" />
-                  </button>
+                    <button
+                      aria-label={`Registrar devolutiva tecnica do protocolo ${protocol.protocol}`}
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                      onClick={() => onOpenProtocol(protocol)}
+                      type="button"
+                    >
+                      <MessageSquareText className="size-4" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="Criar prompt para agente" placement="top">
+                    <button
+                      aria-label={`Criar prompt para ${protocol.recommendedAgent}`}
+                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                        copiedCommandId === protocol.protocol
+                          ? "bg-[#A07C3B]/10"
+                          : ""
+                      }`}
+                      onClick={() =>
+                        onCopyCommand(protocol.command, protocol.protocol)
+                      }
+                      type="button"
+                    >
+                      <WandSparkles className="size-4" />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </article>
@@ -2969,7 +3129,10 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
   const activeGroupKey = expandedGroupKey ?? groups[0]?.key ?? null;
 
   return (
-    <Surface bordered className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <div className="border-b border-slate-100 p-5">
         <PanelTitle
           eyebrow={`${checks.length} checks nesta sessao`}
@@ -3001,7 +3164,8 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
                         {group.label}
                       </p>
                       <p className="m-0 mt-1 text-xs font-medium text-slate-500">
-                        {group.checks.length} checks / {group.alertCount} alertas
+                        {group.checks.length} checks / {group.alertCount}{" "}
+                        alertas
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -3226,33 +3390,32 @@ function SquadOpsViewTabs({
           : hasNewTickets
             ? "bg-[#A07C3B]/15 text-[#7A5E2C]"
             : "bg-slate-100 text-slate-500";
+        const tabTooltip = hasNewTickets
+          ? `${itTicketAttentionCount} ticket(s) novo(s) aguardando SquadOps`
+          : view.label;
 
         return (
-          <button
-            aria-pressed={isActive}
-            className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${buttonClassName}`}
-            key={view.id}
-            onClick={() => onChange(view.id)}
-            title={
-              hasNewTickets
-                ? `${itTicketAttentionCount} ticket(s) novo(s) aguardando SquadOps`
-                : undefined
-            }
-            type="button"
-          >
-            {hasNewTickets ? (
-              <span
-                aria-hidden="true"
-                className="size-2 rounded-full bg-[#A07C3B]"
-              />
-            ) : null}
-            {view.label}
-            <span
-              className={`rounded-full px-1.5 py-0.5 text-[0.65rem] ${counterClassName}`}
+          <Tooltip content={tabTooltip} key={view.id} placement="top">
+            <button
+              aria-pressed={isActive}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${buttonClassName}`}
+              onClick={() => onChange(view.id)}
+              type="button"
             >
-              {counters[view.id]}
-            </span>
-          </button>
+              {hasNewTickets ? (
+                <span
+                  aria-hidden="true"
+                  className="size-2 rounded-full bg-[#A07C3B]"
+                />
+              ) : null}
+              {view.label}
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[0.65rem] ${counterClassName}`}
+              >
+                {counters[view.id]}
+              </span>
+            </button>
+          </Tooltip>
         );
       })}
     </nav>
@@ -3260,29 +3423,81 @@ function SquadOpsViewTabs({
 }
 
 function DeployProtocolsView({
+  copiedCommandId,
   filters,
+  onCopyCommand,
   onSelectRecord,
   records,
 }: {
+  copiedCommandId: string | null;
   filters: OperationsFilters;
+  onCopyCommand: (command: string, id: string) => void;
   onSelectRecord: (record: EngineeringOperationRecord) => void;
   records: EngineeringOperationRecord[];
 }) {
+  const [homologationReviews, setHomologationReviews] =
+    useState<HomologationReviewState>(() => readHomologationReviews());
   const filteredRecords = records.filter((record) =>
     matchesFilters(record, filters),
   );
-  const releaseProtocols = buildReleaseProtocols(records)
-    .filter((releaseProtocol) =>
-      matchesReleaseProtocolFilters(releaseProtocol, filters),
-    )
-    .slice(0, 12);
-  const deployCount = releaseProtocols.length;
+  const filteredReleaseProtocols = buildReleaseProtocols(records).filter(
+    (releaseProtocol) => matchesReleaseProtocolFilters(releaseProtocol, filters),
+  );
+  const homologationProtocols = filteredReleaseProtocols
+    .filter(isReleaseProtocolInHomologation)
+    .slice(0, 8);
+  const releaseProtocols = filteredReleaseProtocols.slice(0, 12);
+  const deployCount = filteredReleaseProtocols.length;
   const moduleGroups = buildProtocolModuleGroups(filteredRecords.slice(0, 120));
 
+  useEffect(() => {
+    writeHomologationReviews(homologationReviews);
+  }, [homologationReviews]);
+
+  function updateHomologationItem(
+    deployProtocol: string,
+    itemProtocol: string,
+    patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
+  ) {
+    setHomologationReviews((current) => {
+      const currentDeploy = current[deployProtocol] ?? {};
+      const currentItem = currentDeploy[itemProtocol] ?? {
+        note: "",
+        status: "aguardando_teste" as HomologationReviewStatus,
+        updatedAt: "",
+      };
+
+      return {
+        ...current,
+        [deployProtocol]: {
+          ...currentDeploy,
+          [itemProtocol]: {
+            ...currentItem,
+            ...patch,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    });
+  }
+
   return (
-    <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]">
-      <div className="grid content-start gap-5">
-        <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="grid gap-5">
+      <HomologationOperationsPanel
+        copiedCommandId={copiedCommandId}
+        onCopyCommand={onCopyCommand}
+        onSelectRecord={onSelectRecord}
+        onUpdateItem={updateHomologationItem}
+        protocols={homologationProtocols}
+        reviews={homologationReviews}
+      />
+
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]">
+        <div className="grid content-start gap-5">
+        <Surface
+          bordered
+          className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        >
           <PanelTitle
             eyebrow={`${deployCount} releases`}
             icon={<Rocket size={18} />}
@@ -3308,7 +3523,10 @@ function DeployProtocolsView({
           </div>
         </Surface>
 
-        <Surface bordered className="border-slate-200/70 bg-slate-50/60 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <Surface
+          bordered
+          className="border-slate-200/70 bg-slate-50/60 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        >
           <PanelTitle
             eyebrow="Regra V1"
             icon={<GitCommitHorizontal size={18} />}
@@ -3321,65 +3539,375 @@ function DeployProtocolsView({
             <li>O commit cita o DP no titulo e lista os AT/AL no corpo.</li>
             <li>Homologacao vira ambiente oficial antes de producao.</li>
             <li>Vercel cruza pelo commit SHA e deployment id.</li>
-            <li>O status final fecha o ciclo: homologado, em producao, bloqueado ou rollback.</li>
+            <li>
+              O status final fecha o ciclo: homologado, em producao, bloqueado
+              ou rollback.
+            </li>
           </ul>
         </Surface>
+        </div>
+
+        <Surface
+          bordered
+          className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        >
+          <div className="border-b border-slate-100 p-5">
+            <PanelTitle
+              eyebrow={`${records.length} protocolos`}
+              icon={<Layers3 size={18} />}
+              title="Protocolos por modulo e tipo"
+            />
+          </div>
+          <div className="grid max-h-[72vh] gap-5 overflow-y-auto p-5 pr-4">
+            {moduleGroups.length > 0 ? (
+              moduleGroups.map((moduleGroup) => (
+                <section className="grid gap-3" key={moduleGroup.module}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="m-0 text-base font-semibold text-slate-950">
+                      {moduleGroup.module}
+                    </h3>
+                    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                      {moduleGroup.count} protocolos
+                    </span>
+                  </div>
+                  <div className="grid gap-3">
+                    {moduleGroup.categories.map((category) => (
+                      <div
+                        className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-3"
+                        key={`${moduleGroup.module}-${category.category}`}
+                      >
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant={protocolCategoryVariant(category.category)}
+                          >
+                            {category.category}
+                          </Badge>
+                          <span className="text-xs font-semibold text-slate-500">
+                            {category.records.length} alteracoes
+                          </span>
+                        </div>
+                        <div className="grid gap-2">
+                          {category.records.map((record) => (
+                            <ProtocolRecordCard
+                              key={record.id}
+                              onSelect={() => onSelectRecord(record)}
+                              record={record}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))
+            ) : (
+              <EmptyState message="Sem protocolo encontrado para os filtros atuais." />
+            )}
+          </div>
+        </Surface>
+      </section>
+    </section>
+  );
+}
+
+function HomologationOperationsPanel({
+  copiedCommandId,
+  onCopyCommand,
+  onSelectRecord,
+  onUpdateItem,
+  protocols,
+  reviews,
+}: {
+  copiedCommandId: string | null;
+  onCopyCommand: (command: string, id: string) => void;
+  onSelectRecord: (record: EngineeringOperationRecord) => void;
+  onUpdateItem: (
+    deployProtocol: string,
+    itemProtocol: string,
+    patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
+  ) => void;
+  protocols: HubReleaseProtocol[];
+  reviews: HomologationReviewState;
+}) {
+  const summaries = protocols.map((protocol) =>
+    getHomologationSummary(protocol, reviews),
+  );
+  const totalItems = summaries.reduce((sum, summary) => sum + summary.total, 0);
+  const approvedItems = summaries.reduce(
+    (sum, summary) => sum + summary.approved,
+    0,
+  );
+  const blockedItems = summaries.reduce(
+    (sum, summary) => sum + summary.blocked + summary.rejected,
+    0,
+  );
+  const readyDeploys = summaries.filter(
+    (summary) => summary.canGeneratePrompt,
+  ).length;
+
+  return (
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <PanelTitle
+            eyebrow={`${protocols.length} deploys em homologacao`}
+            icon={<ClipboardCheck size={18} />}
+            title="Em Homologacao"
+          />
+          <p className="m-0 mt-3 max-w-4xl text-sm leading-6 text-slate-600">
+            Valide cada protocolo publicado em homologacao. No final, a Caca
+            gera o prompt para Hub ReleaseOps publicar somente os itens
+            aprovados; reprovados ou bloqueados ficam fora do recorte de
+            producao.
+          </p>
+        </div>
+        <Badge variant={blockedItems > 0 ? "danger" : "info"}>
+          {blockedItems > 0 ? "Com bloqueio" : "Controle manual"}
+        </Badge>
       </div>
 
-      <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="border-b border-slate-100 p-5">
-          <PanelTitle
-            eyebrow={`${records.length} protocolos`}
-            icon={<Layers3 size={18} />}
-            title="Protocolos por modulo e tipo"
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+        <HomologationMetric label="Protocolos" value={String(totalItems)} />
+        <HomologationMetric label="Aprovados" value={String(approvedItems)} />
+        <HomologationMetric label="Com bloqueio" value={String(blockedItems)} />
+        <HomologationMetric label="Prompts liberados" value={String(readyDeploys)} />
+      </div>
+
+      <div className="mt-5 grid max-h-[62vh] gap-3 overflow-y-auto pr-1">
+        {protocols.length > 0 ? (
+          protocols.map((releaseProtocol) => (
+            <HomologationReleaseCard
+              copiedCommandId={copiedCommandId}
+              key={`homologation-${releaseProtocol.protocol}`}
+              onCopyCommand={onCopyCommand}
+              onSelectRecord={onSelectRecord}
+              onUpdateItem={onUpdateItem}
+              releaseProtocol={releaseProtocol}
+              reviews={reviews}
+            />
+          ))
+        ) : (
+          <EmptyState message="Nenhum protocolo em homologacao para os filtros atuais." />
+        )}
+      </div>
+    </Surface>
+  );
+}
+
+function HomologationMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-4">
+      <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
+        {label}
+      </p>
+      <p className="m-0 mt-2 text-xl font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function HomologationReleaseCard({
+  copiedCommandId,
+  onCopyCommand,
+  onSelectRecord,
+  onUpdateItem,
+  releaseProtocol,
+  reviews,
+}: {
+  copiedCommandId: string | null;
+  onCopyCommand: (command: string, id: string) => void;
+  onSelectRecord: (record: EngineeringOperationRecord) => void;
+  onUpdateItem: (
+    deployProtocol: string,
+    itemProtocol: string,
+    patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
+  ) => void;
+  releaseProtocol: HubReleaseProtocol;
+  reviews: HomologationReviewState;
+}) {
+  const summary = getHomologationSummary(releaseProtocol, reviews);
+  const items = getHomologationItems(releaseProtocol);
+  const promptId = `production-prompt-${releaseProtocol.protocol}`;
+  const productionPrompt = buildProductionReleasePrompt(
+    releaseProtocol,
+    items,
+    reviews,
+    summary,
+  );
+  const promptTooltip = summary.canGeneratePrompt
+    ? summary.isPartial
+      ? `Gerar prompt parcial de producao para ${releaseProtocol.protocol}`
+      : `Gerar prompt de producao para ${releaseProtocol.protocol}`
+    : summary.approved === 0
+      ? "Aprove pelo menos um item antes de gerar o prompt"
+      : "Conclua itens em teste ou aguardando teste antes do prompt";
+
+  return (
+    <article className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 font-mono text-xs font-semibold text-[#7A5E2C]">
+            {releaseProtocol.protocol}
+          </p>
+          <h3 className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+            {releaseProtocol.title}
+          </h3>
+          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+            {releaseProtocol.modules.join(", ") || releaseProtocol.module} /{" "}
+            {formatOperationDateTime(releaseProtocol.plannedAt)}
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge variant={summary.hasBlocker ? "danger" : "warning"}>
+            {summary.approved}/{summary.total} aprovados
+          </Badge>
+          {summary.isPartial ? <Badge variant="warning">Parcial</Badge> : null}
+          <Badge variant="info">Homologacao</Badge>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        {items.map((item) => (
+          <HomologationItemRow
+            deployProtocol={releaseProtocol.protocol}
+            item={item}
+            key={`${releaseProtocol.protocol}-${item.protocol}`}
+            onSelectRecord={onSelectRecord}
+            onUpdateItem={onUpdateItem}
+            review={getHomologationItemReview(
+              reviews,
+              releaseProtocol.protocol,
+              item.protocol,
+            )}
           />
-        </div>
-        <div className="grid max-h-[72vh] gap-5 overflow-y-auto p-5 pr-4">
-          {moduleGroups.length > 0 ? (
-            moduleGroups.map((moduleGroup) => (
-              <section className="grid gap-3" key={moduleGroup.module}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="m-0 text-base font-semibold text-slate-950">
-                    {moduleGroup.module}
-                  </h3>
-                  <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
-                    {moduleGroup.count} protocolos
-                  </span>
-                </div>
-                <div className="grid gap-3">
-                  {moduleGroup.categories.map((category) => (
-                    <div
-                      className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-3"
-                      key={`${moduleGroup.module}-${category.category}`}
-                    >
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <Badge variant={protocolCategoryVariant(category.category)}>
-                          {category.category}
-                        </Badge>
-                        <span className="text-xs font-semibold text-slate-500">
-                          {category.records.length} alteracoes
-                        </span>
-                      </div>
-                      <div className="grid gap-2">
-                        {category.records.map((record) => (
-                          <ProtocolRecordCard
-                            key={record.id}
-                            onSelect={() => onSelectRecord(record)}
-                            record={record}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
+        <p className="m-0 text-xs leading-5 text-slate-600">
+          {summary.canGeneratePrompt
+            ? summary.isPartial
+              ? "Homologacao parcial concluida. A Caca gera o prompt levando somente os aprovados para producao."
+              : "Homologacao concluida. A Caca ja pode gerar o prompt para producao."
+            : summary.approved === 0
+              ? "Aprove pelo menos um item para liberar o prompt final."
+              : "Ainda existem itens aguardando teste ou em teste."}
+        </p>
+        <Tooltip content={promptTooltip} placement="top">
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1f2d3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={!summary.canGeneratePrompt}
+            onClick={() => onCopyCommand(productionPrompt, promptId)}
+            type="button"
+          >
+            {copiedCommandId === promptId ? (
+              <ClipboardCheck className="size-4" />
+            ) : (
+              <Copy className="size-4" />
+            )}
+            {copiedCommandId === promptId
+              ? "Prompt copiado"
+              : summary.isPartial
+                ? "Gerar prompt parcial"
+                : "Gerar prompt para producao"}
+          </button>
+        </Tooltip>
+      </div>
+    </article>
+  );
+}
+
+function HomologationItemRow({
+  deployProtocol,
+  item,
+  onSelectRecord,
+  onUpdateItem,
+  review,
+}: {
+  deployProtocol: string;
+  item: HomologationItem;
+  onSelectRecord: (record: EngineeringOperationRecord) => void;
+  onUpdateItem: (
+    deployProtocol: string,
+    itemProtocol: string,
+    patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
+  ) => void;
+  review: HomologationItemReview;
+}) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-slate-200/70 bg-slate-50/40 p-3 lg:grid-cols-[minmax(0,1fr)_12rem_minmax(14rem,0.9fr)]">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          {item.record ? (
+            <button
+              className="font-mono text-xs font-semibold text-[#7A5E2C] underline-offset-2 hover:underline"
+              onClick={() => onSelectRecord(item.record!)}
+              type="button"
+            >
+              {item.protocol}
+            </button>
           ) : (
-            <EmptyState message="Sem protocolo encontrado para os filtros atuais." />
+            <span className="font-mono text-xs font-semibold text-[#7A5E2C]">
+              {item.protocol}
+            </span>
           )}
+          <Badge variant={homologationKindVariant(item.kind)}>
+            {item.kind}
+          </Badge>
         </div>
-      </Surface>
-    </section>
+        <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+          {item.title}
+        </p>
+        <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+          {item.module} / {item.type}
+        </p>
+      </div>
+
+      <label className="block">
+        <span className="mb-1 block text-[0.68rem] font-semibold uppercase text-slate-400">
+          Validacao
+        </span>
+        <select
+          className={fieldClassName}
+          onChange={(event) =>
+            onUpdateItem(deployProtocol, item.protocol, {
+              status: event.target.value as HomologationReviewStatus,
+            })
+          }
+          value={review.status}
+        >
+          {homologationStatusOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-[0.68rem] font-semibold uppercase text-slate-400">
+          Observacao
+        </span>
+        <input
+          className={fieldClassName}
+          onChange={(event) =>
+            onUpdateItem(deployProtocol, item.protocol, {
+              note: event.target.value,
+            })
+          }
+          placeholder="Ex.: testado e aprovado"
+          value={review.note}
+        />
+      </label>
+    </div>
   );
 }
 
@@ -3418,36 +3946,43 @@ function ReleaseProtocolCard({
             {releaseProtocol.title}
           </h3>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <button
-              className="rounded-full bg-white px-2 py-1 font-mono text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-[#F7F2EA] hover:text-[#7A5E2C] hover:ring-[#D8C7A8] focus-visible:bg-[#F7F2EA] focus-visible:text-[#7A5E2C] focus-visible:ring-[#D8C7A8]"
-              onClick={() => onSelectRecord(releaseProtocol.record)}
-              title={`Abrir ${releaseProtocol.protocol}`}
-              type="button"
+            <Tooltip
+              content={`Abrir ${releaseProtocol.protocol}`}
+              placement="top"
             >
-              {releaseProtocol.protocol}
-            </button>
+              <button
+                className="rounded-full bg-white px-2 py-1 font-mono text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-[#F7F2EA] hover:text-[#7A5E2C] hover:ring-[#D8C7A8] focus-visible:bg-[#F7F2EA] focus-visible:text-[#7A5E2C] focus-visible:ring-[#D8C7A8]"
+                onClick={() => onSelectRecord(releaseProtocol.record)}
+                type="button"
+              >
+                {releaseProtocol.protocol}
+              </button>
+            </Tooltip>
             {releaseProtocol.includedProtocols.map((protocol) => {
               const protocolRecord = protocolRecords.get(protocol);
+              const protocolTooltip = protocolRecord
+                ? `Abrir ${protocol}`
+                : "Registro nao encontrado neste pacote";
 
               return (
-                <button
-                  className="rounded-full bg-white px-2 py-1 font-mono text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-[#F7F2EA] hover:text-[#7A5E2C] hover:ring-[#D8C7A8] focus-visible:bg-[#F7F2EA] focus-visible:text-[#7A5E2C] focus-visible:ring-[#D8C7A8] disabled:cursor-default disabled:opacity-70"
-                  disabled={!protocolRecord}
+                <Tooltip
+                  content={protocolTooltip}
                   key={`${releaseProtocol.protocol}-quick-${protocol}`}
-                  onClick={() => {
-                    if (protocolRecord) {
-                      onSelectRecord(protocolRecord);
-                    }
-                  }}
-                  title={
-                    protocolRecord
-                      ? `Abrir ${protocol}`
-                      : "Registro nao encontrado neste pacote"
-                  }
-                  type="button"
+                  placement="top"
                 >
-                  {protocol}
-                </button>
+                  <button
+                    className="rounded-full bg-white px-2 py-1 font-mono text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-[#F7F2EA] hover:text-[#7A5E2C] hover:ring-[#D8C7A8] focus-visible:bg-[#F7F2EA] focus-visible:text-[#7A5E2C] focus-visible:ring-[#D8C7A8] disabled:cursor-default disabled:opacity-70"
+                    disabled={!protocolRecord}
+                    onClick={() => {
+                      if (protocolRecord) {
+                        onSelectRecord(protocolRecord);
+                      }
+                    }}
+                    type="button"
+                  >
+                    {protocol}
+                  </button>
+                </Tooltip>
               );
             })}
           </div>
@@ -3624,7 +4159,10 @@ function TimelinePanel({
   title: string;
 }) {
   return (
-    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <div className="border-b border-slate-100 p-5">
         <PanelTitle
           icon={<History size={18} />}
@@ -3634,13 +4172,15 @@ function TimelinePanel({
       </div>
       <div className="grid max-h-[58vh] min-w-0 gap-3 overflow-y-auto overscroll-contain p-4 pr-3">
         {records.length > 0 ? (
-          records.slice(0, limit).map((record) => (
-            <TimelineItem
-              key={record.id}
-              onSelect={() => onSelectRecord(record)}
-              record={record}
-            />
-          ))
+          records
+            .slice(0, limit)
+            .map((record) => (
+              <TimelineItem
+                key={record.id}
+                onSelect={() => onSelectRecord(record)}
+                record={record}
+              />
+            ))
         ) : (
           <EmptyState message={emptyMessage} />
         )}
@@ -3657,7 +4197,10 @@ function RecordsTable({
   records: EngineeringOperationRecord[];
 }) {
   return (
-    <Surface bordered className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <div className="border-b border-slate-100 p-5">
         <PanelTitle
           icon={<Layers3 size={18} />}
@@ -3752,7 +4295,10 @@ function OperationsFiltersBar({
   }
 
   return (
-    <Surface bordered className="border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[repeat(6,minmax(0,1fr))_minmax(14rem,1.4fr)]">
         <FilterSelect
           label="Módulo"
@@ -3913,7 +4459,10 @@ function AuditRoutinesPanel({
   const latestExecutionFormatted = formatOperationDateTime(latestExecution);
 
   return (
-    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PanelTitle
           eyebrow={`${routines.length} rotinas`}
@@ -3929,8 +4478,14 @@ function AuditRoutinesPanel({
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         <AuditSummaryPill label="vencidas" value={overdueRoutines.length} />
-        <AuditSummaryPill label="em acompanhamento" value={stableRoutines.length} />
-        <AuditSummaryPill label="última execução" value={latestExecutionFormatted} />
+        <AuditSummaryPill
+          label="em acompanhamento"
+          value={stableRoutines.length}
+        />
+        <AuditSummaryPill
+          label="última execução"
+          value={latestExecutionFormatted}
+        />
       </div>
 
       <div className="mt-5 grid max-h-[62vh] gap-5 overflow-y-auto overscroll-contain pr-1">
@@ -4024,7 +4579,11 @@ function AuditRoutineCard({
             {routine.frequency} / {routine.responsible}
           </p>
         </div>
-        <Badge variant={routine.isOverdue ? "warning" : statusVariant(routine.lastStatus)}>
+        <Badge
+          variant={
+            routine.isOverdue ? "warning" : statusVariant(routine.lastStatus)
+          }
+        >
           {routine.isOverdue ? "vencida" : routine.lastStatus}
         </Badge>
       </div>
@@ -4068,7 +4627,10 @@ function PoAiChannelPanel({
   target: (typeof promptTargets)[number];
 }) {
   return (
-    <Surface bordered className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <div className="border-b border-slate-100 p-5">
         <PanelTitle
           eyebrow="Cérebro do Hub"
@@ -4101,7 +4663,8 @@ function PoAiChannelPanel({
               <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-2 text-sm font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin text-[#A07C3B]" />
-                  PO AI consultando monitoramento real, histórico e código do Hub
+                  PO AI consultando monitoramento real, histórico e código do
+                  Hub
                 </span>
               </div>
             </div>
@@ -4136,7 +4699,9 @@ function PoAiChannelPanel({
             <select
               className={fieldClassName}
               onChange={(event) =>
-                onTargetChange(event.target.value as (typeof promptTargets)[number])
+                onTargetChange(
+                  event.target.value as (typeof promptTargets)[number],
+                )
               }
               value={target}
             >
@@ -4168,7 +4733,11 @@ function PoAiChannelPanel({
             </button>
             <button
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-              onClick={() => onQuestionChange("Como está o banco de dados no monitoramento real agora? Use o diário apenas como histórico.")}
+              onClick={() =>
+                onQuestionChange(
+                  "Como está o banco de dados no monitoramento real agora? Use o diário apenas como histórico.",
+                )
+              }
               type="button"
             >
               <Database className="size-4 text-[#A07C3B]" />
@@ -4176,7 +4745,9 @@ function PoAiChannelPanel({
             </button>
             <button
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-              onClick={() => onQuestionChange("O que precisa ir para ReleaseOps?")}
+              onClick={() =>
+                onQuestionChange("O que precisa ir para ReleaseOps?")
+              }
               type="button"
             >
               <Rocket className="size-4 text-[#A07C3B]" />
@@ -4799,8 +5370,7 @@ function getRecordCardSummary(record: EngineeringOperationRecord) {
   ];
   const summary = candidates.find(
     (candidate) =>
-      candidate.trim() &&
-      candidate.trim() !== UNKNOWN_OPERATION_VALUE,
+      candidate.trim() && candidate.trim() !== UNKNOWN_OPERATION_VALUE,
   );
 
   return summary ?? "Resumo operacional nao informado.";
@@ -4828,12 +5398,18 @@ function getKnownRecordValue(values: string[]) {
 }
 
 function buildProtocolModuleGroups(records: EngineeringOperationRecord[]) {
-  const moduleMap = new Map<string, Map<string, EngineeringOperationRecord[]>>();
+  const moduleMap = new Map<
+    string,
+    Map<string, EngineeringOperationRecord[]>
+  >();
 
   for (const record of records) {
     const moduleName = record.module || UNKNOWN_OPERATION_VALUE;
-    const categoryName = record.changeCategory || record.type || UNKNOWN_OPERATION_VALUE;
-    const categoryMap = moduleMap.get(moduleName) ?? new Map<string, EngineeringOperationRecord[]>();
+    const categoryName =
+      record.changeCategory || record.type || UNKNOWN_OPERATION_VALUE;
+    const categoryMap =
+      moduleMap.get(moduleName) ??
+      new Map<string, EngineeringOperationRecord[]>();
     const categoryRecords = categoryMap.get(categoryName) ?? [];
 
     categoryRecords.push(record);
@@ -4851,7 +5427,10 @@ function buildProtocolModuleGroups(records: EngineeringOperationRecord[]) {
 
     return {
       categories,
-      count: categories.reduce((total, category) => total + category.records.length, 0),
+      count: categories.reduce(
+        (total, category) => total + category.records.length,
+        0,
+      ),
       module: moduleName,
     };
   });
@@ -4881,7 +5460,9 @@ function protocolCategoryVariant(category: string): BadgeVariant {
   return "neutral";
 }
 
-function releaseProtocolStatusVariant(status: ReleaseProtocolStatus): BadgeVariant {
+function releaseProtocolStatusVariant(
+  status: ReleaseProtocolStatus,
+): BadgeVariant {
   if (
     status === "em_producao" ||
     status === "finalizado" ||
@@ -4919,7 +5500,10 @@ function CriticalOperationsPanel({
   title: string;
 }) {
   return (
-    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
       <PanelTitle
         eyebrow={`${records.length + routines.length} itens`}
         icon={<ShieldAlert size={18} />}
@@ -4991,8 +5575,15 @@ function OperationalList({
   title: string;
 }) {
   return (
-    <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <PanelTitle eyebrow={`${records.length} itens`} icon={icon} title={title} />
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <PanelTitle
+        eyebrow={`${records.length} itens`}
+        icon={icon}
+        title={title}
+      />
       <div className="mt-4 grid max-h-[46vh] min-w-0 gap-2 overflow-y-auto overscroll-contain pr-1">
         {records.length > 0 ? (
           records.map((record) => (
@@ -5067,7 +5658,13 @@ function AuditRoutineDetailDrawer({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={routine.isOverdue ? "warning" : statusVariant(routine.lastStatus)}>
+            <Badge
+              variant={
+                routine.isOverdue
+                  ? "warning"
+                  : statusVariant(routine.lastStatus)
+              }
+            >
               {routine.isOverdue ? "vencida" : routine.lastStatus}
             </Badge>
             <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
@@ -5082,7 +5679,10 @@ function AuditRoutineDetailDrawer({
               value={formatOperationDateTime(routine.lastExecution)}
             />
             <DetailField label="Frequencia" value={routine.frequency} />
-            <DetailField label="Historico" value={`${routine.history.length} registros`} />
+            <DetailField
+              label="Historico"
+              value={`${routine.history.length} registros`}
+            />
           </div>
 
           <div className="mt-5 grid gap-3">
@@ -5110,7 +5710,8 @@ function AuditRoutineDetailDrawer({
                           {record.subject}
                         </p>
                         <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-                          {record.module} / {formatOperationDateTime(record.localDateTime)}
+                          {record.module} /{" "}
+                          {formatOperationDateTime(record.localDateTime)}
                         </p>
                       </div>
                       <Badge variant={statusVariant(record.status)}>
@@ -5172,7 +5773,9 @@ function OperationDetailDrawer({
             <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
               {record.protocol}
             </span>
-            <Badge variant={statusVariant(record.status)}>{record.status}</Badge>
+            <Badge variant={statusVariant(record.status)}>
+              {record.status}
+            </Badge>
             <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
               {record.type}
             </span>
@@ -5355,6 +5958,280 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+function readHomologationReviews(): HomologationReviewState {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(homologationStorageKey);
+
+    if (!rawValue) {
+      return {};
+    }
+
+    const parsedValue = JSON.parse(rawValue) as HomologationReviewState;
+
+    if (!parsedValue || typeof parsedValue !== "object") {
+      return {};
+    }
+
+    return parsedValue;
+  } catch {
+    return {};
+  }
+}
+
+function writeHomologationReviews(reviews: HomologationReviewState) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(homologationStorageKey, JSON.stringify(reviews));
+  } catch {
+    // A homologacao continua utilizavel mesmo sem persistencia local.
+  }
+}
+
+function isReleaseProtocolInHomologation(releaseProtocol: HubReleaseProtocol) {
+  const text = normalizeSearchText(
+    [
+      releaseProtocol.environment,
+      releaseProtocol.status,
+      releaseProtocol.title,
+      releaseProtocol.summary,
+      releaseProtocol.record.status,
+      releaseProtocol.record.reason,
+      releaseProtocol.record.how,
+    ].join(" "),
+  );
+
+  return (
+    releaseProtocol.environment === "homologacao" ||
+    releaseProtocol.status === "aguardando_homologacao" ||
+    releaseProtocol.status === "em_homologacao" ||
+    releaseProtocol.status === "homologado" ||
+    text.includes("homolog")
+  );
+}
+
+function getHomologationItems(
+  releaseProtocol: HubReleaseProtocol,
+): HomologationItem[] {
+  const protocolRecords = new Map(
+    [releaseProtocol.record, ...releaseProtocol.records].map((record) => [
+      record.protocol,
+      record,
+    ]),
+  );
+  const deployItem: HomologationItem = {
+    kind: "deploy",
+    module: releaseProtocol.modules.join(", ") || releaseProtocol.module,
+    protocol: releaseProtocol.protocol,
+    record: releaseProtocol.record,
+    title: releaseProtocol.title,
+    type: "Release",
+  };
+  const relatedItems = releaseProtocol.includedProtocols.map((protocol) => {
+    const record = protocolRecords.get(protocol) ?? null;
+
+    return {
+      kind: protocol.startsWith("AL-") ? "alerta" : "atividade",
+      module: record?.module ?? releaseProtocol.module,
+      protocol,
+      record,
+      title: record?.subject ?? `Registro ${protocol}`,
+      type: record?.type ?? "Registro operacional",
+    } satisfies HomologationItem;
+  });
+
+  return [deployItem, ...relatedItems];
+}
+
+function getHomologationItemReview(
+  reviews: HomologationReviewState,
+  deployProtocol: string,
+  itemProtocol: string,
+): HomologationItemReview {
+  return (
+    reviews[deployProtocol]?.[itemProtocol] ?? {
+      note: "",
+      status: "aguardando_teste",
+      updatedAt: "",
+    }
+  );
+}
+
+function getHomologationSummary(
+  releaseProtocol: HubReleaseProtocol,
+  reviews: HomologationReviewState,
+): HomologationSummary {
+  const items = getHomologationItems(releaseProtocol);
+  const statuses = items.map(
+    (item) =>
+      getHomologationItemReview(
+        reviews,
+        releaseProtocol.protocol,
+        item.protocol,
+      ).status,
+  );
+  const approved = statuses.filter((status) => status === "aprovado").length;
+  const rejected = statuses.filter((status) => status === "reprovado").length;
+  const blocked = statuses.filter((status) => status === "bloqueado").length;
+  const inTest = statuses.filter((status) => status === "em_teste").length;
+  const waiting = statuses.filter(
+    (status) => status === "aguardando_teste",
+  ).length;
+  const hasBlocker = blocked > 0 || rejected > 0;
+  const hasOpenReview = waiting > 0 || inTest > 0;
+  const isReady = items.length > 0 && approved === items.length && !hasBlocker;
+  const canGeneratePrompt = approved > 0 && !hasOpenReview;
+
+  return {
+    approved,
+    blocked,
+    canGeneratePrompt,
+    hasBlocker,
+    inTest,
+    isPartial: canGeneratePrompt && !isReady,
+    isReady,
+    rejected,
+    total: items.length,
+    waiting,
+  };
+}
+
+function buildProductionReleasePrompt(
+  releaseProtocol: HubReleaseProtocol,
+  items: HomologationItem[],
+  reviews: HomologationReviewState,
+  summary: HomologationSummary,
+) {
+  const itemLines = items.map((item) => {
+    const review = getHomologationItemReview(
+      reviews,
+      releaseProtocol.protocol,
+      item.protocol,
+    );
+    const note = review.note.trim() ? ` - ${review.note.trim()}` : "";
+
+    return `- ${item.protocol} | ${item.module} | ${item.type} | ${getHomologationStatusLabel(review.status)}${note}`;
+  });
+  const approvedItems = items.filter(
+    (item) =>
+      getHomologationItemReview(
+        reviews,
+        releaseProtocol.protocol,
+        item.protocol,
+      ).status === "aprovado",
+  );
+  const notPublishedItems = items.filter((item) => {
+    const status = getHomologationItemReview(
+      reviews,
+      releaseProtocol.protocol,
+      item.protocol,
+    ).status;
+
+    return status !== "aprovado";
+  });
+  const productionMode = summary.isPartial
+    ? "aprovacao parcial"
+    : "aprovacao completa";
+
+  return [
+    "Assunto:",
+    `[ReleaseOps] Publicar producao por ${productionMode} do ${releaseProtocol.protocol}`,
+    "",
+    "Contexto:",
+    `Caca gerou este prompt a partir da homologacao operacional validada pelo Lucas no SquadOps.`,
+    `Deploy homologado: ${releaseProtocol.protocol}.`,
+    `Titulo: ${releaseProtocol.title}.`,
+    `Ambiente homologado: ${getReleaseProtocolEnvironmentLabel(releaseProtocol.environment)}.`,
+    summary.isPartial
+      ? "A homologacao foi parcial: publicar somente os itens aprovados e deixar os demais fora desta rodada."
+      : "A homologacao foi completa: todos os itens listados foram aprovados para producao.",
+    "",
+    "Protocolo de deploy:",
+    `- ${releaseProtocol.protocol}`,
+    "",
+    "Resultado completo da homologacao:",
+    ...itemLines,
+    "",
+    "Resumo da homologacao:",
+    `- ${summary.approved}/${summary.total} itens aprovados.`,
+    `- Itens em teste: ${summary.inTest}.`,
+    `- Itens aguardando teste: ${summary.waiting}.`,
+    `- Itens reprovados/bloqueados: ${summary.rejected + summary.blocked}.`,
+    "",
+    "Publicar em producao nesta rodada:",
+    ...(approvedItems.length > 0
+      ? approvedItems.map((item) => `- ${item.protocol} - ${item.title}`)
+      : ["- nao informado"]),
+    "",
+    "Nao publicar nesta rodada:",
+    ...(notPublishedItems.length > 0
+      ? notPublishedItems.map((item) => {
+          const review = getHomologationItemReview(
+            reviews,
+            releaseProtocol.protocol,
+            item.protocol,
+          );
+          const note = review.note.trim() ? ` - ${review.note.trim()}` : "";
+
+          return `- ${item.protocol} - ${item.title} | ${getHomologationStatusLabel(review.status)}${note}`;
+        })
+      : ["- nenhum item ficou fora desta rodada"]),
+    "",
+    "Regra de recorte:",
+    "- Publicar somente os itens aprovados acima.",
+    "- Se o commit atual misturar aprovados e reprovados, criar novo recorte/commit contendo apenas os aprovados antes do deploy.",
+    "- Manter os itens nao aprovados em homologacao, bloqueados ou aguardando correcao conforme a devolutiva.",
+    "",
+    "Riscos conhecidos:",
+    `- ${releaseProtocol.record.risks}`,
+    "",
+    "Healthchecks esperados:",
+    `- ${releaseProtocol.healthchecks}`,
+    "",
+    "Tarefas para publicacao:",
+    "- Confirmar commit/branch do recorte homologado.",
+    "- Publicar somente os protocolos aprovados na secao de producao.",
+    "- Executar healthchecks pos-deploy.",
+    "- Registrar commit, deploy, ambiente e resultado no Engineering Operations.",
+    "",
+    "Retorno esperado:",
+    "- Commit publicado.",
+    "- Deployment/alias de producao.",
+    "- Healthchecks executados.",
+    "- Riscos ou pendencias remanescentes.",
+    "",
+    "Status esperado:",
+    summary.isPartial
+      ? "EM PRODUCAO para os aprovados; BLOQUEADO ou AGUARDANDO CORRECAO para os itens que ficaram fora."
+      : "EM PRODUCAO se os healthchecks passarem; OPERACIONAL COM ATENCAO se houver risco sem bloqueio.",
+  ].join("\n");
+}
+
+function getHomologationStatusLabel(status: HomologationReviewStatus) {
+  return (
+    homologationStatusOptions.find((option) => option.value === status)?.label ??
+    "Aguardando teste"
+  );
+}
+
+function homologationKindVariant(kind: HomologationItem["kind"]): BadgeVariant {
+  if (kind === "deploy") {
+    return "success";
+  }
+
+  if (kind === "alerta") {
+    return "warning";
+  }
+
+  return "info";
+}
+
 function matchesFilters(
   record: EngineeringOperationRecord,
   filters: OperationsFilters,
@@ -5380,7 +6257,8 @@ function matchesFilters(
     (filters.module === allFilterValue || record.module === filters.module) &&
     (filters.squad === allFilterValue || record.squad === filters.squad) &&
     (filters.type === allFilterValue || record.type === filters.type) &&
-    (filters.routine === allFilterValue || record.routine === filters.routine) &&
+    (filters.routine === allFilterValue ||
+      record.routine === filters.routine) &&
     (filters.status === allFilterValue || record.status === filters.status) &&
     matchesPeriod(record.localDateTime, filters.period) &&
     (!keyword || searchable.includes(keyword))
@@ -5442,10 +6320,10 @@ function isOperationsResponse(
 ): value is EngineeringOperationsResponse {
   return Boolean(
     value &&
-      "records" in value &&
-      Array.isArray(value.records) &&
-      "metrics" in value &&
-      "filters" in value,
+    "records" in value &&
+    Array.isArray(value.records) &&
+    "metrics" in value &&
+    "filters" in value,
   );
 }
 
@@ -5484,13 +6362,16 @@ type StructuredOperationsFetchResult =
 async function fetchStructuredOperationsSnapshot(
   headers: Record<string, string>,
 ): Promise<StructuredOperationsFetchResult> {
-  const response = await fetch("/api/squadops/operations/structured?limit=500", {
-    cache: "no-store",
-    headers,
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | StructuredOperationsApiResponse
-    | null;
+  const response = await fetch(
+    "/api/squadops/operations/structured?limit=500",
+    {
+      cache: "no-store",
+      headers,
+    },
+  );
+  const payload = (await response
+    .json()
+    .catch(() => null)) as StructuredOperationsApiResponse | null;
 
   if (!response.ok || !payload?.storage) {
     return {
@@ -5501,7 +6382,9 @@ async function fetchStructuredOperationsSnapshot(
 
   return {
     ok: true,
-    records: (payload.storage.records ?? []).map(mapStructuredApiRecordToRecord),
+    records: (payload.storage.records ?? []).map(
+      mapStructuredApiRecordToRecord,
+    ),
     status: payload.storage.status ?? "sincronizado",
     syncRuns: payload.storage.syncRuns ?? [],
   };
@@ -5518,8 +6401,13 @@ function buildOperationsResponseFromStructuredRecords({
 }): EngineeringOperationsResponse {
   const sortedRecords = [...records].sort(compareOperationRecordsDesc);
   const generatedAt =
-    syncRuns[0]?.created_at ?? fallback?.generatedAt ?? new Date().toISOString();
-  const auditRoutines = buildStructuredAuditRoutines(sortedRecords, generatedAt);
+    syncRuns[0]?.created_at ??
+    fallback?.generatedAt ??
+    new Date().toISOString();
+  const auditRoutines = buildStructuredAuditRoutines(
+    sortedRecords,
+    generatedAt,
+  );
   const metrics = buildStructuredMetrics(sortedRecords, auditRoutines);
 
   return {
@@ -5548,7 +6436,9 @@ function mapStructuredApiRecordToRecord(
   const status = normalizeStructuredText(record.status);
   const deploy = normalizeStructuredText(record.deploy);
   const commit = normalizeStructuredText(record.commit);
-  const moduleName = normalizeModuleAlias(normalizeStructuredText(record.module));
+  const moduleName = normalizeModuleAlias(
+    normalizeStructuredText(record.module),
+  );
 
   return {
     affectedFiles: normalizeStructuredText(record.affectedFiles),
@@ -5559,7 +6449,8 @@ function mapStructuredApiRecordToRecord(
     how,
     id: `structured-${record.id}`,
     isCritical:
-      record.isCritical || hasStructuredCriticalSignal(status, risks, rawContent),
+      record.isCritical ||
+      hasStructuredCriticalSignal(status, risks, rawContent),
     isModuleImprovement:
       record.isModuleImprovement ||
       normalizeSearchText(type).includes("melhoria") ||
@@ -5606,15 +6497,17 @@ function buildStructuredMetrics(
   auditRoutines: EngineeringAuditRoutine[],
 ): EngineeringOperationsResponse["metrics"] {
   return {
-    latestDeploys: records.filter((record) => isKnownOperationValue(record.deploy))
-      .length,
+    latestDeploys: records.filter((record) =>
+      isKnownOperationValue(record.deploy),
+    ).length,
     moduleImprovements: records.filter((record) => record.isModuleImprovement)
       .length,
     productionRecords: records.filter((record) =>
       normalizeSearchText(record.status).includes("em producao"),
     ).length,
     riskRecords: records.filter((record) => record.isCritical).length,
-    routinesOverdue: auditRoutines.filter((routine) => routine.isOverdue).length,
+    routinesOverdue: auditRoutines.filter((routine) => routine.isOverdue)
+      .length,
     supportInvestigations: records.filter(
       (record) => record.isSupportInvestigation,
     ).length,
@@ -5878,19 +6771,21 @@ function statusVariant(status: string): BadgeVariant {
   return "neutral";
 }
 
-function isMonitoringSnapshot(value: unknown): value is OperationsMonitoringSnapshot {
+function isMonitoringSnapshot(
+  value: unknown,
+): value is OperationsMonitoringSnapshot {
   const snapshot = value as Partial<OperationsMonitoringSnapshot> | null;
 
   return Boolean(
     snapshot &&
-      typeof snapshot === "object" &&
-      Array.isArray(snapshot.alerts) &&
-      Array.isArray(snapshot.checks) &&
-      snapshot.cards &&
-      typeof snapshot.cards === "object" &&
-      typeof snapshot.generatedAt === "string" &&
-      snapshot.metrics &&
-      typeof snapshot.metrics === "object",
+    typeof snapshot === "object" &&
+    Array.isArray(snapshot.alerts) &&
+    Array.isArray(snapshot.checks) &&
+    snapshot.cards &&
+    typeof snapshot.cards === "object" &&
+    typeof snapshot.generatedAt === "string" &&
+    snapshot.metrics &&
+    typeof snapshot.metrics === "object",
   );
 }
 
@@ -5909,7 +6804,8 @@ function mergeAlertProtocols(
   return Array.from(protocolsByCode.values())
     .sort(
       (first, second) =>
-        new Date(second.lastSeenAt).getTime() - new Date(first.lastSeenAt).getTime(),
+        new Date(second.lastSeenAt).getTime() -
+        new Date(first.lastSeenAt).getTime(),
     )
     .slice(0, 80);
 }
@@ -5958,7 +6854,9 @@ function alertToProtocolSummary(
     recommendation: alert.recommendation,
     recommendedAgent: alert.recommendedAgent,
     responseMs: alert.responseMs,
-    status: alert.protocolStatus ?? (alert.technicalFeedbackStatus ? "em_analise" : "ativo"),
+    status:
+      alert.protocolStatus ??
+      (alert.technicalFeedbackStatus ? "em_analise" : "ativo"),
     technicalFeedback: alert.technicalFeedback ?? null,
     technicalFeedbackAt: alert.technicalFeedbackAt ?? null,
     technicalFeedbackStatus: alert.technicalFeedbackStatus ?? "pendente",
@@ -6194,7 +7092,8 @@ function countOpenItTickets(tickets: readonly HubItTicket[]) {
 }
 
 function countItTicketsWaitingForSquadOps(tickets: readonly HubItTicket[]) {
-  return tickets.filter((ticket) => isItTicketWaitingForSquadOps(ticket)).length;
+  return tickets.filter((ticket) => isItTicketWaitingForSquadOps(ticket))
+    .length;
 }
 
 function isOpenItTicket(ticket: HubItTicket) {

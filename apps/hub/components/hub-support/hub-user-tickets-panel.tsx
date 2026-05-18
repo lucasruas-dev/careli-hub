@@ -15,7 +15,7 @@ import {
   type HubItTicketStatus,
 } from "@/lib/hub-it-tickets/types";
 import { useAuth } from "@/providers/auth-provider";
-import { Badge, Surface } from "@repo/uix";
+import { Badge, Surface, Tooltip } from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
 import {
   AlertTriangle,
@@ -143,7 +143,9 @@ export function HubUserTicketsPanel({
       reviewText.length < 3 &&
       reviewAttachments.length === 0
     ) {
-      setError("Descreva rapidamente o que ainda precisa ser revisado ou anexe uma evidencia.");
+      setError(
+        "Descreva rapidamente o que ainda precisa ser revisado ou anexe uma evidencia.",
+      );
       return;
     }
 
@@ -233,9 +235,7 @@ export function HubUserTicketsPanel({
           ))}
         </div>
 
-        {error ? (
-          <OperationalErrorNotice message={error} />
-        ) : null}
+        {error ? <OperationalErrorNotice message={error} /> : null}
       </Surface>
 
       <Surface bordered className="border-slate-200 bg-white p-3">
@@ -427,8 +427,13 @@ function TicketDetail({
     const nextAttachments: HubItTicketAttachmentInput[] = [];
 
     for (const file of files) {
-      if (reviewAttachments.length + nextAttachments.length >= maxReviewEvidenceCount) {
-        setEvidenceError(`Limite de ${maxReviewEvidenceCount} evidencias por revisao.`);
+      if (
+        reviewAttachments.length + nextAttachments.length >=
+        maxReviewEvidenceCount
+      ) {
+        setEvidenceError(
+          `Limite de ${maxReviewEvidenceCount} evidencias por revisao.`,
+        );
         break;
       }
 
@@ -478,7 +483,9 @@ function TicketDetail({
 
       canvas.width = video.videoWidth || 1280;
       canvas.height = video.videoHeight || 720;
-      canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas
+        .getContext("2d")
+        ?.drawImage(video, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, "image/png", 0.92),
       );
@@ -562,7 +569,10 @@ function TicketDetail({
 
   async function finalizeRecording(mimeType: string) {
     const durationSeconds = recordingStartedAtRef.current
-      ? Math.max(1, Math.round((Date.now() - recordingStartedAtRef.current) / 1000))
+      ? Math.max(
+          1,
+          Math.round((Date.now() - recordingStartedAtRef.current) / 1000),
+        )
       : undefined;
     const type = recordingTypeRef.current;
     const blob = new Blob(recordingChunksRef.current, {
@@ -652,7 +662,10 @@ function TicketDetail({
       </div>
 
       <DetailBlock label="Relato enviado" value={ticket.userDescription} />
-      <DetailBlock label="Leitura tecnica da Caca" value={ticket.technicalSummary} />
+      <DetailBlock
+        label="Leitura tecnica da Caca"
+        value={ticket.technicalSummary}
+      />
 
       <div className="grid gap-3 md:grid-cols-2">
         <DetailBlock
@@ -670,10 +683,16 @@ function TicketDetail({
       {ticket.adminResponse || ticket.resolutionSummary ? (
         <div className="grid gap-3 rounded-lg border border-[#A07C3B]/20 bg-[#fffaf0] p-3">
           {ticket.adminResponse ? (
-            <DetailBlock label="Devolutiva SquadOps" value={ticket.adminResponse} />
+            <DetailBlock
+              label="Devolutiva SquadOps"
+              value={ticket.adminResponse}
+            />
           ) : null}
           {ticket.resolutionSummary ? (
-            <DetailBlock label="O que foi feito" value={ticket.resolutionSummary} />
+            <DetailBlock
+              label="O que foi feito"
+              value={ticket.resolutionSummary}
+            />
           ) : null}
           {ticket.lastResponseBy ? (
             <p className="m-0 text-xs text-slate-500">
@@ -696,7 +715,11 @@ function TicketDetail({
               onClick={onClose}
               type="button"
             >
-              {isSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+              {isSaving ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4" />
+              )}
               Encerrar ticket
             </button>
             <button
@@ -776,20 +799,21 @@ function TicketDetail({
                   {evidenceError}
                 </p>
               ) : null}
-              <button
-                aria-label="Enviar revisao para SquadOps"
-                className="grid size-11 place-items-center rounded-lg bg-[#A07C3B] text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
-                disabled={!canSubmitReview || isSaving}
-                onClick={submitReview}
-                title="Enviar revisao"
-                type="button"
-              >
-                {isSaving ? (
-                  <Loader2 className="size-5 animate-spin" />
-                ) : (
-                  <Send className="size-5" />
-                )}
-              </button>
+              <Tooltip content="Enviar revisao" placement="top">
+                <button
+                  aria-label="Enviar revisao para SquadOps"
+                  className="grid size-11 place-items-center rounded-lg bg-[#A07C3B] text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                  disabled={!canSubmitReview || isSaving}
+                  onClick={submitReview}
+                  type="button"
+                >
+                  {isSaving ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <Send className="size-5" />
+                  )}
+                </button>
+              </Tooltip>
             </div>
           ) : null}
         </div>
@@ -869,7 +893,11 @@ function AttachmentPreview({
         />
       ) : null}
       {attachment.type === "video" && attachment.dataUrl ? (
-        <video className="h-36 w-full bg-slate-950 object-contain" controls src={attachment.dataUrl} />
+        <video
+          className="h-36 w-full bg-slate-950 object-contain"
+          controls
+          src={attachment.dataUrl}
+        />
       ) : null}
       {attachment.type === "audio" && attachment.dataUrl ? (
         <div className="grid min-h-28 place-items-center bg-slate-100 p-3">
@@ -878,9 +906,15 @@ function AttachmentPreview({
       ) : null}
       {!attachment.dataUrl || attachment.type === "file" ? (
         <div className="grid h-28 place-items-center bg-slate-100 text-slate-400">
-          {attachment.type === "video" ? <FileVideo className="size-7" /> : null}
-          {attachment.type === "audio" ? <FileAudio className="size-7" /> : null}
-          {attachment.type === "image" ? <ImageIcon className="size-7" /> : null}
+          {attachment.type === "video" ? (
+            <FileVideo className="size-7" />
+          ) : null}
+          {attachment.type === "audio" ? (
+            <FileAudio className="size-7" />
+          ) : null}
+          {attachment.type === "image" ? (
+            <ImageIcon className="size-7" />
+          ) : null}
           {attachment.type === "file" ? <FileText className="size-7" /> : null}
         </div>
       ) : null}

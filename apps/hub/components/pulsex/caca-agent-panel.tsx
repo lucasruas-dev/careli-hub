@@ -23,6 +23,7 @@ import type {
   PulseXMessage,
   PulseXPresenceUser,
 } from "@/lib/pulsex";
+import { Tooltip } from "@repo/uix";
 import { askHubAi, mapHubAiMessages } from "@/lib/hub-ai/client";
 import {
   buildHubAiUserContext,
@@ -119,16 +120,15 @@ export function CacaAgentPanel({
     [hubUser],
   );
   const focusedMessageAuthorName = focusedMessage
-    ? (focusedMessage.authorName ?? getUserLabel(users, focusedMessage.authorId))
+    ? (focusedMessage.authorName ??
+      getUserLabel(users, focusedMessage.authorId))
     : "";
   const hasFocusedMessage = Boolean(focusedMessage);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [activeAgentTab, setActiveAgentTab] =
-    useState<CacaAgentTab>("agent");
-  const [selectedToneId, setSelectedToneId] = useState<CacaToneId>(
-    DEFAULT_CACA_TONE_ID,
-  );
+  const [activeAgentTab, setActiveAgentTab] = useState<CacaAgentTab>("agent");
+  const [selectedToneId, setSelectedToneId] =
+    useState<CacaToneId>(DEFAULT_CACA_TONE_ID);
   const [chatMessages, setChatMessages] = useState<CacaChatMessage[]>(() => [
     createInitialMessage({
       channelName: channel.name,
@@ -311,77 +311,80 @@ export function CacaAgentPanel({
         </div>
       ) : (
         <>
-      <div className="shrink-0 border-b border-[#eef2f7] px-4 py-3">
-        {focusedMessage ? (
-          <FocusedMessageCard focusedMessage={focusedMessage} users={users} />
-        ) : null}
-        <ToneSelector
-          disabled={isSending}
-          onSelectTone={setSelectedToneId}
-          selectedToneId={selectedToneId}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          {panelQuickActions.map((action) => (
-            <button
-              className="grid min-h-16 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-2.5 py-2 text-left text-xs font-semibold text-[#344054] outline-none transition hover:border-[#A07C3B]/50 hover:bg-[#f7f3eb] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          <div className="shrink-0 border-b border-[#eef2f7] px-4 py-3">
+            {focusedMessage ? (
+              <FocusedMessageCard
+                focusedMessage={focusedMessage}
+                users={users}
+              />
+            ) : null}
+            <ToneSelector
               disabled={isSending}
-              key={action.label}
-              onClick={() => void sendAiQuestion(action.prompt)}
-              type="button"
-            >
-              <span className="grid h-7 w-7 place-items-center rounded-md bg-white text-[#A07C3B]">
-                <action.icon aria-hidden="true" size={15} />
-              </span>
-              <span className="min-w-0 leading-4">{action.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] px-3 py-4">
-        <div className="grid gap-3">
-          {chatMessages.map((message) => (
-            <CacaBubble
-              key={message.id}
-              message={message}
-              onUseAsDraft={onUseAsDraft}
-              useAsDraftLabel={
-                focusedMessage ? "Usar como resposta" : "Usar no campo"
-              }
+              onSelectTone={setSelectedToneId}
+              selectedToneId={selectedToneId}
             />
-          ))}
-          <div ref={chatEndRef} />
-        </div>
-      </div>
+            <div className="grid grid-cols-2 gap-2">
+              {panelQuickActions.map((action) => (
+                <button
+                  className="grid min-h-16 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-2.5 py-2 text-left text-xs font-semibold text-[#344054] outline-none transition hover:border-[#A07C3B]/50 hover:bg-[#f7f3eb] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                  disabled={isSending}
+                  key={action.label}
+                  onClick={() => void sendAiQuestion(action.prompt)}
+                  type="button"
+                >
+                  <span className="grid h-7 w-7 place-items-center rounded-md bg-white text-[#A07C3B]">
+                    <action.icon aria-hidden="true" size={15} />
+                  </span>
+                  <span className="min-w-0 leading-4">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <form
-        className="grid shrink-0 grid-cols-[minmax(0,1fr)_2.5rem] gap-2 border-t border-[#d9e0ea] bg-white p-3"
-        onSubmit={handleSubmit}
-      >
-        <textarea
-          aria-label="Perguntar para Cacá"
-          className="max-h-24 min-h-10 resize-none rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-3 py-2 text-sm leading-5 outline-none transition placeholder:text-[#8b98aa] focus:border-[#A07C3B] focus:bg-white"
-          disabled={isSending}
-          onChange={(event) => setInputValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void sendAiQuestion();
-            }
-          }}
-          placeholder="Pergunte para a Cacá"
-          rows={1}
-          value={inputValue}
-        />
-        <button
-          aria-label="Enviar para Cacá"
-          className="grid h-10 w-10 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0ea] disabled:text-[#8b98aa]"
-          disabled={isSending || !inputValue.trim()}
-          type="submit"
-        >
-          <Send aria-hidden="true" size={17} />
-        </button>
-      </form>
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] px-3 py-4">
+            <div className="grid gap-3">
+              {chatMessages.map((message) => (
+                <CacaBubble
+                  key={message.id}
+                  message={message}
+                  onUseAsDraft={onUseAsDraft}
+                  useAsDraftLabel={
+                    focusedMessage ? "Usar como resposta" : "Usar no campo"
+                  }
+                />
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+          </div>
+
+          <form
+            className="grid shrink-0 grid-cols-[minmax(0,1fr)_2.5rem] gap-2 border-t border-[#d9e0ea] bg-white p-3"
+            onSubmit={handleSubmit}
+          >
+            <textarea
+              aria-label="Perguntar para Cacá"
+              className="max-h-24 min-h-10 resize-none rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-3 py-2 text-sm leading-5 outline-none transition placeholder:text-[#8b98aa] focus:border-[#A07C3B] focus:bg-white"
+              disabled={isSending}
+              onChange={(event) => setInputValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendAiQuestion();
+                }
+              }}
+              placeholder="Pergunte para a Cacá"
+              rows={1}
+              value={inputValue}
+            />
+            <button
+              aria-label="Enviar para Cacá"
+              className="grid h-10 w-10 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0ea] disabled:text-[#8b98aa]"
+              disabled={isSending || !inputValue.trim()}
+              type="submit"
+            >
+              <Send aria-hidden="true" size={17} />
+            </button>
+          </form>
         </>
       )}
     </aside>
@@ -400,7 +403,9 @@ function CacaBubble({
   const isUser = message.role === "user";
 
   return (
-    <article className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
+    <article
+      className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}
+    >
       {!isUser ? (
         <span className="mt-1 grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#101820]">
           <Image
@@ -421,17 +426,20 @@ function CacaBubble({
       >
         <div className="m-0">{renderCacaMessageContent(message.content)}</div>
         {message.actionable && !isUser ? (
-          <button
-            aria-label={useAsDraftLabel}
-            className="mt-2 grid h-8 w-8 place-items-center rounded-md border border-[#cfd8e3] bg-[#f8fafc] text-[#344054] outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-            onClick={() =>
-              onUseAsDraft(message.draftContent ?? extractDraftContent(message.content))
-            }
-            title={useAsDraftLabel}
-            type="button"
-          >
-            <PenLine aria-hidden="true" size={13} />
-          </button>
+          <Tooltip content={useAsDraftLabel} placement="top">
+            <button
+              aria-label={useAsDraftLabel}
+              className="mt-2 grid h-8 w-8 place-items-center rounded-md border border-[#cfd8e3] bg-[#f8fafc] text-[#344054] outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={() =>
+                onUseAsDraft(
+                  message.draftContent ?? extractDraftContent(message.content),
+                )
+              }
+              type="button"
+            >
+              <PenLine aria-hidden="true" size={13} />
+            </button>
+          </Tooltip>
         ) : null}
       </div>
     </article>
@@ -527,7 +535,6 @@ function ToneSelector({
               disabled={disabled}
               key={tone.id}
               onClick={() => onSelectTone(tone.id)}
-              title={tone.label}
               type="button"
             >
               <tone.icon aria-hidden="true" size={13} />
@@ -573,20 +580,22 @@ function extractDraftContent(content: string) {
 
   return normalizeDraftBulletMarkers(
     normalizedContent
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => {
-      const normalizedLine = normalizeDraftLine(line);
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => {
+        const normalizedLine = normalizeDraftLine(line);
 
-      if (!normalizedLine) {
-        return true;
-      }
+        if (!normalizedLine) {
+          return true;
+        }
 
-      return !draftHeaderPatterns.some((pattern) => pattern.test(normalizedLine));
-    })
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim(),
+        return !draftHeaderPatterns.some((pattern) =>
+          pattern.test(normalizedLine),
+        );
+      })
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
   );
 }
 
@@ -712,7 +721,9 @@ function buildPulseXAgentContext({
       data: message.createdAt,
       tags: message.tags ?? [],
       horario: message.timestamp,
-      mencionaUsuarioAtual: Boolean(message.mentionUserIds?.includes(currentUserId)),
+      mencionaUsuarioAtual: Boolean(
+        message.mentionUserIds?.includes(currentUserId),
+      ),
     })),
     instrucaoUsuarioLogado: getHubAiUserInstruction(aiUserContext),
     tomSelecionado: {
@@ -784,7 +795,8 @@ function getQuickActions(hasFocusedMessage: boolean) {
     {
       icon: ListChecks,
       label: "Proximos passos",
-      prompt: "transforme a conversa recente em proximos passos com responsavel sugerido e prioridade.",
+      prompt:
+        "transforme a conversa recente em proximos passos com responsavel sugerido e prioridade.",
     },
     {
       icon: BotMessageSquare,

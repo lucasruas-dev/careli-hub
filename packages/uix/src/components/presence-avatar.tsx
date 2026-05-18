@@ -11,6 +11,9 @@ export type PresenceAvatarProps = HTMLAttributes<HTMLSpanElement> & {
 
 export const PresenceAvatar = forwardRef<HTMLSpanElement, PresenceAvatarProps>(
   ({ className, initials, label, status = "offline", ...props }, ref) => {
+    const avatarProps = { ...props };
+    delete avatarProps.title;
+
     return (
       <span
         aria-label={label ? `${label}, ${status}` : undefined}
@@ -18,8 +21,7 @@ export const PresenceAvatar = forwardRef<HTMLSpanElement, PresenceAvatarProps>(
         data-status={status}
         ref={ref}
         role={label ? "img" : undefined}
-        title={label}
-        {...props}
+        {...avatarProps}
       >
         <span className="uix-presence-avatar__initials">{initials}</span>
         <span aria-hidden="true" className="uix-presence-avatar__status" />

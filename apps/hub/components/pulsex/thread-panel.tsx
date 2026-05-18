@@ -7,12 +7,7 @@ import type {
   PulseXThreadReply,
 } from "@/lib/pulsex";
 import { Send, X } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import { MessageItem } from "./message-item";
 
 type ThreadPanelProps = {
@@ -141,7 +136,9 @@ export function ThreadPanel({
                     : "border-[#d9e0ea] bg-white text-[var(--uix-text-primary)]"
                 }`}
               >
-                <p className="m-0 whitespace-pre-wrap leading-6">{reply.body}</p>
+                <p className="m-0 whitespace-pre-wrap leading-6">
+                  {reply.body}
+                </p>
                 <p className="m-0 mt-1 text-right text-[0.68rem] font-bold text-[#101820]">
                   {reply.timestamp}
                 </p>
@@ -209,7 +206,6 @@ function ThreadReplyAvatar({
             }
           : undefined
       }
-      title={name}
     >
       {avatarUrl ? null : initials}
     </span>

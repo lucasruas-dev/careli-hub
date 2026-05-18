@@ -4,6 +4,8 @@ import { guardianMockClients } from "@/modules/guardian/guardianMockData";
 import type { GuardianMockClient } from "@/modules/guardian/guardianMockData";
 import type { PaymentPromiseStatus, QueueClient } from "@/modules/guardian/attendance/types";
 
+const EMPTY_FIELD = "-";
+
 export type GuardianAttendanceSourceUnit = {
   area: string;
   empreendimento: string;
@@ -107,9 +109,9 @@ export function buildQueueClientsFromSources(
     scoreRisco: client.scoreRisco,
     responsavel: client.responsavel,
     cpf: client.cpf,
-    segmento: "Pessoa física",
+    segmento: EMPTY_FIELD,
     dados360: {
-      tipoPessoa: client.tipoPessoa ?? "Física",
+      tipoPessoa: client.tipoPessoa ?? EMPTY_FIELD,
       idade: client.idade,
       sexo: client.sexo,
       estadoCivil: client.estadoCivil,
@@ -118,42 +120,42 @@ export function buildQueueClientsFromSources(
       cidade: client.cidade,
       telefone: client.telefone,
       nascimento: client.nascimento ?? birthDateFromAge(client.idade),
-      relacionamento: client.relacionamento ?? "Cliente desde 2022",
-      conjuge: client.conjuge ?? (hasSpouse(client.estadoCivil) ? "Informado no cadastro" : "Não informado"),
-      cpfConjuge: client.cpfConjuge ?? (hasSpouse(client.estadoCivil) ? "000.000.000-00" : "Não informado"),
-      email: client.email ?? `${client.id}@guardian.demo`,
+      relacionamento: client.relacionamento ?? EMPTY_FIELD,
+      conjuge: client.conjuge ?? EMPTY_FIELD,
+      cpfConjuge: client.cpfConjuge ?? EMPTY_FIELD,
+      email: client.email ?? EMPTY_FIELD,
       escolaridade: client.escolaridade,
       naturalidade: client.naturalidade ?? client.cidade,
-      nacionalidade: client.nacionalidade ?? "Brasileira",
-      bairro: client.bairro ?? "Não informado",
-      cep: client.cep ?? "Não informado",
-      complementoEndereco: client.complementoEndereco ?? "Não informado",
+      nacionalidade: client.nacionalidade ?? EMPTY_FIELD,
+      bairro: client.bairro ?? EMPTY_FIELD,
+      cep: client.cep ?? EMPTY_FIELD,
+      complementoEndereco: client.complementoEndereco ?? EMPTY_FIELD,
       conjugeDados: client.conjugeDados ?? {
-        cpf: client.cpfConjuge ?? "Não informado",
-        documentoIdentidade: "Não informado",
-        email: "Não informado",
-        endereco: "Não informado",
-        idade: "Não informado",
-        nacionalidade: "Não informado",
-        nascimento: "Não informado",
-        naturalidade: "Não informado",
-        nome: client.conjuge ?? "Não informado",
-        profissao: "Não informado",
-        sexo: "Não informado",
-        telefone: "Não informado",
+        cpf: client.cpfConjuge ?? EMPTY_FIELD,
+        documentoIdentidade: EMPTY_FIELD,
+        email: EMPTY_FIELD,
+        endereco: EMPTY_FIELD,
+        idade: EMPTY_FIELD,
+        nacionalidade: EMPTY_FIELD,
+        nascimento: EMPTY_FIELD,
+        naturalidade: EMPTY_FIELD,
+        nome: client.conjuge ?? EMPTY_FIELD,
+        profissao: EMPTY_FIELD,
+        sexo: EMPTY_FIELD,
+        telefone: EMPTY_FIELD,
       },
-      documentoIdentidade: client.documentoIdentidade ?? "Não informado",
-      endereco: client.endereco ?? "Não informado",
-      nomeFantasia: client.nomeFantasia ?? "Não informado",
-      nomeMae: client.nomeMae ?? "Não informado",
-      numeroEndereco: client.numeroEndereco ?? "Não informado",
-      razaoSocial: client.razaoSocial ?? "Não informado",
-      regimeBens: client.regimeBens ?? "Não informado",
-      rg: client.rg ?? "Não informado",
+      documentoIdentidade: client.documentoIdentidade ?? EMPTY_FIELD,
+      endereco: client.endereco ?? EMPTY_FIELD,
+      nomeFantasia: client.nomeFantasia ?? EMPTY_FIELD,
+      nomeMae: client.nomeMae ?? EMPTY_FIELD,
+      numeroEndereco: client.numeroEndereco ?? EMPTY_FIELD,
+      razaoSocial: client.razaoSocial ?? EMPTY_FIELD,
+      regimeBens: client.regimeBens ?? EMPTY_FIELD,
+      rg: client.rg ?? EMPTY_FIELD,
     },
     carteira: {
       empreendimento: client.empreendimento,
-      imobiliariaCorretor: client.imobiliariaCorretor ?? brokerForEnterprise(client.empreendimento),
+      imobiliariaCorretor: client.imobiliariaCorretor ?? EMPTY_FIELD,
       unidades: units,
     },
     parcelas: {
@@ -166,7 +168,7 @@ export function buildQueueClientsFromSources(
     agreement,
     commitments,
     timeline: buildOperationalTimeline(client, workflow, agreement, commitments),
-    aiSuggestion: buildSuggestion(client.prioridade, client.empreendimento),
+    aiSuggestion: buildSuggestion(),
     };
   });
 }
@@ -203,8 +205,8 @@ function buildUnit(
     signedContractStatus: client.signedContractStatus,
     signedContractUrl: client.signedContractUrl,
     valorTabela: money(client.valorUnidade),
-    statusVenda: client.statusVenda ?? (secondary ? "Contrato vinculado" : "Contrato ativo"),
-    imobiliariaCorretor: client.imobiliariaCorretor ?? brokerForEnterprise(client.empreendimento),
+    statusVenda: client.statusVenda ?? EMPTY_FIELD,
+    imobiliariaCorretor: client.imobiliariaCorretor ?? EMPTY_FIELD,
   };
 }
 
@@ -213,16 +215,6 @@ function buildAgreement(
   unit: QueueClient["carteira"]["unidades"][number]
 ): QueueClient["agreement"] {
   const originalDebt = client.saldoAtraso;
-  const discountRate = agreementDiscountRate(client);
-  const negotiatedValue = Math.max(originalDebt * (1 - discountRate), 0);
-  const entryValue = negotiatedValue * agreementEntryRate(client);
-  const installmentsCount = agreementInstallments(client);
-  const remainingValue = Math.max(negotiatedValue - entryValue, 0);
-  const installmentValue = installmentsCount > 0 ? remainingValue / installmentsCount : 0;
-  const status = agreementStatusForClient(client);
-  const risk = agreementRiskForClient(client);
-  const breakChance = agreementBreakChance(client, risk);
-  const recoveredValue = status === "Pago" ? negotiatedValue : status === "Ativo" || status === "Reativado" ? entryValue : 0;
 
   return {
     id: `${client.id}-agreement`,
@@ -230,23 +222,23 @@ function buildAgreement(
     enterprise: unit.empreendimento,
     unit: `${unit.unidadeLote} · ${unit.area}`,
     originalDebt: money(originalDebt),
-    discount: `${Math.round(discountRate * 100)}%`,
-    negotiatedValue: money(negotiatedValue),
-    entry: money(entryValue),
-    installmentsCount,
-    recoveredValue: money(recoveredValue),
-    breakRate: breakChance,
-    recoveryRate: originalDebt > 0 ? Math.round((recoveredValue / originalDebt) * 100) : 100,
-    status,
-    risk,
+    discount: EMPTY_FIELD,
+    negotiatedValue: EMPTY_FIELD,
+    entry: EMPTY_FIELD,
+    installmentsCount: 0,
+    recoveredValue: EMPTY_FIELD,
+    breakRate: 0,
+    recoveryRate: 0,
+    status: EMPTY_FIELD,
+    risk: EMPTY_FIELD,
     operator: client.responsavel,
     aiSuggestion: {
-      composition: `Entrada de ${money(entryValue)} e ${installmentsCount} parcela(s) de ${money(installmentValue)}, preservando o contrato e reduzindo atrito operacional.`,
-      breakChance,
-      operationalRisk: risk,
-      nextAction: agreementNextAction(status, risk),
+      composition: EMPTY_FIELD,
+      breakChance: 0,
+      operationalRisk: EMPTY_FIELD,
+      nextAction: EMPTY_FIELD,
     },
-    dueDates: buildAgreementDueDates(client, installmentsCount, entryValue, installmentValue, status),
+    dueDates: [],
   };
 }
 
@@ -255,94 +247,7 @@ function buildCommitments(
   units: QueueClient["carteira"]["unidades"],
   agreement: QueueClient["agreement"]
 ): QueueClient["commitments"] {
-  const primaryUnit = units[0];
-  const secondaryUnit = units[1];
-  const promiseValue = Math.max(client.saldoAtraso * 0.38, 950);
-  const promiseStatus = promiseStatusForClient(client);
-  const agreementFirstInstallment = agreement.dueDates.find((dueDate) => dueDate.label !== "Entrada");
-  const agreementEntry = agreement.dueDates[0];
-
-  const records: QueueClient["commitments"] = [
-    {
-      id: `${client.id}-promise-current`,
-      type: "Promessa de pagamento",
-      client: client.nome,
-      enterprise: primaryUnit.empreendimento,
-      unitCode: primaryUnit.matricula,
-      unitLabel: `${primaryUnit.unidadeLote} · ${primaryUnit.area}`,
-      relatedInstallments: buildInstallmentRange(client.parcelasVencidas),
-      promisedValue: money(promiseValue),
-      promisedDate: "15/05/2026",
-      contactChannel: client.status === "Contato programado" ? "Ligação" : "WhatsApp",
-      operator: client.responsavel,
-      note: promiseNote(promiseStatus, client),
-      protocol: guardianProtocol(ordinalFor(client.id, 20)),
-      status: promiseStatus,
-      history: buildPromiseHistory(client, primaryUnit.matricula, promiseStatus, promiseValue),
-    },
-    {
-      id: `${client.id}-agreement-current`,
-      type: "Acordo",
-      client: client.nome,
-      enterprise: agreement.enterprise,
-      unitCode: primaryUnit.matricula,
-      unitLabel: agreement.unit,
-      includedInstallments: buildInstallmentRange(client.parcelasVencidas + 1),
-      originalValue: agreement.originalDebt,
-      discount: agreement.discount,
-      negotiatedValue: agreement.negotiatedValue,
-      entry: agreement.entry,
-      entryDueDate: agreementEntry?.dueDate ?? "15/05/2026",
-      installmentsCount: agreement.installmentsCount,
-      installmentValue: agreementFirstInstallment?.amount ?? agreement.entry,
-      firstDueDate: agreementFirstInstallment?.dueDate ?? "10/06/2026",
-      operator: agreement.operator,
-      note: agreement.aiSuggestion.composition,
-      protocol: guardianProtocol(ordinalFor(client.id, 30)),
-      status: agreement.status,
-      risk: agreement.risk,
-      history: buildAgreementHistory(client, primaryUnit.matricula, agreement),
-    },
-  ];
-
-  if (secondaryUnit) {
-    records.push({
-      id: `${client.id}-promise-secondary`,
-      type: "Promessa de pagamento",
-      client: client.nome,
-      enterprise: secondaryUnit.empreendimento,
-      unitCode: secondaryUnit.matricula,
-      unitLabel: `${secondaryUnit.unidadeLote} · ${secondaryUnit.area}`,
-      relatedInstallments: "02/60, 03/60",
-      promisedValue: money(Math.max(client.saldoAtraso * 0.18, 700)),
-      promisedDate: "18/05/2026",
-      contactChannel: "Ligação",
-      operator: client.responsavel,
-      note: "Cliente pediu reagendamento para conciliar recebimento familiar e evitar quebra no lote secundário.",
-      protocol: guardianProtocol(ordinalFor(client.id, 40)),
-      status: "Reagendada",
-      history: [
-        {
-          id: `${client.id}-promise-secondary-created`,
-          protocol: guardianProtocol(ordinalFor(client.id, 41)),
-          action: "Promessa reagendada",
-          occurredAt: "10/05/2026 15:15",
-          operator: client.responsavel,
-          description: "Promessa vinculada à segunda unidade foi reagendada com novo compromisso financeiro.",
-        },
-        {
-          id: `${client.id}-promise-secondary-note`,
-          protocol: guardianProtocol(ordinalFor(client.id, 42)),
-          action: "Observação registrada",
-          occurredAt: "10/05/2026 15:18",
-          operator: client.responsavel,
-          description: "Operador registrou solicitação de follow-up antes da data prometida.",
-        },
-      ],
-    });
-  }
-
-  return records;
+  return [];
 }
 
 function promiseStatusForClient(client: GuardianMockClient): PaymentPromiseStatus {
@@ -387,7 +292,7 @@ function buildPromiseHistory(
       protocol: guardianProtocol(ordinalFor(client.id, 22)),
       action: "Quebra registrada",
       occurredAt: "11/05/2026 09:20",
-      operator: "Sistema Guardian",
+      operator: EMPTY_FIELD,
       description: "Pagamento prometido não foi compensado e workflow foi direcionado para quebra de promessa.",
     });
   }
@@ -447,7 +352,7 @@ function buildAgreementHistory(
       protocol: guardianProtocol(ordinalFor(client.id, 33)),
       action: "Quebra de acordo registrada",
       occurredAt: "11/05/2026 09:12",
-      operator: "Sistema Guardian",
+      operator: EMPTY_FIELD,
       description: "Acordo ficou inadimplente e workflow recebeu sinalização de quebra.",
     });
   }
@@ -465,39 +370,13 @@ function buildInstallmentRange(count: number) {
 
 function buildWorkflow(client: GuardianMockClient): QueueClient["workflow"] {
   const stage = workflowStageForClient(client);
-  const previousStage = previousWorkflowStage(stage);
 
   return {
     stage,
-    updatedAt: "11/05/2026 10:35",
+    updatedAt: EMPTY_FIELD,
     owner: client.responsavel,
-    nextAction: workflowNextAction(stage),
-    history: [
-      {
-        id: `${client.id}-workflow-current`,
-        from: previousStage,
-        to: stage,
-        changedAt: "11/05/2026 10:35",
-        operator: client.responsavel,
-        reason: workflowReason(stage, client),
-      },
-      {
-        id: `${client.id}-workflow-contact`,
-        from: "Novo atraso",
-        to: client.status === "Aguardando retorno" ? "Sem retorno" : "Primeiro contato",
-        changedAt: "10/05/2026 17:40",
-        operator: client.responsavel,
-        reason: "Contato inicial registrado na régua operacional de cobrança.",
-      },
-      {
-        id: `${client.id}-workflow-entry`,
-        from: "Entrada",
-        to: "Novo atraso",
-        changedAt: "08/05/2026 08:15",
-        operator: "Sistema Guardian",
-        reason: `${client.parcelasVencidas} parcela(s) vencida(s) identificada(s) no fechamento da carteira.`,
-      },
-    ],
+    nextAction: EMPTY_FIELD,
+    history: [],
   };
 }
 
@@ -507,8 +386,10 @@ function buildOperationalTimeline(
   agreement: QueueClient["agreement"],
   commitments: QueueClient["commitments"]
 ): QueueClient["timeline"] {
+  return [];
+
   const urgent = client.prioridade === "Crítica" || client.prioridade === "Alta";
-  const legalOperator = client.responsavel === "Gustavo Freitas" ? "Cinthia Cruz" : "Gustavo Freitas";
+  const legalOperator = EMPTY_FIELD;
   const boletoAmount = money(
     client.parcelasVencidas > 0 ? client.saldoAtraso / client.parcelasVencidas : 0
   );
@@ -621,7 +502,7 @@ function buildOperationalTimeline(
       protocol: guardianProtocol(ordinalFor(client.id, 53)),
       type: "Acordo gerado",
       title: "Minuta de acordo criada",
-      description: "Condição simulada com entrada reduzida, redistribuição do saldo vencido e manutenção do contrato ativo.",
+      description: EMPTY_FIELD,
       occurredAt: "10/05/2026 16:58",
       operator: client.responsavel,
       status: "Gerado",
@@ -634,7 +515,7 @@ function buildOperationalTimeline(
       title: "Acordo anterior descumprido",
       description: "Parcela combinada não foi liquidada no prazo e a régua retornou para acompanhamento humano prioritário.",
       occurredAt: "09/05/2026 09:12",
-      operator: "Sistema Guardian",
+      operator: EMPTY_FIELD,
       status: "Quebrado",
     },
     {
@@ -645,7 +526,7 @@ function buildOperationalTimeline(
       title: "Boleto C2X consultado",
       description: `Guardian consultou boleto original do C2X com valor de referência de ${boletoAmount} para envio multicanal.`,
       occurredAt: "08/05/2026 14:36",
-      operator: "Sistema Guardian",
+      operator: EMPTY_FIELD,
       status: "Registrado",
     },
     {
@@ -879,43 +760,16 @@ function buildAgreementDueDates(
   });
 }
 
-function buildSuggestion(priority: QueueClient["prioridade"], enterprise: string) {
-  if (priority === "Crítica") {
-    return `Risco crítico em ${enterprise}. Recomenda-se contato humano imediato, proposta flexível e validação de escalonamento.`;
-  }
-
-  if (priority === "Alta") {
-    return `Risco alto em ${enterprise}. Priorizar negociação consultiva e confirmação de promessa no mesmo dia.`;
-  }
-
-  if (priority === "Média") {
-    return `Risco moderado em ${enterprise}. Acionar régua multicanal e oferecer alternativa simples de regularização.`;
-  }
-
-  return `Risco baixo em ${enterprise}. Manter acompanhamento preventivo e lembrete objetivo antes do vencimento.`;
+function buildSuggestion() {
+  return EMPTY_FIELD;
 }
 
 function nextActionForStatus(status: string, priority: QueueClient["prioridade"]) {
-  if (status === "Escalado") return "Contato executivo e validação jurídica";
-  if (status === "Proposta enviada") return "Acompanhar aceite da proposta";
-  if (status === "Em negociação") return "Confirmar condição de pagamento";
-  if (status === "Aguardando retorno") return "Retomar contato multicanal";
-  if (status === "Contato programado") return "Realizar contato no horário combinado";
-  return priority === "Baixa" ? "Manter lembrete preventivo" : "Atualizar régua operacional";
+  return EMPTY_FIELD;
 }
 
 function brokerForEnterprise(enterprise: string) {
-  const brokers: Record<string, string> = {
-    "Jardins do Vale": "Prime Lotes / Eduardo Pires",
-    "Lagoa Bonita": "Lagoa Urbanismo / Camila Torres",
-    "Lavra do Ouro": "Ouro Brokers / Caio Mendes",
-    "Morada da Serra": "Serra Prime / Renata Faria",
-    "Recanto do Pará": "Pará Lotes / Daniel Costa",
-    "Reserva Alameda": "Alameda House / Lívia Castro",
-    "Vista Alegre": "Atlas Imóveis / Renata Faria",
-  };
-
-  return brokers[enterprise] ?? "Guardian Brokers";
+  return EMPTY_FIELD;
 }
 
 function buildUnitCode(enterprise: string, quadra: string, lote: string) {
@@ -975,9 +829,7 @@ function hasSpouse(status: string) {
 }
 
 function birthDateFromAge(ageLabel: string) {
-  const age = Number.parseInt(ageLabel, 10);
-  const year = 2026 - (Number.isFinite(age) ? age : 35);
-  return `15/06/${year}`;
+  return EMPTY_FIELD;
 }
 
 function formatDate(date: Date) {

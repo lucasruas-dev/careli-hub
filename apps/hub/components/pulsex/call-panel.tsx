@@ -229,10 +229,14 @@ export function CallPanel({
     setAudioInputs(nextAudioInputs);
     setVideoInputs(nextVideoInputs);
     setAudioInputId((currentId) =>
-      isKnownDevice(currentId, nextAudioInputs) ? currentId : defaultDeviceValue,
+      isKnownDevice(currentId, nextAudioInputs)
+        ? currentId
+        : defaultDeviceValue,
     );
     setVideoInputId((currentId) =>
-      isKnownDevice(currentId, nextVideoInputs) ? currentId : defaultDeviceValue,
+      isKnownDevice(currentId, nextVideoInputs)
+        ? currentId
+        : defaultDeviceValue,
     );
   }, []);
 
@@ -323,7 +327,10 @@ export function CallPanel({
     navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
 
     return () => {
-      navigator.mediaDevices.removeEventListener("devicechange", refreshDevices);
+      navigator.mediaDevices.removeEventListener(
+        "devicechange",
+        refreshDevices,
+      );
     };
   }, [refreshDevices]);
 
@@ -430,7 +437,8 @@ export function CallPanel({
   const flushPendingIceCandidates = useCallback(
     async (remoteUserId: PulseXPresenceUser["id"]) => {
       const peerConnection = peerConnectionsRef.current.get(remoteUserId);
-      const candidates = pendingIceCandidatesRef.current.get(remoteUserId) ?? [];
+      const candidates =
+        pendingIceCandidatesRef.current.get(remoteUserId) ?? [];
 
       if (!peerConnection || candidates.length === 0) {
         return;
@@ -648,7 +656,9 @@ export function CallPanel({
               : [...currentUserIds, signal.fromUserId];
           }
 
-          return currentUserIds.filter((userId) => userId !== signal.fromUserId);
+          return currentUserIds.filter(
+            (userId) => userId !== signal.fromUserId,
+          );
         });
         return;
       }
@@ -792,7 +802,12 @@ export function CallPanel({
       kind: "screen-share-stop",
     });
     void restoreCameraAfterScreenShare();
-  }, [onSendSignal, restoreCameraAfterScreenShare, session.channelId, session.id]);
+  }, [
+    onSendSignal,
+    restoreCameraAfterScreenShare,
+    session.channelId,
+    session.id,
+  ]);
 
   const startScreenSharing = useCallback(async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) {
@@ -864,7 +879,10 @@ export function CallPanel({
   const handleVideoElementChange = useCallback(
     (participantId: string, videoElement: HTMLVideoElement | null) => {
       if (videoElement) {
-        videoElementsByParticipantIdRef.current.set(participantId, videoElement);
+        videoElementsByParticipantIdRef.current.set(
+          participantId,
+          videoElement,
+        );
         return;
       }
 
@@ -1075,14 +1093,17 @@ export function CallPanel({
     pendingUserIds.forEach((userId) => {
       void sendOfferToParticipant(userId);
     });
-  }, [attachLocalTracks, localStream, sendAnswerToOffer, sendOfferToParticipant]);
+  }, [
+    attachLocalTracks,
+    localStream,
+    sendAnswerToOffer,
+    sendOfferToParticipant,
+  ]);
 
   useEffect(() => {
-    localStream
-      ?.getAudioTracks()
-      .forEach((track) => {
-        track.enabled = !isMuted;
-      });
+    localStream?.getAudioTracks().forEach((track) => {
+      track.enabled = !isMuted;
+    });
   }, [isMuted, localStream]);
 
   useEffect(() => {
@@ -1117,7 +1138,7 @@ export function CallPanel({
         ? isScreenSharing
         : Boolean(
             participantUserId &&
-              remoteScreenSharingUserIds.includes(participantUserId),
+            remoteScreenSharingUserIds.includes(participantUserId),
           ) || participant.isScreenSharing,
       mediaStream: isLocalParticipant ? localStream : remoteStream,
     };
@@ -1147,7 +1168,6 @@ export function CallPanel({
           isFullScreen ? "" : "cursor-move select-none"
         }`}
         onPointerDown={handlePanelDragStart}
-        title={isFullScreen ? undefined : "Arraste para mover"}
       >
         <div className="flex min-w-0 items-center gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#A07C3B] text-white">
@@ -1233,10 +1253,7 @@ export function CallPanel({
                   disabled={screenShareZoom >= 2.25}
                   onClick={() =>
                     setScreenShareZoom((currentZoom) =>
-                      Math.min(
-                        2.25,
-                        Number((currentZoom + 0.25).toFixed(2)),
-                      ),
+                      Math.min(2.25, Number((currentZoom + 0.25).toFixed(2))),
                     )
                   }
                   type="button"
@@ -1417,11 +1434,13 @@ function ensurePeerTransceiver(
   peerConnection: RTCPeerConnection,
   kind: "audio" | "video",
 ) {
-  const hasTransceiver = peerConnection.getTransceivers().some(
-    (transceiver) =>
-      transceiver.sender.track?.kind === kind ||
-      transceiver.receiver.track.kind === kind,
-  );
+  const hasTransceiver = peerConnection
+    .getTransceivers()
+    .some(
+      (transceiver) =>
+        transceiver.sender.track?.kind === kind ||
+        transceiver.receiver.track.kind === kind,
+    );
 
   if (!hasTransceiver) {
     peerConnection.addTransceiver(kind, { direction: "sendrecv" });
@@ -1445,7 +1464,9 @@ function findPeerSender(
     .find((transceiver) => transceiver.receiver.track.kind === kind)?.sender;
 }
 
-function createDeviceConstraint(deviceId: string): boolean | MediaTrackConstraints {
+function createDeviceConstraint(
+  deviceId: string,
+): boolean | MediaTrackConstraints {
   return deviceId === defaultDeviceValue
     ? true
     : {

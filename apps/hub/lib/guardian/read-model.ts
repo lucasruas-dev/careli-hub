@@ -76,6 +76,7 @@ type AttendanceQueueReadModelOptions = {
 type AttendanceQueueReadModelResult = {
   clients: QueueClient[];
   count: number | null;
+  syncedAt: string | null;
 };
 
 const ATTENDANCE_QUEUE_BASE_SELECT = `
@@ -100,6 +101,7 @@ const ATTENDANCE_QUEUE_DETAIL_SELECT = `
   ${ATTENDANCE_QUEUE_BASE_SELECT},
   metadata
 `;
+const EMPTY_FIELD = "-";
 
 export async function loadGuardianOverviewReadModel(): Promise<GuardianOverviewSnapshot | null> {
   const adminClient = createSupabaseAdminClient();
@@ -214,7 +216,24 @@ export async function loadGuardianAttendanceQueueReadModel(
       mapAttendanceQueueRow(row, { compact: !includeMetadata }),
     ),
     count: count ?? null,
+    syncedAt: latestSyncedAt(data),
   };
+}
+
+function latestSyncedAt(rows: AttendanceQueueRow[]) {
+  let latestTimestamp = 0;
+  let latestValue: string | null = null;
+
+  for (const row of rows) {
+    const timestamp = row.synced_at ? new Date(row.synced_at).getTime() : 0;
+
+    if (Number.isFinite(timestamp) && timestamp > latestTimestamp) {
+      latestTimestamp = timestamp;
+      latestValue = row.synced_at;
+    }
+  }
+
+  return latestValue;
 }
 
 function mapEnterpriseRows(
@@ -251,11 +270,10 @@ function mapAttendanceQueueRow(
   row: AttendanceQueueRow,
   options: { compact: boolean },
 ): QueueClient {
-  const clientName = row.client_name?.trim() || "Cliente C2X";
-  const enterpriseName = row.enterprise_name?.trim() || "Empreendimento";
-  const unitLabel = row.unit_label?.trim() || "Unidade vinculada";
-  const linkedPartyName =
-    row.linked_party_name?.trim() || "Sem vinculo comercial";
+  const clientName = row.client_name?.trim() || EMPTY_FIELD;
+  const enterpriseName = row.enterprise_name?.trim() || EMPTY_FIELD;
+  const unitLabel = row.unit_label?.trim() || EMPTY_FIELD;
+  const linkedPartyName = row.linked_party_name?.trim() || EMPTY_FIELD;
   const overdueAmount = toNumber(row.overdue_amount);
   const overduePayments = toNumber(row.overdue_payments);
   const overdueDays = toNumber(row.overdue_days);
@@ -271,20 +289,20 @@ function mapAttendanceQueueRow(
   const unitIds = metadataStringArray(metadata, "unitIds");
   const unitId = unitIds[0] ?? `c2x-unit-${rowId}`;
   const metadataUnits = metadataRecordArray(metadata, "units");
-  const phone = row.phone?.trim() || "Sem telefone";
+  const phone = row.phone?.trim() || EMPTY_FIELD;
   const dados360Metadata = metadataRecord(metadata, "dados360");
   const conjugeMetadata = metadataRecord(dados360Metadata, "conjugeDados");
   const fallbackUnit = {
-    area: "-",
+    area: EMPTY_FIELD,
     empreendimento: enterpriseName,
     id: unitId,
     imobiliariaCorretor: linkedPartyName,
     lote: parseLotFromUnitLabel(unitLabel),
     matricula: unitLabel,
     quadra: parseBlockFromUnitLabel(unitLabel),
-    statusVenda: "Contrato ativo",
+    statusVenda: EMPTY_FIELD,
     unidadeLote: unitLabel,
-    valorTabela: "-",
+    valorTabela: EMPTY_FIELD,
   };
   const units =
     metadataUnits.length > 0
@@ -318,9 +336,9 @@ function mapAttendanceQueueRow(
             metadataString(unit, "signedContractStatus", "") || undefined,
           signedContractUrl:
             metadataString(unit, "signedContractUrl", "") || undefined,
-          statusVenda: metadataString(unit, "statusVenda", "Contrato ativo"),
+          statusVenda: metadataString(unit, "statusVenda", EMPTY_FIELD),
           unidadeLote: metadataString(unit, "unidadeLote", unitLabel),
-          valorTabela: metadataString(unit, "valorTabela", "-"),
+          valorTabela: metadataString(unit, "valorTabela", EMPTY_FIELD),
         }))
       : [fallbackUnit];
 
@@ -328,13 +346,13 @@ function mapAttendanceQueueRow(
     agreement: buildEmptyAgreement({
       clientName,
       enterpriseName,
-      operator: "Sistema Guardian",
+      operator: EMPTY_FIELD,
       priority,
       riskScore,
       unitLabel,
       value: overdueAmount,
     }),
-    aiSuggestion: buildQueueSuggestion(priority, overduePayments, overdueDays),
+    aiSuggestion: buildQueueSuggestion(),
     atrasoDias: overdueDays,
     carteira: {
       empreendimento: enterpriseName,
@@ -344,7 +362,7 @@ function mapAttendanceQueueRow(
     c2xInstallments: [],
     c2xInstallmentsLoaded: false,
     commitments: [],
-    cpf: row.document?.trim() || "Nao informado",
+    cpf: row.document?.trim() || EMPTY_FIELD,
     dados360: options.compact
       ? buildCompactDados360(phone)
       : buildQueueDados360(metadata, dados360Metadata, conjugeMetadata, phone),
@@ -360,10 +378,10 @@ function mapAttendanceQueueRow(
       vencidas: overduePayments,
     },
     prioridade: priority,
-    responsavel: "Sistema Guardian",
+    responsavel: EMPTY_FIELD,
     saldoDevedor: toMoney(overdueAmount),
     scoreRisco: riskScore,
-    segmento: metadataString(metadata, "segment", "Cliente C2X"),
+    segmento: metadataString(metadata, "segment", EMPTY_FIELD),
     timeline: [],
     workflow: {
       history: options.compact
@@ -373,13 +391,13 @@ function mapAttendanceQueueRow(
               changedAt: formatSyncedAt(row.synced_at),
               from: "Entrada",
               id: `c2x-workflow-${row.id}`,
-              operator: "Sistema Guardian",
+              operator: EMPTY_FIELD,
               reason: `${overduePayments} parcela(s) vencida(s) importada(s) do C2X para a fila operacional.`,
               to: workflowStage,
             },
           ],
       nextAction,
-      owner: "Sistema Guardian",
+      owner: EMPTY_FIELD,
       stage: workflowStage,
       updatedAt: formatSyncedAt(row.synced_at),
     },
@@ -389,9 +407,9 @@ function mapAttendanceQueueRow(
 function buildCompactDados360(phone: string): QueueClient["dados360"] {
   return {
     conjugeDados: {},
-    relacionamento: "Cliente C2X",
+    relacionamento: EMPTY_FIELD,
     telefone: phone,
-    tipoPessoa: "Fisica",
+    tipoPessoa: EMPTY_FIELD,
   } as QueueClient["dados360"];
 }
 
@@ -402,111 +420,111 @@ function buildQueueDados360(
   phone: string,
 ): QueueClient["dados360"] {
   return {
-    bairro: metadataString(dados360Metadata, "bairro", "Nao informado"),
-    cep: metadataString(dados360Metadata, "cep", "Nao informado"),
-    cidade: metadataString(dados360Metadata, "cidade", "Nao informado"),
+    bairro: metadataString(dados360Metadata, "bairro", EMPTY_FIELD),
+    cep: metadataString(dados360Metadata, "cep", EMPTY_FIELD),
+    cidade: metadataString(dados360Metadata, "cidade", EMPTY_FIELD),
     complementoEndereco: metadataString(
       dados360Metadata,
       "complementoEndereco",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
-    conjuge: metadataString(dados360Metadata, "conjuge", "Nao informado"),
+    conjuge: metadataString(dados360Metadata, "conjuge", EMPTY_FIELD),
     conjugeDados: {
       cpf: metadataString(
         conjugeMetadata,
         "cpf",
-        metadataString(dados360Metadata, "cpfConjuge", "Nao informado"),
+        metadataString(dados360Metadata, "cpfConjuge", EMPTY_FIELD),
       ),
       documentoIdentidade: metadataString(
         conjugeMetadata,
         "documentoIdentidade",
-        "Nao informado",
+        EMPTY_FIELD,
       ),
-      email: metadataString(conjugeMetadata, "email", "Nao informado"),
-      endereco: metadataString(conjugeMetadata, "endereco", "Nao informado"),
-      idade: metadataString(conjugeMetadata, "idade", "Nao informado"),
+      email: metadataString(conjugeMetadata, "email", EMPTY_FIELD),
+      endereco: metadataString(conjugeMetadata, "endereco", EMPTY_FIELD),
+      idade: metadataString(conjugeMetadata, "idade", EMPTY_FIELD),
       nacionalidade: metadataString(
         conjugeMetadata,
         "nacionalidade",
-        "Nao informado",
+        EMPTY_FIELD,
       ),
       nascimento: metadataString(
         conjugeMetadata,
         "nascimento",
-        "Nao informado",
+        EMPTY_FIELD,
       ),
       naturalidade: metadataString(
         conjugeMetadata,
         "naturalidade",
-        "Nao informado",
+        EMPTY_FIELD,
       ),
       nome: metadataString(
         conjugeMetadata,
         "nome",
-        metadataString(dados360Metadata, "conjuge", "Nao informado"),
+        metadataString(dados360Metadata, "conjuge", EMPTY_FIELD),
       ),
-      profissao: metadataString(conjugeMetadata, "profissao", "Nao informado"),
-      sexo: metadataString(conjugeMetadata, "sexo", "Nao informado"),
-      telefone: metadataString(conjugeMetadata, "telefone", "Nao informado"),
+      profissao: metadataString(conjugeMetadata, "profissao", EMPTY_FIELD),
+      sexo: metadataString(conjugeMetadata, "sexo", EMPTY_FIELD),
+      telefone: metadataString(conjugeMetadata, "telefone", EMPTY_FIELD),
     },
-    cpfConjuge: metadataString(dados360Metadata, "cpfConjuge", "Nao informado"),
+    cpfConjuge: metadataString(dados360Metadata, "cpfConjuge", EMPTY_FIELD),
     documentoIdentidade: metadataString(
       dados360Metadata,
       "documentoIdentidade",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
-    email: metadataString(dados360Metadata, "email", "Nao informado"),
-    endereco: metadataString(dados360Metadata, "endereco", "Nao informado"),
+    email: metadataString(dados360Metadata, "email", EMPTY_FIELD),
+    endereco: metadataString(dados360Metadata, "endereco", EMPTY_FIELD),
     escolaridade: metadataString(
       dados360Metadata,
       "escolaridade",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
     estadoCivil: metadataString(
       dados360Metadata,
       "estadoCivil",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
     faixaSalarial: metadataString(
       dados360Metadata,
       "faixaSalarial",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
-    idade: metadataString(dados360Metadata, "idade", "Nao informado"),
+    idade: metadataString(dados360Metadata, "idade", EMPTY_FIELD),
     nacionalidade: metadataString(
       dados360Metadata,
       "nacionalidade",
-      "Brasileira",
+      EMPTY_FIELD,
     ),
-    nascimento: metadataString(dados360Metadata, "nascimento", "Nao informado"),
+    nascimento: metadataString(dados360Metadata, "nascimento", EMPTY_FIELD),
     naturalidade: metadataString(
       dados360Metadata,
       "naturalidade",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
     nomeFantasia: metadataString(
       dados360Metadata,
       "nomeFantasia",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
-    nomeMae: metadataString(dados360Metadata, "nomeMae", "Nao informado"),
+    nomeMae: metadataString(dados360Metadata, "nomeMae", EMPTY_FIELD),
     numeroEndereco: metadataString(
       dados360Metadata,
       "numeroEndereco",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
-    profissao: metadataString(dados360Metadata, "profissao", "Nao informado"),
+    profissao: metadataString(dados360Metadata, "profissao", EMPTY_FIELD),
     razaoSocial: metadataString(
       dados360Metadata,
       "razaoSocial",
-      "Nao informado",
+      EMPTY_FIELD,
     ),
-    regimeBens: metadataString(dados360Metadata, "regimeBens", "Nao informado"),
-    relacionamento: metadataString(metadata, "relationship", "Cliente C2X"),
-    rg: metadataString(dados360Metadata, "rg", "Nao informado"),
-    sexo: metadataString(dados360Metadata, "sexo", "Nao informado"),
+    regimeBens: metadataString(dados360Metadata, "regimeBens", EMPTY_FIELD),
+    relacionamento: metadataString(metadata, "relationship", EMPTY_FIELD),
+    rg: metadataString(dados360Metadata, "rg", EMPTY_FIELD),
+    sexo: metadataString(dados360Metadata, "sexo", EMPTY_FIELD),
     telefone: metadataString(dados360Metadata, "telefone", phone),
-    tipoPessoa: metadataString(dados360Metadata, "tipoPessoa", "Fisica"),
+    tipoPessoa: metadataString(dados360Metadata, "tipoPessoa", EMPTY_FIELD),
   };
 }
 
@@ -584,24 +602,8 @@ function nextActionForStage(
   return "Registrar retorno e confirmar canal prioritario.";
 }
 
-function buildQueueSuggestion(
-  priority: AttendancePriority,
-  overduePayments: number,
-  overdueDays: number,
-) {
-  if (priority === "Crítica") {
-    return `Cliente com ${overduePayments} parcela(s) vencida(s) e ${overdueDays} dias de atraso. Priorizar atendimento humano.`;
-  }
-
-  if (priority === "Alta") {
-    return "Risco alto. Confirmar condição de pagamento e formalizar proposta no mesmo dia.";
-  }
-
-  if (priority === "Média") {
-    return "Risco médio. Conduzir primeiro contato e registrar retorno operacional.";
-  }
-
-  return "Risco baixo. Manter acompanhamento preventivo e registrar canal de contato.";
+function buildQueueSuggestion() {
+  return EMPTY_FIELD;
 }
 
 function buildEmptyAgreement(input: {
@@ -613,50 +615,30 @@ function buildEmptyAgreement(input: {
   unitLabel: string;
   value: number;
 }): QueueClient["agreement"] {
-  const risk = agreementRiskFromPriority(input.priority);
-
   return {
     aiSuggestion: {
       breakChance: input.riskScore,
-      composition: "Acordo ainda nao iniciado no Guardian.",
-      nextAction: "Abrir ticket para iniciar atendimento operacional.",
-      operationalRisk: risk,
+      composition: EMPTY_FIELD,
+      nextAction: EMPTY_FIELD,
+      operationalRisk: EMPTY_FIELD as AgreementRisk,
     },
     breakRate: input.riskScore,
     client: input.clientName,
-    discount: "0%",
+    discount: EMPTY_FIELD,
     dueDates: [],
     enterprise: input.enterpriseName,
-    entry: toMoney(0),
+    entry: EMPTY_FIELD,
     id: `c2x-agreement-${input.clientName}`,
     installmentsCount: 0,
-    negotiatedValue: toMoney(0),
+    negotiatedValue: EMPTY_FIELD,
     operator: input.operator,
     originalDebt: toMoney(input.value),
-    recoveredValue: toMoney(0),
+    recoveredValue: EMPTY_FIELD,
     recoveryRate: 0,
-    risk,
-    status: "Em negociação",
+    risk: EMPTY_FIELD as AgreementRisk,
+    status: EMPTY_FIELD as QueueClient["agreement"]["status"],
     unit: input.unitLabel,
   };
-}
-
-function agreementRiskFromPriority(
-  priority: AttendancePriority,
-): AgreementRisk {
-  if (priority === "Crítica") {
-    return "Crítico";
-  }
-
-  if (priority === "Alta") {
-    return "Alto";
-  }
-
-  if (priority === "Média") {
-    return "Moderado";
-  }
-
-  return "Baixo";
 }
 
 function metadataString(

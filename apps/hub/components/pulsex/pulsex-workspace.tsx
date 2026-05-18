@@ -23,6 +23,7 @@ import {
 } from "@/lib/pulsex/realtime";
 import { playPulseXIncomingMessageSound } from "@/lib/pulsex/notification-effects";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import { Tooltip } from "@repo/uix";
 import {
   getHubSupabaseClient,
   hasHubSupabaseConfig,
@@ -79,8 +80,9 @@ export function PulseXWorkspace() {
     startCall,
   } = usePulseXCall();
   const currentUserId = hubUser?.id ?? "ana";
-  const [activeChannelId, setActiveChannelId] =
-    useState<PulseXChannel["id"]>(emptyPulseXChannel.id);
+  const [activeChannelId, setActiveChannelId] = useState<PulseXChannel["id"]>(
+    emptyPulseXChannel.id,
+  );
   const [channels, setChannels] = useState<PulseXChannel[]>([]);
   const [departments, setDepartments] = useState<PulseXDepartment[]>([]);
   const [messages, setMessages] = useState<PulseXMessage[]>([]);
@@ -104,11 +106,13 @@ export function PulseXWorkspace() {
   const [composerMentions, setComposerMentions] = useState<
     readonly PulseXMessageMention[]
   >([]);
-  const [composerTags, setComposerTags] = useState<readonly PulseXMessageTag[]>([]);
-  const [threadComposerValue, setThreadComposerValue] = useState("");
-  const [dataStatus, setDataStatus] = useState<"fallback" | "loading" | "ready">(
-    "loading",
+  const [composerTags, setComposerTags] = useState<readonly PulseXMessageTag[]>(
+    [],
   );
+  const [threadComposerValue, setThreadComposerValue] = useState("");
+  const [dataStatus, setDataStatus] = useState<
+    "fallback" | "loading" | "ready"
+  >("loading");
   const [favoriteChannelIds, setFavoriteChannelIds] = useState<
     PulseXChannel["id"][]
   >([]);
@@ -168,29 +172,26 @@ export function PulseXWorkspace() {
         : channelMessages.filter((message) =>
             message.tags?.includes(activeMessageFilter),
           );
-  const channelPresenceUsers = useMemo(
-    () => {
-      const channelUsers = presenceUsers.filter((user) =>
-        (user.channelIds as readonly string[]).includes(activeChannel.id),
-      );
-      const knownUserIds = new Set(channelUsers.map((user) => user.id));
-      const messageAuthorUsers: PulseXPresenceUser[] = [];
+  const channelPresenceUsers = useMemo(() => {
+    const channelUsers = presenceUsers.filter((user) =>
+      (user.channelIds as readonly string[]).includes(activeChannel.id),
+    );
+    const knownUserIds = new Set(channelUsers.map((user) => user.id));
+    const messageAuthorUsers: PulseXPresenceUser[] = [];
 
-      for (const message of channelMessages) {
-        if (knownUserIds.has(message.authorId)) {
-          continue;
-        }
-
-        knownUserIds.add(message.authorId);
-        messageAuthorUsers.push(
-          createPresenceUserFromMessage(message, activeChannel.id),
-        );
+    for (const message of channelMessages) {
+      if (knownUserIds.has(message.authorId)) {
+        continue;
       }
 
-      return [...channelUsers, ...messageAuthorUsers];
-    },
-    [activeChannel.id, channelMessages, presenceUsers],
-  );
+      knownUserIds.add(message.authorId);
+      messageAuthorUsers.push(
+        createPresenceUserFromMessage(message, activeChannel.id),
+      );
+    }
+
+    return [...channelUsers, ...messageAuthorUsers];
+  }, [activeChannel.id, channelMessages, presenceUsers]);
 
   const loadOperationalData = useCallback(() => {
     if (profileStatus === "loading") {
@@ -240,7 +241,7 @@ export function PulseXWorkspace() {
         setActiveChannelId((currentId) =>
           nextChannels.some((channel) => channel.id === currentId)
             ? currentId
-            : nextChannels[0]?.id ?? emptyPulseXChannel.id,
+            : (nextChannels[0]?.id ?? emptyPulseXChannel.id),
         );
         setDataStatus(hasHubSupabaseConfig() ? "ready" : "fallback");
       })
@@ -272,7 +273,9 @@ export function PulseXWorkspace() {
 
       setFavoriteChannelIds(
         Array.isArray(parsedValue)
-          ? parsedValue.filter((item): item is string => typeof item === "string")
+          ? parsedValue.filter(
+              (item): item is string => typeof item === "string",
+            )
           : [],
       );
     } catch {
@@ -413,7 +416,9 @@ export function PulseXWorkspace() {
 
           if (!isFirstChannelLoad) {
             notifyIncomingMessages(
-              newMessages.filter((message) => message.authorId !== currentUserId),
+              newMessages.filter(
+                (message) => message.authorId !== currentUserId,
+              ),
             );
           }
 
@@ -429,8 +434,8 @@ export function PulseXWorkspace() {
         .catch((error: unknown) => {
           if (isLocalDevelopmentRuntime()) {
             console.warn("[pulsex] list channel messages error", error);
-        }
-      });
+          }
+        });
     },
     [
       activeChannel.id,
@@ -921,7 +926,9 @@ export function PulseXWorkspace() {
     body: string,
   ) {
     const nextBody = body.trim();
-    const previousMessage = messages.find((message) => message.id === messageId);
+    const previousMessage = messages.find(
+      (message) => message.id === messageId,
+    );
 
     if (!previousMessage || !nextBody || previousMessage.body === nextBody) {
       return;
@@ -1059,7 +1066,9 @@ export function PulseXWorkspace() {
 
         const hasReacted = reaction.reactedByUserIds.includes(currentUserId);
         const reactedByUserIds = hasReacted
-          ? reaction.reactedByUserIds.filter((userId) => userId !== currentUserId)
+          ? reaction.reactedByUserIds.filter(
+              (userId) => userId !== currentUserId,
+            )
           : [...reaction.reactedByUserIds, currentUserId];
         const count = hasReacted ? reaction.count - 1 : reaction.count + 1;
 
@@ -1111,10 +1120,7 @@ export function PulseXWorkspace() {
 
       return {
         ...currentReplies,
-        [activeThreadMessage.id]: [
-          ...messageReplies,
-          localReply,
-        ],
+        [activeThreadMessage.id]: [...messageReplies, localReply],
       };
     });
     setMessages((currentMessages) =>
@@ -1130,7 +1136,10 @@ export function PulseXWorkspace() {
     );
     setThreadComposerValue("");
 
-    if (!hasHubSupabaseConfig() || activeThreadMessage.id.startsWith("local-")) {
+    if (
+      !hasHubSupabaseConfig() ||
+      activeThreadMessage.id.startsWith("local-")
+    ) {
       return;
     }
 
@@ -1240,22 +1249,27 @@ export function PulseXWorkspace() {
             onSelect={(channelId) => handleSelectChannel(channelId)}
           />
           {!isCacaAgentOpen && !activeThreadMessage ? (
-            <button
-              aria-label="Abrir Caca"
-              className="absolute bottom-20 right-5 z-20 grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.20)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              onClick={handleOpenCacaAgent}
-              title="Abrir Caca"
-              type="button"
+            <Tooltip
+              className="absolute bottom-20 right-5 z-20"
+              content="Abrir Caca"
+              placement="left"
             >
-              <Image
-                alt=""
-                className="size-full object-cover"
-                height={56}
-                src="/caca-profile.png"
-                width={56}
-              />
-              <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
-            </button>
+              <button
+                aria-label="Abrir Caca"
+                className="grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.20)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                onClick={handleOpenCacaAgent}
+                type="button"
+              >
+                <Image
+                  alt=""
+                  className="size-full object-cover"
+                  height={56}
+                  src="/caca-profile.png"
+                  width={56}
+                />
+                <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
+              </button>
+            </Tooltip>
           ) : null}
           {isCacaAgentOpen ? (
             <div
@@ -1355,9 +1369,7 @@ function PulseXNotificationStack({
       {notifications.map((notification) => (
         <article
           className={`pointer-events-auto rounded-md border bg-white p-3 shadow-xl ${
-            notification.mentioned
-              ? "border-[#A07C3B]/45"
-              : "border-[#d9e0ea]"
+            notification.mentioned ? "border-[#A07C3B]/45" : "border-[#d9e0ea]"
           }`}
           key={notification.id}
         >
@@ -1491,7 +1503,10 @@ function isLocalDevelopmentRuntime() {
 
 function applyPresenceStatusesToUsers(
   users: PulseXPresenceUser[],
-  presenceByUserId: Record<PulseXPresenceUser["id"], PulseXPresenceUser["status"]>,
+  presenceByUserId: Record<
+    PulseXPresenceUser["id"],
+    PulseXPresenceUser["status"]
+  >,
 ): PulseXPresenceUser[] {
   let hasChanges = false;
   const nextUsers = users.map((user) => {
@@ -1514,7 +1529,10 @@ function applyPresenceStatusesToUsers(
 
 function applyPresenceStatusesToDirectChannels(
   channels: PulseXChannel[],
-  presenceByUserId: Record<PulseXPresenceUser["id"], PulseXPresenceUser["status"]>,
+  presenceByUserId: Record<
+    PulseXPresenceUser["id"],
+    PulseXPresenceUser["status"]
+  >,
 ): PulseXChannel[] {
   let hasChanges = false;
   const nextChannels = channels.map((channel) => {
@@ -1573,13 +1591,12 @@ function getMessageRecipientUserIds({
   channel: PulseXChannel;
   messageAuthorId: PulseXPresenceUser["id"];
 }) {
-  return (channel.memberUserIds ?? []).filter((userId) => userId !== messageAuthorId);
+  return (channel.memberUserIds ?? []).filter(
+    (userId) => userId !== messageAuthorId,
+  );
 }
 
-function getMessageReadUserIds(
-  message: PulseXMessage,
-  channel: PulseXChannel,
-) {
+function getMessageReadUserIds(message: PulseXMessage, channel: PulseXChannel) {
   if (!message.createdAt) {
     return message.readBy ?? [];
   }
@@ -1630,7 +1647,9 @@ function withUserChannelAccess(
       channelIds: channels
         .filter((channel) => {
           if (channel.kind === "direct") {
-            return user.id === currentUserId || channel.id === `direct-${user.id}`;
+            return (
+              user.id === currentUserId || channel.id === `direct-${user.id}`
+            );
           }
 
           return channel.memberUserIds?.includes(user.id);
@@ -1696,7 +1715,8 @@ function createLocalCallSession({
     (user) => user.id === currentUserId,
   );
   const callUsers =
-    fallbackCurrentUser && !participants.some((user) => user.id === currentUserId)
+    fallbackCurrentUser &&
+    !participants.some((user) => user.id === currentUserId)
       ? [fallbackCurrentUser, ...participants]
       : participants.length > 0
         ? participants

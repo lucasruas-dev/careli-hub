@@ -34,6 +34,8 @@ type GuardianApiDatabase = {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const READ_MODEL_MAX_AGE_MS = 60_000;
+
 export async function GET(request: NextRequest) {
   const context = await createAuthorizedContext(request);
 
@@ -57,19 +59,39 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      return NextResponse.json({
-        data: enterpriseResult.data,
-        source: "guardian-db",
-      });
+      return NextResponse.json(
+        {
+          data: enterpriseResult.data,
+          source: "guardian-db",
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Guardian-Overview-Read-Model": "BYPASS",
+          },
+        },
+      );
     }
 
     const readModelSnapshot = await loadGuardianOverviewReadModel();
 
-    if (readModelSnapshot) {
-      return NextResponse.json({ data: readModelSnapshot, source: "supabase-c2x" });
+    if (readModelSnapshot && isFreshReadModel(readModelSnapshot.generatedAt)) {
+      return overviewJson(readModelSnapshot, "supabase-c2x", "FRESH");
     }
 
     const result = await loadGuardianOverview();
+
+    if (result.ok) {
+      return overviewJson(
+        result.data,
+        "guardian-db",
+        readModelSnapshot ? "STALE_BYPASS" : "BYPASS",
+      );
+    }
+
+    if (readModelSnapshot) {
+      return overviewJson(readModelSnapshot, "supabase-c2x", "STALE_FALLBACK");
+    }
 
     if (!result.ok) {
       return NextResponse.json(
@@ -80,8 +102,6 @@ export async function GET(request: NextRequest) {
         { status: 503 },
       );
     }
-
-    return NextResponse.json({ data: result.data });
   } catch (error) {
     return NextResponse.json(
       {
@@ -91,6 +111,32 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+function overviewJson(
+  data: Awaited<ReturnType<typeof loadGuardianOverviewReadModel>>,
+  source: "guardian-db" | "supabase-c2x",
+  readModelStatus: "BYPASS" | "FRESH" | "STALE_BYPASS" | "STALE_FALLBACK",
+) {
+  return NextResponse.json(
+    { data, source },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+        "X-Guardian-Overview-Read-Model": readModelStatus,
+      },
+    },
+  );
+}
+
+function isFreshReadModel(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= READ_MODEL_MAX_AGE_MS;
 }
 
 async function createAuthorizedContext(request: NextRequest) {

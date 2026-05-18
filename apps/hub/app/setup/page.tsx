@@ -43,7 +43,13 @@ import type {
   UpdateSectorInput,
 } from "@/lib/setup/types";
 import { useAuth } from "@/providers/auth-provider";
-import { Badge, EmptyState, Surface, Tooltip, WorkspaceLayout } from "@repo/uix";
+import {
+  Badge,
+  EmptyState,
+  Surface,
+  Tooltip,
+  WorkspaceLayout,
+} from "@repo/uix";
 import {
   Building2,
   Archive,
@@ -77,10 +83,7 @@ type SetupTabId =
   | "modulos"
   | "permissoes";
 
-type SetupActionId =
-  | "new-department"
-  | "new-sector"
-  | "new-user";
+type SetupActionId = "new-department" | "new-sector" | "new-user";
 
 type SetupEditTarget =
   | { record: SetupDepartment; type: "department" }
@@ -167,9 +170,7 @@ function getSetupAccess(user: HubUserContext | null): SetupAccess {
   };
 }
 
-function mapHubRoleToSetupProfile(
-  role?: HubUserRole,
-): SetupAccessProfile {
+function mapHubRoleToSetupProfile(role?: HubUserRole): SetupAccessProfile {
   if (!role || role === "viewer") {
     return "readonly";
   }
@@ -257,7 +258,9 @@ function SetupWorkspace() {
     }
   }
 
-  async function handleCreateOperationalUser(input: CreateOperationalUserInput) {
+  async function handleCreateOperationalUser(
+    input: CreateOperationalUserInput,
+  ) {
     setIsSaving(true);
     setError(null);
     setSuccess(null);
@@ -382,20 +385,27 @@ function SetupWorkspace() {
   }
 
   return (
-    <WorkspaceLayout
-      className="bg-[#f3f6fa]"
-    >
+    <WorkspaceLayout className="bg-[#f3f6fa]">
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {summary.map((item) => (
-          <Surface bordered className="border-[#d9e0e7] bg-white p-4" key={item.label}>
-            <p className="m-0 text-2xl font-semibold text-[#101820]">{item.value}</p>
+          <Surface
+            bordered
+            className="border-[#d9e0e7] bg-white p-4"
+            key={item.label}
+          >
+            <p className="m-0 text-2xl font-semibold text-[#101820]">
+              {item.value}
+            </p>
             <p className="m-0 mt-1 text-xs text-[#667085]">{item.label}</p>
           </Surface>
         ))}
       </section>
 
       {error ? (
-        <Surface bordered className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        <Surface
+          bordered
+          className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+        >
           <span className="inline-flex items-center gap-2 font-semibold">
             <ShieldAlert aria-hidden="true" size={16} />
             {error}
@@ -404,7 +414,10 @@ function SetupWorkspace() {
       ) : null}
 
       {success ? (
-        <Surface bordered className="border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+        <Surface
+          bordered
+          className="border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800"
+        >
           {success}
         </Surface>
       ) : null}
@@ -412,28 +425,28 @@ function SetupWorkspace() {
       <Surface bordered className="border-[#d9e0e7] bg-white">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e5eaf0] p-2">
           <div className="flex flex-wrap gap-1">
-          {setupTabs.map((tab) => {
-            const TabIcon = tab.icon;
+            {setupTabs.map((tab) => {
+              const TabIcon = tab.icon;
 
-            return (
-              <button
-                className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] data-[active=true]:bg-[#101820] data-[active=true]:text-white"
-                data-active={activeTab === tab.id}
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  setActiveAction(null);
-                  setEditTarget(null);
-                  setLinkUserTarget(null);
-                  setModuleConfigTarget(null);
-                }}
-                type="button"
-              >
-                <TabIcon aria-hidden="true" size={15} />
-                {tab.label}
-              </button>
-            );
-          })}
+              return (
+                <button
+                  className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] data-[active=true]:bg-[#101820] data-[active=true]:text-white"
+                  data-active={activeTab === tab.id}
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setActiveAction(null);
+                    setEditTarget(null);
+                    setLinkUserTarget(null);
+                    setModuleConfigTarget(null);
+                  }}
+                  type="button"
+                >
+                  <TabIcon aria-hidden="true" size={15} />
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
           <Tooltip content="Atualizar">
             <button
@@ -449,7 +462,10 @@ function SetupWorkspace() {
         </div>
         <div className="p-5">
           {isLoading ? (
-            <EmptyState description="Buscando dados reais do Supabase." title="Carregando Setup" />
+            <EmptyState
+              description="Buscando dados reais do Supabase."
+              title="Carregando Setup"
+            />
           ) : (
             <SetupTabContent
               activeTab={activeTab}
@@ -560,7 +576,15 @@ function SetupTabContent({
         ) : null}
         <DataGrid
           empty="Nenhum usuario sincronizado em hub_users."
-          headers={["Nome", "Email", "Perfil", "Departamento", "Setor", "Status", "Acoes"]}
+          headers={[
+            "Nome",
+            "Email",
+            "Perfil",
+            "Departamento",
+            "Setor",
+            "Status",
+            "Acoes",
+          ]}
           rows={data.users.map((user) => [
             user.displayName,
             user.email,
@@ -611,7 +635,9 @@ function SetupTabContent({
                   type: "department",
                 })
               }
-              onEdit={() => onEditRecord({ record: department, type: "department" })}
+              onEdit={() =>
+                onEditRecord({ record: department, type: "department" })
+              }
             />,
           ])}
         />
@@ -667,7 +693,13 @@ function SetupTabContent({
       <TabPanel title="Modulos">
         <DataGrid
           empty="Nenhum modulo cadastrado."
-          headers={["Modulo", "Acoes", "Rota", "Status", "Departamentos liberados"]}
+          headers={[
+            "Modulo",
+            "Acoes",
+            "Rota",
+            "Status",
+            "Departamentos liberados",
+          ]}
           rows={data.modules.map((module) => [
             module.name,
             <ModuleConfigAction
@@ -678,7 +710,8 @@ function SetupTabContent({
             module.basePath,
             module.status,
             data.departmentModules.filter(
-              (access) => access.moduleId === module.id && access.status === "enabled",
+              (access) =>
+                access.moduleId === module.id && access.status === "enabled",
             ).length,
           ])}
         />
@@ -742,10 +775,7 @@ function CreateDepartmentForm({
           value={description}
         />
         <StatusSelect onChange={setStatus} value={status} />
-        <FormActions
-          disabled={!name.trim() || isSaving}
-          onCancel={onCancel}
-        />
+        <FormActions disabled={!name.trim() || isSaving} onCancel={onCancel} />
       </form>
     </SetupFormCard>
   );
@@ -785,7 +815,9 @@ function CreateSectorForm({
     <SetupFormCard title="Novo setor">
       <form className="grid gap-3" onSubmit={handleSubmit}>
         <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+          <span className="text-xs font-semibold text-[#667085]">
+            Departamento
+          </span>
           <select
             className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
             onChange={(event) => setDepartmentId(event.target.value)}
@@ -833,9 +865,8 @@ function PulseXCreateChannelPanel({
   const [name, setName] = useState("Comunicados");
   const [sectorId, setSectorId] = useState("");
   const [status, setStatus] = useState<SetupRecordStatus>("active");
-  const [type, setType] = useState<CreatePulseXChannelInput["type"]>(
-    "department_channel",
-  );
+  const [type, setType] =
+    useState<CreatePulseXChannelInput["type"]>("department_channel");
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
@@ -919,7 +950,8 @@ function PulseXCreateChannelPanel({
               <select
                 className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
                 onChange={(event) => {
-                  const nextType = event.target.value as CreatePulseXChannelInput["type"];
+                  const nextType = event.target
+                    .value as CreatePulseXChannelInput["type"];
 
                   setType(nextType);
 
@@ -927,19 +959,26 @@ function PulseXCreateChannelPanel({
                     setName("Comunicados");
                   }
 
-                  if (nextType !== "department_channel" && name === "Comunicados") {
+                  if (
+                    nextType !== "department_channel" &&
+                    name === "Comunicados"
+                  ) {
                     setName("");
                   }
                 }}
                 value={type}
               >
-                <option value="department_channel">Canal de departamento</option>
+                <option value="department_channel">
+                  Canal de departamento
+                </option>
                 <option value="sector_channel">Canal de setor</option>
                 <option value="private_group">Grupo privado</option>
               </select>
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">Setor</span>
+              <span className="text-xs font-semibold text-[#667085]">
+                Setor
+              </span>
               <select
                 className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
                 onChange={(event) => setSectorId(event.target.value)}
@@ -999,7 +1038,10 @@ function DataGrid({
           {rows.map((row, rowIndex) => (
             <tr key={String(rowIndex)}>
               {row.map((cell, cellIndex) => (
-                <td className="px-3 py-3 text-[#344054]" key={String(cellIndex)}>
+                <td
+                  className="px-3 py-3 text-[#344054]"
+                  key={String(cellIndex)}
+                >
                   {typeof cell === "string" && isStatusValue(cell) ? (
                     <Badge variant={getStatusBadgeVariant(cell)}>{cell}</Badge>
                   ) : (
@@ -1077,7 +1119,6 @@ function ActionButton({
         aria-label={label}
         className="grid h-9 w-9 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
         onClick={onClick}
-        title={label}
         type="button"
       >
         <Plus aria-hidden="true" size={15} />
@@ -1100,7 +1141,6 @@ function RowActions({
           aria-label="Editar"
           className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onEdit}
-          title="Editar"
           type="button"
         >
           <Pencil aria-hidden="true" size={14} />
@@ -1111,7 +1151,6 @@ function RowActions({
           aria-label="Arquivar"
           className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#fff7e6] hover:text-[#8a682f] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onArchive}
-          title="Arquivar"
           type="button"
         >
           <Archive aria-hidden="true" size={14} />
@@ -1131,13 +1170,16 @@ function ModuleConfigAction({
 }) {
   return (
     <div className="flex items-center justify-start">
-      <Tooltip content={disabled ? "Modulo ainda sem configuracao" : "Configurar modulo"}>
+      <Tooltip
+        content={
+          disabled ? "Modulo ainda sem configuracao" : "Configurar modulo"
+        }
+      >
         <button
           aria-label="Configurar modulo"
           className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-35"
           disabled={disabled}
           onClick={onClick}
-          title={disabled ? "Modulo ainda sem configuracao" : "Configurar modulo"}
           type="button"
         >
           <Settings2 aria-hidden="true" size={14} />
@@ -1155,7 +1197,6 @@ function UserAssignmentAction({ onClick }: { onClick: () => void }) {
           aria-label="Editar usuario"
           className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onClick}
-          title="Editar usuario"
           type="button"
         >
           <Pencil aria-hidden="true" size={14} />
@@ -1294,7 +1335,9 @@ function EditSectorModal({
     <SetupModal onClose={onClose} title="Editar setor">
       <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
         <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+          <span className="text-xs font-semibold text-[#667085]">
+            Departamento
+          </span>
           <select
             className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
             onChange={(event) => setDepartmentId(event.target.value)}
@@ -1367,7 +1410,9 @@ function EditPulseXChannelModal({
       <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
         <TextInput label="Nome" onChange={setName} value={name} />
         <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+          <span className="text-xs font-semibold text-[#667085]">
+            Departamento
+          </span>
           <select
             className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
             onChange={(event) => {
@@ -1459,7 +1504,9 @@ function SetupModal({
         className={`relative z-10 w-full rounded-md border border-[#d9e0e7] bg-white shadow-2xl ${sizeClass}`}
       >
         <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
-          <h2 className="m-0 text-base font-semibold text-[#101820]">{title}</h2>
+          <h2 className="m-0 text-base font-semibold text-[#101820]">
+            {title}
+          </h2>
           <button
             aria-label="Fechar"
             className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
@@ -1496,7 +1543,8 @@ function PulseXModuleConfigModal({
   const activeDepartments = data.departments.filter(
     (department) => department.status === "active",
   );
-  const fallbackDepartmentId = activeDepartments[0]?.id ?? data.departments[0]?.id ?? "";
+  const fallbackDepartmentId =
+    activeDepartments[0]?.id ?? data.departments[0]?.id ?? "";
   const [selectedDepartmentId, setSelectedDepartmentId] =
     useState(fallbackDepartmentId);
   const [selectedChannelId, setSelectedChannelId] = useState("");
@@ -1523,7 +1571,9 @@ function PulseXModuleConfigModal({
 
     if (
       selectedDepartmentId &&
-      !data.departments.some((department) => department.id === selectedDepartmentId)
+      !data.departments.some(
+        (department) => department.id === selectedDepartmentId,
+      )
     ) {
       setSelectedDepartmentId(fallbackDepartmentId);
     }
@@ -1538,7 +1588,10 @@ function PulseXModuleConfigModal({
       return;
     }
 
-    if (!selectedChannelId || !scopedChannels.some((channel) => channel.id === selectedChannelId)) {
+    if (
+      !selectedChannelId ||
+      !scopedChannels.some((channel) => channel.id === selectedChannelId)
+    ) {
       const firstChannel = scopedChannels[0];
 
       if (firstChannel) {
@@ -1575,9 +1628,7 @@ function PulseXModuleConfigModal({
                 {selectedDepartment?.name ?? "Sem departamento"}
               </h3>
             </div>
-            <Badge variant="neutral">
-              {scopedChannels.length} canais
-            </Badge>
+            <Badge variant="neutral">{scopedChannels.length} canais</Badge>
           </div>
           <PulseXCreateChannelPanel
             activeDepartmentId={selectedDepartmentId}
@@ -1788,10 +1839,7 @@ function PulseXMembersPanel({
   if (!channel) {
     return (
       <aside className="bg-white p-4">
-        <EmptyState
-          description="Selecione ou crie um canal."
-          title="Pessoas"
-        />
+        <EmptyState description="Selecione ou crie um canal." title="Pessoas" />
       </aside>
     );
   }
@@ -1839,10 +1887,7 @@ function PulseXMembersPanel({
         </div>
 
         {listedUsers.length === 0 ? (
-          <EmptyState
-            description="Nenhum usuario ativo."
-            title="Sem pessoas"
-          />
+          <EmptyState description="Nenhum usuario ativo." title="Sem pessoas" />
         ) : (
           <div className="grid max-h-[44vh] gap-2 overflow-auto pr-1">
             {listedUsers.map((user) => (
@@ -1921,7 +1966,9 @@ function ParticipantPicker({
                   return;
                 }
 
-                onChange(selectedUserIds.filter((userId) => userId !== user.id));
+                onChange(
+                  selectedUserIds.filter((userId) => userId !== user.id),
+                );
               }}
               type="checkbox"
             />
@@ -1964,11 +2011,11 @@ function createPulseXChannelId({
 }) {
   const nameSlug = slugify(name);
   const departmentSlug =
-    data.departments.find((department) => department.id === departmentId)?.slug ??
-    departmentId.slice(0, 8);
+    data.departments.find((department) => department.id === departmentId)
+      ?.slug ?? departmentId.slice(0, 8);
   const sectorSlug = sectorId
-    ? data.sectors.find((sector) => sector.id === sectorId)?.slug ??
-      sectorId.slice(0, 8)
+    ? (data.sectors.find((sector) => sector.id === sectorId)?.slug ??
+      sectorId.slice(0, 8))
     : "";
 
   if (type === "sector_channel" && sectorSlug) {
@@ -2016,13 +2063,16 @@ function CreateOperationalUserModal({
   onClose: () => void;
   onSubmit: (input: CreateOperationalUserInput) => Promise<void>;
 }) {
-  const [departmentId, setDepartmentId] = useState(data.departments[0]?.id ?? "");
+  const [departmentId, setDepartmentId] = useState(
+    data.departments[0]?.id ?? "",
+  );
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [profile, setProfile] = useState<SetupOperationalProfileRole>("op1");
   const [sectorId, setSectorId] = useState("");
-  const [status, setStatus] = useState<CreateOperationalUserInput["status"]>("active");
+  const [status, setStatus] =
+    useState<CreateOperationalUserInput["status"]>("active");
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
@@ -2072,7 +2122,11 @@ function CreateOperationalUserModal({
             </div>
           ) : null}
           <div className="grid gap-3 md:grid-cols-2">
-            <TextInput label="Nome completo" onChange={setFullName} value={fullName} />
+            <TextInput
+              label="Nome completo"
+              onChange={setFullName}
+              value={fullName}
+            />
             <TextInput
               inputType="email"
               label="E-mail"
@@ -2087,7 +2141,9 @@ function CreateOperationalUserModal({
             />
             <ProfileSelect onChange={setProfile} value={profile} />
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+              <span className="text-xs font-semibold text-[#667085]">
+                Departamento
+              </span>
               <select
                 className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
                 onChange={(event) => {
@@ -2104,7 +2160,9 @@ function CreateOperationalUserModal({
               </select>
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">Setor</span>
+              <span className="text-xs font-semibold text-[#667085]">
+                Setor
+              </span>
               <select
                 className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
                 onChange={(event) => setSectorId(event.target.value)}
@@ -2276,7 +2334,9 @@ function LinkUserAssignmentModal({
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold text-[#667085]">Departamento</span>
+            <span className="text-xs font-semibold text-[#667085]">
+              Departamento
+            </span>
             <select
               className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
               onChange={(event) => {

@@ -306,8 +306,8 @@ export function TicketOperationsQueue({
           </div>
 
           <InsightCard title="Tickets prioritários" value={`${kpis.critical + kpis.promiseDue}`} description="SLA crítico ou promessa vencendo hoje." />
-          <InsightCard title="Previsão de atraso" value="18%" description="Baseada em status, saldo e tempo sem resposta." />
-          <InsightCard title="Produtividade" value="Gustavo Freitas" description="Maior volume de encerramentos no dia." />
+          <InsightCard title="Previsão de atraso" value="-" description="-" />
+          <InsightCard title="Produtividade" value="-" description="-" />
           <InsightCard title="Follow-ups recomendados" value={`${kpis.followUps}`} description="Ações sugeridas pela régua operacional." />
         </aside>
       </div>

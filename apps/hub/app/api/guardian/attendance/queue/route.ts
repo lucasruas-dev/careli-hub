@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 const DEFAULT_QUEUE_LIMIT = 50;
 const MIN_QUEUE_LIMIT = 20;
 const MAX_QUEUE_LIMIT = 2_000;
-const READ_MODEL_CACHE_TTL_MS = 10_000;
+const READ_MODEL_MAX_AGE_MS = 60_000;
 
 type QueueResponsePayload = {
   clients: QueueClient[];
@@ -19,62 +19,57 @@ type QueueResponsePayload = {
     count: number;
     limit: number;
     loadedCount?: number;
+    stale?: boolean;
+    syncedAt?: string | null;
   };
   source: "c2x" | "supabase-c2x";
 };
-
-const readModelResponseCache = new Map<
-  number,
-  { expiresAt: number; payload: QueueResponsePayload }
->();
 
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const limit = parseQueueLimit(url.searchParams.get("limit"));
 
-    const cachedPayload = getCachedReadModelPayload(limit);
-
-    if (cachedPayload) {
-      return queueJson(cachedPayload, "HIT");
-    }
-
     const readModelResult = await loadGuardianAttendanceQueueReadModel({
       limit,
     });
 
     if (readModelResult?.clients.length) {
-      const payload: QueueResponsePayload = {
-        clients: readModelResult.clients,
-        meta: {
-          count: readModelResult.count ?? readModelResult.clients.length,
-          limit,
-          loadedCount: readModelResult.clients.length,
-        },
-        source: "supabase-c2x",
-      };
+      const isFresh = isFreshReadModel(readModelResult.syncedAt);
 
-      setCachedReadModelPayload(limit, payload);
-
-      return queueJson(payload, "MISS");
+      return queueJson(
+        readModelPayload(readModelResult, limit, { stale: !isFresh }),
+        isFresh ? "FRESH" : "STALE_READ_MODEL",
+      );
     }
 
-    const clients = await loadGuardianAttendanceQueue({
-      includeInstallments: false,
-      limit,
-    });
+    try {
+      const clients = await loadGuardianAttendanceQueue({
+        includeInstallments: false,
+        limit,
+      });
 
-    return queueJson(
-      {
-        clients,
-        meta: {
-          count: clients.length,
-          limit,
+      return queueJson(
+        {
+          clients,
+          meta: {
+            count: clients.length,
+            limit,
+          },
+          source: "c2x",
         },
-        source: "c2x",
-      },
-      "BYPASS",
-    );
+        readModelResult?.clients.length ? "STALE_BYPASS" : "BYPASS",
+      );
+    } catch (error) {
+      if (readModelResult?.clients.length) {
+        return queueJson(
+          readModelPayload(readModelResult, limit, { stale: true }),
+          "STALE_FALLBACK",
+        );
+      }
+
+      throw error;
+    }
   } catch (error) {
     return NextResponse.json(
       {
@@ -95,25 +90,24 @@ function queueJson(payload: QueueResponsePayload, cacheStatus: string) {
   });
 }
 
-function getCachedReadModelPayload(limit: number) {
-  const cached = readModelResponseCache.get(limit);
-
-  if (!cached || cached.expiresAt <= Date.now()) {
-    readModelResponseCache.delete(limit);
-    return null;
-  }
-
-  return cached.payload;
-}
-
-function setCachedReadModelPayload(
+function readModelPayload(
+  readModelResult: NonNullable<
+    Awaited<ReturnType<typeof loadGuardianAttendanceQueueReadModel>>
+  >,
   limit: number,
-  payload: QueueResponsePayload,
-) {
-  readModelResponseCache.set(limit, {
-    expiresAt: Date.now() + READ_MODEL_CACHE_TTL_MS,
-    payload,
-  });
+  options: { stale: boolean },
+): QueueResponsePayload {
+  return {
+    clients: readModelResult.clients,
+    meta: {
+      count: readModelResult.count ?? readModelResult.clients.length,
+      limit,
+      loadedCount: readModelResult.clients.length,
+      stale: options.stale,
+      syncedAt: readModelResult.syncedAt,
+    },
+    source: "supabase-c2x",
+  };
 }
 
 function parseQueueLimit(value: string | null) {
@@ -127,4 +121,14 @@ function parseQueueLimit(value: string | null) {
     Math.max(Math.trunc(parsed), MIN_QUEUE_LIMIT),
     MAX_QUEUE_LIMIT,
   );
+}
+
+function isFreshReadModel(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= READ_MODEL_MAX_AGE_MS;
 }

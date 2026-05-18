@@ -48,10 +48,7 @@ type MessageItemProps = {
     messageId: PulseXMessage["id"],
     body: string,
   ) => Promise<void> | void;
-  onToggleTag?: (
-    messageId: PulseXMessage["id"],
-    tag: PulseXMessageTag,
-  ) => void;
+  onToggleTag?: (messageId: PulseXMessage["id"], tag: PulseXMessageTag) => void;
   onToggleReaction?: (
     messageId: PulseXMessage["id"],
     emoji: PulseXReactionEmoji,
@@ -273,7 +270,9 @@ export function MessageItem({
           {message.editedAt ? <span>editada</span> : null}
           <span className="font-bold text-[#101820]">{message.timestamp}</span>
           {isOwn ? (
-            <Tooltip content={deliveryState.allRead ? "Todos leram" : "Enviado"}>
+            <Tooltip
+              content={deliveryState.allRead ? "Todos leram" : "Enviado"}
+            >
               <span
                 aria-label={deliveryState.allRead ? "Todos leram" : "Enviado"}
                 className={
@@ -465,9 +464,7 @@ function MessageInfoPanel({
   });
 
   return (
-    <div
-      className="relative z-10 mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-[0_8px_18px_rgba(16,24,32,0.10)]"
-    >
+    <div className="relative z-10 mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-[0_8px_18px_rgba(16,24,32,0.10)]">
       <div className="mb-2 flex items-center gap-2 border-b border-[#eef2f7] pb-2 text-sm font-semibold text-[#121722]">
         <CheckCheck aria-hidden="true" size={15} />
         Informações
@@ -483,10 +480,7 @@ function MessageInfoPanel({
         value={formatUserList(deliveredUsers, deliveredFallbackLabel)}
       />
       {mentionedUsers.length > 0 ? (
-        <InfoRow
-          label="Mencoes"
-          value={formatUserList(mentionedUsers)}
-        />
+        <InfoRow label="Mencoes" value={formatUserList(mentionedUsers)} />
       ) : null}
       {message.tags?.length ? (
         <div className="mt-2">
@@ -545,7 +539,11 @@ function MessageAttachmentPreview({
   if (attachment.type === "video" && attachment.url) {
     return (
       <div className="mb-2 overflow-hidden rounded-md border border-[#d9e0ea] bg-[#f3f6fa]">
-        <video className="max-h-60 w-full bg-black" controls src={attachment.url} />
+        <video
+          className="max-h-60 w-full bg-black"
+          controls
+          src={attachment.url}
+        />
         <AttachmentCaption attachment={attachment} />
       </div>
     );
@@ -642,7 +640,9 @@ function AttachmentCaption({
   );
 }
 
-function getAttachmentIcon(type: NonNullable<PulseXMessage["attachment"]>["type"]) {
+function getAttachmentIcon(
+  type: NonNullable<PulseXMessage["attachment"]>["type"],
+) {
   if (type === "audio") {
     return Mic;
   }
@@ -658,13 +658,7 @@ function getAttachmentIcon(type: NonNullable<PulseXMessage["attachment"]>["type"
   return FileText;
 }
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 py-1">
       <span className="text-[#667085]">{label}</span>
@@ -717,7 +711,6 @@ function MessageAvatar({
             }
           : undefined
       }
-      title={name}
     >
       {avatarUrl ? null : initials}
     </span>

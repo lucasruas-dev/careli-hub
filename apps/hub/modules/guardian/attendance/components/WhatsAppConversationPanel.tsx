@@ -33,6 +33,8 @@ import type {
   QueueClient,
 } from "@/modules/guardian/attendance/types";
 
+const EMPTY_FIELD = "-";
+
 type WhatsAppConversationPanelProps = {
   client: QueueClient;
   initialOrigin?: TicketOrigin;
@@ -352,14 +354,14 @@ export function WhatsAppConversationPanel({
   const [ticketIncomplete, setTicketIncomplete] = useState(initialOrigin === "Cliente iniciou");
   const [ticketCloseOpen, setTicketCloseOpen] = useState(false);
   const [ticket, setTicket] = useState<WhatsAppTicket>({
-    protocol: guardianProtocol(184),
+    protocol: EMPTY_FIELD,
     origin: initialOrigin,
-    profileId: "negotiation",
-    profileName: "Negociação",
-    profileCategory: "Negociação",
-    priority: "Alta",
-    slaHours: 6,
-    relatedInstallments: ["03/60", "04/60"],
+    profileId: "",
+    profileName: EMPTY_FIELD,
+    profileCategory: EMPTY_FIELD,
+    priority: EMPTY_FIELD,
+    slaHours: 0,
+    relatedInstallments: [],
     status: initialOrigin === "Cliente iniciou" ? "Aguardando operador" : "Pendente",
   });
   const [feedback, setFeedback] = useState("");
@@ -1353,23 +1355,23 @@ function OperationDrawer({
   const [unitId, setUnitId] = useState(selectedUnit?.id ?? client.carteira.unidades[0]?.id ?? "");
   const unit = client.carteira.unidades.find((item) => item.id === unitId) ?? client.carteira.unidades[0];
   const [promisedValue, setPromisedValue] = useState(client.parcelas.ultimaParcela);
-  const [promisedDate, setPromisedDate] = useState("20/05/2026");
+  const [promisedDate, setPromisedDate] = useState("-");
   const [originalValue, setOriginalValue] = useState(client.agreement.originalDebt);
   const [discount, setDiscount] = useState(client.agreement.discount);
   const [entry, setEntry] = useState(client.agreement.entry);
-  const [entryDueDate, setEntryDueDate] = useState("18/05/2026");
+  const [entryDueDate, setEntryDueDate] = useState("-");
   const [installmentsCount, setInstallmentsCount] = useState(`${client.agreement.installmentsCount}`);
-  const [firstDueDate, setFirstDueDate] = useState("10/06/2026");
+  const [firstDueDate, setFirstDueDate] = useState("-");
   const c2xBoletos = useMemo(() => buildC2xBoletos(client), [client]);
   const [selectedBoletoId, setSelectedBoletoId] = useState(c2xBoletos[0]?.id ?? "");
   const selectedBoleto = c2xBoletos.find((boleto) => boleto.id === selectedBoletoId) ?? c2xBoletos[0];
   const [note, setNote] = useState(
     isPromise
-      ? "Promessa registrada a partir de conversa positiva no WhatsApp."
+      ? "-"
       : isBoleto
-        ? "Envio do boleto original consultado no C2X pelo WhatsApp."
+        ? "-"
         : mode === "installments"
-          ? "Consulta de parcelas e boletos originais do C2X registrada no atendimento."
+          ? "-"
           : client.agreement.aiSuggestion.composition
   );
 
@@ -1386,7 +1388,7 @@ function OperationDrawer({
         description: isBoleto
           ? `Boleto original do C2X enviado para a parcela ${selectedBoleto?.parcela ?? "-"} da unidade ${unit?.matricula ?? "-"} a partir do Ticket ${ticket.protocol}. Linha digitável registrada para auditoria operacional.`
           : `Operador consultou parcelas e boletos originais do C2X da unidade ${unit?.matricula ?? "-"} durante o Ticket ${ticket.protocol}.`,
-        occurredAt: "11/05/2026 12:44",
+        occurredAt: "-",
         operator: client.responsavel,
         status: isBoleto ? "Enviado" : "Registrado",
         unitCode: unit?.matricula,
@@ -1404,7 +1406,7 @@ function OperationDrawer({
       description: isPromise
         ? `Origem: WhatsApp • Ticket ${ticket.protocol}. Promessa de ${promisedValue} para ${promisedDate}, unidade ${unit?.matricula ?? "-"}. Workflow sinalizado como Promessa realizada.`
         : `Origem: WhatsApp • Ticket ${ticket.protocol}. Acordo em negociação com valor negociado de ${agreementCalc.negotiatedValue}, entrada de ${entry} e ${installmentsCount} parcela(s). Workflow sinalizado como Em negociação.`,
-      occurredAt: "11/05/2026 12:44",
+      occurredAt: "-",
       operator: client.responsavel,
       status: isPromise ? "Prometido" : "Gerado",
       unitCode: unit?.matricula,
@@ -1470,13 +1472,13 @@ function OperationDrawer({
 
             {isPromise ? (
               <>
-                <ReadonlyField label="Parcelas relacionadas" value="04/60, 05/60" />
+                <ReadonlyField label="Parcelas relacionadas" value="-" />
                 <EditableField label="Valor prometido" value={promisedValue} onChange={setPromisedValue} />
                 <EditableField label="Data prometida" value={promisedDate} onChange={setPromisedDate} />
               </>
             ) : isAgreement ? (
               <>
-                <ReadonlyField label="Parcelas incluídas" value="03/60, 04/60, 05/60" />
+                <ReadonlyField label="Parcelas incluídas" value="-" />
                 <EditableField label="Valor original" value={originalValue} onChange={setOriginalValue} />
                 <EditableField label="Desconto" value={discount} onChange={setDiscount} />
                 <ReadonlyField label="Valor negociado" value={agreementCalc.negotiatedValue} />
@@ -2054,7 +2056,21 @@ function DateSeparator({ label }: { label: string }) {
 }
 
 function buildMessages(client: QueueClient): WhatsAppMessage[] {
-  const currentProtocol = guardianProtocol(184);
+  const currentProtocol = EMPTY_FIELD;
+
+  return [
+    {
+      id: `${client.id}-msg-empty`,
+      author: "operator",
+      body: EMPTY_FIELD,
+      date: EMPTY_FIELD,
+      kind: "text",
+      operator: client.responsavel,
+      status: "entregue",
+      ticketProtocol: currentProtocol,
+      time: EMPTY_FIELD,
+    },
+  ];
 
   return [
     {
@@ -2112,7 +2128,7 @@ function buildMessages(client: QueueClient): WhatsAppMessage[] {
     {
       id: `${client.id}-msg-history-6`,
       author: "client",
-      body: "Consigo prometer R$ 1.200,00 para sexta-feira.",
+      body: EMPTY_FIELD,
       date: "07/05/2026",
       kind: "text",
       ticketProtocol: guardianProtocol(181),
@@ -2194,7 +2210,7 @@ function buildMessages(client: QueueClient): WhatsAppMessage[] {
     {
       id: `${client.id}-msg-6`,
       author: "client",
-      body: "Pode me mandar uma proposta com entrada menor? Se couber no orçamento eu confirmo.",
+      body: EMPTY_FIELD,
       date: "Hoje",
       kind: "text",
       ticketProtocol: currentProtocol,
@@ -2209,6 +2225,19 @@ function buildTicketCycles(
   selectedUnit?: PortfolioUnit
 ): TicketCycle[] {
   const fallbackUnit = selectedUnit ?? client.carteira.unidades[0];
+
+  return [
+    {
+      protocol: currentTicket.protocol,
+      profileName: currentTicket.profileName || EMPTY_FIELD,
+      operator: client.responsavel,
+      openedAt: currentTicket.openedAt ?? EMPTY_FIELD,
+      status: currentTicket.status,
+      unitCode: fallbackUnit?.matricula,
+      unitLabel: fallbackUnit?.unidadeLote,
+    },
+  ];
+
   const previous: TicketCycle[] = [
     {
       protocol: guardianProtocol(178),
@@ -2281,41 +2310,19 @@ function buildTicketCycles(
 }
 function buildConversationList(client: QueueClient) {
   return [
-    { id: client.id, name: client.nome, preview: "Pode me mandar uma proposta com entrada menor?", time: "09:18" },
-    { id: "mock-2", name: "Mariana Costa Lima", preview: "Vou conferir o boleto C2X.", time: "08:44" },
-    { id: "mock-3", name: "Bruno Azevedo", preview: "Preciso reagendar a promessa.", time: "Ontem" },
+    { id: client.id, name: client.nome, preview: "-", time: "-" },
   ];
 }
 
 function buildC2xBoletos(client: QueueClient): C2xBoleto[] {
-  const base = client.parcelas.ultimaParcela;
-
-  return [
-    {
-      id: `${client.id}-c2x-03`,
-      parcela: "03/60",
-      vencimento: "10/05/2026",
-      valor: base,
-      status: "Vencido",
-      linhaDigitavel: "00190.00009 01234.567890 12345.678901 1 11110000000000",
-    },
-    {
-      id: `${client.id}-c2x-04`,
-      parcela: "04/60",
-      vencimento: "10/06/2026",
-      valor: base,
-      status: "Aberto",
-      linhaDigitavel: "00190.00009 09876.543210 98765.432109 7 11110000000000",
-    },
-    {
-      id: `${client.id}-c2x-05`,
-      parcela: "05/60",
-      vencimento: "10/07/2026",
-      valor: base,
-      status: "Aberto",
-      linhaDigitavel: "00190.00009 45678.901234 56789.012345 4 11110000000000",
-    },
-  ];
+  return (client.c2xInstallments ?? []).map((installment) => ({
+    id: installment.id,
+    linhaDigitavel: "-",
+    parcela: installment.number,
+    status: installment.status,
+    valor: installment.value,
+    vencimento: installment.dueDate,
+  }));
 }
 
 function calculateAgreement(originalValue: string, discount: string, entry: string, installmentsCount: string) {

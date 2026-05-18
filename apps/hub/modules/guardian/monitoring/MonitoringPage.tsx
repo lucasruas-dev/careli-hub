@@ -66,6 +66,7 @@ type DrawerDataset = {
 };
 
 const MONITORING_PANELS_STORAGE_KEY = "guardian-monitoring-panels";
+const EMPTY_FIELD = "-";
 
 const defaultPanelState: Record<MonitoringPanelId, boolean> = {
   desk: true,
@@ -85,43 +86,29 @@ const kpis: Array<{
   icon: LucideIcon;
   tone: Exclude<Tone, "success">;
 }> = [
-  { id: "activeOperators", label: "Operadores ativos", value: "2", helper: "em operação", icon: Users, tone: "gold" },
-  { id: "todayContacts", label: "Contatos hoje", value: "86", helper: "+14 vs ontem", icon: Headphones, tone: "neutral" },
-  { id: "stoppedQueue", label: "Fila parada", value: "12", helper: "sem ação recente", icon: Hourglass, tone: "danger" },
-  { id: "todayPromises", label: "Promessas para hoje", value: "18", helper: "R$ 74,8 mil", icon: CheckCircle2, tone: "gold" },
-  { id: "pendingDeals", label: "Acordos pendentes", value: "7", helper: "aguardando aprovação", icon: Clock3, tone: "neutral" },
-  { id: "slaRisk", label: "SLA em risco", value: "4", helper: "prioridade alta", icon: ShieldAlert, tone: "danger" },
+  { id: "activeOperators", label: "Operadores ativos", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Users, tone: "gold" },
+  { id: "todayContacts", label: "Contatos hoje", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Headphones, tone: "neutral" },
+  { id: "stoppedQueue", label: "Fila parada", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Hourglass, tone: "danger" },
+  { id: "todayPromises", label: "Promessas para hoje", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: CheckCircle2, tone: "gold" },
+  { id: "pendingDeals", label: "Acordos pendentes", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Clock3, tone: "neutral" },
+  { id: "slaRisk", label: "SLA em risco", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: ShieldAlert, tone: "danger" },
 ];
 
 const operators = [
   {
-    name: "Gustavo Freitas",
-    status: "Online",
-    startTime: "08:02",
-    contacts: 48,
-    portfolio: 124,
-    promises: 9,
-    sla: "94%",
-    recovery: "R$ 38,4 mil",
-  },
-  {
-    name: "Cinthia Cruz",
-    status: "Ausente",
-    startTime: "08:18",
-    contacts: 38,
-    portfolio: 118,
-    promises: 7,
-    sla: "88%",
-    recovery: "R$ 31,2 mil",
+    name: EMPTY_FIELD,
+    status: EMPTY_FIELD,
+    startTime: EMPTY_FIELD,
+    contacts: EMPTY_FIELD,
+    portfolio: EMPTY_FIELD,
+    promises: EMPTY_FIELD,
+    sla: EMPTY_FIELD,
+    recovery: EMPTY_FIELD,
   },
 ];
 
 const todayAppointments = [
-  ["08:40", "Ana Paula Ribeiro", "WhatsApp", "Gustavo Freitas", "Promessa registrada", "Confirmar comprovante às 14:00"],
-  ["09:15", "Carlos Henrique Matos", "Ligação", "Cinthia Cruz", "Sem resposta", "Nova tentativa multicanal em 45 min"],
-  ["10:05", "Patrícia Amaral", "E-mail", "Gustavo Freitas", "Acordo pré-aprovado", "Enviar proposta final para aceite"],
-  ["11:30", "Eduardo Martins", "WhatsApp", "Cinthia Cruz", "Contraproposta", "Validar desconto com gestão"],
-  ["14:20", "Renato Pires", "Ligação", "Cinthia Cruz", "Contato reagendado", "Retornar às 16:30 com proposta curta"],
+  [EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD],
 ].map(([time, client, channel, operator, result, nextAction]) => ({
   time,
   client,
@@ -132,11 +119,7 @@ const todayAppointments = [
 }));
 
 const operationalQueue = [
-  ["Carlos Henrique Matos", "Vista Alegre", "Q07 · Lote 18", "7 dias", "Crítica", "Cinthia Cruz", "42 min"],
-  ["Cíntia Rocha", "Lavra do Ouro", "Q11 · Lote 08", "4 dias", "Alta", "Gustavo Freitas", "22 min"],
-  ["Renato Pires", "Vista Alegre", "Q10 · Lote 02", "5 dias", "Alta", "Cinthia Cruz", "2h 12min"],
-  ["Marcelo Duarte", "Vista Alegre", "Q06 · Lote 15", "3 dias", "Média", "Cinthia Cruz", "2h 40min"],
-  ["Ana Paula Ribeiro", "Jardins do Vale", "Q12 · Lote 18", "1 dia", "Média", "Gustavo Freitas", "4h 05min"],
+  [EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD],
 ].map(([client, enterprise, unit, delay, priority, owner, sla]) => ({
   client,
   enterprise,
@@ -149,37 +132,22 @@ const operationalQueue = [
 
 const operatorPlans = [
   {
-    name: "Gustavo Freitas",
-    contactsPlanned: 42,
-    promisesToTrack: 9,
-    pendingDeals: 3,
-    criticalClients: 1,
-    nextBestAction: "Fechar proposta da Patrícia Amaral e retomar Cíntia Rocha antes do SLA crítico.",
-    focus: "Alta conversão",
-  },
-  {
-    name: "Cinthia Cruz",
-    contactsPlanned: 46,
-    promisesToTrack: 9,
-    pendingDeals: 4,
-    criticalClients: 3,
-    nextBestAction: "Priorizar Carlos Henrique Matos com nova tentativa consultiva e acionar Renato Pires em seguida.",
-    focus: "Risco operacional",
+    name: EMPTY_FIELD,
+    contactsPlanned: EMPTY_FIELD,
+    promisesToTrack: EMPTY_FIELD,
+    pendingDeals: EMPTY_FIELD,
+    criticalClients: EMPTY_FIELD,
+    nextBestAction: EMPTY_FIELD,
+    focus: EMPTY_FIELD,
   },
 ];
 
 const promises = [
-  ["Ana Paula Ribeiro", "R$ 6.150,00", "Hoje, 10:30", "Gustavo Freitas", "Pendente"],
-  ["Patrícia Amaral", "R$ 8.900,00", "Hoje, 13:00", "Gustavo Freitas", "Cumprida"],
-  ["Eduardo Martins", "R$ 11.280,00", "Hoje, 15:45", "Cinthia Cruz", "Pendente"],
-  ["Carlos Henrique Matos", "R$ 14.600,00", "Hoje, 09:00", "Cinthia Cruz", "Vencida"],
+  [EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD],
 ].map(([client, amount, time, owner, status]) => ({ client, amount, time, owner, status }));
 
 const pendingDeals = [
-  ["Patrícia Amaral", "R$ 22.640,00", "R$ 4.528,00", "6x", "Gustavo Freitas", "Gestão"],
-  ["Carlos Henrique Matos", "R$ 32.980,00", "R$ 6.596,00", "8x", "Cinthia Cruz", "Diretoria"],
-  ["Cíntia Rocha", "R$ 19.400,00", "R$ 3.880,00", "5x", "Gustavo Freitas", "Gestão"],
-  ["Eduardo Martins", "R$ 28.150,00", "R$ 5.630,00", "7x", "Cinthia Cruz", "Compliance"],
+  [EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD],
 ].map(([client, amount, entry, installments, owner, approval]) => ({
   client,
   amount,
@@ -190,10 +158,7 @@ const pendingDeals = [
 }));
 
 const slaRisk = [
-  ["Carlos Henrique Matos", "Primeiro contato", "Hoje, 16:00", "42 min", "Cinthia Cruz", "Crítica"],
-  ["Renato Pires", "Escalonamento jurídico", "Hoje, 17:30", "2h 12min", "Cinthia Cruz", "Alta"],
-  ["Cíntia Rocha", "Retorno de promessa", "Hoje, 15:40", "22 min", "Gustavo Freitas", "Alta"],
-  ["Marcelo Duarte", "Aprovação de acordo", "Hoje, 18:00", "2h 40min", "Cinthia Cruz", "Média"],
+  [EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD],
 ].map(([client, stage, limit, remaining, owner, severity]) => ({
   client,
   stage,
@@ -205,47 +170,29 @@ const slaRisk = [
 
 const alerts = [
   {
-    title: "Cliente crítico sem contato há 7 dias",
-    description: "Carlos Henrique Matos precisa de acionamento consultivo imediato.",
+    title: EMPTY_FIELD,
+    description: EMPTY_FIELD,
     tone: "danger",
-  },
-  {
-    title: "Promessa vencida sem retorno",
-    description: "Há promessa vencida aguardando nova tentativa de contato.",
-    tone: "danger",
-  },
-  {
-    title: "Acordo aguardando aprovação",
-    description: "7 propostas dependem de validação da gestão.",
-    tone: "gold",
-  },
-  {
-    title: "SLA próximo do limite",
-    description: "4 etapas operacionais estão com vencimento nas próximas 2 horas.",
-    tone: "neutral",
   },
 ];
 
 const slaStages = [
-  ["Primeiro contato", 92],
-  ["Retorno de promessa", 76],
-  ["Aprovação de acordo", 68],
-  ["Escalonamento jurídico", 84],
+  [EMPTY_FIELD, 0],
 ] as const;
 
 const deskRealtimeCards = [
-  { label: "1ª resposta média", value: "5m 12s", helper: "meta operacional até 5 min", icon: Clock3, tone: "gold" },
-  { label: "Média de resposta", value: "7m 48s", helper: "durante tickets ativos", icon: MessageCircle, tone: "gold" },
-  { label: "Tickets sem resposta", value: "11", helper: "3 acima de 15 min", icon: AlertTriangle, tone: "danger" },
-  { label: "Aguardando operador", value: "6", helper: "pendentes de assumir", icon: Users, tone: "danger" },
-  { label: "Tickets abertos", value: "42", helper: "+8 na última hora", icon: Headphones, tone: "gold" },
-  { label: "Em atendimento", value: "18", helper: "5 operadores ativos", icon: Radio, tone: "neutral" },
-  { label: "Aguardando resposta", value: "11", helper: "3 acima de 20 min", icon: MessageCircle, tone: "gold" },
-  { label: "SLA crítico", value: "4", helper: "risco de estouro", icon: ShieldAlert, tone: "danger" },
-  { label: "Encerrados hoje", value: "27", helper: "+12% vs média", icon: CheckCircle2, tone: "neutral" },
-  { label: "Novas mensagens", value: "9", helper: "3 não lidas", icon: AlertTriangle, tone: "danger" },
-  { label: "TMR", value: "4m 18s", helper: "tempo médio de resposta", icon: Clock3, tone: "neutral" },
-  { label: "TME", value: "38 min", helper: "tempo médio de encerramento", icon: Gauge, tone: "gold" },
+  { label: "1ª resposta média", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Clock3, tone: "gold" },
+  { label: "Média de resposta", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: MessageCircle, tone: "gold" },
+  { label: "Tickets sem resposta", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: AlertTriangle, tone: "danger" },
+  { label: "Aguardando operador", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Users, tone: "danger" },
+  { label: "Tickets abertos", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Headphones, tone: "gold" },
+  { label: "Em atendimento", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Radio, tone: "neutral" },
+  { label: "Aguardando resposta", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: MessageCircle, tone: "gold" },
+  { label: "SLA crítico", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: ShieldAlert, tone: "danger" },
+  { label: "Encerrados hoje", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: CheckCircle2, tone: "neutral" },
+  { label: "Novas mensagens", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: AlertTriangle, tone: "danger" },
+  { label: "TMR", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Clock3, tone: "neutral" },
+  { label: "TME", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Gauge, tone: "gold" },
 ] satisfies Array<{
   label: string;
   value: string;
@@ -255,33 +202,11 @@ const deskRealtimeCards = [
 }>;
 
 const deskOperators = [
-  { name: "Gustavo Freitas", tickets: 12, critical: 1, slaDue: "18 min", noResponse: "12 min", firstResponse: "3m 42s", averageResponse: "4m 18s", newMessages: 2, status: "Em atendimento" },
-  { name: "Cinthia Cruz", tickets: 16, critical: 3, slaDue: "08 min", noResponse: "31 min", firstResponse: "11m 20s", averageResponse: "16m 44s", newMessages: 4, status: "Sobrecarregada" },
-  { name: "Mariana Lima", tickets: 7, critical: 0, slaDue: "1h 42min", noResponse: "06 min", firstResponse: "2m 58s", averageResponse: "3m 51s", newMessages: 1, status: "Online" },
-  { name: "Bruno Azevedo", tickets: 7, critical: 0, slaDue: "2h 10min", noResponse: "03 min", firstResponse: "4m 35s", averageResponse: "5m 10s", newMessages: 2, status: "Online" },
+  { name: EMPTY_FIELD, tickets: EMPTY_FIELD, critical: 0, slaDue: EMPTY_FIELD, noResponse: EMPTY_FIELD, firstResponse: EMPTY_FIELD, averageResponse: EMPTY_FIELD, newMessages: EMPTY_FIELD, status: EMPTY_FIELD },
 ];
 
 const deskHeatmap = [
-  ["Gustavo", "Carga", 68, "gold"],
-  ["Gustavo", "Sem resposta", 42, "neutral"],
-  ["Gustavo", "SLA crítico", 24, "neutral"],
-  ["Gustavo", "Demora", 36, "neutral"],
-  ["Gustavo", "Fila", 58, "gold"],
-  ["Cinthia", "Carga", 92, "danger"],
-  ["Cinthia", "Sem resposta", 86, "danger"],
-  ["Cinthia", "SLA crítico", 78, "danger"],
-  ["Cinthia", "Demora", 91, "danger"],
-  ["Cinthia", "Fila", 88, "danger"],
-  ["Mariana", "Carga", 38, "neutral"],
-  ["Mariana", "Sem resposta", 22, "neutral"],
-  ["Mariana", "SLA crítico", 8, "neutral"],
-  ["Mariana", "Demora", 18, "neutral"],
-  ["Mariana", "Fila", 34, "neutral"],
-  ["Bruno", "Carga", 44, "neutral"],
-  ["Bruno", "Sem resposta", 18, "neutral"],
-  ["Bruno", "SLA crítico", 12, "neutral"],
-  ["Bruno", "Demora", 28, "neutral"],
-  ["Bruno", "Fila", 40, "neutral"],
+  [EMPTY_FIELD, EMPTY_FIELD, 0, "neutral"],
 ] as const;
 
 const drawerDatasets: Record<KpiId, DrawerDataset> = {
@@ -405,11 +330,11 @@ export function MonitoringPage() {
         </section>
 
         <OperationalPanel
-          badge="4 críticos"
+          badge={EMPTY_FIELD}
           expanded={expandedPanels.desk}
           id="desk"
           onToggle={togglePanel}
-          summary="42 tickets • TMR 4m18s • 4 SLA críticos"
+          summary={EMPTY_FIELD}
           title="CareDesk operacional"
           tone="danger"
         >
@@ -423,7 +348,7 @@ export function MonitoringPage() {
           expanded={expandedPanels.financial}
           id="financial"
           onToggle={togglePanel}
-          summary="18 promessas • 7 acordos pendentes • R$ 74,8 mil"
+          summary={EMPTY_FIELD}
           title="Operação financeira"
           tone="gold"
         >
@@ -440,7 +365,7 @@ export function MonitoringPage() {
           expanded={expandedPanels.workflow}
           id="workflow"
           onToggle={togglePanel}
-          summary="2 operadores • 88 ações planejadas • 4 críticos"
+          summary={EMPTY_FIELD}
           title="Workflow operacional"
           tone="neutral"
         >
@@ -448,11 +373,11 @@ export function MonitoringPage() {
         </OperationalPanel>
 
         <OperationalPanel
-          badge="SLA em risco"
+          badge={EMPTY_FIELD}
           expanded={expandedPanels.sla}
           id="sla"
           onToggle={togglePanel}
-          summary="4 etapas em risco • menor janela 22 min"
+          summary={EMPTY_FIELD}
           title="SLA"
           tone="danger"
         >
@@ -466,7 +391,7 @@ export function MonitoringPage() {
           expanded={expandedPanels.heatmap}
           id="heatmap"
           onToggle={togglePanel}
-          summary="Cinthia 91% demora • 88% fila • 78% SLA crítico"
+          summary={EMPTY_FIELD}
           title="Heatmap operacional"
           tone="danger"
         >
@@ -477,7 +402,7 @@ export function MonitoringPage() {
           expanded={expandedPanels.productivity}
           id="productivity"
           onToggle={togglePanel}
-          summary="Gustavo 48 contatos • Cinthia 38 contatos • R$ 69,6 mil"
+          summary={EMPTY_FIELD}
           title="Produtividade"
           tone="neutral"
         >
@@ -488,7 +413,7 @@ export function MonitoringPage() {
           expanded={expandedPanels.ai}
           id="ai"
           onToggle={togglePanel}
-          summary="Risco de atraso 18% • redistribuir 4 tickets"
+          summary={EMPTY_FIELD}
           title="IA operacional"
           tone="gold"
         >
@@ -726,7 +651,7 @@ function DeskHeatmapBlock() {
             <p className="truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">{operator}</p>
             <p className="mt-1 truncate text-xs font-medium text-slate-500">{metric}</p>
             <p className={`mt-2 text-lg font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
-              {value}%
+              {value > 0 ? `${value}%` : EMPTY_FIELD}
             </p>
           </div>
         ))}
@@ -741,21 +666,15 @@ function AiOperationalBlock() {
       <div className="grid gap-3 lg:grid-cols-3">
         <article className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-4">
           <p className="text-sm font-semibold text-slate-950">Gargalo identificado</p>
-          <p className="mt-2 text-sm leading-6 text-slate-700">
-            Cinthia Cruz concentra carga alta, SLA crítico, demora média acima de 15 minutos e mensagens sem resposta.
-          </p>
+          <p className="mt-2 text-sm leading-6 text-slate-700">{EMPTY_FIELD}</p>
         </article>
         <article className="rounded-xl border border-rose-100 bg-rose-50 p-4">
           <p className="text-sm font-semibold text-rose-800">Risco previsto</p>
-          <p className="mt-2 text-sm leading-6 text-rose-700">
-            Risco de atraso operacional em 18% dos tickets ativos se a fila permanecer sem redistribuição.
-          </p>
+          <p className="mt-2 text-sm leading-6 text-rose-700">{EMPTY_FIELD}</p>
         </article>
         <article className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
           <p className="text-sm font-semibold text-slate-950">Recomendação</p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Redistribuir 4 tickets para Mariana Lima e priorizar protocolos com primeira resposta pendente.
-          </p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{EMPTY_FIELD}</p>
         </article>
       </div>
     </DetailSection>
@@ -851,7 +770,7 @@ function OperatorPlanBlock() {
                   </div>
                 </div>
               </div>
-              <StatusBadge status={plan.name === "Gustavo Freitas" ? "Online" : "Ausente"} />
+              <StatusBadge status={EMPTY_FIELD} />
             </div>
 
             <div className="mt-5 grid gap-2 sm:grid-cols-4">
@@ -965,10 +884,10 @@ function SlaBlock() {
           <div key={label}>
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium text-slate-600">{label}</span>
-              <span className="text-sm font-semibold text-slate-950">{value}%</span>
+              <span className="text-sm font-semibold text-slate-950">{value > 0 ? `${value}%` : EMPTY_FIELD}</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-[#A07C3B]/70" style={{ width: `${value}%` }} />
+              <div className="h-full rounded-full bg-[#A07C3B]/70" style={{ width: `${value > 0 ? value : 0}%` }} />
             </div>
           </div>
         ))}
@@ -1081,7 +1000,7 @@ function StatusBadge({ status }: { status: string }) {
     Ausente: "bg-amber-50 text-amber-700 ring-amber-100",
     Offline: "bg-slate-50 text-slate-500 ring-slate-200",
     Online: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-  }[status];
+  }[status] ?? "bg-slate-50 text-slate-500 ring-slate-200";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{status}</span>;
 }
@@ -1091,7 +1010,7 @@ function PriorityBadge({ priority }: { priority: string }) {
     Alta: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
     "Crítica": "bg-rose-50 text-rose-700 ring-rose-100",
     "Média": "bg-slate-50 text-slate-700 ring-slate-200",
-  }[priority];
+  }[priority] ?? "bg-slate-50 text-slate-500 ring-slate-200";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{priority}</span>;
 }
@@ -1101,7 +1020,7 @@ function PromiseBadge({ status }: { status: string }) {
     Cumprida: "bg-emerald-50 text-emerald-700 ring-emerald-100",
     Pendente: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
     Vencida: "bg-rose-50 text-rose-700 ring-rose-100",
-  }[status];
+  }[status] ?? "bg-slate-50 text-slate-500 ring-slate-200";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{status}</span>;
 }

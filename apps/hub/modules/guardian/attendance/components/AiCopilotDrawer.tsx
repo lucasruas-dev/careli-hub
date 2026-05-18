@@ -18,6 +18,7 @@ import type { PortfolioUnit, QueueClient } from "@/modules/guardian/attendance/t
 const MAX_AI_INSTALLMENTS = 220;
 const AI_AGENT_NAME = "Cacá";
 const AI_AGENT_AVATAR = "/caca-profile.png";
+const EMPTY_FIELD = "-";
 
 type ChatMessage = {
   actions?: ChatMessageAction[];
@@ -824,9 +825,10 @@ function buildClientIntelligence(client: QueueClient) {
   const nextAction = getNextAction(client.prioridade);
   const approach = getRecommendedApproach(client.prioridade);
   const agreement = client.agreement;
+  const hasAgreementData = agreement.status !== EMPTY_FIELD && agreement.risk !== EMPTY_FIELD;
 
   return {
-    initialMessage: `Analisei ${client.nome} e identifiquei risco ${risk.label} por ${client.parcelas.vencidas} parcelas vencidas, atraso médio de ${client.atrasoDias} dias e saldo em atraso de ${client.saldoDevedor}. O acordo está ${agreement.status.toLowerCase()}, com ${agreement.aiSuggestion.breakChance}% de chance de quebra; recomendo ${approach.toLowerCase()}.`,
+    initialMessage: EMPTY_FIELD,
     summaryCards: [
       ["Risco", risk.card],
       ["Score de risco", `${client.scoreRisco}/100`],
@@ -835,46 +837,46 @@ function buildClientIntelligence(client: QueueClient) {
       ["Saldo em atraso", client.saldoDevedor],
       ["Workflow", client.workflow.stage],
       ["Acordo", agreement.status],
-      ["Chance de quebra", `${agreement.aiSuggestion.breakChance}%`],
-      ["Próxima ação", nextAction],
+      ["Chance de quebra", hasAgreementData ? `${agreement.aiSuggestion.breakChance}%` : EMPTY_FIELD],
+      ["Próxima ação", client.workflow.nextAction || EMPTY_FIELD],
     ],
     quickSuggestions: [
       {
         label: "Resumir cliente",
         prompt: "Resuma este cliente para uma acao de cobranca hoje.",
-        response: `Resumo do cliente: ${client.nome} é ${client.dados360.tipoPessoa}, ${client.dados360.profissao}, ${client.dados360.idade}, residente em ${client.dados360.cidade}. Possui ${unitsCount} contrato${unitsCount > 1 ? "s" : ""} vinculado${unitsCount > 1 ? "s" : ""}, ${client.parcelas.vencidas} parcelas vencidas e saldo em atraso de ${client.saldoDevedor}.`,
+        response: EMPTY_FIELD,
       },
       {
         label: "Boletos em aberto",
         prompt:
           "Liste os boletos em aberto deste cliente com referencia, numero da parcela, vencimento atual, valor, status, atraso e link do boleto. Traga somente parcelas vencidas ou a vencer que tenham boleto disponivel.",
-        response: "Boletos em aberto consultados no C2X.",
+        response: EMPTY_FIELD,
       },
       {
         label: "Sugerir próxima ação",
         prompt: "Qual deve ser a proxima acao operacional para este cliente?",
-        response: `Próxima ação sugerida: ${client.workflow.nextAction.toLowerCase()}, alinhada à etapa ${client.workflow.stage} e reforçando a possibilidade de regularização sem escalonamento jurídico imediato.`,
+        response: EMPTY_FIELD,
       },
       {
         label: "Reenviar boleto",
         prompt: "Quero reenviar o link do boleto para o cliente.",
-        response: "Preparar reenvio de boleto pelo CareDesk.",
+        response: EMPTY_FIELD,
       },
       {
         label: "Criar mensagem CareDesk",
         prompt:
           "Crie uma mensagem curta para enviar pelo CareDesk para este cliente. Escreva sempre como equipe Careli, nunca como equipe do empreendimento.",
-        response: `Mensagem sugerida: Olá, ${getFirstName(client.nome)}. Tudo bem? Aqui é da equipe Careli. Identificamos pendências vinculadas ao seu lote no empreendimento ${mainEnterprise} e queremos te ajudar a regularizar da melhor forma possível. Podemos avaliar uma condição de pagamento mais adequada para este momento?`,
+        response: EMPTY_FIELD,
       },
       {
         label: "Propor acordo",
         prompt: "Sugira uma composicao de acordo para regularizar este cliente.",
-        response: `Proposta sugerida: ${agreement.aiSuggestion.composition} Chance prevista de quebra: ${agreement.aiSuggestion.breakChance}%. Próxima ação: ${agreement.aiSuggestion.nextAction}.`,
+        response: EMPTY_FIELD,
       },
       {
         label: "Risco do acordo",
         prompt: "Explique o risco deste acordo e o que devo observar antes de negociar.",
-        response: `Risco operacional do acordo: ${agreement.aiSuggestion.operationalRisk}. Status atual: ${agreement.status}. Valor negociado: ${agreement.negotiatedValue}, entrada: ${agreement.entry}, recuperação atual: ${agreement.recoveredValue}.`,
+        response: EMPTY_FIELD,
       },
     ],
   };

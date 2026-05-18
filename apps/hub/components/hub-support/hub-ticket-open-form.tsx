@@ -30,6 +30,7 @@ import {
   Video,
   X,
 } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
@@ -74,7 +75,9 @@ export function HubTicketOpenForm({
   const canSubmit = description.trim().length >= 3 || attachments.length > 0;
   const [isAnalyzingEvidence, setIsAnalyzingEvidence] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [recordingKind, setRecordingKind] = useState<RecordingKind | null>(null);
+  const [recordingKind, setRecordingKind] = useState<RecordingKind | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [successProtocol, setSuccessProtocol] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -453,15 +456,16 @@ export function HubTicketOpenForm({
   }
 
   function addAttachment(attachment: HubItTicketAttachmentInput) {
-    setAttachments((currentAttachments) => [
-      attachment,
-      ...currentAttachments,
-    ].slice(0, maxAttachmentCount));
+    setAttachments((currentAttachments) =>
+      [attachment, ...currentAttachments].slice(0, maxAttachmentCount),
+    );
   }
 
   function removeAttachment(fileName: string) {
     setAttachments((currentAttachments) =>
-      currentAttachments.filter((attachment) => attachment.fileName !== fileName),
+      currentAttachments.filter(
+        (attachment) => attachment.fileName !== fileName,
+      ),
     );
   }
 
@@ -519,7 +523,14 @@ export function HubTicketOpenForm({
         <SelectField
           label="Modulo"
           onChange={setModuleName}
-          options={["Hub", "Guardian", "CareDesk", "PulseX", "Setup", "SquadOps"]}
+          options={[
+            "Hub",
+            "Guardian",
+            "CareDesk",
+            "PulseX",
+            "Setup",
+            "SquadOps",
+          ]}
           value={moduleName}
         />
         <SelectField
@@ -604,20 +615,21 @@ export function HubTicketOpenForm({
       </label>
 
       <div className="flex justify-end">
-        <button
-          aria-label="Enviar para SquadOps"
-          className="grid size-11 place-items-center rounded-xl bg-[#A07C3B] text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={isSaving || !canSubmit}
-          onClick={() => void handleSubmit()}
-          title="Enviar para SquadOps"
-          type="button"
-        >
-          {isSaving ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Send className="size-4" />
-          )}
-        </button>
+        <Tooltip content="Enviar para SquadOps" placement="top">
+          <button
+            aria-label="Enviar para SquadOps"
+            className="grid size-11 place-items-center rounded-xl bg-[#A07C3B] text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isSaving || !canSubmit}
+            onClick={() => void handleSubmit()}
+            type="button"
+          >
+            {isSaving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Send className="size-4" />
+            )}
+          </button>
+        </Tooltip>
       </div>
     </div>
   );
@@ -666,8 +678,10 @@ function SelectField({
         value={value}
       >
         {options.map((option) => {
-          const optionValue = typeof option === "string" ? option : option.value;
-          const optionLabel = typeof option === "string" ? option : option.label;
+          const optionValue =
+            typeof option === "string" ? option : option.value;
+          const optionLabel =
+            typeof option === "string" ? option : option.label;
 
           return (
             <option key={optionValue} value={optionValue}>
@@ -697,7 +711,9 @@ function InlineNotice({
         : "border-emerald-200 bg-emerald-50 text-emerald-700";
 
   return (
-    <div className={`flex items-start gap-2 rounded-lg border p-3 text-sm font-semibold ${toneClass}`}>
+    <div
+      className={`flex items-start gap-2 rounded-lg border p-3 text-sm font-semibold ${toneClass}`}
+    >
       <span className="mt-0.5 shrink-0">{icon}</span>
       <span>{children}</span>
     </div>
@@ -724,7 +740,9 @@ function EvidencePreviewList({
   return (
     <div className="mt-3 grid gap-2">
       <p className="m-0 text-xs font-semibold text-slate-500">
-        {isAnalyzing ? "Caca analisando evidencias..." : "Evidencias lidas pela Caca."}
+        {isAnalyzing
+          ? "Caca analisando evidencias..."
+          : "Evidencias lidas pela Caca."}
       </p>
       {attachments.map((attachment) => (
         <AttachmentPreviewCard
@@ -757,7 +775,11 @@ function AttachmentPreviewCard({
         />
       ) : null}
       {attachment.type === "video" && attachment.dataUrl ? (
-        <video className="h-32 w-full bg-slate-950 object-contain" controls src={attachment.dataUrl} />
+        <video
+          className="h-32 w-full bg-slate-950 object-contain"
+          controls
+          src={attachment.dataUrl}
+        />
       ) : null}
       {attachment.type === "audio" && attachment.dataUrl ? (
         <div className="grid min-h-24 place-items-center bg-slate-100 p-3">
@@ -766,9 +788,15 @@ function AttachmentPreviewCard({
       ) : null}
       {!attachment.dataUrl || attachment.type === "file" ? (
         <div className="grid h-24 place-items-center bg-slate-100 text-slate-400">
-          {attachment.type === "image" ? <ImageIcon className="size-6" /> : null}
-          {attachment.type === "video" ? <FileVideo className="size-6" /> : null}
-          {attachment.type === "audio" ? <FileAudio className="size-6" /> : null}
+          {attachment.type === "image" ? (
+            <ImageIcon className="size-6" />
+          ) : null}
+          {attachment.type === "video" ? (
+            <FileVideo className="size-6" />
+          ) : null}
+          {attachment.type === "audio" ? (
+            <FileAudio className="size-6" />
+          ) : null}
           {attachment.type === "file" ? <FileText className="size-6" /> : null}
         </div>
       ) : null}
@@ -918,8 +946,13 @@ async function extractVideoFrameDataUrls(blob: Blob) {
     const duration = Number.isFinite(video.duration) ? video.duration : 0;
     const frameTimes = Array.from(
       new Set(
-        [duration > 1 ? Math.min(0.8, duration * 0.25) : 0, duration > 2 ? duration * 0.75 : 0]
-          .map((time) => Math.max(0, Math.min(time, Math.max(0, duration - 0.1))))
+        [
+          duration > 1 ? Math.min(0.8, duration * 0.25) : 0,
+          duration > 2 ? duration * 0.75 : 0,
+        ]
+          .map((time) =>
+            Math.max(0, Math.min(time, Math.max(0, duration - 0.1))),
+          )
           .map((time) => Number(time.toFixed(2))),
       ),
     );
@@ -944,7 +977,10 @@ async function extractVideoFrameDataUrls(blob: Blob) {
 
 function waitForVideoMetadata(video: HTMLVideoElement) {
   return new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error("timeout")), 4_000);
+    const timeout = window.setTimeout(
+      () => reject(new Error("timeout")),
+      4_000,
+    );
 
     video.addEventListener(
       "loadedmetadata",
@@ -967,7 +1003,10 @@ function waitForVideoMetadata(video: HTMLVideoElement) {
 
 function seekVideo(video: HTMLVideoElement, currentTime: number) {
   return new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error("timeout")), 4_000);
+    const timeout = window.setTimeout(
+      () => reject(new Error("timeout")),
+      4_000,
+    );
 
     video.addEventListener(
       "seeked",
@@ -1004,7 +1043,9 @@ function inferExpectedResult(description: string) {
 }
 
 function inferActualResult(description: string) {
-  const match = description.match(/(?:aconteceu|ocorreu|erro)(.+?)(?:\.|\n|$)/i);
+  const match = description.match(
+    /(?:aconteceu|ocorreu|erro)(.+?)(?:\.|\n|$)/i,
+  );
   return match?.[1]?.trim() ?? "";
 }
 

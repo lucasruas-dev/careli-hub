@@ -3350,6 +3350,25 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[SupportOps] Parecer Supabase Realtime AL-3336`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 23:03:34 -03:00.
+- Tipo da alteracao: `TROUBLESHOOTING OPERACIONAL` - alerta medio de latencia Realtime.
+- Motivo da mudanca: Operations Center gerou alerta `AL-3336` para `Supabase Realtime lento`, com endpoint `https://bxgukywoxgivlrhjkwjx.supabase.co/realtime/v1/api/health`, resultado recebido `403 Forbidden`, tempo 2439ms, payload 0 B e risco medio.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; investigacao sobre `apps/hub/lib/operations/data-sources.ts`, `apps/hub/lib/operations/monitoring.ts`, Supabase Auth, REST, Realtime e logs Vercel.
+- Como foi feito: medi Auth, REST e Realtime em 12 amostras cada com headers Supabase sem expor chaves; comparei o contrato do check `supabase-realtime-health`, que aceita status `200` ou `403` e timeout 4000ms; executei smoke real de canal Realtime com `@supabase/supabase-js`; consultei logs de erro Vercel dos ultimos 30 minutos; e verifiquei o status publico da Supabase.
+- Evidencias coletadas: Supabase Auth respondeu 200 em 12/12 amostras entre 148ms e 306ms, media 169ms; Supabase REST root respondeu 401 esperado em 12/12 entre 23ms e 29ms, media 26ms; Supabase Realtime health respondeu 403 esperado em 12/12 entre 2390ms e 2496ms, media 2453ms; todas as amostras Realtime ficaram acima de 1500ms e nenhuma passou de 3000ms; smoke real de canal Realtime chegou a `SUBSCRIBED` em 636ms; Vercel nao retornou logs de erro recentes; status publico Supabase indicou Realtime operacional, com incidente identificado relacionado a alguns provedores no Brasil ainda relevante para latencia regional.
+- Origem identificada: lentidao persistente no health HTTP do Supabase Realtime/rede regional. Nao ha evidencia de problema em banco, REST, Auth, payload, seguranca do contrato ou integracao websocket funcional do Hub.
+- Impacto operacional: alerta medio correto para observacao; funcionalidades Realtime nao foram observadas indisponiveis no smoke, mas o health HTTP permanece na faixa de 1,5s a 3s e pode gerar recorrencia do alerta.
+- Correcao executada: nenhuma alteracao de codigo; o comportamento atual do Operations Center esta coerente ao classificar como risco medio e recomendar observacao.
+- Validacao executada: smoke HTTP do endpoint afetado; smoke de canal Realtime; comparativo Auth/REST; `npx.cmd vercel logs https://c2x.app.br --since 30m --level error`; consulta ao status publico Supabase.
+- Devolutiva tecnica do protocolo: `PERSISTE` como lentidao observacional do health HTTP; nao foi observada falha funcional do Realtime.
+- Pendencias ou riscos conhecidos: se o mesmo alerta repetir com tempo acima de 3000ms ou falha diferente de 403 esperado, reabrir como incidente de maior criticidade. Se a recorrencia gerar ruido operacional, avaliar ajuste futuro para o watcher priorizar smoke de canal Realtime ou exigir recorrencia antes de acionar SupportOps.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub SupportOps` para monitorar recorrencia; `Hub ReleaseOps` somente se Lucas decidir publicar ajuste futuro no criterio do watcher.
+
+Registro de diario:
+
 - Assunto: `[Hub Core] Tratamento de migration pendente no Ticket TI`.
 - Nome da squad/agente: `Hub SupportOps`.
 - Data e hora local: 2026-05-17 22:07:58 -03:00.
@@ -3527,3 +3546,352 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o runner precisa tratar com cuidado as duas migrations com prefixo `0003` se usar apenas prefixo numerico como versao; a homologacao com escrita continua bloqueada ate existir Supabase de homologacao ou autorizacao explicita de Lucas para outro modelo controlado; ReleaseOps ainda precisa configurar branch remota `homolog`, Preview/Custom Environment, dominio/alias e variaveis completas sem expor secrets.
 - Status operacional: `BLOQUEADO`.
 - Proxima squad recomendada: `Hub InfraOps` para provisionar/configurar o ambiente externo de homologacao; `Hub ReleaseOps` para separar recortes antes de deploy; `Hub DataOps` para aplicar migrations no Supabase correto somente apos autorizacao explicita do Lucas.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Checkpoint autorizacao migrations`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-17 23:07:47 -03:00.
+- Tipo da alteracao: `AUDITORIA` - checkpoint antes de DDL.
+- Motivo da mudanca: Lucas respondeu `Autorizado` apos o handoff DataOps sobre Supabase de homologacao e migrations, mas o ambiente disponivel nesta sessao ainda nao possui credenciais de Postgres para Preview/Homologacao; a unica conexao Postgres localizada por metadados da Vercel esta no escopo `Production`.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; verificacao operacional de `.env.local`, `.env.homolog.example`, `.vercel/project.json`, Vercel env metadata e Supabase CLI.
+- Como foi feito: confirmei que `.env.local` possui apenas variaveis Supabase publicas e service role, sem `POSTGRES_URL`; confirmei que `psql` e Supabase CLI local nao estavam instalados; habilitei `npx supabase` e validei Supabase CLI `2.98.2`; consultei o help oficial do CLI para `db query`, `migration list` e `db push`, confirmando suporte a `--db-url` e `--dry-run`; consultei metadados de env Vercel e encontrei `POSTGRES_URL` apenas em `Production`, sem imprimir valores.
+- Logica utilizada: autorizacao para aplicar migration nao substitui definicao do alvo. Como a demanda veio do fluxo de homologacao e o criterio DataOps proibe usar service role ou Postgres de producao para simular homologacao com escrita, a aplicacao real fica bloqueada ate Lucas confirmar explicitamente que o alvo e `Production` ou fornecer/provisionar Supabase de homologacao.
+- Validacao executada: `npx.cmd --yes supabase db query --help`; `npx.cmd --yes supabase migration list --help`; `npx.cmd --yes supabase db push --help`; `npx.cmd vercel env ls production` consultado apenas para nomes/escopos de variaveis, sem expor secrets.
+- Pendencias ou riscos conhecidos: sem confirmacao explicita de `Production`, nenhum DDL deve ser executado contra o banco real; sem `POSTGRES_URL` de homologacao, nao ha como aplicar ou validar migrations no Supabase de homologacao a partir desta sessao; se Lucas confirmar producao, DataOps deve primeiro rodar `supabase db push --dry-run --db-url <POSTGRES_URL>` e revisar a lista antes de aplicar.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub DataOps` aguardando confirmacao explicita do alvo (`Production` ou Supabase de homologacao); `Hub InfraOps` caso seja necessario provisionar o Supabase de homologacao antes.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Preparacao Supabase homologacao bloqueada`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-17 23:10:30 -03:00.
+- Tipo da alteracao: `AUDITORIA` - revisao de ambiente Supabase de homologacao antes de DDL.
+- Motivo da mudanca: Lucas formalizou a demanda DataOps para preparar o Supabase de homologacao, revisar e aplicar quando seguro as migrations `0013`, `0014`, `0015`, `0016` e `0017`, validar SquadOps, Ticket TI, Engineering Operations estruturado e Release Protocol DP, e devolver o status para ReleaseOps.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`, `docs/architecture/homologation-environment.md`, `.env.homolog.example`, metadados Vercel Preview e migrations `0012` a `0017` em `packages/database/migrations/`.
+- Como foi feito: revisei `AGENTS.md`, o diario operacional, a skill Supabase aplicavel, o criterio DataOps de homologacao e os metadados locais/Vercel; confirmei que nao ha `.env.homolog.local`, `.vercel/.env.homolog.local`, `.vercel/.env.preview.local` ou `.vercel/.env.production.local`; consultei `npx.cmd vercel env ls preview` e confirmei apenas variaveis publicas Supabase no Preview; tentei listar projetos Supabase via CLI e o comando foi bloqueado por ausencia de `SUPABASE_ACCESS_TOKEN`/login, sem expor secrets.
+- Logica utilizada: a autorizacao para aplicar migrations nao substitui a definicao do alvo. Para homologacao com persistencia real, o alvo seguro segue sendo um Supabase separado de homologacao; usar service role ou `POSTGRES_URL` de producao no Preview continua proibido. A ordem segura para uma base ja existente exige `0012 -> 0013 -> 0014 -> 0015 -> 0016 -> 0017`, porque `0015` depende de `0012` e `0013`, `0016` depende de `0013`, e `0017` depende de `0014`, `0013` e `0016`; em Supabase novo, a cadeia completa deve ser `0001 -> 0017`, respeitando as duas migrations `0003`.
+- Validacao executada: `npx.cmd --yes supabase projects --help`; `npx.cmd --yes supabase projects list -o json` retornou falta de access token; `npx.cmd vercel env ls preview`; verificacao de arquivos `.env` de homologacao/preview; varredura estatica com `rg` nas migrations `0013` a `0017` para tabelas, FKs, sequencias, triggers, RLS, policies e grants; nenhuma migration foi aplicada.
+- Pendencias ou riscos conhecidos: ambiente Supabase de homologacao ainda nao esta definido/provisionado ou autenticado nesta sessao; sem `POSTGRES_URL`/project ref/access token de homologacao nao e possivel aplicar DDL nem validar REST/Data API, RLS e grants em runtime; Preview Vercel continua sem variaveis completas de homologacao; ReleaseOps nao deve liberar fluxos com escrita/persistencia ate DataOps aplicar e validar no banco correto.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` para provisionar/conectar Supabase separado de homologacao ou disponibilizar acesso seguro ao projeto correto; depois `Hub DataOps` para executar dry-run, aplicar migrations e validar REST/RLS/grants; `Hub ReleaseOps` deve manter homologacao com persistencia bloqueada ate esse retorno.
+
+Registro de diario:
+
+- Assunto: `[Engenharia] Padrao de conclusao didatica`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 23:10:29 -03:00.
+- Tipo da alteracao: `REGRA OPERACIONAL` - padrao de comunicacao de devolutivas.
+- Motivo da mudanca: Lucas solicitou que, ao final das devolutivas tecnicas/operacionais, exista uma conclusao ou resumo mais didatico para facilitar entendimento, decisao e encaminhamento.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md` e padrao de resposta dos agentes da engenharia Careli Hub.
+- Como foi feito: registrada a regra de que devolutivas operacionais devem terminar com um bloco final de conclusao didatica, explicando em linguagem simples o que aconteceu, o que foi confirmado, o que nao foi confirmado, impacto pratico, se precisa de acao agora e qual o proximo responsavel.
+- Logica utilizada: a analise tecnica continua completa para rastreabilidade, mas o fechamento precisa traduzir a decisao operacional para Lucas e para os devs, evitando que o handoff fique apenas tecnico ou dificil de acionar.
+- Validacao executada: registro manual no Engineering Operations.
+- Pendencias ou riscos conhecidos: todos os agentes devem seguir este padrao nas proximas devolutivas, especialmente SupportOps, ReleaseOps, HubOps e squads de modulo.
+- Status operacional: `PADRAO ATIVO`.
+- Proxima squad recomendada: `Todas as squads` para adotar o fechamento didatico em novas analises, handoffs e pareceres tecnicos.
+
+Registro de diario:
+
+- Assunto: `[Engenharia] Padrao de conclusao no AGENTS`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 23:12:12 -03:00.
+- Tipo da alteracao: `REGRA OPERACIONAL` - atualizacao do comando base dos agentes.
+- Motivo da mudanca: Lucas solicitou registrar tambem no `AGENTS.md` a regra de que toda devolutiva tecnica/operacional deve terminar com uma conclusao didatica.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei ao bloco de regras de trabalho do `AGENTS.md` uma instrucao para incluir a secao `Conclusao` no fim das devolutivas, explicando o que aconteceu, impacto pratico, necessidade de acao, responsavel e proximo passo.
+- Logica utilizada: o diario registra a decisao, enquanto o `AGENTS.md` transforma a decisao em comando operacional obrigatorio para proximas sessoes e agentes que atuarem no repositorio.
+- Validacao executada: alteracao documental aplicada localmente.
+- Pendencias ou riscos conhecidos: agentes futuros devem ler o `AGENTS.md` e o Engineering Operations antes de atuar para preservar o novo padrao.
+- Status operacional: `PADRAO ATIVO`.
+- Proxima squad recomendada: `Todas as squads` para aplicar a conclusao didatica em novas devolutivas, pareceres e handoffs.
+
+Registro de diario:
+
+- Assunto: `[Hub UIX] Padrao oficial de tooltips`.
+- Nome da squad/agente: `Hub Core`.
+- Data e hora local: 2026-05-17 23:28:46 -03:00.
+- Tipo da alteracao: `REGRA OPERACIONAL` - padronizacao visual e tecnica de tooltips.
+- Motivo da mudanca: Lucas identificou tooltip fora do padrao na tela `SquadOps / Database Monitoring`, onde o navegador exibia o balão nativo gerado por `title`. A regra passa a valer para todos os modulos do Hub.
+- Arquivos/modulos afetados: `@repo/uix`, `SquadOps`, `PulseX`, `CareDesk`, `Guardian`, `Setup`, `Ticket TI` e shell principal do Hub.
+- Como foi feito: os tooltips nativos em elementos HTML interativos/visuais foram removidos ou substituidos pelo componente `Tooltip` de `@repo/uix`; atributos `aria-label` foram preservados nos botoes iconograficos; `title` continua permitido apenas como prop interna de componentes de conteudo, como `PanelTitle`, `EmptyState`, `InfoPanel`, `CommandPalette` e equivalentes que nao geram tooltip nativo do navegador.
+- Logica utilizada: toda dica contextual de hover/focus visivel no produto deve usar o padrao visual do Hub (`Tooltip` UIX), com texto curto e operacional. Nao usar `title` em `<button>`, `<a>`, `<span>`, `<div>`, `<header>`, `<section>`, `<aside>`, `<input>`, `<textarea>` ou qualquer elemento HTML bruto para simular tooltip.
+- Regra para devs de produto: ao criar acao compacta, botao de icone, item recolhido de menu, avatar com contexto, status clicavel ou ajuda de hover, envolver o elemento com `Tooltip` de `@repo/uix`; manter `aria-label` quando o elemento for interativo e nao repetir tooltip em textos ja autoexplicativos sem necessidade operacional.
+- Validacao executada: varredura estatica confirmou ausencia de `title` nativo em elementos HTML de `apps/hub` e `packages/uix`; `/squadops` foi validado no browser na aba `Database Monitoring` com `nativeTitleCount: 0` e tooltips UIX para `Confirmar leitura`, `Registrar devolutiva tecnica`, `Ignorar alerta` e `Criar prompt para agente`; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` executados com sucesso.
+- Pendencias ou riscos conhecidos: o build mantem warning conhecido do Turbopack/NFT em `apps/hub/next.config.ts`, sem relacao com esta mudanca; o time deve evitar reintroduzir `title` nativo em novas telas.
+- Status operacional: `PRONTO PARA RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para organizar commit, deploy e rastreabilidade oficial.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Desbloqueio controlado do Preview homolog`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-17 23:37:50 -03:00.
+- Tipo da alteracao: `HOTFIX` - acesso protegido e runtime de homologacao Vercel Preview.
+- Motivo da mudanca: Lucas informou que ReleaseOps publicou `origin/homolog`, mas o healthcheck externo falhava porque a Vercel retornava `401 Unauthorized` antes das rotas do Hub.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, Preview `dpl_F6pyCmXmQbRCBo2hmvbParbNiZsN`, branch `origin/homolog`, `apps/hub/package.json`, `scripts/homologation-healthcheck.ps1` e `docs/codex/engineering-operations.md`.
+- Como foi feito: habilitei `Protection Bypass for Automation` no projeto Vercel; configurei variaveis publicas branch-scoped para Preview `homolog` (`NEXT_PUBLIC_CARELI_APP_ENV`, `NEXT_PUBLIC_CARELI_APP_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_CARELI_ENABLE_MOCKS` e `NEXT_PUBLIC_SUPABASE_WORKSPACE_ID`) sem imprimir valores sensiveis; mantive o acesso direto sem bypass retornando `401`, confirmando que o Preview nao ficou publico; corrigi o runtime do Hub removendo `type: module` de `apps/hub/package.json`, pois o artefato serverless da Vercel executava rotas CJS com `require` dentro de escopo ESM; atualizei o script de healthcheck para aceitar bypass via `VERCEL_AUTOMATION_BYPASS_SECRET`/parametro e modo `vercel curl`; criei o commit `797cfd9 chore(infraops): enable homolog preview healthchecks` e publiquei em `origin/homolog`.
+- Logica utilizada: a liberacao deve ser controlada por header/bypass de automacao, nao por abertura publica do Preview. O alias customizado `homolog.c2x.app.br` nao foi configurado nesta etapa porque a protecao atual da Vercel esta em `all_except_custom_domains`; adicionar custom domain poderia tornar a homologacao acessivel sem SSO/bypass e precisa de aprovacao explicita do Lucas. Variaveis sensiveis de producao tambem nao foram copiadas para Preview.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node de config ESM sem falha; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `npx.cmd vercel inspect` confirmou Preview `Ready` em `https://careli-hub-hub-i2bs-4645758ru-lucasruas-devs-projects.vercel.app` e alias de branch `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`; healthcheck com bypass no alias da branch retornou `/` 200, `/squadops` 200, Guardian queue `limit=20` 200, Guardian queue `limit=50` 200, `/api/operations/monitoring` sem sessao 401, `/api/operations/watcher` sem sessao 401, `/api/hub/it-tickets?scope=all` sem sessao 401 e `POST /api/squadops/copilot` sem sessao 401; logs Vercel do novo Preview nao retornaram erros.
+- Pendencias ou riscos conhecidos: `/api/guardian/db/health` ainda retorna `503 unconfigured` porque faltam `GUARDIAN_DB_HOST`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER` e `GUARDIAN_DB_PASSWORD` no Preview `homolog`; `SUPABASE_SERVICE_ROLE_KEY`, `GUARDIAN_DB_*`, chaves sandbox de integracoes e modelos server-side seguem pendentes por falta de alvo seguro de homologacao; `homolog.c2x.app.br` nao foi configurado para evitar abertura publica sem aprovacao; Supabase de homologacao e migrations continuam bloqueados para DataOps ate existir alvo/credencial de homologacao ou autorizacao explicita do Lucas.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub DataOps` para fornecer/provisionar Supabase e credenciais de homologacao; `Hub InfraOps` para configurar `GUARDIAN_DB_*`/segredos de homologacao quando houver alvo seguro; `Hub ReleaseOps` para reexecutar o healthcheck e liberar homologacao apos o 503 do Guardian DB ser resolvido.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Validacao Supabase homolog no Preview`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 00:12:45 -03:00.
+- Tipo da alteracao: `AUDITORIA` - validacao de ambiente Supabase homologacao.
+- Motivo da mudanca: Lucas informou que o ambiente Supabase de homologacao foi criado e configurado no Vercel Preview, e pediu validar runtime, variaveis, Auth, REST, Realtime, conexao de banco e isolamento contra Production sem executar migrations.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, Preview `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`, alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, `.vercel/project.json`, `docs/codex/engineering-operations.md` e arquivos temporarios ignorados removidos ao fim da auditoria.
+- Como foi feito: consultei metadados de envs Preview/Production sem imprimir valores; puxei envs para arquivos temporarios ignorados para comparacao mascarada e removi tudo ao final; criei um diretório temporario limpo ligado ao mesmo projeto para evitar contaminacao de `.env.local`; rodei `vercel env run` em Preview e Production para comparar hosts/hashes sem expor secrets; executei um redeploy apenas do Preview para garantir que variaveis recém-configuradas entrassem no runtime; validei endpoints do Hub com Protection Bypass sem abrir o Preview publicamente; testei Auth, REST e Realtime do Supabase homolog usando anon key sem executar escrita nem migration.
+- Logica utilizada: o criterio de liberacao para DataOps exige que o Preview aponte para Supabase diferente de Production, que Auth/REST/Realtime respondam, que runtime server-side tenha service role disponivel e que nenhuma migration seja aplicada antes do handoff. Variaveis sensiveis que nao podem ser lidas pelo CLI foram validadas por comportamento do runtime quando possivel, sem imprimir valor.
+- Validacao executada: `npx.cmd vercel env ls preview` mostrou `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` e `POSTGRES_URL` no Preview; `SUPABASE_URL` e `SUPABASE_ANON_KEY` sem prefixo nao aparecem no Preview; `vercel env run` limpo indicou Preview com host Supabase mascarado diferente do host Production, confirmando isolamento do `NEXT_PUBLIC_SUPABASE_URL`; Auth health com anon key retornou 200; REST com anon key chegou ao PostgREST e retornou `PGRST205` para `hub_users`, esperado antes das migrations e evidenciando banco/schema cache acessivel; Realtime health retornou 403 esperado e subscribe de canal Realtime retornou `SUBSCRIBED` em aproximadamente 1200ms; apos redeploy do Preview, endpoints server-side que exigem service role passaram a retornar 401 sem sessao em vez de 503 por env ausente; healthcheck do Hub no novo Preview retornou `/` 200, `/squadops` 200, Guardian queue `limit=20` 200, Guardian queue `limit=50` 200, `/api/operations/monitoring` 401 esperado, `/api/operations/watcher` 401 esperado, `/api/hub/it-tickets?scope=all` 401 esperado e `POST /api/squadops/copilot` 401 esperado; logs Vercel nao retornaram erros.
+- Pendencias ou riscos conhecidos: healthcheck completo ainda falha em `/api/guardian/db/health` com 503 por falta de `GUARDIAN_DB_*`, que e pendencia Guardian/infra separada do Supabase homolog; `SUPABASE_URL` e `SUPABASE_ANON_KEY` sem prefixo nao estao configuradas no Preview, embora o app use `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`; `POSTGRES_URL` aparece nos metadados Preview, mas o valor e sensivel/write-only e nao foi impresso nem usado para query direta local, entao DataOps deve confirmar acesso ao runner seguro antes de aplicar migrations; REST retornando `PGRST205` para `hub_users` confirma que migrations ainda nao foram aplicadas, como esperado.
+- Status operacional: `AGUARDANDO DATAOPS`.
+- Proxima squad recomendada: `Hub DataOps` para executar dry-run e aplicar migrations no Supabase homolog, confirmando antes o acesso seguro ao `POSTGRES_URL`; `Hub InfraOps` para configurar `GUARDIAN_DB_*` de homologacao em etapa separada se Lucas quiser healthcheck Guardian completo.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Sidebar fixa no Hub Shell`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-18 00:07:24 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - estabilidade visual do shell.
+- Motivo da mudanca: Lucas apontou que, ao descer a pagina `/squadops`, o sidebar do Hub acompanhava a rolagem e nao deveria se mover com o conteudo principal.
+- Arquivos/modulos afetados: `apps/hub/styles/globals.css` e `docs/codex/engineering-operations.md`.
+- Como foi feito: ajustei o CSS do shell padrao para manter `.uix-sidebar` em `position: fixed`, preso ao lado esquerdo, com `height/max-height` de `100dvh` e largura normal/colapsada preservada pelas variaveis `--uix-shell-sidebar-width` e `--uix-shell-sidebar-collapsed-width`.
+- Logica utilizada: o AppShell ja reserva a coluna do menu no grid; portanto o sidebar pode ficar fixo visualmente sem deslocar o conteudo. A rolagem fica concentrada no conteudo principal, enquanto a navegacao lateral permanece disponivel.
+- Validacao executada: `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local `/squadops` retornou 200; `git diff --check` focado passou com avisos CRLF conhecidos. Tentativa de validacao automatizada por Playwright via Node REPL nao executou porque o modulo `playwright` nao esta instalado neste ambiente.
+- Pendencias ou riscos conhecidos: build manteve warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations; validacao visual final autenticada no Chrome do Lucas segue recomendada apos refresh/hot reload.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o recorte de UX do SquadOps.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Homologacao operacional para producao`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-18 00:31:08 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - controle de homologacao antes de producao.
+- Motivo da mudanca: Lucas definiu que o Operations Center deve exibir claramente o que esta em homologacao para que ele valide item por item e, ao final, gere um prompt seguro para Hub ReleaseOps subir em producao.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei na aba de deploys uma area `Em Homologacao` baseada nos protocolos DP filtrados como homologacao; cada DP lista o protocolo macro e os AT/AL vinculados, permite sinalizar `Aguardando teste`, `Em teste`, `Aprovado`, `Reprovado` ou `Bloqueado`, registrar observacao curta por item e acompanhar progresso macro. O prompt final gerado pela Caca/PO operacional diferencia aprovados de reprovados/bloqueados.
+- Logica utilizada: a tela nao executa deploy nem move status automaticamente; ela apenas guarda a validacao operacional no navegador. Se todos os itens estiverem aprovados, o prompt orienta publicacao completa; se houver itens reprovados ou bloqueados, o prompt orienta publicacao parcial apenas dos aprovados e exige novo recorte/commit caso o commit atual misture itens aprovados e nao aprovados.
+- Validacao executada: `npm.cmd run check-types:hub` passou apos a implementacao inicial e novamente apos ajustar o prompt para aprovacao parcial; `npm.cmd run lint:hub` passou com warning Node conhecido de config ESM; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; smoke local `http://localhost:3001/squadops` retornou HTTP 200; `git diff --check` focado passou com avisos CRLF conhecidos.
+- Pendencias ou riscos conhecidos: a validacao de homologacao V1 usa persistencia local do navegador ate existir tabela oficial para homologacoes; se Lucas limpar storage ou trocar navegador, a marcacao local nao acompanha. O build segue sujeito ao warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o recorte; futuramente `Hub DataOps` pode modelar persistencia real das validacoes de homologacao.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Aplicacao migrations homolog bloqueada por POSTGRES_URL vazio`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 00:28:49 -03:00.
+- Tipo da alteracao: `AUDITORIA` - validacao final antes de aplicar DDL em Supabase homolog.
+- Motivo da mudanca: Lucas informou que InfraOps concluiu a validacao do Supabase homolog no Vercel Preview e autorizou DataOps a iniciar dry-run, aplicacao controlada e validacoes das migrations `0013`, `0014`, `0015`, `0016` e `0017`, sem alterar Production.
+- Arquivos/modulos afetados: `packages/database/migrations/0012_hub_operations_alert_protocols.sql`, `packages/database/migrations/0013_hub_engineering_operations_records.sql`, `packages/database/migrations/0014_hub_it_tickets.sql`, `packages/database/migrations/0015_hubops_short_protocol_codes.sql`, `packages/database/migrations/0016_hub_release_protocols.sql`, `packages/database/migrations/0017_squadops_ticket_operation_links.sql`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/app/api/squadops/operations/structured/route.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/app/api/hub/it-tickets/route.ts`, `apps/hub/lib/squadops/release-protocols.ts`, `apps/hub/lib/operations/alert-protocols.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: reli `AGENTS.md`, o diario operacional, a skill Supabase aplicavel, as migrations e os consumidores server-side/API; criei um runner temporario limpo fora do repo com apenas `.vercel/project.json` para evitar contaminacao por `.env.local`; validei metadados Vercel Preview, `vercel env run` e `vercel env pull`; removi todos os arquivos temporarios ao final; consultei Supabase CLI por help e tentei autenticar via projetos sem imprimir secrets.
+- Logica utilizada: a aplicacao de DDL precisa de uma conexao Postgres de homologacao nao vazia e verificavel. O `POSTGRES_URL` aparece nos metadados `Preview`, mas chega vazio tanto em `vercel env run` quanto em `vercel env pull`; `SUPABASE_SERVICE_ROLE_KEY` tambem chega vazio nesse runner limpo. Como o Supabase CLI tambem nao possui `SUPABASE_ACCESS_TOKEN`/login, nao existe canal seguro disponivel nesta sessao para `db push --dry-run`, `db query` ou aplicacao controlada. Production nao deve ser usado como atalho.
+- Validacao executada: `npx.cmd vercel env ls preview` confirmou nomes de variaveis; `vercel env run` em diretorio temporario limpo mostrou `POSTGRES_URL` presente como nome mas com valor vazio; `vercel env pull --environment preview` confirmou `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` nao vazios, mas `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` vazios; `npx.cmd --yes supabase projects list -o json` falhou por falta de access token; REST com anon key retornou `404` para `hub_users`, `hub_engineering_operation_records`, `hub_it_tickets`, `hub_release_protocols` e `hub_it_ticket_operation_links`, consistente com schema ainda nao aplicado; Realtime com anon key assinou canal e retornou `SUBSCRIBED`; nenhuma migration foi aplicada e nenhuma escrita de dados foi executada.
+- Pendencias ou riscos conhecidos: migrations seguem pendentes; nao houve dry-run real porque falta conexao Postgres utilizavel; se o Supabase homolog estiver vazio, a cadeia correta nao pode comecar apenas em `0013`, pois `0015` depende de `0012` e a base completa exige `0001 -> 0017` respeitando as duas migrations `0003`; as migrations `0013` a `0017` possuem RLS/grants/policies de forma estatica, mas validacao runtime de tabelas, FKs, RLS, grants, REST e persistencia continua bloqueada ate existir `POSTGRES_URL` nao vazio ou outro canal DataOps seguro; ReleaseOps nao deve liberar fluxos persistentes.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` para corrigir/prover acesso seguro ao `POSTGRES_URL` de homologacao e confirmar se `SUPABASE_SERVICE_ROLE_KEY` deve ser consumivel pelo runtime/runner; depois `Hub DataOps` deve executar dry-run, aplicar as migrations no Supabase homolog e validar schema/REST/RLS/grants/persistencia; `Hub ReleaseOps` permanece aguardando.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Complemento Auth homolog`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 00:29:58 -03:00.
+- Tipo da alteracao: `AUDITORIA` - smoke publico complementar.
+- Motivo da mudanca: apos registrar o bloqueio por `POSTGRES_URL` vazio, executei uma checagem publica adicional para separar falha de conexao DDL de disponibilidade do Supabase Auth.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md` e runner temporario limpo removido ao final.
+- Como foi feito: recriei um diretorio temporario limpo com apenas `.vercel/project.json`, carreguei variaveis Preview por `vercel env run`, consultei `/auth/v1/health` com anon key sem imprimir credenciais e removi o diretorio temporario apos um retry de cleanup porque o processo ainda segurava handle por alguns segundos.
+- Logica utilizada: Auth pode estar saudavel mesmo quando o runner de DDL nao possui `POSTGRES_URL`; portanto esta validacao nao libera migrations, apenas confirma disponibilidade publica do Auth homolog.
+- Validacao executada: Auth health retornou `200`; nenhum DDL, nenhuma migration e nenhuma escrita de dados foram executados.
+- Pendencias ou riscos conhecidos: bloqueio DataOps principal permanece igual, dependente de `POSTGRES_URL` de homologacao nao vazio ou outro canal seguro para `db push --dry-run`/aplicacao.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` para corrigir o acesso DataOps ao Postgres homolog.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Diagnostico envs sensiveis Preview homolog`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 00:43:51 -03:00.
+- Tipo da alteracao: `AUDITORIA` - validacao de propagacao de secrets no Vercel Preview.
+- Motivo da mudanca: Lucas solicitou corrigir e validar a propagacao de `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` no Preview `homolog`, apos DataOps confirmar que Auth, REST e Realtime respondem, mas o runner server-side recebe as duas envs sensiveis vazias.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, Preview `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`, alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, `docs/codex/engineering-operations.md` e runner temporario limpo removido ao final em `.vercel/infraops-env-run-clean`.
+- Como foi feito: reli o diario operacional, `AGENTS.md`, `package.json`, `turbo.json`, scripts operacionais e configuracao Vercel; consultei metadados Vercel sem imprimir valores; executei `vercel env run` e `vercel env pull` em runner limpo ligado ao mesmo projeto e branch `homolog`; validei o Preview publicado com Protection Bypass sem abrir acesso publico; nenhuma variavel de Production foi alterada, nenhum valor sensivel foi impresso e nenhuma migration foi executada.
+- Logica utilizada: a liberacao para DataOps exige diferenciar variavel configurada no projeto Vercel de variavel realmente consumivel pelo runner. `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` existem no alvo Preview, mas estao como sensiveis/write-only e chegam ao runner local do Vercel com valor vazio; por seguranca, InfraOps nao consegue recuperar nem converter o valor existente. O runtime publicado consegue usar `SUPABASE_SERVICE_ROLE_KEY`, evidenciado por APIs que retornam 401 sem sessao em vez de 503 por env ausente, mas isso nao libera migrations porque `POSTGRES_URL` segue indisponivel para o runner DataOps.
+- Validacao executada: `git status --short --branch`; leitura de `docs/codex/engineering-operations.md`, `AGENTS.md`, `package.json`, `turbo.json`, `scripts/deploy-homologation.ps1`, `scripts/homologation-healthcheck.ps1`, `vercel.json` e `.vercel/project.json`; `npx.cmd vercel api /v10/projects/prj_7pgq969nAKwdNKSY3YoMFlxU6qdK/env --raw` com saida sanitizada confirmou `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` no target Preview como sensiveis, sem branch override e sem valor legivel; `npx.cmd vercel env ls preview` confirmou os nomes no Preview; `npx.cmd vercel env run -e preview --git-branch homolog -- node ...` mostrou `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` presentes mas vazios, enquanto `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` estavam preenchidas; `npx.cmd vercel env pull .env.preview.local --environment=preview --git-branch=homolog --yes` repetiu o mesmo resultado; `npx.cmd vercel inspect` confirmou Preview `Ready` em `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`; checks HTTP com bypass retornaram `/` 200, `/squadops` 200, `/api/operations/monitoring` 401, `/api/guardian/overview` 401, `/api/pulsex/messages` 401 e `POST /api/squadops/copilot` 401; acesso sem bypass a `/` retornou 401.
+- Pendencias ou riscos conhecidos: DataOps continua bloqueado para `db push --dry-run` e migrations porque `POSTGRES_URL` nao ficou acessivel no runner; `SUPABASE_SERVICE_ROLE_KEY` esta acessivel no runtime publicado, mas nao no runner limpo; `POSTGRES_URL` nao foi validado dentro do runtime publicado porque nao existe endpoint seguro dedicado para inspecionar essa env sem alterar codigo; para liberar DataOps, Lucas/DataOps precisa regravar `POSTGRES_URL` de homologacao por canal seguro consumivel pelo runner ou fornecer outro canal seguro de conexao Supabase/Postgres homolog, sem usar Production.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` com Lucas/DataOps para regravar/prover o segredo de homologacao em canal seguro consumivel pelo runner; depois `Hub DataOps` para executar dry-run, aplicar migrations e validar schema/REST/RLS/grants/persistencia.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Revalidacao envs sensiveis Preview homolog`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 00:55:56 -03:00.
+- Tipo da alteracao: `AUDITORIA` - segunda validacao de propagacao de secrets no Vercel Preview.
+- Motivo da mudanca: Lucas solicitou validar novamente o estado de `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` no Preview `homolog`, apos tentativa de ajuste das envs sensiveis.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, Preview `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`, alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, `docs/codex/engineering-operations.md` e runner temporario limpo removido ao final em `.vercel/infraops-env-run-clean`.
+- Como foi feito: reli as instrucoes obrigatorias, o diario operacional, scripts e configuracao Vercel; consultei metadata Vercel sem imprimir valores; recriei runner limpo ligado ao projeto; repeti `vercel env run` e `vercel env pull` para Preview branch `homolog`; validei o Preview publicado com Protection Bypass; validei Auth, REST e Realtime publicos do Supabase homolog usando apenas `NEXT_PUBLIC_*`; nao alterei Production, nao executei migration e nao expus secrets.
+- Logica utilizada: a nova checagem confirmou que `POSTGRES_URL` foi recriada no Preview em 2026-05-18 00:50:17 -03:00, mas segue classificada como sensivel/write-only e continua chegando vazia para o runner. O deployment ativo do alias `homolog` ainda e `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`, criado em 2026-05-18 00:09:03 -03:00, portanto nao houve redeploy apos a recriacao de `POSTGRES_URL`. Mesmo que haja redeploy, DataOps segue bloqueado se o runner continuar recebendo `POSTGRES_URL` vazio.
+- Validacao executada: `npx.cmd vercel api /v10/projects/prj_7pgq969nAKwdNKSY3YoMFlxU6qdK/env --raw` com saida sanitizada confirmou `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` no target Preview como sensiveis, sem branch override e sem valor legivel; `npx.cmd vercel env ls preview` confirmou `POSTGRES_URL` criado ha poucos minutos no Preview; `npx.cmd vercel inspect` confirmou o mesmo Preview `Ready`; `npx.cmd vercel env run -e preview --git-branch homolog -- node ...` mostrou `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` presentes mas com comprimento zero; `npx.cmd vercel env pull .env.preview.local --environment=preview --git-branch=homolog --yes` repetiu o mesmo resultado; checks HTTP com bypass retornaram `/` 200, `/squadops` 200, `/api/operations/monitoring` 401, `/api/guardian/overview` 401, `/api/pulsex/messages` 401 e `POST /api/squadops/copilot` 401; acesso sem bypass a `/` retornou 401; Supabase Auth health retornou 200, REST `hub_users` retornou 404 esperado antes das migrations e Realtime health retornou 403 esperado.
+- Pendencias ou riscos conhecidos: `POSTGRES_URL` nao ficou acessivel no runner; `SUPABASE_SERVICE_ROLE_KEY` tambem continua vazio no runner, embora o runtime publicado ainda responda como se tivesse service role para as rotas testadas; nao houve redeploy depois da recriacao de `POSTGRES_URL`; DataOps nao esta liberado para aplicar migrations ate existir `POSTGRES_URL` homolog nao vazio no runner ou outro canal seguro de conexao Postgres/Supabase homolog.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` com Lucas/DataOps para regravar/prover o segredo em formato/canal consumivel pelo runner ou definir canal alternativo seguro; depois `Hub DataOps` para dry-run, migrations e validacao runtime.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Terceira revalidacao envs sensiveis Preview homolog`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 01:07:04 -03:00.
+- Tipo da alteracao: `AUDITORIA` - terceira validacao de propagacao de secrets no Vercel Preview.
+- Motivo da mudanca: Lucas solicitou validar novamente o acesso do runner a `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` no Preview `homolog`, apos nova recriacao de `POSTGRES_URL`.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, Preview `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`, alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, `docs/codex/engineering-operations.md` e runner temporario limpo removido ao final em `.vercel/infraops-env-run-clean`.
+- Como foi feito: reli as instrucoes obrigatorias, o diario operacional, `AGENTS.md`, `package.json`, `turbo.json`, scripts operacionais e configuracao Vercel; consultei metadata Vercel com saida sanitizada; recriei runner limpo com `.vercel/project.json`; testei `vercel env run` com e sem `--git-branch homolog`; repeti `vercel env pull`; validei Preview com Protection Bypass e Supabase publico por `NEXT_PUBLIC_*`; nao alterei Production, nao executei migration e nao expus secrets.
+- Logica utilizada: a nova metadata mostra `POSTGRES_URL` recriada no Preview em 2026-05-18 01:01:43 -03:00, mas ainda classificada como sensivel/write-only. O alias `homolog` continua apontando para o deployment `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`, criado em 2026-05-18 00:09:03 -03:00, portanto nao houve redeploy apos a nova recriacao. Mesmo sem branch override, o runner continua recebendo `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` como variaveis presentes porem vazias, o que descarta conflito especifico de branch `homolog`.
+- Validacao executada: `npx.cmd vercel api /v10/projects/prj_7pgq969nAKwdNKSY3YoMFlxU6qdK/env --raw` com saida sanitizada confirmou `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` no target Preview como sensiveis, sem branch override e sem valor legivel; `npx.cmd vercel env ls preview` confirmou `POSTGRES_URL` criado ha poucos minutos no Preview; `npx.cmd vercel inspect` confirmou Preview `Ready` e deployment antigo; `npx.cmd vercel env run -e preview --git-branch homolog -- node ...` mostrou `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` presentes mas com comprimento zero; `npx.cmd vercel env run -e preview -- node ...` repetiu o mesmo resultado sem branch override; `npx.cmd vercel env pull .env.preview.local --environment=preview --git-branch=homolog --yes` repetiu o mesmo resultado; checks HTTP com bypass retornaram `/` 200, `/squadops` 200, `/api/operations/monitoring` 401, `/api/guardian/overview` 401, `/api/pulsex/messages` 401 e `POST /api/squadops/copilot` 401; acesso sem bypass a `/` retornou 401; Supabase Auth health retornou 200, REST `hub_users` retornou 404 esperado antes das migrations e Realtime health retornou 403 esperado.
+- Pendencias ou riscos conhecidos: `POSTGRES_URL` nao ficou acessivel no runner e `SUPABASE_SERVICE_ROLE_KEY` tambem continua vazio no runner; nao houve redeploy depois da recriacao das envs; DataOps segue bloqueado para `db push --dry-run` e migrations ate existir `POSTGRES_URL` homolog nao vazio no runner ou outro canal seguro de conexao Postgres/Supabase homolog; o worktree local segue sujo por recortes de outras squads, entao InfraOps nao executou deploy para evitar misturar mudancas.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` com Lucas/DataOps para trocar o modo/canal de entrega do segredo ou criar canal DataOps seguro independente do `vercel env run`; depois `Hub DataOps` para dry-run, migrations e validacao runtime.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Exclusao envs sensiveis Preview homolog`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 01:15:23 -03:00.
+- Tipo da alteracao: `OPERACAO VERCEL` - remocao/confirmacao de remocao de envs sensiveis do Preview.
+- Motivo da mudanca: Lucas autorizou excluir `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` do Vercel Preview para remover as entradas sensiveis/write-only que chegavam vazias ao runner DataOps.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, ambiente `Preview`, branch operacional `homolog`, `docs/codex/engineering-operations.md` e runner temporario limpo removido ao final em `.vercel/infraops-env-run-clean`.
+- Como foi feito: consultei `vercel env rm --help` para confirmar a sintaxe segura; listei envs Preview e constatei que `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` ja nao apareciam no Preview no momento da operacao; confirmei pela API Vercel com saida sanitizada que nao existem mais entradas Preview para essas duas chaves; validei com `vercel env run` e `vercel env pull` em runner limpo que as duas envs nao aparecem mais no processo/arquivo Preview; nao removi nem alterei variaveis de Production.
+- Logica utilizada: como as entradas Preview ja estavam ausentes, executar `vercel env rm` diretamente seria desnecessario e poderia apenas gerar erro por variavel inexistente. A validacao por API e runner confirma o efeito desejado da exclusao: as envs deixaram de existir no Preview em vez de chegarem como strings vazias.
+- Validacao executada: `npx.cmd vercel env ls preview` mostrou apenas envs publicas/operacionais de Preview, sem `POSTGRES_URL` e sem `SUPABASE_SERVICE_ROLE_KEY`; `npx.cmd vercel api /v10/projects/prj_7pgq969nAKwdNKSY3YoMFlxU6qdK/env --raw` com saida sanitizada confirmou `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` no Preview, `POSTGRES_URL` apenas em Production e ausencia de `SUPABASE_SERVICE_ROLE_KEY` no Preview; `npx.cmd vercel env run -e preview --git-branch homolog -- node ...` confirmou `POSTGRES_URL` e `SUPABASE_SERVICE_ROLE_KEY` ausentes no runner e `NEXT_PUBLIC_*` preenchidas; `npx.cmd vercel env pull .env.preview.local --environment=preview --git-branch=homolog --yes` repetiu a ausencia das duas envs; `npx.cmd --yes supabase projects list -o json` foi executado com permissao elevada e confirmou ausencia de `SUPABASE_ACCESS_TOKEN`/login nesta sessao, portanto nao ha canal Supabase disponivel para gerar/consultar credenciais homolog por CLI.
+- Pendencias ou riscos conhecidos: DataOps segue bloqueado porque as credenciais homolog ainda precisam ser recriadas por canal seguro consumivel pelo runner, idealmente com `vercel env add <NAME> preview homolog --no-sensitive`; InfraOps nao deve usar `.env.local` nem Production como origem para recriar secrets de homolog; sem `SUPABASE_ACCESS_TOKEN`, login Supabase ou valores fornecidos por Lucas/DataOps em canal seguro, nao e possivel gerar `POSTGRES_URL`/service role homolog nesta sessao.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` com Lucas/DataOps para recriar `POSTGRES_URL` e, se necessario para runner, `SUPABASE_SERVICE_ROLE_KEY` no Preview `homolog` como nao sensiveis/readable-later; depois `Hub DataOps` para dry-run, migrations e validacao runtime.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Validacao HOMOLOG envs dedicadas Preview`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 01:43:14 -03:00.
+- Tipo da alteracao: `AUDITORIA` - validacao de envs dedicadas de homologacao.
+- Motivo da mudanca: Lucas criou `HOMOLOG_POSTGRES_URL` e `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` no Vercel Preview para evitar conflito com envs automaticas da integracao Vercel/Supabase e pediu validar runner, conexao Postgres, isolamento de Production e liberacao DataOps.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, Preview branch `homolog`, deployment `dpl_G4KmEC2RybQFCxeYyFfsd33d4Be1`, branch alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, `docs/codex/engineering-operations.md` e runner temporario limpo removido ao final em `.vercel/infraops-env-run-clean`.
+- Como foi feito: reli instrucoes obrigatorias, diario operacional, `AGENTS.md`, `package.json`, `turbo.json` e `vercel.json`; consultei metadata Vercel sem imprimir valores; validei `vercel env run` e `vercel env pull` para `Preview` com `--git-branch homolog`; comparei apenas comprimentos, tipos e hashes de host; validei Auth/REST do Supabase com anon key e com `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY`; nao usei `POSTGRES_URL`/`SUPABASE_URL` automaticos de Production e nao executei migration.
+- Logica utilizada: para liberar DataOps, `HOMOLOG_POSTGRES_URL` precisa chegar ao runner nao vazia e em formato URI Postgres valido (`postgresql://...` ou `postgres://...`). `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` pode validar o acesso REST/Auth, mas nao substitui a conexao Postgres necessaria para dry-run/migrations. O redeploy feito por Lucas criou um novo Preview `dpl_G4KmEC2RybQFCxeYyFfsd33d4Be1`, mas o alias `git-homolog` ainda aponta para o deployment antigo `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`; alem disso, o print do Vercel indicou source `main`, nao branch `homolog`, portanto o deploy nao deve ser usado como evidencia final da branch homolog.
+- Validacao executada: `npx.cmd vercel inspect` confirmou que `git-homolog` segue no deployment antigo e que `gmeqiqdjw` e um Preview novo separado; `npx.cmd vercel api /v10/projects/prj_7pgq969nAKwdNKSY3YoMFlxU6qdK/env --raw` com saida sanitizada confirmou `HOMOLOG_POSTGRES_URL` e `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` como `encrypted`, target `preview`, branch `homolog`; `npx.cmd vercel env run -e preview --git-branch homolog -- node ...` confirmou `HOMOLOG_POSTGRES_URL` presente, nao vazia, comprimento 88, mas invalida como URL, sem prefixo `postgresql://`/`postgres://` e com 13 grupos de espacos; confirmou `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` presente, nao vazia, comprimento 41, sem espacos e com prefixo `sb_secret_`; `npx.cmd vercel env pull .env.preview.local --environment=preview --git-branch=homolog --yes` confirmou os mesmos comprimentos; Auth com anon key retornou 200; Auth com service role homolog retornou 200; REST `hub_users` com service role homolog retornou 404 `PGRST205`, esperado antes das migrations e evidencia de que a chave chegou ao Supabase; consulta Production foi limitada a metadados/comprimentos/hash e nao usou Production como fallback.
+- Pendencias ou riscos conhecidos: `HOMOLOG_POSTGRES_URL` ainda bloqueia DataOps porque nao esta em formato URI Postgres valido e a conexao Postgres nao pode ser aberta; e necessario substituir o valor por uma connection string completa como `postgresql://postgres:<senha-url-encoded>@<host>:5432/postgres` ou por URI de pooler apropriada, sem espacos e sem colar o bloco de detalhes; o deploy novo parece ter sido feito a partir de `main`, entao ReleaseOps/InfraOps ainda precisa gerar ou confirmar um Preview da branch `homolog` depois de corrigir a URL; DataOps nao deve aplicar migrations ainda.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` com Lucas para corrigir `HOMOLOG_POSTGRES_URL` no Preview `homolog`; depois `Hub DataOps` para dry-run e migrations quando a conexao Postgres abrir.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Revalidacao HOMOLOG_POSTGRES_URL corrigida`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 01:53:40 -03:00.
+- Tipo da alteracao: `AUDITORIA` - validacao de URI Postgres homolog.
+- Motivo da mudanca: Lucas corrigiu `HOMOLOG_POSTGRES_URL` no Vercel Preview e solicitou nova validacao para liberar DataOps.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, Preview branch `homolog`, alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, `docs/codex/engineering-operations.md` e runner temporario limpo removido ao final em `.vercel/infraops-env-run-clean`.
+- Como foi feito: recriei runner limpo com `.vercel/project.json`; validei metadados Vercel sem imprimir valores; rodei `vercel env run` para Preview branch `homolog`; verifiquei apenas comprimento, esquema, porta, path, hash e ref mascarado da URL; tentei uma query Postgres minima de leitura via Supabase CLI usando `--db-url` com a env `HOMOLOG_POSTGRES_URL`; validei Auth com `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY`; comparei o ref mascarado de homologacao contra Production; nao usei Production como fallback, nao apliquei migration e nao executei DDL.
+- Logica utilizada: o criterio para liberar DataOps exige que `HOMOLOG_POSTGRES_URL` esteja nao vazia, parseavel como URI Postgres, isolada de Production e autenticando com sucesso no banco homolog. A URI agora esta no formato tecnico correto, mas a conexao foi recusada por autenticacao do usuario `postgres`, indicando senha incorreta, senha nao URL-encoded ou senha diferente da Database Password do Supabase homolog.
+- Validacao executada: `npx.cmd vercel api /v10/projects/prj_7pgq969nAKwdNKSY3YoMFlxU6qdK/env --raw` com saida sanitizada confirmou `HOMOLOG_POSTGRES_URL` e `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` como `encrypted`, target `preview`, branch `homolog`; `npx.cmd vercel env run -e preview --git-branch homolog -- node ...` confirmou `HOMOLOG_POSTGRES_URL` presente, nao vazia, comprimento 81, esquema `postgresql:`, porta `5432`, path `/postgres`, sem espacos e ref mascarado `qanl...kxqv`; confirmou `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` presente, nao vazia, comprimento 41 e sem espacos; tentativa de `supabase db query 'select current_database() as db, current_user as usr;' --db-url $env:HOMOLOG_POSTGRES_URL` conectou ate o host homolog, mas falhou com `password authentication failed for user "postgres"`; Auth com service role homolog retornou 200; comparacao de isolamento confirmou ref homolog `qanl...kxqv` diferente de Production `bxgu...kwjx`; alias `git-homolog` ainda aponta para o deployment antigo `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`.
+- Pendencias ou riscos conhecidos: DataOps continua bloqueado porque a autenticacao Postgres falha; Lucas precisa substituir a senha dentro de `HOMOLOG_POSTGRES_URL` pela Database Password correta do Supabase homolog, preferencialmente URL-encoded se houver caracteres especiais (`@`, `:`, `/`, `#`, `%`, `&`, espaco etc.); depois InfraOps deve repetir a query minima e confirmar um Preview/alias da branch `homolog` atualizado.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` com Lucas para corrigir a senha da URI; depois `Hub DataOps` para dry-run quando a query Postgres autenticar.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Liberacao runner Postgres homolog para DataOps`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 02:00:54 -03:00.
+- Tipo da alteracao: `AUDITORIA` - validacao de credenciais homolog no runner.
+- Motivo da mudanca: Lucas corrigiu novamente `HOMOLOG_POSTGRES_URL` e solicitou validar se o runner Preview/homolog consegue abrir conexao Postgres para liberar DataOps.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, Preview branch `homolog`, alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, `docs/codex/engineering-operations.md` e runner temporario limpo removido ao final em `.vercel/infraops-env-run-clean`.
+- Como foi feito: recriei runner limpo com `.vercel/project.json`; validei metadados Vercel sem expor valores; rodei `vercel env run -e preview --git-branch homolog` para conferir comprimentos, formato e ref mascarado; executei query Postgres minima de leitura com Supabase CLI usando apenas `HOMOLOG_POSTGRES_URL` no ambiente do processo; validei Auth e REST com `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY`; comparei o ref homolog mascarado contra Production; nao usei Production como fallback, nao executei DDL e nao apliquei migrations.
+- Logica utilizada: o criterio para liberar DataOps era ter `HOMOLOG_POSTGRES_URL` nao vazia, parseavel como URI Postgres, isolada de Production e autenticando com sucesso no banco homolog. A query minima `select current_database() as db, current_user as usr;` confirma apenas abertura de conexao e usuario, sem alterar schema nem dados.
+- Validacao executada: `npx.cmd vercel api /v10/projects/prj_7pgq969nAKwdNKSY3YoMFlxU6qdK/env --raw` com saida sanitizada confirmou `HOMOLOG_POSTGRES_URL` e `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` como `encrypted`, target `preview`, branch `homolog`; `npx.cmd vercel env run -e preview --git-branch homolog -- node ...` confirmou `HOMOLOG_POSTGRES_URL` presente, nao vazia, comprimento 84, esquema `postgresql:`, porta `5432`, path `/postgres`, sem espacos e ref mascarado `qanl...kxqv`; `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` presente, nao vazia, comprimento 41; `npx.cmd vercel env run -e preview --git-branch homolog -- powershell -NoProfile -Command ... supabase db query ... --db-url $env:HOMOLOG_POSTGRES_URL -o json` conectou com sucesso e retornou `db=postgres` e `usr=postgres`; Auth com service role homolog retornou 200; REST `hub_users` com service role retornou 404 `PGRST205`, esperado antes das migrations; comparacao de isolamento confirmou homolog `qanl...kxqv` diferente de Production `bxgu...kwjx`; `npx.cmd vercel inspect` confirmou que o alias `git-homolog` ainda aponta para deployment antigo `dpl_6tHA67sPZ3PtEqs4BAxo2tatpHog`.
+- Pendencias ou riscos conhecidos: DataOps esta liberado para dry-run/migrations usando `HOMOLOG_POSTGRES_URL` do runner Preview/homolog, mas ainda deve revisar ordem completa das migrations antes de aplicar; REST `PGRST205` confirma que tabelas ainda nao existem/expostas antes das migrations; o alias `git-homolog` continua no deployment antigo e precisa ser atualizado por ReleaseOps/InfraOps depois que o recorte correto da branch `homolog` for publicado; healthcheck completo do Hub pode manter pendencias nao relacionadas de Guardian DB.
+- Status operacional: `AGUARDANDO DATAOPS`.
+- Proxima squad recomendada: `Hub DataOps` para executar dry-run, aplicar migrations autorizadas no Supabase homolog e validar schema/REST/RLS/grants/persistencia; depois `Hub ReleaseOps`/`Hub InfraOps` para atualizar Preview/alias da branch `homolog`.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Migrations homolog aplicadas e RLS corrigido`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 02:28:33 -03:00.
+- Tipo da alteracao: `DDL HOMOLOGACAO` - aplicacao controlada de migrations Supabase homolog e hardening RLS.
+- Motivo da mudanca: Lucas autorizou DataOps a prosseguir apos a correcao do `HOMOLOG_POSTGRES_URL` e, depois do advisor Supabase apontar RLS desativado em tabelas base, autorizou corrigir RLS.
+- Arquivos/modulos afetados: `packages/database/migrations/0001_create_hub_core_schema.sql` a `packages/database/migrations/0017_squadops_ticket_operation_links.sql`, nova migration `packages/database/migrations/0018_enable_rls_core_public_tables.sql`, Supabase homolog branch `homolog`, `docs/codex/engineering-operations.md`.
+- Como foi feito: usei runner temporario limpo com `.vercel/project.json`, carregando apenas variaveis `Preview` branch `homolog`; normalizei em memoria a URI Postgres por causa de caractere especial na senha, sem imprimir valores; rodei query preflight confirmando base vazia; montei projeto Supabase temporario com as migrations do repo; executei dry-run completo; apliquei `0001`, `0002`, `0003`, recuperei o conflito da segunda migration `0003` removendo o arquivo duplicado apenas do projeto temporario apos confirmar que o DDL ja tinha rodado, e continuei `0004 -> 0017`; depois criei e apliquei `0018` para habilitar RLS nas 18 tabelas base apontadas pelo advisor.
+- Logica utilizada: como o Supabase homolog estava vazio, aplicar apenas `0013 -> 0017` quebraria dependencias; por isso a cadeia aplicada foi a base completa `0001 -> 0017`, com `0018` adicional para fechar o risco de tabelas `public` expostas sem RLS. A duplicidade historica de versao `0003` impede duas linhas distintas em `supabase_migrations.schema_migrations`; o segundo DDL `0003_setup_operational_access.sql` executou antes da falha de registro e o push seguinte prosseguiu a partir de `0004`.
+- Validacao executada: preflight SQL confirmou ausencia inicial de `hub_users`, `set_hub_updated_at`, `hub_operations_alert_protocols`, `hub_engineering_operation_records`, `hub_it_tickets`, `hub_release_protocols` e `hub_it_ticket_operation_links`; dry-run real listou `0001 -> 0017`; aplicacao controlada registrou `0001`, `0002`, `0003`, `0004` a `0017`; dry-run posterior listou apenas `0018`; aplicacao de `0018` concluiu; validacao final confirmou `disabled_rls_count=0`, historico com `0018`, RLS ativo nas tabelas prioritarias, policies/FKs/indices presentes, enum `hub_it_ticket_status` com `em_analise`, `em_tratativa`, `em_homologacao` e `em_producao`, e smoke de persistencia em `hub_engineering_operation_sync_runs`; REST anon retornou `200` com zero linhas para tabelas prioritarias; Realtime assinou canal com `SUBSCRIBED`.
+- Pendencias ou riscos conhecidos: `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` retornou `401` na REST API tanto como `apikey` quanto como `Authorization Bearer`, e o app atualmente espera `SUPABASE_SERVICE_ROLE_KEY`, nao `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY`; portanto o banco homolog esta preparado, mas os fluxos server-side do Preview ainda precisam de InfraOps para mapear/chavear corretamente a service role homolog no nome consumido pelo app. As tabelas prioritarias nao aparecem na publicacao `supabase_realtime`; Realtime de canal funciona, mas Realtime por mudanca de tabela precisa decisao explicita antes de publicar tabelas.
+- Status operacional: `AGUARDANDO INFRAOPS`.
+- Proxima squad recomendada: `Hub InfraOps` para corrigir/marcar a service role homolog no runtime do app e decidir publicacao Realtime por tabela; depois `Hub ReleaseOps` para redeploy/healthcheck e liberacao operacional.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Neutralizacao de dados mockados`.
+- Nome da squad/agente: `Guardian Core`.
+- Data e hora local: 2026-05-18 02:36:13 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO` - remocao operacional de dados simulados visiveis no Guardian.
+- Motivo da mudanca: Lucas informou que o Guardian comecara a ser usado pela operacao e que dados mockados poderiam confundir o time, especialmente em telas de fila, atendimento, inteligencia e monitoramento.
+- Arquivos/modulos afetados: `apps/hub/app/guardian/page.tsx`, `apps/hub/lib/guardian/attendance.ts`, `apps/hub/lib/guardian/read-model.ts`, `apps/hub/modules/guardian/guardianMockData.ts`, `apps/hub/modules/guardian/attendance/*`, `apps/hub/modules/guardian/intelligence/IntelligencePage.tsx`, `apps/hub/modules/guardian/monitoring/MonitoringPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: esvaziei a base `guardianMockClients`, substitui textos/valores simulados por `-`, removi geracao sintetica de parcelas, compromissos, historicos, conversas, boletos, timelines e indicadores quando nao existe origem real, e preservei os caminhos que ja usam dados reais do C2X/Supabase/Guardian.
+- Logica utilizada: o Guardian deve exibir informacao operacional apenas quando houver fonte real. Quando o dado vinha de fixture, heuristica visual, exemplo fixo ou fallback inventado, o valor passou a ser `-` para evitar interpretacao como dado financeiro, contato, ticket, boleto, operador, status ou indicador real. Valores numericos tecnicos usados apenas para manter graficos/barras renderizando permanecem neutros, mas a leitura de negocio fica como `-`.
+- Validacao executada: `git diff --check`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke HTTP no servidor ativo em `http://localhost:3001` retornou 200 para `/guardian`, `/guardian/atendimento`, `/guardian/inteligencia` e `/guardian/monitoramento`.
+- Pendencias ou riscos conhecidos: paginas sem fonte real agora exibem `-` de forma intencional; dados reais devem continuar aparecendo quando vierem das fontes integradas. A validacao visual automatizada por browser nao foi concluida nesta sessao porque o Playwright nao estava disponivel no runtime exposto, mas houve build, lint, typecheck e smoke HTTP. O worktree local possui alteracoes de outras squads, entao ReleaseOps deve isolar somente o recorte Guardian/diario no pacote de release.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte, organizar commit/release e publicar quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Atualizacao viva dos dados do C2X`.
+- Nome da squad/agente: `Guardian Core`.
+- Data e hora local: 2026-05-18 02:43:40 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO` - correcao de sincronismo operacional entre C2X legado e Guardian.
+- Motivo da mudanca: Lucas identificou que clientes e totais atualizados no C2X legado nao estavam refletindo no Guardian; o print do legado em `/payments` mostrava carteira atualizada em aproximadamente `R$ 82,06 mi`, enquanto o Guardian ainda exibia valores antigos do snapshot.
+- Arquivos/modulos afetados: `apps/hub/app/api/guardian/overview/route.ts`, `apps/hub/app/api/guardian/attendance/queue/route.ts`, `apps/hub/lib/guardian/read-model.ts`, `apps/hub/app/guardian/page.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: a rota `/api/guardian/overview` passou a usar o read model Supabase apenas quando o snapshot estiver fresco por ate 60 segundos; quando estiver velho, o Guardian busca o C2X/MySQL em tempo real e usa o snapshot apenas como fallback se a conexao viva falhar. A rota `/api/guardian/attendance/queue` recebeu a mesma protecao de frescor e removeu o cache em memoria do read model. No front do dashboard, removi o cache em `sessionStorage` dos KPIs reais e forcei o recarregamento do recorte por empreendimento conforme o snapshot real e atualizado.
+- Logica utilizada: o read model continua sendo uma aceleracao operacional, mas nao pode ser fonte de verdade quando estiver atrasado. Para nao confundir a operacao, o dado recente deve vir do C2X vivo; se o C2X estiver indisponivel, o Guardian pode degradar com snapshot antigo, explicitando isso por headers internos (`X-Guardian-Overview-Read-Model` e `X-Guardian-Queue-Cache`) para troubleshooting.
+- Validacao executada: consulta direta ao C2X/MySQL sem expor secrets confirmou `128489` parcelas na carteira, `total_amount=82065140.82`, `overdue_amount=6932047.81`, `pending_amount=61002578.97`, `liquidated_amount=14130514.04` e `max_payment_updated_at=2026-05-18T05:26:53.960Z`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; `git diff --check`; smoke HTTP em `http://localhost:3001/guardian` retornou 200; `/api/guardian/overview` sem sessao retornou 401, preservando a protecao da rota.
+- Pendencias ou riscos conhecidos: quando o read model estiver velho, o Guardian vai consultar o C2X diretamente e isso pode aumentar custo/latencia da fila se a sync continuar parada; ReleaseOps deve publicar o recorte isolado e monitorar tempo de resposta das rotas `overview` e `attendance/queue`. O build manteve o warning conhecido do Turbopack/NFT em SquadOps, fora do recorte Guardian. O worktree local continua com alteracoes de outras squads, entao o pacote de release deve isolar somente Guardian e diario.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte, organizar commit/release e publicar; depois monitorar se os numeros do Guardian acompanham novas alteracoes no C2X sem exigir sync manual.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Parecer AL-3914 fila limit=50 lenta`.
+- Nome da squad/agente: `Guardian Core`.
+- Data e hora local: 2026-05-18 02:54:52 -03:00.
+- Tipo da alteracao: `CORRECAO` - reducao de risco operacional na API da fila Guardian.
+- Protocolo operacional: `AL-3914`.
+- Motivo da mudanca: Operations Center alertou que `http://localhost:3001/api/guardian/attendance/queue?limit=50` ficou sem resposta em `8004ms`, payload aproximado `0 B`, risco alto. O endpoint foi reproduzido localmente com timeout acima de 20s antes da correcao.
+- Arquivos/modulos afetados: `apps/hub/app/api/guardian/attendance/queue/route.ts` e `docs/codex/engineering-operations.md`.
+- Origem identificada: a fila passou a tentar buscar o C2X/MySQL vivo dentro do request quando o read model Supabase estava mais velho que 60 segundos. Como a query viva da fila agrega muitos joins e dados 360, mesmo com `limit=50`, o endpoint podia estourar a janela operacional do monitor. Nao foi observado problema de payload, auth, realtime ou integracao externa; o gargalo estava no caminho API/banco C2X acionado por stale read model.
+- Como foi feito: a rota `attendance/queue` voltou a priorizar o read model sempre que houver linhas para a fila, removendo o cache em memoria anterior e retornando metadados `meta.stale` e `meta.syncedAt` para rastreabilidade. Quando o read model estiver fresco, o header fica `X-Guardian-Queue-Cache: FRESH`; quando estiver antigo, a API responde rapido com `X-Guardian-Queue-Cache: STALE_READ_MODEL`; o C2X vivo fica reservado para fallback quando nao houver read model disponivel.
+- Logica utilizada: para a fila operacional, estabilidade e tempo de abertura sao prioridade. A atualizacao viva direta fica adequada para o overview financeiro, mas a fila precisa usar o read model pre-calculado para suportar aumento de volume. A exposicao do estado stale permite ao SquadOps/ReleaseOps diferenciar lentidao real de read model atrasado e acionar sync sem derrubar a operacao.
+- Validacao executada: antes da correcao, `Invoke-WebRequest` em `/api/guardian/attendance/queue?limit=50` estourou timeout em aproximadamente `20032ms`; depois da correcao, tres chamadas retornaram `200` em `262ms`, `211ms` e `216ms`, com `Bytes=75101`, `source=supabase-c2x`, `meta.count=548`, `loadedCount=50`, `limit=50`, `stale=true`, `syncedAt=2026-05-17T02:15:15.52+00:00` e header `X-Guardian-Queue-Cache=STALE_READ_MODEL`. Tambem foram executados `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check`.
+- Pendencias ou riscos conhecidos: o alerta de lentidao foi corrigido localmente, mas o read model esta stale desde `2026-05-17T02:15:15.52+00:00`; por isso, a fila responde rapido, porem pode nao refletir clientes atualizados no C2X ate a sync rodar. O contrato atual do endpoint ainda responde `200` sem bearer token no ambiente local porque o monitor espera `200`; qualquer endurecimento de autorizacao deve ser tratado em recorte separado para nao quebrar o Operations Center. O build manteve o warning conhecido do Turbopack/NFT em SquadOps, fora do escopo Guardian.
+- Parecer tecnico AL-3914: `CORRIGIDO` no codigo local; monitorar apos release.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para isolar o recorte Guardian, organizar commit/release e publicar; depois validar o Operations Center e agendar/acionar sync C2X -> read model para atualizar `meta.syncedAt`.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Service role homolog no runtime Preview`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 03:01:28 -03:00.
+- Tipo da alteracao: `OPERACAO VERCEL` - correcao de env server-side no Preview de homologacao.
+- Motivo da mudanca: DataOps concluiu a aplicacao das migrations em Supabase homolog, mas registrou que o app ainda esperava `SUPABASE_SERVICE_ROLE_KEY` no runtime e nao consumia `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY`; tambem havia risco de confundir validacao local com `.env.local` de Production.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, ambiente `Preview`, branch `homolog`, deployment `dpl_CeKhmDAXNRGfhzJxZoo2YsAnzkPs`, alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, alias `https://homo.c2x.app.br`, `scripts/homologation-healthcheck.ps1` e `docs/codex/engineering-operations.md`.
+- Como foi feito: validei em runner limpo sem `.env.local` que `NEXT_PUBLIC_SUPABASE_URL` aponta para o Supabase homolog (`qanl...kxqv`), que `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` estava presente e funcional em Auth/REST, e que `SUPABASE_SERVICE_ROLE_KEY` estava ausente no Preview `homolog`; criei `SUPABASE_SERVICE_ROLE_KEY` somente em `Preview (homolog)` usando a chave homolog ja validada, sem imprimir valor; executei redeploy tecnico do Preview existente para carregar a nova env, sem usar o worktree local sujo e sem alterar Production.
+- Logica utilizada: o app server-side usa o nome padrao `SUPABASE_SERVICE_ROLE_KEY` em varias rotas e bibliotecas; manter somente `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` libera DataOps, mas nao libera o runtime do app. A correcao foi feita por escopo de ambiente e branch, preservando isolamento contra Production. `vercel env run` dentro da raiz do repo foi evitado para validacao final porque carregava `.env.local` local e poderia mascarar o Supabase de producao.
+- Validacao executada: `npx.cmd vercel env ls preview` confirmou `SUPABASE_SERVICE_ROLE_KEY` como `Encrypted`, `Preview (homolog)`; `vercel env run -e preview --git-branch homolog` em runner limpo confirmou `SUPABASE_SERVICE_ROLE_KEY` presente, nao vazia e com mesmo fingerprint da chave homolog validada; `supabase-js` com `SUPABASE_SERVICE_ROLE_KEY` retornou `200` para REST em `hub_engineering_operation_records` e `200` para `auth.admin.listUsers`; `npx.cmd vercel redeploy ... --target preview` criou o Preview `dpl_CeKhmDAXNRGfhzJxZoo2YsAnzkPs` em estado `Ready`; `npx.cmd vercel inspect` confirmou alias `git-homolog` e `homo.c2x.app.br` apontando para o novo Preview; acesso externo sem bypass a `git-homolog` e `homo.c2x.app.br` retornou `401 Unauthorized`; healthcheck enxuto via `vercel curl` retornou `/` 200, `/squadops` 200, `/api/setup/users` 401 sem sessao e `/api/hub/it-tickets?scope=all` 401 sem sessao.
+- Pendencias ou riscos conhecidos: `/api/guardian/db/health` ainda retorna `503`, pendencia separada de Guardian DB/C2X e nao de Supabase homolog; `scripts/homologation-healthcheck.ps1 -UseVercelCurl` ficou instavel/lento nesta sessao e precisou de healthcheck enxuto manual; o alias esperado anteriormente era `homolog.c2x.app.br`, mas a Vercel retornou o alias ativo `homo.c2x.app.br`; DataOps deve revalidar o fluxo persistente com o runtime atualizado e ReleaseOps deve considerar o 503 do Guardian DB no healthcheck completo antes de liberar homologacao ampla.
+- Status operacional: `AGUARDANDO DATAOPS`.
+- Proxima squad recomendada: `Hub DataOps` para revalidar persistencia/REST/RLS no app com o runtime atualizado; depois `Hub ReleaseOps` para healthcheck completo e decisao de liberacao operacional do Preview.

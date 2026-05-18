@@ -55,6 +55,7 @@ import { useAuth } from "@/providers/auth-provider";
 type Tone = "danger" | "gold" | "neutral" | "success";
 type TrendView = "behavior" | "recovery";
 type KpiId = "portfolioScore" | "criticalContracts" | "highRisk" | "predictedRecovery" | "churnProbability";
+const EMPTY_FIELD = "-";
 
 type ChatMessage = {
   id: string;
@@ -70,49 +71,31 @@ const kpis: Array<{
   icon: LucideIcon;
   tone: Tone;
 }> = [
-  { id: "portfolioScore", label: "Score médio da carteira", value: "74,8", helper: "+3,2 pts em 30 dias", icon: Activity, tone: "success" },
-  { id: "criticalContracts", label: "Contratos críticos", value: "38", helper: "12 exigem ação hoje", icon: AlertTriangle, tone: "danger" },
-  { id: "highRisk", label: "Risco elevado", value: "22,4%", helper: "-1,8% vs mês anterior", icon: Radar, tone: "gold" },
-  { id: "predictedRecovery", label: "Recuperação prevista", value: "R$ 418 mil", helper: "próximos 30 dias", icon: CircleDollarSign, tone: "success" },
-  { id: "churnProbability", label: "Probabilidade de evasão", value: "8,7%", helper: "maior em atraso 60+", icon: TrendingDown, tone: "danger" },
+  { id: "portfolioScore", label: "Score médio da carteira", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Activity, tone: "success" },
+  { id: "criticalContracts", label: "Contratos críticos", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: AlertTriangle, tone: "danger" },
+  { id: "highRisk", label: "Risco elevado", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: Radar, tone: "gold" },
+  { id: "predictedRecovery", label: "Recuperação prevista", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: CircleDollarSign, tone: "success" },
+  { id: "churnProbability", label: "Probabilidade de evasão", value: EMPTY_FIELD, helper: EMPTY_FIELD, icon: TrendingDown, tone: "danger" },
 ];
 
-const kpiDrawerData: Record<KpiId, Array<{
-  atraso: string;
-  cliente: string;
-  contrato: string;
-  empreendimento: string;
-  responsavel: string;
-  saldo: string;
-  scoreRisco: string;
-  status: string;
-  unidadeLote: string;
-}>> = {
-  portfolioScore: [
-    { cliente: "Roberto Nogueira", empreendimento: "Reserva Alameda", unidadeLote: "Q02 L27", contrato: "CTR-2048", atraso: "0 dias", saldo: "R$ 0,00", scoreRisco: "Score 42", responsavel: "Cinthia Cruz", status: "Regularizado" },
-    { cliente: "Fernanda Ruiz", empreendimento: "Jardins do Vale", unidadeLote: "Q18 L21", contrato: "CTR-1184", atraso: "0 dias", saldo: "R$ 0,00", scoreRisco: "Score 28", responsavel: "Gustavo Freitas", status: "Saudável" },
-    { cliente: "Mariana Costa Lima", empreendimento: "Jardins do Vale", unidadeLote: "Q03 L04", contrato: "CTR-1307", atraso: "24 dias", saldo: "R$ 9.210,00", scoreRisco: "Score 64", responsavel: "Gustavo Freitas", status: "Aguardando retorno" },
-  ],
-  criticalContracts: [
-    { cliente: "Carlos Henrique Matos", empreendimento: "Vista Alegre", unidadeLote: "Q07 L18", contrato: "CTR-0921", atraso: "51 dias", saldo: "R$ 32.980,00", scoreRisco: "Score 91", responsavel: "Cinthia Cruz", status: "Escalado" },
-    { cliente: "Renato Pires", empreendimento: "Vista Alegre", unidadeLote: "Q10 L02", contrato: "CTR-1074", atraso: "92 dias", saldo: "R$ 18.700,00", scoreRisco: "Score 88", responsavel: "Cinthia Cruz", status: "Jurídico preventivo" },
-    { cliente: "Patrícia Amaral", empreendimento: "Lavra do Ouro", unidadeLote: "Q09 L33", contrato: "CTR-1416", atraso: "44 dias", saldo: "R$ 22.640,00", scoreRisco: "Score 79", responsavel: "Gustavo Freitas", status: "Proposta enviada" },
-  ],
-  highRisk: [
-    { cliente: "Eduardo Martins", empreendimento: "Reserva Alameda", unidadeLote: "Q15 L09", contrato: "CTR-2210", atraso: "63 dias", saldo: "R$ 28.150,00", scoreRisco: "Score 84", responsavel: "Cinthia Cruz", status: "Contato programado" },
-    { cliente: "Cíntia Rocha", empreendimento: "Lavra do Ouro", unidadeLote: "Q11 L08", contrato: "CTR-1851", atraso: "29 dias", saldo: "R$ 19.400,00", scoreRisco: "Score 73", responsavel: "Gustavo Freitas", status: "Em negociação" },
-    { cliente: "Marcelo Duarte", empreendimento: "Vista Alegre", unidadeLote: "Q06 L15", contrato: "CTR-1766", atraso: "14 dias", saldo: "R$ 11.800,00", scoreRisco: "Score 58", responsavel: "Cinthia Cruz", status: "Primeiro contato" },
-  ],
-  predictedRecovery: [
-    { cliente: "Ana Paula Ribeiro", empreendimento: "Jardins do Vale", unidadeLote: "Q12 L18", contrato: "CTR-1501", atraso: "38 dias", saldo: "R$ 18.450,00", scoreRisco: "Chance 72%", responsavel: "Gustavo Freitas", status: "Em negociação" },
-    { cliente: "Patrícia Amaral", empreendimento: "Lavra do Ouro", unidadeLote: "Q09 L33", contrato: "CTR-1416", atraso: "44 dias", saldo: "R$ 22.640,00", scoreRisco: "Chance 68%", responsavel: "Gustavo Freitas", status: "Proposta enviada" },
-    { cliente: "Eduardo Martins", empreendimento: "Reserva Alameda", unidadeLote: "Q15 L09", contrato: "CTR-2210", atraso: "63 dias", saldo: "R$ 28.150,00", scoreRisco: "Chance 61%", responsavel: "Cinthia Cruz", status: "Contato programado" },
-  ],
-  churnProbability: [
-    { cliente: "Renato Pires", empreendimento: "Vista Alegre", unidadeLote: "Q10 L02", contrato: "CTR-1074", atraso: "92 dias", saldo: "R$ 18.700,00", scoreRisco: "Evasão 34%", responsavel: "Cinthia Cruz", status: "Jurídico preventivo" },
-    { cliente: "Carlos Henrique Matos", empreendimento: "Vista Alegre", unidadeLote: "Q07 L18", contrato: "CTR-0921", atraso: "51 dias", saldo: "R$ 32.980,00", scoreRisco: "Evasão 29%", responsavel: "Cinthia Cruz", status: "Escalado" },
-    { cliente: "Cíntia Rocha", empreendimento: "Lavra do Ouro", unidadeLote: "Q11 L08", contrato: "CTR-1851", atraso: "29 dias", saldo: "R$ 19.400,00", scoreRisco: "Evasão 21%", responsavel: "Gustavo Freitas", status: "Em negociação" },
-  ],
+const emptyKpiDrawerRows = [{
+  atraso: EMPTY_FIELD,
+  cliente: EMPTY_FIELD,
+  contrato: EMPTY_FIELD,
+  empreendimento: EMPTY_FIELD,
+  responsavel: EMPTY_FIELD,
+  saldo: EMPTY_FIELD,
+  scoreRisco: EMPTY_FIELD,
+  status: EMPTY_FIELD,
+  unidadeLote: EMPTY_FIELD,
+}];
+
+const kpiDrawerData: Record<KpiId, typeof emptyKpiDrawerRows> = {
+  churnProbability: emptyKpiDrawerRows,
+  criticalContracts: emptyKpiDrawerRows,
+  highRisk: emptyKpiDrawerRows,
+  portfolioScore: emptyKpiDrawerRows,
+  predictedRecovery: emptyKpiDrawerRows,
 };
 
 const profileGroups = [
@@ -245,216 +228,52 @@ const trendViews: Record<
 };
 
 const recoveryByChannel = [
-  { channel: "WhatsApp", value: 54 },
-  { channel: "Ligação", value: 28 },
-  { channel: "E-mail", value: 12 },
-  { channel: "Portal", value: 6 },
+  { channel: EMPTY_FIELD, value: 0 },
 ];
 
 const riskRadar = [
-  { subject: "Atraso", value: 86 },
-  { subject: "Score", value: 72 },
-  { subject: "Renda", value: 58 },
-  { subject: "Canal", value: 76 },
-  { subject: "Histórico", value: 64 },
-  { subject: "Evasão", value: 44 },
+  { subject: EMPTY_FIELD, value: 0 },
 ];
 
 const enterpriseRisk = [
-  ["Vista Alegre", "68", "24,8%", "Crítico", "R$ 142 mil"],
-  ["Lavra do Ouro", "73", "18,6%", "Alto", "R$ 96 mil"],
-  ["Jardins do Vale", "81", "12,4%", "Moderado", "R$ 118 mil"],
-  ["Reserva Alameda", "86", "8,1%", "Baixo", "R$ 62 mil"],
-  ["Lagoa Bonita", "71", "19,7%", "Alto", "R$ 103 mil"],
-  ["Morada da Serra", "76", "16,8%", "Moderado", "R$ 92 mil"],
-  ["Recanto do Pará", "69", "22,1%", "Crítico", "R$ 87 mil"],
+  [EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD],
 ].map(([enterprise, score, delinquency, risk, recovery]) => ({ enterprise, score, delinquency, risk, recovery }));
 
 const strategicInsights = [
   {
     label: "Perfil com maior risco",
-    value: "Autônomos, 46 a 60 anos, renda até R$ 10 mil",
-    detail: "Esse grupo combina maior atraso médio e menor resposta no primeiro contato.",
+    value: EMPTY_FIELD,
+    detail: EMPTY_FIELD,
   },
   {
     label: "Canal com maior recuperação",
-    value: "WhatsApp consultivo",
-    detail: "Conversas iniciadas entre 9h e 11h geram maior taxa de promessa cumprida.",
+    value: EMPTY_FIELD,
+    detail: EMPTY_FIELD,
   },
   {
     label: "Melhor horário de contato",
-    value: "10:00 às 11:30",
-    detail: "Janela concentra 31% das respostas qualificadas da carteira em atraso.",
+    value: EMPTY_FIELD,
+    detail: EMPTY_FIELD,
   },
   {
     label: "Comportamento da carteira",
-    value: "Risco migra para 31-60 dias",
-    detail: "A carteira ainda é reversível, mas exige priorização operacional nas próximas 72h.",
+    value: EMPTY_FIELD,
+    detail: EMPTY_FIELD,
   },
 ];
 
 const heatmapRows = [
   {
-    label: "0-15 dias",
+    label: EMPTY_FIELD,
     cells: [
       {
-        enterprise: "Jardins do Vale",
-        city: "Goiânia",
-        clients: 18,
-        amount: "R$ 64 mil",
-        trend: "-4%",
-        severity: "Saudável",
-        clientNames: ["Mariana Costa Lima", "Fernanda Ruiz", "João Batista"],
-      },
-      {
-        enterprise: "Vista Alegre",
-        city: "Anápolis",
-        clients: 27,
-        amount: "R$ 91 mil",
-        trend: "+6%",
-        severity: "Atenção",
-        clientNames: ["Marcelo Duarte", "Paulo Henrique", "Rogério Campos"],
-      },
-      {
-        enterprise: "Lavra do Ouro",
-        city: "Rio Verde",
-        clients: 21,
-        amount: "R$ 78 mil",
-        trend: "+3%",
-        severity: "Atenção",
-        clientNames: ["Juliana Castro", "Cíntia Rocha", "Helena Moura"],
-      },
-      {
-        enterprise: "Reserva Alameda",
-        city: "Aparecida",
-        clients: 12,
-        amount: "R$ 42 mil",
-        trend: "-7%",
-        severity: "Saudável",
-        clientNames: ["Roberto Nogueira", "Eduardo Martins", "Lívia Prado"],
-      },
-    ],
-  },
-  {
-    label: "16-30 dias",
-    cells: [
-      {
-        enterprise: "Jardins do Vale",
-        city: "Goiânia",
-        clients: 31,
-        amount: "R$ 128 mil",
-        trend: "+8%",
-        severity: "Atenção",
-        clientNames: ["Ana Paula Ribeiro", "Mariana Costa Lima", "Fernanda Ruiz"],
-      },
-      {
-        enterprise: "Vista Alegre",
-        city: "Anápolis",
-        clients: 42,
-        amount: "R$ 182 mil",
-        trend: "+12%",
-        severity: "Risco",
-        clientNames: ["Carlos Henrique Matos", "Renato Pires", "Marcelo Duarte"],
-      },
-      {
-        enterprise: "Lavra do Ouro",
-        city: "Rio Verde",
-        clients: 36,
-        amount: "R$ 151 mil",
-        trend: "+9%",
-        severity: "Risco",
-        clientNames: ["Patrícia Amaral", "Cíntia Rocha", "Juliana Castro"],
-      },
-      {
-        enterprise: "Reserva Alameda",
-        city: "Aparecida",
-        clients: 23,
-        amount: "R$ 86 mil",
-        trend: "+2%",
-        severity: "Atenção",
-        clientNames: ["Eduardo Martins", "Paulo Henrique", "Roberto Nogueira"],
-      },
-    ],
-  },
-  {
-    label: "31-60 dias",
-    cells: [
-      {
-        enterprise: "Jardins do Vale",
-        city: "Goiânia",
-        clients: 39,
-        amount: "R$ 214 mil",
-        trend: "+11%",
-        severity: "Risco",
-        clientNames: ["Ana Paula Ribeiro", "Mariana Costa Lima", "Diego Ramos"],
-      },
-      {
-        enterprise: "Vista Alegre",
-        city: "Anápolis",
-        clients: 58,
-        amount: "R$ 326 mil",
-        trend: "+18%",
-        severity: "Crítico",
-        clientNames: ["Carlos Henrique Matos", "Renato Pires", "Marcelo Duarte"],
-      },
-      {
-        enterprise: "Lavra do Ouro",
-        city: "Rio Verde",
-        clients: 47,
-        amount: "R$ 248 mil",
-        trend: "+14%",
-        severity: "Risco",
-        clientNames: ["Patrícia Amaral", "Cíntia Rocha", "Marta Azevedo"],
-      },
-      {
-        enterprise: "Reserva Alameda",
-        city: "Aparecida",
-        clients: 29,
-        amount: "R$ 119 mil",
-        trend: "+5%",
-        severity: "Atenção",
-        clientNames: ["Eduardo Martins", "Paulo Henrique", "Sérgio Lima"],
-      },
-    ],
-  },
-  {
-    label: "60+ dias",
-    cells: [
-      {
-        enterprise: "Jardins do Vale",
-        city: "Goiânia",
-        clients: 26,
-        amount: "R$ 188 mil",
-        trend: "-3%",
-        severity: "Risco",
-        clientNames: ["Ana Paula Ribeiro", "Bruna Almeida", "Diego Ramos"],
-      },
-      {
-        enterprise: "Vista Alegre",
-        city: "Anápolis",
-        clients: 51,
-        amount: "R$ 412 mil",
-        trend: "+21%",
-        severity: "Crítico",
-        clientNames: ["Carlos Henrique Matos", "Renato Pires", "Marcos Faria"],
-      },
-      {
-        enterprise: "Lavra do Ouro",
-        city: "Rio Verde",
-        clients: 44,
-        amount: "R$ 337 mil",
-        trend: "+16%",
-        severity: "Crítico",
-        clientNames: ["Patrícia Amaral", "Cíntia Rocha", "Marta Azevedo"],
-      },
-      {
-        enterprise: "Reserva Alameda",
-        city: "Aparecida",
-        clients: 32,
-        amount: "R$ 174 mil",
-        trend: "+7%",
-        severity: "Risco",
-        clientNames: ["Eduardo Martins", "Sérgio Lima", "Lívia Prado"],
+        enterprise: EMPTY_FIELD,
+        city: EMPTY_FIELD,
+        clients: 0,
+        amount: EMPTY_FIELD,
+        trend: EMPTY_FIELD,
+        severity: EMPTY_FIELD,
+        clientNames: [EMPTY_FIELD],
       },
     ],
   },
@@ -463,7 +282,36 @@ const heatmapRows = [
 export function IntelligencePage() {
   const [trendView, setTrendView] = useState<TrendView>("behavior");
   const [selectedKpi, setSelectedKpi] = useState<KpiId | null>(null);
-  const currentTrend = trendViews[trendView];
+  const currentTrendSource = trendViews[trendView];
+  const currentTrend = {
+    ...currentTrendSource,
+    data: currentTrendSource.data.map((point) =>
+      Object.fromEntries(
+        Object.entries(point).map(([key, value]) => [
+          key,
+          typeof value === "number" ? 0 : value,
+        ]),
+      ),
+    ),
+    indicators: currentTrendSource.indicators.map((indicator) => ({
+      ...indicator,
+      helper: EMPTY_FIELD,
+      value: EMPTY_FIELD,
+    })),
+    insights: currentTrendSource.insights.map((insight) => ({
+      ...insight,
+      description: EMPTY_FIELD,
+    })),
+  };
+  const visibleProfileGroups = profileGroups.map((group) => ({
+    ...group,
+    data: group.data.map((item) => ({ ...item, risk: 0, share: 0 })),
+  }));
+  const visibleStrategicInsights = strategicInsights.map((insight) => ({
+    ...insight,
+    detail: EMPTY_FIELD,
+    value: EMPTY_FIELD,
+  }));
   const selectedKpiData = selectedKpi ? kpis.find((item) => item.id === selectedKpi) : null;
 
   return (
@@ -549,7 +397,7 @@ export function IntelligencePage() {
         </DetailSection>
         <DetailSection title="IA da cobrança" icon={BrainCircuit} accent className="min-h-[360px]">
           <div className="space-y-3">
-            {strategicInsights.map((insight) => (
+            {visibleStrategicInsights.map((insight) => (
               <article key={insight.label} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
                 <div className="flex items-start gap-3">
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
@@ -569,7 +417,7 @@ export function IntelligencePage() {
 
       <DetailSection title="Perfil da inadimplência" icon={Users} accent>
         <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          {profileGroups.map((group) => (
+          {visibleProfileGroups.map((group) => (
             <ProfileCard key={group.title} {...group} />
           ))}
         </div>
@@ -583,7 +431,7 @@ export function IntelligencePage() {
       <OperationalMapBlock />
       <GuardianIntelligenceAssistant />
       <KpiContractsDrawer
-        items={selectedKpi ? kpiDrawerData[selectedKpi] : []}
+        items={selectedKpi ? emptyKpiDrawerRows : []}
         onClose={() => setSelectedKpi(null)}
         title={selectedKpiData?.label ?? ""}
       />
@@ -651,13 +499,13 @@ function ProfileCard({
           <div key={item.label}>
             <div className="flex items-center justify-between gap-3">
               <span className="truncate text-sm text-slate-600">{item.label}</span>
-              <span className="text-sm font-semibold text-slate-950">{item.risk}</span>
+              <span className="text-sm font-semibold text-slate-950">{item.risk > 0 ? item.risk : EMPTY_FIELD}</span>
             </div>
             <div className="mt-2 flex items-center gap-2">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-white ring-1 ring-slate-200/70">
-                <div className="h-full rounded-full bg-[#A07C3B]/70" style={{ width: `${item.risk}%` }} />
+                <div className="h-full rounded-full bg-[#A07C3B]/70" style={{ width: `${item.risk > 0 ? item.risk : 0}%` }} />
               </div>
-              <span className="w-10 text-right text-xs font-medium text-slate-400">{item.share}%</span>
+              <span className="w-10 text-right text-xs font-medium text-slate-400">{item.share > 0 ? `${item.share}%` : EMPTY_FIELD}</span>
             </div>
           </div>
         ))}
@@ -752,6 +600,14 @@ function KpiContractsDrawer({
 }
 
 function RiskByEnterpriseBlock() {
+  const visibleEnterpriseRisk = [{
+    delinquency: EMPTY_FIELD,
+    enterprise: EMPTY_FIELD,
+    recovery: EMPTY_FIELD,
+    risk: EMPTY_FIELD,
+    score: EMPTY_FIELD,
+  }];
+
   return (
     <DetailSection title="Risco por empreendimento" icon={BarChart3} accent className="h-full">
       <div className="overflow-x-auto">
@@ -766,7 +622,7 @@ function RiskByEnterpriseBlock() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {enterpriseRisk.map((item) => (
+            {visibleEnterpriseRisk.map((item) => (
               <tr key={item.enterprise}>
                 <td className="py-4 font-semibold text-slate-950">{item.enterprise}</td>
                 <td className="py-4 text-slate-600">{item.score}</td>
@@ -783,6 +639,9 @@ function RiskByEnterpriseBlock() {
 }
 
 function AnalyticChartsBlock() {
+  const visibleRecoveryByChannel = [{ channel: EMPTY_FIELD, value: 0 }];
+  const visibleRiskRadar = [{ subject: EMPTY_FIELD, value: 0 }];
+
   return (
     <DetailSection title="Sinais preditivos" icon={Target} className="h-full">
       <div className="grid gap-4 lg:grid-cols-2">
@@ -790,13 +649,13 @@ function AnalyticChartsBlock() {
           <p className="mb-3 text-sm font-semibold text-slate-950">Recuperação por canal</p>
           <ChartReady>
             <ResponsiveContainer width="100%" height="85%">
-              <BarChart data={recoveryByChannel} margin={{ left: -20, right: 8, top: 8, bottom: 0 }}>
+              <BarChart data={visibleRecoveryByChannel} margin={{ left: -20, right: 8, top: 8, bottom: 0 }}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                 <XAxis axisLine={false} dataKey="channel" tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="value" name="Recuperação" radius={[8, 8, 0, 0]}>
-                  {recoveryByChannel.map((entry, index) => (
+                  {visibleRecoveryByChannel.map((entry, index) => (
                     <Cell key={entry.channel} fill={index === 0 ? "#A07C3B" : "#CBD5E1"} />
                   ))}
                 </Bar>
@@ -809,7 +668,7 @@ function AnalyticChartsBlock() {
           <p className="mb-3 text-sm font-semibold text-slate-950">Radar de risco</p>
           <ChartReady>
             <ResponsiveContainer width="100%" height="85%">
-              <RadarChart data={riskRadar}>
+              <RadarChart data={visibleRiskRadar}>
                 <PolarGrid stroke="#e2e8f0" />
                 <PolarAngleAxis dataKey="subject" tick={{ fill: "#64748b", fontSize: 11 }} />
                 <RadarShape dataKey="value" fill="#A07C3B" fillOpacity={0.18} name="Risco" stroke="#A07C3B" strokeWidth={2} />
@@ -834,6 +693,18 @@ function OperationalMapBlock() {
     severity: string;
     trend: string;
   } | null>(null);
+  const visibleHeatmapRows = [{
+    cells: [{
+      amount: EMPTY_FIELD,
+      city: EMPTY_FIELD,
+      clients: 0,
+      clientNames: [EMPTY_FIELD],
+      enterprise: EMPTY_FIELD,
+      severity: EMPTY_FIELD,
+      trend: EMPTY_FIELD,
+    }],
+    label: EMPTY_FIELD,
+  }];
 
   return (
     <>
@@ -854,13 +725,13 @@ function OperationalMapBlock() {
           <div className="min-w-[920px]">
             <div className="grid grid-cols-[120px_repeat(4,minmax(170px,1fr))] gap-3">
               <div />
-              {heatmapRows[0].cells.map((cell) => (
+              {visibleHeatmapRows[0].cells.map((cell) => (
                 <div key={cell.enterprise} className="px-3 pb-1">
                   <p className="text-xs font-semibold uppercase tracking-normal text-slate-500">{cell.enterprise}</p>
                 </div>
               ))}
 
-              {heatmapRows.map((row) => (
+              {visibleHeatmapRows.map((row) => (
                 <div key={row.label} className="contents">
                   <div className="flex items-center rounded-xl bg-slate-50 px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200/70">
                     {row.label}
@@ -880,12 +751,12 @@ function OperationalMapBlock() {
                             {cell.severity}
                           </span>
                           <span className={`text-xs font-semibold ${isUp ? "text-rose-700" : "text-emerald-700"}`}>
-                            {isUp ? "â†‘" : "â†“"} {cell.trend}
+                            {cell.trend === EMPTY_FIELD ? EMPTY_FIELD : `${isUp ? "â†‘" : "â†“"} ${cell.trend}`}
                           </span>
                         </div>
 
                         <div className="mt-5 space-y-1">
-                          <p className="text-xl font-semibold tracking-normal text-slate-950">{cell.clients} clientes</p>
+                          <p className="text-xl font-semibold tracking-normal text-slate-950">{cell.clients > 0 ? `${cell.clients} clientes` : EMPTY_FIELD}</p>
                           <p className="text-sm font-semibold text-slate-700">{cell.amount}</p>
                           <p className="text-xs text-slate-500">em atraso na faixa</p>
                         </div>
@@ -928,7 +799,7 @@ function OperationalMapBlock() {
 
             <div className="flex-1 space-y-4 overflow-y-auto p-5">
               <div className="grid grid-cols-3 gap-2">
-                <InfoTile label="Clientes" value={String(selectedCell.clients)} />
+                <InfoTile label="Clientes" value={selectedCell.clients > 0 ? String(selectedCell.clients) : EMPTY_FIELD} />
                 <InfoTile label="Atraso" value={selectedCell.amount} />
                 <InfoTile label="Tendência" value={selectedCell.trend} tone={selectedCell.trend.startsWith("+") ? "danger" : "success"} />
               </div>
@@ -941,20 +812,20 @@ function OperationalMapBlock() {
                   </span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
-                  Ação recomendada: priorizar os maiores saldos, confirmar canal preferencial e acionar promessas com vencimento nas próximas 48h.
+                  {EMPTY_FIELD}
                 </p>
               </article>
 
               <div>
-                <p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Clientes mockados</p>
+                <p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Clientes</p>
                 <div className="space-y-2">
                   {selectedCell.clientNames.map((client, index) => (
                     <div key={client} className="flex items-center justify-between rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-950">{client}</p>
-                        <p className="mt-1 text-xs text-slate-500">Score operacional {82 - index * 7}/100</p>
+                        <p className="mt-1 text-xs text-slate-500">Score operacional {EMPTY_FIELD}</p>
                       </div>
-                      <span className="text-xs font-medium text-slate-500">#{index + 1}</span>
+                      <span className="text-xs font-medium text-slate-500">{EMPTY_FIELD}</span>
                     </div>
                   ))}
                 </div>
@@ -991,32 +862,32 @@ const assistantSuggestions = [
   {
     label: "Resumir carteira",
     prompt: "Resuma a carteira do Guardian e destaque os principais pontos para uma reuniao operacional.",
-    response: "A carteira tem score médio de 74,8, recuperação prevista de R$ 418 mil e concentração de risco nas faixas de 31-60 dias e 60+ dias.",
+    response: EMPTY_FIELD,
   },
   {
     label: "Mostrar maior risco",
     prompt: "Mostre onde esta o maior risco da carteira e explique o motivo.",
-    response: "O maior risco está em Vista Alegre acima de 60 dias: 51 clientes, R$ 412 mil em atraso e tendência de alta de 21%.",
+    response: EMPTY_FIELD,
   },
   {
     label: "Explicar tendência",
     prompt: "Explique a tendencia atual de inadimplencia e recuperacao da carteira.",
-    response: "A inadimplência aumentou 14% no empreendimento Vista Alegre nos últimos 45 dias, puxada por contratos entre 31 e 60 dias.",
+    response: EMPTY_FIELD,
   },
   {
     label: "Melhor operador",
     prompt: "Aponte qual operador merece destaque e qual aprendizado operacional pode ser replicado.",
-    response: "Gustavo Freitas possui melhor recuperação da carteira nos últimos 30 dias, com maior taxa de promessas cumpridas e menor reincidência.",
+    response: EMPTY_FIELD,
   },
   {
     label: "Perfil mais inadimplente",
     prompt: "Descreva o perfil mais inadimplente e como a cobranca deve atuar nesse grupo.",
-    response: "Clientes autônomos entre 31 e 45 anos apresentam maior risco acima de 60 dias e menor resposta no primeiro contato.",
+    response: EMPTY_FIELD,
   },
   {
     label: "Empreendimento crítico",
     prompt: "Identifique o empreendimento mais critico e sugira uma acao operacional.",
-    response: "Vista Alegre é o empreendimento crítico do momento, com inadimplência acima da média, maior volume em atraso e tendência de alta.",
+    response: EMPTY_FIELD,
   },
 ];
 
@@ -1146,9 +1017,9 @@ function GuardianIntelligenceAssistant() {
 
             <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
               <div className="grid grid-cols-3 gap-2">
-                <InfoTile label="Score" value="74,8" />
-                <InfoTile label="Risco" value="22,4%" tone="gold" />
-                <InfoTile label="Previsão" value="R$ 418 mil" tone="success" />
+                <InfoTile label="Score" value={EMPTY_FIELD} />
+                <InfoTile label="Risco" value={EMPTY_FIELD} tone="gold" />
+                <InfoTile label="Previsão" value={EMPTY_FIELD} tone="success" />
               </div>
 
               <div className="space-y-3">
@@ -1433,7 +1304,7 @@ function RiskBadge({ risk }: { risk: string }) {
     "Baixo": "bg-emerald-50 text-emerald-700 ring-emerald-100",
     "Crítico": "bg-rose-50 text-rose-700 ring-rose-100",
     "Moderado": "bg-slate-50 text-slate-700 ring-slate-200",
-  }[risk];
+  }[risk] ?? "bg-slate-50 text-slate-500 ring-slate-200";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{risk}</span>;
 }
@@ -1502,7 +1373,3 @@ function getToneTextClass(tone: Tone) {
     success: "text-emerald-700",
   }[tone];
 }
-
-
-
-

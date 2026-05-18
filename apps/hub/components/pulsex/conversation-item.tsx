@@ -1,12 +1,8 @@
 import type { PulseXChannel } from "@/lib/pulsex";
 import type { ReactNode } from "react";
 import Image from "next/image";
-import {
-  Bot,
-  Hash,
-  Megaphone,
-  Users,
-} from "lucide-react";
+import { Bot, Hash, Megaphone, Users } from "lucide-react";
+import { Tooltip } from "@repo/uix";
 
 type ConversationItemProps = {
   active?: boolean;
@@ -26,26 +22,27 @@ export function ConversationItem({
 
   if (collapsed) {
     return (
-      <button
-        aria-current={active ? "page" : undefined}
-        aria-label={channel.name}
-        className="relative grid h-11 w-11 place-items-center rounded-xl text-left outline-none transition hover:bg-[#2A2B32]/80 focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-[#2A2B32]"
-        data-active={active}
-        onClick={() => onSelect?.(channel.id)}
-        title={channel.name}
-        type="button"
-      >
-        {active ? (
-          <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
-        ) : null}
-        <ChannelAvatar
-          active={active}
-          channel={channel}
-          collapsed={collapsed}
-          label={collapsedLabel}
-          showUnread
-        />
-      </button>
+      <Tooltip content={channel.name} placement="right">
+        <button
+          aria-current={active ? "page" : undefined}
+          aria-label={channel.name}
+          className="relative grid h-11 w-11 place-items-center rounded-xl text-left outline-none transition hover:bg-[#2A2B32]/80 focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-[#2A2B32]"
+          data-active={active}
+          onClick={() => onSelect?.(channel.id)}
+          type="button"
+        >
+          {active ? (
+            <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
+          ) : null}
+          <ChannelAvatar
+            active={active}
+            channel={channel}
+            collapsed={collapsed}
+            label={collapsedLabel}
+            showUnread
+          />
+        </button>
+      </Tooltip>
     );
   }
 
