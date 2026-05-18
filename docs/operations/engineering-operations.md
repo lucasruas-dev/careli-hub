@@ -5027,3 +5027,55 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke visual/autenticado final do envio real depende da sessao do Lucas ou de usuario autorizado; se o envio ainda falhar para um usuario especifico, `Hub SupportOps` deve validar sessao/token, vinculo em `hub_users` e resposta da API `/api/hub/it-tickets`. Preview segue com Guardian DB 503 por ambiente incompleto, pendencia separada de InfraOps.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` somente se houver falha autenticada no envio real; `Hub InfraOps` para completar Guardian DB/C2X no Preview quando Lucas quiser homologacao com healthcheck Guardian completo.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Login homologacao senha invalida`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-18 17:30:30 -03:00.
+- Tipo da alteracao: `INCIDENTE` - diagnostico de acesso em homologacao.
+- Motivo da mudanca: Lucas reportou novamente falha de login em `https://homo.c2x.app.br`, com a tela exibindo `E-mail ou senha invalidos` para o usuario `lucas.ruas@careli.adm.br`.
+- Ambiente: Preview/Homologacao `https://homo.c2x.app.br`, deployment `dpl_Ht65RXjd4U7XbnT29oeUkj78f19u`, Supabase homolog `qanlldynttyxgmcwkxqv.supabase.co`.
+- Arquivos/modulos afetados: fluxo de login/AuthProvider, Supabase Auth homolog, `public.hub_users` e este diario.
+- Como foi feito: confirmei o deployment e logs Vercel, revisei o mapeamento da mensagem no `AuthProvider`, carreguei temporariamente variaveis de Preview da branch `homolog`, consultei Supabase Auth Admin e `public.hub_users` sem expor valores sensiveis, e removi o arquivo temporario ao final.
+- Logica utilizada: a mensagem `E-mail ou senha invalidos` e gerada quando Supabase Auth retorna `invalid login credentials`. A checagem confirmou que o usuario existe no Auth, esta com e-mail confirmado, ja teve login conhecido, possui perfil ativo e esta como `admin/adm`; portanto a falha atual nao e permissao, perfil ou cadastro ausente, mas senha invalida/desatualizada para o Auth de homologacao. O botao visual de recuperar senha no login ainda e apenas `type=button` e nao executa fluxo de recuperacao.
+- Validacao executada: `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou Preview `Ready` `dpl_Ht65RXjd4U7XbnT29oeUkj78f19u`; `npx.cmd vercel logs https://homo.c2x.app.br --since 30m --level error` nao encontrou logs; Supabase Auth health retornou 200; consulta Auth Admin retornou `authUserExists=true`, `emailConfirmed=true`, `lastSignInKnown=true`; consulta `hub_users` retornou `profileStatus=active`, `profileRole=admin`, `operationalProfile=adm`; `Test-Path .vercel/.env.homolog-login-check.local` retornou `False`.
+- Pendencias ou riscos conhecidos: Lucas precisa redefinir/atualizar a senha no Supabase Auth de homologacao ou usar um fluxo de recovery/invite valido; enquanto o app nao implementar o botao de recuperacao, a acao deve ser feita pelo Dashboard Supabase/Auth ou por rotina administrativa segura. Nenhuma senha, token ou chave foi exposta.
+- Status operacional: `NECESSITA ACAO OPERACIONAL`.
+- Proxima squad recomendada: `Hub SupportOps` para orientar/resetar o acesso de homologacao com aprovacao explicita de Lucas; `Hub Core` se Lucas quiser implementar o fluxo funcional do botao `Recuperar senha` no login.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Perfil admin homologacao nao refletido`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-18 17:41:36 -03:00.
+- Tipo da alteracao: `INCIDENTE` - diagnostico de permissao/perfil em homologacao.
+- Motivo da mudanca: Lucas reportou que, apos conseguir logar em `https://homo.c2x.app.br`, o ambiente de homologacao nao reconhecia seu usuario como admin; a tela Home exibiu `Mapa operacional` e o card do usuario como `Operador / agora`.
+- Ambiente: Preview/Homologacao `https://homo.c2x.app.br`, Supabase homolog `qanlldynttyxgmcwkxqv.supabase.co`.
+- Arquivos/modulos afetados: fluxo AuthProvider/Home, `public.hub_users`, Supabase Auth homolog e este diario.
+- Causa raiz confirmada: no Supabase de homologacao, o usuario `lucas.ruas@careli.adm.br` esta ativo, mas `public.hub_users.role` voltou para `operator` e `public.hub_users.operational_profile` voltou para `op1`; o Auth Admin tambem nao possui `app_metadata.role=admin` nem `user_metadata.role=admin`. Como a funcao `public.sync_hub_user_from_auth()` sincroniza `hub_users.role` a partir dos metadados do Auth em atualizacoes de usuario, ajustar apenas `hub_users` nao e persistente para este caso.
+- Evidencia tecnica: consulta somente leitura no Preview confirmou `profileFound=true`, `hubRole=operator`, `hubOperationalProfile=op1`, `hubStatus=active`, `authUserFound=true`, `authAppRole=null`, `authUserRole=null`, `authUpdatedAt=2026-05-18T20:35:48.271003Z` e `authLastSignInAt=2026-05-18T20:35:48.268704Z`.
+- Como foi feito: li o diario canonico, comparei o codigo da Home/AuthProvider/API com a captura, confirmei o ambiente real de Preview pela branch `homolog`, consultei Supabase Auth Admin e `public.hub_users` em modo somente leitura sem expor chaves, e removi o arquivo temporario de env apos a checagem.
+- Impacto operacional: Lucas consegue entrar em homologacao, mas fica tratado como operador; funcionalidades protegidas por admin/adm, como Setup, SquadOps/Operations e acoes administrativas, podem ficar ocultas ou bloqueadas.
+- Correcao recomendada: com autorizacao explicita do Lucas, alinhar o usuario em homologacao nos dois pontos: `auth.users.raw_app_meta_data.role = admin` e `public.hub_users.role = admin` com `public.hub_users.operational_profile = adm`; depois Lucas deve sair/entrar novamente ou fazer refresh forte para renovar o perfil carregado no navegador.
+- Validacao executada: `docs/operations/README.md` e este diario lidos; checagem de codigo em `apps/hub/app/page.tsx`, `apps/hub/providers/auth-provider.tsx`, `apps/hub/app/api/auth/profile/route.ts`, `apps/hub/app/api/hub/home/route.ts` e `packages/database/migrations/0001_create_hub_core_schema.sql`; consulta Supabase homolog somente leitura; `Test-Path .vercel/.env.homolog-admin-check.local` retornou `False`.
+- Pendencias ou riscos conhecidos: nenhuma escrita foi aplicada em Supabase porque alteracao de Auth/banco em homologacao exige autorizacao explicita. Se a correcao for feita apenas em `hub_users` e nao no Auth metadata, o perfil pode voltar a operador em nova sincronizacao.
+- Status operacional: `NECESSITA CORRECAO`.
+- Proxima squad recomendada: `Hub SupportOps` para aplicar a correcao pontual em homologacao apos autorizacao de Lucas; `Hub Core` depois, se for necessario endurecer o fluxo de Setup para manter Auth metadata e `hub_users` sempre sincronizados.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Correcao perfil admin homologacao`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-18 17:43:44 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - alinhamento pontual de permissao do usuario Lucas em homologacao.
+- Motivo da mudanca: Lucas autorizou explicitamente sobrescrever/corrigir o perfil para que o ambiente de homologacao reconheca seu usuario como admin.
+- Ambiente: somente Preview/Homologacao `https://homo.c2x.app.br`, Supabase homolog `qanlldynttyxgmcwkxqv.supabase.co`; nenhuma alteracao em producao.
+- Como foi feito: puxei variaveis Preview da branch `homolog` para arquivo temporario local sem exibir valores, localizei o usuario `lucas.ruas@careli.adm.br` via Auth Admin, preservei o metadata existente e acrescentei `app_metadata.role=admin`; em seguida alinhei `public.hub_users.role=admin` e `public.hub_users.operational_profile=adm`; removi os arquivos temporarios de env.
+- Evidencia antes da correcao: `hubRole=operator`, `hubOperationalProfile=op1`, `authAppRole=null`, usuario ativo.
+- Evidencia depois da correcao: `hubRole=admin`, `hubOperationalProfile=adm`, `hubStatus=active`, `authAppRole=admin`, `profileUpdatedAt=2026-05-18T20:43:28.423212+00:00`, `authUpdatedAt=2026-05-18T20:43:27.609424Z`.
+- Validacao executada: reconsulta independente no Supabase homolog confirmou `admin/adm`; `Test-Path .vercel/.env.homolog-admin-apply.local` retornou `False`; arquivo temporario de verificacao tambem foi removido.
+- Impacto operacional: o usuario do Lucas deve recuperar acesso administrativo em homologacao apos renovar a sessao do navegador.
+- Pendencias ou riscos conhecidos: a tela ja aberta pode continuar exibindo estado antigo ate logout/login ou refresh forte, porque o `AuthProvider` carrega o perfil no inicio da sessao. Se voltar a `operator`, investigar fluxo de Setup/Auth que pode atualizar metadata sem role.
+- Status operacional: `CORRIGIDO`.
+- Proxima squad recomendada: nenhuma obrigatoria; `Hub SupportOps` somente se a sessao renovada ainda mostrar operador.
