@@ -41,8 +41,8 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 | Frente | Status operacional | Pendencia aberta | Proxima acao |
 | --- | --- | --- | --- |
 | Guardian / D4Sign | `AGUARDANDO RELEASEOPS` | Guarda/autorizacao server-side da rota D4Sign ja aparece como ajuste local, mas ainda precisa commit/deploy isolado e validacao com usuario autenticado real. | ReleaseOps deve validar pacote D4Sign sem misturar com PulseX e publicar hotfix se Lucas aprovar. |
-| Chronos V1 | `OPERACIONAL COM ATENCAO` | Migration `0019_chronos_core.sql` aplicada e validada em homologacao; producao autorizada por Lucas, mas bloqueada por ausencia de connection string/senha Postgres executavel no pull de envs. | Liberar credencial Supabase/POSTGRES_URL de producao ou login Supabase CLI para DataOps concluir o mesmo pacote em producao. |
-| DataOps migrations 0012/0019/0020 | `OPERACIONAL COM ATENCAO` | Homologacao recebeu `0012`, `0019` e `0020`, com historico Supabase reparado para `0019`/`0020`; producao nao foi alterada. | InfraOps/DataOps precisam disponibilizar acesso de banco de producao sem expor segredo no chat. |
+| Chronos V1 | `EM PRODUCAO COM ATENCAO` | Migration `0019_chronos_core.sql` aplicada e validada em homologacao e producao; rota segue protegida por auth e depende de smoke autenticado real. | Validar fluxo autenticado de Chronos com usuario real do Lucas. |
+| DataOps migrations 0012/0019/0020 | `EM PRODUCAO COM ATENCAO` | Homologacao e producao receberam `0012`, `0019` e `0020`, com historico Supabase reparado nos dois ambientes; Production usou a env `POSTGRES_Url`, pois `POSTGRES_URL` ainda veio vazia. | Normalizar env production para `POSTGRES_URL` correta e remover/evitar duplicidade `POSTGRES_Url` quando Lucas autorizar ajuste de env. |
 | PulseX realtime/chamadas | `AGUARDANDO RELEASEOPS` | Palco de compartilhamento de tela, zoom, sinais realtime e painel de informacoes estao em pacote local; ainda falta teste real com dois usuarios/duas maquinas. | Validar WebRTC/realtime fim a fim antes de producao. |
 | PulseX queries | `AGUARDANDO RELEASEOPS` | Query `list direct users` foi ajustada localmente para relacao nomeada Supabase, mas segue fora de producao ate release. | Consolidar em hotfix PulseX ou junto da release de chamadas, conforme risco. |
 | Guardian fila/performance | `OPERACIONAL COM ATENCAO` | `limit=1000` continua custoso e deve permanecer fora da abertura inicial de telas; monitorar payload/tempo da fila. | Manter abertura com limite reduzido e acompanhar gargalos em SupportOps. |
@@ -54,10 +54,10 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 | Modulo | Ambiente | Status operacional | Observacao curta |
 | --- | --- | --- | --- |
 | Guardian | Producao `https://c2x.app.br` + diffs locais | `OPERACIONAL COM ATENCAO` | Producao responde; D4Sign e painel de cliente possuem pacote local pendente. |
-| PulseX | Producao `https://c2x.app.br` + homologacao DB | `AGUARDANDO RELEASEOPS` | Direct users, chamada, tela compartilhada e painel de informacoes aguardam release/validacao real; migration `0020` aplicada apenas em homologacao. |
-| Chronos | Homologacao DB + producao pendente | `OPERACIONAL COM ATENCAO` | V1 publicada como codigo; `0019` aplicada em homologacao; producao ainda sem apply por falta de credencial executavel. |
+| PulseX | Producao `https://c2x.app.br` + DB production | `AGUARDANDO RELEASEOPS` | Direct users, chamada, tela compartilhada e painel de informacoes aguardam release/validacao real; migration `0020` aplicada em homologacao e producao. |
+| Chronos | Producao `https://c2x.app.br` + DB production | `EM PRODUCAO COM ATENCAO` | V1 publicada como codigo; `0019` aplicada em homologacao e producao; smoke autenticado real ainda pendente. |
 | CareDesk | Producao `https://c2x.app.br` | `OPERACIONAL COM ATENCAO` | Rota online; evolucao real ainda depende de tabelas Supabase e integracao Meta/WhatsApp. |
-| SquadOps | Producao `https://c2x.app.br` + homologacao DB | `OPERACIONAL COM ATENCAO` | Modulo visual publicado; migration `0012` de alert-protocols validada em homologacao, producao ainda pendente. |
+| SquadOps | Producao `https://c2x.app.br` + DB production | `EM PRODUCAO COM ATENCAO` | Modulo visual publicado; migration `0012` de alert-protocols validada em homologacao e producao. |
 | ReleaseOps | Local + Vercel | `FINALIZADO` | Caminho oficial do diario ja migrado para `engineering-operations.md`; healthchecks seguem obrigatorios. |
 | SupportOps | Local + producao | `NECESSITA CORRECAO` | Ultima investigacao abriu pendencias D4Sign, PulseX e monitoramento Guardian. |
 
@@ -4849,6 +4849,24 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[DataOps] Aplicacao production 0012 0019 0020`.
+- Nome da squad/agente: `Hub RescueOps` atuando como `Hub DataOps` e `Hub InfraOps`.
+- Protocolo relacionado: `RESCUE-20260518-1529-migrations-dataops`.
+- Data e hora local: 2026-05-18 15:59:06 -03:00.
+- Tipo da alteracao: `DATAOPS` - aplicacao controlada de migrations no banco real de producao.
+- Motivo da mudanca: Lucas informou que preencheu a connection string para permitir concluir a pendencia production DB das migrations `0012`, `0019` e `0020`.
+- Ambiente: producao.
+- Arquivos/modulos afetados: banco Supabase/Postgres de producao, `packages/database/migrations/0012_hub_operations_alert_protocols.sql`, `packages/database/migrations/0019_chronos_core.sql`, `packages/database/migrations/0020_remove_pulsex_department_announcement_channels.sql`, Chronos, SquadOps alert-protocols e PulseX/Setup.
+- Como foi feito: puxei envs Production para arquivo temporario local sem exibir valores, confirmei que `POSTGRES_URL` continuou vazio e que a connection string valida estava em `POSTGRES_Url`; usei esse valor apenas como credencial de execucao DataOps; rodei precheck read-only, apliquei `0012`, `0019` e `0020` em ordem, solicitei reload de schema PostgREST, reparei historico Supabase CLI para marcar `0012`, `0019` e `0020` como aplicadas e validei estrutura/RLS/grants.
+- Evidencias confirmadas antes do apply: banco `postgres`; `pulsex_channels` existia; `hub_operations_alert_protocols`, `hub_operations_alert_feedbacks`, `chronos_rooms` e `chronos_meetings` nao existiam; historico `supabase_migrations` existia; havia `5` canais PulseX ativos `department_announcements` a serem arquivados pelo `0020`.
+- Validacao DB executada: `hub_operations_alert_protocols`, `hub_operations_alert_feedbacks`, `chronos_rooms`, `chronos_meetings` e `chronos_minutes` existem; `chronos_rooms` possui `3` seeds; canais PulseX ativos `department_announcements` ficaram `0`; canais arquivados com `archivedReason='department_announcements_removed'` ficaram `5`; `service_role` tem `select` em alert-protocols; `authenticated` tem `insert` em alert-protocols; `authenticated` tem `execute` em `next_hub_operations_alert_protocol()`; RLS esta ativo em alert-protocols, feedbacks e nas tabelas Chronos principais; historico Supabase contem `0012`, `0019` e `0020`.
+- Healthcheck production executado: `https://c2x.app.br` retornou `/` 200 em 997 ms; `/setup` 200 em 559 ms; `/pulsex` 200 em 594 ms; `/squadops` 200 em 461 ms; `/chronos` 200 em 697 ms; `/api/guardian/db/health` 200 em 1056 ms; `/api/guardian/attendance/queue?limit=20` 200 em 703 ms; `/api/chronos/meetings`, `/api/operations/alert-protocols` e `/api/operations/monitoring` sem sessao retornaram 401 esperado; `npx.cmd vercel logs https://c2x.app.br --since 15m --level error` nao encontrou logs.
+- Pendencias ou riscos conhecidos: a env correta `POSTGRES_URL` segue vazia no pull Production; a connection string executavel esta em `POSTGRES_Url`, com caixa diferente. Nao renomeei nem removi env por ser acao sensivel de secret/env; recomenda-se Lucas/InfraOps normalizar para `POSTGRES_URL` correta e depois remover a duplicidade quando autorizado. Smoke autenticado de Chronos e SquadOps depende de sessao real.
+- Status operacional: `EM PRODUCAO COM ATENCAO`.
+- Proxima squad recomendada: `Hub InfraOps` para normalizar env production `POSTGRES_URL` e `Hub SupportOps/RescueOps` para smoke autenticado com Lucas.
+
+Registro de diario:
+
 - Assunto: `[DataOps] Export clientes faturados Lagoa Bonita`.
 - Nome da squad/agente: `Hub DataOps`.
 - Data e hora local: 2026-05-18 15:29:09 -03:00.
@@ -4882,3 +4900,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: se Lucas quiser incluir tambem os empreendimentos legados `LAB` ou `LAG` encontrados na sonda (`LAGOA BONITA - MASTERPLAN` e `LAGOA BONITA - ADITIVO`), precisa autorizar novo recorte porque o pedido nominal original citou apenas `LBF`, `LBR` e `LBP`.
 - Status operacional: `FINALIZADO`.
 - Proxima squad recomendada: `Hub DataOps` somente se Lucas solicitar novo recorte; sem necessidade de `Hub ReleaseOps` porque nao houve mudanca de produto/deploy.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Reexport clientes faturados Lagoa Bonita legado com CNPJ`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 15:44:38 -03:00.
+- Tipo da alteracao: `EXTRACAO` - reprocessamento XLSX somente leitura incluindo CNPJ.
+- Motivo da mudanca: Lucas pediu refazer a exportacao corrigida dos clientes faturados do C2X legado trazendo tambem o CNPJ.
+- Ambiente: local conectado ao banco Guardian/C2X configurado para o Hub; consulta somente leitura; nenhuma escrita, seed, migration, Supabase, Vercel, env, deploy ou Production change foi executado.
+- Como foi feito: reaproveitei a regra corrigida `acquisition_requests.acquisition_request_stage_id = 4` (`Faturado`) para `LBF`, `LBP` e `LBR`, considerando participantes `client_id`, `client_2_id`, `client_3_id`, `client_4_id` e `client_5_id`, e acrescentei o campo `users.cnpj` ao lado de `users.cpf`.
+- Arquivo gerado: `outputs/dataops-lagoa-bonita-clientes-faturados-legado-20260518/clientes_faturados_legado_lagoa_bonita_com_cnpj.xlsx`.
+- Resultado agregado: `230` contratos faturados no legado; `245` linhas por contrato/participante (`LBF` 19, `LBP` 5, `LBR` 221); `193` clientes unicos por empreendimento (`LBF` 17, `LBP` 5, `LBR` 171); `179` CPFs distintos preenchidos; `11` CNPJs distintos preenchidos; `11` clientes unicos sem CPF preenchido; `182` clientes unicos sem CNPJ preenchido.
+- Validacao executada: exportacao XLSX via `@oai/artifact-tool`; renderizacao estrutural em memoria sem gravar preview com PII; importacao do XLSX confirmou abas `Clientes` (`A1:F246`), `Clientes unicos` (`A1:F194`) e `Resumo` (`A1:D20`); arquivo final com `24337` bytes; `git diff --check` passou nos arquivos alterados.
+- Protecao de dados: Nome, CPF e CNPJ nao foram impressos no chat, logs ou diario. O XLSX contem PII/dados cadastrais e deve ser tratado como arquivo restrito ao pedido do Lucas.
+- Pendencias ou riscos conhecidos: o arquivo anterior sem CNPJ segue preservado apenas para rastreabilidade, mas o artefato valido para uso agora e o `_com_cnpj.xlsx`.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub DataOps` somente se Lucas solicitar novo recorte ou saneamento cadastral; sem necessidade de `Hub ReleaseOps` porque nao houve mudanca de produto/deploy.
