@@ -5204,3 +5204,17 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o servidor dev que ja estava aberto antes da troca de `middleware.ts` para `proxy.ts` manteve cache antigo ate reiniciar; em producao/homologacao isso nao deve ocorrer apos build limpo. O dominio dedicado ainda depende de configuracao DNS/Vercel quando Lucas quiser ativar publicamente `ops.c2x.app.br` ou `squadops.c2x.app.br`. O warning Turbopack/NFT permanece conhecido e fora deste recorte.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o recorte SquadOps persistente em homologacao/producao e executar healthchecks autenticados.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy SquadOps persistencia operacional`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 19:27:34 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao do recorte SquadOps com persistencia operacional.
+- Motivo da mudanca: publicar o modulo SquadOps persistente apos Lucas autorizar o processo completo, incluindo criacao das tabelas quando ausentes, validacao local, homologacao e producao.
+- Commit/deploy de referencia: commit `5e582c7 feat(squadops): persist center operations state`; Preview/Homologacao `dpl_FutpYnX9Y5ezSj2movMumdMPJ1Ug`; Producao `dpl_5wPaFZV7gTEeLN5nhp36Ymzn3cZS`; aliases `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Como foi feito: apliquei a migration `0021` em homologacao e producao sem expor secrets; criei commit semantico; publiquei o branch `homolog`; gerei deployment Preview via Vercel; validei `/squadops` e API protegida; depois publiquei Production com alias para `c2x.app.br` e confirmei o alias `ops.c2x.app.br`.
+- Validacao executada: `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local com `next start --port 3021`; Preview `/squadops` 200 e `/api/squadops/homologation-reviews` protegido sem bearer; Producao `/` 200, `/squadops` 200, `/api/squadops/homologation-reviews` 401 esperado, `/api/operations/monitoring` 401 esperado, `/api/guardian/db/health` 200, `https://ops.c2x.app.br/` 200 e `https://ops.c2x.app.br/squadops` 200; logs Vercel de erro dos ultimos 15 minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: smoke autenticado final depende do navegador/sessao admin do Lucas; warnings remotos conhecidos permanecem: Turbopack/NFT por leitura filesystem do Engineering Operations, `npm audit` e variaveis Vercel fora do `turbo.json`. O dominio `squadops.c2x.app.br` ainda nao apareceu como alias ativo; o dominio dedicado operacional validado nesta rodada foi `ops.c2x.app.br`.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps` para smoke autenticado assistido com Lucas e acompanhamento de qualquer divergencia em Ticket TI, monitoramento ou homologacao.
