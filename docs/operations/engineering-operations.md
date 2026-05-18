@@ -4831,6 +4831,24 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[ReleaseOps] Deploy Rescue recortes pendentes Hub`.
+- Nome da squad/agente: `Hub RescueOps` assumindo `Hub ReleaseOps`, `SquadOps Core`, `PulseX Core`, `Setup Core` e `Hub DataOps`.
+- Protocolo relacionado: `RESCUE-20260518-1351-recortes-deploy-chronos` e `RESCUE-20260518-1529-migrations-dataops`.
+- Data e hora local: 2026-05-18 15:41:21 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao do recorte local corrigido apos autorizacao ampla do Lucas.
+- Motivo da mudanca: Lucas autorizou RescueOps a executar todas as atividades e assumir o papel dos devs necessarios para concluir os recortes pendentes.
+- Arquivos/modulos afetados: commit `487363c fix(rescueops): stabilize pending hub recuts`, `.gitignore`, `apps/hub/app/api/operations/alert-protocols/route.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/app/layout.tsx`, `apps/hub/app/setup/page.tsx`, `apps/hub/lib/setup/data.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `packages/database/migrations/0012_hub_operations_alert_protocols.sql`, `packages/database/migrations/0020_remove_pulsex_department_announcement_channels.sql`, `turbo.json`, Preview `dpl_4crTpcg5Zyaa8qhQzyAVhFk1haEt`, Production `dpl_Ec9F7b9rphUWwa1KM3MivpTV4jBB` e alias `https://c2x.app.br`.
+- Como foi feito: stageei apenas o recorte RescueOps, mantendo `outputs/` fora do Git por conter artefatos locais potencialmente sensiveis; adicionei `outputs/` ao `.gitignore`; rodei `check-types`, `lint`, `build`, smoke local, secret scan do diff, commit semantico, push para `origin/homolog`, deploy Preview, healthcheck Preview e deploy Production.
+- Logica utilizada: o recorte de codigo e seguro para producao mesmo sem as migrations production porque SquadOps possui fallback operacional quando `0012` nao existe, Chronos continua protegido por auth/fallback fail-closed, e PulseX/Setup apenas deixam de sugerir/exibir canais sistemicos de comunicados. As migrations `0012`, `0019` e `0020` seguem aplicadas em homologacao e production DB continua bloqueada por falta de credencial executavel.
+- Validacao local executada: `npm.cmd --workspace @repo/hub run check-types` passou; `npm.cmd --workspace @repo/hub run lint` passou com warning conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning Turbopack/NFT conhecido; smoke `next start` em `http://localhost:3014` retornou `/`, `/setup`, `/pulsex` e `/squadops` com 200 e `/api/operations/alert-protocols` sem sessao com 401.
+- Healthcheck de homologacao/Preview: Preview `https://careli-hub-hub-i2bs-4777e7med-lucasruas-devs-projects.vercel.app` ficou `READY`; via `vercel curl`, `/`, `/setup`, `/pulsex`, `/squadops` e `/chronos` retornaram 200; `/api/operations/alert-protocols` e `/api/operations/monitoring` sem sessao retornaram 401; HTML do Preview confirmou titulo `Homo C2X`.
+- Healthcheck de producao: Production `dpl_Ec9F7b9rphUWwa1KM3MivpTV4jBB` ficou `READY` e aliasado em `https://c2x.app.br`; `/` 200 em 905 ms; `/setup` 200 em 393 ms; `/pulsex` 200 em 388 ms; `/squadops` 200 em 365 ms; `/chronos` 200 em 591 ms; `/api/guardian/db/health` 200 em 828 ms; `/api/guardian/attendance/queue?limit=20` 200 em 291 ms com 29,9 KB; `/api/operations/alert-protocols`, `/api/operations/monitoring` e `/api/auth/profile` sem sessao retornaram 401; titulo de producao confirmou `C2X`; `npx.cmd vercel logs https://c2x.app.br --since 15m --level error` nao encontrou logs.
+- Pendencias ou riscos conhecidos: Production DB ainda nao recebeu `0012`, `0019` nem `0020` porque `POSTGRES_URL`, `POSTGRES_URL_NON_POOLING`, `POSTGRES_PRISMA_URL` e `POSTGRES_PASSWORD` vieram vazios no pull de envs Production, e o Supabase CLI nao tem `SUPABASE_ACCESS_TOKEN`/login ativo. Builds remotos mantiveram warnings conhecidos de `npm audit`, `engines.node >=18`, Turbopack/NFT e variaveis Postgres/SUPABASE_JWT_SECRET fora de `turbo.json`.
+- Status operacional: `EM PRODUCAO COM ATENCAO`.
+- Proxima squad recomendada: `Hub InfraOps` para liberar credencial production DB; depois `Hub RescueOps/DataOps` aplica as migrations em producao e roda smoke autenticado quando Lucas disponibilizar sessao.
+
+Registro de diario:
+
 - Assunto: `[DataOps] Export clientes faturados Lagoa Bonita`.
 - Nome da squad/agente: `Hub DataOps`.
 - Data e hora local: 2026-05-18 15:29:09 -03:00.
@@ -4846,3 +4864,21 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: se a regra desejada for "somente contratos pagos/liquidados", a consulta deve ser refeita apenas com `payment_status_id = 5`; com a leitura atual, `Aguardando pagamento` e `Atrasado` tambem entram por representarem parcelas/faturas emitidas no fluxo Guardian. Quatro linhas dependem de saneamento cadastral no C2X por CPF ausente.
 - Status operacional: `FINALIZADO`.
 - Proxima squad recomendada: `Hub DataOps` apenas se Lucas solicitar recorte adicional, ajuste de criterio ou saneamento cadastral; sem necessidade de `Hub ReleaseOps` porque nao houve mudanca de produto/deploy.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Correcao export clientes faturados Lagoa Bonita legado`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 15:38:47 -03:00.
+- Tipo da alteracao: `CORRECAO` - substituicao do criterio de exportacao XLSX por regra correta de faturamento no C2X legado.
+- Motivo da mudanca: Lucas apontou que o total anterior nao poderia estar correto porque o C2X legado possui mais de 200 registros no perfil solicitado. Reabri a investigacao pelo diario e pelo schema real do banco.
+- Ambiente: local conectado ao banco Guardian/C2X configurado para o Hub; consulta somente leitura; nenhuma escrita, seed, migration, Supabase, Vercel, env, deploy ou Production change foi executado.
+- Causa raiz da divergencia: a primeira exportacao usou `payments.payment_status_id in (5, 6, 7)` como proxy de faturamento financeiro e considerou apenas `acquisition_requests.client_id`. No C2X legado, o status conceitual `Faturado` do contrato/venda esta em `acquisition_requests.acquisition_request_stage_id = 4`, e a venda pode ter participantes adicionais em `client_2_id`, `client_3_id`, `client_4_id` e `client_5_id`.
+- Como foi corrigido: executei sonda agregada segura no MySQL do C2X, confirmei `acquisition_request_stages.id=4` como `Faturado`, validei as siglas `LBF`, `LBP` e `LBR`, e gerei novo XLSX em `outputs/dataops-lagoa-bonita-clientes-faturados-legado-20260518/clientes_faturados_legado_lagoa_bonita.xlsx`.
+- Logica utilizada: aba `Clientes` traz uma linha por contrato faturado/participante considerando `client_id` a `client_5_id`; aba `Clientes unicos` consolida por cliente/empreendimento; aba `Resumo` registra regra, fonte e contagens. O arquivo anterior `outputs/dataops-lagoa-bonita-clientes-faturados-20260518/clientes_faturados_lagoa_bonita.xlsx` deve ser tratado como substituido.
+- Resultado agregado corrigido: `230` contratos faturados no legado (`LBF` 18, `LBP` 5, `LBR` 207); `245` linhas por contrato/participante (`LBF` 19, `LBP` 5, `LBR` 221); `193` clientes unicos por empreendimento (`LBF` 17, `LBP` 5, `LBR` 171); `179` CPFs distintos preenchidos; `11` clientes unicos sem CPF preenchido na origem C2X.
+- Validacao executada: leitura do diario canonico e dos arquivos Guardian de acesso C2X; sonda de schema/tabelas/etapas sem PII; exportacao XLSX via `@oai/artifact-tool`; renderizacao estrutural em memoria sem gravar preview com PII; importacao do XLSX confirmou abas `Clientes` (`A1:E246`), `Clientes unicos` (`A1:E194`) e `Resumo` (`A1:D17`); arquivo final com `22488` bytes; `git diff --check` passou nos arquivos alterados.
+- Protecao de dados: Nome e CPF nao foram impressos no chat, logs ou diario. O XLSX contem PII e deve ser tratado como arquivo restrito ao pedido do Lucas.
+- Pendencias ou riscos conhecidos: se Lucas quiser incluir tambem os empreendimentos legados `LAB` ou `LAG` encontrados na sonda (`LAGOA BONITA - MASTERPLAN` e `LAGOA BONITA - ADITIVO`), precisa autorizar novo recorte porque o pedido nominal original citou apenas `LBF`, `LBR` e `LBP`.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub DataOps` somente se Lucas solicitar novo recorte; sem necessidade de `Hub ReleaseOps` porque nao houve mudanca de produto/deploy.
