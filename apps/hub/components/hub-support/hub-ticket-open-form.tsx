@@ -499,7 +499,7 @@ export function HubTicketOpenForm({
 
       {successProtocol ? (
         <InlineNotice tone="success" icon={<CheckCircle2 className="size-4" />}>
-          Ticket {successProtocol} enviado para HubOps.
+          Ticket {successProtocol} enviado para SquadOps.
         </InlineNotice>
       ) : null}
 
@@ -519,7 +519,7 @@ export function HubTicketOpenForm({
         <SelectField
           label="Modulo"
           onChange={setModuleName}
-          options={["Hub", "Guardian", "CareDesk", "PulseX", "Setup", "HubOps"]}
+          options={["Hub", "Guardian", "CareDesk", "PulseX", "Setup", "SquadOps"]}
           value={moduleName}
         />
         <SelectField
@@ -605,11 +605,11 @@ export function HubTicketOpenForm({
 
       <div className="flex justify-end">
         <button
-          aria-label="Enviar para HubOps"
+          aria-label="Enviar para SquadOps"
           className="grid size-11 place-items-center rounded-xl bg-[#A07C3B] text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-50"
           disabled={isSaving || !canSubmit}
           onClick={() => void handleSubmit()}
-          title="Enviar para HubOps"
+          title="Enviar para SquadOps"
           type="button"
         >
           {isSaving ? (
@@ -799,7 +799,7 @@ function getModuleFromPath(pathname: string) {
   if (pathname.startsWith("/caredesk")) return "CareDesk";
   if (pathname.startsWith("/pulsex")) return "PulseX";
   if (pathname.startsWith("/setup")) return "Setup";
-  if (pathname.startsWith("/squadops")) return "HubOps";
+  if (pathname.startsWith("/squadops")) return "SquadOps";
 
   return "Hub";
 }
@@ -868,7 +868,7 @@ function buildTechnicalSummary({
     `Relato original: ${description.trim()}`,
     "Evidencias consideradas:",
     buildEvidenceSummary(attachments),
-    "Triagem Caca: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo HubOps.",
+    "Triagem Caca: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo SquadOps.",
   ];
 
   return lines.join("\n");

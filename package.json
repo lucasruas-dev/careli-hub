@@ -4,11 +4,14 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "deploy:homolog": "powershell -ExecutionPolicy Bypass -File scripts/deploy-homologation.ps1",
+    "healthcheck:homolog": "powershell -ExecutionPolicy Bypass -File scripts/homologation-healthcheck.ps1",
     "lint": "turbo run lint",
     "lint:hub": "turbo run lint --filter=@repo/hub...",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
-    "check-types:hub": "turbo run check-types --filter=@repo/hub..."
+    "check-types:hub": "turbo run check-types --filter=@repo/hub...",
+    "validate:hub": "npm run check-types:hub && npm run lint:hub && npm run build --workspace @repo/hub"
   },
   "devDependencies": {
     "prettier": "^3.7.4",

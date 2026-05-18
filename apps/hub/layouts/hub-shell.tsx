@@ -34,7 +34,6 @@ import {
 } from "@repo/uix";
 import {
   Bell,
-  Bot,
   CalendarDays,
   ChevronDown,
   CircleDollarSign,
@@ -50,6 +49,7 @@ import {
   Settings,
   ShieldCheck,
   ShoppingCart,
+  UsersRound,
 } from "lucide-react";
 import {
   getUnreadNotificationsCount,
@@ -82,7 +82,7 @@ const moduleIconMap: Record<string, ReactNode> = {
   guardian: <ShieldCheck aria-hidden="true" size={18} />,
   pulsex: <MessageSquareText aria-hidden="true" size={18} />,
   setup: <Settings aria-hidden="true" size={18} />,
-  squadops: <Bot aria-hidden="true" size={18} />,
+  squadops: <UsersRound aria-hidden="true" size={18} />,
 };
 
 const minimumReleasedModuleIds = [
@@ -132,8 +132,8 @@ export function HubShell({
       return false;
     }
 
-    if (isHubOpsModuleId(hubModule.id)) {
-      return isHubModuleActive(hubModule) && canAccessHubOpsModule(hubUser);
+    if (isSquadOpsModuleId(hubModule.id)) {
+      return isHubModuleActive(hubModule) && canAccessSquadOpsModule(hubUser);
     }
 
     if (!releasedModuleIds) {
@@ -150,7 +150,7 @@ export function HubShell({
   const moduleNavigationItems = orderedHubModules
     .filter(
       (hubModule) =>
-        isHubOpsModuleId(hubModule.id) ||
+        isSquadOpsModuleId(hubModule.id) ||
         visibleHubModules.includes(hubModule),
     )
     .flatMap((hubModule) => {
@@ -177,7 +177,7 @@ export function HubShell({
   const commands = orderedHubModules
     .filter(
       (hubModule) =>
-        isHubOpsModuleId(hubModule.id) ||
+        isSquadOpsModuleId(hubModule.id) ||
         visibleHubModules.includes(hubModule),
     )
     .flatMap((hubModule) => {
@@ -863,8 +863,8 @@ function canOpenShellModule(
   hubModule: (typeof orderedHubModules)[number],
   profileStatus: "error" | "idle" | "loading" | "ready",
 ) {
-  if (isHubOpsModuleId(moduleId)) {
-    return canAccessHubOpsModule(hubUser);
+  if (isSquadOpsModuleId(moduleId)) {
+    return canAccessSquadOpsModule(hubUser);
   }
 
   if (hubUser && canAccessModule(hubUser, hubModule)) {
@@ -890,11 +890,11 @@ function isVisibleInCurrentEnvironment(moduleId: string) {
   );
 }
 
-function isHubOpsModuleId(moduleId: string) {
+function isSquadOpsModuleId(moduleId: string) {
   return moduleId === "squadops";
 }
 
-function canAccessHubOpsModule(hubUser: HubUserContext | null) {
+function canAccessSquadOpsModule(hubUser: HubUserContext | null) {
   return (
     hubUser?.role === "admin" ||
     hubUser?.operationalProfile?.profileRole === "adm"

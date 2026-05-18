@@ -710,7 +710,7 @@ function inferScreen(subject: string, affectedFiles: string, rawContent: string)
     text.includes("operations center") ||
     text.includes("hubops")
   ) {
-    return "HubOps / Operations Center";
+    return "SquadOps / Operations Center";
   }
 
   if (text.includes("pulsex") || text.includes("/pulsex")) {

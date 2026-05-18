@@ -20,6 +20,14 @@ import {
   type EngineeringOperationRecord,
   type EngineeringOperationsResponse,
 } from "@/lib/squadops/engineering-operations-parser";
+import {
+  buildReleaseCommitTemplate,
+  buildReleaseProtocols,
+  getReleaseProtocolEnvironmentLabel,
+  getReleaseProtocolStatusLabel,
+  type HubReleaseProtocol,
+  type ReleaseProtocolStatus,
+} from "@/lib/squadops/release-protocols";
 import { useAuth } from "@/providers/auth-provider";
 import type { HubUserContext } from "@repo/shared";
 import {
@@ -77,7 +85,7 @@ type OperationsFilters = {
   type: string;
 };
 
-type HubOpsView =
+type SquadOpsView =
   | "overview"
   | "monitoring"
   | "itTickets"
@@ -262,16 +270,24 @@ Fontes obrigatorias:
 Como descobrir o recorte:
 - Ler os registros mais recentes do Engineering Operations.
 - Identificar registros com status AGUARDANDO RELEASEOPS ou AGUARDANDO DEPLOY.
-- Agrupar por modulo/frente/squad: HubOps, Guardian, PulseX, CareDesk, Setup, SupportOps ou ReleaseOps.
+- Agrupar por modulo/frente/squad: SquadOps, Guardian, PulseX, CareDesk, Setup, SupportOps ou ReleaseOps.
 - Para cada grupo, listar assunto, arquivos/modulos afetados, validacoes, riscos e proxima squad.
 - Cruzar os arquivos citados no diario com o Git diff real.
 - Confirmar se o diff pertence ao mesmo modulo/frente.
 - Ignorar registros ja marcados como EM PRODUCAO, salvo se houver novo diff local relacionado.
 
+Protocolo de deploy:
+- Criar ou selecionar um protocolo macro no padrao DP-0001.
+- O DP deve agrupar todos os protocolos AT-* e AL-* incluidos no release.
+- O DP deve ter ambiente atual: desenvolvimento, QA, homologacao ou producao.
+- Antes de producao, registrar etapa de homologacao quando aplicavel.
+- O commit deve citar o DP no titulo e os AT/AL no corpo.
+- Exemplo de commit: feat(squadops): publish operations center updates [DP-0007].
+
 Regras de release:
 - Nao usar deploy geral se houver mais de um recorte misturado.
 - Nao usar stage amplo de arquivos sem revisar o escopo.
-- Nao misturar Guardian, PulseX, CareDesk, Setup ou HubOps no mesmo commit/deploy sem autorizacao explicita do diario.
+- Nao misturar Guardian, PulseX, CareDesk, Setup ou SquadOps no mesmo commit/deploy sem autorizacao explicita do diario.
 - Nao publicar arquivos que nao estejam relacionados ao recorte aprovado.
 - Nao expor secrets, tokens, chaves ou valores sensiveis.
 - Nao chamar checks pesados como Guardian queue limit=1000 automaticamente.
@@ -319,12 +335,14 @@ Formato esperado da resposta:
 - Validacoes executadas
 - Commit realizado, se houver
 - Deploy realizado, se houver
+- Protocolo DP, ambiente e protocolos AT/AL incluidos
+- Homologacao executada ou pendente
 - Healthchecks executados
 - Riscos ou pendencias
 - Status final
 
 Status esperado:
-EM PRODUCAO quando publicado; BLOQUEADO quando houver risco real; AGUARDANDO RECORTE quando o diario/Git nao permitirem separar o deploy com seguranca.`,
+EM HOMOLOGACAO quando estiver aguardando validacao; EM PRODUCAO quando publicado; BLOQUEADO quando houver risco real; AGUARDANDO RECORTE quando o diario/Git nao permitirem separar o deploy com seguranca.`,
   },
   {
     id: "daily-activity",
@@ -343,7 +361,7 @@ Periodo analisado:
 - Data: 17/05/2026.
 - Fonte historica: docs/codex/engineering-operations.md.
 - Fonte de estado atual: Database Monitoring / APIs reais / healthchecks.
-- Modulos relevantes: HubOps/SquadOps, Guardian, PulseX, SupportOps, ReleaseOps e CareDesk quando houver registro no diario.
+- Modulos relevantes: SquadOps, Guardian, PulseX, SupportOps, ReleaseOps e CareDesk quando houver registro no diario.
 
 Objetivo:
 - Consolidar o que foi implementado, corrigido, validado ou bloqueado no dia.
@@ -352,7 +370,7 @@ Objetivo:
 - Nao alterar codigo, nao fazer deploy e nao executar comandos destrutivos.
 
 Foco da leitura:
-- HubOps / Operations Center: Database Monitoring, Ops Watcher, PO AI, prompts, layout, sidebar e acesso adm.
+- SquadOps / Operations Center: Database Monitoring, Ops Watcher, PO AI, prompts, layout, sidebar e acesso adm.
 - ReleaseOps: itens aguardando publicacao, recortes que precisam de commit/deploy e healthchecks esperados.
 - SupportOps: gargalos, falhas locais, riscos de build, APIs ou performance.
 - Guardian/PulseX/CareDesk: citar somente o que estiver registrado no diario ou nos checks reais.
@@ -397,7 +415,7 @@ Frentes obrigatorias:
 - Guardian: consolidar apenas registros e riscos presentes no diario.
 - CareDesk: apontar estado atual e lacunas registradas.
 - PulseX: consolidar correcoes, validacoes pendentes e riscos de realtime/chamadas.
-- HubOps/SquadOps: consolidar Operations Center, Database Monitoring, Ops Watcher, PO AI, prompts e UX.
+- SquadOps: consolidar Operations Center, Database Monitoring, Ops Watcher, PO AI, prompts e UX.
 - SupportOps: consolidar gargalos, troubleshooting, EADDRINUSE, build errors, APIs e performance.
 - ReleaseOps: consolidar itens aguardando publicacao, commits/deploys e healthchecks.
 
@@ -414,7 +432,7 @@ Regras:
 - Nao executar deploy, commit ou comando; apenas consolidar e orientar.
 
 Recomendacao esperada:
-- Prioridade 1: separar/publicar recortes HubOps que ja estao AGUARDANDO RELEASEOPS.
+- Prioridade 1: separar/publicar recortes SquadOps que ja estao AGUARDANDO RELEASEOPS.
 - Prioridade 2: acompanhar riscos tecnicos de build, realtime e payload.
 - Prioridade 3: reforcar governanca de prompts, healthchecks e registros operacionais.
 
@@ -432,11 +450,11 @@ AGUARDANDO RELEASEOPS se houver recorte local pendente; OPERACIONAL COM ATENCAO 
   {
     id: "supportops-technical-monitoring",
     label: "Monitoramento tecnico",
-    description: "Acompanhamento SupportOps dos riscos tecnicos HubOps.",
+    description: "Acompanhamento SupportOps dos riscos tecnicos SquadOps.",
     target: "Hub SupportOps",
     type: "monitoring",
     body: `Assunto:
-[SupportOps] Monitoramento tecnico HubOps
+[SupportOps] Monitoramento tecnico SquadOps
 
 Hub SupportOps, manter acompanhamento dos riscos tecnicos da semana.
 
@@ -452,7 +470,7 @@ Fonte de estado atual:
 Itens em acompanhamento:
 - Warning Turbopack/NFT da rota que le Engineering Operations.
 - Possivel recorrencia de porta 3001 ocupada no dev local.
-- Build errors em HubOps/SquadOps.
+- Build errors em SquadOps.
 - APIs e payload do Operations Center.
 
 Regras:
@@ -500,7 +518,7 @@ Periodo analisado:
 - Objetivo: consolidar entregas, estabilidade, riscos e prioridades.
 
 Temas principais:
-- Evolucao do HubOps/SquadOps para Operations Center.
+- Evolucao do SquadOps para Operations Center.
 - Implantacao de Database Monitoring, Ops Watcher e PO AI orientado por monitoramento real.
 - Ajustes de governanca ReleaseOps e rastreabilidade no Engineering Operations.
 - Pendencias tecnicas e operacionais em Guardian, PulseX, SupportOps e build quando registradas.
@@ -509,7 +527,7 @@ Entregas e evolucoes:
 - Guardian: consolidar estado, pendencias D4Sign/fila/performance e riscos somente com evidencia registrada.
 - CareDesk: registrar estado atual e lacunas de evolucao real quando constarem no diario.
 - PulseX: consolidar realtime/chamadas, queries, experiencia de conversa e validacoes pendentes.
-- HubOps/SquadOps: consolidar Operations Center, Database Monitoring, PO AI, prompts, UX e acesso adm.
+- SquadOps: consolidar Operations Center, Database Monitoring, PO AI, prompts, UX e acesso adm.
 - SupportOps/ReleaseOps: consolidar troubleshooting, releases, deploys, healthchecks e bloqueios.
 
 Estabilidade operacional:
@@ -525,7 +543,7 @@ Riscos para o proximo ciclo:
 - Warning Turbopack/NFT e pendencias tecnicas de build/auditoria devem ser acompanhados.
 
 Prioridades recomendadas:
-- Publicar recortes HubOps ja validados e AGUARDANDO RELEASEOPS.
+- Publicar recortes SquadOps ja validados e AGUARDANDO RELEASEOPS.
 - Consolidar monitoramento real como fonte primaria de estado operacional.
 - Resolver pendencias de ReleaseOps/SupportOps antes de ampliar automacoes.
 - Manter o Engineering Operations como historico, auditoria e memoria viva.
@@ -543,7 +561,7 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
   },
 ];
 
-const hubOpsViews = [
+const squadOpsViews = [
   { id: "itTickets", label: "Ticket TI" },
   { id: "overview", label: "Visão geral" },
   { id: "monitoring", label: "Database Monitoring" },
@@ -551,11 +569,11 @@ const hubOpsViews = [
   { id: "timeline", label: "Timeline" },
   { id: "audits", label: "Auditorias" },
   { id: "records", label: "Registros" },
-] as const satisfies readonly { id: HubOpsView; label: string }[];
+] as const satisfies readonly { id: SquadOpsView; label: string }[];
 
 export function SquadOpsPage() {
   const { authState, hubUser, profileStatus } = useAuth();
-  const canAccessHubOps = canAccessHubOpsAsAdmin(hubUser);
+  const canAccessSquadOps = canAccessSquadOpsAsAdmin(hubUser);
   const authAccessToken = authState.session?.accessToken ?? null;
   const [operations, setOperations] =
     useState<EngineeringOperationsResponse | null>(null);
@@ -588,7 +606,7 @@ export function SquadOpsPage() {
   const [selectedPromptTemplateId, setSelectedPromptTemplateId] = useState(
     promptTemplates[0]!.id,
   );
-  const [activeView, setActiveView] = useState<HubOpsView>("overview");
+  const [activeView, setActiveView] = useState<SquadOpsView>("overview");
   const [monitoringSnapshot, setMonitoringSnapshot] =
     useState<OperationsMonitoringSnapshot | null>(null);
   const [monitoringHistory, setMonitoringHistory] = useState<
@@ -629,7 +647,7 @@ export function SquadOpsPage() {
       return;
     }
 
-    if (!canAccessHubOps) {
+    if (!canAccessSquadOps) {
       setIsLoading(false);
       setError(null);
       setOperations(null);
@@ -671,7 +689,7 @@ export function SquadOpsPage() {
           setError(
             typeof maybeError === "string"
               ? maybeError
-              : "Não foi possível carregar HubOps.",
+              : "Não foi possível carregar SquadOps.",
           );
           setOperations(null);
           return;
@@ -680,7 +698,7 @@ export function SquadOpsPage() {
         setOperations(payload);
       } catch {
         if (isActive) {
-          setError("Não foi possível conectar à API do HubOps.");
+          setError("Não foi possível conectar à API do SquadOps.");
           setOperations(null);
         }
       } finally {
@@ -695,10 +713,10 @@ export function SquadOpsPage() {
     return () => {
       isActive = false;
     };
-  }, [authAccessToken, canAccessHubOps, profileStatus]);
+  }, [authAccessToken, canAccessSquadOps, profileStatus]);
 
   const loadStructuredOperations = useCallback(async () => {
-    if (!canAccessHubOps || profileStatus === "loading") {
+    if (!canAccessSquadOps || profileStatus === "loading") {
       return;
     }
 
@@ -765,14 +783,14 @@ export function SquadOpsPage() {
         syncRuns: [],
       });
     }
-  }, [authAccessToken, canAccessHubOps, operations, profileStatus]);
+  }, [authAccessToken, canAccessSquadOps, operations, profileStatus]);
 
   useEffect(() => {
     void loadStructuredOperations();
   }, [loadStructuredOperations]);
 
   const loadAlertProtocols = useCallback(async () => {
-    if (!canAccessHubOps || profileStatus === "loading") {
+    if (!canAccessSquadOps || profileStatus === "loading") {
       return;
     }
 
@@ -806,14 +824,14 @@ export function SquadOpsPage() {
     } catch {
       setAlertProtocols((current) => current);
     }
-  }, [authAccessToken, canAccessHubOps, profileStatus]);
+  }, [authAccessToken, canAccessSquadOps, profileStatus]);
 
   useEffect(() => {
     void loadAlertProtocols();
   }, [loadAlertProtocols]);
 
   const loadItTicketSummary = useCallback(async () => {
-    if (!canAccessHubOps || profileStatus === "loading") {
+    if (!canAccessSquadOps || profileStatus === "loading") {
       return;
     }
 
@@ -824,19 +842,19 @@ export function SquadOpsPage() {
       });
 
       setItTicketCount(countOpenItTickets(tickets));
-      setItTicketAttentionCount(countItTicketsWaitingForHubOps(tickets));
+      setItTicketAttentionCount(countItTicketsWaitingForSquadOps(tickets));
     } catch {
       setItTicketCount((current) => current);
       setItTicketAttentionCount((current) => current);
     }
-  }, [authAccessToken, canAccessHubOps, profileStatus]);
+  }, [authAccessToken, canAccessSquadOps, profileStatus]);
 
   useEffect(() => {
     void loadItTicketSummary();
   }, [loadItTicketSummary]);
 
   useEffect(() => {
-    if (!canAccessHubOps || profileStatus === "loading") {
+    if (!canAccessSquadOps || profileStatus === "loading") {
       return undefined;
     }
 
@@ -845,7 +863,7 @@ export function SquadOpsPage() {
     }, 60_000);
 
     return () => window.clearInterval(intervalId);
-  }, [canAccessHubOps, loadItTicketSummary, profileStatus]);
+  }, [canAccessSquadOps, loadItTicketSummary, profileStatus]);
 
   const registerWatcherDecision = useCallback((decision: OpsWatcherDecision) => {
     setWatcherDecision(decision);
@@ -902,7 +920,7 @@ export function SquadOpsPage() {
 
   const loadMonitoringSnapshot = useCallback(
     async ({ analyze = false }: { analyze?: boolean } = {}) => {
-      if (!canAccessHubOps || profileStatus === "loading") {
+      if (!canAccessSquadOps || profileStatus === "loading") {
         return;
       }
 
@@ -960,20 +978,20 @@ export function SquadOpsPage() {
         setIsMonitoringLoading(false);
       }
     },
-    [authAccessToken, canAccessHubOps, profileStatus, runOpsWatcher],
+    [authAccessToken, canAccessSquadOps, profileStatus, runOpsWatcher],
   );
 
   useEffect(() => {
-    if (!canAccessHubOps || profileStatus === "loading") {
+    if (!canAccessSquadOps || profileStatus === "loading") {
       return;
     }
 
     void loadMonitoringSnapshot({ analyze: true });
-  }, [canAccessHubOps, loadMonitoringSnapshot, profileStatus]);
+  }, [canAccessSquadOps, loadMonitoringSnapshot, profileStatus]);
 
   useEffect(() => {
     if (
-      !canAccessHubOps ||
+      !canAccessSquadOps ||
       profileStatus === "loading" ||
       monitoringIntervalMs === 0
     ) {
@@ -986,7 +1004,7 @@ export function SquadOpsPage() {
 
     return () => window.clearInterval(interval);
   }, [
-    canAccessHubOps,
+    canAccessSquadOps,
     loadMonitoringSnapshot,
     monitoringIntervalMs,
     profileStatus,
@@ -1030,19 +1048,19 @@ export function SquadOpsPage() {
       (template) => template.id === selectedPromptTemplateId,
     ) ?? promptTemplates[0]!;
 
-  if (profileStatus === "loading" && !canAccessHubOps) {
+  if (profileStatus === "loading" && !canAccessSquadOps) {
     return (
-      <HubOpsAccessState
+      <SquadOpsAccessState
         description="Carregando perfil operacional para validar permissao adm."
-        title="Preparando HubOps"
+        title="Preparando SquadOps"
       />
     );
   }
 
-  if (!canAccessHubOps) {
+  if (!canAccessSquadOps) {
     return (
-      <HubOpsAccessState
-        description="HubOps e o Operations Center da engenharia IA e fica liberado somente para perfil adm."
+      <SquadOpsAccessState
+        description="SquadOps e o Operations Center da engenharia IA e fica liberado somente para perfil adm."
         title="Acesso restrito"
       />
     );
@@ -1485,7 +1503,7 @@ export function SquadOpsPage() {
           </Surface>
         ) : null}
 
-        <HubOpsCommandCenter
+        <SquadOpsCommandCenter
           actionCount={actionCount}
           isLoading={isLoading}
           latestRecord={latestRecord}
@@ -1498,7 +1516,7 @@ export function SquadOpsPage() {
           onOpenMonitoring={() => setActiveView("monitoring")}
         />
 
-        <HubOpsViewTabs
+        <SquadOpsViewTabs
           activeView={activeView}
           actionCount={actionCount}
           deployCount={allReleaseRecords.length}
@@ -1894,7 +1912,7 @@ function AlertProtocolFeedbackDrawer({
   );
 }
 
-function HubOpsAccessState({
+function SquadOpsAccessState({
   description,
   title,
 }: {
@@ -1920,7 +1938,7 @@ function HubOpsAccessState({
   );
 }
 
-function canAccessHubOpsAsAdmin(user: HubUserContext | null) {
+function canAccessSquadOpsAsAdmin(user: HubUserContext | null) {
   return user?.role === "admin" || user?.operationalProfile?.profileRole === "adm";
 }
 
@@ -2022,7 +2040,7 @@ function OperationsSourcePanel({
   );
 }
 
-function HubOpsCommandCenter({
+function SquadOpsCommandCenter({
   actionCount,
   isLoading,
   latestRecord,
@@ -2946,6 +2964,10 @@ function AlertProtocolsHistoryPanel({
 }
 
 function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
+  const groups = useMemo(() => buildCheckHistoryGroups(checks), [checks]);
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
+  const activeGroupKey = expandedGroupKey ?? groups[0]?.key ?? null;
+
   return (
     <Surface bordered className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="border-b border-slate-100 p-5">
@@ -2955,57 +2977,206 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
           title="Historico de checks"
         />
       </div>
-      <div className="max-h-[42vh] overflow-auto">
-        <table className="min-w-[68rem] w-full border-collapse text-left text-sm">
-          <thead className="bg-slate-50/80 text-xs font-semibold uppercase text-slate-400">
-            <tr>
-              <th className="px-4 py-3">Horario</th>
-              <th className="px-4 py-3">Origem</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Tempo</th>
-              <th className="px-4 py-3">Payload</th>
-              <th className="px-4 py-3">Risco</th>
-              <th className="px-4 py-3">Alerta</th>
-            </tr>
-          </thead>
-          <tbody>
-            {checks.slice(0, 80).map((check, index) => (
-              <tr
-                className="border-t border-slate-100"
-                key={`${check.id}-${check.checkedAt}-${index}`}
-              >
-                <td className="px-4 py-3 text-xs font-semibold text-slate-500">
-                  {formatOperationDateTime(check.checkedAt)}
-                </td>
-                <td className="px-4 py-3">
-                  <p className="m-0 font-semibold text-slate-950">{check.label}</p>
-                  <p className="m-0 mt-1 truncate text-xs text-slate-500">
-                    {check.module}
-                  </p>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{check.received}</td>
-                <td className="px-4 py-3 text-slate-600">{check.responseMs}ms</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {formatBytes(check.payloadBytes)}
-                </td>
-                <td className="px-4 py-3">
-                  <Badge variant={riskToBadgeVariant(check.risk)}>
-                    {check.risk}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {check.alertGenerated ? "sim" : "nao"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="max-h-[46vh] overflow-y-auto p-4">
+        {groups.length > 0 ? (
+          <div className="grid gap-3">
+            {groups.map((group) => {
+              const isExpanded = activeGroupKey === group.key;
+
+              return (
+                <div
+                  className="overflow-hidden rounded-xl border border-slate-200/70 bg-white"
+                  key={group.key}
+                >
+                  <button
+                    aria-expanded={isExpanded}
+                    className="flex w-full flex-wrap items-center justify-between gap-3 bg-slate-50/70 px-4 py-3 text-left transition hover:bg-slate-100/70"
+                    onClick={() =>
+                      setExpandedGroupKey(isExpanded ? "__closed" : group.key)
+                    }
+                    type="button"
+                  >
+                    <div>
+                      <p className="m-0 text-sm font-semibold text-slate-950">
+                        {group.label}
+                      </p>
+                      <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+                        {group.checks.length} checks / {group.alertCount} alertas
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={riskToBadgeVariant(group.highestRisk)}>
+                        {group.highestRisk}
+                      </Badge>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                        maior tempo {group.maxResponseMs}ms
+                      </span>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                        payload {formatBytes(group.maxPayloadBytes)}
+                      </span>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                        {isExpanded ? "recolher" : "expandir"}
+                      </span>
+                    </div>
+                  </button>
+
+                  {isExpanded ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[68rem] w-full border-collapse text-left text-sm">
+                        <thead className="bg-white text-xs font-semibold uppercase text-slate-400">
+                          <tr>
+                            <th className="px-4 py-3">Horario</th>
+                            <th className="px-4 py-3">Origem</th>
+                            <th className="px-4 py-3">Status</th>
+                            <th className="px-4 py-3">Tempo</th>
+                            <th className="px-4 py-3">Payload</th>
+                            <th className="px-4 py-3">Risco</th>
+                            <th className="px-4 py-3">Alerta</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.checks.map((check, index) => (
+                            <tr
+                              className="border-t border-slate-100"
+                              key={`${check.id}-${check.checkedAt}-${index}`}
+                            >
+                              <td className="px-4 py-3 text-xs font-semibold text-slate-500">
+                                {formatOperationDateTime(check.checkedAt)}
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="m-0 font-semibold text-slate-950">
+                                  {check.label}
+                                </p>
+                                <p className="m-0 mt-1 truncate text-xs text-slate-500">
+                                  {check.module}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">
+                                {check.received}
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">
+                                {check.responseMs}ms
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">
+                                {formatBytes(check.payloadBytes)}
+                              </td>
+                              <td className="px-4 py-3">
+                                <Badge variant={riskToBadgeVariant(check.risk)}>
+                                  {check.risk}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">
+                                {check.alertGenerated ? "sim" : "nao"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState message="Nenhum check registrado nesta sessao." />
+        )}
       </div>
     </Surface>
   );
 }
 
-function HubOpsViewTabs({
+type CheckHistoryGroup = {
+  alertCount: number;
+  checks: OperationsCheckMetric[];
+  highestRisk: OperationsRiskLevel | "nenhum";
+  key: string;
+  label: string;
+  maxPayloadBytes: number;
+  maxResponseMs: number;
+};
+
+function buildCheckHistoryGroups(
+  checks: OperationsCheckMetric[],
+): CheckHistoryGroup[] {
+  const groupsByHour = new Map<
+    string,
+    {
+      checks: OperationsCheckMetric[];
+      label: string;
+    }
+  >();
+
+  checks.slice(0, 120).forEach((check) => {
+    const bucket = getCheckHistoryHourBucket(check.checkedAt);
+    const group = groupsByHour.get(bucket.key) ?? {
+      checks: [],
+      label: bucket.label,
+    };
+
+    group.checks.push(check);
+    groupsByHour.set(bucket.key, group);
+  });
+
+  return Array.from(groupsByHour.entries()).map(([key, group]) => {
+    const highestRisk = group.checks.reduce<OperationsRiskLevel | "nenhum">(
+      (currentRisk, check) =>
+        riskPriority(check.risk) > riskPriority(currentRisk)
+          ? check.risk
+          : currentRisk,
+      "nenhum",
+    );
+
+    return {
+      alertCount: group.checks.filter((check) => check.alertGenerated).length,
+      checks: group.checks,
+      highestRisk,
+      key,
+      label: group.label,
+      maxPayloadBytes: Math.max(
+        0,
+        ...group.checks.map((check) => check.payloadBytes),
+      ),
+      maxResponseMs: Math.max(
+        0,
+        ...group.checks.map((check) => check.responseMs),
+      ),
+    };
+  });
+}
+
+function getCheckHistoryHourBucket(value: string) {
+  const date = parseLocalDateTime(value);
+
+  if (!date) {
+    return {
+      key: `sem-horario-${value}`,
+      label: value,
+    };
+  }
+
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    month: "2-digit",
+    timeZone: hubTimeZone,
+    year: "2-digit",
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "--";
+  const day = getPart("day");
+  const hour = getPart("hour");
+  const month = getPart("month");
+  const year = getPart("year");
+
+  return {
+    key: `${year}-${month}-${day}-${hour}`,
+    label: `${day}/${month}/${year} ${hour}:00`,
+  };
+}
+
+function SquadOpsViewTabs({
   activeView,
   actionCount,
   deployCount,
@@ -3016,14 +3187,14 @@ function HubOpsViewTabs({
   onChange,
   routineCount,
 }: {
-  activeView: HubOpsView;
+  activeView: SquadOpsView;
   actionCount: number;
   deployCount: number;
   filteredCount: number;
   itTicketAttentionCount: number;
   itTicketCount: number;
   monitoringAlertCount: number;
-  onChange: (view: HubOpsView) => void;
+  onChange: (view: SquadOpsView) => void;
   routineCount: number;
 }) {
   const counters = {
@@ -3034,14 +3205,14 @@ function HubOpsViewTabs({
     overview: actionCount,
     records: filteredCount,
     timeline: filteredCount,
-  } as const satisfies Record<HubOpsView, number>;
+  } as const satisfies Record<SquadOpsView, number>;
 
   return (
     <nav
-      aria-label="Visões do HubOps"
+      aria-label="Visões do SquadOps"
       className="flex w-full flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
-      {hubOpsViews.map((view) => {
+      {squadOpsViews.map((view) => {
         const isActive = activeView === view.id;
         const hasNewTickets =
           view.id === "itTickets" && itTicketAttentionCount > 0;
@@ -3064,7 +3235,7 @@ function HubOpsViewTabs({
             onClick={() => onChange(view.id)}
             title={
               hasNewTickets
-                ? `${itTicketAttentionCount} ticket(s) novo(s) aguardando HubOps`
+                ? `${itTicketAttentionCount} ticket(s) novo(s) aguardando SquadOps`
                 : undefined
             }
             type="button"
@@ -3097,7 +3268,8 @@ function DeployProtocolsView({
   onSelectRecord: (record: EngineeringOperationRecord) => void;
   records: EngineeringOperationRecord[];
 }) {
-  const deploys = deployRecords.slice(0, 12);
+  const releaseProtocols = buildReleaseProtocols(records).slice(0, 12);
+  const deployCount = releaseProtocols.length || deployRecords.length;
   const moduleGroups = buildProtocolModuleGroups(records.slice(0, 120));
 
   return (
@@ -3105,69 +3277,24 @@ function DeployProtocolsView({
       <div className="grid content-start gap-5">
         <Surface bordered className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <PanelTitle
-            eyebrow={`${deploys.length} releases`}
+            eyebrow={`${deployCount} releases`}
             icon={<Rocket size={18} />}
-            title="Deploys macro"
+            title="Release protocols"
           />
           <p className="m-0 mt-3 text-sm leading-6 text-slate-600">
-            O deploy deve citar protocolos. O detalhe de cada alteracao fica no
-            protocolo consultavel por modulo, tela e tipo.
+            Cada deploy deve ter um protocolo DP, citar os AT/AL incluidos no
+            commit e passar por homologacao antes de producao quando aplicavel.
           </p>
 
           <div className="mt-4 grid max-h-[58vh] gap-3 overflow-y-auto pr-1">
-            {deploys.length > 0 ? (
-              deploys.map((record) => {
-                const relatedProtocols = getRelatedProtocolRecords(record, records);
-
-                return (
-                  <button
-                    className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                    key={record.id}
-                    onClick={() => onSelectRecord(record)}
-                    type="button"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="m-0 line-clamp-2 text-sm font-semibold text-slate-950">
-                          {record.subject}
-                        </p>
-                        <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-                          {record.module} / {formatOperationDateTime(record.localDateTime)}
-                        </p>
-                      </div>
-                      <Badge variant={statusVariant(record.status)}>
-                        {record.status}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                        {record.protocol}
-                      </span>
-                      <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
-                        {record.screen}
-                      </span>
-                    </div>
-                    <p className="m-0 mt-3 line-clamp-3 text-xs leading-5 text-slate-600">
-                      {getRecordChangeSummary(record)}
-                    </p>
-                    <div className="mt-3 rounded-lg bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
-                      <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
-                        Protocolos relacionados
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {relatedProtocols.map((protocolRecord) => (
-                          <span
-                            className="rounded-full bg-white px-2 py-1 text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70"
-                            key={`${record.id}-${protocolRecord.protocol}`}
-                          >
-                            {protocolRecord.protocol}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })
+            {releaseProtocols.length > 0 ? (
+              releaseProtocols.map((releaseProtocol) => (
+                <ReleaseProtocolCard
+                  key={releaseProtocol.protocol}
+                  onSelectRecord={onSelectRecord}
+                  releaseProtocol={releaseProtocol}
+                />
+              ))
             ) : (
               <EmptyState message="Sem deploy registrado para os filtros atuais." />
             )}
@@ -3183,11 +3310,11 @@ function DeployProtocolsView({
           <ul className="m-0 mt-4 grid list-none gap-2 p-0 text-sm leading-6 text-slate-600">
             <li>Atividade operacional: AT-0001.</li>
             <li>Alerta operacional: AL-0001.</li>
-            <li>Modulo, tela, tipo e motivo ficam nos campos estruturados.</li>
-            <li>O dev nao inventa codigo; ele cita o protocolo recebido.</li>
-            <li>O HubOps sincroniza o registro para o Supabase estruturado.</li>
-            <li>ReleaseOps cita os protocolos no deploy macro.</li>
-            <li>A tabela `hub_engineering_operation_records` vira a busca oficial.</li>
+            <li>Deploy/release macro: DP-0001.</li>
+            <li>O commit cita o DP no titulo e lista os AT/AL no corpo.</li>
+            <li>Homologacao vira ambiente oficial antes de producao.</li>
+            <li>Vercel cruza pelo commit SHA e deployment id.</li>
+            <li>O status final fecha o ciclo: homologado, em producao, bloqueado ou rollback.</li>
           </ul>
         </Surface>
       </div>
@@ -3246,6 +3373,153 @@ function DeployProtocolsView({
         </div>
       </Surface>
     </section>
+  );
+}
+
+function ReleaseProtocolCard({
+  onSelectRecord,
+  releaseProtocol,
+}: {
+  onSelectRecord: (record: EngineeringOperationRecord) => void;
+  releaseProtocol: HubReleaseProtocol;
+}) {
+  const commitTemplate = buildReleaseCommitTemplate(releaseProtocol);
+
+  return (
+    <article className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <button
+          className="min-w-0 text-left"
+          onClick={() => onSelectRecord(releaseProtocol.record)}
+          type="button"
+        >
+          <p className="m-0 font-mono text-xs font-semibold text-[#7A5E2C]">
+            {releaseProtocol.protocol}
+          </p>
+          <h3 className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+            {releaseProtocol.title}
+          </h3>
+          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+            {releaseProtocol.modules.join(", ") || releaseProtocol.module} /{" "}
+            {formatOperationDateTime(releaseProtocol.plannedAt)}
+          </p>
+        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge variant={releaseProtocolStatusVariant(releaseProtocol.status)}>
+            {getReleaseProtocolStatusLabel(releaseProtocol.status)}
+          </Badge>
+          <Badge variant="info">
+            {getReleaseProtocolEnvironmentLabel(releaseProtocol.environment)}
+          </Badge>
+        </div>
+      </div>
+
+      <ReleaseProtocolPipeline releaseProtocol={releaseProtocol} />
+
+      <p className="m-0 mt-3 line-clamp-3 text-xs leading-5 text-slate-600">
+        {releaseProtocol.summary}
+      </p>
+
+      <div className="mt-3 grid gap-3 rounded-lg bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
+        <div>
+          <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
+            Protocolos incluidos
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {releaseProtocol.includedProtocols.map((protocol) => (
+              <span
+                className="rounded-full bg-white px-2 py-1 text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70"
+                key={`${releaseProtocol.protocol}-${protocol}`}
+              >
+                {protocol}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-2 text-xs leading-5 text-slate-600">
+          <ReleaseMetaLine label="Commit" value={releaseProtocol.commit} />
+          <ReleaseMetaLine label="Deploy" value={releaseProtocol.deployment} />
+          <ReleaseMetaLine
+            label="Healthcheck"
+            value={releaseProtocol.healthchecks}
+          />
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
+            Formato de commit
+          </p>
+          <pre className="m-0 mt-2 whitespace-pre-wrap break-words font-mono text-[0.68rem] leading-5 text-slate-600">
+            {commitTemplate}
+          </pre>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ReleaseProtocolPipeline({
+  releaseProtocol,
+}: {
+  releaseProtocol: HubReleaseProtocol;
+}) {
+  const steps = [
+    {
+      id: "homologacao",
+      label: "Homologacao",
+      isActive:
+        releaseProtocol.environment === "homologacao" ||
+        releaseProtocol.status === "em_homologacao" ||
+        releaseProtocol.status === "homologado",
+      isDone:
+        releaseProtocol.status === "homologado" ||
+        releaseProtocol.status === "aguardando_producao" ||
+        releaseProtocol.status === "em_producao" ||
+        releaseProtocol.status === "finalizado",
+    },
+    {
+      id: "producao",
+      label: "Producao",
+      isActive:
+        releaseProtocol.environment === "producao" ||
+        releaseProtocol.status === "aguardando_producao" ||
+        releaseProtocol.status === "em_producao",
+      isDone:
+        releaseProtocol.status === "em_producao" ||
+        releaseProtocol.status === "finalizado",
+    },
+  ];
+
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-2">
+      {steps.map((step) => (
+        <div
+          className={`rounded-lg border px-3 py-2 ${
+            step.isDone
+              ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+              : step.isActive
+                ? "border-[#A07C3B]/25 bg-[#A07C3B]/10 text-[#7A5E2C]"
+                : "border-slate-200 bg-white text-slate-500"
+          }`}
+          key={step.id}
+        >
+          <p className="m-0 text-xs font-semibold">{step.label}</p>
+          <p className="m-0 mt-1 text-[0.68rem] font-medium">
+            {step.isDone ? "concluido" : step.isActive ? "em foco" : "pendente"}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReleaseMetaLine({ label, value }: { label: string; value: string }) {
+  return (
+    <p className="m-0">
+      <span className="font-semibold text-slate-500">{label}: </span>
+      {value && value !== UNKNOWN_OPERATION_VALUE ? value : "nao informado"}
+    </p>
   );
 }
 
@@ -4336,7 +4610,7 @@ function detectCopilotModuleTitle(text: string) {
     normalizedText.includes("hubops") ||
     normalizedText.includes("squadops")
   ) {
-    return "HubOps / SquadOps";
+    return "SquadOps";
   }
 
   if (normalizedText.includes("supportops")) {
@@ -4376,7 +4650,7 @@ function extractCopilotTitle(line: string) {
   }
 
   const numberedModule = line.match(
-    /^(?:\d+\.\s+)?((?:Guardian|CareDesk|PulseX|HubOps|SquadOps|ReleaseOps|SupportOps|Setup|Engineering Operations)[\w\s/.-]*)$/i,
+    /^(?:\d+\.\s+)?((?:Guardian|CareDesk|PulseX|SquadOps|ReleaseOps|SupportOps|Setup|Engineering Operations)[\w\s/.-]*)$/i,
   );
 
   if (numberedModule?.[1]) {
@@ -4507,20 +4781,6 @@ function getKnownRecordValue(values: string[]) {
   );
 }
 
-function getRelatedProtocolRecords(
-  deployRecord: EngineeringOperationRecord,
-  records: EngineeringOperationRecord[],
-) {
-  const related = records.filter(
-    (record) =>
-      record.id === deployRecord.id ||
-      (record.module === deployRecord.module &&
-        record.localDateTime <= deployRecord.localDateTime),
-  );
-
-  return related.slice(0, 6);
-}
-
 function buildProtocolModuleGroups(records: EngineeringOperationRecord[]) {
   const moduleMap = new Map<string, Map<string, EngineeringOperationRecord[]>>();
 
@@ -4570,6 +4830,30 @@ function protocolCategoryVariant(category: string): BadgeVariant {
     normalizedCategory.includes("criacao")
   ) {
     return "info";
+  }
+
+  return "neutral";
+}
+
+function releaseProtocolStatusVariant(status: ReleaseProtocolStatus): BadgeVariant {
+  if (
+    status === "em_producao" ||
+    status === "finalizado" ||
+    status === "homologado"
+  ) {
+    return "success";
+  }
+
+  if (status === "em_homologacao" || status === "aguardando_producao") {
+    return "info";
+  }
+
+  if (status === "bloqueado" || status === "rollback") {
+    return "danger";
+  }
+
+  if (status === "aguardando_homologacao") {
+    return "warning";
   }
 
   return "neutral";
@@ -5802,15 +6086,15 @@ function countOpenItTickets(tickets: readonly HubItTicket[]) {
   return tickets.filter((ticket) => isOpenItTicket(ticket)).length;
 }
 
-function countItTicketsWaitingForHubOps(tickets: readonly HubItTicket[]) {
-  return tickets.filter((ticket) => isItTicketWaitingForHubOps(ticket)).length;
+function countItTicketsWaitingForSquadOps(tickets: readonly HubItTicket[]) {
+  return tickets.filter((ticket) => isItTicketWaitingForSquadOps(ticket)).length;
 }
 
 function isOpenItTicket(ticket: HubItTicket) {
   return ticket.status !== "resolvido" && ticket.status !== "fechado";
 }
 
-function isItTicketWaitingForHubOps(ticket: HubItTicket) {
+function isItTicketWaitingForSquadOps(ticket: HubItTicket) {
   return ticket.status === "novo" || ticket.status === "em_revisao";
 }
 

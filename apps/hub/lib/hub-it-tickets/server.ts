@@ -264,7 +264,7 @@ export async function authorizeHubItTicketRequest(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Fila de tickets TI liberada somente para HubOps adm." },
+        { error: "Fila de tickets TI liberada somente para SquadOps adm." },
         { status: 403 },
       ),
     };
@@ -514,7 +514,7 @@ export async function updateHubItTicket({
     }
 
     if (!isAuthorizedHubItTicketAdmin(user)) {
-      throw new Error("Somente HubOps adm pode responder tickets TI.");
+      throw new Error("Somente SquadOps adm pode responder tickets TI.");
     }
 
     const nextStatus =
@@ -554,7 +554,7 @@ export async function updateHubItTicket({
       message:
         normalizedInput.adminResponse ||
         `Status atualizado para ${nextStatus}.`,
-      metadata: { source: "hubops-ticket-ti" },
+      metadata: { source: "squadops-ticket-ti" },
       technicalNote: normalizedInput.resolutionSummary ?? null,
       ticketId: ticket.id,
       type: nextStatus === "fechado" ? "resolved" : "admin_reply",
@@ -799,7 +799,7 @@ function mapTicketRow(
           avatarUrl: row.assigned_to_avatar_url,
           email: row.assigned_to_email,
           id: row.assigned_to_user_id,
-          name: row.assigned_to_name ?? "HubOps",
+          name: row.assigned_to_name ?? "SquadOps",
         }
       : null,
     assignedToUserId: row.assigned_to_user_id,
@@ -1027,7 +1027,7 @@ async function updateLocalHubItTicket({
   }
 
   if (!isAuthorizedHubItTicketAdmin(user)) {
-    throw new Error("Somente HubOps adm pode responder tickets TI.");
+    throw new Error("Somente SquadOps adm pode responder tickets TI.");
   }
 
   const nextStatus =

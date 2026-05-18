@@ -50,7 +50,7 @@ export async function authorizeSquadOpsAdminRequest(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Sessao administrativa ausente para acessar o HubOps." },
+        { error: "Sessao administrativa ausente para acessar o SquadOps." },
         { status: 401 },
       ),
     };
@@ -64,7 +64,7 @@ export async function authorizeSquadOpsAdminRequest(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Configure a chave server-side para validar acesso ao HubOps." },
+        { error: "Configure a chave server-side para validar acesso ao SquadOps." },
         { status: 503 },
       ),
     };
@@ -87,7 +87,7 @@ export async function authorizeSquadOpsAdminRequest(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Sessao administrativa invalida para acessar o HubOps." },
+        { error: "Sessao administrativa invalida para acessar o SquadOps." },
         { status: 401 },
       ),
     };
@@ -106,7 +106,7 @@ export async function authorizeSquadOpsAdminRequest(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "HubOps e liberado somente para perfil adm." },
+        { error: "SquadOps e liberado somente para perfil adm." },
         { status: 403 },
       ),
     };
@@ -142,7 +142,7 @@ async function loadSquadOpsUser(
       return {
         ok: false,
         response: NextResponse.json(
-          { error: "Usuario sem acesso ativo ao HubOps." },
+          { error: "Usuario sem acesso ativo ao SquadOps." },
           { status: 403 },
         ),
       };
@@ -158,7 +158,7 @@ async function loadSquadOpsUser(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Nao foi possivel validar seu perfil HubOps." },
+        { error: "Nao foi possivel validar seu perfil SquadOps." },
         { status: 503 },
       ),
     };
@@ -178,7 +178,7 @@ async function loadSquadOpsUser(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Usuario sem acesso ativo ao HubOps." },
+        { error: "Usuario sem acesso ativo ao SquadOps." },
         { status: 403 },
       ),
     };

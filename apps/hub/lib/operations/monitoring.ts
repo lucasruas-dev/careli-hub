@@ -613,7 +613,7 @@ Origem, impacto, correcao proposta ou executada, validacoes, riscos restantes e 
 
 Devolutiva tecnica obrigatoria:
 Informar se o alerta PERSISTE, foi CORRIGIDO, NAO FOI OBSERVADO, esta EM_ANALISE, ficou BLOQUEADO ou e FALSO_POSITIVO.
-Responder citando o protocolo ${protocol} para o HubOps agrupar alerta e parecer tecnico.
+Responder citando o protocolo ${protocol} para o SquadOps agrupar alerta e parecer tecnico.
 
 Status esperado:
 AGUARDANDO RELEASEOPS

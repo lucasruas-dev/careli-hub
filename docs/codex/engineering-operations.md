@@ -3362,3 +3362,63 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: a persistencia real de Ticket TI continua indisponivel ate Hub DataOps/ReleaseOps aplicar `packages/database/migrations/0014_hub_it_tickets.sql` no Supabase de producao. Validacao autenticada da mensagem `migration_pendente` depende de bearer real do Lucas/adm em producao. Sem a migration, abertura e devolutiva de tickets permanecem bloqueadas corretamente.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix de erro amigavel; `Hub DataOps` para aplicar a migration `0014_hub_it_tickets.sql` e validar tabela/API real apos a publicacao.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Historico de checks agrupado por hora`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 22:11:59 -03:00.
+- Tipo da alteracao: `MELHORIA UX OPERACIONAL` - leitura do Database Monitoring.
+- Motivo da mudanca: Lucas apontou que o `Historico de checks` ficava muito grande e repetitivo, e pediu agrupamento por hora com opcao de expandir ou abrir detalhe.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: substitui a tabela continua do historico por grupos horarios, cada um com resumo de quantidade de checks, quantidade de alertas, maior risco, maior tempo de resposta e maior payload; o grupo mais recente abre como referencia inicial e cada grupo pode ser expandido/recolhido para ver a tabela detalhada daquele horario.
+- Logica utilizada: o monitoramento continua guardando os checks da sessao, mas a leitura principal passa a ser por janela de hora para reduzir ruido operacional. O detalhe fica preservado sob demanda, mantendo rastreabilidade sem ocupar a tela inteira.
+- Validacao executada: `npx.cmd eslint modules/squadops/SquadOpsPage.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`.
+- Pendencias ou riscos conhecidos: a opcao de popup/modal dedicado ainda pode ser evoluida se Lucas preferir abrir o grupo em tela cheia; build passou com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o ajuste visual do Database Monitoring junto ao recorte HubOps.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Renomeacao oficial do modulo`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-17 22:32:39 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - nome e icone do modulo no Hub.
+- Motivo da mudanca: Lucas solicitou trocar o nome exibido `HubOps` para `SquadOps`, revisar referencias operacionais e usar um icone com melhor leitura de squad/equipe.
+- Arquivos/modulos afetados: `packages/shared/src/modules/registry.ts`, `packages/shared/dist/modules/registry.js`, `packages/shared/dist/modules/registry.d.ts`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`, APIs e libs relacionadas a `squadops`, `packages/database/migrations/0016_hub_release_protocols.sql` e `docs/codex/engineering-operations.md`.
+- Como foi feito: atualizei o registry compartilhado para exibir `SquadOps`, rebuild do pacote `@repo/shared` para refletir no `dist`, troquei o icone do sidebar para `UsersRound`, normalizei textos ativos de tela, prompts, tickets, copilot, operacoes e protocolos para `SquadOps`, e ajustei exemplos de commit para `feat(squadops)`.
+- Logica utilizada: a rota e permissao tecnica permanecem `/squadops` e `squadops:view`, preservando compatibilidade. Referencias historicas em registros antigos do diario, migrations antigas e filtros de compatibilidade com `hubops` foram mantidas para nao perder rastreabilidade nem quebrar dados ja aplicados.
+- Validacao executada: `npm.cmd run build --workspace @repo/shared`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; validacao visual local em `http://localhost:3001/` confirmou sidebar com `SquadOps`, icone `lucide-users-round` e ausencia de `HubOps` no texto renderizado.
+- Pendencias ou riscos conhecidos: migrations historicas `0012` a `0015` ainda possuem comentarios/policies com o nome antigo por rastreabilidade; caso Lucas queira renomear comentarios de banco ja aplicado, isso deve virar recorte DataOps separado. Build passou com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar a renomeacao visual do modulo SquadOps.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Fundacao do ambiente de homologacao`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-17 22:27:12 -03:00.
+- Tipo da alteracao: `DECISAO OPERACIONAL` - ambiente de homologacao.
+- Motivo da mudanca: Lucas solicitou criar um ambiente de homologacao para validar recortes antes de producao, reduzindo risco operacional e evitando publicacao direta em `c2x.app.br`.
+- Arquivos/modulos afetados: `docs/architecture/homologation-environment.md`, `.env.homolog.example`, `scripts/deploy-homologation.ps1`, `scripts/homologation-healthcheck.ps1`, `package.json`, `turbo.json` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei a documentacao oficial do modelo V1 de homologacao, checklist de variaveis sem secrets, script de deploy Preview bloqueado por branch/worktree/validacao, script de healthcheck com endpoints principais e protecoes esperadas, scripts npm `deploy:homolog`, `healthcheck:homolog` e `validate:hub`, e declarei variaveis publicas/ambiente no `turbo.json` para reduzir risco de cache por env entre ambientes.
+- Logica utilizada: homologacao deve ser branch/ambiente dedicado antes de producao. O modelo inicial usa branch `homolog` com Vercel Preview ou Custom Environment `homologacao`, dominio recomendado `homolog.c2x.app.br`, Supabase preferencialmente separado e bloqueio de disparos reais. O script nao chama Guardian `limit=1000` e espera `401` em APIs protegidas sem sessao.
+- Validacao executada: `npm.cmd run check-types:hub` passou apos nova execucao; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `powershell -ExecutionPolicy Bypass -File scripts/homologation-healthcheck.ps1 -BaseUrl http://localhost:3001` passou; `powershell -ExecutionPolicy Bypass -File scripts/deploy-homologation.ps1 -SkipValidation` bloqueou corretamente porque a branch atual e `main`, nao `homolog`; `git diff --check` passou com avisos CRLF conhecidos.
+- Pendencias ou riscos conhecidos: o ambiente externo ainda precisa ser ativado na Vercel com branch remota `homolog`, dominio `homolog.c2x.app.br` ou alternativa aprovada, variaveis Preview/Custom Environment e decisao do projeto Supabase de homologacao. O worktree local possui alteracoes pendentes de outros recortes, entao nenhum deploy de homologacao foi executado nesta etapa.
+- Status operacional: `AGUARDANDO DEPLOY`.
+- Proxima squad recomendada: `Hub ReleaseOps` para criar/publicar o primeiro deploy de homologacao quando o recorte estiver limpo; `Hub DataOps` para preparar Supabase de homologacao antes de fluxos com escrita real.
+
+Registro de diario:
+
+- Assunto: `[HubOps] Release Protocol com homologacao`.
+- Nome da squad/agente: `Dev HubOps`.
+- Data e hora local: 2026-05-17 22:26:55 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - rastreabilidade de deploy por protocolo macro.
+- Motivo da mudanca: Lucas apontou que muitos registros ficavam em estados `AGUARDANDO...` e perguntou se seria possivel colocar um protocolo dentro do deploy, Git ou commit para cruzar depois do deploy feito. Lucas confirmou que tambem havera ambiente de homologacao.
+- Arquivos/modulos afetados: `packages/database/migrations/0016_hub_release_protocols.sql`, `apps/hub/lib/squadops/release-protocols.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei a migration `0016_hub_release_protocols.sql` com tabela `hub_release_protocols`, itens `hub_release_protocol_items`, eventos por ambiente `hub_release_environment_events`, sequence `DP-0001`, RLS, grants, indices e campos para commit, branch, Vercel deployment, alias, homologacao, producao, healthcheck, bloqueio e rollback; adicionei camada client-side para derivar `DP-*` a partir dos registros de release atuais; e reformulei a aba `Deploys` para mostrar release protocols com pipeline `Homologacao` -> `Producao`, protocolos AT/AL incluidos e formato de commit sugerido.
+- Logica utilizada: `AT-*` continua sendo a atividade operacional detalhada, `AL-*` continua sendo alerta operacional, e `DP-*` passa a ser o protocolo macro que fecha o ciclo de release. O commit deve citar o `DP-*` no titulo e listar os `AT/AL` no corpo. O Vercel pode ser cruzado por `commit_sha` e `vercel_deployment_id`; o status final passa a ser homologado, em producao, bloqueado ou rollback, evitando que tudo fique apenas aguardando ReleaseOps.
+- Validacao executada: leitura do diario operacional; consulta oficial Supabase sobre Data API/RLS/grants; `npx.cmd eslint modules/squadops/SquadOpsPage.tsx lib/squadops/release-protocols.ts --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local `GET /squadops` retornou 200; `git diff --check` focado passou com avisos CRLF conhecidos.
+- Pendencias ou riscos conhecidos: a migration `0016` depende de aplicar antes as migrations `0013`/estrutura de operations no Supabase real; a aba `Deploys` ja deriva `DP-*` em memoria a partir dos registros atuais, mas a persistencia oficial de release protocols depende de Hub DataOps/ReleaseOps aplicar a migration. Build passou com warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o recorte HubOps e `Hub DataOps` para aplicar as migrations `0013` a `0016` em ordem controlada no Supabase real.

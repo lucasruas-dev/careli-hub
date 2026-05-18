@@ -188,7 +188,7 @@ function buildFallbackEvidenceAnalysis(
       `Relato original: ${description}`,
       "Evidencias consideradas:",
       evidenceInsights.map((item) => `- ${item}`).join("\n"),
-      "Triagem Caca: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo HubOps.",
+      "Triagem Caca: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo SquadOps.",
     ].join("\n"),
   };
 }
@@ -295,7 +295,7 @@ function buildEvidenceAnalysisPrompt({
   input: HubItTicketEvidenceAnalysisInput;
 }) {
   return [
-    "Monte a leitura tecnica de um Ticket TI para o HubOps.",
+    "Monte a leitura tecnica de um Ticket TI para o SquadOps.",
     "Campos esperados no JSON:",
     '{"technicalSummary":"...","expectedResult":"...","actualResult":"...","evidenceInsights":["..."]}',
     "",

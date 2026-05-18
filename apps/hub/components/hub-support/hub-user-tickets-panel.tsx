@@ -646,7 +646,7 @@ function TicketDetail({
         />
         <UserInfoCard
           label="Tratando"
-          name={ticket.assignedTo?.name ?? "HubOps ainda nao atribuido"}
+          name={ticket.assignedTo?.name ?? "SquadOps ainda nao atribuido"}
           email={ticket.assignedTo?.email}
         />
       </div>
@@ -670,7 +670,7 @@ function TicketDetail({
       {ticket.adminResponse || ticket.resolutionSummary ? (
         <div className="grid gap-3 rounded-lg border border-[#A07C3B]/20 bg-[#fffaf0] p-3">
           {ticket.adminResponse ? (
-            <DetailBlock label="Devolutiva HubOps" value={ticket.adminResponse} />
+            <DetailBlock label="Devolutiva SquadOps" value={ticket.adminResponse} />
           ) : null}
           {ticket.resolutionSummary ? (
             <DetailBlock label="O que foi feito" value={ticket.resolutionSummary} />
@@ -687,7 +687,7 @@ function TicketDetail({
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
             <MessageSquareReply className="size-4" />
-            HubOps devolveu. Voce decide se encerra ou volta para revisao.
+            SquadOps devolveu. Voce decide se encerra ou volta para revisao.
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -777,7 +777,7 @@ function TicketDetail({
                 </p>
               ) : null}
               <button
-                aria-label="Enviar revisao para HubOps"
+                aria-label="Enviar revisao para SquadOps"
                 className="grid size-11 place-items-center rounded-lg bg-[#A07C3B] text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                 disabled={!canSubmitReview || isSaving}
                 onClick={submitReview}
