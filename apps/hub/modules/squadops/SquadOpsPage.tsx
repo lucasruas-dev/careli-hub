@@ -631,6 +631,10 @@ export function SquadOpsPage() {
   const { authState, hubUser, profileStatus } = useAuth();
   const canAccessSquadOps = canAccessSquadOpsAsAdmin(hubUser);
   const authAccessToken = authState.session?.accessToken ?? null;
+  const [resolvedAccessToken, setResolvedAccessToken] = useState<string | null>(
+    null,
+  );
+  const squadOpsAccessToken = authAccessToken ?? resolvedAccessToken;
   const [operations, setOperations] =
     useState<EngineeringOperationsResponse | null>(null);
   const [structuredOperations, setStructuredOperations] =
@@ -698,6 +702,30 @@ export function SquadOpsPage() {
   const watcherCooldownsRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
+    if (profileStatus === "loading" || !canAccessSquadOps) {
+      setResolvedAccessToken(null);
+      return;
+    }
+
+    if (authAccessToken) {
+      setResolvedAccessToken(authAccessToken);
+      return;
+    }
+
+    let isActive = true;
+
+    void getSquadOpsAccessToken().then((accessToken) => {
+      if (isActive) {
+        setResolvedAccessToken(accessToken);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [authAccessToken, canAccessSquadOps, profileStatus]);
+
+  useEffect(() => {
     if (profileStatus === "loading") {
       return;
     }
@@ -716,7 +744,7 @@ export function SquadOpsPage() {
       setError(null);
 
       try {
-        const accessToken = authAccessToken ?? (await getAccessToken());
+        const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
         const headers: Record<string, string> = {};
 
         if (accessToken) {
@@ -768,7 +796,7 @@ export function SquadOpsPage() {
     return () => {
       isActive = false;
     };
-  }, [authAccessToken, canAccessSquadOps, profileStatus]);
+  }, [canAccessSquadOps, profileStatus, squadOpsAccessToken]);
 
   const loadStructuredOperations = useCallback(async () => {
     if (!canAccessSquadOps || profileStatus === "loading") {
@@ -776,7 +804,7 @@ export function SquadOpsPage() {
     }
 
     try {
-      const accessToken = authAccessToken ?? (await getAccessToken());
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
       const headers: Record<string, string> = {};
 
       if (accessToken) {
@@ -838,7 +866,7 @@ export function SquadOpsPage() {
         syncRuns: [],
       });
     }
-  }, [authAccessToken, canAccessSquadOps, operations, profileStatus]);
+  }, [canAccessSquadOps, operations, profileStatus, squadOpsAccessToken]);
 
   useEffect(() => {
     void loadStructuredOperations();
@@ -850,7 +878,7 @@ export function SquadOpsPage() {
     }
 
     try {
-      const accessToken = authAccessToken ?? (await getAccessToken());
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
       const headers: Record<string, string> = {};
 
       if (accessToken) {
@@ -879,7 +907,7 @@ export function SquadOpsPage() {
     } catch {
       setAlertProtocols((current) => current);
     }
-  }, [authAccessToken, canAccessSquadOps, profileStatus]);
+  }, [canAccessSquadOps, profileStatus, squadOpsAccessToken]);
 
   useEffect(() => {
     void loadAlertProtocols();
@@ -892,7 +920,7 @@ export function SquadOpsPage() {
 
     try {
       const tickets = await loadHubItTickets({
-        accessToken: authAccessToken,
+        accessToken: squadOpsAccessToken,
         scope: "all",
       });
 
@@ -902,7 +930,7 @@ export function SquadOpsPage() {
       setItTicketCount((current) => current);
       setItTicketAttentionCount((current) => current);
     }
-  }, [authAccessToken, canAccessSquadOps, profileStatus]);
+  }, [canAccessSquadOps, profileStatus, squadOpsAccessToken]);
 
   useEffect(() => {
     void loadItTicketSummary();
@@ -944,7 +972,7 @@ export function SquadOpsPage() {
 
   const runOpsWatcher = useCallback(
     async (snapshot: OperationsMonitoringSnapshot) => {
-      const accessToken = authAccessToken ?? (await getAccessToken());
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -979,7 +1007,7 @@ export function SquadOpsPage() {
 
       registerWatcherDecision(payload.watcher);
     },
-    [authAccessToken, registerWatcherDecision],
+    [registerWatcherDecision, squadOpsAccessToken],
   );
 
   const loadMonitoringSnapshot = useCallback(
@@ -992,7 +1020,7 @@ export function SquadOpsPage() {
       setMonitoringError(null);
 
       try {
-        const accessToken = authAccessToken ?? (await getAccessToken());
+        const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
         const headers: Record<string, string> = {};
 
         if (accessToken) {
@@ -1042,7 +1070,7 @@ export function SquadOpsPage() {
         setIsMonitoringLoading(false);
       }
     },
-    [authAccessToken, canAccessSquadOps, profileStatus, runOpsWatcher],
+    [canAccessSquadOps, profileStatus, runOpsWatcher, squadOpsAccessToken],
   );
 
   useEffect(() => {
@@ -1151,7 +1179,7 @@ export function SquadOpsPage() {
     setCopilotError(null);
 
     try {
-      const accessToken = authAccessToken ?? (await getAccessToken());
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1238,7 +1266,7 @@ export function SquadOpsPage() {
     setAlertFeedbackError(null);
 
     try {
-      const accessToken = authAccessToken ?? (await getAccessToken());
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1322,7 +1350,7 @@ export function SquadOpsPage() {
     setAcknowledgingProtocol(protocolCode);
 
     try {
-      const accessToken = authAccessToken ?? (await getAccessToken());
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1404,7 +1432,7 @@ export function SquadOpsPage() {
     setIgnoringProtocol(protocolCode);
 
     try {
-      const accessToken = authAccessToken ?? (await getAccessToken());
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1489,7 +1517,7 @@ export function SquadOpsPage() {
     setError(null);
 
     try {
-      const accessToken = authAccessToken ?? (await getAccessToken());
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
       const headers: Record<string, string> = {};
 
       if (accessToken) {
@@ -1608,7 +1636,7 @@ export function SquadOpsPage() {
 
         {activeView === "itTickets" ? (
           <HubItTicketsBoard
-            accessToken={authAccessToken}
+            accessToken={squadOpsAccessToken}
             isActive={activeView === "itTickets"}
             onTicketAttentionCountChange={setItTicketAttentionCount}
             onTicketCountChange={setItTicketCount}
@@ -7071,20 +7099,100 @@ function formatOperationDateTime(value: string) {
   ].join(" ");
 }
 
-async function getAccessToken() {
+async function getSquadOpsAccessToken(fallback?: string | null) {
+  if (fallback) {
+    return fallback;
+  }
+
   const client = getHubSupabaseClient();
 
-  if (!client) {
+  if (client) {
+    try {
+      const { data } = await client.auth.getSession();
+      const sessionAccessToken = data.session?.access_token;
+
+      if (sessionAccessToken) {
+        return sessionAccessToken;
+      }
+    } catch {
+      // Keep the Operations Center usable when the provider state exists but
+      // the Supabase client cannot hydrate synchronously.
+    }
+  }
+
+  return getCachedSquadOpsAccessTokenFromStorage();
+}
+
+function getCachedSquadOpsAccessTokenFromStorage() {
+  if (typeof window === "undefined") {
     return null;
   }
 
-  try {
-    const { data } = await client.auth.getSession();
+  const candidateKeys = new Set<string>();
 
-    return data.session?.access_token ?? null;
-  } catch {
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+
+    if (
+      key &&
+      (key.includes("auth-token") ||
+        key.includes("supabase") ||
+        key.startsWith("sb-"))
+    ) {
+      candidateKeys.add(key);
+    }
+  }
+
+  for (const key of candidateKeys) {
+    const rawValue = window.localStorage.getItem(key);
+
+    if (!rawValue) {
+      continue;
+    }
+
+    try {
+      const token = extractSquadOpsAccessToken(JSON.parse(rawValue) as unknown);
+
+      if (token) {
+        return token;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function extractSquadOpsAccessToken(input: unknown): string | null {
+  if (!input || typeof input !== "object") {
     return null;
   }
+
+  const maybeSession = input as {
+    accessToken?: unknown;
+    access_token?: unknown;
+    currentSession?: unknown;
+    data?: unknown;
+    session?: unknown;
+  };
+
+  const directToken =
+    typeof maybeSession.access_token === "string"
+      ? maybeSession.access_token
+      : typeof maybeSession.accessToken === "string"
+        ? maybeSession.accessToken
+        : null;
+
+  if (directToken?.trim()) {
+    return directToken;
+  }
+
+  return (
+    extractSquadOpsAccessToken(maybeSession.currentSession) ??
+    extractSquadOpsAccessToken(maybeSession.session) ??
+    extractSquadOpsAccessToken(maybeSession.data)
+  );
 }
 
 function countOpenItTickets(tickets: readonly HubItTicket[]) {

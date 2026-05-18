@@ -166,7 +166,7 @@ export type AlertProtocolSyncResult = {
 
 export async function syncOperationAlertProtocols(
   alerts: OperationsAlert[],
-  userId: string,
+  userId: string | null,
 ): Promise<AlertProtocolSyncResult> {
   if (alerts.length === 0) {
     return {
@@ -254,7 +254,7 @@ export async function updateOperationAlertFeedback({
   feedback: string;
   protocol: string;
   status: OperationsAlertFeedbackStatus;
-  userId: string;
+  userId: string | null;
 }): Promise<OperationsAlertProtocolSummary> {
   const adminClient = createAlertProtocolClient();
 
@@ -329,7 +329,7 @@ export async function acknowledgeOperationAlertProtocol({
   userId,
 }: {
   protocol: string;
-  userId: string;
+  userId: string | null;
 }): Promise<OperationsAlertProtocolSummary> {
   const adminClient = createAlertProtocolClient();
 
@@ -362,7 +362,7 @@ export async function ignoreOperationAlertProtocol({
   userId,
 }: {
   protocol: string;
-  userId: string;
+  userId: string | null;
 }): Promise<OperationsAlertProtocolSummary> {
   const adminClient = createAlertProtocolClient();
 
@@ -431,7 +431,7 @@ async function loadProtocolsByFingerprint(
 async function insertNewAlertProtocol(
   adminClient: OperationsAlertProtocolClient,
   alert: OperationsAlert,
-  userId: string,
+  userId: string | null,
 ) {
   const protocol = await allocateAlertProtocolCode(adminClient, alert.protocol);
   const alertToSave = withAlertProtocolCode(alert, protocol);
@@ -456,7 +456,7 @@ async function updateExistingAlertProtocol(
   adminClient: OperationsAlertProtocolClient,
   existingProtocol: AlertProtocolRow,
   alert: OperationsAlert,
-  userId: string,
+  userId: string | null,
 ) {
   const nextOccurrenceCount = Math.max(existingProtocol.occurrence_count + 1, 1);
   const alertToSave = withAlertProtocolCode(alert, existingProtocol.protocol);

@@ -1,6 +1,6 @@
 # Engineering Operations do Careli Hub
 
-Este documento e a central operacional viva da engenharia IA do Careli Hub. Ele deve ser lido antes de qualquer mudanca no `careli-hub`, principalmente em trabalhos envolvendo C2X legado, Guardian, CareDesk, PulseX, Setup, Supabase, Vercel ou integracoes externas.
+Este documento e a central operacional viva da engenharia IA do Careli Hub. Ele deve ser lido antes de qualquer mudanca no `careli-hub`, principalmente em trabalhos envolvendo C2X legado, Guardian, CareDesk, PulseX, Chronos, Setup, Supabase, Vercel ou integracoes externas.
 
 ## Indice operacional
 
@@ -10,6 +10,7 @@ Este documento e a central operacional viva da engenharia IA do Careli Hub. Ele 
 - [Guardian](#guardian)
 - [CareDesk](#caredesk)
 - [PulseX](#pulsex)
+- [Chronos](#chronos)
 - [SquadOps](#squadops)
 - [ReleaseOps](#releaseops)
 - [SupportOps](#supportops)
@@ -26,6 +27,7 @@ Este documento e a central operacional viva da engenharia IA do Careli Hub. Ele 
 | Frente | Status operacional | Pendencia aberta | Proxima acao |
 | --- | --- | --- | --- |
 | Guardian / D4Sign | `AGUARDANDO RELEASEOPS` | Guarda/autorizacao server-side da rota D4Sign ja aparece como ajuste local, mas ainda precisa commit/deploy isolado e validacao com usuario autenticado real. | ReleaseOps deve validar pacote D4Sign sem misturar com PulseX e publicar hotfix se Lucas aprovar. |
+| Chronos V1 | `AGUARDANDO RELEASEOPS` | V1 local implementada com rota `/chronos`, API `/api/chronos/meetings`, migration `0019_chronos_core.sql`, salas, reunioes, timeline, transcricao, ata revisavel e follow-ups; schema Supabase/storage/realtime ainda precisa aplicacao em ambiente real. | Hub ReleaseOps deve versionar o recorte Chronos sem misturar PulseX/Setup; Hub DataOps deve aplicar a migration em janela controlada. |
 | PulseX realtime/chamadas | `AGUARDANDO RELEASEOPS` | Palco de compartilhamento de tela, zoom, sinais realtime e painel de informacoes estao em pacote local; ainda falta teste real com dois usuarios/duas maquinas. | Validar WebRTC/realtime fim a fim antes de producao. |
 | PulseX queries | `AGUARDANDO RELEASEOPS` | Query `list direct users` foi ajustada localmente para relacao nomeada Supabase, mas segue fora de producao ate release. | Consolidar em hotfix PulseX ou junto da release de chamadas, conforme risco. |
 | Guardian fila/performance | `OPERACIONAL COM ATENCAO` | `limit=1000` continua custoso e deve permanecer fora da abertura inicial de telas; monitorar payload/tempo da fila. | Manter abertura com limite reduzido e acompanhar gargalos em SupportOps. |
@@ -38,6 +40,7 @@ Este documento e a central operacional viva da engenharia IA do Careli Hub. Ele 
 | --- | --- | --- | --- |
 | Guardian | Producao `https://c2x.app.br` + diffs locais | `OPERACIONAL COM ATENCAO` | Producao responde; D4Sign e painel de cliente possuem pacote local pendente. |
 | PulseX | Producao `https://c2x.app.br` + diffs locais | `AGUARDANDO RELEASEOPS` | Direct users, chamada, tela compartilhada e painel de informacoes aguardam release/validacao real. |
+| Chronos | Local + aguardando ReleaseOps | `AGUARDANDO RELEASEOPS` | V1 local implementada com experiencia executiva, persistencia protegida, gravacao local, transcricao, resumo IA, ata revisavel, timeline e follow-up; migration 0019 ainda pendente em Supabase real. |
 | CareDesk | Producao `https://c2x.app.br` | `OPERACIONAL COM ATENCAO` | Rota online; evolucao real ainda depende de tabelas Supabase e integracao Meta/WhatsApp. |
 | SquadOps | Producao `https://c2x.app.br` | `OPERACIONAL COM ATENCAO` | Modulo visual publicado; persistencia real ainda futura. |
 | ReleaseOps | Local + Vercel | `FINALIZADO` | Caminho oficial do diario ja migrado para `engineering-operations.md`; healthchecks seguem obrigatorios. |
@@ -54,7 +57,7 @@ Este documento e a central operacional viva da engenharia IA do Careli Hub. Ele 
 
 ## Regras permanentes
 
-- Preservar modularidade: Guardian, CareDesk, PulseX, SquadOps, Setup e futuras frentes nao devem assumir escopo umas das outras sem pedido explicito.
+- Preservar modularidade: Guardian, CareDesk, PulseX, Chronos, SquadOps, Setup e futuras frentes nao devem assumir escopo umas das outras sem pedido explicito.
 - Preservar rastreabilidade: toda decisao, release, hotfix, investigacao, incidente, melhoria, auditoria ou healthcheck relevante deve ser registrado neste arquivo.
 - Preservar seguranca: nunca registrar secrets, tokens, senhas, credenciais ou dados sensiveis desnecessarios.
 - Preservar historico: nao apagar registros antigos; novas normalizacoes devem ser feitas por entradas adicionais.
@@ -157,8 +160,8 @@ Novos registros devem usar uma categoria operacional no campo `Tipo da alteracao
 ## Como usar
 
 - Leia este arquivo antes de editar codigo.
-- Leia este arquivo tambem antes de analisar bugs, impactos, regras, estabilidade, integracoes ou conflitos entre modulos. Os devs de cada modulo podem atualizar este diario, entao ele e a fonte mais recente para entender se uma mudanca impacta Guardian, CareDesk, PulseX, Setup, Home, Supabase, C2X ou integracoes externas.
-- Confirme se a tarefa atual toca Guardian, CareDesk, PulseX, Setup, Home, Supabase, C2X, Asaas, D4Sign ou Meta.
+- Leia este arquivo tambem antes de analisar bugs, impactos, regras, estabilidade, integracoes ou conflitos entre modulos. Os devs de cada modulo podem atualizar este diario, entao ele e a fonte mais recente para entender se uma mudanca impacta Guardian, CareDesk, PulseX, Chronos, Setup, Home, Supabase, C2X ou integracoes externas.
+- Confirme se a tarefa atual toca Guardian, CareDesk, PulseX, Chronos, Setup, Home, Supabase, C2X, Asaas, D4Sign ou Meta.
 - Respeite a ordem combinada pelo Lucas: quando ele pedir analise, nao implemente; quando ele pedir implementacao, faca de ponta a ponta e valide.
 - Nao misture modulos sem necessidade. O CareDesk e modulo do Hub; Guardian usa o CareDesk como atalho/entrada operacional, mas nao e dono do CareDesk.
 - Atualize este documento quando uma decisao importante for tomada.
@@ -198,7 +201,7 @@ Fluxo operacional oficial:
 
 Regra oficial de modulo, commit, release e rastreabilidade:
 
-- Guardian Core, CareDesk Core, PulseX Core, SquadOps Core e futuros modulos do Hub passam a operar como squads completas de desenvolvimento do proprio modulo.
+- Guardian Core, CareDesk Core, PulseX Core, Chronos Core, SquadOps Core e futuros modulos do Hub passam a operar como squads completas de desenvolvimento do proprio modulo.
 - Cada dev de modulo e responsavel por implementacao, evolucao, UX operacional, organizacao tecnica, consistencia visual, analise de impacto do proprio modulo, validacoes locais e preservacao das regras operacionais.
 - Devs dos modulos nao devem mais realizar deploy oficial nem assumir responsabilidade principal sobre publicacao em producao.
 - Hub ReleaseOps e responsavel por commits, deploys, build, homologacao, producao, Vercel, healthchecks, organizacao do diario operacional e rastreabilidade oficial das releases.
@@ -225,7 +228,7 @@ Status operacionais obrigatorios:
 Fluxo de comunicacao e handoff:
 
 - Toda resposta operacional, direcionamento, handoff, analise, correcao ou implementacao deve comecar com `Assunto:` seguido de um titulo curto, objetivo e pesquisavel.
-- O assunto deve incluir o modulo ou squad relacionado, por exemplo `[Guardian]`, `[CareDesk]`, `[PulseX]`, `[SquadOps]`, `[ReleaseOps]` ou `[SupportOps]`.
+- O assunto deve incluir o modulo ou squad relacionado, por exemplo `[Guardian]`, `[CareDesk]`, `[PulseX]`, `[Chronos]`, `[SquadOps]`, `[ReleaseOps]` ou `[SupportOps]`.
 - Evitar assuntos genericos; o titulo deve facilitar rastreabilidade, busca futura, continuidade entre sessoes e localizacao de temas especificos.
 - Responder de forma objetiva, executiva e operacional.
 - Sempre informar o que foi feito, o que falta, dependencias de outro agente, proximo passo, riscos conhecidos e status atual.
@@ -235,7 +238,7 @@ Regra de orquestracao entre agentes:
 
 - Todo agente faz parte da engenharia coordenada do Careli Hub e nao atua de forma isolada.
 - Ao concluir uma etapa, informar claramente a proxima squad recomendada, validacoes necessarias, dependencias, riscos conhecidos e pendencias.
-- Squads reconhecidas no fluxo operacional simplificado: `Guardian Core`, `CareDesk Core`, `PulseX Core`, `SquadOps Core`, futuros modulos do Hub, `Hub ReleaseOps` e `Hub SupportOps`.
+- Squads reconhecidas no fluxo operacional simplificado: `Guardian Core`, `CareDesk Core`, `PulseX Core`, `Chronos Core`, `SquadOps Core`, futuros modulos do Hub, `Hub ReleaseOps` e `Hub SupportOps`.
 - Nunca executar tarefa claramente pertencente a outra squad sem solicitacao explicita do Lucas.
 - Exemplos de limite de escopo: modulo nao assume deploy oficial; Hub ReleaseOps nao redefine UX de modulo; Hub SupportOps nao implementa feature sem pedido explicito; modulo nao redefine arquitetura global sem direcao do Lucas.
 - Operar sempre considerando continuidade entre sessoes, continuidade entre squads, preservacao do diario operacional, estabilidade do ecossistema e possibilidade de outro agente continuar a etapa seguinte.
@@ -770,6 +773,59 @@ Presenca:
 - Registrar logs de login, logout e mudanca de status.
 - Ausente em vermelho.
 - Almoco em amarelo.
+
+## Chronos
+
+Chronos e o modulo executivo de reunioes formais do Careli Hub. Ele nao e substituto do PulseX e nao deve ser tratado como Zoom corporativo generico. O objetivo do Chronos e transformar reunioes estrategicas, externas e internas em operacao estruturada, rastreavel e formalizada dentro do Hub.
+
+Decisao operacional de 2026-05-18 08:15:05 -03:00: Lucas oficializou o `Chronos Core` como squad responsavel por desenvolver, evoluir e manter o ambiente executivo de reunioes formais do Careli Hub.
+
+Limite com PulseX:
+
+- PulseX continua responsavel por comunicacao operacional, reunioes rapidas, alinhamentos curtos, chamadas internas do dia a dia, realtime operacional e mini reunioes do fluxo operacional.
+- Chronos deve focar reunioes estruturadas, experiencia executiva, gravacao, transcricao, atas, formalizacao, memoria operacional e rastreabilidade.
+- Chronos nao deve duplicar o papel de comunicador interno casual do PulseX.
+
+Escopo do Chronos Core:
+
+- Construir salas executivas e entrada em reuniao.
+- Construir experiencia premium, executiva, clean, institucional e operacional de reuniao.
+- Prever compartilhamento de tela, WebRTC, realtime, streaming, gravacao, transcricao, storage e persistencia.
+- Construir resumo executivo, timeline da reuniao, geracao de ata com revisao humana, follow-up operacional e historico.
+- Preservar participantes, configuracoes, auditoria, eventos, logs, healthchecks e monitoramento.
+- Preservar memoria operacional das reunioes e rastreabilidade formal.
+
+V1 do Chronos:
+
+- Priorizar salas executivas, entrada em reuniao, compartilhamento de tela, gravacao, transcricao, participantes, resumo IA, timeline da reuniao, ata automatica com revisao humana, follow-up e persistencia operacional.
+- Nao priorizar chat social, marketplace, webinar, live streaming, funcionalidades sociais, feed, timeline social, IA executora automatica ou recriacao do PulseX.
+
+Estado da V1 em 2026-05-18 08:37:56 -03:00:
+
+- Implementada localmente em `/chronos`, com API protegida em `/api/chronos/meetings` e migration Supabase `0019_chronos_core.sql`.
+- A experiencia inicial cobre salas executivas, agenda de reunioes, participantes, entrada de sala, camera/tela via APIs do navegador, gravacao local via `MediaRecorder`, transcricao manual assistida, resumo IA, ata em rascunho com aprovacao humana, timeline, follow-ups e configuracoes.
+- Enquanto a migration ainda nao estiver aplicada no Supabase real, a tela deve exibir aviso operacional de schema pendente e usar fallback local apenas para validacao de desenvolvimento.
+- Ata gerada pelo Chronos permanece rascunho ate revisao/aprovacao humana explicita.
+- Publicacao, aplicacao de migration, storage/realtime real, healthchecks e homologacao oficial pertencem ao `Hub ReleaseOps` com apoio de `Hub DataOps`.
+- Correcoes no registry/permissoes do `@repo/shared` exigem `npm.cmd run build --workspace @repo/shared` antes de validar a sidebar em `next dev`, porque o Hub consome o pacote pelo `dist`.
+
+Regras permanentes do Chronos Core:
+
+- Nao quebrar o padrao visual do Hub.
+- Nao usar mock quando houver fonte real.
+- Nao expor secrets.
+- Nao misturar escopo do PulseX, Guardian, CareDesk ou Setup sem pedido explicito do Lucas.
+- Nao transformar o Chronos em comunicador interno casual ou SaaS generico de video.
+- Nao gerar ata automaticamente sem revisao humana.
+- Nao publicar diretamente em producao sem Hub ReleaseOps.
+- Sempre priorizar experiencia executiva, formalizacao, gravacao, transcricao, atas, rastreabilidade e acompanhamento da reuniao.
+
+Handoff padrao do Chronos:
+
+- Informar: `Lucas, implementacao do Chronos concluida.`
+- Listar ambiente, arquivos/modulos afetados, implementacoes realizadas, validacao executada, riscos, pendencias, recomendacao, proximo modulo recomendado e status.
+- Usar status operacional unico entre `ANALISANDO`, `IMPLEMENTANDO`, `VALIDANDO`, `AGUARDANDO RELEASEOPS`, `BLOQUEADO`, `EM PRODUCAO` e `OPERACIONAL COM ATENCAO`.
+- Encaminhar implementacoes validadas para `Hub ReleaseOps`; acionar `Hub SupportOps`, `Hub DataOps`, `Hub InfraOps` ou outra squad quando houver dependencia tecnica especifica.
 
 ## Setup Central
 
@@ -3940,3 +3996,182 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: Guardian Queue respondeu 200, mas lenta em producao usando caminho `BYPASS`/C2X direto: `limit=20` variou aproximadamente entre 17,8s e 20,5s e `limit=50` entre 16,9s e 18,7s; isso exige acompanhamento Guardian/SupportOps e possivel sync/read model para evitar novo alerta de performance. Build remoto registrou `npm audit` com 1 vulnerabilidade moderada e 1 alta, sem bloqueio automatico nesta release. Migrations nao foram aplicadas em producao neste deploy.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` e `Guardian Core` para investigar/acompanhar latencia da Guardian Queue em producao; `Hub DataOps` para avaliar se migration `0018` deve ser aplicada em producao em janela controlada; `Hub InfraOps`/`Hub ReleaseOps` para restabelecer o fluxo homologacao -> producao nos proximos releases.
+
+Registro de diario:
+
+- Assunto: `[Chronos] Inicializacao oficial do modulo executivo de reunioes`.
+- Nome da squad/agente: `Chronos Core`.
+- Data e hora local: 2026-05-18 08:15:05 -03:00.
+- Tipo da alteracao: `DECISAO` - oficializacao de novo modulo/squad do Careli Hub.
+- Motivo da mudanca: Lucas definiu o Chronos como modulo oficial para reunioes executivas, externas e formais, com foco em formalizacao, gravacao, transcricao, resumo executivo, atas com revisao humana, timeline, follow-up, memoria operacional e rastreabilidade; tambem delimitou que Chronos nao substitui nem duplica o PulseX.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; nenhum codigo de Guardian, PulseX, CareDesk, Setup ou outro modulo foi alterado.
+- Como foi feito: registrei o Chronos no indice operacional, no estado atual dos modulos, nas regras gerais de escopo entre squads, no fluxo de comunicacao/handoff e em uma secao propria com objetivo, limite com PulseX, escopo do Chronos Core, prioridades da V1, regras permanentes e handoff padrao.
+- Logica utilizada: a inicializacao foi tratada como fundacao operacional/documental antes de qualquer implementacao tecnica, preservando o fluxo oficial do Hub: modulo define escopo e valida localmente; Hub ReleaseOps cuida de commit, deploy, homologacao e rastreabilidade oficial quando houver pacote de release.
+- Validacao executada: leitura previa deste diario; `git status --short` confirmou worktree limpo antes da alteracao; `rg` confirmou os pontos de Chronos registrados; `git diff --check` passou, mantendo apenas o aviso conhecido de conversao LF/CRLF do Windows.
+- Pendencias ou riscos conhecidos: ainda nao ha rota, tela, schema, WebRTC, storage, gravacao, transcricao, ata, timeline ou persistencia implementados para Chronos; a proxima etapa deve ser arquitetura/recorte V1 antes de qualquer codigo. Qualquer ata automatica deve exigir revisao humana antes de formalizacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar e versionar este registro documental; depois `Chronos Core` para propor o recorte tecnico da V1 sem misturar escopo do PulseX.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Falha login homologacao Lucas`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-18 08:26:29 -03:00.
+- Tipo da alteracao: `INCIDENTE` - investigacao de acesso em homologacao.
+- Motivo da mudanca: Lucas informou que nao conseguia logar no ambiente de homologacao e a tela exibia `E-mail ou senha invalidos` para o e-mail `lucas.ruas@careli.adm.br`.
+- Arquivos/modulos afetados: ambiente `https://homo.c2x.app.br`, Supabase homologacao `qanlldynttyxgmcwkxqv.supabase.co`, fluxo de login do Hub e `docs/codex/engineering-operations.md`.
+- Como foi feito: conferi `AGENTS.md`, historico de homologacao no Engineering Operations, codigo do login/AuthProvider, deployment Vercel de homologacao, logs de erro Vercel, variaveis de Preview sem expor valores e Supabase Auth do projeto de homologacao com chave server-side temporariamente carregada e removida ao final.
+- Logica utilizada: a mensagem `E-mail ou senha invalidos` no Hub e mapeada a resposta `invalid login credentials` do Supabase Auth. O ambiente `homo.c2x.app.br` estava em Preview `Ready`, a tela `/login` carregou via `vercel curl`, `/api/auth/profile` sem sessao retornou 401 esperado e nao havia log Vercel de erro recente. A consulta segura ao Supabase Auth homolog confirmou que o e-mail `lucas.ruas@careli.adm.br` nao existe em `auth.users`; portanto o bloqueio nao e senha local do navegador nem rota quebrada, e sim usuario ausente no Auth de homologacao.
+- Validacao executada: `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou Preview `Ready` `dpl_237WWbqPaEwfVz18HH428o7y4ioy`; `npx.cmd vercel logs https://homo.c2x.app.br --since 30m --level error` nao encontrou logs; `npx.cmd vercel curl https://homo.c2x.app.br/login` retornou HTML da tela de login; `npx.cmd vercel curl https://homo.c2x.app.br/api/auth/profile` retornou `Sessao ausente` esperado sem bearer; `auth/v1/health` do Supabase homolog retornou 200; consulta Admin Auth com User-Agent server-side retornou 200 e `userExists=false` para `lucas.ruas@careli.adm.br`.
+- Pendencias ou riscos conhecidos: Lucas nao conseguira acessar homologacao com esse e-mail ate que o usuario seja provisionado no Supabase Auth homolog e receba senha/convite; se for criado apenas no Auth sem linha operacional em `hub_users`, o proximo bloqueio esperado sera perfil/acesso Hub ausente. Nao foi criada, alterada ou removida nenhuma conta nesta investigacao.
+- Status operacional: `NECESSITA CORRECAO`.
+- Proxima squad recomendada: `Hub DataOps` ou `Hub InfraOps` para provisionar o usuario do Lucas no Supabase Auth de homologacao e garantir perfil ativo em `hub_users`; depois `Hub SupportOps` deve repetir smoke autenticado de login.
+
+Registro de diario:
+
+- Assunto: `[PulseX] Remocao dos canais Comunicados automaticos`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-18 08:40:17 -03:00.
+- Tipo da alteracao: `AJUSTE OPERACIONAL` - remocao do canal automatico de comunicados por departamento.
+- Motivo da mudanca: Lucas esclareceu que nao queria remover o PulseX, e sim tirar o canal `Comunicados` que aparecia automaticamente em todos os departamentos.
+- Arquivos/modulos afetados: `packages/database/migrations/0020_remove_pulsex_department_announcement_channels.sql`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/lib/setup/data.ts`, `apps/hub/app/setup/page.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei migration para remover o trigger `ensure_pulsex_department_announcement_channel`, dropar a funcao relacionada e arquivar canais de departamento marcados com `metadata.systemRole = department_announcements`. No app, passei a carregar `metadata` dos canais e filtrei esse tipo de canal tanto no PulseX quanto no Setup. No formulario do Setup, removi o nome padrao `Comunicados` para evitar recriacao acidental como padrao de novo canal.
+- Logica utilizada: os canais `Comunicados` automaticos eram uma regra estrutural antiga, nao um canal manual do usuario. A remocao deve ser controlada: arquivar o que foi gerado automaticamente, parar novas geracoes e manter canais manuais/setoriais funcionando. O filtro no app protege o usuario mesmo antes da migration ser aplicada no ambiente.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` dos arquivos alterados e smoke no navegador interno. Em `http://localhost:3001/pulsex`, os departamentos carregaram sem o canal `Comunicados`; em `http://localhost:3001/setup`, a tela carregou sem `Comunicados` e sem erros de console.
+- Pendencias ou riscos conhecidos: a migration precisa ser aplicada pelo fluxo de ReleaseOps/DataOps no ambiente alvo para arquivar os registros existentes no banco. Ate la, o filtro de app ja impede a exibicao dos canais automaticos no PulseX e no Setup. O build segue com o warning conhecido Turbopack/NFT de SquadOps, fora do escopo desta mudanca.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar o recorte, versionar e coordenar aplicacao da migration no ambiente correto.
+
+Registro de diario:
+
+- Assunto: `[Hub Core] Titulo da aba em homologacao`.
+- Nome da squad/agente: `Hub Core`.
+- Data e hora local: 2026-05-18 08:33:18 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO` - diferenciacao visual entre homologacao e producao.
+- Motivo da mudanca: Lucas solicitou diferenciar a aba do navegador do servidor de homologacao, exibindo `Homo C2X` em vez de `C2X`, para evitar confusao operacional com producao.
+- Arquivos/modulos afetados: `apps/hub/app/layout.tsx`, `turbo.json` e `docs/codex/engineering-operations.md`.
+- Como foi feito: o metadata raiz do Next agora calcula o titulo pelo ambiente de build. Quando `NEXT_PUBLIC_CARELI_APP_ENV` indicar homologacao, quando a URL publica contiver `homo.c2x.app.br`/`homolog.c2x.app.br`, ou quando a branch Vercel for `homolog`, `applicationName`, `title.default`, `title.template` e `description` passam a usar `Homo C2X`; nos demais ambientes permanece `C2X`. `VERCEL_GIT_COMMIT_REF` foi adicionada ao `turbo.json` para manter cache/validador alinhados.
+- Logica utilizada: a distincao fica no shell global do app, sem alterar UI interna, login, favicon ou regras dos modulos. Producao continua com `C2X`; homologacao passa a ter sinal claro na aba do navegador.
+- Validacao executada: `npx.cmd prettier --write apps/hub/app/layout.tsx turbo.json`; `npx.cmd eslint app/layout.tsx --max-warnings 0` dentro de `apps/hub`; `npm.cmd run lint:hub`; `npm.cmd run check-types:hub`; `NEXT_PUBLIC_CARELI_APP_ENV=homologacao npm.cmd run build --workspace @repo/hub`; inspecao do HTML gerado em `apps/hub/.next/server/app/login.html` confirmou `<title>Homo C2X</title>`, `description=Homo C2X` e `application-name=Homo C2X`.
+- Pendencias ou riscos conhecidos: o build manteve o warning conhecido Turbopack/NFT em `apps/hub/next.config.ts`, sem relacao com esta mudanca. Para refletir em `https://homo.c2x.app.br`, Hub ReleaseOps precisa publicar novo Preview/alias de homologacao.
+- Status operacional: `PRONTO PARA RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para versionar, publicar homologacao e confirmar a aba no navegador externo.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Cadastro Lucas Supabase homolog`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 08:41:21 -03:00.
+- Tipo da alteracao: `OPERACAO HOMOLOGACAO` - liberacao de usuario Auth/perfil interno em Supabase homolog.
+- Motivo da mudanca: Lucas solicitou cadastrar/liberar o proprio usuario no Supabase de homologacao para conseguir acessar o Hub em homolog sem alteracao de codigo e sem tocar Production.
+- Arquivos/modulos afetados: Supabase Auth homolog `qanl...kxqv`, tabela `public.hub_users`, Preview `https://homo.c2x.app.br`, APIs `/api/auth/profile`, `/api/hub/it-tickets` e `/api/squadops/operations/structured`, `docs/codex/engineering-operations.md`.
+- Como foi feito: usei runner temporario limpo com `.vercel/project.json`, carregando somente variaveis `Preview` da branch `homolog`; validei que `NEXT_PUBLIC_SUPABASE_URL` apontava para o host homolog esperado antes de qualquer escrita; localizei o usuario `lucas.ruas@careli.adm.br` no Auth homolog no momento da correcao, atualizei/garanti e-mail confirmado e metadados server-side de admin, vinculei o UUID `63f797f0-b751-485b-b553-50049eb1f981` ao perfil interno `hub_users`, e garanti `role=admin`, `operational_profile=adm`, `status=active`.
+- Logica utilizada: o Hub exige duas camadas para login funcional: usuario em `auth.users` e perfil operacional ativo em `public.hub_users`. A permissao `admin/adm` foi usada para liberar Setup/SquadOps/Ticket TI em homolog. Nenhuma senha, token, service role, URL sensivel ou link de acao foi registrado ou exposto; uma credencial temporaria foi usada apenas para smoke tecnico e um magic link foi solicitado para o e-mail do Lucas apontando para `https://homo.c2x.app.br/`.
+- Validacao executada: Auth Admin homolog retornou usuario confirmado; login Supabase Auth com credencial temporaria de smoke retornou sessao valida; leitura RLS/Data API autenticada de `hub_users`, `hub_it_tickets` e `hub_engineering_operation_records` passou; Preview protegido via `vercel curl` retornou `200` para `/api/auth/profile` com `email=lucas.ruas@careli.adm.br`, `role=admin`, `status=active`; Preview retornou `200` para `/api/hub/it-tickets?scope=all` e `200` para `/api/squadops/operations/structured?limit=1`; solicitei magic link Supabase para `lucas.ruas@careli.adm.br` com redirect para `https://homo.c2x.app.br/`.
+- Pendencias ou riscos conhecidos: o acesso humano deve ocorrer pelo link enviado ao e-mail ou por senha transmitida/definida por canal seguro fora do diario e fora do chat; a tela de login possui icone de recuperacao, mas nao ha fluxo funcional de reset implementado no codigo atual. Guardian DB continua pendencia separada e nao foi tocado. Production nao foi consultada nem alterada nesta operacao.
+- Status operacional: `HOMOLOG ACESSIVEL`.
+- Proxima squad recomendada: `Hub SupportOps` para confirmar com Lucas o acesso real pelo navegador; `Hub ReleaseOps` apenas se for necessario repetir healthcheck completo do Preview homolog.
+
+Registro de diario:
+
+- Assunto: `[Chronos] V1 executiva local`.
+- Nome da squad/agente: `Chronos Core`.
+- Data e hora local: 2026-05-18 08:37:56 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO` - primeira versao local do modulo executivo de reunioes formais.
+- Motivo da mudanca: Lucas autorizou seguir com a V1 do Chronos apos a oficializacao do modulo, mantendo o limite com PulseX e priorizando formalizacao, gravacao, transcricao, ata revisavel, timeline, follow-up, memoria operacional e rastreabilidade.
+- Arquivos/modulos afetados: `apps/hub/app/chronos/page.tsx`, `apps/hub/modules/chronos/ChronosPage.tsx`, `apps/hub/app/api/chronos/meetings/route.ts`, `apps/hub/lib/chronos/*`, `packages/database/migrations/0019_chronos_core.sql`, `packages/shared/src/modules/registry.ts`, `packages/shared/src/permissions/*`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/lib/hub-ai/client.ts`, `apps/hub/app/api/ai/chat/route.ts`, `turbo.json` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei o contrato de dados Chronos, a migration com tabelas de salas, reunioes, participantes, timeline, transcricoes, atas, follow-ups e gravacoes, a API server-side protegida por bearer Supabase, fallback local apenas para desenvolvimento quando o schema ainda nao existe, registro do modulo no Hub, permissoes `chronos:view`/`chronos:manage`, entrada no shell, instrucoes especificas para Caca/Hub AI no modulo Chronos e a tela executiva com abas de salas, reunioes, gravacoes, transcricoes, atas, follow-ups, timeline, participantes e configuracoes.
+- Logica utilizada: Chronos foi implementado como memoria executiva formal, nao como comunicador casual; captura de camera/tela usa APIs do navegador, gravacao inicial usa `MediaRecorder`, transcricao e resumo ficam rastreaveis, e ata automatica sempre nasce como rascunho ate aprovacao humana explicita.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido do `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou e listou `/chronos` e `/api/chronos/meetings`, mantendo warning Turbopack/NFT conhecido em SquadOps; `Invoke-WebRequest http://localhost:3001/chronos` retornou 200; `/api/chronos/meetings` sem sessao retornou 401 esperado; validacao visual no Browser do Codex abriu `/chronos` autenticado no shell do Hub e criou a reuniao de smoke `CHR-000001` no fallback local com aviso de migration pendente.
+- Pendencias ou riscos conhecidos: a migration `0019_chronos_core.sql` ainda precisa ser aplicada por `Hub DataOps`/`Hub ReleaseOps` antes de homologacao/producao; storage binario de gravacoes, realtime multiusuario/WebRTC completo, STT automatica e monitoramento oficial ainda sao evolucoes posteriores; o worktree tambem contem diffs paralelos fora do Chronos em Hub Core/PulseX/Setup e migration `0020`, entao ReleaseOps deve stagear apenas o recorte Chronos.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar, stagear recorte, versionar, publicar em homologacao e executar healthchecks; `Hub DataOps` para aplicar a migration Chronos em ambiente controlado.
+
+Registro de diario:
+
+- Assunto: `[Chronos] Sidebar do Hub`.
+- Nome da squad/agente: `Chronos Core`.
+- Data e hora local: 2026-05-18 10:10:12 -03:00.
+- Tipo da alteracao: `HOTFIX` - correcao de validacao local do item Chronos na sidebar.
+- Motivo da mudanca: Lucas informou que o modulo Chronos nao aparecia no sidebar do Hub apos a V1 local.
+- Arquivos/modulos afetados: `packages/shared/src/modules/registry.ts`, `packages/shared/src/permissions/*`, `packages/shared/dist/*` gerado localmente e `docs/codex/engineering-operations.md`.
+- Como foi feito: identifiquei que o Hub importa `@repo/shared` pelo pacote compilado em `dist`; o Chronos ja estava registrado no `src`, mas o `dist` local ainda estava com a lista antiga. Executei `npm.cmd run build --workspace @repo/shared` para atualizar o pacote consumido pelo `next dev`.
+- Logica utilizada: o problema nao era permissao da conta nem rota inexistente; era build local stale do pacote compartilhado. Em release oficial via Turborepo, o build de dependencias deve ocorrer antes do Hub por causa do `dependsOn: ["^build"]`, mas no `next dev` local a reconstrucao do shared precisa ser feita quando o registry/permissoes mudam.
+- Validacao executada: `rg` confirmou `chronos` em `packages/shared/dist`; `npm.cmd run build --workspace @repo/hub` passou; Browser do Codex confirmou a sidebar com `CareDesk`, `Chronos`, `Guardian`, `PulseX`, `Setup` e `SquadOps`.
+- Pendencias ou riscos conhecidos: se o Lucas estiver com uma aba antiga aberta, pode ser necessario atualizar a pagina ou reiniciar o dev server; ReleaseOps deve manter o recorte Chronos isolado de diffs paralelos.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para stagear o recorte correto e publicar em homologacao quando autorizado.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Promocao admin Lucas homologacao`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-18 08:36:08 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - ajuste de acesso em homologacao.
+- Motivo da mudanca: Lucas conseguiu logar no ambiente de homologacao, mas o usuario apareceu como perfil operacional comum e precisava de permissao administrativa para funcionalidades restritas a `admin`/`adm`.
+- Arquivos/modulos afetados: Supabase homologacao `qanlldynttyxgmcwkxqv.supabase.co`, tabela `public.hub_users`, usuario `lucas.ruas@careli.adm.br` e `docs/codex/engineering-operations.md`.
+- Como foi feito: carreguei temporariamente as variaveis de Preview da branch `homolog` em arquivo local dentro de `.vercel`, consultei o Auth Admin com User-Agent server-side, localizei o usuario do Lucas, atualizei/garanti o perfil em `public.hub_users` e removi o arquivo temporario ao final.
+- Logica utilizada: o Hub libera funcionalidades administrativas por `hub_users.role = 'admin'` e, em alguns fluxos, tambem por `hub_users.operational_profile = 'adm'`. Antes da correcao, o usuario estava `status=active`, `role=operator`, `operational_profile=op1`; apos a correcao ficou `status=active`, `role=admin`, `operational_profile=adm`.
+- Validacao executada: consulta ao Supabase homolog confirmou `authUserExists=true`; upsert em `hub_users` retornou o perfil atualizado como `admin/adm`; `Test-Path .vercel/.env.homolog-admin-update.local` retornou `False`, confirmando remocao do arquivo temporario.
+- Pendencias ou riscos conhecidos: a sessao atual do navegador pode manter o perfil antigo em memoria ate refresh/logout-login; Lucas deve atualizar a pagina ou sair e entrar novamente se algum botao admin ainda nao aparecer. Nenhuma variavel, token ou senha foi exposta e nenhuma alteracao foi feita em producao.
+- Status operacional: `CORRIGIDO`.
+- Proxima squad recomendada: `Hub SupportOps` para smoke autenticado caso alguma funcionalidade admin ainda fique bloqueada; `Hub DataOps` apenas se houver divergencia de perfil no banco.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Fallback local para sessao administrativa`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-18 08:46:09 -03:00.
+- Tipo da alteracao: `CORRECAO` - acesso local ao Operations Center.
+- Motivo da mudanca: Lucas mostrou que, em `localhost:3001/squadops`, o Operations Center carregava o shell mas as APIs internas exibiam `Sessao administrativa ausente para acessar o SquadOps`, deixando o diario, monitoring e cards com zero registros.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/admin-access.ts`, `apps/hub/lib/operations/alert-protocols.ts`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/app/api/squadops/copilot/route.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: mantive a autorizacao por bearer/admin para ambientes reais e adicionei um fallback apenas para requisicoes em `NODE_ENV=development` com host local (`localhost`, `127.0.0.1` ou `::1`) quando nao houver bearer; nesse modo o `userId` fica nulo para gravacoes/auditoria, evitando FK falsa. Ajustei alert protocols, sync estruturado e PO AI para aceitarem `userId` nulo no fallback local.
+- Logica utilizada: o bloqueio era correto em producao/homologacao, mas no desenvolvimento local podia impedir a leitura operacional quando a sessao Supabase real nao estava disponivel no navegador. O fallback nao abre Vercel/producao, pois depende simultaneamente do ambiente de desenvolvimento e do host local da propria requisicao; em URL real, sem bearer, continua retornando 401.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido de config ESM; smoke local sem bearer em `http://localhost:3001/api/squadops/operations` retornou HTTP 200; smoke local sem bearer em `http://localhost:3001/api/operations/monitoring` retornou HTTP 200; `/squadops` retornou HTTP 200.
+- Pendencias ou riscos conhecidos: em homologacao/producao continua obrigatorio ter sessao Supabase e perfil admin/adm; se o erro aparecer em `homo.c2x.app.br` ou `c2x.app.br`, o caminho correto e refresh/logout-login ou revisao de Auth/Profile, nao fallback local.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix de SquadOps; `Hub SupportOps` apenas se o erro persistir fora do localhost.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Parecer Guardian DB AL-0001`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-18 08:40:06 -03:00.
+- Tipo da alteracao: `INCIDENTE` - investigacao de alerta C2X DB Health em homologacao.
+- Motivo da mudanca: Operations Center gerou o protocolo `AL-0001` para `https://homo.c2x.app.br/api/guardian/db/health`, informando esperado `200 conectado`, recebido `401 Unauthorized`, risco critico e impacto de possivel perda de leitura do banco C2X pelo Guardian.
+- Arquivos/modulos afetados: ambiente `https://homo.c2x.app.br`, rota `apps/hub/app/api/guardian/db/health/route.ts`, biblioteca `apps/hub/lib/guardian/db.ts`, monitoramento `apps/hub/lib/operations/data-sources.ts`, classificacao `apps/hub/lib/operations/monitoring.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: reproduzi acesso externo direto ao endpoint, acessei o mesmo endpoint via `npx.cmd vercel curl`, conferi o deployment/alias de homologacao, consultei logs Vercel recentes, revisei o codigo da rota de health, o contrato de variaveis `GUARDIAN_DB_*` e a regra que gera alerta critico quando `guardian-db-health` nao retorna `ok`.
+- Logica utilizada: o `401 Unauthorized` externo nao vem do banco C2X nem da rota Guardian; ele ocorre antes da aplicacao por protecao/autenticacao do Preview Vercel ou falta de bypass do monitor. Quando o mesmo endpoint e chamado via `vercel curl`, a aplicacao responde JSON e revela a pendencia real de homologacao: `status=unconfigured`, faltando `GUARDIAN_DB_HOST`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER` e `GUARDIAN_DB_PASSWORD`. Portanto, o alerta `AL-0001` e falso positivo quanto a "C2X indisponivel" pelo `401`, mas existe pendencia real separada de configurar Guardian DB/C2X no Preview para validar `200 conectado`.
+- Validacao executada: `Invoke-WebRequest https://homo.c2x.app.br/api/guardian/db/health` reproduziu `401 Unauthorized`; `npx.cmd vercel curl https://homo.c2x.app.br/api/guardian/db/health` retornou `{"ok":false,"status":"unconfigured","missing":["GUARDIAN_DB_HOST","GUARDIAN_DB_NAME","GUARDIAN_DB_USER","GUARDIAN_DB_PASSWORD"]}`; `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou Preview `Ready` `dpl_237WWbqPaEwfVz18HH428o7y4ioy`; `npx.cmd vercel logs https://homo.c2x.app.br --since 30m --level error` nao encontrou logs; `https://c2x.app.br/api/guardian/db/health` em producao respondeu `200 OK` com `status=connected` e banco `prod_careli`.
+- Pendencias ou riscos conhecidos: enquanto o monitor usar a URL externa protegida sem bypass, o `401` pode continuar gerando alerta critico incorreto; enquanto `GUARDIAN_DB_*` nao existir no Preview homolog, o health real do Guardian DB seguira `unconfigured` e nao deve ser tratado como validacao C2X concluida. Nenhuma variavel, token ou senha foi exposta e nenhuma configuracao foi alterada nesta investigacao.
+- Parecer tecnico `AL-0001`: `FALSO_POSITIVO` para indisponibilidade C2X causada pelo `401`; `PERSISTE` como pendencia de configuracao Guardian DB no Preview ate InfraOps/Guardian Core configurar `GUARDIAN_DB_*` ou formalizar que homologacao nao validara C2X.
+- Status operacional: `NECESSITA CORRECAO`.
+- Proxima squad recomendada: `Hub InfraOps` para configurar bypass/Protection Bypass ou monitor interno para healthchecks de Preview e provisionar `GUARDIAN_DB_*` de homologacao; `Guardian Core` para validar conexao C2X apos variaveis; `Hub ReleaseOps` apenas depois da correcao para healthcheck final e publicacao/rastreabilidade se houver ajuste de codigo.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Fechamento acesso Lucas homolog`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 08:43:00 -03:00.
+- Tipo da alteracao: `AUDITORIA` - adendo de continuidade ao cadastro Auth/perfil interno do Lucas em homologacao.
+- Motivo da mudanca: entradas paralelas de Chronos/SupportOps foram registradas enquanto DataOps executava a liberacao; este adendo preserva a continuidade no fim atual do diario sem remover o registro DataOps anterior.
+- Arquivos/modulos afetados: Supabase Auth homolog `qanl...kxqv`, `public.hub_users`, Preview `https://homo.c2x.app.br` e `docs/codex/engineering-operations.md`.
+- Validacao executada: usuario `lucas.ruas@careli.adm.br` vinculado ao UUID `63f797f0-b751-485b-b553-50049eb1f981`; perfil interno confirmado como `role=admin`, `operational_profile=adm`, `status=active`; `/api/auth/profile`, `/api/hub/it-tickets?scope=all` e `/api/squadops/operations/structured?limit=1` retornaram `200` no Preview autenticado; magic link homolog solicitado para o e-mail do Lucas; artefatos temporarios com token de smoke foram removidos.
+- Pendencias ou riscos conhecidos: a senha/credencial humana nao foi exposta no chat nem no diario; acesso deve ocorrer pelo link enviado ao e-mail ou por canal seguro externo se Lucas preferir login por senha. Guardian DB segue pendencia separada de InfraOps/Guardian.
+- Status operacional: `HOMOLOG ACESSIVEL`.
+- Proxima squad recomendada: `Hub SupportOps` para confirmar o acesso humano do Lucas no navegador; `Hub InfraOps` continua responsavel pela pendencia separada de Guardian DB.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Token admin em homologacao e producao`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-18 08:56:28 -03:00.
+- Tipo da alteracao: `CORRECAO` - envio de bearer real para APIs protegidas do Operations Center.
+- Motivo da mudanca: Lucas esclareceu que o erro `Sessao administrativa ausente para acessar o SquadOps` estava ocorrendo em producao, nao apenas no localhost. A tela carregava o shell, mas Operations, Database Monitoring, alertas, PO AI e Ticket TI podiam chamar APIs protegidas sem `Authorization`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/lib/squadops/admin-access.ts`, `apps/hub/lib/operations/alert-protocols.ts`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/app/api/squadops/copilot/route.ts` e este diario.
+- Como foi feito: mantive o fallback sem bearer restrito a `NODE_ENV=development` com host local e passei a resolver o token do SquadOps no client por tres camadas: token do `AuthProvider`, sessao atual do Supabase client e cache `sb-...-auth-token` do navegador. Todas as chamadas protegidas da tela passaram a usar o token resolvido, incluindo Operations, base estruturada, alert protocols, watcher, monitoring, PO AI, sync e Ticket TI.
+- Logica utilizada: homologacao e producao continuam exigindo sessao Supabase real e perfil `admin`/`adm`; a correcao nao abre bypass em URL publicada. Ela apenas impede que o estado visual do provider reconheca o usuario enquanto as chamadas internas saem sem bearer.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido do `eslint.config.js`; `git diff --check` do recorte passou; smoke local retornou HTTP 200 para `/squadops`, `/api/squadops/operations` e `/api/operations/monitoring`.
+- Pendencias ou riscos conhecidos: ainda falta publicar o recorte para homologacao/producao e fazer smoke autenticado no navegador do Lucas. A validacao externa sem bearer deve continuar retornando 401 em ambiente real. `npm.cmd run build --workspace @repo/hub` nao compilou porque ja havia um processo `next dev`/build ativo usando a `.next`; nao encerrei o servidor local para nao interromper a sessao do Lucas.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix em homologacao/producao; `Hub SupportOps` se o erro persistir apos refresh/logout-login.

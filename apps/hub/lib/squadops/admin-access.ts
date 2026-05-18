@@ -34,7 +34,7 @@ type SquadOpsAdminClient = ReturnType<
 type SquadOpsAdminAccessResult =
   | {
       ok: true;
-      userId: string;
+      userId: string | null;
     }
   | {
       ok: false;
@@ -47,6 +47,13 @@ export async function authorizeSquadOpsAdminRequest(
   const accessToken = getBearerToken(request);
 
   if (!accessToken) {
+    if (isLocalSquadOpsDevelopmentRequest(request)) {
+      return {
+        ok: true,
+        userId: null,
+      };
+    }
+
     return {
       ok: false,
       response: NextResponse.json(
@@ -202,4 +209,22 @@ function getBearerToken(request: NextRequest) {
   }
 
   return authorization.slice("Bearer ".length).trim() || null;
+}
+
+function isLocalSquadOpsDevelopmentRequest(request: NextRequest) {
+  if (process.env.NODE_ENV !== "development") {
+    return false;
+  }
+
+  try {
+    const hostname = new URL(request.url).hostname.toLowerCase();
+
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1"
+    );
+  } catch {
+    return false;
+  }
 }

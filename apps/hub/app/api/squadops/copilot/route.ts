@@ -181,7 +181,7 @@ async function createCopilotAnswer({
   question: string;
   structuredOperations: StructuredEngineeringOperation[];
   structuredStatus: string;
-  userId: string;
+  userId: string | null;
 }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
@@ -207,7 +207,7 @@ async function createCopilotAnswer({
         instructions: buildCopilotInstructions(),
         max_output_tokens: 2_200,
         model,
-        user: userId,
+        user: userId ?? "local-squadops-admin",
       }),
       cache: "no-store",
       headers: {

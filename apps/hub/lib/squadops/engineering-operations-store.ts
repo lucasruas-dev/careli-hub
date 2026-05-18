@@ -271,7 +271,7 @@ export async function syncEngineeringOperationsToStore({
   userId,
 }: {
   operations: EngineeringOperationsResponse;
-  userId: string;
+  userId: string | null;
 }): Promise<EngineeringOperationsStructuredSyncResult> {
   const adminClient = createEngineeringOperationsStoreClient();
   const sourcePath = operations.sourcePath || defaultSourcePath;
