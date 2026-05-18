@@ -7,21 +7,38 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Stop-HomologationDeploy {
+  param(
+    [string]$Message,
+    [string[]]$Details = @()
+  )
+
+  Write-Error -Message $Message -ErrorAction Continue
+
+  foreach ($detail in $Details) {
+    Write-Host $detail
+  }
+
+  exit 1
+}
+
 $currentBranch = (git branch --show-current).Trim()
 
 if ($currentBranch -ne $Branch) {
-  Write-Error "Deploy de homologacao bloqueado. Branch atual: '$currentBranch'. Branch esperada: '$Branch'."
-  Write-Host "Use uma branch dedicada de homologacao antes de publicar preview operacional."
-  exit 1
+  Stop-HomologationDeploy `
+    -Message "Deploy de homologacao bloqueado. Branch atual: '$currentBranch'. Branch esperada: '$Branch'." `
+    -Details @("Use uma branch dedicada de homologacao antes de publicar preview operacional.")
 }
 
 $dirtyFiles = @(git status --porcelain)
 
 if ($dirtyFiles.Count -gt 0 -and -not $AllowDirty) {
-  Write-Error "Deploy de homologacao bloqueado porque o worktree nao esta limpo."
-  $dirtyFiles | ForEach-Object { Write-Host $_ }
-  Write-Host "Finalize ou isole o recorte antes de publicar. Use -AllowDirty apenas para diagnostico manual."
-  exit 1
+  Stop-HomologationDeploy `
+    -Message "Deploy de homologacao bloqueado porque o worktree nao esta limpo." `
+    -Details @(
+      $dirtyFiles
+      "Finalize ou isole o recorte antes de publicar. Use -AllowDirty apenas para diagnostico manual."
+    )
 }
 
 if (-not $SkipValidation) {
@@ -34,9 +51,9 @@ $deploymentOutput = @(npx.cmd vercel deploy --yes)
 $deploymentUrl = ($deploymentOutput | Select-Object -Last 1)
 
 if ($LASTEXITCODE -ne 0 -or -not $deploymentUrl) {
-  $deploymentOutput | ForEach-Object { Write-Host $_ }
-  Write-Error "Deploy de homologacao falhou antes de retornar URL Vercel."
-  exit 1
+  Stop-HomologationDeploy `
+    -Message "Deploy de homologacao falhou antes de retornar URL Vercel." `
+    -Details $deploymentOutput
 }
 
 $deploymentUrl = $deploymentUrl.Trim()

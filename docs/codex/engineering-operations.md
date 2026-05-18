@@ -3440,6 +3440,21 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[InfraOps] Validacao de homologacao e Vercel Preview`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-17 22:45:36 -03:00.
+- Tipo da alteracao: `AUDITORIA` - validacao tecnica de infraestrutura de homologacao.
+- Motivo da mudanca: assumir as demandas abertas de InfraOps para conferir branch/fluxo de homologacao, scripts operacionais, configuracao Vercel, variaveis de Preview, healthchecks e dependencias do protocolo `DP-0001` sem publicar producao nem aplicar migrations.
+- Arquivos/modulos afetados: `scripts/deploy-homologation.ps1`, `scripts/homologation-healthcheck.ps1`, `vercel.json`, `.vercel/project.json`, `.env.homolog.example`, `docs/architecture/homologation-environment.md` e `docs/codex/engineering-operations.md`.
+- Como foi feito: revisei o diario operacional, `AGENTS.md`, `package.json`, `turbo.json`, scripts em `scripts/`, configuracao Vercel local e configuracao remota do projeto; confirmei que a branch local atual e `homolog`, que o projeto Vercel esta ligado ao Root Directory `.` com build `npx turbo build --filter=@repo/hub` e output `apps/hub/.next`, que o alias de producao `c2x.app.br` aponta para deployment `READY`, e que o dominio/alias de homologacao ainda nao esta configurado. Ajustei o script `deploy-homologation.ps1` para imprimir detalhes do bloqueio antes de encerrar quando o worktree esta sujo ou a branch esperada nao confere.
+- Logica utilizada: homologacao deve continuar separada de producao, usando branch dedicada `homolog` com Preview/Custom Environment e variaveis proprias. Sem branch remota/upstream, variaveis Preview completas e dominio/alias de homologacao, o ambiente externo ainda nao pode ser tratado como homologacao oficial. O deploy fica bloqueado enquanto o worktree misturar recortes de produto, migrations e infraestrutura.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `powershell -ExecutionPolicy Bypass -File scripts/homologation-healthcheck.ps1 -BaseUrl http://localhost:3001` passou sem chamar Guardian `limit=1000`; `powershell -ExecutionPolicy Bypass -File scripts/deploy-homologation.ps1 -SkipValidation` bloqueou corretamente por worktree sujo e passou a listar arquivos pendentes; `npx.cmd vercel env ls preview` mostrou apenas `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` no Preview; `npx.cmd vercel project inspect careli-hub-hub-i2bs`, `npx.cmd vercel ls`, `npx.cmd vercel alias ls` e `npx.cmd vercel domains ls` foram usados apenas para metadados, sem expor valores de secrets.
+- Pendencias ou riscos conhecidos: branch remota/upstream `homolog` nao aparece configurada; Preview Vercel nao possui o conjunto completo de variaveis de homologacao (`NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_CARELI_APP_ENV`, `NEXT_PUBLIC_CARELI_APP_URL`, `NEXT_PUBLIC_CARELI_ENABLE_MOCKS`, `NEXT_PUBLIC_SUPABASE_WORKSPACE_ID`, `SUPABASE_SERVICE_ROLE_KEY`, `GUARDIAN_DB_*`, chaves sandbox de integracoes e modelos server-side); dominio/alias `homolog.c2x.app.br` ainda nao aparece configurado; migrations Supabase seguem pendentes para DataOps e nao foram aplicadas.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub ReleaseOps` para separar/stagear recortes, publicar branch remota `homolog` e preparar o primeiro deploy de homologacao quando o ambiente estiver completo; `Hub DataOps` para definir Supabase de homologacao e aplicar migrations somente apos autorizacao explicita do Lucas.
+
+Registro de diario:
+
 - Assunto: `[SquadOps] Filtro por protocolo operacional`.
 - Nome da squad/agente: `Dev SquadOps`.
 - Data e hora local: 2026-05-17 22:52:48 -03:00.
@@ -3452,3 +3467,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: build completo ainda deve ser executado pelo ReleaseOps no recorte final; a busca por `TI-*` ficara completa quando a tela de vinculos Ticket TI -> AT -> DP estiver alimentando protocolos de ticket no mesmo fluxo.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o recorte SquadOps.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Auditoria migrations 0013 a 0016`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-17 22:53:29 -03:00.
+- Tipo da alteracao: `AUDITORIA` - revisao de camada de dados Supabase.
+- Motivo da mudanca: Lucas acionou Hub DataOps para assumir as demandas abertas de dados, revisar as migrations pendentes `0013`, `0014`, `0015` e `0016`, confirmar dependencias, validar a tabela `hub_it_tickets`, conferir tabelas estruturadas do Engineering Operations, grants, RLS e disponibilidade via Supabase REST/Data API.
+- Arquivos/modulos afetados: `packages/database/migrations/0013_hub_engineering_operations_records.sql`, `packages/database/migrations/0014_hub_it_tickets.sql`, `packages/database/migrations/0015_hubops_short_protocol_codes.sql`, `packages/database/migrations/0016_hub_release_protocols.sql`, `packages/database/migrations/0017_squadops_ticket_operation_links.sql`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/app/api/squadops/operations/structured/route.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/app/api/hub/it-tickets/route.ts`, `apps/hub/lib/operations/alert-protocols.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: revisei o diario operacional, `AGENTS.md`, a skill Supabase aplicavel, as migrations locais e os consumidores server-side/API; confirmei por consulta REST com anon key, sem expor credenciais, que `public.hub_engineering_operation_records`, `public.hub_it_tickets`, `public.hub_release_protocols` e `public.hub_operations_alert_protocols` retornam `PGRST205` no Supabase real, indicando ausencia no schema cache.
+- Logica utilizada: a ordem segura para ativar a camada revisada e manter as dependencias e FKs e aplicar primeiro a base ja pendente de alertas (`0012`, fora do pedido inicial mas dependencia da `0015`), depois `0013`, `0014`, `0015` e `0016`; `0016` depende diretamente da `0013` porque `hub_release_protocol_items.operation_record_id` referencia `hub_engineering_operation_records`; `0015` depende de `0012` e `0013`; a migration `0017`, embora fora do pedido inicial, depende de `0014`, `0013` e `0016` e tambem completa os novos status de Ticket TI que o codigo atual ja aceita.
+- Validacao executada: revisao SQL estatica de tabelas, FKs, indices, triggers, RLS, policies e grants; consulta Supabase REST/Data API com anon key para as quatro tabelas principais retornou `404/PGRST205` de tabela ausente; `npm.cmd run check-types:hub` passou; nenhuma migration foi aplicada no Supabase real.
+- Pendencias ou riscos conhecidos: aplicacao real segue bloqueada sem autorizacao explicita do Lucas; RLS/grants reais ainda nao podem ser testados porque as tabelas nao existem no Supabase real; Ticket TI so fica plenamente alinhado ao codigo atual apos aplicar tambem a `0017`, pois ela adiciona `em_analise`, `em_tratativa`, `em_homologacao` e `em_producao` ao enum; `0016` ainda permite ambiente `qa`, que deve ser tratado como compatibilidade historica ou ajustado por decisao de SquadOps/ReleaseOps antes de aplicar se Lucas quiser bloquear qualquer estado com nome QA; sem migrations, SquadOps continua em fallback do diario Markdown e Ticket TI continua retornando estado operacional de migration pendente.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub DataOps` para aplicar migrations somente apos autorizacao explicita do Lucas e validar REST/RLS/grants com usuario autenticado; `Hub ReleaseOps` para nao liberar como persistencia ativa enquanto o Supabase real estiver sem as tabelas.
