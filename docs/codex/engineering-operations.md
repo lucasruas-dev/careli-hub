@@ -4192,3 +4192,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke autenticado final do Lucas em homologacao/producao ainda e recomendado com refresh forte ou logout/login para renovar sessao; Guardian Queue segue lenta em producao apesar de retornar 200; Guardian DB em Preview homolog continua 503 e e pendencia separada de InfraOps/Guardian; o worktree local permanece com recortes pendentes fora deste release e nao devem ser publicados sem novo recorte autorizado.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para acompanhar se o erro `Sessao administrativa ausente` persiste apos refresh/logout-login; `Guardian Core` e `Hub SupportOps` para acompanhar latencia da Guardian Queue; `Hub InfraOps`/`Guardian Core` para pendencia de Guardian DB no Preview homolog quando Lucas decidir validar Guardian completo em homologacao.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Fallback autenticado sem service role`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-18 10:35:13 -03:00.
+- Tipo da alteracao: `CORRECAO` - validacao admin por sessao autenticada quando a service role nao estiver no runtime.
+- Motivo da mudanca: apos o deploy `9e18fdb`, Lucas validou producao e o Operations Center passou a mostrar `Configure a chave server-side para validar acesso ao SquadOps`. Isso confirma que a chamada chegava na API, mas o runtime publicado nao possuia `SUPABASE_SERVICE_ROLE_KEY`.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/admin-access.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: mantive `SUPABASE_SERVICE_ROLE_KEY` como caminho preferencial quando existir; quando ela estiver ausente, a API agora cria um client server-side com `NEXT_PUBLIC_SUPABASE_ANON_KEY` e o bearer do usuario autenticado, valida `auth.getUser(accessToken)` e consulta `hub_users` sob RLS para confirmar `role=admin` ou `operational_profile=adm`.
+- Logica utilizada: o SquadOps nao deve depender obrigatoriamente de service role apenas para validar leitura/admin do Operations Center. A validacao por anon + bearer continua server-side, respeita RLS, exige sessao real e nao libera usuario sem perfil admin ativo. Se tambem faltar URL/anon key, a API continua retornando erro 503 de configuracao Supabase.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido do `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT do Engineering Operations.
+- Pendencias ou riscos conhecidos: ainda e recomendavel configurar `SUPABASE_SERVICE_ROLE_KEY` em Production/Preview para rotinas de persistencia estruturada, alert protocols e sync que realmente precisam de escrita administrativa. Para destravar a leitura/admin do SquadOps, este hotfix deve ser publicado por Hub ReleaseOps.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix curto; `Hub DataOps/InfraOps` para revisar variaveis Supabase server-side em Production e Preview sem expor secrets.

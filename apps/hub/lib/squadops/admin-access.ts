@@ -31,6 +31,16 @@ type SquadOpsAdminClient = ReturnType<
   typeof createClient<SquadOpsAdminDatabase>
 >;
 
+type SquadOpsAccessClientResult =
+  | {
+      client: SquadOpsAdminClient;
+      ok: true;
+    }
+  | {
+      ok: false;
+      response: NextResponse<{ error: string }>;
+    };
+
 type SquadOpsAdminAccessResult =
   | {
       ok: true;
@@ -63,30 +73,16 @@ export async function authorizeSquadOpsAdminRequest(
     };
   }
 
-  const serverEnv = process.env as Record<string, string | undefined>;
-  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+  const clientResult = createSquadOpsAccessClient(accessToken);
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (!clientResult.ok) {
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: "Configure a chave server-side para validar acesso ao SquadOps." },
-        { status: 503 },
-      ),
+      response: clientResult.response,
     };
   }
 
-  const adminClient = createClient<SquadOpsAdminDatabase>(
-    supabaseUrl,
-    serviceRoleKey,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    },
-  );
+  const adminClient = clientResult.client;
   const { data: authData, error: authError } =
     await adminClient.auth.getUser(accessToken);
 
@@ -122,6 +118,62 @@ export async function authorizeSquadOpsAdminRequest(
   return {
     ok: true,
     userId: userResult.user.id,
+  };
+}
+
+function createSquadOpsAccessClient(
+  accessToken: string,
+): SquadOpsAccessClientResult {
+  const serverEnv = process.env as Record<string, string | undefined>;
+  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Configure a URL do Supabase para validar acesso ao SquadOps." },
+        { status: 503 },
+      ),
+    };
+  }
+
+  if (serviceRoleKey) {
+    return {
+      ok: true,
+      client: createClient<SquadOpsAdminDatabase>(supabaseUrl, serviceRoleKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }),
+    };
+  }
+
+  if (!anonKey) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Configure as chaves Supabase para validar acesso ao SquadOps." },
+        { status: 503 },
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    client: createClient<SquadOpsAdminDatabase>(supabaseUrl, anonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    }),
   };
 }
 
