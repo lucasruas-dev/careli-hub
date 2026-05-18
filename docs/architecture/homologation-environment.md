@@ -62,6 +62,60 @@ Uso temporario do Supabase de producao em homologacao so e aceitavel para:
 - diagnostico manual;
 - validacao explicitamente autorizada por Lucas.
 
+### Criterio DataOps V1
+
+Para homologacao com persistencia real, o ambiente deve usar um projeto Supabase de homologacao separado, com Auth, schemas, RLS, grants e migrations equivalentes ao recorte em validacao.
+
+O Preview Vercel pode ser criado sem persistencia real apenas como smoke de infraestrutura, desde que fique registrado como `BLOQUEADO PARA FLUXOS DE ESCRITA` e nao seja usado para validar Ticket TI, protocolos, syncs ou qualquer rotina que dependa de banco.
+
+Nao configurar `SUPABASE_SERVICE_ROLE_KEY` de producao no ambiente Preview/Custom Environment de homologacao. Se a homologacao usar temporariamente o Supabase de producao para leitura controlada, ela deve operar sem escrita e com autorizacao explicita do Lucas.
+
+Para um Supabase de homologacao novo, aplicar a base completa em ordem controlada:
+
+1. `0001_create_hub_core_schema.sql`
+2. `0002_setup_and_pulsex_core.sql`
+3. `0003_setup_beta_policies.sql`
+4. `0003_setup_operational_access.sql`
+5. `0004_hub_user_operational_profile.sql`
+6. `0005_setup_beta_access_policies.sql`
+7. `0006_setup_user_assignment_access.sql`
+8. `0007_pulsex_channel_members_access.sql`
+9. `0008_pulsex_department_announcement_channels.sql`
+10. `0009_hub_presence_audit.sql`
+11. `0010_c2x_guardian_read_model.sql`
+12. `0011_caredesk_core.sql`
+13. `0012_hub_operations_alert_protocols.sql`
+14. `0013_hub_engineering_operations_records.sql`
+15. `0014_hub_it_tickets.sql`
+16. `0015_hubops_short_protocol_codes.sql`
+17. `0016_hub_release_protocols.sql`
+18. `0017_squadops_ticket_operation_links.sql`
+
+Observacao DataOps: existem duas migrations com prefixo `0003`. Se o runner de migration usar apenas o prefixo numerico como versao, a aplicacao deve ser tratada como fluxo manual/controlado ou receber ajuste aprovado em recorte proprio; nao renomear nem apagar migrations antigas sem decisao registrada.
+
+Para um Supabase ja existente com base Hub aplicada, a cadeia minima pendente para liberar persistencia operacional atual e:
+
+1. `0012_hub_operations_alert_protocols.sql`
+2. `0013_hub_engineering_operations_records.sql`
+3. `0014_hub_it_tickets.sql`
+4. `0015_hubops_short_protocol_codes.sql`
+5. `0016_hub_release_protocols.sql`
+6. `0017_squadops_ticket_operation_links.sql`
+
+Aplicar somente apos autorizacao explicita do Lucas e registrar ambiente, ordem, resultado, riscos e rollback no Engineering Operations.
+
+Validacoes DataOps obrigatorias apos aplicar:
+
+- confirmar existencia das tabelas no schema `public`;
+- confirmar RLS habilitado em todas as tabelas expostas;
+- confirmar grants minimos para `authenticated` e ausencia de acesso anonimo indevido;
+- validar Supabase REST/Data API com usuario autenticado autorizado;
+- validar bloqueio sem sessao quando esperado;
+- validar policy de requester em Ticket TI;
+- validar policy adm em Operations, Release Protocols e sync do Engineering Operations;
+- validar indices, triggers `set_hub_updated_at` e sequencias `AT-*`, `AL-*`, `DP-*`;
+- registrar evidencias sem expor secrets.
+
 ## Variaveis De Ambiente
 
 Usar `.env.homolog.example` como checklist sem secrets.
