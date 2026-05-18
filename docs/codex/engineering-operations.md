@@ -4384,6 +4384,23 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[InfraOps] Deploy final correcao Supabase Production`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 12:10:59 -03:00.
+- Tipo da alteracao: `DEPLOY TECNICO` - publicacao limpa da correcao estrutural de envs Supabase em Production.
+- Motivo da mudanca: concluir a recuperacao da producao apos o incidente em que PulseX/Auth/Setup/Home retornavam 503 por divergencia de nomes de variaveis Supabase entre localhost/homologacao e Vercel Production.
+- Arquivos/modulos afetados: commits `b34c094 fix(infraops): normalize supabase env resolution` e `b980245 fix(infraops): align auth supabase envs`, Production `dpl_GXRkw4Ar6FF4tojQ6VdriyeQqrPp`, alias `https://c2x.app.br` e este diario.
+- Como foi feito: publiquei `origin/homolog`, gerei snapshot limpo do commit `b980245` dentro de `.vercel/infraops-prod-snapshot-b980245`, confirmei que o snapshot nao continha o recorte Chronos nao versionado, rodei build local do snapshot, publiquei Production por `npx.cmd vercel deploy --prod --yes` e validei o alias final.
+- Logica utilizada: o erro aconteceu por desalinhamento operacional de contrato de env. A integracao Supabase/Vercel criou ou passou a expor em Production nomes como `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SECRET_KEY`, enquanto rotas antigas do Hub ainda exigiam `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`. O deploy de 2026-05-18 11:07 -03 ativou esse desalinhamento em producao; nao houve evidencia de perda de dados ou queda do Supabase. A correcao torna o codigo compativel com os dois contratos e mantem os aliases publicos de Production.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido do `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou no worktree; build local do snapshot limpo passou; build remoto Vercel passou com warning conhecido Turbopack/NFT e aviso de envs Postgres/Supabase JWT fora de `turbo.json`; `npx.cmd vercel inspect https://c2x.app.br` confirmou `dpl_GXRkw4Ar6FF4tojQ6VdriyeQqrPp` `Ready` em Production; `npx.cmd vercel logs https://c2x.app.br --since 10m --level error` nao retornou logs.
+- Healthcheck de producao: `/` 200; `/pulsex` 200; `/api/auth/profile` sem sessao 401; `POST /api/auth/session` sem payload 400; `POST /api/auth/password` sem credenciais 400; `/api/setup/users` sem sessao 401; `POST /api/setup/departments` sem sessao 401; `/api/pulsex/messages?channelId=smoke` sem sessao 401; `/api/hub/home` sem sessao 401; `/api/guardian/overview` sem sessao 401; `/api/hub/it-tickets?scope=all` sem sessao 401; `/api/guardian/attendance/manual-events?clientId=smoke` sem sessao 401; `/api/guardian/db/health` 200 conectado em `prod_careli`.
+- Regra de governanca confirmada: alteracao de chaves, secrets, aliases ou escopo de envs Supabase/Vercel/Postgres so pode ocorrer com autorizacao explicita do Lucas e deve ser conduzida ou revisada por `Hub InfraOps`; a mudanca deve registrar motivo, ambiente, comandos, deploy/rollback e healthchecks sem expor valores.
+- Pendencias ou riscos conhecidos: smoke autenticado final do PulseX precisa ser feito no navegador do Lucas para confirmar canais/diretas/mensagens com sessao real; `apps/hub/lib/chronos/server.ts` segue fora do pacote por estar em recorte Chronos nao versionado; `turbo.json` ainda avisa que envs Postgres/SUPABASE_JWT_SECRET nao estao listadas para alguns builds, sem bloquear a producao; `npm audit` remoto segue apontando 1 vulnerabilidade moderada e 1 alta.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps`/`Dev PulseX` para acompanhar smoke autenticado com Lucas; `Hub InfraOps` para tratar posteriormente os avisos de `turbo.json` se Lucas aprovar.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] AGENTS com bloqueio para envs e chaves`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-18 12:01:23 -03:00.
