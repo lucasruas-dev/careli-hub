@@ -5173,3 +5173,18 @@ Registro de diario:
 - Status operacional: `FINALIZADO`.
 - Status consolidado atualizado: `OPERACIONAL COM ATENCAO`.
 - Proxima squad recomendada: `Hub ReleaseOps` para classificar o pacote local `apps/ops` se Lucas quiser transformar isso em release; `Hub InfraOps/DataOps` para normalizar envs Postgres somente com autorizacao explicita; `Hub SupportOps` para smokes autenticados e incidentes funcionais.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Remocao scripts ops antes de deploy`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 18:43:53 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - limpeza preventiva de recorte local nao autorizado para deploy.
+- Motivo da mudanca: Lucas autorizou excluir os scripts/pacote `ops` antes de qualquer novo deploy, evitando que um recorte experimental ou nao classificado entre em homologacao/producao por acidente.
+- Arquivos/modulos afetados: `package.json`, `package-lock.json`, `turbo.json`, `docs/operations/README.md`, `docs/operations/releaseops-center-process.md` e `docs/operations/engineering-operations.md`.
+- Como foi feito: confirmei que `apps/ops` ja nao existia no filesystem, removi os scripts `lint:ops`, `check-types:ops` e `validate:ops`, removi a entrada `apps/ops` do `package-lock.json`, removi os outputs `apps/ops/.next` do `turbo.json`, retirei do README a referencia ao processo que apontava para `apps/ops` e exclui o documento untracked `docs/operations/releaseops-center-process.md`.
+- Logica utilizada: sem `apps/ops` no workspace, manter scripts, lockfile, outputs de build e documento apontando para esse app criaria falso recorte publicavel e risco de deploy misturado. A limpeza deixa o Hub preparado para uma proxima auditoria de release sem carregar pacote experimental.
+- Validacao executada: leitura de `AGENTS.md`, `docs/operations/README.md` e memoria operacional; `Test-Path apps/ops` retornou `False`; revisao de `git diff` antes da limpeza; `git diff --check` passou; busca por `@repo/ops`, `apps/ops`, `lint:ops`, `check-types:ops` e `validate:ops` em `package.json`, `package-lock.json`, `turbo.json` e `docs/operations/README.md` nao retornou ocorrencias; `git status --short` confirmou que os arquivos de config voltaram ao estado do HEAD.
+- Pendencias ou riscos conhecidos: `apps/hub/modules/squadops/SquadOpsPage.tsx` continua aparecendo como modificado no worktree sem diff de conteudo visivel, provavelmente por metadado/line ending; esse arquivo nao entrou neste recorte e deve ser tratado separadamente antes de qualquer deploy geral.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub ReleaseOps` para validar, commitar e manter fora de deploy qualquer alteracao local que nao esteja classificada.
