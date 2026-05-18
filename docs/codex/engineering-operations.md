@@ -3500,6 +3500,21 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[ReleaseOps] Atualizacao do Preview final da branch homolog`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-17 23:01:04 -03:00.
+- Tipo da alteracao: `RELEASE` - atualizacao de rastreabilidade do Preview.
+- Motivo da mudanca: apos registrar o primeiro Preview, um novo push documental na branch `homolog` disparou um novo Preview Vercel que passou a ser a referencia mais recente da branch.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`.
+- Como foi feito: consultei `npx.cmd vercel ls` apos o push final e confirmei o Preview `Ready` mais recente em `https://careli-hub-hub-i2bs-crobbjy57-lucasruas-devs-projects.vercel.app`.
+- Logica utilizada: a rastreabilidade deve apontar para o deployment mais recente da branch `homolog`; o Preview anterior permanece historico, mas nao deve ser tratado como ultima referencia operacional.
+- Validacao executada: `npx.cmd vercel ls` confirmou status `Ready`; `powershell -ExecutionPolicy Bypass -File scripts/homologation-healthcheck.ps1 -BaseUrl https://careli-hub-hub-i2bs-crobbjy57-lucasruas-devs-projects.vercel.app` falhou em todos os checks porque a Vercel retornou `401 Unauthorized` antes das rotas do Hub; `Invoke-WebRequest` na raiz confirmou `401 Unauthorized`.
+- Pendencias ou riscos conhecidos: Preview final esta publicado, mas continua bloqueado para homologacao operacional ate InfraOps configurar acesso/Protection Bypass ou regra equivalente para healthchecks, variaveis completas de homologacao e alias/dominio aprovado.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hub InfraOps` para liberar acesso controlado ao Preview e completar configuracao de homologacao; depois `Hub ReleaseOps` deve repetir healthchecks.
+
+Registro de diario:
+
 - Assunto: `[DataOps] Supabase de homologacao`.
 - Nome da squad/agente: `Hub DataOps`.
 - Data e hora local: 2026-05-17 22:56:05 -03:00.
