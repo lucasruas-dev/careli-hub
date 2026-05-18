@@ -4257,6 +4257,21 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[PulseX] Producao sem carga de canais`.
+- Nome da squad/agente: `Dev PulseX`.
+- Data e hora local: 2026-05-18 11:15:11 -03:00.
+- Tipo da alteracao: `INVESTIGACAO OPERACIONAL` - divergencia entre localhost e producao.
+- Motivo da mudanca: Lucas reportou que no `localhost:3001/pulsex` o PulseX carregava canais, usuarios e mensagens, mas em `https://c2x.app.br/pulsex` a tela mostrava `Sem canal`, `Nenhuma mensagem`, `Nao foi possivel carregar canais` e nenhum usuario direto.
+- Arquivos/modulos afetados: `PulseX`, `Auth/Profile`, `Setup` e configuracao Vercel Production; nenhum codigo foi alterado nesta investigacao alem deste registro.
+- Como foi feito: comparei o estado local com o deployment ativo de producao, inspecionei as variaveis registradas no Vercel Production e executei smokes HTTP em rotas publicadas. O deployment ativo `dpl_6JYAKtgxZviijgH1U4Ms9KTQAVUR` foi criado em 2026-05-18 11:07 -03:00.
+- Logica utilizada: o localhost carrega porque `apps/hub/.env.local` possui as variaveis publicas esperadas pelo client Supabase. A producao publicada nao lista `NEXT_PUBLIC_SUPABASE_URL` nem `NEXT_PUBLIC_SUPABASE_ANON_KEY`; ela lista variaveis server-side e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Como o browser do PulseX so recebe variaveis `NEXT_PUBLIC_*` definidas no build, `getHubSupabaseClient()` nao consegue criar o client, e as rotas que leem `NEXT_PUBLIC_SUPABASE_URL` diretamente tambem ficam sem configuracao.
+- Validacao executada: `npx.cmd vercel inspect https://c2x.app.br` confirmou deployment Production `dpl_6JYAKtgxZviijgH1U4Ms9KTQAVUR`; `npx.cmd vercel env ls production` confirmou ausencia de `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`; `https://c2x.app.br/api/auth/profile` retornou `503` com `Supabase nao configurado no servidor`; `https://c2x.app.br/api/guardian/db/health` retornou `200`, confirmando que a falha nao e do banco Guardian/C2X.
+- Pendencias ou riscos conhecidos: PulseX, Auth/Profile, Setup e qualquer fluxo client-side dependente do Supabase publico podem continuar degradados ate as variaveis publicas corretas serem configuradas e a producao ser redeployada. Nao registrar valores de chave no diario ou no chat.
+- Status operacional: `NECESSITA CORRECAO`.
+- Proxima squad recomendada: `Hub ReleaseOps`/`Hub InfraOps` para configurar `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` em Production/Preview e fazer redeploy controlado; depois `Dev PulseX` valida `/pulsex` carregando canais, diretas e mensagens.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Deploy env Supabase producao SquadOps`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-18 11:10:30 -03:00.
@@ -4271,3 +4286,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke autenticado final precisa ser feito pelo Lucas no navegador com sessao real para confirmar que o erro de URL sumiu; se a base estruturada continuar indisponivel, a proxima investigacao deve focar schema/migration/RLS, nao env URL; Guardian Queue segue lenta em producao apesar de 200; Guardian DB em Preview homolog segue 503 e e pendencia separada; `npm audit` remoto segue apontando 1 vulnerabilidade moderada e 1 alta.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para acompanhar a validacao autenticada do Lucas; `Hub DataOps/InfraOps` para padronizar envs Supabase entre Preview e Production; `Guardian Core`/`Hub SupportOps` para latencia Guardian Queue.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Sessao admin invalida em producao`.
+- Nome da squad/agente: `Dev SquadOps`.
+- Data e hora local: 2026-05-18 11:28:36 -03:00.
+- Tipo da alteracao: `CORRECAO` - validacao direta do JWT Supabase e limpeza da recuperacao de token client-side.
+- Motivo da mudanca: apos o deploy de compatibilidade de envs, Lucas validou `https://c2x.app.br/squadops` autenticado e a tela passou a exibir `Sessao administrativa invalida para acessar o SquadOps`, indicando que a API recebia um bearer, mas esse JWT nao estava validando como sessao Supabase real.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/admin-access.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/providers/auth-provider.tsx` e este diario.
+- Como foi feito: alterei a autorizacao do SquadOps para validar o bearer diretamente contra `${SUPABASE_URL}/auth/v1/user` usando a chave publica/server-side disponivel, mantendo a chave secreta apenas para leitura administrativa do perfil `hub_users`. Tambem restringi a recuperacao de token no client/provedor ao storage key do projeto Supabase atual em producao, deixando a busca ampla por chaves antigas apenas no localhost.
+- Logica utilizada: o erro novo podia ocorrer por token antigo, token de outro projeto ou comportamento ambiguo do client Supabase server-side ao misturar secret key e JWT de usuario. A validacao direta no Auth remove essa ambiguidade; a tela continua exigindo sessao real e perfil `admin` ou `adm`, sem fallback publico em homologacao/producao.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido do `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT do Engineering Operations; `git diff --check` do recorte passou; smoke local retornou 200 para `/squadops`, `/api/squadops/operations` e `/api/operations/monitoring`.
+- Pendencias ou riscos conhecidos: precisa novo deploy por `Hub ReleaseOps` para refletir em producao. Apos publicar, Lucas deve fazer logout/login, nao apenas refresh, para descartar sessao local antiga e gerar JWT novo no projeto Supabase correto. Se ainda persistir, a proxima investigacao deve validar o registro `auth.users` e `public.hub_users` do Lucas em Production.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar este hotfix curto em homologacao/producao; `Hub SupportOps` para acompanhar a validacao autenticada do Lucas apos logout/login.

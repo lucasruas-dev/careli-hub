@@ -1154,18 +1154,20 @@ function getCachedSupabaseSessionFromStorage(): CachedSupabaseSession | null {
     candidateKeys.add(storageKey);
   }
 
-  const projectRef = getSupabaseProjectRef(hubSupabaseConfig.url);
+  if (isLocalDevelopmentRuntime()) {
+    const projectRef = getSupabaseProjectRef(hubSupabaseConfig.url);
 
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
 
-    if (
-      key &&
-      (key.includes("auth-token") ||
-        key.includes("supabase") ||
-        Boolean(projectRef && key.includes(projectRef)))
-    ) {
-      candidateKeys.add(key);
+      if (
+        key &&
+        (key.includes("auth-token") ||
+          key.includes("supabase") ||
+          Boolean(projectRef && key.includes(projectRef)))
+      ) {
+        candidateKeys.add(key);
+      }
     }
   }
 

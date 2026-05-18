@@ -4,7 +4,10 @@ import { HubShell } from "@/layouts/hub-shell";
 import { loadHubItTickets } from "@/lib/hub-it-tickets/client";
 import type { HubItTicket } from "@/lib/hub-it-tickets/types";
 import { HubItTicketsBoard } from "@/modules/squadops/HubItTicketsBoard";
-import { getHubSupabaseClient } from "@/lib/supabase/client";
+import {
+  getHubSupabaseClient,
+  hubSupabaseConfig,
+} from "@/lib/supabase/client";
 import type {
   OperationsAlert,
   OperationsAlertFeedbackStatus,
@@ -7129,17 +7132,24 @@ function getCachedSquadOpsAccessTokenFromStorage() {
   }
 
   const candidateKeys = new Set<string>();
+  const storageKey = getSupabaseAuthStorageKey(hubSupabaseConfig.url);
 
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
+  if (storageKey) {
+    candidateKeys.add(storageKey);
+  }
 
-    if (
-      key &&
-      (key.includes("auth-token") ||
-        key.includes("supabase") ||
-        key.startsWith("sb-"))
-    ) {
-      candidateKeys.add(key);
+  if (isLocalRuntime()) {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+
+      if (
+        key &&
+        (key.includes("auth-token") ||
+          key.includes("supabase") ||
+          key.startsWith("sb-"))
+      ) {
+        candidateKeys.add(key);
+      }
     }
   }
 
@@ -7162,6 +7172,28 @@ function getCachedSquadOpsAccessTokenFromStorage() {
   }
 
   return null;
+}
+
+function getSupabaseAuthStorageKey(url?: string) {
+  const projectRef = getSupabaseProjectRef(url);
+
+  return projectRef ? `sb-${projectRef}-auth-token` : null;
+}
+
+function getSupabaseProjectRef(url?: string) {
+  if (!url?.trim()) {
+    return null;
+  }
+
+  try {
+    return new URL(url).hostname.split(".")[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function isLocalRuntime() {
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
 function extractSquadOpsAccessToken(input: unknown): string | null {

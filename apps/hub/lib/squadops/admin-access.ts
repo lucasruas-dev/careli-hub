@@ -53,6 +53,8 @@ type SquadOpsAdminAccessResult =
       response: NextResponse<{ error: string }>;
     };
 
+const SQUADOPS_AUTH_TIMEOUT_MS = 12_000;
+
 export async function authorizeSquadOpsAdminRequest(
   request: NextRequest,
 ): Promise<SquadOpsAdminAccessResult> {
@@ -85,20 +87,16 @@ export async function authorizeSquadOpsAdminRequest(
   }
 
   const adminClient = clientResult.client;
-  const { data: authData, error: authError } =
-    await adminClient.auth.getUser(accessToken);
+  const authResult = await validateSquadOpsAccessToken(accessToken);
 
-  if (authError || !authData.user) {
+  if (!authResult.ok) {
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: "Sessao administrativa invalida para acessar o SquadOps." },
-        { status: 401 },
-      ),
+      response: authResult.response,
     };
   }
 
-  const userResult = await loadSquadOpsUser(adminClient, authData.user.id);
+  const userResult = await loadSquadOpsUser(adminClient, authResult.userId);
 
   if (!userResult.ok) {
     return {
@@ -121,6 +119,87 @@ export async function authorizeSquadOpsAdminRequest(
     ok: true,
     userId: userResult.user.id,
   };
+}
+
+async function validateSquadOpsAccessToken(
+  accessToken: string,
+): Promise<
+  | {
+      ok: true;
+      userId: string;
+    }
+  | {
+      ok: false;
+      response: NextResponse<{ error: string }>;
+    }
+> {
+  const {
+    anonKey,
+    serviceRoleKey,
+    url: supabaseUrl,
+  } = getServerSupabaseConfig();
+  const apiKey = anonKey ?? serviceRoleKey;
+
+  if (!supabaseUrl) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Configure a URL do Supabase para validar acesso ao SquadOps." },
+        { status: 503 },
+      ),
+    };
+  }
+
+  if (!apiKey) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Configure as chaves Supabase para validar acesso ao SquadOps." },
+        { status: 503 },
+      ),
+    };
+  }
+
+  try {
+    const response = await fetchWithTimeout(
+      `${supabaseUrl.replace(/\/+$/, "")}/auth/v1/user`,
+      {
+        cache: "no-store",
+        headers: {
+          apikey: apiKey,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | {
+          id?: unknown;
+        }
+      | null;
+
+    if (!response.ok || typeof payload?.id !== "string" || !payload.id.trim()) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Sessao administrativa invalida para acessar o SquadOps." },
+          { status: 401 },
+        ),
+      };
+    }
+
+    return {
+      ok: true,
+      userId: payload.id,
+    };
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Nao foi possivel validar sua sessao SquadOps no Supabase." },
+        { status: 503 },
+      ),
+    };
+  }
 }
 
 function createSquadOpsAccessClient(
@@ -264,6 +343,22 @@ function getBearerToken(request: NextRequest) {
   }
 
   return authorization.slice("Bearer ".length).trim() || null;
+}
+
+function fetchWithTimeout(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    SQUADOPS_AUTH_TIMEOUT_MS,
+  );
+
+  return fetch(input, {
+    ...init,
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeoutId));
 }
 
 function isLocalSquadOpsDevelopmentRequest(request: NextRequest) {
