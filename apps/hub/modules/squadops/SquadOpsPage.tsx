@@ -127,6 +127,19 @@ type AlertFeedbackApiResponse = {
   error?: string;
 };
 
+type HomologationReviewsApiResponse = {
+  error?: string;
+  review?: {
+    itemProtocol: string;
+    note: string;
+    releaseProtocol: string;
+    status: HomologationReviewStatus;
+    updatedAt: string;
+  };
+  state?: HomologationReviewState;
+  status?: string;
+};
+
 type StructuredOperationApiRecord = {
   affectedFiles: string | null;
   changeCategory: string;
@@ -1707,6 +1720,7 @@ export function SquadOpsPage() {
               onChange={setFilters}
             />
             <DeployProtocolsView
+              accessToken={squadOpsAccessToken}
               copiedCommandId={copiedCommandId}
               filters={filters}
               onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
@@ -3438,12 +3452,14 @@ function SquadOpsViewTabs({
 }
 
 function DeployProtocolsView({
+  accessToken,
   copiedCommandId,
   filters,
   onCopyCommand,
   onSelectRecord,
   records,
 }: {
+  accessToken: string | null;
   copiedCommandId: string | null;
   filters: OperationsFilters;
   onCopyCommand: (command: string, id: string) => void;
@@ -3452,6 +3468,12 @@ function DeployProtocolsView({
 }) {
   const [homologationReviews, setHomologationReviews] =
     useState<HomologationReviewState>(() => readHomologationReviews());
+  const [homologationReviewSource, setHomologationReviewSource] = useState<
+    "local" | "loading" | "shared"
+  >("loading");
+  const [homologationReviewError, setHomologationReviewError] = useState<
+    string | null
+  >(null);
   const filteredRecords = records.filter((record) =>
     matchesFilters(record, filters),
   );
@@ -3469,37 +3491,161 @@ function DeployProtocolsView({
     writeHomologationReviews(homologationReviews);
   }, [homologationReviews]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadSharedHomologationReviews() {
+      setHomologationReviewSource("loading");
+      setHomologationReviewError(null);
+
+      try {
+        const currentAccessToken = await getSquadOpsAccessToken(accessToken);
+        const headers: Record<string, string> = {};
+
+        if (currentAccessToken) {
+          headers.Authorization = `Bearer ${currentAccessToken}`;
+        }
+
+        const response = await fetch("/api/squadops/homologation-reviews", {
+          cache: "no-store",
+          headers,
+        });
+        const payload = (await response
+          .json()
+          .catch(() => null)) as HomologationReviewsApiResponse | null;
+
+        if (!isActive) {
+          return;
+        }
+
+        if (!response.ok || !payload?.state) {
+          throw new Error(
+            payload?.error ??
+              "Nao foi possivel carregar homologacao compartilhada.",
+          );
+        }
+
+        setHomologationReviews(payload.state);
+        setHomologationReviewSource("shared");
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        setHomologationReviewSource("local");
+        setHomologationReviewError(getHomologationReviewErrorMessage(error));
+      }
+    }
+
+    void loadSharedHomologationReviews();
+
+    return () => {
+      isActive = false;
+    };
+  }, [accessToken]);
+
   function updateHomologationItem(
     deployProtocol: string,
-    itemProtocol: string,
+    item: HomologationItem,
     patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
   ) {
+    const currentItem = homologationReviews[deployProtocol]?.[item.protocol] ?? {
+      note: "",
+      status: "aguardando_teste" as HomologationReviewStatus,
+      updatedAt: "",
+    };
+    const nextReview: HomologationItemReview = {
+      ...currentItem,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+
     setHomologationReviews((current) => {
       const currentDeploy = current[deployProtocol] ?? {};
-      const currentItem = currentDeploy[itemProtocol] ?? {
-        note: "",
-        status: "aguardando_teste" as HomologationReviewStatus,
-        updatedAt: "",
-      };
 
       return {
         ...current,
         [deployProtocol]: {
           ...currentDeploy,
-          [itemProtocol]: {
-            ...currentItem,
-            ...patch,
-            updatedAt: new Date().toISOString(),
-          },
+          [item.protocol]: nextReview,
         },
       };
     });
+
+    void persistHomologationItem(deployProtocol, item, nextReview);
+  }
+
+  async function persistHomologationItem(
+    deployProtocol: string,
+    item: HomologationItem,
+    review: HomologationItemReview,
+  ) {
+    try {
+      const currentAccessToken = await getSquadOpsAccessToken(accessToken);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (currentAccessToken) {
+        headers.Authorization = `Bearer ${currentAccessToken}`;
+      }
+
+      const response = await fetch("/api/squadops/homologation-reviews", {
+        body: JSON.stringify({
+          itemKind: item.kind,
+          itemProtocol: item.protocol,
+          itemTitle: item.title,
+          itemType: item.type,
+          module: item.module,
+          note: review.note,
+          releaseProtocol: deployProtocol,
+          status: review.status,
+        }),
+        cache: "no-store",
+        headers,
+        method: "PATCH",
+      });
+      const payload = (await response
+        .json()
+        .catch(() => null)) as HomologationReviewsApiResponse | null;
+
+      if (!response.ok || !payload?.review) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel salvar homologacao.",
+        );
+      }
+
+      const savedReview = payload.review;
+
+      setHomologationReviewSource("shared");
+      setHomologationReviewError(null);
+      setHomologationReviews((current) => {
+        const currentDeploy = current[deployProtocol] ?? {};
+
+        return {
+          ...current,
+          [deployProtocol]: {
+            ...currentDeploy,
+            [item.protocol]: {
+              note: savedReview.note,
+              status: savedReview.status,
+              updatedAt: savedReview.updatedAt,
+            },
+          },
+        };
+      });
+    } catch (error) {
+      setHomologationReviewSource("local");
+      setHomologationReviewError(getHomologationReviewErrorMessage(error));
+    }
   }
 
   return (
     <section className="grid gap-5">
       <HomologationOperationsPanel
         copiedCommandId={copiedCommandId}
+        reviewError={homologationReviewError}
+        reviewSource={homologationReviewSource}
         onCopyCommand={onCopyCommand}
         onSelectRecord={onSelectRecord}
         onUpdateItem={updateHomologationItem}
@@ -3631,6 +3777,8 @@ function HomologationOperationsPanel({
   onSelectRecord,
   onUpdateItem,
   protocols,
+  reviewError,
+  reviewSource,
   reviews,
 }: {
   copiedCommandId: string | null;
@@ -3638,10 +3786,12 @@ function HomologationOperationsPanel({
   onSelectRecord: (record: EngineeringOperationRecord) => void;
   onUpdateItem: (
     deployProtocol: string,
-    itemProtocol: string,
+    item: HomologationItem,
     patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
   ) => void;
   protocols: HubReleaseProtocol[];
+  reviewError: string | null;
+  reviewSource: "local" | "loading" | "shared";
   reviews: HomologationReviewState;
 }) {
   const summaries = protocols.map((protocol) =>
@@ -3682,6 +3832,26 @@ function HomologationOperationsPanel({
         <Badge variant={blockedItems > 0 ? "danger" : "info"}>
           {blockedItems > 0 ? "Com bloqueio" : "Controle manual"}
         </Badge>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
+        <Badge
+          variant={
+            reviewSource === "shared"
+              ? "success"
+              : reviewSource === "loading"
+                ? "neutral"
+                : "warning"
+          }
+        >
+          {reviewSource === "shared"
+            ? "Banco compartilhado"
+            : reviewSource === "loading"
+              ? "Carregando persistencia"
+              : "Fallback local"}
+        </Badge>
+        {reviewError ? (
+          <span className="text-[#B26A00]">{reviewError}</span>
+        ) : null}
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -3742,7 +3912,7 @@ function HomologationReleaseCard({
   onSelectRecord: (record: EngineeringOperationRecord) => void;
   onUpdateItem: (
     deployProtocol: string,
-    itemProtocol: string,
+    item: HomologationItem,
     patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
   ) => void;
   releaseProtocol: HubReleaseProtocol;
@@ -3852,7 +4022,7 @@ function HomologationItemRow({
   onSelectRecord: (record: EngineeringOperationRecord) => void;
   onUpdateItem: (
     deployProtocol: string,
-    itemProtocol: string,
+    item: HomologationItem,
     patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
   ) => void;
   review: HomologationItemReview;
@@ -3893,7 +4063,7 @@ function HomologationItemRow({
         <select
           className={fieldClassName}
           onChange={(event) =>
-            onUpdateItem(deployProtocol, item.protocol, {
+            onUpdateItem(deployProtocol, item, {
               status: event.target.value as HomologationReviewStatus,
             })
           }
@@ -3914,7 +4084,7 @@ function HomologationItemRow({
         <input
           className={fieldClassName}
           onChange={(event) =>
-            onUpdateItem(deployProtocol, item.protocol, {
+            onUpdateItem(deployProtocol, item, {
               note: event.target.value,
             })
           }
@@ -7326,6 +7496,26 @@ function extractSquadOpsAccessToken(input: unknown): string | null {
     extractSquadOpsAccessToken(maybeSession.session) ??
     extractSquadOpsAccessToken(maybeSession.data)
   );
+}
+
+function getHomologationReviewErrorMessage(error: unknown) {
+  const message =
+    error instanceof Error && error.message.trim()
+      ? error.message
+      : "Homologacao salva localmente; banco compartilhado indisponivel.";
+  const normalizedMessage = message
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (
+    normalizedMessage.includes("hub_squadops_homologation_reviews") ||
+    normalizedMessage.includes("0021_squadops_center_persistence")
+  ) {
+    return "Migration 0021 pendente; validacao fica local ate o Supabase receber a tabela.";
+  }
+
+  return message;
 }
 
 function countOpenItTickets(tickets: readonly HubItTicket[]) {

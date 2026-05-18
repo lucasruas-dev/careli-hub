@@ -5,6 +5,7 @@ Esta pasta e a casa operacional do Careli Hub. Ela separa o diario vivo de opera
 ## Arquivos principais
 
 - `docs/operations/engineering-operations.md`: diario operacional vivo, append-only, com decisoes, incidentes, validacoes, deploys, handoffs e status.
+- `docs/operations/squadops-center-process.md`: processo oficial do SquadOps Center, protocolos `TK/AT/AL/DP`, homologacao, producao e entrada dedicada dentro do Hub.
 - `docs/operations/hub-rescueops.md`: protocolo do `Hub RescueOps` para resposta critica, recuperacao operacional, incidentes, rollback, healthchecks e bloqueios sensiveis.
 - `docs/operations/agent-handoff-scripts.md`: scripts de encaminhamento para acionar agentes sem misturar recortes.
 - `docs/operations/guardian-deploy-blocker-review-2026-05-18.md`: parecer Guardian enxuto sobre criticidade real e prompts curtos para remover bloqueios.

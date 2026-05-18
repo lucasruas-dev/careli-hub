@@ -7,6 +7,7 @@ import {
   buildOpsWatcherDecision,
   type OperationsMonitoringSnapshot,
 } from "@/lib/operations/monitoring";
+import { persistOpsWatcherDecision } from "@/lib/operations/monitoring-store";
 import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,11 @@ async function createWatcherResponse(
       }
     : snapshot;
   const watcher = buildOpsWatcherDecision(snapshotWithProtocols);
+
+  await persistOpsWatcherDecision({
+    decision: watcher,
+    userId: authorization.userId,
+  });
 
   return Response.json(
     {

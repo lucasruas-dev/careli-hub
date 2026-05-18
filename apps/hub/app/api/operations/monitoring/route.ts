@@ -4,6 +4,7 @@ import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 import { collectOperationsDataSources } from "@/lib/operations/data-sources";
 import { syncOperationAlertProtocols } from "@/lib/operations/alert-protocols";
 import { buildOperationsMonitoringSnapshot } from "@/lib/operations/monitoring";
+import { persistOperationsMonitoringSnapshot } from "@/lib/operations/monitoring-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,6 +30,11 @@ export async function GET(request: NextRequest) {
     alerts: protocolSync.alerts,
     protocolSyncStatus: protocolSync.status,
   };
+
+  await persistOperationsMonitoringSnapshot({
+    snapshot: snapshotWithProtocols,
+    userId: authorization.userId,
+  });
 
   return Response.json(snapshotWithProtocols, {
     headers: {
