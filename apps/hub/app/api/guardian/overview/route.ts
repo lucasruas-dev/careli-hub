@@ -7,6 +7,7 @@ import {
   loadGuardianOverview,
 } from "@/lib/guardian/overview";
 import { loadGuardianOverviewReadModel } from "@/lib/guardian/read-model";
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
@@ -140,9 +141,7 @@ function isFreshReadModel(value: string | null | undefined) {
 }
 
 async function createAuthorizedContext(request: NextRequest) {
-  const serverEnv = process.env as Record<string, string | undefined>;
-  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+  const { serviceRoleKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return {

@@ -4,6 +4,7 @@ import {
   prepareBoletoResendAction,
   type BoletoResendMode,
 } from "@/lib/guardian/asaas";
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 type SupabaseUserPayload = {
   id?: unknown;
@@ -61,8 +62,8 @@ function parseDeliveryMode(value: unknown): BoletoResendMode {
 }
 
 async function authorizeGuardianAction(request: NextRequest) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { anonKey, url } = getServerSupabaseConfig();
+  const supabaseUrl = url?.replace(/\/+$/, "");
 
   if (!supabaseUrl || !anonKey) {
     return {

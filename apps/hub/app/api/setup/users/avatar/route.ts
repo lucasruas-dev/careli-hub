@@ -1,3 +1,4 @@
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -119,9 +120,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function createAuthorizedContext(request: NextRequest) {
-  const serverEnv = process.env as Record<string, string | undefined>;
-  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+  const { serviceRoleKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return {

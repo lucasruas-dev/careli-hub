@@ -5,6 +5,8 @@ import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
+
 import {
   hubItTicketCategories,
   hubItTicketPriorities,
@@ -575,8 +577,7 @@ export async function updateHubItTicket({
 }
 
 function createHubItTicketClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { serviceRoleKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return null;

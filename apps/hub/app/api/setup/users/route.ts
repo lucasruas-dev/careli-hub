@@ -1,3 +1,4 @@
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -60,9 +61,7 @@ const operationalProfiles = ["op1", "op2", "op3", "ldr", "cdr", "adm"] as const;
 const userStatuses = ["active", "disabled"] as const;
 
 export async function GET(request: NextRequest) {
-  const serverEnv = process.env as Record<string, string | undefined>;
-  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+  const { serviceRoleKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
@@ -164,9 +163,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const serverEnv = process.env as Record<string, string | undefined>;
-  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+  const { serviceRoleKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
@@ -327,10 +324,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const serverEnv = process.env as Record<string, string | undefined>;
-  const supabaseUrl = serverEnv.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = serverEnv.SUPABASE_SERVICE_ROLE_KEY;
+  const { anonKey, serviceRoleKey, url: supabaseUrl } =
+    getServerSupabaseConfig();
 
   logSetupUsersApi("start", {
     endpoint: "/api/setup/users",

@@ -1,3 +1,4 @@
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -13,8 +14,7 @@ type DepartmentPayload = {
 const departmentStatuses = ["active", "archived", "disabled"] as const;
 
 export async function POST(request: NextRequest) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { anonKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   logDepartmentApi("start", {
     endpoint: "/api/setup/departments",

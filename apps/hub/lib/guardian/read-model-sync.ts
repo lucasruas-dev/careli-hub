@@ -5,6 +5,7 @@ import {
   type GuardianOverviewSnapshot,
 } from "@/lib/guardian/overview";
 import { loadGuardianAttendanceQueue } from "@/lib/guardian/attendance";
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import type { AttendancePriority, QueueClient } from "@/modules/guardian/attendance/types";
 
 type SyncResult =
@@ -32,7 +33,7 @@ export async function syncGuardianC2xReadModel(): Promise<SyncResult> {
 
   if (!adminClient) {
     return {
-      error: "Configure NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY para sincronizar o Guardian.",
+      error: "Configure a chave server-side do Supabase para sincronizar o Guardian.",
       ok: false,
     };
   }
@@ -105,8 +106,7 @@ export async function syncGuardianC2xReadModel(): Promise<SyncResult> {
 }
 
 export function createSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { serviceRoleKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !serviceRoleKey) {
     return null;

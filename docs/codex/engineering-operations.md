@@ -81,6 +81,8 @@ Regra permanente: nenhum deploy deve ser considerado concluido sem:
 - status operacional;
 - rastreabilidade registrada neste arquivo.
 
+Regra permanente de chaves e ambientes: qualquer deploy, redeploy, promocao ou operacao Vercel/Supabase que envolva criacao, alteracao, remocao, renomeacao ou exposicao de chaves, secrets, tokens, variaveis de ambiente ou aliases de env deve ficar `BLOQUEADO` ate autorizacao explicita do Lucas. O agente pode auditar nomes e impacto, mas nunca deve publicar, alterar envs ou registrar valores sensiveis sem autorizacao.
+
 ### Template de deploy por recorte
 
 Use este template quando Lucas acionar `Hub ReleaseOps` para publicar um recorte especifico de modulo ou frente. Se os campos vierem como placeholder, o deploy deve ficar `BLOQUEADO` ate o recorte ser preenchido.
@@ -4319,6 +4321,21 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[InfraOps] Correcao envs publicas Supabase Production`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 11:52:59 -03:00.
+- Tipo da alteracao: `OPERACAO VERCEL` - criacao de aliases publicos Supabase e redeploy tecnico de producao.
+- Motivo da mudanca: Lucas autorizou corrigir o incidente de Supabase em Production apos a auditoria indicar ausencia de `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` no build/browser publicado.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, envs Production, deployment Production `dpl_97TPS9N3HTv2ndTcwojmerWSRdLX`, alias `https://c2x.app.br` e `docs/codex/engineering-operations.md`.
+- Como foi feito: criei/atualizei `NEXT_PUBLIC_SUPABASE_URL` em Production a partir de `SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` em Production a partir da chave publica publishable ja existente, usando runner limpo e sem imprimir valores; rodei redeploy tecnico de Production para reconstruir o bundle com as novas envs publicas; nao alterei dados, migrations ou tabelas Supabase.
+- Logica utilizada: `NEXT_PUBLIC_*` e embutido no bundle do browser durante build; apenas criar a env no Vercel nao corrige o PulseX/Auth client ate haver novo deployment. A chave server-side `SUPABASE_SERVICE_ROLE_KEY` nao foi criada porque a `SUPABASE_SECRET_KEY` do Vercel e `sensitive/write-only` e a chave local candidata retornou `401` contra Auth Admin da Production; usar uma chave invalida ou anon como service role seria risco operacional.
+- Validacao executada: `npx.cmd vercel env ls production` confirmou `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` em Production; `vercel env run -e production` em runner limpo confirmou URL/ref `bxgu...kwjx` e chave publica presente, sem imprimir valores; `npx.cmd vercel redeploy https://c2x.app.br --target production` criou `dpl_97TPS9N3HTv2ndTcwojmerWSRdLX` `Ready` e aliasado para `https://c2x.app.br`; `/api/auth/profile` passou de `503 Supabase nao configurado no servidor` para `401 Sessao ausente`; `/pulsex` retornou 200; `/api/guardian/db/health` retornou 200 `connected`; logs Vercel de erro dos ultimos 10 minutos nao retornaram ocorrencias.
+- Pendencias ou riscos conhecidos: `/api/setup/users` e `/api/pulsex/messages` continuam retornando 503 de chave server-side porque o codigo publicado ainda espera `SUPABASE_SERVICE_ROLE_KEY`; a correcao completa exige publicar o refactor para todos os consumidores server-side usarem `getServerSupabaseConfig()`/`SUPABASE_SECRET_KEY`, ou Lucas recriar uma `SUPABASE_SERVICE_ROLE_KEY` valida em Production por canal seguro. Smoke autenticado do PulseX no navegador do Lucas ainda e necessario para confirmar canais, diretas e mensagens de leitura apos refresh/logout-login.
+- Status operacional: `OPERACIONAL COM ATENCAO`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o refactor server-side pendente; `Hub SupportOps`/`PulseX` para smoke autenticado; `Hub InfraOps` para validar/recriar `SUPABASE_SERVICE_ROLE_KEY` em Production se Lucas optar pelo alias server-side em vez do refactor.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Deploy sessao admin SquadOps`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-18 11:42:52 -03:00.
@@ -4333,3 +4350,49 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: Lucas deve fazer logout/login em producao, nao apenas refresh, para descartar sessao antiga e gerar novo JWT do projeto Supabase correto. Se ainda persistir `Sessao administrativa invalida`, a proxima investigacao nao deve focar codigo de token; deve validar o usuario em `auth.users` e `public.hub_users` no Supabase Production. Riscos fora do recorte: Guardian Queue esta lenta em producao; `/api/hub/home` depende de chave server-side; build remoto segue com warning conhecido Turbopack/NFT; `npm audit` remoto apontou 1 vulnerabilidade moderada e 1 alta.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para acompanhar a validacao autenticada do Lucas apos logout/login; `Hub DataOps` se for necessario validar `auth.users`/`public.hub_users`; `Hub InfraOps` para tratar a chave server-side da Home; `Guardian Core`/`Hub SupportOps` para acompanhar latencia da Guardian Queue.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Regra de bloqueio para envs e chaves`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 12:00:05 -03:00.
+- Tipo da alteracao: `DECISAO` - regra permanente de governanca para deploys com chaves, envs e secrets.
+- Motivo da mudanca: Lucas definiu que todo deploy que envolver alteracao de chaves, variaveis de ambiente, secrets, tokens ou configuracoes equivalentes deve ser bloqueado e executado somente com autorizacao explicita dele.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; regra transversal para `Hub ReleaseOps`, `Hub InfraOps`, `Hub DataOps`, Supabase, Vercel e todos os modulos que dependem de envs.
+- Como foi feito: adicionei regra permanente na secao `ReleaseOps` e registrei esta decisao no diario operacional sem apagar historico anterior.
+- Logica utilizada: alteracoes de env e chaves mudam comportamento de runtime, build, autenticacao, Supabase, integracoes e producao; por isso devem ser tratadas como operacao sensivel, com bloqueio preventivo, autorizacao humana e rastreabilidade. Agentes podem auditar nomes, ausencia/presenca e impacto, mas nao devem alterar nem publicar envs sem aprovacao do Lucas.
+- Validacao executada: leitura do diario operacional, aplicacao documental append-only e preservacao de registros recentes. Nao houve build, lint ou typecheck porque a alteracao e exclusivamente processual/documental.
+- Pendencias ou riscos conhecidos: agentes futuros devem aplicar esta regra antes de qualquer deploy/redeploy que envolva Vercel envs, Supabase keys, service role, anon/publishable key, tokens externos, aliases de env ou variaveis publicas `NEXT_PUBLIC_*`. Valores sensiveis continuam proibidos no diario e em respostas.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub ReleaseOps` e `Hub InfraOps` devem aplicar bloqueio automatico em proximas releases sensiveis; `Lucas` deve autorizar explicitamente quando quiser liberar esse tipo de operacao.
+
+Registro de diario:
+
+- Assunto: `[InfraOps] Correcao estrutural Supabase envs Production`.
+- Nome da squad/agente: `Hub InfraOps`.
+- Data e hora local: 2026-05-18 12:04:14 -03:00.
+- Tipo da alteracao: `CORRECAO INFRA` - padronizacao de leitura server-side das variaveis Supabase em rotas publicadas.
+- Motivo da mudanca: Lucas autorizou resolver 100% o incidente de chaves Supabase em producao e pediu explicacao da causa, revisao do projeto e registro de governanca para impedir alteracoes de chaves sem aprovacao.
+- Arquivos/modulos afetados: rotas server-side de `PulseX`, `Setup`, `Hub Home`, `Hub Presence`, `Guardian`, `Hub IT Tickets`, sincronizacao read-model Guardian, script operacional `scripts/seed-caredesk-demo.mjs`, Vercel Production e este diario.
+- Como foi feito: mantive as chaves existentes sem expor valores e alterei os consumidores server-side versionados para usar `getServerSupabaseConfig()`, que aceita tanto o contrato historico (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) quanto o contrato atual da integracao Vercel/Supabase (`SUPABASE_URL`, `SUPABASE_ANON_KEY`/`SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`). Tambem atualizei o script operacional CareDesk para aceitar os dois contratos.
+- Logica utilizada: a producao recebeu variaveis da integracao Supabase/Vercel com nomes novos em 2026-05-15, enquanto parte do codigo publicado ainda lia somente os nomes legados. Isso causou diferenca entre localhost/homologacao e producao: o browser/rotas sem os aliases publicos retornavam 503, e rotas server-side que exigiam `SUPABASE_SERVICE_ROLE_KEY` nao enxergavam a `SUPABASE_SECRET_KEY` ja cadastrada. A correcao remove a dependencia de um unico nome de env sem trocar segredo nem alterar dados.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido do `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `git diff --check` passou sem erro; `npx.cmd vercel env ls production` confirmou presenca de `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, chaves publicas e `SUPABASE_SECRET_KEY` em Production, sem imprimir valores.
+- Regra de governanca: qualquer criacao, remocao, renomeacao, rotacao, copia, alias ou mudanca de escopo de chaves/variaveis Supabase, Vercel, Postgres, service role, secret key, anon/publishable key ou `NEXT_PUBLIC_*` so pode ocorrer com aprovacao explicita do Lucas e deve ser conduzida ou revisada por `Hub InfraOps`. Outras squads podem apontar necessidade ou impacto, mas nao devem alterar chaves de Preview/Production diretamente.
+- Pendencias ou riscos conhecidos: `apps/hub/lib/chronos/server.ts` ainda possui referencias antigas, mas esta em recorte Chronos nao versionado no worktree e nao deve entrar no pacote de infra/production sem autorizacao do modulo. O client browser continua dependendo de `NEXT_PUBLIC_*`, por isso os aliases publicos de Production devem permanecer. A publicacao deve ser feita por snapshot limpo para nao incluir alteracoes paralelas de Chronos, PulseX UI, Setup, Hub Shell ou migrations.
+- Status operacional: `AGUARDANDO DEPLOY LIMPO`.
+- Proxima squad recomendada: `Hub InfraOps` para publicar snapshot limpo e validar healthchecks; depois `Hub SupportOps`/`PulseX` para smoke autenticado no navegador do Lucas.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] AGENTS com bloqueio para envs e chaves`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 12:01:23 -03:00.
+- Tipo da alteracao: `DECISAO` - propagacao da regra operacional para o arquivo de inicializacao dos agentes.
+- Motivo da mudanca: Lucas pediu registrar tambem no arquivo do agente o comportamento definido para bloquear deploys e operacoes que envolvam chaves, envs, secrets ou tokens sem autorizacao explicita.
+- Arquivos/modulos afetados: `AGENTS.md` e `docs/codex/engineering-operations.md`.
+- Como foi feito: adicionei uma regra direta em `AGENTS.md`, dentro das regras de trabalho, orientando novos agentes a bloquear deploy/redeploy/promocao/operacao Vercel ou Supabase que altere ou exponha envs/chaves sem autorizacao explicita do Lucas.
+- Logica utilizada: o `AGENTS.md` e carregado no inicio de novos chats e deve conter as regras que impedem perda de contexto; duplicar a regra permanente do diario nesse arquivo reduz risco de um novo agente executar operacao sensivel sem ler o historico completo antes.
+- Validacao executada: leitura do `AGENTS.md`, aplicacao documental e `git diff --check` no `AGENTS.md` e diario operacional.
+- Pendencias ou riscos conhecidos: a regra e processual; nao altera runtime, deploy ou configuracao Vercel/Supabase. Valores sensiveis continuam proibidos em commits, logs, mensagens e registros.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub ReleaseOps`, `Hub InfraOps` e `Hub DataOps` devem seguir esta regra em qualquer operacao sensivel futura.

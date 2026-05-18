@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { loadGuardianAttendanceQueueReadModel } from "@/lib/guardian/read-model";
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
 
 type HubAiModule = "guardian" | "hub" | "pulsex" | "setup" | "desk";
@@ -596,8 +597,8 @@ function extractOpenAiError(payload: Record<string, unknown> | null) {
 }
 
 async function authorizeHubAiRequest(request: NextRequest) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { anonKey, url } = getServerSupabaseConfig();
+  const supabaseUrl = url?.replace(/\/+$/, "");
 
   if (!supabaseUrl || !anonKey) {
     return {

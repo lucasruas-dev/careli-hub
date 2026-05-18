@@ -1,10 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl =
+  readEnvValue("NEXT_PUBLIC_SUPABASE_URL") ?? readEnvValue("SUPABASE_URL");
+const serviceRoleKey =
+  readEnvValue("SUPABASE_SERVICE_ROLE_KEY") ??
+  readEnvValue("SUPABASE_SECRET_KEY");
 
 if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
+  throw new Error("Missing Supabase server-side URL or secret key.");
 }
 
 const client = createClient(supabaseUrl, serviceRoleKey, {
@@ -609,4 +612,10 @@ function clean(value) {
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readEnvValue(key) {
+  const value = process.env[key]?.trim();
+
+  return value || undefined;
 }
