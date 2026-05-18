@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
+
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
 type HubProfileRow = {
@@ -16,8 +18,7 @@ const hubUserRoles = ["admin", "leader", "operator", "viewer"] as const;
 const hubUserStatuses = ["active", "archived", "disabled"] as const;
 
 export async function GET(request: NextRequest) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { anonKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   logProfileApi("start", {
     endpoint: "/api/auth/profile",

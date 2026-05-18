@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
+
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
 type HubProfileRow = {
@@ -43,8 +45,7 @@ const hubUserStatuses = ["active", "archived", "disabled"] as const;
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const { anonKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !anonKey) {
     return NextResponse.json(
