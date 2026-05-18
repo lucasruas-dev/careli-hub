@@ -3,6 +3,7 @@
 import {
   analyzeHubItTicketEvidence,
   createHubItTicket,
+  isHubItTicketsMigrationPendingMessage,
 } from "@/lib/hub-it-tickets/client";
 import {
   hubItTicketCategoryLabels,
@@ -486,7 +487,12 @@ export function HubTicketOpenForm({
   return (
     <div className="grid gap-3">
       {error ? (
-        <InlineNotice tone="danger" icon={<AlertTriangle className="size-4" />}>
+        <InlineNotice
+          tone={
+            isHubItTicketsMigrationPendingMessage(error) ? "warning" : "danger"
+          }
+          icon={<AlertTriangle className="size-4" />}
+        >
           {error}
         </InlineNotice>
       ) : null}
@@ -681,12 +687,14 @@ function InlineNotice({
 }: {
   children: ReactNode;
   icon: ReactNode;
-  tone: "danger" | "success";
+  tone: "danger" | "success" | "warning";
 }) {
   const toneClass =
     tone === "danger"
       ? "border-red-200 bg-red-50 text-red-700"
-      : "border-emerald-200 bg-emerald-50 text-emerald-700";
+      : tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-emerald-200 bg-emerald-50 text-emerald-700";
 
   return (
     <div className={`flex items-start gap-2 rounded-lg border p-3 text-sm font-semibold ${toneClass}`}>

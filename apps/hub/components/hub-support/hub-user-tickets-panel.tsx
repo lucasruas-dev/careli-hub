@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  isHubItTicketsMigrationPendingMessage,
   loadHubItTickets,
   updateHubItTicket,
 } from "@/lib/hub-it-tickets/client";
@@ -233,9 +234,7 @@ export function HubUserTicketsPanel({
         </div>
 
         {error ? (
-          <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-            {error}
-          </div>
+          <OperationalErrorNotice message={error} />
         ) : null}
       </Surface>
 
@@ -279,6 +278,15 @@ export function HubUserTicketsPanel({
       ) : null}
     </section>
   );
+}
+
+function OperationalErrorNotice({ message }: { message: string }) {
+  const isMigrationPending = isHubItTicketsMigrationPendingMessage(message);
+  const className = isMigrationPending
+    ? "mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800"
+    : "mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700";
+
+  return <div className={className}>{message}</div>;
 }
 
 function TicketModal({

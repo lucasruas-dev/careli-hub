@@ -1212,11 +1212,7 @@ function sanitizeOptionalText(value: unknown, maxLength = maxTextLength) {
   return text || undefined;
 }
 
-function shouldUseLocalFallback(error: unknown) {
-  if (!isLocalDevelopmentRuntime()) {
-    return false;
-  }
-
+export function isHubItTicketsSchemaMissingError(error: unknown) {
   const message =
     error instanceof Error
       ? error.message
@@ -1232,6 +1228,10 @@ function shouldUseLocalFallback(error: unknown) {
     message.includes("relation") ||
     message.includes("does not exist")
   );
+}
+
+function shouldUseLocalFallback(error: unknown) {
+  return isLocalDevelopmentRuntime() && isHubItTicketsSchemaMissingError(error);
 }
 
 function isLocalDevelopmentRuntime() {

@@ -3273,6 +3273,21 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[Hub Core] Caca no PulseX e revisao do Ticket TI`.
+- Nome da squad/agente: `Dev Hub Core`.
+- Data e hora local: 2026-05-17 20:37:57 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - acionador da Caca no PulseX e gestao do historico de Ticket TI.
+- Motivo da mudanca: Lucas apontou que a Caca nao aparecia no PulseX e reforcou que a Home nao deve mostrar o ticket inteiro aberto por padrao; deve listar cards e abrir o detalhe somente ao clicar, com interacao para encerrar ou pedir revisao.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`, `apps/hub/app/api/hub/it-tickets/evidence-analysis/route.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/lib/hub-it-tickets/types.ts` e `docs/codex/engineering-operations.md`.
+- Como foi feito: removido o acionamento da Caca de dentro do composer do PulseX; adicionado botao flutuante com foto no canto inferior direito do workspace; mantido o painel nativo do PulseX com abas `Agente` e `Ticket TI`; ajustado o historico da Home para exibir cards e abrir detalhe em modal; e liberada revisao pelo solicitante com texto, print, video, audio e arquivo.
+- Logica utilizada: o PulseX tem agente nativo, entao nao usa a Caca global; ele deve ter seu proprio acionador contextual e a aba `Ticket TI` dentro do painel. A gestao do solicitante permanece na Home: HubOps devolve como `Aguardando cliente`, o usuario encerra se resolveu ou envia revisao com novas evidencias para voltar a `Em revisao`.
+- Validacao executada: `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; `git diff --check`; validacao visual local em `http://localhost:3001/pulsex` confirmou a foto da Caca no canto inferior direito, abertura do painel e abas `Agente`/`Ticket TI`; validacao visual em `http://localhost:3001/` confirmou a aba `Ticket TI` da Home com lista em cards.
+- Pendencias ou riscos conhecidos: a persistencia remota de tickets e anexos depende da migration `0014_hub_it_tickets.sql` aplicada por ReleaseOps no Supabase real; anexos continuam em data URL nesta V1 e devem migrar para Storage se os arquivos crescerem. Build passou com o warning conhecido Turbopack/NFT da leitura filesystem do Engineering Operations.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para revisar/publicar o recorte Hub Core e aplicar as migrations pendentes do Ticket TI.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Planejamento de deploy por recorte`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-17 20:23:10 -03:00.
@@ -3315,3 +3330,35 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: build remoto registrou warning conhecido Turbopack/NFT pela leitura filesystem do Engineering Operations e avisos Turborepo de envs Supabase/Postgres configuradas na Vercel, mas ausentes do `turbo.json` para pacotes compartilhados; nao houve falha de build. As migrations Supabase `0012`, `0013`, `0014` e `0015` ainda precisam ser aplicadas/validadas no Supabase real para ativar persistencia remota completa de protocolos, fonte estruturada e Ticket TI. Validacao visual autenticada de Lucas segue recomendada para HubOps, Ticket TI e PulseX.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub DataOps` para aplicar/validar migrations Supabase pendentes; `Hub SupportOps` para monitorar alertas, Ticket TI e Guardian Queue nas primeiras horas pos-release.
+
+Registro de diario:
+
+- Assunto: `[SupportOps] Diagnostico fallback HubOps Supabase`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 22:05:53 -03:00.
+- Tipo da alteracao: `TROUBLESHOOTING OPERACIONAL` - fallback da fonte estruturada do HubOps.
+- Motivo da mudanca: Lucas mostrou a tela `/squadops` em producao exibindo `Fallback Engineering Operations` e a mensagem `Migration 0013 ainda nao aplicada no Supabase real`.
+- Arquivos/modulos afetados: `docs/codex/engineering-operations.md`; investigacao sobre `packages/database/migrations/0013_hub_engineering_operations_records.sql`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/app/api/squadops/operations/structured/route.ts` e `apps/hub/modules/squadops/SquadOpsPage.tsx`.
+- Como foi feito: revisei o codigo da fonte estruturada, confirmei que a tela tenta ler `/api/squadops/operations/structured?limit=500` e cai para o diario Markdown quando a tabela estruturada nao existe ou esta vazia; validei via REST Supabase que `public.hub_engineering_operation_records` retorna `PGRST205` com mensagem `Could not find the table ... in the schema cache`; puxei temporariamente as envs de producao Vercel para arquivo ignorado `.vercel/.env.migration.local` apenas para conferir disponibilidade de credenciais, sem imprimir valores, e removi o arquivo em seguida.
+- Origem identificada: migration `0013_hub_engineering_operations_records.sql` nao aplicada no Supabase real. As tabelas relacionadas a alertas e Ticket TI tambem retornaram 404 no REST, coerente com a pendencia das migrations `0012`, `0014` e `0015` registrada no deploy.
+- Impacto operacional: a tela HubOps continua funcionando pelo fallback do `docs/codex/engineering-operations.md`, mas nao usa a base estruturada Supabase; isso limita busca estruturada, protocolos persistidos, sync historico, consultas por status/modulo e rastreabilidade operacional em banco.
+- Correcao executada: nao houve alteracao de codigo nem migration aplicada, porque o ambiente atual nao possui Supabase CLI autenticada, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD` ou `POSTGRES_URL` valido para executar DDL com seguranca.
+- Validacao executada: leitura do diario e codigo; tentativa de `npx.cmd supabase --version` falhou por rede `ENETUNREACH`; consulta REST confirmou tabela ausente com `PGRST205`; verificacao de envs confirmou ausencia de credenciais operacionais para aplicar SQL diretamente deste workspace.
+- Pendencias ou riscos conhecidos: aplicar as migrations `0012`, `0013`, `0014` e `0015` no Supabase real em janela controlada; depois executar o sync autenticado do Engineering Operations para popular `hub_engineering_operation_records`. Sem isso, o banner de fallback continuara aparecendo.
+- Status operacional: `NECESSITA INTERVENCAO DATAOPS`.
+- Proxima squad recomendada: `Hub DataOps` para aplicar as migrations no Supabase real; `Hub SupportOps` para validar a tela e o sync apos aplicacao.
+
+Registro de diario:
+
+- Assunto: `[Hub Core] Tratamento de migration pendente no Ticket TI`.
+- Nome da squad/agente: `Hub SupportOps`.
+- Data e hora local: 2026-05-17 22:07:58 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - erro amigavel para Ticket TI.
+- Motivo da mudanca: Lucas mostrou que a producao expunha erro bruto informando ausencia de `public.hub_it_tickets` no Supabase real. O deploy publicou a tela/API, mas a migration `0014_hub_it_tickets.sql` ainda nao foi aplicada no banco de producao.
+- Arquivos/modulos afetados: `apps/hub/app/api/hub/it-tickets/route.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/lib/hub-it-tickets/client.ts`, `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx` e `docs/codex/engineering-operations.md`.
+- Como foi feito: extraida a deteccao server-side de schema/tabela ausente para helper reutilizavel; a API `/api/hub/it-tickets` passou a converter erro de tabela ausente em resposta operacional `migration_pendente` sem vazar a mensagem bruta do Supabase; o client passou a priorizar `message/status` da API; os paineis de abertura, historico e fila HubOps passaram a exibir aviso amber para migration pendente em vez de alerta vermelho generico.
+- Logica utilizada: em producao nao deve haver fallback local para Ticket TI porque isso criaria falsa persistencia em ambiente serverless. Enquanto a migration `0014` nao for aplicada, leitura/escrita ficam bloqueadas de forma explicita e operacional. A migration existente ja contempla tabelas, indices, RLS, grants e policies, alinhada ao alerta atual da Supabase sobre exposicao explicita de tabelas na Data API.
+- Validacao executada: `npx.cmd eslint app/api/hub/it-tickets/route.ts lib/hub-it-tickets/client.ts lib/hub-it-tickets/server.ts components/hub-support/hub-ticket-open-form.tsx components/hub-support/hub-user-tickets-panel.tsx modules/squadops/HubItTicketsBoard.tsx --max-warnings 0`; `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; smoke local `/squadops` 200; smoke sem sessao `/api/hub/it-tickets?scope=all` 401 esperado; smoke sem sessao POST/PATCH `/api/hub/it-tickets` 401 esperado; `/api/guardian/db/health` 200; `git diff --check` passou com avisos CRLF conhecidos.
+- Pendencias ou riscos conhecidos: a persistencia real de Ticket TI continua indisponivel ate Hub DataOps/ReleaseOps aplicar `packages/database/migrations/0014_hub_it_tickets.sql` no Supabase de producao. Validacao autenticada da mensagem `migration_pendente` depende de bearer real do Lucas/adm em producao. Sem a migration, abertura e devolutiva de tickets permanecem bloqueadas corretamente.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix de erro amigavel; `Hub DataOps` para aplicar a migration `0014_hub_it_tickets.sql` e validar tabela/API real apos a publicacao.

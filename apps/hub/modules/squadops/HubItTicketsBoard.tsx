@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  isHubItTicketsMigrationPendingMessage,
   loadHubItTickets,
   updateHubItTicket,
 } from "@/lib/hub-it-tickets/client";
@@ -297,9 +298,7 @@ export function HubItTicketsBoard({
 
           <div className="min-w-0">
             {error ? (
-              <div className="border-b border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                {error}
-              </div>
+              <OperationalErrorBanner message={error} />
             ) : null}
 
             {selectedTicket ? (
@@ -325,6 +324,15 @@ export function HubItTicketsBoard({
       </Surface>
     </section>
   );
+}
+
+function OperationalErrorBanner({ message }: { message: string }) {
+  const isMigrationPending = isHubItTicketsMigrationPendingMessage(message);
+  const className = isMigrationPending
+    ? "border-b border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800"
+    : "border-b border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700";
+
+  return <div className={className}>{message}</div>;
 }
 
 function MetricTile({

@@ -3,6 +3,7 @@ import { type NextRequest } from "next/server";
 import {
   authorizeHubItTicketRequest,
   createHubItTicket,
+  isHubItTicketsSchemaMissingError,
   listHubItTickets,
   updateHubItTicket,
 } from "@/lib/hub-it-tickets/server";
@@ -36,6 +37,22 @@ export async function GET(request: NextRequest) {
       },
     );
   } catch (error) {
+    if (isHubItTicketsSchemaMissingError(error)) {
+      return Response.json(
+        {
+          error: hubItTicketsMigrationPendingMessage,
+          message: hubItTicketsMigrationPendingMessage,
+          status: "migration_pendente",
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+          status: 503,
+        },
+      );
+    }
+
     return Response.json(
       {
         error:
@@ -71,6 +88,17 @@ export async function POST(request: NextRequest) {
       },
     );
   } catch (error) {
+    if (isHubItTicketsSchemaMissingError(error)) {
+      return Response.json(
+        {
+          error: hubItTicketsMigrationPendingMessage,
+          message: hubItTicketsMigrationPendingMessage,
+          status: "migration_pendente",
+        },
+        { status: 503 },
+      );
+    }
+
     return Response.json(
       {
         error:
@@ -106,6 +134,17 @@ export async function PATCH(request: NextRequest) {
       },
     );
   } catch (error) {
+    if (isHubItTicketsSchemaMissingError(error)) {
+      return Response.json(
+        {
+          error: hubItTicketsMigrationPendingMessage,
+          message: hubItTicketsMigrationPendingMessage,
+          status: "migration_pendente",
+        },
+        { status: 503 },
+      );
+    }
+
     return Response.json(
       {
         error:
@@ -123,3 +162,6 @@ function getScope(request: NextRequest): HubItTicketListScope {
 
   return scope === "all" ? "all" : "mine";
 }
+
+const hubItTicketsMigrationPendingMessage =
+  "Ticket TI aguarda aplicacao da migration Supabase 0014 no banco de producao. Acione Hub DataOps/ReleaseOps para aplicar packages/database/migrations/0014_hub_it_tickets.sql.";

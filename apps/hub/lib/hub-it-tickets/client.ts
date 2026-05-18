@@ -12,6 +12,8 @@ import type {
 
 type HubItTicketsApiResponse = {
   error?: string;
+  message?: string;
+  status?: string;
   ticket?: HubItTicket;
   tickets?: HubItTicket[];
 };
@@ -60,7 +62,12 @@ export async function loadHubItTickets({
     | null;
 
   if (!response.ok || !Array.isArray(payload?.tickets)) {
-    throw new Error(payload?.error ?? "Nao foi possivel carregar tickets TI.");
+    throw new Error(
+      getHubItTicketResponseMessage(
+        payload,
+        "Nao foi possivel carregar tickets TI.",
+      ),
+    );
   }
 
   return payload.tickets;
@@ -93,7 +100,12 @@ export async function createHubItTicket({
     | null;
 
   if (!response.ok || !payload?.ticket) {
-    throw new Error(payload?.error ?? "Nao foi possivel enviar ticket TI.");
+    throw new Error(
+      getHubItTicketResponseMessage(
+        payload,
+        "Nao foi possivel enviar ticket TI.",
+      ),
+    );
   }
 
   return payload.ticket;
@@ -165,8 +177,47 @@ export async function updateHubItTicket({
     | null;
 
   if (!response.ok || !payload?.ticket) {
-    throw new Error(payload?.error ?? "Nao foi possivel atualizar ticket TI.");
+    throw new Error(
+      getHubItTicketResponseMessage(
+        payload,
+        "Nao foi possivel atualizar ticket TI.",
+      ),
+    );
   }
 
   return payload.ticket;
+}
+
+export function isHubItTicketsMigrationPendingMessage(
+  message: string | null | undefined,
+) {
+  const normalizedMessage = normalizeHubItTicketErrorMessage(message);
+
+  return (
+    normalizedMessage.includes("migration") &&
+    normalizedMessage.includes("ticket ti")
+  );
+}
+
+function getHubItTicketResponseMessage(
+  payload: HubItTicketsApiResponse | null,
+  fallbackMessage: string,
+) {
+  if (payload?.status === "migration_pendente") {
+    return (
+      payload.message ??
+      "Ticket TI aguarda aplicacao da migration Supabase no banco."
+    );
+  }
+
+  return payload?.error ?? payload?.message ?? fallbackMessage;
+}
+
+function normalizeHubItTicketErrorMessage(
+  message: string | null | undefined,
+) {
+  return (message ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
 }
