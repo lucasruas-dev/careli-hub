@@ -3898,6 +3898,36 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[DataOps] Persistencia app homolog validada`.
+- Nome da squad/agente: `Hub DataOps`.
+- Data e hora local: 2026-05-18 07:23:00 -03:00.
+- Tipo da alteracao: `AUDITORIA` - validacao funcional de persistencia no Preview homolog.
+- Motivo da mudanca: Lucas informou que InfraOps corrigiu o bloqueio principal e que o app agora consome `SUPABASE_SERVICE_ROLE_KEY` no Preview da branch `homolog`, sem mexer em Production; DataOps precisava confirmar o fluxo persistente no app antes do handoff para ReleaseOps.
+- Arquivos/modulos afetados: Preview `dpl_CeKhmDAXNRGfhzJxZoo2YsAnzkPs`, alias `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, alias `https://homo.c2x.app.br`, APIs `/api/hub/it-tickets`, `/api/squadops/operations/structured`, Supabase homolog e `docs/codex/engineering-operations.md`.
+- Como foi feito: usei runners temporarios limpos com apenas `.vercel/project.json`, carregando `Preview` branch `homolog`; criei usuarios temporarios no Supabase Auth homolog via service role do runtime, atualizei seus perfis `hub_users` para `admin`/`adm`, gerei sessoes reais com anon key e chamei o Preview protegido via `vercel curl`; apos cada smoke, removi tickets, eventos, perfis e usuarios temporarios.
+- Logica utilizada: validar somente REST direto no Supabase nao prova que o app consome a chave correta. Por isso o smoke passou pelo endpoint real do Hub, com bearer de usuario autenticado e perfil admin, exercitando Auth, service role server-side, RLS, policies, grants, inserts, selects e hidratacao de retorno pelo runtime Vercel.
+- Validacao executada: `POST /api/hub/it-tickets` no Preview homolog retornou `200` e criou o protocolo `TI-000001`; a linha foi confirmada em `hub_it_tickets` com `status=novo`, `requested_by_user_id` igual ao usuario temporario e 1 evento em `hub_it_ticket_events`; `GET /api/hub/it-tickets?scope=mine` retornou o ticket criado; cleanup removeu ticket/evento/perfil/usuario de smoke; em complemento, `GET /api/squadops/operations/structured?limit=1` retornou `200`, `storage.status=sincronizado`, e `GET /api/hub/it-tickets?scope=all` retornou `200` com usuario admin temporario; `vercel inspect` confirmou o alias da branch apontando para `dpl_CeKhmDAXNRGfhzJxZoo2YsAnzkPs`; `/api/guardian/db/health` segue retornando `503 unconfigured`, pendencia separada de Guardian DB.
+- Pendencias ou riscos conhecidos: fluxo persistente Supabase homolog do app esta validado para Ticket TI e leitura estruturada SquadOps; a publicacao Realtime por tabela segue nao habilitada para as tabelas prioritarias, embora canal Realtime ja tenha sido validado; Guardian DB/C2X permanece pendente e deve bloquear apenas o healthcheck completo Guardian, nao a camada Supabase homolog; ReleaseOps ainda precisa rodar healthcheck completo e decidir escopo de liberacao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para healthcheck completo do Preview homolog, destacando a pendencia separada de `Guardian DB`; `Hub InfraOps` se Lucas quiser destravar `GUARDIAN_DB_*` no Preview.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Fechamento healthcheck homolog Supabase`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 07:44:03 -03:00.
+- Tipo da alteracao: `AUDITORIA` - fechamento de healthcheck de homologacao com pendencia separada.
+- Motivo da mudanca: Lucas informou que o bloqueio DataOps principal caiu e que o app em homolog grava e le dados reais no Supabase homolog usando o runtime correto; restou ReleaseOps fechar o healthcheck geral e tratar Guardian DB como pendencia separada.
+- Arquivos/modulos afetados: Preview `dpl_4VYMGshSX1m7fvef23WMa8gEW3Fk`, deployment URL `https://careli-hub-hub-i2bs-jwfn81g49-lucasruas-devs-projects.vercel.app`, aliases `https://homo.c2x.app.br` e `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`, APIs de SquadOps, Ticket TI, Operations, Guardian Queue e `docs/codex/engineering-operations.md`.
+- Como foi feito: confirmei o deployment/aliases com `npx.cmd vercel inspect`; rodei healthchecks protegidos via `npx.cmd vercel curl` contra o deployment real; mantive Guardian DB como check observado, mas classificado como pendencia externa de `GUARDIAN_DB_*`/C2X no Preview; nao alterei variaveis, nao apliquei migrations e nao publiquei novo deploy.
+- Logica utilizada: a camada Supabase homolog deve ser julgada pelo fluxo persistente validado por DataOps e pelos endpoints do app que dependem dela. `Guardian DB` pertence ao conector C2X/Guardian e nao deve bloquear a liberacao da camada Supabase homolog, desde que seja registrado como pendencia separada antes de qualquer validacao ampla do Guardian.
+- Validacao executada: `npx.cmd vercel inspect https://homo.c2x.app.br` e `npx.cmd vercel inspect https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app` confirmaram o Preview `Ready` `dpl_4VYMGshSX1m7fvef23WMa8gEW3Fk`; healthchecks via `vercel curl` retornaram `/` 200, `/squadops` 200, `/api/hub/it-tickets?scope=all` sem sessao 401, `/api/squadops/operations/structured?limit=1` sem sessao 401, `/api/operations/monitoring` sem sessao 401, `/api/operations/watcher` sem sessao 401, `POST /api/squadops/copilot` com payload valido sem sessao 401, Guardian Queue `limit=20` 200 e Guardian Queue `limit=50` 200; `/api/guardian/db/health` retornou 503, classificado como pendencia separada; logs Vercel de erro dos ultimos 30 minutos nao retornaram eventos.
+- Pendencias ou riscos conhecidos: `Guardian DB` segue `503` no Preview homolog e deve ser tratado por Hub InfraOps/Guardian Core quando Lucas quiser validar Guardian/C2X completo em homologacao; a leitura estruturada SquadOps sem sessao retorna 401 corretamente e a persistencia autenticada ja foi validada por DataOps; Realtime por tabela segue fora do escopo desta liberacao.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hub InfraOps` e `Guardian Core` para configurar/validar `GUARDIAN_DB_*` no Preview quando o escopo for Guardian; `Hub ReleaseOps` pode considerar a camada Supabase homolog liberada para fluxos de SquadOps/Ticket TI/Engineering Operations.
+
+Registro de diario:
+
 - Assunto: `[ReleaseOps] Deploy producao consolidado autorizado`.
 - Nome da squad/agente: `Hub ReleaseOps`.
 - Data e hora local: 2026-05-18 07:17:36 -03:00.
