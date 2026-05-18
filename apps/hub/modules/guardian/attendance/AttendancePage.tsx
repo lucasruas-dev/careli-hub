@@ -38,7 +38,7 @@ const attendanceSections: Array<{ id: AttendanceSection; label: string; badge?: 
   { id: "desk", label: "CareDesk", badge: "3", icon: MessageCircle },
   { id: "portfolio", label: "Carteira", icon: MapPinned },
 ];
-const INITIAL_QUEUE_LIMIT = 50;
+const INITIAL_QUEUE_LIMIT = 600;
 const emptyManualOperations: ManualGuardianOperations = {
   commitments: [],
   events: [],

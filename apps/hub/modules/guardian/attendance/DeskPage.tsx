@@ -39,7 +39,7 @@ type DeskPageProps = {
 };
 
 type CareDeskSignalTone = "live" | "gold" | "danger" | "neutral" | "blue";
-const INITIAL_QUEUE_LIMIT = 50;
+const INITIAL_QUEUE_LIMIT = 600;
 const emptyQueueClients: QueueClient[] = [];
 
 export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFromC2x = false }: DeskPageProps) {

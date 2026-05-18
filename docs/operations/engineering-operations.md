@@ -4956,3 +4956,22 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke visual/autenticado final depende da sessao do Lucas para confirmar no navegador que o card passou de `Fallback Engineering Operations` para `hub_engineering_operation_records`. A validacao de banco ja confirma a base estruturada populada nos dois ambientes.
 - Status operacional: `INCIDENTE ENCERRADO`.
 - Proxima squad recomendada: nenhuma obrigatoria; `Hub SupportOps` somente se o card autenticado ainda exibir fallback apos refresh.
+
+Registro de diario:
+
+- Assunto: `[Guardian] Fila C2X compacta e carregamento completo`.
+- Nome da squad/agente: `Guardian Core / Dev Guardian`.
+- Data e hora local: 2026-05-18 17:04:56 -03:00.
+- Tipo da alteracao: `CORRECAO` - performance e cobertura da fila operacional Guardian vinda do C2X.
+- Motivo da mudanca: Lucas reportou que as telas do Guardian vindas do C2X estavam lentas e que a fila operacional estava pequena, exibindo apenas parte dos clientes apesar de haver aproximadamente `538` clientes em atraso no legado.
+- Ambiente: local conectado a fonte C2X configurada do Hub; sem deploy, sem alteracao de env, sem migration e sem escrita em banco.
+- Arquivos/modulos afetados: `apps/hub/app/api/guardian/attendance/queue/route.ts`, `apps/hub/lib/guardian/attendance.ts`, `apps/hub/modules/guardian/attendance/AttendancePage.tsx` e `apps/hub/modules/guardian/attendance/DeskPage.tsx`.
+- Causa raiz confirmada: a abertura da fila usava limite inicial `50`, enquanto o C2X retornou `537` clientes em atraso na consulta atual; o read model anterior tambem podia ficar defasado em relacao ao legado. O caminho completo da fila carregava dados pesados demais para a primeira abertura.
+- Como foi feito: criei uma consulta C2X compacta para a fila, agrupada por cliente e limitada aos campos necessarios para a lista operacional; a rota `/api/guardian/attendance/queue` passou a tentar primeiro a fonte live compacta (`LIVE_COMPACT`) e a usar read model/full live apenas como fallback; as telas `Atendimento` e `Desk` passaram a pedir `limit=600`, cobrindo o volume atual sem abrir limite automatico alto.
+- Logica utilizada: a primeira renderizacao da fila precisa de leitura atual, curta e operacional; detalhes pesados como parcelas completas, dados 360 e informacoes cadastrais profundas devem permanecer no carregamento sob demanda do cliente selecionado. Campos nao buscados pela consulta compacta ficam como traco, preservando a regra de nao exibir mock.
+- Validacao tecnica executada: consulta compacta direta no C2X retornou `537` clientes em aproximadamente `1435 ms`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de SquadOps; `git diff --check` passou sem erros, apenas avisos de CRLF do Windows.
+- Smoke local executado: `GET http://localhost:3001/api/guardian/attendance/queue?limit=50` retornou `200`, `LIVE_COMPACT`, `source=c2x`, `50` clientes e `96.950` bytes em `4025 ms`; `GET http://localhost:3001/api/guardian/attendance/queue?limit=600` retornou `200`, `LIVE_COMPACT`, `source=c2x`, `537` clientes e `1.034.589` bytes em `2337 ms`.
+- Impacto operacional: a fila inicial deixa de ocultar clientes por limite `50` e passa a refletir a fonte atual do C2X dentro do volume operacional informado, reduzindo risco de cobranca operar com carteira incompleta.
+- Pendencias ou riscos conhecidos: a publicacao em producao depende de `Hub ReleaseOps`; se a carteira crescer acima de `600` clientes em atraso, a proxima evolucao deve adicionar paginacao/infinite load em vez de aumentar limite automaticamente; a diferenca entre `537` retornados agora e os `538` citados por Lucas deve ser monitorada apos deploy porque pode refletir atualizacao do legado, filtro de pagamento ativo ou contrato/empreendimento invalido no C2X.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para commit, deploy em homologacao/producao e healthcheck do endpoint `/api/guardian/attendance/queue?limit=600`.

@@ -83,6 +83,25 @@ type AttendanceContractRow = RowDataPacket & {
   vinculed_name: string | null;
 };
 
+type AttendanceQueueSummaryRow = RowDataPacket & {
+  client_id: number | string;
+  client_name: string | null;
+  document: string | null;
+  enterprise_name: string | null;
+  linked_party_name: string | null;
+  liquidated_payments: number | string;
+  max_overdue_days: number | string | null;
+  oldest_due_date: Date | string | null;
+  overdue_amount: number | string | null;
+  overdue_payments: number | string;
+  parcel_payments: number | string;
+  pending_payments: number | string;
+  phone: string | null;
+  signal_payments: number | string;
+  total_payments: number | string;
+  unit_label: string | null;
+};
+
 type AttendanceInstallmentRow = RowDataPacket & {
   acquisition_request_id: number | string;
   current_signal_parcel: number | string | null;
@@ -457,6 +476,76 @@ export async function loadGuardianAttendanceQueue(
   }
 }
 
+export async function loadGuardianAttendanceQueueSummary(
+  options: AttendanceQueueOptions = {},
+): Promise<QueueClient[]> {
+  const poolResult = getGuardianDbPool();
+
+  if (!poolResult.ok) {
+    if (options.strict) {
+      throw guardianDbConfigError(poolResult.missing);
+    }
+
+    return [];
+  }
+
+  const { pool } = poolResult;
+  const queueLimit = normalizeQueueLimit(options.limit);
+
+  try {
+    const [rows] = await pool.query<AttendanceQueueSummaryRow[]>(
+      `
+        select
+          ar.client_id,
+          max(client.name) as client_name,
+          max(coalesce(client.cpf, client.cnpj)) as document,
+          max(coalesce(client.cellphone, client.phone)) as phone,
+          max(coalesce(
+            nullif(trim(vinculed.fantasy_name), ''),
+            nullif(trim(vinculed.social_name), ''),
+            nullif(trim(vinculed.name), '')
+          )) as linked_party_name,
+          max(${enterpriseDisplayExpression}) as enterprise_name,
+          max(coalesce(eu.name, concat('Q', eu.block, ' L', eu.lot))) as unit_label,
+          count(case when p.payment_status_id in (5, 6, 7) then p.id end) as total_payments,
+          count(case when p.payment_status_id = 5 then p.id end) as liquidated_payments,
+          count(case when p.payment_status_id = 6 then p.id end) as pending_payments,
+          count(case when p.payment_status_id = 7 then p.id end) as overdue_payments,
+          count(case when p.parcel_type_id = 2 then p.id end) as signal_payments,
+          count(case when p.parcel_type_id = 3 then p.id end) as parcel_payments,
+          coalesce(sum(case when p.payment_status_id = 7 then ${outstandingAmountExpression} else 0 end), 0) as overdue_amount,
+          min(case when p.payment_status_id = 7 then p.due_date else null end) as oldest_due_date,
+          max(case when p.payment_status_id = 7 and p.due_date is not null then datediff(curdate(), p.due_date) else 0 end) as max_overdue_days
+        from payments p
+        left join acquisition_requests ar on ar.id = p.acquisition_request_id
+        left join users client on client.id = ar.client_id
+        left join users vinculed on vinculed.id = client.vinculed_by_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where p.payment_status_id in (5, 6, 7)
+          and ${activePaymentWhere}
+          and ${validEnterpriseWhere}
+          and ar.id is not null
+          and ar.client_id is not null
+        group by ar.client_id
+        having overdue_payments > 0
+        order by overdue_payments desc, max_overdue_days desc, overdue_amount desc, ar.client_id desc
+        limit ?
+      `,
+      [queueLimit],
+    );
+
+    return buildQueueClientsFromSources(rows.map(mapSummaryRowToSourceClient));
+  } catch (error) {
+    console.error("[guardian-attendance] compact C2X queue failed", sanitizeGuardianDbError(error));
+    if (options.strict) {
+      throw error;
+    }
+
+    return [];
+  }
+}
+
 export async function loadGuardianAttendanceClient(clientId: string) {
   const clients = await loadGuardianAttendanceQueue({
     clientId,
@@ -694,6 +783,74 @@ function groupContractRowsByClient(
 
       return second.saldoAtraso - first.saldoAtraso;
     });
+}
+
+function mapSummaryRowToSourceClient(
+  row: AttendanceQueueSummaryRow,
+): GuardianAttendanceSourceClient {
+  const overduePayments = toNumber(row.overdue_payments);
+  const pendingPayments = toNumber(row.pending_payments);
+  const liquidatedPayments = toNumber(row.liquidated_payments);
+  const totalPayments = toNumber(row.total_payments);
+  const maxOverdueDays = toNumber(row.max_overdue_days);
+  const overdueAmount = toNumber(row.overdue_amount);
+  const risk = riskAnalysisFor({
+    liquidatedPayments,
+    overdueAmount,
+    overdueDays: maxOverdueDays,
+    overduePayments,
+    totalPayments,
+  });
+  const priority = risk.priority;
+  const clientId = String(row.client_id);
+  const enterpriseName = formatName(row.enterprise_name ?? EMPTY_FIELD);
+  const unitLabelValue = firstFilled(row.unit_label) ?? EMPTY_FIELD;
+  const signalPayments = toNumber(row.signal_payments);
+  const parcelPayments = toNumber(row.parcel_payments);
+  const oldestDueDate = toDate(row.oldest_due_date);
+
+  return {
+    atrasoDias: maxOverdueDays,
+    c2xInstallments: [],
+    c2xInstallmentsLoaded: false,
+    area: EMPTY_FIELD,
+    cidade: EMPTY_FIELD,
+    cpf: formatDocument(row.document),
+    empreendimento: enterpriseName,
+    escolaridade: EMPTY_FIELD,
+    estadoCivil: EMPTY_FIELD,
+    id: `c2x-client-${clientId}`,
+    idade: EMPTY_FIELD,
+    imobiliariaCorretor: formatPersonName(
+      firstFilled(row.linked_party_name) ?? EMPTY_FIELD,
+    ),
+    lote: EMPTY_FIELD,
+    nome: formatPersonName(row.client_name ?? EMPTY_FIELD),
+    parcelasAVencer: pendingPayments,
+    parcelasLiquidadas: liquidatedPayments,
+    parcelasTotal: totalPayments,
+    parcelasVencidas: overduePayments,
+    perfilParcela:
+      parcelPayments > 0 && parcelPayments >= signalPayments
+        ? "Parcela"
+        : signalPayments > 0
+          ? "Sinal"
+          : "Ato",
+    prioridade: priority,
+    profissao: EMPTY_FIELD,
+    quadra: EMPTY_FIELD,
+    recuperado: 0,
+    renda: EMPTY_FIELD,
+    responsavel: EMPTY_FIELD,
+    saldoAtraso: overdueAmount,
+    scoreRisco: risk.score,
+    sexo: EMPTY_FIELD,
+    status: statusFor(priority, maxOverdueDays, overduePayments),
+    telefone: formatPhone(row.phone),
+    unidadeLote: unitLabelValue,
+    valorUnidade: 0,
+    vencimento: formatDateInput(oldestDueDate),
+  };
 }
 
 function mapContractRowToSourceClient(

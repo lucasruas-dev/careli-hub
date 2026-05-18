@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { loadGuardianAttendanceQueue } from "@/lib/guardian/attendance";
+import {
+  loadGuardianAttendanceQueue,
+  loadGuardianAttendanceQueueSummary,
+} from "@/lib/guardian/attendance";
 import { sanitizeGuardianDbError } from "@/lib/guardian/db";
 import { loadGuardianAttendanceQueueReadModel } from "@/lib/guardian/read-model";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
@@ -30,23 +33,10 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const limit = parseQueueLimit(url.searchParams.get("limit"));
 
-    const readModelResult = await loadGuardianAttendanceQueueReadModel({
-      limit,
-    });
-
-    if (readModelResult?.clients.length) {
-      const isFresh = isFreshReadModel(readModelResult.syncedAt);
-
-      return queueJson(
-        readModelPayload(readModelResult, limit, { stale: !isFresh }),
-        isFresh ? "FRESH" : "STALE_READ_MODEL",
-      );
-    }
-
     try {
-      const clients = await loadGuardianAttendanceQueue({
-        includeInstallments: false,
+      const clients = await loadGuardianAttendanceQueueSummary({
         limit,
+        strict: true,
       });
 
       return queueJson(
@@ -55,20 +45,51 @@ export async function GET(request: Request) {
           meta: {
             count: clients.length,
             limit,
+            loadedCount: clients.length,
           },
           source: "c2x",
         },
-        readModelResult?.clients.length ? "STALE_BYPASS" : "BYPASS",
+        "LIVE_COMPACT",
       );
-    } catch (error) {
-      if (readModelResult?.clients.length) {
-        return queueJson(
-          readModelPayload(readModelResult, limit, { stale: true }),
-          "STALE_FALLBACK",
+    } catch {
+      try {
+        const readModelResult = await loadGuardianAttendanceQueueReadModel({
+          limit,
+        });
+
+        if (readModelResult?.clients.length) {
+          const isFresh = isFreshReadModel(readModelResult.syncedAt);
+
+          return queueJson(
+            readModelPayload(readModelResult, limit, { stale: !isFresh }),
+            isFresh ? "FRESH_FALLBACK" : "STALE_FALLBACK",
+          );
+        }
+      } catch (readModelError) {
+        console.warn(
+          "[guardian-attendance] Read model fallback failed",
+          sanitizeGuardianDbError(readModelError),
         );
       }
 
-      throw error;
+      const clients = await loadGuardianAttendanceQueue({
+        includeInstallments: false,
+        limit,
+        strict: true,
+      });
+
+      return queueJson(
+        {
+          clients,
+          meta: {
+            count: clients.length,
+            limit,
+            loadedCount: clients.length,
+          },
+          source: "c2x",
+        },
+        "LIVE_FULL_FALLBACK",
+      );
     }
   } catch (error) {
     return NextResponse.json(
