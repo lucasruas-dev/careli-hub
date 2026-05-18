@@ -6,10 +6,14 @@ import {
 } from "@repo/auth";
 
 const EXPECTED_SUPABASE_URL = "https://bxgukywoxgivlrhjkwjx.supabase.co";
+const hubSupabaseAnonKey =
+  readPublicEnv(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) ??
+  readPublicEnv(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
+const hubSupabaseUrl = readPublicEnv(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
 export const hubSupabaseConfig = {
-  anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  anonKey: hubSupabaseAnonKey,
+  url: hubSupabaseUrl,
   workspaceId: process.env.NEXT_PUBLIC_SUPABASE_WORKSPACE_ID ?? "careli",
 };
 
@@ -280,6 +284,12 @@ function maskSecret(secret?: string) {
 
 function normalizeUrl(url?: string) {
   return url?.trim().replace(/\/+$/, "") ?? "";
+}
+
+function readPublicEnv(value: string | undefined) {
+  const normalizedValue = value?.trim();
+
+  return normalizedValue ? normalizedValue : undefined;
 }
 
 function isLocalDevelopmentRuntime(): boolean {

@@ -120,6 +120,36 @@ export const hubModules = [
     ],
   },
   {
+    id: "chronos",
+    name: "Chronos",
+    description: "Reunioes executivas, atas, transcricoes e memoria formal.",
+    category: "operations",
+    status: "active",
+    basePath: "/chronos",
+    iconKey: "chronos",
+    realtimeEnabled: true,
+    order: 22,
+    requiredPermissions: ["chronos:view"],
+    routes: [
+      {
+        id: "chronos-overview",
+        label: "Reunioes",
+        path: "/chronos",
+        description: "Salas, reunioes formais, atas e follow-ups.",
+      },
+    ],
+    navigationItems: [
+      {
+        badge: "v1",
+        id: "chronos-overview",
+        label: "Chronos",
+        path: "/chronos",
+        iconKey: "chronos",
+        order: 10,
+      },
+    ],
+  },
+  {
     id: "squadops",
     name: "SquadOps",
     description: "Central de squads, engenharia IA, auditorias, releases, riscos e handoffs.",

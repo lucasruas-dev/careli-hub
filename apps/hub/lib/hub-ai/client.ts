@@ -2,7 +2,13 @@
 
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
-export type HubAiModule = "desk" | "guardian" | "hub" | "pulsex" | "setup";
+export type HubAiModule =
+  | "chronos"
+  | "desk"
+  | "guardian"
+  | "hub"
+  | "pulsex"
+  | "setup";
 
 export type HubAiClientMessage = {
   content: string;

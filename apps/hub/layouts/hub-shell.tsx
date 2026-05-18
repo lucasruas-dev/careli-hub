@@ -49,6 +49,7 @@ import {
   Settings,
   ShieldCheck,
   ShoppingCart,
+  Video,
   UsersRound,
 } from "lucide-react";
 import {
@@ -77,6 +78,7 @@ const moduleIconMap: Record<string, ReactNode> = {
   compras: <ShoppingCart aria-hidden="true" size={18} />,
   contatos: <ContactRound aria-hidden="true" size={18} />,
   caredesk: <Headphones aria-hidden="true" size={18} />,
+  chronos: <Video aria-hidden="true" size={18} />,
   drive: <FolderKanban aria-hidden="true" size={18} />,
   financeiro: <CircleDollarSign aria-hidden="true" size={18} />,
   guardian: <ShieldCheck aria-hidden="true" size={18} />,
@@ -88,6 +90,7 @@ const moduleIconMap: Record<string, ReactNode> = {
 const minimumReleasedModuleIds = [
   "guardian",
   "caredesk",
+  "chronos",
   "pulsex",
   "setup",
   "squadops",
@@ -236,7 +239,11 @@ export function HubShell({
       8_000,
     )
       .then(([modulesResult, accessResult]) => {
-        if (!isMounted || modulesResult.error || accessResult.error) {
+        if (!isMounted) {
+          return;
+        }
+
+        if (modulesResult.error || accessResult.error) {
           logSupabaseDiagnostic("shell", "modules error", {
             accessError: accessResult.error
               ? serializeDiagnosticError(accessResult.error)

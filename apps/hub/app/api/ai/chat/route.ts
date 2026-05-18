@@ -4,7 +4,7 @@ import { loadGuardianAttendanceQueueReadModel } from "@/lib/guardian/read-model"
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
 
-type HubAiModule = "guardian" | "hub" | "pulsex" | "setup" | "desk";
+type HubAiModule = "chronos" | "desk" | "guardian" | "hub" | "pulsex" | "setup";
 
 type HubAiMessage = {
   content: string;
@@ -136,6 +136,7 @@ function isHubAiModule(value: unknown): value is HubAiModule {
   return (
     value === "guardian" ||
     value === "hub" ||
+    value === "chronos" ||
     value === "pulsex" ||
     value === "setup" ||
     value === "desk"
@@ -537,6 +538,17 @@ function buildSystemInstructions(module: HubAiModule, feature?: string) {
       "Nao afirme que enviou mensagem, criou tarefa, abriu ticket, chamou alguem ou alterou status. Voce pode sugerir ou preparar texto para validacao humana.",
       "Se houver decisoes, responsaveis ou prazos no contexto, destaque em bullets curtos. Se nao houver, diga que nao apareceu no trecho recente.",
       "Se o operador pedir resumo de conversa, priorize fatos, pendencias, riscos e proximos passos. Evite narrativas longas.",
+    );
+  }
+
+  if (module === "chronos") {
+    base.push(
+      "Neste pedido, voce atua como Caca do Chronos, o modulo executivo de reunioes formais da Careli.",
+      "Chronos nao e PulseX nem chamada casual; ele formaliza reunioes executivas, externas e internas com rastreabilidade.",
+      "Use somente pauta, participantes, transcricao, timeline e follow-ups recebidos no contexto.",
+      "Gere resumo executivo objetivo, decisoes, riscos, encaminhamentos e pendencias sem inventar fatos ausentes.",
+      "Nunca formalize ata como aprovada automaticamente. Toda ata precisa de revisao humana antes de fechamento.",
+      "Quando faltar transcricao ou contexto, diga que o resumo e preliminar e liste exatamente o que falta.",
     );
   }
 

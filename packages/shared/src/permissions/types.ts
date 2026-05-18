@@ -13,6 +13,8 @@ export type HubPermission =
   | "caredesk:manage"
   | "pulsex:view"
   | "pulsex:manage"
+  | "chronos:view"
+  | "chronos:manage"
   | "squadops:view"
   | "squadops:manage"
   | "agenda:view"
