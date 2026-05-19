@@ -58,6 +58,10 @@ const PULSEX_CALL_SIGNAL_TOPIC = "pulsex:calls";
 const PULSEX_ACTIVE_CALL_STORAGE_KEY = "careli:pulsex:active-call";
 const PULSEX_CALL_SOUND_STORAGE_KEY = "careli:pulsex:call-sound";
 const PULSEX_ACTIVE_CALL_STORAGE_TTL_MS = 1000 * 60 * 60 * 4;
+const PULSEX_CALL_DISABLED_HOSTS = new Set([
+  "ops.c2x.app.br",
+  "ops.c2x.careli",
+]);
 
 type StoredPulseXActiveCall = {
   currentUserId: PulseXPresenceUser["id"];
@@ -69,6 +73,22 @@ type StoredPulseXActiveCall = {
 const PulseXCallContext = createContext<PulseXCallContextValue | null>(null);
 
 export function PulseXCallProvider({
+  children,
+}: Readonly<{
+  children: ReactNode;
+}>) {
+  if (isPulseXCallDisabledHost()) {
+    return (
+      <PulseXCallContext.Provider value={disabledPulseXCallContextValue}>
+        {children}
+      </PulseXCallContext.Provider>
+    );
+  }
+
+  return <ActivePulseXCallProvider>{children}</ActivePulseXCallProvider>;
+}
+
+function ActivePulseXCallProvider({
   children,
 }: Readonly<{
   children: ReactNode;
@@ -577,6 +597,27 @@ export function PulseXCallProvider({
       ) : null}
     </PulseXCallContext.Provider>
   );
+}
+
+const disabledPulseXCallContextValue = {
+  callSoundId: pulsexCallSoundOptions[0].id,
+  callSoundOptions: pulsexCallSoundOptions,
+  endActiveCall: noopPulseXCallAction,
+  previewCallSound: noopPulseXCallAction,
+  setCallSoundId: noopPulseXCallAction,
+  startCall: noopPulseXCallAction,
+} satisfies PulseXCallContextValue;
+
+function noopPulseXCallAction() {
+  return;
+}
+
+function isPulseXCallDisabledHost() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return PULSEX_CALL_DISABLED_HOSTS.has(window.location.hostname.toLowerCase());
 }
 
 export function usePulseXCall() {

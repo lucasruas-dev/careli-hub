@@ -5371,3 +5371,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nenhum risco tecnico imediato; futuras entregas do SquadOps devem seguir esta regra para evitar divergencia entre chat, Markdown e tela.
 - Status operacional: `FINALIZADO`.
 - Proxima squad recomendada: `SquadOps Core` para aplicar a regra em toda proxima publicacao do modulo.
+
+Registro de diario:
+
+- Assunto: `[PulseX/SquadOps] Chamadas desabilitadas no dominio OPS`.
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-19 12:21:51 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - isolamento das chamadas PulseX no dominio dedicado do SquadOps.
+- Motivo da mudanca: Lucas informou que, ao receber chamada pelo PulseX, o atendimento deve acontecer no dominio principal `c2x.app.br`, mas o dominio operacional `ops.c2x.app.br` tambem ficava tocando e gerava duplicidade de chamada.
+- Arquivos/modulos afetados: `apps/hub/providers/pulsex-call-provider.tsx` e este diario.
+- Como foi feito: adicionei uma lista de hosts onde chamadas PulseX ficam desabilitadas e transformei o provider global de chamadas em um provider silencioso quando o navegador estiver no dominio OPS. Nesse modo, o contexto continua disponivel para nao quebrar componentes, mas nao assina realtime, nao toca audio, nao exibe banner de chamada e nao inicia chamadas.
+- Logica utilizada: o dominio OPS deve ser dedicado ao SquadOps/Operations Center e nao deve competir com o dominio principal do Hub para eventos sonoros de atendimento. O PulseX segue funcionando normalmente em `c2x.app.br`; a alteracao fica restrita ao host operacional.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `git diff --check` passou.
+- Pendencias ou riscos conhecidos: ainda falta publicar o recorte para homologacao/producao e validar em navegador real que `ops.c2x.app.br` nao toca quando chega chamada, enquanto `c2x.app.br` continua tocando.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix; depois `SquadOps Core` para validar o comportamento no dominio OPS.
