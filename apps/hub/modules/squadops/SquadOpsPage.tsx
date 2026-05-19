@@ -2999,13 +2999,15 @@ function DatabaseMonitoringView({
     <section
       className={
         isTvMode
-          ? "fixed inset-0 z-[60] grid min-h-screen gap-5 overflow-y-auto bg-slate-100 p-5"
+          ? "fixed inset-0 z-[60] h-screen overflow-hidden bg-slate-100 p-4"
           : "grid gap-5"
       }
     >
       <Surface
         bordered
-        className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className={`border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+          isTvMode ? "flex h-full min-h-0 flex-col overflow-hidden p-4" : "p-5"
+        }`}
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <PanelTitle
@@ -3045,7 +3047,12 @@ function DatabaseMonitoringView({
               Ops Copilot
             </button>
             <button
-              className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors ${
+              aria-label={
+                isTvMode
+                  ? "Sair do modo tela cheia"
+                  : "Abrir modo tela cheia"
+              }
+              className={`inline-flex size-9 items-center justify-center rounded-lg text-xs font-semibold transition-colors ${
                 isTvMode
                   ? "bg-[#101820] text-white hover:bg-[#1b2533]"
                   : "border border-slate-200/70 bg-white text-slate-600 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
@@ -3058,7 +3065,6 @@ function DatabaseMonitoringView({
               ) : (
                 <Maximize2 className="size-4" />
               )}
-              {isTvMode ? "Sair TV" : "Tela TV"}
             </button>
           </div>
         </div>
@@ -3082,9 +3088,16 @@ function DatabaseMonitoringView({
           sources={sourceCards}
         />
 
-        <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.55fr)]">
-          <MonitoringPeakPanel checks={monitoringChecks} />
+        <div
+          className={
+            isTvMode
+              ? "mt-4 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(22rem,0.48fr)] gap-4 overflow-hidden"
+              : "mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.55fr)]"
+          }
+        >
+          <MonitoringPeakPanel checks={monitoringChecks} isTvMode={isTvMode} />
           <MonitoringHotspotsPanel
+            isTvMode={isTvMode}
             onSelectSource={setSelectedSourceId}
             sources={sourceCards}
           />
@@ -3176,7 +3189,7 @@ function MonitoringSourceGrid({
       {sources.length > 0 ? (
         <div
           className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${
-            isTvMode ? "2xl:grid-cols-6" : "xl:grid-cols-3 2xl:grid-cols-6"
+            isTvMode ? "xl:grid-cols-5" : "xl:grid-cols-3 2xl:grid-cols-6"
           }`}
         >
           {sources.map((source) => (
@@ -3258,14 +3271,20 @@ function MonitoringSourceCard({
   );
 }
 
-function MonitoringPeakPanel({ checks }: { checks: OperationsCheckMetric[] }) {
+function MonitoringPeakPanel({
+  checks,
+  isTvMode,
+}: {
+  checks: OperationsCheckMetric[];
+  isTvMode: boolean;
+}) {
   const peaks = useMemo(
     () =>
       checks
         .slice(0, 160)
         .sort((first, second) => second.responseMs - first.responseMs)
-        .slice(0, 6),
-    [checks],
+        .slice(0, isTvMode ? 5 : 6),
+    [checks, isTvMode],
   );
   const maxResponse = Math.max(1, ...peaks.map((check) => check.responseMs));
   const maxPayloadCheck = checks
@@ -3275,7 +3294,9 @@ function MonitoringPeakPanel({ checks }: { checks: OperationsCheckMetric[] }) {
   return (
     <Surface
       bordered
-      className="min-w-0 border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className={`min-w-0 border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+        isTvMode ? "min-h-0 overflow-hidden p-4" : "p-5"
+      }`}
     >
       <PanelTitle
         eyebrow="picos recentes"
@@ -3320,7 +3341,7 @@ function MonitoringPeakPanel({ checks }: { checks: OperationsCheckMetric[] }) {
           <EmptyState message="Sem picos registrados nesta sessao." />
         )}
       </div>
-      {maxPayloadCheck ? (
+      {maxPayloadCheck && !isTvMode ? (
         <p className="m-0 mt-4 rounded-xl bg-[#A07C3B]/5 p-3 text-xs leading-5 text-slate-600 ring-1 ring-[#A07C3B]/10">
           Maior payload recente:{" "}
           <strong className="text-slate-950">{maxPayloadCheck.label}</strong>{" "}
@@ -3332,9 +3353,11 @@ function MonitoringPeakPanel({ checks }: { checks: OperationsCheckMetric[] }) {
 }
 
 function MonitoringHotspotsPanel({
+  isTvMode,
   onSelectSource,
   sources,
 }: {
+  isTvMode: boolean;
   onSelectSource: (sourceId: string) => void;
   sources: MonitoringSourceSummary[];
 }) {
@@ -3343,12 +3366,14 @@ function MonitoringHotspotsPanel({
       const riskDelta = riskPriority(second.risk) - riskPriority(first.risk);
       return riskDelta || second.responseMs - first.responseMs;
     })
-    .slice(0, 5);
+    .slice(0, isTvMode ? 4 : 5);
 
   return (
     <Surface
       bordered
-      className="min-w-0 border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className={`min-w-0 border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+        isTvMode ? "min-h-0 overflow-hidden p-4" : "p-5"
+      }`}
     >
       <PanelTitle
         eyebrow="prevenção"
