@@ -645,7 +645,11 @@ const squadOpsViews = [
   { id: "records", label: "Registros" },
 ] as const satisfies readonly { id: SquadOpsView; label: string }[];
 
-export function SquadOpsPage() {
+export function SquadOpsPage({
+  standalone = false,
+}: {
+  standalone?: boolean;
+} = {}) {
   const { authState, hubUser, profileStatus } = useAuth();
   const canAccessSquadOps = canAccessSquadOpsAsAdmin(hubUser);
   const authAccessToken = authState.session?.accessToken ?? null;
@@ -1171,6 +1175,7 @@ export function SquadOpsPage() {
     return (
       <SquadOpsAccessState
         description="Carregando perfil operacional para validar permissao adm."
+        standalone={standalone}
         title="Preparando SquadOps"
       />
     );
@@ -1180,6 +1185,7 @@ export function SquadOpsPage() {
     return (
       <SquadOpsAccessState
         description="SquadOps e o Operations Center da engenharia IA e fica liberado somente para perfil adm."
+        standalone={standalone}
         title="Acesso restrito"
       />
     );
@@ -1559,8 +1565,8 @@ export function SquadOpsPage() {
     }
   }
 
-  return (
-    <HubShell layoutMode="module">
+  const pageContent = (
+    <>
       <WorkspaceLayout>
         <section className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1572,6 +1578,7 @@ export function SquadOpsPage() {
                   "docs/operations/engineering-operations.md")}
             </span>
             <div className="flex flex-wrap items-center gap-2">
+              {!standalone ? (
               <button
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={openHubModulesSidebar}
@@ -1583,6 +1590,7 @@ export function SquadOpsPage() {
                 />
                 Módulos do Hub
               </button>
+              ) : null}
               <Badge variant="warning">AGUARDANDO RELEASEOPS</Badge>
               <Badge variant="info">Engineering Operations</Badge>
               <span className="text-xs font-semibold text-slate-500">
@@ -1846,8 +1854,18 @@ export function SquadOpsPage() {
         isHidden={isPoAiOpen}
         onClick={() => setIsPoAiOpen(true)}
       />
-    </HubShell>
+    </>
   );
+
+  if (standalone) {
+    return (
+      <main className="min-h-screen bg-slate-50 text-slate-950">
+        {pageContent}
+      </main>
+    );
+  }
+
+  return <HubShell layoutMode="module">{pageContent}</HubShell>;
 }
 
 function FloatingPoAiButton({
@@ -2027,14 +2045,15 @@ function AlertProtocolFeedbackDrawer({
 
 function SquadOpsAccessState({
   description,
+  standalone = false,
   title,
 }: {
   description: string;
+  standalone?: boolean;
   title: string;
 }) {
-  return (
-    <HubShell layoutMode="module">
-      <WorkspaceLayout>
+  const content = (
+    <WorkspaceLayout>
         <Surface bordered className="border-slate-200/70 bg-white p-6">
           <UixEmptyState
             description={description}
@@ -2046,9 +2065,18 @@ function SquadOpsAccessState({
             }
           />
         </Surface>
-      </WorkspaceLayout>
-    </HubShell>
+    </WorkspaceLayout>
   );
+
+  if (standalone) {
+    return (
+      <main className="min-h-screen bg-slate-50 text-slate-950">
+        {content}
+      </main>
+    );
+  }
+
+  return <HubShell layoutMode="module">{content}</HubShell>;
 }
 
 function canAccessSquadOpsAsAdmin(user: HubUserContext | null) {

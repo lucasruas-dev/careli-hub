@@ -4,12 +4,15 @@
 
 O SquadOps Center e a camada operacional do Hub para controlar tickets, alertas, atividades, monitoramento, homologacao, releases, deploys, historico e rastreabilidade da engenharia IA Careli.
 
-Ele continua sendo o modulo `SquadOps` dentro do Hub. A tela, a governanca, as permissoes e a persistencia ficam concentradas em `/squadops`, sem migrar o Hub inteiro para outro app ou dominio.
+Ele continua sendo o modulo `SquadOps` do mesmo runtime do Hub, mas com entrada operacional dedicada em `ops.c2x.app.br`. A tela, a governanca, as permissoes e a persistencia ficam concentradas em `/squadops`, sem abrir outros modulos dentro do dominio operacional.
 
 ## Separacao de responsabilidades
 
-- `c2x.app.br/squadops`: SquadOps em producao dentro do Hub.
-- `homo.c2x.app.br/squadops`: SquadOps no ambiente de teste/homologacao.
+- `ops.c2x.app.br`: entrada dedicada do SquadOps em producao operacional; abre diretamente `/squadops`, sem sidebar/menu do Hub.
+- `ops.c2x.app.br/*`: rotas visuais fora de `/squadops` redirecionam para `/squadops`; APIs continuam protegidas e server-side.
+- `c2x.app.br`: Hub principal de producao sem item SquadOps no sidebar/menu.
+- `homo.c2x.app.br`: Hub de homologacao sem item SquadOps no sidebar/menu.
+- `c2x.app.br/squadops` e `homo.c2x.app.br/squadops`: acesso direto redireciona para `/`; o SquadOps deve ser acessado pelo dominio operacional.
 
 Se a homologacao cair, o SquadOps deve continuar mostrando historico, protocolos, status de release, tickets vinculados, alertas e producao a partir do banco operacional do proprio modulo.
 
@@ -140,4 +143,4 @@ A fila antiga de homologacao do SquadOps nao deve ser apagada. Ela deve ser reco
 
 ## Decisao V1
 
-O SquadOps fica dentro do Hub como modulo proprio em `/squadops`. A independencia vem da fonte de dados operacional, da permissao admin e das tabelas com prefixo `hub_squadops_*`, nao de um app separado nem de uma migracao do Hub inteiro.
+O SquadOps fica como modulo proprio do mesmo Hub, mas a experiencia operacional publica deve existir apenas em `ops.c2x.app.br`. A independencia vem do dominio dedicado, do render standalone, da fonte de dados operacional, da permissao admin e das tabelas com prefixo `hub_squadops_*`, nao de uma migracao do Hub inteiro.

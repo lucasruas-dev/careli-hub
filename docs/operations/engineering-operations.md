@@ -5249,3 +5249,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke autenticado completo ainda depende da sessao admin do Lucas; `homo.c2x.app.br` e o Preview unico retornam 401 em acesso externo comum por protecao/sessao, mas `vercel curl` confirmou HTML de `/squadops` e API protegida com resposta esperada sem sessao. Warnings conhecidos de Turbopack/NFT, `npm audit` e envs fora do `turbo.json` permanecem fora deste recorte.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `Hub SupportOps` para smoke autenticado assistido com Lucas se surgir divergencia visual ou funcional em SquadOps.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Entrada dedicada no dominio ops`.
+- Nome da squad/agente: `SquadOps Core` com encaminhamento para `Hub ReleaseOps`.
+- Data e hora local: 2026-05-19 09:31:02 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - isolamento do SquadOps no dominio operacional.
+- Motivo da mudanca: Lucas identificou que `ops.c2x.app.br/guardian` ainda abria Guardian e outros modulos dentro do dominio ops, quando o combinado atual e que o ops abra somente o modulo SquadOps, sem sidebar do Hub, e que SquadOps nao apareca nos dominios principais de producao/homologacao.
+- Arquivos/modulos afetados: `apps/hub/proxy.ts`, `apps/hub/app/squadops/page.tsx`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/app/page.tsx`, `docs/operations/README.md`, `docs/operations/squadops-center-process.md` e este diario.
+- Como foi feito: criei `proxy.ts` para redirecionar rotas visuais de `ops.c2x.app.br` para `/squadops`, permitir `/login` e bloquear acesso visual direto a `/squadops` em `c2x.app.br` e `homo.c2x.app.br`; adicionei modo `standalone` ao SquadOps para renderizar sem `HubShell`; removi SquadOps da navegacao do Hub e da Home dos dominios principais.
+- Logica utilizada: o mesmo runtime do Hub continua servindo a aplicacao, mas o dominio operacional recebe somente a experiencia SquadOps. APIs continuam protegidas e fora do matcher do proxy; o login permanece acessivel no dominio ops para preservar sessao administrativa sem expor outros modulos.
+- Validacao planejada: `check-types`, `lint`, `build`, smoke local com `Host: ops.c2x.app.br` em `/`, `/guardian` e `/squadops`, smoke local com `Host: c2x.app.br` e `Host: homo.c2x.app.br` em `/squadops`, deploy Preview/Production e smoke dos aliases `ops.c2x.app.br`, `c2x.app.br` e `homo.c2x.app.br`.
+- Pendencias ou riscos conhecidos: smoke visual autenticado ainda depende da sessao admin do Lucas; a alteracao nao mexe em Guardian, PulseX, CareDesk, Setup, migrations, envs ou secrets.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o recorte e confirmar aliases de homologacao/producao.

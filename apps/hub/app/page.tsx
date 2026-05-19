@@ -95,6 +95,7 @@ export default function HomePage() {
   );
   const availableModules = orderedHubModules.filter(
     (hubModule) =>
+      hubModule.id !== "squadops" &&
       isHubModuleActive(hubModule) &&
       Boolean(hubUser && canAccessModule(hubUser, hubModule)) &&
       activeModuleIds.has(hubModule.id) &&

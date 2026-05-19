@@ -93,7 +93,6 @@ const minimumReleasedModuleIds = [
   "chronos",
   "pulsex",
   "setup",
-  "squadops",
 ] as const;
 const hiddenProductionModuleIds = new Set(["caredesk"]);
 
@@ -136,7 +135,7 @@ export function HubShell({
     }
 
     if (isSquadOpsModuleId(hubModule.id)) {
-      return isHubModuleActive(hubModule) && canAccessSquadOpsModule(hubUser);
+      return false;
     }
 
     if (!releasedModuleIds) {
@@ -151,11 +150,7 @@ export function HubShell({
     return isHubModuleActive(hubModule) && releasedModuleIds.has(hubModule.id);
   });
   const moduleNavigationItems = orderedHubModules
-    .filter(
-      (hubModule) =>
-        isSquadOpsModuleId(hubModule.id) ||
-        visibleHubModules.includes(hubModule),
-    )
+    .filter((hubModule) => visibleHubModules.includes(hubModule))
     .flatMap((hubModule) => {
       if (
         !canOpenShellModule(hubModule.id, hubUser, hubModule, profileStatus)
@@ -178,11 +173,7 @@ export function HubShell({
       firstItem.label.localeCompare(secondItem.label, "pt-BR"),
     );
   const commands = orderedHubModules
-    .filter(
-      (hubModule) =>
-        isSquadOpsModuleId(hubModule.id) ||
-        visibleHubModules.includes(hubModule),
-    )
+    .filter((hubModule) => visibleHubModules.includes(hubModule))
     .flatMap((hubModule) => {
       const canOpenModule = canOpenShellModule(
         hubModule.id,
