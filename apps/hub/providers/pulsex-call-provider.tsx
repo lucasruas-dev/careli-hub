@@ -61,6 +61,7 @@ const PULSEX_ACTIVE_CALL_STORAGE_TTL_MS = 1000 * 60 * 60 * 4;
 const PULSEX_CALL_DISABLED_HOSTS = new Set([
   "ops.c2x.app.br",
   "ops.c2x.careli",
+  "ops.careli.adm.br",
 ]);
 
 type StoredPulseXActiveCall = {
@@ -617,7 +618,17 @@ function isPulseXCallDisabledHost() {
     return false;
   }
 
-  return PULSEX_CALL_DISABLED_HOSTS.has(window.location.hostname.toLowerCase());
+  return PULSEX_CALL_DISABLED_HOSTS.has(
+    normalizePulseXCallHost(window.location.hostname),
+  );
+}
+
+function normalizePulseXCallHost(hostname: string) {
+  return hostname
+    .toLowerCase()
+    .replace(/,+/g, ".")
+    .replace(/\.\.+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
 }
 
 export function usePulseXCall() {

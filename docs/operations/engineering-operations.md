@@ -5401,3 +5401,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o sync automatico remoto ainda depende de bearer administrativo valido se for apontado direto para `ops.c2x.app.br`; sem bearer, use o botao `Importar arquivo local` autenticado ou mantenha o Hub local ativo para o watcher padrao. Falta publicar este ajuste para que o botao esteja disponivel em producao.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix; depois `SquadOps Core` para validar importacao manual e sync automatico na tela.
+
+Registro de diario:
+
+- Assunto: `[PulseX/SquadOps] Chamadas desabilitadas no dominio OPS adm`.
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-19 13:13:14 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - bloqueio das chamadas PulseX no dominio administrativo do SquadOps.
+- Motivo da mudanca: Lucas informou que o PulseX ainda tocava dentro do modulo SquadOps no dominio `ops.careli.adm.br`; o atendimento de chamadas deve permanecer apenas no dominio principal do Hub.
+- Arquivos/modulos afetados: `apps/hub/providers/pulsex-call-provider.tsx` e este diario.
+- Como foi feito: adicionei `ops.careli.adm.br` na lista de hosts silenciosos do provider global de chamadas do PulseX e normalizei o hostname antes da comparacao para tolerar variacoes digitadas com virgula ou pontos duplicados.
+- Logica utilizada: o dominio OPS deve operar como central SquadOps/Operations Center e nao deve assinar realtime de chamadas, tocar audio, abrir banner ou iniciar chamadas. O PulseX segue ativo no dominio principal `c2x.app.br`.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT.
+- Pendencias ou riscos conhecidos: ainda falta publicar o hotfix e validar em navegador real que `ops.careli.adm.br` nao toca quando chega chamada enquanto `c2x.app.br` continua tocando normalmente.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix; depois `SquadOps Core` para validar o comportamento no dominio OPS adm.
