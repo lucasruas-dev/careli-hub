@@ -42,6 +42,7 @@ type GuardianManualEventsDatabase = {
         Relationships: [];
         Row: {
           display_name?: string | null;
+          email?: string | null;
           id: string;
           role: HubUserRole;
           status: string;
@@ -217,7 +218,7 @@ export async function PATCH(request: NextRequest) {
     history: [
       {
         action: "Atualizacao manual",
-        actorName: context.user.display_name ?? "Operador Guardian",
+        actorName: authenticatedOperatorName(context.user),
         actorUserId: context.user.id,
         occurredAt: new Date().toISOString(),
       },
@@ -296,7 +297,7 @@ function parsePayload(
 
 function buildMetadata(
   payload: ManualPayload,
-  user: { display_name?: string | null; id: string },
+  user: { display_name?: string | null; email?: string | null; id: string },
 ) {
   return {
     client_id: payload.client?.id,
@@ -307,7 +308,7 @@ function buildMetadata(
     history: [
       {
         action: "Registro manual",
-        actorName: user.display_name ?? "Operador Guardian",
+        actorName: authenticatedOperatorName(user),
         actorUserId: user.id,
         occurredAt: new Date().toISOString(),
       },
@@ -319,9 +320,9 @@ function buildMetadata(
 
 function payloadWithAuthenticatedOperator(
   payload: ManualPayload,
-  user: { display_name?: string | null },
+  user: { display_name?: string | null; email?: string | null },
 ): ManualPayload {
-  const operator = user.display_name?.trim() || "Operador Guardian";
+  const operator = authenticatedOperatorName(user);
 
   return {
     ...payload,
@@ -332,6 +333,39 @@ function payloadWithAuthenticatedOperator(
       ? recordWithAuthenticatedOperator(payload.event, operator)
       : payload.event,
   };
+}
+
+function authenticatedOperatorName(user: {
+  display_name?: string | null;
+  email?: string | null;
+}) {
+  return formatOperatorDisplayName(
+    user.display_name?.trim() ||
+      user.email?.trim() ||
+      "Operador Guardian",
+  );
+}
+
+function formatOperatorDisplayName(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized || normalized.includes(" ")) {
+    return normalized;
+  }
+
+  const localPart = normalized.includes("@")
+    ? normalized.split("@")[0] ?? normalized
+    : normalized;
+
+  if (!/[._-]/.test(localPart)) {
+    return normalized;
+  }
+
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function recordWithAuthenticatedOperator(
@@ -437,10 +471,11 @@ function mapTimelineEvent(row: ManualEventRow) {
         "Compromisso registrado manualmente no Guardian.",
       id: row.id,
       occurredAt: formatDateTime(row.created_at),
-      operator:
+      operator: formatOperatorDisplayName(
         stringFromRecord(commitment, "operator") ||
         metadataActorName(metadata) ||
         "Operador Guardian",
+      ),
       protocol: stringFromRecord(commitment, "protocol"),
       status:
         stringFromRecord(commitment, "timelineStatus") ||
@@ -475,10 +510,11 @@ function mapTimelineEvent(row: ManualEventRow) {
     id: row.id,
     occurredAt:
       stringFromRecord(event, "occurredAt") || formatDateTime(row.created_at),
-    operator:
+    operator: formatOperatorDisplayName(
       stringFromRecord(event, "operator") ||
       metadataActorName(metadata) ||
       "Operador Guardian",
+    ),
     protocol: stringFromRecord(event, "protocol"),
     status: stringFromRecord(event, "status") || "Registrado",
     title: stringFromRecord(event, "title") || row.title,
@@ -499,6 +535,11 @@ function mapCommitment(row: ManualEventRow) {
   return {
     ...commitment,
     id: row.id,
+    operator: formatOperatorDisplayName(
+      stringFromRecord(commitment, "operator") ||
+        metadataActorName(metadata) ||
+        "Operador Guardian",
+    ),
     history:
       Array.isArray(commitment.history) && commitment.history.length > 0
         ? commitment.history
@@ -510,10 +551,11 @@ function mapCommitment(row: ManualEventRow) {
                 "Compromisso registrado manualmente no Guardian.",
               id: `${row.id}-history`,
               occurredAt: formatDateTime(row.created_at),
-              operator:
+              operator: formatOperatorDisplayName(
                 stringFromRecord(commitment, "operator") ||
                 metadataActorName(metadata) ||
                 "Operador Guardian",
+              ),
               protocol: stringFromRecord(commitment, "protocol"),
             },
           ],
@@ -571,10 +613,11 @@ async function createAuthorizedContext(request: NextRequest) {
 
   const { data: user, error: userError } = await adminClient
     .from("hub_users")
-    .select("id,role,status,display_name")
+    .select("id,role,status,display_name,email")
     .eq("id", authData.user.id)
     .maybeSingle<{
       display_name?: string | null;
+      email?: string | null;
       id: string;
       role: HubUserRole;
       status: string;

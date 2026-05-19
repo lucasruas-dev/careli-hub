@@ -709,11 +709,35 @@ function attachmentTypeFor(file: File) {
 }
 
 function operatorFromLogin(loginName: string | null | undefined, fallback?: string) {
-  return firstFilled(loginName, fallback, "Operador Guardian");
+  return formatOperatorDisplayName(
+    firstFilled(loginName, fallback, "Operador Guardian"),
+  );
 }
 
 function firstFilled(...values: Array<string | null | undefined>) {
   return values.find((value) => typeof value === "string" && value.trim())?.trim() ?? "";
+}
+
+function formatOperatorDisplayName(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized || normalized.includes(" ")) {
+    return normalized;
+  }
+
+  const localPart = normalized.includes("@")
+    ? normalized.split("@")[0] ?? normalized
+    : normalized;
+
+  if (!/[._-]/.test(localPart)) {
+    return normalized;
+  }
+
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function formatBytes(value: number | null | undefined) {

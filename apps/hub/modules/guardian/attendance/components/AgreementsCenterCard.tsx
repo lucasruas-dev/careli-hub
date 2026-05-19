@@ -10,8 +10,9 @@ import {
   ChevronDown,
   Edit3,
   Filter,
+  CalendarPlus,
   HandCoins,
-  Plus,
+  Handshake,
   RefreshCw,
   Sparkles,
   TrendingUp,
@@ -319,7 +320,7 @@ export function AgreementsCenterCard({
               aria-label="Nova promessa"
               className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
             >
-              <Plus className="size-4" aria-hidden="true" />
+              <CalendarPlus className="size-4" aria-hidden="true" />
             </button>
           </Tooltip>
           <Tooltip content="Novo acordo" placement="bottom">
@@ -329,7 +330,7 @@ export function AgreementsCenterCard({
               aria-label="Novo acordo"
               className="inline-flex size-9 items-center justify-center rounded-lg bg-[#A07C3B] text-white shadow-[0_8px_18px_rgba(160,124,59,0.22)] transition-colors hover:bg-[#8E6F35]"
             >
-              <Plus className="size-4" aria-hidden="true" />
+              <Handshake className="size-4" aria-hidden="true" />
             </button>
           </Tooltip>
         </div>
@@ -1123,11 +1124,35 @@ function unique(values: string[]) {
 }
 
 function operatorFromLogin(loginName: string | null | undefined, fallback: string) {
-  return firstFilled(loginName, fallback, "Operador Guardian");
+  return formatOperatorDisplayName(
+    firstFilled(loginName, fallback, "Operador Guardian"),
+  );
 }
 
 function firstFilled(...values: Array<string | null | undefined>) {
   return values.find((value) => value && value.trim() && value.trim() !== "-")?.trim() ?? "-";
+}
+
+function formatOperatorDisplayName(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized || normalized.includes(" ") || normalized === "-") {
+    return normalized;
+  }
+
+  const localPart = normalized.includes("@")
+    ? normalized.split("@")[0] ?? normalized
+    : normalized;
+
+  if (!/[._-]/.test(localPart)) {
+    return normalized;
+  }
+
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function buildInstallmentOptions(client: QueueClient) {
