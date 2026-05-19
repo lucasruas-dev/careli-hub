@@ -5264,3 +5264,17 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke visual autenticado ainda depende da sessao admin do Lucas; a alteracao nao mexe em Guardian, PulseX, CareDesk, Setup, migrations, envs ou secrets.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o recorte e confirmar aliases de homologacao/producao.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy dominio ops dedicado ao SquadOps`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-19 09:45:00 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao do roteamento dedicado do SquadOps.
+- Motivo da mudanca: publicar a correcao que impede `ops.c2x.app.br` de abrir outros modulos e remove o SquadOps dos dominios principais/homologacao do Hub.
+- Commit/deploy de referencia: commit `5995ed1 fix(squadops): isolate ops domain`; Preview/Homologacao `dpl_HEKgGp8zKAqzLU7RKZ8nmjLGk9Do`; Producao `dpl_2vH73V7DyukEEFJDWtUwVzNHEbxw`; aliases `https://ops.c2x.app.br`, `https://c2x.app.br` e `https://homo.c2x.app.br`.
+- Como foi feito: publiquei o branch `homolog`, gerei Preview para homologacao, publiquei Production e confirmei que o alias `ops.c2x.app.br` aponta para o deployment de producao novo.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; smoke local confirmou `ops.c2x.app.br/` e `/guardian` redirecionando para `/squadops`, `ops.c2x.app.br/squadops` 200, `c2x.app.br/squadops` e `homo.c2x.app.br/squadops` redirecionando para `/`; smoke remoto confirmou `https://ops.c2x.app.br/` 307 para `/squadops`, `https://ops.c2x.app.br/guardian` 307 para `/squadops`, `https://ops.c2x.app.br/squadops` 200, `https://c2x.app.br/squadops` 307 para `/`, `https://c2x.app.br/guardian` 200, `https://c2x.app.br/` 200 e `vercel curl -I https://homo.c2x.app.br/squadops` 307 para `/`.
+- Pendencias ou riscos conhecidos: smoke visual autenticado final ainda depende da sessao admin do Lucas; `homo.c2x.app.br` continua protegido externamente pela Vercel, validado via `vercel curl`; warnings conhecidos de Turbopack/NFT, `npm audit` e envs fora do `turbo.json` permanecem fora deste recorte.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `SquadOps Core` para evoluir a fonte viva dos registros para Supabase/API, evitando depender de deploy para atualizar timeline, protocolos e releases.
