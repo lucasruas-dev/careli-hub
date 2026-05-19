@@ -5339,3 +5339,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o watcher depende do Hub local ativo para sincronizar o arquivo local; quando o Hub local nao esta rodando, ele registra aviso e tenta novamente por intervalo ou na proxima alteracao. A rotina nao executa deploy, nao aplica migration, nao altera secrets e nao chama agentes automaticamente.
 - Status operacional: `EM PRODUCAO LOCAL / AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o recorte de scripts/processo se Lucas quiser versionar a automacao no repositorio remoto; `SquadOps Core` para evoluir depois uma sincronizacao 100% server-side quando todos os registros nascerem diretamente no banco.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Reconciliacao registros vivos em producao`.
+- Nome da squad/agente: `SquadOps Core` com apoio operacional de `Hub DataOps`.
+- Data e hora local: 2026-05-19 12:03:23 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - reconciliacao do estado estruturado exibido no Operations Center.
+- Motivo da mudanca: Lucas apontou que a liberacao `[DataOps] Ticket TI liberado em producao` foi informada no chat, mas nao apareceu como ultimo movimento na tela; a ultima atualizacao visivel ainda era `AT-0273` as 11:31.
+- Arquivos/modulos afetados: `hub_engineering_operation_records`, `hub_engineering_operation_releases`, timeline do `SquadOps / Operations Center`, Ticket TI e registros de deploy do SquadOps.
+- Como foi feito: confirmei no Supabase de producao que `[DataOps] Aplicacao migrations Ticket TI producao` existia como `AT-0272` as 11:11, mas `AT-0273` ainda estava `AGUARDANDO RELEASEOPS`; ajustei a sequence `hub_engineering_operation_protocol_seq`, inseri registros vivos `AT-0274` e `AT-0275`, reconciliei os protocolos `AT-0264`, `AT-0266`, `AT-0268`, `AT-0270` e `AT-0273` para `EM PRODUCAO`, e atualizei a visao estruturada de releases.
+- Logica utilizada: a tela le a fonte estruturada no banco, portanto mensagens de chat ou registros documentais antigos nao bastam para atualizar a timeline. Quando uma entrega ja foi publicada, o Operations Center precisa receber um registro vivo com data atual, status de producao, commit/deploy e vinculo dos protocolos publicados.
+- Commit/deploy de referencia: commit `124791c feat(squadops): add local operations sync watcher`; deployment Vercel Production `dpl_Csd3TNx2GfLriFiqrCv3TpB87dh6`; aliases `https://ops.c2x.app.br` e `https://c2x.app.br`; commit DataOps `e81f2ce docs(dataops): record ticket ti migrations apply`.
+- Validacao executada: consulta direta segura no Supabase de producao confirmou `AT-0274 [DataOps] Ticket TI liberado em producao` e `AT-0275 [SquadOps] Deploy realizado automacao local do Engineering Operations` como registros mais recentes, ambos `EM PRODUCAO`, alem dos ATs SquadOps reconciliados com commit/deploy.
+- Resultado operacional: Ticket TI e automacao local do SquadOps passaram a aparecer como dados vivos de producao no Operations Center, sem depender de novo deploy documental.
+- Pendencias ou riscos conhecidos: smoke visual autenticado ainda depende da sessao real do Lucas; se a tela estiver aberta, pode exigir refresh para buscar novamente a API estruturada. A rotina local de sync continua dependente do Hub local ativo para refletir alteracoes do arquivo local.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `SquadOps Core` para validar a tela autenticada atualizada; `Hub SupportOps` se o registro nao aparecer apos refresh ou se o fluxo de Ticket TI ainda falhar.
