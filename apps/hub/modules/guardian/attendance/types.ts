@@ -268,6 +268,15 @@ export type QueueClient = {
   )[];
   timeline: {
     actionType?: string;
+    attachments?: {
+      capturedAt?: string;
+      dataUrl?: string;
+      fileName: string;
+      id: string;
+      mimeType: string;
+      sizeBytes: number;
+      type: "audio" | "file" | "image";
+    }[];
     id: string;
     protocol?: string;
     type: TimelineEventType;

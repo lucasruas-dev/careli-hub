@@ -68,6 +68,11 @@ type ManualPayload = {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const MAX_MANUAL_ATTACHMENT_COUNT = 3;
+const MAX_MANUAL_ATTACHMENT_DATA_URL_LENGTH = 8_500_000;
+const MAX_MANUAL_ATTACHMENT_NAME_LENGTH = 140;
+const MANUAL_ATTACHMENT_TYPES = new Set(["audio", "file", "image"]);
+
 export async function GET(request: NextRequest) {
   const context = await createAuthorizedContext(request);
 
@@ -117,17 +122,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: payload.error }, { status: 400 });
   }
 
-  const metadata = buildMetadata(payload.data, context.user);
+  const dataWithOperator = payloadWithAuthenticatedOperator(
+    payload.data,
+    context.user,
+  );
+  const metadata = buildMetadata(dataWithOperator, context.user);
   const title = metadata.kind === "commitment"
-    ? stringFromRecord(payload.data.commitment, "title") ||
-      stringFromRecord(payload.data.commitment, "type") ||
+    ? stringFromRecord(dataWithOperator.commitment, "title") ||
+      stringFromRecord(dataWithOperator.commitment, "type") ||
       "Compromisso registrado"
-    : stringFromRecord(payload.data.event, "title") ||
+    : stringFromRecord(dataWithOperator.event, "title") ||
       "Evento operacional registrado";
   const description = metadata.kind === "commitment"
-    ? stringFromRecord(payload.data.commitment, "note") ||
-      stringFromRecord(payload.data.commitment, "description")
-    : stringFromRecord(payload.data.event, "description");
+    ? stringFromRecord(dataWithOperator.commitment, "note") ||
+      stringFromRecord(dataWithOperator.commitment, "description")
+    : stringFromRecord(dataWithOperator.event, "description");
 
   const { data, error } = await context.adminClient
     .from("caredesk_ticket_events")
@@ -168,7 +177,11 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: payload.error }, { status: 400 });
   }
 
-  const id = payload.data.id?.trim();
+  const dataWithOperator = payloadWithAuthenticatedOperator(
+    payload.data,
+    context.user,
+  );
+  const id = dataWithOperator.id?.trim();
 
   if (!id) {
     return NextResponse.json(
@@ -194,12 +207,12 @@ export async function PATCH(request: NextRequest) {
   const nextMetadata = {
     ...currentMetadata,
     commitment:
-      payload.data.kind === "commitment"
-        ? payload.data.commitment
+      dataWithOperator.kind === "commitment"
+        ? dataWithOperator.commitment
         : currentMetadata.commitment,
     event:
-      payload.data.kind === "timeline"
-        ? payload.data.event
+      dataWithOperator.kind === "timeline"
+        ? dataWithOperator.event
         : currentMetadata.event,
     history: [
       {
@@ -213,16 +226,16 @@ export async function PATCH(request: NextRequest) {
     updated_at: new Date().toISOString(),
     updated_by_user_id: context.user.id,
   };
-  const title = payload.data.kind === "commitment"
-    ? stringFromRecord(payload.data.commitment, "title") ||
-      stringFromRecord(payload.data.commitment, "type") ||
+  const title = dataWithOperator.kind === "commitment"
+    ? stringFromRecord(dataWithOperator.commitment, "title") ||
+      stringFromRecord(dataWithOperator.commitment, "type") ||
       current.title
-    : stringFromRecord(payload.data.event, "title") || current.title;
-  const description = payload.data.kind === "commitment"
-    ? stringFromRecord(payload.data.commitment, "note") ||
-      stringFromRecord(payload.data.commitment, "description") ||
+    : stringFromRecord(dataWithOperator.event, "title") || current.title;
+  const description = dataWithOperator.kind === "commitment"
+    ? stringFromRecord(dataWithOperator.commitment, "note") ||
+      stringFromRecord(dataWithOperator.commitment, "description") ||
       current.description
-    : stringFromRecord(payload.data.event, "description") ||
+    : stringFromRecord(dataWithOperator.event, "description") ||
       current.description;
 
   const { data, error } = await context.adminClient
@@ -304,6 +317,98 @@ function buildMetadata(
   };
 }
 
+function payloadWithAuthenticatedOperator(
+  payload: ManualPayload,
+  user: { display_name?: string | null },
+): ManualPayload {
+  const operator = user.display_name?.trim() || "Operador Guardian";
+
+  return {
+    ...payload,
+    commitment: payload.commitment
+      ? recordWithAuthenticatedOperator(payload.commitment, operator)
+      : payload.commitment,
+    event: payload.event
+      ? recordWithAuthenticatedOperator(payload.event, operator)
+      : payload.event,
+  };
+}
+
+function recordWithAuthenticatedOperator(
+  record: Record<string, unknown>,
+  operator: string,
+) {
+  const attachments = normalizeManualAttachments(record.attachments);
+
+  return {
+    ...record,
+    attachments,
+    operator,
+  };
+}
+
+function normalizeManualAttachments(value: unknown) {
+  return arrayFromUnknown(value)
+    .map((item, index) => {
+      const attachment = recordFromUnknown(item);
+
+      if (!attachment) {
+        return null;
+      }
+
+      const fileName = stringFromRecord(attachment, "fileName").slice(
+        0,
+        MAX_MANUAL_ATTACHMENT_NAME_LENGTH,
+      );
+      const mimeType =
+        stringFromRecord(attachment, "mimeType").slice(0, 120) ||
+        "application/octet-stream";
+      const rawType = stringFromRecord(attachment, "type");
+      const type = MANUAL_ATTACHMENT_TYPES.has(rawType)
+        ? rawType
+        : attachmentTypeFromMime(mimeType);
+      const rawDataUrl = stringFromRecord(attachment, "dataUrl");
+      const dataUrl =
+        rawDataUrl.length <= MAX_MANUAL_ATTACHMENT_DATA_URL_LENGTH
+          ? rawDataUrl
+          : "";
+      const rawSize = Number(attachment.sizeBytes);
+      const sizeBytes = Number.isFinite(rawSize) && rawSize > 0 ? rawSize : 0;
+
+      if (!fileName || !MANUAL_ATTACHMENT_TYPES.has(type)) {
+        return null;
+      }
+
+      return {
+        capturedAt:
+          stringFromRecord(attachment, "capturedAt") ||
+          new Date().toISOString(),
+        dataUrl,
+        fileName,
+        id:
+          stringFromRecord(attachment, "id") ||
+          `guardian-attachment-${index + 1}`,
+        mimeType,
+        sizeBytes,
+        type,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .slice(0, MAX_MANUAL_ATTACHMENT_COUNT);
+}
+
+function attachmentTypeFromMime(mimeType: string) {
+  if (mimeType.startsWith("image/")) {
+    return "image";
+  }
+
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+
+  return "file";
+}
+
 function mapRows(rows: ManualEventRow[]) {
   const events = rows
     .map((row) => mapTimelineEvent(row))
@@ -362,6 +467,7 @@ function mapTimelineEvent(row: ManualEventRow) {
 
   return {
     actionType: stringFromRecord(event, "actionType"),
+    attachments: normalizeManualAttachments(event.attachments),
     description:
       stringFromRecord(event, "description") ||
       row.description ||

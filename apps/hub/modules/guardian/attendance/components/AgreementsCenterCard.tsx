@@ -21,6 +21,7 @@ import {
 import { Tooltip } from "@repo/uix";
 import { agreementRiskStyles, agreementStatusStyles } from "@/modules/guardian/attendance/agreements";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
+import { useAuth } from "@/providers/auth-provider";
 import type {
   CommitmentType,
   PaymentPromiseStatus,
@@ -31,10 +32,12 @@ import type {
 type Commitment = QueueClient["commitments"][number];
 type CommitmentDrawerMode = "Nova promessa" | "Novo acordo" | "Editar compromisso";
 type EditableCommitment = {
+  contactChannel: string;
   note: string;
   operator: string;
   primaryDate: string;
   primaryValue: string;
+  relatedInstallments: string;
 };
 
 type AgreementsCenterCardProps = {
@@ -59,6 +62,7 @@ const typeStyles: Record<CommitmentType, string> = {
   "Promessa de pagamento": "bg-slate-50 text-slate-700 ring-slate-200",
   Acordo: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
 };
+const contactChannelOptions = ["WhatsApp", "Ligação", "E-mail", "Presencial", "SMS"];
 
 export function AgreementsCenterCard({
   client,
@@ -66,6 +70,7 @@ export function AgreementsCenterCard({
   onUpdateCommitment,
   unit,
 }: AgreementsCenterCardProps) {
+  const { hubUser } = useAuth();
   const [records, setRecords] = useState(client.commitments);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<"Todos" | CommitmentType>("Todos");
@@ -91,6 +96,7 @@ export function AgreementsCenterCard({
 
   const summary = buildCommitmentSummary(filteredRecords);
   const operators = unique(records.map((record) => record.operator));
+  const currentOperator = operatorFromLogin(hubUser?.name, client.responsavel);
   const statuses = unique(records.map((record) => record.status));
   const activeFilters = [
     typeFilter !== "Todos" ? { label: "Tipo", value: typeFilter, clear: () => setTypeFilter("Todos") } : null,
@@ -153,7 +159,7 @@ export function AgreementsCenterCard({
   ) {
     const baseUnit = unit ?? client.carteira.unidades[0];
     const now = nowForDisplay();
-    const operator = draft?.operator || client.responsavel;
+    const operator = currentOperator;
 
     if (mode === "Nova promessa") {
       const record: Commitment = {
@@ -163,14 +169,14 @@ export function AgreementsCenterCard({
         enterprise: baseUnit.empreendimento,
         unitCode: baseUnit.matricula,
         unitLabel: `${baseUnit.unidadeLote} · ${baseUnit.area}`,
-        relatedInstallments: "-",
+        relatedInstallments: draft?.relatedInstallments || defaultRelatedInstallments(client),
         promisedValue: draft?.primaryValue || client.parcelas.ultimaParcela,
         promisedDate: draft?.primaryDate || nowShortDate(),
-        contactChannel: "WhatsApp",
+        contactChannel: draft?.contactChannel || contactChannelOptions[0],
         operator,
         note: draft?.note || "-",
         protocol: guardianProtocol(records.length + 101),
-        status: "Promessa realizada",
+        status: automaticPromiseStatus(draft?.primaryDate || nowShortDate()),
         history: [
           {
             id: `${client.id}-promise-${Date.now()}-history`,
@@ -238,7 +244,7 @@ export function AgreementsCenterCard({
           protocol: guardianProtocol(record.history.length + 301),
           action,
           occurredAt: nowForDisplay(),
-          operator: client.responsavel,
+          operator: currentOperator,
           description: `${action} registrada na Central de Compromissos para integração com Timeline e Workflow.`,
         },
         ...record.history,
@@ -254,11 +260,14 @@ export function AgreementsCenterCard({
     const updatedRecord = {
       ...record,
       note: draft.note,
-      operator: draft.operator,
+      operator: currentOperator,
       ...(record.type === "Promessa de pagamento"
         ? {
+            contactChannel: draft.contactChannel,
             promisedDate: draft.primaryDate,
             promisedValue: draft.primaryValue,
+            relatedInstallments: draft.relatedInstallments,
+            status: automaticPromiseStatus(draft.primaryDate, record.status),
           }
         : {
             entryDueDate: draft.primaryDate,
@@ -270,7 +279,7 @@ export function AgreementsCenterCard({
           protocol: guardianProtocol(record.history.length + 401),
           action: "Edição registrada",
           occurredAt: nowForDisplay(),
-          operator: draft.operator,
+          operator: currentOperator,
           description: "Compromisso atualizado com trilha auditável para Timeline operacional.",
         },
         ...record.history,
@@ -504,6 +513,7 @@ export function AgreementsCenterCard({
           mode={drawer.mode}
           onClose={() => setDrawer(null)}
           onCreate={addCommitmentRecord}
+          operator={currentOperator}
           onSave={updateRecord}
           onStatusChange={updateStatus}
           record={drawer.record}
@@ -563,6 +573,7 @@ function CommitmentDrawer({
   mode,
   onClose,
   onCreate,
+  operator,
   onSave,
   onStatusChange,
   record,
@@ -574,6 +585,7 @@ function CommitmentDrawer({
     mode: Exclude<CommitmentDrawerMode, "Editar compromisso">,
     draft: EditableCommitment,
   ) => void;
+  operator: string;
   onSave: (record: Commitment, draft: EditableCommitment) => void;
   onStatusChange: (record: Commitment, status: Commitment["status"], action: string) => void;
   record?: Commitment;
@@ -610,9 +622,9 @@ function CommitmentDrawer({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
           {isCreate ? (
-            <CreateCommitmentForm client={client} mode={mode} onCreate={onCreate} />
+            <CreateCommitmentForm client={client} mode={mode} onCreate={onCreate} operator={operator} />
           ) : record ? (
-            <CommitmentDetail record={record} onSave={onSave} onStatusChange={onStatusChange} />
+            <CommitmentDetail client={client} operator={operator} record={record} onSave={onSave} onStatusChange={onStatusChange} />
           ) : null}
         </div>
       </aside>
@@ -624,6 +636,7 @@ function CreateCommitmentForm({
   client,
   mode,
   onCreate,
+  operator,
 }: {
   client: QueueClient;
   mode: Exclude<CommitmentDrawerMode, "Editar compromisso">;
@@ -631,31 +644,67 @@ function CreateCommitmentForm({
     mode: Exclude<CommitmentDrawerMode, "Editar compromisso">,
     draft: EditableCommitment,
   ) => void;
+  operator: string;
 }) {
   const unit = client.carteira.unidades[0];
   const isPromise = mode === "Nova promessa";
+  const installmentOptions = useMemo(() => buildInstallmentOptions(client), [client]);
+  const defaultInstallment = installmentOptions[0]?.value ?? "-";
   const [draft, setDraft] = useState<EditableCommitment>({
+    contactChannel: contactChannelOptions[0],
     note: isPromise ? "-" : client.agreement.aiSuggestion.composition,
-    operator: client.responsavel,
+    operator,
     primaryDate: nowShortDate(),
     primaryValue: isPromise
       ? client.parcelas.ultimaParcela
       : client.agreement.negotiatedValue,
+    relatedInstallments: defaultInstallment,
   });
+  const automaticStatus = isPromise
+    ? automaticPromiseStatus(draft.primaryDate)
+    : "Em negociação";
+
+  useEffect(() => {
+    setDraft((current) => ({ ...current, operator }));
+  }, [operator]);
+
+  useEffect(() => {
+    if (!isPromise || draft.relatedInstallments !== "-") {
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      relatedInstallments: defaultInstallment,
+    }));
+  }, [defaultInstallment, draft.relatedInstallments, isPromise]);
 
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <ReadonlyField label="Cliente" value={client.nome} />
-        <EditableField
+        <ReadonlyField
           label="Operador responsável"
           value={draft.operator}
-          onChange={(value) => setDraft((current) => ({ ...current, operator: value }))}
         />
         <ReadonlyField label="Empreendimento" value={unit.empreendimento} />
         <ReadonlyField label="Cod. unidade" value={unit.matricula} />
         <ReadonlyField label="Unidade/lote" value={unit.unidadeLote} />
-        <ReadonlyField label="Parcelas relacionadas" value="-" />
+        {isPromise ? (
+          <SelectField
+            label="Parcelas relacionadas"
+            value={draft.relatedInstallments}
+            onChange={(value) => setDraft((current) => ({ ...current, relatedInstallments: value }))}
+          >
+            {installmentOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </SelectField>
+        ) : (
+          <ReadonlyField label="Parcelas relacionadas" value="-" />
+        )}
         <EditableField
           label={isPromise ? "Valor prometido" : "Valor negociado"}
           value={draft.primaryValue}
@@ -666,8 +715,22 @@ function CreateCommitmentForm({
           value={draft.primaryDate}
           onChange={(value) => setDraft((current) => ({ ...current, primaryDate: value }))}
         />
-        <ReadonlyField label={isPromise ? "Canal do contato" : "Quantidade de parcelas"} value={isPromise ? "-" : `${client.agreement.installmentsCount}`} />
-        <ReadonlyField label={isPromise ? "Status da promessa" : "Status do acordo"} value="-" />
+        {isPromise ? (
+          <SelectField
+            label="Canal do contato"
+            value={draft.contactChannel}
+            onChange={(value) => setDraft((current) => ({ ...current, contactChannel: value }))}
+          >
+            {contactChannelOptions.map((channel) => (
+              <option key={channel} value={channel}>
+                {channel}
+              </option>
+            ))}
+          </SelectField>
+        ) : (
+          <ReadonlyField label="Quantidade de parcelas" value={`${client.agreement.installmentsCount}`} />
+        )}
+        <ReadonlyField label={isPromise ? "Status da promessa" : "Status do acordo"} value={automaticStatus} />
       </div>
 
       <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
@@ -692,20 +755,35 @@ function CreateCommitmentForm({
 }
 
 function CommitmentDetail({
+  client,
   onSave,
   onStatusChange,
+  operator,
   record,
 }: {
+  client: QueueClient;
   onSave: (record: Commitment, draft: EditableCommitment) => void;
   onStatusChange: (record: Commitment, status: Commitment["status"], action: string) => void;
+  operator: string;
   record: Commitment;
 }) {
+  const installmentOptions = useMemo(() => buildInstallmentOptions(client), [client]);
   const [draft, setDraft] = useState<EditableCommitment>({
+    contactChannel: record.type === "Promessa de pagamento" ? record.contactChannel : contactChannelOptions[0],
     note: record.note,
-    operator: record.operator,
+    operator,
     primaryDate: record.type === "Promessa de pagamento" ? record.promisedDate : record.entryDueDate,
     primaryValue: record.type === "Promessa de pagamento" ? record.promisedValue : record.negotiatedValue,
+    relatedInstallments: record.type === "Promessa de pagamento" ? record.relatedInstallments : "-",
   });
+  const automaticStatus =
+    record.type === "Promessa de pagamento"
+      ? automaticPromiseStatus(draft.primaryDate, record.status)
+      : record.status;
+
+  useEffect(() => {
+    setDraft((current) => ({ ...current, operator }));
+  }, [operator]);
 
   return (
     <div className="space-y-4">
@@ -729,7 +807,17 @@ function CommitmentDetail({
         <ReadonlyField label="Unidade/lote" value={record.unitLabel} />
         {record.type === "Promessa de pagamento" ? (
           <>
-            <ReadonlyField label="Parcelas relacionadas" value={record.relatedInstallments} />
+            <SelectField
+              label="Parcelas relacionadas"
+              value={draft.relatedInstallments}
+              onChange={(value) => setDraft((current) => ({ ...current, relatedInstallments: value }))}
+            >
+              {ensureSelectedOption(installmentOptions, draft.relatedInstallments).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </SelectField>
             <EditableField
               label="Valor prometido"
               value={draft.primaryValue}
@@ -740,7 +828,18 @@ function CommitmentDetail({
               value={draft.primaryDate}
               onChange={(value) => setDraft((current) => ({ ...current, primaryDate: value }))}
             />
-            <ReadonlyField label="Canal do contato" value={record.contactChannel} />
+            <SelectField
+              label="Canal do contato"
+              value={draft.contactChannel}
+              onChange={(value) => setDraft((current) => ({ ...current, contactChannel: value }))}
+            >
+              {contactChannelOptions.map((channel) => (
+                <option key={channel} value={channel}>
+                  {channel}
+                </option>
+              ))}
+            </SelectField>
+            <ReadonlyField label="Status automático" value={automaticStatus} />
           </>
         ) : (
           <>
@@ -762,10 +861,9 @@ function CommitmentDetail({
             <ReadonlyField label="Valor das parcelas" value={record.installmentValue} />
           </>
         )}
-        <EditableField
+        <ReadonlyField
           label="Operador responsável"
           value={draft.operator}
-          onChange={(value) => setDraft((current) => ({ ...current, operator: value }))}
         />
       </div>
 
@@ -961,6 +1059,31 @@ function EditableField({
   );
 }
 
+function SelectField({
+  children,
+  label,
+  onChange,
+  value,
+}: {
+  children: ReactNode;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="min-w-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 h-8 w-full min-w-0 rounded-md border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
 function buildCommitmentSummary(records: Commitment[]) {
   const promiseRecords = records.filter((record) => record.type === "Promessa de pagamento");
   const agreementRecords = records.filter((record) => record.type === "Acordo");
@@ -997,6 +1120,110 @@ function buildCommitmentSummary(records: Commitment[]) {
 
 function unique(values: string[]) {
   return Array.from(new Set(values)).filter(Boolean);
+}
+
+function operatorFromLogin(loginName: string | null | undefined, fallback: string) {
+  return firstFilled(loginName, fallback, "Operador Guardian");
+}
+
+function firstFilled(...values: Array<string | null | undefined>) {
+  return values.find((value) => value && value.trim() && value.trim() !== "-")?.trim() ?? "-";
+}
+
+function buildInstallmentOptions(client: QueueClient) {
+  const c2xOptions = (client.c2xInstallments ?? [])
+    .filter((installment) => installment.status !== "Liquidada")
+    .map((installment) => {
+      const value = installment.reference || installment.number || installment.id;
+      const label = [
+        installment.number,
+        installment.dueDate,
+        installment.value,
+        installment.status,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      return { label: label || value, value };
+    });
+
+  if (c2xOptions.length > 0) {
+    return c2xOptions;
+  }
+
+  const agreementOptions = client.agreement.dueDates
+    .filter((dueDate) => dueDate.status !== "Pago")
+    .map((dueDate) => ({
+      label: [dueDate.label, dueDate.dueDate, dueDate.amount, dueDate.status]
+        .filter(Boolean)
+        .join(" · "),
+      value: dueDate.label,
+    }));
+
+  return agreementOptions.length > 0
+    ? agreementOptions
+    : [{ label: "-", value: "-" }];
+}
+
+function ensureSelectedOption(
+  options: Array<{ label: string; value: string }>,
+  selectedValue: string,
+) {
+  if (!selectedValue || options.some((option) => option.value === selectedValue)) {
+    return options;
+  }
+
+  return [{ label: selectedValue, value: selectedValue }, ...options];
+}
+
+function defaultRelatedInstallments(client: QueueClient) {
+  return buildInstallmentOptions(client)[0]?.value ?? "-";
+}
+
+function automaticPromiseStatus(
+  promisedDate: string,
+  currentStatus?: Commitment["status"],
+): PaymentPromiseStatus {
+  if (
+    currentStatus === "Cumprida" ||
+    currentStatus === "Cancelada" ||
+    currentStatus === "Reagendada"
+  ) {
+    return currentStatus;
+  }
+
+  const date = parsePtBrDate(promisedDate);
+
+  if (!date) {
+    return "Promessa realizada";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (date.getTime() < today.getTime()) {
+    return "Quebrada";
+  }
+
+  if (date.getTime() === today.getTime()) {
+    return "Aguardando pagamento";
+  }
+
+  return "Promessa realizada";
+}
+
+function parsePtBrDate(value: string) {
+  const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, day, month, year] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  date.setHours(0, 0, 0, 0);
+
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function parseMoney(value: string) {

@@ -10,15 +10,18 @@ import {
   ClipboardList,
   Handshake,
   MessageCircle,
+  Paperclip,
   PhoneCall,
   Plus,
   ReceiptText,
   Scale,
   ShieldAlert,
   UserRoundPen,
+  X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
+import { useAuth } from "@/providers/auth-provider";
 import type {
   TimelineEventStatus,
   TimelineEventType,
@@ -38,6 +41,11 @@ const actionItems = [
   { label: "Acordo", icon: Handshake },
   { label: "Boleto", icon: ReceiptText },
 ];
+
+const MAX_EVENT_ATTACHMENTS = 3;
+const MAX_EVENT_ATTACHMENT_BYTES = 8_000_000;
+const ACCEPTED_EVENT_ATTACHMENTS =
+  "image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,application/pdf";
 
 const eventVisuals: Record<
   TimelineEventType,
@@ -147,11 +155,14 @@ export function OperationalTimeline({
   events,
   onCreateEvent,
 }: OperationalTimelineProps) {
+  const { hubUser } = useAuth();
   const [drawerType, setDrawerType] = useState<TimelineEventType | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const currentOperator = operatorFromLogin(hubUser?.name, client?.responsavel);
 
   async function handleCreate(input: {
+    attachments?: QueueClient["timeline"][number]["attachments"];
     description: string;
     occurredAt: string;
     operator: string;
@@ -168,10 +179,11 @@ export function OperationalTimeline({
       description: input.description,
       id: `${client?.id ?? "guardian"}-manual-${Date.now()}`,
       occurredAt: input.occurredAt || nowForInputDisplay(),
-      operator: input.operator || client?.responsavel || "Operador Guardian",
+      operator: currentOperator,
       status: eventStatusByType[input.type],
       title: input.title,
       type: input.type,
+      attachments: input.attachments ?? [],
       unitCode: unit?.matricula,
       unitLabel: unit?.unidadeLote,
     };
@@ -284,6 +296,9 @@ export function OperationalTimeline({
                           ) : null}
                         </div>
                       ) : null}
+                      {event.attachments?.length ? (
+                        <EventAttachments attachments={event.attachments} />
+                      ) : null}
                     </div>
 
                     <span
@@ -320,6 +335,7 @@ export function OperationalTimeline({
           client={client}
           defaultType={drawerType}
           defaultUnit={defaultUnit}
+          operator={currentOperator}
           onClose={() => setDrawerType(null)}
           onSave={handleCreate}
           saving={saving}
@@ -333,6 +349,7 @@ function ManualTimelineDrawer({
   client,
   defaultType,
   defaultUnit,
+  operator,
   onClose,
   onSave,
   saving,
@@ -340,8 +357,10 @@ function ManualTimelineDrawer({
   client?: QueueClient;
   defaultType: TimelineEventType;
   defaultUnit?: QueueClient["carteira"]["unidades"][number];
+  operator: string;
   onClose: () => void;
   onSave: (input: {
+    attachments?: QueueClient["timeline"][number]["attachments"];
     description: string;
     occurredAt: string;
     operator: string;
@@ -353,13 +372,59 @@ function ManualTimelineDrawer({
 }) {
   const units = client?.carteira.unidades ?? [];
   const [draft, setDraft] = useState({
+    attachments: [],
     description: "",
     occurredAt: nowForInputDisplay(),
-    operator: client?.responsavel ?? "Operador Guardian",
+    operator,
     title: titleForType(defaultType),
     type: defaultType,
     unitId: defaultUnit?.id ?? units[0]?.id ?? "",
   });
+  const [attachmentFeedback, setAttachmentFeedback] = useState<string | null>(null);
+
+  async function handleAttachmentSelection(fileList: FileList | null) {
+    const files = Array.from(fileList ?? []);
+
+    if (!files.length) {
+      return;
+    }
+
+    const remainingSlots = MAX_EVENT_ATTACHMENTS - draft.attachments.length;
+
+    if (remainingSlots <= 0) {
+      setAttachmentFeedback(`Limite de ${MAX_EVENT_ATTACHMENTS} anexos por evento.`);
+      return;
+    }
+
+    const selected = files.slice(0, remainingSlots);
+    const accepted = selected.filter((file) => file.size <= MAX_EVENT_ATTACHMENT_BYTES);
+    const skippedBySize = selected.length - accepted.length;
+
+    try {
+      const attachments = await Promise.all(
+        accepted.map((file) => fileToTimelineAttachment(file)),
+      );
+
+      setDraft((current) => ({
+        ...current,
+        attachments: [...current.attachments, ...attachments].slice(
+          0,
+          MAX_EVENT_ATTACHMENTS,
+        ),
+      }));
+
+      if (files.length > remainingSlots) {
+        setAttachmentFeedback(`Apenas ${remainingSlots} anexo(s) foram adicionados neste evento.`);
+      } else if (skippedBySize > 0) {
+        setAttachmentFeedback("Arquivo acima de 8 MB nao foi anexado.");
+      } else {
+        setAttachmentFeedback(null);
+      }
+    } catch (error) {
+      console.error("[guardian-timeline] attachment read failed", error);
+      setAttachmentFeedback("Nao foi possivel ler o anexo selecionado.");
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -450,8 +515,8 @@ function ManualTimelineDrawer({
             <span className="mb-1 block text-xs font-semibold text-slate-500">Operador</span>
             <input
               value={draft.operator}
-              onChange={(event) => setDraft((current) => ({ ...current, operator: event.target.value }))}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              readOnly
+              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900 outline-none"
             />
           </label>
 
@@ -465,6 +530,72 @@ function ManualTimelineDrawer({
             />
           </label>
 
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-700">Anexos do evento</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Print, arquivo ou audio de ate 8 MB.
+                </p>
+              </div>
+              <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5">
+                <Paperclip className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
+                Anexar
+                <input
+                  type="file"
+                  multiple
+                  accept={ACCEPTED_EVENT_ATTACHMENTS}
+                  className="sr-only"
+                  onChange={(event) => {
+                    void handleAttachmentSelection(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            {attachmentFeedback ? (
+              <p className="mt-2 text-xs font-semibold text-amber-700">
+                {attachmentFeedback}
+              </p>
+            ) : null}
+
+            {draft.attachments.length ? (
+              <ul className="mt-3 space-y-2">
+                {draft.attachments.map((attachment) => (
+                  <li
+                    key={attachment.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-slate-800">
+                        {attachment.fileName}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {attachment.type === "audio" ? "Audio" : attachment.type === "image" ? "Imagem" : "Arquivo"} · {formatBytes(attachment.sizeBytes)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft((current) => ({
+                          ...current,
+                          attachments: current.attachments.filter(
+                            (item) => item.id !== attachment.id,
+                          ),
+                        }))
+                      }
+                      aria-label={`Remover anexo ${attachment.fileName}`}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-700"
+                    >
+                      <X className="size-4" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+
           <button
             type="button"
             disabled={saving || !draft.title.trim() || !draft.description.trim()}
@@ -477,6 +608,128 @@ function ManualTimelineDrawer({
       </aside>
     </div>
   );
+}
+
+function EventAttachments({
+  attachments,
+}: {
+  attachments: QueueClient["timeline"][number]["attachments"];
+}) {
+  if (!attachments?.length) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {attachments.map((attachment) => (
+        <div
+          key={attachment.id}
+          className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/80 p-2"
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <Paperclip className="size-3.5 shrink-0 text-[#A07C3B]" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-slate-700">
+                {attachment.fileName}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                {formatBytes(attachment.sizeBytes)}
+              </p>
+            </div>
+          </div>
+
+          {attachment.type === "image" && attachment.dataUrl ? (
+            <a
+              href={attachment.dataUrl}
+              download={attachment.fileName}
+              className="block overflow-hidden rounded-md border border-slate-200 bg-white"
+            >
+              <img
+                src={attachment.dataUrl}
+                alt={attachment.fileName}
+                className="h-24 w-full object-cover"
+              />
+            </a>
+          ) : null}
+
+          {attachment.type === "audio" && attachment.dataUrl ? (
+            <audio
+              controls
+              preload="none"
+              src={attachment.dataUrl}
+              className="h-9 w-full"
+            />
+          ) : null}
+
+          {attachment.type === "file" && attachment.dataUrl ? (
+            <a
+              href={attachment.dataUrl}
+              download={attachment.fileName}
+              className="inline-flex h-8 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
+            >
+              Abrir arquivo
+            </a>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function fileToTimelineAttachment(file: File) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      resolve({
+        capturedAt: new Date().toISOString(),
+        dataUrl: typeof reader.result === "string" ? reader.result : "",
+        fileName: file.name,
+        id: `guardian-attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        mimeType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
+        type: attachmentTypeFor(file),
+      });
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function attachmentTypeFor(file: File) {
+  if (file.type.startsWith("image/")) {
+    return "image";
+  }
+
+  if (file.type.startsWith("audio/")) {
+    return "audio";
+  }
+
+  return "file";
+}
+
+function operatorFromLogin(loginName: string | null | undefined, fallback?: string) {
+  return firstFilled(loginName, fallback, "Operador Guardian");
+}
+
+function firstFilled(...values: Array<string | null | undefined>) {
+  return values.find((value) => typeof value === "string" && value.trim())?.trim() ?? "";
+}
+
+function formatBytes(value: number | null | undefined) {
+  const bytes = Number(value);
+
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 KB";
+  }
+
+  if (bytes >= 1_000_000) {
+    return `${(bytes / 1_000_000).toLocaleString("pt-BR", {
+      maximumFractionDigits: 1,
+    })} MB`;
+  }
+
+  return `${Math.ceil(bytes / 1_000).toLocaleString("pt-BR")} KB`;
 }
 
 function manualTypeForAction(label: string): TimelineEventType {
