@@ -5416,3 +5416,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: ainda falta publicar o hotfix e validar em navegador real que `ops.careli.adm.br` nao toca quando chega chamada enquanto `c2x.app.br` continua tocando normalmente.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix; depois `SquadOps Core` para validar o comportamento no dominio OPS adm.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Fuso do sync e clareza de atualizacao`.
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-19 13:32:02 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - normalizacao de horario do sync e rotulo de atualizacao.
+- Motivo da mudanca: Lucas apontou que o horario exibido na parte de sync estava com fuso incorreto e pediu explicacao sobre a diferenca entre atualizar a tela e sincronizar o diario.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e este diario.
+- Como foi feito: ajustei o formatador usado pelo cabecalho/sync para tratar timestamps server-side sem fuso explicito como UTC e exibir sempre em `America/Sao_Paulo`, com sufixo `BRT`; tambem alterei o botao `Atualizar` para `Atualizar tela`.
+- Logica utilizada: `Atualizar tela` apenas relerrega os dados ja existentes na fonte estruturada; `Sincronizar diario` importa/reprocessa o Markdown canonico para dentro do banco estruturado. O horario exibido precisa deixar claro que e horario de Brasilia, independentemente do fuso do servidor ou do navegador.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT.
+- Pendencias ou riscos conhecidos: ha uma entrada de diario de outra frente ja presente no working tree; preservei o historico e nao reverti alteracoes de terceiros.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o ajuste visual; depois `SquadOps Core` para validar o horario do sync em producao/ops.

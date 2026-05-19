@@ -2430,7 +2430,7 @@ function OperationsSourcePanel({
           type="button"
         >
           <RefreshCcw className="size-4 text-[#A07C3B]" />
-          Atualizar
+          Atualizar tela
         </button>
         <button
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533]"
@@ -2449,7 +2449,7 @@ function OperationsSourcePanel({
           <RefreshCcw
             className={`size-4 text-[#A07C3B] ${isSyncing ? "animate-spin" : ""}`}
           />
-          {isSyncing ? "Sincronizando" : "Sincronizar diario"}
+          {isSyncing ? "Sincronizando" : "Sincronizar diário"}
         </button>
         <button
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5B24] transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-60"
@@ -7895,19 +7895,38 @@ function normalizeSearchText(value: string) {
 }
 
 function formatGeneratedAt(value: string) {
-  const date = new Date(value);
+  const date = parseServerDateTime(value);
 
   if (Number.isNaN(date.getTime())) {
     return value;
   }
 
-  return date.toLocaleString("pt-BR", {
+  return `${date.toLocaleString("pt-BR", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     month: "2-digit",
     timeZone: hubTimeZone,
-  });
+  })} BRT`;
+}
+
+function parseServerDateTime(value: string) {
+  const trimmedValue = value.trim();
+  const normalizedValue = normalizeDateTimeForParsing(trimmedValue);
+
+  if (hasExplicitTimeZone(trimmedValue)) {
+    return new Date(normalizedValue);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}[T\s]+\d{2}:\d{2}/.test(trimmedValue)) {
+    const isoLikeValue = normalizedValue.includes("T")
+      ? normalizedValue
+      : normalizedValue.replace(/\s+/, "T");
+
+    return new Date(`${isoLikeValue}Z`);
+  }
+
+  return new Date(trimmedValue);
 }
 
 function formatOperationDateTime(value: string) {
