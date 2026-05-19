@@ -59,7 +59,9 @@ import {
   Layers3,
   LayoutGrid,
   Loader2,
+  Maximize2,
   MessageSquareText,
+  Minimize2,
   Plus,
   RefreshCcw,
   Rocket,
@@ -68,6 +70,7 @@ import {
   ServerCog,
   ShieldAlert,
   Sparkles,
+  TrendingUp,
   Upload,
   WandSparkles,
   Wifi,
@@ -2946,6 +2949,8 @@ function DatabaseMonitoringView({
   watcher: OpsWatcherDecision | null;
 }) {
   const [isAlertsDialogOpen, setIsAlertsDialogOpen] = useState(false);
+  const [isTvMode, setIsTvMode] = useState(false);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const visibleAlerts = (snapshot?.alerts ?? []).filter(
     (alert) => !isProtocolCleared(alert.protocol, alertProtocols),
   );
@@ -2969,9 +2974,35 @@ function DatabaseMonitoringView({
     ? visibleWatcher
     : null;
   const latestNotification = visibleNotifications[0] ?? null;
+  const sourceCards = useMemo(
+    () => buildMonitoringSourceCards(snapshot, history),
+    [history, snapshot],
+  );
+  const selectedSource =
+    sourceCards.find((source) => source.id === selectedSourceId) ?? null;
+  const monitoringChecks = snapshot?.checks.length ? snapshot.checks : history;
+
+  useEffect(() => {
+    if (!isTvMode) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isTvMode]);
 
   return (
-    <section className="grid gap-5">
+    <section
+      className={
+        isTvMode
+          ? "fixed inset-0 z-[60] grid min-h-screen gap-5 overflow-y-auto bg-slate-100 p-5"
+          : "grid gap-5"
+      }
+    >
       <Surface
         bordered
         className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
@@ -3013,6 +3044,22 @@ function DatabaseMonitoringView({
               <Bot className="size-4" />
               Ops Copilot
             </button>
+            <button
+              className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors ${
+                isTvMode
+                  ? "bg-[#101820] text-white hover:bg-[#1b2533]"
+                  : "border border-slate-200/70 bg-white text-slate-600 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              }`}
+              onClick={() => setIsTvMode((current) => !current)}
+              type="button"
+            >
+              {isTvMode ? (
+                <Minimize2 className="size-4" />
+              ) : (
+                <Maximize2 className="size-4" />
+              )}
+              {isTvMode ? "Sair TV" : "Tela TV"}
+            </button>
           </div>
         </div>
 
@@ -3029,45 +3076,17 @@ function DatabaseMonitoringView({
           onOpen={() => setIsAlertsDialogOpen(true)}
         />
 
-        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <MonitoringCard
-            detail={snapshot?.cards.status.label ?? "Aguardando primeiro check"}
-            icon={<Activity size={17} />}
-            label="Status geral"
-            status={snapshot?.cards.status.value}
-            value={snapshot?.cards.status.label ?? "..."}
-          />
-          <MonitoringCard
-            detail={`DB ${snapshot?.cards.c2x.database ?? "nao informado"} / ${snapshot?.cards.c2x.responseMs ?? 0}ms`}
-            icon={<ServerCog size={17} />}
-            label="C2X"
-            status={snapshot?.cards.c2x.status}
-            value={generalStatusLabel(snapshot?.cards.c2x.status)}
-          />
-          <MonitoringCard
-            detail={`Auth ${generalStatusLabel(snapshot?.cards.supabase.auth)} / REST ${generalStatusLabel(snapshot?.cards.supabase.rest)} / RT ${generalStatusLabel(snapshot?.cards.supabase.realtime)}`}
-            icon={<Wifi size={17} />}
-            label="Supabase"
-            status={snapshot?.cards.supabase.auth}
-            value={`${snapshot?.cards.supabase.responseMs ?? 0}ms`}
-          />
-          <MonitoringCard
-            detail={`limites ${(snapshot?.cards.guardianQueue.usedLimits ?? []).join(", ") || "20, 50"} / payload ${formatBytes(snapshot?.cards.guardianQueue.payloadBytes ?? 0)}`}
-            icon={<Database size={17} />}
-            label="Guardian Queue"
-            status={riskToGeneralStatus(snapshot?.cards.guardianQueue.risk)}
-            value={`${snapshot?.cards.guardianQueue.loadedCount ?? 0} itens`}
-          />
-          <MonitoringCard
-            detail={`${snapshot?.cards.protectedApis.expectedUnauthorized ?? 0}/${snapshot?.cards.protectedApis.total ?? 0} retornaram 401 esperado`}
-            icon={<ShieldAlert size={17} />}
-            label="APIs protegidas"
-            status={
-              snapshot?.cards.protectedApis.unexpected
-                ? "operacional_com_atencao"
-                : "operacional"
-            }
-            value={`${snapshot?.cards.protectedApis.unexpected ?? 0} desvios`}
+        <MonitoringSourceGrid
+          isTvMode={isTvMode}
+          onSelectSource={setSelectedSourceId}
+          sources={sourceCards}
+        />
+
+        <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.55fr)]">
+          <MonitoringPeakPanel checks={monitoringChecks} />
+          <MonitoringHotspotsPanel
+            onSelectSource={setSelectedSourceId}
+            sources={sourceCards}
           />
         </div>
       </Surface>
@@ -3089,8 +3108,439 @@ function DatabaseMonitoringView({
           watcher={visibleWatcher}
         />
       ) : null}
+      {selectedSource ? (
+        <MonitoringSourceDialog
+          onClose={() => setSelectedSourceId(null)}
+          source={selectedSource}
+        />
+      ) : null}
       <ChecksHistoryPanel checks={history} />
     </section>
+  );
+}
+
+type MonitoringSourceSummary = {
+  alertCount: number;
+  averageResponseMs: number;
+  checks: OperationsCheckMetric[];
+  currentChecks: OperationsCheckMetric[];
+  description: string;
+  endpointCount: number;
+  errorCount: number;
+  healthyCount: number;
+  id: string;
+  label: string;
+  lastCheckAt: string | null;
+  peakPayloadBytes: number;
+  peakResponseMs: number;
+  payloadBytes: number;
+  responseMs: number;
+  risk: OperationsRiskLevel | "nenhum";
+  status?: OperationsMonitoringSnapshot["cards"]["status"]["value"];
+  trend: number[];
+};
+
+const monitoringSourceOrder = [
+  "c2x",
+  "supabase",
+  "guardian-queue",
+  "protected-api",
+  "vercel",
+  "api",
+] as const;
+
+function MonitoringSourceGrid({
+  isTvMode,
+  onSelectSource,
+  sources,
+}: {
+  isTvMode: boolean;
+  onSelectSource: (sourceId: string) => void;
+  sources: MonitoringSourceSummary[];
+}) {
+  return (
+    <div className="mt-5">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-[#A07C3B]">
+            Instancias monitoradas
+          </p>
+          <p className="m-0 mt-1 text-sm text-slate-500">
+            Clique em uma fonte para abrir tempo, payload, endpoint e picos.
+          </p>
+        </div>
+        <Badge variant="neutral">
+          {sources.length || 0} fonte(s) em leitura
+        </Badge>
+      </div>
+      {sources.length > 0 ? (
+        <div
+          className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${
+            isTvMode ? "2xl:grid-cols-6" : "xl:grid-cols-3 2xl:grid-cols-6"
+          }`}
+        >
+          {sources.map((source) => (
+            <MonitoringSourceCard
+              key={source.id}
+              onSelect={() => onSelectSource(source.id)}
+              source={source}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyState message="Aguardando primeiro snapshot das fontes reais." />
+      )}
+    </div>
+  );
+}
+
+function MonitoringSourceCard({
+  onSelect,
+  source,
+}: {
+  onSelect: () => void;
+  source: MonitoringSourceSummary;
+}) {
+  return (
+    <button
+      className="group min-w-0 rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)]"
+      onClick={onSelect}
+      type="button"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 truncate text-sm font-semibold text-slate-950">
+            {source.label}
+          </p>
+          <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+            {source.description}
+          </p>
+        </div>
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70 group-hover:bg-[#A07C3B]/10">
+          {getMonitoringSourceIcon(source.id)}
+        </span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="rounded-lg bg-slate-50/70 p-2 ring-1 ring-slate-200/70">
+          <p className="m-0 text-[0.65rem] font-semibold uppercase text-slate-400">
+            Tempo
+          </p>
+          <p className="m-0 mt-1 text-base font-semibold text-slate-950">
+            {source.responseMs}ms
+          </p>
+        </div>
+        <div className="rounded-lg bg-slate-50/70 p-2 ring-1 ring-slate-200/70">
+          <p className="m-0 text-[0.65rem] font-semibold uppercase text-slate-400">
+            Payload
+          </p>
+          <p className="m-0 mt-1 truncate text-base font-semibold text-slate-950">
+            {formatBytes(source.payloadBytes)}
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Badge variant={statusToBadgeVariant(source.status)}>
+          {generalStatusLabel(source.status)}
+        </Badge>
+        <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+          {source.healthyCount}/{source.endpointCount} ok
+        </span>
+        {source.alertCount > 0 ? (
+          <span className="rounded-full bg-amber-50 px-2 py-1 text-[0.68rem] font-semibold text-amber-700 ring-1 ring-amber-200">
+            {source.alertCount} alerta(s)
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-4">
+        <MiniTrendBars values={source.trend} />
+      </div>
+    </button>
+  );
+}
+
+function MonitoringPeakPanel({ checks }: { checks: OperationsCheckMetric[] }) {
+  const peaks = useMemo(
+    () =>
+      checks
+        .slice(0, 160)
+        .sort((first, second) => second.responseMs - first.responseMs)
+        .slice(0, 6),
+    [checks],
+  );
+  const maxResponse = Math.max(1, ...peaks.map((check) => check.responseMs));
+  const maxPayloadCheck = checks
+    .slice(0, 160)
+    .sort((first, second) => second.payloadBytes - first.payloadBytes)[0];
+
+  return (
+    <Surface
+      bordered
+      className="min-w-0 border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <PanelTitle
+        eyebrow="picos recentes"
+        icon={<TrendingUp size={18} />}
+        title="Picos de performance"
+      />
+      <div className="mt-4 grid gap-3">
+        {peaks.length > 0 ? (
+          peaks.map((check) => (
+            <div
+              className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-3"
+              key={`${check.id}-${check.checkedAt}-peak`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                    {check.label}
+                  </p>
+                  <p className="m-0 mt-1 text-xs text-slate-500">
+                    {check.module} / {formatOperationDateTime(check.checkedAt)}
+                  </p>
+                </div>
+                <Badge variant={riskToBadgeVariant(check.risk)}>
+                  {check.risk}
+                </Badge>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white ring-1 ring-slate-200/70">
+                <div
+                  className="h-full rounded-full bg-[#A07C3B]"
+                  style={{
+                    width: `${Math.max(8, (check.responseMs / maxResponse) * 100)}%`,
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span>{check.responseMs}ms</span>
+                <span>{formatBytes(check.payloadBytes)}</span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <EmptyState message="Sem picos registrados nesta sessao." />
+        )}
+      </div>
+      {maxPayloadCheck ? (
+        <p className="m-0 mt-4 rounded-xl bg-[#A07C3B]/5 p-3 text-xs leading-5 text-slate-600 ring-1 ring-[#A07C3B]/10">
+          Maior payload recente:{" "}
+          <strong className="text-slate-950">{maxPayloadCheck.label}</strong>{" "}
+          com {formatBytes(maxPayloadCheck.payloadBytes)}.
+        </p>
+      ) : null}
+    </Surface>
+  );
+}
+
+function MonitoringHotspotsPanel({
+  onSelectSource,
+  sources,
+}: {
+  onSelectSource: (sourceId: string) => void;
+  sources: MonitoringSourceSummary[];
+}) {
+  const hotspots = [...sources]
+    .sort((first, second) => {
+      const riskDelta = riskPriority(second.risk) - riskPriority(first.risk);
+      return riskDelta || second.responseMs - first.responseMs;
+    })
+    .slice(0, 5);
+
+  return (
+    <Surface
+      bordered
+      className="min-w-0 border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <PanelTitle
+        eyebrow="prevenção"
+        icon={<ShieldAlert size={18} />}
+        title="Fontes que pedem atenção"
+      />
+      <div className="mt-4 grid gap-2">
+        {hotspots.length > 0 ? (
+          hotspots.map((source) => (
+            <button
+              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white p-3 text-left transition hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
+              key={source.id}
+              onClick={() => onSelectSource(source.id)}
+              type="button"
+            >
+              <div className="min-w-0">
+                <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                  {source.label}
+                </p>
+                <p className="m-0 mt-1 text-xs text-slate-500">
+                  pico {source.peakResponseMs}ms / payload{" "}
+                  {formatBytes(source.peakPayloadBytes)}
+                </p>
+              </div>
+              <Badge variant={riskToBadgeVariant(source.risk)}>
+                {source.risk}
+              </Badge>
+            </button>
+          ))
+        ) : (
+          <EmptyState message="Aguardando leitura das fontes." />
+        )}
+      </div>
+    </Surface>
+  );
+}
+
+function MonitoringSourceDialog({
+  onClose,
+  source,
+}: {
+  onClose: () => void;
+  source: MonitoringSourceSummary;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[2px]">
+      <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-2xl">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <PanelTitle
+            eyebrow="detalhe da instancia"
+            icon={getMonitoringSourceIcon(source.id)}
+            title={source.label}
+          />
+          <button
+            aria-label="Fechar detalhe da fonte"
+            className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          <div className="grid gap-3 md:grid-cols-4">
+            <MonitoringDetailMetric
+              label="Status"
+              value={generalStatusLabel(source.status)}
+            />
+            <MonitoringDetailMetric
+              label="Tempo atual"
+              value={`${source.responseMs}ms`}
+            />
+            <MonitoringDetailMetric
+              label="Pico"
+              value={`${source.peakResponseMs}ms`}
+            />
+            <MonitoringDetailMetric
+              label="Payload"
+              value={formatBytes(source.payloadBytes)}
+            />
+          </div>
+          <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/40 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="m-0 text-sm font-semibold text-slate-950">
+                Tendencia de resposta
+              </p>
+              <p className="m-0 text-xs text-slate-500">
+                ultimo check:{" "}
+                {source.lastCheckAt
+                  ? formatOperationDateTime(source.lastCheckAt)
+                  : "nao informado"}
+              </p>
+            </div>
+            <MiniTrendBars tall values={source.trend} />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {source.currentChecks.map((check) => (
+              <CheckMetricCard
+                check={check}
+                key={`${source.id}-${check.id}-${check.checkedAt}`}
+              />
+            ))}
+          </div>
+          <div className="mt-4 grid gap-3">
+            {source.currentChecks.map((check) => (
+              <div
+                className="rounded-xl border border-slate-200/70 bg-white p-4 text-xs leading-5 text-slate-600"
+                key={`${source.id}-${check.id}-detail`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="m-0 font-semibold text-slate-950">
+                    {check.label}
+                  </p>
+                  <Badge variant={riskToBadgeVariant(check.risk)}>
+                    {check.risk}
+                  </Badge>
+                </div>
+                <p className="m-0 mt-2">
+                  Esperado: {check.expected.description} / Recebido:{" "}
+                  {check.received}
+                </p>
+                <p className="m-0 mt-1 break-all text-slate-500">
+                  {check.method} {check.endpoint}
+                </p>
+                {check.error ? (
+                  <p className="m-0 mt-2 rounded-lg bg-red-50 p-2 font-semibold text-red-700">
+                    {check.error}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonitoringDetailMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+        {label}
+      </p>
+      <p className="m-0 mt-2 truncate text-lg font-semibold text-slate-950">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function MiniTrendBars({
+  tall = false,
+  values,
+}: {
+  tall?: boolean;
+  values: number[];
+}) {
+  const visibleValues = values.slice(-18);
+  const maxValue = Math.max(1, ...visibleValues);
+
+  if (visibleValues.length === 0) {
+    return (
+      <div
+        className={`flex ${tall ? "h-20" : "h-11"} items-center justify-center rounded-lg bg-slate-50 text-xs font-semibold text-slate-400 ring-1 ring-slate-200/70`}
+      >
+        sem historico
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`flex ${tall ? "h-20" : "h-11"} items-end gap-1 rounded-lg bg-slate-50/80 p-2 ring-1 ring-slate-200/70`}
+    >
+      {visibleValues.map((value, index) => (
+        <span
+          aria-label={`${value}ms`}
+          className="min-w-1 flex-1 rounded-t bg-[#A07C3B]/70"
+          key={`${value}-${index}`}
+          style={{
+            height: `${Math.max(12, (value / maxValue) * 100)}%`,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -3127,46 +3577,6 @@ function MonitoringIntervalControl({
           {option.label}
         </button>
       ))}
-    </div>
-  );
-}
-
-function MonitoringCard({
-  detail,
-  icon,
-  label,
-  status,
-  value,
-}: {
-  detail: string;
-  icon: ReactNode;
-  label: string;
-  status?: OperationsMonitoringSnapshot["cards"]["status"]["value"];
-  value: number | string;
-}) {
-  return (
-    <div className="min-w-0 rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="m-0 text-xs font-semibold uppercase text-slate-400">
-            {label}
-          </p>
-          <p className="m-0 mt-2 truncate text-lg font-semibold text-slate-950">
-            {value}
-          </p>
-        </div>
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
-          {icon}
-        </span>
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <Badge variant={statusToBadgeVariant(status)}>
-          {generalStatusLabel(status)}
-        </Badge>
-      </div>
-      <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
-        {detail}
-      </p>
     </div>
   );
 }
@@ -4045,6 +4455,180 @@ function getCheckHistoryHourBucket(value: string) {
     key: `${year}-${month}-${day}-${hour}`,
     label: `${day}/${month}/${year} ${hour}:00`,
   };
+}
+
+function buildMonitoringSourceCards(
+  snapshot: OperationsMonitoringSnapshot | null,
+  history: OperationsCheckMetric[],
+): MonitoringSourceSummary[] {
+  const checks = [...(snapshot?.checks ?? []), ...history].slice(0, 220);
+  const groups = new Map<string, OperationsCheckMetric[]>();
+
+  checks.forEach((check) => {
+    const sourceId = getMonitoringSourceId(check);
+    const sourceChecks = groups.get(sourceId) ?? [];
+
+    sourceChecks.push(check);
+    groups.set(sourceId, sourceChecks);
+  });
+
+  return Array.from(groups.entries())
+    .map(([sourceId, sourceChecks]) => {
+      const currentChecks = getLatestChecksByEndpoint(sourceChecks);
+      const highestRisk = currentChecks.reduce<OperationsRiskLevel | "nenhum">(
+        (currentRisk, check) =>
+          riskPriority(check.risk) > riskPriority(currentRisk)
+            ? check.risk
+            : currentRisk,
+        "nenhum",
+      );
+      const meta = getMonitoringSourceMeta(sourceId);
+      const responseMs = Math.max(
+        0,
+        ...currentChecks.map((check) => check.responseMs),
+      );
+      const payloadBytes = Math.max(
+        0,
+        ...currentChecks.map((check) => check.payloadBytes),
+      );
+      const averageResponseMs = Math.round(
+        currentChecks.reduce((total, check) => total + check.responseMs, 0) /
+          Math.max(1, currentChecks.length),
+      );
+
+      return {
+        alertCount: currentChecks.filter((check) => check.alertGenerated)
+          .length,
+        averageResponseMs,
+        checks: sourceChecks,
+        currentChecks,
+        description: meta.description,
+        endpointCount: currentChecks.length,
+        errorCount: currentChecks.filter((check) => !check.ok).length,
+        healthyCount: currentChecks.filter((check) => check.ok).length,
+        id: sourceId,
+        label: meta.label,
+        lastCheckAt: sourceChecks[0]?.checkedAt ?? null,
+        peakPayloadBytes: Math.max(
+          0,
+          ...sourceChecks.map((check) => check.payloadBytes),
+        ),
+        peakResponseMs: Math.max(
+          0,
+          ...sourceChecks.map((check) => check.responseMs),
+        ),
+        payloadBytes,
+        responseMs,
+        risk: highestRisk,
+        status: currentChecks.length ? riskToGeneralStatus(highestRisk) : undefined,
+        trend: sourceChecks
+          .slice(0, 18)
+          .map((check) => check.responseMs)
+          .reverse(),
+      };
+    })
+    .sort((first, second) => {
+      const firstOrder = getMonitoringSourceOrder(first.id);
+      const secondOrder = getMonitoringSourceOrder(second.id);
+
+      return firstOrder - secondOrder || first.label.localeCompare(second.label);
+    });
+}
+
+function getLatestChecksByEndpoint(checks: OperationsCheckMetric[]) {
+  const checksById = new Map<string, OperationsCheckMetric>();
+
+  checks.forEach((check) => {
+    if (!checksById.has(check.id)) {
+      checksById.set(check.id, check);
+    }
+  });
+
+  return Array.from(checksById.values());
+}
+
+function getMonitoringSourceId(check: OperationsCheckMetric) {
+  if (check.group === "api") {
+    return `api-${normalizeSearchText(check.module) || "hub"}`;
+  }
+
+  return check.group;
+}
+
+function getMonitoringSourceMeta(sourceId: string) {
+  if (sourceId === "c2x") {
+    return {
+      description: "Banco e healthcheck do legado C2X.",
+      label: "C2X Legado",
+    };
+  }
+
+  if (sourceId === "supabase") {
+    return {
+      description: "Auth, REST e Realtime.",
+      label: "Supabase",
+    };
+  }
+
+  if (sourceId === "guardian-queue") {
+    return {
+      description: "Fila operacional segura do Guardian.",
+      label: "Guardian Queue",
+    };
+  }
+
+  if (sourceId === "protected-api") {
+    return {
+      description: "APIs protegidas e comportamento 401 esperado.",
+      label: "APIs protegidas",
+    };
+  }
+
+  if (sourceId === "vercel") {
+    return {
+      description: "Disponibilidade do dominio publicado.",
+      label: "Vercel",
+    };
+  }
+
+  return {
+    description: "Endpoints internos monitorados.",
+    label: "Hub APIs",
+  };
+}
+
+function getMonitoringSourceIcon(sourceId: string) {
+  if (sourceId === "c2x") {
+    return <ServerCog size={17} />;
+  }
+
+  if (sourceId === "supabase") {
+    return <Wifi size={17} />;
+  }
+
+  if (sourceId === "guardian-queue") {
+    return <Database size={17} />;
+  }
+
+  if (sourceId === "protected-api") {
+    return <ShieldAlert size={17} />;
+  }
+
+  if (sourceId === "vercel") {
+    return <Rocket size={17} />;
+  }
+
+  return <Activity size={17} />;
+}
+
+function getMonitoringSourceOrder(sourceId: string) {
+  const index = monitoringSourceOrder.findIndex((item) => item === sourceId);
+
+  if (index >= 0) {
+    return index;
+  }
+
+  return monitoringSourceOrder.length;
 }
 
 function SquadOpsViewTabs({
