@@ -5234,3 +5234,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: o deploy corrigido ainda precisa ser publicado para o runtime gravar nas novas tabelas SquadOps. O alias/dominio dedicado ja publicado no Vercel nao foi alterado nesta correcao para evitar mexer em dominio sem pedido explicito; a remocao aplicada agora e no codigo do Hub.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para aplicar a migration corretiva, publicar o recorte e confirmar que o SquadOps persiste apenas nas tabelas com prefixo `hub_squadops_*`.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy correcao escopo SquadOps`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-18 20:58:42 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao do recorte corretivo para manter somente SquadOps na persistencia nova.
+- Motivo da mudanca: publicar a correcao solicitada por Lucas depois de restringir monitoring/watcher para tabelas `hub_squadops_*`, remover o `proxy.ts` de dominio dedicado e aplicar a migration corretiva `0022` em homologacao e producao.
+- Commit/deploy de referencia: commit `725d228 fix(squadops): scope monitoring persistence`; Preview/Homologacao `dpl_6nmH1wnuxwbMaJUX8EwPTbUQFGec`; Producao `dpl_7PwJfDeVM1hwMPQnnUdaJN89dNo4`; alias de producao `https://c2x.app.br`.
+- Banco/migrations: `0022_squadops_scoped_monitoring.sql` aplicada em Producao via `POSTGRES_URL` e em Homologacao via `HOMOLOG_POSTGRES_URL`, sem expor valores sensiveis; tabelas confirmadas nos dois ambientes: `hub_squadops_homologation_reviews`, `hub_squadops_monitoring_check_runs`, `hub_squadops_monitoring_checks` e `hub_squadops_watcher_notifications`; tabelas genericas removidas: `hub_operations_monitoring_check_runs`, `hub_operations_monitoring_checks` e `hub_operations_watcher_notifications`.
+- Como foi feito: publiquei o branch `homolog`, gerei Preview pelo Vercel, publiquei Production e mantive o acesso oficial como modulo `/squadops` dentro do Hub; nao alterei aliases/dominios alem do alias automatico de producao para `c2x.app.br`.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; smoke local retornou `/squadops` 200 e APIs protegidas 401 esperado; producao retornou `/` 200, `/squadops` 200, `/api/operations/monitoring` 401 esperado, `/api/operations/watcher` 401 esperado e `/api/squadops/homologation-reviews` 401 esperado; logs Vercel de producao dos ultimos 15 minutos sem erros; `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou o alias de homologacao no deployment Preview novo.
+- Pendencias ou riscos conhecidos: smoke autenticado completo ainda depende da sessao admin do Lucas; `homo.c2x.app.br` e o Preview unico retornam 401 em acesso externo comum por protecao/sessao, mas `vercel curl` confirmou HTML de `/squadops` e API protegida com resposta esperada sem sessao. Warnings conhecidos de Turbopack/NFT, `npm audit` e envs fora do `turbo.json` permanecem fora deste recorte.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Hub SupportOps` para smoke autenticado assistido com Lucas se surgir divergencia visual ou funcional em SquadOps.
