@@ -23,6 +23,19 @@ Se a homologacao cair, o SquadOps deve continuar mostrando historico, protocolos
 - Historico narrativo: `docs/operations/engineering-operations.md`, como memoria viva e fallback controlado.
 - Homologacao: registros compartilhados no banco, nao `localStorage`.
 
+## Registro vivo sem deploy
+
+Novas atividades operacionais nao devem depender de commit no Markdown nem de deploy para aparecer na tela.
+
+- A criacao corrente acontece pela API protegida `POST /api/squadops/operations/structured` com `action = create-record`.
+- A API grava em `hub_engineering_operation_records` usando service role apenas server-side.
+- O banco gera o protocolo `AT-0000` sequencial automaticamente.
+- O campo `Necessita deploy` define se o item fica apenas no historico ou entra como candidato para ReleaseOps agrupar em um `DP`.
+- O botao `Novo registro` no SquadOps cria o registro vivo e a timeline pode ser atualizada pela API sem publicar novo build.
+- O Markdown canonico continua como memoria narrativa, exportacao, auditoria e fallback; ele nao deve ser a fonte principal de estado operacional corrente.
+
+Regra pratica: deploy publica codigo; registro operacional publica dado. Depois desta V1, novas anotacoes, status e evidencias devem nascer no banco e nao em um commit documental obrigatorio.
+
 ## Protocolos oficiais
 
 - `TK-0001`: ticket aberto por usuario ou equipe operacional.

@@ -5278,3 +5278,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke visual autenticado final ainda depende da sessao admin do Lucas; `homo.c2x.app.br` continua protegido externamente pela Vercel, validado via `vercel curl`; warnings conhecidos de Turbopack/NFT, `npm audit` e envs fora do `turbo.json` permanecem fora deste recorte.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `SquadOps Core` para evoluir a fonte viva dos registros para Supabase/API, evitando depender de deploy para atualizar timeline, protocolos e releases.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Registro vivo sem deploy`.
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-19 10:22:57 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - criacao de fluxo vivo para registrar operacoes no Supabase sem depender de commit/deploy documental.
+- Motivo da mudanca: Lucas perguntou se seria possivel manter os registros do Operations Center atualizados sem necessidade de deploy, ja que a tela precisa refletir o estado operacional atual sem esperar publicacao de codigo.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/app/api/squadops/operations/structured/route.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `docs/operations/squadops-center-process.md` e este diario.
+- Como foi feito: adicionei uma acao protegida `create-record` na API estruturada do SquadOps, criei uma funcao server-side para inserir registros em `hub_engineering_operation_records`, deixei o protocolo `AT` ser gerado pelo banco e adicionei na tela o botao `Novo registro` com painel lateral para Lucas ou a operacao registrar assunto, modulo, squad, tipo, status, motivo, resumo, validacao, risco e necessidade de deploy.
+- Logica utilizada: deploy continua necessario apenas para publicar mudanca de codigo. Depois da funcionalidade ativa, registros operacionais passam a ser dado vivo no Supabase; a timeline le a API estruturada e pode atualizar sem redeploy. O Markdown canonico segue como memoria narrativa, exportacao, auditoria e fallback, nao como fonte principal do estado corrente.
+- Validacao executada: leitura de `docs/operations/README.md` e deste diario; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `git diff --check` passou; smoke local com `next start --port 3030` confirmou `ops.c2x.app.br/` e `/guardian` redirecionando para `/squadops`, `ops.c2x.app.br/squadops` 200, `c2x.app.br/squadops` redirecionando para `/`, e API estruturada `GET/POST` sem sessao retornando 401 esperado.
+- Pendencias ou riscos conhecidos: a criacao real depende da tabela `hub_engineering_operation_records` aplicada no Supabase e de sessao administrativa valida; smoke autenticado com criacao real deve ser feito por Lucas ou por SupportOps com token adm, sem expor bearer no chat/logs.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o recorte; depois `Hub SupportOps` apenas se a criacao autenticada falhar em producao.

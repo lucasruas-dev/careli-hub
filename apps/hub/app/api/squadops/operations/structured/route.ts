@@ -3,7 +3,9 @@ import { type NextRequest } from "next/server";
 import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 import { loadEngineeringOperationsFromFile } from "@/lib/squadops/engineering-operations-source";
 import {
+  createStructuredEngineeringOperation,
   loadStructuredEngineeringOperations,
+  type CreateStructuredEngineeringOperationInput,
   syncEngineeringOperationsToStore,
 } from "@/lib/squadops/engineering-operations-store";
 
@@ -61,6 +63,45 @@ export async function POST(request: NextRequest) {
     return authorization.response;
   }
 
+  const body = await readJsonBody(request);
+
+  if (body?.action === "create-record") {
+    const recordInput = normalizeCreateRecordInput(body.record);
+
+    if (!recordInput.ok) {
+      return Response.json({ error: recordInput.error }, { status: 400 });
+    }
+
+    const result = await createStructuredEngineeringOperation({
+      input: recordInput.input,
+      userId: authorization.userId,
+    });
+
+    if (!result.ok) {
+      return Response.json(
+        {
+          error: result.error,
+          storage: result,
+        },
+        { status: 503 },
+      );
+    }
+
+    return Response.json(
+      {
+        storage: {
+          record: result.record,
+          status: result.status,
+        },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
+
   const operations = await loadEngineeringOperationsFromFile();
 
   if (!operations.data) {
@@ -98,4 +139,79 @@ export async function POST(request: NextRequest) {
       },
     },
   );
+}
+
+type StructuredOperationsPostBody = {
+  action?: "create-record" | "sync-markdown";
+  record?: Record<string, unknown>;
+};
+
+async function readJsonBody(request: NextRequest) {
+  if (!request.headers.get("content-type")?.includes("application/json")) {
+    return null;
+  }
+
+  return (await request.json().catch(() => null)) as
+    | StructuredOperationsPostBody
+    | null;
+}
+
+function normalizeCreateRecordInput(record: unknown):
+  | {
+      input: CreateStructuredEngineeringOperationInput;
+      ok: true;
+    }
+  | {
+      error: string;
+      ok: false;
+    } {
+  if (!record || typeof record !== "object") {
+    return {
+      error: "Informe os dados do registro operacional.",
+      ok: false,
+    };
+  }
+
+  const rawRecord = record as Record<string, unknown>;
+  const subject = getRequiredText(rawRecord.subject);
+
+  if (!subject) {
+    return {
+      error: "Informe o titulo do registro operacional.",
+      ok: false,
+    };
+  }
+
+  return {
+    input: {
+      affectedFiles: getOptionalText(rawRecord.affectedFiles),
+      changeCategory: getOptionalText(rawRecord.changeCategory),
+      commit: getOptionalText(rawRecord.commit),
+      deploy: getOptionalText(rawRecord.deploy),
+      healthchecks: getOptionalText(rawRecord.healthchecks),
+      how: getOptionalText(rawRecord.how),
+      logic: getOptionalText(rawRecord.logic),
+      macroSummary: getOptionalText(rawRecord.macroSummary),
+      module: getOptionalText(rawRecord.module),
+      needsDeploy: rawRecord.needsDeploy === true,
+      nextSquad: getOptionalText(rawRecord.nextSquad),
+      reason: getOptionalText(rawRecord.reason),
+      risks: getOptionalText(rawRecord.risks),
+      screen: getOptionalText(rawRecord.screen),
+      squad: getOptionalText(rawRecord.squad),
+      status: getOptionalText(rawRecord.status),
+      subject,
+      type: getOptionalText(rawRecord.type),
+      validation: getOptionalText(rawRecord.validation),
+    },
+    ok: true,
+  };
+}
+
+function getRequiredText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getOptionalText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }

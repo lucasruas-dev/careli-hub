@@ -58,6 +58,7 @@ import {
   LayoutGrid,
   Loader2,
   MessageSquareText,
+  Plus,
   RefreshCcw,
   Rocket,
   Search,
@@ -194,6 +195,7 @@ type StructuredSyncRun = {
 type StructuredOperationsApiResponse = {
   error?: string;
   storage?: {
+    record?: StructuredOperationApiRecord;
     records?: StructuredOperationApiRecord[];
     status?: string;
     syncRuns?: StructuredSyncRun[];
@@ -208,6 +210,21 @@ type OperationsSourceState = {
   recordsCount: number;
   status: string;
   syncRuns: StructuredSyncRun[];
+};
+
+type OperationRecordFormState = {
+  macroSummary: string;
+  module: string;
+  needsDeploy: boolean;
+  nextSquad: string;
+  reason: string;
+  risks: string;
+  screen: string;
+  squad: string;
+  status: string;
+  subject: string;
+  type: string;
+  validation: string;
 };
 
 type HomologationReviewStatus =
@@ -276,6 +293,67 @@ const initialFilters: OperationsFilters = {
   status: allFilterValue,
   type: allFilterValue,
 };
+
+const initialOperationRecordForm: OperationRecordFormState = {
+  macroSummary: "",
+  module: "SquadOps",
+  needsDeploy: false,
+  nextSquad: "Hub ReleaseOps",
+  reason: "",
+  risks: "",
+  screen: "Operations Center",
+  squad: "SquadOps Core",
+  status: "REGISTRADO",
+  subject: "",
+  type: "MELHORIA",
+  validation: "",
+};
+
+const operationModuleOptions = [
+  "SquadOps",
+  "Guardian",
+  "CareDesk",
+  "PulseX",
+  "Hub Core",
+  "Hub UIX",
+  "SupportOps",
+  "ReleaseOps",
+  "DataOps",
+  "InfraOps",
+] as const;
+
+const operationSquadOptions = [
+  "SquadOps Core",
+  "Guardian Core",
+  "CareDesk Core",
+  "PulseX Core",
+  "Hub SupportOps",
+  "Hub ReleaseOps",
+  "Hub DataOps",
+  "Hub InfraOps",
+] as const;
+
+const operationTypeOptions = [
+  "CORRECAO",
+  "MELHORIA",
+  "CRIACAO",
+  "RELEASE",
+  "AUDITORIA",
+  "SUPORTE",
+  "MONITORAMENTO",
+  "DECISAO",
+] as const;
+
+const operationStatusOptions = [
+  "REGISTRADO",
+  "EM ANALISE",
+  "EM EXECUCAO",
+  "AGUARDANDO RELEASEOPS",
+  "EM HOMOLOGACAO",
+  "EM PRODUCAO",
+  "FINALIZADO",
+  "BLOQUEADO",
+] as const;
 
 const homologationStatusOptions = [
   { label: "Aguardando teste", value: "aguardando_teste" },
@@ -665,6 +743,15 @@ export function SquadOpsPage({
     useState<OperationsSourceState>(initialOperationsSourceState);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncingOperations, setIsSyncingOperations] = useState(false);
+  const [isCreatingOperationRecord, setIsCreatingOperationRecord] =
+    useState(false);
+  const [isOperationRecordModalOpen, setIsOperationRecordModalOpen] =
+    useState(false);
+  const [operationRecordForm, setOperationRecordForm] =
+    useState<OperationRecordFormState>(initialOperationRecordForm);
+  const [operationRecordFormError, setOperationRecordFormError] = useState<
+    string | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<OperationsFilters>(initialFilters);
   const [selectedRecord, setSelectedRecord] =
@@ -1565,6 +1652,81 @@ export function SquadOpsPage({
     }
   }
 
+  async function createOperationRecord() {
+    const subject = operationRecordForm.subject.trim();
+
+    if (!subject) {
+      setOperationRecordFormError("Informe o titulo do registro.");
+      return;
+    }
+
+    setIsCreatingOperationRecord(true);
+    setOperationRecordFormError(null);
+
+    try {
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/squadops/operations/structured", {
+        body: JSON.stringify({
+          action: "create-record",
+          record: operationRecordForm,
+        }),
+        cache: "no-store",
+        headers,
+        method: "POST",
+      });
+      const payload = (await response
+        .json()
+        .catch(() => null)) as StructuredOperationsApiResponse | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel registrar a operacao.",
+        );
+      }
+
+      setOperationRecordForm(initialOperationRecordForm);
+      setIsOperationRecordModalOpen(false);
+      setActiveView("timeline");
+      await loadStructuredOperations();
+    } catch (createError) {
+      setOperationRecordFormError(
+        createError instanceof Error
+          ? createError.message
+          : "Nao foi possivel registrar a operacao.",
+      );
+    } finally {
+      setIsCreatingOperationRecord(false);
+    }
+  }
+
+  function updateOperationRecordForm<Key extends keyof OperationRecordFormState>(
+    key: Key,
+    value: OperationRecordFormState[Key],
+  ) {
+    setOperationRecordForm((currentForm) => ({
+      ...currentForm,
+      [key]: value,
+      ...(key === "needsDeploy"
+        ? {
+            status:
+              value === true
+                ? "AGUARDANDO RELEASEOPS"
+                : currentForm.status === "AGUARDANDO RELEASEOPS"
+                  ? "REGISTRADO"
+                  : currentForm.status,
+          }
+        : {}),
+    }));
+  }
+
   const pageContent = (
     <>
       <WorkspaceLayout>
@@ -1604,6 +1766,8 @@ export function SquadOpsPage({
 
         <OperationsSourcePanel
           isSyncing={isSyncingOperations}
+          onCreateRecord={() => setIsOperationRecordModalOpen(true)}
+          onRefresh={() => void loadStructuredOperations()}
           onSync={() => void syncStructuredOperations()}
           source={operationsSource}
         />
@@ -1838,6 +2002,15 @@ export function SquadOpsPage({
         onSelectTemplate={setSelectedPromptTemplateId}
         selectedTemplate={selectedPromptTemplate}
         templates={promptTemplates}
+      />
+      <OperationRecordModal
+        error={operationRecordFormError}
+        form={operationRecordForm}
+        isOpen={isOperationRecordModalOpen}
+        isSaving={isCreatingOperationRecord}
+        onChange={updateOperationRecordForm}
+        onClose={() => setIsOperationRecordModalOpen(false)}
+        onSave={() => void createOperationRecord()}
       />
       <AlertProtocolFeedbackDrawer
         error={alertFeedbackError}
@@ -2116,10 +2289,14 @@ function createPoAiMessage(
 
 function OperationsSourcePanel({
   isSyncing,
+  onCreateRecord,
+  onRefresh,
   onSync,
   source,
 }: {
   isSyncing: boolean;
+  onCreateRecord: () => void;
+  onRefresh: () => void;
   onSync: () => void;
   source: OperationsSourceState;
 }) {
@@ -2172,6 +2349,22 @@ function OperationsSourcePanel({
         </div>
         <button
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={onRefresh}
+          type="button"
+        >
+          <RefreshCcw className="size-4 text-[#A07C3B]" />
+          Atualizar
+        </button>
+        <button
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533]"
+          onClick={onCreateRecord}
+          type="button"
+        >
+          <Plus className="size-4" />
+          Novo registro
+        </button>
+        <button
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isSyncing}
           onClick={onSync}
           type="button"
@@ -2183,6 +2376,254 @@ function OperationsSourcePanel({
         </button>
       </div>
     </section>
+  );
+}
+
+function OperationRecordModal({
+  error,
+  form,
+  isOpen,
+  isSaving,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  error: string | null;
+  form: OperationRecordFormState;
+  isOpen: boolean;
+  isSaving: boolean;
+  onChange: <Key extends keyof OperationRecordFormState>(
+    key: Key,
+    value: OperationRecordFormState[Key],
+  ) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-slate-950/25 p-4 backdrop-blur-[1px]">
+      <button
+        aria-label="Fechar novo registro operacional"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <form
+        className="relative ml-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSave();
+        }}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+          <div>
+            <p className="m-0 text-xs font-semibold uppercase text-[#A07C3B]">
+              Supabase vivo
+            </p>
+            <h2 className="m-0 mt-1 text-xl font-semibold text-slate-950">
+              Novo registro operacional
+            </h2>
+              <p className="m-0 mt-2 text-sm leading-6 text-slate-600">
+                Registra direto no banco. A tela atualiza pela API; deploy fica
+                reservado para mudanca de codigo.
+              </p>
+          </div>
+          <button
+            aria-label="Fechar novo registro operacional"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5">
+          <label className="grid gap-2">
+            <span className="text-xs font-semibold uppercase text-slate-500">
+              Titulo
+            </span>
+            <input
+              className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+              onChange={(event) => onChange("subject", event.target.value)}
+              placeholder="Ex.: [SquadOps] Registro vivo no banco"
+              value={form.subject}
+            />
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <SelectField
+              label="Modulo"
+              onChange={(value) => onChange("module", value)}
+              options={operationModuleOptions}
+              value={form.module}
+            />
+            <SelectField
+              label="Squad"
+              onChange={(value) => onChange("squad", value)}
+              options={operationSquadOptions}
+              value={form.squad}
+            />
+            <SelectField
+              label="Tipo"
+              onChange={(value) => onChange("type", value)}
+              options={operationTypeOptions}
+              value={form.type}
+            />
+            <SelectField
+              label="Status"
+              onChange={(value) => onChange("status", value)}
+              options={operationStatusOptions}
+              value={form.status}
+            />
+          </div>
+
+          <label className="grid gap-2">
+            <span className="text-xs font-semibold uppercase text-slate-500">
+              Tela ou area
+            </span>
+            <input
+              className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+              onChange={(event) => onChange("screen", event.target.value)}
+              value={form.screen}
+            />
+          </label>
+
+          <TextAreaField
+            label="Motivo"
+            onChange={(value) => onChange("reason", value)}
+            placeholder="Por que esta acao foi registrada?"
+            value={form.reason}
+          />
+          <TextAreaField
+            label="Resumo executivo"
+            onChange={(value) => onChange("macroSummary", value)}
+            placeholder="O que muda para a operacao?"
+            value={form.macroSummary}
+          />
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <TextAreaField
+              label="Validacao"
+              onChange={(value) => onChange("validation", value)}
+              placeholder="Checks, smoke, resultado ou pendencia."
+              value={form.validation}
+            />
+            <TextAreaField
+              label="Riscos"
+              onChange={(value) => onChange("risks", value)}
+              placeholder="Nao informado se nao houver risco conhecido."
+              value={form.risks}
+            />
+          </div>
+
+          <label className="grid gap-2">
+            <span className="text-xs font-semibold uppercase text-slate-500">
+              Proxima squad recomendada
+            </span>
+            <input
+              className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+              onChange={(event) => onChange("nextSquad", event.target.value)}
+              value={form.nextSquad}
+            />
+          </label>
+
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3 text-sm font-semibold text-slate-700">
+            <input
+              checked={form.needsDeploy}
+              className="size-4 accent-[#A07C3B]"
+              onChange={(event) => onChange("needsDeploy", event.target.checked)}
+              type="checkbox"
+            />
+            Precisa entrar na fila de ReleaseOps/deploy
+          </label>
+
+          {error ? (
+            <p className="m-0 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 p-5">
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200/70 bg-white px-4 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            onClick={onClose}
+            type="button"
+          >
+            Cancelar
+          </button>
+          <button
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533] disabled:cursor-not-allowed disabled:bg-slate-400"
+            disabled={isSaving}
+            type="submit"
+          >
+            {isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
+            Registrar no banco
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: readonly string[];
+  value: string;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-xs font-semibold uppercase text-slate-500">
+        {label}
+      </span>
+      <select
+        className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function TextAreaField({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-xs font-semibold uppercase text-slate-500">
+        {label}
+      </span>
+      <textarea
+        className="min-h-24 rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        value={value}
+      />
+    </label>
   );
 }
 

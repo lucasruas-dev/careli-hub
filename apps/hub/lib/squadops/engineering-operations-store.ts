@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -48,8 +48,10 @@ type StructuredRecordRow = {
 
 type StructuredRecordInsert = Omit<
   StructuredRecordRow,
-  "created_at" | "id" | "updated_at"
->;
+  "created_at" | "id" | "protocol" | "updated_at"
+> & {
+  protocol?: string;
+};
 
 type StructuredReleaseInsert = {
   commit_sha: string | null;
@@ -228,6 +230,40 @@ export type EngineeringOperationsStructuredSyncResult =
       status: "indisponivel";
     };
 
+export type CreateStructuredEngineeringOperationInput = {
+  affectedFiles?: string | null;
+  changeCategory?: string | null;
+  commit?: string | null;
+  deploy?: string | null;
+  healthchecks?: string | null;
+  how?: string | null;
+  logic?: string | null;
+  macroSummary?: string | null;
+  module?: string | null;
+  needsDeploy?: boolean;
+  nextSquad?: string | null;
+  reason?: string | null;
+  risks?: string | null;
+  screen?: string | null;
+  squad?: string | null;
+  status?: string | null;
+  subject: string;
+  type?: string | null;
+  validation?: string | null;
+};
+
+export type CreateStructuredEngineeringOperationResult =
+  | {
+      ok: true;
+      record: StructuredEngineeringOperation;
+      status: "registrado";
+    }
+  | {
+      error: string;
+      ok: false;
+      status: "indisponivel";
+    };
+
 export async function loadStructuredEngineeringOperations(
   limit = 120,
 ): Promise<EngineeringOperationsStructuredLoadResult> {
@@ -369,6 +405,68 @@ export async function syncEngineeringOperationsToStore({
   }
 }
 
+export async function createStructuredEngineeringOperation({
+  input,
+  userId,
+}: {
+  input: CreateStructuredEngineeringOperationInput;
+  userId: string | null;
+}): Promise<CreateStructuredEngineeringOperationResult> {
+  const adminClient = createEngineeringOperationsStoreClient();
+
+  if (!adminClient) {
+    return {
+      error: "Supabase server-side nao configurado.",
+      ok: false,
+      status: "indisponivel",
+    };
+  }
+
+  try {
+    const row = mapLiveInputToInsert(input, userId);
+    const { data: insertedRecord, error } = await adminClient
+      .from("hub_engineering_operation_records")
+      .insert(row)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (isLiveReleaseLikeRecord(insertedRecord)) {
+      await upsertReleaseRows(adminClient, [
+        {
+          commit_sha: insertedRecord.commit_sha,
+          deployment: insertedRecord.deployment,
+          environment: inferStructuredEnvironment(insertedRecord),
+          healthchecks: insertedRecord.healthchecks,
+          metadata: {
+            source: "squadops-live-record",
+          },
+          operation_record_id: insertedRecord.id,
+          protocol: insertedRecord.protocol,
+          released_at: insertedRecord.local_occurred_at,
+          status: insertedRecord.status,
+          summary: insertedRecord.macro_summary ?? insertedRecord.reason,
+        },
+      ]);
+    }
+
+    return {
+      ok: true,
+      record: mapStructuredRecordRow(insertedRecord),
+      status: "registrado",
+    };
+  } catch (error) {
+    return {
+      error: getErrorMessage(error),
+      ok: false,
+      status: "indisponivel",
+    };
+  }
+}
+
 function createEngineeringOperationsStoreClient() {
   const {
     serviceRoleKey,
@@ -432,6 +530,75 @@ function mapRecordToInsert(
     status: requiredText(record.status),
     subject: requiredText(record.subject),
     validation: nullableText(record.validation),
+  };
+}
+
+function mapLiveInputToInsert(
+  input: CreateStructuredEngineeringOperationInput,
+  userId: string | null,
+): StructuredRecordInsert {
+  const subject = requiredText(input.subject);
+  const now = new Date();
+  const localDateTime = formatSaoPauloDateTime(now);
+  const status =
+    nullableText(input.status) ??
+    (input.needsDeploy ? "AGUARDANDO RELEASEOPS" : "REGISTRADO");
+  const recordType = requiredText(input.type ?? "ATIVIDADE");
+  const changeCategory = requiredText(input.changeCategory ?? recordType);
+  const rawContent = buildLiveRawContent({
+    input,
+    localDateTime,
+    recordType,
+    status,
+    subject,
+  });
+  const isCritical = hasCriticalText(`${status} ${input.risks ?? ""}`);
+  const isRelease = hasReleaseText(
+    `${recordType} ${status} ${input.commit ?? ""} ${input.deploy ?? ""}`,
+  );
+
+  return {
+    affected_files: nullableText(input.affectedFiles),
+    change_category: changeCategory,
+    commit_sha: nullableText(input.commit),
+    content_hash: hashText(rawContent),
+    deployment: nullableText(input.deploy),
+    healthchecks: nullableText(input.healthchecks),
+    how: nullableText(input.how),
+    line_start: 0,
+    local_date_time: localDateTime,
+    local_occurred_at: now.toISOString(),
+    logic: nullableText(input.logic),
+    macro_summary: nullableText(input.macroSummary),
+    metadata: {
+      createdByUserId: userId,
+      isCritical,
+      isModuleImprovement: hasImprovementText(`${recordType} ${changeCategory}`),
+      isRelease,
+      isSupportInvestigation: hasSupportText(
+        `${input.squad ?? ""} ${recordType} ${subject}`,
+      ),
+      needsDeploy: input.needsDeploy === true,
+      routine: null,
+      shortSummary: nullableText(input.macroSummary) ?? nullableText(input.reason),
+      source: "squadops-live-record",
+    },
+    module: requiredText(input.module ?? "SquadOps"),
+    next_squad: nullableText(input.nextSquad),
+    raw_content: rawContent,
+    reason: nullableText(input.reason),
+    record_type: recordType,
+    risks: nullableText(input.risks),
+    screen: requiredText(input.screen ?? "Operations Center"),
+    source_index: 0,
+    source_key: `live:${hashText(
+      ["squadops-live-record", now.toISOString(), userId ?? "system", randomUUID()].join(":"),
+    )}`,
+    source_path: "Supabase: live operation records",
+    squad: requiredText(input.squad ?? "SquadOps Core"),
+    status,
+    subject,
+    validation: nullableText(input.validation),
   };
 }
 
@@ -533,6 +700,122 @@ function buildHandoffRows(
       },
     ];
   });
+}
+
+function buildLiveRawContent({
+  input,
+  localDateTime,
+  recordType,
+  status,
+  subject,
+}: {
+  input: CreateStructuredEngineeringOperationInput;
+  localDateTime: string;
+  recordType: string;
+  status: string;
+  subject: string;
+}) {
+  return [
+    "Registro de diario:",
+    "",
+    `- Assunto: ${subject}.`,
+    `- Nome da squad/agente: ${requiredText(input.squad ?? "SquadOps Core")}.`,
+    `- Data e hora local: ${localDateTime}.`,
+    `- Tipo da alteracao: ${recordType}.`,
+    `- Modulo: ${requiredText(input.module ?? "SquadOps")}.`,
+    `- Tela/area: ${requiredText(input.screen ?? "Operations Center")}.`,
+    `- Necessita deploy: ${input.needsDeploy ? "sim" : "nao"}.`,
+    `- Motivo da mudanca: ${requiredText(input.reason)}.`,
+    `- Como foi feito: ${requiredText(input.how)}.`,
+    `- Logica utilizada: ${requiredText(input.logic)}.`,
+    `- Validacao executada: ${requiredText(input.validation)}.`,
+    `- Riscos conhecidos: ${requiredText(input.risks)}.`,
+    `- Status operacional: ${status}.`,
+    `- Proxima squad recomendada: ${requiredText(input.nextSquad)}.`,
+  ].join("\n");
+}
+
+function formatSaoPauloDateTime(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  })
+    .formatToParts(date)
+    .reduce<Record<string, string>>((accumulator, part) => {
+      accumulator[part.type] = part.value;
+      return accumulator;
+    }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${saoPauloOffset}`;
+}
+
+function isLiveReleaseLikeRecord(row: StructuredRecordRow) {
+  return hasReleaseText(
+    `${row.record_type} ${row.status} ${row.commit_sha ?? ""} ${row.deployment ?? ""}`,
+  );
+}
+
+function inferStructuredEnvironment(row: StructuredRecordRow) {
+  const text = normalizeStoreSearchText(
+    `${row.deployment ?? ""} ${row.raw_content} ${row.status} ${row.subject}`,
+  );
+
+  if (text.includes("producao") || text.includes("c2x.app.br")) {
+    return "producao";
+  }
+
+  if (text.includes("homolog")) {
+    return "homologacao";
+  }
+
+  if (text.includes("local")) {
+    return "local";
+  }
+
+  return UNKNOWN_OPERATION_VALUE;
+}
+
+function hasCriticalText(value: string) {
+  const text = normalizeStoreSearchText(value);
+
+  return (
+    text.includes("bloqueado") ||
+    text.includes("critico") ||
+    text.includes("necessita correcao") ||
+    text.includes("operacional com atencao")
+  );
+}
+
+function hasImprovementText(value: string) {
+  const text = normalizeStoreSearchText(value);
+
+  return (
+    text.includes("melhoria") ||
+    text.includes("evolucao") ||
+    text.includes("criacao")
+  );
+}
+
+function hasReleaseText(value: string) {
+  const text = normalizeStoreSearchText(value);
+
+  return text.includes("release") || text.includes("deploy");
+}
+
+function hasSupportText(value: string) {
+  const text = normalizeStoreSearchText(value);
+
+  return (
+    text.includes("supportops") ||
+    text.includes("investigacao") ||
+    text.includes("troubleshooting")
+  );
 }
 
 async function upsertReleaseRows(
@@ -672,6 +955,13 @@ function buildSourceKey(sourcePath: string, record: EngineeringOperationRecord) 
 
 function hashText(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function normalizeStoreSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 function nullableText(value: string | null | undefined) {
