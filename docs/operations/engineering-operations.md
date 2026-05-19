@@ -5386,3 +5386,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: ainda falta publicar o recorte para homologacao/producao e validar em navegador real que `ops.c2x.app.br` nao toca quando chega chamada, enquanto `c2x.app.br` continua tocando.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix; depois `SquadOps Core` para validar o comportamento no dominio OPS.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Sync manual e reconciliacao do diario estruturado`.
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-19 13:02:20 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - reforco da sincronizacao entre Markdown local e base estruturada.
+- Motivo da mudanca: Lucas apontou que a automacao prometida para importar alteracoes do `engineering-operations.md` nao estava refletindo a ultima entrada na tela; o ultimo sync visivel permanecia em 19/05 11:32 enquanto o diario local ja tinha registro posterior.
+- Arquivos/modulos afetados: `apps/hub/app/api/squadops/operations/structured/route.ts`, `apps/hub/lib/squadops/engineering-operations-store.ts`, `apps/hub/modules/squadops/SquadOpsPage.tsx`, `scripts/squadops-sync-operations-watch.mjs`, `docs/operations/squadops-center-process.md` e este diario.
+- Como foi feito: criei a acao `sync-markdown-content` na API estruturada para receber o conteudo do Markdown, atualizei o watcher local para enviar o arquivo em vez de depender do servidor ler o arquivo local, adicionei botao `Importar arquivo local` na tela, mantive a exibicao do ultimo sync e ajustei a reconciliacao para tratar colisao de protocolo sem sobrescrever registros vivos diferentes.
+- Logica utilizada: producao nao consegue ler automaticamente o arquivo local alterado na maquina do Lucas; portanto o caminho confiavel e enviar o conteudo local para a API autenticada. O botao manual e o fallback operacional quando o watcher nao estiver rodando, enquanto o watcher segue como automacao preferencial. A reconciliacao por protocolo compara hash/titulo antes de fundir registros para evitar corromper protocolos vivos.
+- Validacao executada: leitura das regras operacionais; `npm.cmd run check-types:hub` passou; `node scripts/squadops-sync-operations-watch.mjs --dry-run` passou; `git diff --check` passou; smoke local temporario em `localhost:3001` executou `node scripts/squadops-sync-operations-watch.mjs --once` com status 200, `recordsTotal=276`, `recordsUpserted=276`, `releasesUpserted=65`, `mode=content-upload`; GET local da API estruturada confirmou `AT-0276 [PulseX/SquadOps] Chamadas desabilitadas no dominio OPS` como registro mais recente.
+- Pendencias ou riscos conhecidos: o sync automatico remoto ainda depende de bearer administrativo valido se for apontado direto para `ops.c2x.app.br`; sem bearer, use o botao `Importar arquivo local` autenticado ou mantenha o Hub local ativo para o watcher padrao. Falta publicar este ajuste para que o botao esteja disponivel em producao.
+- Status operacional: `AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o hotfix; depois `SquadOps Core` para validar importacao manual e sync automatico na tela.

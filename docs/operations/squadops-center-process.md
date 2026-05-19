@@ -173,6 +173,19 @@ Tabelas operacionais envolvidas:
 - `hub_squadops_monitoring_checks`: checks reais por execucao do SquadOps.
 - `hub_squadops_watcher_notifications`: notificacoes deduplicadas do Ops Watcher do SquadOps.
 
+## Sincronizacao do diario canonico
+
+O `docs/operations/engineering-operations.md` continua sendo memoria narrativa e fallback, mas o Operations Center deve operar a partir da base estruturada.
+
+Fluxo recomendado:
+
+- registros novos devem nascer direto na base via `Novo registro` sempre que possivel;
+- quando o Markdown for alterado por agente, o sync deve enviar o conteudo do arquivo para `POST /api/squadops/operations/structured` com `action=sync-markdown-content`;
+- o watcher local pode usar esse modo para enviar o arquivo local para a API protegida, sem depender do servidor remoto ler um arquivo empacotado no ultimo deploy;
+- a tela deve mostrar a hora do ultimo sync registrado em `hub_engineering_operation_sync_runs`;
+- se o automatico falhar, Lucas pode usar `Importar arquivo local` na tela e selecionar `docs/operations/engineering-operations.md`;
+- o sync deve reconciliar conflito de protocolo sem sobrescrever registro vivo diferente: se o protocolo ja existir com outro `source_key`, somente registros equivalentes por hash/titulo devem ser fundidos; caso contrario, o banco gera novo protocolo sequencial.
+
 ## Regras de seguranca
 
 - RLS ativo em todas as tabelas expostas.

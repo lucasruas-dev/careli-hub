@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 
 import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
 import { loadEngineeringOperationsFromFile } from "@/lib/squadops/engineering-operations-source";
+import { parseEngineeringOperationsMarkdown } from "@/lib/squadops/engineering-operations-parser";
 import {
   createStructuredEngineeringOperation,
   loadStructuredEngineeringOperations,
@@ -11,6 +12,9 @@ import {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const defaultOperationsSourcePath = "docs/operations/engineering-operations.md";
+const maxMarkdownContentLength = 2_500_000;
 
 export async function GET(request: NextRequest) {
   const authorization = await authorizeSquadOpsAdminRequest(request);
@@ -102,6 +106,60 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (body?.action === "sync-markdown-content") {
+    const content = typeof body.content === "string" ? body.content : "";
+
+    if (!content.trim()) {
+      return Response.json(
+        { error: "Informe o conteudo do Engineering Operations." },
+        { status: 400 },
+      );
+    }
+
+    if (content.length > maxMarkdownContentLength) {
+      return Response.json(
+        { error: "Arquivo do Engineering Operations excede o limite seguro." },
+        { status: 413 },
+      );
+    }
+
+    if (!content.includes("Registro de diario:")) {
+      return Response.json(
+        { error: "Arquivo informado nao contem registros de diario." },
+        { status: 400 },
+      );
+    }
+
+    const operations = parseEngineeringOperationsMarkdown(content, {
+      sourcePath: normalizeMarkdownSourcePath(body.sourcePath),
+    });
+    const result = await syncEngineeringOperationsToStore({
+      operations,
+      userId: authorization.userId,
+    });
+
+    if (!result.ok) {
+      return Response.json(
+        {
+          error: result.error,
+          storage: result,
+        },
+        { status: 503 },
+      );
+    }
+
+    return Response.json(
+      {
+        storage: result,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
+
   const operations = await loadEngineeringOperationsFromFile();
 
   if (!operations.data) {
@@ -142,8 +200,10 @@ export async function POST(request: NextRequest) {
 }
 
 type StructuredOperationsPostBody = {
-  action?: "create-record" | "sync-markdown";
+  action?: "create-record" | "sync-markdown" | "sync-markdown-content";
+  content?: unknown;
   record?: Record<string, unknown>;
+  sourcePath?: unknown;
 };
 
 async function readJsonBody(request: NextRequest) {
@@ -214,4 +274,12 @@ function getRequiredText(value: unknown) {
 
 function getOptionalText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeMarkdownSourcePath(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return defaultOperationsSourcePath;
+  }
+
+  return value.trim().replace(/\\/g, "/").slice(0, 180);
 }

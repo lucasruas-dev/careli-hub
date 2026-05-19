@@ -326,9 +326,13 @@ export async function syncEngineeringOperationsToStore({
     const recordRows = operations.records.map((record) =>
       mapRecordToInsert(record, sourcePath),
     );
+    const reconciledRecordRows = await reconcileMarkdownProtocolCollisions(
+      adminClient,
+      recordRows,
+    );
     const { data: upsertedRecords, error: recordsError } = await adminClient
       .from("hub_engineering_operation_records")
-      .upsert(recordRows, { onConflict: "source_key" })
+      .upsert(reconciledRecordRows, { onConflict: "source_key" })
       .select("id,source_key");
 
     if (recordsError) {
@@ -487,6 +491,65 @@ function createEngineeringOperationsStoreClient() {
       },
     },
   );
+}
+
+async function reconcileMarkdownProtocolCollisions(
+  adminClient: EngineeringOperationsStoreClient,
+  rows: StructuredRecordInsert[],
+) {
+  const protocols = [
+    ...new Set(
+      rows
+        .map((row) => row.protocol)
+        .filter((protocol): protocol is string => Boolean(protocol)),
+    ),
+  ];
+
+  if (protocols.length === 0) {
+    return rows;
+  }
+
+  const { data: existingRows, error } = await adminClient
+    .from("hub_engineering_operation_records")
+    .select("content_hash,protocol,source_key,subject")
+    .in("protocol", protocols);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const existingByProtocol = new Map(
+    (existingRows ?? []).map((row) => [row.protocol, row]),
+  );
+
+  return rows.map((row) => {
+    if (!row.protocol) {
+      return row;
+    }
+
+    const existing = existingByProtocol.get(row.protocol);
+
+    if (!existing || existing.source_key === row.source_key) {
+      return row;
+    }
+
+    const sameOperationalRecord =
+      existing.content_hash === row.content_hash ||
+      normalizeStoreSearchText(existing.subject) ===
+        normalizeStoreSearchText(row.subject);
+
+    if (sameOperationalRecord) {
+      return {
+        ...row,
+        source_key: existing.source_key,
+      };
+    }
+
+    const rowWithoutProtocol = { ...row };
+    delete rowWithoutProtocol.protocol;
+
+    return rowWithoutProtocol;
+  });
 }
 
 function mapRecordToInsert(

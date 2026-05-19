@@ -66,6 +66,7 @@ import {
   ServerCog,
   ShieldAlert,
   Sparkles,
+  Upload,
   WandSparkles,
   Wifi,
   X,
@@ -735,6 +736,7 @@ export function SquadOpsPage({
     null,
   );
   const squadOpsAccessToken = authAccessToken ?? resolvedAccessToken;
+  const operationsFileInputRef = useRef<HTMLInputElement | null>(null);
   const [operations, setOperations] =
     useState<EngineeringOperationsResponse | null>(null);
   const [structuredOperations, setStructuredOperations] =
@@ -743,6 +745,8 @@ export function SquadOpsPage({
     useState<OperationsSourceState>(initialOperationsSourceState);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncingOperations, setIsSyncingOperations] = useState(false);
+  const [isImportingOperationsFile, setIsImportingOperationsFile] =
+    useState(false);
   const [isCreatingOperationRecord, setIsCreatingOperationRecord] =
     useState(false);
   const [isOperationRecordModalOpen, setIsOperationRecordModalOpen] =
@@ -1652,6 +1656,65 @@ export function SquadOpsPage({
     }
   }
 
+  async function importLocalOperationsFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setIsImportingOperationsFile(true);
+    setError(null);
+
+    try {
+      const content = await file.text();
+      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/squadops/operations/structured", {
+        body: JSON.stringify({
+          action: "sync-markdown-content",
+          content,
+          sourcePath: "docs/operations/engineering-operations.md",
+        }),
+        cache: "no-store",
+        headers,
+        method: "POST",
+      });
+      const payload = (await response
+        .json()
+        .catch(() => null)) as StructuredOperationsApiResponse | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel importar o diario local.",
+        );
+      }
+
+      await loadStructuredOperations();
+    } catch (importError) {
+      const importErrorMessage =
+        importError instanceof Error
+          ? importError.message
+          : "Nao foi possivel importar o diario local.";
+
+      setOperationsSource((current) => ({
+        ...current,
+        error: getStructuredOperationsFriendlyError(importErrorMessage),
+        status: "importacao indisponivel",
+      }));
+    } finally {
+      setIsImportingOperationsFile(false);
+    }
+  }
+
   async function createOperationRecord() {
     const subject = operationRecordForm.subject.trim();
 
@@ -1765,11 +1828,21 @@ export function SquadOpsPage({
         </section>
 
         <OperationsSourcePanel
+          isImportingLocalFile={isImportingOperationsFile}
           isSyncing={isSyncingOperations}
           onCreateRecord={() => setIsOperationRecordModalOpen(true)}
+          onImportLocalFile={() => operationsFileInputRef.current?.click()}
           onRefresh={() => void loadStructuredOperations()}
           onSync={() => void syncStructuredOperations()}
           source={operationsSource}
+        />
+        <input
+          accept=".md,text/markdown,text/plain"
+          aria-label="Importar Engineering Operations local"
+          className="sr-only"
+          onChange={(event) => void importLocalOperationsFile(event)}
+          ref={operationsFileInputRef}
+          type="file"
         />
 
         {error ? (
@@ -2288,14 +2361,18 @@ function createPoAiMessage(
 }
 
 function OperationsSourcePanel({
+  isImportingLocalFile,
   isSyncing,
   onCreateRecord,
+  onImportLocalFile,
   onRefresh,
   onSync,
   source,
 }: {
+  isImportingLocalFile: boolean;
   isSyncing: boolean;
   onCreateRecord: () => void;
+  onImportLocalFile: () => void;
   onRefresh: () => void;
   onSync: () => void;
   source: OperationsSourceState;
@@ -2343,7 +2420,7 @@ function OperationsSourcePanel({
           <span>{source.recordsCount} registros</span>
           <span>
             {latestSync
-              ? `sync ${formatGeneratedAt(latestSync.created_at)}`
+              ? `ultimo sync ${formatGeneratedAt(latestSync.created_at)}`
               : "sem sync registrado"}
           </span>
         </div>
@@ -2373,6 +2450,19 @@ function OperationsSourcePanel({
             className={`size-4 text-[#A07C3B] ${isSyncing ? "animate-spin" : ""}`}
           />
           {isSyncing ? "Sincronizando" : "Sincronizar diario"}
+        </button>
+        <button
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5B24] transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={isImportingLocalFile}
+          onClick={onImportLocalFile}
+          type="button"
+        >
+          {isImportingLocalFile ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Upload className="size-4" />
+          )}
+          {isImportingLocalFile ? "Importando" : "Importar arquivo local"}
         </button>
       </div>
     </section>

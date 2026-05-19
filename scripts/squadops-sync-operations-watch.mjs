@@ -95,9 +95,14 @@ async function syncIfChanged(reason, options = {}) {
       return true;
     }
 
+    const content = await readFile(sourceFile, "utf8");
     const startedAt = Date.now();
     const response = await fetch(endpoint, {
-      body: JSON.stringify({ action: "sync-markdown" }),
+      body: JSON.stringify({
+        action: "sync-markdown-content",
+        content,
+        sourcePath: relativeSource().replace(/\\/g, "/"),
+      }),
       cache: "no-store",
       headers: buildHeaders(),
       method: "POST",
@@ -122,6 +127,7 @@ async function syncIfChanged(reason, options = {}) {
         `recordsTotal=${valueOrDash(storage.recordsTotal)}`,
         `recordsUpserted=${valueOrDash(storage.recordsUpserted)}`,
         `releasesUpserted=${valueOrDash(storage.releasesUpserted)}`,
+        `mode=content-upload`,
         `hash=${currentHash.slice(0, 12)}`,
       ].join(" | "),
     );
