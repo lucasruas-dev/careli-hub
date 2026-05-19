@@ -9,6 +9,8 @@
     "lint": "turbo run lint",
     "lint:hub": "turbo run lint --filter=@repo/hub...",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "squadops:sync": "node scripts/squadops-sync-operations-watch.mjs --once",
+    "squadops:sync:watch": "node scripts/squadops-sync-operations-watch.mjs --watch",
     "check-types": "turbo run check-types",
     "check-types:hub": "turbo run check-types --filter=@repo/hub...",
     "validate:hub": "npm run check-types:hub && npm run lint:hub && npm run build --workspace @repo/hub"

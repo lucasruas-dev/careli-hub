@@ -36,6 +36,25 @@ Novas atividades operacionais nao devem depender de commit no Markdown nem de de
 
 Regra pratica: deploy publica codigo; registro operacional publica dado. Depois desta V1, novas anotacoes, status e evidencias devem nascer no banco e nao em um commit documental obrigatorio.
 
+## Sync local do diario para o banco
+
+Enquanto ainda existirem registros append-only no Markdown canonico, a sincronizacao para o Supabase pode rodar na maquina local do Lucas.
+
+- Watcher: `scripts/squadops-sync-operations-watch.mjs`.
+- Execucao unica: `npm.cmd run squadops:sync`.
+- Execucao continua: `npm.cmd run squadops:sync:watch`.
+- Wrapper Windows: `scripts/squadops-sync-watch.ps1`.
+- Instalador de tarefa no logon: `scripts/install-squadops-sync-watch-task.ps1`.
+- Se o Windows negar a tarefa agendada, o instalador cria um inicializador na pasta Startup do usuario.
+- Log local: `.codex-logs/squadops-sync-watch.log` e `.codex-logs/squadops-sync-watch-task.log`.
+
+Regra de seguranca:
+
+- O endpoint padrao e local: `http://localhost:3001/api/squadops/operations/structured`.
+- Para importar o arquivo da maquina, o Hub local precisa estar rodando, porque a API local le o arquivo local.
+- Endpoint remoto so deve ser usado com `SQUADOPS_SYNC_BEARER`; ele nao deve ser o caminho padrao para importar o arquivo local, porque producao le o arquivo empacotado no ultimo deploy.
+- A rotina nao executa deploy, nao altera secrets, nao roda migration e nao chama agentes; ela apenas dispara o sync estruturado ja protegido pela API do SquadOps.
+
 ## Protocolos oficiais
 
 - `TK-0001`: ticket aberto por usuario ou equipe operacional.

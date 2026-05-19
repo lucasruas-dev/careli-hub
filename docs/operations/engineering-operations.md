@@ -5323,3 +5323,19 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nao foi criado dado de teste em producao; o smoke autenticado final depende de Lucas atualizar a sessao no navegador e abrir o Ticket TI no SquadOps. Se o aviso persistir apos refresh forte ou logout/login, acionar `Hub SupportOps` para investigar sessao/cache do cliente ou autorizacao da API.
 - Status operacional: `CORRIGIDO`.
 - Proxima squad recomendada: `SquadOps Core` para validar o fluxo autenticado de criacao/visualizacao de Ticket TI; `Hub SupportOps` somente se o erro persistir na tela.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Automacao local de sync do Engineering Operations`.
+- Nome da squad/agente: `SquadOps Core` com apoio de `Hub DataOps`.
+- Data e hora local: 2026-05-19 11:31:32 -03:00.
+- Tipo da alteracao: `EVOLUCAO OPERACIONAL` - watcher local para sincronizar o diario canonico com a base estruturada.
+- Motivo da mudanca: Lucas perguntou como importar o arquivo `docs/operations/engineering-operations.md` para o banco em tempo quase real, sem depender de deploy para cada atualizacao documental.
+- Arquivos/modulos afetados: `scripts/squadops-sync-operations-watch.mjs`, `scripts/squadops-sync-watch.ps1`, `scripts/install-squadops-sync-watch-task.ps1`, `package.json`, `docs/operations/squadops-center-process.md` e este diario.
+- Como foi feito: criei um watcher Node com debounce, hash de conteudo, retentativa a cada 5 minutos e logs locais; adicionei comandos `npm.cmd run squadops:sync` e `npm.cmd run squadops:sync:watch`; criei wrapper PowerShell para rodar em segundo plano; e criei instalador Windows que tenta registrar tarefa no logon e, se o Task Scheduler negar acesso, cria inicializador na pasta Startup do usuario.
+- Logica utilizada: a sincronizacao do arquivo local deve chamar o endpoint local `http://localhost:3001/api/squadops/operations/structured`, porque a API local le o arquivo da maquina. Endpoint remoto fica bloqueado sem `SQUADOPS_SYNC_BEARER`, pois producao leria o arquivo empacotado no ultimo deploy e nao o arquivo local em edicao.
+- Automacao instalada: o Windows bloqueou `Register-ScheduledTask` com acesso negado; o instalador criou fallback em `C:\Users\lucas\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\Careli SquadOps Engineering Operations Sync.cmd`. O watcher tambem foi iniciado em segundo plano nesta sessao.
+- Validacao executada: `node scripts/squadops-sync-operations-watch.mjs --dry-run` passou; `npm.cmd run squadops:sync -- --dry-run` passou; smoke controlado com Hub local temporario em `localhost:3001` sincronizou o diario com status 200, `recordsTotal=272`, `recordsUpserted=272`, `releasesUpserted=65` e `sourcePath=docs/operations/engineering-operations.md`; `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless.
+- Pendencias ou riscos conhecidos: o watcher depende do Hub local ativo para sincronizar o arquivo local; quando o Hub local nao esta rodando, ele registra aviso e tenta novamente por intervalo ou na proxima alteracao. A rotina nao executa deploy, nao aplica migration, nao altera secrets e nao chama agentes automaticamente.
+- Status operacional: `EM PRODUCAO LOCAL / AGUARDANDO RELEASEOPS`.
+- Proxima squad recomendada: `Hub ReleaseOps` para publicar o recorte de scripts/processo se Lucas quiser versionar a automacao no repositorio remoto; `SquadOps Core` para evoluir depois uma sincronizacao 100% server-side quando todos os registros nascerem diretamente no banco.
