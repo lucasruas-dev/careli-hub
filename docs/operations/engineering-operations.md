@@ -5293,3 +5293,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: a criacao real depende da tabela `hub_engineering_operation_records` aplicada no Supabase e de sessao administrativa valida; smoke autenticado com criacao real deve ser feito por Lucas ou por SupportOps com token adm, sem expor bearer no chat/logs.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o recorte; depois `Hub SupportOps` apenas se a criacao autenticada falhar em producao.
+
+Registro de diario:
+
+- Assunto: `[ReleaseOps] Deploy registro vivo SquadOps`.
+- Nome da squad/agente: `Hub ReleaseOps`.
+- Data e hora local: 2026-05-19 10:41:03 -03:00.
+- Tipo da alteracao: `RELEASE` - publicacao do fluxo de registros vivos do SquadOps.
+- Motivo da mudanca: publicar a V1 que permite criar registros operacionais diretamente no Supabase/API, reduzindo a dependencia de commits e deploys para atualizar timeline, protocolos e estado operacional.
+- Commit/deploy de referencia: commit `d2f9333 feat(squadops): add live operation records`; Preview/Homologacao `dpl_HsTVNAgZzS239ZqiJKgJKodiAJT3`; Producao `dpl_9KCdo35ka2VYuhxjRQeWKt1o9itn`; aliases `https://homo.c2x.app.br`, `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Como foi feito: publiquei o branch `homolog`, gerei Preview no Vercel, publiquei Production e confirmei que `ops.c2x.app.br` continua apontando para o deployment de producao novo com acesso visual restrito ao SquadOps.
+- Logica utilizada: a funcionalidade em si precisou de deploy por alterar codigo; apos esta publicacao, novas anotacoes operacionais devem ser gravadas como dados vivos pela API `POST /api/squadops/operations/structured` com `action=create-record`, sem exigir novo deploy documental.
+- Validacao executada: `npm.cmd run check-types:hub`; `npm.cmd run lint:hub`; `npm.cmd run build --workspace @repo/hub`; `git diff --check`; `git diff --cached --check`; smoke local de proxy/rotas/API; Preview Vercel `READY`; Production Vercel `READY`; smoke remoto confirmou `https://ops.c2x.app.br/` 307 para `/squadops`, `https://ops.c2x.app.br/guardian` 307 para `/squadops`, `https://ops.c2x.app.br/squadops` 200, `https://c2x.app.br/squadops` 307 para `/`, `https://c2x.app.br/` 200 e API estruturada `GET/POST` sem sessao 401 esperado; logs de erro de producao dos ultimos 15 minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: criacao real de registro ainda precisa de smoke autenticado pelo Lucas em `ops.c2x.app.br/squadops`; warnings conhecidos permanecem no build remoto: Turbopack/NFT da leitura filesystem do Engineering Operations, `npm audit` e variaveis Vercel fora do `turbo.json`.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `SquadOps Core` para validar a criacao autenticada do primeiro registro vivo; `Hub SupportOps` se a API retornar erro com sessao admin valida.
