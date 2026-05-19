@@ -3214,9 +3214,11 @@ function MonitoringSourceCard({
   onSelect: () => void;
   source: MonitoringSourceSummary;
 }) {
+  const tone = monitoringSourceTone(source.risk, source.status);
+
   return (
     <button
-      className="group min-w-0 rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)]"
+      className={`group min-w-0 rounded-xl border bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] ${performanceCardBorderClass(tone)}`}
       onClick={onSelect}
       type="button"
     >
@@ -3229,7 +3231,9 @@ function MonitoringSourceCard({
             {source.description}
           </p>
         </div>
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70 group-hover:bg-[#A07C3B]/10">
+        <span
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ${performanceIconClass(tone)}`}
+        >
           {getMonitoringSourceIcon(source.id)}
         </span>
       </div>
@@ -3259,7 +3263,9 @@ function MonitoringSourceCard({
           {source.healthyCount}/{source.endpointCount} ok
         </span>
         {source.alertCount > 0 ? (
-          <span className="rounded-full bg-amber-50 px-2 py-1 text-[0.68rem] font-semibold text-amber-700 ring-1 ring-amber-200">
+          <span
+            className={`rounded-full px-2 py-1 text-[0.68rem] font-semibold ring-1 ${performancePillClass(tone)}`}
+          >
             {source.alertCount} alerta(s)
           </span>
         ) : null}
@@ -3325,7 +3331,7 @@ function MonitoringPeakPanel({
               </div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-white ring-1 ring-slate-200/70">
                 <div
-                  className="h-full rounded-full bg-[#A07C3B]"
+                  className={`h-full rounded-full ${responsePerformanceBarClass(check.responseMs)}`}
                   style={{
                     width: `${Math.max(8, (check.responseMs / maxResponse) * 100)}%`,
                   }}
@@ -3342,7 +3348,7 @@ function MonitoringPeakPanel({
         )}
       </div>
       {maxPayloadCheck && !isTvMode ? (
-        <p className="m-0 mt-4 rounded-xl bg-[#A07C3B]/5 p-3 text-xs leading-5 text-slate-600 ring-1 ring-[#A07C3B]/10">
+        <p className="m-0 mt-4 rounded-xl bg-yellow-50 p-3 text-xs leading-5 text-slate-600 ring-1 ring-yellow-200">
           Maior payload recente:{" "}
           <strong className="text-slate-950">{maxPayloadCheck.label}</strong>{" "}
           com {formatBytes(maxPayloadCheck.payloadBytes)}.
@@ -3384,7 +3390,7 @@ function MonitoringHotspotsPanel({
         {hotspots.length > 0 ? (
           hotspots.map((source) => (
             <button
-              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white p-3 text-left transition hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
+              className={`flex items-center justify-between gap-3 rounded-xl border bg-white p-3 text-left transition hover:bg-slate-50 ${performanceCardBorderClass(monitoringSourceTone(source.risk, source.status))}`}
               key={source.id}
               onClick={() => onSelectSource(source.id)}
               type="button"
@@ -3558,7 +3564,7 @@ function MiniTrendBars({
       {visibleValues.map((value, index) => (
         <span
           aria-label={`${value}ms`}
-          className="min-w-1 flex-1 rounded-t bg-[#A07C3B]/70"
+          className={`min-w-1 flex-1 rounded-t ${responsePerformanceBarClass(value)}`}
           key={`${value}-${index}`}
           style={{
             height: `${Math.max(12, (value / maxValue) * 100)}%`,
@@ -8517,19 +8523,105 @@ function statusToBadgeVariant(
 function riskToBadgeVariant(
   risk?: OperationsRiskLevel | "nenhum",
 ): BadgeVariant {
-  if (risk === "critico") {
+  if (risk === "critico" || risk === "alto") {
     return "danger";
   }
 
-  if (risk === "alto" || risk === "medio") {
+  if (risk === "medio") {
     return "warning";
   }
 
   if (risk === "baixo") {
-    return "info";
+    return "success";
   }
 
   return "neutral";
+}
+
+type PerformanceTone = "green" | "yellow" | "red" | "neutral";
+
+function monitoringSourceTone(
+  risk?: OperationsRiskLevel | "nenhum",
+  status?: OperationsMonitoringSnapshot["cards"]["status"]["value"],
+): PerformanceTone {
+  if (
+    risk === "critico" ||
+    risk === "alto" ||
+    status === "critico" ||
+    status === "indisponivel"
+  ) {
+    return "red";
+  }
+
+  if (risk === "medio" || status === "operacional_com_atencao") {
+    return "yellow";
+  }
+
+  if (risk === "baixo" || risk === "nenhum" || status === "operacional") {
+    return "green";
+  }
+
+  return "neutral";
+}
+
+function responsePerformanceBarClass(responseMs: number) {
+  if (responseMs > 1500) {
+    return "bg-red-500";
+  }
+
+  if (responseMs > 500) {
+    return "bg-yellow-400";
+  }
+
+  return "bg-emerald-500";
+}
+
+function performanceCardBorderClass(tone: PerformanceTone) {
+  if (tone === "red") {
+    return "border-red-200 hover:border-red-300";
+  }
+
+  if (tone === "yellow") {
+    return "border-yellow-200 hover:border-yellow-300";
+  }
+
+  if (tone === "green") {
+    return "border-emerald-200 hover:border-emerald-300";
+  }
+
+  return "border-slate-200/70 hover:border-slate-300";
+}
+
+function performanceIconClass(tone: PerformanceTone) {
+  if (tone === "red") {
+    return "bg-red-50 text-red-600 ring-red-200 group-hover:bg-red-100";
+  }
+
+  if (tone === "yellow") {
+    return "bg-yellow-50 text-yellow-700 ring-yellow-200 group-hover:bg-yellow-100";
+  }
+
+  if (tone === "green") {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-200 group-hover:bg-emerald-100";
+  }
+
+  return "bg-slate-50 text-slate-500 ring-slate-200/70 group-hover:bg-slate-100";
+}
+
+function performancePillClass(tone: PerformanceTone) {
+  if (tone === "red") {
+    return "bg-red-50 text-red-700 ring-red-200";
+  }
+
+  if (tone === "yellow") {
+    return "bg-yellow-50 text-yellow-700 ring-yellow-200";
+  }
+
+  if (tone === "green") {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  }
+
+  return "bg-slate-50 text-slate-500 ring-slate-200/70";
 }
 
 function riskPriority(risk?: OperationsRiskLevel | "nenhum") {
