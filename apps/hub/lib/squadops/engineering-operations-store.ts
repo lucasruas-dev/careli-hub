@@ -332,7 +332,10 @@ export async function syncEngineeringOperationsToStore({
     );
     const { data: upsertedRecords, error: recordsError } = await adminClient
       .from("hub_engineering_operation_records")
-      .upsert(reconciledRecordRows, { onConflict: "source_key" })
+      .upsert(reconciledRecordRows, {
+        defaultToNull: false,
+        onConflict: "source_key",
+      })
       .select("id,source_key");
 
     if (recordsError) {
@@ -518,38 +521,117 @@ async function reconcileMarkdownProtocolCollisions(
     throw new Error(error.message);
   }
 
+  const { data: protocolRows, error: protocolRowsError } = await adminClient
+    .from("hub_engineering_operation_records")
+    .select("protocol")
+    .limit(5000);
+
+  if (protocolRowsError) {
+    throw new Error(protocolRowsError.message);
+  }
+
   const existingByProtocol = new Map(
     (existingRows ?? []).map((row) => [row.protocol, row]),
   );
+  const usedProtocols = new Set(
+    (protocolRows ?? [])
+      .map((row) => row.protocol)
+      .filter((protocol): protocol is string => Boolean(protocol)),
+  );
+  const seenByProtocol = new Map<string, StructuredRecordInsert>();
 
-  return rows.map((row) => {
+  const reconciledRows = rows.map((row) => {
     if (!row.protocol) {
-      return row;
-    }
-
-    const existing = existingByProtocol.get(row.protocol);
-
-    if (!existing || existing.source_key === row.source_key) {
-      return row;
-    }
-
-    const sameOperationalRecord =
-      existing.content_hash === row.content_hash ||
-      normalizeStoreSearchText(existing.subject) ===
-        normalizeStoreSearchText(row.subject);
-
-    if (sameOperationalRecord) {
       return {
         ...row,
-        source_key: existing.source_key,
+        protocol: nextAvailableProtocol("AT", usedProtocols),
       };
     }
 
-    const rowWithoutProtocol = { ...row };
-    delete rowWithoutProtocol.protocol;
+    const existing = existingByProtocol.get(row.protocol);
+    const seen = seenByProtocol.get(row.protocol);
 
-    return rowWithoutProtocol;
+    if (!existing || existing.source_key === row.source_key) {
+      if (
+        seen &&
+        seen.source_key !== row.source_key &&
+        !isSameOperationalRecord(seen, row)
+      ) {
+        return {
+          ...row,
+          protocol: nextAvailableProtocol(protocolPrefix(row.protocol), usedProtocols),
+        };
+      }
+
+      seenByProtocol.set(row.protocol, row);
+      usedProtocols.add(row.protocol);
+      return row;
+    }
+
+    if (isSameOperationalRecord(existing, row)) {
+      const reconciledRow = {
+        ...row,
+        source_key: existing.source_key,
+      };
+
+      seenByProtocol.set(row.protocol, reconciledRow);
+      usedProtocols.add(row.protocol);
+
+      return reconciledRow;
+    }
+
+    return {
+      ...row,
+      protocol: nextAvailableProtocol(protocolPrefix(row.protocol), usedProtocols),
+    };
   });
+
+  return [...new Map(reconciledRows.map((row) => [row.source_key, row])).values()];
+}
+
+function isSameOperationalRecord(
+  existing: Pick<StructuredRecordInsert, "content_hash" | "subject">,
+  incoming: Pick<StructuredRecordInsert, "content_hash" | "subject">,
+) {
+  return (
+    existing.content_hash === incoming.content_hash ||
+    normalizeStoreSearchText(existing.subject) ===
+      normalizeStoreSearchText(incoming.subject)
+  );
+}
+
+function protocolPrefix(protocol: string) {
+  const match = protocol.trim().toUpperCase().match(/^([A-Z]{2})-/);
+
+  return match?.[1] ?? "AT";
+}
+
+function nextAvailableProtocol(prefix: string, usedProtocols: Set<string>) {
+  let nextNumber = 1;
+
+  for (const protocol of usedProtocols) {
+    const match = protocol
+      .trim()
+      .toUpperCase()
+      .match(new RegExp(`^${prefix}-(\\d+)$`));
+
+    if (!match) {
+      continue;
+    }
+
+    nextNumber = Math.max(nextNumber, Number(match[1]) + 1);
+  }
+
+  let candidate = `${prefix}-${String(nextNumber).padStart(4, "0")}`;
+
+  while (usedProtocols.has(candidate)) {
+    nextNumber += 1;
+    candidate = `${prefix}-${String(nextNumber).padStart(4, "0")}`;
+  }
+
+  usedProtocols.add(candidate);
+
+  return candidate;
 }
 
 function mapRecordToInsert(

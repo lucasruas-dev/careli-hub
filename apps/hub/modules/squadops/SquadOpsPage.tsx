@@ -47,6 +47,8 @@ import {
   BellRing,
   Bot,
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   Copy,
   Database,
@@ -1859,6 +1861,7 @@ export function SquadOpsPage({
           isLoading={isLoading}
           latestRecord={latestRecord}
           metrics={activeOperations?.metrics}
+          monitoringAlertCount={visibleMonitoringAlertCount}
           nextSquad={nextSquad}
           onOpenPoAi={() => setIsPoAiOpen(true)}
           onOpenAudits={() => setActiveView("audits")}
@@ -2722,6 +2725,7 @@ function SquadOpsCommandCenter({
   isLoading,
   latestRecord,
   metrics,
+  monitoringAlertCount,
   nextSquad,
   onOpenPoAi,
   onOpenAudits,
@@ -2733,6 +2737,7 @@ function SquadOpsCommandCenter({
   isLoading: boolean;
   latestRecord: EngineeringOperationRecord | null;
   metrics?: EngineeringOperationsResponse["metrics"];
+  monitoringAlertCount: number;
   nextSquad: string;
   onOpenPoAi: () => void;
   onOpenAudits: () => void;
@@ -2750,18 +2755,28 @@ function SquadOpsCommandCenter({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="m-0 text-xs font-semibold uppercase text-[#A07C3B]">
-                leitura guiada
+                centro operacional
               </p>
               <h2 className="m-0 mt-1 text-xl font-semibold tracking-normal text-slate-950">
-                Prioridade operacional
+                Operacao do Hub em tempo real
               </h2>
               <p className="m-0 mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Alertas, historico, releases e pendencias organizados para
+                decidir a proxima acao sem repetir informacao na tela.
+              </p>
+              <p className="sr-only">
                 Riscos, pendências e handoffs consolidados a partir do diário
                 oficial da engenharia IA.
               </p>
             </div>
-            <Badge variant={actionCount > 0 ? "warning" : "success"}>
-              {actionCount > 0
+            <Badge
+              variant={
+                actionCount + monitoringAlertCount > 0 ? "warning" : "success"
+              }
+            >
+              {monitoringAlertCount > 0
+                ? `${monitoringAlertCount} alerta(s) ativo(s)`
+                : actionCount > 0
                 ? `${actionCount} pontos de atenção`
                 : "sem alerta crítico"}
             </Badge>
@@ -2930,6 +2945,7 @@ function DatabaseMonitoringView({
   snapshot: OperationsMonitoringSnapshot | null;
   watcher: OpsWatcherDecision | null;
 }) {
+  const [isAlertsDialogOpen, setIsAlertsDialogOpen] = useState(false);
   const visibleAlerts = (snapshot?.alerts ?? []).filter(
     (alert) => !isProtocolCleared(alert.protocol, alertProtocols),
   );
@@ -2952,6 +2968,7 @@ function DatabaseMonitoringView({
   const bannerNotification = visibleWatcher?.notifyLucas
     ? visibleWatcher
     : null;
+  const latestNotification = visibleNotifications[0] ?? null;
 
   return (
     <section className="grid gap-5">
@@ -3005,48 +3022,14 @@ function DatabaseMonitoringView({
           </p>
         ) : null}
 
-        {bannerNotification ? (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="m-0 text-xs font-semibold uppercase text-amber-700">
-                  Ops Watcher
-                </p>
-                <p className="m-0 mt-1 text-sm font-semibold text-amber-950">
-                  {bannerNotification.message}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {bannerNotification.protocol ? (
-                  <Tooltip content="Confirmar leitura" placement="bottom">
-                    <button
-                      aria-label={`Confirmar leitura do protocolo ${bannerNotification.protocol}`}
-                      className="inline-flex size-9 items-center justify-center rounded-lg border border-amber-200 bg-white text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={
-                        acknowledgingProtocol === bannerNotification.protocol
-                      }
-                      onClick={() =>
-                        onAcknowledgeProtocol(bannerNotification.protocol)
-                      }
-                      type="button"
-                    >
-                      {acknowledgingProtocol === bannerNotification.protocol ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <ClipboardCheck className="size-4" />
-                      )}
-                    </button>
-                  </Tooltip>
-                ) : null}
-                <Badge variant={riskToBadgeVariant(bannerNotification.risk)}>
-                  {bannerNotification.risk}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <OperationsAlertCenter
+          alertCount={visibleAlerts.length}
+          highestAlert={highestVisibleAlert}
+          latestNotification={bannerNotification ?? latestNotification}
+          onOpen={() => setIsAlertsDialogOpen(true)}
+        />
 
-        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           <MonitoringCard
             detail={snapshot?.cards.status.label ?? "Aguardando primeiro check"}
             icon={<Activity size={17} />}
@@ -3086,48 +3069,26 @@ function DatabaseMonitoringView({
             }
             value={`${snapshot?.cards.protectedApis.unexpected ?? 0} desvios`}
           />
-          <MonitoringCard
-            detail={highestVisibleAlert?.title ?? "Sem alerta ativo"}
-            icon={<BellRing size={17} />}
-            label="Alertas ativos"
-            status={riskToGeneralStatus(highestVisibleAlert?.level ?? "nenhum")}
-            value={visibleAlerts.length}
-          />
         </div>
       </Surface>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.38fr)]">
-        <OperationsAlertsPanel
+      {isAlertsDialogOpen ? (
+        <OperationsAlertsDialog
+          acknowledgingProtocol={acknowledgingProtocol}
+          alertProtocols={alertProtocols}
           alerts={visibleAlerts}
-          acknowledgingProtocol={acknowledgingProtocol}
-          copiedCommandId={copiedCommandId}
-          ignoringProtocol={ignoringProtocol}
-          onAcknowledgeProtocol={onAcknowledgeProtocol}
-          onCopyCommand={onCopyCommand}
-          onIgnoreProtocol={onIgnoreProtocol}
-          onOpenProtocol={(alert) =>
-            onOpenAlertProtocol(alertToProtocolSummary(alert))
-          }
-        />
-        <OpsWatcherPanel
-          acknowledgingProtocol={acknowledgingProtocol}
           copiedCommandId={copiedCommandId}
           ignoringProtocol={ignoringProtocol}
           notifications={visibleNotifications}
           onAcknowledgeProtocol={onAcknowledgeProtocol}
+          onClose={() => setIsAlertsDialogOpen(false)}
           onCopyCommand={onCopyCommand}
           onIgnoreProtocol={onIgnoreProtocol}
-          onOpenProtocol={onOpenAlertProtocolByCode}
+          onOpenAlertProtocol={onOpenAlertProtocol}
+          onOpenAlertProtocolByCode={onOpenAlertProtocolByCode}
           watcher={visibleWatcher}
         />
-      </div>
-
-      <AlertProtocolsHistoryPanel
-        copiedCommandId={copiedCommandId}
-        onCopyCommand={onCopyCommand}
-        onOpenProtocol={onOpenAlertProtocol}
-        protocols={alertProtocols}
-      />
+      ) : null}
       <ChecksHistoryPanel checks={history} />
     </section>
   );
@@ -3206,6 +3167,154 @@ function MonitoringCard({
       <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
         {detail}
       </p>
+    </div>
+  );
+}
+
+function OperationsAlertCenter({
+  alertCount,
+  highestAlert,
+  latestNotification,
+  onOpen,
+}: {
+  alertCount: number;
+  highestAlert: OperationsAlert | null;
+  latestNotification: OpsWatcherDecision | null;
+  onOpen: () => void;
+}) {
+  const hasAlert = alertCount > 0 || Boolean(latestNotification?.notifyLucas);
+  const title = highestAlert?.title ?? latestNotification?.message ?? "Sem alerta operacional ativo";
+  const risk = highestAlert?.level ?? latestNotification?.risk ?? "baixo";
+
+  return (
+    <button
+      className={`mt-4 flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-left transition-colors ${
+        hasAlert
+          ? "border-amber-200 bg-amber-50 hover:bg-amber-100/70"
+          : "border-slate-200/70 bg-slate-50/70 hover:bg-slate-100/70"
+      }`}
+      onClick={onOpen}
+      type="button"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          className={`flex size-10 shrink-0 items-center justify-center rounded-lg ring-1 ${
+            hasAlert
+              ? "bg-white text-amber-700 ring-amber-200"
+              : "bg-white text-slate-500 ring-slate-200"
+          }`}
+        >
+          <BellRing className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="m-0 text-xs font-semibold uppercase text-slate-500">
+            Alertas operacionais
+          </p>
+          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+            {title}
+          </p>
+          <p className="m-0 mt-1 text-xs text-slate-500">
+            {hasAlert
+              ? "Abrir popup para confirmar leitura, ignorar, registrar devolutiva ou gerar prompt."
+              : "Abrir popup para consultar historico e protocolos de alertas."}
+          </p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <Badge variant={riskToBadgeVariant(risk)}>{risk}</Badge>
+        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+          {alertCount} ativo(s)
+        </span>
+        <ChevronRight className="size-4 text-[#A07C3B]" />
+      </div>
+    </button>
+  );
+}
+
+function OperationsAlertsDialog({
+  acknowledgingProtocol,
+  alertProtocols,
+  alerts,
+  copiedCommandId,
+  ignoringProtocol,
+  notifications,
+  onAcknowledgeProtocol,
+  onClose,
+  onCopyCommand,
+  onIgnoreProtocol,
+  onOpenAlertProtocol,
+  onOpenAlertProtocolByCode,
+  watcher,
+}: {
+  acknowledgingProtocol: string | null;
+  alertProtocols: OperationsAlertProtocolSummary[];
+  alerts: OperationsAlert[];
+  copiedCommandId: string | null;
+  ignoringProtocol: string | null;
+  notifications: OpsWatcherDecision[];
+  onAcknowledgeProtocol: (protocolCode?: string) => void;
+  onClose: () => void;
+  onCopyCommand: (command: string, id: string) => void;
+  onIgnoreProtocol: (protocolCode?: string) => void;
+  onOpenAlertProtocol: (protocol: OperationsAlertProtocolSummary) => void;
+  onOpenAlertProtocolByCode: (protocolCode?: string) => void;
+  watcher: OpsWatcherDecision | null;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[2px]">
+      <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-2xl">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <PanelTitle
+            eyebrow={`${alerts.length} ativo(s) / ${alertProtocols.length} protocolo(s)`}
+            icon={<BellRing size={18} />}
+            title="Central de alertas"
+          />
+          <button
+            aria-label="Fechar alertas"
+            className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.38fr)]">
+            <OperationsAlertsPanel
+              acknowledgingProtocol={acknowledgingProtocol}
+              alerts={alerts}
+              copiedCommandId={copiedCommandId}
+              ignoringProtocol={ignoringProtocol}
+              onAcknowledgeProtocol={onAcknowledgeProtocol}
+              onCopyCommand={onCopyCommand}
+              onIgnoreProtocol={onIgnoreProtocol}
+              onOpenProtocol={(alert) =>
+                onOpenAlertProtocol(alertToProtocolSummary(alert))
+              }
+            />
+            <OpsWatcherPanel
+              acknowledgingProtocol={acknowledgingProtocol}
+              copiedCommandId={copiedCommandId}
+              ignoringProtocol={ignoringProtocol}
+              notifications={notifications}
+              onAcknowledgeProtocol={onAcknowledgeProtocol}
+              onCopyCommand={onCopyCommand}
+              onIgnoreProtocol={onIgnoreProtocol}
+              onOpenProtocol={onOpenAlertProtocolByCode}
+              watcher={watcher}
+            />
+          </div>
+          <div className="mt-5">
+            <AlertProtocolsHistoryPanel
+              copiedCommandId={copiedCommandId}
+              onCopyCommand={onCopyCommand}
+              onOpenProtocol={onOpenAlertProtocol}
+              protocols={alertProtocols}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3714,7 +3823,7 @@ function AlertProtocolsHistoryPanel({
 function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
   const groups = useMemo(() => buildCheckHistoryGroups(checks), [checks]);
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
-  const activeGroupKey = expandedGroupKey ?? groups[0]?.key ?? null;
+  const activeGroupKey = expandedGroupKey;
 
   return (
     <Surface
@@ -3743,7 +3852,7 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
                     aria-expanded={isExpanded}
                     className="flex w-full flex-wrap items-center justify-between gap-3 bg-slate-50/70 px-4 py-3 text-left transition hover:bg-slate-100/70"
                     onClick={() =>
-                      setExpandedGroupKey(isExpanded ? "__closed" : group.key)
+                      setExpandedGroupKey(isExpanded ? null : group.key)
                     }
                     type="button"
                   >
@@ -3760,6 +3869,12 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
                       <Badge variant={riskToBadgeVariant(group.highestRisk)}>
                         {group.highestRisk}
                       </Badge>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                        Status Hub:{" "}
+                        {generalStatusLabel(
+                          riskToGeneralStatus(group.highestRisk),
+                        )}
+                      </span>
                       <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
                         maior tempo {group.maxResponseMs}ms
                       </span>
@@ -3769,61 +3884,22 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
                       <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
                         {isExpanded ? "recolher" : "expandir"}
                       </span>
+                      {isExpanded ? (
+                        <ChevronDown className="size-4 text-[#A07C3B]" />
+                      ) : (
+                        <ChevronRight className="size-4 text-[#A07C3B]" />
+                      )}
                     </div>
                   </button>
 
                   {isExpanded ? (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-[68rem] w-full border-collapse text-left text-sm">
-                        <thead className="bg-white text-xs font-semibold uppercase text-slate-400">
-                          <tr>
-                            <th className="px-4 py-3">Horario</th>
-                            <th className="px-4 py-3">Origem</th>
-                            <th className="px-4 py-3">Status</th>
-                            <th className="px-4 py-3">Tempo</th>
-                            <th className="px-4 py-3">Payload</th>
-                            <th className="px-4 py-3">Risco</th>
-                            <th className="px-4 py-3">Alerta</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.checks.map((check, index) => (
-                            <tr
-                              className="border-t border-slate-100"
-                              key={`${check.id}-${check.checkedAt}-${index}`}
-                            >
-                              <td className="px-4 py-3 text-xs font-semibold text-slate-500">
-                                {formatOperationDateTime(check.checkedAt)}
-                              </td>
-                              <td className="px-4 py-3">
-                                <p className="m-0 font-semibold text-slate-950">
-                                  {check.label}
-                                </p>
-                                <p className="m-0 mt-1 truncate text-xs text-slate-500">
-                                  {check.module}
-                                </p>
-                              </td>
-                              <td className="px-4 py-3 text-slate-600">
-                                {check.received}
-                              </td>
-                              <td className="px-4 py-3 text-slate-600">
-                                {check.responseMs}ms
-                              </td>
-                              <td className="px-4 py-3 text-slate-600">
-                                {formatBytes(check.payloadBytes)}
-                              </td>
-                              <td className="px-4 py-3">
-                                <Badge variant={riskToBadgeVariant(check.risk)}>
-                                  {check.risk}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 text-slate-600">
-                                {check.alertGenerated ? "sim" : "nao"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="grid gap-3 border-t border-slate-100 bg-white p-4 md:grid-cols-2 xl:grid-cols-3">
+                      {group.checks.map((check, index) => (
+                        <CheckMetricCard
+                          check={check}
+                          key={`${check.id}-${check.checkedAt}-${index}`}
+                        />
+                      ))}
                     </div>
                   ) : null}
                 </div>
@@ -3835,6 +3911,49 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
         )}
       </div>
     </Surface>
+  );
+}
+
+function CheckMetricCard({ check }: { check: OperationsCheckMetric }) {
+  return (
+    <article className="rounded-xl border border-slate-200/70 bg-slate-50/40 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-xs font-semibold text-slate-500">
+            {formatOperationDateTime(check.checkedAt)}
+          </p>
+          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+            {check.label}
+          </p>
+          <p className="m-0 mt-1 truncate text-xs text-slate-500">
+            {check.module}
+          </p>
+        </div>
+        <Badge variant={riskToBadgeVariant(check.risk)}>{check.risk}</Badge>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-white p-2 ring-1 ring-slate-200/70">
+          <p className="m-0 font-semibold uppercase text-slate-400">Status</p>
+          <p className="m-0 mt-1 truncate text-slate-700">{check.received}</p>
+        </div>
+        <div className="rounded-lg bg-white p-2 ring-1 ring-slate-200/70">
+          <p className="m-0 font-semibold uppercase text-slate-400">Tempo</p>
+          <p className="m-0 mt-1 text-slate-700">{check.responseMs}ms</p>
+        </div>
+        <div className="rounded-lg bg-white p-2 ring-1 ring-slate-200/70">
+          <p className="m-0 font-semibold uppercase text-slate-400">Payload</p>
+          <p className="m-0 mt-1 text-slate-700">
+            {formatBytes(check.payloadBytes)}
+          </p>
+        </div>
+        <div className="rounded-lg bg-white p-2 ring-1 ring-slate-200/70">
+          <p className="m-0 font-semibold uppercase text-slate-400">Alerta</p>
+          <p className="m-0 mt-1 text-slate-700">
+            {check.alertGenerated ? "sim" : "nao"}
+          </p>
+        </div>
+      </div>
+    </article>
   );
 }
 

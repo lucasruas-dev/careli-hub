@@ -26,7 +26,7 @@ Esta pasta e a casa operacional do Careli Hub. Ela separa o diario vivo de opera
 - Nao registre valores de secrets, tokens, senhas, service role, `POSTGRES_URL` ou chaves externas.
 - Toda operacao sensivel comeca `BLOQUEADO` ate autorizacao expressa do Lucas.
 - Homologacao e o caminho padrao antes de producao quando houver risco operacional.
-- Se `SquadOps Core` for autorizado por Lucas a executar/publicar seu proprio recorte, o fechamento nao pode ficar so no chat nem so no Markdown: o agente deve atualizar a fonte estruturada do Operations Center, reconciliar protocolos `AT/AL/DP/TK`, preencher commit/deploy/validacoes/status real e depois registrar a decisao no diario canonico.
+- Se `SquadOps Core` for autorizado por Lucas a executar/publicar seu proprio recorte, o fechamento nao pode ficar so no chat nem so no Markdown: o agente deve atualizar a fonte estruturada do Operations Center, reconciliar protocolos `AT/AL/DP/TK`, preencher commit/deploy/validacoes/status real e depois registrar a decisao no diario canonico. Quando o recorte for da tela SquadOps e o SquadOps Core fizer o processo inteiro com publicacao, o registro final deve ficar `EM PRODUCAO`, nao `AGUARDANDO RELEASEOPS`.
 
 ## Scripts para agentes
 

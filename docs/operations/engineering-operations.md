@@ -5431,3 +5431,33 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: ha uma entrada de diario de outra frente ja presente no working tree; preservei o historico e nao reverti alteracoes de terceiros.
 - Status operacional: `AGUARDANDO RELEASEOPS`.
 - Proxima squad recomendada: `Hub ReleaseOps` para publicar o ajuste visual; depois `SquadOps Core` para validar o horario do sync em producao/ops.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Status de producao para entregas da tela SquadOps`.
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-19 13:46:29 -03:00.
+- Tipo da alteracao: `GOVERNANCA OPERACIONAL` - fechamento de status dos registros de tela do SquadOps.
+- Motivo da mudanca: Lucas definiu que, quando o SquadOps Core faz toda a operacao de tela de ponta a ponta e tambem publica, seus registros nao devem permanecer como `AGUARDANDO RELEASEOPS`; devem ficar `EM PRODUCAO`.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/engineering-operations-store.ts`, `docs/operations/README.md`, `docs/operations/squadops-center-process.md` e este diario.
+- Como foi feito: atualizei a regra oficial do SquadOps Center, registrei a orientacao no README operacional, corrigi o sync estruturado para permitir default de protocolo em registros antigos com colisao e reconciliei as entradas recentes de tela do proprio SquadOps Core para `EM PRODUCAO`.
+- Logica utilizada: `AGUARDANDO RELEASEOPS` passa a ser usado apenas quando houver dependencia real fora do SquadOps Core ou decisao explicita de transferir o recorte; se o proprio SquadOps Core assumiu implementacao, validacao, commit, publicacao e reconciliacao da tela, o estado final e `EM PRODUCAO`.
+- Validacao executada: revisao documental; correcao do upsert estruturado com `defaultToNull: false`; reconciliacao de protocolos duplicados por proximo protocolo livre; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `git diff --check` passou; sync manual passou com `recordsTotal=282`, `recordsUpserted=282`, `releasesUpserted=65` e HTTP 200.
+- Pendencias ou riscos conhecidos: sem pendencia operacional para refletir estes status no banco; a tela estruturada ja recebeu nova sincronizacao manual.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `SquadOps Core` para manter esta regra nos proximos registros.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Reorganizacao visual do Database Monitoring`.
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-19 14:27:34 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL` - simplificacao da tela de monitoramento e alertas do Operations Center.
+- Motivo da mudanca: Lucas apontou que a tela repetia as mesmas informacoes em Alertas operacionais, Ops Watcher e protocolos, deixando a leitura confusa; pediu alertas em popup, historico agrupado por hora com expansao e uma experiencia geral mais clara.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/SquadOpsPage.tsx` e este diario.
+- Como foi feito: transformei os alertas em uma entrada unica que abre a Central de alertas em popup, removi a duplicidade visual de alertas/watcher/protocolos do corpo principal do monitoring, mantive os cards executivos do estado real e troquei o historico de checks expandido de tabela para cards por horario.
+- Logica utilizada: a tela principal deve mostrar estado e proxima acao; a interacao detalhada de alerta fica concentrada em um popup operacional. O historico fica recolhido por hora, com status geral do Hub no resumo da linha e detalhes apenas quando Lucas expande.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `git diff --check` passou; smoke local `GET /squadops` retornou 200; smoke local `GET /api/operations/monitoring` retornou 200; validacao visual no Browser confirmou a aba `Database Monitoring`, a abertura do popup `Central de alertas` e o historico de checks recolhido/expandido em cards.
+- Pendencias ou riscos conhecidos: validar em producao se a nova composicao reduz a duplicidade percebida por Lucas; o warning Turbopack/NFT da rota de Engineering Operations segue conhecido.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `SquadOps Core` para validar a tela em `ops.c2x.app.br` depois do deploy.

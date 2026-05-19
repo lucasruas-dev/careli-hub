@@ -51,7 +51,9 @@ O comportamento obrigatorio e:
 - confirmar que a timeline do Operations Center passa a exibir o movimento recente;
 - registrar a decisao final no diario canonico `docs/operations/engineering-operations.md`.
 
-Se a entrega foi publicada, o status operacional deve refletir producao, por exemplo `EM PRODUCAO` ou `CORRIGIDO`. Se nao foi publicada, deve permanecer explicitamente em `AGUARDANDO RELEASEOPS`, `BLOQUEADO`, `EM HOMOLOGACAO` ou outro status real, sem ambiguidade.
+Quando o proprio `SquadOps Core` executar o fluxo completo autorizado por Lucas - implementacao, validacao, registro, commit, publicacao e reconciliacao da tela SquadOps -, o registro final deve ficar `EM PRODUCAO`. Nao deixar como `AGUARDANDO RELEASEOPS` se o agente assumiu a operacao de ponta a ponta.
+
+Use `AGUARDANDO RELEASEOPS`, `BLOQUEADO`, `EM HOMOLOGACAO` ou outro status intermediario apenas quando existir dependencia real fora do SquadOps Core ou quando Lucas decidir transferir a publicacao/revisao para outro agente. Use `FINALIZADO` para decisao/processo sem mudanca de tela ou sem necessidade de publicacao.
 
 ## Sync local do diario para o banco
 
