@@ -197,7 +197,7 @@ button {
 }
 
 .careli-home .uix-workspace-layout__body {
-  grid-template-columns: minmax(0, 1fr) minmax(20rem, 22rem);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
 }
 

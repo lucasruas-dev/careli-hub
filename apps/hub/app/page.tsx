@@ -12,12 +12,13 @@ import {
   type HubHomeSnapshot,
   type HubHomeUser,
 } from "@/lib/hub-home";
-import { HubUserTicketsPanel } from "@/components/hub-support/hub-user-tickets-panel";
 import {
-  hubImprovements,
-  type HubImprovement,
-  type HubImprovementType,
-} from "@/lib/operational-home";
+  getAsanaTeamPerformance,
+  type AsanaPerformancePeriodRequest,
+  type AsanaCollaboratorPerformance,
+  type AsanaTeamPerformanceSnapshot,
+} from "@/lib/asana-performance";
+import { HubUserTicketsPanel } from "@/components/hub-support/hub-user-tickets-panel";
 import { HubShell } from "@/layouts/hub-shell";
 import { useAuth } from "@/providers/auth-provider";
 import {
@@ -26,24 +27,22 @@ import {
   orderedHubModules,
 } from "@repo/shared";
 import { Badge, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
-import type { BadgeVariant } from "@repo/uix";
 import {
-  ArrowRight,
+  AlertTriangle,
   Bell,
   CalendarCheck2,
+  CheckCircle2,
+  Clock3,
+  KeyRound,
   ListChecks,
   MessageSquareText,
+  Percent,
+  RefreshCw,
+  Target,
   TimerReset,
   Users,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
-
-const improvementTypeVariant = {
-  "ajuste visual": "warning",
-  correcao: "neutral",
-  melhoria: "success",
-  "novo recurso": "info",
-} as const satisfies Record<HubImprovementType, BadgeVariant>;
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 type HomePresenceStatus = Exclude<HubPresenceStatus, "busy">;
 
@@ -79,7 +78,13 @@ export default function HomePage() {
     "overview",
   );
   const [snapshot, setSnapshot] = useState<HubHomeSnapshot | null>(null);
+  const [asanaSnapshot, setAsanaSnapshot] =
+    useState<AsanaTeamPerformanceSnapshot | null>(null);
+  const [asanaPeriod, setAsanaPeriod] =
+    useState<AsanaPerformancePeriodRequest>(() => createAsanaPeriod("month"));
   const [homeError, setHomeError] = useState<string | null>(null);
+  const [asanaError, setAsanaError] = useState<string | null>(null);
+  const [isAsanaLoading, setIsAsanaLoading] = useState(false);
   const displayName = getFirstName(hubUser?.name ?? "Operacao");
   const isAdmin = hubUser?.role === "admin";
   const teamMembers = createTeamMembers(snapshot);
@@ -106,10 +111,34 @@ export default function HomePage() {
   const lunchCount = countTeamStatus(teamMembers, "lunch");
   const meetingCount = countTeamStatus(teamMembers, "agenda");
   const offlineCount = countTeamStatus(teamMembers, "offline");
-  const taskCount = 0;
+  const taskCount = asanaSnapshot?.totals.total ?? 0;
   const unreadNotificationsCount = snapshot?.notifications.unreadCount ?? 0;
   const peopleCount = teamMembers.length;
   const messagesTodayCount = snapshot?.pulsex.messagesTodayCount ?? 0;
+
+  const loadAsanaPerformance = useCallback((silent = false) => {
+    if (!silent) {
+      setIsAsanaLoading(true);
+    }
+
+    getAsanaTeamPerformance(asanaPeriod)
+      .then((nextSnapshot) => {
+        setAsanaSnapshot(nextSnapshot);
+        setAsanaError(null);
+      })
+      .catch((error: unknown) => {
+        setAsanaError(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel carregar dados do Asana.",
+        );
+      })
+      .finally(() => {
+        if (!silent) {
+          setIsAsanaLoading(false);
+        }
+      });
+  }, [asanaPeriod]);
 
   useEffect(() => {
     let isMounted = true;
@@ -146,6 +175,18 @@ export default function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    loadAsanaPerformance();
+    const intervalId = window.setInterval(
+      () => loadAsanaPerformance(true),
+      180_000,
+    );
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadAsanaPerformance]);
+
   return (
     <HubShell>
       <WorkspaceLayout
@@ -169,7 +210,7 @@ export default function HomePage() {
           <HubUserTicketsPanel title="Meus tickets TI" />
         ) : (
           <>
-            <section className="grid grid-cols-6 gap-3">
+            <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
               <PulseMetric icon={<CalendarCheck2 size={18} />} label="reunioes" value={meetingCount} />
               <PulseMetric icon={<ListChecks size={18} />} label="tasks" value={taskCount} />
               <PulseMetric icon={<MessageSquareText size={18} />} label="mensagens hoje" value={messagesTodayCount} />
@@ -178,8 +219,8 @@ export default function HomePage() {
               <PulseMetric icon={<TimerReset size={18} />} label="modulos ativos" value={availableModules.length} />
             </section>
 
-            <section className="grid grid-cols-[minmax(0,1fr)_minmax(22rem,0.78fr)] gap-5">
-              <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
+            <section className="grid grid-cols-12 gap-5">
+              <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)] xl:col-span-7">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <PanelTitle
                     eyebrow={isAdmin ? "Central adm" : "Mapa operacional"}
@@ -224,47 +265,41 @@ export default function HomePage() {
                 </div>
               </Surface>
 
-              <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)]">
+              <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)] xl:col-span-5">
                 <PanelTitle
                   eyebrow="Rotina"
                   title="Agenda e tarefas"
                 />
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   <DayMetric label="reunioes agora" value={meetingCount} />
-                  <DayMetric label="tasks do dia" value={taskCount} note="em breve" />
-                  <DayMetric label="mensagens PulseX" value={messagesTodayCount} />
-                </div>
-                <div className="mt-4 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4">
-                  <p className="m-0 text-sm font-semibold text-[#101820]">
-                    Task ainda nao implantado
-                  </p>
-                  <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
-                    Quando o modulo Task entrar, este painel passa a mostrar
-                    vencidas, pendentes, concluidas e responsaveis com dados reais.
-                  </p>
-                </div>
-              </Surface>
-            </section>
-
-            <section className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1fr)] gap-5">
-              <PresenceTodayPanel />
-              <Surface bordered className="border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)]">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <PanelTitle
-                    eyebrow="Produto"
-                    title="Novidades do Hub"
+                  <DayMetric label="tarefas Asana" value={taskCount} />
+                  <DayMetric
+                    label="atrasadas"
+                    value={asanaSnapshot?.totals.overdue ?? 0}
                   />
-                  <Badge variant="info">registro Codex</Badge>
                 </div>
-                <div className="mt-4 grid gap-3">
-                  {hubImprovements.map((improvement) => (
-                    <ImprovementCard
-                      improvement={improvement}
-                      key={improvement.id}
-                    />
-                  ))}
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <DayMetric
+                    label="concluidas"
+                    value={asanaSnapshot?.totals.completed ?? 0}
+                  />
+                  <DayMetric
+                    label="no prazo"
+                    value={asanaSnapshot?.totals.completedOnTime ?? 0}
+                  />
                 </div>
               </Surface>
+
+              <PresenceTodayPanel className="col-span-12 xl:col-span-4" />
+              <AsanaPerformancePanel
+                className="col-span-12 xl:col-span-8"
+                error={asanaError}
+                isLoading={isAsanaLoading}
+                onRefresh={() => loadAsanaPerformance()}
+                onPeriodChange={setAsanaPeriod}
+                period={asanaPeriod}
+                snapshot={asanaSnapshot}
+              />
             </section>
           </>
         )}
@@ -349,41 +384,355 @@ function DayMetric({
   );
 }
 
-function ImprovementCard({ improvement }: { improvement: HubImprovement }) {
+function AsanaPerformancePanel({
+  className,
+  error,
+  isLoading,
+  onRefresh,
+  onPeriodChange,
+  period,
+  snapshot,
+}: {
+  className?: string;
+  error: string | null;
+  isLoading: boolean;
+  onRefresh: () => void;
+  onPeriodChange: (period: AsanaPerformancePeriodRequest) => void;
+  period: AsanaPerformancePeriodRequest;
+  snapshot: AsanaTeamPerformanceSnapshot | null;
+}) {
+  const totals = snapshot?.totals;
+  const shouldShowConfig =
+    snapshot?.status === "missing_config" ||
+    snapshot?.status === "error" ||
+    !snapshot ||
+    error;
+
   return (
-    <details className="group rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 open:border-[#A07C3B]/45 open:bg-[#fffaf0]">
-      <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-3 outline-none">
-        <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
-            {improvement.title}
-          </p>
-          <p className="m-0 mt-1 text-xs text-[#667085]">
-            {improvement.date} / {improvement.moduleId ?? "hub"}
-          </p>
-        </div>
-        <Badge variant={improvementTypeVariant[improvement.type]}>
-          {improvement.type}
-        </Badge>
-        <ArrowRight
-          aria-hidden="true"
-          className="mt-1 text-[#667085] transition group-open:rotate-90"
-          size={15}
+    <Surface
+      bordered
+      className={`border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)] ${className ?? ""}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PanelTitle
+          eyebrow="Asana"
+          title="Performance dos colaboradores"
         />
-      </summary>
-      <div className="mt-3 border-t border-[#eadfc8] pt-3">
-        <p className="m-0 text-xs leading-5 text-[#485466]">
-          {improvement.description}
-        </p>
-        <div className="mt-3 grid gap-2 text-xs text-[#667085]">
-          <span>Impacto: mais clareza para a operacao diaria.</span>
-          <span>Origem: ajuste registrado no ciclo de evolucao do Hub.</span>
+        <div className="flex items-center gap-2">
+          <Badge variant={snapshot?.status === "configured" ? "success" : "warning"}>
+            {snapshot?.status === "configured"
+              ? snapshot.source.period.label
+              : "configuracao"}
+          </Badge>
+          <Badge variant="neutral">
+            {snapshot?.source.workspaceMode === "filtered"
+              ? `${snapshot.source.workspaces.length} espacos`
+              : "todos espacos"}
+          </Badge>
+          <button
+            aria-label="Atualizar painel Asana"
+            className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820]"
+            disabled={isLoading}
+            onClick={onRefresh}
+            type="button"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={isLoading ? "animate-spin" : ""}
+              size={16}
+            />
+          </button>
         </div>
       </div>
-    </details>
+      <AsanaPeriodControls
+        disabled={isLoading}
+        onChange={onPeriodChange}
+        period={period}
+      />
+      {shouldShowConfig ? (
+        <AsanaConfigState
+          error={error}
+          isLoading={isLoading}
+          snapshot={snapshot}
+        />
+      ) : (
+        <>
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <AsanaKpi
+              icon={<Target size={16} />}
+              label="total"
+              value={totals?.total ?? 0}
+            />
+            <AsanaKpi
+              icon={<AlertTriangle size={16} />}
+              label="atrasadas"
+              tone="danger"
+              value={totals?.overdue ?? 0}
+            />
+            <AsanaKpi
+              icon={<CheckCircle2 size={16} />}
+              label="concluidas"
+              tone="success"
+              value={totals?.completed ?? 0}
+            />
+            <AsanaKpi
+              icon={<Clock3 size={16} />}
+              label="no prazo"
+              tone="success"
+              value={totals?.completedOnTime ?? 0}
+            />
+            <AsanaKpi
+              icon={<Percent size={16} />}
+              label="pontualidade"
+              value={formatPercent(totals?.onTimeRate)}
+            />
+          </div>
+          <div className="mt-4 grid gap-2">
+            {(snapshot?.collaborators ?? []).map((collaborator) => (
+              <AsanaCollaboratorRow
+                collaborator={collaborator}
+                key={collaborator.hubUserId}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </Surface>
   );
 }
 
-function PresenceTodayPanel() {
+function AsanaPeriodControls({
+  disabled,
+  onChange,
+  period,
+}: {
+  disabled: boolean;
+  onChange: (period: AsanaPerformancePeriodRequest) => void;
+  period: AsanaPerformancePeriodRequest;
+}) {
+  const presets = [
+    { label: "Hoje", value: "today" },
+    { label: "Semana", value: "week" },
+    { label: "Mes", value: "month" },
+  ] as const;
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-2">
+      <div className="inline-flex rounded-md border border-[#d9e0e7] bg-white p-1">
+        {presets.map((preset) => (
+          <button
+            aria-pressed={period.preset === preset.value}
+            className={`h-8 rounded px-3 text-xs font-semibold transition ${
+              period.preset === preset.value
+                ? "bg-[#101820] text-white"
+                : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
+            }`}
+            disabled={disabled}
+            key={preset.value}
+            onClick={() => onChange(createAsanaPeriod(preset.value))}
+            type="button"
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#8a97a8]">
+        Inicio
+        <input
+          className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm font-semibold normal-case tracking-normal text-[#17202f]"
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({
+              endDate: period.endDate,
+              preset: "custom",
+              startDate: event.target.value || period.startDate,
+            })
+          }
+          type="date"
+          value={period.startDate}
+        />
+      </label>
+      <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#8a97a8]">
+        Fim
+        <input
+          className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm font-semibold normal-case tracking-normal text-[#17202f]"
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({
+              endDate: event.target.value || period.endDate,
+              preset: "custom",
+              startDate: period.startDate,
+            })
+          }
+          type="date"
+          value={period.endDate}
+        />
+      </label>
+    </div>
+  );
+}
+
+function AsanaConfigState({
+  error,
+  isLoading,
+  snapshot,
+}: {
+  error: string | null;
+  isLoading: boolean;
+  snapshot: AsanaTeamPerformanceSnapshot | null;
+}) {
+  const missingEnv = snapshot?.source.missingEnv ?? [
+    "ASANA_ACCESS_TOKEN",
+  ];
+
+  return (
+    <div className="mt-4 grid min-h-52 place-items-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-center">
+      <div className="max-w-xl">
+        <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[#fff6e3] text-[#A07C3B]">
+          <KeyRound aria-hidden="true" size={20} />
+        </span>
+        <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
+          {isLoading ? "Carregando Asana..." : "Configurar Asana server-side"}
+        </p>
+        <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
+          {error ??
+            snapshot?.message ??
+            "O token deve ficar somente no ambiente do servidor. Em modo geral, a Home busca todos os espacos de trabalho acessiveis e cruza os colaboradores pelo e-mail cadastrado."}
+        </p>
+        <div className="mt-3 flex flex-wrap justify-center gap-2">
+          {missingEnv.map((key) => (
+            <code
+              className="rounded-md border border-[#eadfc8] bg-white px-2 py-1 text-xs font-semibold text-[#6f5728]"
+              key={key}
+            >
+              {key}
+            </code>
+          ))}
+          <code className="rounded-md border border-[#edf0f4] bg-white px-2 py-1 text-xs font-semibold text-[#667085]">
+            ASANA_WORKSPACE_MODE=all
+          </code>
+          <code className="rounded-md border border-[#edf0f4] bg-white px-2 py-1 text-xs font-semibold text-[#667085]">
+            ASANA_WORKSPACE_GIDS opcional
+          </code>
+          <code className="rounded-md border border-[#edf0f4] bg-white px-2 py-1 text-xs font-semibold text-[#667085]">
+            ASANA_TASK_WINDOW_DAYS
+          </code>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AsanaKpi({
+  icon,
+  label,
+  tone = "neutral",
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  tone?: "danger" | "neutral" | "success";
+  value: number | string;
+}) {
+  const toneClasses: Record<"danger" | "neutral" | "success", string> = {
+    danger: "text-red-700",
+    neutral: "text-[#101820]",
+    success: "text-emerald-700",
+  };
+
+  return (
+    <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
+      <div className={`flex items-center gap-2 text-xs ${toneClasses[tone]}`}>
+        {icon}
+        <span className="font-semibold uppercase tracking-[0.08em]">
+          {label}
+        </span>
+      </div>
+      <p className={`m-0 mt-2 text-xl font-semibold ${toneClasses[tone]}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function AsanaCollaboratorRow({
+  collaborator,
+}: {
+  collaborator: AsanaCollaboratorPerformance;
+}) {
+  const onTimeRate = collaborator.onTimeRate ?? 0;
+  const lateRate = collaborator.lateRate ?? 0;
+
+  return (
+    <article className="grid grid-cols-2 items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 2xl:grid-cols-[minmax(12rem,1.15fr)_repeat(5,minmax(4.5rem,0.55fr))_minmax(9rem,0.8fr)]">
+      <div className="min-w-0">
+        <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
+          {collaborator.name}
+        </p>
+        <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+          {collaborator.matched
+            ? `${collaborator.email} / ${formatWorkspaceNames(collaborator.workspaceNames)}`
+            : "sem usuario Asana"}
+        </p>
+      </div>
+      <CompactMetric label="total" value={collaborator.total} />
+      <CompactMetric
+        label="atraso"
+        tone={collaborator.overdue > 0 ? "danger" : "neutral"}
+        value={collaborator.overdue}
+      />
+      <CompactMetric label="concl." value={collaborator.completed} />
+      <CompactMetric label="prazo" value={collaborator.completedOnTime} />
+      <CompactMetric
+        label="media"
+        value={formatDelayDays(collaborator.averageDelayDays)}
+      />
+      <div className="min-w-0">
+        <div className="flex items-center justify-between gap-2 text-xs font-semibold text-[#485466]">
+          <span>{formatPercent(collaborator.onTimeRate)} no prazo</span>
+          <span>{formatPercent(collaborator.lateRate)} fora</span>
+        </div>
+        <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-[#eef1f4]">
+          <span
+            className="bg-emerald-500"
+            style={{ width: `${onTimeRate}%` }}
+          />
+          <span
+            className="bg-red-400"
+            style={{ width: `${lateRate}%` }}
+          />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function CompactMetric({
+  label,
+  tone = "neutral",
+  value,
+}: {
+  label: string;
+  tone?: "danger" | "neutral";
+  value: number | string;
+}) {
+  return (
+    <div>
+      <p
+        className={`m-0 text-sm font-semibold ${
+          tone === "danger" ? "text-red-700" : "text-[#101820]"
+        }`}
+      >
+        {value}
+      </p>
+      <p className="m-0 mt-1 text-[0.6875rem] uppercase tracking-[0.08em] text-[#8a97a8]">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function PresenceTodayPanel({ className }: { className?: string }) {
   const [summary, setSummary] = useState<HubPresenceSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -425,7 +774,7 @@ function PresenceTodayPanel() {
   const status = summary?.currentStatus ?? "offline";
 
   return (
-    <Surface bordered className="border-[#d9e0e7] bg-white p-5">
+    <Surface bordered className={`border-[#d9e0e7] bg-white p-5 ${className ?? ""}`}>
       <PanelTitle eyebrow="Meu dia" title="Historico de status" />
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
         <div>
@@ -596,6 +945,83 @@ function formatPresenceTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatPercent(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return "sem prazo";
+  }
+
+  return `${value.toLocaleString("pt-BR", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: value % 1 === 0 ? 0 : 1,
+  })}%`;
+}
+
+function formatDelayDays(value: number) {
+  if (value <= 0) {
+    return "0d";
+  }
+
+  return `${value.toLocaleString("pt-BR", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: value % 1 === 0 ? 0 : 1,
+  })}d`;
+}
+
+function createAsanaPeriod(
+  preset: AsanaPerformancePeriodRequest["preset"],
+): AsanaPerformancePeriodRequest {
+  const now = new Date();
+  const start = new Date(now);
+
+  if (preset === "today") {
+    return {
+      endDate: formatDateInput(now),
+      preset,
+      startDate: formatDateInput(now),
+    };
+  }
+
+  if (preset === "week") {
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? 6 : day - 1;
+    start.setDate(now.getDate() - mondayOffset);
+
+    return {
+      endDate: formatDateInput(now),
+      preset,
+      startDate: formatDateInput(start),
+    };
+  }
+
+  start.setDate(1);
+
+  return {
+    endDate: formatDateInput(now),
+    preset: "month",
+    startDate: formatDateInput(start),
+  };
+}
+
+function formatDateInput(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatWorkspaceNames(workspaceNames: string[]) {
+  if (workspaceNames.length === 0) {
+    return "sem workspace";
+  }
+
+  if (workspaceNames.length <= 2) {
+    return workspaceNames.join(", ");
+  }
+
+  return `${workspaceNames.slice(0, 2).join(", ")} +${workspaceNames.length - 2}`;
 }
 
 function createTeamMembers(snapshot: HubHomeSnapshot | null): HomeTeamMember[] {
