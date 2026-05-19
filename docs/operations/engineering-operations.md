@@ -5308,3 +5308,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: criacao real de registro ainda precisa de smoke autenticado pelo Lucas em `ops.c2x.app.br/squadops`; warnings conhecidos permanecem no build remoto: Turbopack/NFT da leitura filesystem do Engineering Operations, `npm audit` e variaveis Vercel fora do `turbo.json`.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `SquadOps Core` para validar a criacao autenticada do primeiro registro vivo; `Hub SupportOps` se a API retornar erro com sessao admin valida.
+
+Registro de diario:
+
+- Assunto: `[DataOps] Aplicacao migrations Ticket TI producao`.
+- Nome da squad/agente: `Hub DataOps` com apoio de `Hub ReleaseOps`.
+- Data e hora local: 2026-05-19 11:11:43 -03:00.
+- Tipo da alteracao: `CORRECAO OPERACIONAL` - aplicacao de migrations Supabase pendentes em producao.
+- Motivo da mudanca: a tela do SquadOps/Ticket TI exibia aviso de que as migrations de tickets ainda nao estavam aplicadas no banco de producao, impedindo o uso operacional real da fila de Ticket TI.
+- Arquivos/modulos afetados: banco Supabase de producao; migrations `packages/database/migrations/0014_hub_it_tickets.sql`, `packages/database/migrations/0016_hub_release_protocols.sql` e `packages/database/migrations/0017_squadops_ticket_operation_links.sql`.
+- Como foi feito: carreguei temporariamente as variaveis de producao a partir do Vercel em arquivo descartavel, sem exibir valores sensiveis; validei a ausencia das tabelas; apliquei as migrations via conexao Postgres server-side; executei reload do schema cache do PostgREST; e removi o arquivo temporario de env ao final.
+- Logica utilizada: a migration `0014` cria a base de Ticket TI; a `0017` cria o vinculo entre tickets e protocolos operacionais; a `0016` foi aplicada junto porque a `0017` depende das tabelas de release protocols. Assim o processo fica completo para tickets, eventos, anexos, protocolos de release e links operacionais.
+- Validacao executada: preflight confirmou ausencia de `hub_it_tickets`, `hub_it_ticket_events`, `hub_it_ticket_attachments`, `hub_release_protocols`, `hub_release_protocol_items`, `hub_release_environment_events` e `hub_it_ticket_operation_links`; apos aplicacao, todas as tabelas ficaram existentes com RLS ativo; enum `hub_it_ticket_status` confirmou os status oficiais; validacao REST do Supabase retornou 200 para todas as tabelas novas e sem erro `PGRST205`, confirmando schema cache atualizado.
+- Pendencias ou riscos conhecidos: nao foi criado dado de teste em producao; o smoke autenticado final depende de Lucas atualizar a sessao no navegador e abrir o Ticket TI no SquadOps. Se o aviso persistir apos refresh forte ou logout/login, acionar `Hub SupportOps` para investigar sessao/cache do cliente ou autorizacao da API.
+- Status operacional: `CORRIGIDO`.
+- Proxima squad recomendada: `SquadOps Core` para validar o fluxo autenticado de criacao/visualizacao de Ticket TI; `Hub SupportOps` somente se o erro persistir na tela.
