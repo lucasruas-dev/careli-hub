@@ -36,6 +36,23 @@ Novas atividades operacionais nao devem depender de commit no Markdown nem de de
 
 Regra pratica: deploy publica codigo; registro operacional publica dado. Depois desta V1, novas anotacoes, status e evidencias devem nascer no banco e nao em um commit documental obrigatorio.
 
+## Regra para SquadOps Core
+
+Quando Lucas autorizar `SquadOps Core` a executar ou publicar um recorte do proprio modulo, o agente assume tambem a reconciliacao operacional da tela.
+
+O comportamento obrigatorio e:
+
+- nao encerrar a entrega apenas com mensagem no chat;
+- nao considerar o Markdown como suficiente para atualizar a tela;
+- criar ou atualizar o registro vivo em `hub_engineering_operation_records`;
+- reconciliar os protocolos afetados `AT/AL/DP/TK` para o status real;
+- preencher commit, deployment, ambiente, validacoes, healthchecks e riscos quando existirem;
+- atualizar a visao estruturada de releases quando o recorte tiver deploy;
+- confirmar que a timeline do Operations Center passa a exibir o movimento recente;
+- registrar a decisao final no diario canonico `docs/operations/engineering-operations.md`.
+
+Se a entrega foi publicada, o status operacional deve refletir producao, por exemplo `EM PRODUCAO` ou `CORRIGIDO`. Se nao foi publicada, deve permanecer explicitamente em `AGUARDANDO RELEASEOPS`, `BLOQUEADO`, `EM HOMOLOGACAO` ou outro status real, sem ambiguidade.
+
 ## Sync local do diario para o banco
 
 Enquanto ainda existirem registros append-only no Markdown canonico, a sincronizacao para o Supabase pode rodar na maquina local do Lucas.

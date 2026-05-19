@@ -5356,3 +5356,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: smoke visual autenticado ainda depende da sessao real do Lucas; se a tela estiver aberta, pode exigir refresh para buscar novamente a API estruturada. A rotina local de sync continua dependente do Hub local ativo para refletir alteracoes do arquivo local.
 - Status operacional: `EM PRODUCAO`.
 - Proxima squad recomendada: `SquadOps Core` para validar a tela autenticada atualizada; `Hub SupportOps` se o registro nao aparecer apos refresh ou se o fluxo de Ticket TI ainda falhar.
+
+Registro de diario:
+
+- Assunto: `[SquadOps] Regra obrigatoria para reconciliacao viva`.
+- Nome da squad/agente: `SquadOps Core`.
+- Data e hora local: 2026-05-19 12:09:07 -03:00.
+- Tipo da alteracao: `GOVERNANCA OPERACIONAL` - atualizacao dos arquivos de orientacao para agentes.
+- Motivo da mudanca: Lucas determinou que todo agente atuando como `SquadOps Core` deve seguir o comportamento corrigido na reconciliacao de producao: uma entrega do SquadOps nao pode ser considerada concluida apenas por mensagem no chat ou por registro Markdown se a tela le a fonte estruturada.
+- Arquivos/modulos afetados: `AGENTS.md`, `docs/operations/README.md`, `docs/operations/squadops-center-process.md` e este diario.
+- Como foi feito: registrei a regra geral no `AGENTS.md`, acrescentei a regra de governanca no README operacional e criei uma secao especifica `Regra para SquadOps Core` no processo do SquadOps Center.
+- Logica utilizada: o Operations Center e operacional e orientado por dados vivos; portanto, quando `SquadOps Core` tiver autorizacao para executar/publicar seu proprio recorte, precisa atualizar `hub_engineering_operation_records`, reconciliar protocolos `AT/AL/DP/TK`, preencher commit/deploy/validacoes/status real e depois registrar o diario canonico.
+- Validacao executada: revisao dos arquivos de orientacao e aplicacao da regra em documento; sem alteracao de codigo, banco, env, migration ou deploy.
+- Pendencias ou riscos conhecidos: nenhum risco tecnico imediato; futuras entregas do SquadOps devem seguir esta regra para evitar divergencia entre chat, Markdown e tela.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `SquadOps Core` para aplicar a regra em toda proxima publicacao do modulo.
