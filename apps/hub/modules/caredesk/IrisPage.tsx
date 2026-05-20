@@ -2,7 +2,7 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -46,6 +46,11 @@ import {
 import { Tooltip } from "@repo/uix";
 
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
+import {
+  playIrisInboundSound,
+  registerIrisNotificationPermissionIntent,
+  showBrowserIrisNotification,
+} from "@/lib/iris/notification-effects";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 type IrisPageProps = {
@@ -86,6 +91,7 @@ type IrisTicket = {
   assignedToLabel: string;
   channelId?: string | null;
   channelLabel: string;
+  contactAvatarUrl?: string | null;
   contactDocument?: string | null;
   contactEmail?: string | null;
   contactId?: string | null;
@@ -164,6 +170,14 @@ type IrisData = {
   tickets: IrisTicket[];
 };
 
+type IrisInboundNotice = {
+  body: string;
+  id: string;
+  receivedAt: string;
+  ticketId: string;
+  title: string;
+};
+
 type IrisMetaEvent = {
   contactName?: string | null;
   contactWaId?: string | null;
@@ -207,6 +221,7 @@ const emptyIrisData: IrisData = {
   tickets: [],
 };
 const emptyIrisTickets: IrisTicket[] = [];
+const IRIS_REFRESH_INTERVAL_MS = 4000;
 
 const navigationItems: Array<{
   id: IrisView;
@@ -266,6 +281,84 @@ export function IrisPage({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(loadFromSupabase);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [inboundNotice, setInboundNotice] = useState<IrisInboundNotice | null>(
+    null,
+  );
+  const knownMessageIdsRef = useRef<Set<string>>(
+    collectIrisMessageIds({ ...emptyIrisData, tickets: initialTickets }),
+  );
+  const refreshInFlightRef = useRef(false);
+
+  function notifyInbound(ticket: IrisTicket, message: IrisMessage) {
+    const notice = {
+      body: message.body || "Nova mensagem recebida no WhatsApp.",
+      id: message.id,
+      receivedAt: message.createdAt,
+      ticketId: ticket.id,
+      title: ticket.contactLabel,
+    };
+
+    setInboundNotice(notice);
+    playIrisInboundSound();
+    showBrowserIrisNotification({
+      body: notice.body,
+      tag: `iris-${ticket.id}`,
+      title: `Iris - ${notice.title}`,
+    });
+  }
+
+  const refreshIrisData = useCallback(
+    async ({ notifyNewInbound = false } = {}) => {
+      if (!loadFromSupabase || refreshInFlightRef.current) {
+        return;
+      }
+
+      refreshInFlightRef.current = true;
+
+      try {
+        const nextData = await loadIrisData();
+        let latestInbound: { message: IrisMessage; ticket: IrisTicket } | null =
+          null;
+        const knownMessageIds = knownMessageIdsRef.current;
+
+        nextData.tickets.forEach((ticket) => {
+          ticket.messages.forEach((message) => {
+            const alreadyKnown = knownMessageIds.has(message.id);
+
+            if (!alreadyKnown) {
+              knownMessageIds.add(message.id);
+
+              if (notifyNewInbound && message.direction === "inbound") {
+                if (
+                  !latestInbound ||
+                  dateValue(message.createdAt) >
+                    dateValue(latestInbound.message.createdAt)
+                ) {
+                  latestInbound = { message, ticket };
+                }
+              }
+            }
+          });
+        });
+
+        setIrisData(nextData);
+        setSelectedTicketId((current) =>
+          current && nextData.tickets.some((ticket) => ticket.id === current)
+            ? current
+            : nextData.tickets[0]?.id || "",
+        );
+
+        if (latestInbound) {
+          notifyInbound(latestInbound.ticket, latestInbound.message);
+        }
+      } catch (error) {
+        console.error("[iris] nao foi possivel atualizar a operacao", error);
+      } finally {
+        refreshInFlightRef.current = false;
+      }
+    },
+    [loadFromSupabase],
+  );
 
   useEffect(() => {
     if (!loadFromSupabase) {
@@ -273,6 +366,10 @@ export function IrisPage({
         ...current,
         tickets: initialTickets,
       }));
+      knownMessageIdsRef.current = collectIrisMessageIds({
+        ...emptyIrisData,
+        tickets: initialTickets,
+      });
       setSelectedTicketId((current) => current || initialTickets[0]?.id || "");
       return;
     }
@@ -291,6 +388,7 @@ export function IrisPage({
         }
 
         setIrisData(nextData);
+        knownMessageIdsRef.current = collectIrisMessageIds(nextData);
         setSelectedTicketId(
           (current) => current || nextData.tickets[0]?.id || "",
         );
@@ -313,6 +411,71 @@ export function IrisPage({
       active = false;
     };
   }, [initialTickets, loadFromSupabase]);
+
+  useEffect(() => {
+    if (!loadFromSupabase) {
+      return;
+    }
+
+    registerIrisNotificationPermissionIntent();
+
+    const client = getHubSupabaseClient();
+
+    if (!client) {
+      return;
+    }
+
+    const channel = client
+      .channel("iris-caredesk-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "caredesk_messages" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: true });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "caredesk_tickets" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: true });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "caredesk_tickets" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: false });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "caredesk_contacts" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: false });
+        },
+      )
+      .subscribe();
+
+    const refreshInterval = window.setInterval(() => {
+      void refreshIrisData({ notifyNewInbound: true });
+    }, IRIS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(refreshInterval);
+      void client.removeChannel(channel);
+    };
+  }, [loadFromSupabase, refreshIrisData]);
+
+  useEffect(() => {
+    if (!inboundNotice) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setInboundNotice(null), 7000);
+
+    return () => window.clearTimeout(timeout);
+  }, [inboundNotice]);
 
   const selectedTicket = useMemo(() => {
     return (
@@ -337,6 +500,7 @@ export function IrisPage({
   }
 
   function handleLocalMessage(ticketId: string, message: IrisMessage) {
+    knownMessageIdsRef.current.add(message.id);
     setIrisData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
@@ -366,11 +530,23 @@ export function IrisPage({
 
   return (
     <div
+      onClick={registerIrisNotificationPermissionIntent}
       className={[
         "min-h-[calc(100vh-72px)] bg-[#f3f6fa] text-[#101820]",
         embedded ? "rounded-2xl border border-[#dbe3ef]" : "",
       ].join(" ")}
     >
+      {inboundNotice ? (
+        <IrisInboundNoticeToast
+          notice={inboundNotice}
+          onDismiss={() => setInboundNotice(null)}
+          onOpen={() => {
+            setSelectedTicketId(inboundNotice.ticketId);
+            setActiveView("atendimento");
+            setInboundNotice(null);
+          }}
+        />
+      ) : null}
       <div
         className={[
           "grid min-h-[calc(100vh-72px)] transition-[grid-template-columns] duration-200",
@@ -927,23 +1103,28 @@ function IrisTicketRow({
         onClick={() => onSelectTicket(ticket.id)}
         className="min-w-0 text-left"
       >
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-sm font-semibold text-[#7A5E2C]">
-            {ticket.protocol}
-          </span>
-          {ticket.unread ? (
-            <span className="rounded-full bg-[#A07C3B] px-2 py-0.5 text-[11px] font-semibold text-white shadow-[0_0_0_3px_rgba(160,124,59,0.12)]">
-              nova
-            </span>
-          ) : null}
-          <PriorityPill priority={ticket.priority} />
+        <div className="flex items-start gap-2.5">
+          <ContactAvatar ticket={ticket} size="sm" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm font-semibold text-[#7A5E2C]">
+                {ticket.protocol}
+              </span>
+              {ticket.unread ? (
+                <span className="rounded-full bg-[#A07C3B] px-2 py-0.5 text-[11px] font-semibold text-white shadow-[0_0_0_3px_rgba(160,124,59,0.12)]">
+                  nova
+                </span>
+              ) : null}
+              <PriorityPill priority={ticket.priority} />
+            </div>
+            <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+              {ticket.contactLabel}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-500">
+              {ticket.subject}
+            </p>
+          </div>
         </div>
-        <p className="mt-1 truncate text-sm font-semibold text-slate-950">
-          {ticket.contactLabel}
-        </p>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {ticket.subject}
-        </p>
       </button>
 
       <div className="min-w-0">
@@ -1116,10 +1297,8 @@ function IrisConversationPanel({
     (ticket.status === "new" ||
       ticket.status === "waiting_operator" ||
       ticketChecklist.some((item) => !item.ok));
-  const operationReady = !ticketClosed && !ticketIncomplete;
-  const blockedTooltip = ticketClosed
-    ? "Ticket encerrado"
-    : "Complete o ticket para iniciar o atendimento.";
+  const operationReady = !ticketClosed;
+  const blockedTooltip = ticketClosed ? "Ticket encerrado" : "Enviar mensagem";
 
   async function sendMessage() {
     const body = draft.trim();
@@ -1275,17 +1454,22 @@ function IrisConversationPanel({
                       : "border-slate-200/70 bg-white hover:bg-slate-50",
                   ].join(" ")}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 truncate text-sm font-semibold text-slate-950">
-                      {conversation.contactLabel}
-                    </p>
-                    <span className="shrink-0 text-[11px] text-slate-400">
-                      {conversationTime(conversation)}
-                    </span>
+                  <div className="flex items-start gap-2.5">
+                    <ContactAvatar ticket={conversation} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="min-w-0 truncate text-sm font-semibold text-slate-950">
+                          {conversation.contactLabel}
+                        </p>
+                        <span className="shrink-0 text-[11px] text-slate-400">
+                          {conversationTime(conversation)}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+                        {conversation.lastMessagePreview}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 line-clamp-1 text-xs text-slate-500">
-                    {conversation.lastMessagePreview}
-                  </p>
                 </button>
               ))
             ) : (
@@ -1301,9 +1485,7 @@ function IrisConversationPanel({
         <header className="shrink-0 border-b border-slate-100 bg-white">
           <div className="flex flex-col gap-2 px-4 py-2.5 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
-                <MessageCircle className="size-5" aria-hidden="true" />
-              </div>
+              <ContactAvatar ticket={ticket} size="md" />
               <div className="min-w-0">
                 <h2 className="truncate text-base font-semibold text-slate-950">
                   {ticket.contactLabel}
@@ -1426,15 +1608,11 @@ function IrisConversationPanel({
         </div>
 
         <footer className="shrink-0 border-t border-slate-100 bg-white p-2.5">
-          {!operationReady ? (
+          {ticketClosed ? (
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
                 <LockKeyhole className="size-3.5" aria-hidden="true" />
-                <span>
-                  {ticketClosed
-                    ? "Ticket encerrado"
-                    : "Complete o ticket para iniciar o atendimento"}
-                </span>
+                <span>Ticket encerrado</span>
               </div>
               <TicketChecklist items={ticketChecklist} />
             </div>
@@ -1473,7 +1651,7 @@ function IrisConversationPanel({
               placeholder={
                 operationReady
                   ? "Escrever mensagem WhatsApp..."
-                  : "Ticket incompleto"
+                  : "Ticket encerrado"
               }
               disabled={!operationReady}
               className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
@@ -1506,16 +1684,19 @@ function IrisConversationPanel({
       <aside className="hidden w-[330px] shrink-0 border-l border-slate-100 bg-white xl:block">
         <div className="border-b border-slate-100 p-3">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                Contexto
-              </p>
-              <h3 className="mt-1 truncate text-sm font-semibold text-slate-950">
-                {ticket.contactLabel}
-              </h3>
-              <p className="mt-0.5 text-xs font-medium text-slate-500">
-                {ticket.contactPhone ?? "Sem telefone"}
-              </p>
+            <div className="flex min-w-0 items-start gap-2.5">
+              <ContactAvatar ticket={ticket} size="lg" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                  Contexto
+                </p>
+                <h3 className="mt-1 truncate text-sm font-semibold text-slate-950">
+                  {ticket.contactLabel}
+                </h3>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
+                  {ticket.contactPhone ?? "Sem telefone"}
+                </p>
+              </div>
             </div>
             <MessageSquareText
               className="size-4 text-slate-300"
@@ -3072,6 +3253,93 @@ function FilterSelect({
   );
 }
 
+function IrisInboundNoticeToast({
+  notice,
+  onDismiss,
+  onOpen,
+}: {
+  notice: IrisInboundNotice;
+  onDismiss: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="fixed right-5 top-20 z-[90] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#eadcc2] bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+          <MessageCircle className="size-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+            Nova mensagem WhatsApp
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+            {notice.title}
+          </p>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+            {notice.body}
+          </p>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium text-slate-400">
+              {formatDateTime(notice.receivedAt)}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="h-7 rounded-md px-2 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={onOpen}
+                className="h-7 rounded-md bg-[#A07C3B] px-2 text-[11px] font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+              >
+                Abrir
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactAvatar({
+  size = "md",
+  ticket,
+}: {
+  size?: "sm" | "md" | "lg";
+  ticket: IrisTicket;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const sizeClass =
+    size === "lg" ? "size-11" : size === "sm" ? "size-8" : "size-9";
+  const textClass =
+    size === "lg" ? "text-sm" : size === "sm" ? "text-[11px]" : "text-xs";
+  const imageUrl =
+    ticket.contactAvatarUrl && !imageFailed ? ticket.contactAvatarUrl : null;
+
+  if (imageUrl) {
+    return (
+      <img
+        alt={ticket.contactLabel}
+        className={`${sizeClass} shrink-0 rounded-full border border-slate-200 object-cover shadow-[0_1px_2px_rgba(15,23,42,0.08)]`}
+        src={imageUrl}
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`${sizeClass} ${textClass} flex shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 font-semibold uppercase text-emerald-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)]`}
+    >
+      {contactInitials(ticket.contactLabel)}
+    </span>
+  );
+}
+
 function MessageBubble({ message }: { message: IrisMessage }) {
   const outbound = message.direction === "outbound";
   const internal =
@@ -3343,7 +3611,9 @@ async function loadIrisData(): Promise<IrisData> {
     contactIds.length
       ? supabase
           .from("caredesk_contacts")
-          .select("id,display_name,document,email,phone,whatsapp_phone")
+          .select(
+            "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload",
+          )
           .in("id", contactIds)
       : Promise.resolve({ data: [], error: null }),
     ticketIds.length
@@ -3526,6 +3796,7 @@ function mapTicketRow(input: {
       : "Sem responsavel",
     channelId: input.row.channel_id,
     channelLabel: input.channel?.name ?? "Canal nao definido",
+    contactAvatarUrl: getContactAvatarUrl(input.contact),
     contactDocument: input.contact?.document ?? null,
     contactEmail: input.contact?.email ?? null,
     contactId: input.row.contact_id,
@@ -3948,6 +4219,58 @@ function labelForSource(source: string) {
 
 function formatCount(value: number) {
   return Number(value ?? 0).toLocaleString("pt-BR");
+}
+
+function collectIrisMessageIds(data: IrisData) {
+  return new Set(
+    data.tickets.flatMap((ticket) =>
+      ticket.messages.map((message) => message.id).filter(Boolean),
+    ),
+  );
+}
+
+function getContactAvatarUrl(contact: any) {
+  const candidates = [
+    contact?.metadata?.avatar_url,
+    contact?.metadata?.avatarUrl,
+    contact?.metadata?.profile_picture_url,
+    contact?.metadata?.profilePictureUrl,
+    contact?.metadata?.profile_photo_url,
+    contact?.metadata?.profilePhotoUrl,
+    contact?.metadata?.picture,
+    contact?.metadata?.image,
+    contact?.c2x_payload?.avatar_url,
+    contact?.c2x_payload?.avatarUrl,
+    contact?.c2x_payload?.profile_picture_url,
+    contact?.c2x_payload?.profilePictureUrl,
+    contact?.c2x_payload?.picture,
+  ];
+
+  return candidates.find(isUsableUrl) ?? null;
+}
+
+function isUsableUrl(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^https?:\/\//i.test(value.trim()) &&
+    value.trim().length <= 2048
+  );
+}
+
+function contactInitials(name: string) {
+  const words = name
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+
+  if (!words.length) {
+    return "IR";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("");
 }
 
 async function getIrisAccessToken() {

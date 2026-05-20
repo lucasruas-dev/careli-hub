@@ -6511,3 +6511,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nenhuma env, secret, Supabase, banco, migration, rollback ou producao foi alterado. A exibicao do prompt de instalacao ainda depende do Chrome/Edge atualizar o estado de instalabilidade apos recarregar a pagina; se o navegador tiver bloqueado ou recusado o prompt anteriormente, pode ser necessario fechar/reabrir a aba.
 - Status operacional: `EM HOMOLOGACAO`.
 - Proxima squad recomendada: `Lucas` para recarregar `https://homo.c2x.app.br`, testar a aparicao do icone/botao de instalacao e, se necessario, fechar e abrir a aba para o Chrome recalcular a instalabilidade.
+
+Registro de diario:
+
+- Assunto: `[Iris] Atendimento realtime e avatar do contato`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 04:55:20 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO FUNCIONAL / UX OPERACIONAL / HOMOLOGACAO`.
+- Motivo da mudanca: Lucas confirmou que mensagens inbound do WhatsApp chegaram na Iris, mas exigiu que novas mensagens aparecam sem refresh, com notificacao visual e sonora, e pediu desativar temporariamente o bloqueio de "complete o ticket" para validar apenas chegada/envio de mensagem. Lucas tambem perguntou se a Iris consegue trazer foto de perfil.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/lib/iris/notification-effects.ts` e este diario canonico.
+- Como foi feito: adicionei inscricao Supabase Realtime em `caredesk_messages`, `caredesk_tickets` e `caredesk_contacts`, com polling de seguranca a cada 4 segundos para homologacao caso a publicacao realtime nao dispare; criei toast visual, notificacao do navegador e alerta sonoro local para nova mensagem inbound; removi o bloqueio operacional de ticket incompleto no composer, mantendo bloqueio apenas para ticket encerrado; e passei a ler `metadata`/`c2x_payload` do contato para exibir foto de perfil quando existir URL de avatar, com fallback por iniciais.
+- Logica utilizada: o teste atual precisa validar fluxo vivo de mensagem antes de exigir preenchimento completo de perfil/fila/contato/prioridade/SLA. O Realtime entrega atualizacao imediata quando o Supabase publicar o evento; o polling curto evita que a operacao dependa exclusivamente dessa configuracao enquanto a homologacao do Meta esta em andamento. A foto de perfil fica preparada sem migration e sem depender de secrets: se a Meta ou outra fonte salvar URL segura no contato, a UI passa a exibir a imagem automaticamente; caso contrario, usa iniciais.
+- Validacao executada: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; smoke local em `http://localhost:3007/iris` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: notificacao sonora pode depender de interacao previa do usuario com a pagina por regra do navegador; notificacao nativa depende da permissao do navegador. Nenhuma migration, env, secret, producao ou alteracao de dados reais foi executada neste recorte. Ainda falta publicar em homologacao e Lucas testar enviando nova mensagem pelo WhatsApp sem refresh.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Hefesto` para publicar o recorte em homologacao quando Lucas autorizar ou quando este pacote for incluido no proximo deploy homolog.
