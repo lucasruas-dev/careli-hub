@@ -293,7 +293,7 @@ export function MessageItem({
             {standaloneEmoji}
           </div>
         ) : shouldShowBody ? (
-          <div className="relative z-10 text-sm leading-6">
+          <div className="relative z-10 min-w-0 max-w-full whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
             {message.deletedAt
               ? "Mensagem apagada"
               : renderMessageBody(message, users)}
@@ -353,27 +353,29 @@ export function MessageItem({
               ) : null}
             </div>
           ) : null}
-          <button
-            aria-label={
-              message.threadCount
-                ? `${message.threadCount} respostas`
-                : "Responder"
-            }
-            className={`inline-flex min-w-6 items-center justify-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
-              message.threadCount
-                ? "border border-[#A07C3B] bg-[#A07C3B] text-white opacity-100 shadow-sm shadow-[#A07C3B]/25 hover:brightness-110"
-                : "text-inherit opacity-65 hover:bg-[#A07C3B]/10 hover:opacity-100"
-            }`}
-            onClick={() => onOpenThread?.(message.id)}
-            type="button"
-          >
-            <Reply aria-hidden="true" size={13} />
-            {message.threadCount ? (
-              <span className="text-[0.65rem] font-semibold">
-                {message.threadCount}
-              </span>
-            ) : null}
-          </button>
+          {onOpenThread ? (
+            <button
+              aria-label={
+                message.threadCount
+                  ? `${message.threadCount} respostas`
+                  : "Responder"
+              }
+              className={`inline-flex min-w-6 items-center justify-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
+                message.threadCount
+                  ? "border border-[#A07C3B] bg-[#A07C3B] text-white opacity-100 shadow-sm shadow-[#A07C3B]/25 hover:brightness-110"
+                  : "text-inherit opacity-65 hover:bg-[#A07C3B]/10 hover:opacity-100"
+              }`}
+              onClick={() => onOpenThread(message.id)}
+              type="button"
+            >
+              <Reply aria-hidden="true" size={13} />
+              {message.threadCount ? (
+                <span className="text-[0.65rem] font-semibold">
+                  {message.threadCount}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
           {onAskAiReply && !message.deletedAt ? (
             <button
               aria-label="Responder com Athena"

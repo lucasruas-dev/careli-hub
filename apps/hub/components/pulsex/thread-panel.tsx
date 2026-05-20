@@ -3,6 +3,7 @@
 import type {
   HermesMessage,
   HermesMessageAttachment,
+  HermesMessageTag,
   HermesPresenceUser,
   HermesReactionEmoji,
   HermesThreadReply,
@@ -33,6 +34,10 @@ type ThreadPanelProps = {
     messageId: HermesMessage["id"],
     emoji: HermesReactionEmoji,
   ) => void;
+  onToggleTag: (
+    messageId: HermesMessage["id"],
+    tag: HermesMessageTag,
+  ) => void;
   reactionOptions: readonly HermesReactionEmoji[];
   replies: readonly HermesThreadReply[];
   replyValue: string;
@@ -47,6 +52,7 @@ export function ThreadPanel({
   onEditMessage,
   onSubmitReply,
   onToggleReaction,
+  onToggleTag,
   reactionOptions,
   replies,
   replyValue,
@@ -189,6 +195,7 @@ export function ThreadPanel({
           message={message}
           onEditMessage={onEditMessage}
           onToggleReaction={onToggleReaction}
+          onToggleTag={onToggleTag}
           reactionOptions={reactionOptions}
           users={users}
         />
@@ -225,7 +232,7 @@ export function ThreadPanel({
                   <MessageAttachmentPreview attachment={reply.attachment} />
                 ) : null}
                 {shouldShowReplyBody(reply) ? (
-                  <p className="m-0 whitespace-pre-wrap leading-6">
+                  <p className="m-0 min-w-0 max-w-full whitespace-pre-wrap break-words leading-6 [overflow-wrap:anywhere]">
                     {reply.body}
                   </p>
                 ) : null}

@@ -1372,6 +1372,7 @@ export function HermesWorkspace() {
                 onEditMessage={handleEditMessage}
                 onSubmitReply={handleSubmitThreadReply}
                 onToggleReaction={handleToggleReaction}
+                onToggleTag={handleToggleMessageTag}
                 reactionOptions={hermesReactionOptions}
                 replies={activeThreadReplies}
                 replyValue={threadComposerValue}
