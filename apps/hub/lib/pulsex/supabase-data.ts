@@ -562,12 +562,14 @@ export async function listHermesThreadReplies(input: {
 }
 
 export async function createHermesThreadReply(input: {
+  attachment?: HermesMessageAttachment;
   authorUserId?: string;
   body: string;
   channelId: HermesChannel["id"];
   messageId: HermesMessage["id"];
 }): Promise<HermesThreadReply> {
   const message = await createHermesMessage({
+    attachment: input.attachment,
     authorUserId: input.authorUserId,
     body: input.body,
     channelId: input.channelId,
@@ -1035,6 +1037,7 @@ function mapThreadReplyFromMessage(
   parentMessageId: HermesMessage["id"],
 ): HermesThreadReply {
   return {
+    attachment: message.attachment,
     authorAvatarUrl: message.authorAvatarUrl,
     authorId: message.authorId,
     authorName: message.authorName,

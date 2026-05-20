@@ -6716,3 +6716,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: a validacao final visual/autenticada ainda depende do Lucas testar em `https://homo.c2x.app.br/hermes`, especialmente abrir reacoes em mensagem de canal, em painel de respostas e enviar emoji sozinho. Producao nao foi alterada.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO RETESTE VISUAL DO LUCAS`.
 - Proxima squad recomendada: `Lucas` para reteste visual/autenticado; `Hermes Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Imagens anexadas em respostas`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 12:42:48 -03:00.
+- Tipo da alteracao: `MELHORIA UX OPERACIONAL / THREADS / HOMOLOGACAO`.
+- Motivo da mudanca: Lucas solicitou que o painel de respostas do Hermes permitisse anexar imagens dentro das respostas, como ja ocorre no composer principal da conversa.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/lib/pulsex/types.ts`, `apps/hub/lib/pulsex/supabase-data.ts` e este diario canonico. O caminho tecnico `pulsex` permanece por compatibilidade; o modulo operacional e `Hermes`.
+- Como foi feito: o composer do painel de respostas ganhou input de imagem, suporte a colar print no textarea, validacao de tipo/tamanho, preview removivel antes do envio e botao de envio habilitado quando houver texto ou imagem. O contrato `HermesThreadReply` passou a carregar `attachment`; `createHermesThreadReply` passou a enviar o anexo para `createHermesMessage`; e a renderizacao das respostas reutiliza `MessageAttachmentPreview` para mostrar a imagem na bolha.
+- Logica utilizada: a API do Hermes ja persiste anexos em `metadata.attachment` e tambem aceita `threadParentMessageId`; portanto, a melhoria foi feita sem migration, sem nova tabela e sem alterar Supabase. A imagem em resposta usa o mesmo padrao de metadata do chat principal, preservando compatibilidade com mensagens existentes e reduzindo risco operacional.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless/cache da worktree; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional da worktree e Turbopack/NFT; `git diff --check` passou; smoke local `GET http://localhost:3029/hermes` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, Supabase, banco, migration, producao ou alias de producao foi alterado. A validacao autenticada final precisa confirmar anexar arquivo, colar print e enviar resposta com apenas imagem no painel de respostas.
+- Status operacional: `VALIDADO LOCAL / PUBLICACAO HOMOLOG EM ANDAMENTO`.
+- Proxima squad recomendada: `Hermes Core` para publicar o recorte em `homolog` e executar healthcheck; `Lucas` para reteste visual/autenticado.

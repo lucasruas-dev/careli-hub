@@ -733,7 +733,7 @@ function ReactionSummary({
   );
 }
 
-function MessageAttachmentPreview({
+export function MessageAttachmentPreview({
   attachment,
 }: {
   attachment: NonNullable<HermesMessage["attachment"]>;

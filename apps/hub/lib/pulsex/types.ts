@@ -126,6 +126,7 @@ export type HermesMessage = {
 };
 
 export type HermesThreadReply = {
+  attachment?: HermesMessageAttachment;
   authorAvatarUrl?: string;
   authorId: HermesPresenceUser["id"];
   authorName?: string;

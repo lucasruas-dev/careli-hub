@@ -2,13 +2,22 @@
 
 import type {
   HermesMessage,
+  HermesMessageAttachment,
   HermesPresenceUser,
   HermesReactionEmoji,
   HermesThreadReply,
 } from "@/lib/pulsex";
-import { Send, X } from "lucide-react";
-import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
-import { MessageItem } from "./message-item";
+import { Image as ImageIcon, Paperclip, Send, X } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
+import { MessageAttachmentPreview, MessageItem } from "./message-item";
 
 type ThreadPanelProps = {
   currentUserId: HermesPresenceUser["id"];
@@ -19,7 +28,7 @@ type ThreadPanelProps = {
     messageId: HermesMessage["id"],
     body: string,
   ) => Promise<void> | void;
-  onSubmitReply: () => void;
+  onSubmitReply: (input?: { attachment?: HermesMessageAttachment }) => boolean;
   onToggleReaction: (
     messageId: HermesMessage["id"],
     emoji: HermesReactionEmoji,
@@ -43,7 +52,12 @@ export function ThreadPanel({
   replyValue,
   users,
 }: ThreadPanelProps) {
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [attachment, setAttachment] = useState<HermesMessageAttachment | null>(
+    null,
+  );
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
   useEffect(() => {
     const textarea = replyTextareaRef.current;
@@ -61,21 +75,92 @@ export function ThreadPanel({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSubmitReply();
+    submitReply();
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      onSubmitReply();
+      submitReply();
     }
+  }
+
+  function submitReply() {
+    const didSubmit = onSubmitReply(
+      attachment ? { attachment } : undefined,
+    );
+
+    if (!didSubmit) {
+      return;
+    }
+
+    setAttachment(null);
+    setMediaError(null);
+  }
+
+  async function handleImageInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    await attachImageFile(file);
+  }
+
+  async function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const imageFile = getClipboardImageFile(event.clipboardData);
+
+    if (!imageFile) {
+      return;
+    }
+
+    event.preventDefault();
+    await attachImageFile(imageFile, {
+      label: `Print ${formatAttachmentTime(new Date())}.${getImageExtension(imageFile.type)}`,
+    });
+  }
+
+  async function attachImageFile(
+    file: File,
+    options: { label?: string } = {},
+  ) {
+    if (!file.type.startsWith("image/")) {
+      setMediaError("Selecione uma imagem.");
+      return;
+    }
+
+    if (file.size > MAX_THREAD_IMAGE_BYTES) {
+      setMediaError("Imagem acima de 8 MB.");
+      return;
+    }
+
+    let url: string;
+
+    try {
+      url = await readFileAsDataUrl(file);
+    } catch {
+      setMediaError("Nao foi possivel carregar a imagem.");
+      return;
+    }
+
+    setAttachment({
+      label: options.label ?? file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      type: "image",
+      url,
+    });
+    setMediaError(null);
   }
 
   if (!message) {
     return null;
   }
 
-  const isReplyEmpty = replyValue.trim().length === 0;
+  const isReplyEmpty = replyValue.trim().length === 0 && !attachment;
 
   return (
     <aside className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-l-[1.15rem] border-l border-[#d9e0ea] bg-white">
@@ -130,15 +215,20 @@ export function ThreadPanel({
                 />
               ) : null}
               <div
-                className={`max-w-[78%] rounded-md border px-4 py-2 text-sm shadow-sm ${
+                className={`max-w-[78%] rounded-2xl border px-4 py-2 text-sm shadow-sm ${
                   isOwn
-                    ? "border-[#A07C3B]/30 bg-[#f7f9fc] text-[#121722]"
-                    : "border-[#d9e0ea] bg-white text-[var(--uix-text-primary)]"
+                    ? "rounded-br-md border-[#d6e7df] bg-[#effaf5] text-[#121722]"
+                    : "rounded-bl-md border-[#d9e0ea] bg-white text-[var(--uix-text-primary)]"
                 }`}
               >
-                <p className="m-0 whitespace-pre-wrap leading-6">
-                  {reply.body}
-                </p>
+                {reply.attachment ? (
+                  <MessageAttachmentPreview attachment={reply.attachment} />
+                ) : null}
+                {shouldShowReplyBody(reply) ? (
+                  <p className="m-0 whitespace-pre-wrap leading-6">
+                    {reply.body}
+                  </p>
+                ) : null}
                 <p className="m-0 mt-1 text-right text-[0.68rem] font-bold text-[#101820]">
                   {reply.timestamp}
                 </p>
@@ -158,28 +248,104 @@ export function ThreadPanel({
         className="border-t border-[#d9e0ea] px-4 py-3"
         onSubmit={handleSubmit}
       >
-        <div className="flex items-end gap-2 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] p-2 transition focus-within:border-[var(--uix-brand-primary)] focus-within:bg-white">
-          <textarea
-            aria-label="Responder"
-            className="max-h-36 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-1.5 text-sm leading-5 text-[var(--uix-text-primary)] outline-none placeholder:text-[var(--uix-text-muted)]"
-            onChange={(event) => onChangeReply(event.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Responder"
-            ref={replyTextareaRef}
-            rows={1}
-            value={replyValue}
-          />
-          <button
-            aria-label="Enviar resposta"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#A07C3B] text-white shadow-[0_8px_18px_rgba(160,124,59,0.28)] outline-none ring-1 ring-[#8c6b2f]/20 transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#efe4d2] disabled:text-[#8c6b2f] disabled:shadow-none disabled:ring-[#A07C3B]/35"
-            disabled={isReplyEmpty}
-            type="submit"
-          >
-            <Send aria-hidden="true" size={16} />
-          </button>
+        <input
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageInputChange}
+          ref={imageInputRef}
+          type="file"
+        />
+        <div className="grid gap-2 rounded-[1.15rem] border border-[#d9e0ea] bg-white p-2 shadow-[0_10px_26px_rgba(16,24,32,0.08)] transition focus-within:border-[var(--uix-brand-primary)]">
+          {attachment ? (
+            <ThreadAttachmentPreview
+              attachment={attachment}
+              onRemove={() => setAttachment(null)}
+            />
+          ) : null}
+          {mediaError ? (
+            <span className="px-1 text-xs font-medium text-red-600">
+              {mediaError}
+            </span>
+          ) : null}
+          <div className="flex items-end gap-2">
+            <button
+              aria-label="Anexar imagem"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              onClick={() => imageInputRef.current?.click()}
+              type="button"
+            >
+              <Paperclip aria-hidden="true" size={17} />
+            </button>
+            <textarea
+              aria-label="Responder"
+              className="max-h-36 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1 py-1.5 text-sm leading-5 text-[var(--uix-text-primary)] outline-none placeholder:text-[var(--uix-text-muted)]"
+              onChange={(event) => onChangeReply(event.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder="Responder"
+              ref={replyTextareaRef}
+              rows={1}
+              value={replyValue}
+            />
+            <button
+              aria-label="Enviar resposta"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#A07C3B] text-white shadow-[0_8px_18px_rgba(160,124,59,0.28)] outline-none ring-1 ring-[#8c6b2f]/20 transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#efe4d2] disabled:text-[#8c6b2f] disabled:shadow-none disabled:ring-[#A07C3B]/35"
+              disabled={isReplyEmpty}
+              type="submit"
+            >
+              <Send aria-hidden="true" size={16} />
+            </button>
+          </div>
         </div>
       </form>
     </aside>
+  );
+}
+
+function ThreadAttachmentPreview({
+  attachment,
+  onRemove,
+}: {
+  attachment: HermesMessageAttachment;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] p-2">
+      <span
+        aria-label={attachment.label}
+        className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-white text-[#667085]"
+        role="img"
+        style={
+          attachment.url
+            ? {
+                backgroundImage: `url(${attachment.url})`,
+                backgroundPosition: "center",
+                backgroundSize: "cover",
+              }
+            : undefined
+        }
+      >
+        {attachment.url ? null : <ImageIcon aria-hidden="true" size={18} />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold text-[#121722]">
+          {attachment.label}
+        </span>
+        {attachment.sizeBytes ? (
+          <span className="text-[0.68rem] text-[#667085]">
+            {formatFileSize(attachment.sizeBytes)}
+          </span>
+        ) : null}
+      </span>
+      <button
+        aria-label="Remover imagem"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#667085] transition hover:bg-[#e6ebf2] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+        onClick={onRemove}
+        type="button"
+      >
+        <X aria-hidden="true" size={15} />
+      </button>
+    </div>
   );
 }
 
@@ -220,3 +386,69 @@ function getInitials(value: string) {
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
 }
+
+function shouldShowReplyBody(reply: HermesThreadReply) {
+  return !(
+    reply.attachment &&
+    reply.body.trim() === reply.attachment.label.trim()
+  );
+}
+
+function getClipboardImageFile(dataTransfer: DataTransfer) {
+  return Array.from(dataTransfer.files).find((file) =>
+    file.type.startsWith("image/"),
+  );
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Imagem invalida."));
+    });
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
+}
+
+function getImageExtension(mimeType: string) {
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return "png";
+}
+
+function formatAttachmentTime(date: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+    .format(date)
+    .replace(/\D/g, "");
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+const MAX_THREAD_IMAGE_BYTES = 8 * 1024 * 1024;

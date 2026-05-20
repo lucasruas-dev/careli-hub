@@ -1142,11 +1142,15 @@ export function HermesWorkspace() {
       });
   }
 
-  function handleSubmitThreadReply() {
+  function handleSubmitThreadReply(input?: {
+    attachment?: HermesMessageAttachment;
+  }) {
+    const attachment = input?.attachment;
     const body = threadComposerValue.trim();
+    const replyBody = body || attachment?.label || "Anexo";
 
-    if (!body || !activeThreadMessage) {
-      return;
+    if ((!body && !attachment) || !activeThreadMessage) {
+      return false;
     }
 
     const timestamp = new Intl.DateTimeFormat("pt-BR", {
@@ -1160,7 +1164,8 @@ export function HermesWorkspace() {
       authorAvatarUrl: currentPresenceUser?.avatarUrl,
       authorId: currentUserId,
       authorName: currentPresenceUser?.label ?? hubUser?.name,
-      body,
+      attachment,
+      body: replyBody,
       createdAt: new Date().toISOString(),
       id: `reply-${activeThreadMessage.id}-${Date.now()}`,
       messageId: activeThreadMessage.id,
@@ -1192,12 +1197,13 @@ export function HermesWorkspace() {
       !hasHubSupabaseConfig() ||
       activeThreadMessage.id.startsWith("local-")
     ) {
-      return;
+      return true;
     }
 
     createHermesThreadReply({
+      attachment,
       authorUserId: hubUser?.id,
-      body,
+      body: replyBody,
       channelId: activeThreadMessage.channelId,
       messageId: activeThreadMessage.id,
     })
@@ -1222,6 +1228,8 @@ export function HermesWorkspace() {
         }));
         setThreadComposerValue(body);
       });
+
+    return true;
   }
 
   return (
