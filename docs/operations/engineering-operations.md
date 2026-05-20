@@ -6637,3 +6637,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nenhuma env, secret, migration, banco, producao ou alias de producao foi alterado. A persistencia por metadata pode ter corrida em reacoes simultaneas extremas; se o uso crescer, evoluir para tabela propria de reacoes. A validacao visual autenticada em homologacao ainda precisa ser feita por Lucas.
 - Status operacional: `VALIDADO LOCAL / PUBLICACAO HOMOLOG EM ANDAMENTO`.
 - Proxima squad recomendada: `Hermes Core` para commit/push do recorte em `homolog` e healthcheck; `Lucas` para validar em `https://homo.c2x.app.br` apos deploy.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Reacoes e figurinhas publicadas em homologacao`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 11:39:16 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / UX OPERACIONAL / HEALTHCHECK`.
+- Motivo da mudanca: Lucas autorizou publicar em homologacao o recorte do Hermes com reacoes no padrao WhatsApp, envio de emoji e figurinhas.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/lib/pulsex/types.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/app/api/pulsex/messages/route.ts`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: publiquei a worktree limpa baseada em `origin/homolog`, com commit semantico `1dbebb0 feat(hermes): add reactions and stickers`, para a branch `homolog`. O Vercel gerou um Preview Git novo e o alias de homologacao passou a apontar para esse deployment.
+- Logica utilizada: o pacote ficou restrito ao Hermes e nao levou alteracoes paralelas do worktree principal. Reacoes sao persistidas em `metadata.reactions` via rota server-side; figurinhas usam attachment `sticker` em metadata; isso evita migration e mantem secrets/token fora do client.
+- Commit publicado: `1dbebb0 feat(hermes): add reactions and stickers`.
+- Deployment homologacao: Vercel Preview `dpl_GmKLLPeiogN1rnN7Bt4KQWDY5due`; URL tecnica `https://careli-hub-hub-i2bs-m3att7gbq-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: validacoes locais do pacote passaram em `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` e smoke local `/hermes=200`; `vercel inspect` confirmou deployment `Ready`; healthchecks remotos confirmaram `GET https://homo.c2x.app.br/hermes=200`, `GET /api/pwa/manifest=200` e `GET /api/hermes/messages` sem sessao retornou `401` esperado; `vercel logs` dos ultimos minutos exibiu apenas chamadas esperadas de `/hermes`, `/api/hermes/messages`, `/api/pwa/manifest` e presence, sem erro reportado.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, migration, banco, producao ou alias de producao foi alterado. A validacao funcional autenticada ainda precisa ser feita por Lucas reagindo em uma mensagem, enviando emoji e enviando figurinha no Hermes homologado. Persistencia por metadata pode ter corrida em uso simultaneo extremo; evoluir para tabela propria se houver volume.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para teste visual/autenticado em `https://homo.c2x.app.br/hermes`; `Hermes Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
