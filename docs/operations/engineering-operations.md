@@ -6467,3 +6467,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: producao nao foi alterada; nao houve migration, Supabase, env ou secret. Validacao visual final depende de atualizar o deployment de homologacao e Lucas recarregar `homo.c2x.app.br`.
 - Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
 - Proxima squad recomendada: `Hefesto` para publicar o hotfix em homologacao e confirmar healthcheck.
+
+Registro de diario:
+
+- Assunto: `[Iris] Menu restaurado publicado em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 04:22:49 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / HEALTHCHECK`.
+- Motivo da mudanca: fechar a rastreabilidade do hotfix que restaurou a Iris no sidebar de homologacao sem liberar o modulo em producao real.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx`, `docs/operations/engineering-operations.md` e alias de homologacao `https://homo.c2x.app.br`.
+- Como foi feito: publiquei o commit `b5b90a5 fix(iris): show module in homolog sidebar` na branch `homolog`; a Vercel gerou o Preview `dpl_D66fFquw1VXJwrLRppUCSYQHJxVY` e o alias `https://homo.c2x.app.br` passou a apontar para `https://careli-hub-hub-i2bs-grq5ffbh6-lucasruas-devs-projects.vercel.app`.
+- Logica utilizada: a correcao foi mantida como hotfix isolado de shell, sem alterar permissoes, Supabase, Meta, envs ou producao. A excecao de visibilidade depende do estado de homologacao ja usado pelo Panteon, preservando Iris oculta em producao real.
+- Validacao executada: `npx.cmd vercel ls -m githubCommitSha=b5b90a5b7d751617bb159a2cd2295eb1ecac8626 --format json` retornou deployment `READY`; `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou alias no deployment novo; `GET /iris` retornou 200; `GET /atlas` retornou 200; `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --limit 50` retornou apenas GETs 200 para `/atlas` e `/iris`.
+- Pendencias ou riscos conhecidos: validacao visual autenticada deve ser confirmada pelo Lucas no navegador com reload da pagina; producao nao foi alterada; nenhum secret/env foi exibido ou alterado.
+- Status operacional: `EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` para confirmar visualmente a Iris no sidebar; se reaparecer ausencia depois de reload, acionar `Iris Core` para investigar permissao de usuario em runtime.
