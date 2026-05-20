@@ -8,6 +8,7 @@ import {
   normalizeSignatureHeader,
   verifyMetaWebhookSignature,
 } from "@/lib/iris/meta-whatsapp";
+import { processMetaWhatsAppWebhookEvents } from "@/lib/iris/meta-inbound-processor";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 export const dynamic = "force-dynamic";
@@ -158,9 +159,12 @@ export async function POST(request: NextRequest) {
     }),
   );
 
-  const { error } = await adminClient
+  const { data: insertedEvents, error } = await adminClient
     .from("caredesk_meta_webhook_events")
-    .insert(eventRows);
+    .insert(eventRows)
+    .select(
+      "id,provider_event_type,provider_message_id,provider_status_id,contact_wa_id,contact_name,display_phone_number,phone_number_id,payload,received_at",
+    );
 
   if (error) {
     return NextResponse.json(
@@ -169,9 +173,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const processingResult = await processMetaWhatsAppWebhookEvents({
+    client: adminClient,
+    events: insertedEvents ?? [],
+  });
+
   return NextResponse.json(
     {
       ok: true,
+      processing: processingResult,
       received: eventRows.length,
     },
     {

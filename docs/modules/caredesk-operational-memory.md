@@ -67,19 +67,21 @@ Banco CareDesk:
 - Tabelas ja criadas: canais, filas, regras, perfis, contatos, entidades do contato, tickets, participantes, mensagens, anexos, eventos, templates, disparos, destinatarios e sugestoes da Caca.
 - Estrutura ja suporta `source_module`, `source_entity_type`, `source_entity_id` e `source_context` para integrar com Guardian, CRM e C2X sem acoplamento direto.
 
-Frontend CareDesk:
+Frontend Iris:
 
-- Pagina: `apps/hub/app/caredesk/page.tsx`.
-- Componente principal: `apps/hub/modules/caredesk/CareDeskPage.tsx`.
-- CareDesk carrega dados das tabelas `caredesk_*`.
+- Pagina: `apps/hub/app/iris/page.tsx`.
+- Rota legada: `apps/hub/app/caredesk/page.tsx` redireciona para `/iris`.
+- Componente principal: `apps/hub/modules/caredesk/IrisPage.tsx`.
+- Iris carrega dados das tabelas `caredesk_*`.
 - A tela de Atendimento aprovada segue o layout: inbox lateral, chat central e contexto do cliente a direita.
 - Board, Disparos, Setup e Relatorios existem como secoes do modulo.
 
-Dados demo:
+Dados demo/mockup:
 
-- Script: `scripts/seed-caredesk-demo.mjs`.
-- Usa clientes reais da base C2X sincronizada para montar tickets e conversas demo.
-- Nao deve ser tratado como Guardian alimentando o CareDesk.
+- O script `scripts/seed-caredesk-demo.mjs` foi removido em 2026-05-20.
+- Protocolos `CARE-DEMO-*` nao devem ser usados em homologacao ou producao.
+- O protocolo operacional oficial da Iris e `AT-` com numeracao sequencial, gerado server-side pela funcao `next_caredesk_ticket_protocol()`.
+- A migration `0025_iris_inbound_ticket_protocols.sql` remove tickets/broadcasts demo e prepara a sequencia `AT-*`.
 
 Validacoes ja executadas apos a ultima mudanca:
 
@@ -230,6 +232,30 @@ Pendencias recomendadas:
 - Aplicar a migration em Supabase homolog por DataOps/ReleaseOps com canal seguro.
 - Configurar as variaveis Meta apenas no ambiente seguro server-side.
 - Validar handshake, assinatura invalida e mensagem real de teste antes de ativar processamento automatico.
+
+## Atualizacao 2026-05-20 - Processador inbound Meta e protocolo AT
+
+O que mudou:
+
+- Mensagens inbound recebidas pelo webhook Meta passam a ser processadas server-side pela Iris.
+- O processador cria ou atualiza o contato WhatsApp em `caredesk_contacts`.
+- Se nao houver ticket aberto para o contato/canal, cria ticket real em `caredesk_tickets`.
+- O protocolo do ticket nasce no padrao oficial `AT-000001`, `AT-000002` etc., usando a funcao de banco `next_caredesk_ticket_protocol()`.
+- A mensagem recebida e registrada em `caredesk_messages`, vinculada ao ticket e ao mapa `caredesk_whatsapp_message_refs`.
+- Eventos do webhook passam para `processed`, `ignored` ou `failed`, mantendo trilha auditavel.
+- O seed/mock `CARE-DEMO-*` foi removido do repositorio e a migration `0025` limpa tickets e broadcasts demo.
+
+Decisao:
+
+- A Iris nao deve mais depender de mockup para mostrar fila.
+- O board deve refletir tickets reais nascidos de mensagens reais ou criados por operador.
+- O inbound WhatsApp pode abrir ticket automaticamente, mas respostas automaticas, disparos em massa e automacoes seguem bloqueados ate novo recorte.
+
+Pendencias recomendadas:
+
+- Aplicar a migration `0025_iris_inbound_ticket_protocols.sql` em homologacao antes do proximo teste real.
+- Enviar nova mensagem pelo WhatsApp e confirmar que o ticket `AT-*` aparece no board da Iris.
+- Depois validar resposta humana pela tela antes de liberar fluxo de atendimento completo.
 
 ## Atualizacao 2026-05-16 - Setup de motivos/perfis
 

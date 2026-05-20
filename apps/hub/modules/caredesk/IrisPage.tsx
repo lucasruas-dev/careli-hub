@@ -164,6 +164,40 @@ type IrisData = {
   tickets: IrisTicket[];
 };
 
+type IrisMetaEvent = {
+  contactName?: string | null;
+  contactWaId?: string | null;
+  direction: "inbound" | "status" | "system";
+  id: string;
+  messageId?: string | null;
+  messageText?: string | null;
+  providerEventType: string;
+  receivedAt: string;
+  signatureValid: boolean;
+  statusDetail?: string | null;
+};
+
+type IrisMetaRef = {
+  contactWaId?: string | null;
+  createdAt: string;
+  deliveryStatus?: string | null;
+  direction: string;
+  id: string;
+  messageId: string;
+};
+
+type IrisMetaEventsResponse = {
+  error?: string;
+  events?: IrisMetaEvent[];
+  refs?: IrisMetaRef[];
+  summary?: {
+    inbound: number;
+    refsKnown: number;
+    statuses: number;
+    total: number;
+  };
+};
+
 const emptyIrisData: IrisData = {
   broadcasts: [],
   channels: [],
@@ -1671,6 +1705,308 @@ function TicketChecklist({
   );
 }
 
+function MetaWhatsAppEnginePanel() {
+  const [events, setEvents] = useState<IrisMetaEvent[]>([]);
+  const [refs, setRefs] = useState<IrisMetaRef[]>([]);
+  const [summary, setSummary] = useState<IrisMetaEventsResponse["summary"]>({
+    inbound: 0,
+    refsKnown: 0,
+    statuses: 0,
+    total: 0,
+  });
+  const [to, setTo] = useState("");
+  const [body, setBody] = useState("Teste Iris - WhatsApp homologacao.");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadEvents();
+  }, []);
+
+  async function loadEvents() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/events?limit=20", {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | IrisMetaEventsResponse
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel carregar eventos Meta.",
+        );
+      }
+
+      setEvents(payload?.events ?? []);
+      setRefs(payload?.refs ?? []);
+      setSummary(payload?.summary ?? summary);
+    } catch (eventError) {
+      console.error("[iris] falha ao carregar eventos meta", eventError);
+      setError(
+        eventError instanceof Error
+          ? eventError.message
+          : "Nao foi possivel carregar eventos Meta.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendTestMessage() {
+    if (sending) {
+      return;
+    }
+
+    setSending(true);
+    setFeedback(null);
+    setError(null);
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body,
+          to,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            messageId?: string;
+            persistence?: { ok?: boolean; warning?: string };
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Meta rejeitou o envio.");
+      }
+
+      setFeedback(
+        payload?.persistence?.warning ??
+          `Mensagem enviada pela Iris: ${payload?.messageId ?? "sem id"}.`,
+      );
+      setBody("");
+      await loadEvents();
+    } catch (sendError) {
+      console.error("[iris] falha ao enviar meta whatsapp", sendError);
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Nao foi possivel enviar pelo WhatsApp.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const latestOutbound = refs.find((ref) => ref.direction === "outbound");
+  const latestInbound = events.find((event) => event.direction === "inbound");
+
+  return (
+    <section className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                Meta WhatsApp
+              </p>
+              <h3 className="text-base font-semibold text-slate-950">
+                Motor de homologacao
+              </h3>
+            </div>
+          </div>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Envio manual protegido e leitura dos webhooks recebidos. Automacoes
+            e disparo em massa continuam fora deste teste.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={loadEvents}
+          disabled={loading}
+          className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Activity className="h-4 w-4" aria-hidden="true" />
+          Atualizar
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-3">
+          <div className="grid grid-cols-4 gap-2">
+            <MiniMetaStat label="Eventos" value={summary?.total ?? 0} />
+            <MiniMetaStat label="Entradas" value={summary?.inbound ?? 0} />
+            <MiniMetaStat label="Status" value={summary?.statuses ?? 0} />
+            <MiniMetaStat label="Refs" value={summary?.refsKnown ?? 0} />
+          </div>
+
+          <div className="rounded-xl border border-slate-200/70 bg-slate-50/60">
+            <div className="flex items-center justify-between border-b border-slate-200/70 px-3 py-2">
+              <p className="text-sm font-semibold text-slate-950">
+                Ultimos webhooks
+              </p>
+              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                {loading ? "Carregando" : `${events.length} eventos`}
+              </span>
+            </div>
+            <div className="max-h-72 overflow-y-auto p-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+              {events.length ? (
+                events.map((event) => (
+                  <MetaEventRow event={event} key={event.id} />
+                ))
+              ) : (
+                <div className="rounded-lg border border-slate-200/70 bg-white p-4 text-center text-sm font-medium text-slate-500">
+                  {loading
+                    ? "Carregando eventos..."
+                    : "Nenhum webhook encontrado."}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <aside className="space-y-3">
+          <div className="rounded-xl border border-[#A07C3B]/15 bg-[#fbf6ec] p-3">
+            <p className="text-sm font-semibold text-slate-950">
+              Envio manual
+            </p>
+            <label className="mt-3 block text-xs font-semibold text-slate-600">
+              WhatsApp destino
+              <input
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+                placeholder="55DDDnumero"
+                className="mt-1 h-10 w-full rounded-lg border border-[#d8c8aa] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]"
+              />
+            </label>
+            <label className="mt-3 block text-xs font-semibold text-slate-600">
+              Mensagem
+              <textarea
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+                rows={4}
+                className="mt-1 w-full resize-none rounded-lg border border-[#d8c8aa] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#A07C3B]"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={sendTestMessage}
+              disabled={sending || !to.trim() || !body.trim()}
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <Send className="h-4 w-4" aria-hidden="true" />
+              {sending ? "Enviando" : "Enviar pela Iris"}
+            </button>
+          </div>
+
+          {feedback ? (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+              {feedback}
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+              {error}
+            </div>
+          ) : null}
+
+          <BuilderCard
+            icon={Wifi}
+            title="Estado do motor"
+            rows={[
+              ["Ultima entrada", latestInbound?.messageText ?? "Sem entrada"],
+              [
+                "Ultima saida",
+                latestOutbound?.deliveryStatus
+                  ? latestOutbound.deliveryStatus
+                  : "Aguardando envio",
+              ],
+              ["Canal", "Meta Cloud API"],
+              ["Modo", "Homologacao manual"],
+            ]}
+          />
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function MiniMetaStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-slate-200/70 bg-white p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-semibold text-slate-950">
+        {formatCount(value)}
+      </p>
+    </div>
+  );
+}
+
+function MetaEventRow({ event }: { event: IrisMetaEvent }) {
+  const tone =
+    event.direction === "inbound"
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+      : event.direction === "status"
+        ? "bg-sky-50 text-sky-700 ring-sky-100"
+        : "bg-slate-50 text-slate-600 ring-slate-200";
+
+  return (
+    <div className="mb-2 rounded-lg border border-slate-200/70 bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${tone}`}
+            >
+              {event.providerEventType}
+            </span>
+            <span className="text-[11px] font-semibold text-slate-400">
+              {formatDateTime(event.receivedAt)}
+            </span>
+          </div>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+            {event.contactName ?? event.contactWaId ?? "Contato Meta"}
+          </p>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+            {event.messageText ??
+              event.statusDetail ??
+              event.messageId ??
+              "Evento sem texto operacional."}
+          </p>
+        </div>
+        <StatusPill
+          label={event.signatureValid ? "Assinado" : "Sem assinatura"}
+          tone={event.signatureValid ? "green" : "danger"}
+        />
+      </div>
+    </div>
+  );
+}
+
 function BroadcastView({
   data,
   snapshot,
@@ -1706,6 +2042,8 @@ function BroadcastView({
             tone="green"
           />
         </div>
+
+        <MetaWhatsAppEnginePanel />
 
         <div className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
           <div className="mb-4 flex items-center justify-between">
@@ -3610,6 +3948,23 @@ function labelForSource(source: string) {
 
 function formatCount(value: number) {
   return Number(value ?? 0).toLocaleString("pt-BR");
+}
+
+async function getIrisAccessToken() {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao do Supabase indisponivel.");
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    throw new Error("Sessao administrativa ausente.");
+  }
+
+  return accessToken;
 }
 
 function formatDateTime(value?: string | null) {
