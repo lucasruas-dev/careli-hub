@@ -6746,3 +6746,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: validacao funcional autenticada ainda deve confirmar envio real de resposta com imagem por arquivo, por colar print e por resposta apenas com imagem. Producao nao foi alterada.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO RETESTE VISUAL DO LUCAS`.
 - Proxima squad recomendada: `Lucas` para teste visual/autenticado em `https://homo.c2x.app.br/hermes`; `Hermes Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Fallback de nono digito no envio WhatsApp`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 13:23:00 -03:00.
+- Tipo da alteracao: `HOTFIX / META WHATSAPP / VALIDACAO LOCAL`.
+- Motivo da mudanca: Lucas confirmou que a Meta aceitou o envio quando o numero cadastrado/testado coincidiu com o formato do telefone autorizado, e que o problema pode ocorrer nos dois sentidos: numero salvo sem nono digito enquanto a Meta espera com nono digito, ou numero salvo com nono digito enquanto a Meta espera sem ele.
+- Arquivos/modulos afetados: `apps/hub/lib/iris/meta-whatsapp.ts`, `apps/hub/app/api/iris/meta/messages/route.ts`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: a classe `MetaWhatsAppSendError` passou a preservar o codigo de erro retornado pela Meta, sem expor token ou payload sensivel. A rota `/api/iris/meta/messages` passou a tentar primeiro o telefone original e, somente se a Meta devolver erro de destinatario nao permitido (`131030`), tenta a variacao brasileira complementar com ou sem nono digito. Quando o fallback funciona, a mensagem local registra destino efetivo, uso de fallback e quantidade de tentativas no `provider_payload`.
+- Logica utilizada: a Iris nao deve normalizar todos os telefones para um unico padrao porque a Meta valida o destinatario exatamente conforme a lista/numero autorizado no app. O fallback fica restrito ao erro `131030` para nao mascarar token invalido, permissao, janela de conversa, template ou qualquer outra falha real da Cloud API.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos de `eslint.config.js` typeless/cache; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional e Turbopack/NFT.
+- Pendencias ou riscos conhecidos: ainda falta publicar o recorte em homologacao e Lucas retestar envio real pela Iris. Nenhuma env, secret, banco, migration, producao ou alias de producao foi alterado nesta etapa.
+- Status operacional: `VALIDADO LOCAL / PUBLICACAO HOMOLOG EM ANDAMENTO`.
+- Proxima squad recomendada: `Iris Core` para publicar homologacao e healthcheck; `Lucas` para testar envio outbound real apos deploy.

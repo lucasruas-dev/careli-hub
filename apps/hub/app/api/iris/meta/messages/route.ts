@@ -132,7 +132,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await sendMetaWhatsAppTextMessage({ body, to });
+    const sendAttempt = await sendMetaWhatsAppTextMessageWithFallback({
+      body,
+      to,
+    });
+    const result = sendAttempt.result;
 
     if (!result.messageId) {
       throw new Error("Meta WhatsApp nao retornou ID da mensagem.");
@@ -143,15 +147,18 @@ export async function POST(request: NextRequest) {
       localMessageId: localMessage?.id ?? null,
       messageId: result.messageId,
       payload: result.raw,
-      to,
+      to: sendAttempt.sentTo,
       waContactId: result.contactWaId,
     });
     const updatedMessage = localMessage
       ? await markLocalMessageSent({
           client: authorization.client,
+          destination: sendAttempt.sentTo,
+          fallbackUsed: sendAttempt.usedFallback,
           messageId: localMessage.id,
           operatorLabel,
           payload: result.raw,
+          sendAttemptCount: sendAttempt.attemptedDestinations.length,
           waMessageId: result.messageId,
         })
       : null;
@@ -159,10 +166,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         contactWaId: result.contactWaId,
+        destination: sendAttempt.sentTo,
         messageId: result.messageId,
         message: updatedMessage ?? localMessage,
         ok: true,
         persistence,
+        usedFallback: sendAttempt.usedFallback,
       },
       {
         headers: {
@@ -193,6 +202,41 @@ export async function POST(request: NextRequest) {
       { status },
     );
   }
+}
+
+async function sendMetaWhatsAppTextMessageWithFallback({
+  body,
+  to,
+}: {
+  body: string;
+  to: string;
+}) {
+  const attemptedDestinations: string[] = [];
+  const candidates = buildBrazilWhatsAppDestinationCandidates(to);
+  let lastError: unknown = null;
+
+  for (const candidate of candidates) {
+    attemptedDestinations.push(candidate);
+
+    try {
+      const result = await sendMetaWhatsAppTextMessage({ body, to: candidate });
+
+      return {
+        attemptedDestinations,
+        result,
+        sentTo: candidate,
+        usedFallback: candidate !== to,
+      };
+    } catch (error) {
+      lastError = error;
+
+      if (!isMetaRecipientAllowedListError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 async function createQueuedTicketMessage({
@@ -398,15 +442,21 @@ async function persistOutboundReference({
 
 async function markLocalMessageSent({
   client,
+  destination,
+  fallbackUsed,
   messageId,
   operatorLabel,
   payload,
+  sendAttemptCount,
   waMessageId,
 }: {
   client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  destination: string;
+  fallbackUsed: boolean;
   messageId: string;
   operatorLabel: string;
   payload: unknown;
+  sendAttemptCount: number;
   waMessageId: string;
 }) {
   const { data, error } = await client
@@ -415,9 +465,12 @@ async function markLocalMessageSent({
       delivery_status: "sent",
       external_message_id: waMessageId,
       provider_payload: {
+        destination,
+        fallbackUsed,
         meta: normalizeJsonPayload(payload),
         operatorLabel,
         provider: "meta",
+        sendAttemptCount,
       },
       sent_at: new Date().toISOString(),
     })
@@ -496,6 +549,34 @@ function normalizeWhatsAppDestination(value: unknown) {
   }
 
   return digits;
+}
+
+function buildBrazilWhatsAppDestinationCandidates(to: string) {
+  const candidates = [to];
+  const withoutBrazilianNinthDigit = /^55(\d{2})(\d{8})$/.exec(to);
+  const withBrazilianNinthDigit = /^55(\d{2})9(\d{8})$/.exec(to);
+
+  if (withoutBrazilianNinthDigit) {
+    candidates.push(
+      `55${withoutBrazilianNinthDigit[1]}9${withoutBrazilianNinthDigit[2]}`,
+    );
+  }
+
+  if (withBrazilianNinthDigit) {
+    candidates.push(
+      `55${withBrazilianNinthDigit[1]}${withBrazilianNinthDigit[2]}`,
+    );
+  }
+
+  return Array.from(new Set(candidates));
+}
+
+function isMetaRecipientAllowedListError(error: unknown) {
+  return (
+    error instanceof MetaWhatsAppSendError &&
+    (String(error.code) === "131030" ||
+      /recipient phone number not in allowed list/i.test(error.message))
+  );
 }
 
 function normalizeMessageBody(value: unknown) {

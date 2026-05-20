@@ -46,11 +46,22 @@ export type MetaWhatsAppSendTextResult = {
 };
 
 export class MetaWhatsAppSendError extends Error {
+  code: number | string | null;
+  details: unknown;
   status: number;
 
-  constructor(message: string, status: number) {
+  constructor(
+    message: string,
+    status: number,
+    options?: {
+      code?: number | string | null;
+      details?: unknown;
+    },
+  ) {
     super(message);
     this.name = "MetaWhatsAppSendError";
+    this.code = options?.code ?? null;
+    this.details = options?.details ?? null;
     this.status = status;
   }
 }
@@ -205,7 +216,7 @@ export async function sendMetaWhatsAppTextMessage({
   const payload = (await response.json().catch(() => null)) as
     | {
         contacts?: Array<{ wa_id?: unknown }>;
-        error?: { message?: unknown; type?: unknown };
+        error?: { code?: unknown; message?: unknown; type?: unknown };
         messages?: Array<{ id?: unknown }>;
       }
     | null;
@@ -215,6 +226,10 @@ export async function sendMetaWhatsAppTextMessage({
       normalizeText(payload?.error?.message) ??
         "Meta WhatsApp rejeitou o envio.",
       response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
     );
   }
 
@@ -378,6 +393,14 @@ function findContact(
 
 function normalizeText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeErrorCode(value: unknown) {
+  if (typeof value === "number" || typeof value === "string") {
+    return value;
+  }
+
+  return null;
 }
 
 function readEnvValue(value: string | undefined) {
