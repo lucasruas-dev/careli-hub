@@ -158,7 +158,7 @@ export function HubShell({
   }, []);
 
   const visibleHubModules = orderedHubModules.filter((hubModule) => {
-    if (!isVisibleInCurrentEnvironment(hubModule.id)) {
+    if (!isVisibleInCurrentEnvironment(hubModule.id, isHomologationBrand)) {
       return false;
     }
 
@@ -945,9 +945,13 @@ function createMinimumReleasedModuleIds() {
   return new Set<string>(minimumReleasedModuleIds);
 }
 
-function isVisibleInCurrentEnvironment(moduleId: string) {
+function isVisibleInCurrentEnvironment(
+  moduleId: string,
+  isHomologationBrand: boolean,
+) {
   return (
     process.env.NODE_ENV !== "production" ||
+    isHomologationBrand ||
     !hiddenProductionModuleIds.has(moduleId)
   );
 }

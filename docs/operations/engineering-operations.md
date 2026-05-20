@@ -6452,3 +6452,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: falta Lucas enviar nova mensagem real pelo WhatsApp para confirmar visualmente o nascimento do ticket `AT-*` no board da Iris. Producao nao foi alterada. O warning Turbopack/NFT e vulnerabilidades herdadas de `npm audit` permanecem fora deste recorte.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
 - Proxima squad recomendada: `Iris Core` acompanhando o teste real de recebimento; depois, se aprovado, `Hefesto` decide promocao futura para producao em recorte separado.
+
+Registro de diario:
+
+- Assunto: `[Iris] Menu restaurado em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 04:08:27 -03:00.
+- Tipo da alteracao: `HOTFIX HOMOLOG / CORRECAO DE VISIBILIDADE`.
+- Motivo da mudanca: Lucas informou que a Iris saiu novamente do sidebar de homologacao em `https://homo.c2x.app.br`, embora o modulo devesse estar liberado para teste.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx` e este diario canonico.
+- Como foi feito: ajustei a funcao de visibilidade dos modulos do shell para receber o estado `isHomologationBrand`, permitindo modulos escondidos em producao real quando o ambiente atual for homologacao por env, URL publica ou hostname em runtime.
+- Logica utilizada: a Vercel builda Preview/Homolog com `NODE_ENV=production`; portanto, usar apenas `NODE_ENV` fazia a Iris ser tratada como producao real e escondida pelo `hiddenProductionModuleIds`. A nova regra preserva Iris oculta em producao real e libera somente em homologacao.
+- Validacao executada: `git diff --check -- apps/hub/layouts/hub-shell.tsx docs/operations/engineering-operations.md` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`.
+- Pendencias ou riscos conhecidos: producao nao foi alterada; nao houve migration, Supabase, env ou secret. Validacao visual final depende de atualizar o deployment de homologacao e Lucas recarregar `homo.c2x.app.br`.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima squad recomendada: `Hefesto` para publicar o hotfix em homologacao e confirmar healthcheck.
