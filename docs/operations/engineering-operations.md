@@ -6590,3 +6590,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: ainda falta publicar o recorte em homologacao e Lucas retestar com a tela recarregada. A recuperacao automatica so tenta mensagens outbound recentes sem `external_message_id`; mensagens antigas nao serao disparadas automaticamente para evitar duplicidade operacional.
 - Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
 - Proxima squad recomendada: `Hefesto` publicar em homologacao; `Lucas` validar envio real para WhatsApp e evolucao dos checks.
+
+Registro de diario:
+
+- Assunto: `[Iris] Recuperacao outbound WhatsApp publicada em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 11:08:00 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / META WHATSAPP / HEALTHCHECK`.
+- Motivo da mudanca: publicar em `https://homo.c2x.app.br` a correcao que recupera mensagens outbound locais sem acionamento Meta e evita falso check de WhatsApp quando nao existe `external_message_id`.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: criei commit limpo `7dac954 fix(iris): recover outbound whatsapp sends`, publiquei `HEAD:homolog`, aguardei o Preview Git ficar `Ready` e apontei o alias de homologacao para o deployment novo.
+- Logica utilizada: manter o envio outbound testavel em homologacao sem alterar secrets, envs, banco, migrations ou producao. O alias de homologacao foi movido somente depois do deployment novo estar pronto.
+- Commit publicado: `7dac954 fix(iris): recover outbound whatsapp sends`.
+- Deployment homologacao: Vercel Preview `dpl_H41f1MvDLVYod2ZiVdRuxbvB73Vs`; URL tecnica `https://careli-hub-hub-i2bs-obowskvv1-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready`; `GET /iris` retornou 200; `POST /api/iris/meta/messages` sem sessao retornou 401 esperado e apareceu nos logs; `GET /api/iris/meta/webhook` sem challenge retornou 403 esperado; o bundle remoto contem os marcadores de recuperacao `Sincronizando mensagem local com o WhatsApp` e `Aguardando envio pela Meta`.
+- Pendencias ou riscos conhecidos: Lucas precisa recarregar a Iris em homologacao e repetir envio real pelo WhatsApp. Se a mensagem local anterior ainda estiver dentro da janela de recuperacao, a tela deve tentar sincronizar automaticamente; mensagens antigas fora da janela nao sao disparadas para evitar duplicidade.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para reteste real de envio/recebimento; `Iris Core` acompanha os logs se o envio ainda nao chegar.
