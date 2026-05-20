@@ -1250,6 +1250,7 @@ function IrisConversationPanel({
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] =
     useState(false);
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const repairingOutboundMessageIds = useRef(new Set<string>());
   const { hubUser } = useAuth();
   const operatorLabel = hubUser?.name ?? "Operador Iris";
@@ -1310,6 +1311,8 @@ function IrisConversationPanel({
       ticketChecklist.some((item) => !item.ok));
   const operationReady = !ticketClosed;
   const blockedTooltip = ticketClosed ? "Ticket encerrado" : "Enviar mensagem";
+  const latestMessageId =
+    ticket.messages[ticket.messages.length - 1]?.id ?? "";
 
   useEffect(() => {
     if (!operationReady || sending || !ticket.contactPhone) {
@@ -1337,6 +1340,23 @@ function IrisConversationPanel({
     ticket.id,
     ticket.messages,
   ]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const viewport = messagesViewportRef.current;
+
+      if (!viewport) {
+        return;
+      }
+
+      viewport.scrollTo({
+        behavior: "auto",
+        top: viewport.scrollHeight,
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestMessageId, ticket.id, ticket.messages.length]);
 
   async function sendMessage() {
     const body = draft.trim();
@@ -1676,7 +1696,10 @@ function IrisConversationPanel({
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 px-4 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+        <div
+          ref={messagesViewportRef}
+          className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 px-4 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
+        >
           <div className="mx-auto max-w-5xl space-y-4">
             {previousTickets.length > 0 ? (
               <div className="flex flex-col items-center gap-2">

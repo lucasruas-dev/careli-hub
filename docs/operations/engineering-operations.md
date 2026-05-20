@@ -6669,3 +6669,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nenhuma env, secret, Supabase, banco, migration, producao ou alias de producao foi alterado nesta etapa. A validacao visual autenticada final ainda depende de Lucas testar em `https://homo.c2x.app.br/hermes` apos publicacao do hotfix.
 - Status operacional: `VALIDADO LOCAL / PUBLICACAO HOMOLOG EM ANDAMENTO`.
 - Proxima squad recomendada: `Hermes Core` para publicar o hotfix em `homolog` e executar healthcheck; `Lucas` para reteste visual/autenticado.
+
+Registro de diario:
+
+- Assunto: `[Iris] Auto-scroll e validacao de token Meta`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 12:12:35 -03:00.
+- Tipo da alteracao: `CORRECAO UX / META WHATSAPP / HOMOLOGACAO`.
+- Motivo da mudanca: Lucas informou que o erro `Authentication Error` persistiu apos atualizar o token e que, ao enviar mensagens, precisava rolar manualmente para baixo para ver a ultima mensagem.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `.codex-artifacts/iris-meta-refresh-access-token.ps1` e este diario canonico.
+- Como foi feito: a area rolavel da conversa passou a ter referencia dedicada e a tela executa scroll automatico para o final sempre que o ticket ativo ou a ultima mensagem muda. O script local de token foi endurecido para recusar clipboard com comando/caminho (`powershell`, `.ps1`, `vercel`, `C:\` ou espacos), evitando que o comando de execucao seja gravado acidentalmente como access token.
+- Logica utilizada: a conversa da Iris deve operar como chat operacional, mantendo o operador sempre no contexto da mensagem mais recente. A persistencia do `Authentication Error` apos token de 156 caracteres levantou risco de o clipboard ter carregado o comando do script em vez do token Meta; a validacao local evita repetir esse falso positivo sem expor segredo.
+- Validacao executada: em andamento; pendente `git diff --check`, `check-types`, `lint/build` conforme recorte e novo deploy homolog.
+- Pendencias ou riscos conhecidos: Lucas precisa copiar novamente apenas o token da Meta e rodar o script atualizado se o token anterior tiver sido o comando. Apos token real, e necessario novo redeploy/healthcheck e smoke autenticado de envio pela Iris.
+- Status operacional: `IMPLEMENTANDO / AGUARDANDO VALIDACAO`.
+- Proxima squad recomendada: `Iris Core` para validar e publicar a correcao de rolagem em homologacao; `Lucas` para renovar o token com o script atualizado se necessario.
