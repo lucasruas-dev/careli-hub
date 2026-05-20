@@ -6526,3 +6526,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: notificacao sonora pode depender de interacao previa do usuario com a pagina por regra do navegador; notificacao nativa depende da permissao do navegador. Nenhuma migration, env, secret, producao ou alteracao de dados reais foi executada neste recorte. Ainda falta publicar em homologacao e Lucas testar enviando nova mensagem pelo WhatsApp sem refresh.
 - Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
 - Proxima squad recomendada: `Hefesto` para publicar o recorte em homologacao quando Lucas autorizar ou quando este pacote for incluido no proximo deploy homolog.
+
+Registro de diario:
+
+- Assunto: `[Iris] Atendimento realtime publicado em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 05:15:37 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / HEALTHCHECK`.
+- Motivo da mudanca: publicar em `https://homo.c2x.app.br` o recorte que remove temporariamente o bloqueio de ticket incompleto, adiciona atualizacao automatica da fila/conversa e prepara avatar/foto do contato para o teste Meta WhatsApp do Lucas.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/lib/iris/notification-effects.ts`, `docs/operations/engineering-operations.md` e alias de homologacao `https://homo.c2x.app.br`.
+- Como foi feito: rebaseei o commit do Iris sobre a branch `homolog` atual para preservar o recorte PWA publicado antes, resolvi o conflito append-only do diario mantendo os dois registros, publiquei a branch `homolog`, aguardei o Preview Git ficar `READY` e apontei o alias de homologacao para o deployment novo.
+- Logica utilizada: a publicacao foi limitada a homologacao e nao alterou envs, secrets, banco, migrations nem producao. O alias foi atualizado somente depois de confirmar que o Preview do commit `63138a7` estava pronto, evitando sobrescrever `homo.c2x.app.br` com build incompleto.
+- Commit realizado: `63138a7 feat(iris): add realtime inbound alerts`.
+- Deployment homologacao: Vercel Preview `dpl_DUiQaazPSPr5P5yNZqkgdNM3SS6z`; URL `https://careli-hub-hub-i2bs-reffk90d2-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; smoke local em `http://localhost:3007/iris` retornou `200 OK`; `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready`; `GET /iris` retornou 200; `GET /api/iris/meta/webhook` sem challenge retornou 403 esperado; `GET /api/iris/meta/events` sem sessao retornou 401 esperado; `vercel logs` dos ultimos 10 minutos mostrou apenas chamadas esperadas 200/401/403.
+- Pendencias ou riscos conhecidos: Lucas precisa testar enviando nova mensagem pelo WhatsApp com a tela da Iris aberta para confirmar aparicao sem refresh, toast visual e som. A foto de perfil so aparece quando houver URL de avatar gravada em `caredesk_contacts.metadata` ou `caredesk_contacts.c2x_payload`; o webhook Meta atual fornece nome/wa_id, mas nao traz imagem de perfil no payload padrao validado. Notificacao nativa depende da permissao do navegador e som pode depender de interacao previa com a pagina.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para smoke real de mensagem inbound/outbound na Iris; `Iris Core` acompanha ajustes de UX; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
