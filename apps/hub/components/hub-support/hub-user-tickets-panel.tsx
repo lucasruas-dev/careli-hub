@@ -20,6 +20,7 @@ import type { BadgeVariant } from "@repo/uix";
 import {
   AlertTriangle,
   Camera,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   FileAudio,
@@ -58,7 +59,7 @@ type HubUserTicketsPanelProps = {
 
 export function HubUserTicketsPanel({
   compact = false,
-  title = "Historico de Ticket TI",
+  title = "Historico TI",
 }: HubUserTicketsPanelProps) {
   const { authState } = useAuth();
   const accessToken = authState.session?.accessToken ?? null;
@@ -187,7 +188,7 @@ export function HubUserTicketsPanel({
       <Surface bordered className="border-amber-100 bg-amber-50 p-4">
         <div className="flex items-center gap-3 text-sm font-semibold text-amber-800">
           <AlertTriangle className="size-4" />
-          Sessao ausente para carregar Ticket TI.
+          Sessao ausente para carregar TI.
         </div>
       </Surface>
     );
@@ -199,7 +200,7 @@ export function HubUserTicketsPanel({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="m-0 text-xs font-semibold uppercase text-slate-500">
-              Ticket TI
+              TI
             </p>
             <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
               {title}
@@ -355,6 +356,9 @@ function TicketHistoryItem({
           </p>
         </div>
         <StatusBadge status={ticket.status} />
+      </div>
+      <div className="mt-2">
+        <DeliveryDueBadge ticket={ticket} />
       </div>
       <p className="m-0 mt-2 truncate text-xs text-slate-500">
         {ticket.module} / {formatDateTime(ticket.updatedAt)}
@@ -637,6 +641,7 @@ function TicketDetail({
             <Badge variant={priorityVariant(ticket.priority)}>
               {hubItTicketPriorityLabels[ticket.priority]}
             </Badge>
+            <DeliveryDueBadge ticket={ticket} />
           </div>
           <h3 className="m-0 mt-2 text-lg font-semibold text-slate-950">
             {ticket.title}
@@ -660,6 +665,8 @@ function TicketDetail({
           email={ticket.assignedTo?.email}
         />
       </div>
+
+      <DeliveryAgreementBlock ticket={ticket} />
 
       <DetailBlock label="Relato enviado" value={ticket.userDescription} />
       <DetailBlock
@@ -846,6 +853,44 @@ function TicketDetail({
         </div>
       </div>
     </article>
+  );
+}
+
+function DeliveryAgreementBlock({ ticket }: { ticket: HubItTicket }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-500">
+          <CalendarDays className="size-4 text-[#A07C3B]" />
+          Data de entrega
+        </div>
+        <DeliveryDueBadge ticket={ticket} />
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        <DeliveryInfo label="Solicitada" value={formatNullableDate(ticket.requestedDeliveryDate)} />
+        <DeliveryInfo
+          label="Zeus"
+          value={formatNullableDate(ticket.approvedDeliveryDate)}
+        />
+        <DeliveryInfo label="Status" value={getDeliveryDecisionLabel(ticket)} />
+      </div>
+      {ticket.deliveryDecisionNote ? (
+        <p className="m-0 mt-3 text-xs leading-5 text-slate-600">
+          {ticket.deliveryDecisionNote}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function DeliveryInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-500">
+        {label}
+      </p>
+      <p className="m-0 mt-1 text-sm font-semibold text-slate-950">{value}</p>
+    </div>
   );
 }
 
@@ -1076,6 +1121,27 @@ function EmptyState({ isLoading }: { isLoading: boolean }) {
   );
 }
 
+function DeliveryDueBadge({ ticket }: { ticket: HubItTicket }) {
+  const deliveryState = getTicketDeliveryState(ticket);
+
+  if (!deliveryState.date) {
+    return (
+      <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-500">
+        Sem data
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold ${deliveryState.className}`}
+    >
+      <CalendarDays className="size-3" />
+      {deliveryState.label}
+    </span>
+  );
+}
+
 function StatusBadge({ status }: { status: HubItTicketStatus }) {
   return (
     <Badge variant={statusVariant(status)}>
@@ -1147,6 +1213,102 @@ function formatDateTime(value: string) {
     month: "2-digit",
     timeZone: "America/Sao_Paulo",
   });
+}
+
+function formatNullableDate(value?: string | null) {
+  return value ? formatDateOnly(value) : "pendente";
+}
+
+function formatDateOnly(value: string) {
+  const [year, month, day] = value.split("-");
+
+  if (!year || !month || !day) {
+    return value;
+  }
+
+  return `${day}/${month}/${year}`;
+}
+
+function getTicketEffectiveDeliveryDate(ticket: HubItTicket) {
+  return ticket.approvedDeliveryDate ?? ticket.requestedDeliveryDate ?? null;
+}
+
+function getTicketDeliveryState(ticket: HubItTicket) {
+  const date = getTicketEffectiveDeliveryDate(ticket);
+
+  if (!date) {
+    return {
+      className: "",
+      date: null,
+      days: Number.POSITIVE_INFINITY,
+      label: "Sem data",
+    };
+  }
+
+  const days = getDaysUntilDate(date);
+
+  if (days <= 0) {
+    return {
+      className: "bg-red-50 text-red-700 ring-1 ring-red-100",
+      date,
+      days,
+      label: days < 0 ? `Atrasado ${Math.abs(days)}d` : "Hoje",
+    };
+  }
+
+  if (days <= 2) {
+    return {
+      className: "bg-amber-50 text-amber-700 ring-1 ring-amber-100",
+      date,
+      days,
+      label: `${days} dia${days > 1 ? "s" : ""}`,
+    };
+  }
+
+  return {
+    className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+    date,
+    days,
+    label: `${days} dias`,
+  };
+}
+
+function getDaysUntilDate(value: string) {
+  const date = parseDateOnly(value);
+
+  if (!date) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+
+  return Math.round((date.getTime() - todayStart.getTime()) / 86_400_000);
+}
+
+function parseDateOnly(value: string) {
+  const [year = 0, month = 0, day = 0] = value
+    .split("-")
+    .map((part) => Number(part));
+  const date = new Date(year, month - 1, day);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getDeliveryDecisionLabel(ticket: HubItTicket) {
+  if (ticket.deliveryDecisionStatus === "aprovada") {
+    return "data aprovada";
+  }
+
+  if (ticket.deliveryDecisionStatus === "reprogramada") {
+    return "reprogramada por Zeus";
+  }
+
+  return "aguardando Zeus";
 }
 
 const maxReviewEvidenceBytes = 6_000_000;

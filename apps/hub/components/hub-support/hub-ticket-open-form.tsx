@@ -5,6 +5,16 @@ import {
   createHubItTicket,
   isHubItTicketsMigrationPendingMessage,
 } from "@/lib/hub-it-tickets/client";
+import { useAthenaTicketRecording } from "@/components/hub-support/athena-ticket-recording-provider";
+import {
+  dataUrlToBytes,
+  extractVideoFrameDataUrls,
+  formatAttachmentStamp,
+  formatBytes,
+  getAttachmentLabel,
+  getAttachmentTypeFromMime,
+  readBlobAsDataUrl,
+} from "@/components/hub-support/hub-ticket-evidence-utils";
 import {
   hubItTicketCategoryLabels,
   hubItTicketPriorityLabels,
@@ -16,6 +26,7 @@ import { useAuth } from "@/providers/auth-provider";
 import {
   AlertTriangle,
   Camera,
+  CalendarDays,
   CheckCircle2,
   FileAudio,
   FileText,
@@ -41,11 +52,13 @@ import {
   type ReactNode,
 } from "react";
 
-type RecordingKind = "audio" | "screen";
-
 type HubTicketOpenFormProps = {
+  compactRecordingMode?: boolean;
   defaultModule?: string;
   onCreated?: (protocol: string) => void;
+  onRecordingStateChange?: (isRecording: boolean) => void;
+  onRestoreRequest?: () => void;
+  recordingHost?: "global" | "native";
   sourcePath?: string;
 };
 
@@ -53,13 +66,31 @@ const maxAttachmentBytes = 6_000_000;
 const maxAttachmentCount = 3;
 
 export function HubTicketOpenForm({
+  compactRecordingMode = false,
   defaultModule,
   onCreated,
+  onRecordingStateChange,
+  onRestoreRequest,
+  recordingHost = "global",
   sourcePath,
 }: HubTicketOpenFormProps) {
   const { authState } = useAuth();
   const pathname = usePathname();
   const currentPath = sourcePath ?? pathname;
+  const {
+    clearRecordingError,
+    consumePendingAttachments,
+    error: recordingError,
+    isProcessingRecording,
+    isRecordingProtected,
+    lastRecordingFileName,
+    pendingAttachmentVersion,
+    recordingKind,
+    registerTicketFormHost,
+    startAudioRecording,
+    startScreenRecording,
+    stopActiveRecording,
+  } = useAthenaTicketRecording();
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<HubItTicketCategory>("erro");
   const [priority, setPriority] = useState<HubItTicketPriority>("media");
@@ -72,31 +103,31 @@ export function HubTicketOpenForm({
   const [attachments, setAttachments] = useState<HubItTicketAttachmentInput[]>(
     [],
   );
-  const canSubmit = description.trim().length >= 3 || attachments.length > 0;
+  const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
+  const hasTicketContext =
+    description.trim().length >= 3 || attachments.length > 0;
+  const canSubmit = hasTicketContext && requestedDeliveryDate.length > 0;
   const [isAnalyzingEvidence, setIsAnalyzingEvidence] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const submitNeedsContext = !canSubmit && !isSaving;
   const submitTooltip = canSubmit
-    ? "Enviar ticket TI para Zeus"
-    : "Descreva o que aconteceu ou anexe uma evidencia";
-  const [recordingKind, setRecordingKind] = useState<RecordingKind | null>(
-    null,
-  );
+    ? "Enviar TI para Zeus"
+    : requestedDeliveryDate
+      ? "Descreva o que aconteceu ou anexe uma evidencia"
+      : "Informe a data de entrega desejada";
   const [error, setError] = useState<string | null>(null);
+  const visibleError = error ?? recordingError;
   const [successProtocol, setSuccessProtocol] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
-  const recordingChunksRef = useRef<BlobPart[]>([]);
-  const recordingTimerRef = useRef<number | null>(null);
-  const recordingAttachmentTypeRef =
-    useRef<HubItTicketAttachmentInput["type"]>("video");
-  const recordingFilePrefixRef = useRef("gravacao");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const accessToken = authState.session?.accessToken ?? null;
 
   useEffect(() => {
     setModuleName(defaultModule ?? getModuleFromPath(currentPath));
   }, [currentPath, defaultModule]);
+
+  useEffect(() => {
+    return registerTicketFormHost(recordingHost);
+  }, [recordingHost, registerTicketFormHost]);
 
   useEffect(() => {
     const ticketDescription = buildUserDescription(description, attachments);
@@ -121,11 +152,12 @@ export function HubTicketOpenForm({
         moduleName,
         pathname: currentPath,
         priority: nextPriority,
+        requestedDeliveryDate,
       }),
     );
     setExpectedResult(inferExpectedResult(ticketDescription));
     setActualResult(inferActualResult(ticketDescription));
-  }, [attachments, currentPath, description, moduleName]);
+  }, [attachments, currentPath, description, moduleName, requestedDeliveryDate]);
 
   useEffect(() => {
     if (!canSubmit) {
@@ -182,16 +214,44 @@ export function HubTicketOpenForm({
   ]);
 
   useEffect(() => {
-    return () => {
-      stopRecordingStream();
-    };
-  }, []);
+    if (compactRecordingMode) {
+      return;
+    }
+
+    const pendingAttachments = consumePendingAttachments();
+
+    if (pendingAttachments.length === 0) {
+      return;
+    }
+
+    setError(null);
+    clearRecordingError();
+    setAttachments((currentAttachments) =>
+      [...pendingAttachments, ...currentAttachments].slice(
+        0,
+        maxAttachmentCount,
+      ),
+    );
+  }, [
+    clearRecordingError,
+    compactRecordingMode,
+    consumePendingAttachments,
+    pendingAttachmentVersion,
+  ]);
+
+  useEffect(() => {
+    onRecordingStateChange?.(isRecordingProtected);
+  }, [isRecordingProtected, onRecordingStateChange]);
 
   async function handleSubmit() {
     const ticketDescription = buildUserDescription(description, attachments);
 
     if (!canSubmit || ticketDescription.length < 3) {
-      setError("Descreva em poucas palavras ou anexe uma evidencia.");
+      setError(
+        requestedDeliveryDate
+          ? "Descreva em poucas palavras ou anexe uma evidencia."
+          : "Informe a data de entrega desejada.",
+      );
       return;
     }
 
@@ -208,6 +268,7 @@ export function HubTicketOpenForm({
           expectedResult,
           module: moduleName,
           priority,
+          requestedDeliveryDate,
           sourcePath: currentPath,
           sourceUrl:
             typeof window !== "undefined" ? window.location.href : undefined,
@@ -217,6 +278,7 @@ export function HubTicketOpenForm({
               attachments,
               category,
               description: ticketDescription,
+              requestedDeliveryDate,
               moduleName,
               pathname: currentPath,
               priority,
@@ -242,6 +304,7 @@ export function HubTicketOpenForm({
 
   async function captureScreenFrame() {
     setError(null);
+    clearRecordingError();
 
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setError("Captura de tela indisponivel neste navegador.");
@@ -289,38 +352,9 @@ export function HubTicketOpenForm({
       return;
     }
 
-    if (recordingKind) {
-      setError("Finalize a gravacao atual antes de iniciar outra.");
-      return;
-    }
-
     setError(null);
-
-    if (
-      !navigator.mediaDevices?.getDisplayMedia ||
-      typeof MediaRecorder === "undefined"
-    ) {
-      setError("Gravacao de tela indisponivel neste navegador.");
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        audio: false,
-        video: true,
-      });
-
-      startRecording(stream, {
-        attachmentType: "video",
-        filePrefix: "gravacao",
-        kind: "screen",
-        timeoutMs: 15_000,
-      });
-    } catch {
-      stopRecordingStream();
-      setRecordingKind(null);
-      setError("Gravacao cancelada ou nao autorizada.");
-    }
+    clearRecordingError();
+    await startScreenRecording();
   }
 
   async function toggleAudioRecording() {
@@ -329,94 +363,9 @@ export function HubTicketOpenForm({
       return;
     }
 
-    if (recordingKind) {
-      setError("Finalize a gravacao atual antes de iniciar outra.");
-      return;
-    }
-
     setError(null);
-
-    if (
-      !navigator.mediaDevices?.getUserMedia ||
-      typeof MediaRecorder === "undefined"
-    ) {
-      setError("Audio indisponivel neste navegador.");
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: false,
-      });
-
-      startRecording(stream, {
-        attachmentType: "audio",
-        filePrefix: "audio",
-        kind: "audio",
-        timeoutMs: 45_000,
-      });
-    } catch {
-      stopRecordingStream();
-      setRecordingKind(null);
-      setError("Audio cancelado ou nao autorizado.");
-    }
-  }
-
-  function startRecording(
-    stream: MediaStream,
-    options: {
-      attachmentType: HubItTicketAttachmentInput["type"];
-      filePrefix: string;
-      kind: RecordingKind;
-      timeoutMs: number;
-    },
-  ) {
-    const recorder = new MediaRecorder(stream);
-
-    recordingChunksRef.current = [];
-    recordingStreamRef.current = stream;
-    mediaRecorderRef.current = recorder;
-    recordingAttachmentTypeRef.current = options.attachmentType;
-    recordingFilePrefixRef.current = options.filePrefix;
-    recorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size > 0) {
-        recordingChunksRef.current.push(event.data);
-      }
-    });
-    recorder.addEventListener("stop", () => {
-      const attachmentType = recordingAttachmentTypeRef.current;
-      const filePrefix = recordingFilePrefixRef.current;
-      const blob = new Blob(recordingChunksRef.current, {
-        type:
-          recorder.mimeType ||
-          (attachmentType === "audio" ? "audio/webm" : "video/webm"),
-      });
-
-      stopRecordingStream();
-      setRecordingKind(null);
-      void addBlobAttachment(blob, {
-        fileName: `${filePrefix}-${formatAttachmentStamp()}.webm`,
-        type: attachmentType,
-      });
-    });
-    recorder.start();
-    setRecordingKind(options.kind);
-    recordingTimerRef.current = window.setTimeout(() => {
-      stopActiveRecording();
-    }, options.timeoutMs);
-  }
-
-  function stopActiveRecording() {
-    const recorder = mediaRecorderRef.current;
-
-    if (recorder && recorder.state !== "inactive") {
-      recorder.stop();
-      return;
-    }
-
-    stopRecordingStream();
-    setRecordingKind(null);
+    clearRecordingError();
+    await startAudioRecording();
   }
 
   async function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
@@ -476,33 +425,110 @@ export function HubTicketOpenForm({
 
   function resetForm() {
     setDescription("");
+    setRequestedDeliveryDate("");
     setTechnicalSummary("");
     setExpectedResult("");
     setActualResult("");
     setAttachments([]);
   }
 
-  function stopRecordingStream() {
-    if (recordingTimerRef.current) {
-      window.clearTimeout(recordingTimerRef.current);
-      recordingTimerRef.current = null;
+  function restoreFromCompactRecording() {
+    onRestoreRequest?.();
+  }
+
+  function finishCompactRecording() {
+    if (recordingKind) {
+      stopActiveRecording();
     }
 
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    recordingStreamRef.current = null;
-    mediaRecorderRef.current = null;
+    restoreFromCompactRecording();
+  }
+
+  if (compactRecordingMode) {
+    const recordingLabel =
+      recordingKind === "audio"
+        ? "audio"
+        : recordingKind === "screen"
+          ? "tela"
+          : "evidencia";
+    const compactStatus = recordingKind
+      ? `Gravando ${recordingLabel}.`
+      : isProcessingRecording
+        ? "Preparando evidencia."
+        : lastRecordingFileName
+          ? "Gravacao salva."
+          : "Athena minimizada.";
+
+    return (
+      <div className="rounded-xl border border-[#A07C3B]/25 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.22)]">
+        <div className="flex items-start gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#101820] text-[#A07C3B]">
+            {recordingKind === "audio" ? (
+              <Mic className="size-4" aria-hidden="true" />
+            ) : (
+              <Video className="size-4" aria-hidden="true" />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="m-0 text-sm font-semibold text-[#101820]">
+              {compactStatus}
+            </p>
+            <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
+              {recordingKind
+                ? "A janela foi minimizada para manter a gravacao ativa."
+                : "Volte para a Athena para revisar a evidencia e enviar o ticket."}
+            </p>
+            {lastRecordingFileName ? (
+              <p className="m-0 mt-1 truncate text-xs font-semibold text-slate-600">
+                {lastRecordingFileName}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          {recordingKind ? (
+            <button
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+              onClick={stopActiveRecording}
+              type="button"
+            >
+              <Square className="size-3.5" aria-hidden="true" />
+              Stop
+            </button>
+          ) : null}
+          <button
+            className="inline-flex h-8 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition hover:bg-[#1b2835] disabled:cursor-wait disabled:opacity-60"
+            disabled={isProcessingRecording}
+            onClick={
+              recordingKind ? finishCompactRecording : restoreFromCompactRecording
+            }
+            type="button"
+          >
+            {isProcessingRecording ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <CheckCircle2 className="size-3.5" aria-hidden="true" />
+            )}
+            Finalizar
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="grid gap-3">
-      {error ? (
+      {visibleError ? (
         <InlineNotice
           tone={
-            isHubItTicketsMigrationPendingMessage(error) ? "warning" : "danger"
+            isHubItTicketsMigrationPendingMessage(visibleError)
+              ? "warning"
+              : "danger"
           }
           icon={<AlertTriangle className="size-4" />}
         >
-          {error}
+          {visibleError}
         </InlineNotice>
       ) : null}
 
@@ -521,9 +547,27 @@ export function HubTicketOpenForm({
           onChange={(event) => {
             setDescription(event.target.value);
             setError(null);
+            clearRecordingError();
           }}
           placeholder="Escreva em poucas palavras. Ex.: tela lenta, erro ao salvar, botao nao abriu."
           value={description}
+        />
+      </label>
+
+      <label className="grid gap-1.5">
+        <span className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-400">
+          <CalendarDays className="size-3.5 text-[#A07C3B]" />
+          Data de entrega desejada
+        </span>
+        <input
+          className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#A07C3B]/45 focus:ring-2 focus:ring-[#A07C3B]/10"
+          min={getTodayDateInput()}
+          onChange={(event) => {
+            setRequestedDeliveryDate(event.target.value);
+            setError(null);
+          }}
+          type="date"
+          value={requestedDeliveryDate}
         />
       </label>
 
@@ -893,6 +937,7 @@ function buildTechnicalSummary({
   moduleName,
   pathname,
   priority,
+  requestedDeliveryDate,
 }: {
   attachments: HubItTicketAttachmentInput[];
   category: HubItTicketCategory;
@@ -900,12 +945,14 @@ function buildTechnicalSummary({
   moduleName: string;
   pathname: string;
   priority: HubItTicketPriority;
+  requestedDeliveryDate: string;
 }) {
   const lines = [
     `Modulo afetado: ${moduleName}`,
     `Rota/tela: ${pathname}`,
     `Tipo classificado: ${hubItTicketCategoryLabels[category]}`,
     `Impacto estimado: ${hubItTicketPriorityLabels[priority]}`,
+    `Data de entrega solicitada: ${formatDateOnly(requestedDeliveryDate)}`,
     `Relato original: ${description.trim()}`,
     "Evidencias consideradas:",
     buildEvidenceSummary(attachments),
@@ -941,115 +988,6 @@ function buildEvidenceSummary(attachments: HubItTicketAttachmentInput[]) {
     .join("\n");
 }
 
-async function extractVideoFrameDataUrls(blob: Blob) {
-  if (typeof document === "undefined") {
-    return [];
-  }
-
-  const videoUrl = URL.createObjectURL(blob);
-  const video = document.createElement("video");
-
-  video.muted = true;
-  video.playsInline = true;
-  video.preload = "metadata";
-  video.src = videoUrl;
-
-  try {
-    await waitForVideoMetadata(video);
-    const duration = Number.isFinite(video.duration) ? video.duration : 0;
-    const frameTimes = Array.from(
-      new Set(
-        [
-          duration > 1 ? Math.min(0.8, duration * 0.25) : 0,
-          duration > 2 ? duration * 0.75 : 0,
-        ]
-          .map((time) =>
-            Math.max(0, Math.min(time, Math.max(0, duration - 0.1))),
-          )
-          .map((time) => Number(time.toFixed(2))),
-      ),
-    );
-    const frames: string[] = [];
-
-    for (const frameTime of frameTimes) {
-      await seekVideo(video, frameTime);
-      const frame = captureVideoFrame(video);
-
-      if (frame) {
-        frames.push(frame);
-      }
-    }
-
-    return frames.slice(0, 2);
-  } catch {
-    return [];
-  } finally {
-    URL.revokeObjectURL(videoUrl);
-  }
-}
-
-function waitForVideoMetadata(video: HTMLVideoElement) {
-  return new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(
-      () => reject(new Error("timeout")),
-      4_000,
-    );
-
-    video.addEventListener(
-      "loadedmetadata",
-      () => {
-        window.clearTimeout(timeout);
-        resolve();
-      },
-      { once: true },
-    );
-    video.addEventListener(
-      "error",
-      () => {
-        window.clearTimeout(timeout);
-        reject(new Error("video"));
-      },
-      { once: true },
-    );
-  });
-}
-
-function seekVideo(video: HTMLVideoElement, currentTime: number) {
-  return new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(
-      () => reject(new Error("timeout")),
-      4_000,
-    );
-
-    video.addEventListener(
-      "seeked",
-      () => {
-        window.clearTimeout(timeout);
-        resolve();
-      },
-      { once: true },
-    );
-    video.currentTime = currentTime;
-  });
-}
-
-function captureVideoFrame(video: HTMLVideoElement) {
-  const width = video.videoWidth || 1280;
-  const height = video.videoHeight || 720;
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    return "";
-  }
-
-  canvas.width = width;
-  canvas.height = height;
-  context.drawImage(video, 0, 0, width, height);
-
-  return canvas.toDataURL("image/jpeg", 0.72);
-}
-
 function inferExpectedResult(description: string) {
   const match = description.match(/esperava(?: que)?(.+?)(?:\.|\n|$)/i);
   return match?.[1]?.trim() ?? "";
@@ -1069,57 +1007,21 @@ function normalize(value: string) {
     .toLowerCase();
 }
 
-function getAttachmentTypeFromMime(
-  mimeType: string,
-): HubItTicketAttachmentInput["type"] {
-  if (mimeType.startsWith("audio/")) return "audio";
-  if (mimeType.startsWith("image/")) return "image";
-  if (mimeType.startsWith("video/")) return "video";
+function getTodayDateInput() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
 
-  return "file";
+  return `${year}-${month}-${day}`;
 }
 
-function getAttachmentLabel(type: HubItTicketAttachmentInput["type"]) {
-  const labels = {
-    audio: "Audio",
-    file: "Arquivo",
-    image: "Print",
-    video: "Video",
-  } as const satisfies Record<HubItTicketAttachmentInput["type"], string>;
+function formatDateOnly(value: string) {
+  const [year, month, day] = value.split("-");
 
-  return labels[type];
-}
-
-function dataUrlToBytes(dataUrl: string) {
-  const base64 = dataUrl.split(",")[1] ?? "";
-  return Math.ceil((base64.length * 3) / 4);
-}
-
-function readBlobAsDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result ?? "")));
-    reader.addEventListener("error", () => reject(reader.error));
-    reader.readAsDataURL(blob);
-  });
-}
-
-function formatAttachmentStamp() {
-  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-}
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
+  if (!year || !month || !day) {
+    return "nao informada";
   }
 
-  const kilobytes = bytes / 1024;
-
-  if (kilobytes < 1024) {
-    return `${kilobytes.toFixed(kilobytes >= 100 ? 0 : 1)} KB`;
-  }
-
-  const megabytes = kilobytes / 1024;
-
-  return `${megabytes.toFixed(megabytes >= 10 ? 1 : 2)} MB`;
+  return `${day}/${month}/${year}`;
 }

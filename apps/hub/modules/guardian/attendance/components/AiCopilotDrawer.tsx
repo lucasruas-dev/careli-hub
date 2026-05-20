@@ -67,6 +67,8 @@ export function AiCopilotDrawer({
   const { hubUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [activeAgentTab, setActiveAgentTab] = useState<"agent" | "ticket">("agent");
+  const [ticketRecordingActive, setTicketRecordingActive] = useState(false);
+  const [ticketRecordingMinimized, setTicketRecordingMinimized] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [pendingBoletoAction, setPendingBoletoAction] =
@@ -434,9 +436,27 @@ export function AiCopilotDrawer({
     void confirmBoletoResend(action.label, nextAction);
   }
 
+  function requestClose() {
+    if (ticketRecordingActive) {
+      setActiveAgentTab("ticket");
+      setTicketRecordingMinimized(true);
+      setOpen(true);
+      return;
+    }
+
+    setTicketRecordingMinimized(false);
+    setOpen(false);
+  }
+
+  function restoreTicketPanel() {
+    setActiveAgentTab("ticket");
+    setTicketRecordingMinimized(false);
+    setOpen(true);
+  }
+
   return (
     <>
-      {!open ? (
+      {!open && !ticketRecordingMinimized ? (
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -448,17 +468,35 @@ export function AiCopilotDrawer({
         </button>
       ) : null}
 
-      {open ? (
-        <div className="fixed inset-0 z-50">
-          <button
+      {open || ticketRecordingMinimized ? (
+        <div
+          className={
+            ticketRecordingMinimized
+              ? "fixed bottom-5 right-5 z-50"
+              : "fixed inset-0 z-50"
+          }
+        >
+          {!ticketRecordingMinimized ? (
+            <button
             type="button"
             aria-label="Fechar assistente de cobrança"
-            onClick={() => setOpen(false)}
+            onClick={requestClose}
             className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px]"
-          />
+            />
+          ) : null}
 
-          <aside className="absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-            <header className="shrink-0 border-b border-slate-100 bg-white px-5 py-4">
+          <aside
+            className={
+              ticketRecordingMinimized
+                ? "w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
+                : "absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
+            }
+          >
+            <header
+              className={`shrink-0 border-b border-slate-100 bg-white px-5 py-4 ${
+                ticketRecordingMinimized ? "hidden" : ""
+              }`}
+            >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="grid size-12 place-items-center overflow-hidden rounded-2xl border border-[#A07C3B]/30 bg-slate-950 text-[#A07C3B] shadow-[0_10px_26px_rgba(160,124,59,0.24)]">
@@ -476,7 +514,7 @@ export function AiCopilotDrawer({
 
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={requestClose}
                   aria-label="Fechar painel"
                   className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
                 >
@@ -485,7 +523,11 @@ export function AiCopilotDrawer({
               </div>
             </header>
 
-            <nav className="grid shrink-0 grid-cols-2 gap-1 border-b border-slate-100 bg-white p-2">
+            <nav
+              className={`grid shrink-0 grid-cols-2 gap-1 border-b border-slate-100 bg-white p-2 ${
+                ticketRecordingMinimized ? "hidden" : ""
+              }`}
+            >
               <button
                 type="button"
                 aria-pressed={activeAgentTab === "agent"}
@@ -515,8 +557,20 @@ export function AiCopilotDrawer({
             </nav>
 
             {activeAgentTab === "ticket" ? (
-              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/55 px-5 py-5">
-                <HubTicketOpenForm defaultModule="Hades" />
+              <div
+                className={
+                  ticketRecordingMinimized
+                    ? "p-3"
+                    : "min-h-0 flex-1 overflow-y-auto bg-slate-50/55 px-5 py-5"
+                }
+              >
+                <HubTicketOpenForm
+                  compactRecordingMode={ticketRecordingMinimized}
+                  defaultModule="Hades"
+                  onRecordingStateChange={setTicketRecordingActive}
+                  onRestoreRequest={restoreTicketPanel}
+                  recordingHost="native"
+                />
               </div>
             ) : (
               <>

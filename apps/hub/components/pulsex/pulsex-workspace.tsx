@@ -94,6 +94,10 @@ export function HermesWorkspace() {
     HermesMessage["id"] | null
   >(null);
   const [isAthenaAgentOpen, setIsAthenaAgentOpen] = useState(false);
+  const [isAthenaTicketRecordingActive, setIsAthenaTicketRecordingActive] =
+    useState(false);
+  const [isAthenaTicketRecordingMinimized, setIsAthenaTicketRecordingMinimized] =
+    useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [athenaFocusedMessageId, setAthenaFocusedMessageId] = useState<
     HermesMessage["id"] | null
@@ -131,11 +135,8 @@ export function HermesWorkspace() {
     emptyHermesChannel;
 
   useOutsideDismiss({
-    enabled: isAthenaAgentOpen,
-    onDismiss: () => {
-      setIsAthenaAgentOpen(false);
-      setAthenaFocusedMessageId(null);
-    },
+    enabled: isAthenaAgentOpen && !isAthenaTicketRecordingMinimized,
+    onDismiss: handleCloseAthenaAgent,
     ref: athenaAgentPanelRef,
   });
   useOutsideDismiss({
@@ -192,6 +193,24 @@ export function HermesWorkspace() {
 
     return [...channelUsers, ...messageAuthorUsers];
   }, [activeChannel.id, channelMessages, presenceUsers]);
+
+  function handleCloseAthenaAgent() {
+    if (isAthenaTicketRecordingActive) {
+      setIsAthenaTicketRecordingMinimized(true);
+      setIsAthenaAgentOpen(true);
+      setAthenaFocusedMessageId(null);
+      return;
+    }
+
+    setIsAthenaTicketRecordingMinimized(false);
+    setIsAthenaAgentOpen(false);
+    setAthenaFocusedMessageId(null);
+  }
+
+  function handleRestoreAthenaTicketPanel() {
+    setIsAthenaTicketRecordingMinimized(false);
+    setIsAthenaAgentOpen(true);
+  }
 
   const loadOperationalData = useCallback(() => {
     if (profileStatus === "loading") {
@@ -736,6 +755,7 @@ export function HermesWorkspace() {
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
     setAthenaFocusedMessageId(null);
+    setIsAthenaTicketRecordingMinimized(false);
     setIsAthenaAgentOpen(true);
   }
 
@@ -743,6 +763,7 @@ export function HermesWorkspace() {
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
     setAthenaFocusedMessageId(messageId);
+    setIsAthenaTicketRecordingMinimized(false);
     setIsAthenaAgentOpen(true);
   }
 
@@ -1274,20 +1295,28 @@ export function HermesWorkspace() {
           ) : null}
           {isAthenaAgentOpen ? (
             <div
-              className="absolute inset-y-0 right-0 z-30 shadow-2xl"
+              className={
+                isAthenaTicketRecordingMinimized
+                  ? "absolute bottom-6 right-6 z-30 w-[min(24rem,calc(100%-2rem))]"
+                  : "absolute inset-y-0 right-0 z-30 shadow-2xl"
+              }
               ref={athenaAgentPanelRef}
-              style={{ maxWidth: "calc(100% - 1rem)", width: "24rem" }}
+              style={
+                isAthenaTicketRecordingMinimized
+                  ? undefined
+                  : { maxWidth: "calc(100% - 1rem)", width: "24rem" }
+              }
             >
               <AthenaAgentPanel
                 channel={activeChannel}
+                compactTicketMode={isAthenaTicketRecordingMinimized}
                 currentUserId={currentUserId}
                 draftValue={composerValue}
                 focusedMessage={athenaFocusedMessage}
                 messages={channelMessages}
-                onClose={() => {
-                  setIsAthenaAgentOpen(false);
-                  setAthenaFocusedMessageId(null);
-                }}
+                onClose={handleCloseAthenaAgent}
+                onRestoreTicketPanel={handleRestoreAthenaTicketPanel}
+                onTicketRecordingStateChange={setIsAthenaTicketRecordingActive}
                 onUseAsDraft={handleUseAthenaDraft}
                 users={presenceUsers}
               />

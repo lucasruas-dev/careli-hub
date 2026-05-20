@@ -15,6 +15,8 @@ import {
   type HubItTicketAttachment,
   type HubItTicketAttachmentInput,
   type HubItTicketCategory,
+  type HubItTicketDeliveryDecisionAction,
+  type HubItTicketDeliveryDecisionStatus,
   type HubItTicketCreateInput,
   type HubItTicketEvent,
   type HubItTicketListScope,
@@ -106,6 +108,7 @@ type HubItTicketUpdate = Partial<
     | "last_response_by_email"
     | "last_response_by_name"
     | "last_response_by_user_id"
+    | "metadata"
     | "resolution_summary"
     | "resolved_at"
     | "status"
@@ -346,6 +349,9 @@ export async function createHubItTicket({
   }
 
   try {
+    const deliveryMetadata = buildInitialDeliveryMetadata(
+      normalizedInput.requestedDeliveryDate,
+    );
     const { data: ticket, error } = await adminClient
       .from("hub_it_tickets")
       .insert({
@@ -353,6 +359,7 @@ export async function createHubItTicket({
         category: normalizedInput.category,
         expected_result: normalizedInput.expectedResult ?? null,
         metadata: {
+          deliveryAgreement: deliveryMetadata,
           source: "hub-athena-ticket-ti",
           userAgent:
             typeof normalizedInput.sourceUrl === "string"
@@ -386,8 +393,11 @@ export async function createHubItTicket({
 
     await insertTicketEvent(adminClient, {
       createdByUserId: user.id,
-      message: "Ticket TI aberto pelo usuario via Athena.",
-      metadata: { source: "hub-athena-ticket-ti" },
+      message: `Ticket TI aberto pelo usuario via Athena. Data solicitada: ${formatDateOnlyForMessage(normalizedInput.requestedDeliveryDate)}.`,
+      metadata: {
+        deliveryAgreement: deliveryMetadata,
+        source: "hub-athena-ticket-ti",
+      },
       technicalNote: normalizedInput.technicalSummary,
       ticketId: ticket.id,
       type: "created",
@@ -524,22 +534,34 @@ export async function updateHubItTicket({
       (normalizedInput.adminResponse || normalizedInput.resolutionSummary
         ? "aguardando_cliente"
         : "em_analise");
+    const deliveryDecision = buildDeliveryDecisionMetadata({
+      currentMetadata: currentTicket.metadata,
+      input: normalizedInput,
+      now,
+      user,
+    });
+    const updatePayload: HubItTicketUpdate = {
+      admin_response: normalizedInput.adminResponse ?? null,
+      assigned_to_avatar_url: user.avatarUrl ?? null,
+      assigned_to_email: user.email,
+      assigned_to_name: user.name,
+      assigned_to_user_id: user.id,
+      last_response_by_avatar_url: user.avatarUrl ?? null,
+      last_response_by_email: user.email,
+      last_response_by_name: user.name,
+      last_response_by_user_id: user.id,
+      resolution_summary: normalizedInput.resolutionSummary ?? null,
+      resolved_at: nextStatus === "fechado" ? now : null,
+      status: nextStatus,
+    };
+
+    if (deliveryDecision.changed) {
+      updatePayload.metadata = deliveryDecision.metadata;
+    }
+
     const { data: ticket, error } = await adminClient
       .from("hub_it_tickets")
-      .update({
-        admin_response: normalizedInput.adminResponse ?? null,
-        assigned_to_avatar_url: user.avatarUrl ?? null,
-        assigned_to_email: user.email,
-        assigned_to_name: user.name,
-        assigned_to_user_id: user.id,
-        last_response_by_avatar_url: user.avatarUrl ?? null,
-        last_response_by_email: user.email,
-        last_response_by_name: user.name,
-        last_response_by_user_id: user.id,
-        resolution_summary: normalizedInput.resolutionSummary ?? null,
-        resolved_at: nextStatus === "fechado" ? now : null,
-        status: nextStatus,
-      })
+      .update(updatePayload)
       .eq("protocol", normalizedInput.protocol)
       .select("*")
       .single();
@@ -555,12 +577,25 @@ export async function updateHubItTicket({
     await insertTicketEvent(adminClient, {
       createdByUserId: user.id,
       message:
-        normalizedInput.adminResponse ||
-        `Status atualizado para ${nextStatus}.`,
-      metadata: { source: "squadops-ticket-ti" },
+        buildAdminTicketEventMessage({
+          deliveryMessage: deliveryDecision.message,
+          response: normalizedInput.adminResponse,
+          status: nextStatus,
+        }),
+      metadata: {
+        ...(deliveryDecision.changed
+          ? { deliveryAgreement: deliveryDecision.metadata.deliveryAgreement }
+          : {}),
+        source: "squadops-ticket-ti",
+      },
       technicalNote: normalizedInput.resolutionSummary ?? null,
       ticketId: ticket.id,
-      type: nextStatus === "fechado" ? "resolved" : "admin_reply",
+      type:
+        nextStatus === "fechado"
+          ? "resolved"
+          : deliveryDecision.changed && !normalizedInput.adminResponse
+            ? "status_changed"
+            : "admin_reply",
       visibleToRequester: true,
     });
 
@@ -705,6 +740,10 @@ function normalizeCreateInput(input: unknown): HubItTicketCreateInput & {
   const priority = isTicketPriority(payload.priority)
     ? payload.priority
     : "media";
+  const requestedDeliveryDate = normalizeDateOnly(
+    payload.requestedDeliveryDate,
+    "Informe a data de entrega desejada para o ticket TI.",
+  );
 
   return {
     actualResult: sanitizeOptionalText(payload.actualResult),
@@ -713,6 +752,7 @@ function normalizeCreateInput(input: unknown): HubItTicketCreateInput & {
     expectedResult: sanitizeOptionalText(payload.expectedResult),
     module: moduleName,
     priority,
+    requestedDeliveryDate,
     sourcePath: sanitizeOptionalText(payload.sourcePath, 300),
     sourceUrl: sanitizeOptionalText(payload.sourceUrl, 500),
     technicalSummary,
@@ -735,12 +775,29 @@ function normalizeUpdateInput(input: unknown): HubItTicketUpdateInput {
   const customerResponse = sanitizeOptionalText(payload.customerResponse);
   const resolutionSummary = sanitizeOptionalText(payload.resolutionSummary);
   const status = isTicketStatus(payload.status) ? payload.status : undefined;
+  const deliveryDecision = isDeliveryDecision(payload.deliveryDecision)
+    ? payload.deliveryDecision
+    : undefined;
+  const approvedDeliveryDate =
+    deliveryDecision === "reject_with_new_date"
+      ? normalizeDateOnly(
+          payload.approvedDeliveryDate,
+          "Informe a nova data proposta por Zeus.",
+        )
+      : normalizeOptionalDateOnly(payload.approvedDeliveryDate);
+  const deliveryDecisionNote = sanitizeOptionalText(
+    payload.deliveryDecisionNote,
+    800,
+  );
 
   return {
     action,
     adminResponse,
+    approvedDeliveryDate,
     attachments: normalizeAttachments(payload.attachments),
     customerResponse,
+    deliveryDecision,
+    deliveryDecisionNote,
     protocol,
     resolutionSummary,
     status,
@@ -793,9 +850,12 @@ function mapTicketRow(
   events: HubItTicketEvent[],
   attachments: HubItTicketAttachment[],
 ): HubItTicket {
+  const deliveryAgreement = getDeliveryAgreementFromMetadata(row.metadata);
+
   return {
     actualResult: row.actual_result,
     adminResponse: row.admin_response,
+    approvedDeliveryDate: deliveryAgreement.approvedDate,
     assignedTo: row.assigned_to_user_id
       ? {
           avatarUrl: row.assigned_to_avatar_url,
@@ -808,6 +868,10 @@ function mapTicketRow(
     attachments,
     category: row.category,
     createdAt: row.created_at,
+    deliveryDecisionAt: deliveryAgreement.decidedAt,
+    deliveryDecisionBy: deliveryAgreement.decidedBy,
+    deliveryDecisionNote: deliveryAgreement.note,
+    deliveryDecisionStatus: deliveryAgreement.status,
     events,
     expectedResult: row.expected_result,
     id: row.id,
@@ -828,6 +892,7 @@ function mapTicketRow(
       id: row.requested_by_user_id,
       name: row.requester_name,
     },
+    requestedDeliveryDate: deliveryAgreement.requestedDate,
     resolutionSummary: row.resolution_summary,
     resolvedAt: row.resolved_at,
     sourcePath: row.source_path,
@@ -862,6 +927,214 @@ function mapAttachmentRow(
     sizeBytes: row.size_bytes,
     type: row.type,
   };
+}
+
+type DeliveryAgreementMetadata = {
+  approvedDate?: string | null;
+  decidedAt?: string | null;
+  decidedBy?: HubItTicket["deliveryDecisionBy"];
+  note?: string | null;
+  requestedDate?: string | null;
+  status: HubItTicketDeliveryDecisionStatus;
+};
+
+function buildInitialDeliveryMetadata(requestedDate: string) {
+  return {
+    approvedDate: null,
+    decidedAt: null,
+    decidedBy: null,
+    note: null,
+    requestedDate,
+    status: "pendente" satisfies HubItTicketDeliveryDecisionStatus,
+  };
+}
+
+function getDeliveryAgreementFromMetadata(
+  metadata: Record<string, unknown>,
+): DeliveryAgreementMetadata {
+  const agreement = recordFromUnknown(metadata.deliveryAgreement) ?? {};
+  const requestedDate = readDateOnly(agreement.requestedDate);
+  const approvedDate = readDateOnly(agreement.approvedDate);
+  const status = isDeliveryDecisionStatus(agreement.status)
+    ? agreement.status
+    : approvedDate
+      ? "aprovada"
+      : "pendente";
+  const decidedByRecord = recordFromUnknown(agreement.decidedBy);
+
+  return {
+    approvedDate,
+    decidedAt: sanitizeOptionalText(agreement.decidedAt, 80) ?? null,
+    decidedBy: decidedByRecord
+      ? {
+          avatarUrl: sanitizeOptionalText(decidedByRecord.avatarUrl, 500) ?? null,
+          email: sanitizeOptionalText(decidedByRecord.email, 240) ?? null,
+          id: sanitizeOptionalText(decidedByRecord.id, 120) ?? "zeus",
+          name: sanitizeOptionalText(decidedByRecord.name, 160) ?? "Zeus",
+        }
+      : null,
+    note: sanitizeOptionalText(agreement.note, 800) ?? null,
+    requestedDate,
+    status,
+  };
+}
+
+function buildDeliveryDecisionMetadata({
+  currentMetadata,
+  input,
+  now,
+  user,
+}: {
+  currentMetadata: Record<string, unknown>;
+  input: HubItTicketUpdateInput;
+  now: string;
+  user: AuthorizedHubItTicketUser;
+}) {
+  if (!input.deliveryDecision) {
+    return {
+      changed: false,
+      message: undefined,
+      metadata: currentMetadata,
+    };
+  }
+
+  const currentAgreement = getDeliveryAgreementFromMetadata(currentMetadata);
+  const nextDecision = resolveDeliveryDecision({
+    action: input.deliveryDecision,
+    approvedDeliveryDate: input.approvedDeliveryDate,
+    note: input.deliveryDecisionNote,
+    requestedDate: currentAgreement.requestedDate,
+  });
+  const actor = buildDeliveryActor(user);
+  const nextAgreement = {
+    ...(recordFromUnknown(currentMetadata.deliveryAgreement) ?? {}),
+    approvedDate: nextDecision.approvedDate,
+    decidedAt: now,
+    decidedBy: actor,
+    note: nextDecision.note,
+    requestedDate: currentAgreement.requestedDate,
+    status: nextDecision.status,
+    history: [
+      {
+        action: input.deliveryDecision,
+        approvedDate: nextDecision.approvedDate,
+        decidedAt: now,
+        decidedBy: actor,
+        note: nextDecision.note,
+        status: nextDecision.status,
+      },
+      ...arrayFromUnknown(
+        recordFromUnknown(currentMetadata.deliveryAgreement)?.history,
+      ).slice(0, 24),
+    ],
+  };
+
+  return {
+    changed: true,
+    message: nextDecision.message,
+    metadata: {
+      ...currentMetadata,
+      deliveryAgreement: nextAgreement,
+    },
+  };
+}
+
+function buildLocalDeliveryDecision({
+  currentTicket,
+  input,
+  now,
+  user,
+}: {
+  currentTicket: HubItTicket;
+  input: HubItTicketUpdateInput;
+  now: string;
+  user: AuthorizedHubItTicketUser;
+}) {
+  if (!input.deliveryDecision) {
+    return {
+      changed: false,
+      message: undefined,
+    };
+  }
+
+  const nextDecision = resolveDeliveryDecision({
+    action: input.deliveryDecision,
+    approvedDeliveryDate: input.approvedDeliveryDate,
+    note: input.deliveryDecisionNote,
+    requestedDate: currentTicket.requestedDeliveryDate,
+  });
+
+  return {
+    approvedDate: nextDecision.approvedDate,
+    changed: true,
+    decidedAt: now,
+    decidedBy: buildDeliveryActor(user),
+    message: nextDecision.message,
+    note: nextDecision.note,
+    status: nextDecision.status as HubItTicketDeliveryDecisionStatus,
+  };
+}
+
+function resolveDeliveryDecision({
+  action,
+  approvedDeliveryDate,
+  note,
+  requestedDate,
+}: {
+  action: HubItTicketDeliveryDecisionAction;
+  approvedDeliveryDate?: string;
+  note?: string;
+  requestedDate?: string | null;
+}) {
+  if (action === "approve_requested") {
+    if (!requestedDate) {
+      throw new Error("Ticket TI sem data solicitada para aprovar.");
+    }
+
+    return {
+      approvedDate: requestedDate,
+      message: `Data solicitada aprovada para ${formatDateOnlyForMessage(requestedDate)}.`,
+      note: note ?? null,
+      status: "aprovada" satisfies HubItTicketDeliveryDecisionStatus,
+    };
+  }
+
+  const nextDate = normalizeDateOnly(
+    approvedDeliveryDate,
+    "Informe a nova data proposta por Zeus.",
+  );
+
+  return {
+    approvedDate: nextDate,
+    message: `Data solicitada rejeitada. Nova data proposta por Zeus: ${formatDateOnlyForMessage(nextDate)}.`,
+    note: note ?? null,
+    status: "reprogramada" satisfies HubItTicketDeliveryDecisionStatus,
+  };
+}
+
+function buildDeliveryActor(user: AuthorizedHubItTicketUser) {
+  return {
+    avatarUrl: user.avatarUrl ?? null,
+    email: user.email,
+    id: user.id,
+    name: user.name,
+  };
+}
+
+function buildAdminTicketEventMessage({
+  deliveryMessage,
+  response,
+  status,
+}: {
+  deliveryMessage?: string;
+  response?: string;
+  status: HubItTicketStatus;
+}) {
+  if (response && deliveryMessage) {
+    return `${response}\n\n${deliveryMessage}`;
+  }
+
+  return response ?? deliveryMessage ?? `Status atualizado para ${status}.`;
 }
 
 function groupByTicketId<TItem extends { ticket_id: string }>(items: TItem[]) {
@@ -905,9 +1178,13 @@ async function createLocalHubItTicket({
 }) {
   const store = await readLocalStore();
   const now = new Date().toISOString();
+  const deliveryAgreement = buildInitialDeliveryMetadata(
+    input.requestedDeliveryDate,
+  );
   const ticket: HubItTicket = {
     actualResult: input.actualResult,
     adminResponse: null,
+    approvedDeliveryDate: null,
     assignedTo: null,
     assignedToUserId: null,
     attachments: input.attachments.map((attachment) => ({
@@ -916,11 +1193,15 @@ async function createLocalHubItTicket({
     })),
     category: input.category,
     createdAt: now,
+    deliveryDecisionAt: null,
+    deliveryDecisionBy: null,
+    deliveryDecisionNote: null,
+    deliveryDecisionStatus: "pendente",
     events: [
       {
         createdAt: now,
         id: `local-event-${randomBytes(6).toString("hex")}`,
-        message: "Ticket TI aberto pelo usuario via Athena.",
+        message: `Ticket TI aberto pelo usuario via Athena. Data solicitada: ${formatDateOnlyForMessage(input.requestedDeliveryDate)}.`,
         type: "created",
         visibleToRequester: true,
       },
@@ -936,6 +1217,7 @@ async function createLocalHubItTicket({
     module: input.module,
     priority: input.priority,
     protocol,
+    requestedDeliveryDate: deliveryAgreement.requestedDate,
     requester: {
       avatarUrl: user.avatarUrl,
       email: user.email,
@@ -1038,17 +1320,42 @@ async function updateLocalHubItTicket({
       ? "aguardando_cliente"
       : "em_analise");
   const isResolved = nextStatus === "resolvido" || nextStatus === "fechado";
+  const deliveryDecision = buildLocalDeliveryDecision({
+    currentTicket,
+    input,
+    now,
+    user,
+  });
   const nextTicket: HubItTicket = {
     ...currentTicket,
     adminResponse: input.adminResponse,
+    approvedDeliveryDate:
+      deliveryDecision.approvedDate ?? currentTicket.approvedDeliveryDate,
     assignedTo: actor,
     assignedToUserId: user.id,
+    deliveryDecisionAt:
+      deliveryDecision.decidedAt ?? currentTicket.deliveryDecisionAt,
+    deliveryDecisionBy:
+      deliveryDecision.decidedBy ?? currentTicket.deliveryDecisionBy,
+    deliveryDecisionNote:
+      deliveryDecision.note ?? currentTicket.deliveryDecisionNote,
+    deliveryDecisionStatus:
+      deliveryDecision.status ?? currentTicket.deliveryDecisionStatus,
     events: [
       {
         createdAt: now,
         id: `local-event-${randomBytes(6).toString("hex")}`,
-        message: input.adminResponse || `Status atualizado para ${nextStatus}.`,
-        type: isResolved ? "resolved" : "admin_reply",
+        message: buildAdminTicketEventMessage({
+          deliveryMessage: deliveryDecision.message,
+          response: input.adminResponse,
+          status: nextStatus,
+        }),
+        type:
+          isResolved
+            ? "resolved"
+            : deliveryDecision.changed && !input.adminResponse
+              ? "status_changed"
+              : "admin_reply",
         visibleToRequester: true,
       },
       ...currentTicket.events,
@@ -1150,6 +1457,18 @@ function getBearerToken(request: NextRequest) {
   return authorization.slice("Bearer ".length).trim() || null;
 }
 
+function recordFromUnknown(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function arrayFromUnknown(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function isTicketCategory(value: unknown): value is HubItTicketCategory {
   return hubItTicketCategories.includes(value as HubItTicketCategory);
 }
@@ -1169,6 +1488,22 @@ function isTicketUpdateAction(
     value === "admin_reply" ||
     value === "customer_close" ||
     value === "customer_review"
+  );
+}
+
+function isDeliveryDecision(
+  value: unknown,
+): value is HubItTicketDeliveryDecisionAction {
+  return value === "approve_requested" || value === "reject_with_new_date";
+}
+
+function isDeliveryDecisionStatus(
+  value: unknown,
+): value is HubItTicketDeliveryDecisionStatus {
+  return (
+    value === "pendente" ||
+    value === "aprovada" ||
+    value === "reprogramada"
   );
 }
 
@@ -1213,6 +1548,54 @@ function sanitizeOptionalText(value: unknown, maxLength = maxTextLength) {
   const text = value.trim().slice(0, maxLength);
 
   return text || undefined;
+}
+
+function normalizeDateOnly(value: unknown, errorMessage: string) {
+  const date = readDateOnly(value);
+
+  if (!date) {
+    throw new Error(errorMessage);
+  }
+
+  return date;
+}
+
+function normalizeOptionalDateOnly(value: unknown) {
+  return readDateOnly(value) ?? undefined;
+}
+
+function readDateOnly(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
+    return null;
+  }
+
+  const [year = 0, month = 0, day = 0] = trimmedValue
+    .split("-")
+    .map((part) => Number(part));
+  const date = new Date(year, month - 1, day);
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return trimmedValue;
+}
+
+function formatDateOnlyForMessage(value: string) {
+  const [year, month, day] = value.split("-");
+
+  return `${day}/${month}/${year}`;
 }
 
 export function isHubItTicketsSchemaMissingError(error: unknown) {

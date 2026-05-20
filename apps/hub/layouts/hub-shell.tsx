@@ -2,6 +2,7 @@
 
 import { useHubPresenceController } from "@/hooks/use-hub-presence";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import { AthenaTicketRecordingProvider } from "@/components/hub-support/athena-ticket-recording-provider";
 import { HubSupportDock } from "@/components/hub-support/hub-support-dock";
 import {
   getHubPresenceLabel,
@@ -398,7 +399,7 @@ export function HubShell({
   }
 
   return (
-    <>
+    <AthenaTicketRecordingProvider>
       <AppShell
         className="careli-hub-shell"
         layoutMode={isOperationalChrome ? "fullscreen" : layoutMode}
@@ -734,7 +735,7 @@ export function HubShell({
         title="Comandos do Panteon"
       />
       <HubSupportDock />
-    </>
+    </AthenaTicketRecordingProvider>
   );
 }
 
@@ -1018,11 +1019,11 @@ function createMinimumReleasedModuleIds() {
 
 function isVisibleInCurrentEnvironment(
   moduleId: string,
-  isHomologationBrand: boolean,
+  isHomologationEnvironment: boolean,
 ) {
   return (
     process.env.NODE_ENV !== "production" ||
-    isHomologationBrand ||
+    isHomologationEnvironment ||
     !hiddenProductionModuleIds.has(moduleId)
   );
 }

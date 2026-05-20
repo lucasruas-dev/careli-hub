@@ -17,6 +17,7 @@ import { Badge, Surface } from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   FileText,
@@ -47,15 +48,23 @@ type HubItTicketsBoardProps = {
 
 type TicketDraft = {
   adminResponse: string;
+  approvedDeliveryDate: string;
+  deliveryDecision: "manter" | "approve_requested" | "reject_with_new_date";
+  deliveryDecisionNote: string;
   resolutionSummary: string;
   status: HubItTicketStatus;
 };
 
 const emptyDraft: TicketDraft = {
   adminResponse: "",
+  approvedDeliveryDate: "",
+  deliveryDecision: "manter",
+  deliveryDecisionNote: "",
   resolutionSummary: "",
   status: "em_analise",
 };
+
+type DeliveryFilter = "todos" | "hoje" | "proximos" | "folga" | "sem_data";
 
 export function HubItTicketsBoard({
   accessToken,
@@ -66,14 +75,12 @@ export function HubItTicketsBoard({
   const [tickets, setTickets] = useState<HubItTicket[]>([]);
   const [selectedProtocol, setSelectedProtocol] = useState<string | null>(null);
   const [draft, setDraft] = useState<TicketDraft>(emptyDraft);
+  const [deliveryFilter, setDeliveryFilter] =
+    useState<DeliveryFilter>("todos");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const selectedTicket =
-    tickets.find((ticket) => ticket.protocol === selectedProtocol) ??
-    tickets[0] ??
-    null;
   const openTickets = tickets.filter(
     (ticket) => ticket.status !== "resolvido" && ticket.status !== "fechado",
   );
@@ -83,13 +90,33 @@ export function HubItTicketsBoard({
       ticket.status === "em_analise" ||
       ticket.status === "em_revisao",
   );
-  const urgentTickets = tickets.filter(
-    (ticket) => ticket.priority === "critica" || ticket.priority === "alta",
-  );
-  const waitingUserTickets = tickets.filter(
-    (ticket) => ticket.status === "aguardando_cliente",
-  );
-  const latestTicket = tickets[0] ?? null;
+  const deliveryBuckets = useMemo(() => {
+    return {
+      folga: tickets.filter((ticket) => getTicketDeliveryBucket(ticket) === "folga")
+        .length,
+      hoje: tickets.filter((ticket) => getTicketDeliveryBucket(ticket) === "hoje")
+        .length,
+      proximos: tickets.filter(
+        (ticket) => getTicketDeliveryBucket(ticket) === "proximos",
+      ).length,
+      semData: tickets.filter(
+        (ticket) => getTicketDeliveryBucket(ticket) === "sem_data",
+      ).length,
+    };
+  }, [tickets]);
+  const ticketsByDelivery = useMemo(() => {
+    return sortTicketsByDeliveryDate(
+      deliveryFilter === "todos"
+        ? tickets
+        : tickets.filter(
+            (ticket) => getTicketDeliveryBucket(ticket) === deliveryFilter,
+          ),
+    );
+  }, [deliveryFilter, tickets]);
+  const selectedTicket =
+    ticketsByDelivery.find((ticket) => ticket.protocol === selectedProtocol) ??
+    ticketsByDelivery[0] ??
+    null;
 
   const ticketsByStatus = useMemo(() => {
     return hubItTicketStatuses.map((status) => ({
@@ -118,7 +145,7 @@ export function HubItTicketsBoard({
       setError(
         loadError instanceof Error
           ? loadError.message
-          : "Nao foi possivel carregar a fila de tickets TI.",
+          : "Nao foi possivel carregar a fila TI.",
       );
     } finally {
       setIsLoading(false);
@@ -149,6 +176,12 @@ export function HubItTicketsBoard({
 
     setDraft({
       adminResponse: selectedTicket.adminResponse ?? "",
+      approvedDeliveryDate:
+        selectedTicket.approvedDeliveryDate ??
+        selectedTicket.requestedDeliveryDate ??
+        "",
+      deliveryDecision: "manter",
+      deliveryDecisionNote: selectedTicket.deliveryDecisionNote ?? "",
       resolutionSummary: selectedTicket.resolutionSummary ?? "",
       status:
         selectedTicket.status === "novo"
@@ -157,13 +190,36 @@ export function HubItTicketsBoard({
     });
   }, [selectedTicket]);
 
+  useEffect(() => {
+    if (
+      selectedProtocol &&
+      !ticketsByDelivery.some((ticket) => ticket.protocol === selectedProtocol)
+    ) {
+      setSelectedProtocol(ticketsByDelivery[0]?.protocol ?? null);
+    }
+  }, [selectedProtocol, ticketsByDelivery]);
+
   async function saveReply() {
     if (!selectedTicket) {
       return;
     }
 
-    if (!draft.adminResponse.trim() && !draft.resolutionSummary.trim()) {
-      setError("Escreva uma devolutiva ou resumo do que foi feito.");
+    const hasDeliveryDecision = draft.deliveryDecision !== "manter";
+
+    if (
+      draft.deliveryDecision === "reject_with_new_date" &&
+      !draft.approvedDeliveryDate
+    ) {
+      setError("Informe a nova data proposta por Zeus.");
+      return;
+    }
+
+    if (
+      !draft.adminResponse.trim() &&
+      !draft.resolutionSummary.trim() &&
+      !hasDeliveryDecision
+    ) {
+      setError("Escreva uma devolutiva, resumo ou decisao de data.");
       return;
     }
 
@@ -175,6 +231,17 @@ export function HubItTicketsBoard({
         accessToken,
         input: {
           adminResponse: draft.adminResponse,
+          approvedDeliveryDate:
+            hasDeliveryDecision && draft.approvedDeliveryDate
+              ? draft.approvedDeliveryDate
+              : undefined,
+          deliveryDecision:
+            draft.deliveryDecision === "manter"
+              ? undefined
+              : draft.deliveryDecision,
+          deliveryDecisionNote: hasDeliveryDecision
+            ? draft.deliveryDecisionNote
+            : undefined,
           protocol: selectedTicket.protocol,
           resolutionSummary: draft.resolutionSummary,
           status: draft.status,
@@ -203,7 +270,7 @@ export function HubItTicketsBoard({
       <Surface bordered className="border-amber-100 bg-amber-50 p-5">
         <div className="flex items-center gap-3 text-sm font-semibold text-amber-800">
           <AlertTriangle className="size-4" />
-          Sessao ausente para abrir a fila de tickets TI.
+          Sessao ausente para abrir a fila TI.
         </div>
       </Surface>
     );
@@ -219,20 +286,21 @@ export function HubItTicketsBoard({
         />
         <MetricTile
           icon={<AlertTriangle className="size-4" />}
-          label="Alta prioridade"
-          tone="warning"
-          value={urgentTickets.length}
-        />
-        <MetricTile
-          icon={<MessageSquareReply className="size-4" />}
-          label="Aguardando cliente"
-          tone="info"
-          value={waitingUserTickets.length}
+          label="Vencem hoje"
+          tone="danger"
+          value={deliveryBuckets.hoje}
         />
         <MetricTile
           icon={<Clock3 className="size-4" />}
-          label="Ultimo protocolo"
-          value={latestTicket?.protocol ?? "--"}
+          label="1-2 dias"
+          tone="warning"
+          value={deliveryBuckets.proximos}
+        />
+        <MetricTile
+          icon={<CheckCircle2 className="size-4" />}
+          label="3+ dias"
+          tone="success"
+          value={deliveryBuckets.folga}
         />
       </div>
 
@@ -248,7 +316,7 @@ export function HubItTicketsBoard({
                   Fila Zeus
                 </p>
                 <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
-                  Tickets TI
+                  TI
                 </h2>
               </div>
               <button
@@ -263,6 +331,46 @@ export function HubItTicketsBoard({
                   <RefreshCw className="size-4" />
                 )}
               </button>
+            </div>
+
+            <div className="border-b border-slate-200/70 p-3">
+              <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-500">
+                Visao por data
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <DeliveryFilterButton
+                  active={deliveryFilter === "todos"}
+                  label={`Todos ${tickets.length}`}
+                  onClick={() => setDeliveryFilter("todos")}
+                />
+                <DeliveryFilterButton
+                  active={deliveryFilter === "hoje"}
+                  label={`Hoje ${deliveryBuckets.hoje}`}
+                  tone="danger"
+                  onClick={() => setDeliveryFilter("hoje")}
+                />
+                <DeliveryFilterButton
+                  active={deliveryFilter === "proximos"}
+                  label={`1-2 dias ${deliveryBuckets.proximos}`}
+                  tone="warning"
+                  onClick={() => setDeliveryFilter("proximos")}
+                />
+                <DeliveryFilterButton
+                  active={deliveryFilter === "folga"}
+                  label={`3+ dias ${deliveryBuckets.folga}`}
+                  tone="success"
+                  onClick={() => setDeliveryFilter("folga")}
+                />
+              </div>
+              {deliveryBuckets.semData > 0 ? (
+                <div className="mt-2">
+                  <DeliveryFilterButton
+                    active={deliveryFilter === "sem_data"}
+                    label={`Sem data ${deliveryBuckets.semData}`}
+                    onClick={() => setDeliveryFilter("sem_data")}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-2 gap-2 border-b border-slate-200/70 p-3">
@@ -282,9 +390,9 @@ export function HubItTicketsBoard({
             </div>
 
             <div className="max-h-[38rem] overflow-y-auto p-3">
-              {tickets.length > 0 ? (
+              {ticketsByDelivery.length > 0 ? (
                 <div className="grid gap-2">
-                  {tickets.map((ticket) => (
+                  {ticketsByDelivery.map((ticket) => (
                     <TicketQueueItem
                       isActive={ticket.protocol === selectedTicket?.protocol}
                       key={ticket.id}
@@ -317,7 +425,7 @@ export function HubItTicketsBoard({
                 <div>
                   <Inbox className="mx-auto size-8 text-slate-300" />
                   <p className="m-0 mt-3 text-sm font-semibold text-slate-500">
-                    Nenhum ticket TI encontrado.
+                    Nenhum protocolo TI encontrado.
                   </p>
                 </div>
               </div>
@@ -346,12 +454,14 @@ function MetricTile({
 }: {
   icon: ReactNode;
   label: string;
-  tone?: "info" | "neutral" | "warning";
+  tone?: "danger" | "info" | "neutral" | "success" | "warning";
   value: number | string;
 }) {
   const toneClass = {
+    danger: "bg-red-50 text-red-700 ring-red-100",
     info: "bg-sky-50 text-sky-700 ring-sky-100",
     neutral: "bg-slate-50 text-[#A07C3B] ring-slate-200/70",
+    success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
     warning: "bg-amber-50 text-amber-700 ring-amber-100",
   }[tone];
 
@@ -403,6 +513,7 @@ function TicketQueueItem({
         <StatusBadge status={ticket.status} />
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
+        <DeliveryDueBadge ticket={ticket} />
         <MiniBadge>{ticket.module}</MiniBadge>
         <MiniBadge>{hubItTicketPriorityLabels[ticket.priority]}</MiniBadge>
         {ticket.attachments.length > 0 ? (
@@ -438,6 +549,7 @@ function TicketWorkspace({
             <Badge variant={priorityVariant(ticket.priority)}>
               {hubItTicketPriorityLabels[ticket.priority]}
             </Badge>
+            <DeliveryDueBadge ticket={ticket} />
           </div>
           <h2 className="m-0 mt-2 text-2xl font-semibold tracking-normal text-slate-950">
             {ticket.title}
@@ -447,6 +559,7 @@ function TicketWorkspace({
             aberto em {formatDateTime(ticket.createdAt)}
           </p>
         </div>
+        <DeliverySummaryCard ticket={ticket} />
           <div className="flex min-w-[12rem] items-center gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
           <span className="grid size-10 place-items-center rounded-full bg-[#101820] text-xs font-semibold text-white">
             {getInitials(ticket.requester.name)}
@@ -506,6 +619,12 @@ function TicketWorkspace({
         </div>
 
         <aside className="grid content-start gap-4">
+          <DeliveryDecisionPanel
+            draft={draft}
+            onDraftChange={onDraftChange}
+            ticket={ticket}
+          />
+
           <Surface bordered className="border-slate-200/70 bg-white p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
               <MessageSquareReply className="size-4 text-[#A07C3B]" />
@@ -575,7 +694,7 @@ function TicketWorkspace({
               ) : (
                 <Send className="size-4" />
               )}
-              Enviar devolutiva
+              Salvar decisao
             </button>
           </Surface>
 
@@ -606,6 +725,153 @@ function TicketWorkspace({
           </Surface>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function DeliverySummaryCard({ ticket }: { ticket: HubItTicket }) {
+  const effectiveDate = getTicketEffectiveDeliveryDate(ticket);
+  const decisionLabel = getDeliveryDecisionLabel(ticket);
+
+  return (
+    <div className="flex min-w-[12rem] items-center gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+      <span className="grid size-10 place-items-center rounded-full bg-emerald-50 text-emerald-700">
+        <CalendarDays className="size-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="m-0 truncate text-xs font-semibold uppercase text-slate-500">
+          Entrega
+        </p>
+        <p className="m-0 truncate text-sm font-semibold text-slate-950">
+          {effectiveDate ? formatDateOnly(effectiveDate) : "Sem data"}
+        </p>
+        <p className="m-0 truncate text-xs text-slate-500">
+          {decisionLabel}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function DeliveryDecisionPanel({
+  draft,
+  onDraftChange,
+  ticket,
+}: {
+  draft: TicketDraft;
+  onDraftChange: (draft: TicketDraft) => void;
+  ticket: HubItTicket;
+}) {
+  const decisionStatus = ticket.deliveryDecisionStatus ?? "pendente";
+
+  return (
+    <Surface bordered className="border-slate-200/70 bg-white p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+          <CalendarDays className="size-4 text-[#A07C3B]" />
+          Data de entrega
+        </div>
+        <DeliveryDueBadge ticket={ticket} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <InfoPill
+          label="Solicitada"
+          value={
+            ticket.requestedDeliveryDate
+              ? formatDateOnly(ticket.requestedDeliveryDate)
+              : "sem data"
+          }
+        />
+        <InfoPill
+          label={decisionStatus === "reprogramada" ? "Zeus" : "Aprovada"}
+          value={
+            ticket.approvedDeliveryDate
+              ? formatDateOnly(ticket.approvedDeliveryDate)
+              : "pendente"
+          }
+        />
+      </div>
+
+      <label className="mt-3 grid gap-1.5">
+        <span className="text-xs font-semibold uppercase text-slate-500">
+          Decisao
+        </span>
+        <select
+          className={fieldClassName}
+          onChange={(event) =>
+            onDraftChange({
+              ...draft,
+              deliveryDecision: event.target
+                .value as TicketDraft["deliveryDecision"],
+            })
+          }
+          value={draft.deliveryDecision}
+        >
+          <option value="manter">Manter pendente</option>
+          <option value="approve_requested">Aprovar data solicitada</option>
+          <option value="reject_with_new_date">
+            Rejeitar e propor nova data
+          </option>
+        </select>
+      </label>
+
+      {draft.deliveryDecision === "reject_with_new_date" ? (
+        <label className="mt-3 grid gap-1.5">
+          <span className="text-xs font-semibold uppercase text-slate-500">
+            Nova data Zeus
+          </span>
+          <input
+            className={fieldClassName}
+            min={getTodayDateInput()}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                approvedDeliveryDate: event.target.value,
+              })
+            }
+            type="date"
+            value={draft.approvedDeliveryDate}
+          />
+        </label>
+      ) : null}
+
+      {draft.deliveryDecision !== "manter" ? (
+        <label className="mt-3 grid gap-1.5">
+          <span className="text-xs font-semibold uppercase text-slate-500">
+            Observacao de prazo
+          </span>
+          <textarea
+            className={`${fieldClassName} min-h-20 resize-none py-2 leading-5`}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                deliveryDecisionNote: event.target.value,
+              })
+            }
+            placeholder="Explique o aceite ou a reprogramacao, se necessario."
+            value={draft.deliveryDecisionNote}
+          />
+        </label>
+      ) : null}
+
+      {ticket.deliveryDecisionBy || ticket.deliveryDecisionAt ? (
+        <p className="m-0 mt-3 text-xs leading-5 text-slate-500">
+          Ultima decisao: {ticket.deliveryDecisionBy?.name ?? "Zeus"} em{" "}
+          {ticket.deliveryDecisionAt
+            ? formatDateTime(ticket.deliveryDecisionAt)
+            : "--"}
+        </p>
+      ) : null}
+    </Surface>
+  );
+}
+
+function InfoPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <p className="m-0 font-semibold uppercase text-slate-500">{label}</p>
+      <p className="m-0 mt-1 font-semibold text-slate-950">{value}</p>
     </div>
   );
 }
@@ -706,7 +972,7 @@ function EmptyQueue({ isLoading }: { isLoading: boolean }) {
         <Inbox className="mx-auto size-6 text-slate-300" />
       )}
       <p className="m-0 mt-3 text-sm font-semibold text-slate-500">
-        {isLoading ? "Carregando tickets TI." : "Fila vazia no Zeus."}
+        {isLoading ? "Carregando TI." : "Fila vazia no Zeus."}
       </p>
     </div>
   );
@@ -724,6 +990,60 @@ function MiniBadge({ children }: { children: ReactNode }) {
   return (
     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-500">
       {children}
+    </span>
+  );
+}
+
+function DeliveryFilterButton({
+  active,
+  label,
+  onClick,
+  tone = "neutral",
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  tone?: "danger" | "neutral" | "success" | "warning";
+}) {
+  const toneClass = {
+    danger: active
+      ? "border-red-300 bg-red-50 text-red-700"
+      : "border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-700",
+    neutral: active
+      ? "border-[#A07C3B]/45 bg-[#A07C3B]/10 text-[#7A5E2C]"
+      : "border-slate-200 bg-white text-slate-500 hover:border-[#A07C3B]/30",
+    success: active
+      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+      : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:text-emerald-700",
+    warning: active
+      ? "border-amber-300 bg-amber-50 text-amber-700"
+      : "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:text-amber-700",
+  }[tone];
+
+  return (
+    <button
+      className={`h-8 rounded-lg border px-2 text-xs font-semibold transition ${toneClass}`}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
+function DeliveryDueBadge({ ticket }: { ticket: HubItTicket }) {
+  const deliveryState = getTicketDeliveryState(ticket);
+
+  if (!deliveryState.date) {
+    return <MiniBadge>Sem data</MiniBadge>;
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold ${deliveryState.className}`}
+    >
+      <CalendarDays className="size-3" />
+      {deliveryState.label}
     </span>
   );
 }
@@ -790,6 +1110,150 @@ function formatDateTime(value: string) {
     month: "2-digit",
     timeZone: "America/Sao_Paulo",
   });
+}
+
+function formatDateOnly(value: string) {
+  const [year, month, day] = value.split("-");
+
+  if (!year || !month || !day) {
+    return value;
+  }
+
+  return `${day}/${month}/${year}`;
+}
+
+function getTodayDateInput() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function sortTicketsByDeliveryDate(tickets: HubItTicket[]) {
+  return [...tickets].sort((firstTicket, secondTicket) => {
+    const firstDate = getTicketEffectiveDeliveryDate(firstTicket);
+    const secondDate = getTicketEffectiveDeliveryDate(secondTicket);
+
+    if (!firstDate && !secondDate) {
+      return secondTicket.updatedAt.localeCompare(firstTicket.updatedAt);
+    }
+
+    if (!firstDate) {
+      return 1;
+    }
+
+    if (!secondDate) {
+      return -1;
+    }
+
+    const dateComparison = firstDate.localeCompare(secondDate);
+
+    return dateComparison === 0
+      ? secondTicket.updatedAt.localeCompare(firstTicket.updatedAt)
+      : dateComparison;
+  });
+}
+
+function getTicketEffectiveDeliveryDate(ticket: HubItTicket) {
+  return ticket.approvedDeliveryDate ?? ticket.requestedDeliveryDate ?? null;
+}
+
+function getTicketDeliveryBucket(ticket: HubItTicket): DeliveryFilter {
+  const deliveryState = getTicketDeliveryState(ticket);
+
+  if (!deliveryState.date) {
+    return "sem_data";
+  }
+
+  if (deliveryState.days <= 0) {
+    return "hoje";
+  }
+
+  if (deliveryState.days <= 2) {
+    return "proximos";
+  }
+
+  return "folga";
+}
+
+function getTicketDeliveryState(ticket: HubItTicket) {
+  const date = getTicketEffectiveDeliveryDate(ticket);
+
+  if (!date) {
+    return {
+      className: "",
+      date: null,
+      days: Number.POSITIVE_INFINITY,
+      label: "Sem data",
+    };
+  }
+
+  const days = getDaysUntilDate(date);
+
+  if (days <= 0) {
+    return {
+      className: "bg-red-50 text-red-700 ring-1 ring-red-100",
+      date,
+      days,
+      label: days < 0 ? `Atrasado ${Math.abs(days)}d` : "Hoje",
+    };
+  }
+
+  if (days <= 2) {
+    return {
+      className: "bg-amber-50 text-amber-700 ring-1 ring-amber-100",
+      date,
+      days,
+      label: `${days} dia${days > 1 ? "s" : ""}`,
+    };
+  }
+
+  return {
+    className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+    date,
+    days,
+    label: `${days} dias`,
+  };
+}
+
+function getDaysUntilDate(value: string) {
+  const date = parseDateOnly(value);
+
+  if (!date) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+
+  return Math.round((date.getTime() - todayStart.getTime()) / 86_400_000);
+}
+
+function parseDateOnly(value: string) {
+  const [year = 0, month = 0, day = 0] = value
+    .split("-")
+    .map((part) => Number(part));
+  const date = new Date(year, month - 1, day);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getDeliveryDecisionLabel(ticket: HubItTicket) {
+  if (ticket.deliveryDecisionStatus === "aprovada") {
+    return "data aprovada";
+  }
+
+  if (ticket.deliveryDecisionStatus === "reprogramada") {
+    return "reprogramada por Zeus";
+  }
+
+  return "aguardando decisao";
 }
 
 function formatBytes(bytes: number) {
