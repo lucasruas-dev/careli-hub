@@ -6731,3 +6731,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nenhuma env, secret, Supabase, banco, migration, producao ou alias de producao foi alterado. A validacao autenticada final precisa confirmar anexar arquivo, colar print e enviar resposta com apenas imagem no painel de respostas.
 - Status operacional: `VALIDADO LOCAL / PUBLICACAO HOMOLOG EM ANDAMENTO`.
 - Proxima squad recomendada: `Hermes Core` para publicar o recorte em `homolog` e executar healthcheck; `Lucas` para reteste visual/autenticado.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Imagens em respostas publicadas em homologacao`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 12:47:38 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / THREADS / HEALTHCHECK`.
+- Motivo da mudanca: fechar a rastreabilidade da melhoria que permite anexar imagens e colar prints dentro das respostas do painel de threads do Hermes.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/lib/pulsex/types.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: publiquei o commit `3d733ae feat(hermes): attach images to thread replies` na branch `homolog`. A Vercel gerou o Preview `dpl_EwTLa47ykp8zzpr4ALZ4uk6FRrvk`, e o alias `https://homo.c2x.app.br` passou a apontar para `https://careli-hub-hub-i2bs-ijkh9ec51-lucasruas-devs-projects.vercel.app`.
+- Logica utilizada: o recorte reaproveita `metadata.attachment` e `threadParentMessageId`, mantendo o envio de resposta com imagem no mesmo contrato das mensagens principais. Isso evita migration e preserva compatibilidade com mensagens antigas.
+- Validacao executada: validacoes locais passaram em `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` e smoke local `/hermes=200`; `vercel inspect` confirmou deployment `Ready`; healthchecks remotos confirmaram `GET https://homo.c2x.app.br/hermes=200`, `GET /api/pwa/manifest=200` e `GET /api/hermes/messages=401` esperado sem sessao; `vercel logs` exibiu apenas chamadas esperadas de `/hermes`, `/api/pwa/manifest` e `/api/hermes/messages`.
+- Pendencias ou riscos conhecidos: validacao funcional autenticada ainda deve confirmar envio real de resposta com imagem por arquivo, por colar print e por resposta apenas com imagem. Producao nao foi alterada.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO RETESTE VISUAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para teste visual/autenticado em `https://homo.c2x.app.br/hermes`; `Hermes Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
