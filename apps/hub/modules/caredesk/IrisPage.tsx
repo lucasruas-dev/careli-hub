@@ -3578,7 +3578,7 @@ function getDeliveryStatusLabel(status: string) {
 function shouldRepairOutboundMessage(message: IrisMessage) {
   const normalized = normalizeDeliveryStatus(message.deliveryStatus);
   const ageInMs = Date.now() - dateValue(message.createdAt);
-  const repairWindowInMs = 30 * 60 * 1000;
+  const repairWindowInMs = 60 * 60 * 1000;
 
   return (
     message.direction === "outbound" &&
