@@ -6701,3 +6701,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: envio outbound ainda depende de token Meta valido; os ultimos testes autenticados seguiram retornando HTTP 401 da Meta. Lucas deve copiar novamente somente o access token e rodar o script atualizado, que agora bloqueia clipboard contendo comando/caminho antes de alterar env.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO TOKEN META VALIDO E SMOKE REAL`.
 - Proxima squad recomendada: `Lucas` para atualizar token com o script reforcado e testar envio real; `Iris Core` acompanha logs e resultado.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Hotfix de popups publicado em homologacao`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 12:20:54 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / UX OPERACIONAL / HEALTHCHECK`.
+- Motivo da mudanca: fechar a rastreabilidade da correcao de sobreposicao dos popups de reacao, do emoji standalone sem balao e do corte visual no painel de respostas.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: publiquei o commit `bde6b7e fix(hermes): keep reaction popups above chat` na branch `homolog`. A Vercel gerou o Preview `dpl_5dme1YjBKHhSJQKRCagoMFGPP7S3`, e o alias `https://homo.c2x.app.br` passou a apontar para `https://careli-hub-hub-i2bs-l0wfayw1t-lucasruas-devs-projects.vercel.app`.
+- Logica utilizada: o hotfix ficou isolado ao componente de mensagem do Hermes; nao alterou persistencia, API, Supabase, envs, secrets, migration, producao nem alias de producao. O seletor de reacoes agora usa camada fixa acima da conversa, e mensagens de emoji puro deixam de usar borda/fundo de bolha.
+- Validacao executada: validacoes locais passaram em `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` e smoke local `/hermes=200`; `vercel inspect` confirmou deployment `Ready`; healthchecks remotos confirmaram `GET https://homo.c2x.app.br/hermes=200`, `GET /api/pwa/manifest=200` e `GET /api/hermes/messages=401` esperado sem sessao; `vercel logs` dos ultimos minutos exibiu apenas chamadas esperadas de `/hermes`, `/api/pwa/manifest`, `/api/hermes/messages` e presence.
+- Pendencias ou riscos conhecidos: a validacao final visual/autenticada ainda depende do Lucas testar em `https://homo.c2x.app.br/hermes`, especialmente abrir reacoes em mensagem de canal, em painel de respostas e enviar emoji sozinho. Producao nao foi alterada.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO RETESTE VISUAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para reteste visual/autenticado; `Hermes Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
