@@ -9,7 +9,9 @@ import {
   BarChart3,
   Bot,
   CalendarClock,
+  Check,
   CheckCircle2,
+  CheckCheck,
   ChevronRight,
   Clock3,
   ClipboardList,
@@ -52,6 +54,7 @@ import {
   showBrowserIrisNotification,
 } from "@/lib/iris/notification-effects";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import { useAuth } from "@/providers/auth-provider";
 
 type IrisPageProps = {
   embedded?: boolean;
@@ -84,6 +87,7 @@ type IrisMessage = {
   deliveryStatus: string;
   direction: "inbound" | "outbound" | "internal";
   id: string;
+  senderLabel?: string | null;
   senderType: "customer" | "operator" | "agent" | "system";
 };
 
@@ -532,7 +536,7 @@ export function IrisPage({
     <div
       onClick={registerIrisNotificationPermissionIntent}
       className={[
-        "min-h-[calc(100vh-72px)] bg-[#f3f6fa] text-[#101820]",
+        "h-full min-h-0 overflow-hidden bg-[#f3f6fa] text-[#101820]",
         embedded ? "rounded-2xl border border-[#dbe3ef]" : "",
       ].join(" ")}
     >
@@ -549,7 +553,7 @@ export function IrisPage({
       ) : null}
       <div
         className={[
-          "grid min-h-[calc(100vh-72px)] transition-[grid-template-columns] duration-200",
+          "grid h-full min-h-0 transition-[grid-template-columns] duration-200",
           sidebarCollapsed
             ? "grid-cols-[72px_minmax(0,1fr)]"
             : "grid-cols-[240px_minmax(0,1fr)]",
@@ -673,12 +677,12 @@ export function IrisPage({
           )}
         </aside>
 
-        <main className="min-w-0">
+        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <IrisTopbar activeView={activeView} snapshot={snapshot} />
 
-          <section className="p-4">
+          <section className="min-h-0 flex-1 overflow-hidden p-3">
             {loadError ? (
-              <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
+              <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
                 {loadError}
               </div>
             ) : activeView === "gestao" ? (
@@ -790,7 +794,7 @@ function ManagementView({
   onSelectTicket: (ticketId: string) => void;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
       <div className="grid grid-cols-4 gap-3">
         <SignalCard
           icon={Inbox}
@@ -818,8 +822,8 @@ function ManagementView({
         />
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-4">
-        <div className="min-w-0">
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-3">
+        <div className="min-h-0 min-w-0">
           {loading ? (
             <IrisLoading />
           ) : (
@@ -831,7 +835,7 @@ function ManagementView({
           )}
         </div>
 
-        <aside className="space-y-3">
+        <aside className="min-h-0 space-y-3 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
           <ActionPanel
             icon={Sparkles}
             title="Athena na fila"
@@ -925,8 +929,8 @@ function IrisTicketQueue({
   }, [priority, queue, search, status, tickets]);
 
   return (
-    <section className="rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <header className="border-b border-slate-100 px-4 py-3">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="shrink-0 border-b border-slate-100 px-4 py-3">
         <div className="flex flex-col gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
@@ -979,8 +983,8 @@ function IrisTicketQueue({
         </div>
       </header>
 
-      <div className="grid gap-3 p-3 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0 space-y-3">
+      <div className="grid min-h-0 flex-1 gap-3 p-3 2xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
           <div className="grid gap-2 rounded-xl border border-slate-200/70 bg-slate-50/60 p-2 lg:grid-cols-[minmax(0,1fr)_150px_150px_150px]">
             <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-500">
               <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
@@ -1011,7 +1015,7 @@ function IrisTicketQueue({
             />
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200/70">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200/70">
             <div className="hidden grid-cols-[1fr_0.75fr_0.75fr_0.75fr_0.9fr_0.75fr_0.75fr] gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-2 text-xs font-semibold uppercase tracking-normal text-slate-400 xl:grid">
               <span>Ticket</span>
               <span>Fila</span>
@@ -1021,7 +1025,7 @@ function IrisTicketQueue({
               <span>Responsavel</span>
               <span className="text-right">Atendimento</span>
             </div>
-            <div className="max-h-[430px] overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+            <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
               {filteredTickets.length > 0 ? (
                 filteredTickets.map((ticket) => (
                   <IrisTicketRow
@@ -1042,7 +1046,7 @@ function IrisTicketQueue({
           </div>
         </div>
 
-        <aside className="space-y-3">
+        <aside className="min-h-0 space-y-3 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
           <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
             <div className="flex items-center gap-2">
               <Bot className="size-4 text-[#A07C3B]" aria-hidden="true" />
@@ -1198,7 +1202,7 @@ function AttendanceView({
 }) {
   if (!ticket) {
     return (
-      <div className="flex min-h-[620px] items-center justify-center rounded-2xl border border-[#dbe3ef] bg-white">
+      <div className="flex h-full min-h-0 items-center justify-center rounded-2xl border border-[#dbe3ef] bg-white">
         <div className="text-center">
           <MessageCircle className="mx-auto h-8 w-8 text-[#A07C3B]" />
           <h3 className="mt-3 text-base font-semibold">Selecione um ticket</h3>
@@ -1242,6 +1246,8 @@ function IrisConversationPanel({
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] =
     useState(false);
+  const { hubUser } = useAuth();
+  const operatorLabel = hubUser?.name ?? "Operador Iris";
 
   const conversations = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -1311,7 +1317,6 @@ function IrisConversationPanel({
     setFeedback("");
 
     try {
-      const supabase = getHubSupabaseClient();
       const now = new Date().toISOString();
       const optimisticMessage: IrisMessage = {
         body,
@@ -1319,46 +1324,66 @@ function IrisConversationPanel({
         deliveryStatus: "queued",
         direction: "outbound",
         id: `local-${now}`,
+        senderLabel: operatorLabel,
         senderType: "operator",
       };
 
-      if (supabase) {
-        const { data, error } = await supabase
-          .from("caredesk_messages")
-          .insert({
-            body,
-            channel_id: ticket.channelId ?? null,
-            delivery_status: "queued",
-            direction: "outbound",
-            message_type: "text",
-            sender_type: "operator",
-            sent_at: now,
-            ticket_id: ticket.id,
-          })
-          .select("id,body,direction,sender_type,delivery_status,created_at")
-          .single();
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body,
+          channelId: ticket.channelId ?? null,
+          contactId: ticket.contactId ?? null,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
 
-        if (error) {
-          throw error;
-        }
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorLabel(mapMessageRow(payload.message), operatorLabel),
+        );
+      }
 
-        onMessageCreated(ticket.id, mapMessageRow(data));
-      } else {
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel enviar pelo WhatsApp.",
+        );
+      }
+
+      if (!payload?.message) {
         onMessageCreated(ticket.id, optimisticMessage);
       }
 
       setDraft("");
-      setFeedback("Mensagem registrada no Iris.");
+      setFeedback("Mensagem enviada pelo WhatsApp.");
     } catch (error) {
-      console.error("[caredesk] nao foi possivel registrar mensagem", error);
-      setFeedback("Nao foi possivel registrar a mensagem agora.");
+      console.error("[caredesk] nao foi possivel enviar mensagem", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar a mensagem agora.",
+      );
     } finally {
       setSending(false);
     }
   }
 
   return (
-    <section className="relative flex h-[calc(100vh-154px)] min-h-[660px] w-full overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="relative flex h-full min-h-0 w-full overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <aside
         className={[
           "hidden shrink-0 border-r border-slate-100 bg-slate-50/70 transition-all duration-300 lg:flex lg:flex-col",
@@ -3365,13 +3390,84 @@ function MessageBubble({ message }: { message: IrisMessage }) {
             : "border border-slate-200 bg-white text-slate-800",
         ].join(" ")}
       >
+        {outbound && message.senderLabel ? (
+          <div className="mb-1.5 flex items-center justify-end">
+            <span className="rounded-full border border-[#eadcc2] bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
+              {message.senderLabel}
+            </span>
+          </div>
+        ) : null}
         <p className="whitespace-pre-wrap leading-6">{message.body}</p>
-        <p className="mt-2 text-right text-[11px] text-slate-400">
-          {formatDateTime(message.createdAt)} | {message.deliveryStatus}
-        </p>
+        <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-slate-400">
+          <span>{formatDateTime(message.createdAt)}</span>
+          {outbound ? (
+            <MessageDeliveryIndicator status={message.deliveryStatus} />
+          ) : null}
+        </div>
       </div>
     </div>
   );
+}
+
+function MessageDeliveryIndicator({ status }: { status: string }) {
+  const normalized = normalizeDeliveryStatus(status);
+  const doubleCheck = normalized === "delivered" || normalized === "read";
+  const Icon = doubleCheck ? CheckCheck : Check;
+  const label = getDeliveryStatusLabel(normalized);
+  const colorClass =
+    normalized === "read"
+      ? "text-sky-500"
+      : normalized === "failed"
+        ? "text-rose-500"
+        : "text-slate-400";
+
+  return (
+    <Tooltip content={label} placement="top">
+      <span
+        aria-label={label}
+        className={`inline-flex items-center ${colorClass}`}
+      >
+        <Icon className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+      </span>
+    </Tooltip>
+  );
+}
+
+function normalizeDeliveryStatus(status?: string | null) {
+  const normalized = status?.toLowerCase();
+
+  if (
+    normalized === "read" ||
+    normalized === "delivered" ||
+    normalized === "sent" ||
+    normalized === "failed" ||
+    normalized === "queued" ||
+    normalized === "draft"
+  ) {
+    return normalized;
+  }
+
+  return "queued";
+}
+
+function getDeliveryStatusLabel(status: string) {
+  if (status === "read") {
+    return "Visualizado";
+  }
+
+  if (status === "delivered") {
+    return "Entregue, ainda nao visualizado";
+  }
+
+  if (status === "failed") {
+    return "Falha no envio";
+  }
+
+  if (status === "sent") {
+    return "Enviado, ainda nao entregue";
+  }
+
+  return "Aguardando envio";
 }
 
 function ContextItem({ label, value }: { label: string; value: string }) {
@@ -3617,10 +3713,10 @@ async function loadIrisData(): Promise<IrisData> {
           .in("id", contactIds)
       : Promise.resolve({ data: [], error: null }),
     ticketIds.length
-      ? supabase
+        ? supabase
           .from("caredesk_messages")
           .select(
-            "id,ticket_id,body,direction,sender_type,delivery_status,created_at,sent_at",
+            "id,ticket_id,body,direction,sender_type,sender_user_id,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id",
           )
           .in("ticket_id", ticketIds)
           .order("created_at", { ascending: true })
@@ -3836,7 +3932,49 @@ function mapMessageRow(row: any): IrisMessage {
     deliveryStatus: row.delivery_status ?? "queued",
     direction: row.direction ?? "internal",
     id: row.id,
+    senderLabel: readMessageSenderLabel(row),
     senderType: row.sender_type ?? "system",
+  };
+}
+
+function readMessageSenderLabel(row: any) {
+  const payload = row?.provider_payload;
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const operatorLabel = (payload as Record<string, unknown>).operatorLabel;
+
+    if (typeof operatorLabel === "string" && operatorLabel.trim()) {
+      return operatorLabel.trim();
+    }
+  }
+
+  const nestedUser = row?.sender_user;
+
+  if (
+    nestedUser &&
+    typeof nestedUser === "object" &&
+    !Array.isArray(nestedUser) &&
+    typeof nestedUser.display_name === "string" &&
+    nestedUser.display_name.trim()
+  ) {
+    return nestedUser.display_name.trim();
+  }
+
+  if (typeof row?.sender_label === "string" && row.sender_label.trim()) {
+    return row.sender_label.trim();
+  }
+
+  return row?.sender_type === "operator" ? "Operador Iris" : null;
+}
+
+function ensureOperatorLabel(message: IrisMessage, operatorLabel: string) {
+  if (message.direction !== "outbound" || message.senderLabel) {
+    return message;
+  }
+
+  return {
+    ...message,
+    senderLabel: operatorLabel,
   };
 }
 

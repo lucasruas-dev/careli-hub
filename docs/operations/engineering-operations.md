@@ -6543,3 +6543,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: Lucas precisa testar enviando nova mensagem pelo WhatsApp com a tela da Iris aberta para confirmar aparicao sem refresh, toast visual e som. A foto de perfil so aparece quando houver URL de avatar gravada em `caredesk_contacts.metadata` ou `caredesk_contacts.c2x_payload`; o webhook Meta atual fornece nome/wa_id, mas nao traz imagem de perfil no payload padrao validado. Notificacao nativa depende da permissao do navegador e som pode depender de interacao previa com a pagina.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
 - Proxima squad recomendada: `Lucas` para smoke real de mensagem inbound/outbound na Iris; `Iris Core` acompanha ajustes de UX; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Envio outbound WhatsApp e status de leitura`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 09:06:16 -03:00.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / META WHATSAPP / UX OPERACIONAL / VALIDACAO LOCAL`.
+- Motivo da mudanca: Lucas respondeu pela Iris e a mensagem nao chegou ao WhatsApp. Lucas tambem pediu que a mensagem exibisse os tracos originais do WhatsApp e destacasse qual operador esta enviando.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts`, `apps/hub/lib/iris/meta-inbound-processor.ts` e este diario canonico.
+- Como foi feito: o composer da tela de atendimento deixou de gravar apenas em `caredesk_messages` pelo client-side e passou a chamar a rota server-side `/api/iris/meta/messages`, que registra a mensagem local como `queued`, envia pela Meta Cloud API, grava o `wa_message_id`, vincula `caredesk_whatsapp_message_refs.message_id` ao registro local e atualiza a mensagem para `sent`. O webhook de status agora propaga `sent`, `delivered`, `read` e `failed` para `caredesk_messages`, preservando timestamps de entrega/leitura quando chegarem. A bolha outbound mostra o operador salvo em `provider_payload.operatorLabel` e exibe um check para enviado/nao entregue, dois checks cinza para entregue e dois checks azuis para visualizado.
+- Logica utilizada: o envio precisa sair sempre pelo servidor para proteger token Meta e manter auditoria; o vinculo entre a referencia Meta e a mensagem local e obrigatorio para que webhooks de status atualizem a UI em realtime; o nome do operador foi persistido no payload da mensagem para que o historico continue legivel mesmo em sessoes futuras.
+- Validacao executada: `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/messages/route.ts apps/hub/lib/iris/meta-inbound-processor.ts` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless e aviso local de cache/worktree; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de Turbopack/NFT e lockfile adicional da worktree temporaria.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, banco, migration, producao ou alias de producao foi alterado neste recorte. A confirmacao real de entrega/leitura depende dos webhooks da Meta retornarem status para o mesmo `wa_message_id`. O teste operacional deve confirmar no WhatsApp do Lucas que a mensagem enviada pela Iris chega e que os checks evoluem apos entrega/leitura.
+- Status operacional: `VALIDADO LOCAL / AUTORIZADO PARA HOMOLOGACAO`.
+- Proxima squad recomendada: `Hefesto` para publicar o recorte em homologacao e executar healthchecks; `Lucas` para testar envio e recebimento real pelo WhatsApp.

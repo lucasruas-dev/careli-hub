@@ -285,11 +285,26 @@ async function processStatusUpdate({
     .filter(Boolean);
 
   if (messageIds.length) {
+    const messageStatusPatch: Record<string, string> = {
+      delivery_status: deliveryStatus,
+    };
+
+    if (deliveryStatus === "sent") {
+      messageStatusPatch.sent_at = event.received_at;
+    }
+
+    if (deliveryStatus === "delivered") {
+      messageStatusPatch.delivered_at = event.received_at;
+    }
+
+    if (deliveryStatus === "read") {
+      messageStatusPatch.delivered_at = event.received_at;
+      messageStatusPatch.read_at = event.received_at;
+    }
+
     await client
       .from("caredesk_messages")
-      .update({
-        delivery_status: deliveryStatus,
-      })
+      .update(messageStatusPatch)
       .in("id", messageIds);
   }
 
