@@ -46,16 +46,25 @@ type MessagePayload = {
 
 type MessageAttachment = {
   durationSeconds?: number;
+  emoji?: string;
   label: string;
   mimeType?: string;
   sizeBytes?: number;
-  type: "audio" | "file" | "image" | "video";
+  stickerId?: string;
+  type: "audio" | "file" | "image" | "sticker" | "video";
   url?: string;
+};
+
+type HermesReaction = {
+  count: number;
+  emoji: string;
+  reactedByUserIds: string[];
 };
 
 type UpdateTagsPayload = {
   action?: unknown;
   channelId?: unknown;
+  emoji?: unknown;
   messageId?: unknown;
   tags?: unknown;
 };
@@ -389,6 +398,62 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ data });
   }
 
+  const reactionPayload = parseToggleReactionPayload(rawPayload);
+
+  if (reactionPayload.ok) {
+    const { data: message, error: messageError } = await context.adminClient
+      .from("pulsex_messages")
+      .select("id,channel_id,metadata")
+      .eq("id", reactionPayload.data.messageId)
+      .is("deleted_at", null)
+      .maybeSingle<{
+        channel_id: string;
+        id: string;
+        metadata?: Record<string, unknown> | null;
+      }>();
+
+    if (messageError || !message) {
+      return NextResponse.json({ error: "Mensagem nao encontrada." }, { status: 404 });
+    }
+
+    const access = await ensureChannelAccess(
+      context.adminClient,
+      context.user,
+      message.channel_id,
+    );
+
+    if (!access.ok) {
+      return access.response;
+    }
+
+    const currentMetadata = message.metadata ?? {};
+    const reactions = toggleHermesReaction({
+      currentUserId: context.user.id,
+      emoji: reactionPayload.data.emoji,
+      reactions: normalizeHermesReactions(currentMetadata.reactions),
+    });
+    const { data, error } = await context.adminClient
+      .from("pulsex_messages")
+      .update({
+        metadata: {
+          ...currentMetadata,
+          reactions,
+        },
+      })
+      .eq("id", reactionPayload.data.messageId)
+      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+      .single<HermesMessageRow>();
+
+    if (error || !data) {
+      return NextResponse.json(
+        { error: "Nao foi possivel atualizar reacao da mensagem." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ data });
+  }
+
   const payload = parseUpdateTagsPayload(rawPayload);
 
   if (!payload.ok) {
@@ -491,6 +556,42 @@ function parseEditMessagePayload(payload: unknown):
   return {
     data: {
       body,
+      messageId,
+    },
+    ok: true,
+  };
+}
+
+function parseToggleReactionPayload(payload: unknown):
+  | {
+      data: {
+        emoji: string;
+        messageId: string;
+      };
+      ok: true;
+    }
+  | { ok: false } {
+  if (!payload || typeof payload !== "object") {
+    return { ok: false };
+  }
+
+  const input = payload as UpdateTagsPayload;
+  const action = getString(input.action);
+  const emoji = getString(input.emoji);
+  const messageId = getString(input.messageId);
+
+  if (
+    action !== "toggle-reaction" ||
+    !emoji ||
+    emoji.length > 16 ||
+    !messageId
+  ) {
+    return { ok: false };
+  }
+
+  return {
+    data: {
+      emoji,
       messageId,
     },
     ok: true,
@@ -750,12 +851,97 @@ function normalizeAttachment(value: unknown): MessageAttachment | undefined {
 
   return {
     durationSeconds: getPositiveNumber(input.durationSeconds),
+    emoji: getString(input.emoji) || undefined,
     label,
     mimeType: getString(input.mimeType) || undefined,
     sizeBytes: getPositiveNumber(input.sizeBytes),
+    stickerId: getString(input.stickerId) || undefined,
     type,
     url: getString(input.url) || undefined,
   };
+}
+
+function toggleHermesReaction({
+  currentUserId,
+  emoji,
+  reactions,
+}: {
+  currentUserId: string;
+  emoji: string;
+  reactions: readonly HermesReaction[];
+}) {
+  const nextReactions = reactions.map((reaction) => ({
+    ...reaction,
+    reactedByUserIds: [...reaction.reactedByUserIds],
+  }));
+  const reactionIndex = nextReactions.findIndex(
+    (reaction) => reaction.emoji === emoji,
+  );
+
+  if (reactionIndex < 0) {
+    return [
+      ...nextReactions,
+      {
+        count: 1,
+        emoji,
+        reactedByUserIds: [currentUserId],
+      },
+    ];
+  }
+
+  const reaction = nextReactions[reactionIndex];
+
+  if (!reaction) {
+    return nextReactions;
+  }
+
+  const hasReacted = reaction.reactedByUserIds.includes(currentUserId);
+  const reactedByUserIds = hasReacted
+    ? reaction.reactedByUserIds.filter((userId) => userId !== currentUserId)
+    : [...reaction.reactedByUserIds, currentUserId];
+
+  if (reactedByUserIds.length === 0) {
+    nextReactions.splice(reactionIndex, 1);
+    return nextReactions;
+  }
+
+  nextReactions[reactionIndex] = {
+    ...reaction,
+    count: reactedByUserIds.length,
+    reactedByUserIds,
+  };
+
+  return nextReactions;
+}
+
+function normalizeHermesReactions(value: unknown): HermesReaction[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((reaction) => {
+      if (!reaction || typeof reaction !== "object" || Array.isArray(reaction)) {
+        return null;
+      }
+
+      const maybeReaction = reaction as Record<string, unknown>;
+      const emoji = getString(maybeReaction.emoji);
+      const reactedByUserIds = normalizeStringList(
+        maybeReaction.reactedByUserIds,
+      );
+
+      if (!emoji || reactedByUserIds.length === 0) {
+        return null;
+      }
+
+      return {
+        count: reactedByUserIds.length,
+        emoji,
+        reactedByUserIds,
+      } satisfies HermesReaction;
+    })
+    .filter((reaction): reaction is HermesReaction => Boolean(reaction));
 }
 
 function normalizeStringList(value: unknown) {
@@ -767,7 +953,7 @@ function normalizeStringList(value: unknown) {
 }
 
 function isAttachmentType(value: string): value is MessageAttachment["type"] {
-  return ["audio", "file", "image", "video"].includes(value);
+  return ["audio", "file", "image", "sticker", "video"].includes(value);
 }
 
 function getPositiveNumber(value: unknown) {

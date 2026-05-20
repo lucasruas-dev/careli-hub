@@ -89,10 +89,12 @@ export type HermesMessageMention = {
 
 export type HermesMessageAttachment = {
   durationSeconds?: number;
+  emoji?: string;
   label: string;
   mimeType?: string;
   sizeBytes?: number;
-  type: "audio" | "file" | "image" | "video";
+  stickerId?: string;
+  type: "audio" | "file" | "image" | "sticker" | "video";
   url?: string;
 };
 
@@ -124,6 +126,7 @@ export type HermesMessage = {
 };
 
 export type HermesThreadReply = {
+  attachment?: HermesMessageAttachment;
   authorAvatarUrl?: string;
   authorId: HermesPresenceUser["id"];
   authorName?: string;

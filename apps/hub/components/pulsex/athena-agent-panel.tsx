@@ -94,22 +94,28 @@ type AthenaAgentTab = "agent" | "ticket";
 
 type AthenaAgentPanelProps = {
   channel: HermesChannel;
+  compactTicketMode?: boolean;
   currentUserId: HermesPresenceUser["id"];
   draftValue: string;
   focusedMessage?: HermesMessage | null;
   messages: readonly HermesMessage[];
   onClose: () => void;
+  onRestoreTicketPanel?: () => void;
+  onTicketRecordingStateChange?: (isRecording: boolean) => void;
   onUseAsDraft: (content: string) => void;
   users: readonly HermesPresenceUser[];
 };
 
 export function AthenaAgentPanel({
   channel,
+  compactTicketMode = false,
   currentUserId,
   draftValue,
   focusedMessage,
   messages,
   onClose,
+  onRestoreTicketPanel,
+  onTicketRecordingStateChange,
   onUseAsDraft,
   users,
 }: AthenaAgentPanelProps) {
@@ -174,6 +180,12 @@ export function AthenaAgentPanel({
       block: "end",
     });
   }, [chatMessages]);
+
+  useEffect(() => {
+    if (compactTicketMode) {
+      setActiveAgentTab("ticket");
+    }
+  }, [compactTicketMode]);
 
   async function sendAiQuestion(questionFromAction?: string) {
     const question = (questionFromAction ?? inputValue).trim();
@@ -257,8 +269,18 @@ export function AthenaAgentPanel({
   }
 
   return (
-    <aside className="flex h-full min-h-0 flex-col border-l border-[#d9e0ea] bg-white text-[#101820]">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-[#e6ebf2] px-4">
+    <aside
+      className={
+        compactTicketMode
+          ? "w-full bg-transparent text-[#101820]"
+          : "flex h-full min-h-0 flex-col border-l border-[#d9e0ea] bg-white text-[#101820]"
+      }
+    >
+      <header
+        className={`flex h-16 shrink-0 items-center justify-between border-b border-[#e6ebf2] px-4 ${
+          compactTicketMode ? "hidden" : ""
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-3">
           <span className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-[#101820] text-[#A07C3B] shadow-[0_10px_24px_rgba(160,124,59,0.20)]">
             <AthenaIcon
@@ -287,7 +309,11 @@ export function AthenaAgentPanel({
         </button>
       </header>
 
-      <nav className="grid shrink-0 grid-cols-2 gap-1 border-b border-[#eef2f7] bg-white p-2">
+      <nav
+        className={`grid shrink-0 grid-cols-2 gap-1 border-b border-[#eef2f7] bg-white p-2 ${
+          compactTicketMode ? "hidden" : ""
+        }`}
+      >
         <AgentTabButton
           active={activeAgentTab === "agent"}
           icon={<Sparkles size={14} />}
@@ -302,9 +328,21 @@ export function AthenaAgentPanel({
         />
       </nav>
 
-      {activeAgentTab === "ticket" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] p-4">
-          <HubTicketOpenForm defaultModule="Hermes" />
+      {activeAgentTab === "ticket" || compactTicketMode ? (
+        <div
+          className={
+            compactTicketMode
+              ? "p-0"
+              : "min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] p-4"
+          }
+        >
+          <HubTicketOpenForm
+            compactRecordingMode={compactTicketMode}
+            defaultModule="Hermes"
+            onRecordingStateChange={onTicketRecordingStateChange}
+            onRestoreRequest={onRestoreTicketPanel}
+            recordingHost="native"
+          />
         </div>
       ) : (
         <>

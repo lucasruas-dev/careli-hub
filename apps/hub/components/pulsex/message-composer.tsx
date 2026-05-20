@@ -16,6 +16,7 @@ import {
   Send,
   Smile,
   Square,
+  Sticker,
   Tag,
   Video,
   X,
@@ -61,6 +62,7 @@ export function MessageComposer({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioStartedAtRef = useRef<number | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const stickerPickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeMention, setActiveMention] = useState<{
     end: number;
@@ -74,6 +76,7 @@ export function MessageComposer({
   );
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const mentionOptions = useMemo(() => {
     if (!activeMention) {
@@ -98,6 +101,11 @@ export function MessageComposer({
     onDismiss: () => setIsEmojiPickerOpen(false),
     ref: emojiPickerRef,
   });
+  useOutsideDismiss({
+    enabled: isStickerPickerOpen,
+    onDismiss: () => setIsStickerPickerOpen(false),
+    ref: stickerPickerRef,
+  });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,10 +119,11 @@ export function MessageComposer({
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Escape") {
-      if (isMentionOpen || isEmojiPickerOpen) {
+      if (isMentionOpen || isEmojiPickerOpen || isStickerPickerOpen) {
         event.preventDefault();
         closeMentionMenu();
         setIsEmojiPickerOpen(false);
+        setIsStickerPickerOpen(false);
       }
       return;
     }
@@ -236,6 +245,19 @@ export function MessageComposer({
   function handleSelectEmoji(emoji: string) {
     insertTextAtCaret(emoji);
     setIsEmojiPickerOpen(false);
+  }
+
+  function handleSelectSticker(sticker: ComposerStickerOption) {
+    onSubmit({
+      attachment: {
+        emoji: sticker.emoji,
+        label: sticker.label,
+        stickerId: sticker.id,
+        type: "sticker",
+      },
+    });
+    setAttachment(null);
+    setIsStickerPickerOpen(false);
   }
 
   async function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
@@ -373,10 +395,25 @@ export function MessageComposer({
           icon={<Smile size={18} />}
           onClick={() => {
             setIsEmojiPickerOpen((currentValue) => !currentValue);
+            setIsStickerPickerOpen(false);
           }}
         />
         {isEmojiPickerOpen ? (
           <EmojiPicker onSelect={handleSelectEmoji} />
+        ) : null}
+      </div>
+      <div className="relative" ref={stickerPickerRef}>
+        <ComposerAction
+          active={isStickerPickerOpen}
+          ariaLabel="Abrir figurinhas"
+          icon={<Sticker size={18} />}
+          onClick={() => {
+            setIsStickerPickerOpen((currentValue) => !currentValue);
+            setIsEmojiPickerOpen(false);
+          }}
+        />
+        {isStickerPickerOpen ? (
+          <StickerPicker onSelect={handleSelectSticker} />
         ) : null}
       </div>
       <ComposerAction
@@ -508,6 +545,43 @@ function EmojiPicker({
             type="button"
           >
             {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StickerPicker({
+  onSelect,
+}: {
+  onSelect: (sticker: ComposerStickerOption) => void;
+}) {
+  return (
+    <div className="absolute bottom-full left-0 z-40 mb-2 w-80 rounded-xl border border-[#d9e0ea] bg-white p-2 shadow-xl">
+      <div className="mb-2 flex items-center justify-between px-1">
+        <span className="text-xs font-semibold uppercase text-[#667085]">
+          Figurinhas
+        </span>
+        <span className="text-[0.68rem] text-[#8b98aa]">
+          toque para enviar
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {composerStickerOptions.map((sticker) => (
+          <button
+            aria-label={`Enviar figurinha ${sticker.label}`}
+            className="grid min-h-24 justify-items-center gap-1 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] px-2 py-3 text-center outline-none transition hover:-translate-y-0.5 hover:border-[#A07C3B]/60 hover:bg-[#fffaf0] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            key={sticker.id}
+            onClick={() => onSelect(sticker)}
+            type="button"
+          >
+            <span className="text-4xl leading-none" aria-hidden="true">
+              {sticker.emoji}
+            </span>
+            <span className="text-[0.68rem] font-semibold text-[#344054]">
+              {sticker.label}
+            </span>
           </button>
         ))}
       </div>
@@ -687,6 +761,45 @@ function getPresenceDotClassName(status: HermesPresenceUser["status"]) {
 
   return classNames[status];
 }
+
+type ComposerStickerOption = {
+  emoji: string;
+  id: string;
+  label: string;
+};
+
+const composerStickerOptions = [
+  {
+    emoji: "\u2705",
+    id: "fechado",
+    label: "Fechado",
+  },
+  {
+    emoji: "\u{1F44D}",
+    id: "top",
+    label: "Top",
+  },
+  {
+    emoji: "\u{1F64F}",
+    id: "obrigado",
+    label: "Obrigado",
+  },
+  {
+    emoji: "\u{1F440}",
+    id: "analisando",
+    label: "Analisando",
+  },
+  {
+    emoji: "\u{1F6A8}",
+    id: "urgente",
+    label: "Urgente",
+  },
+  {
+    emoji: "\u2600\uFE0F",
+    id: "sol",
+    label: "Sol",
+  },
+] as const satisfies readonly ComposerStickerOption[];
 
 const composerEmojiOptions = [
   "😀",
@@ -869,6 +982,10 @@ function getAttachmentIcon(type: HermesMessageAttachment["type"]) {
 
   if (type === "image") {
     return ImageIcon;
+  }
+
+  if (type === "sticker") {
+    return Sticker;
   }
 
   if (type === "video") {

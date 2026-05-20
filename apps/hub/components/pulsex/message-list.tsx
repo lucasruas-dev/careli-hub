@@ -5,6 +5,7 @@ import type {
   HermesMessageFilter,
   HermesMessageTag,
   HermesPresenceUser,
+  HermesReactionEmoji,
 } from "@/lib/pulsex";
 import { EmptyState } from "@repo/uix";
 import { useEffect, useRef } from "react";
@@ -24,6 +25,11 @@ type MessageListProps = {
     messageId: HermesMessage["id"],
     tag: HermesMessageTag,
   ) => void;
+  onToggleReaction?: (
+    messageId: HermesMessage["id"],
+    emoji: HermesReactionEmoji,
+  ) => void;
+  reactionOptions?: readonly HermesReactionEmoji[];
   users: readonly HermesPresenceUser[];
 };
 
@@ -34,7 +40,9 @@ export function MessageList({
   onEditMessage,
   onAskAiReply,
   onOpenThread,
+  onToggleReaction,
   onToggleTag,
+  reactionOptions,
   users,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -83,7 +91,9 @@ export function MessageList({
           onAskAiReply={onAskAiReply}
           onEditMessage={onEditMessage}
           onOpenThread={onOpenThread}
+          onToggleReaction={onToggleReaction}
           onToggleTag={onToggleTag}
+          reactionOptions={reactionOptions}
           users={users}
         />
       ))}

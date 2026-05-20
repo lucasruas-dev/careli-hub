@@ -2,7 +2,6 @@
 
 import { AthenaIcon } from "@/components/athena-icon";
 import { listHubPresence } from "@/lib/hub-presence";
-import { pulsexReactionOptions } from "@/lib/pulsex";
 import {
   createHermesMessage,
   createHermesThreadReply,
@@ -11,6 +10,7 @@ import {
   loadHermesOperationalData,
   markHermesChannelRead,
   updateHermesMessageBody,
+  updateHermesMessageReaction,
   updateHermesMessageTags,
 } from "@/lib/pulsex/supabase-data";
 import {
@@ -94,6 +94,10 @@ export function HermesWorkspace() {
     HermesMessage["id"] | null
   >(null);
   const [isAthenaAgentOpen, setIsAthenaAgentOpen] = useState(false);
+  const [isAthenaTicketRecordingActive, setIsAthenaTicketRecordingActive] =
+    useState(false);
+  const [isAthenaTicketRecordingMinimized, setIsAthenaTicketRecordingMinimized] =
+    useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [athenaFocusedMessageId, setAthenaFocusedMessageId] = useState<
     HermesMessage["id"] | null
@@ -131,11 +135,8 @@ export function HermesWorkspace() {
     emptyHermesChannel;
 
   useOutsideDismiss({
-    enabled: isAthenaAgentOpen,
-    onDismiss: () => {
-      setIsAthenaAgentOpen(false);
-      setAthenaFocusedMessageId(null);
-    },
+    enabled: isAthenaAgentOpen && !isAthenaTicketRecordingMinimized,
+    onDismiss: handleCloseAthenaAgent,
     ref: athenaAgentPanelRef,
   });
   useOutsideDismiss({
@@ -192,6 +193,24 @@ export function HermesWorkspace() {
 
     return [...channelUsers, ...messageAuthorUsers];
   }, [activeChannel.id, channelMessages, presenceUsers]);
+
+  function handleCloseAthenaAgent() {
+    if (isAthenaTicketRecordingActive) {
+      setIsAthenaTicketRecordingMinimized(true);
+      setIsAthenaAgentOpen(true);
+      setAthenaFocusedMessageId(null);
+      return;
+    }
+
+    setIsAthenaTicketRecordingMinimized(false);
+    setIsAthenaAgentOpen(false);
+    setAthenaFocusedMessageId(null);
+  }
+
+  function handleRestoreAthenaTicketPanel() {
+    setIsAthenaTicketRecordingMinimized(false);
+    setIsAthenaAgentOpen(true);
+  }
 
   const loadOperationalData = useCallback(() => {
     if (profileStatus === "loading") {
@@ -736,6 +755,7 @@ export function HermesWorkspace() {
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
     setAthenaFocusedMessageId(null);
+    setIsAthenaTicketRecordingMinimized(false);
     setIsAthenaAgentOpen(true);
   }
 
@@ -743,6 +763,7 @@ export function HermesWorkspace() {
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
     setAthenaFocusedMessageId(messageId);
+    setIsAthenaTicketRecordingMinimized(false);
     setIsAthenaAgentOpen(true);
   }
 
@@ -1094,13 +1115,42 @@ export function HermesWorkspace() {
         };
       }),
     );
+
+    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
+      return;
+    }
+
+    updateHermesMessageReaction({
+      emoji,
+      messageId,
+    })
+      .then((savedMessage) => {
+        if (!savedMessage) {
+          return;
+        }
+
+        setMessages((currentMessages) =>
+          currentMessages.map((message) =>
+            message.id === messageId ? savedMessage : message,
+          ),
+        );
+      })
+      .catch((error: unknown) => {
+        if (isLocalDevelopmentRuntime()) {
+          console.warn("[hermes] update message reaction error", error);
+        }
+      });
   }
 
-  function handleSubmitThreadReply() {
+  function handleSubmitThreadReply(input?: {
+    attachment?: HermesMessageAttachment;
+  }) {
+    const attachment = input?.attachment;
     const body = threadComposerValue.trim();
+    const replyBody = body || attachment?.label || "Anexo";
 
-    if (!body || !activeThreadMessage) {
-      return;
+    if ((!body && !attachment) || !activeThreadMessage) {
+      return false;
     }
 
     const timestamp = new Intl.DateTimeFormat("pt-BR", {
@@ -1114,7 +1164,8 @@ export function HermesWorkspace() {
       authorAvatarUrl: currentPresenceUser?.avatarUrl,
       authorId: currentUserId,
       authorName: currentPresenceUser?.label ?? hubUser?.name,
-      body,
+      attachment,
+      body: replyBody,
       createdAt: new Date().toISOString(),
       id: `reply-${activeThreadMessage.id}-${Date.now()}`,
       messageId: activeThreadMessage.id,
@@ -1146,12 +1197,13 @@ export function HermesWorkspace() {
       !hasHubSupabaseConfig() ||
       activeThreadMessage.id.startsWith("local-")
     ) {
-      return;
+      return true;
     }
 
     createHermesThreadReply({
+      attachment,
       authorUserId: hubUser?.id,
-      body,
+      body: replyBody,
       channelId: activeThreadMessage.channelId,
       messageId: activeThreadMessage.id,
     })
@@ -1176,6 +1228,8 @@ export function HermesWorkspace() {
         }));
         setThreadComposerValue(body);
       });
+
+    return true;
   }
 
   return (
@@ -1229,7 +1283,9 @@ export function HermesWorkspace() {
               onAskAiReply={handleOpenAthenaAgentForMessage}
               onEditMessage={handleEditMessage}
               onOpenThread={handleOpenThread}
+              onToggleReaction={handleToggleReaction}
               onToggleTag={handleToggleMessageTag}
+              reactionOptions={hermesReactionOptions}
               users={presenceUsers}
             />
           </div>
@@ -1274,27 +1330,35 @@ export function HermesWorkspace() {
           ) : null}
           {isAthenaAgentOpen ? (
             <div
-              className="absolute inset-y-0 right-0 z-30 shadow-2xl"
+              className={
+                isAthenaTicketRecordingMinimized
+                  ? "absolute bottom-6 right-6 z-30 w-[min(24rem,calc(100%-2rem))]"
+                  : "absolute inset-y-0 right-0 z-30 shadow-2xl"
+              }
               ref={athenaAgentPanelRef}
-              style={{ maxWidth: "calc(100% - 1rem)", width: "24rem" }}
+              style={
+                isAthenaTicketRecordingMinimized
+                  ? undefined
+                  : { maxWidth: "calc(100% - 1rem)", width: "24rem" }
+              }
             >
               <AthenaAgentPanel
                 channel={activeChannel}
+                compactTicketMode={isAthenaTicketRecordingMinimized}
                 currentUserId={currentUserId}
                 draftValue={composerValue}
                 focusedMessage={athenaFocusedMessage}
                 messages={channelMessages}
-                onClose={() => {
-                  setIsAthenaAgentOpen(false);
-                  setAthenaFocusedMessageId(null);
-                }}
+                onClose={handleCloseAthenaAgent}
+                onRestoreTicketPanel={handleRestoreAthenaTicketPanel}
+                onTicketRecordingStateChange={setIsAthenaTicketRecordingActive}
                 onUseAsDraft={handleUseAthenaDraft}
                 users={presenceUsers}
               />
             </div>
           ) : activeThreadMessage ? (
             <div
-              className="absolute inset-y-0 right-0 z-10 w-[24rem] shadow-2xl"
+              className="absolute inset-y-0 right-0 z-40 w-[min(31rem,calc(100%-0.75rem))] shadow-2xl"
               ref={threadPanelRef}
             >
               <ThreadPanel
@@ -1308,7 +1372,7 @@ export function HermesWorkspace() {
                 onEditMessage={handleEditMessage}
                 onSubmitReply={handleSubmitThreadReply}
                 onToggleReaction={handleToggleReaction}
-                reactionOptions={pulsexReactionOptions}
+                reactionOptions={hermesReactionOptions}
                 replies={activeThreadReplies}
                 replyValue={threadComposerValue}
                 users={presenceUsers}
@@ -1807,3 +1871,12 @@ function createLocalCallSession({
     type,
   };
 }
+
+const hermesReactionOptions = [
+  "\u{1F44D}",
+  "\u2764\uFE0F",
+  "\u{1F602}",
+  "\u{1F62E}",
+  "\u{1F622}",
+  "\u{1F64F}",
+] as const satisfies readonly HermesReactionEmoji[];
