@@ -18,6 +18,8 @@ import type {
   HermesMessageMention,
   HermesMessageTag,
   HermesPresenceUser,
+  HermesReaction,
+  HermesReactionEmoji,
   HermesSector,
   HermesThreadReply,
 } from "./types";
@@ -614,6 +616,46 @@ export async function updateHermesMessageTags(input: {
   return mapMessage(payload.data);
 }
 
+export async function updateHermesMessageReaction(input: {
+  emoji: HermesReactionEmoji;
+  messageId: HermesMessage["id"];
+}): Promise<HermesMessage | null> {
+  const client = getHubSupabaseClient();
+
+  if (!client || input.messageId.startsWith("local-")) {
+    return null;
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    return null;
+  }
+
+  const response = await fetch("/api/hermes/messages", {
+    body: JSON.stringify({
+      action: "toggle-reaction",
+      emoji: input.emoji,
+      messageId: input.messageId,
+    }),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: HermesMessageRow; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.data) {
+    return null;
+  }
+
+  return mapMessage(payload.data);
+}
+
 export async function updateHermesMessageBody(input: {
   body: string;
   messageId: HermesMessage["id"];
@@ -968,7 +1010,7 @@ function mapMessage(row: HermesMessageRow | null): HermesMessage {
     id: row.id,
     mentionUserIds,
     mentions,
-    reactions: [],
+    reactions: normalizeHermesReactions(metadata.reactions),
     status: "neutral",
     tags: normalizeHermesMessageTags(metadata.tags),
     threadParentMessageId: getString(metadata.threadParentMessageId) || undefined,
@@ -1027,9 +1069,11 @@ function normalizeMessageAttachment(
 
   return {
     durationSeconds: getPositiveNumber(maybeAttachment.durationSeconds),
+    emoji: getString(maybeAttachment.emoji) || undefined,
     label,
     mimeType: getString(maybeAttachment.mimeType) || undefined,
     sizeBytes: getPositiveNumber(maybeAttachment.sizeBytes),
+    stickerId: getString(maybeAttachment.stickerId) || undefined,
     type,
     url: getString(maybeAttachment.url) || undefined,
   };
@@ -1064,6 +1108,37 @@ function normalizeMessageMentions(value: unknown): HermesMessageMention[] {
     .filter((mention): mention is HermesMessageMention => Boolean(mention));
 }
 
+function normalizeHermesReactions(value: unknown): HermesReaction[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const reactions: HermesReaction[] = [];
+
+  for (const reaction of value) {
+    if (!reaction || typeof reaction !== "object" || Array.isArray(reaction)) {
+      continue;
+    }
+
+    const maybeReaction = reaction as Record<string, unknown>;
+    const emoji = getString(maybeReaction.emoji);
+    const reactedByUserIds =
+      normalizeStringList(maybeReaction.reactedByUserIds) ?? [];
+
+    if (!emoji || reactedByUserIds.length === 0) {
+      continue;
+    }
+
+    reactions.push({
+      count: reactedByUserIds.length,
+      emoji,
+      reactedByUserIds,
+    });
+  }
+
+  return reactions;
+}
+
 function normalizeStringList(value: unknown) {
   if (!Array.isArray(value)) {
     return null;
@@ -1075,7 +1150,7 @@ function normalizeStringList(value: unknown) {
 function isMessageAttachmentType(
   value: string,
 ): value is HermesMessageAttachment["type"] {
-  return ["audio", "file", "image", "video"].includes(value);
+  return ["audio", "file", "image", "sticker", "video"].includes(value);
 }
 
 function getPositiveNumber(value: unknown) {

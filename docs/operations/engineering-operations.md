@@ -6622,3 +6622,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: Lucas precisa recarregar a Iris e testar de novo. Se a mensagem anterior ainda estiver no intervalo de 60 minutos e sem `external_message_id`, a tela deve tentar recupera-la automaticamente.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
 - Proxima squad recomendada: `Lucas` para reteste real; `Iris Core` acompanhar logs de `/api/iris/meta/messages`.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Reacoes e figurinhas prontas para homologacao`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 11:34:31 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO FUNCIONAL / UX OPERACIONAL / PRE-HOMOLOGACAO`.
+- Motivo da mudanca: Lucas autorizou seguir com o pacote do Hermes para homologacao apos solicitar reacoes com emotion, respostas com emoji e opcao de envio de figurinhas no padrao WhatsApp.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/lib/pulsex/types.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/app/api/pulsex/messages/route.ts` e este diario canonico. Caminhos tecnicos `pulsex` permanecem por compatibilidade; o modulo operacional e `Hermes`.
+- Como foi feito: montei uma worktree limpa em `.codex-deploy/hermes-reactions-homolog` baseada em `origin/homolog`, apliquei somente o recorte Hermes, preservei os demais modulos e validei localmente antes de preparar commit. As reacoes passam por PATCH server-side e ficam persistidas em `metadata.reactions`; figurinhas usam attachment `sticker` em metadata, sem migration.
+- Logica utilizada: a entrega usa o contrato JSONB ja existente em `pulsex_messages.metadata`, reduzindo risco de banco e evitando migration neste pacote. A experiencia visual segue WhatsApp: reacao rapida na bolha, contador abaixo da mensagem, emoji no composer e painel compacto de figurinhas com envio imediato.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional da worktree e Turbopack/NFT; `git diff --check` passou; smoke local `GET http://localhost:3027/hermes` retornou 200.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, migration, banco, producao ou alias de producao foi alterado. A persistencia por metadata pode ter corrida em reacoes simultaneas extremas; se o uso crescer, evoluir para tabela propria de reacoes. A validacao visual autenticada em homologacao ainda precisa ser feita por Lucas.
+- Status operacional: `VALIDADO LOCAL / PUBLICACAO HOMOLOG EM ANDAMENTO`.
+- Proxima squad recomendada: `Hermes Core` para commit/push do recorte em `homolog` e healthcheck; `Lucas` para validar em `https://homo.c2x.app.br` apos deploy.

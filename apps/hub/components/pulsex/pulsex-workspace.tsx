@@ -2,7 +2,6 @@
 
 import { AthenaIcon } from "@/components/athena-icon";
 import { listHubPresence } from "@/lib/hub-presence";
-import { pulsexReactionOptions } from "@/lib/pulsex";
 import {
   createHermesMessage,
   createHermesThreadReply,
@@ -11,6 +10,7 @@ import {
   loadHermesOperationalData,
   markHermesChannelRead,
   updateHermesMessageBody,
+  updateHermesMessageReaction,
   updateHermesMessageTags,
 } from "@/lib/pulsex/supabase-data";
 import {
@@ -1115,6 +1115,31 @@ export function HermesWorkspace() {
         };
       }),
     );
+
+    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
+      return;
+    }
+
+    updateHermesMessageReaction({
+      emoji,
+      messageId,
+    })
+      .then((savedMessage) => {
+        if (!savedMessage) {
+          return;
+        }
+
+        setMessages((currentMessages) =>
+          currentMessages.map((message) =>
+            message.id === messageId ? savedMessage : message,
+          ),
+        );
+      })
+      .catch((error: unknown) => {
+        if (isLocalDevelopmentRuntime()) {
+          console.warn("[hermes] update message reaction error", error);
+        }
+      });
   }
 
   function handleSubmitThreadReply() {
@@ -1250,7 +1275,9 @@ export function HermesWorkspace() {
               onAskAiReply={handleOpenAthenaAgentForMessage}
               onEditMessage={handleEditMessage}
               onOpenThread={handleOpenThread}
+              onToggleReaction={handleToggleReaction}
               onToggleTag={handleToggleMessageTag}
+              reactionOptions={hermesReactionOptions}
               users={presenceUsers}
             />
           </div>
@@ -1337,7 +1364,7 @@ export function HermesWorkspace() {
                 onEditMessage={handleEditMessage}
                 onSubmitReply={handleSubmitThreadReply}
                 onToggleReaction={handleToggleReaction}
-                reactionOptions={pulsexReactionOptions}
+                reactionOptions={hermesReactionOptions}
                 replies={activeThreadReplies}
                 replyValue={threadComposerValue}
                 users={presenceUsers}
@@ -1836,3 +1863,12 @@ function createLocalCallSession({
     type,
   };
 }
+
+const hermesReactionOptions = [
+  "\u{1F44D}",
+  "\u2764\uFE0F",
+  "\u{1F602}",
+  "\u{1F62E}",
+  "\u{1F622}",
+  "\u{1F64F}",
+] as const satisfies readonly HermesReactionEmoji[];

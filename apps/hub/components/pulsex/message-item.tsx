@@ -6,6 +6,7 @@ import type {
   HermesMessageMention,
   HermesMessageTag,
   HermesPresenceUser,
+  HermesReaction,
   HermesReactionEmoji,
 } from "@/lib/pulsex";
 import {
@@ -19,6 +20,7 @@ import {
   Mic,
   Pencil,
   Reply,
+  SmilePlus,
   Tag,
   Video,
   X,
@@ -64,13 +66,16 @@ export function MessageItem({
   onEditMessage,
   onAskAiReply,
   onOpenThread,
+  onToggleReaction,
   onToggleTag,
+  reactionOptions = defaultReactionOptions,
   users = [],
 }: MessageItemProps) {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editValue, setEditValue] = useState(message.body);
   const [isEditing, setIsEditing] = useState(false);
+  const [isReactionPickerOpen, setIsReactionPickerOpen] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isTagMenuOpen, setIsTagMenuOpen] = useState(false);
   const messageItemRef = useRef<HTMLDivElement | null>(null);
@@ -79,6 +84,15 @@ export function MessageItem({
   const authorAvatarUrl = author?.avatarUrl ?? message.authorAvatarUrl;
   const authorInitials = author?.initials ?? getInitials(authorName);
   const deliveryState = getDeliveryState({ message, users });
+  const visibleReactions = (message.reactions ?? []).filter(
+    (reaction) => reaction.count > 0,
+  );
+  const shouldShowBody =
+    message.deletedAt ||
+    !(
+      message.attachment?.type === "sticker" &&
+      message.body === message.attachment.label
+    );
 
   useEffect(() => {
     if (!isEditing) {
@@ -87,7 +101,7 @@ export function MessageItem({
   }, [isEditing, message.body]);
 
   useEffect(() => {
-    if (!isInfoOpen && !isTagMenuOpen) {
+    if (!isInfoOpen && !isReactionPickerOpen && !isTagMenuOpen) {
       return;
     }
 
@@ -103,6 +117,7 @@ export function MessageItem({
       }
 
       setIsInfoOpen(false);
+      setIsReactionPickerOpen(false);
       setIsTagMenuOpen(false);
     }
 
@@ -115,7 +130,7 @@ export function MessageItem({
         true,
       );
     };
-  }, [isInfoOpen, isTagMenuOpen]);
+  }, [isInfoOpen, isReactionPickerOpen, isTagMenuOpen]);
 
   const infoButton = (
     <button
@@ -127,6 +142,7 @@ export function MessageItem({
           : "text-inherit opacity-65"
       }`}
       onClick={() => {
+        setIsReactionPickerOpen(false);
         setIsTagMenuOpen(false);
         setIsInfoOpen((currentValue) => !currentValue);
       }}
@@ -167,6 +183,11 @@ export function MessageItem({
       setEditError(null);
       setIsEditing(false);
     }
+  }
+
+  function handleSelectReaction(emoji: HermesReactionEmoji) {
+    onToggleReaction?.(message.id, emoji);
+    setIsReactionPickerOpen(false);
   }
 
   return (
@@ -255,13 +276,13 @@ export function MessageItem({
               </button>
             </span>
           </form>
-        ) : (
+        ) : shouldShowBody ? (
           <div className="relative z-10 text-sm leading-6">
             {message.deletedAt
               ? "Mensagem apagada"
               : renderMessageBody(message, users)}
           </div>
-        )}
+        ) : null}
         <div
           className={`relative mt-1 flex items-center justify-end gap-2 text-[0.66rem] ${
             isOwn ? "text-[#2f6b52]" : "text-[#667085]"
@@ -290,6 +311,34 @@ export function MessageItem({
             isOwn ? "justify-end text-[#2f6b52]" : "justify-start"
           }`}
         >
+          {onToggleReaction && !message.deletedAt ? (
+            <div className="relative">
+              <Tooltip content="Reagir" placement="bottom">
+                <button
+                  aria-expanded={isReactionPickerOpen}
+                  aria-label="Reagir com emoji"
+                  className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+                  onClick={() => {
+                    setIsInfoOpen(false);
+                    setIsTagMenuOpen(false);
+                    setIsReactionPickerOpen((currentValue) => !currentValue);
+                  }}
+                  type="button"
+                >
+                  <SmilePlus aria-hidden="true" size={13} />
+                </button>
+              </Tooltip>
+              {isReactionPickerOpen ? (
+                <ReactionPicker
+                  currentUserId={currentUserId}
+                  messageReactions={message.reactions ?? []}
+                  onSelect={handleSelectReaction}
+                  options={reactionOptions}
+                  placement={isOwn ? "right" : "left"}
+                />
+              ) : null}
+            </div>
+          ) : null}
           <Tooltip content="Responder" placement="bottom">
             <button
               aria-label={
@@ -331,6 +380,7 @@ export function MessageItem({
                 aria-label="Editar mensagem"
                 className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
                 onClick={() => {
+                  setIsReactionPickerOpen(false);
                   setEditValue(message.body);
                   setEditError(null);
                   setIsEditing(true);
@@ -348,6 +398,7 @@ export function MessageItem({
                 aria-label="Marcar mensagem"
                 className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
                 onClick={() => {
+                  setIsReactionPickerOpen(false);
                   setIsInfoOpen(false);
                   setIsTagMenuOpen((currentValue) => !currentValue);
                 }}
@@ -407,6 +458,14 @@ export function MessageItem({
             currentUserId={currentUserId}
             message={message}
             users={users}
+          />
+        ) : null}
+        {visibleReactions.length > 0 ? (
+          <ReactionSummary
+            currentUserId={currentUserId}
+            isOwn={isOwn}
+            onSelect={onToggleReaction ? handleSelectReaction : undefined}
+            reactions={visibleReactions}
           />
         ) : null}
       </div>
@@ -503,11 +562,113 @@ function MessageInfoPanel({
   );
 }
 
+function ReactionPicker({
+  currentUserId,
+  messageReactions,
+  onSelect,
+  options,
+  placement,
+}: {
+  currentUserId?: HermesPresenceUser["id"];
+  messageReactions: readonly HermesReaction[];
+  onSelect: (emoji: HermesReactionEmoji) => void;
+  options: readonly HermesReactionEmoji[];
+  placement: "left" | "right";
+}) {
+  return (
+    <div
+      className={`absolute bottom-full z-30 mb-2 flex items-center gap-1 rounded-full border border-[#d9e0ea] bg-white px-1.5 py-1 shadow-[0_12px_30px_rgba(16,24,32,0.16)] ${
+        placement === "right" ? "right-0" : "left-0"
+      }`}
+    >
+      {options.map((emoji) => {
+        const selected = messageReactions.some(
+          (reaction) =>
+            reaction.emoji === emoji &&
+            currentUserId &&
+            reaction.reactedByUserIds.includes(currentUserId),
+        );
+
+        return (
+          <button
+            aria-label={`Reagir com ${emoji}`}
+            aria-pressed={selected}
+            className="grid h-8 w-8 place-items-center rounded-full text-[1.2rem] outline-none transition hover:scale-125 hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-[#eaf7f0]"
+            key={emoji}
+            onClick={() => onSelect(emoji)}
+            type="button"
+          >
+            {emoji}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReactionSummary({
+  currentUserId,
+  isOwn,
+  onSelect,
+  reactions,
+}: {
+  currentUserId?: HermesPresenceUser["id"];
+  isOwn: boolean;
+  onSelect?: (emoji: HermesReactionEmoji) => void;
+  reactions: readonly HermesReaction[];
+}) {
+  return (
+    <div
+      className={`relative z-10 mt-1 flex ${
+        isOwn ? "justify-end" : "justify-start"
+      }`}
+    >
+      <div className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-full border border-[#d9e0ea] bg-white px-1.5 py-0.5 text-xs shadow-sm">
+        {reactions.map((reaction) => {
+          const selected =
+            Boolean(currentUserId) &&
+            reaction.reactedByUserIds.includes(currentUserId ?? "");
+
+          return (
+            <button
+              aria-label={`${reaction.count} reacoes com ${reaction.emoji}`}
+              aria-pressed={selected}
+              className="inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-[0.72rem] font-semibold text-[#344054] outline-none transition hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-[#eaf7f0] aria-pressed:text-[#16794f]"
+              disabled={!onSelect}
+              key={reaction.emoji}
+              onClick={() => onSelect?.(reaction.emoji)}
+              type="button"
+            >
+              <span className="text-[0.95rem] leading-none">
+                {reaction.emoji}
+              </span>
+              <span>{reaction.count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MessageAttachmentPreview({
   attachment,
 }: {
   attachment: NonNullable<HermesMessage["attachment"]>;
 }) {
+  if (attachment.type === "sticker") {
+    return (
+      <div className="mb-1 inline-grid min-w-28 justify-items-center gap-1 rounded-2xl border border-[#d9e0ea] bg-white/80 px-4 py-3 text-center shadow-sm">
+        <span className="text-5xl leading-none" role="img" aria-label={attachment.label}>
+          {attachment.emoji ?? "\u{1F642}"}
+        </span>
+        <span className="text-[0.68rem] font-semibold uppercase text-[#667085]">
+          {attachment.label}
+        </span>
+      </div>
+    );
+  }
+
   if (attachment.type === "image" && attachment.url) {
     return (
       <a
@@ -649,6 +810,10 @@ function getAttachmentIcon(
 
   if (type === "image") {
     return Image;
+  }
+
+  if (type === "sticker") {
+    return SmilePlus;
   }
 
   if (type === "video") {
@@ -1094,3 +1259,12 @@ function normalizeMentionText(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("pt-BR");
 }
+
+const defaultReactionOptions = [
+  "\u{1F44D}",
+  "\u2764\uFE0F",
+  "\u{1F602}",
+  "\u{1F62E}",
+  "\u{1F622}",
+  "\u{1F64F}",
+] as const satisfies readonly HermesReactionEmoji[];
