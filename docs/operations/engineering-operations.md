@@ -6684,3 +6684,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: Lucas precisa copiar novamente apenas o token da Meta e rodar o script atualizado se o token anterior tiver sido o comando. Apos token real, e necessario novo redeploy/healthcheck e smoke autenticado de envio pela Iris.
 - Status operacional: `IMPLEMENTANDO / AGUARDANDO VALIDACAO`.
 - Proxima squad recomendada: `Iris Core` para validar e publicar a correcao de rolagem em homologacao; `Lucas` para renovar o token com o script atualizado se necessario.
+
+Registro de diario:
+
+- Assunto: `[Iris] Auto-scroll publicado em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 12:21:18 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / UX OPERACIONAL / HEALTHCHECK`.
+- Motivo da mudanca: publicar em homologacao a correcao que mantem a conversa da Iris sempre posicionada na mensagem mais recente, apos Lucas relatar que precisava rolar manualmente para ver as mensagens enviadas.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: apliquei a correcao em worktree limpa da Iris, validei, criei o commit `6476dc7 fix(iris): keep atendimento scrolled to latest message`, rebaseei sobre o topo atual de `origin/homolog` para preservar o pacote Hermes que entrou em paralelo e publiquei `HEAD:homolog`. O Preview Git de homologacao ficou `Ready` e o alias `https://homo.c2x.app.br` ja aponta para ele.
+- Logica utilizada: a area de mensagens recebeu uma referencia propria e um efeito de scroll para `scrollHeight` sempre que muda o ticket ativo ou a ultima mensagem. A decisao foi manter comportamento de chat operacional: novas mensagens devem ficar imediatamente visiveis, sem exigir rolagem manual do operador.
+- Commit publicado: `6476dc7 fix(iris): keep atendimento scrolled to latest message`.
+- Deployment homologacao: Vercel Preview `dpl_5dme1YjBKHhSJQKRCagoMFGPP7S3`; URL tecnica `https://careli-hub-hub-i2bs-l0wfayw1t-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos de `eslint.config.js` typeless/cache; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional e Turbopack/NFT; `vercel inspect` confirmou deployment `Ready`; `GET /iris` retornou HTTP 200; `GET /api/iris/meta/webhook` sem challenge retornou HTTP 403 esperado; logs remotos mostraram apenas chamadas esperadas da Iris no healthcheck.
+- Pendencias ou riscos conhecidos: envio outbound ainda depende de token Meta valido; os ultimos testes autenticados seguiram retornando HTTP 401 da Meta. Lucas deve copiar novamente somente o access token e rodar o script atualizado, que agora bloqueia clipboard contendo comando/caminho antes de alterar env.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TOKEN META VALIDO E SMOKE REAL`.
+- Proxima squad recomendada: `Lucas` para atualizar token com o script reforcado e testar envio real; `Iris Core` acompanha logs e resultado.
