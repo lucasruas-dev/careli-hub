@@ -3,14 +3,15 @@
 import { useAuth } from "@/providers/auth-provider";
 import { canAccessModule, type HubModule } from "@repo/shared";
 import { EmptyState, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
-import { PulseXWorkspace } from "./pulsex-workspace";
+import { HermesWorkspace } from "./pulsex-workspace";
 
-type PulseXAccessGateProps = {
+type HermesAccessGateProps = {
   module: HubModule;
 };
 
-export function PulseXAccessGate({ module }: PulseXAccessGateProps) {
+export function HermesAccessGate({ module }: HermesAccessGateProps) {
   const { hubUser } = useAuth();
+  const moduleName = module.name;
 
   if (!hubUser || !canAccessModule(hubUser, module)) {
     return (
@@ -19,13 +20,13 @@ export function PulseXAccessGate({ module }: PulseXAccessGateProps) {
           <WorkspaceHeader
             description="Seu usuario nao possui permissao para acessar este modulo."
             eyebrow="operations"
-            title="PulseX"
+            title={moduleName}
           />
         }
       >
         <Surface>
           <EmptyState
-            description="Solicite acesso a um administrador do workspace para visualizar o PulseX."
+            description={`Solicite acesso a um administrador do workspace para visualizar o ${moduleName}.`}
             title="Acesso negado"
           />
         </Surface>
@@ -33,5 +34,5 @@ export function PulseXAccessGate({ module }: PulseXAccessGateProps) {
     );
   }
 
-  return <PulseXWorkspace />;
+  return <HermesWorkspace />;
 }

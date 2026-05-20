@@ -1,10 +1,10 @@
-import type { PulseXCallSession } from "@/lib/pulsex";
+import type { HermesCallSession } from "@/lib/pulsex";
 import { Phone, PhoneOff, Video } from "lucide-react";
 
 type IncomingCallBannerProps = {
   onAccept: () => void;
   onDecline: () => void;
-  session: PulseXCallSession;
+  session: HermesCallSession;
 };
 
 export function IncomingCallBanner({

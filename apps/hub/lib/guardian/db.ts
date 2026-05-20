@@ -4,7 +4,7 @@ import mysql, {
   type RowDataPacket,
 } from "mysql2/promise";
 
-type GuardianDbConfig = {
+type HadesDbConfig = {
   host: string;
   port: number;
   database: string;
@@ -13,15 +13,15 @@ type GuardianDbConfig = {
   ssl: boolean;
 };
 
-type GuardianConfigResult =
-  | { ok: true; config: GuardianDbConfig }
+type HadesConfigResult =
+  | { ok: true; config: HadesDbConfig }
   | { ok: false; missing: string[] };
 
-type GuardianPoolResult =
-  | { ok: true; pool: Pool; config: GuardianDbConfig }
+type HadesPoolResult =
+  | { ok: true; pool: Pool; config: HadesDbConfig }
   | { ok: false; missing: string[] };
 
-export type GuardianPingResult =
+export type HadesPingResult =
   | {
       ok: true;
       databaseName: string | null;
@@ -30,7 +30,7 @@ export type GuardianPingResult =
     }
   | { ok: false; missing: string[] };
 
-type GuardianHealthRow = RowDataPacket & {
+type HadesHealthRow = RowDataPacket & {
   database_name: string | null;
   server_time: Date | string | null;
 };
@@ -51,7 +51,7 @@ function readEnv(name: string) {
   return value;
 }
 
-export function getGuardianDbConfig(): GuardianConfigResult {
+export function getHadesDbConfig(): HadesConfigResult {
   const host = readEnv("GUARDIAN_DB_HOST");
   const portValue = readEnv("GUARDIAN_DB_PORT") || "3306";
   const database = readEnv("GUARDIAN_DB_NAME");
@@ -86,8 +86,8 @@ export function getGuardianDbConfig(): GuardianConfigResult {
   };
 }
 
-export function getGuardianDbPool(): GuardianPoolResult {
-  const configResult = getGuardianDbConfig();
+export function getHadesDbPool(): HadesPoolResult {
+  const configResult = getHadesDbConfig();
 
   if (!configResult.ok) {
     return configResult;
@@ -123,15 +123,15 @@ export function getGuardianDbPool(): GuardianPoolResult {
   return { ok: true, pool: guardianPool, config };
 }
 
-export async function pingGuardianDb(): Promise<GuardianPingResult> {
-  const poolResult = getGuardianDbPool();
+export async function pingHadesDb(): Promise<HadesPingResult> {
+  const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
     return poolResult;
   }
 
   const startedAt = Date.now();
-  const [rows] = await poolResult.pool.query<GuardianHealthRow[]>(
+  const [rows] = await poolResult.pool.query<HadesHealthRow[]>(
     "select database() as database_name, current_timestamp() as server_time",
   );
   const firstRow = rows[0];
@@ -147,7 +147,7 @@ export async function pingGuardianDb(): Promise<GuardianPingResult> {
   };
 }
 
-export function sanitizeGuardianDbError(error: unknown) {
+export function sanitizeHadesDbError(error: unknown) {
   if (error && typeof error === "object") {
     const candidate = error as Partial<{
       code: string;
@@ -163,15 +163,15 @@ export function sanitizeGuardianDbError(error: unknown) {
       message:
         candidate.sqlMessage ??
         candidate.message ??
-        "Nao foi possivel conectar ao banco do Guardian.",
+        "Nao foi possivel conectar ao banco do Hades.",
       sqlState: candidate.sqlState,
     };
   }
 
   return {
     code: "GUARDIAN_DB_ERROR",
-    message: "Nao foi possivel conectar ao banco do Guardian.",
+    message: "Nao foi possivel conectar ao banco do Hades.",
   };
 }
 
-export type GuardianQueryResult<T extends QueryResult = RowDataPacket[]> = T;
+export type HadesQueryResult<T extends QueryResult = RowDataPacket[]> = T;

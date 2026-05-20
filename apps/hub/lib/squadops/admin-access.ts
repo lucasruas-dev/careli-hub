@@ -5,14 +5,14 @@ import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
-type SquadOpsUserRow = {
+type ZeusUserRow = {
   id: string;
   operational_profile?: string | null;
   role: HubUserRole;
   status: string;
 };
 
-type SquadOpsAdminDatabase = {
+type ZeusAdminDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
     Enums: Record<string, never>;
@@ -21,7 +21,7 @@ type SquadOpsAdminDatabase = {
       hub_users: {
         Insert: never;
         Relationships: [];
-        Row: SquadOpsUserRow;
+        Row: ZeusUserRow;
         Update: never;
       };
     };
@@ -29,13 +29,13 @@ type SquadOpsAdminDatabase = {
   };
 };
 
-type SquadOpsAdminClient = ReturnType<
-  typeof createClient<SquadOpsAdminDatabase>
+type ZeusAdminClient = ReturnType<
+  typeof createClient<ZeusAdminDatabase>
 >;
 
-type SquadOpsAccessClientResult =
+type ZeusAccessClientResult =
   | {
-      client: SquadOpsAdminClient;
+      client: ZeusAdminClient;
       ok: true;
     }
   | {
@@ -43,7 +43,7 @@ type SquadOpsAccessClientResult =
       response: NextResponse<{ error: string }>;
     };
 
-type SquadOpsAdminAccessResult =
+type ZeusAdminAccessResult =
   | {
       ok: true;
       userId: string | null;
@@ -55,13 +55,13 @@ type SquadOpsAdminAccessResult =
 
 const SQUADOPS_AUTH_TIMEOUT_MS = 12_000;
 
-export async function authorizeSquadOpsAdminRequest(
+export async function authorizeZeusAdminRequest(
   request: NextRequest,
-): Promise<SquadOpsAdminAccessResult> {
+): Promise<ZeusAdminAccessResult> {
   const accessToken = getBearerToken(request);
 
   if (!accessToken) {
-    if (isLocalSquadOpsDevelopmentRequest(request)) {
+    if (isLocalZeusDevelopmentRequest(request)) {
       return {
         ok: true,
         userId: null,
@@ -71,13 +71,13 @@ export async function authorizeSquadOpsAdminRequest(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Sessao administrativa ausente para acessar o SquadOps." },
+        { error: "Sessao administrativa ausente para acessar o Zeus." },
         { status: 401 },
       ),
     };
   }
 
-  const clientResult = createSquadOpsAccessClient(accessToken);
+  const clientResult = createZeusAccessClient(accessToken);
 
   if (!clientResult.ok) {
     return {
@@ -87,7 +87,7 @@ export async function authorizeSquadOpsAdminRequest(
   }
 
   const adminClient = clientResult.client;
-  const authResult = await validateSquadOpsAccessToken(accessToken);
+  const authResult = await validateZeusAccessToken(accessToken);
 
   if (!authResult.ok) {
     return {
@@ -96,7 +96,7 @@ export async function authorizeSquadOpsAdminRequest(
     };
   }
 
-  const userResult = await loadSquadOpsUser(adminClient, authResult.userId);
+  const userResult = await loadZeusUser(adminClient, authResult.userId);
 
   if (!userResult.ok) {
     return {
@@ -105,11 +105,11 @@ export async function authorizeSquadOpsAdminRequest(
     };
   }
 
-  if (!isSquadOpsAdmin(userResult.user)) {
+  if (!isZeusAdmin(userResult.user)) {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "SquadOps e liberado somente para perfil adm." },
+        { error: "Zeus e liberado somente para perfil adm." },
         { status: 403 },
       ),
     };
@@ -121,7 +121,7 @@ export async function authorizeSquadOpsAdminRequest(
   };
 }
 
-async function validateSquadOpsAccessToken(
+async function validateZeusAccessToken(
   accessToken: string,
 ): Promise<
   | {
@@ -144,7 +144,7 @@ async function validateSquadOpsAccessToken(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Configure a URL do Supabase para validar acesso ao SquadOps." },
+        { error: "Configure a URL do Supabase para validar acesso ao Zeus." },
         { status: 503 },
       ),
     };
@@ -154,7 +154,7 @@ async function validateSquadOpsAccessToken(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Configure as chaves Supabase para validar acesso ao SquadOps." },
+        { error: "Configure as chaves Supabase para validar acesso ao Zeus." },
         { status: 503 },
       ),
     };
@@ -181,7 +181,7 @@ async function validateSquadOpsAccessToken(
       return {
         ok: false,
         response: NextResponse.json(
-          { error: "Sessao administrativa invalida para acessar o SquadOps." },
+          { error: "Sessao administrativa invalida para acessar o Zeus." },
           { status: 401 },
         ),
       };
@@ -195,16 +195,16 @@ async function validateSquadOpsAccessToken(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Nao foi possivel validar sua sessao SquadOps no Supabase." },
+        { error: "Nao foi possivel validar sua sessao Zeus no Supabase." },
         { status: 503 },
       ),
     };
   }
 }
 
-function createSquadOpsAccessClient(
+function createZeusAccessClient(
   accessToken: string,
-): SquadOpsAccessClientResult {
+): ZeusAccessClientResult {
   const {
     anonKey,
     serviceRoleKey,
@@ -215,7 +215,7 @@ function createSquadOpsAccessClient(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Configure a URL do Supabase para validar acesso ao SquadOps." },
+        { error: "Configure a URL do Supabase para validar acesso ao Zeus." },
         { status: 503 },
       ),
     };
@@ -224,7 +224,7 @@ function createSquadOpsAccessClient(
   if (serviceRoleKey) {
     return {
       ok: true,
-      client: createClient<SquadOpsAdminDatabase>(supabaseUrl, serviceRoleKey, {
+      client: createClient<ZeusAdminDatabase>(supabaseUrl, serviceRoleKey, {
         auth: {
           autoRefreshToken: false,
           persistSession: false,
@@ -237,7 +237,7 @@ function createSquadOpsAccessClient(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Configure as chaves Supabase para validar acesso ao SquadOps." },
+        { error: "Configure as chaves Supabase para validar acesso ao Zeus." },
         { status: 503 },
       ),
     };
@@ -245,7 +245,7 @@ function createSquadOpsAccessClient(
 
   return {
     ok: true,
-    client: createClient<SquadOpsAdminDatabase>(supabaseUrl, anonKey, {
+    client: createClient<ZeusAdminDatabase>(supabaseUrl, anonKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -259,13 +259,13 @@ function createSquadOpsAccessClient(
   };
 }
 
-async function loadSquadOpsUser(
-  adminClient: SquadOpsAdminClient,
+async function loadZeusUser(
+  adminClient: ZeusAdminClient,
   userId: string,
 ): Promise<
   | {
       ok: true;
-      user: SquadOpsUserRow;
+      user: ZeusUserRow;
     }
   | {
       ok: false;
@@ -276,14 +276,14 @@ async function loadSquadOpsUser(
     .from("hub_users")
     .select("id,role,status,operational_profile")
     .eq("id", userId)
-    .maybeSingle<SquadOpsUserRow>();
+    .maybeSingle<ZeusUserRow>();
 
   if (!result.error) {
     if (!result.data || result.data.status !== "active") {
       return {
         ok: false,
         response: NextResponse.json(
-          { error: "Usuario sem acesso ativo ao SquadOps." },
+          { error: "Usuario sem acesso ativo ao Zeus." },
           { status: 403 },
         ),
       };
@@ -299,7 +299,7 @@ async function loadSquadOpsUser(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Nao foi possivel validar seu perfil SquadOps." },
+        { error: "Nao foi possivel validar seu perfil Zeus." },
         { status: 503 },
       ),
     };
@@ -309,7 +309,7 @@ async function loadSquadOpsUser(
     .from("hub_users")
     .select("id,role,status")
     .eq("id", userId)
-    .maybeSingle<SquadOpsUserRow>();
+    .maybeSingle<ZeusUserRow>();
 
   if (
     legacyResult.error ||
@@ -319,7 +319,7 @@ async function loadSquadOpsUser(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Usuario sem acesso ativo ao SquadOps." },
+        { error: "Usuario sem acesso ativo ao Zeus." },
         { status: 403 },
       ),
     };
@@ -331,7 +331,7 @@ async function loadSquadOpsUser(
   };
 }
 
-function isSquadOpsAdmin(user: SquadOpsUserRow) {
+function isZeusAdmin(user: ZeusUserRow) {
   return user.role === "admin" || user.operational_profile === "adm";
 }
 
@@ -361,7 +361,7 @@ function fetchWithTimeout(
   }).finally(() => clearTimeout(timeoutId));
 }
 
-function isLocalSquadOpsDevelopmentRequest(request: NextRequest) {
+function isLocalZeusDevelopmentRequest(request: NextRequest) {
   if (process.env.NODE_ENV !== "development") {
     return false;
   }

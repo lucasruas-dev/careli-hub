@@ -1,10 +1,10 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
-import { getGuardianDbPool, sanitizeGuardianDbError } from "@/lib/guardian/db";
+import { getHadesDbPool, sanitizeHadesDbError } from "@/lib/guardian/db";
 import { buildQueueClientsFromSources } from "@/modules/guardian/attendance/data";
 import type {
-  GuardianAttendanceSourceClient,
-  GuardianAttendanceSourceUnit,
+  HadesAttendanceSourceClient,
+  HadesAttendanceSourceUnit,
 } from "@/modules/guardian/attendance/data";
 import type { AttendancePriority, QueueClient } from "@/modules/guardian/attendance/types";
 
@@ -188,10 +188,10 @@ function guardianDbConfigError(missing: string[]) {
   );
 }
 
-export async function loadGuardianAttendanceQueue(
+export async function loadHadesAttendanceQueue(
   options: AttendanceQueueOptions = {},
 ): Promise<QueueClient[]> {
-  const poolResult = getGuardianDbPool();
+  const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
     if (options.strict) {
@@ -467,7 +467,7 @@ export async function loadGuardianAttendanceQueue(
 
     return buildQueueClientsFromSources(sourceClients);
   } catch (error) {
-    console.error("[guardian-attendance] C2X query failed", sanitizeGuardianDbError(error));
+    console.error("[guardian-attendance] C2X query failed", sanitizeHadesDbError(error));
     if (options.strict) {
       throw error;
     }
@@ -476,10 +476,10 @@ export async function loadGuardianAttendanceQueue(
   }
 }
 
-export async function loadGuardianAttendanceQueueSummary(
+export async function loadHadesAttendanceQueueSummary(
   options: AttendanceQueueOptions = {},
 ): Promise<QueueClient[]> {
-  const poolResult = getGuardianDbPool();
+  const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
     if (options.strict) {
@@ -537,7 +537,7 @@ export async function loadGuardianAttendanceQueueSummary(
 
     return buildQueueClientsFromSources(rows.map(mapSummaryRowToSourceClient));
   } catch (error) {
-    console.error("[guardian-attendance] compact C2X queue failed", sanitizeGuardianDbError(error));
+    console.error("[guardian-attendance] compact C2X queue failed", sanitizeHadesDbError(error));
     if (options.strict) {
       throw error;
     }
@@ -546,8 +546,8 @@ export async function loadGuardianAttendanceQueueSummary(
   }
 }
 
-export async function loadGuardianAttendanceClient(clientId: string) {
-  const clients = await loadGuardianAttendanceQueue({
+export async function loadHadesAttendanceClient(clientId: string) {
+  const clients = await loadHadesAttendanceQueue({
     clientId,
     includeClientsWithoutOverdue: true,
     includeInstallments: true,
@@ -671,7 +671,7 @@ type ClientSourceAggregate = {
   recoveredAmount: number;
   requestCount: number;
   signalPayments: number;
-  source: GuardianAttendanceSourceClient;
+  source: HadesAttendanceSourceClient;
   totalPayments: number;
   unitIds: Set<string>;
 };
@@ -787,7 +787,7 @@ function groupContractRowsByClient(
 
 function mapSummaryRowToSourceClient(
   row: AttendanceQueueSummaryRow,
-): GuardianAttendanceSourceClient {
+): HadesAttendanceSourceClient {
   const overduePayments = toNumber(row.overdue_payments);
   const pendingPayments = toNumber(row.pending_payments);
   const liquidatedPayments = toNumber(row.liquidated_payments);
@@ -857,7 +857,7 @@ function mapContractRowToSourceClient(
   row: AttendanceContractRow,
   installmentsByRequestId: Map<string, QueueClient["c2xInstallments"]>,
   installmentsLoaded: boolean,
-): GuardianAttendanceSourceClient {
+): HadesAttendanceSourceClient {
   const requestId = String(row.acquisition_request_id);
   const overduePayments = toNumber(row.overdue_payments);
   const pendingPayments = toNumber(row.pending_payments);
@@ -898,7 +898,7 @@ function mapContractRowToSourceClient(
   const clientCity = formatCityState(row.client_city_name, row.client_state_acronym);
   const spouseName = firstFilled(row.spouse_name);
   const personType = formatName(firstFilled(row.person_type_name) ?? EMPTY_FIELD);
-  const unit: GuardianAttendanceSourceUnit = {
+  const unit: HadesAttendanceSourceUnit = {
     area: formatArea(row.area),
     empreendimento: enterpriseName,
     id: unitId,
@@ -1125,7 +1125,7 @@ function statusFor(
   priority: AttendancePriority,
   overdueDays: number,
   overduePayments: number,
-): GuardianAttendanceSourceClient["status"] {
+): HadesAttendanceSourceClient["status"] {
   if (priority === "Crítica") return "Escalado";
   if (priority === "Alta") return overduePayments >= 3 ? "Em negociação" : "Proposta enviada";
   if (priority === "Média") return overdueDays >= 20 ? "Aguardando retorno" : "Contato programado";
@@ -1133,7 +1133,7 @@ function statusFor(
   return "Contato programado";
 }
 
-function parcelProfile(row: AttendanceContractRow): GuardianAttendanceSourceClient["perfilParcela"] {
+function parcelProfile(row: AttendanceContractRow): HadesAttendanceSourceClient["perfilParcela"] {
   const signal = toNumber(row.signal_payments);
   const parcel = toNumber(row.parcel_payments);
 

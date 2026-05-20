@@ -88,19 +88,19 @@ export default function HomePage() {
   const displayName = getFirstName(hubUser?.name ?? "Operacao");
   const isAdmin = hubUser?.role === "admin";
   const teamMembers = createTeamMembers(snapshot);
-  const activeModuleIds = new Set(
+  const activeModuleIds = expandPantheonModuleIds(
     (snapshot?.modules ?? [])
       .filter((module) => module.status === "active")
       .map((module) => module.id),
   );
-  const enabledModuleIds = new Set(
+  const enabledModuleIds = expandPantheonModuleIds(
     (snapshot?.departmentModules ?? [])
       .filter((access) => access.status === "enabled")
       .map((access) => access.moduleId),
   );
   const availableModules = orderedHubModules.filter(
     (hubModule) =>
-      hubModule.id !== "squadops" &&
+      hubModule.id !== "zeus" &&
       isHubModuleActive(hubModule) &&
       Boolean(hubUser && canAccessModule(hubUser, hubModule)) &&
       activeModuleIds.has(hubModule.id) &&
@@ -272,20 +272,20 @@ export default function HomePage() {
                 />
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   <DayMetric label="reunioes agora" value={meetingCount} />
-                  <DayMetric label="tarefas Asana" value={taskCount} />
+                  <DayMetric label="criadas no periodo" value={taskCount} />
                   <DayMetric
-                    label="atrasadas"
+                    label="AT"
                     value={asanaSnapshot?.totals.overdue ?? 0}
                   />
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <DayMetric
-                    label="concluidas"
-                    value={asanaSnapshot?.totals.completed ?? 0}
+                    label="CP"
+                    value={asanaSnapshot?.totals.completedOnTime ?? 0}
                   />
                   <DayMetric
-                    label="no prazo"
-                    value={asanaSnapshot?.totals.completedOnTime ?? 0}
+                    label="CA"
+                    value={asanaSnapshot?.totals.completedLate ?? 0}
                   />
                 </div>
               </Surface>
@@ -429,6 +429,11 @@ function AsanaPerformancePanel({
               ? `${snapshot.source.workspaces.length} espacos`
               : "todos espacos"}
           </Badge>
+          <Badge variant="neutral">criadas no periodo</Badge>
+          <Badge variant="neutral">responsavel</Badge>
+          {snapshot?.source.limitReached ? (
+            <Badge variant="warning">limite atingido</Badge>
+          ) : null}
           <button
             aria-label="Atualizar painel Asana"
             className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820]"
@@ -460,30 +465,30 @@ function AsanaPerformancePanel({
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
             <AsanaKpi
               icon={<Target size={16} />}
-              label="total"
+              label="criadas"
               value={totals?.total ?? 0}
             />
             <AsanaKpi
               icon={<AlertTriangle size={16} />}
-              label="atrasadas"
+              label="AT"
               tone="danger"
               value={totals?.overdue ?? 0}
             />
             <AsanaKpi
               icon={<CheckCircle2 size={16} />}
-              label="concluidas"
-              tone="success"
-              value={totals?.completed ?? 0}
-            />
-            <AsanaKpi
-              icon={<Clock3 size={16} />}
-              label="no prazo"
+              label="CP"
               tone="success"
               value={totals?.completedOnTime ?? 0}
             />
             <AsanaKpi
+              icon={<Clock3 size={16} />}
+              label="CA"
+              tone="danger"
+              value={totals?.completedLate ?? 0}
+            />
+            <AsanaKpi
               icon={<Percent size={16} />}
-              label="pontualidade"
+              label="CP / total"
               value={formatPercent(totals?.onTimeRate)}
             />
           </div>
@@ -662,6 +667,7 @@ function AsanaCollaboratorRow({
 }) {
   const onTimeRate = collaborator.onTimeRate ?? 0;
   const lateRate = collaborator.lateRate ?? 0;
+  const overdueRate = collaborator.overdueRate ?? 0;
 
   return (
     <article className="grid grid-cols-2 items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 2xl:grid-cols-[minmax(12rem,1.15fr)_repeat(5,minmax(4.5rem,0.55fr))_minmax(9rem,0.8fr)]">
@@ -674,23 +680,33 @@ function AsanaCollaboratorRow({
             ? `${collaborator.email} / ${formatWorkspaceNames(collaborator.workspaceNames)}`
             : "sem usuario Asana"}
         </p>
+        {collaborator.limitReached ? (
+          <span className="mt-2 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[0.6875rem] font-semibold text-amber-700">
+            limite operacional atingido
+          </span>
+        ) : null}
       </div>
-      <CompactMetric label="total" value={collaborator.total} />
+      <CompactMetric label="criadas" value={collaborator.total} />
       <CompactMetric
-        label="atraso"
+        label="AT"
         tone={collaborator.overdue > 0 ? "danger" : "neutral"}
         value={collaborator.overdue}
       />
-      <CompactMetric label="concl." value={collaborator.completed} />
-      <CompactMetric label="prazo" value={collaborator.completedOnTime} />
+      <CompactMetric label="CP" value={collaborator.completedOnTime} />
+      <CompactMetric
+        label="CA"
+        tone={collaborator.completedLate > 0 ? "danger" : "neutral"}
+        value={collaborator.completedLate}
+      />
       <CompactMetric
         label="media"
         value={formatDelayDays(collaborator.averageDelayDays)}
       />
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-2 text-xs font-semibold text-[#485466]">
-          <span>{formatPercent(collaborator.onTimeRate)} no prazo</span>
-          <span>{formatPercent(collaborator.lateRate)} fora</span>
+          <span>{formatPercent(collaborator.onTimeRate)} CP</span>
+          <span>{formatPercent(collaborator.lateRate)} CA</span>
+          <span>{formatPercent(collaborator.overdueRate)} AT</span>
         </div>
         <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-[#eef1f4]">
           <span
@@ -698,8 +714,12 @@ function AsanaCollaboratorRow({
             style={{ width: `${onTimeRate}%` }}
           />
           <span
-            className="bg-red-400"
+            className="bg-rose-500"
             style={{ width: `${lateRate}%` }}
+          />
+          <span
+            className="bg-amber-500"
+            style={{ width: `${overdueRate}%` }}
           />
         </div>
       </div>
@@ -1061,6 +1081,29 @@ function countTeamStatus(
   status: HomePresenceStatus,
 ): number {
   return members.filter((member) => member.status === status).length;
+}
+
+function expandPantheonModuleIds(moduleIds: string[]) {
+  const expandedIds = new Set(moduleIds);
+  const legacyToPantheonModuleIds = {
+    caredesk: "iris",
+    guardian: "hades",
+    pulsex: "hermes",
+    squadops: "zeus",
+  } as const;
+
+  for (const moduleId of moduleIds) {
+    const pantheonId =
+      legacyToPantheonModuleIds[
+        moduleId as keyof typeof legacyToPantheonModuleIds
+      ];
+
+    if (pantheonId) {
+      expandedIds.add(pantheonId);
+    }
+  }
+
+  return expandedIds;
 }
 
 function formatPresenceSignal(

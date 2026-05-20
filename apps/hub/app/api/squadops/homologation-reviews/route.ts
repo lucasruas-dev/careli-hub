@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
 
-import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
+import { authorizeZeusAdminRequest } from "@/lib/squadops/admin-access";
 import {
   buildHomologationReviewState,
   isHomologationReviewStatus,
   isHomologationSchemaMissingError,
-  loadSquadOpsHomologationReviews,
-  upsertSquadOpsHomologationReview,
+  loadZeusHomologationReviews,
+  upsertZeusHomologationReview,
   type HomologationReviewItemKind,
 } from "@/lib/squadops/homologation-reviews";
 
@@ -14,14 +14,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const authorization = await authorizeSquadOpsAdminRequest(request);
+  const authorization = await authorizeZeusAdminRequest(request);
 
   if (!authorization.ok) {
     return authorization.response;
   }
 
   try {
-    const reviews = await loadSquadOpsHomologationReviews();
+    const reviews = await loadZeusHomologationReviews();
 
     return Response.json(
       {
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const authorization = await authorizeSquadOpsAdminRequest(request);
+  const authorization = await authorizeZeusAdminRequest(request);
 
   if (!authorization.ok) {
     return authorization.response;
@@ -93,7 +93,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    const review = await upsertSquadOpsHomologationReview({
+    const review = await upsertZeusHomologationReview({
       input: {
         itemKind: parseItemKind(payload?.itemKind),
         itemProtocol,
@@ -152,5 +152,5 @@ function getHomologationApiErrorMessage(error: unknown) {
 
   return error instanceof Error && error.message.trim()
     ? error.message
-    : "Nao foi possivel sincronizar homologacao SquadOps.";
+    : "Nao foi possivel sincronizar homologacao Zeus.";
 }

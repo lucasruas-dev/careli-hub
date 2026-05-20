@@ -1,13 +1,13 @@
-# Careli Hub Supabase Setup
+# Panteon Supabase Setup
 
-Este documento define a preparacao manual do Supabase para o Careli Hub e PulseX. Nada deve ser executado automaticamente pelo app ou pelo deploy atual.
+Este documento define a preparacao manual do Supabase para o Panteon e Hermes. Nada deve ser executado automaticamente pelo app ou pelo deploy atual.
 
 ## Arquivos SQL
 
 | Ordem | Arquivo | Papel |
 | --- | --- | --- |
 | 1 | `packages/database/migrations/0001_create_hub_core_schema.sql` | Cria extensao, enums, tabelas, constraints, indices, triggers, sync com `auth.users` e preparacao realtime. |
-| 2 | `packages/database/seeds/0001_hub_core_seed.sql` | Popula workspace inicial, catalogo de modulos, permissoes canonicas e evento inicial do PulseX. |
+| 2 | `packages/database/seeds/0001_hub_core_seed.sql` | Popula workspace inicial, catalogo de modulos, permissoes canonicas e evento inicial do Hermes. |
 
 ## Ordem Correta De Execucao
 
@@ -113,8 +113,8 @@ Quando o realtime real for ativado, revisar e executar uma migration separada co
 - Nao inserir usuarios diretamente em `hub_users`.
 - Nao expor `SUPABASE_SERVICE_ROLE_KEY` em `NEXT_PUBLIC_*`.
 - Seeds sao idempotentes e podem ser reexecutados, mas devem continuar versionados.
-- Guardian permanece apenas catalogado como modulo `locked`; este setup nao altera implementacao do Guardian.
-- PulseX fica catalogado como modulo `active` e preparado para sinais realtime futuros.
+- Hades permanece apenas catalogado como modulo `locked`; este setup nao altera implementacao do Hades.
+- Hermes fica catalogado como modulo `active` e preparado para sinais realtime futuros.
 - RLS e realtime real devem entrar em migrations posteriores, com testes de permissao e fluxo.
 
 ## Validacao Manual

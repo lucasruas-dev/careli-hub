@@ -1,17 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { sanitizeGuardianDbError } from "@/lib/guardian/db";
+import { sanitizeHadesDbError } from "@/lib/guardian/db";
 import {
-  loadGuardianEnterpriseDistributions,
-  loadGuardianOverview,
+  loadHadesEnterpriseDistributions,
+  loadHadesOverview,
 } from "@/lib/guardian/overview";
-import { loadGuardianOverviewReadModel } from "@/lib/guardian/read-model";
+import { loadHadesOverviewReadModel } from "@/lib/guardian/read-model";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
-type GuardianApiDatabase = {
+type HadesApiDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
     Enums: Record<string, never>;
@@ -48,12 +48,12 @@ export async function GET(request: NextRequest) {
     const enterpriseName = request.nextUrl.searchParams.get("enterprise")?.trim();
 
     if (enterpriseName && enterpriseName !== "Todos") {
-      const enterpriseResult = await loadGuardianEnterpriseDistributions(enterpriseName);
+      const enterpriseResult = await loadHadesEnterpriseDistributions(enterpriseName);
 
       if (!enterpriseResult.ok) {
         return NextResponse.json(
           {
-            error: "Configure a conexao server-side do Guardian.",
+            error: "Configure a conexao server-side do Hades.",
             missing: enterpriseResult.missing,
           },
           { status: 503 },
@@ -68,19 +68,19 @@ export async function GET(request: NextRequest) {
         {
           headers: {
             "Cache-Control": "no-store",
-            "X-Guardian-Overview-Read-Model": "BYPASS",
+            "X-Hades-Overview-Read-Model": "BYPASS",
           },
         },
       );
     }
 
-    const readModelSnapshot = await loadGuardianOverviewReadModel();
+    const readModelSnapshot = await loadHadesOverviewReadModel();
 
     if (readModelSnapshot && isFreshReadModel(readModelSnapshot.generatedAt)) {
       return overviewJson(readModelSnapshot, "supabase-c2x", "FRESH");
     }
 
-    const result = await loadGuardianOverview();
+    const result = await loadHadesOverview();
 
     if (result.ok) {
       return overviewJson(
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     if (!result.ok) {
       return NextResponse.json(
         {
-          error: "Configure a conexao server-side do Guardian.",
+          error: "Configure a conexao server-side do Hades.",
           missing: result.missing,
         },
         { status: 503 },
@@ -106,8 +106,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       {
-        error: "Nao foi possivel carregar o Guardian.",
-        detail: sanitizeGuardianDbError(error),
+        error: "Nao foi possivel carregar o Hades.",
+        detail: sanitizeHadesDbError(error),
       },
       { status: 500 },
     );
@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
 }
 
 function overviewJson(
-  data: Awaited<ReturnType<typeof loadGuardianOverviewReadModel>>,
+  data: Awaited<ReturnType<typeof loadHadesOverviewReadModel>>,
   source: "guardian-db" | "supabase-c2x",
   readModelStatus: "BYPASS" | "FRESH" | "STALE_BYPASS" | "STALE_FALLBACK",
 ) {
@@ -124,7 +124,7 @@ function overviewJson(
     {
       headers: {
         "Cache-Control": "no-store",
-        "X-Guardian-Overview-Read-Model": readModelStatus,
+        "X-Hades-Overview-Read-Model": readModelStatus,
       },
     },
   );
@@ -147,7 +147,7 @@ async function createAuthorizedContext(request: NextRequest) {
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "Configure a chave server-side para carregar o Guardian." },
+        { error: "Configure a chave server-side para carregar o Hades." },
         { status: 503 },
       ),
     };
@@ -165,7 +165,7 @@ async function createAuthorizedContext(request: NextRequest) {
     };
   }
 
-  const adminClient = createClient<GuardianApiDatabase>(
+  const adminClient = createClient<HadesApiDatabase>(
     supabaseUrl,
     serviceRoleKey,
     {
@@ -199,7 +199,7 @@ async function createAuthorizedContext(request: NextRequest) {
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "Usuario sem acesso ao Guardian." },
+        { error: "Usuario sem acesso ao Hades." },
         { status: 403 },
       ),
     };

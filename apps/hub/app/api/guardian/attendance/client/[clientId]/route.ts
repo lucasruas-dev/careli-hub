@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { loadGuardianAttendanceClient } from "@/lib/guardian/attendance";
-import { sanitizeGuardianDbError } from "@/lib/guardian/db";
+import { loadHadesAttendanceClient } from "@/lib/guardian/attendance";
+import { sanitizeHadesDbError } from "@/lib/guardian/db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,7 +20,7 @@ export async function GET(
   }
 
   try {
-    const client = await loadGuardianAttendanceClient(
+    const client = await loadHadesAttendanceClient(
       decodeURIComponent(clientId),
     );
 
@@ -36,7 +36,7 @@ export async function GET(
     return NextResponse.json(
       {
         error: "Nao foi possivel carregar as parcelas do cliente.",
-        detail: sanitizeGuardianDbError(error),
+        detail: sanitizeHadesDbError(error),
       },
       { status: 500 },
     );

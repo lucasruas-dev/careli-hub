@@ -1,6 +1,6 @@
 # Incident Response Policy
 
-Este documento define o fluxo de resposta a incidentes do Careli Hub.
+Este documento define o fluxo de resposta a incidentes do Panteon.
 
 ## Quando abrir incidente
 
@@ -19,17 +19,17 @@ Abrir incidente quando houver:
 
 1. Classificar ambiente: local, homologacao ou producao.
 2. Registrar protocolo `INC-YYYYMMDD-HHMM-<tema>`.
-3. Verificar se ha segredo exposto. Se houver, parar e escalar para Lucas/InfraOps.
+3. Verificar se ha segredo exposto. Se houver, parar e escalar para Lucas/Zeus.
 4. Identificar ultimo deploy, branch, commit e alias.
 5. Separar sintoma, causa provavel e evidencia confirmada.
 6. Manter operacao sensivel `BLOQUEADO` ate autorizacao.
 
 ## Responsabilidades
 
-- `Hub SupportOps`: diagnostico inicial, sintomas, logs, reproducao, impacto em usuario e evidencias.
-- `Hub InfraOps`: Vercel, envs, Supabase runtime, dominio, alias, protection bypass, healthchecks e safe mode.
-- `Hub DataOps`: banco, migrations, RLS, grants, schema, dados e conexao Postgres.
-- `Hub ReleaseOps`: publica correcao somente depois que o recorte estiver validado e autorizado.
+- `Zeus`: diagnostico inicial, sintomas, logs, reproducao, impacto em usuario e evidencias.
+- `Zeus`: Vercel, envs, Supabase runtime, dominio, alias, protection bypass, healthchecks e safe mode.
+- `Zeus`: banco, migrations, RLS, grants, schema, dados e conexao Postgres.
+- `Hefesto`: publica correcao somente depois que o recorte estiver validado e autorizado.
 - Lucas: aprova operacoes sensiveis e decide continuidade/rollback quando houver risco.
 
 ## Incidente por env ou chave

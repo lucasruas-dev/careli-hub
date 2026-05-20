@@ -96,7 +96,7 @@ export default function LoginPage() {
           </div>
         </form>
         <p className="m-0 mt-6 text-xs font-medium uppercase tracking-[0.18em] text-[#8A682F]">
-          Hub Careli
+          Panteon
         </p>
       </section>
     </main>
@@ -116,5 +116,5 @@ function getLoginErrorMessage(error: unknown) {
     }
   }
 
-  return "Não foi possível validar seu acesso ao Hub Careli. Tente novamente.";
+  return "Não foi possível validar seu acesso ao Panteon. Tente novamente.";
 }

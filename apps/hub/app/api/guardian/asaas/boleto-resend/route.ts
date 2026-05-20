@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const auth = await authorizeGuardianAction(request);
+  const auth = await authorizeHadesAction(request);
 
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -61,7 +61,7 @@ function parseDeliveryMode(value: unknown): BoletoResendMode {
   return value === "asaas" ? "asaas" : "link";
 }
 
-async function authorizeGuardianAction(request: NextRequest) {
+async function authorizeHadesAction(request: NextRequest) {
   const { anonKey, url } = getServerSupabaseConfig();
   const supabaseUrl = url?.replace(/\/+$/, "");
 
@@ -76,7 +76,7 @@ async function authorizeGuardianAction(request: NextRequest) {
 
   if (!accessToken) {
     return {
-      error: "Sessao ausente para executar a acao do Guardian.",
+      error: "Sessao ausente para executar a acao do Hades.",
       ok: false as const,
       status: 401,
     };
@@ -96,7 +96,7 @@ async function authorizeGuardianAction(request: NextRequest) {
 
     if (!response.ok || typeof payload?.id !== "string") {
       return {
-        error: "Sessao invalida para executar a acao do Guardian.",
+        error: "Sessao invalida para executar a acao do Hades.",
         ok: false as const,
         status: response.status === 400 ? 401 : response.status,
       };
@@ -108,7 +108,7 @@ async function authorizeGuardianAction(request: NextRequest) {
     };
   } catch {
     return {
-      error: "Nao foi possivel validar a sessao do Guardian.",
+      error: "Nao foi possivel validar a sessao do Hades.",
       ok: false as const,
       status: 503,
     };

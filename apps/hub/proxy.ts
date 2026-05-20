@@ -1,38 +1,56 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const squadOpsDedicatedHost = "ops.c2x.app.br";
-const hubHostsWithoutSquadOps = new Set([
+const zeusDedicatedHost = "ops.c2x.app.br";
+const hubHostsWithoutZeus = new Set([
   "c2x.app.br",
   "www.c2x.app.br",
   "homo.c2x.app.br",
 ]);
+const legacyVisualRoutes = [
+  ["/guardian", "/hades"],
+  ["/caredesk", "/iris"],
+  ["/pulsex", "/hermes"],
+  ["/squadops", "/zeus"],
+] as const;
 
 export function proxy(request: NextRequest) {
   const host =
     request.headers.get("host")?.split(":")[0]?.toLowerCase() ?? "";
   const { pathname } = request.nextUrl;
 
-  if (host === squadOpsDedicatedHost) {
-    if (pathname === "/squadops" || pathname === "/login") {
+  if (host === zeusDedicatedHost) {
+    if (pathname === "/zeus" || pathname === "/login") {
       return NextResponse.next();
     }
 
     const url = request.nextUrl.clone();
-    url.pathname = "/squadops";
+    url.pathname = "/zeus";
     url.search = "";
 
     return NextResponse.redirect(url);
   }
 
   if (
-    hubHostsWithoutSquadOps.has(host) &&
-    (pathname === "/squadops" || pathname.startsWith("/squadops/"))
+    hubHostsWithoutZeus.has(host) &&
+    (pathname === "/zeus" ||
+      pathname.startsWith("/zeus/") ||
+      pathname === "/squadops" ||
+      pathname.startsWith("/squadops/"))
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";
 
     return NextResponse.redirect(url);
+  }
+
+  for (const [legacyPath, pantheonPath] of legacyVisualRoutes) {
+    if (pathname === legacyPath || pathname.startsWith(`${legacyPath}/`)) {
+      const url = request.nextUrl.clone();
+      url.pathname = `${pantheonPath}${pathname.slice(legacyPath.length)}`;
+
+      return NextResponse.redirect(url);
+    }
   }
 
   return NextResponse.next();

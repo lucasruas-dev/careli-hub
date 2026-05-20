@@ -1,4 +1,4 @@
-import type { PulseXChannel } from "@/lib/pulsex";
+import type { HermesChannel } from "@/lib/pulsex";
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { Bot, Hash, Megaphone, Users } from "lucide-react";
@@ -6,9 +6,9 @@ import { Tooltip } from "@repo/uix";
 
 type ConversationItemProps = {
   active?: boolean;
-  channel: PulseXChannel;
+  channel: HermesChannel;
   collapsed?: boolean;
-  onSelect?: (channelId: PulseXChannel["id"]) => void;
+  onSelect?: (channelId: HermesChannel["id"]) => void;
 };
 
 export function ConversationItem({
@@ -38,6 +38,7 @@ export function ConversationItem({
             active={active}
             channel={channel}
             collapsed={collapsed}
+            icon={<ChannelIcon aria-hidden="true" size={17} />}
             label={collapsedLabel}
             showUnread
           />
@@ -70,8 +71,11 @@ export function ConversationItem({
             {channel.name}
           </span>
           {channel.unreadCount ? (
-            <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-[#A07C3B] px-1.5 text-[0.68rem] font-semibold text-white">
-              {channel.unreadCount}
+            <span
+              aria-label={`${channel.unreadCount} mensagens novas`}
+              className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-[#A07C3B] px-1.5 text-[0.68rem] font-semibold text-white"
+            >
+              {formatUnreadCount(channel.unreadCount)}
             </span>
           ) : null}
         </span>
@@ -80,12 +84,24 @@ export function ConversationItem({
   );
 }
 
-function getCollapsedChannelLabel(channel: PulseXChannel) {
+function getCollapsedChannelLabel(channel: HermesChannel) {
   if (channel.kind === "direct") {
     return channel.avatar;
   }
 
-  return channel.name.trim().charAt(0).toUpperCase() || "#";
+  const words = channel.name.trim().split(/\s+/).filter(Boolean);
+
+  if (words.length > 1) {
+    return words
+      .map((word) => word.charAt(0))
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  }
+
+  const compactName = channel.name.replace(/[^a-z0-9]/gi, "");
+
+  return compactName.slice(0, 2).toUpperCase() || "#";
 }
 
 function ChannelAvatar({
@@ -97,7 +113,7 @@ function ChannelAvatar({
   showUnread = false,
 }: {
   active: boolean;
-  channel: PulseXChannel;
+  channel: HermesChannel;
   collapsed?: boolean;
   icon?: ReactNode;
   label: string;
@@ -132,11 +148,16 @@ function ChannelAvatar({
           />
         </span>
       ) : (
-        <span className="relative z-10">{isDirect ? label : icon}</span>
+        <span className="relative z-10 grid place-items-center text-[0.68rem] font-semibold leading-none">
+          {isDirect ? label : collapsed ? label : (icon ?? label)}
+        </span>
       )}
       {showUnread && channel.unreadCount ? (
-        <span className="absolute -right-1 -top-1 z-20 grid h-4 min-w-4 place-items-center rounded-full bg-[#A07C3B] px-1 text-[0.58rem] font-semibold text-white">
-          {channel.unreadCount}
+        <span
+          aria-label={`${channel.unreadCount} mensagens novas`}
+          className="absolute -right-1 -top-1 z-20 grid h-4 min-w-4 place-items-center rounded-full bg-[#A07C3B] px-1 text-[0.58rem] font-semibold text-white"
+        >
+          {formatUnreadCount(channel.unreadCount)}
         </span>
       ) : null}
       {isDirect && channel.status ? (
@@ -150,7 +171,11 @@ function ChannelAvatar({
   );
 }
 
-function getChannelIcon(channel: PulseXChannel) {
+function formatUnreadCount(count: number) {
+  return count > 99 ? "99+" : count.toString();
+}
+
+function getChannelIcon(channel: HermesChannel) {
   if (channel.kind === "direct") {
     return Users;
   }
@@ -166,7 +191,7 @@ function getChannelIcon(channel: PulseXChannel) {
   return Hash;
 }
 
-function isAnnouncementChannel(channel: PulseXChannel) {
+function isAnnouncementChannel(channel: HermesChannel) {
   const normalizedName = channel.name.trim().toLowerCase();
 
   return (

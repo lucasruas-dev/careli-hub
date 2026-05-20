@@ -1,10 +1,10 @@
 "use client";
 
+import { AthenaIcon } from "@/components/athena-icon";
 import { HubTicketOpenForm } from "@/components/hub-support/hub-ticket-open-form";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { useAuth } from "@/providers/auth-provider";
 import { Bug, X } from "lucide-react";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
 
@@ -20,7 +20,7 @@ export function HubSupportDock() {
     ref: dockRef,
   });
 
-  if (!hubUser || shouldHideGlobalCaca(pathname)) {
+  if (!hubUser || shouldHideGlobalAthena(pathname)) {
     return null;
   }
 
@@ -34,24 +34,22 @@ export function HubSupportDock() {
           <header className="border-b border-slate-100 bg-[#101820] px-4 py-3 text-white">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="relative size-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/15">
-                  <Image
-                    alt="Caca"
-                    className="object-cover"
-                    fill
-                    sizes="44px"
-                    src="/caca-profile.png"
+                <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl border border-[#A07C3B]/30 bg-[#101820] ring-1 ring-white/15">
+                  <AthenaIcon
+                    className="size-full object-cover"
+                    variant="panel"
+                    aria-hidden="true"
                   />
                 </span>
                 <div className="min-w-0">
-                  <p className="m-0 text-sm font-semibold">Caca</p>
+                  <p className="m-0 text-sm font-semibold">Athena</p>
                   <p className="m-0 mt-1 truncate text-xs text-white/65">
-                    Agente operacional do Hub.
+                    Agente operacional do Panteon.
                   </p>
                 </div>
               </div>
               <button
-                aria-label="Fechar Caca"
+                aria-label="Fechar Athena"
                 className="grid size-8 place-items-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
                 onClick={() => setOpen(false)}
                 type="button"
@@ -73,29 +71,23 @@ export function HubSupportDock() {
 
       <button
         aria-expanded={open}
-        aria-label="Abrir Caca"
-        className="relative grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/25 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+        aria-label="Abrir Athena"
+        className="relative grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/30 bg-[#101820] text-[#A07C3B] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        <Image
-          alt=""
-          className="object-cover"
-          fill
-          sizes="56px"
-          src="/caca-profile.png"
-        />
+        <AthenaIcon className="size-full object-cover" aria-hidden="true" />
         <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
       </button>
     </div>
   );
 }
 
-function shouldHideGlobalCaca(pathname: string) {
+function shouldHideGlobalAthena(pathname: string) {
   return (
-    pathname.startsWith("/squadops") ||
-    pathname.startsWith("/pulsex") ||
-    pathname.startsWith("/guardian/cobranca") ||
-    pathname.startsWith("/guardian/atendimento")
+    pathname.startsWith("/zeus") ||
+    pathname.startsWith("/hermes") ||
+    pathname.startsWith("/hades/cobranca") ||
+    pathname.startsWith("/hades/atendimento")
   );
 }

@@ -2,16 +2,16 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import {
-  playPulseXIncomingMessageSound,
-  registerPulseXNotificationPermissionIntent,
-  showBrowserPulseXNotification,
+  playHermesIncomingMessageSound,
+  registerHermesNotificationPermissionIntent,
+  showBrowserHermesNotification,
 } from "@/lib/pulsex/notification-effects";
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
-  getPulseXMessageRealtimeTopic,
-  parsePulseXMessageBroadcastPayload,
+  getHermesMessageRealtimeTopic,
+  parseHermesMessageBroadcastPayload,
 } from "@/lib/pulsex/realtime";
-import { listPulseXNotificationChannels } from "@/lib/pulsex/supabase-data";
+import { listHermesNotificationChannels } from "@/lib/pulsex/supabase-data";
 import {
   getHubSupabaseClient,
   hasHubSupabaseConfig,
@@ -23,7 +23,7 @@ import { useAuth } from "@/providers/auth-provider";
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
-export function PulseXNotificationProvider({
+export function HermesNotificationProvider({
   children,
 }: Readonly<{
   children: ReactNode;
@@ -32,7 +32,7 @@ export function PulseXNotificationProvider({
   const currentUserId = hubUser?.id ?? "";
   const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => registerPulseXNotificationPermissionIntent(), []);
+  useEffect(() => registerHermesNotificationPermissionIntent(), []);
 
   useEffect(() => {
     if (
@@ -52,7 +52,7 @@ export function PulseXNotificationProvider({
     let isMounted = true;
     let realtimeChannels: HubRealtimeChannel[] = [];
 
-    listPulseXNotificationChannels({
+    listHermesNotificationChannels({
       currentUserId,
       userRole: hubUser?.role,
     })
@@ -63,7 +63,7 @@ export function PulseXNotificationProvider({
 
         realtimeChannels = channels.map((channel) => {
           const realtimeChannel = client.channel(
-            getPulseXMessageRealtimeTopic(channel.id),
+            getHermesMessageRealtimeTopic(channel.id),
             {
               config: {
                 broadcast: {
@@ -81,7 +81,7 @@ export function PulseXNotificationProvider({
                 event: PULSEX_MESSAGE_BROADCAST_EVENT,
               },
               (payload: { payload?: unknown }) => {
-                const message = parsePulseXMessageBroadcastPayload(
+                const message = parseHermesMessageBroadcastPayload(
                   payload.payload,
                 );
 
@@ -97,16 +97,16 @@ export function PulseXNotificationProvider({
                 notifiedMessageIdsRef.current.add(message.id);
                 const mentioned = message.mentionUserIds?.includes(currentUserId);
 
-                playPulseXIncomingMessageSound({
+                playHermesIncomingMessageSound({
                   mentioned,
                   messageId: message.id,
                 });
-                showBrowserPulseXNotification({
-                  body: `${message.authorName ?? "PulseX"}: ${truncateNotificationBody(message.body)}`,
-                  onClickPath: "/pulsex",
+                showBrowserHermesNotification({
+                  body: `${message.authorName ?? "Hermes"}: ${truncateNotificationBody(message.body)}`,
+                  onClickPath: "/hermes",
                   tag: `pulsex-message-${message.id}`,
                   title: mentioned
-                    ? "Voce foi mencionado no PulseX"
+                    ? "Voce foi mencionado no Hermes"
                     : `Nova mensagem em ${channel.name}`,
                 });
               },

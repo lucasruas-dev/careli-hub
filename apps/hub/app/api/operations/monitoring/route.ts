@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 
-import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
+import { authorizeZeusAdminRequest } from "@/lib/squadops/admin-access";
 import { collectOperationsDataSources } from "@/lib/operations/data-sources";
 import { syncOperationAlertProtocols } from "@/lib/operations/alert-protocols";
 import { buildOperationsMonitoringSnapshot } from "@/lib/operations/monitoring";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const authorization = await authorizeSquadOpsAdminRequest(request);
+  const authorization = await authorizeZeusAdminRequest(request);
 
   if (!authorization.ok) {
     return authorization.response;

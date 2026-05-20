@@ -5,7 +5,7 @@ export const pulsexCallSoundOptions = [
   { id: "focus", label: "Focus" },
 ] as const;
 
-export type PulseXCallSoundId = (typeof pulsexCallSoundOptions)[number]["id"];
+export type HermesCallSoundId = (typeof pulsexCallSoundOptions)[number]["id"];
 
 type ToneSpec = {
   duration: number;
@@ -15,14 +15,14 @@ type ToneSpec = {
   type: OscillatorType;
 };
 
-type PulseXNotificationInput = {
+type HermesNotificationInput = {
   body: string;
   onClickPath?: string;
   tag?: string;
   title: string;
 };
 
-type PulseXIncomingMessageSoundInput = {
+type HermesIncomingMessageSoundInput = {
   mentioned?: boolean;
   messageId?: string;
 };
@@ -30,14 +30,14 @@ type PulseXIncomingMessageSoundInput = {
 const PULSEX_MESSAGE_SOUND_DEDUPE_MS = 12_000;
 const playedMessageSoundAtById = new Map<string, number>();
 
-export function isPulseXCallSoundId(value: unknown): value is PulseXCallSoundId {
+export function isHermesCallSoundId(value: unknown): value is HermesCallSoundId {
   return (
     typeof value === "string" &&
     pulsexCallSoundOptions.some((option) => option.id === value)
   );
 }
 
-export function playPulseXMessageSound() {
+export function playHermesMessageSound() {
   playToneSequence([
     {
       duration: 0.09,
@@ -63,7 +63,7 @@ export function playPulseXMessageSound() {
   ]);
 }
 
-export function playPulseXMentionSound() {
+export function playHermesMentionSound() {
   playToneSequence([
     {
       duration: 0.12,
@@ -89,23 +89,23 @@ export function playPulseXMentionSound() {
   ]);
 }
 
-export function playPulseXIncomingMessageSound({
+export function playHermesIncomingMessageSound({
   mentioned = false,
   messageId,
-}: PulseXIncomingMessageSoundInput = {}) {
+}: HermesIncomingMessageSoundInput = {}) {
   if (messageId && shouldSkipRepeatedMessageSound(messageId)) {
     return;
   }
 
   if (mentioned) {
-    playPulseXMentionSound();
+    playHermesMentionSound();
     return;
   }
 
-  playPulseXMessageSound();
+  playHermesMessageSound();
 }
 
-export function playPulseXCallSound(soundId: PulseXCallSoundId) {
+export function playHermesCallSound(soundId: HermesCallSoundId) {
   const soundMap = {
     aurora: [
       {
@@ -192,12 +192,12 @@ export function playPulseXCallSound(soundId: PulseXCallSoundId) {
         type: "triangle",
       },
     ],
-  } as const satisfies Record<PulseXCallSoundId, readonly ToneSpec[]>;
+  } as const satisfies Record<HermesCallSoundId, readonly ToneSpec[]>;
 
   playToneSequence(soundMap[soundId]);
 }
 
-export function playPulseXOutgoingCallSound() {
+export function playHermesOutgoingCallSound() {
   playToneSequence([
     {
       duration: 0.28,
@@ -223,7 +223,7 @@ export function playPulseXOutgoingCallSound() {
   ]);
 }
 
-export function registerPulseXNotificationPermissionIntent() {
+export function registerHermesNotificationPermissionIntent() {
   if (
     typeof window === "undefined" ||
     !("Notification" in window) ||
@@ -247,12 +247,12 @@ export function registerPulseXNotificationPermissionIntent() {
   return cleanup;
 }
 
-export function showBrowserPulseXNotification({
+export function showBrowserHermesNotification({
   body,
   onClickPath,
   tag,
   title,
-}: PulseXNotificationInput) {
+}: HermesNotificationInput) {
   if (typeof window === "undefined" || !("Notification" in window)) {
     return;
   }

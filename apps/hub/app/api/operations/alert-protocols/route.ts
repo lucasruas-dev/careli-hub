@@ -8,13 +8,13 @@ import {
   updateOperationAlertFeedback,
 } from "@/lib/operations/alert-protocols";
 import type { OperationsAlertFeedbackStatus } from "@/lib/operations/monitoring";
-import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
+import { authorizeZeusAdminRequest } from "@/lib/squadops/admin-access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const authorization = await authorizeSquadOpsAdminRequest(request);
+  const authorization = await authorizeZeusAdminRequest(request);
 
   if (!authorization.ok) {
     return authorization.response;
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const authorization = await authorizeSquadOpsAdminRequest(request);
+  const authorization = await authorizeZeusAdminRequest(request);
 
   if (!authorization.ok) {
     return authorization.response;

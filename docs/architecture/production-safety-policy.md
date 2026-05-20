@@ -1,6 +1,6 @@
 # Production Safety Policy
 
-Este documento define a politica de protecao de producao do Careli Hub.
+Este documento define a politica de protecao de producao do Panteon.
 
 ## Regra principal
 
@@ -44,7 +44,7 @@ Quando o runtime detectar env critica ausente, invalida ou cruzada:
 - nunca revelar valor da env;
 - manter leitura segura quando possivel;
 - impedir fallback automatico para banco de producao quando o ambiente for homologacao;
-- orientar handoff para InfraOps/SupportOps.
+- orientar handoff para Zeus/Zeus.
 
 ## Healthchecks minimos
 
@@ -62,7 +62,7 @@ Uma mudanca sensivel so pode sair de `BLOQUEADO` quando:
 
 - Lucas autorizou;
 - homologacao passou ou houve justificativa registrada;
-- ReleaseOps publicou recorte limpo;
-- InfraOps validou ambiente;
-- SupportOps/DataOps foram acionados quando necessario;
+- Hefesto publicou recorte limpo;
+- Zeus validou ambiente;
+- Zeus/Zeus foram acionados quando necessario;
 - rollback path esta registrado.

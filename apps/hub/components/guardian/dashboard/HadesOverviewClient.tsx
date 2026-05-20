@@ -13,18 +13,18 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { getGuardianOverviewSnapshot } from "@/lib/guardian/overview-client";
+import { getHadesOverviewSnapshot } from "@/lib/guardian/overview-client";
 import type {
-  GuardianOverviewSnapshot,
-  GuardianPaymentListItem,
-  GuardianPaymentStatusBucket,
-  GuardianProposalListItem,
-  GuardianSignatureListItem,
-  GuardianStageBucket,
+  HadesOverviewSnapshot,
+  HadesPaymentListItem,
+  HadesPaymentStatusBucket,
+  HadesProposalListItem,
+  HadesSignatureListItem,
+  HadesStageBucket,
 } from "@/lib/guardian/overview";
 
 type LoadState =
-  | { data: GuardianOverviewSnapshot; status: "ready" }
+  | { data: HadesOverviewSnapshot; status: "ready" }
   | { error: string; status: "error" }
   | { status: "loading" };
 
@@ -38,21 +38,21 @@ const compactNumberFormatter = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0,
 });
 
-export function GuardianOverviewClient() {
+export function HadesOverviewClient() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   const loadOverview = useCallback(async () => {
     setState({ status: "loading" });
 
     try {
-      const data = await getGuardianOverviewSnapshot();
+      const data = await getHadesOverviewSnapshot();
       setState({ data, status: "ready" });
     } catch (error) {
       setState({
         error:
           error instanceof Error
             ? error.message
-            : "Nao foi possivel carregar o Guardian.",
+            : "Nao foi possivel carregar o Hades.",
         status: "error",
       });
     }
@@ -63,21 +63,21 @@ export function GuardianOverviewClient() {
   }, [loadOverview]);
 
   if (state.status === "loading") {
-    return <GuardianLoading />;
+    return <HadesLoading />;
   }
 
   if (state.status === "error") {
-    return <GuardianError message={state.error} onRetry={loadOverview} />;
+    return <HadesError message={state.error} onRetry={loadOverview} />;
   }
 
-  return <GuardianOverview data={state.data} onRefresh={loadOverview} />;
+  return <HadesOverview data={state.data} onRefresh={loadOverview} />;
 }
 
-function GuardianOverview({
+function HadesOverview({
   data,
   onRefresh,
 }: {
-  data: GuardianOverviewSnapshot;
+  data: HadesOverviewSnapshot;
   onRefresh: () => void;
 }) {
   const stageTotal = useMemo(
@@ -108,10 +108,10 @@ function GuardianOverview({
             </span>
           </div>
           <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">
-            Guardian operacional
+            Hades operacional
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-            Primeira leitura real do Guardian dentro do Hub: propostas,
+            Primeira leitura real do Hades dentro do Hub: propostas,
             parcelas, assinaturas e unidades sem alterar o banco original.
           </p>
         </div>
@@ -241,7 +241,7 @@ function DistributionPanel({
   title,
   total,
 }: {
-  items: GuardianStageBucket[];
+  items: HadesStageBucket[];
   title: string;
   total: number;
 }) {
@@ -274,7 +274,7 @@ function PaymentStatusPanel({
   title,
   total,
 }: {
-  items: GuardianPaymentStatusBucket[];
+  items: HadesPaymentStatusBucket[];
   title: string;
   total: number;
 }) {
@@ -328,12 +328,12 @@ function ProgressRow({
 function RecentProposalsTable({
   items,
 }: {
-  items: GuardianProposalListItem[];
+  items: HadesProposalListItem[];
 }) {
   return (
     <DataTable
       title="Propostas recentes"
-      description="Ultimas movimentacoes no Guardian."
+      description="Ultimas movimentacoes no Hades."
       headers={[
         "Codigo",
         "Cliente",
@@ -354,7 +354,7 @@ function RecentProposalsTable({
   );
 }
 
-function SignatureQueue({ items }: { items: GuardianSignatureListItem[] }) {
+function SignatureQueue({ items }: { items: HadesSignatureListItem[] }) {
   return (
     <DataTable
       title="Assinaturas"
@@ -373,7 +373,7 @@ function SignatureQueue({ items }: { items: GuardianSignatureListItem[] }) {
 function OverduePaymentsTable({
   items,
 }: {
-  items: GuardianPaymentListItem[];
+  items: HadesPaymentListItem[];
 }) {
   return (
     <DataTable
@@ -449,7 +449,7 @@ function DataTable({
   );
 }
 
-function GuardianLoading() {
+function HadesLoading() {
   return (
     <div className="grid gap-4">
       <div className="h-32 animate-pulse rounded-xl bg-white ring-1 ring-slate-200/70" />
@@ -469,7 +469,7 @@ function GuardianLoading() {
   );
 }
 
-function GuardianError({
+function HadesError({
   message,
   onRetry,
 }: {
@@ -484,7 +484,7 @@ function GuardianError({
         </div>
         <div>
           <h2 className="text-base font-semibold text-slate-950">
-            Guardian indisponivel
+            Hades indisponivel
           </h2>
           <p className="mt-1 text-sm text-slate-600">{message}</p>
           <button

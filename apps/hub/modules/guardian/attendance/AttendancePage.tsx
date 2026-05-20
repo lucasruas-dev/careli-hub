@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
@@ -28,18 +28,18 @@ const priorities: Array<AttendancePriority | "Todos"> = [
 ];
 
 type AttendanceSection = "queue" | "desk" | "portfolio";
-type ManualGuardianOperations = {
+type ManualHadesOperations = {
   commitments: QueueClient["commitments"];
   events: OperationalTimelineEvent[];
 };
 
 const attendanceSections: Array<{ id: AttendanceSection; label: string; badge?: string; icon: typeof Inbox }> = [
   { id: "queue", label: "Fila operacional", icon: Inbox },
-  { id: "desk", label: "CareDesk", badge: "3", icon: MessageCircle },
+  { id: "desk", label: "Iris", badge: "3", icon: MessageCircle },
   { id: "portfolio", label: "Carteira", icon: MapPinned },
 ];
 const INITIAL_QUEUE_LIMIT = 600;
-const emptyManualOperations: ManualGuardianOperations = {
+const emptyManualOperations: ManualHadesOperations = {
   commitments: [],
   events: [],
 };
@@ -66,7 +66,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     Record<string, OperationalTimelineEvent[]>
   >({});
   const [manualOperationsByClient, setManualOperationsByClient] = useState<
-    Record<string, ManualGuardianOperations>
+    Record<string, ManualHadesOperations>
   >({});
 
   useEffect(() => {
@@ -91,8 +91,8 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       setQueueError(null);
 
       try {
-        const accessToken = await getGuardianAccessToken();
-        const response = await fetch(`/api/guardian/attendance/queue?limit=${INITIAL_QUEUE_LIMIT}`, {
+        const accessToken = await getHadesAccessToken();
+        const response = await fetch(`/api/hades/attendance/queue?limit=${INITIAL_QUEUE_LIMIT}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -152,11 +152,11 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     async function loadSelectedClientDetails() {
       try {
         const response = await fetch(
-          `/api/guardian/attendance/client/${encodeURIComponent(selectedId)}`,
+          `/api/hades/attendance/client/${encodeURIComponent(selectedId)}`,
           {
             cache: "no-store",
             headers: {
-              Authorization: `Bearer ${await getGuardianAccessToken()}`,
+              Authorization: `Bearer ${await getHadesAccessToken()}`,
             },
           }
         );
@@ -210,16 +210,16 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     async function loadManualOperations() {
       try {
         const response = await fetch(
-          `/api/guardian/attendance/manual-events?clientId=${encodeURIComponent(selectedId)}`,
+          `/api/hades/attendance/manual-events?clientId=${encodeURIComponent(selectedId)}`,
           {
             cache: "no-store",
             headers: {
-              Authorization: `Bearer ${await getGuardianAccessToken()}`,
+              Authorization: `Bearer ${await getHadesAccessToken()}`,
             },
           },
         );
         const payload = (await response.json().catch(() => null)) as
-          | ManualGuardianOperations
+          | ManualHadesOperations
           | { error?: string }
           | null;
 
@@ -346,7 +346,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       return;
     }
 
-    const response = await fetch("/api/guardian/attendance/manual-events", {
+    const response = await fetch("/api/hades/attendance/manual-events", {
       body: JSON.stringify({
         client: {
           c2xAcquisitionRequestId: clientForEvent.c2xAcquisitionRequestId,
@@ -358,13 +358,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       }),
       cache: "no-store",
       headers: {
-        Authorization: `Bearer ${await getGuardianAccessToken()}`,
+        Authorization: `Bearer ${await getHadesAccessToken()}`,
         "Content-Type": "application/json",
       },
       method: "POST",
     });
     const payload = (await response.json().catch(() => null)) as
-      | ManualGuardianOperations
+      | ManualHadesOperations
       | { error?: string }
       | null;
 
@@ -386,7 +386,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   }
 
   async function saveManualCommitment(record: QueueClient["commitments"][number]) {
-    const response = await fetch("/api/guardian/attendance/manual-events", {
+    const response = await fetch("/api/hades/attendance/manual-events", {
       body: JSON.stringify({
         client: {
           c2xAcquisitionRequestId: selectedClient.c2xAcquisitionRequestId,
@@ -398,13 +398,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       }),
       cache: "no-store",
       headers: {
-        Authorization: `Bearer ${await getGuardianAccessToken()}`,
+        Authorization: `Bearer ${await getHadesAccessToken()}`,
         "Content-Type": "application/json",
       },
       method: "POST",
     });
     const payload = (await response.json().catch(() => null)) as
-      | ManualGuardianOperations
+      | ManualHadesOperations
       | { error?: string }
       | null;
 
@@ -423,7 +423,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       return;
     }
 
-    const response = await fetch("/api/guardian/attendance/manual-events", {
+    const response = await fetch("/api/hades/attendance/manual-events", {
       body: JSON.stringify({
         commitment: record,
         id: record.id,
@@ -431,13 +431,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       }),
       cache: "no-store",
       headers: {
-        Authorization: `Bearer ${await getGuardianAccessToken()}`,
+        Authorization: `Bearer ${await getHadesAccessToken()}`,
         "Content-Type": "application/json",
       },
       method: "PATCH",
     });
     const payload = (await response.json().catch(() => null)) as
-      | ManualGuardianOperations
+      | ManualHadesOperations
       | { error?: string }
       | null;
 
@@ -448,7 +448,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     upsertManualOperations(selectedClient.id, payload);
   }
 
-  function upsertManualOperations(clientId: string, payload: ManualGuardianOperations) {
+  function upsertManualOperations(clientId: string, payload: ManualHadesOperations) {
     setManualOperationsByClient((current) => {
       const currentOperations = current[clientId] ?? emptyManualOperations;
 
@@ -572,7 +572,7 @@ function dedupeTimelineEvents(events: OperationalTimelineEvent[]) {
   return upsertById(events, []);
 }
 
-async function getGuardianAccessToken() {
+async function getHadesAccessToken() {
   const client = getHubSupabaseClient();
 
   if (!client) {

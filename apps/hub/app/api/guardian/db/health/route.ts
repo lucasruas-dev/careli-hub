@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { pingGuardianDb, sanitizeGuardianDbError } from "@/lib/guardian/db";
+import { pingHadesDb, sanitizeHadesDbError } from "@/lib/guardian/db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const result = await pingGuardianDb();
+    const result = await pingHadesDb();
 
     if (!result.ok) {
       return NextResponse.json(
@@ -32,7 +32,7 @@ export async function GET() {
       {
         ok: false,
         status: "error",
-        error: sanitizeGuardianDbError(error),
+        error: sanitizeHadesDbError(error),
       },
       { status: 503 },
     );

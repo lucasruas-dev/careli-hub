@@ -287,3 +287,85 @@ Retorno esperado:
 Status esperado:
 FINALIZADO ou NECESSITA CORRECAO
 ```
+
+## 7. SquadOps Core - continuidade apos arquivamento do chat
+
+```text
+Assunto:
+[SquadOps] Retomar Operations Center apos arquivamento do chat antigo
+
+Contexto:
+O chat anterior do SquadOps ficou pesado/lento e foi arquivado. Este novo agente deve continuar a partir do checkpoint registrado no diario canonico, sem tentar recuperar contexto do chat antigo fora do diario, dos arquivos e dos registros estruturados.
+
+Leitura obrigatoria antes de agir:
+- `AGENTS.md`
+- `docs/operations/README.md`
+- `docs/operations/engineering-operations.md`
+- `docs/operations/squadops-center-process.md`
+- `docs/architecture/design-guidelines.md`, se mexer em UI
+- `apps/hub/modules/squadops/SquadOpsPage.tsx`
+- `apps/hub/app/api/operations/monitoring/route.ts`
+- `apps/hub/app/api/squadops/operations/route.ts`
+- `apps/hub/app/api/squadops/operations/structured/route.ts`
+- `apps/hub/lib/squadops/engineering-operations-source.ts`
+- `packages/shared/src/modules/registry.ts`, somente leitura se nao houver mudanca de registry autorizada
+
+Estado preservado:
+- Producao OPS atual: `https://ops.c2x.app.br`.
+- Ultimo recorte SquadOps em producao: commit `d169251 fix(squadops): refine monitoring risk chart`.
+- Deployment Vercel Production: `dpl_HPyWL4BBuqzw8VKeYJnqf6G48G2t`.
+- Alteracoes publicadas: cores semaforicas de monitoring, com vermelho reservado para critico e amarelo para medio, e grafico financeiro de linha para picos de performance.
+- Sync estruturado manual ja executado: `recordsTotal=310` e `releasesUpserted=74`.
+- Status no diario canonico: `PAUSADO / EM PRODUCAO`.
+
+Objetivo do novo agente:
+- Retomar SquadOps/Operations Center de forma leve e rastreavel.
+- Continuar apenas o recorte explicitamente pedido pelo Lucas.
+- Antes de qualquer codigo novo, mapear o diff atual e separar o que pertence a SquadOps do que pertence a Atlas, CareDesk, Home/Asana, Guardian, Setup, PulseX, shared, migrations ou artefatos locais.
+- Preservar o deploy de producao atual como baseline.
+
+Escopo permitido inicial:
+- Leitura de diario, processos e arquivos SquadOps.
+- `git status --short --branch`.
+- `git diff -- apps/hub/modules/squadops/SquadOpsPage.tsx`.
+- Leitura de rotas e servicos SquadOps/Operations Center.
+- Validacao local de `/squadops` e `/api/operations/monitoring` se houver dev server ou quando for necessario.
+- Ajustes somente em SquadOps quando Lucas pedir explicitamente.
+
+Fora de escopo:
+- Deploy sem autorizacao expressa.
+- Vercel env, Supabase env, secrets, banco, migrations, dominio, alias ou production operation.
+- Alterar Atlas, CareDesk, Home/Asana, Guardian, PulseX, Setup ou shared sem pedido claro.
+- Commit com arquivos misturados.
+- Reverter mudancas de outros agentes ou do Lucas.
+- Expor valores sensiveis.
+
+Regras obrigatorias:
+- Comecar toda resposta com `Assunto: [SquadOps] ...`.
+- Usar `docs/operations/engineering-operations.md` como diario vivo.
+- Manter recorte limpo; nunca considerar entrega concluida se depender de dados estruturados sem reconciliar Operations Center.
+- Se publicar recorte proprio com autorizacao explicita, atualizar `hub_engineering_operation_records`, reconciliar protocolos `AT/AL/DP/TK`, atualizar releases estruturadas quando aplicavel e depois registrar no diario.
+- Validar com `check-types`, `lint`, `build` e smoke local/visual quando aplicavel.
+- Para UI, manter densidade operacional, grafite `#101820`, acento `#A07C3B`, linguagem executiva compacta e tooltips UIX padronizados.
+
+Checklist de retomada:
+1. Ler os documentos obrigatorios.
+2. Localizar no diario as entradas `[SquadOps] Linha financeira para picos de performance` e `[SquadOps] Checkpoint pausa antes de alteracao grande`.
+3. Rodar `git status --short --branch`.
+4. Separar mentalmente recortes paralelos e nao mexer neles.
+5. Se Lucas pedir nova mudanca, implementar somente em arquivos SquadOps.
+6. Validar localmente.
+7. Registrar no diario canonico.
+8. Entregar com status claro: `VALIDADO LOCAL`, `AGUARDANDO RELEASEOPS`, `EM PRODUCAO`, `BLOQUEADO` ou `PAUSADO`.
+
+Retorno esperado:
+- o que foi retomado;
+- arquivos tocados;
+- validacoes executadas;
+- riscos;
+- proximo passo/squad;
+- status final.
+
+Status inicial esperado:
+PAUSADO / PRONTO PARA RETOMAR SQUADOPS
+```

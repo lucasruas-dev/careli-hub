@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
@@ -225,7 +225,7 @@ export function AgreementsCenterCard({
           action: "Acordo criado",
           occurredAt: now,
           operator,
-          description: draft?.note || "Registro manual de acordo no Guardian.",
+          description: draft?.note || "Registro manual de acordo no Hades.",
         },
       ],
     };
@@ -1125,7 +1125,7 @@ function unique(values: string[]) {
 
 function operatorFromLogin(loginName: string | null | undefined, fallback: string) {
   return formatOperatorDisplayName(
-    firstFilled(loginName, fallback, "Operador Guardian"),
+    firstFilled(loginName, fallback, "Operador Hades"),
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { PulseXCallParticipant } from "@/lib/pulsex";
+import type { HermesCallParticipant } from "@/lib/pulsex";
 import { Mic, MicOff, MonitorUp, Video, VideoOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -9,10 +9,10 @@ type CallParticipantTileProps = {
   layout?: "floating" | "spotlight" | "standard" | "thumbnail";
   mediaStream?: MediaStream | null;
   onVideoElementChange?: (
-    participantId: PulseXCallParticipant["id"],
+    participantId: HermesCallParticipant["id"],
     videoElement: HTMLVideoElement | null,
   ) => void;
-  participant: PulseXCallParticipant;
+  participant: HermesCallParticipant;
   presentationZoom?: number;
 };
 
@@ -156,7 +156,7 @@ function ParticipantAvatar({
   participant,
 }: {
   className: string;
-  participant: PulseXCallParticipant;
+  participant: HermesCallParticipant;
 }) {
   return (
     <span
@@ -177,7 +177,7 @@ function ParticipantCaption({
   participant,
 }: {
   compact?: boolean;
-  participant: PulseXCallParticipant;
+  participant: HermesCallParticipant;
 }) {
   return (
     <div className={compact ? "min-w-0" : "min-w-0 text-center"}>
@@ -214,13 +214,13 @@ function CallStateIcon({
   );
 }
 
-function getParticipantStatusLabel(status: PulseXCallParticipant["status"]) {
+function getParticipantStatusLabel(status: HermesCallParticipant["status"]) {
   const labels = {
     invited: "Convidado",
     joined: "Na chamada",
     left: "Saiu",
     muted: "Mutado",
-  } as const satisfies Record<PulseXCallParticipant["status"], string>;
+  } as const satisfies Record<HermesCallParticipant["status"], string>;
 
   return labels[status];
 }

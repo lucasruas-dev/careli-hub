@@ -1,14 +1,14 @@
-import type { PulseXPresenceUser } from "@/lib/pulsex";
+import type { HermesPresenceUser } from "@/lib/pulsex";
 import type { StatusIndicatorVariant } from "@repo/uix";
 import { PresenceStack, StatusIndicator, Surface } from "@repo/uix";
 
 type PresenceListProps = {
-  users: readonly PulseXPresenceUser[];
+  users: readonly HermesPresenceUser[];
 };
 
 export function PresenceList({ users }: PresenceListProps) {
   const statusVariantMap: Record<
-    PulseXPresenceUser["status"],
+    HermesPresenceUser["status"],
     StatusIndicatorVariant
   > = {
     agenda: "processing",
@@ -63,7 +63,7 @@ export function PresenceList({ users }: PresenceListProps) {
   );
 }
 
-function getPresenceStackStatus(status: PulseXPresenceUser["status"]) {
+function getPresenceStackStatus(status: HermesPresenceUser["status"]) {
   if (status === "agenda" || status === "lunch") {
     return "busy";
   }

@@ -1,8 +1,9 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AthenaIcon } from "@/components/athena-icon";
 import { BotMessageSquare, Bug, Send, X } from "lucide-react";
 import { HubTicketOpenForm } from "@/components/hub-support/hub-ticket-open-form";
 import { askHubAi, mapHubAiMessages } from "@/lib/hub-ai/client";
@@ -16,8 +17,7 @@ import { useAuth } from "@/providers/auth-provider";
 import type { PortfolioUnit, QueueClient } from "@/modules/guardian/attendance/types";
 
 const MAX_AI_INSTALLMENTS = 220;
-const AI_AGENT_NAME = "Cacá";
-const AI_AGENT_AVATAR = "/caca-profile.png";
+const AI_AGENT_NAME = "Athena";
 const EMPTY_FIELD = "-";
 
 type ChatMessage = {
@@ -175,10 +175,10 @@ export function AiCopilotDrawer({
     try {
       const response = await askHubAi({
         context: {
-          ...buildGuardianClientAiContext(client),
+          ...buildHadesClientAiContext(client),
           escopoDaResposta:
             "O cliente aberto e o foco principal da tela. Se o operador perguntar sobre carteira, fila, total de clientes, risco geral, empreendimentos ou visao geral, use filaOperacional/contextoGeral antes de dizer que falta informacao.",
-          filaOperacional: buildGuardianQueueAiContext({
+          filaOperacional: buildHadesQueueAiContext({
             clients: queueClients ?? [client],
             filteredClients: filteredQueueClients,
             selectedClient: client,
@@ -187,7 +187,7 @@ export function AiCopilotDrawer({
           instrucaoUsuarioLogado: getHubAiUserInstruction(aiUserContext),
           usuarioLogado: aiUserContext,
         },
-        feature: "Guardian / cobranca / detalhe do cliente e fila operacional",
+        feature: "Hades / cobranca / detalhe do cliente e fila operacional",
         messages: mapHubAiMessages(history),
         module: "guardian",
         prompt: question,
@@ -209,7 +209,7 @@ export function AiCopilotDrawer({
                 content:
                   error instanceof Error
                     ? error.message
-                    : "Nao foi possivel consultar a Cacá agora.",
+                    : "Nao foi possivel consultar a Athena agora.",
               }
             : message,
         ),
@@ -443,7 +443,7 @@ export function AiCopilotDrawer({
           aria-label="Abrir assistente de cobrança"
           className="fixed bottom-5 right-5 z-50 flex size-14 items-center justify-center overflow-hidden rounded-full border border-[#A07C3B]/30 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5"
         >
-          <img src={AI_AGENT_AVATAR} alt="" className="size-full object-cover" />
+          <AthenaIcon className="size-full object-cover" aria-hidden="true" />
           <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
         </button>
       ) : null}
@@ -461,8 +461,12 @@ export function AiCopilotDrawer({
             <header className="shrink-0 border-b border-slate-100 bg-white px-5 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="size-12 overflow-hidden rounded-2xl border border-[#A07C3B]/30 bg-slate-950 shadow-[0_10px_26px_rgba(160,124,59,0.24)]">
-                    <img src={AI_AGENT_AVATAR} alt={AI_AGENT_NAME} className="size-full object-cover" />
+                  <div className="grid size-12 place-items-center overflow-hidden rounded-2xl border border-[#A07C3B]/30 bg-slate-950 text-[#A07C3B] shadow-[0_10px_26px_rgba(160,124,59,0.24)]">
+                    <AthenaIcon
+                      className="size-full object-cover"
+                      variant="panel"
+                      aria-hidden="true"
+                    />
                   </div>
                   <div>
                     <h2 className="text-base font-semibold text-slate-950">{AI_AGENT_NAME}</h2>
@@ -512,7 +516,7 @@ export function AiCopilotDrawer({
 
             {activeAgentTab === "ticket" ? (
               <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/55 px-5 py-5">
-                <HubTicketOpenForm defaultModule="Guardian" />
+                <HubTicketOpenForm defaultModule="Hades" />
               </div>
             ) : (
               <>
@@ -538,8 +542,8 @@ export function AiCopilotDrawer({
                     }`}
                   >
                     {message.role === "ai" ? (
-                      <div className="mb-1 size-9 shrink-0 overflow-hidden rounded-full border border-[#A07C3B]/35 bg-slate-950 shadow-[0_8px_18px_rgba(160,124,59,0.22)]">
-                        <img src={AI_AGENT_AVATAR} alt={AI_AGENT_NAME} className="size-full object-cover" />
+                      <div className="mb-1 grid size-9 shrink-0 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-slate-950 text-[#A07C3B] shadow-[0_8px_18px_rgba(160,124,59,0.22)]">
+                        <AthenaIcon className="size-full object-cover" aria-hidden="true" />
                       </div>
                     ) : null}
 
@@ -863,9 +867,9 @@ function buildClientIntelligence(client: QueueClient) {
         response: EMPTY_FIELD,
       },
       {
-        label: "Criar mensagem CareDesk",
+        label: "Criar mensagem Iris",
         prompt:
-          "Crie uma mensagem curta para enviar pelo CareDesk para este cliente. Escreva sempre como equipe Careli, nunca como equipe do empreendimento.",
+          "Crie uma mensagem curta para enviar pelo Iris para este cliente. Escreva sempre como equipe Careli, nunca como equipe do empreendimento.",
         response: EMPTY_FIELD,
       },
       {
@@ -882,7 +886,7 @@ function buildClientIntelligence(client: QueueClient) {
   };
 }
 
-function buildGuardianClientAiContext(client: QueueClient) {
+function buildHadesClientAiContext(client: QueueClient) {
   const installmentContext = buildDetailedInstallmentContext(client);
 
   return {
@@ -906,7 +910,7 @@ function buildGuardianClientAiContext(client: QueueClient) {
         valor: unit.valorTabela,
       })),
       empreendimentoPrincipal: client.carteira.empreendimento,
-      regraContratos: "No Guardian, cada unidade vinculada representa um contrato operacional.",
+      regraContratos: "No Hades, cada unidade vinculada representa um contrato operacional.",
       unidades: client.carteira.unidades.slice(0, 8).map((unit) => ({
         area: unit.area,
         codigo: unit.matricula,
@@ -965,7 +969,7 @@ function buildGuardianClientAiContext(client: QueueClient) {
   };
 }
 
-function buildGuardianQueueAiContext({
+function buildHadesQueueAiContext({
   clients,
   filteredClients,
   selectedClient,
@@ -992,7 +996,7 @@ function buildGuardianQueueAiContext({
 
   return {
     aviso:
-      "Este snapshot e o contexto geral da fila/carteira carregada no Guardian. Use para perguntas gerais sem abandonar o cliente aberto como foco principal.",
+      "Este snapshot e o contexto geral da fila/carteira carregada no Hades. Use para perguntas gerais sem abandonar o cliente aberto como foco principal.",
     clienteAberto: {
       atrasoDias: selectedClient.atrasoDias,
       id: selectedClient.id,
@@ -1269,7 +1273,7 @@ function buildBoletoDeliveryMessage(client: QueueClient) {
     return `Boleto enviado para o e-mail ${email} e para o telefone ${phone}.`;
   }
 
-  return `Boleto separado para reenvio pelo CareDesk, mas falta ${missing.join(" e ")} no cadastro do cliente para confirmar o envio.`;
+  return `Boleto separado para reenvio pelo Iris, mas falta ${missing.join(" e ")} no cadastro do cliente para confirmar o envio.`;
 }
 
 function cleanContactValue(value?: string) {
@@ -1359,8 +1363,8 @@ function normalizeQuestion(question: string) {
 }
 
 async function requestBoletoResend(paymentId: string) {
-  const accessToken = await getGuardianActionAccessToken();
-  const response = await fetch("/api/guardian/asaas/boleto-resend", {
+  const accessToken = await getHadesActionAccessToken();
+  const response = await fetch("/api/hades/asaas/boleto-resend", {
     body: JSON.stringify({
       deliveryMode: "link",
       paymentId,
@@ -1393,7 +1397,7 @@ async function requestBoletoResend(paymentId: string) {
   return payload ?? {};
 }
 
-async function getGuardianActionAccessToken() {
+async function getHadesActionAccessToken() {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -1404,7 +1408,7 @@ async function getGuardianActionAccessToken() {
   const accessToken = sessionResult.data.session?.access_token;
 
   if (sessionResult.error || !accessToken) {
-    throw new Error("Sessao ausente para executar a acao do Guardian.");
+    throw new Error("Sessao ausente para executar a acao do Hades.");
   }
 
   return accessToken;
@@ -1423,10 +1427,10 @@ function getRiskDescriptor(priority: QueueClient["prioridade"]) {
 
 function getNextAction(priority: QueueClient["prioridade"]) {
   const map = {
-    Crítica: "Contato executivo pelo CareDesk e ligação no mesmo dia",
-    Alta: "CareDesk consultivo com proposta de entrada reduzida",
-    Média: "CareDesk consultivo e lembrete de regularização",
-    Baixa: "Lembrete preventivo pelo CareDesk",
+    Crítica: "Contato executivo pelo Iris e ligação no mesmo dia",
+    Alta: "Iris consultivo com proposta de entrada reduzida",
+    Média: "Iris consultivo e lembrete de regularização",
+    Baixa: "Lembrete preventivo pelo Iris",
   };
 
   return map[priority];

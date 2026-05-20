@@ -407,7 +407,7 @@ export function AuthProvider({
 
         const technicalMessage = getErrorMessage(
           error,
-          "Nao foi possivel entrar no Hub.",
+          "Nao foi possivel entrar no Panteon.",
         );
         const message = getFriendlyAuthMessage(technicalMessage);
 
@@ -886,7 +886,7 @@ async function loadHubProfileInBackground({
         .select("id,email,display_name,avatar_url,role,status")
         .eq("id", session.user.id)
         .maybeSingle<HubProfileRow>(),
-      "Tempo excedido ao carregar o perfil operacional do Hub.",
+      "Tempo excedido ao carregar o perfil operacional do Panteon.",
       "profile",
       15_000,
     );
@@ -1333,7 +1333,7 @@ function getFriendlySupabaseError(error: unknown): string {
   }
 
   return getFriendlyAuthMessage(
-    getErrorMessage(error, "Não foi possível validar seu acesso ao Hub Careli."),
+    getErrorMessage(error, "Não foi possível validar seu acesso ao Panteon."),
   );
 }
 
@@ -1449,7 +1449,7 @@ function getFriendlyAuthMessage(
     errorCode === "hub_profile_invalid" ||
     errorCode === "hub_profile_missing"
   ) {
-    return "Seu usuário ainda não possui acesso ao Hub Careli.";
+    return "Seu usuário ainda não possui acesso ao Panteon.";
   }
 
   const normalizedError = (error ?? "").trim().toLowerCase();
@@ -1472,7 +1472,7 @@ function getFriendlyAuthMessage(
     normalizedError.includes("perfil operacional ainda nao existe") ||
     normalizedError.includes("public.hub_users")
   ) {
-    return "Seu usuário ainda não possui acesso ao Hub Careli.";
+    return "Seu usuário ainda não possui acesso ao Panteon.";
   }
 
   if (normalizedError.includes("adaptador supabase auth indisponivel")) {
@@ -1502,7 +1502,7 @@ function getFriendlyAuthMessage(
     return "Não foi possível validar seu acesso agora. Tente novamente.";
   }
 
-  return "Não foi possível validar seu acesso ao Hub Careli. Tente novamente.";
+  return "Não foi possível validar seu acesso ao Panteon. Tente novamente.";
 }
 
 function AuthGateMessage({

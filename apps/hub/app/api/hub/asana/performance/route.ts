@@ -44,6 +44,14 @@ type AsanaEnvelope<T> = {
   } | null;
 };
 
+type AsanaTaskQueryMode = "created_at_search" | "tasks_list_fallback";
+
+type AsanaTaskLoadResult = {
+  limitReached: boolean;
+  queryMode: AsanaTaskQueryMode;
+  tasks: AsanaTask[];
+};
+
 type HomeDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
@@ -69,16 +77,20 @@ type AsanaCollaboratorPerformance = {
   completed: number;
   completedLate: number;
   completedOnTime: number;
+  completedRate: number;
   completedWithoutDue: number;
   email: string;
   hubUserId: string;
   lateRate: number | null;
+  limitReached: boolean;
   matched: boolean;
   name: string;
   onTimeRate: number | null;
   open: number;
   overdue: number;
   overdueRate: number;
+  pendingRate: number;
+  taskQueryModes: AsanaTaskQueryMode[];
   total: number;
   workspaceNames: string[];
 };
@@ -93,11 +105,14 @@ type AsanaAnalysisPeriod = {
 };
 
 const ASANA_API_BASE_URL = "https://app.asana.com/api/1.0";
-const ASANA_DOCS_URL = "https://developers.asana.com/reference/gettasks";
+const ASANA_DOCS_URL =
+  "https://developers.asana.com/reference/searchtasksforworkspace";
 const DEFAULT_WINDOW_DAYS = 90;
-const DEFAULT_TASK_LIMIT_PER_USER = 200;
-const MAX_TASK_LIMIT_PER_USER = 500;
+const DEFAULT_TASK_LIMIT_PER_USER = 5_000;
+const MAX_TASK_LIMIT_PER_USER = 10_000;
 const MS_PER_DAY = 86_400_000;
+const TASK_OPT_FIELDS =
+  "gid,name,completed,completed_at,due_on,due_at,created_at,modified_at,permalink_url";
 
 export async function GET(request: NextRequest) {
   const context = await createAuthorizedContext(request);
@@ -138,7 +153,7 @@ export async function GET(request: NextRequest) {
   const taskLimitPerUser = readNumberEnv(
     "ASANA_TASK_LIMIT_PER_USER",
     DEFAULT_TASK_LIMIT_PER_USER,
-    50,
+    DEFAULT_TASK_LIMIT_PER_USER,
     MAX_TASK_LIMIT_PER_USER,
   );
   const missingEnv = [token ? null : "ASANA_ACCESS_TOKEN"].filter(
@@ -294,12 +309,13 @@ async function loadCollaboratorPerformance({
   workspaces: AsanaWorkspace[];
 }) {
   const collaborators: AsanaCollaboratorPerformance[] = [];
-  const completedSince = new Date(period.startTime).toISOString();
 
   for (const user of hubUsers) {
     const matchedUsers: AsanaUser[] = [];
     const matchedWorkspaceNames: string[] = [];
     const tasksByWorkspace = new Map<string, AsanaTask>();
+    const taskQueryModes = new Set<AsanaTaskQueryMode>();
+    let limitReached = false;
     let remainingLimit = taskLimitPerUser;
 
     for (const workspace of workspaces) {
@@ -320,15 +336,18 @@ async function loadCollaboratorPerformance({
       matchedUsers.push(asanaUser);
       matchedWorkspaceNames.push(workspace.name ?? workspace.gid);
 
-      const workspaceTasks = await fetchAsanaTasksForUser({
-        completedSince,
+      const workspaceTaskResult = await fetchAsanaTasksForUser({
         limit: remainingLimit,
+        period,
         token,
         userGid: asanaUser.gid,
         workspaceGid: workspace.gid,
       });
 
-      for (const task of workspaceTasks) {
+      taskQueryModes.add(workspaceTaskResult.queryMode);
+      limitReached ||= workspaceTaskResult.limitReached;
+
+      for (const task of workspaceTaskResult.tasks) {
         tasksByWorkspace.set(`${workspace.gid}:${task.gid}`, task);
       }
 
@@ -343,8 +362,12 @@ async function loadCollaboratorPerformance({
     collaborators.push(
       buildCollaboratorPerformance({
         asanaUsers: matchedUsers,
-        period,
-        tasks: filterTasksForPeriod([...tasksByWorkspace.values()], period),
+        limitReached,
+        taskQueryModes: [...taskQueryModes],
+        tasks: filterTasksCreatedInPeriod(
+          [...tasksByWorkspace.values()],
+          period,
+        ),
         user,
         workspaceNames: matchedWorkspaceNames,
       }),
@@ -446,19 +469,137 @@ async function resolveAsanaWorkspaces({
 }
 
 async function fetchAsanaTasksForUser({
-  completedSince,
   limit,
+  period,
   token,
   userGid,
   workspaceGid,
 }: {
-  completedSince: string;
   limit: number;
+  period: AsanaAnalysisPeriod;
   token: string;
   userGid: string;
   workspaceGid: string;
-}) {
+}): Promise<AsanaTaskLoadResult> {
+  try {
+    return await fetchAsanaCreatedTasksForUser({
+      limit,
+      period,
+      token,
+      userGid,
+      workspaceGid,
+    });
+  } catch (error) {
+    if (error instanceof AsanaHttpError && error.status === 402) {
+      return fetchAsanaTasksListFallbackForUser({
+        limit,
+        period,
+        token,
+        userGid,
+        workspaceGid,
+      });
+    }
+
+    throw error;
+  }
+}
+
+async function fetchAsanaCreatedTasksForUser({
+  limit,
+  period,
+  token,
+  userGid,
+  workspaceGid,
+}: {
+  limit: number;
+  period: AsanaAnalysisPeriod;
+  token: string;
+  userGid: string;
+  workspaceGid: string;
+}): Promise<AsanaTaskLoadResult> {
   const tasks = new Map<string, AsanaTask>();
+  let createdAfter = new Date(period.startTime - 1).toISOString();
+  const createdBefore = new Date(period.endTime + 1).toISOString();
+  let limitReached = false;
+
+  while (tasks.size < limit) {
+    const pageSize = Math.min(100, limit - tasks.size);
+    const envelope = await fetchAsana<AsanaTask[]>({
+      path: `/workspaces/${encodeURIComponent(workspaceGid)}/tasks/search`,
+      query: {
+        "assignee.any": userGid,
+        "created_at.after": createdAfter,
+        "created_at.before": createdBefore,
+        limit: String(pageSize),
+        opt_fields: TASK_OPT_FIELDS,
+        sort_ascending: "true",
+        sort_by: "created_at",
+      },
+      token,
+    });
+
+    if (envelope.data.length === 0) {
+      break;
+    }
+
+    for (const task of envelope.data) {
+      if (isTaskCreatedInPeriod(task, period)) {
+        tasks.set(task.gid, task);
+      }
+    }
+
+    if (envelope.data.length < pageSize) {
+      break;
+    }
+
+    if (tasks.size >= limit) {
+      limitReached = true;
+      break;
+    }
+
+    const lastTask = envelope.data.at(-1);
+    const lastCreatedTime = lastTask?.created_at
+      ? Date.parse(lastTask.created_at)
+      : Number.NaN;
+
+    if (!Number.isFinite(lastCreatedTime)) {
+      limitReached = true;
+      break;
+    }
+
+    const nextCreatedAfter = new Date(lastCreatedTime).toISOString();
+
+    if (nextCreatedAfter <= createdAfter) {
+      limitReached = true;
+      break;
+    }
+
+    createdAfter = nextCreatedAfter;
+  }
+
+  return {
+    limitReached,
+    queryMode: "created_at_search",
+    tasks: [...tasks.values()],
+  };
+}
+
+async function fetchAsanaTasksListFallbackForUser({
+  limit,
+  period,
+  token,
+  userGid,
+  workspaceGid,
+}: {
+  limit: number;
+  period: AsanaAnalysisPeriod;
+  token: string;
+  userGid: string;
+  workspaceGid: string;
+}): Promise<AsanaTaskLoadResult> {
+  const tasks = new Map<string, AsanaTask>();
+  const completedSince = new Date(period.startTime).toISOString();
+  let hasNextPage = false;
   let offset: string | undefined;
 
   do {
@@ -470,8 +611,7 @@ async function fetchAsanaTasksForUser({
         completed_since: completedSince,
         limit: String(pageSize),
         offset,
-        opt_fields:
-          "gid,name,completed,completed_at,due_on,due_at,created_at,modified_at,permalink_url",
+        opt_fields: TASK_OPT_FIELDS,
         workspace: workspaceGid,
       },
       token,
@@ -482,9 +622,14 @@ async function fetchAsanaTasksForUser({
     }
 
     offset = envelope.next_page?.offset ?? undefined;
+    hasNextPage = Boolean(offset);
   } while (offset && tasks.size < limit);
 
-  return [...tasks.values()];
+  return {
+    limitReached: hasNextPage,
+    queryMode: "tasks_list_fallback",
+    tasks: filterTasksCreatedInPeriod([...tasks.values()], period),
+  };
 }
 
 async function fetchAsana<T>({
@@ -539,18 +684,20 @@ async function fetchAsana<T>({
 
 function buildCollaboratorPerformance({
   asanaUsers,
-  period,
+  limitReached,
+  taskQueryModes,
   tasks,
   user,
   workspaceNames,
 }: {
   asanaUsers: AsanaUser[];
-  period: AsanaAnalysisPeriod;
+  limitReached: boolean;
+  taskQueryModes: AsanaTaskQueryMode[];
   tasks: AsanaTask[];
   user: HubUserRow;
   workspaceNames: string[];
 }): AsanaCollaboratorPerformance {
-  const referenceTime = Math.min(Date.now(), period.endTime);
+  const referenceTime = Date.now();
   let completed = 0;
   let completedLate = 0;
   let completedOnTime = 0;
@@ -592,8 +739,8 @@ function buildCollaboratorPerformance({
     delayDays.push((completedTime - dueTime) / MS_PER_DAY);
   }
 
-  const completedWithDue = completedOnTime + completedLate;
   const total = tasks.length;
+  const open = total - completed;
 
   return {
     asanaGid: asanaUsers[0]?.gid,
@@ -603,22 +750,22 @@ function buildCollaboratorPerformance({
     completed,
     completedLate,
     completedOnTime,
+    completedRate: total > 0 ? roundNumber((completed / total) * 100, 1) : 0,
     completedWithoutDue,
     email: user.email,
     hubUserId: user.id,
     lateRate:
-      completedWithDue > 0
-        ? roundNumber((completedLate / completedWithDue) * 100, 1)
-        : null,
+      total > 0 ? roundNumber((completedLate / total) * 100, 1) : null,
+    limitReached,
     matched: true,
     name: user.display_name,
     onTimeRate:
-      completedWithDue > 0
-        ? roundNumber((completedOnTime / completedWithDue) * 100, 1)
-        : null,
-    open: total - completed,
+      total > 0 ? roundNumber((completedOnTime / total) * 100, 1) : null,
+    open,
     overdue,
     overdueRate: total > 0 ? roundNumber((overdue / total) * 100, 1) : 0,
+    pendingRate: total > 0 ? roundNumber((open / total) * 100, 1) : 0,
+    taskQueryModes,
     total,
     workspaceNames,
   };
@@ -633,41 +780,36 @@ function buildUnmatchedCollaborator(
     completed: 0,
     completedLate: 0,
     completedOnTime: 0,
+    completedRate: 0,
     completedWithoutDue: 0,
     email: user.email,
     hubUserId: user.id,
     lateRate: null,
+    limitReached: false,
     matched: false,
     name: user.display_name,
     onTimeRate: null,
     open: 0,
     overdue: 0,
     overdueRate: 0,
+    pendingRate: 0,
+    taskQueryModes: [],
     total: 0,
     workspaceNames: [],
   };
 }
 
-function filterTasksForPeriod(
+function filterTasksCreatedInPeriod(
   tasks: AsanaTask[],
   period: AsanaAnalysisPeriod,
 ) {
-  return tasks.filter((task) => {
-    const dueTime = getTaskDueTime(task);
-    const completedTime = task.completed_at
-      ? Date.parse(task.completed_at)
-      : Number.NaN;
+  return tasks.filter((task) => isTaskCreatedInPeriod(task, period));
+}
 
-    if (Number.isFinite(completedTime) && isInPeriod(completedTime, period)) {
-      return true;
-    }
+function isTaskCreatedInPeriod(task: AsanaTask, period: AsanaAnalysisPeriod) {
+  const createdTime = task.created_at ? Date.parse(task.created_at) : Number.NaN;
 
-    if (dueTime && isInPeriod(dueTime, period)) {
-      return true;
-    }
-
-    return Boolean(!task.completed && dueTime && dueTime <= period.endTime);
-  });
+  return Number.isFinite(createdTime) && isInPeriod(createdTime, period);
 }
 
 function buildSnapshot({
@@ -721,7 +863,6 @@ function buildSnapshot({
       total: 0,
     },
   );
-  const completedWithDue = totals.completedOnTime + totals.completedLate;
 
   return {
     collaborators,
@@ -729,6 +870,9 @@ function buildSnapshot({
     message,
     source: {
       docsUrl: ASANA_DOCS_URL,
+      limitReached: collaborators.some(
+        (collaborator) => collaborator.limitReached,
+      ),
       missingEnv,
       period: {
         endDate: period.endDate,
@@ -736,6 +880,13 @@ function buildSnapshot({
         preset: period.preset,
         startDate: period.startDate,
       },
+      periodBasis: "created_at" as const,
+      queryModes: [
+        ...new Set(
+          collaborators.flatMap((collaborator) => collaborator.taskQueryModes),
+        ),
+      ],
+      taskOwnerBasis: "assignee" as const,
       taskLimitPerUser,
       windowDays,
       workspaceConfigured: workspaces.length > 0,
@@ -754,19 +905,31 @@ function buildSnapshot({
       completed: totals.completed,
       completedLate: totals.completedLate,
       completedOnTime: totals.completedOnTime,
+      completedRate:
+        totals.total > 0
+          ? roundNumber((totals.completed / totals.total) * 100, 1)
+          : 0,
       completedWithoutDue: totals.completedWithoutDue,
       collaboratorsMatched: totals.collaboratorsMatched,
       collaboratorsTotal: collaborators.length,
       lateRate:
-        completedWithDue > 0
-          ? roundNumber((totals.completedLate / completedWithDue) * 100, 1)
+        totals.total > 0
+          ? roundNumber((totals.completedLate / totals.total) * 100, 1)
           : null,
       onTimeRate:
-        completedWithDue > 0
-          ? roundNumber((totals.completedOnTime / completedWithDue) * 100, 1)
+        totals.total > 0
+          ? roundNumber((totals.completedOnTime / totals.total) * 100, 1)
           : null,
       open: totals.open,
       overdue: totals.overdue,
+      overdueRate:
+        totals.total > 0
+          ? roundNumber((totals.overdue / totals.total) * 100, 1)
+          : 0,
+      pendingRate:
+        totals.total > 0
+          ? roundNumber((totals.open / totals.total) * 100, 1)
+          : 0,
       total: totals.total,
     },
   };

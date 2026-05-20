@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   createSupabaseAdminClient,
-  syncGuardianC2xReadModel,
+  syncHadesC2xReadModel,
 } from "@/lib/guardian/read-model-sync";
 
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 
   if (!adminClient) {
     return NextResponse.json(
-      { error: "Configure a chave server-side para sincronizar o Guardian." },
+      { error: "Configure a chave server-side para sincronizar o Hades." },
       { status: 503 },
     );
   }
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     return authorization.response;
   }
 
-  const result = await syncGuardianC2xReadModel();
+  const result = await syncHadesC2xReadModel();
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 500 });
@@ -87,7 +87,7 @@ async function authorizeSyncRequest(
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "Usuario sem acesso a sincronizacao do Guardian." },
+        { error: "Usuario sem acesso a sincronizacao do Hades." },
         { status: 403 },
       ),
     };

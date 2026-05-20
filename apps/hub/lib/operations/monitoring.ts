@@ -126,12 +126,12 @@ export type OperationsAlert = {
 };
 
 export type OperationsAgent =
-  | "CareDesk Core"
-  | "Guardian Core"
-  | "Hub ReleaseOps"
-  | "Hub SupportOps"
-  | "PulseX Core"
-  | "SquadOps Core";
+  | "Iris Core"
+  | "Hades Core"
+  | "Hefesto"
+  | "Zeus"
+  | "Hermes Core"
+  | "Zeus Core";
 
 export type OperationsMonitoringSnapshot = {
   alertProtocols: OperationsAlertProtocolSummary[];
@@ -299,7 +299,7 @@ export function buildOpsWatcherDecision(
 
   if (!primaryAlert) {
     return {
-      agent: "Hub SupportOps",
+      agent: "Zeus",
       command: buildHealthyCommand(snapshot),
       cooldownSeconds: 300,
       dedupeKey: "ops-watcher:stable",
@@ -383,9 +383,9 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
   if (check.id === "guardian-db-health" && !check.ok) {
     alerts.push(
       createAlert(check, {
-        impact: "Operacao Guardian pode perder leitura do banco C2X.",
+        impact: "Operacao Hades pode perder leitura do banco C2X.",
         level: "critico",
-        recommendation: "Acionar Hub SupportOps para validar conexao, credenciais e rede.",
+        recommendation: "Acionar Zeus para validar conexao, credenciais e rede.",
         title: "C2X indisponivel no healthcheck",
         type: "banco_indisponivel",
       }),
@@ -397,8 +397,8 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
       createAlert(check, {
         impact: "Fila operacional pode abrir lenta mesmo com limite seguro.",
         level: "alto",
-        recommendation: "Acionar Guardian Core para revisar query, read model e payload.",
-        title: "Guardian Queue limit=20 lenta",
+        recommendation: "Acionar Hades Core para revisar query, read model e payload.",
+        title: "Hades Queue limit=20 lenta",
         type: "api_lenta",
       }),
     );
@@ -409,8 +409,8 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
       createAlert(check, {
         impact: "Aumento de volume ja afeta a leitura operacional da fila.",
         level: "alto",
-        recommendation: "Acionar Guardian Core e evitar limit=1000 automatico.",
-        title: "Guardian Queue limit=50 lenta",
+        recommendation: "Acionar Hades Core e evitar limit=1000 automatico.",
+        title: "Hades Queue limit=50 lenta",
         type: "api_lenta",
       }),
     );
@@ -421,7 +421,7 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
       createAlert(check, {
         impact: "Endpoint protegido respondeu sem bearer e pode expor dado operacional.",
         level: "critico",
-        recommendation: "Acionar Hub SupportOps para revisar guarda server-side.",
+        recommendation: "Acionar Zeus para revisar guarda server-side.",
         title: "Endpoint protegido respondeu 200 sem bearer",
         type: "endpoint_inseguro",
       }),
@@ -443,7 +443,7 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
       createAlert(check, {
         impact: "Funcionalidades autenticadas, REST ou realtime podem ficar instaveis.",
         level: check.id.includes("realtime") ? "alto" : "critico",
-        recommendation: "Acionar Hub SupportOps para validar Supabase e variaveis server-side.",
+        recommendation: "Acionar Zeus para validar Supabase e variaveis server-side.",
         title: `${check.label} instavel`,
         type: check.id.includes("realtime")
           ? "realtime_instavel"
@@ -482,7 +482,7 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
       createAlert(check, {
         impact: "Resposta acima de 3s prejudica a experiencia operacional.",
         level: "alto",
-        recommendation: "Acionar SupportOps para medir origem da lentidao.",
+        recommendation: "Acionar Zeus para medir origem da lentidao.",
         title: "API com tempo critico",
         type: "api_lenta",
       }),
@@ -496,7 +496,7 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
         impact: "Resposta entre 1,5s e 3s exige observacao operacional.",
         level: "medio",
         recommendation:
-          "Observar recorrencia e acionar SupportOps se a lentidao se repetir.",
+          "Observar recorrencia e acionar Zeus se a lentidao se repetir.",
         title: `${check.label} lento`,
         type: "api_lenta",
       }),
@@ -613,7 +613,7 @@ Origem, impacto, correcao proposta ou executada, validacoes, riscos restantes e 
 
 Devolutiva tecnica obrigatoria:
 Informar se o alerta PERSISTE, foi CORRIGIDO, NAO FOI OBSERVADO, esta EM_ANALISE, ficou BLOQUEADO ou e FALSO_POSITIVO.
-Responder citando o protocolo ${protocol} para o SquadOps agrupar alerta e parecer tecnico.
+Responder citando o protocolo ${protocol} para o Zeus agrupar alerta e parecer tecnico.
 
 Status esperado:
 AGUARDANDO RELEASEOPS
@@ -630,7 +630,7 @@ ${recommendation}`;
 
 function buildHealthyCommand(snapshot: OperationsMonitoringSnapshot) {
   return `Assunto:
-[SupportOps] Healthcheck operacional do Hub
+[Zeus] Healthcheck operacional do Panteon
 
 Contexto:
 O Ops Watcher nao encontrou alerta alto ou critico no snapshot realtime.
@@ -701,23 +701,32 @@ function getRecommendedAgent(
   module: string,
   type: OperationsAlertType,
 ): OperationsAgent {
-  if (module.toLowerCase().includes("guardian")) {
-    return "Guardian Core";
+  if (
+    module.toLowerCase().includes("guardian") ||
+    module.toLowerCase().includes("hades")
+  ) {
+    return "Hades Core";
   }
 
-  if (module.toLowerCase().includes("pulsex")) {
-    return "PulseX Core";
+  if (
+    module.toLowerCase().includes("pulsex") ||
+    module.toLowerCase().includes("hermes")
+  ) {
+    return "Hermes Core";
   }
 
-  if (module.toLowerCase().includes("caredesk")) {
-    return "CareDesk Core";
+  if (
+    module.toLowerCase().includes("caredesk") ||
+    module.toLowerCase().includes("iris")
+  ) {
+    return "Iris Core";
   }
 
   if (type === "risco_de_producao") {
-    return "Hub ReleaseOps";
+    return "Hefesto";
   }
 
-  return "Hub SupportOps";
+  return "Zeus";
 }
 
 function getOverallStatus(

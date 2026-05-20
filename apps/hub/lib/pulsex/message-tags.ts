@@ -1,6 +1,6 @@
-import type { PulseXMessageTag } from "./types";
+import type { HermesMessageTag } from "./types";
 
-export const pulseXMessageTagOptions = [
+export const hermesMessageTagOptions = [
   {
     className: "border-rose-300 bg-rose-100 text-rose-800",
     id: "urgente",
@@ -28,19 +28,19 @@ export const pulseXMessageTagOptions = [
   },
 ] as const satisfies readonly {
   className: string;
-  id: PulseXMessageTag;
+  id: HermesMessageTag;
   label: string;
 }[];
 
-export const pulseXMessageTagIds = pulseXMessageTagOptions.map(
+export const hermesMessageTagIds = hermesMessageTagOptions.map(
   (option) => option.id,
-) as readonly PulseXMessageTag[];
+) as readonly HermesMessageTag[];
 
-export function isPulseXMessageTag(value: string): value is PulseXMessageTag {
-  return pulseXMessageTagIds.some((tag) => tag === value);
+export function isHermesMessageTag(value: string): value is HermesMessageTag {
+  return hermesMessageTagIds.some((tag) => tag === value);
 }
 
-export function normalizePulseXMessageTags(value: unknown): PulseXMessageTag[] {
+export function normalizeHermesMessageTags(value: unknown): HermesMessageTag[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -48,20 +48,20 @@ export function normalizePulseXMessageTags(value: unknown): PulseXMessageTag[] {
   return [
     ...new Set(
       value.filter(
-        (tag): tag is PulseXMessageTag =>
-          typeof tag === "string" && isPulseXMessageTag(tag),
+        (tag): tag is HermesMessageTag =>
+          typeof tag === "string" && isHermesMessageTag(tag),
       ),
     ),
   ];
 }
 
-export function getPulseXMessageTagLabel(tag: PulseXMessageTag) {
-  return pulseXMessageTagOptions.find((option) => option.id === tag)?.label ?? tag;
+export function getHermesMessageTagLabel(tag: HermesMessageTag) {
+  return hermesMessageTagOptions.find((option) => option.id === tag)?.label ?? tag;
 }
 
-export function getPulseXMessageTagClassName(tag: PulseXMessageTag) {
+export function getHermesMessageTagClassName(tag: HermesMessageTag) {
   return (
-    pulseXMessageTagOptions.find((option) => option.id === tag)?.className ??
+    hermesMessageTagOptions.find((option) => option.id === tag)?.className ??
     "border-[#d9e0ea] bg-white text-[#344054]"
   );
 }

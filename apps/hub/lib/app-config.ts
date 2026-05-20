@@ -1,4 +1,4 @@
 export const appConfig = {
-  name: "C2X",
-  description: "C2X",
+  name: "Panteon",
+  description: "Panteon",
 } as const;

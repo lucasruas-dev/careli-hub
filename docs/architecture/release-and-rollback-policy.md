@@ -1,6 +1,6 @@
 # Release And Rollback Policy
 
-Este documento define o protocolo de release, deploy critico e rollback do Careli Hub.
+Este documento define o protocolo de release, deploy critico e rollback do Panteon.
 
 ## Release sensivel
 
@@ -74,5 +74,5 @@ Apos publicar:
 - verificar logs;
 - registrar resultado no Engineering Operations;
 - informar riscos e pendencias;
-- acionar SupportOps/DataOps quando necessario;
+- acionar Zeus/Zeus quando necessario;
 - manter monitoramento proporcional ao risco.

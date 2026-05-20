@@ -1,12 +1,12 @@
-import type { PulseXChannel, PulseXMessage } from "./types";
+import type { HermesChannel, HermesMessage } from "./types";
 
 export const PULSEX_MESSAGE_BROADCAST_EVENT = "message-created";
 
-export function getPulseXMessageRealtimeTopic(channelId: PulseXChannel["id"]) {
+export function getHermesMessageRealtimeTopic(channelId: HermesChannel["id"]) {
   return `pulsex:messages:${channelId}`;
 }
 
-export function parsePulseXMessageBroadcastPayload(payload: unknown) {
+export function parseHermesMessageBroadcastPayload(payload: unknown) {
   if (!payload || typeof payload !== "object") {
     return null;
   }
@@ -17,7 +17,7 @@ export function parsePulseXMessageBroadcastPayload(payload: unknown) {
     return null;
   }
 
-  const maybeMessage = message as Partial<PulseXMessage>;
+  const maybeMessage = message as Partial<HermesMessage>;
 
   if (
     !maybeMessage.id ||
@@ -39,5 +39,5 @@ export function parsePulseXMessageBroadcastPayload(payload: unknown) {
     status: maybeMessage.status ?? "neutral",
     tags: maybeMessage.tags ?? [],
     timestamp: maybeMessage.timestamp,
-  } satisfies PulseXMessage;
+  } satisfies HermesMessage;
 }

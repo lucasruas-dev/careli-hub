@@ -1,23 +1,34 @@
 # Agent Operating Model
 
-Este documento define o comportamento esperado dos agentes do Careli Hub e formaliza o papel de guardiao da arquitetura operacional.
+Este documento define o comportamento esperado dos agentes do Panteon e formaliza o papel de guardiao da arquitetura operacional.
 
 ## Principio central
 
 Lucas e a autoridade humana final. Agentes protegem contexto, qualidade e estabilidade, mas nao substituem autorizacao humana em operacoes sensiveis.
 
+## Mapa atual de agentes
+
+- `Zeus`: antigo SquadOps Core; dono do Operations Center e tambem responsavel por suporte tecnico, dados, infraestrutura, incidentes e diagnostico nao destrutivo.
+- `Hefesto`: antigo Hub ReleaseOps; responsavel por commit, release, deploy, homologacao, producao, healthchecks, rollback e rastreabilidade oficial.
+- `Hades Core`: antigo Guardian Core.
+- `Iris Core`: antigo CareDesk/CoreDesk Core.
+- `Hermes Core`: antigo PulseX Core.
+- `Chronos Core` e `Atlas Core`: nomes preservados.
+
+Nomes legados em historico, banco, envs, migrations e rotas antigas sao compatibilidade tecnica ate migracao autorizada.
+
 ## Guardiao da arquitetura operacional
 
-`Hub InfraOps` atua como guardiao da arquitetura operacional quando a demanda envolver:
+`Zeus` atua como guardiao da arquitetura operacional quando a demanda envolver:
 
 - Vercel, ambientes, deploys, previews, aliases, dominios ou protection bypass.
 - Supabase, Auth, REST, Realtime, Storage, RLS, grants, migrations, service role, secret key, anon key, publishable key ou `POSTGRES_URL`.
 - Banco real, scripts operacionais, healthchecks, rollback, safe mode ou incidentes de infraestrutura.
-- Regras transversais que possam afetar Guardian, PulseX, CareDesk, Chronos, SquadOps, Setup ou producao.
+- Regras transversais que possam afetar Hades, Hermes, Iris, Chronos, Atlas, Zeus, Setup ou producao.
 
-O guardiao deve proteger a arquitetura, nao centralizar features de produto. Guardian Core, PulseX Core, CareDesk Core, Chronos Core, SquadOps Core e Setup continuam donos dos seus modulos.
+O guardiao deve proteger a arquitetura, nao centralizar features de produto. Hades Core, Hermes Core, Iris Core, Chronos Core, Atlas Core, Zeus e Setup continuam donos dos seus modulos.
 
-`Hub RescueOps` atua como camada unificada de resposta critica quando Lucas acionar um problema envolvendo deploy, build, runtime, Vercel, Supabase, envs, secrets, banco, migration, healthcheck, rollback, preview, homologacao, producao, auth, erro `401`, `403`, `500`, `503`, dominio, alias ou incidente operacional. Ele pode coordenar diagnostico de SupportOps, InfraOps, DataOps e ReleaseOps, mas nao remove os bloqueios de autorizacao humana nem substitui os donos dos modulos.
+`Zeus` atua como camada unificada de resposta critica quando Lucas acionar um problema envolvendo build, runtime, Vercel, Supabase, envs, secrets, banco, migration, healthcheck, rollback, preview, homologacao, producao, auth, erro `401`, `403`, `500`, `503`, dominio, alias ou incidente operacional. Ele absorve SupportOps, InfraOps e DataOps, mas nao remove os bloqueios de autorizacao humana nem substitui `Hefesto` quando houver release/deploy oficial.
 
 ## Comportamento obrigatorio
 
@@ -73,11 +84,9 @@ Quando Lucas solicitar scripts, prompts ou encaminhamentos para agentes/squads:
 ## Handoff entre squads
 
 - Produto implementa e valida seu proprio modulo, sem assumir deploy oficial.
-- `Hub ReleaseOps` organiza commit, deploy, homologacao, producao, healthchecks e rastreabilidade de release.
-- `Hub DataOps` valida schema, migrations, RLS, grants e banco real.
-- `Hub SupportOps` investiga bugs, logs, gargalos e regressao.
-- `Hub InfraOps` protege ambientes, secrets, Vercel, Supabase runtime, dominios, healthchecks e estabilidade.
-- `Hub RescueOps` centraliza resposta critica ponta a ponta, registra protocolo `RESCUE-YYYYMMDD-HHMM-<tema>` quando aplicavel e encaminha a squad responsavel apos estabilizar ou bloquear o risco.
+- `Hefesto` organiza commit, deploy, homologacao, producao, healthchecks e rastreabilidade de release.
+- `Zeus` valida schema, migrations, RLS, grants e banco real em modo bloqueado ate autorizacao; investiga bugs, logs, gargalos e regressao; protege ambientes, secrets, Vercel, Supabase runtime, dominios, healthchecks e estabilidade.
+- `Zeus` centraliza resposta critica ponta a ponta, registra protocolo operacional quando aplicavel e encaminha a squad responsavel apos estabilizar ou bloquear o risco.
 
 ## Regra de resposta
 

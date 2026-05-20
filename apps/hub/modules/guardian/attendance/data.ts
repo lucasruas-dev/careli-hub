@@ -1,12 +1,12 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
-import { guardianMockClients } from "@/modules/guardian/guardianMockData";
-import type { GuardianMockClient } from "@/modules/guardian/guardianMockData";
+import { hadesMockClients } from "@/modules/guardian/hadesMockData";
+import type { HadesMockClient } from "@/modules/guardian/hadesMockData";
 import type { PaymentPromiseStatus, QueueClient } from "@/modules/guardian/attendance/types";
 
 const EMPTY_FIELD = "-";
 
-export type GuardianAttendanceSourceUnit = {
+export type HadesAttendanceSourceUnit = {
   area: string;
   empreendimento: string;
   id: string;
@@ -22,11 +22,11 @@ export type GuardianAttendanceSourceUnit = {
   valorUnidade: number;
 };
 
-export type GuardianAttendanceSourceClient = GuardianMockClient & {
+export type HadesAttendanceSourceClient = HadesMockClient & {
   c2xAcquisitionRequestId?: string;
   c2xInstallmentsLoaded?: boolean;
   c2xInstallments?: QueueClient["c2xInstallments"];
-  c2xUnits?: GuardianAttendanceSourceUnit[];
+  c2xUnits?: HadesAttendanceSourceUnit[];
   bairro?: string;
   cep?: string;
   complementoEndereco?: string;
@@ -65,10 +65,10 @@ export type GuardianAttendanceSourceClient = GuardianMockClient & {
   unitId?: string;
 };
 
-export const queueClients: QueueClient[] = buildQueueClientsFromSources(guardianMockClients);
+export const queueClients: QueueClient[] = buildQueueClientsFromSources(hadesMockClients);
 
 export function buildQueueClientsFromSources(
-  clients: GuardianAttendanceSourceClient[]
+  clients: HadesAttendanceSourceClient[]
 ): QueueClient[] {
   return clients.map((client) => {
     const c2xUnits =
@@ -211,7 +211,7 @@ function buildUnit(
 }
 
 function buildAgreement(
-  client: GuardianMockClient,
+  client: HadesMockClient,
   unit: QueueClient["carteira"]["unidades"][number]
 ): QueueClient["agreement"] {
   const originalDebt = client.saldoAtraso;
@@ -243,14 +243,14 @@ function buildAgreement(
 }
 
 function buildCommitments(
-  client: GuardianMockClient,
+  client: HadesMockClient,
   units: QueueClient["carteira"]["unidades"],
   agreement: QueueClient["agreement"]
 ): QueueClient["commitments"] {
   return [];
 }
 
-function promiseStatusForClient(client: GuardianMockClient): PaymentPromiseStatus {
+function promiseStatusForClient(client: HadesMockClient): PaymentPromiseStatus {
   if (client.status === "Regularizado") return "Cumprida";
   if (client.status === "Proposta enviada") return "Aguardando pagamento";
   if (client.status === "Escalado") return "Quebrada";
@@ -260,7 +260,7 @@ function promiseStatusForClient(client: GuardianMockClient): PaymentPromiseStatu
   return "Promessa realizada";
 }
 
-function promiseNote(status: ReturnType<typeof promiseStatusForClient>, client: GuardianMockClient) {
+function promiseNote(status: ReturnType<typeof promiseStatusForClient>, client: HadesMockClient) {
   if (status === "Cumprida") return "Pagamento identificado e compromisso marcado como cumprido na régua operacional.";
   if (status === "Quebrada") return "Promessa não compensada dentro da janela, exigindo nova abordagem humana.";
   if (status === "Reagendada") return "Cliente solicitou nova data com justificativa operacional registrada.";
@@ -270,7 +270,7 @@ function promiseNote(status: ReturnType<typeof promiseStatusForClient>, client: 
 }
 
 function buildPromiseHistory(
-  client: GuardianMockClient,
+  client: HadesMockClient,
   unitCode: string,
   status: ReturnType<typeof promiseStatusForClient>,
   value: number
@@ -323,7 +323,7 @@ function buildPromiseHistory(
 }
 
 function buildAgreementHistory(
-  client: GuardianMockClient,
+  client: HadesMockClient,
   unitCode: string,
   agreement: QueueClient["agreement"]
 ) {
@@ -368,7 +368,7 @@ function buildInstallmentRange(count: number) {
   return `${first}/60, ${second}/60`;
 }
 
-function buildWorkflow(client: GuardianMockClient): QueueClient["workflow"] {
+function buildWorkflow(client: HadesMockClient): QueueClient["workflow"] {
   const stage = workflowStageForClient(client);
 
   return {
@@ -381,7 +381,7 @@ function buildWorkflow(client: GuardianMockClient): QueueClient["workflow"] {
 }
 
 function buildOperationalTimeline(
-  client: GuardianMockClient,
+  client: HadesMockClient,
   workflow: QueueClient["workflow"],
   agreement: QueueClient["agreement"],
   commitments: QueueClient["commitments"]
@@ -524,7 +524,7 @@ function buildOperationalTimeline(
       protocol: guardianProtocol(ordinalFor(client.id, 55)),
       type: "Boleto C2X",
       title: "Boleto C2X consultado",
-      description: `Guardian consultou boleto original do C2X com valor de referência de ${boletoAmount} para envio multicanal.`,
+      description: `Hades consultou boleto original do C2X com valor de referência de ${boletoAmount} para envio multicanal.`,
       occurredAt: "08/05/2026 14:36",
       operator: EMPTY_FIELD,
       status: "Registrado",
@@ -559,7 +559,7 @@ function buildOperationalTimeline(
       title: "Risco operacional reclassificado",
       description: `Score atualizado para ${client.scoreRisco}/100 considerando ${client.atrasoDias} dias de atraso e recorrência recente.`,
       occurredAt: "07/05/2026 08:42",
-      operator: "Motor de risco Guardian",
+      operator: "Motor de risco Hades",
       status: "Elevado",
     },
     {
@@ -580,16 +580,16 @@ function buildOperationalTimeline(
       id: `${client.id}-ai-20260506`,
       protocol: guardianProtocol(ordinalFor(client.id, 60)),
       type: "Interação da IA",
-      title: "Assistente Guardian sugeriu próxima ação",
+      title: "Assistente Hades sugeriu próxima ação",
       description: "IA recomendou abordagem consultiva, mensagem objetiva e proposta proporcional ao risco do cliente.",
       occurredAt: "06/05/2026 09:30",
-      operator: "Assistente Guardian",
+      operator: "Assistente Hades",
       status: "IA",
     },
   ];
 }
 
-function workflowStageForClient(client: GuardianMockClient): QueueClient["workflow"]["stage"] {
+function workflowStageForClient(client: HadesMockClient): QueueClient["workflow"]["stage"] {
   if (client.status === "Regularizado") return "Pago";
   if (client.status === "A vencer") return "Novo atraso";
   if (client.status === "Proposta enviada") return "Aguardando pagamento";
@@ -643,7 +643,7 @@ function workflowNextAction(stage: QueueClient["workflow"]["stage"]) {
   return map[stage];
 }
 
-function workflowReason(stage: QueueClient["workflow"]["stage"], client: GuardianMockClient) {
+function workflowReason(stage: QueueClient["workflow"]["stage"], client: HadesMockClient) {
   const base = `${client.parcelasVencidas} parcela(s), ${client.atrasoDias} dias de atraso e score ${client.scoreRisco}/100.`;
 
   if (stage === "Pago") return "Pagamento identificado e cliente removido da fila ativa de recuperação.";
@@ -660,7 +660,7 @@ function workflowReason(stage: QueueClient["workflow"]["stage"], client: Guardia
   return "Novo atraso identificado pela régua operacional.";
 }
 
-function agreementStatusForClient(client: GuardianMockClient): QueueClient["agreement"]["status"] {
+function agreementStatusForClient(client: HadesMockClient): QueueClient["agreement"]["status"] {
   if (client.status === "Regularizado") return "Pago";
   if (client.status === "Proposta enviada") return "Formalizando";
   if (client.status === "Em negociação") return "Em negociação";
@@ -672,7 +672,7 @@ function agreementStatusForClient(client: GuardianMockClient): QueueClient["agre
   return "Em negociação";
 }
 
-function agreementRiskForClient(client: GuardianMockClient): QueueClient["agreement"]["risk"] {
+function agreementRiskForClient(client: HadesMockClient): QueueClient["agreement"]["risk"] {
   if (client.prioridade === "Crítica" || client.scoreRisco >= 86) return "Crítico";
   if (client.prioridade === "Alta" || client.scoreRisco >= 74) return "Alto";
   if (client.prioridade === "Média" || client.scoreRisco >= 55) return "Moderado";
@@ -680,7 +680,7 @@ function agreementRiskForClient(client: GuardianMockClient): QueueClient["agreem
   return "Baixo";
 }
 
-function agreementDiscountRate(client: GuardianMockClient) {
+function agreementDiscountRate(client: HadesMockClient) {
   if (client.prioridade === "Crítica") return 0.18;
   if (client.prioridade === "Alta") return 0.14;
   if (client.prioridade === "Média") return 0.1;
@@ -688,7 +688,7 @@ function agreementDiscountRate(client: GuardianMockClient) {
   return 0.06;
 }
 
-function agreementEntryRate(client: GuardianMockClient) {
+function agreementEntryRate(client: HadesMockClient) {
   if (client.prioridade === "Crítica") return 0.18;
   if (client.prioridade === "Alta") return 0.22;
   if (client.prioridade === "Média") return 0.28;
@@ -696,7 +696,7 @@ function agreementEntryRate(client: GuardianMockClient) {
   return 0.35;
 }
 
-function agreementInstallments(client: GuardianMockClient) {
+function agreementInstallments(client: HadesMockClient) {
   if (client.prioridade === "Crítica") return 6;
   if (client.prioridade === "Alta") return 5;
   if (client.prioridade === "Média") return 4;
@@ -705,7 +705,7 @@ function agreementInstallments(client: GuardianMockClient) {
 }
 
 function agreementBreakChance(
-  client: GuardianMockClient,
+  client: HadesMockClient,
   risk: QueueClient["agreement"]["risk"]
 ) {
   const base = {
@@ -734,7 +734,7 @@ function agreementNextAction(
 }
 
 function buildAgreementDueDates(
-  client: GuardianMockClient,
+  client: HadesMockClient,
   installmentsCount: number,
   entryValue: number,
   installmentValue: number,

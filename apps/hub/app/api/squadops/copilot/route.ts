@@ -9,7 +9,7 @@ import {
   loadHubCodeContext,
   type HubCodeContext,
 } from "@/lib/squadops/hub-code-context";
-import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
+import { authorizeZeusAdminRequest } from "@/lib/squadops/admin-access";
 import { loadEngineeringOperationsFromFile } from "@/lib/squadops/engineering-operations-source";
 import {
   loadStructuredEngineeringOperations,
@@ -37,12 +37,12 @@ const OPENAI_TIMEOUT_MS = 45_000;
 const MAX_CONTEXT_CHARS = 120_000;
 
 const promptTargets = [
-  "Guardian Core",
-  "CareDesk Core",
-  "PulseX Core",
-  "SquadOps Core",
-  "Hub SupportOps",
-  "Hub ReleaseOps",
+  "Hades Core",
+  "Iris Core",
+  "Hermes Core",
+  "Zeus Core",
+  "Zeus",
+  "Hefesto",
 ] as const;
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsedRequest.error }, { status: 400 });
   }
 
-  const auth = await authorizeSquadOpsAdminRequest(request);
+  const auth = await authorizeZeusAdminRequest(request);
 
   if (!auth.ok) {
     return auth.response;
@@ -207,7 +207,7 @@ async function createCopilotAnswer({
         instructions: buildCopilotInstructions(),
         max_output_tokens: 2_200,
         model,
-        user: userId ?? "local-squadops-admin",
+        user: userId ?? "local-zeus-admin",
       }),
       cache: "no-store",
       headers: {
@@ -239,9 +239,9 @@ async function createCopilotAnswer({
 
 function buildCopilotInstructions() {
   return [
-    "Você é o PO AI, o cérebro operacional do Careli Hub dentro do SquadOps.",
+    "Você é o PO AI, o cérebro operacional do Panteon dentro do Zeus.",
     "Responda sempre em português do Brasil, com linguagem executiva, simples, instrucional e direta para Lucas.",
-    "Use somente o contexto recebido: monitoramentoRealtime, diário Engineering Operations, histórico da conversa e mapa seguro do código do Hub.",
+    "Use somente o contexto recebido: monitoramentoRealtime, diário Engineering Operations, histórico da conversa e mapa seguro do código do Panteon.",
     "Para perguntas sobre banco de dados, performance, estabilidade, APIs, filas, payload, Supabase, C2X ou alertas, use `monitoramentoRealtime` como fonte principal do estado atual.",
     "Para historico operacional, protocolos, releases, healthchecks e handoffs, use `baseEstruturadaSupabase` como fonte principal quando ela estiver preenchida.",
     "O diário Engineering Operations é histórico, auditoria e rastreabilidade. Não use o diário como fonte principal para afirmar estado atual de banco, tempo de resposta ou payload quando houver `monitoramentoRealtime` disponível.",
@@ -253,7 +253,7 @@ function buildCopilotInstructions() {
     "Nunca exponha nem peça chaves, tokens, senhas, variáveis .env ou credenciais. Se algo sensível for necessário, oriente Lucas a validar server-side sem revelar o valor.",
     "Se faltar monitoramentoRealtime para uma pergunta de performance ou banco, diga que o dado real não está disponível no snapshot recebido em vez de inferir pelo diário.",
     "Se faltar informação no contexto, diga que não está informado no monitoramento/diário/código recebido em vez de inventar.",
-    "Responda em blocos curtos por frente ou módulo. Use títulos como `Frente: ReleaseOps / Engineering Operations`, `Frente: Guardian`, `Frente: PulseX`, `Frente: SquadOps` ou `Frente: SupportOps` quando houver informação para aquela frente.",
+    "Responda em blocos curtos por frente ou módulo. Use títulos como `Frente: Hefesto / Engineering Operations`, `Frente: Hades`, `Frente: Hermes`, `Frente: Iris` ou `Frente: Zeus` quando houver informação para aquela frente.",
     "Evite markdown pesado. Prefira bullets simples, agrupados e elegantes; nao quebre cada frase como se fosse uma resposta isolada.",
     "Feche com uma conclusão objetiva contendo risco, pendência e próximo passo quando fizer sentido.",
   ].join("\n");

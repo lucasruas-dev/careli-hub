@@ -1,6 +1,6 @@
-# Careli Hub Canonical Database Schema
+# Panteon Canonical Database Schema
 
-Este documento define o schema canonico inicial do Careli Hub para Supabase, SDKs e adapters. A fonte TypeScript exportavel vive em `packages/database/src/schema`.
+Este documento define o schema canonico inicial do Panteon para Supabase, SDKs e adapters. A fonte TypeScript exportavel vive em `packages/database/src/schema`.
 
 ## Tabelas Canonicas
 
@@ -149,7 +149,7 @@ Os seeds exportados em `packages/database/src/schema/seeds.ts` sao derivados do 
 
 Os seeds de `hub_workspaces` devem criar o workspace inicial `careli`.
 
-Os seeds de `hub_modules` devem popular Guardian, PulseX, Agenda, Financeiro, Drive, Contatos e Compras com `basePath`, `status`, `category`, `iconKey`, `realtimeEnabled` e `order`.
+Os seeds de `hub_modules` devem popular Hades, Hermes, Agenda, Financeiro, Drive, Contatos e Compras com `basePath`, `status`, `category`, `iconKey`, `realtimeEnabled` e `order`.
 
 Os seeds de `hub_permissions` devem preservar as chaves canonicas como `guardian:view`, `guardian:manage`, `hub:view` e `hub:manage`.
 
@@ -174,6 +174,6 @@ Os arquivos SQL versionados ficam no pacote `@repo/database`:
 
 `packages/database/migrations/0001_create_hub_core_schema.sql` agora e o setup SQL pronto para execucao manual em Supabase. Ele cria a relacao `hub_users.id -> auth.users.id`, funcoes de sync de perfil, triggers de `updated_at`, indices e preparacao para realtime futuro.
 
-`packages/database/seeds/0001_hub_core_seed.sql` deve ser executado depois do schema. Ele cria o workspace inicial, os modulos, as permissoes e um evento operacional inicial do PulseX.
+`packages/database/seeds/0001_hub_core_seed.sql` deve ser executado depois do schema. Ele cria o workspace inicial, os modulos, as permissoes e um evento operacional inicial do Hermes.
 
 RLS ainda nao e habilitada nesse primeiro setup. As policies devem entrar em migration posterior, depois de validar o acesso real do Hub, service/server reads, workspace scoping e estrategia de permissoes.

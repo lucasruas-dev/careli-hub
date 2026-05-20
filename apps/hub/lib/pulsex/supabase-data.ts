@@ -11,29 +11,29 @@ import {
   markHubPresence,
 } from "@/lib/hub-presence";
 import type {
-  PulseXChannel,
-  PulseXDepartment,
-  PulseXMessage,
-  PulseXMessageAttachment,
-  PulseXMessageMention,
-  PulseXMessageTag,
-  PulseXPresenceUser,
-  PulseXSector,
-  PulseXThreadReply,
+  HermesChannel,
+  HermesDepartment,
+  HermesMessage,
+  HermesMessageAttachment,
+  HermesMessageMention,
+  HermesMessageTag,
+  HermesPresenceUser,
+  HermesSector,
+  HermesThreadReply,
 } from "./types";
-import { normalizePulseXMessageTags } from "./message-tags";
+import { normalizeHermesMessageTags } from "./message-tags";
 
 type QueryResult<T> = {
   data: T | null;
   error: { message: string; name?: string; stack?: string } | null;
 };
 
-export type PulseXOperationalData = {
-  channels: PulseXChannel[];
-  departments: PulseXDepartment[];
-  messages: PulseXMessage[];
-  sectors: PulseXSector[];
-  users: PulseXPresenceUser[];
+export type HermesOperationalData = {
+  channels: HermesChannel[];
+  departments: HermesDepartment[];
+  messages: HermesMessage[];
+  sectors: HermesSector[];
+  users: HermesPresenceUser[];
 };
 
 type DepartmentRow = {
@@ -57,7 +57,7 @@ type ChannelMemberRow = {
   user_id: string;
 };
 
-type PulseXChannelRow = {
+type HermesChannelRow = {
   department_id?: string | null;
   description?: string | null;
   hub_departments?: { name: string; slug: string } | null;
@@ -71,7 +71,7 @@ type PulseXChannelRow = {
   status: "active" | "archived" | "disabled";
 };
 
-type PulseXMessageRow = {
+type HermesMessageRow = {
   author_user_id?: string | null;
   body: string;
   channel_id: string;
@@ -108,28 +108,28 @@ type HubUserRow = {
   status: "active" | "archived" | "disabled";
 };
 
-export async function loadPulseXOperationalData(input: {
+export async function loadHermesOperationalData(input: {
   currentUserId: string;
   userRole?: string;
-}): Promise<PulseXOperationalData> {
+}): Promise<HermesOperationalData> {
   const client = getHubSupabaseClient();
 
   if (!client) {
     logSupabaseDiagnostic("pulsex", "client missing", {
-      function: "loadPulseXOperationalData",
+      function: "loadHermesOperationalData",
       supabase: getHubSupabaseDiagnostics(),
     });
-    return createPulseXFallback();
+    return createHermesFallback();
   }
 
-  await runPulseXConnectivityProbe();
+  await runHermesConnectivityProbe();
 
   await markHubPresence({
     reason: "heartbeat",
     source: "pulsex-load",
     status: "online",
   }).catch((error: unknown) => {
-    logPulseXDebug("presence heartbeat error", {
+    logHermesDebug("presence heartbeat error", {
       error: serializeThrownError(error),
       supabase: getHubSupabaseDiagnostics(),
     });
@@ -143,16 +143,16 @@ export async function loadPulseXOperationalData(input: {
     usersLoad,
     presenceLoad,
   ] = await Promise.all([
-      safePulseXLoad("departments", listDepartments, []),
-      safePulseXLoad("sectors", listSectors, []),
-      safePulseXLoad(
+      safeHermesLoad("departments", listDepartments, []),
+      safeHermesLoad("sectors", listSectors, []),
+      safeHermesLoad(
         "assignments",
         () => listUserAssignments(input.currentUserId),
         [],
       ),
-      safePulseXLoad("channels", listPulseXChannels, []),
-      safePulseXLoad("users", listDirectUsers, []),
-      safePulseXLoad("presence", listHubPresence, {}),
+      safeHermesLoad("channels", listHermesChannels, []),
+      safeHermesLoad("users", listDirectUsers, []),
+      safeHermesLoad("presence", listHubPresence, {}),
     ]);
   const departments = departmentsLoad.data;
   const sectors = sectorsLoad.data;
@@ -162,10 +162,10 @@ export async function loadPulseXOperationalData(input: {
     ...user,
     status: presenceLoad.data[user.id] ?? "offline",
   }));
-  logPulseXDebug("current user", {
+  logHermesDebug("current user", {
     id: input.currentUserId,
   });
-  logPulseXDebug("current role", input.userRole ?? "unknown");
+  logHermesDebug("current role", input.userRole ?? "unknown");
   const channels = filterChannelsForUser({
     assignments,
     channels: allChannels,
@@ -177,7 +177,7 @@ export async function loadPulseXOperationalData(input: {
         await Promise.all(
           channels.map((channel) =>
             listChannelMessages(channel.id).catch((error: unknown) => {
-              logPulseXDebug("list channel messages error", {
+              logHermesDebug("list channel messages error", {
                 channelId: channel.id,
                 error: serializeThrownError(error),
               });
@@ -195,7 +195,7 @@ export async function loadPulseXOperationalData(input: {
     users.length > 0;
 
   if (!hasRealStructure) {
-    logPulseXDebug("channels count", {
+    logHermesDebug("channels count", {
       filtered: channels.length,
       total: allChannels.length,
     });
@@ -210,10 +210,10 @@ export async function loadPulseXOperationalData(input: {
       );
     }
 
-    return createPulseXFallback();
+    return createHermesFallback();
   }
 
-  logPulseXDebug("channels count", {
+  logHermesDebug("channels count", {
     filtered: channels.length,
     total: allChannels.length,
   });
@@ -227,10 +227,10 @@ export async function loadPulseXOperationalData(input: {
   };
 }
 
-export async function listPulseXNotificationChannels(input: {
+export async function listHermesNotificationChannels(input: {
   currentUserId: string;
   userRole?: string;
-}): Promise<PulseXChannel[]> {
+}): Promise<HermesChannel[]> {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -238,12 +238,12 @@ export async function listPulseXNotificationChannels(input: {
   }
 
   const [assignmentsLoad, channelsLoad] = await Promise.all([
-    safePulseXLoad(
+    safeHermesLoad(
       "notification assignments",
       () => listUserAssignments(input.currentUserId),
       [],
     ),
-    safePulseXLoad("notification channels", listPulseXChannels, []),
+    safeHermesLoad("notification channels", listHermesChannels, []),
   ]);
 
   return filterChannelsForUser({
@@ -254,14 +254,14 @@ export async function listPulseXNotificationChannels(input: {
   }).filter((channel) => channel.kind !== "direct");
 }
 
-export async function listDepartments(): Promise<PulseXDepartment[]> {
+export async function listDepartments(): Promise<HermesDepartment[]> {
   const client = getHubSupabaseClient();
 
   if (!client) {
     return [];
   }
 
-  const result = await runPulseXQuery<DepartmentRow[]>(
+  const result = await runHermesQuery<DepartmentRow[]>(
     "list departments",
     "hub_departments",
     client
@@ -282,14 +282,14 @@ export async function listDepartments(): Promise<PulseXDepartment[]> {
   );
 }
 
-export async function listSectors(): Promise<PulseXSector[]> {
+export async function listSectors(): Promise<HermesSector[]> {
   const client = getHubSupabaseClient();
 
   if (!client) {
     return [];
   }
 
-  const result = await runPulseXQuery<SectorRow[]>(
+  const result = await runHermesQuery<SectorRow[]>(
     "list sectors",
     "hub_sectors",
     client
@@ -309,20 +309,20 @@ export async function listSectors(): Promise<PulseXSector[]> {
   }));
 }
 
-export async function listPulseXChannels(): Promise<PulseXChannel[]> {
+export async function listHermesChannels(): Promise<HermesChannel[]> {
   const client = getHubSupabaseClient();
 
   if (!client) {
     return [];
   }
 
-  logPulseXDebug("list channels start", {
-    function: "listPulseXChannels",
+  logHermesDebug("list channels start", {
+    function: "listHermesChannels",
     supabase: getHubSupabaseDiagnostics(),
     table: "pulsex_channels",
   });
 
-  const result = await runPulseXQuery<PulseXChannelRow[]>(
+  const result = await runHermesQuery<HermesChannelRow[]>(
     "list channels",
     "pulsex_channels",
     client
@@ -334,15 +334,15 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
       .order("order"),
   );
 
-  if ((result as QueryResult<PulseXChannelRow[]>).error) {
-    logPulseXDebug("list channels error", {
-      message: (result as QueryResult<PulseXChannelRow[]>).error?.message,
-      stack: (result as QueryResult<PulseXChannelRow[]>).error?.stack,
+  if ((result as QueryResult<HermesChannelRow[]>).error) {
+    logHermesDebug("list channels error", {
+      message: (result as QueryResult<HermesChannelRow[]>).error?.message,
+      stack: (result as QueryResult<HermesChannelRow[]>).error?.stack,
       retry: "without members relation",
       supabase: getHubSupabaseDiagnostics(),
     });
 
-    const fallbackResult = await runPulseXQuery<PulseXChannelRow[]>(
+    const fallbackResult = await runHermesQuery<HermesChannelRow[]>(
       "list channels fallback without members",
       "pulsex_channels",
       client
@@ -354,15 +354,15 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
         .order("order"),
     );
 
-    assertQuery("canais PulseX", fallbackResult);
+    assertQuery("canais Hermes", fallbackResult);
 
     const fallbackChannels = (
-      (fallbackResult as QueryResult<PulseXChannelRow[]>).data ?? []
+      (fallbackResult as QueryResult<HermesChannelRow[]>).data ?? []
     )
       .filter((row) => !isDepartmentAnnouncementChannel(row))
       .map(mapChannel);
 
-    logPulseXDebug("list channels result", {
+    logHermesDebug("list channels result", {
       count: fallbackChannels.length,
       withMembers: false,
     });
@@ -370,11 +370,11 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
     return fallbackChannels;
   }
 
-  const channels = ((result as QueryResult<PulseXChannelRow[]>).data ?? [])
+  const channels = ((result as QueryResult<HermesChannelRow[]>).data ?? [])
     .filter((row) => !isDepartmentAnnouncementChannel(row))
     .map(mapChannel);
 
-  logPulseXDebug("list channels result", {
+  logHermesDebug("list channels result", {
     count: channels.length,
     withMembers: true,
   });
@@ -382,14 +382,14 @@ export async function listPulseXChannels(): Promise<PulseXChannel[]> {
   return channels;
 }
 
-export async function listDirectUsers(): Promise<PulseXPresenceUser[]> {
+export async function listDirectUsers(): Promise<HermesPresenceUser[]> {
   const client = getHubSupabaseClient();
 
   if (!client) {
     return [];
   }
 
-  const result = await runPulseXQuery<HubUserRow[]>(
+  const result = await runHermesQuery<HubUserRow[]>(
     "list direct users",
     "hub_users",
     client
@@ -402,7 +402,7 @@ export async function listDirectUsers(): Promise<PulseXPresenceUser[]> {
   );
 
   if ((result as QueryResult<HubUserRow[]>).error) {
-    const fallbackResult = await runPulseXQuery<HubUserRow[]>(
+    const fallbackResult = await runHermesQuery<HubUserRow[]>(
       "list direct users fallback",
       "hub_users",
       client
@@ -412,19 +412,19 @@ export async function listDirectUsers(): Promise<PulseXPresenceUser[]> {
         .order("display_name"),
     );
 
-    assertQuery("usuarios PulseX", fallbackResult);
+    assertQuery("usuarios Hermes", fallbackResult);
 
     return ((fallbackResult as QueryResult<HubUserRow[]>).data ?? []).map(mapUser);
   }
 
-  assertQuery("usuarios PulseX", result);
+  assertQuery("usuarios Hermes", result);
 
   return ((result as QueryResult<HubUserRow[]>).data ?? []).map(mapUser);
 }
 
 export async function listChannelMessages(
-  channelId: PulseXChannel["id"],
-): Promise<PulseXMessage[]> {
+  channelId: HermesChannel["id"],
+): Promise<HermesMessage[]> {
   const client = getHubSupabaseClient();
 
   if (!client || channelId.startsWith("direct-")) {
@@ -437,7 +437,7 @@ export async function listChannelMessages(
     return apiMessages;
   }
 
-  const result = await runPulseXQuery<PulseXMessageRow[]>(
+  const result = await runHermesQuery<HermesMessageRow[]>(
     "list channel messages",
     "pulsex_messages",
     client
@@ -448,38 +448,38 @@ export async function listChannelMessages(
       .order("created_at", { ascending: true }),
   );
 
-  assertQuery("mensagens PulseX", result);
+  assertQuery("mensagens Hermes", result);
 
   return mapChannelMessages(
-    (result as QueryResult<PulseXMessageRow[]>).data ?? [],
+    (result as QueryResult<HermesMessageRow[]>).data ?? [],
   );
 }
 
-export async function createPulseXMessage(input: {
-  attachment?: PulseXMessageAttachment;
+export async function createHermesMessage(input: {
+  attachment?: HermesMessageAttachment;
   authorUserId?: string;
   body: string;
   channelId: string;
   clientMessageId?: string;
   mentionUserIds?: readonly string[];
-  mentions?: readonly PulseXMessageMention[];
-  tags?: readonly PulseXMessageTag[];
-  threadParentMessageId?: PulseXMessage["id"];
-}): Promise<PulseXMessage> {
+  mentions?: readonly HermesMessageMention[];
+  tags?: readonly HermesMessageTag[];
+  threadParentMessageId?: HermesMessage["id"];
+}): Promise<HermesMessage> {
   const client = getHubSupabaseClient();
 
   if (!client) {
     throw new Error("Supabase nao configurado.");
   }
 
-  const apiMessage = await createPulseXMessageViaApi(client, input);
+  const apiMessage = await createHermesMessageViaApi(client, input);
 
   if (apiMessage) {
     return apiMessage;
   }
 
-  const tags = normalizePulseXMessageTags(input.tags);
-  const result = await runPulseXQuery<PulseXMessageRow>(
+  const tags = normalizeHermesMessageTags(input.tags);
+  const result = await runHermesQuery<HermesMessageRow>(
     "create message",
     "pulsex_messages",
     client
@@ -505,12 +505,12 @@ export async function createPulseXMessage(input: {
 
   assertQuery("enviar mensagem", result);
 
-  return mapMessage((result as QueryResult<PulseXMessageRow>).data);
+  return mapMessage((result as QueryResult<HermesMessageRow>).data);
 }
 
-export async function listPulseXThreadReplies(input: {
-  messageId: PulseXMessage["id"];
-}): Promise<PulseXThreadReply[]> {
+export async function listHermesThreadReplies(input: {
+  messageId: HermesMessage["id"];
+}): Promise<HermesThreadReply[]> {
   const client = getHubSupabaseClient();
 
   if (!client || input.messageId.startsWith("local-")) {
@@ -522,7 +522,7 @@ export async function listPulseXThreadReplies(input: {
 
   if (!sessionResult.error && accessToken) {
     const response = await fetch(
-      `/api/pulsex/messages?threadParentMessageId=${encodeURIComponent(input.messageId)}`,
+      `/api/hermes/messages?threadParentMessageId=${encodeURIComponent(input.messageId)}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -530,7 +530,7 @@ export async function listPulseXThreadReplies(input: {
       },
     );
     const payload = (await response.json().catch(() => null)) as
-      | { data?: PulseXMessageRow[]; error?: string }
+      | { data?: HermesMessageRow[]; error?: string }
       | null;
 
     if (response.ok && payload?.data && payload.data.length > 0) {
@@ -538,7 +538,7 @@ export async function listPulseXThreadReplies(input: {
     }
   }
 
-  const result = await runPulseXQuery<PulseXMessageRow[]>(
+  const result = await runHermesQuery<HermesMessageRow[]>(
     "list thread replies",
     "pulsex_messages",
     client
@@ -548,9 +548,9 @@ export async function listPulseXThreadReplies(input: {
       .order("created_at", { ascending: true }),
   );
 
-  assertQuery("respostas PulseX", result);
+  assertQuery("respostas Hermes", result);
 
-  return ((result as QueryResult<PulseXMessageRow[]>).data ?? [])
+  return ((result as QueryResult<HermesMessageRow[]>).data ?? [])
     .filter(
       (message) =>
         getString(getMessageMetadata(message.metadata).threadParentMessageId) ===
@@ -559,13 +559,13 @@ export async function listPulseXThreadReplies(input: {
     .map(mapThreadReply);
 }
 
-export async function createPulseXThreadReply(input: {
+export async function createHermesThreadReply(input: {
   authorUserId?: string;
   body: string;
-  channelId: PulseXChannel["id"];
-  messageId: PulseXMessage["id"];
-}): Promise<PulseXThreadReply> {
-  const message = await createPulseXMessage({
+  channelId: HermesChannel["id"];
+  messageId: HermesMessage["id"];
+}): Promise<HermesThreadReply> {
+  const message = await createHermesMessage({
     authorUserId: input.authorUserId,
     body: input.body,
     channelId: input.channelId,
@@ -575,10 +575,10 @@ export async function createPulseXThreadReply(input: {
   return mapThreadReplyFromMessage(message, input.messageId);
 }
 
-export async function updatePulseXMessageTags(input: {
-  messageId: PulseXMessage["id"];
-  tags: readonly PulseXMessageTag[];
-}): Promise<PulseXMessage | null> {
+export async function updateHermesMessageTags(input: {
+  messageId: HermesMessage["id"];
+  tags: readonly HermesMessageTag[];
+}): Promise<HermesMessage | null> {
   const client = getHubSupabaseClient();
 
   if (!client || input.messageId.startsWith("local-")) {
@@ -592,7 +592,7 @@ export async function updatePulseXMessageTags(input: {
     return null;
   }
 
-  const response = await fetch("/api/pulsex/messages", {
+  const response = await fetch("/api/hermes/messages", {
     body: JSON.stringify({
       messageId: input.messageId,
       tags: input.tags,
@@ -604,7 +604,7 @@ export async function updatePulseXMessageTags(input: {
     method: "PATCH",
   });
   const payload = (await response.json().catch(() => null)) as
-    | { data?: PulseXMessageRow; error?: string }
+    | { data?: HermesMessageRow; error?: string }
     | null;
 
   if (!response.ok || !payload?.data) {
@@ -614,10 +614,10 @@ export async function updatePulseXMessageTags(input: {
   return mapMessage(payload.data);
 }
 
-export async function updatePulseXMessageBody(input: {
+export async function updateHermesMessageBody(input: {
   body: string;
-  messageId: PulseXMessage["id"];
-}): Promise<PulseXMessage | null> {
+  messageId: HermesMessage["id"];
+}): Promise<HermesMessage | null> {
   const client = getHubSupabaseClient();
 
   if (!client || input.messageId.startsWith("local-")) {
@@ -631,7 +631,7 @@ export async function updatePulseXMessageBody(input: {
     return null;
   }
 
-  const response = await fetch("/api/pulsex/messages", {
+  const response = await fetch("/api/hermes/messages", {
     body: JSON.stringify({
       action: "edit-message",
       body: input.body,
@@ -644,7 +644,7 @@ export async function updatePulseXMessageBody(input: {
     method: "PATCH",
   });
   const payload = (await response.json().catch(() => null)) as
-    | { data?: PulseXMessageRow; error?: string }
+    | { data?: HermesMessageRow; error?: string }
     | null;
 
   if (!response.ok || !payload?.data) {
@@ -654,8 +654,8 @@ export async function updatePulseXMessageBody(input: {
   return mapMessage(payload.data);
 }
 
-export async function markPulseXChannelRead(input: {
-  channelId: PulseXChannel["id"];
+export async function markHermesChannelRead(input: {
+  channelId: HermesChannel["id"];
 }): Promise<{ channelId: string; lastReadAt: string; userId: string } | null> {
   const client = getHubSupabaseClient();
 
@@ -670,7 +670,7 @@ export async function markPulseXChannelRead(input: {
     return null;
   }
 
-  const response = await fetch("/api/pulsex/messages", {
+  const response = await fetch("/api/hermes/messages", {
     body: JSON.stringify({
       action: "mark-read",
       channelId: input.channelId,
@@ -701,7 +701,7 @@ export async function markPulseXChannelRead(input: {
 
 async function listChannelMessagesViaApi(
   client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
-  channelId: PulseXChannel["id"],
+  channelId: HermesChannel["id"],
 ) {
   const sessionResult = await client.auth.getSession();
   const accessToken = sessionResult.data.session?.access_token;
@@ -711,7 +711,7 @@ async function listChannelMessagesViaApi(
   }
 
   const response = await fetch(
-    `/api/pulsex/messages?channelId=${encodeURIComponent(channelId)}`,
+    `/api/hermes/messages?channelId=${encodeURIComponent(channelId)}`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -719,7 +719,7 @@ async function listChannelMessagesViaApi(
     },
   );
   const payload = (await response.json().catch(() => null)) as
-    | { data?: PulseXMessageRow[]; error?: string }
+    | { data?: HermesMessageRow[]; error?: string }
     | null;
 
   if (!response.ok || !payload?.data) {
@@ -729,17 +729,17 @@ async function listChannelMessagesViaApi(
   return mapChannelMessages(payload.data);
 }
 
-async function createPulseXMessageViaApi(
+async function createHermesMessageViaApi(
   client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
   input: {
-    attachment?: PulseXMessageAttachment;
+    attachment?: HermesMessageAttachment;
     body: string;
     channelId: string;
     clientMessageId?: string;
     mentionUserIds?: readonly string[];
-    mentions?: readonly PulseXMessageMention[];
-    tags?: readonly PulseXMessageTag[];
-    threadParentMessageId?: PulseXMessage["id"];
+    mentions?: readonly HermesMessageMention[];
+    tags?: readonly HermesMessageTag[];
+    threadParentMessageId?: HermesMessage["id"];
   },
 ) {
   const sessionResult = await client.auth.getSession();
@@ -749,7 +749,7 @@ async function createPulseXMessageViaApi(
     return null;
   }
 
-  const response = await fetch("/api/pulsex/messages", {
+  const response = await fetch("/api/hermes/messages", {
     body: JSON.stringify({
       body: input.body,
       channelId: input.channelId,
@@ -767,7 +767,7 @@ async function createPulseXMessageViaApi(
     method: "POST",
   });
   const payload = (await response.json().catch(() => null)) as
-    | { data?: PulseXMessageRow; error?: string }
+    | { data?: HermesMessageRow; error?: string }
     | null;
 
   if (!response.ok || !payload?.data) {
@@ -786,7 +786,7 @@ async function listUserAssignments(
     return [];
   }
 
-  const result = await runPulseXQuery<HubUserAssignmentRow[]>(
+  const result = await runHermesQuery<HubUserAssignmentRow[]>(
     "list user assignments",
     "hub_user_assignments",
     client
@@ -796,7 +796,7 @@ async function listUserAssignments(
       .eq("status", "active"),
   );
 
-  assertQuery("vinculos PulseX", result);
+  assertQuery("vinculos Hermes", result);
 
   return (result as QueryResult<HubUserAssignmentRow[]>).data ?? [];
 }
@@ -808,13 +808,13 @@ function filterChannelsForUser({
   userRole,
 }: {
   assignments: readonly HubUserAssignmentRow[];
-  channels: readonly PulseXChannel[];
+  channels: readonly HermesChannel[];
   currentUserId: string;
   userRole?: string;
 }) {
   const isAdmin = userRole === "admin" || userRole === "adm";
 
-  logPulseXDebug("filters applied", {
+  logHermesDebug("filters applied", {
     assignments: assignments.length,
     channels: channels.length,
     currentUserId,
@@ -827,8 +827,8 @@ function filterChannelsForUser({
   );
 }
 
-function mapChannel(row: PulseXChannelRow): PulseXChannel {
-  const unit = row.hub_sectors?.name ?? row.hub_departments?.name ?? "PulseX";
+function mapChannel(row: HermesChannelRow): HermesChannel {
+  const unit = row.hub_sectors?.name ?? row.hub_departments?.name ?? "Hermes";
   const kind = mapChannelKind(row.kind, row.hub_departments?.name);
   const members =
     row.pulsex_channel_members?.filter(
@@ -866,7 +866,7 @@ function mapChannel(row: PulseXChannelRow): PulseXChannel {
   };
 }
 
-function isDepartmentAnnouncementChannel(row: PulseXChannelRow) {
+function isDepartmentAnnouncementChannel(row: HermesChannelRow) {
   return (
     row.kind === "department" &&
     getRecord(row.metadata).systemRole === "department_announcements"
@@ -874,8 +874,8 @@ function isDepartmentAnnouncementChannel(row: PulseXChannelRow) {
 }
 
 function mapChannelAccessType(
-  kind: PulseXChannelRow["kind"],
-): PulseXChannel["accessType"] {
+  kind: HermesChannelRow["kind"],
+): HermesChannel["accessType"] {
   if (kind === "sector") {
     return "sector_channel";
   }
@@ -887,7 +887,7 @@ function mapChannelAccessType(
   return "private_group";
 }
 
-function mapUser(row: HubUserRow): PulseXPresenceUser {
+function mapUser(row: HubUserRow): HermesPresenceUser {
   const activeAssignments =
     row.hub_user_assignments?.filter(
       (assignment) => assignment.status === "active",
@@ -915,7 +915,7 @@ function mapUser(row: HubUserRow): PulseXPresenceUser {
   };
 }
 
-function mapChannelMessages(rows: readonly PulseXMessageRow[]): PulseXMessage[] {
+function mapChannelMessages(rows: readonly HermesMessageRow[]): HermesMessage[] {
   const messages = rows.map(mapMessage);
   const replyCountByMessageId = new Map<string, number>();
 
@@ -939,7 +939,7 @@ function mapChannelMessages(rows: readonly PulseXMessageRow[]): PulseXMessage[] 
     }));
 }
 
-function mapMessage(row: PulseXMessageRow | null): PulseXMessage {
+function mapMessage(row: HermesMessageRow | null): HermesMessage {
   if (!row) {
     throw new Error("Mensagem inexistente.");
   }
@@ -970,28 +970,28 @@ function mapMessage(row: PulseXMessageRow | null): PulseXMessage {
     mentions,
     reactions: [],
     status: "neutral",
-    tags: normalizePulseXMessageTags(metadata.tags),
+    tags: normalizeHermesMessageTags(metadata.tags),
     threadParentMessageId: getString(metadata.threadParentMessageId) || undefined,
     threadCount: 0,
     timestamp: formatMessageTime(row.created_at),
   };
 }
 
-function mapThreadReply(row: PulseXMessageRow): PulseXThreadReply {
+function mapThreadReply(row: HermesMessageRow): HermesThreadReply {
   const message = mapMessage(row);
   const parentMessageId = message.threadParentMessageId;
 
   if (!parentMessageId) {
-    throw new Error("Resposta PulseX sem mensagem principal.");
+    throw new Error("Resposta Hermes sem mensagem principal.");
   }
 
   return mapThreadReplyFromMessage(message, parentMessageId);
 }
 
 function mapThreadReplyFromMessage(
-  message: PulseXMessage,
-  parentMessageId: PulseXMessage["id"],
-): PulseXThreadReply {
+  message: HermesMessage,
+  parentMessageId: HermesMessage["id"],
+): HermesThreadReply {
   return {
     authorAvatarUrl: message.authorAvatarUrl,
     authorId: message.authorId,
@@ -1012,7 +1012,7 @@ function getMessageMetadata(value: unknown): Record<string, unknown> {
 
 function normalizeMessageAttachment(
   value: unknown,
-): PulseXMessageAttachment | undefined {
+): HermesMessageAttachment | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
@@ -1035,7 +1035,7 @@ function normalizeMessageAttachment(
   };
 }
 
-function normalizeMessageMentions(value: unknown): PulseXMessageMention[] {
+function normalizeMessageMentions(value: unknown): HermesMessageMention[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -1061,7 +1061,7 @@ function normalizeMessageMentions(value: unknown): PulseXMessageMention[] {
         userId,
       };
     })
-    .filter((mention): mention is PulseXMessageMention => Boolean(mention));
+    .filter((mention): mention is HermesMessageMention => Boolean(mention));
 }
 
 function normalizeStringList(value: unknown) {
@@ -1074,7 +1074,7 @@ function normalizeStringList(value: unknown) {
 
 function isMessageAttachmentType(
   value: string,
-): value is PulseXMessageAttachment["type"] {
+): value is HermesMessageAttachment["type"] {
   return ["audio", "file", "image", "video"].includes(value);
 }
 
@@ -1098,7 +1098,7 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
   const queryResult = result as QueryResult<unknown>;
 
   if (queryResult.error) {
-    logPulseXDebug("list channels error", {
+    logHermesDebug("list channels error", {
       label,
       message: queryResult.error.message,
       name: queryResult.error.name,
@@ -1109,7 +1109,7 @@ function assertQuery(label: string, result: unknown): asserts result is QueryRes
   }
 }
 
-async function runPulseXQuery<Result>(
+async function runHermesQuery<Result>(
   label: string,
   table: string,
   query: PromiseLike<unknown>,
@@ -1157,7 +1157,7 @@ async function runPulseXQuery<Result>(
   }
 }
 
-async function safePulseXLoad<Result>(
+async function safeHermesLoad<Result>(
   label: string,
   loader: () => Promise<Result>,
   fallback: Result,
@@ -1168,7 +1168,7 @@ async function safePulseXLoad<Result>(
       failed: false,
     };
   } catch (error) {
-    logPulseXDebug(`${label} error`, {
+    logHermesDebug(`${label} error`, {
       error: serializeThrownError(error),
       supabase: getHubSupabaseDiagnostics(),
     });
@@ -1180,7 +1180,7 @@ async function safePulseXLoad<Result>(
   }
 }
 
-async function runPulseXConnectivityProbe() {
+async function runHermesConnectivityProbe() {
   if (!isLocalDevelopmentRuntime()) {
     return;
   }
@@ -1188,7 +1188,7 @@ async function runPulseXConnectivityProbe() {
   const client = getHubSupabaseClient();
 
   if (!client) {
-    logPulseXDebug("connectivity probe", {
+    logHermesDebug("connectivity probe", {
       client: "missing",
       supabase: getHubSupabaseDiagnostics(),
     });
@@ -1216,18 +1216,18 @@ async function runPulseXConnectivityProbe() {
         const result = (await probe.query) as QueryResult<unknown[]>;
 
         if (result.error) {
-          logPulseXDebug(`${probe.label} error`, {
+          logHermesDebug(`${probe.label} error`, {
             error: result.error,
             supabase: getHubSupabaseDiagnostics(),
           });
           return;
         }
 
-        logPulseXDebug(`${probe.label} result`, {
+        logHermesDebug(`${probe.label} result`, {
           rowCount: result.data?.length ?? 0,
         });
       } catch (error) {
-        logPulseXDebug(`${probe.label} error`, {
+        logHermesDebug(`${probe.label} error`, {
           error: serializeThrownError(error),
           supabase: getHubSupabaseDiagnostics(),
         });
@@ -1240,7 +1240,7 @@ function serializeThrownError(error: unknown) {
   return serializeDiagnosticError(error);
 }
 
-function logPulseXDebug(event: string, detail?: unknown) {
+function logHermesDebug(event: string, detail?: unknown) {
   if (!isLocalDevelopmentRuntime()) {
     return;
   }
@@ -1256,7 +1256,7 @@ function isLocalDevelopmentRuntime() {
   return ["localhost", "127.0.0.1"].includes(globalThis.location.hostname);
 }
 
-function createPulseXFallback(): PulseXOperationalData {
+function createHermesFallback(): HermesOperationalData {
   return {
     channels: [],
     departments: [],
@@ -1267,9 +1267,9 @@ function createPulseXFallback(): PulseXOperationalData {
 }
 
 function mapChannelKind(
-  kind: PulseXChannelRow["kind"],
+  kind: HermesChannelRow["kind"],
   departmentName?: string,
-): PulseXChannel["kind"] {
+): HermesChannel["kind"] {
   if (kind === "direct") {
     return "direct";
   }

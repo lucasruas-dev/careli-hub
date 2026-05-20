@@ -19,7 +19,7 @@ export type HomologationReviewItemKind =
   | "deploy"
   | "ticket";
 
-export type SquadOpsHomologationReview = {
+export type ZeusHomologationReview = {
   itemKind: HomologationReviewItemKind;
   itemProtocol: string;
   itemTitle: string;
@@ -32,7 +32,7 @@ export type SquadOpsHomologationReview = {
   updatedAt: string;
 };
 
-export type SquadOpsHomologationReviewState = Record<
+export type ZeusHomologationReviewState = Record<
   string,
   Record<
     string,
@@ -74,7 +74,7 @@ type HomologationReviewUpsert = {
   status: HomologationReviewStatus;
 };
 
-type SquadOpsHomologationReviewDatabase = {
+type ZeusHomologationReviewDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
     Enums: {
@@ -93,17 +93,17 @@ type SquadOpsHomologationReviewDatabase = {
   };
 };
 
-type SquadOpsHomologationReviewClient = ReturnType<
-  typeof createClient<SquadOpsHomologationReviewDatabase>
+type ZeusHomologationReviewClient = ReturnType<
+  typeof createClient<ZeusHomologationReviewDatabase>
 >;
 
-export async function loadSquadOpsHomologationReviews(): Promise<
-  SquadOpsHomologationReview[]
+export async function loadZeusHomologationReviews(): Promise<
+  ZeusHomologationReview[]
 > {
   const adminClient = createHomologationReviewClient();
 
   if (!adminClient) {
-    throw new Error("Supabase server-side nao configurado para homologacao SquadOps.");
+    throw new Error("Supabase server-side nao configurado para homologacao Zeus.");
   }
 
   const { data, error } = await adminClient
@@ -119,7 +119,7 @@ export async function loadSquadOpsHomologationReviews(): Promise<
   return (data ?? []).map(mapHomologationReviewRow);
 }
 
-export async function upsertSquadOpsHomologationReview({
+export async function upsertZeusHomologationReview({
   input,
   userId,
 }: {
@@ -138,7 +138,7 @@ export async function upsertSquadOpsHomologationReview({
   const adminClient = createHomologationReviewClient();
 
   if (!adminClient) {
-    throw new Error("Supabase server-side nao configurado para homologacao SquadOps.");
+    throw new Error("Supabase server-side nao configurado para homologacao Zeus.");
   }
 
   const now = new Date().toISOString();
@@ -175,9 +175,9 @@ export async function upsertSquadOpsHomologationReview({
 }
 
 export function buildHomologationReviewState(
-  reviews: SquadOpsHomologationReview[],
-): SquadOpsHomologationReviewState {
-  return reviews.reduce<SquadOpsHomologationReviewState>((state, review) => {
+  reviews: ZeusHomologationReview[],
+): ZeusHomologationReviewState {
+  return reviews.reduce<ZeusHomologationReviewState>((state, review) => {
     const releaseReviews = state[review.releaseProtocol] ?? {};
 
     return {
@@ -223,14 +223,14 @@ export function isHomologationSchemaMissingError(error: unknown) {
   );
 }
 
-function createHomologationReviewClient(): SquadOpsHomologationReviewClient | null {
+function createHomologationReviewClient(): ZeusHomologationReviewClient | null {
   const { serviceRoleKey, url } = getServerSupabaseConfig();
 
   if (!url || !serviceRoleKey) {
     return null;
   }
 
-  return createClient<SquadOpsHomologationReviewDatabase>(url, serviceRoleKey, {
+  return createClient<ZeusHomologationReviewDatabase>(url, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
@@ -240,7 +240,7 @@ function createHomologationReviewClient(): SquadOpsHomologationReviewClient | nu
 
 function mapHomologationReviewRow(
   row: HomologationReviewRow,
-): SquadOpsHomologationReview {
+): ZeusHomologationReview {
   return {
     itemKind: row.item_kind,
     itemProtocol: row.item_protocol,

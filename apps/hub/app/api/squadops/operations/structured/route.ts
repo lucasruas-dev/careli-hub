@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 
-import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
+import { authorizeZeusAdminRequest } from "@/lib/squadops/admin-access";
 import { loadEngineeringOperationsFromFile } from "@/lib/squadops/engineering-operations-source";
 import { parseEngineeringOperationsMarkdown } from "@/lib/squadops/engineering-operations-parser";
 import {
@@ -17,7 +17,7 @@ const defaultOperationsSourcePath = "docs/operations/engineering-operations.md";
 const maxMarkdownContentLength = 2_500_000;
 
 export async function GET(request: NextRequest) {
-  const authorization = await authorizeSquadOpsAdminRequest(request);
+  const authorization = await authorizeZeusAdminRequest(request);
 
   if (!authorization.ok) {
     return authorization.response;
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authorization = await authorizeSquadOpsAdminRequest(request);
+  const authorization = await authorizeZeusAdminRequest(request);
 
   if (!authorization.ok) {
     return authorization.response;

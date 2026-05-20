@@ -1,6 +1,6 @@
-# Ambiente de Homologacao Careli Hub
+# Ambiente de Homologacao Panteon
 
-Este documento define o modelo oficial inicial de homologacao do Careli Hub.
+Este documento define o modelo oficial inicial de homologacao do Panteon.
 
 ## Objetivo
 
@@ -62,7 +62,7 @@ Uso temporario do Supabase de producao em homologacao so e aceitavel para:
 - diagnostico manual;
 - validacao explicitamente autorizada por Lucas.
 
-### Criterio DataOps V1
+### Criterio Zeus V1
 
 Para homologacao com persistencia real, o ambiente deve usar um projeto Supabase de homologacao separado, com Auth, schemas, RLS, grants e migrations equivalentes ao recorte em validacao.
 
@@ -91,7 +91,7 @@ Para um Supabase de homologacao novo, aplicar a base completa em ordem controlad
 17. `0016_hub_release_protocols.sql`
 18. `0017_squadops_ticket_operation_links.sql`
 
-Observacao DataOps: existem duas migrations com prefixo `0003`. Se o runner de migration usar apenas o prefixo numerico como versao, a aplicacao deve ser tratada como fluxo manual/controlado ou receber ajuste aprovado em recorte proprio; nao renomear nem apagar migrations antigas sem decisao registrada.
+Observacao Zeus: existem duas migrations com prefixo `0003`. Se o runner de migration usar apenas o prefixo numerico como versao, a aplicacao deve ser tratada como fluxo manual/controlado ou receber ajuste aprovado em recorte proprio; nao renomear nem apagar migrations antigas sem decisao registrada.
 
 Para um Supabase ja existente com base Hub aplicada, a cadeia minima pendente para liberar persistencia operacional atual e:
 
@@ -104,7 +104,7 @@ Para um Supabase ja existente com base Hub aplicada, a cadeia minima pendente pa
 
 Aplicar somente apos autorizacao explicita do Lucas e registrar ambiente, ordem, resultado, riscos e rollback no Engineering Operations.
 
-Validacoes DataOps obrigatorias apos aplicar:
+Validacoes Zeus obrigatorias apos aplicar:
 
 - confirmar existencia das tabelas no schema `public`;
 - confirmar RLS habilitado em todas as tabelas expostas;
@@ -141,7 +141,7 @@ Homologacao nao deve executar automaticamente:
 - alteracao financeira;
 - sync destrutivo;
 - migration em producao;
-- chamada automatica a Guardian queue `limit=1000`.
+- chamada automatica a Hades queue `limit=1000`.
 
 ## Comandos
 
@@ -187,12 +187,12 @@ Obrigatorios antes de promover para producao:
 ## Fluxo De Release
 
 1. Dev do modulo implementa e valida localmente.
-2. Hub ReleaseOps revisa o recorte contra Git e Engineering Operations.
-3. Hub ReleaseOps publica em homologacao.
+2. Hefesto revisa o recorte contra Git e Engineering Operations.
+3. Hefesto publica em homologacao.
 4. Lucas valida visual/funcionalmente quando necessario.
-5. Hub ReleaseOps executa healthchecks de homologacao.
-6. Hub DataOps aplica migrations em ambiente correto quando houver schema.
-7. Hub ReleaseOps promove/publica producao.
+5. Hefesto executa healthchecks de homologacao.
+6. Zeus aplica migrations em ambiente correto quando houver schema.
+7. Hefesto promove/publica producao.
 8. Healthcheck pos-producao.
 9. Registro final no Engineering Operations.
 

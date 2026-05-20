@@ -1,12 +1,7 @@
-import { HubShell } from "@/layouts/hub-shell";
-import { CareDeskPage } from "@/modules/caredesk/CareDeskPage";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default function CareDeskModulePage() {
-  return (
-    <HubShell chrome="operational" layoutMode="module">
-      <CareDeskPage loadFromSupabase />
-    </HubShell>
-  );
+export default function LegacyIrisModulePage() {
+  redirect("/iris");
 }

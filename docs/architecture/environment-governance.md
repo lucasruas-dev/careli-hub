@@ -1,6 +1,6 @@
 # Environment Governance
 
-Este documento define a politica de ambientes, env registry e gestao operacional de variaveis do Careli Hub.
+Este documento define a politica de ambientes, env registry e gestao operacional de variaveis do Panteon.
 
 ## Ambientes oficiais
 
@@ -29,18 +29,18 @@ O registry deve documentar nomes, finalidade, owner e criticidade, nunca valores
 
 | Nome ou familia | Owner | Finalidade | Criticidade |
 | --- | --- | --- | --- |
-| `NEXT_PUBLIC_CARELI_APP_ENV` | InfraOps | Identificar ambiente publico do app. | Media |
-| `NEXT_PUBLIC_CARELI_APP_URL`, `NEXT_PUBLIC_APP_URL` | InfraOps | URL publica do ambiente. | Media |
-| `NEXT_PUBLIC_SUPABASE_URL` | InfraOps/DataOps | URL publica Supabase para browser/build. | Alta |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | InfraOps/DataOps | Chave publica Supabase para browser/Auth. | Alta |
-| `SUPABASE_URL` | InfraOps/DataOps | URL Supabase server-side. | Alta |
-| `SUPABASE_ANON_KEY`, `SUPABASE_PUBLISHABLE_KEY` | InfraOps/DataOps | Chave publica server-side/compatibilidade. | Alta |
-| `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY` | InfraOps/DataOps | Chave privilegiada server-side. | Critica |
-| `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING` | DataOps/InfraOps | Conexao Postgres. | Critica |
-| `POSTGRES_USER`, `POSTGRES_HOST`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE` | DataOps/InfraOps | Componentes de conexao Postgres. | Critica |
-| `GUARDIAN_DB_*` | InfraOps/Guardian Core | Conexao C2X/Guardian. | Critica |
-| `ASAAS_*`, `D4SIGN_*`, `OPENAI_API_KEY`, `GUARDIAN_SYNC_SECRET` | InfraOps/Squad responsavel | Integracoes externas. | Critica |
-| `VERCEL_GIT_COMMIT_REF` | ReleaseOps/InfraOps | Rastreabilidade de build/deploy. | Baixa |
+| `NEXT_PUBLIC_CARELI_APP_ENV` | Zeus | Identificar ambiente publico do app. | Media |
+| `NEXT_PUBLIC_CARELI_APP_URL`, `NEXT_PUBLIC_APP_URL` | Zeus | URL publica do ambiente. | Media |
+| `NEXT_PUBLIC_SUPABASE_URL` | Zeus/Zeus | URL publica Supabase para browser/build. | Alta |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Zeus/Zeus | Chave publica Supabase para browser/Auth. | Alta |
+| `SUPABASE_URL` | Zeus/Zeus | URL Supabase server-side. | Alta |
+| `SUPABASE_ANON_KEY`, `SUPABASE_PUBLISHABLE_KEY` | Zeus/Zeus | Chave publica server-side/compatibilidade. | Alta |
+| `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY` | Zeus/Zeus | Chave privilegiada server-side. | Critica |
+| `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING` | Zeus/Zeus | Conexao Postgres. | Critica |
+| `POSTGRES_USER`, `POSTGRES_HOST`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE` | Zeus/Zeus | Componentes de conexao Postgres. | Critica |
+| `GUARDIAN_DB_*` | Zeus/Hades Core | Conexao C2X/Hades. | Critica |
+| `ASAAS_*`, `D4SIGN_*`, `OPENAI_API_KEY`, `GUARDIAN_SYNC_SECRET` | Zeus/Squad responsavel | Integracoes externas. | Critica |
+| `VERCEL_GIT_COMMIT_REF` | Hefesto/Zeus | Rastreabilidade de build/deploy. | Baixa |
 
 ## Regras por ambiente
 
@@ -71,6 +71,6 @@ Toda alteracao de env precisa registrar:
 - Nome da variavel ou familia.
 - Motivo.
 - Aprovacao do Lucas.
-- Executor/revisor InfraOps.
+- Executor/revisor Zeus.
 - Deploy/redeploy necessario.
 - Healthcheck e rollback path.

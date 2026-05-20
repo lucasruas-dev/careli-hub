@@ -1,10 +1,10 @@
-# Careli Hub Visual Governance Guidelines
+# Panteon Visual Governance Guidelines
 
-Este documento define a governanca visual oficial do Careli Hub. Ele deve orientar Home, Login, PulseX e futuros modulos para que o produto pareca uma unica plataforma operacional, nao um conjunto de telas soltas.
+Este documento define a governanca visual oficial do Panteon. Ele deve orientar Home, Login, Hermes e futuros modulos para que o produto pareca uma unica plataforma operacional, nao um conjunto de telas soltas.
 
 ## Principio Central
 
-O Careli Hub deve parecer uma Central Operacional enterprise: sobria, clara, viva em tempo real e pronta para trabalho continuo. A experiencia deve ser Guardian-like: institucional, elegante, densa quando necessario e sempre orientada a acao.
+O Panteon deve parecer uma Central Operacional enterprise: sobria, clara, viva em tempo real e pronta para trabalho continuo. A experiencia deve ser Hades-like: institucional, elegante, densa quando necessario e sempre orientada a acao.
 
 O objetivo visual nao e parecer um SaaS generico, uma landing page, um dashboard tecnico ou um painel decorativo. O produto deve transmitir sistema interno confiavel, com linguagem visual propria e consistente.
 
@@ -12,7 +12,7 @@ O objetivo visual nao e parecer um SaaS generico, uma landing page, um dashboard
 
 ### Direcao
 
-- Guardian-like: estrutura editorial-operacional, hierarquia forte, leitura clara e sensacao de sistema critico.
+- Hades-like: estrutura editorial-operacional, hierarquia forte, leitura clara e sensacao de sistema critico.
 - Grafite elegante: usar tons escuros profundos como base de autoridade, sem cair em azul/slate generico.
 - Branco frio operacional: areas claras devem parecer precisas, limpas e profissionais, nao cremosas ou calorosas demais.
 - Dourado `#A07C3B` como accent: usar para foco, status premium, selecao, chamadas de acao e detalhes institucionais.
@@ -41,15 +41,21 @@ Novas telas devem consumir tokens UIX quando existirem. Valores diretos so devem
 
 ## Layout Global
 
+### Home como referencia
+
+A Home principal do Panteon e a referencia visual oficial para todos os modulos. Quando uma squad criar ou reformular uma tela de modulo, deve partir do mesmo padrao de composicao: densidade operacional, hierarquia clara, surfaces/cards com funcao real, cabecalhos compactos, leitura executiva e integracao com presenca, atividade e continuidade.
+
+Modulos podem ter identidade propria apenas no que reforcar seu trabalho operacional. A estrutura-base deve parecer a mesma plataforma. Se uma tela de modulo parecer produto separado, SaaS generico ou dashboard desconectado, ela deve ser ajustada antes de seguir.
+
 ### Hub Shell
 
 Usar Hub Shell quando a tela pertence ao Hub como plataforma: Home, configuracoes globais, catalogo de modulos, usuarios, permissoes, notificacoes e areas compartilhadas.
 
-O Hub Shell deve carregar a identidade central do Careli Hub: navegacao global, presenca, notificacoes, atividade e contexto de workspace quando aplicavel.
+O Hub Shell deve carregar a identidade central do Panteon: navegacao global, presenca, notificacoes, atividade e contexto de workspace quando aplicavel.
 
 ### Modulo Fullscreen
 
-Usar modulo fullscreen quando a experiencia precisa de foco operacional proprio, como PulseX ou ferramentas com fluxo intenso. O modulo pode ocupar a tela inteira e reduzir a interferencia do Hub Shell, mas deve preservar a identidade UIX, tokens, padroes de componente e pontos de retorno ao Hub.
+Usar modulo fullscreen quando a experiencia precisa de foco operacional proprio, como Hermes ou ferramentas com fluxo intenso. O modulo pode ocupar a tela inteira e reduzir a interferencia do Hub Shell, mas deve preservar a identidade UIX, tokens, padroes de componente e pontos de retorno ao Hub.
 
 Fullscreen nao significa visual desconectado. O modulo pode ter identidade operacional propria, mas ainda deve parecer parte do ecossistema Careli.
 
@@ -67,6 +73,8 @@ Uma sidebar interna deve deixar claro que o usuario ainda esta dentro do modulo.
 
 ## Sidebar Padrao
 
+Regra oficial: todos os sidebars do Panteon devem seguir o mesmo layout, cor e comportamento do sidebar principal. Isso vale para sidebar global, launcher e sidebars internos de modulo quando executarem navegacao lateral.
+
 ### Base Visual
 
 - Cor base canonica: `#101820`.
@@ -74,6 +82,9 @@ Uma sidebar interna deve deixar claro que o usuario ainda esta dentro do modulo.
 - Separadores discretos, sem bordas pesadas.
 - Itens alinhados, previsiveis e com altura consistente.
 - Icones sempre acompanhando a semantica da rota ou acao.
+- Header compacto com marca/nome do contexto, botao de recolher/expandir consistente e sem subtitulo operacional redundante.
+- Topo padrao em todo sidebar: icone preto do modulo, nome do modulo, botao para abrir o sidebar/launcher do Panteon, botao de recolher/expandir e divisor discreto separando header e navegacao.
+- Modos expandido e recolhido com a mesma geometria, raio, borda, densidade e ritmo do sidebar principal do Panteon.
 
 ### Estados
 
@@ -81,7 +92,7 @@ Uma sidebar interna deve deixar claro que o usuario ainda esta dentro do modulo.
 | --- | --- |
 | Default | Texto e icone com contraste suficiente, sem chamar atencao desnecessaria. |
 | Hover | Leve elevacao visual por fundo, borda ou tom mais claro; sem animacoes exageradas. |
-| Active | Usar `#A07C3B` como accent principal, com marcador, fundo sutil ou texto destacado. |
+| Active | Usar `#A07C3B` como accent principal no item, com marcador, fundo sutil ou texto destacado; o container do icone ativo deve ter fundo preto. |
 | Disabled | Baixo contraste controlado, mantendo legibilidade minima. |
 | Focus | Indicador visivel e acessivel, alinhado ao accent UIX. |
 
@@ -108,6 +119,8 @@ A sidebar pode ser recolhivel em telas densas ou fluxos de foco. Quando recolhid
 
 A sidebar global responde pela plataforma. A sidebar de modulo responde pelo trabalho dentro do modulo. Quando ambas existirem, a hierarquia visual deve deixar essa diferenca obvia.
 
+Sidebars internos podem mudar conteudo, labels e iconografia conforme o modulo, mas nao devem mudar a linguagem visual do container, cores-base, active state, hover, focus, comportamento recolhivel ou densidade sem registro operacional.
+
 ## Home do Hub
 
 A Home do Hub deve ser uma Central Operacional, nao um painel tecnico.
@@ -133,7 +146,7 @@ Regras:
 - nao mostrar termos como "mock", "Supabase futuro", "placeholder", "dev only" ou similares;
 - nao explicar arquitetura ou status de implementacao;
 - priorizar marca, acesso, seguranca percebida e clareza;
-- manter visual Guardian-like com grafite elegante, branco frio e accent dourado.
+- manter visual Hades-like com grafite elegante, branco frio e accent dourado.
 
 O Login e a porta de entrada da operacao. Ele deve transmitir que o usuario esta acessando uma plataforma real.
 
@@ -188,11 +201,15 @@ Os componentes UIX sao a base da consistencia visual. Novas telas devem usar ou 
 
 Variacoes locais devem ser justificadas por necessidade operacional do modulo. Quando uma variacao aparece em mais de um lugar, ela deve virar componente UIX.
 
+### Perfil no Topbar
+
+O perfil do usuario logado deve ficar no topbar/header da tela, no canto superior direito, usando o mesmo padrao do Panteon principal: status de presenca, avatar, nome e acao de saida. Esse bloco nao deve ocupar o topo do sidebar; sidebars sao reservados para navegacao e contexto do modulo.
+
 ## Regras de UX
 
 ### Desktop-first
 
-O Careli Hub e uma plataforma operacional. O desktop deve ser a experiencia principal, com layouts preparados para comparacao, navegacao rapida, multitarefa e alta densidade.
+O Panteon e uma plataforma operacional. O desktop deve ser a experiencia principal, com layouts preparados para comparacao, navegacao rapida, multitarefa e alta densidade.
 
 Responsividade continua obrigatoria, mas nao deve transformar fluxos principais em experiencia mobile-first quando o trabalho real acontece no desktop.
 
@@ -223,7 +240,7 @@ Cada elemento deve ter funcao. Evitar duplicidade de informacao, iconografia exc
 Antes de aprovar uma nova tela, responder:
 
 - Parece Careli?
-- Parece Guardian-like?
+- Parece Hades-like?
 - Esta limpo?
 - Tem informacao demais?
 - Parece sistema interno?
@@ -244,4 +261,4 @@ Se uma resposta for negativa, a tela deve ser ajustada antes de seguir.
 
 Este documento e contrato visual. Mudancas relevantes na identidade, no shell, em componentes UIX ou em padroes de modulo devem atualizar este guia junto com a implementacao.
 
-Quando houver duvida, escolher a opcao que faz o Careli Hub parecer mais institucional, mais operacional e mais consistente.
+Quando houver duvida, escolher a opcao que faz o Panteon parecer mais institucional, mais operacional e mais consistente.

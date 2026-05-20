@@ -1,6 +1,6 @@
 # Security Governance
 
-Este documento define a camada formal de governanca e seguranca do Careli Hub para operacoes de infraestrutura, ambientes, Vercel, Supabase, banco, dominios, deploys, rollback, secrets e incidentes.
+Este documento define a camada formal de governanca e seguranca do Panteon para operacoes de infraestrutura, ambientes, Vercel, Supabase, banco, dominios, deploys, rollback, secrets e incidentes.
 
 ## Principios obrigatorios
 
@@ -36,10 +36,10 @@ Cada operacao sensivel deve registrar:
 
 ## Autoridade por squad
 
-- `Hub InfraOps`: ambientes, envs, Vercel, Supabase runtime, healthchecks, aliases, dominios, protecao, safe mode e estabilidade.
-- `Hub DataOps`: schema, migrations, grants, RLS, seeds e validacao de banco. Nao aplica migration real sem confirmacao do Lucas.
-- `Hub ReleaseOps`: commit, release, build, deploy, rollback e rastreabilidade apos recorte validado.
-- `Hub SupportOps`: diagnostico de incidente, logs, regressao, impacto em usuario e evidencia tecnica.
+- `Zeus`: ambientes, envs, Vercel, Supabase runtime, healthchecks, aliases, dominios, protecao, safe mode e estabilidade.
+- `Zeus`: schema, migrations, grants, RLS, seeds e validacao de banco. Nao aplica migration real sem confirmacao do Lucas.
+- `Hefesto`: commit, release, build, deploy, rollback e rastreabilidade apos recorte validado.
+- `Zeus`: diagnostico de incidente, logs, regressao, impacto em usuario e evidencia tecnica.
 - Squads de produto: podem apontar necessidade, mas nao alteram chaves, envs, banco, dominio ou producao diretamente.
 
 ## Safe Mode

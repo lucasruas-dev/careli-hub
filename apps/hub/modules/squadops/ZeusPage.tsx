@@ -96,7 +96,7 @@ type OperationsFilters = {
   type: string;
 };
 
-type SquadOpsView =
+type ZeusView =
   | "overview"
   | "monitoring"
   | "itTickets"
@@ -302,13 +302,13 @@ const initialFilters: OperationsFilters = {
 
 const initialOperationRecordForm: OperationRecordFormState = {
   macroSummary: "",
-  module: "SquadOps",
+  module: "Zeus",
   needsDeploy: false,
-  nextSquad: "Hub ReleaseOps",
+  nextSquad: "Hefesto",
   reason: "",
   risks: "",
   screen: "Operations Center",
-  squad: "SquadOps Core",
+  squad: "Zeus Core",
   status: "REGISTRADO",
   subject: "",
   type: "MELHORIA",
@@ -316,27 +316,22 @@ const initialOperationRecordForm: OperationRecordFormState = {
 };
 
 const operationModuleOptions = [
-  "SquadOps",
-  "Guardian",
-  "CareDesk",
-  "PulseX",
-  "Hub Core",
-  "Hub UIX",
-  "SupportOps",
-  "ReleaseOps",
-  "DataOps",
-  "InfraOps",
+  "Zeus",
+  "Hades",
+  "Iris",
+  "Hermes",
+  "Panteon Core",
+  "Panteon UIX",
+  "Hefesto",
 ] as const;
 
 const operationSquadOptions = [
-  "SquadOps Core",
-  "Guardian Core",
-  "CareDesk Core",
-  "PulseX Core",
-  "Hub SupportOps",
-  "Hub ReleaseOps",
-  "Hub DataOps",
-  "Hub InfraOps",
+  "Zeus Core",
+  "Hades Core",
+  "Iris Core",
+  "Hermes Core",
+  "Zeus",
+  "Hefesto",
 ] as const;
 
 const operationTypeOptions = [
@@ -373,12 +368,12 @@ const homologationStatusOptions = [
 }[];
 
 const promptTargets = [
-  "Guardian Core",
-  "CareDesk Core",
-  "PulseX Core",
-  "SquadOps Core",
-  "Hub SupportOps",
-  "Hub ReleaseOps",
+  "Hades Core",
+  "Iris Core",
+  "Hermes Core",
+  "Zeus Core",
+  "Zeus",
+  "Hefesto",
 ] as const;
 
 const alertFeedbackOptions = [
@@ -404,16 +399,16 @@ type PromptTemplate = {
 
 const promptTemplates: PromptTemplate[] = [
   {
-    id: "deploy-releaseops",
+    id: "deploy-hefesto",
     label: "Deploy por recorte",
     description:
-      "ReleaseOps le o diario, separa recortes e publica apenas o que estiver autorizado.",
-    target: "Hub ReleaseOps",
+      "Hefesto le o diario, separa recortes e publica apenas o que estiver autorizado.",
+    target: "Hefesto",
     type: "deploy",
     body: `Assunto:
-[ReleaseOps] Planejamento de deploy por recorte
+[Hefesto] Planejamento de deploy por recorte
 
-Hub ReleaseOps, solicito planejar e executar deploy somente por recorte operacional autorizado.
+Hefesto, solicito planejar e executar deploy somente por recorte operacional autorizado.
 
 Este pedido NAO autoriza deploy de todo o worktree.
 O deploy deve ser programado a partir do Engineering Operations e confirmado contra o Git.
@@ -427,7 +422,7 @@ Fontes obrigatorias:
 Como descobrir o recorte:
 - Ler os registros mais recentes do Engineering Operations.
 - Identificar registros com status AGUARDANDO RELEASEOPS ou AGUARDANDO DEPLOY.
-- Agrupar por modulo/frente/squad: SquadOps, Guardian, PulseX, CareDesk, Setup, SupportOps ou ReleaseOps.
+- Agrupar por modulo/frente/squad: Zeus, Hades, Hermes, Iris, Setup ou Hefesto.
 - Para cada grupo, listar assunto, arquivos/modulos afetados, validacoes, riscos e proxima squad.
 - Cruzar os arquivos citados no diario com o Git diff real.
 - Confirmar se o diff pertence ao mesmo modulo/frente.
@@ -444,10 +439,10 @@ Protocolo de deploy:
 Regras de release:
 - Nao usar deploy geral se houver mais de um recorte misturado.
 - Nao usar stage amplo de arquivos sem revisar o escopo.
-- Nao misturar Guardian, PulseX, CareDesk, Setup ou SquadOps no mesmo commit/deploy sem autorizacao explicita do diario.
+- Nao misturar Hades, Hermes, Iris, Setup ou Zeus no mesmo commit/deploy sem autorizacao explicita do diario.
 - Nao publicar arquivos que nao estejam relacionados ao recorte aprovado.
 - Nao expor secrets, tokens, chaves ou valores sensiveis.
-- Nao chamar checks pesados como Guardian queue limit=1000 automaticamente.
+- Nao chamar checks pesados como Hades queue limit=1000 automaticamente.
 - Se houver duvida de escopo, bloquear com motivo tecnico concreto.
 
 Quando publicar:
@@ -505,12 +500,12 @@ EM HOMOLOGACAO quando estiver aguardando validacao; EM PRODUCAO quando publicado
     id: "daily-activity",
     label: "Atividade diaria",
     description: "Comando preenchido para consolidar o dia operacional atual.",
-    target: "SquadOps Core",
+    target: "Zeus Core",
     type: "daily",
     body: `Assunto:
-[SquadOps] Atividade diaria do Hub
+[Zeus] Atividade diaria do Panteon
 
-Dev responsavel, solicito consolidar a leitura operacional diaria do Careli Hub.
+Dev responsavel, solicito consolidar a leitura operacional diaria do Panteon.
 
 Este pedido NAO e um template com placeholders. Use os registros reais do Engineering Operations e, para estado atual de banco/APIs, use o Database Monitoring.
 
@@ -518,7 +513,7 @@ Periodo analisado:
 - Data: 17/05/2026.
 - Fonte historica: docs/operations/engineering-operations.md.
 - Fonte de estado atual: Database Monitoring / APIs reais / healthchecks.
-- Modulos relevantes: SquadOps, Guardian, PulseX, SupportOps, ReleaseOps e CareDesk quando houver registro no diario.
+- Modulos relevantes: Zeus, Hades, Hermes, Iris e Hefesto quando houver registro no diario.
 
 Objetivo:
 - Consolidar o que foi implementado, corrigido, validado ou bloqueado no dia.
@@ -527,10 +522,10 @@ Objetivo:
 - Nao alterar codigo, nao fazer deploy e nao executar comandos destrutivos.
 
 Foco da leitura:
-- SquadOps / Operations Center: Database Monitoring, Ops Watcher, PO AI, prompts, layout, sidebar e acesso adm.
-- ReleaseOps: itens aguardando publicacao, recortes que precisam de commit/deploy e healthchecks esperados.
-- SupportOps: gargalos, falhas locais, riscos de build, APIs ou performance.
-- Guardian/PulseX/CareDesk: citar somente o que estiver registrado no diario ou nos checks reais.
+- Zeus / Operations Center: Database Monitoring, Ops Watcher, PO AI, prompts, layout, sidebar e acesso adm.
+- Hefesto: itens aguardando publicacao, recortes que precisam de commit/deploy e healthchecks esperados.
+- Zeus: gargalos, falhas locais, riscos de build, APIs, banco, infraestrutura ou performance.
+- Hades/Hermes/Iris: citar somente o que estiver registrado no diario ou nos checks reais.
 
 Regras:
 - Se um dado nao estiver no diario ou no monitoramento, escrever "nao informado".
@@ -552,16 +547,16 @@ AGUARDANDO RELEASEOPS quando houver entrega local pendente de publicacao; FINALI
     id: "weekly-activity",
     label: "Atividade semanal",
     description:
-      "Comando preenchido para SupportOps consolidar a semana operacional.",
-    target: "Hub SupportOps",
+      "Comando preenchido para Zeus consolidar a semana operacional.",
+    target: "Zeus",
     type: "weekly",
     body: `Assunto:
-[SupportOps] Consolidado semanal do Hub
+[Zeus] Consolidado semanal do Panteon
 
-Hub SupportOps, solicito consolidar a atividade semanal da engenharia Careli Hub.
+Zeus, solicito consolidar a atividade semanal da engenharia do Panteon.
 
 Este pedido NAO e um template com placeholders. A semana e o escopo ja estao definidos.
-Agente executor: Hub SupportOps.
+Agente executor: Zeus.
 
 Periodo analisado:
 - Semana: 11/05/2026 a 17/05/2026.
@@ -570,16 +565,16 @@ Periodo analisado:
 - Objetivo: identificar entregas, riscos, gargalos e proximos passos.
 
 Frentes obrigatorias:
-- Guardian: consolidar apenas registros e riscos presentes no diario.
-- CareDesk: apontar estado atual e lacunas registradas.
-- PulseX: consolidar correcoes, validacoes pendentes e riscos de realtime/chamadas.
-- SquadOps: consolidar Operations Center, Database Monitoring, Ops Watcher, PO AI, prompts e UX.
-- SupportOps: consolidar gargalos, troubleshooting, EADDRINUSE, build errors, APIs e performance.
-- ReleaseOps: consolidar itens aguardando publicacao, commits/deploys e healthchecks.
+- Hades: consolidar apenas registros e riscos presentes no diario.
+- Iris: apontar estado atual e lacunas registradas.
+- Hermes: consolidar correcoes, validacoes pendentes e riscos de realtime/chamadas.
+- Zeus: consolidar Operations Center, Database Monitoring, Ops Watcher, PO AI, prompts e UX.
+- Zeus: consolidar gargalos, troubleshooting, EADDRINUSE, build errors, APIs, banco, infraestrutura e performance.
+- Hefesto: consolidar itens aguardando publicacao, commits/deploys e healthchecks.
 
 Riscos a observar:
-- Recortes locais aguardando ReleaseOps podem se misturar se nao houver stage/commit por responsabilidade.
-- Guardian queue limit=1000 nao deve ser chamado automaticamente.
+- Recortes locais aguardando Hefesto podem se misturar se nao houver stage/commit por responsabilidade.
+- Hades queue limit=1000 nao deve ser chamado automaticamente.
 - Validacoes visuais autenticadas ainda dependem de Lucas quando o diario indicar pendencia.
 - Warning Turbopack/NFT da leitura filesystem do Engineering Operations segue conhecido.
 
@@ -590,7 +585,7 @@ Regras:
 - Nao executar deploy, commit ou comando; apenas consolidar e orientar.
 
 Recomendacao esperada:
-- Prioridade 1: separar/publicar recortes SquadOps que ja estao AGUARDANDO RELEASEOPS.
+- Prioridade 1: separar/publicar recortes Zeus que ja estao AGUARDANDO RELEASEOPS.
 - Prioridade 2: acompanhar riscos tecnicos de build, realtime e payload.
 - Prioridade 3: reforcar governanca de prompts, healthchecks e registros operacionais.
 
@@ -608,16 +603,16 @@ AGUARDANDO RELEASEOPS se houver recorte local pendente; OPERACIONAL COM ATENCAO 
   {
     id: "supportops-technical-monitoring",
     label: "Monitoramento tecnico",
-    description: "Acompanhamento SupportOps dos riscos tecnicos SquadOps.",
-    target: "Hub SupportOps",
+    description: "Acompanhamento Zeus dos riscos tecnicos.",
+    target: "Zeus",
     type: "monitoring",
     body: `Assunto:
-[SupportOps] Monitoramento tecnico SquadOps
+[Zeus] Monitoramento tecnico
 
-Hub SupportOps, manter acompanhamento dos riscos tecnicos da semana.
+Zeus, manter acompanhamento dos riscos tecnicos da semana.
 
 Este pedido NAO e um template com placeholders. O escopo de monitoramento ja esta definido.
-Agente executor: Hub SupportOps.
+Agente executor: Zeus.
 
 Fonte historica:
 - docs/operations/engineering-operations.md.
@@ -628,12 +623,12 @@ Fonte de estado atual:
 Itens em acompanhamento:
 - Warning Turbopack/NFT da rota que le Engineering Operations.
 - Possivel recorrencia de porta 3001 ocupada no dev local.
-- Build errors em SquadOps.
+- Build errors em Zeus.
 - APIs e payload do Operations Center.
 
 Regras:
 - Nao executar deploy, commit ou alteracao de codigo.
-- Nao chamar Guardian queue limit=1000 automaticamente.
+- Nao chamar Hades queue limit=1000 automaticamente.
 - Usar monitoramento real para banco, APIs, payload, tempo de resposta e healthchecks.
 - Usar Engineering Operations apenas como historico, rastreabilidade e memoria operacional.
 - Se nao houver evidencia atual, responder "nao informado".
@@ -660,12 +655,12 @@ OPERACIONAL COM ATENCAO quando houver risco sem bloqueio; BLOQUEADO se algum ite
     id: "monthly-activity",
     label: "Atividade mensal",
     description: "Comando preenchido para fechamento mensal parcial.",
-    target: "SquadOps Core",
+    target: "Zeus Core",
     type: "monthly",
     body: `Assunto:
-[SquadOps] Fechamento mensal do Hub
+[Zeus] Fechamento mensal do Panteon
 
-Dev responsavel, solicito preparar o fechamento mensal operacional da engenharia Careli Hub.
+Dev responsavel, solicito preparar o fechamento mensal operacional da engenharia do Panteon.
 
 Este pedido NAO e um template com placeholders. O fechamento e parcial do mes corrente.
 
@@ -676,17 +671,17 @@ Periodo analisado:
 - Objetivo: consolidar entregas, estabilidade, riscos e prioridades.
 
 Temas principais:
-- Evolucao do SquadOps para Operations Center.
+- Evolucao do Zeus para Operations Center.
 - Implantacao de Database Monitoring, Ops Watcher e PO AI orientado por monitoramento real.
-- Ajustes de governanca ReleaseOps e rastreabilidade no Engineering Operations.
-- Pendencias tecnicas e operacionais em Guardian, PulseX, SupportOps e build quando registradas.
+- Ajustes de governanca Hefesto e rastreabilidade no Engineering Operations.
+- Pendencias tecnicas e operacionais em Hades, Hermes, Iris, Zeus e build quando registradas.
 
 Entregas e evolucoes:
-- Guardian: consolidar estado, pendencias D4Sign/fila/performance e riscos somente com evidencia registrada.
-- CareDesk: registrar estado atual e lacunas de evolucao real quando constarem no diario.
-- PulseX: consolidar realtime/chamadas, queries, experiencia de conversa e validacoes pendentes.
-- SquadOps: consolidar Operations Center, Database Monitoring, PO AI, prompts, UX e acesso adm.
-- SupportOps/ReleaseOps: consolidar troubleshooting, releases, deploys, healthchecks e bloqueios.
+- Hades: consolidar estado, pendencias D4Sign/fila/performance e riscos somente com evidencia registrada.
+- Iris: registrar estado atual e lacunas de evolucao real quando constarem no diario.
+- Hermes: consolidar realtime/chamadas, queries, experiencia de conversa e validacoes pendentes.
+- Zeus: consolidar Operations Center, Database Monitoring, PO AI, prompts, UX e acesso adm.
+- Zeus/Hefesto: consolidar troubleshooting, releases, deploys, healthchecks e bloqueios.
 
 Estabilidade operacional:
 - Bugs relevantes: levantar do Engineering Operations.
@@ -695,15 +690,15 @@ Estabilidade operacional:
 - Regressao identificada: responder apenas com evidencia; caso contrario, "nao informado".
 
 Riscos para o proximo ciclo:
-- Mistura de recortes locais se ReleaseOps nao separar commits por frente.
+- Mistura de recortes locais se Hefesto nao separar commits por frente.
 - Validacoes visuais autenticadas pendentes.
 - Risco de payload/performance em filas se limites seguros forem ignorados.
 - Warning Turbopack/NFT e pendencias tecnicas de build/auditoria devem ser acompanhados.
 
 Prioridades recomendadas:
-- Publicar recortes SquadOps ja validados e AGUARDANDO RELEASEOPS.
+- Publicar recortes Zeus ja validados e AGUARDANDO RELEASEOPS.
 - Consolidar monitoramento real como fonte primaria de estado operacional.
-- Resolver pendencias de ReleaseOps/SupportOps antes de ampliar automacoes.
+- Resolver pendencias de Hefesto/Zeus antes de ampliar automacoes.
 - Manter o Engineering Operations como historico, auditoria e memoria viva.
 
 Formato esperado da resposta:
@@ -719,7 +714,7 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
   },
 ];
 
-const squadOpsViews = [
+const zeusViews = [
   { id: "itTickets", label: "Ticket TI" },
   { id: "overview", label: "Visão geral" },
   { id: "monitoring", label: "Database Monitoring" },
@@ -727,20 +722,20 @@ const squadOpsViews = [
   { id: "timeline", label: "Timeline" },
   { id: "audits", label: "Auditorias" },
   { id: "records", label: "Registros" },
-] as const satisfies readonly { id: SquadOpsView; label: string }[];
+] as const satisfies readonly { id: ZeusView; label: string }[];
 
-export function SquadOpsPage({
+export function ZeusPage({
   standalone = false,
 }: {
   standalone?: boolean;
 } = {}) {
   const { authState, hubUser, profileStatus } = useAuth();
-  const canAccessSquadOps = canAccessSquadOpsAsAdmin(hubUser);
+  const canAccessZeus = canAccessZeusAsAdmin(hubUser);
   const authAccessToken = authState.session?.accessToken ?? null;
   const [resolvedAccessToken, setResolvedAccessToken] = useState<string | null>(
     null,
   );
-  const squadOpsAccessToken = authAccessToken ?? resolvedAccessToken;
+  const zeusAccessToken = authAccessToken ?? resolvedAccessToken;
   const operationsFileInputRef = useRef<HTMLInputElement | null>(null);
   const [operations, setOperations] =
     useState<EngineeringOperationsResponse | null>(null);
@@ -771,19 +766,19 @@ export function SquadOpsPage({
   const [poAiMessages, setPoAiMessages] = useState<PoAiChatMessage[]>(() => [
     createPoAiMessage(
       "assistant",
-      "Sou o PO AI, o cérebro operacional do Hub. Para banco, performance e estabilidade eu priorizo o monitoramento real; o diário fica como histórico e rastreabilidade. Não executo comandos nem exponho segredos.",
+      "Sou o PO AI, o cérebro operacional do Panteon. Para banco, performance e estabilidade eu priorizo o monitoramento real; o diário fica como histórico e rastreabilidade. Não executo comandos nem exponho segredos.",
     ),
   ]);
   const [copilotError, setCopilotError] = useState<string | null>(null);
   const [isCopilotLoading, setIsCopilotLoading] = useState(false);
   const [isPoAiOpen, setIsPoAiOpen] = useState(false);
   const [promptTarget, setPromptTarget] =
-    useState<(typeof promptTargets)[number]>("Hub ReleaseOps");
+    useState<(typeof promptTargets)[number]>("Hefesto");
   const [isPromptLibraryOpen, setIsPromptLibraryOpen] = useState(false);
   const [selectedPromptTemplateId, setSelectedPromptTemplateId] = useState(
     promptTemplates[0]!.id,
   );
-  const [activeView, setActiveView] = useState<SquadOpsView>("overview");
+  const [activeView, setActiveView] = useState<ZeusView>("overview");
   const [monitoringSnapshot, setMonitoringSnapshot] =
     useState<OperationsMonitoringSnapshot | null>(null);
   const [monitoringHistory, setMonitoringHistory] = useState<
@@ -820,7 +815,7 @@ export function SquadOpsPage({
   const watcherCooldownsRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    if (profileStatus === "loading" || !canAccessSquadOps) {
+    if (profileStatus === "loading" || !canAccessZeus) {
       setResolvedAccessToken(null);
       return;
     }
@@ -832,7 +827,7 @@ export function SquadOpsPage({
 
     let isActive = true;
 
-    void getSquadOpsAccessToken().then((accessToken) => {
+    void getZeusAccessToken().then((accessToken) => {
       if (isActive) {
         setResolvedAccessToken(accessToken);
       }
@@ -841,14 +836,14 @@ export function SquadOpsPage({
     return () => {
       isActive = false;
     };
-  }, [authAccessToken, canAccessSquadOps, profileStatus]);
+  }, [authAccessToken, canAccessZeus, profileStatus]);
 
   useEffect(() => {
     if (profileStatus === "loading") {
       return;
     }
 
-    if (!canAccessSquadOps) {
+    if (!canAccessZeus) {
       setIsLoading(false);
       setError(null);
       setOperations(null);
@@ -862,14 +857,14 @@ export function SquadOpsPage({
       setError(null);
 
       try {
-        const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+        const accessToken = await getZeusAccessToken(zeusAccessToken);
         const headers: Record<string, string> = {};
 
         if (accessToken) {
           headers.Authorization = `Bearer ${accessToken}`;
         }
 
-        const response = await fetch("/api/squadops/operations", {
+        const response = await fetch("/api/zeus/operations", {
           cache: "no-store",
           headers,
         });
@@ -890,7 +885,7 @@ export function SquadOpsPage({
           setError(
             typeof maybeError === "string"
               ? maybeError
-              : "Não foi possível carregar SquadOps.",
+              : "Não foi possível carregar Zeus.",
           );
           setOperations(null);
           return;
@@ -899,7 +894,7 @@ export function SquadOpsPage({
         setOperations(payload);
       } catch {
         if (isActive) {
-          setError("Não foi possível conectar à API do SquadOps.");
+          setError("Não foi possível conectar à API do Zeus.");
           setOperations(null);
         }
       } finally {
@@ -914,15 +909,15 @@ export function SquadOpsPage({
     return () => {
       isActive = false;
     };
-  }, [canAccessSquadOps, profileStatus, squadOpsAccessToken]);
+  }, [canAccessZeus, profileStatus, zeusAccessToken]);
 
   const loadStructuredOperations = useCallback(async () => {
-    if (!canAccessSquadOps || profileStatus === "loading") {
+    if (!canAccessZeus || profileStatus === "loading") {
       return;
     }
 
     try {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {};
 
       if (accessToken) {
@@ -984,19 +979,19 @@ export function SquadOpsPage({
         syncRuns: [],
       });
     }
-  }, [canAccessSquadOps, operations, profileStatus, squadOpsAccessToken]);
+  }, [canAccessZeus, operations, profileStatus, zeusAccessToken]);
 
   useEffect(() => {
     void loadStructuredOperations();
   }, [loadStructuredOperations]);
 
   const loadAlertProtocols = useCallback(async () => {
-    if (!canAccessSquadOps || profileStatus === "loading") {
+    if (!canAccessZeus || profileStatus === "loading") {
       return;
     }
 
     try {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {};
 
       if (accessToken) {
@@ -1027,37 +1022,37 @@ export function SquadOpsPage({
     } catch {
       setAlertProtocols((current) => current);
     }
-  }, [canAccessSquadOps, profileStatus, squadOpsAccessToken]);
+  }, [canAccessZeus, profileStatus, zeusAccessToken]);
 
   useEffect(() => {
     void loadAlertProtocols();
   }, [loadAlertProtocols]);
 
   const loadItTicketSummary = useCallback(async () => {
-    if (!canAccessSquadOps || profileStatus === "loading") {
+    if (!canAccessZeus || profileStatus === "loading") {
       return;
     }
 
     try {
       const tickets = await loadHubItTickets({
-        accessToken: squadOpsAccessToken,
+        accessToken: zeusAccessToken,
         scope: "all",
       });
 
       setItTicketCount(countOpenItTickets(tickets));
-      setItTicketAttentionCount(countItTicketsWaitingForSquadOps(tickets));
+      setItTicketAttentionCount(countItTicketsWaitingForZeus(tickets));
     } catch {
       setItTicketCount((current) => current);
       setItTicketAttentionCount((current) => current);
     }
-  }, [canAccessSquadOps, profileStatus, squadOpsAccessToken]);
+  }, [canAccessZeus, profileStatus, zeusAccessToken]);
 
   useEffect(() => {
     void loadItTicketSummary();
   }, [loadItTicketSummary]);
 
   useEffect(() => {
-    if (!canAccessSquadOps || profileStatus === "loading") {
+    if (!canAccessZeus || profileStatus === "loading") {
       return undefined;
     }
 
@@ -1066,7 +1061,7 @@ export function SquadOpsPage({
     }, 60_000);
 
     return () => window.clearInterval(intervalId);
-  }, [canAccessSquadOps, loadItTicketSummary, profileStatus]);
+  }, [canAccessZeus, loadItTicketSummary, profileStatus]);
 
   const registerWatcherDecision = useCallback(
     (decision: OpsWatcherDecision) => {
@@ -1092,7 +1087,7 @@ export function SquadOpsPage({
 
   const runOpsWatcher = useCallback(
     async (snapshot: OperationsMonitoringSnapshot) => {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1127,12 +1122,12 @@ export function SquadOpsPage({
 
       registerWatcherDecision(payload.watcher);
     },
-    [registerWatcherDecision, squadOpsAccessToken],
+    [registerWatcherDecision, zeusAccessToken],
   );
 
   const loadMonitoringSnapshot = useCallback(
     async ({ analyze = false }: { analyze?: boolean } = {}) => {
-      if (!canAccessSquadOps || profileStatus === "loading") {
+      if (!canAccessZeus || profileStatus === "loading") {
         return;
       }
 
@@ -1140,7 +1135,7 @@ export function SquadOpsPage({
       setMonitoringError(null);
 
       try {
-        const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+        const accessToken = await getZeusAccessToken(zeusAccessToken);
         const headers: Record<string, string> = {};
 
         if (accessToken) {
@@ -1190,20 +1185,20 @@ export function SquadOpsPage({
         setIsMonitoringLoading(false);
       }
     },
-    [canAccessSquadOps, profileStatus, runOpsWatcher, squadOpsAccessToken],
+    [canAccessZeus, profileStatus, runOpsWatcher, zeusAccessToken],
   );
 
   useEffect(() => {
-    if (!canAccessSquadOps || profileStatus === "loading") {
+    if (!canAccessZeus || profileStatus === "loading") {
       return;
     }
 
     void loadMonitoringSnapshot({ analyze: true });
-  }, [canAccessSquadOps, loadMonitoringSnapshot, profileStatus]);
+  }, [canAccessZeus, loadMonitoringSnapshot, profileStatus]);
 
   useEffect(() => {
     if (
-      !canAccessSquadOps ||
+      !canAccessZeus ||
       profileStatus === "loading" ||
       monitoringIntervalMs === 0
     ) {
@@ -1216,7 +1211,7 @@ export function SquadOpsPage({
 
     return () => window.clearInterval(interval);
   }, [
-    canAccessSquadOps,
+    canAccessZeus,
     loadMonitoringSnapshot,
     monitoringIntervalMs,
     profileStatus,
@@ -1261,26 +1256,26 @@ export function SquadOpsPage({
     criticalRecords[0]?.nextSquad ??
     releaseRecords[0]?.nextSquad ??
     latestRecord?.nextSquad ??
-    "Hub ReleaseOps";
+    "Hefesto";
   const selectedPromptTemplate =
     promptTemplates.find(
       (template) => template.id === selectedPromptTemplateId,
     ) ?? promptTemplates[0]!;
 
-  if (profileStatus === "loading" && !canAccessSquadOps) {
+  if (profileStatus === "loading" && !canAccessZeus) {
     return (
-      <SquadOpsAccessState
+      <ZeusAccessState
         description="Carregando perfil operacional para validar permissao adm."
         standalone={standalone}
-        title="Preparando SquadOps"
+        title="Preparando Zeus"
       />
     );
   }
 
-  if (!canAccessSquadOps) {
+  if (!canAccessZeus) {
     return (
-      <SquadOpsAccessState
-        description="SquadOps e o Operations Center da engenharia IA e fica liberado somente para perfil adm."
+      <ZeusAccessState
+        description="Zeus e o Operations Center da engenharia IA e fica liberado somente para perfil adm."
         standalone={standalone}
         title="Acesso restrito"
       />
@@ -1304,7 +1299,7 @@ export function SquadOpsPage({
     setCopilotError(null);
 
     try {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1313,7 +1308,7 @@ export function SquadOpsPage({
         headers.Authorization = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch("/api/squadops/copilot", {
+      const response = await fetch("/api/zeus/copilot", {
         body: JSON.stringify({
           messages: nextMessages.map(({ content, role }) => ({
             content,
@@ -1465,7 +1460,7 @@ export function SquadOpsPage({
     setAlertFeedbackError(null);
 
     try {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1512,7 +1507,7 @@ export function SquadOpsPage({
     setAcknowledgingProtocol(protocolCode);
 
     try {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1564,7 +1559,7 @@ export function SquadOpsPage({
     setIgnoringProtocol(protocolCode);
 
     try {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1619,14 +1614,14 @@ export function SquadOpsPage({
     setError(null);
 
     try {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {};
 
       if (accessToken) {
         headers.Authorization = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch("/api/squadops/operations/structured", {
+      const response = await fetch("/api/zeus/operations/structured", {
         cache: "no-store",
         headers,
         method: "POST",
@@ -1674,7 +1669,7 @@ export function SquadOpsPage({
 
     try {
       const content = await file.text();
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1683,7 +1678,7 @@ export function SquadOpsPage({
         headers.Authorization = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch("/api/squadops/operations/structured", {
+      const response = await fetch("/api/zeus/operations/structured", {
         body: JSON.stringify({
           action: "sync-markdown-content",
           content,
@@ -1732,7 +1727,7 @@ export function SquadOpsPage({
     setOperationRecordFormError(null);
 
     try {
-      const accessToken = await getSquadOpsAccessToken(squadOpsAccessToken);
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1741,7 +1736,7 @@ export function SquadOpsPage({
         headers.Authorization = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch("/api/squadops/operations/structured", {
+      const response = await fetch("/api/zeus/operations/structured", {
         body: JSON.stringify({
           action: "create-record",
           record: operationRecordForm,
@@ -1818,7 +1813,7 @@ export function SquadOpsPage({
                   aria-hidden="true"
                   className="size-4 text-[#A07C3B]"
                 />
-                Módulos do Hub
+                Módulos do Panteon
               </button>
               ) : null}
               <Badge variant="warning">AGUARDANDO RELEASEOPS</Badge>
@@ -1859,7 +1854,7 @@ export function SquadOpsPage({
           </Surface>
         ) : null}
 
-        <SquadOpsCommandCenter
+        <ZeusCommandCenter
           actionCount={actionCount}
           isLoading={isLoading}
           latestRecord={latestRecord}
@@ -1873,7 +1868,7 @@ export function SquadOpsPage({
           onOpenMonitoring={() => setActiveView("monitoring")}
         />
 
-        <SquadOpsViewTabs
+        <ZeusViewTabs
           activeView={activeView}
           actionCount={actionCount}
           deployCount={allReleaseRecords.length}
@@ -1887,7 +1882,7 @@ export function SquadOpsPage({
 
         {activeView === "itTickets" ? (
           <HubItTicketsBoard
-            accessToken={squadOpsAccessToken}
+            accessToken={zeusAccessToken}
             isActive={activeView === "itTickets"}
             onTicketAttentionCountChange={setItTicketAttentionCount}
             onTicketCountChange={setItTicketCount}
@@ -1924,7 +1919,7 @@ export function SquadOpsPage({
                 icon={<Search size={18} />}
                 onSelectRecord={setSelectedRecord}
                 records={supportInvestigations}
-                title="Investigações SupportOps"
+                title="Investigações Zeus"
               />
               <OperationalList
                 icon={<Sparkles size={18} />}
@@ -1971,7 +1966,7 @@ export function SquadOpsPage({
               onChange={setFilters}
             />
             <DeployProtocolsView
-              accessToken={squadOpsAccessToken}
+              accessToken={zeusAccessToken}
               copiedCommandId={copiedCommandId}
               filters={filters}
               onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
@@ -2040,7 +2035,7 @@ export function SquadOpsPage({
                   icon={<Search size={18} />}
                   onSelectRecord={setSelectedRecord}
                   records={supportInvestigations}
-                  title="Investigações SupportOps"
+                  title="Investigações Zeus"
                 />
                 <OperationalList
                   icon={<ClipboardCheck size={18} />}
@@ -2295,7 +2290,7 @@ function AlertProtocolFeedbackDrawer({
   );
 }
 
-function SquadOpsAccessState({
+function ZeusAccessState({
   description,
   standalone = false,
   title,
@@ -2331,7 +2326,7 @@ function SquadOpsAccessState({
   return <HubShell layoutMode="module">{content}</HubShell>;
 }
 
-function canAccessSquadOpsAsAdmin(user: HubUserContext | null) {
+function canAccessZeusAsAdmin(user: HubUserContext | null) {
   return (
     user?.role === "admin" || user?.operationalProfile?.profileRole === "adm"
   );
@@ -2545,7 +2540,7 @@ function OperationRecordModal({
             <input
               className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
               onChange={(event) => onChange("subject", event.target.value)}
-              placeholder="Ex.: [SquadOps] Registro vivo no banco"
+              placeholder="Ex.: [Zeus] Registro vivo no banco"
               value={form.subject}
             />
           </label>
@@ -2634,7 +2629,7 @@ function OperationRecordModal({
               onChange={(event) => onChange("needsDeploy", event.target.checked)}
               type="checkbox"
             />
-            Precisa entrar na fila de ReleaseOps/deploy
+            Precisa entrar na fila de Hefesto/deploy
           </label>
 
           {error ? (
@@ -2723,7 +2718,7 @@ function TextAreaField({
   );
 }
 
-function SquadOpsCommandCenter({
+function ZeusCommandCenter({
   actionCount,
   isLoading,
   latestRecord,
@@ -2761,7 +2756,7 @@ function SquadOpsCommandCenter({
                 centro operacional
               </p>
               <h2 className="m-0 mt-1 text-xl font-semibold tracking-normal text-slate-950">
-                Operacao do Hub em tempo real
+                Operacao do Panteon em tempo real
               </h2>
               <p className="m-0 mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                 Alertas, historico, releases e pendencias organizados para
@@ -2794,7 +2789,7 @@ function SquadOpsCommandCenter({
             />
             <FocusMetric
               icon={<GitCommitHorizontal size={17} />}
-              label="releaseops"
+              label="hefesto"
               value={metrics?.waitingReleaseOps ?? (isLoading ? "..." : 0)}
               detail="entregas aguardando publicação"
             />
@@ -4468,7 +4463,7 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
                         {group.highestRisk}
                       </Badge>
                       <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                        Status Hub:{" "}
+                        Status Panteon:{" "}
                         {generalStatusLabel(
                           riskToGeneralStatus(group.highestRisk),
                         )}
@@ -4760,8 +4755,8 @@ function getMonitoringSourceMeta(sourceId: string) {
 
   if (sourceId === "guardian-queue") {
     return {
-      description: "Fila operacional segura do Guardian.",
-      label: "Guardian Queue",
+      description: "Fila operacional segura do Hades.",
+      label: "Hades Queue",
     };
   }
 
@@ -4819,7 +4814,7 @@ function getMonitoringSourceOrder(sourceId: string) {
   return monitoringSourceOrder.length;
 }
 
-function SquadOpsViewTabs({
+function ZeusViewTabs({
   activeView,
   actionCount,
   deployCount,
@@ -4830,14 +4825,14 @@ function SquadOpsViewTabs({
   onChange,
   routineCount,
 }: {
-  activeView: SquadOpsView;
+  activeView: ZeusView;
   actionCount: number;
   deployCount: number;
   filteredCount: number;
   itTicketAttentionCount: number;
   itTicketCount: number;
   monitoringAlertCount: number;
-  onChange: (view: SquadOpsView) => void;
+  onChange: (view: ZeusView) => void;
   routineCount: number;
 }) {
   const counters = {
@@ -4848,14 +4843,14 @@ function SquadOpsViewTabs({
     overview: actionCount,
     records: filteredCount,
     timeline: filteredCount,
-  } as const satisfies Record<SquadOpsView, number>;
+  } as const satisfies Record<ZeusView, number>;
 
   return (
     <nav
-      aria-label="Visões do SquadOps"
+      aria-label="Visões do Zeus"
       className="flex w-full flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
-      {squadOpsViews.map((view) => {
+      {zeusViews.map((view) => {
         const isActive = activeView === view.id;
         const hasNewTickets =
           view.id === "itTickets" && itTicketAttentionCount > 0;
@@ -4870,7 +4865,7 @@ function SquadOpsViewTabs({
             ? "bg-[#A07C3B]/15 text-[#7A5E2C]"
             : "bg-slate-100 text-slate-500";
         const tabTooltip = hasNewTickets
-          ? `${itTicketAttentionCount} ticket(s) novo(s) aguardando SquadOps`
+          ? `${itTicketAttentionCount} ticket(s) novo(s) aguardando Zeus`
           : view.label;
 
         return (
@@ -4949,14 +4944,14 @@ function DeployProtocolsView({
       setHomologationReviewError(null);
 
       try {
-        const currentAccessToken = await getSquadOpsAccessToken(accessToken);
+        const currentAccessToken = await getZeusAccessToken(accessToken);
         const headers: Record<string, string> = {};
 
         if (currentAccessToken) {
           headers.Authorization = `Bearer ${currentAccessToken}`;
         }
 
-        const response = await fetch("/api/squadops/homologation-reviews", {
+        const response = await fetch("/api/zeus/homologation-reviews", {
           cache: "no-store",
           headers,
         });
@@ -5031,7 +5026,7 @@ function DeployProtocolsView({
     review: HomologationItemReview,
   ) {
     try {
-      const currentAccessToken = await getSquadOpsAccessToken(accessToken);
+      const currentAccessToken = await getZeusAccessToken(accessToken);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -5040,7 +5035,7 @@ function DeployProtocolsView({
         headers.Authorization = `Bearer ${currentAccessToken}`;
       }
 
-      const response = await fetch("/api/squadops/homologation-reviews", {
+      const response = await fetch("/api/zeus/homologation-reviews", {
         body: JSON.stringify({
           itemKind: item.kind,
           itemProtocol: item.protocol,
@@ -5273,8 +5268,8 @@ function HomologationOperationsPanel({
             title="Em Homologacao"
           />
           <p className="m-0 mt-3 max-w-4xl text-sm leading-6 text-slate-600">
-            Valide cada protocolo publicado em homologacao. No final, a Caca
-            gera o prompt para Hub ReleaseOps publicar somente os itens
+            Valide cada protocolo publicado em homologacao. No final, a Athena
+            gera o prompt para Hefesto publicar somente os itens
             aprovados; reprovados ou bloqueados ficam fora do recorte de
             producao.
           </p>
@@ -5430,8 +5425,8 @@ function HomologationReleaseCard({
         <p className="m-0 text-xs leading-5 text-slate-600">
           {summary.canGeneratePrompt
             ? summary.isPartial
-              ? "Homologacao parcial concluida. A Caca gera o prompt levando somente os aprovados para producao."
-              : "Homologacao concluida. A Caca ja pode gerar o prompt para producao."
+              ? "Homologacao parcial concluida. A Athena gera o prompt levando somente os aprovados para producao."
+              : "Homologacao concluida. A Athena ja pode gerar o prompt para producao."
             : summary.approved === 0
               ? "Aprove pelo menos um item para liberar o prompt final."
               : "Ainda existem itens aguardando teste ou em teste."}
@@ -6268,7 +6263,7 @@ function PoAiChannelPanel({
     >
       <div className="border-b border-slate-100 p-5">
         <PanelTitle
-          eyebrow="Cérebro do Hub"
+          eyebrow="Cérebro do Panteon"
           icon={<Bot size={18} />}
           title="PO AI"
         />
@@ -6280,7 +6275,7 @@ function PoAiChannelPanel({
             diário = histórico
           </span>
           <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-100">
-            código do Hub
+            código do Panteon
           </span>
           <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
             sem execução automática
@@ -6299,7 +6294,7 @@ function PoAiChannelPanel({
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin text-[#A07C3B]" />
                   PO AI consultando monitoramento real, histórico e código do
-                  Hub
+                  Panteon
                 </span>
               </div>
             </div>
@@ -6381,12 +6376,12 @@ function PoAiChannelPanel({
             <button
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
               onClick={() =>
-                onQuestionChange("O que precisa ir para ReleaseOps?")
+                onQuestionChange("O que precisa ir para Hefesto?")
               }
               type="button"
             >
               <Rocket className="size-4 text-[#A07C3B]" />
-              ReleaseOps
+              Hefesto
             </button>
           </div>
 
@@ -6855,30 +6850,30 @@ function detectCopilotModuleTitle(text: string) {
     normalizedText.includes("producao") ||
     normalizedText.includes("deploy")
   ) {
-    return "ReleaseOps / Engineering Operations";
+    return "Hefesto / Engineering Operations";
   }
 
   if (
     normalizedText.includes("hubops") ||
     normalizedText.includes("squadops")
   ) {
-    return "SquadOps";
+    return "Zeus";
   }
 
   if (normalizedText.includes("supportops")) {
-    return "Hub SupportOps";
+    return "Zeus";
   }
 
   if (normalizedText.includes("guardian")) {
-    return "Guardian";
+    return "Hades";
   }
 
   if (normalizedText.includes("pulsex")) {
-    return "PulseX";
+    return "Hermes";
   }
 
   if (normalizedText.includes("caredesk")) {
-    return "CareDesk";
+    return "Iris";
   }
 
   if (normalizedText.includes("setup")) {
@@ -6902,7 +6897,7 @@ function extractCopilotTitle(line: string) {
   }
 
   const numberedModule = line.match(
-    /^(?:\d+\.\s+)?((?:Guardian|CareDesk|PulseX|SquadOps|ReleaseOps|SupportOps|Setup|Engineering Operations)[\w\s/.-]*)$/i,
+    /^(?:\d+\.\s+)?((?:Hades|Iris|Hermes|Zeus|Hefesto|ReleaseOps|SupportOps|Setup|Engineering Operations)[\w\s/.-]*)$/i,
   );
 
   if (numberedModule?.[1]) {
@@ -7776,10 +7771,10 @@ function buildProductionReleasePrompt(
 
   return [
     "Assunto:",
-    `[ReleaseOps] Publicar producao por ${productionMode} do ${releaseProtocol.protocol}`,
+    `[Hefesto] Publicar producao por ${productionMode} do ${releaseProtocol.protocol}`,
     "",
     "Contexto:",
-    `Caca gerou este prompt a partir da homologacao operacional validada pelo Lucas no SquadOps.`,
+    `Athena gerou este prompt a partir da homologacao operacional validada pelo Lucas no Zeus.`,
     `Deploy homologado: ${releaseProtocol.protocol}.`,
     `Titulo: ${releaseProtocol.title}.`,
     `Ambiente homologado: ${getReleaseProtocolEnvironmentLabel(releaseProtocol.environment)}.`,
@@ -7998,7 +7993,7 @@ async function fetchStructuredOperationsSnapshot(
   headers: Record<string, string>,
 ): Promise<StructuredOperationsFetchResult> {
   const response = await fetch(
-    "/api/squadops/operations/structured?limit=500",
+    "/api/zeus/operations/structured?limit=500",
     {
       cache: "no-store",
       headers,
@@ -8121,7 +8116,7 @@ function mapStructuredApiRecordToRecord(
     sourceIndex: record.sourceIndex,
     squad: normalizeStructuredText(record.squad),
     status,
-    subject: normalizeSquadOpsNaming(normalizeStructuredText(record.subject)),
+    subject: normalizeZeusNaming(normalizeStructuredText(record.subject)),
     type,
     validation: normalizeStructuredText(record.validation),
   };
@@ -8174,15 +8169,15 @@ function buildStructuredAuditRoutines(
       frequency: "Diaria",
       id: "daily-audit",
       name: "Auditoria diaria",
-      responsible: "Hub ReleaseOps",
+      responsible: "Hefesto",
       script:
-        "Revisar registros das ultimas 24h, status abertos, pendencias criticas e handoffs para ReleaseOps.",
+        "Revisar registros das ultimas 24h, status abertos, pendencias criticas e handoffs para Hefesto.",
     },
     {
       frequency: "Semanal",
       id: "weekly-audit",
       name: "Auditoria semanal",
-      responsible: "Hub ReleaseOps",
+      responsible: "Hefesto",
       script:
         "Consolidar releases da semana, modulos com maior risco, bugs recorrentes e prioridades.",
     },
@@ -8190,7 +8185,7 @@ function buildStructuredAuditRoutines(
       frequency: "Mensal",
       id: "monthly-audit",
       name: "Auditoria mensal",
-      responsible: "Hub ReleaseOps",
+      responsible: "Hefesto",
       script:
         "Revisar evolucao mensal, saude dos modulos, riscos estruturais e qualidade das releases.",
     },
@@ -8198,7 +8193,7 @@ function buildStructuredAuditRoutines(
       frequency: "Diaria",
       id: "operational-healthcheck",
       name: "Healthcheck operacional",
-      responsible: "Hub ReleaseOps",
+      responsible: "Hefesto",
       script:
         "Checar rotas principais, APIs protegidas, Supabase, Vercel e logs criticos.",
     },
@@ -8206,7 +8201,7 @@ function buildStructuredAuditRoutines(
       frequency: "Por release",
       id: "deploy-audit",
       name: "Auditoria de deploy",
-      responsible: "Hub ReleaseOps",
+      responsible: "Hefesto",
       script:
         "Confirmar commit, deploy, ambiente, healthchecks, logs e status final da release.",
     },
@@ -8214,7 +8209,7 @@ function buildStructuredAuditRoutines(
       frequency: "Sob demanda",
       id: "bugs-bottlenecks-audit",
       name: "Auditoria de bugs/gargalos",
-      responsible: "Hub SupportOps",
+      responsible: "Zeus",
       script:
         "Separar evidencia de hipotese, revisar logs, APIs instaveis e gargalos.",
     },
@@ -8222,7 +8217,7 @@ function buildStructuredAuditRoutines(
       frequency: "Diaria",
       id: "critical-pending-audit",
       name: "Auditoria de pendencias criticas",
-      responsible: "Hub ReleaseOps",
+      responsible: "Hefesto",
       script:
         "Consolidar riscos conhecidos, status criticos, pendencias e rotinas vencidas.",
     },
@@ -8301,11 +8296,11 @@ function normalizeStructuredText(value: string | null | undefined) {
 }
 
 function normalizeModuleAlias(moduleName: string) {
-  return normalizeSearchText(moduleName) === "hubops" ? "SquadOps" : moduleName;
+  return normalizeSearchText(moduleName) === "hubops" ? "Zeus" : moduleName;
 }
 
-function normalizeSquadOpsNaming(value: string) {
-  return value.replace(/\bHubOps\b/g, "SquadOps");
+function normalizeZeusNaming(value: string) {
+  return value.replace(/\bHubOps\b/g, "Zeus");
 }
 
 function isKnownOperationValue(value: string) {
@@ -8971,7 +8966,7 @@ function formatOperationDateTime(value: string) {
   ].join(" ");
 }
 
-async function getSquadOpsAccessToken(fallback?: string | null) {
+async function getZeusAccessToken(fallback?: string | null) {
   if (fallback) {
     return fallback;
   }
@@ -8992,10 +8987,10 @@ async function getSquadOpsAccessToken(fallback?: string | null) {
     }
   }
 
-  return getCachedSquadOpsAccessTokenFromStorage();
+  return getCahedZeusAccessTokenFromStorage();
 }
 
-function getCachedSquadOpsAccessTokenFromStorage() {
+function getCahedZeusAccessTokenFromStorage() {
   if (typeof window === "undefined") {
     return null;
   }
@@ -9030,7 +9025,7 @@ function getCachedSquadOpsAccessTokenFromStorage() {
     }
 
     try {
-      const token = extractSquadOpsAccessToken(JSON.parse(rawValue) as unknown);
+      const token = extractZeusAccessToken(JSON.parse(rawValue) as unknown);
 
       if (token) {
         return token;
@@ -9065,7 +9060,7 @@ function isLocalRuntime() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
-function extractSquadOpsAccessToken(input: unknown): string | null {
+function extractZeusAccessToken(input: unknown): string | null {
   if (!input || typeof input !== "object") {
     return null;
   }
@@ -9090,9 +9085,9 @@ function extractSquadOpsAccessToken(input: unknown): string | null {
   }
 
   return (
-    extractSquadOpsAccessToken(maybeSession.currentSession) ??
-    extractSquadOpsAccessToken(maybeSession.session) ??
-    extractSquadOpsAccessToken(maybeSession.data)
+    extractZeusAccessToken(maybeSession.currentSession) ??
+    extractZeusAccessToken(maybeSession.session) ??
+    extractZeusAccessToken(maybeSession.data)
   );
 }
 
@@ -9120,8 +9115,8 @@ function countOpenItTickets(tickets: readonly HubItTicket[]) {
   return tickets.filter((ticket) => isOpenItTicket(ticket)).length;
 }
 
-function countItTicketsWaitingForSquadOps(tickets: readonly HubItTicket[]) {
-  return tickets.filter((ticket) => isItTicketWaitingForSquadOps(ticket))
+function countItTicketsWaitingForZeus(tickets: readonly HubItTicket[]) {
+  return tickets.filter((ticket) => isItTicketWaitingForZeus(ticket))
     .length;
 }
 
@@ -9129,7 +9124,7 @@ function isOpenItTicket(ticket: HubItTicket) {
   return ticket.status !== "resolvido" && ticket.status !== "fechado";
 }
 
-function isItTicketWaitingForSquadOps(ticket: HubItTicket) {
+function isItTicketWaitingForZeus(ticket: HubItTicket) {
   return ticket.status === "novo" || ticket.status === "em_revisao";
 }
 

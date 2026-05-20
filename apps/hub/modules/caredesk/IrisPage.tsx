@@ -18,6 +18,7 @@ import {
   Headphones,
   Inbox,
   LayoutDashboard,
+  LayoutGrid,
   LockKeyhole,
   Megaphone,
   MessageCircle,
@@ -44,24 +45,25 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
+import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
-type CareDeskPageProps = {
+type IrisPageProps = {
   embedded?: boolean;
-  initialTickets?: CareDeskTicket[];
+  initialTickets?: IrisTicket[];
   loadFromSupabase?: boolean;
 };
 
-type CareDeskView =
+type IrisView =
   | "gestao"
   | "atendimento"
   | "disparos"
   | "setup"
   | "relatorios";
 
-type CareDeskTone = "gold" | "green" | "red" | "blue" | "neutral";
-type CareDeskPriority = "low" | "medium" | "high" | "critical";
-type CareDeskStatus =
+type IrisTone = "gold" | "green" | "red" | "blue" | "neutral";
+type IrisPriority = "low" | "medium" | "high" | "critical";
+type IrisStatus =
   | "new"
   | "open"
   | "waiting_customer"
@@ -71,7 +73,7 @@ type CareDeskStatus =
   | "closed"
   | "cancelled";
 
-type CareDeskMessage = {
+type IrisMessage = {
   body: string;
   createdAt: string;
   deliveryStatus: string;
@@ -80,7 +82,7 @@ type CareDeskMessage = {
   senderType: "customer" | "operator" | "agent" | "system";
 };
 
-type CareDeskTicket = {
+type IrisTicket = {
   assignedToLabel: string;
   channelId?: string | null;
   channelLabel: string;
@@ -95,24 +97,24 @@ type CareDeskTicket = {
   id: string;
   lastMessageAt?: string | null;
   lastMessagePreview: string;
-  messages: CareDeskMessage[];
+  messages: IrisMessage[];
   openedAt: string;
-  priority: CareDeskPriority;
+  priority: IrisPriority;
   profileLabel: string;
   protocol: string;
   queueLabel: string;
   queueSlug?: string | null;
   resolutionDueAt?: string | null;
   sourceLabel: string;
-  status: CareDeskStatus;
+  status: IrisStatus;
   subject: string;
   unread: boolean;
 };
 
-type CareDeskQueueConfig = {
+type IrisQueueConfig = {
   assignmentStrategy: string;
   color: string;
-  defaultPriority: CareDeskPriority;
+  defaultPriority: IrisPriority;
   id: string;
   name: string;
   routingStrategy: string;
@@ -122,12 +124,12 @@ type CareDeskQueueConfig = {
   status: string;
 };
 
-type CareDeskTicketProfileConfig = {
+type IrisTicketProfileConfig = {
   category: string;
   description?: string | null;
   id: string;
   name: string;
-  priority: CareDeskPriority;
+  priority: IrisPriority;
   queueId?: string | null;
   queueLabel: string;
   requiredFields: string[];
@@ -137,7 +139,7 @@ type CareDeskTicketProfileConfig = {
   status: string;
 };
 
-type CareDeskTemplate = {
+type IrisTemplate = {
   category: string;
   channelKind: string;
   id: string;
@@ -146,23 +148,23 @@ type CareDeskTemplate = {
   status: string;
 };
 
-type CareDeskBroadcast = {
+type IrisBroadcast = {
   id: string;
   name: string;
   scheduledAt?: string | null;
   status: string;
 };
 
-type CareDeskData = {
-  broadcasts: CareDeskBroadcast[];
+type IrisData = {
+  broadcasts: IrisBroadcast[];
   channels: Array<{ id: string; kind: string; name: string; status: string }>;
-  profiles: CareDeskTicketProfileConfig[];
-  queues: CareDeskQueueConfig[];
-  templates: CareDeskTemplate[];
-  tickets: CareDeskTicket[];
+  profiles: IrisTicketProfileConfig[];
+  queues: IrisQueueConfig[];
+  templates: IrisTemplate[];
+  tickets: IrisTicket[];
 };
 
-const emptyCareDeskData: CareDeskData = {
+const emptyIrisData: IrisData = {
   broadcasts: [],
   channels: [],
   profiles: [],
@@ -170,10 +172,10 @@ const emptyCareDeskData: CareDeskData = {
   templates: [],
   tickets: [],
 };
-const emptyCareDeskTickets: CareDeskTicket[] = [];
+const emptyIrisTickets: IrisTicket[] = [];
 
 const navigationItems: Array<{
-  id: CareDeskView;
+  id: IrisView;
   label: string;
   icon: typeof LayoutDashboard;
 }> = [
@@ -183,7 +185,7 @@ const navigationItems: Array<{
   { id: "relatorios", label: "Relatorios", icon: BarChart3 },
 ];
 
-const statusLabel: Record<CareDeskStatus, string> = {
+const statusLabel: Record<IrisStatus, string> = {
   cancelled: "Cancelado",
   closed: "Fechado",
   new: "Novo",
@@ -194,13 +196,13 @@ const statusLabel: Record<CareDeskStatus, string> = {
   waiting_operator: "Aguardando operador",
 };
 
-const priorityLabel: Record<CareDeskPriority, string> = {
+const priorityLabel: Record<IrisPriority, string> = {
   critical: "Critica",
   high: "Alta",
   low: "Baixa",
   medium: "Media",
 };
-const priorityOptions: CareDeskPriority[] = [
+const priorityOptions: IrisPriority[] = [
   "low",
   "medium",
   "high",
@@ -214,26 +216,26 @@ const setupStatusLabel: Record<string, string> = {
   planned: "Planejado",
 };
 
-export function CareDeskPage({
+export function IrisPage({
   embedded = false,
-  initialTickets = emptyCareDeskTickets,
+  initialTickets = emptyIrisTickets,
   loadFromSupabase = true,
-}: CareDeskPageProps) {
-  const [careDeskData, setCareDeskData] = useState<CareDeskData>({
-    ...emptyCareDeskData,
+}: IrisPageProps) {
+  const [irisData, setIrisData] = useState<IrisData>({
+    ...emptyIrisData,
     tickets: initialTickets,
   });
   const [selectedTicketId, setSelectedTicketId] = useState<string>(
     initialTickets[0]?.id ?? "",
   );
-  const [activeView, setActiveView] = useState<CareDeskView>("gestao");
+  const [activeView, setActiveView] = useState<IrisView>("gestao");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(loadFromSupabase);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loadFromSupabase) {
-      setCareDeskData((current) => ({
+      setIrisData((current) => ({
         ...current,
         tickets: initialTickets,
       }));
@@ -243,26 +245,26 @@ export function CareDeskPage({
 
     let active = true;
 
-    async function loadCareDesk() {
+    async function loadIris() {
       setLoading(true);
       setLoadError(null);
 
       try {
-        const nextData = await loadCareDeskData();
+        const nextData = await loadIrisData();
 
         if (!active) {
           return;
         }
 
-        setCareDeskData(nextData);
+        setIrisData(nextData);
         setSelectedTicketId(
           (current) => current || nextData.tickets[0]?.id || "",
         );
       } catch (error) {
         console.error("[caredesk] nao foi possivel carregar a operacao", error);
         if (active) {
-          setCareDeskData(emptyCareDeskData);
-          setLoadError("Nao foi possivel carregar a operacao do CareDesk.");
+          setIrisData(emptyIrisData);
+          setLoadError("Nao foi possivel carregar a operacao do Iris.");
         }
       } finally {
         if (active) {
@@ -271,7 +273,7 @@ export function CareDeskPage({
       }
     }
 
-    void loadCareDesk();
+    void loadIris();
 
     return () => {
       active = false;
@@ -280,15 +282,15 @@ export function CareDeskPage({
 
   const selectedTicket = useMemo(() => {
     return (
-      careDeskData.tickets.find((ticket) => ticket.id === selectedTicketId) ??
-      careDeskData.tickets[0] ??
+      irisData.tickets.find((ticket) => ticket.id === selectedTicketId) ??
+      irisData.tickets[0] ??
       null
     );
-  }, [careDeskData.tickets, selectedTicketId]);
+  }, [irisData.tickets, selectedTicketId]);
 
   const snapshot = useMemo(
-    () => buildCareDeskSnapshot(careDeskData),
-    [careDeskData],
+    () => buildIrisSnapshot(irisData),
+    [irisData],
   );
 
   function openAttendance(ticketId?: string) {
@@ -300,8 +302,8 @@ export function CareDeskPage({
     setActiveView("atendimento");
   }
 
-  function handleLocalMessage(ticketId: string, message: CareDeskMessage) {
-    setCareDeskData((current) => ({
+  function handleLocalMessage(ticketId: string, message: IrisMessage) {
+    setIrisData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
         ticket.id === ticketId
@@ -317,11 +319,15 @@ export function CareDeskPage({
     }));
   }
 
-  function handleProfilesChanged(profiles: CareDeskTicketProfileConfig[]) {
-    setCareDeskData((current) => ({
+  function handleProfilesChanged(profiles: IrisTicketProfileConfig[]) {
+    setIrisData((current) => ({
       ...current,
       profiles,
     }));
+  }
+
+  function handleOpenModuleLauncher() {
+    window.dispatchEvent(new Event("careli:toggle-module-launcher"));
   }
 
   return (
@@ -336,59 +342,86 @@ export function CareDeskPage({
           "grid min-h-[calc(100vh-72px)] transition-[grid-template-columns] duration-200",
           sidebarCollapsed
             ? "grid-cols-[72px_minmax(0,1fr)]"
-            : "grid-cols-[248px_minmax(0,1fr)]",
+            : "grid-cols-[240px_minmax(0,1fr)]",
         ].join(" ")}
       >
         <aside
           className={[
-            "relative flex min-h-full flex-col border-r border-white/10 bg-[#30303d] py-4 text-white transition-all duration-200",
+            "panteon-module-sidebar relative flex min-h-full flex-col border-r py-4 text-[#ECECF1] transition-all duration-200",
             sidebarCollapsed ? "px-3" : "px-4",
           ].join(" ")}
         >
           <div
             className={[
-              "mb-5 flex items-center gap-3 px-2",
-              sidebarCollapsed ? "flex-col justify-center px-0" : "",
+              "panteon-module-sidebar__top mb-4",
+              sidebarCollapsed ? "-mx-3 px-3" : "-mx-4 px-4",
             ].join(" ")}
           >
-            <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-[#A07C3B] text-white shadow-sm">
-              <Headphones className="h-5 w-5" />
-              <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-[#30303d] bg-emerald-400" />
-            </div>
-            {!sidebarCollapsed ? (
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#c5a263]">
-                  CareDesk
-                </p>
+            {sidebarCollapsed ? (
+              <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
+                <span className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8]">
+                  <Headphones className="h-4 w-4" />
+                </span>
+                <Tooltip content="Abrir sidebar do Panteon" placement="right">
+                  <button
+                    type="button"
+                    onClick={handleOpenModuleLauncher}
+                    aria-label="Abrir sidebar do Panteon"
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                  >
+                    <LayoutGrid aria-hidden="true" size={15} />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Expandir sidebar" placement="right">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarCollapsed((current) => !current)}
+                    aria-label="Expandir sidebar"
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                  >
+                    <PanelLeftOpen aria-hidden="true" size={16} />
+                  </button>
+                </Tooltip>
               </div>
-            ) : null}
-            <Tooltip
-              content={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-              placement="right"
-            >
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed((current) => !current)}
-                aria-label={
-                  sidebarCollapsed ? "Expandir menu" : "Recolher menu"
-                }
-                className={[
-                  "grid h-8 w-8 place-items-center rounded-md border border-white/10 text-[var(--uix-text-muted)] outline-none transition hover:bg-white/[0.08] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]",
-                  sidebarCollapsed ? "" : "ml-auto",
-                ].join(" ")}
-              >
-                {sidebarCollapsed ? (
-                  <PanelLeftOpen aria-hidden="true" size={16} />
-                ) : (
-                  <PanelLeftClose aria-hidden="true" size={16} />
-                )}
-              </button>
-            </Tooltip>
+            ) : (
+              <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
+                <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+                    <Headphones className="h-4 w-4" />
+                  </span>
+                  <span className="grid min-w-0 gap-0.5">
+                    <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+                      Iris
+                    </span>
+                  </span>
+                </div>
+                <Tooltip content="Abrir sidebar do Panteon" placement="right">
+                  <button
+                    type="button"
+                    onClick={handleOpenModuleLauncher}
+                    aria-label="Abrir sidebar do Panteon"
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                  >
+                    <LayoutGrid aria-hidden="true" size={15} />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Recolher sidebar" placement="right">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarCollapsed((current) => !current)}
+                    aria-label="Recolher sidebar"
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                  >
+                    <PanelLeftClose aria-hidden="true" size={16} />
+                  </button>
+                </Tooltip>
+              </div>
+            )}
           </div>
 
           <nav className="space-y-1">
             {navigationItems.map((item) => (
-              <CareDeskNavButton
+              <IrisNavButton
                 key={item.id}
                 active={activeView === item.id}
                 icon={item.icon}
@@ -431,7 +464,7 @@ export function CareDeskPage({
         </aside>
 
         <main className="min-w-0">
-          <CareDeskTopbar activeView={activeView} snapshot={snapshot} />
+          <IrisTopbar activeView={activeView} snapshot={snapshot} />
 
           <section className="p-4">
             {loadError ? (
@@ -440,7 +473,7 @@ export function CareDeskPage({
               </div>
             ) : activeView === "gestao" ? (
               <ManagementView
-                data={careDeskData}
+                data={irisData}
                 loading={loading}
                 snapshot={snapshot}
                 onOpenAttendance={openAttendance}
@@ -449,22 +482,22 @@ export function CareDeskPage({
             ) : activeView === "atendimento" ? (
               <AttendanceView
                 ticket={selectedTicket}
-                tickets={careDeskData.tickets}
+                tickets={irisData.tickets}
                 selectedTicketId={selectedTicket?.id ?? selectedTicketId}
                 onSelectTicket={setSelectedTicketId}
                 onClose={() => setActiveView("gestao")}
                 onMessageCreated={handleLocalMessage}
               />
             ) : activeView === "disparos" ? (
-              <BroadcastView data={careDeskData} snapshot={snapshot} />
+              <BroadcastView data={irisData} snapshot={snapshot} />
             ) : activeView === "setup" ? (
               <SetupView
-                data={careDeskData}
+                data={irisData}
                 snapshot={snapshot}
                 onProfilesChanged={handleProfilesChanged}
               />
             ) : (
-              <ReportsView data={careDeskData} snapshot={snapshot} />
+              <ReportsView data={irisData} snapshot={snapshot} />
             )}
           </section>
         </main>
@@ -473,14 +506,14 @@ export function CareDeskPage({
   );
 }
 
-function CareDeskTopbar({
+function IrisTopbar({
   activeView,
   snapshot,
 }: {
-  activeView: CareDeskView;
-  snapshot: ReturnType<typeof buildCareDeskSnapshot>;
+  activeView: IrisView;
+  snapshot: ReturnType<typeof buildIrisSnapshot>;
 }) {
-  const titleByView: Record<CareDeskView, string> = {
+  const titleByView: Record<IrisView, string> = {
     atendimento: "Atendimento",
     disparos: "Disparos em massa",
     gestao: "Tickets",
@@ -490,10 +523,10 @@ function CareDeskTopbar({
 
   return (
     <header className="sticky top-0 z-20 border-b border-[#dbe3ef] bg-white/95 px-4 py-3 backdrop-blur">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <div className="min-w-[230px]">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#A07C3B]">
-            CareDesk
+            Iris
           </p>
           <h2 className="text-lg font-semibold text-[#101820]">
             {titleByView[activeView]}
@@ -526,6 +559,7 @@ function CareDeskTopbar({
             value={formatCount(snapshot.slaCritical)}
             tone="red"
           />
+          <PanteonTopbarUser className="ml-1 border-l border-[#dbe3ef] pl-3" compact />
         </div>
       </div>
     </header>
@@ -539,9 +573,9 @@ function ManagementView({
   onOpenAttendance,
   onSelectTicket,
 }: {
-  data: CareDeskData;
+  data: IrisData;
   loading: boolean;
-  snapshot: ReturnType<typeof buildCareDeskSnapshot>;
+  snapshot: ReturnType<typeof buildIrisSnapshot>;
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
 }) {
@@ -562,7 +596,7 @@ function ManagementView({
         />
         <SignalCard
           icon={Bot}
-          title="Caca"
+          title="Athena"
           value={`${formatCount(snapshot.aiActions)} acoes`}
           tone="blue"
         />
@@ -577,9 +611,9 @@ function ManagementView({
       <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-4">
         <div className="min-w-0">
           {loading ? (
-            <CareDeskLoading />
+            <IrisLoading />
           ) : (
-            <CareDeskTicketQueue
+            <IrisTicketQueue
               tickets={data.tickets}
               onOpenAttendance={onOpenAttendance}
               onSelectTicket={onSelectTicket}
@@ -590,7 +624,7 @@ function ManagementView({
         <aside className="space-y-3">
           <ActionPanel
             icon={Sparkles}
-            title="Caca na fila"
+            title="Athena na fila"
             items={[
               {
                 detail: snapshot.topTicket
@@ -633,14 +667,14 @@ function ManagementView({
   );
 }
 
-function CareDeskTicketQueue({
+function IrisTicketQueue({
   onOpenAttendance,
   onSelectTicket,
   tickets,
 }: {
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
-  tickets: CareDeskTicket[];
+  tickets: IrisTicket[];
 }) {
   const [queue, setQueue] = useState("Todos");
   const [status, setStatus] = useState("Todos");
@@ -677,7 +711,7 @@ function CareDeskTicketQueue({
           (priority === "Todas" || priorityLabel[ticket.priority] === priority)
         );
       })
-      .sort(sortCareDeskTickets);
+      .sort(sortIrisTickets);
   }, [priority, queue, search, status, tickets]);
 
   return (
@@ -728,8 +762,8 @@ function CareDeskTicketQueue({
               icon={Sparkles}
               label="Sem resposta"
               shortLabel="Sem resp."
-              value={`${tickets.filter(isWaitingForCareDesk).length}`}
-              tone={tickets.some(isWaitingForCareDesk) ? "danger" : "gold"}
+              value={`${tickets.filter(isWaitingForIris).length}`}
+              tone={tickets.some(isWaitingForIris) ? "danger" : "gold"}
             />
           </div>
         </div>
@@ -780,7 +814,7 @@ function CareDeskTicketQueue({
             <div className="max-h-[430px] overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
               {filteredTickets.length > 0 ? (
                 filteredTickets.map((ticket) => (
-                  <CareDeskTicketRow
+                  <IrisTicketRow
                     key={ticket.id}
                     ticket={ticket}
                     onOpenAttendance={onOpenAttendance}
@@ -791,7 +825,7 @@ function CareDeskTicketQueue({
                 <EmptyState
                   icon={Inbox}
                   title="Nenhum ticket na fila"
-                  description="Quando uma mensagem de cliente chegar ou um operador iniciar um contato, o ticket deve nascer no CareDesk."
+                  description="Quando uma mensagem de cliente chegar ou um operador iniciar um contato, o ticket deve nascer no Iris."
                 />
               )}
             </div>
@@ -803,12 +837,12 @@ function CareDeskTicketQueue({
             <div className="flex items-center gap-2">
               <Bot className="size-4 text-[#A07C3B]" aria-hidden="true" />
               <p className="text-sm font-semibold text-slate-950">
-                Caca na fila
+                Athena na fila
               </p>
             </div>
             <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-700">
               Priorizar cliente sem resposta, SLA vencendo e tickets sem
-              responsavel. O CareDesk mede a operacao de atendimento,
+              responsavel. O Iris mede a operacao de atendimento,
               independente do modulo que originou o contato.
             </p>
           </div>
@@ -830,7 +864,7 @@ function CareDeskTicketQueue({
           />
           <InsightCard
             title="Follow-ups"
-            value={`${tickets.filter(isWaitingForCareDesk).length}`}
+            value={`${tickets.filter(isWaitingForIris).length}`}
             description="Conversas que dependem de retorno humano."
           />
         </aside>
@@ -839,14 +873,14 @@ function CareDeskTicketQueue({
   );
 }
 
-function CareDeskTicketRow({
+function IrisTicketRow({
   onOpenAttendance,
   onSelectTicket,
   ticket,
 }: {
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
-  ticket: CareDeskTicket;
+  ticket: IrisTicket;
 }) {
   return (
     <article
@@ -941,11 +975,11 @@ function AttendanceView({
   tickets,
 }: {
   onClose: () => void;
-  onMessageCreated: (ticketId: string, message: CareDeskMessage) => void;
+  onMessageCreated: (ticketId: string, message: IrisMessage) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
-  ticket: CareDeskTicket | null;
-  tickets: CareDeskTicket[];
+  ticket: IrisTicket | null;
+  tickets: IrisTicket[];
 }) {
   if (!ticket) {
     return (
@@ -959,7 +993,7 @@ function AttendanceView({
   }
 
   return (
-    <CareDeskConversationPanel
+    <IrisConversationPanel
       ticket={ticket}
       tickets={tickets}
       selectedTicketId={selectedTicketId}
@@ -970,7 +1004,7 @@ function AttendanceView({
   );
 }
 
-function CareDeskConversationPanel({
+function IrisConversationPanel({
   onClose,
   onMessageCreated,
   onSelectTicket,
@@ -979,11 +1013,11 @@ function CareDeskConversationPanel({
   tickets,
 }: {
   onClose: () => void;
-  onMessageCreated: (ticketId: string, message: CareDeskMessage) => void;
+  onMessageCreated: (ticketId: string, message: IrisMessage) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
-  ticket: CareDeskTicket;
-  tickets: CareDeskTicket[];
+  ticket: IrisTicket;
+  tickets: IrisTicket[];
 }) {
   const [conversationFilter, setConversationFilter] = useState("Abertas");
   const [draft, setDraft] = useState("");
@@ -1024,7 +1058,7 @@ function CareDeskConversationPanel({
 
         return !isClosedTicket(item);
       })
-      .sort(sortCareDeskTickets);
+      .sort(sortIrisTickets);
   }, [conversationFilter, search, tickets]);
 
   const previousTickets = useMemo(() => {
@@ -1066,7 +1100,7 @@ function CareDeskConversationPanel({
     try {
       const supabase = getHubSupabaseClient();
       const now = new Date().toISOString();
-      const optimisticMessage: CareDeskMessage = {
+      const optimisticMessage: IrisMessage = {
         body,
         createdAt: now,
         deliveryStatus: "queued",
@@ -1101,7 +1135,7 @@ function CareDeskConversationPanel({
       }
 
       setDraft("");
-      setFeedback("Mensagem registrada no CareDesk.");
+      setFeedback("Mensagem registrada no Iris.");
     } catch (error) {
       console.error("[caredesk] nao foi possivel registrar mensagem", error);
       setFeedback("Nao foi possivel registrar a mensagem agora.");
@@ -1351,7 +1385,7 @@ function CareDeskConversationPanel({
               <EmptyState
                 icon={MessageCircle}
                 title="Sem mensagens registradas"
-                description="A conversa deste ticket ainda nao possui mensagens no CareDesk."
+                description="A conversa deste ticket ainda nao possui mensagens no Iris."
               />
             )}
           </div>
@@ -1497,7 +1531,7 @@ function CareDeskConversationPanel({
 
           <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
             <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-              Historico CareDesk
+              Historico Iris
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-950">
               {previousTickets.length} tickets anteriores
@@ -1517,7 +1551,7 @@ function TicketSeparator({
   ticket,
 }: {
   compact?: boolean;
-  ticket: CareDeskTicket;
+  ticket: IrisTicket;
 }) {
   return (
     <div className="flex items-center justify-center gap-3">
@@ -1641,8 +1675,8 @@ function BroadcastView({
   data,
   snapshot,
 }: {
-  data: CareDeskData;
-  snapshot: ReturnType<typeof buildCareDeskSnapshot>;
+  data: IrisData;
+  snapshot: ReturnType<typeof buildIrisSnapshot>;
 }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_340px] gap-4">
@@ -1707,7 +1741,7 @@ function BroadcastView({
               <EmptyState
                 icon={Megaphone}
                 title="Nenhum disparo criado"
-                description="Campanhas e comunicados em massa devem nascer nas tabelas de disparo do CareDesk."
+                description="Campanhas e comunicados em massa devem nascer nas tabelas de disparo do Iris."
               />
             )}
           </div>
@@ -1719,7 +1753,7 @@ function BroadcastView({
           icon={SlidersHorizontal}
           title="Segmentacao"
           rows={[
-            ["Publico", "Base de contatos do CareDesk"],
+            ["Publico", "Base de contatos do Iris"],
             ["Regra", "Fila + perfil + consentimento"],
             ["Canal", "Canal ativo"],
             ["Aprovacao", "Equipe Careli"],
@@ -1727,7 +1761,7 @@ function BroadcastView({
         />
         <BuilderCard
           icon={Bot}
-          title="Caca"
+          title="Athena"
           rows={[
             ["Mensagem", "Personalizada"],
             ["Anexos", "Controlados"],
@@ -1745,9 +1779,9 @@ function SetupView({
   onProfilesChanged,
   snapshot,
 }: {
-  data: CareDeskData;
-  onProfilesChanged: (profiles: CareDeskTicketProfileConfig[]) => void;
-  snapshot: ReturnType<typeof buildCareDeskSnapshot>;
+  data: IrisData;
+  onProfilesChanged: (profiles: IrisTicketProfileConfig[]) => void;
+  snapshot: ReturnType<typeof buildIrisSnapshot>;
 }) {
   const firstQueueId = data.queues[0]?.id ?? "";
   const queueById = useMemo(
@@ -1778,7 +1812,7 @@ function SetupView({
           (profile) =>
             selectedQueueId === "all" || profile.queueId === selectedQueueId,
         )
-        .sort(sortCareDeskProfiles),
+        .sort(sortIrisProfiles),
     [data.profiles, selectedQueueId],
   );
   const activeProfiles = data.profiles.filter(
@@ -1797,7 +1831,7 @@ function SetupView({
       };
 
       if (field === "name" && !editingProfileId) {
-        next.slug = slugifyCareDeskProfile(value);
+        next.slug = slugifyIrisProfile(value);
       }
 
       return next;
@@ -1810,7 +1844,7 @@ function SetupView({
     setProfileForm(createProfileForm(firstQueueId));
   }
 
-  function startEditProfile(profile: CareDeskTicketProfileConfig) {
+  function startEditProfile(profile: IrisTicketProfileConfig) {
     setEditingProfileId(profile.id);
     setProfileFeedback(null);
     setProfileForm(profileToForm(profile));
@@ -1837,7 +1871,7 @@ function SetupView({
     setProfileFeedback(null);
 
     try {
-      const savedRow = await saveCareDeskTicketProfile(profileForm);
+      const savedRow = await saveIrisTicketProfile(profileForm);
       const savedProfile = mapTicketProfileRow(
         savedRow,
         savedRow.queue_id ? queueById.get(savedRow.queue_id) : null,
@@ -1852,17 +1886,17 @@ function SetupView({
             ),
         ),
         savedProfile,
-      ].sort(sortCareDeskProfiles);
+      ].sort(sortIrisProfiles);
 
       onProfilesChanged(nextProfiles);
       setEditingProfileId(savedProfile.id);
       setProfileForm(profileToForm(savedProfile));
-      setProfileFeedback("Motivo de atendimento salvo no CareDesk.");
+      setProfileFeedback("Motivo de atendimento salvo no Iris.");
     } catch (error) {
       setProfileFeedback(
         error instanceof Error
           ? error.message
-          : "Nao foi possivel salvar o motivo do CareDesk.",
+          : "Nao foi possivel salvar o motivo do Iris.",
       );
     } finally {
       setSavingProfile(false);
@@ -1966,7 +2000,7 @@ function SetupView({
                   <EmptyState
                     icon={Route}
                     title="Nenhum motivo configurado"
-                    description="Crie motivos de atendimento para padronizar fila, prioridade, SLA e metricas do CareDesk."
+                    description="Crie motivos de atendimento para padronizar fila, prioridade, SLA e metricas do Iris."
                   />
                 )}
               </div>
@@ -2027,7 +2061,7 @@ function SetupView({
                     onChange={(event) =>
                       updateProfileForm(
                         "slug",
-                        slugifyCareDeskProfile(event.target.value),
+                        slugifyIrisProfile(event.target.value),
                       )
                     }
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
@@ -2219,7 +2253,7 @@ function SetupView({
           icon={DatabaseZap}
           title="Dados"
           items={[
-            ["CareDesk", "Tickets e auditoria"],
+            ["Iris", "Tickets e auditoria"],
             ["Contatos", `${formatCount(snapshot.contacts)} registrados`],
             ["Mensagens", `${formatCount(snapshot.messages)} registradas`],
             ["Disparos", `${formatCount(data.broadcasts.length)} campanhas`],
@@ -2234,8 +2268,8 @@ function ReportsView({
   data,
   snapshot,
 }: {
-  data: CareDeskData;
-  snapshot: ReturnType<typeof buildCareDeskSnapshot>;
+  data: IrisData;
+  snapshot: ReturnType<typeof buildIrisSnapshot>;
 }) {
   const priorityRows = [
     [
@@ -2321,7 +2355,7 @@ function ReportsView({
             ["Retornos", formatCount(snapshot.followUpsToday)],
             ["Sem resposta", formatCount(snapshot.unanswered)],
             ["Escalados", formatCount(snapshot.waitingOperator)],
-            ["Caca", "Ativa"],
+            ["Athena", "Ativa"],
           ]}
         />
       </aside>
@@ -2329,7 +2363,7 @@ function ReportsView({
   );
 }
 
-function CareDeskNavButton({
+function IrisNavButton({
   active,
   collapsed,
   icon: Icon,
@@ -2353,21 +2387,27 @@ function CareDeskNavButton({
         type="button"
         onClick={onClick}
         className={[
-          "flex h-11 w-full items-center rounded-xl text-sm font-semibold transition",
+          "group relative flex h-11 w-full items-center rounded-lg text-sm font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-[#d0ad69]",
           collapsed ? "justify-center px-0" : "gap-3 px-3",
           active
-            ? "bg-[#242431] text-white shadow-[inset_3px_0_0_#A07C3B]"
-            : "text-white/70 hover:bg-white/[0.06] hover:text-white",
+            ? "bg-[#2A2B32] text-[#ECECF1]"
+            : "text-[#C5C5D2] hover:bg-[#2A2B32]/80 hover:text-[#ECECF1]",
         ].join(" ")}
       >
-        <Icon
-          className={
-            active ? "h-4 w-4 text-[#c8a766]" : "h-4 w-4 text-white/45"
-          }
-        />
+        {active ? (
+          <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
+        ) : null}
+        <span
+          className={[
+            "grid h-8 w-8 shrink-0 place-items-center rounded-lg",
+            active ? "panteon-module-sidebar__active-icon" : "text-[#8E8EA0]",
+          ].join(" ")}
+        >
+          <Icon className="h-[17px] w-[17px]" aria-hidden="true" />
+        </span>
         {!collapsed ? <span>{label}</span> : null}
         {active && !collapsed ? (
-          <ChevronRight className="ml-auto h-4 w-4 text-white/45" />
+          <ChevronRight className="ml-auto h-4 w-4 text-[#8E8EA0]" />
         ) : null}
       </button>
     </Tooltip>
@@ -2393,7 +2433,7 @@ function HeaderMetric({
 }: {
   icon: typeof Wifi;
   label: string;
-  tone?: CareDeskTone;
+  tone?: IrisTone;
   value: string;
 }) {
   return (
@@ -2424,7 +2464,7 @@ function SignalCard({
 }: {
   icon: typeof Inbox;
   title: string;
-  tone?: CareDeskTone;
+  tone?: IrisTone;
   value: string;
 }) {
   return (
@@ -2694,7 +2734,7 @@ function FilterSelect({
   );
 }
 
-function MessageBubble({ message }: { message: CareDeskMessage }) {
+function MessageBubble({ message }: { message: IrisMessage }) {
   const outbound = message.direction === "outbound";
   const internal =
     message.direction === "internal" || message.senderType === "system";
@@ -2786,7 +2826,7 @@ function StatusPill({
   );
 }
 
-function PriorityPill({ priority }: { priority: CareDeskPriority }) {
+function PriorityPill({ priority }: { priority: IrisPriority }) {
   const classes =
     priority === "critical"
       ? "bg-rose-50 text-rose-700 ring-rose-100"
@@ -2805,7 +2845,7 @@ function PriorityPill({ priority }: { priority: CareDeskPriority }) {
   );
 }
 
-function buildTicketChecklist(ticket: CareDeskTicket) {
+function buildTicketChecklist(ticket: IrisTicket) {
   return [
     {
       id: "profile",
@@ -2835,7 +2875,7 @@ function buildTicketChecklist(ticket: CareDeskTicket) {
   ];
 }
 
-function conversationTime(ticket: CareDeskTicket) {
+function conversationTime(ticket: IrisTicket) {
   const value = ticket.lastMessageAt ?? ticket.openedAt;
   const date = new Date(value);
 
@@ -2865,7 +2905,7 @@ function conversationTime(ticket: CareDeskTicket) {
   });
 }
 
-function CareDeskLoading() {
+function IrisLoading() {
   return (
     <div className="rounded-2xl border border-[#dbe3ef] bg-white p-8">
       <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-[#eadcc2] border-t-[#A07C3B]" />
@@ -2876,7 +2916,7 @@ function CareDeskLoading() {
   );
 }
 
-function toneBg(tone: CareDeskTone) {
+function toneBg(tone: IrisTone) {
   if (tone === "gold") return "bg-[#fbf6ec]";
   if (tone === "green") return "bg-emerald-50";
   if (tone === "red") return "bg-rose-50";
@@ -2884,7 +2924,7 @@ function toneBg(tone: CareDeskTone) {
   return "bg-[#f4f6fa]";
 }
 
-function toneText(tone: CareDeskTone) {
+function toneText(tone: IrisTone) {
   if (tone === "gold") return "text-[#A07C3B]";
   if (tone === "green") return "text-emerald-600";
   if (tone === "red") return "text-rose-600";
@@ -2892,11 +2932,11 @@ function toneText(tone: CareDeskTone) {
   return "text-[#63708a]";
 }
 
-async function loadCareDeskData(): Promise<CareDeskData> {
+async function loadIrisData(): Promise<IrisData> {
   const supabase = getHubSupabaseClient();
 
   if (!supabase) {
-    return emptyCareDeskData;
+    return emptyIrisData;
   }
 
   const [
@@ -3044,7 +3084,7 @@ async function loadCareDeskData(): Promise<CareDeskData> {
   };
 }
 
-async function saveCareDeskTicketProfile(
+async function saveIrisTicketProfile(
   form: ReturnType<typeof createProfileForm>,
 ) {
   const supabase = getHubSupabaseClient();
@@ -3068,7 +3108,7 @@ async function saveCareDeskTicketProfile(
       form.slaResolutionMinutes,
       480,
     ),
-    slug: slugifyCareDeskProfile(form.slug || form.name),
+    slug: slugifyIrisProfile(form.slug || form.name),
     status: setupStatusOptions.includes(form.status) ? form.status : "active",
   };
   const selectColumns =
@@ -3096,7 +3136,7 @@ async function saveCareDeskTicketProfile(
   return result.data;
 }
 
-function mapQueueRow(row: any): CareDeskQueueConfig {
+function mapQueueRow(row: any): IrisQueueConfig {
   return {
     assignmentStrategy: row.assignment_strategy ?? "manual",
     color: row.color ?? "#A07C3B",
@@ -3113,8 +3153,8 @@ function mapQueueRow(row: any): CareDeskQueueConfig {
 
 function mapTicketProfileRow(
   row: any,
-  queue?: CareDeskQueueConfig | null,
-): CareDeskTicketProfileConfig {
+  queue?: IrisQueueConfig | null,
+): IrisTicketProfileConfig {
   return {
     category: row.category ?? "Atendimento",
     description: row.description ?? null,
@@ -3134,11 +3174,11 @@ function mapTicketProfileRow(
 function mapTicketRow(input: {
   channel: any;
   contact: any;
-  messages: CareDeskMessage[];
+  messages: IrisMessage[];
   profile: any;
-  queue: CareDeskQueueConfig | null;
+  queue: IrisQueueConfig | null;
   row: any;
-}): CareDeskTicket {
+}): IrisTicket {
   const lastMessage = input.messages[input.messages.length - 1];
   const sourceModule = String(input.row.source_module ?? "").trim();
 
@@ -3180,7 +3220,7 @@ function mapTicketRow(input: {
   };
 }
 
-function mapMessageRow(row: any): CareDeskMessage {
+function mapMessageRow(row: any): IrisMessage {
   return {
     body: row.body ?? "",
     createdAt: row.created_at,
@@ -3192,7 +3232,7 @@ function mapMessageRow(row: any): CareDeskMessage {
 }
 
 function groupMessagesByTicket(rows: any[]) {
-  const groups = new Map<string, CareDeskMessage[]>();
+  const groups = new Map<string, IrisMessage[]>();
 
   rows.forEach((row) => {
     const ticketId = row.ticket_id;
@@ -3208,7 +3248,7 @@ function groupMessagesByTicket(rows: any[]) {
   return groups;
 }
 
-function buildCareDeskSnapshot(data: CareDeskData) {
+function buildIrisSnapshot(data: IrisData) {
   const tickets = data.tickets;
   const total = tickets.length;
   const openTickets = tickets.filter((ticket) => !isClosedTicket(ticket));
@@ -3216,7 +3256,7 @@ function buildCareDeskSnapshot(data: CareDeskData) {
     (ticket) => ticket.priority === "critical" || isSlaCritical(ticket),
   ).length;
   const slaCritical = tickets.filter(isSlaCritical).length;
-  const unanswered = tickets.filter(isWaitingForCareDesk).length;
+  const unanswered = tickets.filter(isWaitingForIris).length;
   const waitingOperator = tickets.filter(
     (ticket) =>
       ticket.status === "waiting_operator" ||
@@ -3251,21 +3291,21 @@ function buildCareDeskSnapshot(data: CareDeskData) {
   };
 }
 
-function scoreTicketForAction(first: CareDeskTicket, second: CareDeskTicket) {
+function scoreTicketForAction(first: IrisTicket, second: IrisTicket) {
   return ticketScore(second) - ticketScore(first);
 }
 
-function ticketScore(ticket: CareDeskTicket) {
+function ticketScore(ticket: IrisTicket) {
   return (
     (ticket.priority === "critical" ? 500 : 0) +
     (ticket.priority === "high" ? 250 : 0) +
     (isSlaCritical(ticket) ? 300 : 0) +
-    (isWaitingForCareDesk(ticket) ? 180 : 0) +
+    (isWaitingForIris(ticket) ? 180 : 0) +
     (ticket.status === "waiting_operator" ? 120 : 0)
   );
 }
 
-function sortCareDeskTickets(first: CareDeskTicket, second: CareDeskTicket) {
+function sortIrisTickets(first: IrisTicket, second: IrisTicket) {
   const scoreDifference = ticketScore(second) - ticketScore(first);
   if (scoreDifference !== 0) {
     return scoreDifference;
@@ -3274,9 +3314,9 @@ function sortCareDeskTickets(first: CareDeskTicket, second: CareDeskTicket) {
   return dateValue(second.openedAt) - dateValue(first.openedAt);
 }
 
-function sortCareDeskProfiles(
-  first: CareDeskTicketProfileConfig,
-  second: CareDeskTicketProfileConfig,
+function sortIrisProfiles(
+  first: IrisTicketProfileConfig,
+  second: IrisTicketProfileConfig,
 ) {
   return (
     first.queueLabel.localeCompare(second.queueLabel, "pt-BR") ||
@@ -3291,7 +3331,7 @@ function createProfileForm(queueId = "") {
     description: "",
     id: "",
     name: "",
-    priority: "medium" as CareDeskPriority,
+    priority: "medium" as IrisPriority,
     queueId,
     requiredFields: "contact_id, queue_id",
     slaFirstResponseMinutes: "60",
@@ -3301,7 +3341,7 @@ function createProfileForm(queueId = "") {
   };
 }
 
-function profileToForm(profile: CareDeskTicketProfileConfig) {
+function profileToForm(profile: IrisTicketProfileConfig) {
   return {
     category: profile.category,
     description: profile.description ?? "",
@@ -3354,7 +3394,7 @@ function normalizePositiveInteger(value: string | number, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
 }
 
-function slugifyCareDeskProfile(value: string) {
+function slugifyIrisProfile(value: string) {
   const slug = value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -3377,7 +3417,7 @@ function formatSlaMinutes(minutes: number) {
   return `${minutes} min`;
 }
 
-function normalizePriority(value: unknown): CareDeskPriority {
+function normalizePriority(value: unknown): IrisPriority {
   if (
     value === "critical" ||
     value === "high" ||
@@ -3390,7 +3430,7 @@ function normalizePriority(value: unknown): CareDeskPriority {
   return "medium";
 }
 
-function normalizeStatus(value: unknown): CareDeskStatus {
+function normalizeStatus(value: unknown): IrisStatus {
   if (
     value === "new" ||
     value === "open" ||
@@ -3407,11 +3447,11 @@ function normalizeStatus(value: unknown): CareDeskStatus {
   return "new";
 }
 
-function isClosedTicket(ticket: CareDeskTicket) {
+function isClosedTicket(ticket: IrisTicket) {
   return ["cancelled", "closed", "resolved"].includes(ticket.status);
 }
 
-function isClosedToday(ticket: CareDeskTicket) {
+function isClosedToday(ticket: IrisTicket) {
   if (!isClosedTicket(ticket)) {
     return false;
   }
@@ -3422,7 +3462,7 @@ function isClosedToday(ticket: CareDeskTicket) {
   );
 }
 
-function isWaitingForCareDesk(ticket: CareDeskTicket) {
+function isWaitingForIris(ticket: IrisTicket) {
   return (
     !isClosedTicket(ticket) &&
     (ticket.unread ||
@@ -3431,7 +3471,7 @@ function isWaitingForCareDesk(ticket: CareDeskTicket) {
   );
 }
 
-function isSlaCritical(ticket: CareDeskTicket) {
+function isSlaCritical(ticket: IrisTicket) {
   const due = ticket.firstRespondedAt
     ? ticket.resolutionDueAt
     : (ticket.firstResponseDueAt ?? ticket.resolutionDueAt);
@@ -3443,7 +3483,7 @@ function isSlaCritical(ticket: CareDeskTicket) {
   return new Date(due).getTime() <= Date.now();
 }
 
-function slaLabel(ticket: CareDeskTicket) {
+function slaLabel(ticket: IrisTicket) {
   if (isClosedTicket(ticket)) {
     return "Encerrado";
   }
@@ -3471,7 +3511,7 @@ function slaLabel(ticket: CareDeskTicket) {
   return `${Math.floor(diffMinutes / 60)}h ${diffMinutes % 60}m`;
 }
 
-function slaClasses(ticket: CareDeskTicket) {
+function slaClasses(ticket: IrisTicket) {
   if (isClosedTicket(ticket)) {
     return "bg-slate-50 text-slate-600 ring-slate-200";
   }
@@ -3483,7 +3523,7 @@ function slaClasses(ticket: CareDeskTicket) {
   return "bg-emerald-50 text-emerald-700 ring-emerald-100";
 }
 
-function statusTone(status: CareDeskStatus) {
+function statusTone(status: IrisStatus) {
   if (status === "closed" || status === "resolved") {
     return "green";
   }
@@ -3499,7 +3539,7 @@ function statusTone(status: CareDeskStatus) {
   return "gold";
 }
 
-function estimateFirstResponse(tickets: CareDeskTicket[]) {
+function estimateFirstResponse(tickets: IrisTicket[]) {
   const responded = tickets.filter((ticket) => ticket.firstRespondedAt);
 
   if (!responded.length) {
@@ -3521,7 +3561,7 @@ function estimateFirstResponse(tickets: CareDeskTicket[]) {
   return formatDuration(averageMinutes);
 }
 
-function estimateAverageResponse(tickets: CareDeskTicket[]) {
+function estimateAverageResponse(tickets: IrisTicket[]) {
   const withMessages = tickets.filter((ticket) => ticket.messages.length > 1);
 
   if (!withMessages.length) {

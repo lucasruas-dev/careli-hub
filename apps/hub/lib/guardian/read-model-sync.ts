@@ -1,10 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
 import {
-  loadGuardianOverview,
-  type GuardianOverviewSnapshot,
+  loadHadesOverview,
+  type HadesOverviewSnapshot,
 } from "@/lib/guardian/overview";
-import { loadGuardianAttendanceQueue } from "@/lib/guardian/attendance";
+import { loadHadesAttendanceQueue } from "@/lib/guardian/attendance";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import type { AttendancePriority, QueueClient } from "@/modules/guardian/attendance/types";
 
@@ -28,12 +28,12 @@ const PRIORITY_BY_LABEL: Record<AttendancePriority, "critical" | "high" | "low" 
   Média: "medium",
 };
 
-export async function syncGuardianC2xReadModel(): Promise<SyncResult> {
+export async function syncHadesC2xReadModel(): Promise<SyncResult> {
   const adminClient = createSupabaseAdminClient();
 
   if (!adminClient) {
     return {
-      error: "Configure a chave server-side do Supabase para sincronizar o Guardian.",
+      error: "Configure a chave server-side do Supabase para sincronizar o Hades.",
       ok: false,
     };
   }
@@ -46,8 +46,8 @@ export async function syncGuardianC2xReadModel(): Promise<SyncResult> {
 
   try {
     const [overviewResult, queueClients] = await Promise.all([
-      loadGuardianOverview(),
-      loadGuardianAttendanceQueue({ includeInstallments: false }),
+      loadHadesOverview(),
+      loadHadesAttendanceQueue({ includeInstallments: false }),
     ]);
 
     if (!overviewResult.ok) {
@@ -151,7 +151,7 @@ async function startSyncRun(adminClient: SupabaseAdminClient): Promise<SyncResul
 async function persistOverviewSnapshot(
   adminClient: SupabaseAdminClient,
   syncRunId: string,
-  snapshot: GuardianOverviewSnapshot,
+  snapshot: HadesOverviewSnapshot,
 ) {
   await adminClient
     .from("c2x_guardian_financial_snapshots")

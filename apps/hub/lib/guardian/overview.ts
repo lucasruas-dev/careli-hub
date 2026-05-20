@@ -1,8 +1,8 @@
 import type { RowDataPacket } from "mysql2/promise";
 
-import { getGuardianDbPool } from "@/lib/guardian/db";
+import { getHadesDbPool } from "@/lib/guardian/db";
 
-export type GuardianOverviewSummary = {
+export type HadesOverviewSummary = {
   availableUnits: number;
   criticalContracts: number;
   liquidatedAmount: number;
@@ -25,33 +25,33 @@ export type GuardianOverviewSummary = {
   totalProposals: number;
 };
 
-export type GuardianStageBucket = {
+export type HadesStageBucket = {
   amount: number;
   id: number;
   name: string;
   total: number;
 };
 
-export type GuardianPaymentStatusBucket = {
+export type HadesPaymentStatusBucket = {
   amount: number;
   id: number;
   name: string;
   total: number;
 };
 
-export type GuardianDistributionBucket = {
+export type HadesDistributionBucket = {
   label: string;
   total: number;
 };
 
-export type GuardianEnterpriseDistributions = {
-  billingComposition: GuardianDistributionBucket[];
+export type HadesEnterpriseDistributions = {
+  billingComposition: HadesDistributionBucket[];
   enterpriseName: string;
   generatedAt: string;
-  overdueAging: GuardianDistributionBucket[];
+  overdueAging: HadesDistributionBucket[];
 };
 
-export type GuardianEnterprisePerformance = {
+export type HadesEnterprisePerformance = {
   delinquencyBaseAmount: number;
   enterpriseName: string;
   monthlyRecoveryAmount: number;
@@ -63,7 +63,7 @@ export type GuardianEnterprisePerformance = {
   totalPortfolioPayments: number;
 };
 
-export type GuardianProposalListItem = {
+export type HadesProposalListItem = {
   amount: number;
   brokerName?: string;
   clientName?: string;
@@ -78,7 +78,7 @@ export type GuardianProposalListItem = {
   updatedAt?: string;
 };
 
-export type GuardianPaymentListItem = {
+export type HadesPaymentListItem = {
   amount: number;
   code?: string;
   clientName?: string;
@@ -90,7 +90,7 @@ export type GuardianPaymentListItem = {
   unitLabel?: string;
 };
 
-export type GuardianSignatureListItem = {
+export type HadesSignatureListItem = {
   clientName?: string;
   code?: string;
   contractId: number;
@@ -102,17 +102,17 @@ export type GuardianSignatureListItem = {
   updatedAt?: string;
 };
 
-export type GuardianOverviewSnapshot = {
-  billingComposition: GuardianDistributionBucket[];
-  enterprisePerformance: GuardianEnterprisePerformance[];
+export type HadesOverviewSnapshot = {
+  billingComposition: HadesDistributionBucket[];
+  enterprisePerformance: HadesEnterprisePerformance[];
   generatedAt: string;
-  overduePayments: GuardianPaymentListItem[];
-  overdueAging: GuardianDistributionBucket[];
-  paymentStatuses: GuardianPaymentStatusBucket[];
-  recentProposals: GuardianProposalListItem[];
-  signatureQueue: GuardianSignatureListItem[];
-  stages: GuardianStageBucket[];
-  summary: GuardianOverviewSummary;
+  overduePayments: HadesPaymentListItem[];
+  overdueAging: HadesDistributionBucket[];
+  paymentStatuses: HadesPaymentStatusBucket[];
+  recentProposals: HadesProposalListItem[];
+  signatureQueue: HadesSignatureListItem[];
+  stages: HadesStageBucket[];
+  summary: HadesOverviewSummary;
 };
 
 type SummaryRow = RowDataPacket & {
@@ -280,13 +280,13 @@ const overdueAgingLabels = [
 
 const billingCompositionLabels = ["Ato", "Sinal", "Parcela"];
 
-export async function loadGuardianEnterpriseDistributions(
+export async function loadHadesEnterpriseDistributions(
   enterpriseName: string,
 ): Promise<
-  | { data: GuardianEnterpriseDistributions; ok: true }
+  | { data: HadesEnterpriseDistributions; ok: true }
   | { missing: string[]; ok: false }
 > {
-  const poolResult = getGuardianDbPool();
+  const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
     return poolResult;
@@ -367,11 +367,11 @@ export async function loadGuardianEnterpriseDistributions(
   };
 }
 
-export async function loadGuardianOverview(): Promise<
-  | { data: GuardianOverviewSnapshot; ok: true }
+export async function loadHadesOverview(): Promise<
+  | { data: HadesOverviewSnapshot; ok: true }
   | { missing: string[]; ok: false }
 > {
-  const poolResult = getGuardianDbPool();
+  const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
     return poolResult;
@@ -683,7 +683,7 @@ export async function loadGuardianOverview(): Promise<
   };
 }
 
-function mapStage(row: StageRow): GuardianStageBucket {
+function mapStage(row: StageRow): HadesStageBucket {
   return {
     amount: toNumber(row.amount),
     id: toNumber(row.id),
@@ -692,11 +692,11 @@ function mapStage(row: StageRow): GuardianStageBucket {
   };
 }
 
-function mapPaymentStatus(row: PaymentStatusRow): GuardianPaymentStatusBucket {
+function mapPaymentStatus(row: PaymentStatusRow): HadesPaymentStatusBucket {
   return mapStage(row);
 }
 
-function mapDistribution(row: DistributionRow): GuardianDistributionBucket {
+function mapDistribution(row: DistributionRow): HadesDistributionBucket {
   return {
     label: row.label,
     total: toNumber(row.total),
@@ -727,7 +727,7 @@ function filterEnterpriseDistributionRows(
 
 function mapEnterprisePerformance(
   row: EnterprisePerformanceRow,
-): GuardianEnterprisePerformance {
+): HadesEnterprisePerformance {
   return {
     delinquencyBaseAmount: toNumber(row.delinquency_base_amount),
     enterpriseName: formatEnterpriseName(row.enterprise_name),
@@ -765,7 +765,7 @@ function formatEnterpriseName(value: string) {
     .join(" ");
 }
 
-function mapProposal(row: ProposalRow): GuardianProposalListItem {
+function mapProposal(row: ProposalRow): HadesProposalListItem {
   return {
     amount: toNumber(row.annual_value),
     brokerName: row.broker_name ?? undefined,
@@ -782,7 +782,7 @@ function mapProposal(row: ProposalRow): GuardianProposalListItem {
   };
 }
 
-function mapPayment(row: PaymentRow): GuardianPaymentListItem {
+function mapPayment(row: PaymentRow): HadesPaymentListItem {
   return {
     amount: toNumber(row.amount),
     clientName: row.client_name ?? undefined,
@@ -800,7 +800,7 @@ function mapPayment(row: PaymentRow): GuardianPaymentListItem {
   };
 }
 
-function mapSignature(row: SignatureRow): GuardianSignatureListItem {
+function mapSignature(row: SignatureRow): HadesSignatureListItem {
   return {
     clientName: row.client_name ?? undefined,
     code: row.code ?? undefined,

@@ -1,8 +1,10 @@
-# CareDesk Operational Memory
+# Iris Operational Memory
 
 Atualizado em: 2026-05-16
 
-Este arquivo deve ser lido antes de qualquer novo trabalho no modulo CareDesk. Ele guarda o contexto combinado com Lucas, as decisoes de arquitetura, o estado atual e o motivo das proximas etapas. A ideia e evitar que um novo agente precise redescobrir o que ja foi explicado.
+Este arquivo deve ser lido antes de qualquer novo trabalho no modulo Iris, antigo CareDesk/CoreDesk. Ele guarda o contexto combinado com Lucas, as decisoes de arquitetura, o estado atual e o motivo das proximas etapas. A ideia e evitar que um novo agente precise redescobrir o que ja foi explicado.
+
+Nota de compatibilidade: nomes historicos `CareDesk/CoreDesk` e prefixos tecnicos `caredesk_*` podem permanecer em tabelas, migrations, rotas e registros antigos ate existir migracao explicita autorizada por Lucas. O nome operacional atual do modulo e `Iris`; a assistente agora e `Athena`.
 
 ## Regra De Continuidade
 
@@ -205,6 +207,29 @@ Lucas aprovou a tela de Atendimento anterior como base visual:
 - Formulario/modal de abertura de ticket para fluxo ativo.
 
 Nada dessa estrutura deve ser substituido por uma tela diferente sem validacao do Lucas.
+
+## Atualizacao 2026-05-19 - Base Meta WhatsApp Iris
+
+O que mudou:
+
+- Iris ganhou a primeira base segura de integracao com Meta WhatsApp Cloud API.
+- A rota publica canonica `apps/hub/app/api/iris/meta/webhook/route.ts` suporta o handshake `GET` da Meta e o recebimento `POST` com validacao de assinatura `x-hub-signature-256`; a rota legada `apps/hub/app/api/caredesk/meta/webhook/route.ts` fica como ponte de compatibilidade.
+- A rota protegida `apps/hub/app/api/iris/meta/status/route.ts` permite checar prontidao da integracao sem expor valores de secrets; a rota legada `apps/hub/app/api/caredesk/meta/status/route.ts` fica como ponte de compatibilidade.
+- O helper canonico `apps/hub/lib/iris/meta-whatsapp.ts` centraliza nomes de envs, status de configuracao, hash do corpo bruto, validacao HMAC SHA-256 e extracao de resumos dos eventos; `apps/hub/lib/caredesk/meta-whatsapp.ts` apenas reexporta por compatibilidade.
+- A migration `packages/database/migrations/0024_caredesk_meta_whatsapp_integration.sql` cria a trilha de auditoria `caredesk_meta_webhook_events` e o mapa futuro `caredesk_whatsapp_message_refs`.
+- O documento `docs/modules/caredesk-meta-whatsapp-setup.md` registra checklist, variaveis server-side e limites da entrega.
+
+Decisao:
+
+- Esta etapa prepara inbound/webhook e auditoria.
+- Envio ativo de WhatsApp, disparo em massa, templates e criacao automatica de ticket continuam bloqueados ate homologacao e nova aprovacao.
+- Nenhum segredo Meta deve entrar em codigo, docs, prints, logs ou chat.
+
+Pendencias recomendadas:
+
+- Aplicar a migration em Supabase homolog por DataOps/ReleaseOps com canal seguro.
+- Configurar as variaveis Meta apenas no ambiente seguro server-side.
+- Validar handshake, assinatura invalida e mensagem real de teste antes de ativar processamento automatico.
 
 ## Atualizacao 2026-05-16 - Setup de motivos/perfis
 

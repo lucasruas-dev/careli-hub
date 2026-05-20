@@ -38,7 +38,7 @@ type DeskPageProps = {
   loadFromC2x?: boolean;
 };
 
-type CareDeskSignalTone = "live" | "gold" | "danger" | "neutral" | "blue";
+type IrisSignalTone = "live" | "gold" | "danger" | "neutral" | "blue";
 const INITIAL_QUEUE_LIMIT = 600;
 const emptyQueueClients: QueueClient[] = [];
 
@@ -71,10 +71,10 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
       setError(null);
 
       try {
-        const response = await fetch(`/api/guardian/attendance/queue?limit=${INITIAL_QUEUE_LIMIT}`, {
+        const response = await fetch(`/api/hades/attendance/queue?limit=${INITIAL_QUEUE_LIMIT}`, {
           cache: "no-store",
           headers: {
-            Authorization: `Bearer ${await getCareDeskAccessToken()}`,
+            Authorization: `Bearer ${await getIrisAccessToken()}`,
           },
         });
         const payload = (await response.json().catch(() => null)) as { clients?: QueueClient[]; error?: string } | null;
@@ -111,7 +111,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
     ? sourceClients.find((client) => client.id === whatsAppClientId) ?? selectedClient
     : selectedClient;
 
-  const careDesk = useMemo(() => buildCareDeskSnapshot(sourceClients), [sourceClients]);
+  const iris = useMemo(() => buildIrisSnapshot(sourceClients), [sourceClients]);
   const showLoadingState = loading && sourceClients.length === 0;
 
   function openWhatsApp(clientId = selectedClient?.id) {
@@ -151,7 +151,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                  {embedded ? "CareDesk / Guardian" : "CareDesk"}
+                  {embedded ? "Iris / Hades" : "Iris"}
                 </p>
                 <h1 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">
                   Central de atendimento multicanal
@@ -161,9 +161,9 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
 
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:w-[720px]">
               <DeskMetric icon={Wifi} label="Operacao" value={loading ? "Sincronizando" : "Online"} tone="live" />
-              <DeskMetric icon={Inbox} label="Tickets" value={formatCount(careDesk.openTickets)} />
-              <DeskMetric icon={ShieldAlert} label="SLA critico" value={formatCount(careDesk.criticalTickets)} tone="danger" />
-              <DeskMetric icon={UsersRound} label="Operadores" value={formatCount(careDesk.operators)} tone="gold" />
+              <DeskMetric icon={Inbox} label="Tickets" value={formatCount(iris.openTickets)} />
+              <DeskMetric icon={ShieldAlert} label="SLA critico" value={formatCount(iris.criticalTickets)} tone="danger" />
+              <DeskMetric icon={UsersRound} label="Operadores" value={formatCount(iris.operators)} tone="gold" />
             </div>
           </div>
         </header>
@@ -173,28 +173,28 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
             <CommandCard
               icon={MessageCircle}
               title="Multicanal"
-              value={`${careDesk.inboundMessages} novas`}
+              value={`${iris.inboundMessages} novas`}
               description="Fila preparada para Meta, conversa, anexo e template."
               tone="live"
             />
             <CommandCard
               icon={Clock3}
               title="Primeira resposta"
-              value={careDesk.firstResponse}
-              description="SLA operacional para atendimento humano e Cacá."
+              value={iris.firstResponse}
+              description="SLA operacional para atendimento humano e Athena."
               tone="gold"
             />
             <CommandCard
               icon={Bot}
-              title="Cacá"
-              value={`${careDesk.aiSuggestions} ações`}
+              title="Athena"
+              value={`${iris.aiSuggestions} ações`}
               description="Copiloto pronto para boleto, contrato, resumo e próxima ação."
               tone="blue"
             />
             <CommandCard
               icon={Network}
               title="Handoff"
-              value={`${careDesk.handoffs} casos`}
+              value={`${iris.handoffs} casos`}
               description="Transferência entre cobrança, suporte, financeiro e jurídico."
               tone="neutral"
             />
@@ -208,7 +208,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-950">Roteamento inteligente</p>
-                  <p className="text-xs font-medium text-slate-600">C2X + Guardian + CareDesk</p>
+                  <p className="text-xs font-medium text-slate-600">C2X + Hades + Iris</p>
                 </div>
               </div>
               <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
@@ -216,9 +216,9 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
               </span>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <MiniSignal label="Critico" value={careDesk.criticalTickets} />
-              <MiniSignal label="Sem resp." value={careDesk.unanswered} />
-              <MiniSignal label="Promessas" value={careDesk.promisesDue} />
+              <MiniSignal label="Critico" value={iris.criticalTickets} />
+              <MiniSignal label="Sem resp." value={iris.unanswered} />
+              <MiniSignal label="Promessas" value={iris.promisesDue} />
             </div>
           </div>
         </div>
@@ -255,15 +255,15 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
                   <Sparkles className="size-5" aria-hidden="true" />
                 </span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-950">Cacá na fila</p>
+                  <p className="text-sm font-semibold text-slate-950">Athena na fila</p>
                   <p className="text-xs font-medium text-slate-500">Assistente Virtual da Careli</p>
                 </div>
               </div>
               <Tooltip content="Abrir caso sugerido" placement="left">
                 <button
                   type="button"
-                  onClick={() => openWhatsApp(careDesk.focusClient?.id)}
-                  disabled={!careDesk.focusClient}
+                  onClick={() => openWhatsApp(iris.focusClient?.id)}
+                  disabled={!iris.focusClient}
                   className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Abrir caso sugerido"
                 >
@@ -275,19 +275,19 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
             <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
               <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Caso recomendado</p>
               <p className="mt-1 truncate text-sm font-semibold text-slate-950">
-                {careDesk.focusClient?.nome ?? "Nenhum cliente carregado"}
+                {iris.focusClient?.nome ?? "Nenhum cliente carregado"}
               </p>
               <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
-                {careDesk.focusClient
-                  ? `${careDesk.focusClient.parcelas.vencidas} parcelas vencidas, risco ${careDesk.focusClient.scoreRisco}/100 e proxima acao: ${careDesk.focusClient.parcelas.proximaAcao}.`
+                {iris.focusClient
+                  ? `${iris.focusClient.parcelas.vencidas} parcelas vencidas, risco ${iris.focusClient.scoreRisco}/100 e proxima acao: ${iris.focusClient.parcelas.proximaAcao}.`
                   : "Aguardando fila operacional."}
               </p>
             </div>
 
             <div className="mt-3 grid gap-2">
-              <CareDeskAction icon={Send} label="Sugerir resposta" value="Equipe Careli" />
-              <CareDeskAction icon={TicketCheck} label="Abrir ticket" value="Com SLA" />
-              <CareDeskAction icon={Bell} label="Agendar retorno" value="Follow-up" />
+              <IrisAction icon={Send} label="Sugerir resposta" value="Equipe Careli" />
+              <IrisAction icon={TicketCheck} label="Abrir ticket" value="Com SLA" />
+              <IrisAction icon={Bell} label="Agendar retorno" value="Follow-up" />
             </div>
           </section>
 
@@ -302,7 +302,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
               </div>
             </div>
             <div className="mt-4 space-y-3">
-              {careDesk.pulse.map((item) => (
+              {iris.pulse.map((item) => (
                 <PulseRow key={item.label} {...item} />
               ))}
             </div>
@@ -310,7 +310,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
         </aside>
       </section>
 
-      {toastVisible && careDesk.focusClient ? (
+      {toastVisible && iris.focusClient ? (
         <div className="fixed right-5 top-24 z-30 w-[360px] rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_18px_60px_rgba(15,23,42,0.18)]">
           <div className="flex items-start justify-between gap-3">
             <div className="flex gap-3">
@@ -319,9 +319,9 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
                 <span className="absolute -right-1 -top-1 size-3 rounded-full bg-[#A07C3B] ring-2 ring-white" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-950">{careDesk.focusClient.nome}</p>
+                <p className="text-sm font-semibold text-slate-950">{iris.focusClient.nome}</p>
                 <p className="mt-1 text-sm text-slate-600">Nova interação priorizada</p>
-                <p className="mt-1 font-mono text-xs font-semibold text-[#7A5E2C]">CareDesk SLA</p>
+                <p className="mt-1 font-mono text-xs font-semibold text-[#7A5E2C]">Iris SLA</p>
               </div>
             </div>
             <button
@@ -337,7 +337,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
             <Tooltip content="Abrir atendimento" placement="top" className="flex-1" triggerClassName="w-full">
               <button
                 type="button"
-                onClick={() => openWhatsApp(careDesk.focusClient?.id)}
+                onClick={() => openWhatsApp(iris.focusClient?.id)}
                 aria-label="Abrir atendimento"
                 className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35]"
               >
@@ -370,7 +370,7 @@ function DeskMetric({
 }: {
   icon: typeof Headphones;
   label: string;
-  tone?: CareDeskSignalTone;
+  tone?: IrisSignalTone;
   value: string;
 }) {
   return (
@@ -398,7 +398,7 @@ function CommandCard({
   description: string;
   icon: typeof Headphones;
   title: string;
-  tone: CareDeskSignalTone;
+  tone: IrisSignalTone;
   value: string;
 }) {
   return (
@@ -426,7 +426,7 @@ function MiniSignal({ label, value }: { label: string; value: number }) {
   );
 }
 
-function CareDeskAction({ icon: Icon, label, value }: { icon: typeof Send; label: string; value: string }) {
+function IrisAction({ icon: Icon, label, value }: { icon: typeof Send; label: string; value: string }) {
   return (
     <button
       type="button"
@@ -459,7 +459,7 @@ function PulseRow({ label, percent, value }: { label: string; percent: number; v
   );
 }
 
-function buildCareDeskSnapshot(clients: QueueClient[]) {
+function buildIrisSnapshot(clients: QueueClient[]) {
   const sorted = [...clients].sort((first, second) => {
     if (second.parcelas.vencidas !== first.parcelas.vencidas) return second.parcelas.vencidas - first.parcelas.vencidas;
     return second.scoreRisco - first.scoreRisco;
@@ -496,7 +496,7 @@ function buildCareDeskSnapshot(clients: QueueClient[]) {
   };
 }
 
-function toneClasses(tone: CareDeskSignalTone) {
+function toneClasses(tone: IrisSignalTone) {
   if (tone === "live") return "bg-emerald-50 text-emerald-700 ring-emerald-100";
   if (tone === "danger") return "bg-rose-50 text-rose-700 ring-rose-100";
   if (tone === "gold") return "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15";
@@ -508,7 +508,7 @@ function formatCount(value: number) {
   return Number(value ?? 0).toLocaleString("pt-BR");
 }
 
-async function getCareDeskAccessToken() {
+async function getIrisAccessToken() {
   const client = getHubSupabaseClient();
 
   if (!client) {

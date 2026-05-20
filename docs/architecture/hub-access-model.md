@@ -1,6 +1,6 @@
-# Careli Hub Access Model
+# Panteon Access Model
 
-Este documento define o modelo conceitual de acesso operacional do Careli Hub. Ele prepara a Home, os modulos e as futuras policies sem alterar a autenticacao Supabase atual.
+Este documento define o modelo conceitual de acesso operacional do Panteon. Ele prepara a Home, os modulos e as futuras policies sem alterar a autenticacao Supabase atual.
 
 ## Perfis Operacionais
 

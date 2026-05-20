@@ -19,8 +19,8 @@ export function createMockRealtimeState(): RealtimeState {
       },
       {
         id: "guardian-live",
-        moduleId: "guardian",
-        name: "Guardian Live",
+        moduleId: "hades",
+        name: "Hades Live",
         workspaceId: "careli",
       },
     ],
@@ -29,7 +29,7 @@ export function createMockRealtimeState(): RealtimeState {
       {
         description: "Contrato realtime mockado ativo no Hub.",
         id: "evt-sync",
-        moduleId: "pulsex",
+        moduleId: "hermes",
         severity: "processing",
         timestamp: "agora",
         title: "Realtime layer conectado",
@@ -38,7 +38,7 @@ export function createMockRealtimeState(): RealtimeState {
       {
         description: "Registry, auth e permissoes prontos para eventos vivos.",
         id: "evt-registry",
-        moduleId: "guardian",
+        moduleId: "hades",
         severity: "success",
         timestamp: "2 min",
         title: "Base operacional sincronizada",
@@ -56,19 +56,19 @@ export function createMockRealtimeState(): RealtimeState {
     notifications: [
       {
         id: "ntf-guardian",
-        moduleId: "guardian",
+        moduleId: "hades",
         read: false,
         severity: "success",
         timestamp: "agora",
-        title: "Guardian pronto para eventos",
+        title: "Hades pronto para eventos",
       },
       {
         id: "ntf-pulsex",
-        moduleId: "pulsex",
+        moduleId: "hermes",
         read: false,
         severity: "info",
         timestamp: "2 min",
-        title: "PulseX aguardando backend",
+        title: "Hermes aguardando backend",
       },
       {
         id: "ntf-drive",

@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 import { MessageCircle } from "lucide-react";
 import { Tooltip } from "@repo/uix";
@@ -33,11 +33,11 @@ export function ClientQueueCard({
           <p className="mt-1 text-xs text-slate-500">Responsável: {client.responsavel}</p>
         </button>
 
-        <Tooltip content={`Abrir CareDesk de ${client.nome}`} placement="top">
+        <Tooltip content={`Abrir Iris de ${client.nome}`} placement="top">
           <button
             type="button"
             onClick={onOpenWhatsApp}
-            aria-label={`Abrir CareDesk de ${client.nome}`}
+            aria-label={`Abrir Iris de ${client.nome}`}
             className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
           >
             <MessageCircle className="size-4" aria-hidden="true" />

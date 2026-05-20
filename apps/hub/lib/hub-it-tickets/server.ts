@@ -266,7 +266,7 @@ export async function authorizeHubItTicketRequest(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Fila de tickets TI liberada somente para SquadOps adm." },
+        { error: "Fila de tickets TI liberada somente para Zeus adm." },
         { status: 403 },
       ),
     };
@@ -353,7 +353,7 @@ export async function createHubItTicket({
         category: normalizedInput.category,
         expected_result: normalizedInput.expectedResult ?? null,
         metadata: {
-          source: "hub-caca-ticket-ti",
+          source: "hub-athena-ticket-ti",
           userAgent:
             typeof normalizedInput.sourceUrl === "string"
               ? "browser"
@@ -386,8 +386,8 @@ export async function createHubItTicket({
 
     await insertTicketEvent(adminClient, {
       createdByUserId: user.id,
-      message: "Ticket TI aberto pelo usuario via Caca.",
-      metadata: { source: "hub-caca-ticket-ti" },
+      message: "Ticket TI aberto pelo usuario via Athena.",
+      metadata: { source: "hub-athena-ticket-ti" },
       technicalNote: normalizedInput.technicalSummary,
       ticketId: ticket.id,
       type: "created",
@@ -403,7 +403,7 @@ export async function createHubItTicket({
       await insertTicketEvent(adminClient, {
         createdByUserId: user.id,
         message: `${normalizedInput.attachments.length} anexo(s) enviado(s) para analise tecnica.`,
-        metadata: { source: "hub-caca-ticket-ti" },
+        metadata: { source: "hub-athena-ticket-ti" },
         technicalNote: null,
         ticketId: ticket.id,
         type: "attachment_added",
@@ -516,7 +516,7 @@ export async function updateHubItTicket({
     }
 
     if (!isAuthorizedHubItTicketAdmin(user)) {
-      throw new Error("Somente SquadOps adm pode responder tickets TI.");
+      throw new Error("Somente Zeus adm pode responder tickets TI.");
     }
 
     const nextStatus =
@@ -666,7 +666,7 @@ async function insertTicketAttachments(
       content_data_url: attachment.dataUrl ?? null,
       created_by_user_id: input.userId,
       file_name: attachment.fileName,
-      metadata: { source: "hub-caca-ticket-ti" },
+      metadata: { source: "hub-athena-ticket-ti" },
       mime_type: attachment.mimeType,
       size_bytes: attachment.sizeBytes,
       ticket_id: input.ticketId,
@@ -695,7 +695,7 @@ function normalizeCreateInput(input: unknown): HubItTicketCreateInput & {
   const title = sanitizeRequiredText(payload.title, "Informe um titulo tecnico.", 4);
   const technicalSummary = sanitizeRequiredText(
     payload.technicalSummary,
-    "A leitura tecnica da Caca e obrigatoria.",
+    "A leitura tecnica da Athena e obrigatoria.",
     10,
   );
   const moduleName = sanitizeRequiredText(payload.module, "Informe o modulo.", 2);
@@ -801,7 +801,7 @@ function mapTicketRow(
           avatarUrl: row.assigned_to_avatar_url,
           email: row.assigned_to_email,
           id: row.assigned_to_user_id,
-          name: row.assigned_to_name ?? "SquadOps",
+          name: row.assigned_to_name ?? "Zeus",
         }
       : null,
     assignedToUserId: row.assigned_to_user_id,
@@ -920,7 +920,7 @@ async function createLocalHubItTicket({
       {
         createdAt: now,
         id: `local-event-${randomBytes(6).toString("hex")}`,
-        message: "Ticket TI aberto pelo usuario via Caca.",
+        message: "Ticket TI aberto pelo usuario via Athena.",
         type: "created",
         visibleToRequester: true,
       },
@@ -1029,7 +1029,7 @@ async function updateLocalHubItTicket({
   }
 
   if (!isAuthorizedHubItTicketAdmin(user)) {
-    throw new Error("Somente SquadOps adm pode responder tickets TI.");
+    throw new Error("Somente Zeus adm pode responder tickets TI.");
   }
 
   const nextStatus =

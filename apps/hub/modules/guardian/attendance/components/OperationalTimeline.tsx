@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
@@ -438,7 +438,7 @@ function ManualTimelineDrawer({
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-              Guardian manual
+              Hades manual
             </p>
             <h2 className="mt-1 text-lg font-semibold text-slate-950">
               Registrar atividade
@@ -710,7 +710,7 @@ function attachmentTypeFor(file: File) {
 
 function operatorFromLogin(loginName: string | null | undefined, fallback?: string) {
   return formatOperatorDisplayName(
-    firstFilled(loginName, fallback, "Operador Guardian"),
+    firstFilled(loginName, fallback, "Operador Hades"),
   );
 }
 
@@ -772,7 +772,7 @@ function titleForType(type: TimelineEventType) {
     "Alteração de risco": "Risco operacional atualizado",
     "Atualização cadastral": "Cadastro atualizado",
     "Boleto C2X": "Boleto registrado",
-    "Interação da IA": "Interação da Cacá registrada",
+    "Interação da IA": "Interação da Athena registrada",
     "Ligação realizada": "Ligação realizada",
     "Observação operacional": "Observação operacional",
     "Promessa de pagamento": "Promessa de pagamento registrada",

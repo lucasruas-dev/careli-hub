@@ -1,17 +1,17 @@
 import type {
-  PulseXCallSession,
-  PulseXChannel,
-  PulseXFutureCapability,
-  PulseXMessage,
-  PulseXMessageTag,
-  PulseXPresenceUser,
-  PulseXReactionEmoji,
-  PulseXThreadReply,
+  HermesCallSession,
+  HermesChannel,
+  HermesFutureCapability,
+  HermesMessage,
+  HermesMessageTag,
+  HermesPresenceUser,
+  HermesReactionEmoji,
+  HermesThreadReply,
 } from "./types";
 
 function applyPresenceRule(
-  users: readonly PulseXPresenceUser[],
-): PulseXPresenceUser[] {
+  users: readonly HermesPresenceUser[],
+): HermesPresenceUser[] {
   return users.map((user) => {
     if (
       user.status === "online" &&
@@ -29,8 +29,8 @@ function applyPresenceRule(
 }
 
 function applyMentionPendingRule(
-  messages: readonly PulseXMessage[],
-): PulseXMessage[] {
+  messages: readonly HermesMessage[],
+): HermesMessage[] {
   return messages.map((message) => {
     const hasExpiredMention =
       (message.mentionUserIds?.length ?? 0) > 0 &&
@@ -45,7 +45,7 @@ function applyMentionPendingRule(
       ...message,
       status: "warning",
       tags: [
-        ...new Set<PulseXMessageTag>([...(message.tags ?? []), "pendente"]),
+        ...new Set<HermesMessageTag>([...(message.tags ?? []), "pendente"]),
       ],
     };
   });
@@ -66,7 +66,7 @@ export const pulsexChannels = [
     kind: "operations",
     lastMessageAt: "09:24",
     name: "Cobranca",
-    preview: "CareDesk confirmou retorno dos acordos...",
+    preview: "Iris confirmou retorno dos acordos...",
     status: "online",
     unreadCount: 3,
   },
@@ -79,11 +79,11 @@ export const pulsexChannels = [
       status: "Acompanhamento",
       unit: "Operacao",
     },
-    description: "Fila de atendimento operacional do CareDesk.",
+    description: "Fila de atendimento operacional do Iris.",
     id: "desk",
     kind: "operations",
     lastMessageAt: "09:21",
-    name: "CareDesk",
+    name: "Iris",
     preview: "Priorizar retornos pendentes ate 11h.",
     status: "online",
     unreadCount: 1,
@@ -130,11 +130,11 @@ export const pulsexChannels = [
       status: "Monitoramento",
       unit: "Tecnologia",
     },
-    description: "Canal tecnico do Guardian.",
+    description: "Canal tecnico do Hades.",
     id: "guardian",
     kind: "technology",
     lastMessageAt: "09:28",
-    name: "Guardian",
+    name: "Hades",
     preview: "Monitoramento do dashboard voltou ao normal.",
     status: "online",
   },
@@ -146,11 +146,11 @@ export const pulsexChannels = [
       status: "Produto",
       unit: "Tecnologia",
     },
-    description: "Canal de evolucao do PulseX.",
+    description: "Canal de evolucao do Hermes.",
     id: "pulsex",
     kind: "technology",
     lastMessageAt: "09:16",
-    name: "PulseX",
+    name: "Hermes",
     preview: "Composer segue mockado por enquanto.",
     status: "online",
   },
@@ -283,7 +283,7 @@ export const pulsexChannels = [
     preview: "Vou ajustar o shell operacional.",
     status: "away",
   },
-] as const satisfies readonly PulseXChannel[];
+] as const satisfies readonly HermesChannel[];
 
 export const pulsexPresenceUsers = applyPresenceRule([
   {
@@ -337,7 +337,7 @@ export const pulsexPresenceUsers = applyPresenceRule([
     status: "away",
     username: "catherine",
   },
-] as const satisfies readonly PulseXPresenceUser[]);
+] as const satisfies readonly HermesPresenceUser[]);
 
 export const pulsexMessages = applyMentionPendingRule([
   {
@@ -395,7 +395,7 @@ export const pulsexMessages = applyMentionPendingRule([
       label: "fila-desk-09h.pdf",
       type: "file",
     },
-    body: "Nívea Careli fila do CareDesk com 12 retornos pendentes. Priorizei os casos urgentes.",
+    body: "Nívea Careli fila do Iris com 12 retornos pendentes. Priorizei os casos urgentes.",
     channelId: "desk",
     deliveredTo: ["ana", "mia"],
     id: "msg-003",
@@ -416,7 +416,7 @@ export const pulsexMessages = applyMentionPendingRule([
   },
   {
     authorId: "leo",
-    body: "Guardian voltou a sincronizar. Monitoramento ficou verde desde 09:26.",
+    body: "Hades voltou a sincronizar. Monitoramento ficou verde desde 09:26.",
     channelId: "guardian",
     deliveredTo: ["ana", "rui"],
     id: "msg-004",
@@ -515,7 +515,7 @@ export const pulsexMessages = applyMentionPendingRule([
   },
   {
     authorId: "ana",
-    body: "Diretoria: manter pauta objetiva, com status de cobranca, financeiro e Guardian.",
+    body: "Diretoria: manter pauta objetiva, com status de cobranca, financeiro e Hades.",
     channelId: "diretoria",
     deliveredTo: ["rui", "mia"],
     id: "msg-009",
@@ -537,20 +537,20 @@ export const pulsexMessages = applyMentionPendingRule([
     threadCount: 0,
     timestamp: "08:52",
   },
-] as const satisfies readonly PulseXMessage[]);
+] as const satisfies readonly HermesMessage[]);
 
 export const pulsexReactionOptions = [
   "👍",
   "✅",
   "👀",
   "🚀",
-] as const satisfies readonly PulseXReactionEmoji[];
+] as const satisfies readonly HermesReactionEmoji[];
 
 export const pulsexThreadReplies = {
   "msg-001": [
     {
       authorId: "leo",
-      body: "Boa. Esse canal pode virar a linha do tempo operacional do Guardian.",
+      body: "Boa. Esse canal pode virar a linha do tempo operacional do Hades.",
       id: "reply-001",
       messageId: "msg-001",
       timestamp: "09:14",
@@ -572,7 +572,7 @@ export const pulsexThreadReplies = {
       timestamp: "09:19",
     },
   ],
-} as const satisfies Record<string, readonly PulseXThreadReply[]>;
+} as const satisfies Record<string, readonly HermesThreadReply[]>;
 
 export const pulsexActivityEvents = [
   {
@@ -608,7 +608,7 @@ export const pulsexFutureCapabilities = [
   "uploads",
   "calls",
   "ai-assistant",
-] as const satisfies readonly PulseXFutureCapability[];
+] as const satisfies readonly HermesFutureCapability[];
 
 export const pulsexCallSessions = [
   {
@@ -712,7 +712,7 @@ export const pulsexCallSessions = [
     ],
     startedAt: "08:45",
     status: "ended",
-    title: "Validacao Guardian",
+    title: "Validacao Hades",
     type: "video",
   },
   {
@@ -750,4 +750,4 @@ export const pulsexCallSessions = [
     title: "Retorno rapido da cobranca",
     type: "audio",
   },
-] as const satisfies readonly PulseXCallSession[];
+] as const satisfies readonly HermesCallSession[];

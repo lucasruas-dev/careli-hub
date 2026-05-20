@@ -1,6 +1,6 @@
 import type { RowDataPacket } from "mysql2/promise";
 
-import { getGuardianDbPool } from "@/lib/guardian/db";
+import { getHadesDbPool } from "@/lib/guardian/db";
 
 type PaymentRow = RowDataPacket & {
   asaas_payment_id: string | null;
@@ -76,7 +76,7 @@ export async function loadPaymentViewingInfo(
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": "Careli Guardian",
+        "User-Agent": "Careli Hades",
         access_token: apiKey,
       },
       method: "GET",
@@ -145,7 +145,7 @@ export async function prepareBoletoResendAction(
       boletoUrl,
       deliveryMode: mode,
       message:
-        "O link do boleto esta pronto, mas o disparo manual pelo Asaas ainda precisa de endpoint oficial confirmado. Use o link pelo CareDesk enquanto a integracao nativa nao estiver liberada.",
+        "O link do boleto esta pronto, mas o disparo manual pelo Asaas ainda precisa de endpoint oficial confirmado. Use o link pelo Iris enquanto a integracao nativa nao estiver liberada.",
       paymentId,
       providerAction: "asaas-notification-unavailable",
     };
@@ -156,7 +156,7 @@ export async function prepareBoletoResendAction(
     boletoUrl,
     deliveryMode: mode,
     message:
-      "Link do boleto pronto para reenvio pelo CareDesk. Confirme os dados do cliente antes do disparo.",
+      "Link do boleto pronto para reenvio pelo Iris. Confirme os dados do cliente antes do disparo.",
     paymentId,
     providerAction: "link-ready",
   };
@@ -165,7 +165,7 @@ export async function prepareBoletoResendAction(
 async function loadPaymentAsaasReference(
   paymentId: string,
 ): Promise<PaymentRow | null> {
-  const poolResult = getGuardianDbPool();
+  const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
     return null;

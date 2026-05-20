@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
@@ -425,7 +425,7 @@ export function WhatsAppConversationPanel({
       protocol: ticket.protocol,
       type: "Observação operacional",
       title: "Operador assumiu atendimento",
-      description: `Operador abriu o Ticket ${ticket.protocol} no CareDesk para tratar mensagem recebida do cliente.`,
+      description: `Operador abriu o Ticket ${ticket.protocol} no Iris para tratar mensagem recebida do cliente.`,
       occurredAt: "11/05/2026 12:30",
       operator: client.responsavel,
       status: "Registrado",
@@ -710,7 +710,7 @@ export function WhatsAppConversationPanel({
                         <span aria-hidden="true">•</span>
                         <Tooltip content="Ticket criado automaticamente após mensagem recebida." placement="bottom">
                           <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                            ⚡ Autoaberto
+                            ? Autoaberto
                           </span>
                         </Tooltip>
                       </>
@@ -845,7 +845,7 @@ export function WhatsAppConversationPanel({
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                 <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
                   <LockKeyhole className="size-3.5" aria-hidden="true" />
-                  <span>⚠ Complete o ticket para iniciar o atendimento</span>
+                  <span>? Complete o ticket para iniciar o atendimento</span>
                 </div>
                 <TicketChecklist items={ticketChecklist} />
               </div>
@@ -864,7 +864,7 @@ export function WhatsAppConversationPanel({
             </div>
 
             <div className={`flex items-end gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity ${operationReady ? "opacity-100" : "opacity-55"}`}>
-              <ComposerIconButton disabled={!operationReady} label="Emoji" onClick={() => setDraft((current) => `${current}🙂`)}>
+              <ComposerIconButton disabled={!operationReady} label="Emoji" onClick={() => setDraft((current) => `${current}??`)}>
                 <Smile className="size-4" aria-hidden="true" />
               </ComposerIconButton>
               <ComposerIconButton disabled={!operationReady} label="Anexar arquivo" onClick={() => sendMessage("document")}>
@@ -1494,7 +1494,7 @@ function OperationDrawer({
             ) : (
               <>
                 <ReadonlyField label="Fonte financeira" value="C2X" />
-                <ReadonlyField label="Ação do Guardian" value={isBoleto ? "Enviar boleto original" : "Consultar boletos originais"} />
+                <ReadonlyField label="Ação do Hades" value={isBoleto ? "Enviar boleto original" : "Consultar boletos originais"} />
                 <ReadonlyField label="Saldo em atraso" value={client.saldoDevedor} />
                 <ReadonlyField label="Preparado para" value="visualizado, vencido, pago e reenvio" />
               </>
@@ -1509,7 +1509,7 @@ function OperationDrawer({
                   <p className="mt-1 text-sm font-semibold text-slate-950">Boletos originais vinculados à unidade</p>
                 </div>
                 <span className="w-fit rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
-                  Guardian não gera boletos
+                  Hades não gera boletos
                 </span>
               </div>
 
@@ -1971,7 +1971,7 @@ function TicketChecklist({
                 : "bg-amber-50 text-amber-800 ring-amber-200"
             } ${compact ? "px-1.5" : ""}`}
           >
-            <span aria-hidden="true">{item.ok ? "✓" : "!"}</span>
+            <span aria-hidden="true">{item.ok ? "?" : "!"}</span>
             {item.label}
           </span>
         </Tooltip>
@@ -2157,7 +2157,7 @@ function buildMessages(client: QueueClient): WhatsAppMessage[] {
     {
       id: `${client.id}-msg-1`,
       author: "operator",
-      body: `Olá, ${firstName(client.nome)} 🙂. Identificamos pendências no empreendimento ${client.carteira.empreendimento}. Podemos te ajudar a regularizar?`,
+      body: `Olá, ${firstName(client.nome)} ??. Identificamos pendências no empreendimento ${client.carteira.empreendimento}. Podemos te ajudar a regularizar?`,
       date: "10/05/2026",
       kind: "text",
       operator: client.responsavel,

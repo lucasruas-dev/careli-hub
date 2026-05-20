@@ -1,23 +1,21 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
-import Image from "next/image";
-import { Bell } from "lucide-react";
+import { Bell, Flame } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 
 export function Topbar() {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/90 backdrop-blur-xl">
       <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <div className="flex min-w-0 flex-1 items-center gap-4">
-          <div className="relative h-9 w-32 shrink-0 lg:hidden">
-            <Image
-              src="/logog.png"
-              alt="Guardian"
-              fill
-              priority
-              sizes="128px"
-              className="object-contain object-left"
-            />
+          <div className="flex h-9 min-w-0 shrink-0 items-center gap-2 lg:hidden">
+            <span className="grid size-9 place-items-center rounded-xl border border-[#A07C3B]/25 bg-slate-950 text-[#D5B46F]">
+              <Flame className="size-4 stroke-[1.8]" aria-hidden="true" />
+            </span>
+            <span className="truncate text-base font-semibold text-slate-950">
+              Hades
+            </span>
           </div>
 
         </div>
@@ -34,17 +32,7 @@ export function Topbar() {
             </button>
           </Tooltip>
 
-          <Tooltip content="Perfil Guardian" placement="bottom">
-            <button
-              type="button"
-              aria-label="Perfil Guardian"
-              className="flex size-9 items-center justify-center rounded-xl border border-slate-200/70 bg-white text-left transition-colors hover:bg-slate-50"
-            >
-              <span className="flex size-7 items-center justify-center rounded-lg bg-slate-950 text-xs font-medium text-white">
-                G
-              </span>
-            </button>
-          </Tooltip>
+          <PanteonTopbarUser />
         </div>
       </div>
     </header>

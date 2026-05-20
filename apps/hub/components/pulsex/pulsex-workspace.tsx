@@ -1,27 +1,28 @@
 "use client";
 
+import { AthenaIcon } from "@/components/athena-icon";
 import { listHubPresence } from "@/lib/hub-presence";
 import { pulsexReactionOptions } from "@/lib/pulsex";
 import {
-  createPulseXMessage,
-  createPulseXThreadReply,
+  createHermesMessage,
+  createHermesThreadReply,
   listChannelMessages,
-  listPulseXThreadReplies,
-  loadPulseXOperationalData,
-  markPulseXChannelRead,
-  updatePulseXMessageBody,
-  updatePulseXMessageTags,
+  listHermesThreadReplies,
+  loadHermesOperationalData,
+  markHermesChannelRead,
+  updateHermesMessageBody,
+  updateHermesMessageTags,
 } from "@/lib/pulsex/supabase-data";
 import {
-  getPulseXShortcutChannels,
-  type PulseXShortcutFilter,
+  getHermesShortcutChannels,
+  type HermesShortcutFilter,
 } from "@/lib/pulsex/shortcuts";
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
-  getPulseXMessageRealtimeTopic,
-  parsePulseXMessageBroadcastPayload,
+  getHermesMessageRealtimeTopic,
+  parseHermesMessageBroadcastPayload,
 } from "@/lib/pulsex/realtime";
-import { playPulseXIncomingMessageSound } from "@/lib/pulsex/notification-effects";
+import { playHermesIncomingMessageSound } from "@/lib/pulsex/notification-effects";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { Tooltip } from "@repo/uix";
 import {
@@ -30,33 +31,32 @@ import {
   logSupabaseDiagnostic,
 } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
-import { usePulseXCall } from "@/providers/pulsex-call-provider";
+import { useHermesCall } from "@/providers/pulsex-call-provider";
 import { Bell, X } from "lucide-react";
-import Image from "next/image";
 import type {
-  PulseXCallSession,
-  PulseXCallType,
-  PulseXChannel,
-  PulseXDepartment,
-  PulseXMessageAttachment,
-  PulseXMessageMention,
-  PulseXMessageFilter,
-  PulseXMessageTag,
-  PulseXMessage,
-  PulseXPresenceUser,
-  PulseXReactionEmoji,
-  PulseXThreadReply,
+  HermesCallSession,
+  HermesCallType,
+  HermesChannel,
+  HermesDepartment,
+  HermesMessageAttachment,
+  HermesMessageMention,
+  HermesMessageFilter,
+  HermesMessageTag,
+  HermesMessage,
+  HermesPresenceUser,
+  HermesReactionEmoji,
+  HermesThreadReply,
 } from "@/lib/pulsex";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CacaAgentPanel } from "./caca-agent-panel";
+import { AthenaAgentPanel } from "./athena-agent-panel";
 import { ConversationHeader } from "./conversation-header";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { MessageComposer } from "./message-composer";
 import { MessageList } from "./message-list";
 import { ThreadPanel } from "./thread-panel";
 
-type PulseXToastNotification = {
-  channelId: PulseXChannel["id"];
+type HermesToastNotification = {
+  channelId: HermesChannel["id"];
   description: string;
   id: string;
   mentioned: boolean;
@@ -70,7 +70,7 @@ const PULSEX_FAVORITE_CHANNELS_STORAGE_KEY = "careli:pulsex:favorite-channels";
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
-export function PulseXWorkspace() {
+export function HermesWorkspace() {
   const { hubUser, profileStatus } = useAuth();
   const {
     callSoundId,
@@ -78,35 +78,35 @@ export function PulseXWorkspace() {
     previewCallSound,
     setCallSoundId,
     startCall,
-  } = usePulseXCall();
+  } = useHermesCall();
   const currentUserId = hubUser?.id ?? "ana";
-  const [activeChannelId, setActiveChannelId] = useState<PulseXChannel["id"]>(
-    emptyPulseXChannel.id,
+  const [activeChannelId, setActiveChannelId] = useState<HermesChannel["id"]>(
+    emptyHermesChannel.id,
   );
-  const [channels, setChannels] = useState<PulseXChannel[]>([]);
-  const [departments, setDepartments] = useState<PulseXDepartment[]>([]);
-  const [messages, setMessages] = useState<PulseXMessage[]>([]);
-  const [presenceUsers, setPresenceUsers] = useState<PulseXPresenceUser[]>([]);
+  const [channels, setChannels] = useState<HermesChannel[]>([]);
+  const [departments, setDepartments] = useState<HermesDepartment[]>([]);
+  const [messages, setMessages] = useState<HermesMessage[]>([]);
+  const [presenceUsers, setPresenceUsers] = useState<HermesPresenceUser[]>([]);
   const [threadReplies, setThreadReplies] = useState<
-    Record<string, PulseXThreadReply[]>
+    Record<string, HermesThreadReply[]>
   >({});
   const [activeThreadMessageId, setActiveThreadMessageId] = useState<
-    PulseXMessage["id"] | null
+    HermesMessage["id"] | null
   >(null);
-  const [isCacaAgentOpen, setIsCacaAgentOpen] = useState(false);
+  const [isAthenaAgentOpen, setIsAthenaAgentOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [cacaFocusedMessageId, setCacaFocusedMessageId] = useState<
-    PulseXMessage["id"] | null
+  const [athenaFocusedMessageId, setAthenaFocusedMessageId] = useState<
+    HermesMessage["id"] | null
   >(null);
   const [activeMessageFilter, setActiveMessageFilter] =
-    useState<PulseXMessageFilter>("all");
+    useState<HermesMessageFilter>("all");
   const [activeShortcutFilter, setActiveShortcutFilter] =
-    useState<PulseXShortcutFilter | null>(null);
+    useState<HermesShortcutFilter | null>(null);
   const [composerValue, setComposerValue] = useState("");
   const [composerMentions, setComposerMentions] = useState<
-    readonly PulseXMessageMention[]
+    readonly HermesMessageMention[]
   >([]);
-  const [composerTags, setComposerTags] = useState<readonly PulseXMessageTag[]>(
+  const [composerTags, setComposerTags] = useState<readonly HermesMessageTag[]>(
     [],
   );
   const [threadComposerValue, setThreadComposerValue] = useState("");
@@ -114,29 +114,29 @@ export function PulseXWorkspace() {
     "fallback" | "loading" | "ready"
   >("loading");
   const [favoriteChannelIds, setFavoriteChannelIds] = useState<
-    PulseXChannel["id"][]
+    HermesChannel["id"][]
   >([]);
   const [isFavoriteStorageReady, setIsFavoriteStorageReady] = useState(false);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
   const messageRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
-  const cacaAgentPanelRef = useRef<HTMLDivElement>(null);
+  const athenaAgentPanelRef = useRef<HTMLDivElement>(null);
   const threadPanelRef = useRef<HTMLDivElement>(null);
-  const [notifications, setNotifications] = useState<PulseXToastNotification[]>(
+  const [notifications, setNotifications] = useState<HermesToastNotification[]>(
     [],
   );
   const activeChannel =
     channels.find((channel) => channel.id === activeChannelId) ??
     channels[0] ??
-    emptyPulseXChannel;
+    emptyHermesChannel;
 
   useOutsideDismiss({
-    enabled: isCacaAgentOpen,
+    enabled: isAthenaAgentOpen,
     onDismiss: () => {
-      setIsCacaAgentOpen(false);
-      setCacaFocusedMessageId(null);
+      setIsAthenaAgentOpen(false);
+      setAthenaFocusedMessageId(null);
     },
-    ref: cacaAgentPanelRef,
+    ref: athenaAgentPanelRef,
   });
   useOutsideDismiss({
     enabled: Boolean(activeThreadMessageId),
@@ -159,8 +159,8 @@ export function PulseXWorkspace() {
   const channelMessages = messages.filter(
     (message) => message.channelId === activeChannel.id,
   );
-  const cacaFocusedMessage = cacaFocusedMessageId
-    ? channelMessages.find((message) => message.id === cacaFocusedMessageId)
+  const athenaFocusedMessage = athenaFocusedMessageId
+    ? channelMessages.find((message) => message.id === athenaFocusedMessageId)
     : null;
   const filteredChannelMessages =
     activeMessageFilter === "all"
@@ -177,7 +177,7 @@ export function PulseXWorkspace() {
       (user.channelIds as readonly string[]).includes(activeChannel.id),
     );
     const knownUserIds = new Set(channelUsers.map((user) => user.id));
-    const messageAuthorUsers: PulseXPresenceUser[] = [];
+    const messageAuthorUsers: HermesPresenceUser[] = [];
 
     for (const message of channelMessages) {
       if (knownUserIds.has(message.authorId)) {
@@ -202,7 +202,7 @@ export function PulseXWorkspace() {
     let isMounted = true;
 
     setDataStatus("loading");
-    loadPulseXOperationalData({
+    loadHermesOperationalData({
       currentUserId,
       userRole: hubUser?.role,
     })
@@ -226,6 +226,11 @@ export function PulseXWorkspace() {
           payload.messages,
           nextChannels,
         );
+        const nextChannelsWithUnread = withChannelUnreadCounts({
+          channels: nextChannels,
+          currentUserId,
+          messages: nextMessages,
+        });
 
         nextMessages.forEach((message) =>
           knownMessageIdsRef.current.add(message.id),
@@ -234,14 +239,14 @@ export function PulseXWorkspace() {
           loadedChannelIdsRef.current.add(message.channelId),
         );
 
-        setChannels(nextChannels);
+        setChannels(nextChannelsWithUnread);
         setDepartments(payload.departments);
         setMessages(nextMessages);
         setPresenceUsers(nextPresenceUsers);
         setActiveChannelId((currentId) =>
-          nextChannels.some((channel) => channel.id === currentId)
+          nextChannelsWithUnread.some((channel) => channel.id === currentId)
             ? currentId
-            : (nextChannels[0]?.id ?? emptyPulseXChannel.id),
+            : (nextChannelsWithUnread[0]?.id ?? emptyHermesChannel.id),
         );
         setDataStatus(hasHubSupabaseConfig() ? "ready" : "fallback");
       })
@@ -346,7 +351,7 @@ export function PulseXWorkspace() {
   }, [dataStatus, refreshPresenceStatuses]);
 
   const notifyIncomingMessages = useCallback(
-    (newMessages: readonly PulseXMessage[]) => {
+    (newMessages: readonly HermesMessage[]) => {
       if (newMessages.length === 0) {
         return;
       }
@@ -354,18 +359,18 @@ export function PulseXWorkspace() {
       newMessages.forEach((message) => {
         const mentioned = isMessageMentioningUser(message, currentUserId);
         const title = mentioned
-          ? "Voce foi mencionado no PulseX"
+          ? "Voce foi mencionado no Hermes"
           : `Nova mensagem em ${activeChannel.name}`;
-        const description = `${message.authorName ?? "PulseX"}: ${message.body}`;
+        const description = `${message.authorName ?? "Hermes"}: ${message.body}`;
         const notification = {
           channelId: message.channelId,
           description,
           id: `notification-${message.id}-${Date.now()}`,
           mentioned,
           title,
-        } satisfies PulseXToastNotification;
+        } satisfies HermesToastNotification;
 
-        playPulseXIncomingMessageSound({
+        playHermesIncomingMessageSound({
           mentioned,
           messageId: message.id,
         });
@@ -387,7 +392,7 @@ export function PulseXWorkspace() {
       if (
         !hasHubSupabaseConfig() ||
         activeChannel.kind === "direct" ||
-        activeChannel.id === emptyPulseXChannel.id
+        activeChannel.id === emptyHermesChannel.id
       ) {
         return;
       }
@@ -423,7 +428,7 @@ export function PulseXWorkspace() {
           }
 
           setMessages((currentMessages) =>
-            mergePulseXChannelMessages({
+            mergeHermesChannelMessages({
               channelId: activeChannel.id,
               currentMessages,
               nextMessages: nextDeliveredMessages,
@@ -450,7 +455,7 @@ export function PulseXWorkspace() {
     if (
       !hasHubSupabaseConfig() ||
       activeChannel.kind === "direct" ||
-      activeChannel.id === emptyPulseXChannel.id
+      activeChannel.id === emptyHermesChannel.id
     ) {
       return;
     }
@@ -473,7 +478,7 @@ export function PulseXWorkspace() {
       !hasHubSupabaseConfig() ||
       dataStatus !== "ready" ||
       activeChannel.kind === "direct" ||
-      activeChannel.id === emptyPulseXChannel.id
+      activeChannel.id === emptyHermesChannel.id
     ) {
       return;
     }
@@ -485,7 +490,7 @@ export function PulseXWorkspace() {
     }
 
     const realtimeChannel = client.channel(
-      getPulseXMessageRealtimeTopic(activeChannel.id),
+      getHermesMessageRealtimeTopic(activeChannel.id),
       {
         config: {
           broadcast: {
@@ -504,7 +509,7 @@ export function PulseXWorkspace() {
           event: PULSEX_MESSAGE_BROADCAST_EVENT,
         },
         (payload: { payload?: unknown }) => {
-          const broadcastMessage = parsePulseXMessageBroadcastPayload(
+          const broadcastMessage = parseHermesMessageBroadcastPayload(
             payload.payload,
           );
 
@@ -527,7 +532,7 @@ export function PulseXWorkspace() {
           knownMessageIdsRef.current.add(nextDeliveredMessage.id);
           loadedChannelIdsRef.current.add(nextDeliveredMessage.channelId);
           setMessages((currentMessages) =>
-            mergePulseXChannelMessages({
+            mergeHermesChannelMessages({
               channelId: activeChannel.id,
               currentMessages,
               nextMessages: [nextDeliveredMessage],
@@ -567,14 +572,14 @@ export function PulseXWorkspace() {
     if (
       !hasHubSupabaseConfig() ||
       activeChannel.kind === "direct" ||
-      activeChannel.id === emptyPulseXChannel.id
+      activeChannel.id === emptyHermesChannel.id
     ) {
       return;
     }
 
     let isMounted = true;
 
-    markPulseXChannelRead({ channelId: activeChannel.id })
+    markHermesChannelRead({ channelId: activeChannel.id })
       .then((receipt) => {
         if (!isMounted || !receipt) {
           return;
@@ -589,6 +594,7 @@ export function PulseXWorkspace() {
                     ...(channel.memberReadAtByUserId ?? {}),
                     [receipt.userId]: receipt.lastReadAt,
                   },
+                  unreadCount: 0,
                 }
               : channel,
           ),
@@ -617,12 +623,12 @@ export function PulseXWorkspace() {
     };
   }, [activeChannel.id, activeChannel.kind]);
 
-  const loadThreadReplies = useCallback((messageId: PulseXMessage["id"]) => {
+  const loadThreadReplies = useCallback((messageId: HermesMessage["id"]) => {
     if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
       return;
     }
 
-    listPulseXThreadReplies({ messageId })
+    listHermesThreadReplies({ messageId })
       .then((nextReplies) => {
         setThreadReplies((currentReplies) => ({
           ...currentReplies,
@@ -661,10 +667,10 @@ export function PulseXWorkspace() {
     };
   }, [activeThreadMessageId, loadThreadReplies]);
 
-  function handleSelectChannel(channelId: PulseXChannel["id"]) {
+  function handleSelectChannel(channelId: HermesChannel["id"]) {
     setActiveChannelId(channelId);
-    setIsCacaAgentOpen(false);
-    setCacaFocusedMessageId(null);
+    setIsAthenaAgentOpen(false);
+    setAthenaFocusedMessageId(null);
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
     setChannels((currentChannels) =>
@@ -674,12 +680,12 @@ export function PulseXWorkspace() {
     );
   }
 
-  function handleSelectMessageFilter(filter: PulseXMessageFilter) {
+  function handleSelectMessageFilter(filter: HermesMessageFilter) {
     setActiveShortcutFilter(null);
     setActiveMessageFilter(filter);
   }
 
-  function handleSelectShortcut(shortcut: PulseXShortcutFilter) {
+  function handleSelectShortcut(shortcut: HermesShortcutFilter) {
     const nextShortcut = activeShortcutFilter === shortcut ? null : shortcut;
 
     setActiveShortcutFilter(nextShortcut);
@@ -689,7 +695,7 @@ export function PulseXWorkspace() {
       return;
     }
 
-    const shortcutChannels = getPulseXShortcutChannels({
+    const shortcutChannels = getHermesShortcutChannels({
       channels,
       currentUserId,
       favoriteChannelIds,
@@ -708,7 +714,7 @@ export function PulseXWorkspace() {
   }
 
   function handleToggleFavoriteChannel() {
-    if (activeChannel.id === emptyPulseXChannel.id) {
+    if (activeChannel.id === emptyHermesChannel.id) {
       return;
     }
 
@@ -719,44 +725,44 @@ export function PulseXWorkspace() {
     );
   }
 
-  function handleOpenThread(messageId: PulseXMessage["id"]) {
-    setIsCacaAgentOpen(false);
-    setCacaFocusedMessageId(null);
+  function handleOpenThread(messageId: HermesMessage["id"]) {
+    setIsAthenaAgentOpen(false);
+    setAthenaFocusedMessageId(null);
     setActiveThreadMessageId(messageId);
     loadThreadReplies(messageId);
   }
 
-  function handleOpenCacaAgent() {
+  function handleOpenAthenaAgent() {
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
-    setCacaFocusedMessageId(null);
-    setIsCacaAgentOpen(true);
+    setAthenaFocusedMessageId(null);
+    setIsAthenaAgentOpen(true);
   }
 
-  function handleOpenCacaAgentForMessage(messageId: PulseXMessage["id"]) {
+  function handleOpenAthenaAgentForMessage(messageId: HermesMessage["id"]) {
     setActiveThreadMessageId(null);
     setThreadComposerValue("");
-    setCacaFocusedMessageId(messageId);
-    setIsCacaAgentOpen(true);
+    setAthenaFocusedMessageId(messageId);
+    setIsAthenaAgentOpen(true);
   }
 
-  function handleUseCacaDraft(content: string) {
+  function handleUseAthenaDraft(content: string) {
     const nextContent = content.trim();
 
     if (!nextContent) {
       return;
     }
 
-    if (cacaFocusedMessage) {
+    if (athenaFocusedMessage) {
       setThreadComposerValue((currentValue) =>
         currentValue.trim()
           ? `${currentValue.trimEnd()}\n\n${nextContent}`
           : nextContent,
       );
-      setActiveThreadMessageId(cacaFocusedMessage.id);
-      loadThreadReplies(cacaFocusedMessage.id);
-      setIsCacaAgentOpen(false);
-      setCacaFocusedMessageId(null);
+      setActiveThreadMessageId(athenaFocusedMessage.id);
+      loadThreadReplies(athenaFocusedMessage.id);
+      setIsAthenaAgentOpen(false);
+      setAthenaFocusedMessageId(null);
       return;
     }
 
@@ -765,11 +771,11 @@ export function PulseXWorkspace() {
         ? `${currentValue.trimEnd()}\n\n${nextContent}`
         : nextContent;
     });
-    setIsCacaAgentOpen(false);
-    setCacaFocusedMessageId(null);
+    setIsAthenaAgentOpen(false);
+    setAthenaFocusedMessageId(null);
   }
 
-  function handleStartCall(type: PulseXCallType) {
+  function handleStartCall(type: HermesCallType) {
     const session = createLocalCallSession({
       channel: activeChannel,
       currentUserId,
@@ -780,7 +786,7 @@ export function PulseXWorkspace() {
     const targetUserIds = session.participants
       .map((participant) => participant.userId)
       .filter(
-        (userId): userId is PulseXPresenceUser["id"] =>
+        (userId): userId is HermesPresenceUser["id"] =>
           Boolean(userId) && userId !== currentUserId,
       );
 
@@ -788,7 +794,7 @@ export function PulseXWorkspace() {
   }
 
   async function handleSendMessage(input?: {
-    attachment?: PulseXMessageAttachment;
+    attachment?: HermesMessageAttachment;
   }) {
     const body = composerValue.trim();
     const attachment = input?.attachment;
@@ -836,7 +842,7 @@ export function PulseXWorkspace() {
       tags,
       threadCount: 0,
       timestamp,
-    } satisfies PulseXMessage;
+    } satisfies HermesMessage;
 
     knownMessageIdsRef.current.add(localMessage.id);
     setMessages((currentMessages) => [...currentMessages, localMessage]);
@@ -861,7 +867,7 @@ export function PulseXWorkspace() {
     }
 
     try {
-      const savedMessage = await createPulseXMessage({
+      const savedMessage = await createHermesMessage({
         authorUserId: hubUser?.id,
         attachment,
         body: body || attachment?.label || "Anexo",
@@ -880,14 +886,14 @@ export function PulseXWorkspace() {
       };
 
       setMessages((currentMessages) =>
-        mergePulseXChannelMessages({
+        mergeHermesChannelMessages({
           channelId: activeChannel.id,
           currentMessages,
           nextMessages: [savedDeliveredMessage],
           replaceChannel: false,
         }),
       );
-      void broadcastPulseXMessage(
+      void broadcastHermesMessage(
         savedDeliveredMessage,
         messageRealtimeChannelRef.current,
       );
@@ -907,13 +913,13 @@ export function PulseXWorkspace() {
 
   function handleComposerChange(
     value: string,
-    mentions: readonly PulseXMessageMention[],
+    mentions: readonly HermesMessageMention[],
   ) {
     setComposerValue(value);
     setComposerMentions(mentions);
   }
 
-  function handleToggleComposerTag(tag: PulseXMessageTag) {
+  function handleToggleComposerTag(tag: HermesMessageTag) {
     setComposerTags((currentTags) =>
       currentTags.includes(tag)
         ? currentTags.filter((currentTag) => currentTag !== tag)
@@ -922,7 +928,7 @@ export function PulseXWorkspace() {
   }
 
   async function handleEditMessage(
-    messageId: PulseXMessage["id"],
+    messageId: HermesMessage["id"],
     body: string,
   ) {
     const nextBody = body.trim();
@@ -939,7 +945,7 @@ export function PulseXWorkspace() {
       ...previousMessage,
       body: nextBody,
       editedAt,
-    } satisfies PulseXMessage;
+    } satisfies HermesMessage;
 
     setMessages((currentMessages) =>
       currentMessages.map((message) =>
@@ -952,7 +958,7 @@ export function PulseXWorkspace() {
     }
 
     try {
-      const savedMessage = await updatePulseXMessageBody({
+      const savedMessage = await updateHermesMessageBody({
         body: nextBody,
         messageId,
       });
@@ -988,8 +994,8 @@ export function PulseXWorkspace() {
   }
 
   function handleToggleMessageTag(
-    messageId: PulseXMessage["id"],
-    tag: PulseXMessageTag,
+    messageId: HermesMessage["id"],
+    tag: HermesMessageTag,
   ) {
     const currentMessage = messages.find((message) => message.id === messageId);
     const currentTags = currentMessage?.tags ?? [];
@@ -1007,7 +1013,7 @@ export function PulseXWorkspace() {
       return;
     }
 
-    updatePulseXMessageTags({
+    updateHermesMessageTags({
       messageId,
       tags: nextTags,
     })
@@ -1030,8 +1036,8 @@ export function PulseXWorkspace() {
   }
 
   function handleToggleReaction(
-    messageId: PulseXMessage["id"],
-    emoji: PulseXReactionEmoji,
+    messageId: HermesMessage["id"],
+    emoji: HermesReactionEmoji,
   ) {
     setMessages((currentMessages) =>
       currentMessages.map((message) => {
@@ -1113,7 +1119,7 @@ export function PulseXWorkspace() {
       id: `reply-${activeThreadMessage.id}-${Date.now()}`,
       messageId: activeThreadMessage.id,
       timestamp,
-    } satisfies PulseXThreadReply;
+    } satisfies HermesThreadReply;
 
     setThreadReplies((currentReplies) => {
       const messageReplies = currentReplies[activeThreadMessage.id] ?? [];
@@ -1143,7 +1149,7 @@ export function PulseXWorkspace() {
       return;
     }
 
-    createPulseXThreadReply({
+    createHermesThreadReply({
       authorUserId: hubUser?.id,
       body,
       channelId: activeThreadMessage.channelId,
@@ -1220,7 +1226,7 @@ export function PulseXWorkspace() {
               currentUserId={currentUserId}
               filter={activeMessageFilter}
               messages={filteredChannelMessages}
-              onAskAiReply={handleOpenCacaAgentForMessage}
+              onAskAiReply={handleOpenAthenaAgentForMessage}
               onEditMessage={handleEditMessage}
               onOpenThread={handleOpenThread}
               onToggleTag={handleToggleMessageTag}
@@ -1237,7 +1243,7 @@ export function PulseXWorkspace() {
             users={presenceUsers}
             value={composerValue}
           />
-          <PulseXNotificationStack
+          <HermesNotificationStack
             notifications={notifications}
             onDismiss={(notificationId) =>
               setNotifications((currentNotifications) =>
@@ -1248,47 +1254,41 @@ export function PulseXWorkspace() {
             }
             onSelect={(channelId) => handleSelectChannel(channelId)}
           />
-          {!isCacaAgentOpen && !activeThreadMessage ? (
+          {!isAthenaAgentOpen && !activeThreadMessage ? (
             <div
               className="absolute z-30"
               style={{ bottom: "6rem", right: "1.5rem" }}
             >
-              <Tooltip content="Abrir Caca" placement="left">
+              <Tooltip content="Abrir Athena" placement="left">
                 <button
-                  aria-label="Abrir Caca"
-                  className="grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.20)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                  onClick={handleOpenCacaAgent}
+                  aria-label="Abrir Athena"
+                  className="grid size-14 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-[#101820] text-[#A07C3B] shadow-[0_18px_50px_rgba(15,23,42,0.20)] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                  onClick={handleOpenAthenaAgent}
                   type="button"
                 >
-                  <Image
-                    alt=""
-                    className="size-full object-cover"
-                    height={56}
-                    src="/caca-profile.png"
-                    width={56}
-                  />
+                  <AthenaIcon className="size-full object-cover" aria-hidden="true" />
                   <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
                 </button>
               </Tooltip>
             </div>
           ) : null}
-          {isCacaAgentOpen ? (
+          {isAthenaAgentOpen ? (
             <div
               className="absolute inset-y-0 right-0 z-30 shadow-2xl"
-              ref={cacaAgentPanelRef}
+              ref={athenaAgentPanelRef}
               style={{ maxWidth: "calc(100% - 1rem)", width: "24rem" }}
             >
-              <CacaAgentPanel
+              <AthenaAgentPanel
                 channel={activeChannel}
                 currentUserId={currentUserId}
                 draftValue={composerValue}
-                focusedMessage={cacaFocusedMessage}
+                focusedMessage={athenaFocusedMessage}
                 messages={channelMessages}
                 onClose={() => {
-                  setIsCacaAgentOpen(false);
-                  setCacaFocusedMessageId(null);
+                  setIsAthenaAgentOpen(false);
+                  setAthenaFocusedMessageId(null);
                 }}
-                onUseAsDraft={handleUseCacaDraft}
+                onUseAsDraft={handleUseAthenaDraft}
                 users={presenceUsers}
               />
             </div>
@@ -1322,10 +1322,10 @@ export function PulseXWorkspace() {
 }
 
 function withDirectUserChannels(
-  channels: readonly PulseXChannel[],
-  users: readonly PulseXPresenceUser[],
-  currentUserId: PulseXPresenceUser["id"],
-): PulseXChannel[] {
+  channels: readonly HermesChannel[],
+  users: readonly HermesPresenceUser[],
+  currentUserId: HermesPresenceUser["id"],
+): HermesChannel[] {
   const existingChannelIds = new Set(channels.map((channel) => channel.id));
   const directChannels = users
     .filter((user) => user.id !== currentUserId)
@@ -1345,7 +1345,7 @@ function withDirectUserChannels(
       name: user.label,
       preview: user.email ?? "Usuario do Hub",
       status: user.status,
-    })) satisfies PulseXChannel[];
+    })) satisfies HermesChannel[];
 
   return [
     ...channels,
@@ -1353,14 +1353,14 @@ function withDirectUserChannels(
   ];
 }
 
-function PulseXNotificationStack({
+function HermesNotificationStack({
   notifications,
   onDismiss,
   onSelect,
 }: {
-  notifications: readonly PulseXToastNotification[];
-  onDismiss: (notificationId: PulseXToastNotification["id"]) => void;
-  onSelect: (channelId: PulseXChannel["id"]) => void;
+  notifications: readonly HermesToastNotification[];
+  onDismiss: (notificationId: HermesToastNotification["id"]) => void;
+  onSelect: (channelId: HermesChannel["id"]) => void;
 }) {
   if (notifications.length === 0) {
     return null;
@@ -1410,8 +1410,8 @@ function PulseXNotificationStack({
   );
 }
 
-async function broadcastPulseXMessage(
-  message: PulseXMessage,
+async function broadcastHermesMessage(
+  message: HermesMessage,
   realtimeChannel: HubRealtimeChannel | null,
 ) {
   if (!realtimeChannel) {
@@ -1432,15 +1432,15 @@ async function broadcastPulseXMessage(
   }
 }
 
-function mergePulseXChannelMessages({
+function mergeHermesChannelMessages({
   channelId,
   currentMessages,
   nextMessages,
   replaceChannel,
 }: {
-  channelId: PulseXChannel["id"];
-  currentMessages: readonly PulseXMessage[];
-  nextMessages: readonly PulseXMessage[];
+  channelId: HermesChannel["id"];
+  currentMessages: readonly HermesMessage[];
+  nextMessages: readonly HermesMessage[];
   replaceChannel: boolean;
 }) {
   const nextIds = new Set(nextMessages.map((message) => message.id));
@@ -1465,22 +1465,22 @@ function mergePulseXChannelMessages({
       return false;
     }
 
-    return replaceChannel ? isLocalPendingPulseXMessage(message) : true;
+    return replaceChannel ? isLocalPendingHermesMessage(message) : true;
   });
 
-  return [...retainedMessages, ...nextMessages].sort(comparePulseXMessages);
+  return [...retainedMessages, ...nextMessages].sort(compareHermesMessages);
 }
 
-function isLocalPendingPulseXMessage(message: PulseXMessage) {
+function isLocalPendingHermesMessage(message: HermesMessage) {
   return message.id.startsWith("local-");
 }
 
-function comparePulseXMessages(
-  firstMessage: PulseXMessage,
-  secondMessage: PulseXMessage,
+function compareHermesMessages(
+  firstMessage: HermesMessage,
+  secondMessage: HermesMessage,
 ) {
-  const firstTime = getPulseXMessageSortTime(firstMessage);
-  const secondTime = getPulseXMessageSortTime(secondMessage);
+  const firstTime = getHermesMessageSortTime(firstMessage);
+  const secondTime = getHermesMessageSortTime(secondMessage);
 
   if (firstTime !== secondTime) {
     return firstTime - secondTime;
@@ -1489,7 +1489,7 @@ function comparePulseXMessages(
   return firstMessage.id.localeCompare(secondMessage.id);
 }
 
-function getPulseXMessageSortTime(message: PulseXMessage) {
+function getHermesMessageSortTime(message: HermesMessage) {
   if (!message.createdAt) {
     return 0;
   }
@@ -1504,12 +1504,12 @@ function isLocalDevelopmentRuntime() {
 }
 
 function applyPresenceStatusesToUsers(
-  users: PulseXPresenceUser[],
+  users: HermesPresenceUser[],
   presenceByUserId: Record<
-    PulseXPresenceUser["id"],
-    PulseXPresenceUser["status"]
+    HermesPresenceUser["id"],
+    HermesPresenceUser["status"]
   >,
-): PulseXPresenceUser[] {
+): HermesPresenceUser[] {
   let hasChanges = false;
   const nextUsers = users.map((user) => {
     const nextStatus = presenceByUserId[user.id] ?? "offline";
@@ -1530,12 +1530,12 @@ function applyPresenceStatusesToUsers(
 }
 
 function applyPresenceStatusesToDirectChannels(
-  channels: PulseXChannel[],
+  channels: HermesChannel[],
   presenceByUserId: Record<
-    PulseXPresenceUser["id"],
-    PulseXPresenceUser["status"]
+    HermesPresenceUser["id"],
+    HermesPresenceUser["status"]
   >,
-): PulseXChannel[] {
+): HermesChannel[] {
   let hasChanges = false;
   const nextChannels = channels.map((channel) => {
     if (channel.kind !== "direct") {
@@ -1561,8 +1561,8 @@ function applyPresenceStatusesToDirectChannels(
 }
 
 function withMessageDeliveryData(
-  messages: readonly PulseXMessage[],
-  channels: readonly PulseXChannel[],
+  messages: readonly HermesMessage[],
+  channels: readonly HermesChannel[],
 ) {
   const channelsById = new Map(
     channels.map((channel) => [channel.id, channel] as const),
@@ -1586,19 +1586,75 @@ function withMessageDeliveryData(
   });
 }
 
+function withChannelUnreadCounts({
+  channels,
+  currentUserId,
+  messages,
+}: {
+  channels: readonly HermesChannel[];
+  currentUserId: HermesPresenceUser["id"];
+  messages: readonly HermesMessage[];
+}) {
+  const messagesByChannelId = new Map<HermesChannel["id"], HermesMessage[]>();
+
+  for (const message of messages) {
+    if (message.deletedAt || message.threadParentMessageId) {
+      continue;
+    }
+
+    const channelMessages = messagesByChannelId.get(message.channelId) ?? [];
+
+    channelMessages.push(message);
+    messagesByChannelId.set(message.channelId, channelMessages);
+  }
+
+  return channels.map((channel) => {
+    const lastReadAt = channel.memberReadAtByUserId?.[currentUserId];
+    const lastReadTime = lastReadAt ? Date.parse(lastReadAt) : Number.NaN;
+    const unreadCount = (messagesByChannelId.get(channel.id) ?? []).filter(
+      (message) =>
+        message.authorId !== currentUserId &&
+        isMessageNewerThanLastRead(message, lastReadTime),
+    ).length;
+
+    return {
+      ...channel,
+      unreadCount,
+    };
+  });
+}
+
+function isMessageNewerThanLastRead(
+  message: HermesMessage,
+  lastReadTime: number,
+) {
+  const createdAt = message.createdAt ?? message.timestamp;
+  const messageTime = Date.parse(createdAt);
+
+  if (Number.isNaN(messageTime)) {
+    return false;
+  }
+
+  if (Number.isNaN(lastReadTime)) {
+    return true;
+  }
+
+  return messageTime > lastReadTime;
+}
+
 function getMessageRecipientUserIds({
   channel,
   messageAuthorId,
 }: {
-  channel: PulseXChannel;
-  messageAuthorId: PulseXPresenceUser["id"];
+  channel: HermesChannel;
+  messageAuthorId: HermesPresenceUser["id"];
 }) {
   return (channel.memberUserIds ?? []).filter(
     (userId) => userId !== messageAuthorId,
   );
 }
 
-function getMessageReadUserIds(message: PulseXMessage, channel: PulseXChannel) {
+function getMessageReadUserIds(message: HermesMessage, channel: HermesChannel) {
   if (!message.createdAt) {
     return message.readBy ?? [];
   }
@@ -1620,9 +1676,9 @@ function getMessageReadUserIds(message: PulseXMessage, channel: PulseXChannel) {
 }
 
 function createPresenceUserFromMessage(
-  message: PulseXMessage,
-  channelId: PulseXChannel["id"],
-): PulseXPresenceUser {
+  message: HermesMessage,
+  channelId: HermesChannel["id"],
+): HermesPresenceUser {
   const label = message.authorName ?? "Usuario";
 
   return {
@@ -1639,10 +1695,10 @@ function createPresenceUserFromMessage(
 }
 
 function withUserChannelAccess(
-  users: readonly PulseXPresenceUser[],
-  channels: readonly PulseXChannel[],
-  currentUserId: PulseXPresenceUser["id"],
-): PulseXPresenceUser[] {
+  users: readonly HermesPresenceUser[],
+  channels: readonly HermesChannel[],
+  currentUserId: HermesPresenceUser["id"],
+): HermesPresenceUser[] {
   return users.map((user) => {
     return {
       ...user,
@@ -1671,8 +1727,8 @@ function getInitials(value: string) {
 }
 
 function isMessageMentioningUser(
-  message: PulseXMessage,
-  userId: PulseXPresenceUser["id"],
+  message: HermesMessage,
+  userId: HermesPresenceUser["id"],
 ) {
   return (
     message.authorId !== userId &&
@@ -1680,11 +1736,11 @@ function isMessageMentioningUser(
   );
 }
 
-const emptyPulseXChannel = {
+const emptyHermesChannel = {
   avatar: "--",
   context: {
     filesCount: 0,
-    owner: "PulseX",
+    owner: "Hermes",
     status: "Aguardando setup",
     unit: "Hub",
   },
@@ -1698,7 +1754,7 @@ const emptyPulseXChannel = {
   name: "Sem canal",
   preview: "Configure canais no Setup Central.",
   status: "offline",
-} satisfies PulseXChannel;
+} satisfies HermesChannel;
 
 function createLocalCallSession({
   channel,
@@ -1707,12 +1763,12 @@ function createLocalCallSession({
   participants,
   type,
 }: {
-  channel: PulseXChannel;
-  currentUserId: PulseXPresenceUser["id"];
-  fallbackUsers: readonly PulseXPresenceUser[];
-  participants: readonly PulseXPresenceUser[];
-  type: PulseXCallType;
-}): PulseXCallSession {
+  channel: HermesChannel;
+  currentUserId: HermesPresenceUser["id"];
+  fallbackUsers: readonly HermesPresenceUser[];
+  participants: readonly HermesPresenceUser[];
+  type: HermesCallType;
+}): HermesCallSession {
   const fallbackCurrentUser = fallbackUsers.find(
     (user) => user.id === currentUserId,
   );

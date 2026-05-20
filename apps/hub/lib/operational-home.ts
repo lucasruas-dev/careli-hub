@@ -76,7 +76,7 @@ export const operationalSectors: readonly Sector[] = [
   {
     departmentId: "dep-operations",
     id: "sec-desk",
-    name: "CareDesk",
+    name: "Iris",
     slug: "desk",
   },
   {
@@ -163,7 +163,7 @@ export const operationalTeam: readonly OperationalTeamMember[] = [
     lastSignal: "almoco",
     name: "Larissa Alves",
     profileRole: "op1",
-    roleLabel: "CareDesk",
+    roleLabel: "Iris",
     sectorId: "sec-desk",
     status: "lunch",
   },
@@ -198,7 +198,7 @@ export const operationalActivities: readonly OperationalActivity[] = [
     id: "activity-desk-returns",
     moduleId: "caredesk",
     status: "overdue",
-    title: "Retornos pendentes do CareDesk",
+    title: "Retornos pendentes do Iris",
   },
   {
     assigneeId: "user-nivea",
@@ -255,15 +255,15 @@ export const hubImprovements: readonly HubImprovement[] = [
   {
     date: "14/05",
     description:
-      "PulseX recebeu respostas, tags, anexos, audio, chamadas e indicadores de leitura preparados para operacao diaria.",
+      "Hermes recebeu respostas, tags, anexos, audio, chamadas e indicadores de leitura preparados para operacao diaria.",
     id: "pulsex-operations-suite",
     moduleId: "pulsex",
-    title: "PulseX mais completo",
+    title: "Hermes mais completo",
     type: "novo recurso",
   },
   {
     date: "13/05",
-    description: "Sidebar recebeu logo C2X, Guardian dedicado e ordenacao alfabetica.",
+    description: "Sidebar recebeu logo C2X, Hades dedicado e ordenacao alfabetica.",
     id: "hub-sidebar-branding",
     moduleId: "hub",
     title: "Identidade do shell refinada",
@@ -279,7 +279,7 @@ export const hubImprovements: readonly HubImprovement[] = [
   },
   {
     date: "13/05",
-    description: "PulseX ganhou mencoes estruturadas para notificacoes futuras.",
+    description: "Hermes ganhou mencoes estruturadas para notificacoes futuras.",
     id: "pulsex-mentions",
     moduleId: "pulsex",
     title: "Mencoes operacionais",

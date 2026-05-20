@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
@@ -185,11 +185,11 @@ export function ClientDetailPanel({
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <Tooltip content="Abrir CareDesk" placement="bottom">
+            <Tooltip content="Abrir Iris" placement="bottom">
               <button
                 type="button"
                 onClick={onOpenWhatsApp}
-                aria-label="Abrir CareDesk"
+                aria-label="Abrir Iris"
                 className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
               >
                 <MessageCircle className="size-4" aria-hidden="true" />
@@ -582,7 +582,7 @@ function ExecutiveCockpit({
         compact
       />
       <ActionMetric
-        label="CareDesk"
+        label="Iris"
         value={client.dados360.telefone}
         tone="gold"
         onClick={onOpenWhatsApp}
@@ -1428,7 +1428,7 @@ function RiskTab({
         {unit ? <UnitContext unit={unit} label="Unidade em análise" /> : null}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <MetricTile
-            label="Score Guardian"
+            label="Score Hades"
             value={`${client.scoreRisco}/100`}
             tone="danger"
           />
@@ -1492,7 +1492,7 @@ function DocumentsTab({
   const contractCode = selectedUnit?.matricula ?? "Sem cod. unidade";
   const contractDocumentId = selectedUnit?.signedContractDocumentId;
   const contractUrl = contractDocumentId
-    ? `/api/guardian/d4sign/contracts/${encodeURIComponent(contractDocumentId)}`
+    ? `/api/hades/d4sign/contracts/${encodeURIComponent(contractDocumentId)}`
     : undefined;
   const unitLabel = selectedUnit
     ? `${selectedUnit.empreendimento} ${selectedUnit.quadra} ${selectedUnit.lote}`.trim()
@@ -1549,7 +1549,7 @@ function DocumentsTab({
     },
   ];
 
-  async function openGuardianDocument(documentUrl: string, documentId: string) {
+  async function openHadesDocument(documentUrl: string, documentId: string) {
     const previewWindow = window.open("about:blank", "_blank");
 
     if (previewWindow) {
@@ -1560,7 +1560,7 @@ function DocumentsTab({
       setOpeningDocumentId(documentId);
       setDocumentError(null);
 
-      const accessToken = await getGuardianDocumentAccessToken();
+      const accessToken = await getHadesDocumentAccessToken();
       const response = await fetch(documentUrl, {
         cache: "no-store",
         headers: {
@@ -1625,7 +1625,7 @@ function DocumentsTab({
                     type="button"
                     disabled={openingDocumentId === document.id}
                     onClick={() =>
-                      void openGuardianDocument(document.href, document.id)
+                      void openHadesDocument(document.href, document.id)
                     }
                     className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-white px-2 py-1 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
                   >
@@ -1661,7 +1661,7 @@ function DocumentsTab({
   );
 }
 
-async function getGuardianDocumentAccessToken() {
+async function getHadesDocumentAccessToken() {
   const client = getHubSupabaseClient();
 
   if (!client) {

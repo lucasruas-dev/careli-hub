@@ -61,7 +61,7 @@ export type SetupPermission = {
   scope: "hub" | "module" | "workspace" | "system";
 };
 
-export type SetupPulseXChannel = {
+export type SetupHermesChannel = {
   departmentId?: string;
   departmentName?: string;
   description?: string;
@@ -74,14 +74,49 @@ export type SetupPulseXChannel = {
   type: "department_channel" | "private_group" | "sector_channel";
 };
 
-export type SetupPulseXChannelMember = {
+export type SetupHermesChannelMember = {
   channelId: string;
   userId: string;
 };
 
+export type SetupAtlasDepartment = {
+  id: string;
+  name: string;
+  rowId?: string;
+};
+
+export type SetupAtlasRole = {
+  baseValue?: number | null;
+  id: string;
+  name: string;
+  rowId?: string;
+};
+
+export type SetupAtlasOccurrenceProfile = {
+  id: string;
+  name: string;
+  rowId?: string;
+};
+
+export type SetupAtlasOccurrenceType = {
+  id: string;
+  name: string;
+  profileId?: string | null;
+  profileRowId?: string | null;
+  rowId?: string;
+};
+
+export type SetupAtlasConfig = {
+  departments: SetupAtlasDepartment[];
+  occurrenceProfiles: SetupAtlasOccurrenceProfile[];
+  occurrenceTypes: SetupAtlasOccurrenceType[];
+  roles: SetupAtlasRole[];
+};
+
 export type SetupData = {
-  channelMembers: SetupPulseXChannelMember[];
-  channels: SetupPulseXChannel[];
+  atlas: SetupAtlasConfig;
+  channelMembers: SetupHermesChannelMember[];
+  channels: SetupHermesChannel[];
   departmentModules: SetupDepartmentModule[];
   departments: SetupDepartment[];
   modules: SetupModule[];
@@ -91,6 +126,25 @@ export type SetupData = {
 };
 
 export type SetupRecordStatus = SetupDepartment["status"];
+
+export type CreateAtlasDepartmentInput = {
+  name: string;
+};
+
+export type CreateAtlasRoleInput = {
+  baseValue?: number | null;
+  name: string;
+};
+
+export type CreateAtlasOccurrenceProfileInput = {
+  name: string;
+};
+
+export type CreateAtlasOccurrenceTypeInput = {
+  name: string;
+  profileLegacyId?: string | null;
+  profileRowId?: string | null;
+};
 
 export type CreateDepartmentInput = {
   description?: string;
@@ -122,7 +176,7 @@ export type UpdateSectorInput = {
   status: SetupRecordStatus;
 };
 
-export type CreatePulseXChannelInput = {
+export type CreateHermesChannelInput = {
   departmentId?: string;
   description?: string;
   id: string;
@@ -130,17 +184,17 @@ export type CreatePulseXChannelInput = {
   participantUserIds?: string[];
   sectorId?: string;
   status: SetupRecordStatus;
-  type: SetupPulseXChannel["type"];
+  type: SetupHermesChannel["type"];
 };
 
-export type UpdatePulseXChannelInput = {
+export type UpdateHermesChannelInput = {
   departmentId?: string;
   id: string;
   name: string;
   participantUserIds?: string[];
   sectorId?: string;
   status: SetupRecordStatus;
-  type?: SetupPulseXChannel["type"];
+  type?: SetupHermesChannel["type"];
 };
 
 export type CreateOperationalUserInput = {

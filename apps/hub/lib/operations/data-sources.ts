@@ -61,13 +61,13 @@ export async function collectOperationsDataSources({
   checks.push(
     ...(await Promise.all([
       measureEndpoint({
-        endpoint: `${normalizedOrigin}/api/guardian/db/health`,
+        endpoint: `${normalizedOrigin}/api/hades/db/health`,
         expectedDescription: "200 conectado",
         expectedStatusCodes: [200],
         group: "c2x",
         id: "guardian-db-health",
         label: "C2X DB Health",
-        module: "Guardian",
+        module: "Hades",
       }),
       ...createProtectedEndpointChecks(normalizedOrigin).map(measureEndpoint),
       ...createSupabaseChecks().map(measureEndpoint),
@@ -77,25 +77,25 @@ export async function collectOperationsDataSources({
 
   checks.push(
     await measureEndpoint({
-      endpoint: `${normalizedOrigin}/api/guardian/attendance/queue?limit=20`,
+      endpoint: `${normalizedOrigin}/api/hades/attendance/queue?limit=20`,
       expectedDescription: "200 com limite seguro 20",
       expectedStatusCodes: [200],
       group: "guardian-queue",
       id: "guardian-queue-20",
-      label: "Guardian Queue limit=20",
-      module: "Guardian",
+      label: "Hades Queue limit=20",
+      module: "Hades",
       timeoutMs: QUEUE_TIMEOUT_MS,
     }),
   );
   checks.push(
     await measureEndpoint({
-      endpoint: `${normalizedOrigin}/api/guardian/attendance/queue?limit=50`,
+      endpoint: `${normalizedOrigin}/api/hades/attendance/queue?limit=50`,
       expectedDescription: "200 com limite seguro 50",
       expectedStatusCodes: [200],
       group: "guardian-queue",
       id: "guardian-queue-50",
-      label: "Guardian Queue limit=50",
-      module: "Guardian",
+      label: "Hades Queue limit=50",
+      module: "Hades",
       timeoutMs: QUEUE_TIMEOUT_MS,
     }),
   );
@@ -106,13 +106,13 @@ export async function collectOperationsDataSources({
 function createProtectedEndpointChecks(origin: string): EndpointCheckConfig[] {
   return [
     {
-      endpoint: `${origin}/api/guardian/overview`,
+      endpoint: `${origin}/api/hades/overview`,
       expectedDescription: "401 esperado sem bearer",
       expectedStatusCodes: [401],
       group: "protected-api",
       id: "protected-guardian-overview",
-      label: "Guardian Overview protegido",
-      module: "Guardian",
+      label: "Hades Overview protegido",
+      module: "Hades",
     },
     {
       endpoint: `${origin}/api/hub/home`,
@@ -124,13 +124,13 @@ function createProtectedEndpointChecks(origin: string): EndpointCheckConfig[] {
       module: "Hub",
     },
     {
-      endpoint: `${origin}/api/pulsex/messages`,
+      endpoint: `${origin}/api/hermes/messages`,
       expectedDescription: "401 esperado sem bearer",
       expectedStatusCodes: [401],
       group: "protected-api",
       id: "protected-pulsex-messages",
-      label: "PulseX Messages protegido",
-      module: "PulseX",
+      label: "Hermes Messages protegido",
+      module: "Hermes",
     },
   ];
 }

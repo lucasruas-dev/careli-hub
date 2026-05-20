@@ -1,4 +1,4 @@
-export type SquadOpsDemandStatus =
+export type ZeusDemandStatus =
   | "intake"
   | "implementing"
   | "validating"
@@ -6,40 +6,40 @@ export type SquadOpsDemandStatus =
   | "waiting-qa"
   | "waiting-deploy";
 
-export type SquadOpsEnvironmentStatus =
+export type ZeusEnvironmentStatus =
   | "stable"
   | "pending"
   | "blocked"
   | "watching";
 
-export type SquadOpsDemand = {
+export type ZeusDemand = {
   architectOwner: string;
-  commits: readonly SquadOpsCommit[];
-  deploys: readonly SquadOpsDeploy[];
+  commits: readonly ZeusCommit[];
+  deploys: readonly ZeusDeploy[];
   dueAt: string;
-  environment: Record<SquadOpsEnvironmentName, SquadOpsEnvironmentStatus>;
+  environment: Record<ZeusEnvironmentName, ZeusEnvironmentStatus>;
   handoff: string;
   id: string;
   module: string;
   nextAgent: string;
   priority: "alta" | "media" | "critica";
   protocol: string;
-  qa: readonly SquadOpsQaRecord[];
+  qa: readonly ZeusQaRecord[];
   requester: string;
   squadId: string;
-  status: SquadOpsDemandStatus;
+  status: ZeusDemandStatus;
   summary: string;
-  timeline: readonly SquadOpsTimelineEvent[];
+  timeline: readonly ZeusTimelineEvent[];
   title: string;
 };
 
-export type SquadOpsEnvironmentName =
+export type ZeusEnvironmentName =
   | "desenvolvimento"
   | "qa"
   | "homologacao"
   | "producao";
 
-export type SquadOpsCommit = {
+export type ZeusCommit = {
   author: string;
   hash: string;
   message: string;
@@ -47,30 +47,30 @@ export type SquadOpsCommit = {
   timestamp: string;
 };
 
-export type SquadOpsQaRecord = {
+export type ZeusQaRecord = {
   owner: string;
   result: "pendente" | "aprovado" | "ajuste";
   scope: string;
   timestamp: string;
 };
 
-export type SquadOpsDeploy = {
-  environment: SquadOpsEnvironmentName;
+export type ZeusDeploy = {
+  environment: ZeusEnvironmentName;
   owner: string;
   status: "pendente" | "bloqueado" | "publicado";
   timestamp: string;
 };
 
-export type SquadOpsTimelineEvent = {
+export type ZeusTimelineEvent = {
   actor: string;
   detail: string;
   id: string;
-  status: SquadOpsDemandStatus;
+  status: ZeusDemandStatus;
   timestamp: string;
   title: string;
 };
 
-export type SquadOpsSquad = {
+export type ZeusSquad = {
   focus: string;
   id: string;
   lead: string;
@@ -80,38 +80,38 @@ export type SquadOpsSquad = {
   status: "ativa" | "aguardando handoff" | "planejada";
 };
 
-export const squadOpsStatusLabels = {
+export const zeusStatusLabels = {
   intake: "Entrada",
   implementing: "Implementando",
   validating: "Validando",
   "waiting-architect": "Aguardando Architect",
   "waiting-qa": "Aguardando QA",
   "waiting-deploy": "Aguardando deploy",
-} as const satisfies Record<SquadOpsDemandStatus, string>;
+} as const satisfies Record<ZeusDemandStatus, string>;
 
-export const squadOpsStatusOrder = [
+export const zeusStatusOrder = [
   "intake",
   "implementing",
   "validating",
   "waiting-architect",
   "waiting-qa",
   "waiting-deploy",
-] as const satisfies readonly SquadOpsDemandStatus[];
+] as const satisfies readonly ZeusDemandStatus[];
 
-export const squadOpsEnvironmentLabels = {
+export const zeusEnvironmentLabels = {
   desenvolvimento: "Desenvolvimento",
   homologacao: "Homologacao",
   producao: "Producao",
   qa: "QA",
-} as const satisfies Record<SquadOpsEnvironmentName, string>;
+} as const satisfies Record<ZeusEnvironmentName, string>;
 
-export const squadOpsSquads = [
+export const zeusSquads = [
   {
-    focus: "Modulo SquadOps, protocolos da engenharia IA e handoffs.",
+    focus: "Modulo Zeus, protocolos da engenharia IA e handoffs.",
     id: "squadops-core",
-    lead: "SquadOps Core",
+    lead: "Zeus Core",
     members: ["Codex Senior", "Hub Architect", "Hub QA"],
-    name: "SquadOps Core",
+    name: "Zeus Core",
     nextProtocol: "SQD-20260517-001",
     status: "ativa",
   },
@@ -133,14 +133,14 @@ export const squadOpsSquads = [
     nextProtocol: "QA-20260517-006",
     status: "aguardando handoff",
   },
-] as const satisfies readonly SquadOpsSquad[];
+] as const satisfies readonly ZeusSquad[];
 
-export const squadOpsDemands = [
+export const zeusDemands = [
   {
     architectOwner: "Hub Architect",
     commits: [
       {
-        author: "SquadOps Core",
+        author: "Zeus Core",
         hash: "pendente",
         message: "feat(hub): create squadops operational module",
         status: "aguardando push",
@@ -150,7 +150,7 @@ export const squadOpsDemands = [
     deploys: [
       {
         environment: "desenvolvimento",
-        owner: "SquadOps Core",
+        owner: "Zeus Core",
         status: "pendente",
         timestamp: "17/05 11:10",
       },
@@ -170,7 +170,7 @@ export const squadOpsDemands = [
     },
     handoff: "Entregar primeira versao para revisao arquitetural e QA visual.",
     id: "DEMAND-001",
-    module: "SquadOps",
+    module: "Zeus",
     nextAgent: "Hub Architect",
     priority: "critica",
     protocol: "SQD-20260517-001",
@@ -186,26 +186,26 @@ export const squadOpsDemands = [
     squadId: "squadops-core",
     status: "waiting-architect",
     summary:
-      "Criar a primeira tela operacional do SquadOps com demandas, squads, protocolos, commits, QA, deploys e ambientes.",
+      "Criar a primeira tela operacional do Zeus com demandas, squads, protocolos, commits, QA, deploys e ambientes.",
     timeline: [
       {
         actor: "Lucas",
-        detail: "Nova frente SquadOps Core definida para engenharia IA do Hub.",
+        detail: "Nova frente Zeus Core definida para engenharia IA do Hub.",
         id: "tl-001",
         status: "intake",
         timestamp: "17/05 10:18",
         title: "Demanda registrada",
       },
       {
-        actor: "SquadOps Core",
-        detail: "Escopo isolado de Guardian, CareDesk e PulseX confirmado.",
+        actor: "Zeus Core",
+        detail: "Escopo isolado de Hades, Iris e Hermes confirmado.",
         id: "tl-002",
         status: "implementing",
         timestamp: "17/05 10:31",
         title: "Escopo validado",
       },
       {
-        actor: "SquadOps Core",
+        actor: "Zeus Core",
         detail: "Primeira versao mockada preparada para handoff.",
         id: "tl-003",
         status: "waiting-architect",
@@ -213,7 +213,7 @@ export const squadOpsDemands = [
         title: "Handoff arquitetural",
       },
     ],
-    title: "Primeira tela operacional SquadOps",
+    title: "Primeira tela operacional Zeus",
   },
   {
     architectOwner: "Hub Architect",
@@ -221,7 +221,7 @@ export const squadOpsDemands = [
       {
         author: "Hub Architect",
         hash: "ARC-PLAN",
-        message: "Definir tabelas, RLS e contratos do SquadOps",
+        message: "Definir tabelas, RLS e contratos do Zeus",
         status: "registrado",
         timestamp: "planejado",
       },
@@ -243,7 +243,7 @@ export const squadOpsDemands = [
     },
     handoff: "Validar se o modelo futuro entra em schema compartilhado do Hub.",
     id: "DEMAND-002",
-    module: "SquadOps",
+    module: "Zeus",
     nextAgent: "Hub DataOps",
     priority: "alta",
     protocol: "SQD-20260517-002",
@@ -255,14 +255,14 @@ export const squadOpsDemands = [
         timestamp: "apos arquitetura",
       },
     ],
-    requester: "SquadOps Core",
+    requester: "Zeus Core",
     squadId: "hub-architect",
     status: "waiting-qa",
     summary:
       "Propor modelagem Supabase para demandas, squads, timeline, commits, QA, deploys e recomendacao de agente.",
     timeline: [
       {
-        actor: "SquadOps Core",
+        actor: "Zeus Core",
         detail: "Sugestao inicial de tabelas adicionada na tela e no diario.",
         id: "tl-004",
         status: "validating",
@@ -290,9 +290,9 @@ export const squadOpsDemands = [
       producao: "blocked",
       qa: "pending",
     },
-    handoff: "Criar checklist operacional para aprovar SquadOps em desktop e mobile.",
+    handoff: "Criar checklist operacional para aprovar Zeus em desktop e mobile.",
     id: "DEMAND-003",
-    module: "SquadOps",
+    module: "Zeus",
     nextAgent: "Hub QA",
     priority: "media",
     protocol: "SQD-20260517-003",
@@ -304,7 +304,7 @@ export const squadOpsDemands = [
         timestamp: "aguardando handoff",
       },
     ],
-    requester: "SquadOps Core",
+    requester: "Zeus Core",
     squadId: "hub-qa",
     status: "waiting-qa",
     summary:
@@ -319,11 +319,11 @@ export const squadOpsDemands = [
         title: "QA aguardando",
       },
     ],
-    title: "QA visual e operacional do SquadOps",
+    title: "QA visual e operacional do Zeus",
   },
-] as const satisfies readonly SquadOpsDemand[];
+] as const satisfies readonly ZeusDemand[];
 
-export const squadOpsSupabaseModel = [
+export const zeusSupabaseModel = [
   {
     description: "Registro principal da demanda, modulo, prioridade, status e protocolo.",
     name: "hub_squadops_demands",

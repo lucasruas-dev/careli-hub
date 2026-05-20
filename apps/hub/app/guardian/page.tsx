@@ -19,15 +19,15 @@ import { Tooltip } from "@repo/uix";
 import { KpiCard } from "@/components/guardian/dashboard/KpiCard";
 import { MainLayout } from "@/components/guardian/layout/MainLayout";
 import type {
-  GuardianDistributionBucket,
-  GuardianEnterpriseDistributions,
-  GuardianEnterprisePerformance,
+  HadesDistributionBucket,
+  HadesEnterpriseDistributions,
+  HadesEnterprisePerformance,
 } from "@/lib/guardian/overview";
 import {
-  getGuardianOverviewEnterpriseDistributions,
-  getGuardianOverviewSnapshot,
+  getHadesOverviewEnterpriseDistributions,
+  getHadesOverviewSnapshot,
 } from "@/lib/guardian/overview-client";
-import { guardianMockClients } from "@/modules/guardian/guardianMockData";
+import { hadesMockClients } from "@/modules/guardian/hadesMockData";
 
 type DashboardKpiId =
   | "totalPortfolio"
@@ -39,16 +39,16 @@ type DashboardKpiId =
 
 type DashboardPanelId = "financial" | "desk" | "workflow" | "ai" | "operators";
 
-type RealGuardianKpis = {
-  billingComposition: GuardianDistributionBucket[];
+type RealHadesKpis = {
+  billingComposition: HadesDistributionBucket[];
   criticalContracts: number;
-  enterprisePerformance: GuardianEnterprisePerformance[];
+  enterprisePerformance: HadesEnterprisePerformance[];
   liquidatedAmount: number;
   liquidatedPayments: number;
   monthlyRecoveryAmount: number;
   monthlyRecoveryPayments: number;
   overdueClients: number;
-  overdueAging: GuardianDistributionBucket[];
+  overdueAging: HadesDistributionBucket[];
   overduePrincipalAmount: number;
   overduePrincipalPayments: number;
   totalPortfolioAmount: number;
@@ -97,7 +97,7 @@ type EnterprisePerformanceSortKey =
 
 const MOCK_DASH = "-";
 
-const contracts: ContractRecord[] = guardianMockClients.map((client) => ({
+const contracts: ContractRecord[] = hadesMockClients.map((client) => ({
   cliente: client.nome,
   empreendimento: client.empreendimento,
   unidadeLote: client.unidadeLote,
@@ -118,9 +118,9 @@ const profileOptions = ["Todos", "Ato", "Sinal", "Parcela"];
 const statusOptions = ["Todos", "Vencidas", "A vencer", "Liquidadas"];
 
 function buildEnterpriseScopedKpis(
-  kpis: RealGuardianKpis,
-  enterprise: GuardianEnterprisePerformance,
-): RealGuardianKpis {
+  kpis: RealHadesKpis,
+  enterprise: HadesEnterprisePerformance,
+): RealHadesKpis {
   const liquidatedAmount = Math.max(
     enterprise.delinquencyBaseAmount - enterprise.overduePrincipalAmount,
     0,
@@ -140,16 +140,16 @@ function buildEnterpriseScopedKpis(
   };
 }
 
-export default function GuardianPage() {
+export default function HadesPage() {
   const [enterprise, setEnterprise] = useState("Todos");
   const [profile, setProfile] = useState("Todos");
   const [status, setStatus] = useState("Todos");
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
   const [selectedKpi, setSelectedKpi] = useState<DashboardKpiId | null>(null);
-  const [realKpis, setRealKpis] = useState<RealGuardianKpis | null>(null);
+  const [realKpis, setRealKpis] = useState<RealHadesKpis | null>(null);
   const [enterpriseDistributions, setEnterpriseDistributions] = useState<
-    Record<string, GuardianEnterpriseDistributions>
+    Record<string, HadesEnterpriseDistributions>
   >({});
   const [enterpriseDistributionLoading, setEnterpriseDistributionLoading] =
     useState<string | null>(null);
@@ -169,7 +169,7 @@ export default function GuardianPage() {
 
     async function refreshRealKpis() {
       try {
-        const snapshot = await getGuardianOverviewSnapshot();
+        const snapshot = await getHadesOverviewSnapshot();
 
         if (!isMounted) {
           return;
@@ -233,7 +233,7 @@ export default function GuardianPage() {
 
     async function loadEnterpriseDistributions() {
       try {
-        const distributions = await getGuardianOverviewEnterpriseDistributions(
+        const distributions = await getHadesOverviewEnterpriseDistributions(
           enterpriseToLoad,
         );
 
@@ -488,12 +488,12 @@ export default function GuardianPage() {
           id="desk"
           onToggle={togglePanel}
           summary={MOCK_DASH}
-          title="CareDesk"
+          title="Iris"
           tone="danger"
         >
           <ActionMetricGrid
             metrics={[
-              ["Tickets abertos", MOCK_DASH, "Abrir CareDesk", "gold"],
+              ["Tickets abertos", MOCK_DASH, "Abrir Iris", "gold"],
               ["SLA crítico", MOCK_DASH, "Ver críticos", "danger"],
               ["Tempo médio resposta", MOCK_DASH, "Monitorar SLA", "neutral"],
               ["Mensagens sem resposta", MOCK_DASH, "Abrir fila", "danger"],
@@ -520,7 +520,7 @@ export default function GuardianPage() {
               ["Follow-ups vencendo", MOCK_DASH, "Priorizar", "gold"],
               ["Promessas hoje", MOCK_DASH, "Abrir promessas", "gold"],
               ["Risco operacional", MOCK_DASH, "Ver diagnóstico", "danger"],
-              ["Tickets prioritários", MOCK_DASH, "Abrir CareDesk", "danger"],
+              ["Tickets prioritários", MOCK_DASH, "Abrir Iris", "danger"],
             ]}
           />
         </DashboardPanel>
@@ -547,7 +547,7 @@ export default function GuardianPage() {
           <ActionMetricGrid
             metrics={[
               ["Operadores online", MOCK_DASH, "Ver escala", "gold"],
-              ["Em atendimento", MOCK_DASH, "Abrir CareDesk", "neutral"],
+              ["Em atendimento", MOCK_DASH, "Abrir Iris", "neutral"],
               ["Sobrecarregados", MOCK_DASH, "Redistribuir", "danger"],
               ["Produtividade", MOCK_DASH, "Ver ranking", "gold"],
             ]}
@@ -1184,7 +1184,7 @@ function DistributionCard({
   emptyMessage = "Aguardando dados reais do C2X.",
 }: {
   title: string;
-  data: GuardianDistributionBucket[];
+  data: HadesDistributionBucket[];
   emptyMessage?: string;
 }) {
   const total = Math.max(

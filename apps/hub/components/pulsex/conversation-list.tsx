@@ -1,11 +1,11 @@
-import type { PulseXChannel } from "@/lib/pulsex";
+import type { HermesChannel } from "@/lib/pulsex";
 import { ConversationItem } from "./conversation-item";
 
 type ConversationListProps = {
   activeChannelId: string;
-  channels: readonly PulseXChannel[];
+  channels: readonly HermesChannel[];
   collapsed?: boolean;
-  onSelectChannel?: (channelId: PulseXChannel["id"]) => void;
+  onSelectChannel?: (channelId: HermesChannel["id"]) => void;
 };
 
 export function ConversationList({
@@ -16,7 +16,7 @@ export function ConversationList({
 }: ConversationListProps) {
   return (
     <nav
-      aria-label="Conversas PulseX"
+      aria-label="Conversas Hermes"
       className={collapsed ? "grid justify-items-center gap-1" : "grid gap-0.5"}
     >
       {channels.map((channel) => (

@@ -1,6 +1,6 @@
 import type { AttendancePriority } from "@/modules/guardian/attendance/types";
 
-export type GuardianMockClient = {
+export type HadesMockClient = {
   id: string;
   nome: string;
   cpf: string;
@@ -41,4 +41,4 @@ export type GuardianMockClient = {
   };
 };
 
-export const guardianMockClients: GuardianMockClient[] = [];
+export const hadesMockClients: HadesMockClient[] = [];

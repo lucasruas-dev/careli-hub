@@ -217,7 +217,7 @@ export async function syncOperationAlertProtocols(
     };
   } catch (error) {
     console.warn(
-      "[SquadOps] alert protocol sync unavailable",
+      "[Zeus] alert protocol sync unavailable",
       error instanceof Error ? error.message : "unknown error",
     );
     return buildUnavailableSyncResult(alerts);
@@ -260,7 +260,7 @@ export async function updateOperationAlertFeedback({
   const adminClient = createAlertProtocolClient();
 
   if (!adminClient) {
-    throw new Error("Supabase server-side nao configurado para SquadOps.");
+    throw new Error("Supabase server-side nao configurado para Zeus.");
   }
 
   const { data: currentProtocol, error: currentProtocolError } = await adminClient
@@ -335,7 +335,7 @@ export async function acknowledgeOperationAlertProtocol({
   const adminClient = createAlertProtocolClient();
 
   if (!adminClient) {
-    throw new Error("Supabase server-side nao configurado para SquadOps.");
+    throw new Error("Supabase server-side nao configurado para Zeus.");
   }
 
   const now = new Date().toISOString();
@@ -368,7 +368,7 @@ export async function ignoreOperationAlertProtocol({
   const adminClient = createAlertProtocolClient();
 
   if (!adminClient) {
-    throw new Error("Supabase server-side nao configurado para SquadOps.");
+    throw new Error("Supabase server-side nao configurado para Zeus.");
   }
 
   const now = new Date().toISOString();

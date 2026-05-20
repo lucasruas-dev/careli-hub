@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
     modulesResult,
     departmentModulesResult,
     notificationsResult,
-    pulseXMessagesResult,
+    hermesMessagesResult,
     activityEventsResult,
   ] = await Promise.all([
     context.adminClient
@@ -286,9 +286,9 @@ export async function GET(request: NextRequest) {
         userId,
       })),
       pulsex: {
-        messagesTodayCount: pulseXMessagesResult.error
+        messagesTodayCount: hermesMessagesResult.error
           ? 0
-          : (pulseXMessagesResult.count ?? 0),
+          : (hermesMessagesResult.count ?? 0),
       },
       users: ((usersResult.data ?? []) as HubUserRow[]).map((user) => {
         const assignment = assignmentsByUser.get(user.id);

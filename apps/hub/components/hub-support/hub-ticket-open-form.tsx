@@ -77,7 +77,7 @@ export function HubTicketOpenForm({
   const [isSaving, setIsSaving] = useState(false);
   const submitNeedsContext = !canSubmit && !isSaving;
   const submitTooltip = canSubmit
-    ? "Enviar ticket TI para SquadOps"
+    ? "Enviar ticket TI para Zeus"
     : "Descreva o que aconteceu ou anexe uma evidencia";
   const [recordingKind, setRecordingKind] = useState<RecordingKind | null>(
     null,
@@ -508,7 +508,7 @@ export function HubTicketOpenForm({
 
       {successProtocol ? (
         <InlineNotice tone="success" icon={<CheckCircle2 className="size-4" />}>
-          Ticket {successProtocol} enviado para SquadOps.
+          Ticket {successProtocol} enviado para Zeus.
         </InlineNotice>
       ) : null}
 
@@ -533,11 +533,11 @@ export function HubTicketOpenForm({
           onChange={setModuleName}
           options={[
             "Hub",
-            "Guardian",
-            "CareDesk",
-            "PulseX",
+            "Hades",
+            "Iris",
+            "Hermes",
             "Setup",
-            "SquadOps",
+            "Zeus",
           ]}
           value={moduleName}
         />
@@ -613,7 +613,7 @@ export function HubTicketOpenForm({
       <label className="grid gap-1.5">
         <span className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-400">
           <Sparkles className="size-3.5 text-[#A07C3B]" />
-          Caca organizou tecnicamente
+          Athena organizou tecnicamente
         </span>
         <textarea
           className="min-h-28 resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-slate-700 outline-none transition focus:border-[#A07C3B]/50 focus:ring-2 focus:ring-[#A07C3B]/10"
@@ -625,7 +625,7 @@ export function HubTicketOpenForm({
       <div className="flex justify-end">
         <Tooltip content={submitTooltip} placement="top">
           <button
-            aria-label="Enviar para SquadOps"
+            aria-label="Enviar para Zeus"
             aria-disabled={isSaving || submitNeedsContext}
             className={`grid size-11 place-items-center rounded-xl text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
               submitNeedsContext
@@ -745,7 +745,7 @@ function EvidencePreviewList({
   if (attachments.length === 0) {
     return (
       <p className="m-0 mt-3 text-xs text-slate-500">
-        Caca le print, audio e quadros do video quando houver anexo.
+        Athena le print, audio e quadros do video quando houver anexo.
       </p>
     );
   }
@@ -754,8 +754,8 @@ function EvidencePreviewList({
     <div className="mt-3 grid gap-2">
       <p className="m-0 text-xs font-semibold text-slate-500">
         {isAnalyzing
-          ? "Caca analisando evidencias..."
-          : "Evidencias lidas pela Caca."}
+          ? "Athena analisando evidencias..."
+          : "Evidencias lidas pela Athena."}
       </p>
       {attachments.map((attachment) => (
         <AttachmentPreviewCard
@@ -836,11 +836,11 @@ function AttachmentPreviewCard({
 }
 
 function getModuleFromPath(pathname: string) {
-  if (pathname.startsWith("/guardian")) return "Guardian";
-  if (pathname.startsWith("/caredesk")) return "CareDesk";
-  if (pathname.startsWith("/pulsex")) return "PulseX";
+  if (pathname.startsWith("/hades")) return "Hades";
+  if (pathname.startsWith("/iris")) return "Iris";
+  if (pathname.startsWith("/hermes")) return "Hermes";
   if (pathname.startsWith("/setup")) return "Setup";
-  if (pathname.startsWith("/squadops")) return "SquadOps";
+  if (pathname.startsWith("/zeus")) return "Zeus";
 
   return "Hub";
 }
@@ -909,7 +909,7 @@ function buildTechnicalSummary({
     `Relato original: ${description.trim()}`,
     "Evidencias consideradas:",
     buildEvidenceSummary(attachments),
-    "Triagem Caca: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo SquadOps.",
+    "Triagem Athena: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo Zeus.",
   ];
 
   return lines.join("\n");

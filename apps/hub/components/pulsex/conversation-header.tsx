@@ -1,9 +1,9 @@
 "use client";
 
 import type {
-  PulseXChannel,
-  PulseXCallType,
-  PulseXPresenceUser,
+  HermesChannel,
+  HermesCallType,
+  HermesPresenceUser,
 } from "@/lib/pulsex";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import {
@@ -19,21 +19,22 @@ import { Tooltip } from "@repo/uix";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import Image from "next/image";
+import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 
-export type PulseXCallSoundOption = {
+export type HermesCallSoundOption = {
   id: string;
   label: string;
 };
 
 type ConversationHeaderProps = {
-  callSoundOptions: readonly PulseXCallSoundOption[];
-  channel: PulseXChannel;
+  callSoundOptions: readonly HermesCallSoundOption[];
+  channel: HermesChannel;
   isFavorite?: boolean;
   onChangeCallSound: (soundId: string) => void;
   onPreviewCallSound: (soundId: string) => void;
-  onStartCall: (type: PulseXCallType) => void;
+  onStartCall: (type: HermesCallType) => void;
   onToggleFavorite?: () => void;
-  presenceUsers: readonly PulseXPresenceUser[];
+  presenceUsers: readonly HermesPresenceUser[];
   selectedCallSoundId: string;
 };
 
@@ -60,7 +61,7 @@ export function ConversationHeader({
     lunch: "Almoco",
     offline: "Offline",
     online: "Online",
-  } as const satisfies Record<NonNullable<PulseXChannel["status"]>, string>;
+  } as const satisfies Record<NonNullable<HermesChannel["status"]>, string>;
   const presenceStatus = getChannelPresenceStatus(presenceUsers);
   const presenceLabel = presenceLabelMap[presenceStatus];
   const isDirectChannel = channel.kind === "direct";
@@ -72,7 +73,7 @@ export function ConversationHeader({
   });
 
   return (
-    <header className="grid h-16 grid-cols-[minmax(14rem,1fr)_auto_auto] items-center gap-4 border-b border-[#d9e0ea] bg-white px-4">
+    <header className="grid h-16 grid-cols-[minmax(12rem,1fr)_auto_auto] items-center gap-4 border-b border-[#d9e0ea] bg-white px-4">
       <div className="flex min-w-0 items-center gap-3">
         <ChannelAvatar channel={channel} />
         <div className="min-w-0">
@@ -152,12 +153,13 @@ export function ConversationHeader({
           ariaLabel="Mais opcoes"
           icon={<MoreHorizontal size={18} />}
         />
+        <PanteonTopbarUser className="ml-2 border-l border-[#d9e0ea] pl-3" compact />
       </div>
     </header>
   );
 }
 
-function ChannelAvatar({ channel }: { channel: PulseXChannel }) {
+function ChannelAvatar({ channel }: { channel: HermesChannel }) {
   const isDirectChannel = channel.kind === "direct";
 
   return (
@@ -193,7 +195,7 @@ function CallSoundMenu({
 }: {
   onChange: (soundId: string) => void;
   onPreview: (soundId: string) => void;
-  options: readonly PulseXCallSoundOption[];
+  options: readonly HermesCallSoundOption[];
   selectedSoundId: string;
 }) {
   return (
@@ -234,8 +236,8 @@ function CallSoundMenu({
 }
 
 function getChannelPresenceStatus(
-  users: readonly PulseXPresenceUser[],
-): NonNullable<PulseXChannel["status"]> {
+  users: readonly HermesPresenceUser[],
+): NonNullable<HermesChannel["status"]> {
   if (users.some((user) => user.status === "online")) {
     return "online";
   }
@@ -258,7 +260,7 @@ function getChannelPresenceStatus(
 function ParticipantStack({
   users,
 }: {
-  users: readonly PulseXPresenceUser[];
+  users: readonly HermesPresenceUser[];
 }) {
   const visibleUsers = users.slice(0, 5);
   const hiddenCount = Math.max(users.length - visibleUsers.length, 0);
@@ -306,7 +308,7 @@ function ParticipantStack({
   );
 }
 
-function getPresenceLabel(status: PulseXPresenceUser["status"]) {
+function getPresenceLabel(status: HermesPresenceUser["status"]) {
   const labels = {
     agenda: "Agenda",
     away: "Ausente",
@@ -314,7 +316,7 @@ function getPresenceLabel(status: PulseXPresenceUser["status"]) {
     lunch: "Almoco",
     offline: "Offline",
     online: "Online",
-  } as const satisfies Record<PulseXPresenceUser["status"], string>;
+  } as const satisfies Record<HermesPresenceUser["status"], string>;
 
   return labels[status];
 }

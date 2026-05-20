@@ -231,10 +231,10 @@ function rankCodeFiles(
         0,
       );
       const rootScore = file.relativePath.split("/").length <= 2 ? 4 : 0;
-      const squadOpsScore = normalizedPath.includes("squadops") ? 8 : 0;
+      const zeusScore = normalizedPath.includes("squadops") ? 8 : 0;
       const hubScore = normalizedPath.includes("hub") ? 3 : 0;
       const score =
-        keywordScore + coreScore + rootScore + squadOpsScore + hubScore;
+        keywordScore + coreScore + rootScore + zeusScore + hubScore;
 
       return {
         ...file,

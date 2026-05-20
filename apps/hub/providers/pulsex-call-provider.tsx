@@ -1,12 +1,12 @@
 "use client";
 
 import type {
-  PulseXCallParticipant,
-  PulseXCallRealtimeSignal,
-  PulseXCallRealtimeSignalInput,
-  PulseXCallSession,
-  PulseXCallSignalKind,
-  PulseXPresenceUser,
+  HermesCallParticipant,
+  HermesCallRealtimeSignal,
+  HermesCallRealtimeSignalInput,
+  HermesCallSession,
+  HermesCallSignalKind,
+  HermesPresenceUser,
 } from "@/lib/pulsex";
 import {
   getHubSupabaseClient,
@@ -15,12 +15,12 @@ import {
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import {
-  isPulseXCallSoundId,
-  playPulseXCallSound,
-  playPulseXOutgoingCallSound,
+  isHermesCallSoundId,
+  playHermesCallSound,
+  playHermesOutgoingCallSound,
   pulsexCallSoundOptions,
-  showBrowserPulseXNotification,
-  type PulseXCallSoundId,
+  showBrowserHermesNotification,
+  type HermesCallSoundId,
 } from "@/lib/pulsex/notification-effects";
 import { useAuth } from "@/providers/auth-provider";
 import { Tooltip } from "@repo/uix";
@@ -36,17 +36,17 @@ import {
 } from "react";
 import { CallPanel } from "@/components/pulsex/call-panel";
 import { IncomingCallBanner } from "@/components/pulsex/incoming-call-banner";
-import type { PulseXCallSoundOption } from "@/components/pulsex/conversation-header";
+import type { HermesCallSoundOption } from "@/components/pulsex/conversation-header";
 
-type PulseXCallContextValue = {
-  callSoundId: PulseXCallSoundId;
-  callSoundOptions: readonly PulseXCallSoundOption[];
+type HermesCallContextValue = {
+  callSoundId: HermesCallSoundId;
+  callSoundOptions: readonly HermesCallSoundOption[];
   endActiveCall: () => void;
   previewCallSound: (soundId: string) => void;
   setCallSoundId: (soundId: string) => void;
   startCall: (input: {
-    session: PulseXCallSession;
-    targetUserIds: readonly PulseXPresenceUser["id"][];
+    session: HermesCallSession;
+    targetUserIds: readonly HermesPresenceUser["id"][];
   }) => void;
 };
 
@@ -64,52 +64,52 @@ const PULSEX_CALL_DISABLED_HOSTS = new Set([
   "ops.careli.adm.br",
 ]);
 
-type StoredPulseXActiveCall = {
-  currentUserId: PulseXPresenceUser["id"];
+type StoredHermesActiveCall = {
+  currentUserId: HermesPresenceUser["id"];
   isCallPanelOpen: boolean;
   savedAt: number;
-  session: PulseXCallSession;
+  session: HermesCallSession;
 };
 
-const PulseXCallContext = createContext<PulseXCallContextValue | null>(null);
+const HermesCallContext = createContext<HermesCallContextValue | null>(null);
 
-export function PulseXCallProvider({
+export function HermesCallProvider({
   children,
 }: Readonly<{
   children: ReactNode;
 }>) {
-  if (isPulseXCallDisabledHost()) {
+  if (isHermesCallDisabledHost()) {
     return (
-      <PulseXCallContext.Provider value={disabledPulseXCallContextValue}>
+      <HermesCallContext.Provider value={disabledHermesCallContextValue}>
         {children}
-      </PulseXCallContext.Provider>
+      </HermesCallContext.Provider>
     );
   }
 
-  return <ActivePulseXCallProvider>{children}</ActivePulseXCallProvider>;
+  return <ActiveHermesCallProvider>{children}</ActiveHermesCallProvider>;
 }
 
-function ActivePulseXCallProvider({
+function ActiveHermesCallProvider({
   children,
 }: Readonly<{
   children: ReactNode;
 }>) {
   const { hubUser, profileStatus } = useAuth();
   const currentUserId = hubUser?.id ?? "";
-  const [activeCall, setActiveCall] = useState<PulseXCallSession | null>(null);
-  const [callSignals, setCallSignals] = useState<PulseXCallRealtimeSignal[]>([]);
-  const [incomingCall, setIncomingCall] = useState<PulseXCallSession | null>(
+  const [activeCall, setActiveCall] = useState<HermesCallSession | null>(null);
+  const [callSignals, setCallSignals] = useState<HermesCallRealtimeSignal[]>([]);
+  const [incomingCall, setIncomingCall] = useState<HermesCallSession | null>(
     null,
   );
   const [isCallPanelOpen, setIsCallPanelOpen] = useState(true);
   const [isCallRealtimeReady, setIsCallRealtimeReady] = useState(false);
   const [restoredCallId, setRestoredCallId] = useState<string | null>(null);
-  const [callSoundId, setInternalCallSoundId] = useState<PulseXCallSoundId>(
+  const [callSoundId, setInternalCallSoundId] = useState<HermesCallSoundId>(
     pulsexCallSoundOptions[0].id,
   );
-  const activeCallRef = useRef<PulseXCallSession | null>(null);
+  const activeCallRef = useRef<HermesCallSession | null>(null);
   const callRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
-  const incomingCallRef = useRef<PulseXCallSession | null>(null);
+  const incomingCallRef = useRef<HermesCallSession | null>(null);
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -124,7 +124,7 @@ function ActivePulseXCallProvider({
       PULSEX_CALL_SOUND_STORAGE_KEY,
     );
 
-    if (isPulseXCallSoundId(savedSoundId)) {
+    if (isHermesCallSoundId(savedSoundId)) {
       setInternalCallSoundId(savedSoundId);
     }
   }, []);
@@ -137,7 +137,7 @@ function ActivePulseXCallProvider({
     setActiveCall(null);
     setIncomingCall(null);
     setCallSignals([]);
-    clearStoredPulseXActiveCall();
+    clearStoredHermesActiveCall();
   }, [hubUser, profileStatus]);
 
   useEffect(() => {
@@ -145,7 +145,7 @@ function ActivePulseXCallProvider({
       return;
     }
 
-    const restoredCall = readStoredPulseXActiveCall(currentUserId);
+    const restoredCall = readStoredHermesActiveCall(currentUserId);
 
     if (!restoredCall) {
       return;
@@ -163,11 +163,11 @@ function ActivePulseXCallProvider({
     }
 
     if (!activeCall) {
-      clearStoredPulseXActiveCall();
+      clearStoredHermesActiveCall();
       return;
     }
 
-    writeStoredPulseXActiveCall({
+    writeStoredHermesActiveCall({
       currentUserId,
       isCallPanelOpen,
       savedAt: Date.now(),
@@ -175,7 +175,7 @@ function ActivePulseXCallProvider({
     });
   }, [activeCall, currentUserId, isCallPanelOpen]);
 
-  const appendCallSignal = useCallback((signal: PulseXCallRealtimeSignal) => {
+  const appendCallSignal = useCallback((signal: HermesCallRealtimeSignal) => {
     setCallSignals((currentSignals) =>
       [...currentSignals.filter((item) => item.id !== signal.id), signal].slice(
         -160,
@@ -184,7 +184,7 @@ function ActivePulseXCallProvider({
   }, []);
 
   const sendCallSignal = useCallback(
-    (input: PulseXCallRealtimeSignalInput) => {
+    (input: HermesCallRealtimeSignalInput) => {
       if (!currentUserId) {
         return null;
       }
@@ -192,9 +192,9 @@ function ActivePulseXCallProvider({
       const signal = {
         ...input,
         fromUserId: input.fromUserId ?? currentUserId,
-        id: createPulseXCallSignalId(input.kind),
+        id: createHermesCallSignalId(input.kind),
         sentAt: new Date().toISOString(),
-      } satisfies PulseXCallRealtimeSignal;
+      } satisfies HermesCallRealtimeSignal;
       const realtimeChannel = callRealtimeChannelRef.current;
 
       if (!realtimeChannel) {
@@ -230,7 +230,7 @@ function ActivePulseXCallProvider({
   );
 
   const handleIncomingCallSignal = useCallback(
-    (signal: PulseXCallRealtimeSignal) => {
+    (signal: HermesCallRealtimeSignal) => {
       appendCallSignal(signal);
 
       if (signal.kind === "invite" && signal.session) {
@@ -242,9 +242,9 @@ function ActivePulseXCallProvider({
         }
 
         setIncomingCall(signal.session);
-        showBrowserPulseXNotification({
+        showBrowserHermesNotification({
           body: `${getCallCallerLabel(signal.session)} chamou em ${signal.session.title}.`,
-          title: "Chamada no PulseX",
+          title: "Chamada no Hermes",
         });
         return;
       }
@@ -333,7 +333,7 @@ function ActivePulseXCallProvider({
           event: PULSEX_CALL_SIGNAL_EVENT,
         },
         (message: { payload?: unknown }) => {
-          const signal = parsePulseXCallSignal(message.payload);
+          const signal = parseHermesCallSignal(message.payload);
 
           if (
             !signal ||
@@ -372,9 +372,9 @@ function ActivePulseXCallProvider({
       return;
     }
 
-    playPulseXCallSound(callSoundId);
+    playHermesCallSound(callSoundId);
     const intervalId = window.setInterval(() => {
-      playPulseXCallSound(callSoundId);
+      playHermesCallSound(callSoundId);
     }, 2_200);
 
     return () => {
@@ -391,9 +391,9 @@ function ActivePulseXCallProvider({
       return;
     }
 
-    playPulseXOutgoingCallSound();
+    playHermesOutgoingCallSound();
     const intervalId = window.setInterval(() => {
-      playPulseXOutgoingCallSound();
+      playHermesOutgoingCallSound();
     }, 2_500);
 
     return () => {
@@ -406,8 +406,8 @@ function ActivePulseXCallProvider({
       session,
       targetUserIds,
     }: {
-      session: PulseXCallSession;
-      targetUserIds: readonly PulseXPresenceUser["id"][];
+      session: HermesCallSession;
+      targetUserIds: readonly HermesPresenceUser["id"][];
     }) => {
       setActiveCall(session);
       setIncomingCall(null);
@@ -522,7 +522,7 @@ function ActivePulseXCallProvider({
   }, [currentUserId, sendCallSignal]);
 
   const setCallSoundId = useCallback((soundId: string) => {
-    if (!isPulseXCallSoundId(soundId)) {
+    if (!isHermesCallSoundId(soundId)) {
       return;
     }
 
@@ -531,13 +531,13 @@ function ActivePulseXCallProvider({
   }, []);
 
   const previewCallSound = useCallback((soundId: string) => {
-    if (isPulseXCallSoundId(soundId)) {
-      playPulseXCallSound(soundId);
+    if (isHermesCallSoundId(soundId)) {
+      playHermesCallSound(soundId);
     }
   }, []);
 
   return (
-    <PulseXCallContext.Provider
+    <HermesCallContext.Provider
       value={{
         callSoundId,
         callSoundOptions: pulsexCallSoundOptions,
@@ -596,34 +596,34 @@ function ActivePulseXCallProvider({
           </Tooltip>
         </div>
       ) : null}
-    </PulseXCallContext.Provider>
+    </HermesCallContext.Provider>
   );
 }
 
-const disabledPulseXCallContextValue = {
+const disabledHermesCallContextValue = {
   callSoundId: pulsexCallSoundOptions[0].id,
   callSoundOptions: pulsexCallSoundOptions,
-  endActiveCall: noopPulseXCallAction,
-  previewCallSound: noopPulseXCallAction,
-  setCallSoundId: noopPulseXCallAction,
-  startCall: noopPulseXCallAction,
-} satisfies PulseXCallContextValue;
+  endActiveCall: noopHermesCallAction,
+  previewCallSound: noopHermesCallAction,
+  setCallSoundId: noopHermesCallAction,
+  startCall: noopHermesCallAction,
+} satisfies HermesCallContextValue;
 
-function noopPulseXCallAction() {
+function noopHermesCallAction() {
   return;
 }
 
-function isPulseXCallDisabledHost() {
+function isHermesCallDisabledHost() {
   if (typeof window === "undefined") {
     return false;
   }
 
   return PULSEX_CALL_DISABLED_HOSTS.has(
-    normalizePulseXCallHost(window.location.hostname),
+    normalizeHermesCallHost(window.location.hostname),
   );
 }
 
-function normalizePulseXCallHost(hostname: string) {
+function normalizeHermesCallHost(hostname: string) {
   return hostname
     .toLowerCase()
     .replace(/,+/g, ".")
@@ -631,17 +631,17 @@ function normalizePulseXCallHost(hostname: string) {
     .replace(/^\.+|\.+$/g, "");
 }
 
-export function usePulseXCall() {
-  const context = useContext(PulseXCallContext);
+export function useHermesCall() {
+  const context = useContext(HermesCallContext);
 
   if (!context) {
-    throw new Error("usePulseXCall must be used inside PulseXCallProvider");
+    throw new Error("useHermesCall must be used inside HermesCallProvider");
   }
 
   return context;
 }
 
-const pulseXCallSignalKinds = new Set<PulseXCallSignalKind>([
+const hermesCallSignalKinds = new Set<HermesCallSignalKind>([
   "answer",
   "decline",
   "end",
@@ -654,13 +654,13 @@ const pulseXCallSignalKinds = new Set<PulseXCallSignalKind>([
   "screen-share-stop",
 ]);
 
-function createPulseXCallSignalId(kind: PulseXCallSignalKind) {
+function createHermesCallSignalId(kind: HermesCallSignalKind) {
   return `call-signal-${kind}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
 }
 
-function getCallCallerLabel(session: PulseXCallSession) {
+function getCallCallerLabel(session: HermesCallSession) {
   return (
     session.participants.find(
       (participant) => participant.userId === session.initiatedByUserId,
@@ -669,15 +669,15 @@ function getCallCallerLabel(session: PulseXCallSession) {
 }
 
 function getCallParticipantForUser(
-  session: PulseXCallSession,
-  userId: PulseXPresenceUser["id"],
+  session: HermesCallSession,
+  userId: HermesPresenceUser["id"],
 ) {
   return session.participants.find((participant) => participant.userId === userId);
 }
 
 function hasPendingInvitedCallParticipant(
-  session: PulseXCallSession,
-  currentUserId: PulseXPresenceUser["id"],
+  session: HermesCallSession,
+  currentUserId: HermesPresenceUser["id"],
 ) {
   return session.participants.some(
     (participant) =>
@@ -685,14 +685,14 @@ function hasPendingInvitedCallParticipant(
   );
 }
 
-function parsePulseXCallSignal(
+function parseHermesCallSignal(
   value: unknown,
-): PulseXCallRealtimeSignal | null {
+): HermesCallRealtimeSignal | null {
   if (!value || typeof value !== "object") {
     return null;
   }
 
-  const maybeSignal = value as Partial<PulseXCallRealtimeSignal>;
+  const maybeSignal = value as Partial<HermesCallRealtimeSignal>;
 
   if (
     typeof maybeSignal.callId !== "string" ||
@@ -701,12 +701,12 @@ function parsePulseXCallSignal(
     typeof maybeSignal.id !== "string" ||
     typeof maybeSignal.kind !== "string" ||
     typeof maybeSignal.sentAt !== "string" ||
-    !pulseXCallSignalKinds.has(maybeSignal.kind as PulseXCallSignalKind)
+    !hermesCallSignalKinds.has(maybeSignal.kind as HermesCallSignalKind)
   ) {
     return null;
   }
 
-  return maybeSignal as PulseXCallRealtimeSignal;
+  return maybeSignal as HermesCallRealtimeSignal;
 }
 
 function shouldHandleCallSignalForCurrentUser({
@@ -715,10 +715,10 @@ function shouldHandleCallSignalForCurrentUser({
   incomingCall,
   signal,
 }: {
-  activeCall: PulseXCallSession | null;
-  currentUserId: PulseXPresenceUser["id"];
-  incomingCall: PulseXCallSession | null;
-  signal: PulseXCallRealtimeSignal;
+  activeCall: HermesCallSession | null;
+  currentUserId: HermesPresenceUser["id"];
+  incomingCall: HermesCallSession | null;
+  signal: HermesCallRealtimeSignal;
 }) {
   if (signal.fromUserId === currentUserId) {
     return false;
@@ -754,10 +754,10 @@ function shouldHandleCallSignalForCurrentUser({
 }
 
 function updateCallParticipantStatus(
-  session: PulseXCallSession,
-  userId: PulseXPresenceUser["id"],
-  status: PulseXCallParticipant["status"],
-): PulseXCallSession {
+  session: HermesCallSession,
+  userId: HermesPresenceUser["id"],
+  status: HermesCallParticipant["status"],
+): HermesCallSession {
   return {
     ...session,
     participants: session.participants.map((participant) =>
@@ -772,10 +772,10 @@ function updateCallParticipantStatus(
 }
 
 function updateCallParticipantScreenShare(
-  session: PulseXCallSession,
-  userId: PulseXPresenceUser["id"],
+  session: HermesCallSession,
+  userId: HermesPresenceUser["id"],
   isScreenSharing: boolean,
-): PulseXCallSession {
+): HermesCallSession {
   return {
     ...session,
     participants: session.participants.map((participant) =>
@@ -790,10 +790,10 @@ function updateCallParticipantScreenShare(
 }
 
 function upsertCallParticipant(
-  session: PulseXCallSession,
-  participant: PulseXCallParticipant,
-  status: PulseXCallParticipant["status"],
-): PulseXCallSession {
+  session: HermesCallSession,
+  participant: HermesCallParticipant,
+  status: HermesCallParticipant["status"],
+): HermesCallSession {
   const existingUserId = participant.userId;
   const hasParticipant = session.participants.some(
     (currentParticipant) =>
@@ -824,7 +824,7 @@ function upsertCallParticipant(
   };
 }
 
-function readStoredPulseXActiveCall(currentUserId: PulseXPresenceUser["id"]) {
+function readStoredHermesActiveCall(currentUserId: HermesPresenceUser["id"]) {
   try {
     const storedValue = window.sessionStorage.getItem(
       PULSEX_ACTIVE_CALL_STORAGE_KEY,
@@ -834,7 +834,7 @@ function readStoredPulseXActiveCall(currentUserId: PulseXPresenceUser["id"]) {
       return null;
     }
 
-    const parsedValue = JSON.parse(storedValue) as Partial<StoredPulseXActiveCall>;
+    const parsedValue = JSON.parse(storedValue) as Partial<StoredHermesActiveCall>;
     const savedAt =
       typeof parsedValue.savedAt === "number" ? parsedValue.savedAt : 0;
     const isExpired =
@@ -843,9 +843,9 @@ function readStoredPulseXActiveCall(currentUserId: PulseXPresenceUser["id"]) {
     if (
       isExpired ||
       parsedValue.currentUserId !== currentUserId ||
-      !isStoredPulseXCallSession(parsedValue.session)
+      !isStoredHermesCallSession(parsedValue.session)
     ) {
-      clearStoredPulseXActiveCall();
+      clearStoredHermesActiveCall();
       return null;
     }
 
@@ -860,12 +860,12 @@ function readStoredPulseXActiveCall(currentUserId: PulseXPresenceUser["id"]) {
       },
     };
   } catch {
-    clearStoredPulseXActiveCall();
+    clearStoredHermesActiveCall();
     return null;
   }
 }
 
-function writeStoredPulseXActiveCall(activeCall: StoredPulseXActiveCall) {
+function writeStoredHermesActiveCall(activeCall: StoredHermesActiveCall) {
   try {
     window.sessionStorage.setItem(
       PULSEX_ACTIVE_CALL_STORAGE_KEY,
@@ -876,7 +876,7 @@ function writeStoredPulseXActiveCall(activeCall: StoredPulseXActiveCall) {
   }
 }
 
-function clearStoredPulseXActiveCall() {
+function clearStoredHermesActiveCall() {
   try {
     window.sessionStorage.removeItem(PULSEX_ACTIVE_CALL_STORAGE_KEY);
   } catch {
@@ -884,14 +884,14 @@ function clearStoredPulseXActiveCall() {
   }
 }
 
-function isStoredPulseXCallSession(
+function isStoredHermesCallSession(
   value: unknown,
-): value is PulseXCallSession {
+): value is HermesCallSession {
   if (!value || typeof value !== "object") {
     return false;
   }
 
-  const maybeSession = value as Partial<PulseXCallSession>;
+  const maybeSession = value as Partial<HermesCallSession>;
 
   return (
     typeof maybeSession.channelId === "string" &&

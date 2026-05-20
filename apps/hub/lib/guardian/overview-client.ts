@@ -2,25 +2,25 @@
 
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
-  GuardianEnterpriseDistributions,
-  GuardianOverviewSnapshot,
+  HadesEnterpriseDistributions,
+  HadesOverviewSnapshot,
 } from "@/lib/guardian/overview";
 
-export async function getGuardianOverviewSnapshot(): Promise<GuardianOverviewSnapshot> {
-  return fetchGuardianOverviewData<GuardianOverviewSnapshot>("/api/guardian/overview");
+export async function getHadesOverviewSnapshot(): Promise<HadesOverviewSnapshot> {
+  return fetchHadesOverviewData<HadesOverviewSnapshot>("/api/hades/overview");
 }
 
-export async function getGuardianOverviewEnterpriseDistributions(
+export async function getHadesOverviewEnterpriseDistributions(
   enterpriseName: string,
-): Promise<GuardianEnterpriseDistributions> {
+): Promise<HadesEnterpriseDistributions> {
   const params = new URLSearchParams({ enterprise: enterpriseName });
 
-  return fetchGuardianOverviewData<GuardianEnterpriseDistributions>(
-    `/api/guardian/overview?${params.toString()}`,
+  return fetchHadesOverviewData<HadesEnterpriseDistributions>(
+    `/api/hades/overview?${params.toString()}`,
   );
 }
 
-async function fetchGuardianOverviewData<Result>(url: string): Promise<Result> {
+async function fetchHadesOverviewData<Result>(url: string): Promise<Result> {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -45,7 +45,7 @@ async function fetchGuardianOverviewData<Result>(url: string): Promise<Result> {
     | null;
 
   if (!response.ok || !payload?.data) {
-    throw new Error(payload?.error ?? "Nao foi possivel carregar o Guardian.");
+    throw new Error(payload?.error ?? "Nao foi possivel carregar o Hades.");
   }
 
   return payload.data;

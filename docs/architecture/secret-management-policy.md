@@ -1,6 +1,6 @@
 # Secret Management Policy
 
-Este documento define a politica de gestao de secrets, chaves e credenciais do Careli Hub.
+Este documento define a politica de gestao de secrets, chaves e credenciais do Panteon.
 
 ## Regra absoluta
 
@@ -92,7 +92,7 @@ Se um secret for exposto:
 - parar a operacao;
 - marcar incidente como `BLOQUEADO`;
 - avisar Lucas;
-- acionar InfraOps/Security;
+- acionar Zeus/Security;
 - remover a exposicao de logs/docs se possivel sem apagar historico critico;
 - rotacionar apenas com autorizacao;
 - registrar causa e mitigacao sem repetir o segredo.

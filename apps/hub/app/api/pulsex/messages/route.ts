@@ -1,4 +1,4 @@
-import { normalizePulseXMessageTags } from "@/lib/pulsex/message-tags";
+import { normalizeHermesMessageTags } from "@/lib/pulsex/message-tags";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
@@ -11,14 +11,14 @@ type HubUserAccessRow = {
   status: string;
 };
 
-type PulseXChannelAccessRow = {
+type HermesChannelAccessRow = {
   department_id?: string | null;
   id: string;
   kind: "department" | "direct" | "sector" | "system";
   status: string;
 };
 
-type PulseXMessageRow = {
+type HermesMessageRow = {
   author_user_id?: string | null;
   body: string;
   channel_id: string;
@@ -60,7 +60,7 @@ type UpdateTagsPayload = {
   tags?: unknown;
 };
 
-type PulseXMessagesApiDatabase = {
+type HermesMessagesApiDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
     Enums: Record<string, never>;
@@ -91,7 +91,7 @@ type PulseXMessagesApiDatabase = {
       pulsex_channels: {
         Insert: never;
         Relationships: [];
-        Row: PulseXChannelAccessRow;
+        Row: HermesChannelAccessRow;
         Update: never;
       };
       pulsex_messages: {
@@ -110,7 +110,7 @@ type PulseXMessagesApiDatabase = {
             referencedRelation: "hub_users";
           },
         ];
-        Row: PulseXMessageRow;
+        Row: HermesMessageRow;
         Update: {
           body?: string;
           metadata?: Record<string, unknown>;
@@ -122,7 +122,7 @@ type PulseXMessagesApiDatabase = {
 };
 
 type SupabaseAdminClient = ReturnType<
-  typeof createClient<PulseXMessagesApiDatabase>
+  typeof createClient<HermesMessagesApiDatabase>
 >;
 
 type AuthorizedContext =
@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
       },
     })
     .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-    .single<PulseXMessageRow>();
+    .single<HermesMessageRow>();
 
   if (error || !data) {
     return NextResponse.json(
@@ -377,7 +377,7 @@ export async function PATCH(request: NextRequest) {
       })
       .eq("id", editPayload.data.messageId)
       .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-      .single<PulseXMessageRow>();
+      .single<HermesMessageRow>();
 
     if (error || !data) {
       return NextResponse.json(
@@ -426,7 +426,7 @@ export async function PATCH(request: NextRequest) {
     })
     .eq("id", payload.data.messageId)
     .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-    .single<PulseXMessageRow>();
+    .single<HermesMessageRow>();
 
   if (error || !data) {
     return NextResponse.json(
@@ -524,7 +524,7 @@ async function createAuthorizedContext(
     };
   }
 
-  const adminClient = createClient<PulseXMessagesApiDatabase>(
+  const adminClient = createClient<HermesMessagesApiDatabase>(
     supabaseUrl,
     serviceRoleKey,
     {
@@ -558,7 +558,7 @@ async function createAuthorizedContext(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Usuario sem acesso ao PulseX." },
+        { error: "Usuario sem acesso ao Hermes." },
         { status: 403 },
       ),
     };
@@ -576,7 +576,7 @@ async function ensureChannelAccess(
   user: HubUserAccessRow,
   channelId: string,
 ): Promise<
-  | { channel: PulseXChannelAccessRow; ok: true }
+  | { channel: HermesChannelAccessRow; ok: true }
   | { ok: false; response: NextResponse }
 > {
   const { data: channel, error: channelError } = await adminClient
@@ -584,12 +584,12 @@ async function ensureChannelAccess(
     .select("id,kind,department_id,status")
     .eq("id", channelId)
     .eq("status", "active")
-    .maybeSingle<PulseXChannelAccessRow>();
+    .maybeSingle<HermesChannelAccessRow>();
 
   if (channelError || !channel) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Canal PulseX invalido." }, { status: 404 }),
+      response: NextResponse.json({ error: "Canal Hermes invalido." }, { status: 404 }),
     };
   }
 
@@ -640,7 +640,7 @@ function parseMessagePayload(payload: unknown):
         attachment?: MessageAttachment;
         mentionUserIds: string[];
         mentions: { displayName: string; trigger: string; userId: string }[];
-        tags: ReturnType<typeof normalizePulseXMessageTags>;
+        tags: ReturnType<typeof normalizeHermesMessageTags>;
         threadParentMessageId: string;
       };
       ok: true;
@@ -669,7 +669,7 @@ function parseMessagePayload(payload: unknown):
       clientMessageId,
       mentionUserIds: normalizeStringList(input.mentionUserIds),
       mentions: normalizeMentions(input.mentions),
-      tags: normalizePulseXMessageTags(input.tags),
+      tags: normalizeHermesMessageTags(input.tags),
       threadParentMessageId,
     },
     ok: true,
@@ -680,7 +680,7 @@ function parseUpdateTagsPayload(payload: unknown):
   | {
       data: {
         messageId: string;
-        tags: ReturnType<typeof normalizePulseXMessageTags>;
+        tags: ReturnType<typeof normalizeHermesMessageTags>;
       };
       ok: true;
     }
@@ -699,7 +699,7 @@ function parseUpdateTagsPayload(payload: unknown):
   return {
     data: {
       messageId,
-      tags: normalizePulseXMessageTags(input.tags),
+      tags: normalizeHermesMessageTags(input.tags),
     },
     ok: true,
   };

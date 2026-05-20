@@ -14,7 +14,7 @@ type ManualEventRow = {
   title: string;
 };
 
-type GuardianManualEventsDatabase = {
+type HadesManualEventsDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
     Enums: Record<string, never>;
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     return NextResponse.json(
-      { error: "Nao foi possivel carregar eventos manuais do Guardian." },
+      { error: "Nao foi possivel carregar eventos manuais do Hades." },
       { status: 500 },
     );
   }
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
 
   if (error || !data) {
     return NextResponse.json(
-      { error: "Nao foi possivel registrar evento manual no Guardian." },
+      { error: "Nao foi possivel registrar evento manual no Hades." },
       { status: 500 },
     );
   }
@@ -252,7 +252,7 @@ export async function PATCH(request: NextRequest) {
 
   if (error || !data) {
     return NextResponse.json(
-      { error: "Nao foi possivel atualizar evento manual no Guardian." },
+      { error: "Nao foi possivel atualizar evento manual no Hades." },
       { status: 500 },
     );
   }
@@ -342,7 +342,7 @@ function authenticatedOperatorName(user: {
   return formatOperatorDisplayName(
     user.display_name?.trim() ||
       user.email?.trim() ||
-      "Operador Guardian",
+      "Operador Hades",
   );
 }
 
@@ -468,13 +468,13 @@ function mapTimelineEvent(row: ManualEventRow) {
       description:
         stringFromRecord(commitment, "note") ||
         row.description ||
-        "Compromisso registrado manualmente no Guardian.",
+        "Compromisso registrado manualmente no Hades.",
       id: row.id,
       occurredAt: formatDateTime(row.created_at),
       operator: formatOperatorDisplayName(
         stringFromRecord(commitment, "operator") ||
         metadataActorName(metadata) ||
-        "Operador Guardian",
+        "Operador Hades",
       ),
       protocol: stringFromRecord(commitment, "protocol"),
       status:
@@ -506,14 +506,14 @@ function mapTimelineEvent(row: ManualEventRow) {
     description:
       stringFromRecord(event, "description") ||
       row.description ||
-      "Evento registrado manualmente no Guardian.",
+      "Evento registrado manualmente no Hades.",
     id: row.id,
     occurredAt:
       stringFromRecord(event, "occurredAt") || formatDateTime(row.created_at),
     operator: formatOperatorDisplayName(
       stringFromRecord(event, "operator") ||
       metadataActorName(metadata) ||
-      "Operador Guardian",
+      "Operador Hades",
     ),
     protocol: stringFromRecord(event, "protocol"),
     status: stringFromRecord(event, "status") || "Registrado",
@@ -538,7 +538,7 @@ function mapCommitment(row: ManualEventRow) {
     operator: formatOperatorDisplayName(
       stringFromRecord(commitment, "operator") ||
         metadataActorName(metadata) ||
-        "Operador Guardian",
+        "Operador Hades",
     ),
     history:
       Array.isArray(commitment.history) && commitment.history.length > 0
@@ -548,13 +548,13 @@ function mapCommitment(row: ManualEventRow) {
               action: "Registro manual",
               description:
                 row.description ||
-                "Compromisso registrado manualmente no Guardian.",
+                "Compromisso registrado manualmente no Hades.",
               id: `${row.id}-history`,
               occurredAt: formatDateTime(row.created_at),
               operator: formatOperatorDisplayName(
                 stringFromRecord(commitment, "operator") ||
                 metadataActorName(metadata) ||
-                "Operador Guardian",
+                "Operador Hades",
               ),
               protocol: stringFromRecord(commitment, "protocol"),
             },
@@ -569,7 +569,7 @@ async function createAuthorizedContext(request: NextRequest) {
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "Configure a chave server-side para salvar registros do Guardian." },
+        { error: "Configure a chave server-side para salvar registros do Hades." },
         { status: 503 },
       ),
     };
@@ -587,7 +587,7 @@ async function createAuthorizedContext(request: NextRequest) {
     };
   }
 
-  const adminClient = createClient<GuardianManualEventsDatabase>(
+  const adminClient = createClient<HadesManualEventsDatabase>(
     supabaseUrl,
     serviceRoleKey,
     {
@@ -632,7 +632,7 @@ async function createAuthorizedContext(request: NextRequest) {
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "Usuario sem acesso operacional ao Guardian." },
+        { error: "Usuario sem acesso operacional ao Hades." },
         { status: 403 },
       ),
     };

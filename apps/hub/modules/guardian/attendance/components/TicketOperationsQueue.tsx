@@ -295,7 +295,7 @@ export function TicketOperationsQueue({
           <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
             <div className="flex items-center gap-2">
               <Bot className="size-4 text-[#A07C3B]" aria-hidden="true" />
-              <p className="text-sm font-semibold text-slate-950">Cacá na fila</p>
+              <p className="text-sm font-semibold text-slate-950">Athena na fila</p>
             </div>
             <Tooltip content="Priorizar tickets com SLA crítico, promessa vencendo e alto saldo." placement="bottom">
               <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">

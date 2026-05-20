@@ -1,10 +1,10 @@
 "use client";
 
 import type {
-  PulseXCallRealtimeSignal,
-  PulseXCallRealtimeSignalInput,
-  PulseXCallSession,
-  PulseXPresenceUser,
+  HermesCallRealtimeSignal,
+  HermesCallRealtimeSignalInput,
+  HermesCallSession,
+  HermesPresenceUser,
 } from "@/lib/pulsex";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
@@ -23,12 +23,12 @@ import { CallControls } from "./call-controls";
 import { CallParticipantTile } from "./call-participant-tile";
 
 type CallPanelProps = {
-  currentUserId: PulseXPresenceUser["id"];
+  currentUserId: HermesPresenceUser["id"];
   onClose: () => void;
   onEnd: () => void;
-  onSendSignal: (signal: PulseXCallRealtimeSignalInput) => void;
-  realtimeSignals: readonly PulseXCallRealtimeSignal[];
-  session: PulseXCallSession;
+  onSendSignal: (signal: HermesCallRealtimeSignalInput) => void;
+  realtimeSignals: readonly HermesCallRealtimeSignal[];
+  session: HermesCallSession;
 };
 
 type MediaDeviceOption = {
@@ -85,7 +85,7 @@ export function CallPanel({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenShareZoom, setScreenShareZoom] = useState(1);
   const [remoteScreenSharingUserIds, setRemoteScreenSharingUserIds] = useState<
-    PulseXPresenceUser["id"][]
+    HermesPresenceUser["id"][]
   >([]);
   const [audioInputId, setAudioInputId] = useState(defaultDeviceValue);
   const [videoInputId, setVideoInputId] = useState(defaultDeviceValue);
@@ -102,14 +102,14 @@ export function CallPanel({
   const localStreamWaitersRef = useRef<
     Array<(stream: MediaStream | null) => void>
   >([]);
-  const pendingOfferUserIdsRef = useRef<Set<PulseXPresenceUser["id"]>>(
+  const pendingOfferUserIdsRef = useRef<Set<HermesPresenceUser["id"]>>(
     new Set(),
   );
   const pendingAnswerSignalsRef = useRef<
-    Map<PulseXPresenceUser["id"], PulseXCallRealtimeSignal>
+    Map<HermesPresenceUser["id"], HermesCallRealtimeSignal>
   >(new Map());
   const pendingIceCandidatesRef = useRef<
-    Map<PulseXPresenceUser["id"], RTCIceCandidateInit[]>
+    Map<HermesPresenceUser["id"], RTCIceCandidateInit[]>
   >(new Map());
   const panelRef = useRef<HTMLElement>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -435,7 +435,7 @@ export function CallPanel({
   }, []);
 
   const flushPendingIceCandidates = useCallback(
-    async (remoteUserId: PulseXPresenceUser["id"]) => {
+    async (remoteUserId: HermesPresenceUser["id"]) => {
       const peerConnection = peerConnectionsRef.current.get(remoteUserId);
       const candidates =
         pendingIceCandidatesRef.current.get(remoteUserId) ?? [];
@@ -596,7 +596,7 @@ export function CallPanel({
   );
 
   const sendAnswerToOffer = useCallback(
-    async (signal: PulseXCallRealtimeSignal, stream: MediaStream) => {
+    async (signal: HermesCallRealtimeSignal, stream: MediaStream) => {
       if (!signal.description) {
         return;
       }
@@ -640,7 +640,7 @@ export function CallPanel({
   );
 
   const handleCallRealtimeSignal = useCallback(
-    async (signal: PulseXCallRealtimeSignal) => {
+    async (signal: HermesCallRealtimeSignal) => {
       if (signal.callId !== session.id || signal.fromUserId === currentUserId) {
         return;
       }
@@ -1158,7 +1158,7 @@ export function CallPanel({
 
   return (
     <section
-      aria-label="Chamada PulseX"
+      aria-label="Chamada Hermes"
       className={panelClassName}
       ref={panelRef}
       style={panelStyle}
@@ -1324,18 +1324,18 @@ export function CallPanel({
   );
 }
 
-function getCallTypeLabel(type: PulseXCallSession["type"]) {
+function getCallTypeLabel(type: HermesCallSession["type"]) {
   return type === "video" ? "Video" : "Audio";
 }
 
-function getCallStatusLabel(status: PulseXCallSession["status"]) {
+function getCallStatusLabel(status: HermesCallSession["status"]) {
   const labels = {
     active: "Em andamento",
     ended: "Finalizada",
     idle: "Pronta",
     missed: "Perdida",
     ringing: "Chamando",
-  } as const satisfies Record<PulseXCallSession["status"], string>;
+  } as const satisfies Record<HermesCallSession["status"], string>;
 
   return labels[status];
 }
@@ -1348,7 +1348,7 @@ async function requestCallMedia({
 }: {
   audioInputId: string;
   cameraEnabled: boolean;
-  sessionType: PulseXCallSession["type"];
+  sessionType: HermesCallSession["type"];
   videoInputId: string;
 }) {
   const needsVideo = sessionType === "video" && cameraEnabled;

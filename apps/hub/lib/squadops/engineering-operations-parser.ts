@@ -119,13 +119,15 @@ const typeTerms = [
 ] as const;
 
 const knownModules = [
-  "Guardian",
-  "CareDesk",
-  "PulseX",
-  "SquadOps",
+  "Hades",
+  "Iris",
+  "Hermes",
+  "Zeus",
+  "Hefesto",
   "ReleaseOps",
   "SupportOps",
   "Setup",
+  "Panteon Shell",
   "Hub Shell",
   "D4Sign",
   "Asaas",
@@ -140,16 +142,16 @@ const auditRoutineDefinitions = [
     id: "daily-audit",
     match: ["auditoria diaria", "auditoria operacional diaria"],
     name: "Auditoria diária",
-    responsible: "Hub ReleaseOps",
+    responsible: "Hefesto",
     script:
-      "Revisar registros das últimas 24h, checar status abertos, pendências críticas, handoffs para ReleaseOps e divergências no diário.",
+      "Revisar registros das últimas 24h, checar status abertos, pendências críticas, handoffs para Hefesto e divergências no diário.",
   },
   {
     frequency: "Semanal",
     id: "weekly-audit",
     match: ["auditoria semanal"],
     name: "Auditoria semanal",
-    responsible: "Hub ReleaseOps",
+    responsible: "Hefesto",
     script:
       "Consolidar releases da semana, módulos com maior risco, bugs recorrentes, gaps de validação e prioridades para a próxima semana.",
   },
@@ -158,7 +160,7 @@ const auditRoutineDefinitions = [
     id: "monthly-audit",
     match: ["auditoria mensal"],
     name: "Auditoria mensal",
-    responsible: "Hub ReleaseOps",
+    responsible: "Hefesto",
     script:
       "Revisar evolução mensal da engenharia, saúde dos módulos, riscos estruturais, qualidade das releases e backlog de governança.",
   },
@@ -167,7 +169,7 @@ const auditRoutineDefinitions = [
     id: "operational-healthcheck",
     match: ["healthcheck operacional", "healthcheck operacional diario"],
     name: "Healthcheck operacional",
-    responsible: "Hub ReleaseOps",
+    responsible: "Hefesto",
     script:
       "Checar rotas principais, APIs protegidas, Supabase, Vercel, logs críticos, produção e integrações sensíveis com sinais não destrutivos.",
   },
@@ -176,7 +178,7 @@ const auditRoutineDefinitions = [
     id: "deploy-audit",
     match: ["deploy", "release", "producao"],
     name: "Auditoria de deploy",
-    responsible: "Hub ReleaseOps",
+    responsible: "Hefesto",
     script:
       "Confirmar commit, deploy, ambiente, healthchecks, alias de produção, logs de erro, riscos conhecidos e status final da release.",
   },
@@ -185,7 +187,7 @@ const auditRoutineDefinitions = [
     id: "bugs-bottlenecks-audit",
     match: ["supportops", "investigacao", "bugs", "gargalos", "lentidao"],
     name: "Auditoria de bugs/gargalos",
-    responsible: "Hub SupportOps",
+    responsible: "Zeus",
     script:
       "Separar evidência de hipótese, revisar logs, APIs instáveis, gargalos, regressões, impacto operacional e próxima squad responsável.",
   },
@@ -200,9 +202,9 @@ const auditRoutineDefinitions = [
       "pendencias criticas",
     ],
     name: "Auditoria de pendências críticas",
-    responsible: "Hub ReleaseOps",
+    responsible: "Hefesto",
     script:
-      "Consolidar riscos conhecidos, status críticos, pendências aguardando ReleaseOps e rotinas vencidas ou ainda não executadas.",
+      "Consolidar riscos conhecidos, status críticos, pendências aguardando Hefesto e rotinas vencidas ou ainda não executadas.",
   },
 ] as const;
 
@@ -255,7 +257,7 @@ function parseRecordBlock(
 ): EngineeringOperationRecord {
   const rawContent = trimBlankLines(blockLines).join("\n").trim();
   const fields = collectFields(blockLines);
-  const subject = normalizeSquadOpsNaming(
+  const subject = normalizeZeusNaming(
     getField(fields, ["assunto"]) || inferSubject(rawContent),
   );
   const moduleName = inferModule(subject, rawContent);
@@ -700,11 +702,11 @@ function inferModule(subject: string, rawContent: string) {
 }
 
 function normalizeModuleAlias(moduleName: string) {
-  return normalizeSearchText(moduleName) === "hubops" ? "SquadOps" : moduleName;
+  return normalizeSearchText(moduleName) === "hubops" ? "Zeus" : moduleName;
 }
 
-function normalizeSquadOpsNaming(value: string) {
-  return value.replace(/\bHubOps\b/g, "SquadOps");
+function normalizeZeusNaming(value: string) {
+  return value.replace(/\bHubOps\b/g, "Zeus");
 }
 
 function buildOperationProtocol(sourceIndex: number) {
@@ -716,23 +718,23 @@ function inferScreen(subject: string, affectedFiles: string, rawContent: string)
 
   if (
     text.includes("squadopspage") ||
-    text.includes("/squadops") ||
+    text.includes("/zeus") ||
     text.includes("operations center") ||
     text.includes("hubops")
   ) {
-    return "SquadOps / Operations Center";
+    return "Zeus / Operations Center";
   }
 
-  if (text.includes("pulsex") || text.includes("/pulsex")) {
-    return "PulseX";
+  if (text.includes("pulsex") || text.includes("/hermes")) {
+    return "Hermes";
   }
 
-  if (text.includes("guardian") || text.includes("/guardian")) {
-    return "Guardian";
+  if (text.includes("guardian") || text.includes("/hades")) {
+    return "Hades";
   }
 
-  if (text.includes("caredesk") || text.includes("/caredesk")) {
-    return "CareDesk";
+  if (text.includes("caredesk") || text.includes("/iris")) {
+    return "Iris";
   }
 
   if (text.includes("setup") || text.includes("/setup")) {
@@ -740,7 +742,7 @@ function inferScreen(subject: string, affectedFiles: string, rawContent: string)
   }
 
   if (text.includes("hub-shell") || text.includes("sidebar")) {
-    return "Hub Shell";
+    return "Panteon Shell";
   }
 
   if (text.includes("api/operations") || text.includes("database monitoring")) {
@@ -799,12 +801,16 @@ function inferSquad(moduleName: string) {
     return UNKNOWN_OPERATION_VALUE;
   }
 
-  if (moduleName === "ReleaseOps" || moduleName === "SupportOps") {
-    return `Hub ${moduleName}`;
+  if (moduleName === "ReleaseOps" || moduleName === "Hefesto") {
+    return "Hefesto";
+  }
+
+  if (moduleName === "SupportOps") {
+    return "Zeus";
   }
 
   if (moduleName === "Engenharia") {
-    return "Engenharia Careli Hub";
+    return "Engenharia Panteon";
   }
 
   return `${moduleName} Core`;

@@ -1,30 +1,30 @@
 "use client";
 
 import type {
-  PulseXMessage,
-  PulseXMessageFilter,
-  PulseXMessageTag,
-  PulseXPresenceUser,
+  HermesMessage,
+  HermesMessageFilter,
+  HermesMessageTag,
+  HermesPresenceUser,
 } from "@/lib/pulsex";
 import { EmptyState } from "@repo/uix";
 import { useEffect, useRef } from "react";
 import { MessageItem } from "./message-item";
 
 type MessageListProps = {
-  currentUserId?: PulseXPresenceUser["id"];
-  filter?: PulseXMessageFilter;
-  messages: readonly PulseXMessage[];
+  currentUserId?: HermesPresenceUser["id"];
+  filter?: HermesMessageFilter;
+  messages: readonly HermesMessage[];
   onEditMessage?: (
-    messageId: PulseXMessage["id"],
+    messageId: HermesMessage["id"],
     body: string,
   ) => Promise<void> | void;
-  onAskAiReply?: (messageId: PulseXMessage["id"]) => void;
-  onOpenThread?: (messageId: PulseXMessage["id"]) => void;
+  onAskAiReply?: (messageId: HermesMessage["id"]) => void;
+  onOpenThread?: (messageId: HermesMessage["id"]) => void;
   onToggleTag?: (
-    messageId: PulseXMessage["id"],
-    tag: PulseXMessageTag,
+    messageId: HermesMessage["id"],
+    tag: HermesMessageTag,
   ) => void;
-  users: readonly PulseXPresenceUser[];
+  users: readonly HermesPresenceUser[];
 };
 
 export function MessageList({

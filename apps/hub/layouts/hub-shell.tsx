@@ -34,6 +34,8 @@ import {
 } from "@repo/uix";
 import {
   Bell,
+  BarChart3,
+  CalendarClock,
   CalendarDays,
   ChevronDown,
   CircleDollarSign,
@@ -41,7 +43,6 @@ import {
   FileText,
   FolderKanban,
   Headphones,
-  Home,
   LogOut,
   MessageSquareText,
   PanelLeftClose,
@@ -49,8 +50,6 @@ import {
   Settings,
   ShieldCheck,
   ShoppingCart,
-  Video,
-  UsersRound,
 } from "lucide-react";
 import {
   getUnreadNotificationsCount,
@@ -73,28 +72,43 @@ type HubShellProps = Readonly<{
   layoutMode?: "dashboard" | "module";
 }>;
 
+const shellAppEnvironment =
+  process.env.NEXT_PUBLIC_CARELI_APP_ENV?.toLowerCase() ?? "";
+const shellAppUrl = (
+  process.env.NEXT_PUBLIC_CARELI_APP_URL ??
+  process.env.NEXT_PUBLIC_APP_URL ??
+  ""
+).toLowerCase();
+const isShellHomologationEnvironment =
+  shellAppEnvironment.includes("homolog") ||
+  shellAppEnvironment.includes("homo") ||
+  shellAppUrl.includes("homo.c2x.app.br") ||
+  shellAppUrl.includes("homolog.c2x.app.br");
+
 const moduleIconMap: Record<string, ReactNode> = {
   agenda: <CalendarDays aria-hidden="true" size={18} />,
+  atlas: <BarChart3 aria-hidden="true" size={18} />,
   compras: <ShoppingCart aria-hidden="true" size={18} />,
   contatos: <ContactRound aria-hidden="true" size={18} />,
-  caredesk: <Headphones aria-hidden="true" size={18} />,
-  chronos: <Video aria-hidden="true" size={18} />,
+  hermes: <MessageSquareText aria-hidden="true" size={18} />,
+  hades: <ShieldCheck aria-hidden="true" size={18} />,
+  iris: <Headphones aria-hidden="true" size={18} />,
+  chronos: <CalendarClock aria-hidden="true" size={18} />,
   drive: <FolderKanban aria-hidden="true" size={18} />,
   financeiro: <CircleDollarSign aria-hidden="true" size={18} />,
-  guardian: <ShieldCheck aria-hidden="true" size={18} />,
-  pulsex: <MessageSquareText aria-hidden="true" size={18} />,
   setup: <Settings aria-hidden="true" size={18} />,
-  squadops: <UsersRound aria-hidden="true" size={18} />,
+  zeus: <ZeusModuleIcon />,
 };
 
 const minimumReleasedModuleIds = [
-  "guardian",
-  "caredesk",
+  "hades",
+  "atlas",
+  "iris",
   "chronos",
-  "pulsex",
+  "hermes",
   "setup",
 ] as const;
-const hiddenProductionModuleIds = new Set(["caredesk"]);
+const hiddenProductionModuleIds = new Set(["iris"]);
 
 export function HubShell({
   children,
@@ -112,6 +126,9 @@ export function HubShell({
   const notificationPanelRef = useRef<HTMLDivElement>(null);
   const [releasedModuleIds, setReleasedModuleIds] =
     useState<Set<string> | null>(null);
+  const [isHomologationBrand, setIsHomologationBrand] = useState(
+    isShellHomologationEnvironment,
+  );
   const { hubUser, profileStatus, signOut } = useAuth();
   const hubPresence = useHubPresenceController({
     enabled: profileStatus === "ready" && Boolean(hubUser),
@@ -120,6 +137,9 @@ export function HubShell({
   const pathname = usePathname();
   const router = useRouter();
   const unreadNotificationsCount = getUnreadNotificationsCount(realtimeState);
+  const panteonBrandIconSrc = isHomologationBrand
+    ? "/panteon-mark-homolog.png"
+    : "/panteon-mark-light.png";
   const activeModule = orderedHubModules.find((hubModule) =>
     pathname.startsWith(hubModule.basePath),
   );
@@ -129,12 +149,20 @@ export function HubShell({
     onDismiss: () => setIsNotificationPanelOpen(false),
     ref: notificationPanelRef,
   });
+
+  useEffect(() => {
+    setIsHomologationBrand(
+      isShellHomologationEnvironment ||
+        isHomologationHostname(window.location.hostname),
+    );
+  }, []);
+
   const visibleHubModules = orderedHubModules.filter((hubModule) => {
     if (!isVisibleInCurrentEnvironment(hubModule.id)) {
       return false;
     }
 
-    if (isSquadOpsModuleId(hubModule.id)) {
+    if (isZeusModuleId(hubModule.id)) {
       return false;
     }
 
@@ -389,23 +417,13 @@ export function HubShell({
                 isSidebarCollapsed ? (
                   <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
                     <Link
-                      aria-label="Voltar para a Home do Hub"
-                      className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                      aria-label="Voltar para a Home do Panteon"
+                      className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-[#101820] text-[#d5dde8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-[#05070b] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                       href="/"
                     >
-                      <span
-                        aria-hidden="true"
-                        className="h-7 w-7 bg-current"
-                        style={{
-                          WebkitMaskImage: "url('/logocbr.png')",
-                          WebkitMaskPosition: "center",
-                          WebkitMaskRepeat: "no-repeat",
-                          WebkitMaskSize: "contain",
-                          maskImage: "url('/logocbr.png')",
-                          maskPosition: "center",
-                          maskRepeat: "no-repeat",
-                          maskSize: "contain",
-                        }}
+                      <PanteonBrandMark
+                        className="h-7 w-7"
+                        src={panteonBrandIconSrc}
                       />
                     </Link>
                     <Tooltip content="Expandir menu" placement="right">
@@ -420,26 +438,23 @@ export function HubShell({
                     </Tooltip>
                   </div>
                 ) : (
-                  <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-3 rounded-xl border border-white/[0.075] bg-white/[0.035] px-2.5 py-2">
+                  <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-3 rounded-xl bg-white/[0.035] px-2.5 py-2">
                     <Link
-                      aria-label="Careli C2X"
-                      className="flex min-w-0 items-center text-[#d5dde8] outline-none transition hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                      aria-label="Panteon"
+                      className="flex min-w-0 items-center gap-2.5 text-[#d5dde8] outline-none transition hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                       href="/"
                     >
-                      <span
-                        aria-hidden="true"
-                        className="h-[2.125rem] w-[6.875rem] bg-current"
-                        style={{
-                          WebkitMaskImage: "url('/logocb.png')",
-                          WebkitMaskPosition: "center",
-                          WebkitMaskRepeat: "no-repeat",
-                          WebkitMaskSize: "contain",
-                          maskImage: "url('/logocb.png')",
-                          maskPosition: "center",
-                          maskRepeat: "no-repeat",
-                          maskSize: "contain",
-                        }}
-                      />
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+                        <PanteonBrandMark
+                          className="h-7 w-7"
+                          src={panteonBrandIconSrc}
+                        />
+                      </span>
+                      <span className="grid min-w-0 gap-0.5">
+                        <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+                          Panteon
+                        </span>
+                      </span>
                     </Link>
                     <Tooltip content="Recolher menu" placement="right">
                       <button
@@ -513,7 +528,7 @@ export function HubShell({
                           (notification) => ({
                             description: notification.moduleId
                               ? `Modulo: ${notification.moduleId}`
-                              : "Hub Central",
+                              : "Panteon Central",
                             id: notification.id,
                             read: notification.read,
                             status: notification.severity,
@@ -612,28 +627,31 @@ export function HubShell({
       {isOperationalChrome && isOperationalRailOpen ? (
         <>
           <button
-            aria-label="Fechar menu C2X"
+            aria-label="Fechar menu Panteon"
             className="fixed inset-0 z-[var(--uix-z-overlay)] cursor-default bg-black/[0.06] outline-none"
             onClick={() => setIsOperationalRailOpen(false)}
             type="button"
           />
           <aside
-            aria-label="Menu C2X"
+            aria-label="Menu Panteon"
             className="careli-module-launcher fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-[15.25rem] gap-2 rounded-xl border border-white/[0.09] bg-[#232832] p-2.5 shadow-2xl"
           >
-            <Tooltip content="C2X" placement="right">
+            <Tooltip content="Panteon" placement="right">
               <Link
-                aria-label="Voltar para a Home do C2X"
+                aria-label="Voltar para a Home do Panteon"
                 className="careli-module-launcher__home flex h-12 items-center gap-3 rounded-lg border border-white/[0.075] bg-white/[0.04] px-2.5 text-[#d7dee8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                 href="/"
                 onClick={() => setIsOperationalRailOpen(false)}
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#A07C3B]/15 text-[#D6B56F]">
-                  <Home aria-hidden="true" size={17} />
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+                  <PanteonBrandMark
+                    className="h-6 w-6"
+                    src={panteonBrandIconSrc}
+                  />
                 </span>
                 <span className="grid min-w-0 gap-0.5">
                   <span className="min-w-0 truncate text-sm font-semibold">
-                    C2X
+                    Panteon
                   </span>
                 </span>
               </Link>
@@ -711,7 +729,7 @@ export function HubShell({
         }))}
         onOpenChange={setIsCommandPaletteOpen}
         open={isCommandPaletteOpen}
-        title="Comandos do Hub"
+        title="Comandos do Panteon"
       />
       <HubSupportDock />
     </>
@@ -803,6 +821,43 @@ function TopbarUserAvatar({
   );
 }
 
+function PanteonBrandMark({
+  className,
+  src,
+}: {
+  className: string;
+  src: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`block bg-contain bg-center bg-no-repeat ${className}`}
+      style={{
+        backgroundImage: `url("${src}")`,
+      }}
+    />
+  );
+}
+
+function ZeusModuleIcon() {
+  return (
+    <span
+      aria-hidden="true"
+      className="block h-[18px] w-[18px] bg-current"
+      style={{
+        WebkitMaskImage: "url('/zeus-module-mark.png')",
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskImage: "url('/zeus-module-mark.png')",
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain",
+      }}
+    />
+  );
+}
+
 function getPresenceTone(status: HubPresenceStatus) {
   const normalizedStatus = status === "busy" ? "agenda" : status;
   const tones = {
@@ -847,6 +902,15 @@ function isLocalhostRuntime() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
+function isHomologationHostname(hostname: string) {
+  const normalizedHostname = hostname.toLowerCase();
+
+  return (
+    normalizedHostname.includes("homo") ||
+    normalizedHostname.includes("homolog")
+  );
+}
+
 function isShellPathActive(pathname: string, itemPath: string) {
   if (itemPath === "/") {
     return pathname === "/";
@@ -861,8 +925,8 @@ function canOpenShellModule(
   hubModule: (typeof orderedHubModules)[number],
   profileStatus: "error" | "idle" | "loading" | "ready",
 ) {
-  if (isSquadOpsModuleId(moduleId)) {
-    return canAccessSquadOpsModule(hubUser);
+  if (isZeusModuleId(moduleId)) {
+    return canAccessZeusModule(hubUser);
   }
 
   if (hubUser && canAccessModule(hubUser, hubModule)) {
@@ -888,11 +952,11 @@ function isVisibleInCurrentEnvironment(moduleId: string) {
   );
 }
 
-function isSquadOpsModuleId(moduleId: string) {
-  return moduleId === "squadops";
+function isZeusModuleId(moduleId: string) {
+  return moduleId === "zeus";
 }
 
-function canAccessSquadOpsModule(hubUser: HubUserContext | null) {
+function canAccessZeusModule(hubUser: HubUserContext | null) {
   return (
     hubUser?.role === "admin" ||
     hubUser?.operationalProfile?.profileRole === "adm"

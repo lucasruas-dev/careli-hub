@@ -1,16 +1,16 @@
 "use client";
 
 import type {
-  PulseXChannel,
-  PulseXDepartment,
-  PulseXMessage,
-  PulseXMessageFilter,
-  PulseXPresenceUser,
+  HermesChannel,
+  HermesDepartment,
+  HermesMessage,
+  HermesMessageFilter,
+  HermesPresenceUser,
 } from "@/lib/pulsex";
 import {
-  getPulseXShortcutChannels,
-  getPulseXShortcutCounts,
-  type PulseXShortcutFilter,
+  getHermesShortcutChannels,
+  getHermesShortcutCounts,
+  type HermesShortcutFilter,
 } from "@/lib/pulsex/shortcuts";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { Tooltip } from "@repo/uix";
@@ -20,10 +20,9 @@ import {
   ChevronDown,
   ChevronRight,
   LayoutGrid,
-  MessageCircle,
+  MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
-  RefreshCw,
   Search,
   Star,
   SlidersHorizontal,
@@ -36,21 +35,21 @@ import { ConversationList } from "./conversation-list";
 
 type ConversationSidebarProps = {
   activeChannelId: string;
-  activeMessageFilter: PulseXMessageFilter;
-  activeShortcutFilter: PulseXShortcutFilter | null;
-  channels: readonly PulseXChannel[];
-  currentUserId: PulseXPresenceUser["id"];
+  activeMessageFilter: HermesMessageFilter;
+  activeShortcutFilter: HermesShortcutFilter | null;
+  channels: readonly HermesChannel[];
+  currentUserId: HermesPresenceUser["id"];
   dataStatus?: "fallback" | "loading" | "ready";
-  departments: readonly PulseXDepartment[];
-  favoriteChannelIds: readonly PulseXChannel["id"][];
+  departments: readonly HermesDepartment[];
+  favoriteChannelIds: readonly HermesChannel["id"][];
   isCollapsed?: boolean;
-  messages: readonly PulseXMessage[];
-  onSelectChannel?: (channelId: PulseXChannel["id"]) => void;
-  onSelectMessageFilter?: (filter: PulseXMessageFilter) => void;
-  onSelectShortcut?: (shortcut: PulseXShortcutFilter) => void;
+  messages: readonly HermesMessage[];
+  onSelectChannel?: (channelId: HermesChannel["id"]) => void;
+  onSelectMessageFilter?: (filter: HermesMessageFilter) => void;
+  onSelectShortcut?: (shortcut: HermesShortcutFilter) => void;
   onToggleCollapsed?: () => void;
   onRefresh?: () => void;
-  users: readonly PulseXPresenceUser[];
+  users: readonly HermesPresenceUser[];
 };
 
 type SidebarGroupId = string;
@@ -64,7 +63,7 @@ const messageFilters = [
   { id: "resolvido", label: "Resolvidas" },
   { id: "acompanhar", label: "Acompanhar" },
 ] as const satisfies readonly {
-  id: PulseXMessageFilter;
+  id: HermesMessageFilter;
   label: string;
 }[];
 
@@ -83,7 +82,6 @@ export function ConversationSidebar({
   onSelectMessageFilter,
   onSelectShortcut,
   onToggleCollapsed,
-  onRefresh,
   users,
 }: ConversationSidebarProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<
@@ -93,7 +91,7 @@ export function ConversationSidebar({
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const filtersRef = useRef<HTMLDivElement>(null);
   const shortcutsRef = useRef<HTMLDivElement>(null);
-  const shortcutCounts = getPulseXShortcutCounts({
+  const shortcutCounts = getHermesShortcutCounts({
     channels,
     currentUserId,
     favoriteChannelIds,
@@ -118,7 +116,7 @@ export function ConversationSidebar({
     ref: shortcutsRef,
   });
 
-  const shortcutChannels = getPulseXShortcutChannels({
+  const shortcutChannels = getHermesShortcutChannels({
     channels,
     currentUserId,
     favoriteChannelIds,
@@ -151,66 +149,71 @@ export function ConversationSidebar({
   }
 
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden border-l border-white/[0.035] border-r border-[#2A2B32] bg-[#343541] shadow-[inset_1px_0_0_rgb(255_255_255_/_0.035)]">
-      <div
-        className={`shrink-0 border-b border-white/[0.075] bg-[#343541] py-3 ${
-          isCollapsed ? "px-2" : "px-4"
-        }`}
-      >
-        <div
-          className={
-            isCollapsed
-              ? "grid justify-items-center gap-2"
-              : "grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2"
-          }
-        >
-          <Tooltip content="Abrir menu" placement="bottom">
-            <button
-              aria-label="Abrir menu"
-              className="grid h-8 w-8 place-items-center rounded-md border border-white/[0.075] bg-white/[0.055] text-[#a5afbd] outline-none transition hover:bg-white/[0.085] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
-              onClick={handleOpenModuleLauncher}
-              type="button"
-            >
-              <LayoutGrid aria-hidden="true" size={15} />
-            </button>
-          </Tooltip>
-          <p
-            className={`m-0 truncate text-base font-semibold text-[#f7f8fa] ${
-              isCollapsed ? "sr-only" : ""
-            }`}
-          >
-            PulseX
-          </p>
-          <span className="sr-only">{users.length} usuarios carregados</span>
-          <Tooltip content="Atualizar canais" placement="bottom">
-            <button
-              aria-label="Atualizar canais"
-              className="grid h-9 w-9 place-items-center rounded-md border border-white/[0.075] bg-white/[0.055] text-[#a5afbd] outline-none transition hover:bg-white/[0.085] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
-              onClick={onRefresh}
-              type="button"
-            >
-              <RefreshCw aria-hidden="true" size={16} />
-            </button>
-          </Tooltip>
-          <Tooltip
-            content={isCollapsed ? "Expandir sidebar" : "Recolher sidebar"}
-            placement="bottom"
-          >
-            <button
-              aria-label={isCollapsed ? "Expandir sidebar" : "Recolher sidebar"}
-              aria-pressed={isCollapsed}
-              className="grid h-9 w-9 place-items-center rounded-md border border-white/[0.075] bg-white/[0.055] text-[#a5afbd] outline-none transition hover:bg-white/[0.085] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
-              onClick={onToggleCollapsed}
-              type="button"
-            >
-              {isCollapsed ? (
+    <aside className="panteon-module-sidebar flex h-full w-full flex-col overflow-hidden border-r">
+      <div className="panteon-module-sidebar__top shrink-0">
+        {isCollapsed ? (
+          <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
+            <span className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8]">
+              <MessageSquareText aria-hidden="true" size={18} />
+            </span>
+            <Tooltip content="Abrir sidebar do Panteon" placement="right">
+              <button
+                aria-label="Abrir sidebar do Panteon"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                onClick={handleOpenModuleLauncher}
+                type="button"
+              >
+                <LayoutGrid aria-hidden="true" size={15} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Expandir sidebar" placement="right">
+              <button
+                aria-label="Expandir sidebar"
+                aria-pressed={isCollapsed}
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                onClick={onToggleCollapsed}
+                type="button"
+              >
                 <PanelLeftOpen aria-hidden="true" size={16} />
-              ) : (
+              </button>
+            </Tooltip>
+          </div>
+        ) : (
+          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
+            <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+                <MessageSquareText aria-hidden="true" size={18} />
+              </span>
+              <span className="grid min-w-0 gap-0.5">
+                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+                  Hermes
+                </span>
+              </span>
+            </div>
+            <span className="sr-only">{users.length} usuarios carregados</span>
+            <Tooltip content="Abrir sidebar do Panteon" placement="right">
+              <button
+                aria-label="Abrir sidebar do Panteon"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                onClick={handleOpenModuleLauncher}
+                type="button"
+              >
+                <LayoutGrid aria-hidden="true" size={15} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Recolher sidebar" placement="right">
+              <button
+                aria-label="Recolher sidebar"
+                aria-pressed={isCollapsed}
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                onClick={onToggleCollapsed}
+                type="button"
+              >
                 <PanelLeftClose aria-hidden="true" size={16} />
-              )}
-            </button>
-          </Tooltip>
-        </div>
+              </button>
+            </Tooltip>
+          </div>
+        )}
         {isCollapsed ? null : (
           <>
             <label className="mt-4 block">
@@ -317,7 +320,7 @@ export function ConversationSidebar({
                     <div className="grid grid-cols-3 gap-2 text-sm">
                       <QuickAction
                         active={activeShortcutFilter === "unread"}
-                        icon={<MessageCircle size={15} />}
+                        icon={<MessageSquareText size={15} />}
                         label="Nao lidas"
                         onClick={() => onSelectShortcut?.("unread")}
                         value={unreadCount}
@@ -437,8 +440,8 @@ function buildDepartmentGroups({
   channels,
   departments,
 }: {
-  channels: readonly PulseXChannel[];
-  departments: readonly PulseXDepartment[];
+  channels: readonly HermesChannel[];
+  departments: readonly HermesDepartment[];
 }) {
   const knownDepartments = departments.map((department) => ({
     id: department.id,

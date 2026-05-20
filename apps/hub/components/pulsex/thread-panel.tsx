@@ -1,33 +1,33 @@
 "use client";
 
 import type {
-  PulseXMessage,
-  PulseXPresenceUser,
-  PulseXReactionEmoji,
-  PulseXThreadReply,
+  HermesMessage,
+  HermesPresenceUser,
+  HermesReactionEmoji,
+  HermesThreadReply,
 } from "@/lib/pulsex";
 import { Send, X } from "lucide-react";
 import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import { MessageItem } from "./message-item";
 
 type ThreadPanelProps = {
-  currentUserId: PulseXPresenceUser["id"];
-  message?: PulseXMessage;
+  currentUserId: HermesPresenceUser["id"];
+  message?: HermesMessage;
   onChangeReply: (value: string) => void;
   onClose: () => void;
   onEditMessage?: (
-    messageId: PulseXMessage["id"],
+    messageId: HermesMessage["id"],
     body: string,
   ) => Promise<void> | void;
   onSubmitReply: () => void;
   onToggleReaction: (
-    messageId: PulseXMessage["id"],
-    emoji: PulseXReactionEmoji,
+    messageId: HermesMessage["id"],
+    emoji: HermesReactionEmoji,
   ) => void;
-  reactionOptions: readonly PulseXReactionEmoji[];
-  replies: readonly PulseXThreadReply[];
+  reactionOptions: readonly HermesReactionEmoji[];
+  replies: readonly HermesThreadReply[];
   replyValue: string;
-  users: readonly PulseXPresenceUser[];
+  users: readonly HermesPresenceUser[];
 };
 
 export function ThreadPanel({
@@ -113,7 +113,7 @@ export function ThreadPanel({
         {replies.map((reply) => {
           const author = users.find((user) => user.id === reply.authorId);
           const isOwn = reply.authorId === currentUserId;
-          const authorName = author?.label ?? reply.authorName ?? "PulseX";
+          const authorName = author?.label ?? reply.authorName ?? "Hermes";
           const authorAvatarUrl = author?.avatarUrl ?? reply.authorAvatarUrl;
           const authorInitials = author?.initials ?? getInitials(authorName);
 

@@ -1,13 +1,13 @@
 import type { ActivityFeedEventStatus } from "@repo/uix";
 
-export type PulseXChannelKind =
+export type HermesChannelKind =
   | "direct"
   | "operations"
   | "relation"
   | "system"
   | "technology";
 
-export type PulseXChannel = {
+export type HermesChannel = {
   accessType?: "department_channel" | "private_group" | "sector_channel";
   avatar: string;
   avatarUrl?: string;
@@ -22,7 +22,7 @@ export type PulseXChannel = {
   departmentName?: string;
   description: string;
   id: string;
-  kind: PulseXChannelKind;
+  kind: HermesChannelKind;
   lastMessageAt: string;
   memberReadAtByUserId?: Readonly<Record<string, string>>;
   memberUserIds?: readonly string[];
@@ -34,22 +34,22 @@ export type PulseXChannel = {
   unreadCount?: number;
 };
 
-export type PulseXDepartment = {
+export type HermesDepartment = {
   id: string;
   name: string;
   slug: string;
 };
 
-export type PulseXSector = {
-  departmentId: PulseXDepartment["id"];
+export type HermesSector = {
+  departmentId: HermesDepartment["id"];
   id: string;
   name: string;
   slug: string;
 };
 
-export type PulseXPresenceUser = {
+export type HermesPresenceUser = {
   avatarUrl?: string;
-  channelIds: readonly PulseXChannel["id"][];
+  channelIds: readonly HermesChannel["id"][];
   departmentId?: string;
   departmentName?: string;
   email?: string;
@@ -64,30 +64,30 @@ export type PulseXPresenceUser = {
   username?: string;
 };
 
-export type PulseXReaction = {
+export type HermesReaction = {
   count: number;
   emoji: string;
-  reactedByUserIds: readonly PulseXPresenceUser["id"][];
+  reactedByUserIds: readonly HermesPresenceUser["id"][];
 };
 
-export type PulseXReactionEmoji = string;
+export type HermesReactionEmoji = string;
 
-export type PulseXMessageTag =
+export type HermesMessageTag =
   | "acompanhar"
   | "importante"
   | "pendente"
   | "resolvido"
   | "urgente";
 
-export type PulseXMessageFilter = "all" | "mentions" | PulseXMessageTag;
+export type HermesMessageFilter = "all" | "mentions" | HermesMessageTag;
 
-export type PulseXMessageMention = {
+export type HermesMessageMention = {
   displayName: string;
   trigger: string;
-  userId: PulseXPresenceUser["id"];
+  userId: HermesPresenceUser["id"];
 };
 
-export type PulseXMessageAttachment = {
+export type HermesMessageAttachment = {
   durationSeconds?: number;
   label: string;
   mimeType?: string;
@@ -96,45 +96,45 @@ export type PulseXMessageAttachment = {
   url?: string;
 };
 
-export type PulseXMessage = {
-  attachment?: PulseXMessageAttachment;
+export type HermesMessage = {
+  attachment?: HermesMessageAttachment;
   authorAvatarUrl?: string;
-  authorId: PulseXPresenceUser["id"];
+  authorId: HermesPresenceUser["id"];
   authorName?: string;
   body: string;
-  channelId: PulseXChannel["id"];
+  channelId: HermesChannel["id"];
   clientMessageId?: string;
   createdAt?: string;
   deletedAt?: string;
-  deliveredTo?: readonly PulseXPresenceUser["id"][];
+  deliveredTo?: readonly HermesPresenceUser["id"][];
   editedAt?: string;
   id: string;
   lastThreadReplyAt?: string;
   mentionAgeMinutes?: number;
   mentionRespondedAt?: string;
-  mentionUserIds?: readonly PulseXPresenceUser["id"][];
-  mentions?: readonly PulseXMessageMention[];
-  readBy?: readonly PulseXPresenceUser["id"][];
-  reactions?: readonly PulseXReaction[];
+  mentionUserIds?: readonly HermesPresenceUser["id"][];
+  mentions?: readonly HermesMessageMention[];
+  readBy?: readonly HermesPresenceUser["id"][];
+  reactions?: readonly HermesReaction[];
   status?: ActivityFeedEventStatus;
-  tags?: readonly PulseXMessageTag[];
+  tags?: readonly HermesMessageTag[];
   threadParentMessageId?: string;
   threadCount?: number;
   timestamp: string;
 };
 
-export type PulseXThreadReply = {
+export type HermesThreadReply = {
   authorAvatarUrl?: string;
-  authorId: PulseXPresenceUser["id"];
+  authorId: HermesPresenceUser["id"];
   authorName?: string;
   body: string;
   createdAt?: string;
   id: string;
-  messageId: PulseXMessage["id"];
+  messageId: HermesMessage["id"];
   timestamp: string;
 };
 
-export type PulseXFutureCapability =
+export type HermesFutureCapability =
   | "threads"
   | "reactions"
   | "mentions"
@@ -142,22 +142,22 @@ export type PulseXFutureCapability =
   | "calls"
   | "ai-assistant";
 
-export type PulseXCallType = "audio" | "video";
+export type HermesCallType = "audio" | "video";
 
-export type PulseXCallStatus =
+export type HermesCallStatus =
   | "active"
   | "ended"
   | "idle"
   | "missed"
   | "ringing";
 
-export type PulseXCallParticipantStatus =
+export type HermesCallParticipantStatus =
   | "invited"
   | "joined"
   | "left"
   | "muted";
 
-export type PulseXCallParticipant = {
+export type HermesCallParticipant = {
   avatarUrl?: string;
   id: string;
   initials: string;
@@ -165,26 +165,26 @@ export type PulseXCallParticipant = {
   isMuted?: boolean;
   isScreenSharing?: boolean;
   label: string;
-  presenceStatus: PulseXPresenceUser["status"];
+  presenceStatus: HermesPresenceUser["status"];
   role: string;
-  status: PulseXCallParticipantStatus;
-  userId?: PulseXPresenceUser["id"];
+  status: HermesCallParticipantStatus;
+  userId?: HermesPresenceUser["id"];
 };
 
-export type PulseXCallSession = {
-  channelId: PulseXChannel["id"];
+export type HermesCallSession = {
+  channelId: HermesChannel["id"];
   durationLabel?: string;
   endedAt?: string;
   id: string;
-  initiatedByUserId?: PulseXPresenceUser["id"];
-  participants: readonly PulseXCallParticipant[];
+  initiatedByUserId?: HermesPresenceUser["id"];
+  participants: readonly HermesCallParticipant[];
   startedAt?: string;
-  status: PulseXCallStatus;
+  status: HermesCallStatus;
   title: string;
-  type: PulseXCallType;
+  type: HermesCallType;
 };
 
-export type PulseXCallSignalKind =
+export type HermesCallSignalKind =
   | "answer"
   | "decline"
   | "end"
@@ -196,24 +196,24 @@ export type PulseXCallSignalKind =
   | "screen-share-start"
   | "screen-share-stop";
 
-export type PulseXCallRealtimeSignal = {
-  callId: PulseXCallSession["id"];
+export type HermesCallRealtimeSignal = {
+  callId: HermesCallSession["id"];
   candidate?: RTCIceCandidateInit | null;
-  channelId: PulseXChannel["id"];
+  channelId: HermesChannel["id"];
   description?: RTCSessionDescriptionInit;
-  fromUserId: PulseXPresenceUser["id"];
+  fromUserId: HermesPresenceUser["id"];
   id: string;
-  kind: PulseXCallSignalKind;
-  participant?: PulseXCallParticipant;
+  kind: HermesCallSignalKind;
+  participant?: HermesCallParticipant;
   sentAt: string;
-  session?: PulseXCallSession;
-  targetUserIds?: readonly PulseXPresenceUser["id"][];
-  toUserId?: PulseXPresenceUser["id"];
+  session?: HermesCallSession;
+  targetUserIds?: readonly HermesPresenceUser["id"][];
+  toUserId?: HermesPresenceUser["id"];
 };
 
-export type PulseXCallRealtimeSignalInput = Omit<
-  PulseXCallRealtimeSignal,
+export type HermesCallRealtimeSignalInput = Omit<
+  HermesCallRealtimeSignal,
   "fromUserId" | "id" | "sentAt"
 > & {
-  fromUserId?: PulseXPresenceUser["id"];
+  fromUserId?: HermesPresenceUser["id"];
 };

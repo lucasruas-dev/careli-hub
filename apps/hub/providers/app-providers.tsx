@@ -3,8 +3,8 @@
 import { AuthProvider } from "@/providers/auth-provider";
 import { DatabaseProvider } from "@/providers/database-provider";
 import { QueryProvider } from "@/providers/query-provider";
-import { PulseXCallProvider } from "@/providers/pulsex-call-provider";
-import { PulseXNotificationProvider } from "@/providers/pulsex-notification-provider";
+import { HermesCallProvider } from "@/providers/pulsex-call-provider";
+import { HermesNotificationProvider } from "@/providers/pulsex-notification-provider";
 import { RealtimeProvider } from "@/providers/realtime-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 
@@ -19,9 +19,9 @@ export function AppProviders({
         <AuthProvider>
           <DatabaseProvider>
             <RealtimeProvider>
-              <PulseXNotificationProvider>
-                <PulseXCallProvider>{children}</PulseXCallProvider>
-              </PulseXNotificationProvider>
+              <HermesNotificationProvider>
+                <HermesCallProvider>{children}</HermesCallProvider>
+              </HermesNotificationProvider>
             </RealtimeProvider>
           </DatabaseProvider>
         </AuthProvider>

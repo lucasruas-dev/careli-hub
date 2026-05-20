@@ -77,7 +77,7 @@ export function HubItTicketsBoard({
   const openTickets = tickets.filter(
     (ticket) => ticket.status !== "resolvido" && ticket.status !== "fechado",
   );
-  const ticketsWaitingForSquadOps = tickets.filter(
+  const ticketsWaitingForZeus = tickets.filter(
     (ticket) =>
       ticket.status === "novo" ||
       ticket.status === "em_analise" ||
@@ -138,8 +138,8 @@ export function HubItTicketsBoard({
   }, [onTicketCountChange, openTickets.length]);
 
   useEffect(() => {
-    onTicketAttentionCountChange?.(ticketsWaitingForSquadOps.length);
-  }, [onTicketAttentionCountChange, ticketsWaitingForSquadOps.length]);
+    onTicketAttentionCountChange?.(ticketsWaitingForZeus.length);
+  }, [onTicketAttentionCountChange, ticketsWaitingForZeus.length]);
 
   useEffect(() => {
     if (!selectedTicket) {
@@ -245,7 +245,7 @@ export function HubItTicketsBoard({
             <div className="flex items-center justify-between gap-3 border-b border-slate-200/70 p-4">
               <div>
                 <p className="m-0 text-xs font-semibold uppercase text-slate-500">
-                  Fila SquadOps
+                  Fila Zeus
                 </p>
                 <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
                   Tickets TI
@@ -472,7 +472,7 @@ function TicketWorkspace({
               {ticket.assignedTo?.name ?? "Nao atribuido"}
             </p>
             <p className="m-0 truncate text-xs text-slate-500">
-              {ticket.assignedTo?.email ?? "aguardando SquadOps"}
+              {ticket.assignedTo?.email ?? "aguardando Zeus"}
             </p>
           </div>
         </div>
@@ -487,7 +487,7 @@ function TicketWorkspace({
           />
           <DetailBlock
             icon={<Sparkles className="size-4" />}
-            label="Leitura tecnica da Caca"
+            label="Leitura tecnica da Athena"
             value={ticket.technicalSummary}
           />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -509,7 +509,7 @@ function TicketWorkspace({
           <Surface bordered className="border-slate-200/70 bg-white p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
               <MessageSquareReply className="size-4 text-[#A07C3B]" />
-              Devolutiva do SquadOps
+              Devolutiva do Zeus
             </div>
             <label className="mt-4 grid gap-1.5">
               <span className="text-xs font-semibold uppercase text-slate-500">
@@ -706,7 +706,7 @@ function EmptyQueue({ isLoading }: { isLoading: boolean }) {
         <Inbox className="mx-auto size-6 text-slate-300" />
       )}
       <p className="m-0 mt-3 text-sm font-semibold text-slate-500">
-        {isLoading ? "Carregando tickets TI." : "Fila vazia no SquadOps."}
+        {isLoading ? "Carregando tickets TI." : "Fila vazia no Zeus."}
       </p>
     </div>
   );

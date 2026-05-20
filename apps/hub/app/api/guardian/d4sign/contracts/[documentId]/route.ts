@@ -15,7 +15,7 @@ type D4SignDownloadResponse = {
   url?: string;
 };
 
-type GuardianD4SignApiDatabase = {
+type HadesD4SignApiDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
     Enums: Record<string, never>;
@@ -164,7 +164,7 @@ async function createAuthorizedContext(request: NextRequest) {
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "Configure a chave server-side para abrir contratos do Guardian." },
+        { error: "Configure a chave server-side para abrir contratos do Hades." },
         { status: 503 },
       ),
     };
@@ -182,7 +182,7 @@ async function createAuthorizedContext(request: NextRequest) {
     };
   }
 
-  const adminClient = createClient<GuardianD4SignApiDatabase>(
+  const adminClient = createClient<HadesD4SignApiDatabase>(
     supabaseUrl,
     serviceRoleKey,
     {
@@ -216,7 +216,7 @@ async function createAuthorizedContext(request: NextRequest) {
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "Usuario sem acesso ao Guardian." },
+        { error: "Usuario sem acesso ao Hades." },
         { status: 403 },
       ),
     };

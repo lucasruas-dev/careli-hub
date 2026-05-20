@@ -8,7 +8,7 @@ import {
   type OperationsMonitoringSnapshot,
 } from "@/lib/operations/monitoring";
 import { persistOpsWatcherDecision } from "@/lib/squadops/monitoring-store";
-import { authorizeSquadOpsAdminRequest } from "@/lib/squadops/admin-access";
+import { authorizeZeusAdminRequest } from "@/lib/squadops/admin-access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,7 +32,7 @@ async function createWatcherResponse(
   request: NextRequest,
   inputSnapshot?: OperationsMonitoringSnapshot,
 ) {
-  const authorization = await authorizeSquadOpsAdminRequest(request);
+  const authorization = await authorizeZeusAdminRequest(request);
 
   if (!authorization.ok) {
     return authorization.response;

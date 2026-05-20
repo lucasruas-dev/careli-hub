@@ -1,14 +1,14 @@
 "use client";
 
+import { AthenaIcon } from "@/components/athena-icon";
 import type {
-  PulseXMessage,
-  PulseXMessageMention,
-  PulseXMessageTag,
-  PulseXPresenceUser,
-  PulseXReactionEmoji,
+  HermesMessage,
+  HermesMessageMention,
+  HermesMessageTag,
+  HermesPresenceUser,
+  HermesReactionEmoji,
 } from "@/lib/pulsex";
 import {
-  BotMessageSquare,
   Check,
   CheckCheck,
   Download,
@@ -33,28 +33,28 @@ import {
   type ReactNode,
 } from "react";
 import {
-  getPulseXMessageTagClassName,
-  getPulseXMessageTagLabel,
-  pulseXMessageTagOptions,
+  getHermesMessageTagClassName,
+  getHermesMessageTagLabel,
+  hermesMessageTagOptions,
 } from "@/lib/pulsex/message-tags";
 
 type MessageItemProps = {
-  author?: PulseXPresenceUser;
-  currentUserId?: PulseXPresenceUser["id"];
-  message: PulseXMessage;
-  onOpenThread?: (messageId: PulseXMessage["id"]) => void;
-  onAskAiReply?: (messageId: PulseXMessage["id"]) => void;
+  author?: HermesPresenceUser;
+  currentUserId?: HermesPresenceUser["id"];
+  message: HermesMessage;
+  onOpenThread?: (messageId: HermesMessage["id"]) => void;
+  onAskAiReply?: (messageId: HermesMessage["id"]) => void;
   onEditMessage?: (
-    messageId: PulseXMessage["id"],
+    messageId: HermesMessage["id"],
     body: string,
   ) => Promise<void> | void;
-  onToggleTag?: (messageId: PulseXMessage["id"], tag: PulseXMessageTag) => void;
+  onToggleTag?: (messageId: HermesMessage["id"], tag: HermesMessageTag) => void;
   onToggleReaction?: (
-    messageId: PulseXMessage["id"],
-    emoji: PulseXReactionEmoji,
+    messageId: HermesMessage["id"],
+    emoji: HermesReactionEmoji,
   ) => void;
-  reactionOptions?: readonly PulseXReactionEmoji[];
-  users?: readonly PulseXPresenceUser[];
+  reactionOptions?: readonly HermesReactionEmoji[];
+  users?: readonly HermesPresenceUser[];
 };
 
 export function MessageItem({
@@ -202,12 +202,12 @@ export function MessageItem({
           <div className="relative z-10 mb-2 flex flex-wrap gap-1">
             {message.tags.map((tag) => (
               <span
-                aria-label={`Tag ${getPulseXMessageTagLabel(tag)}`}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.64rem] font-semibold shadow-sm ${getPulseXMessageTagClassName(tag)}`}
+                aria-label={`Tag ${getHermesMessageTagLabel(tag)}`}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.64rem] font-semibold shadow-sm ${getHermesMessageTagClassName(tag)}`}
                 key={tag}
               >
                 <Tag aria-hidden="true" size={10} />
-                {getPulseXMessageTagLabel(tag)}
+                {getHermesMessageTagLabel(tag)}
               </span>
             ))}
           </div>
@@ -314,14 +314,14 @@ export function MessageItem({
             </button>
           </Tooltip>
           {onAskAiReply && !message.deletedAt ? (
-            <Tooltip content="Responder com Cacá" placement="bottom">
+            <Tooltip content="Responder com Athena" placement="bottom">
               <button
-                aria-label="Responder com Cacá"
+                aria-label="Responder com Athena"
                 className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
                 onClick={() => onAskAiReply(message.id)}
                 type="button"
               >
-                <BotMessageSquare aria-hidden="true" size={12} />
+                <AthenaIcon aria-hidden="true" className="size-4" />
               </button>
             </Tooltip>
           ) : null}
@@ -358,7 +358,7 @@ export function MessageItem({
             </Tooltip>
             {isTagMenuOpen ? (
               <div className="absolute bottom-full right-0 z-20 mb-2 w-44 overflow-hidden rounded-md border border-[#d9e0ea] bg-white py-1 text-left text-xs text-[#344054] shadow-lg">
-                {pulseXMessageTagOptions.map((tag) => {
+                {hermesMessageTagOptions.map((tag) => {
                   const selected = message.tags?.includes(tag.id) ?? false;
 
                   return (
@@ -372,7 +372,7 @@ export function MessageItem({
                       <span
                         className={`rounded-full border px-2 py-0.5 text-[0.64rem] font-semibold ${
                           selected
-                            ? getPulseXMessageTagClassName(tag.id)
+                            ? getHermesMessageTagClassName(tag.id)
                             : "border-[#d9e0ea] bg-white text-[#667085]"
                         }`}
                       >
@@ -427,10 +427,10 @@ function MessageInfoPanel({
   message,
   users,
 }: {
-  author?: PulseXPresenceUser;
-  currentUserId?: PulseXPresenceUser["id"];
-  message: PulseXMessage;
-  users: readonly PulseXPresenceUser[];
+  author?: HermesPresenceUser;
+  currentUserId?: HermesPresenceUser["id"];
+  message: HermesMessage;
+  users: readonly HermesPresenceUser[];
 }) {
   const fallbackDeliveredUserIds = getFallbackDeliveredUserIds({
     message,
@@ -490,10 +490,10 @@ function MessageInfoPanel({
           <div className="flex flex-wrap gap-1">
             {message.tags.map((tag) => (
               <span
-                className={`rounded-full border px-2 py-0.5 text-[0.64rem] font-semibold ${getPulseXMessageTagClassName(tag)}`}
+                className={`rounded-full border px-2 py-0.5 text-[0.64rem] font-semibold ${getHermesMessageTagClassName(tag)}`}
                 key={tag}
               >
-                {getPulseXMessageTagLabel(tag)}
+                {getHermesMessageTagLabel(tag)}
               </span>
             ))}
           </div>
@@ -506,7 +506,7 @@ function MessageInfoPanel({
 function MessageAttachmentPreview({
   attachment,
 }: {
-  attachment: NonNullable<PulseXMessage["attachment"]>;
+  attachment: NonNullable<HermesMessage["attachment"]>;
 }) {
   if (attachment.type === "image" && attachment.url) {
     return (
@@ -617,7 +617,7 @@ function AttachmentActionLink({
 function AttachmentCaption({
   attachment,
 }: {
-  attachment: NonNullable<PulseXMessage["attachment"]>;
+  attachment: NonNullable<HermesMessage["attachment"]>;
 }) {
   const Icon = getAttachmentIcon(attachment.type);
 
@@ -641,7 +641,7 @@ function AttachmentCaption({
 }
 
 function getAttachmentIcon(
-  type: NonNullable<PulseXMessage["attachment"]>["type"],
+  type: NonNullable<HermesMessage["attachment"]>["type"],
 ) {
   if (type === "audio") {
     return Mic;
@@ -718,8 +718,8 @@ function MessageAvatar({
 }
 
 function getAuthorName(
-  author: PulseXPresenceUser | undefined,
-  message: PulseXMessage,
+  author: HermesPresenceUser | undefined,
+  message: HermesMessage,
 ) {
   return author?.label ?? message.authorName ?? "Sistema";
 }
@@ -734,20 +734,20 @@ function getInitials(value: string) {
 }
 
 function getUsersById(
-  users: readonly PulseXPresenceUser[],
-  userIds: readonly PulseXPresenceUser["id"][] = [],
+  users: readonly HermesPresenceUser[],
+  userIds: readonly HermesPresenceUser["id"][] = [],
 ) {
   return userIds
     .map((userId) => users.find((user) => user.id === userId))
-    .filter((user): user is PulseXPresenceUser => Boolean(user));
+    .filter((user): user is HermesPresenceUser => Boolean(user));
 }
 
 function getFallbackDeliveredUserIds({
   message,
   users,
 }: {
-  message: PulseXMessage;
-  users: readonly PulseXPresenceUser[];
+  message: HermesMessage;
+  users: readonly HermesPresenceUser[];
 }) {
   const channelUserIds = users
     .filter((user) => user.channelIds.includes(message.channelId))
@@ -767,10 +767,10 @@ function getFallbackUserLabel({
   message,
   userIds,
 }: {
-  author?: PulseXPresenceUser;
-  currentUserId?: PulseXPresenceUser["id"];
-  message: PulseXMessage;
-  userIds: readonly PulseXPresenceUser["id"][];
+  author?: HermesPresenceUser;
+  currentUserId?: HermesPresenceUser["id"];
+  message: HermesMessage;
+  userIds: readonly HermesPresenceUser["id"][];
 }) {
   if (userIds.includes(author?.id ?? "")) {
     return author?.label;
@@ -788,7 +788,7 @@ function getFallbackUserLabel({
 }
 
 function formatUserList(
-  users: readonly PulseXPresenceUser[],
+  users: readonly HermesPresenceUser[],
   fallbackLabel?: string,
 ) {
   if (users.length === 0) {
@@ -802,8 +802,8 @@ function getDeliveryState({
   message,
   users,
 }: {
-  message: PulseXMessage;
-  users: readonly PulseXPresenceUser[];
+  message: HermesMessage;
+  users: readonly HermesPresenceUser[];
 }) {
   const recipientUserIds = excludeAuthorUserIds({
     message,
@@ -831,15 +831,15 @@ function excludeAuthorUserIds({
   message,
   userIds,
 }: {
-  message: PulseXMessage;
-  userIds: readonly PulseXPresenceUser["id"][];
+  message: HermesMessage;
+  userIds: readonly HermesPresenceUser["id"][];
 }) {
   return [...new Set(userIds)].filter((userId) => userId !== message.authorId);
 }
 
 function renderMessageBody(
-  message: PulseXMessage,
-  users: readonly PulseXPresenceUser[],
+  message: HermesMessage,
+  users: readonly HermesPresenceUser[],
 ) {
   const body = message.body;
   const ranges = getMentionRanges({ body, message, users });
@@ -1000,16 +1000,16 @@ function getMentionRanges({
   users,
 }: {
   body: string;
-  message: PulseXMessage;
-  users: readonly PulseXPresenceUser[];
+  message: HermesMessage;
+  users: readonly HermesPresenceUser[];
 }) {
   const ranges: {
     end: number;
-    mention: PulseXMessageMention;
+    mention: HermesMessageMention;
     start: number;
   }[] = [];
 
-  function addMentionRange(mention: PulseXMessageMention) {
+  function addMentionRange(mention: HermesMessageMention) {
     const range = findMentionRangeInBody(body, mention.displayName);
 
     if (!range) {

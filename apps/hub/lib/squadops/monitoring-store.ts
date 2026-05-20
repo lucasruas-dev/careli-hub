@@ -170,7 +170,7 @@ export async function persistOperationsMonitoringSnapshot({
     }
   } catch (error) {
     console.warn(
-      "[SquadOps] monitoring history unavailable",
+      "[Zeus] monitoring history unavailable",
       error instanceof Error ? error.message : "unknown error",
     );
   }
@@ -230,7 +230,7 @@ export async function persistOpsWatcherDecision({
     }
   } catch (error) {
     console.warn(
-      "[SquadOps] watcher notification history unavailable",
+      "[Zeus] watcher notification history unavailable",
       error instanceof Error ? error.message : "unknown error",
     );
   }

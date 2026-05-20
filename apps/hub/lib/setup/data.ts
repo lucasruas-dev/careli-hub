@@ -7,24 +7,34 @@ import {
   logSupabaseDiagnostic,
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
+import { orderedHubModules } from "@repo/shared";
 import type {
+  CreateAtlasDepartmentInput,
+  CreateAtlasOccurrenceProfileInput,
+  CreateAtlasOccurrenceTypeInput,
+  CreateAtlasRoleInput,
   CreateDepartmentInput,
   CreateOperationalUserInput,
-  CreatePulseXChannelInput,
+  CreateHermesChannelInput,
   CreateSectorInput,
   LinkUserAssignmentInput,
+  SetupAtlasConfig,
+  SetupAtlasDepartment,
+  SetupAtlasOccurrenceProfile,
+  SetupAtlasOccurrenceType,
+  SetupAtlasRole,
   SetupData,
   SetupDepartment,
   SetupDepartmentModule,
   SetupModule,
   SetupOperationalProfileRole,
   SetupPermission,
-  SetupPulseXChannel,
-  SetupPulseXChannelMember,
+  SetupHermesChannel,
+  SetupHermesChannelMember,
   SetupSector,
   SetupUser,
   UpdateDepartmentInput,
-  UpdatePulseXChannelInput,
+  UpdateHermesChannelInput,
   UpdateSectorInput,
 } from "./types";
 
@@ -35,6 +45,22 @@ type QueryResult<T> = {
 
 const SUPABASE_CONNECTION_ERROR_MESSAGE =
   "Nao foi possivel conectar ao Supabase. Verifique a conexao e tente novamente.";
+
+const legacyModuleAliases: Record<string, string> = {
+  caredesk: "iris",
+  guardian: "hades",
+  pulsex: "hermes",
+  squadops: "zeus",
+};
+
+const departmentModuleStatusPriority: Record<
+  SetupDepartmentModule["status"],
+  number
+> = {
+  disabled: 1,
+  planned: 2,
+  enabled: 3,
+};
 
 type HubProfileDebugRow = {
   email: string;
@@ -105,22 +131,49 @@ type PermissionRow = {
   scope: SetupPermission["scope"];
 };
 
-type PulseXChannelRow = {
+type HermesChannelRow = {
   department_id?: string | null;
   description?: string | null;
   hub_departments?: { name: string } | null;
   hub_sectors?: { name: string } | null;
   id: string;
-  kind: SetupPulseXChannel["kind"];
+  kind: SetupHermesChannel["kind"];
   metadata?: Record<string, unknown> | null;
   name: string;
   sector_id?: string | null;
-  status: SetupPulseXChannel["status"];
+  status: SetupHermesChannel["status"];
 };
 
-type PulseXChannelMemberRow = {
+type HermesChannelMemberRow = {
   channel_id: string;
   user_id: string;
+};
+
+type AtlasDepartmentRow = {
+  id: string;
+  legacy_id: string;
+  name: string;
+};
+
+type AtlasRoleRow = {
+  base_value?: number | null;
+  id: string;
+  legacy_id: string;
+  name: string;
+};
+
+type AtlasOccurrenceProfileRow = {
+  id: string;
+  legacy_id: string;
+  name: string;
+};
+
+type AtlasOccurrenceTypeRow = {
+  id: string;
+  legacy_id: string;
+  name: string;
+  profile_id?: string | null;
+  profile_legacy_id?: string | null;
 };
 
 export async function loadSetupData(): Promise<SetupData> {
@@ -145,6 +198,10 @@ export async function loadSetupData(): Promise<SetupData> {
     permissionsResult,
     channelsResult,
     channelMembersResult,
+    atlasDepartmentsResult,
+    atlasRolesResult,
+    atlasOccurrenceProfilesResult,
+    atlasOccurrenceTypesResult,
   ] = await Promise.all([
     runSetupQuery<DepartmentRow[]>(
       "list departments",
@@ -178,7 +235,7 @@ export async function loadSetupData(): Promise<SetupData> {
         .select("id,key,scope,module_id,description")
         .order("key"),
     ),
-    runSetupQuery<PulseXChannelRow[]>(
+    runSetupQuery<HermesChannelRow[]>(
       "list pulsex channels",
       client
         .from("pulsex_channels")
@@ -187,9 +244,34 @@ export async function loadSetupData(): Promise<SetupData> {
         )
         .order("order"),
     ),
-    runSetupQuery<PulseXChannelMemberRow[]>(
+    runSetupQuery<HermesChannelMemberRow[]>(
       "list pulsex channel members",
       client.from("pulsex_channel_members").select("channel_id,user_id"),
+    ),
+    runSetupQuery<AtlasDepartmentRow[]>(
+      "list atlas departments",
+      client.from("atlas_departments").select("id,legacy_id,name").order("name"),
+    ),
+    runSetupQuery<AtlasRoleRow[]>(
+      "list atlas roles",
+      client
+        .from("atlas_roles")
+        .select("id,legacy_id,name,base_value")
+        .order("name"),
+    ),
+    runSetupQuery<AtlasOccurrenceProfileRow[]>(
+      "list atlas occurrence profiles",
+      client
+        .from("atlas_occurrence_profiles")
+        .select("id,legacy_id,name")
+        .order("name"),
+    ),
+    runSetupQuery<AtlasOccurrenceTypeRow[]>(
+      "list atlas occurrence types",
+      client
+        .from("atlas_occurrence_types")
+        .select("id,legacy_id,name,profile_id,profile_legacy_id")
+        .order("name"),
     ),
   ]);
 
@@ -218,34 +300,39 @@ export async function loadSetupData(): Promise<SetupData> {
   }
 
   return {
-    channelMembers: readRows<PulseXChannelMemberRow>(
+    atlas: mapAtlasConfig({
+      departments: readRows<AtlasDepartmentRow>(
+        "atlas_departments",
+        atlasDepartmentsResult,
+      ),
+      occurrenceProfiles: readRows<AtlasOccurrenceProfileRow>(
+        "atlas_occurrence_profiles",
+        atlasOccurrenceProfilesResult,
+      ),
+      occurrenceTypes: readRows<AtlasOccurrenceTypeRow>(
+        "atlas_occurrence_types",
+        atlasOccurrenceTypesResult,
+      ),
+      roles: readRows<AtlasRoleRow>("atlas_roles", atlasRolesResult),
+    }),
+    channelMembers: readRows<HermesChannelMemberRow>(
       "pulsex_channel_members",
       channelMembersResult,
-    ).map(mapPulseXChannelMember),
-    channels: readRows<PulseXChannelRow>("pulsex_channels", channelsResult)
+    ).map(mapHermesChannelMember),
+    channels: readRows<HermesChannelRow>("pulsex_channels", channelsResult)
       .filter((channel) => !isDepartmentAnnouncementChannel(channel))
-      .map(mapPulseXChannel),
-    departmentModules: readRows<DepartmentModuleRow>("hub_department_modules", departmentModulesResult).map((access) => ({
-      departmentId: access.department_id,
-      moduleId: access.module_id,
-      status: access.status,
-    })),
-    departments: readRows<DepartmentRow>("hub_departments", departmentsResult).map(mapDepartment),
-    modules: readRows<ModuleRow>("hub_modules", modulesResult).map((module) => ({
-        basePath: module.base_path,
-        id: module.id,
-        name: module.name,
-        order: module.order,
-        status: module.status,
-      }),
+      .map(mapHermesChannel),
+    departmentModules: normalizeDepartmentModules(
+      readRows<DepartmentModuleRow>(
+        "hub_department_modules",
+        departmentModulesResult,
+      ),
     ),
-    permissions: readRows<PermissionRow>("hub_permissions", permissionsResult).map((permission) => ({
-      description: permission.description ?? undefined,
-      id: permission.id,
-      key: permission.key,
-      moduleId: permission.module_id ?? undefined,
-      scope: permission.scope,
-    })),
+    departments: readRows<DepartmentRow>("hub_departments", departmentsResult).map(mapDepartment),
+    modules: normalizeSetupModules(readRows<ModuleRow>("hub_modules", modulesResult)),
+    permissions: normalizePermissions(
+      readRows<PermissionRow>("hub_permissions", permissionsResult),
+    ),
     sectors: readRows<SectorRow>("hub_sectors", sectorsResult).map(mapSector),
     users: readRows<UserRow>("hub_users", usersResult).map(mapUser),
   };
@@ -287,7 +374,7 @@ export async function listSectors() {
   return ((result as QueryResult<SectorRow[]>).data ?? []).map(mapSector);
 }
 
-export async function listPulseXChannels() {
+export async function listHermesChannels() {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -301,11 +388,126 @@ export async function listPulseXChannels() {
     )
     .order("order");
 
-  assertQuery("canais PulseX", result);
+  assertQuery("canais Hermes", result);
 
-  return ((result as QueryResult<PulseXChannelRow[]>).data ?? [])
+  return ((result as QueryResult<HermesChannelRow[]>).data ?? [])
     .filter((channel) => !isDepartmentAnnouncementChannel(channel))
-    .map(mapPulseXChannel);
+    .map(mapHermesChannel);
+}
+
+export async function createAtlasDepartment(input: CreateAtlasDepartmentInput) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const payload = {
+    legacy_id: createClientGeneratedUuid(),
+    metadata: createAtlasSetupMetadata("department"),
+    name: input.name.trim(),
+  };
+  const result = await runSetupMutation<AtlasDepartmentRow>(
+    "create atlas department",
+    client
+      .from("atlas_departments")
+      .insert(payload)
+      .select("id,legacy_id,name")
+      .single(),
+  );
+  logSetupQueryResult("create atlas department", result);
+  assertQuery("salvar departamento Atlas", result);
+
+  return mapAtlasDepartment((result as QueryResult<AtlasDepartmentRow>).data);
+}
+
+export async function createAtlasRole(input: CreateAtlasRoleInput) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const payload = {
+    base_value: input.baseValue ?? null,
+    legacy_id: createClientGeneratedUuid(),
+    metadata: createAtlasSetupMetadata("role"),
+    name: input.name.trim(),
+  };
+  const result = await runSetupMutation<AtlasRoleRow>(
+    "create atlas role",
+    client
+      .from("atlas_roles")
+      .insert(payload)
+      .select("id,legacy_id,name,base_value")
+      .single(),
+  );
+  logSetupQueryResult("create atlas role", result);
+  assertQuery("salvar cargo Atlas", result);
+
+  return mapAtlasRole((result as QueryResult<AtlasRoleRow>).data);
+}
+
+export async function createAtlasOccurrenceProfile(
+  input: CreateAtlasOccurrenceProfileInput,
+) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const payload = {
+    legacy_id: createClientGeneratedUuid(),
+    metadata: createAtlasSetupMetadata("occurrence_profile"),
+    name: input.name.trim(),
+  };
+  const result = await runSetupMutation<AtlasOccurrenceProfileRow>(
+    "create atlas occurrence profile",
+    client
+      .from("atlas_occurrence_profiles")
+      .insert(payload)
+      .select("id,legacy_id,name")
+      .single(),
+  );
+  logSetupQueryResult("create atlas occurrence profile", result);
+  assertQuery("salvar perfil Atlas", result);
+
+  return mapAtlasOccurrenceProfile(
+    (result as QueryResult<AtlasOccurrenceProfileRow>).data,
+  );
+}
+
+export async function createAtlasOccurrenceType(
+  input: CreateAtlasOccurrenceTypeInput,
+) {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao indisponivel.");
+  }
+
+  const payload = {
+    legacy_id: createClientGeneratedUuid(),
+    metadata: createAtlasSetupMetadata("occurrence_type"),
+    name: input.name.trim(),
+    profile_id: input.profileRowId || null,
+    profile_legacy_id: input.profileLegacyId || null,
+  };
+  const result = await runSetupMutation<AtlasOccurrenceTypeRow>(
+    "create atlas occurrence type",
+    client
+      .from("atlas_occurrence_types")
+      .insert(payload)
+      .select("id,legacy_id,name,profile_id,profile_legacy_id")
+      .single(),
+  );
+  logSetupQueryResult("create atlas occurrence type", result);
+  assertQuery("salvar ocorrencia Atlas", result);
+
+  return mapAtlasOccurrenceType(
+    (result as QueryResult<AtlasOccurrenceTypeRow>).data,
+  );
 }
 
 export async function createDepartment(input: CreateDepartmentInput) {
@@ -450,7 +652,7 @@ export async function updateSector(input: UpdateSectorInput) {
   return mapSector((result as QueryResult<SectorRow>).data);
 }
 
-export async function createPulseXChannel(input: CreatePulseXChannelInput) {
+export async function createHermesChannel(input: CreateHermesChannelInput) {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -467,7 +669,7 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
     status: input.status,
   };
   logSetupDebug("create pulsex channel payload", payload);
-  const result = await runSetupMutation<PulseXChannelRow>(
+  const result = await runSetupMutation<HermesChannelRow>(
     "create pulsex channel",
     client
       .from("pulsex_channels")
@@ -479,18 +681,18 @@ export async function createPulseXChannel(input: CreatePulseXChannelInput) {
   );
   logSetupQueryResult("create pulsex channel", result);
 
-  assertQuery("salvar canal PulseX", result);
+  assertQuery("salvar canal Hermes", result);
 
-  const channel = mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
+  const channel = mapHermesChannel((result as QueryResult<HermesChannelRow>).data);
 
   if (input.participantUserIds) {
-    await syncPulseXChannelMembers(channel.id, input.participantUserIds);
+    await syncHermesChannelMembers(channel.id, input.participantUserIds);
   }
 
   return channel;
 }
 
-export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
+export async function updateHermesChannel(input: UpdateHermesChannelInput) {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -508,7 +710,7 @@ export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
     id: input.id,
     ...payload,
   });
-  const result = await runSetupMutation<PulseXChannelRow>(
+  const result = await runSetupMutation<HermesChannelRow>(
     "update pulsex channel",
     client
       .from("pulsex_channels")
@@ -521,18 +723,18 @@ export async function updatePulseXChannel(input: UpdatePulseXChannelInput) {
   );
   logSetupQueryResult("update pulsex channel", result);
 
-  assertQuery("salvar canal PulseX", result);
+  assertQuery("salvar canal Hermes", result);
 
-  const channel = mapPulseXChannel((result as QueryResult<PulseXChannelRow>).data);
+  const channel = mapHermesChannel((result as QueryResult<HermesChannelRow>).data);
 
   if (input.participantUserIds) {
-    await syncPulseXChannelMembers(channel.id, input.participantUserIds);
+    await syncHermesChannelMembers(channel.id, input.participantUserIds);
   }
 
   return channel;
 }
 
-export async function syncPulseXChannelMembers(
+export async function syncHermesChannelMembers(
   channelId: string,
   participantUserIds: readonly string[],
 ) {
@@ -543,7 +745,7 @@ export async function syncPulseXChannelMembers(
   }
 
   const uniqueUserIds = [...new Set(participantUserIds)].filter(Boolean);
-  const currentMembersResult = await runSetupQuery<PulseXChannelMemberRow[]>(
+  const currentMembersResult = await runSetupQuery<HermesChannelMemberRow[]>(
     "list pulsex channel members for sync",
     client
       .from("pulsex_channel_members")
@@ -556,11 +758,11 @@ export async function syncPulseXChannelMembers(
       channelId,
       error: currentMembersResult.error,
       fallback: "/api/setup/pulsex/channel-members",
-      function: "syncPulseXChannelMembers",
+      function: "syncHermesChannelMembers",
       table: "pulsex_channel_members",
     });
 
-    return syncPulseXChannelMembersViaApi(client, channelId, uniqueUserIds);
+    return syncHermesChannelMembersViaApi(client, channelId, uniqueUserIds);
   }
 
   const currentUserIds = new Set(
@@ -591,11 +793,11 @@ export async function syncPulseXChannelMembers(
         channelId,
         error: insertResult.error,
         fallback: "/api/setup/pulsex/channel-members",
-        function: "syncPulseXChannelMembers",
+        function: "syncHermesChannelMembers",
         table: "pulsex_channel_members",
       });
 
-      return syncPulseXChannelMembersViaApi(client, channelId, uniqueUserIds);
+      return syncHermesChannelMembersViaApi(client, channelId, uniqueUserIds);
     }
   }
 
@@ -615,16 +817,16 @@ export async function syncPulseXChannelMembers(
         channelId,
         error: deleteResult.error,
         fallback: "/api/setup/pulsex/channel-members",
-        function: "syncPulseXChannelMembers",
+        function: "syncHermesChannelMembers",
         table: "pulsex_channel_members",
       });
 
-      return syncPulseXChannelMembersViaApi(client, channelId, uniqueUserIds);
+      return syncHermesChannelMembersViaApi(client, channelId, uniqueUserIds);
     }
   }
 }
 
-async function syncPulseXChannelMembersViaApi(
+async function syncHermesChannelMembersViaApi(
   client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
   channelId: string,
   participantUserIds: readonly string[],
@@ -655,7 +857,7 @@ async function syncPulseXChannelMembersViaApi(
       channelId,
       endpoint: "/api/setup/pulsex/channel-members",
       error: serializeDiagnosticError(error),
-      function: "syncPulseXChannelMembersViaApi",
+      function: "syncHermesChannelMembersViaApi",
       table: "pulsex_channel_members",
     });
     throw new Error(
@@ -673,7 +875,7 @@ async function syncPulseXChannelMembersViaApi(
     logSupabaseDiagnostic("setup", "sync pulsex members api failed", {
       channelId,
       endpoint: "/api/setup/pulsex/channel-members",
-      function: "syncPulseXChannelMembersViaApi",
+      function: "syncHermesChannelMembersViaApi",
       response: payload,
       status: response.status,
       statusText: response.statusText,
@@ -1224,6 +1426,27 @@ function createFallbackSlug(value: string) {
   return normalizedValue || `registro-${Date.now().toString(36)}`;
 }
 
+function createClientGeneratedUuid() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (char) =>
+    (
+      Number(char) ^
+      (Math.floor(Math.random() * 256) & (15 >> (Number(char) / 4)))
+    ).toString(16),
+  );
+}
+
+function createAtlasSetupMetadata(recordType: string) {
+  return {
+    created_via: "setup_atlas",
+    record_type: recordType,
+    source: "panteon_hub",
+  };
+}
+
 function serializeThrownError(error: unknown): NonNullable<QueryResult<unknown>["error"]> {
   const serialized = serializeDiagnosticError(error);
 
@@ -1239,7 +1462,23 @@ function isNetworkFailure(error: QueryResult<unknown>["error"]) {
 }
 
 function getSetupQueryTable(label: string) {
-  const normalizedLabel = label.toLowerCase();
+  const normalizedLabel = label.toLowerCase().replace(/_/g, " ");
+
+  if (normalizedLabel.includes("atlas department")) {
+    return "atlas_departments";
+  }
+
+  if (normalizedLabel.includes("atlas role")) {
+    return "atlas_roles";
+  }
+
+  if (normalizedLabel.includes("atlas occurrence profile")) {
+    return "atlas_occurrence_profiles";
+  }
+
+  if (normalizedLabel.includes("atlas occurrence type")) {
+    return "atlas_occurrence_types";
+  }
 
   if (normalizedLabel.includes("department module")) {
     return "hub_department_modules";
@@ -1460,6 +1699,147 @@ function mapUser(row: UserRow): SetupUser {
   };
 }
 
+function normalizeSetupModules(rows: ModuleRow[]): SetupModule[] {
+  const modulesById = new Map<string, SetupModule>();
+
+  for (const row of rows) {
+    const setupModule = mapSetupModule(row);
+
+    if (!modulesById.has(setupModule.id)) {
+      modulesById.set(setupModule.id, setupModule);
+    }
+  }
+
+  for (const hubModule of orderedHubModules) {
+    if (modulesById.has(hubModule.id)) {
+      continue;
+    }
+
+    modulesById.set(hubModule.id, {
+      basePath: hubModule.basePath,
+      id: hubModule.id,
+      name: hubModule.name,
+      order: hubModule.order,
+      status: hubModule.status,
+    });
+  }
+
+  return [...modulesById.values()].sort(
+    (firstModule, secondModule) =>
+      firstModule.order - secondModule.order ||
+      firstModule.name.localeCompare(secondModule.name, "pt-BR"),
+  );
+}
+
+function mapSetupModule(row: ModuleRow): SetupModule {
+  const canonicalId = normalizeSetupModuleId(row.id, row.name, row.base_path);
+  const canonicalModule = orderedHubModules.find(
+    (hubModule) => hubModule.id === canonicalId,
+  );
+
+  return {
+    basePath: canonicalModule?.basePath ?? normalizeSetupModulePath(row.base_path),
+    id: canonicalId,
+    name: canonicalModule?.name ?? row.name,
+    order: canonicalModule?.order ?? row.order,
+    status: row.status,
+  };
+}
+
+function normalizeDepartmentModules(
+  rows: DepartmentModuleRow[],
+): SetupDepartmentModule[] {
+  const accessByKey = new Map<string, SetupDepartmentModule>();
+
+  for (const row of rows) {
+    const access = {
+      departmentId: row.department_id,
+      moduleId: normalizeSetupModuleId(row.module_id),
+      status: row.status,
+    } satisfies SetupDepartmentModule;
+    const key = `${access.departmentId}:${access.moduleId}`;
+    const previous = accessByKey.get(key);
+
+    if (
+      !previous ||
+      departmentModuleStatusPriority[access.status] >
+        departmentModuleStatusPriority[previous.status]
+    ) {
+      accessByKey.set(key, access);
+    }
+  }
+
+  return [...accessByKey.values()];
+}
+
+function normalizePermissions(rows: PermissionRow[]): SetupPermission[] {
+  const permissionsByKey = new Map<string, SetupPermission>();
+
+  for (const row of rows) {
+    const moduleId = row.module_id
+      ? normalizeSetupModuleId(row.module_id)
+      : undefined;
+    const permission = {
+      description: row.description ?? undefined,
+      id: row.id,
+      key: normalizePermissionKey(row.key),
+      moduleId,
+      scope: row.scope,
+    } satisfies SetupPermission;
+    const key = `${permission.key}:${permission.scope}:${permission.moduleId ?? ""}`;
+
+    if (!permissionsByKey.has(key)) {
+      permissionsByKey.set(key, permission);
+    }
+  }
+
+  return [...permissionsByKey.values()];
+}
+
+function normalizeSetupModuleId(
+  id: string,
+  name?: string | null,
+  basePath?: string | null,
+) {
+  const normalizedId = normalizeLegacyToken(id);
+  const normalizedName = normalizeLegacyToken(name);
+  const normalizedPath = normalizeLegacyToken(basePath);
+
+  return (
+    legacyModuleAliases[normalizedId] ??
+    legacyModuleAliases[normalizedName] ??
+    legacyModuleAliases[normalizedPath] ??
+    normalizedId
+  );
+}
+
+function normalizeSetupModulePath(basePath: string) {
+  const canonicalId = normalizeSetupModuleId(basePath);
+  const canonicalModule = orderedHubModules.find(
+    (hubModule) => hubModule.id === canonicalId,
+  );
+
+  return canonicalModule?.basePath ?? basePath;
+}
+
+function normalizePermissionKey(key: string) {
+  const [moduleId, action] = key.split(":");
+
+  if (!moduleId || !action) {
+    return key;
+  }
+
+  return `${normalizeSetupModuleId(moduleId)}:${action}`;
+}
+
+function normalizeLegacyToken(value?: string | null) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+/, "")
+    .replace(/\s+/g, "");
+}
+
 function mapRoleToOperationalProfile(
   role: SetupUser["role"],
 ): SetupOperationalProfileRole {
@@ -1474,9 +1854,78 @@ function mapRoleToOperationalProfile(
   return "op1";
 }
 
-function mapPulseXChannel(row: PulseXChannelRow | null): SetupPulseXChannel {
+function mapAtlasConfig(rows: {
+  departments: AtlasDepartmentRow[];
+  occurrenceProfiles: AtlasOccurrenceProfileRow[];
+  occurrenceTypes: AtlasOccurrenceTypeRow[];
+  roles: AtlasRoleRow[];
+}): SetupAtlasConfig {
+  return {
+    departments: rows.departments.map(mapAtlasDepartment),
+    occurrenceProfiles: rows.occurrenceProfiles.map(mapAtlasOccurrenceProfile),
+    occurrenceTypes: rows.occurrenceTypes.map(mapAtlasOccurrenceType),
+    roles: rows.roles.map(mapAtlasRole),
+  };
+}
+
+function mapAtlasDepartment(row: AtlasDepartmentRow | null): SetupAtlasDepartment {
   if (!row) {
-    throw new Error("Canal PulseX inexistente.");
+    throw new Error("Departamento Atlas inexistente.");
+  }
+
+  return {
+    id: row.legacy_id,
+    name: row.name,
+    rowId: row.id,
+  };
+}
+
+function mapAtlasRole(row: AtlasRoleRow | null): SetupAtlasRole {
+  if (!row) {
+    throw new Error("Cargo Atlas inexistente.");
+  }
+
+  return {
+    baseValue: row.base_value ?? null,
+    id: row.legacy_id,
+    name: row.name,
+    rowId: row.id,
+  };
+}
+
+function mapAtlasOccurrenceProfile(
+  row: AtlasOccurrenceProfileRow | null,
+): SetupAtlasOccurrenceProfile {
+  if (!row) {
+    throw new Error("Perfil Atlas inexistente.");
+  }
+
+  return {
+    id: row.legacy_id,
+    name: row.name,
+    rowId: row.id,
+  };
+}
+
+function mapAtlasOccurrenceType(
+  row: AtlasOccurrenceTypeRow | null,
+): SetupAtlasOccurrenceType {
+  if (!row) {
+    throw new Error("Ocorrencia Atlas inexistente.");
+  }
+
+  return {
+    id: row.legacy_id,
+    name: row.name,
+    profileId: row.profile_legacy_id ?? null,
+    profileRowId: row.profile_id ?? null,
+    rowId: row.id,
+  };
+}
+
+function mapHermesChannel(row: HermesChannelRow | null): SetupHermesChannel {
+  if (!row) {
+    throw new Error("Canal Hermes inexistente.");
   }
 
   return {
@@ -1493,16 +1942,16 @@ function mapPulseXChannel(row: PulseXChannelRow | null): SetupPulseXChannel {
   };
 }
 
-function mapPulseXChannelMember(
-  row: PulseXChannelMemberRow,
-): SetupPulseXChannelMember {
+function mapHermesChannelMember(
+  row: HermesChannelMemberRow,
+): SetupHermesChannelMember {
   return {
     channelId: row.channel_id,
     userId: row.user_id,
   };
 }
 
-function isDepartmentAnnouncementChannel(row: PulseXChannelRow) {
+function isDepartmentAnnouncementChannel(row: HermesChannelRow) {
   return (
     row.kind === "department" &&
     getRecord(row.metadata).systemRole === "department_announcements"
@@ -1526,8 +1975,8 @@ function getRecord(value: unknown): Record<string, unknown> {
 }
 
 function mapChannelTypeToKind(
-  type: SetupPulseXChannel["type"],
-): SetupPulseXChannel["kind"] {
+  type: SetupHermesChannel["type"],
+): SetupHermesChannel["kind"] {
   if (type === "sector_channel") {
     return "sector";
   }
@@ -1540,8 +1989,8 @@ function mapChannelTypeToKind(
 }
 
 function mapChannelKindToType(
-  kind: SetupPulseXChannel["kind"],
-): SetupPulseXChannel["type"] {
+  kind: SetupHermesChannel["kind"],
+): SetupHermesChannel["type"] {
   if (kind === "sector") {
     return "sector_channel";
   }
@@ -1569,6 +2018,12 @@ function mapOperationalProfileToRole(
 
 function createEmptySetupData(): SetupData {
   return {
+    atlas: {
+      departments: [],
+      occurrenceProfiles: [],
+      occurrenceTypes: [],
+      roles: [],
+    },
     channelMembers: [],
     channels: [],
     departmentModules: [],

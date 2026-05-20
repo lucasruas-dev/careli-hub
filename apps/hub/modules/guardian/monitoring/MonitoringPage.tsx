@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
@@ -335,7 +335,7 @@ export function MonitoringPage() {
           id="desk"
           onToggle={togglePanel}
           summary={EMPTY_FIELD}
-          title="CareDesk operacional"
+          title="Iris operacional"
           tone="danger"
         >
           <div className="space-y-4">
@@ -539,7 +539,7 @@ function OperationalPanel({
 
 function DeskOperationalBlock() {
   return (
-    <DetailSection title="CareDesk operacional" icon={Headphones} accent>
+    <DetailSection title="Iris operacional" icon={Headphones} accent>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {deskRealtimeCards.map((card) => (
           <RealtimeDeskCard key={card.label} {...card} />
@@ -635,7 +635,7 @@ function DeskOperatorsRealtimeBlock() {
 
 function DeskHeatmapBlock() {
   return (
-    <DetailSection title="Heatmap operacional do CareDesk" icon={Flame} accent className="h-full">
+    <DetailSection title="Heatmap operacional do Iris" icon={Flame} accent className="h-full">
       <div className="grid grid-cols-4 gap-2">
         {deskHeatmap.map(([operator, metric, value, tone]) => (
           <div

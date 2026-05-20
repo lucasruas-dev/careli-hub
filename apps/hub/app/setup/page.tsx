@@ -2,15 +2,19 @@
 
 import { HubShell } from "@/layouts/hub-shell";
 import {
+  createAtlasDepartment,
+  createAtlasOccurrenceProfile,
+  createAtlasOccurrenceType,
+  createAtlasRole,
   createDepartment,
   createOperationalUser,
-  createPulseXChannel,
+  createHermesChannel,
   createSector,
   linkUserAssignment,
   loadSetupData,
-  syncPulseXChannelMembers,
+  syncHermesChannelMembers,
   updateDepartment,
-  updatePulseXChannel,
+  updateHermesChannel,
   updateSector,
   uploadUserAvatar,
 } from "@/lib/setup/data";
@@ -25,21 +29,25 @@ import {
   mapLegacyRoleToOperationalProfile,
 } from "@repo/shared";
 import type {
+  CreateAtlasDepartmentInput,
+  CreateAtlasOccurrenceProfileInput,
+  CreateAtlasOccurrenceTypeInput,
+  CreateAtlasRoleInput,
   CreateDepartmentInput,
   CreateOperationalUserInput,
-  CreatePulseXChannelInput,
+  CreateHermesChannelInput,
   CreateSectorInput,
   LinkUserAssignmentInput,
   SetupData,
   SetupDepartment,
   SetupModule,
   SetupOperationalProfileRole,
-  SetupPulseXChannel,
+  SetupHermesChannel,
   SetupRecordStatus,
   SetupSector,
   SetupUser,
   UpdateDepartmentInput,
-  UpdatePulseXChannelInput,
+  UpdateHermesChannelInput,
   UpdateSectorInput,
 } from "@/lib/setup/types";
 import { useAuth } from "@/providers/auth-provider";
@@ -51,8 +59,10 @@ import {
   WorkspaceLayout,
 } from "@repo/uix";
 import {
+  BriefcaseBusiness,
   Building2,
   Archive,
+  Gauge,
   KeyRound,
   Layers3,
   Link2,
@@ -67,6 +77,7 @@ import {
   X,
   Users,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -84,11 +95,16 @@ type SetupTabId =
   | "permissoes";
 
 type SetupActionId = "new-department" | "new-sector" | "new-user";
+type AtlasConfigTabId =
+  | "departamentos"
+  | "cargos"
+  | "ocorrencias"
+  | "perfis";
 
 type SetupEditTarget =
   | { record: SetupDepartment; type: "department" }
   | { record: SetupSector; type: "sector" }
-  | { record: SetupPulseXChannel; type: "channel" };
+  | { record: SetupHermesChannel; type: "channel" };
 
 const setupTabs = [
   { icon: Users, id: "usuarios", label: "Usuarios" },
@@ -99,6 +115,17 @@ const setupTabs = [
 ] as const satisfies readonly {
   icon: typeof Users;
   id: SetupTabId;
+  label: string;
+}[];
+
+const atlasConfigTabs = [
+  { icon: Building2, id: "departamentos", label: "Departamentos" },
+  { icon: BriefcaseBusiness, id: "cargos", label: "Cargos" },
+  { icon: Gauge, id: "ocorrencias", label: "Ocorrencias" },
+  { icon: Layers3, id: "perfis", label: "Perfis" },
+] as const satisfies readonly {
+  icon: LucideIcon;
+  id: AtlasConfigTabId;
   label: string;
 }[];
 
@@ -278,17 +305,87 @@ function SetupWorkspace() {
     }
   }
 
-  async function handleCreatePulseXModuleChannel(
-    input: CreatePulseXChannelInput,
+  async function handleCreateHermesModuleChannel(
+    input: CreateHermesChannelInput,
   ) {
     setIsSaving(true);
     setError(null);
     setSuccess(null);
 
     try {
-      await createPulseXChannel(input);
+      await createHermesChannel(input);
       await refreshSetupData();
-      setSuccess("Grupo PulseX cadastrado.");
+      setSuccess("Grupo Hermes cadastrado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleCreateAtlasDepartment(
+    input: CreateAtlasDepartmentInput,
+  ) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await createAtlasDepartment(input);
+      await refreshSetupData();
+      setSuccess("Departamento Atlas cadastrado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleCreateAtlasRole(input: CreateAtlasRoleInput) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await createAtlasRole(input);
+      await refreshSetupData();
+      setSuccess("Cargo Atlas cadastrado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleCreateAtlasOccurrenceProfile(
+    input: CreateAtlasOccurrenceProfileInput,
+  ) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await createAtlasOccurrenceProfile(input);
+      await refreshSetupData();
+      setSuccess("Perfil Atlas cadastrado.");
+    } catch (saveError) {
+      setError(getFriendlySetupError(saveError, "save"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleCreateAtlasOccurrenceType(
+    input: CreateAtlasOccurrenceTypeInput,
+  ) {
+    setIsSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await createAtlasOccurrenceType(input);
+      await refreshSetupData();
+      setSuccess("Ocorrencia Atlas cadastrada.");
     } catch (saveError) {
       setError(getFriendlySetupError(saveError, "save"));
     } finally {
@@ -348,16 +445,16 @@ function SetupWorkspace() {
     }
   }
 
-  async function handleUpdatePulseXChannel(input: UpdatePulseXChannelInput) {
+  async function handleUpdateHermesChannel(input: UpdateHermesChannelInput) {
     setIsSaving(true);
     setError(null);
     setSuccess(null);
 
     try {
-      await updatePulseXChannel(input);
+      await updateHermesChannel(input);
       await refreshSetupData();
       setEditTarget(null);
-      setSuccess("Canal PulseX atualizado.");
+      setSuccess("Canal Hermes atualizado.");
     } catch (saveError) {
       setError(getFriendlySetupError(saveError, "save"));
     } finally {
@@ -365,7 +462,7 @@ function SetupWorkspace() {
     }
   }
 
-  async function handleSyncPulseXChannelMembers(
+  async function handleSyncHermesChannelMembers(
     channelId: string,
     participantUserIds: readonly string[],
   ) {
@@ -374,7 +471,7 @@ function SetupWorkspace() {
     setSuccess(null);
 
     try {
-      await syncPulseXChannelMembers(channelId, participantUserIds);
+      await syncHermesChannelMembers(channelId, participantUserIds);
       await refreshSetupData();
       setSuccess("Participantes atualizados.");
     } catch (saveError) {
@@ -495,7 +592,7 @@ function SetupWorkspace() {
           isSaving={isSaving}
           onClose={() => setEditTarget(null)}
           onUpdateDepartment={handleUpdateDepartment}
-          onUpdatePulseXChannel={handleUpdatePulseXChannel}
+          onUpdateHermesChannel={handleUpdateHermesChannel}
           onUpdateSector={handleUpdateSector}
           target={editTarget}
         />
@@ -509,16 +606,29 @@ function SetupWorkspace() {
           user={linkUserTarget}
         />
       ) : null}
-      {moduleConfigTarget?.id === "pulsex" ? (
-        <PulseXModuleConfigModal
+      {moduleConfigTarget?.id === "hermes" ? (
+        <HermesModuleConfigModal
           data={data}
           isSaving={isSaving}
           onClose={() => setModuleConfigTarget(null)}
-          onCreateChannel={handleCreatePulseXModuleChannel}
+          onCreateChannel={handleCreateHermesModuleChannel}
           onEditChannel={(channel) =>
             setEditTarget({ record: channel, type: "channel" })
           }
-          onSyncMembers={handleSyncPulseXChannelMembers}
+          onSyncMembers={handleSyncHermesChannelMembers}
+        />
+      ) : null}
+      {moduleConfigTarget?.id === "atlas" ? (
+        <AtlasModuleConfigModal
+          data={data}
+          error={error}
+          isSaving={isSaving}
+          onClose={() => setModuleConfigTarget(null)}
+          onCreateDepartment={handleCreateAtlasDepartment}
+          onCreateOccurrenceProfile={handleCreateAtlasOccurrenceProfile}
+          onCreateOccurrenceType={handleCreateAtlasOccurrenceType}
+          onCreateRole={handleCreateAtlasRole}
+          success={success}
         />
       ) : null}
     </WorkspaceLayout>
@@ -703,7 +813,10 @@ function SetupTabContent({
           rows={data.modules.map((module) => [
             module.name,
             <ModuleConfigAction
-              disabled={module.id !== "pulsex" || module.status === "planned"}
+              disabled={
+                !["atlas", "hermes"].includes(module.id) ||
+                module.status === "planned"
+              }
               key={module.id}
               onClick={() => onConfigureModule(module)}
             />,
@@ -846,7 +959,7 @@ function CreateSectorForm({
   );
 }
 
-function PulseXCreateChannelPanel({
+function HermesCreateChannelPanel({
   activeDepartmentId,
   data,
   isSaving,
@@ -857,7 +970,7 @@ function PulseXCreateChannelPanel({
   data: SetupData;
   isSaving: boolean;
   onCreated: (channelId: string) => void;
-  onSubmit: (input: CreatePulseXChannelInput) => Promise<void>;
+  onSubmit: (input: CreateHermesChannelInput) => Promise<void>;
 }) {
   const [departmentId, setDepartmentId] = useState(activeDepartmentId);
   const [description, setDescription] = useState("");
@@ -866,7 +979,7 @@ function PulseXCreateChannelPanel({
   const [sectorId, setSectorId] = useState("");
   const [status, setStatus] = useState<SetupRecordStatus>("active");
   const [type, setType] =
-    useState<CreatePulseXChannelInput["type"]>("department_channel");
+    useState<CreateHermesChannelInput["type"]>("department_channel");
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
@@ -878,7 +991,7 @@ function PulseXCreateChannelPanel({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const channelId = createPulseXChannelId({
+    const channelId = createHermesChannelId({
       data,
       departmentId,
       name,
@@ -911,7 +1024,7 @@ function PulseXCreateChannelPanel({
           <h3 className="m-0 text-sm font-semibold text-[#101820]">
             Canais e grupos
           </h3>
-          <p className="m-0 mt-1 text-xs text-[#667085]">PulseX</p>
+          <p className="m-0 mt-1 text-xs text-[#667085]">Hermes</p>
         </div>
         <button
           className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#1f2933] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
@@ -951,7 +1064,7 @@ function PulseXCreateChannelPanel({
                 className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
                 onChange={(event) => {
                   const nextType = event.target
-                    .value as CreatePulseXChannelInput["type"];
+                    .value as CreateHermesChannelInput["type"];
 
                   setType(nextType);
                 }}
@@ -1200,7 +1313,7 @@ function EditRecordModal({
   isSaving,
   onClose,
   onUpdateDepartment,
-  onUpdatePulseXChannel,
+  onUpdateHermesChannel,
   onUpdateSector,
   target,
 }: {
@@ -1208,7 +1321,7 @@ function EditRecordModal({
   isSaving: boolean;
   onClose: () => void;
   onUpdateDepartment: (input: UpdateDepartmentInput) => Promise<void>;
-  onUpdatePulseXChannel: (input: UpdatePulseXChannelInput) => Promise<void>;
+  onUpdateHermesChannel: (input: UpdateHermesChannelInput) => Promise<void>;
   onUpdateSector: (input: UpdateSectorInput) => Promise<void>;
   target: SetupEditTarget;
 }) {
@@ -1236,11 +1349,11 @@ function EditRecordModal({
   }
 
   return (
-    <EditPulseXChannelModal
+    <EditHermesChannelModal
       data={data}
       isSaving={isSaving}
       onClose={onClose}
-      onSubmit={onUpdatePulseXChannel}
+      onSubmit={onUpdateHermesChannel}
       record={target.record}
     />
   );
@@ -1356,7 +1469,7 @@ function EditSectorModal({
   );
 }
 
-function EditPulseXChannelModal({
+function EditHermesChannelModal({
   data,
   isSaving,
   onClose,
@@ -1366,17 +1479,17 @@ function EditPulseXChannelModal({
   data: SetupData;
   isSaving: boolean;
   onClose: () => void;
-  onSubmit: (input: UpdatePulseXChannelInput) => Promise<void>;
-  record: SetupPulseXChannel;
+  onSubmit: (input: UpdateHermesChannelInput) => Promise<void>;
+  record: SetupHermesChannel;
 }) {
   const [departmentId, setDepartmentId] = useState(record.departmentId ?? "");
   const [name, setName] = useState(record.name);
   const [participantUserIds, setParticipantUserIds] = useState<string[]>(
-    getPulseXChannelMemberIds(data, record.id),
+    getHermesChannelMemberIds(data, record.id),
   );
   const [sectorId, setSectorId] = useState(record.sectorId ?? "");
   const [status, setStatus] = useState<SetupRecordStatus>(record.status);
-  const [type, setType] = useState<SetupPulseXChannel["type"]>(record.type);
+  const [type, setType] = useState<SetupHermesChannel["type"]>(record.type);
   const availableSectors = data.sectors.filter(
     (sector) => !departmentId || sector.departmentId === departmentId,
   );
@@ -1438,7 +1551,7 @@ function EditPulseXChannelModal({
           <select
             className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
             onChange={(event) =>
-              setType(event.target.value as SetupPulseXChannel["type"])
+              setType(event.target.value as SetupHermesChannel["type"])
             }
             value={type}
           >
@@ -1511,7 +1624,448 @@ function SetupModal({
   );
 }
 
-function PulseXModuleConfigModal({
+function AtlasModuleConfigModal({
+  data,
+  error,
+  isSaving,
+  onClose,
+  onCreateDepartment,
+  onCreateOccurrenceProfile,
+  onCreateOccurrenceType,
+  onCreateRole,
+  success,
+}: {
+  data: SetupData;
+  error: string | null;
+  isSaving: boolean;
+  onClose: () => void;
+  onCreateDepartment: (input: CreateAtlasDepartmentInput) => Promise<void>;
+  onCreateOccurrenceProfile: (
+    input: CreateAtlasOccurrenceProfileInput,
+  ) => Promise<void>;
+  onCreateOccurrenceType: (
+    input: CreateAtlasOccurrenceTypeInput,
+  ) => Promise<void>;
+  onCreateRole: (input: CreateAtlasRoleInput) => Promise<void>;
+  success: string | null;
+}) {
+  const [activeTab, setActiveTab] =
+    useState<AtlasConfigTabId>("departamentos");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const profileNameById = useMemo(
+    () =>
+      new Map(
+        data.atlas.occurrenceProfiles.map((profile) => [
+          profile.id,
+          profile.name,
+        ]),
+      ),
+    [data.atlas.occurrenceProfiles],
+  );
+  const activeTabMeta =
+    atlasConfigTabs.find((tab) => tab.id === activeTab) ?? atlasConfigTabs[0];
+  const ActiveIcon = activeTabMeta.icon;
+
+  useEffect(() => {
+    setIsCreateOpen(false);
+  }, [activeTab]);
+
+  return (
+    <SetupModal onClose={onClose} size="full" title="Setup Atlas">
+      <div className="grid max-h-[82vh] overflow-hidden lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <aside className="border-b border-[#edf0f4] bg-[#f8fafc] p-4 lg:border-b-0 lg:border-r">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <p className="m-0 text-xs font-semibold uppercase text-[#667085]">
+                Modulo
+              </p>
+              <h3 className="m-0 mt-1 text-base font-semibold text-[#101820]">
+                Atlas
+              </h3>
+            </div>
+            <Badge variant="neutral">read-only</Badge>
+          </div>
+          <div className="grid gap-2">
+            {atlasConfigTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isSelected = activeTab === tab.id;
+
+              return (
+                <button
+                  aria-pressed={isSelected}
+                  className={`flex h-10 items-center gap-2 rounded-md border px-2.5 text-left text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                    isSelected
+                      ? "border-[#A07C3B] bg-white text-[#101820] shadow-sm"
+                      : "border-[#e5eaf0] bg-white/70 text-[#667085] hover:bg-white hover:text-[#101820]"
+                  }`}
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  type="button"
+                >
+                  <span
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-md ${
+                      isSelected
+                        ? "bg-[#101820] text-[#A07C3B]"
+                        : "bg-[#f3f6fa] text-[#667085]"
+                    }`}
+                  >
+                    <Icon aria-hidden="true" size={14} />
+                  </span>
+                  <span className="min-w-0 truncate">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 rounded-md border border-[#eadfca] bg-white p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase text-[#8a682f]">
+                Bonus
+              </span>
+              <Badge variant="danger">BLOQUEADO</Badge>
+            </div>
+            <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
+              Regras de bonus e escrita seguem preservadas ate validacao humana.
+            </p>
+          </div>
+        </aside>
+
+        <main className="min-h-0 overflow-auto p-4">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <AtlasConfigSummaryCard
+              icon={Building2}
+              label="Departamentos"
+              value={data.atlas.departments.length}
+            />
+            <AtlasConfigSummaryCard
+              icon={BriefcaseBusiness}
+              label="Cargos"
+              value={data.atlas.roles.length}
+            />
+            <AtlasConfigSummaryCard
+              icon={Gauge}
+              label="Ocorrencias"
+              value={data.atlas.occurrenceTypes.length}
+            />
+            <AtlasConfigSummaryCard
+              icon={Layers3}
+              label="Perfis"
+              value={data.atlas.occurrenceProfiles.length}
+            />
+          </div>
+
+          <section className="grid gap-4 rounded-md border border-[#e5eaf0] bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#101820] text-[#A07C3B]">
+                  <ActiveIcon aria-hidden="true" size={16} />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="m-0 truncate text-base font-semibold text-[#101820]">
+                    {activeTabMeta.label}
+                  </h3>
+                  <p className="m-0 mt-1 text-sm text-[#667085]">
+                    Configuracao herdada das tabelas Atlas no Hub.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="neutral">
+                  {getAtlasConfigTabCount(data, activeTab)} registros
+                </Badge>
+                <button
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                  onClick={() => setIsCreateOpen((current) => !current)}
+                  type="button"
+                >
+                  <Plus aria-hidden="true" size={15} />
+                  Criar
+                </button>
+              </div>
+            </div>
+            {error ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                {error}
+              </div>
+            ) : null}
+            {success ? (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+                {success}
+              </div>
+            ) : null}
+            {isCreateOpen ? (
+              <AtlasCreateConfigForm
+                activeTab={activeTab}
+                data={data}
+                isSaving={isSaving}
+                onCancel={() => setIsCreateOpen(false)}
+                onCreateDepartment={onCreateDepartment}
+                onCreateOccurrenceProfile={onCreateOccurrenceProfile}
+                onCreateOccurrenceType={onCreateOccurrenceType}
+                onCreateRole={onCreateRole}
+              />
+            ) : null}
+            <AtlasConfigTable
+              activeTab={activeTab}
+              data={data}
+              profileNameById={profileNameById}
+            />
+          </section>
+        </main>
+      </div>
+    </SetupModal>
+  );
+}
+
+function AtlasConfigSummaryCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-md border border-[#e5eaf0] bg-white p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold uppercase text-[#667085]">
+          {label}
+        </span>
+        <span className="grid h-7 w-7 place-items-center rounded-md bg-[#A07C3B]/10 text-[#A07C3B]">
+          <Icon aria-hidden="true" size={14} />
+        </span>
+      </div>
+      <p className="m-0 mt-2 text-xl font-semibold text-[#101820]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function AtlasCreateConfigForm({
+  activeTab,
+  data,
+  isSaving,
+  onCancel,
+  onCreateDepartment,
+  onCreateOccurrenceProfile,
+  onCreateOccurrenceType,
+  onCreateRole,
+}: {
+  activeTab: AtlasConfigTabId;
+  data: SetupData;
+  isSaving: boolean;
+  onCancel: () => void;
+  onCreateDepartment: (input: CreateAtlasDepartmentInput) => Promise<void>;
+  onCreateOccurrenceProfile: (
+    input: CreateAtlasOccurrenceProfileInput,
+  ) => Promise<void>;
+  onCreateOccurrenceType: (
+    input: CreateAtlasOccurrenceTypeInput,
+  ) => Promise<void>;
+  onCreateRole: (input: CreateAtlasRoleInput) => Promise<void>;
+}) {
+  const [baseValue, setBaseValue] = useState("");
+  const [name, setName] = useState("");
+  const [profileLegacyId, setProfileLegacyId] = useState(
+    data.atlas.occurrenceProfiles[0]?.id ?? "",
+  );
+
+  useEffect(() => {
+    setBaseValue("");
+    setName("");
+    setProfileLegacyId(data.atlas.occurrenceProfiles[0]?.id ?? "");
+  }, [activeTab, data.atlas.occurrenceProfiles]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (activeTab === "departamentos") {
+      await onCreateDepartment({ name });
+      setName("");
+      return;
+    }
+
+    if (activeTab === "cargos") {
+      await onCreateRole({
+        baseValue: parseAtlasCurrencyInput(baseValue),
+        name,
+      });
+      setBaseValue("");
+      setName("");
+      return;
+    }
+
+    if (activeTab === "ocorrencias") {
+      const selectedProfile = data.atlas.occurrenceProfiles.find(
+        (profile) => profile.id === profileLegacyId,
+      );
+
+      await onCreateOccurrenceType({
+        name,
+        profileLegacyId: selectedProfile?.id ?? null,
+        profileRowId: selectedProfile?.rowId ?? null,
+      });
+      setName("");
+      return;
+    }
+
+    await onCreateOccurrenceProfile({ name });
+    setName("");
+  }
+
+  const isOccurrenceType = activeTab === "ocorrencias";
+  const isRole = activeTab === "cargos";
+  const hasRequiredProfile =
+    !isOccurrenceType || data.atlas.occurrenceProfiles.length > 0;
+  const submitLabel = `Criar ${getAtlasCreateLabel(activeTab)}`;
+
+  return (
+    <SetupFormCard title={submitLabel}>
+      <form className="grid gap-3" onSubmit={handleSubmit}>
+        <TextInput label="Nome" onChange={setName} value={name} />
+        {isRole ? (
+          <TextInput
+            label="Valor base"
+            onChange={setBaseValue}
+            placeholder="0,00"
+            value={baseValue}
+          />
+        ) : null}
+        {isOccurrenceType ? (
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold text-[#667085]">
+              Perfil
+            </span>
+            <select
+              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#f4f7fa] disabled:text-[#8b96a8]"
+              disabled={data.atlas.occurrenceProfiles.length === 0}
+              onChange={(event) => setProfileLegacyId(event.target.value)}
+              value={profileLegacyId}
+            >
+              {data.atlas.occurrenceProfiles.length === 0 ? (
+                <option value="">Crie um perfil primeiro</option>
+              ) : null}
+              {data.atlas.occurrenceProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {isOccurrenceType && !hasRequiredProfile ? (
+          <p className="m-0 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+            Crie um perfil antes de cadastrar uma ocorrencia.
+          </p>
+        ) : null}
+        <FormActions
+          disabled={!name.trim() || !hasRequiredProfile || isSaving}
+          onCancel={onCancel}
+          submitLabel={isSaving ? "Salvando..." : submitLabel}
+        />
+      </form>
+    </SetupFormCard>
+  );
+}
+
+function AtlasConfigTable({
+  activeTab,
+  data,
+  profileNameById,
+}: {
+  activeTab: AtlasConfigTabId;
+  data: SetupData;
+  profileNameById: ReadonlyMap<string, string>;
+}) {
+  if (activeTab === "departamentos") {
+    return (
+      <DataGrid
+        empty="Nenhum departamento Atlas encontrado."
+        headers={["Departamento", "ID legado"]}
+        rows={data.atlas.departments.map((department) => [
+          department.name,
+          department.id,
+        ])}
+      />
+    );
+  }
+
+  if (activeTab === "cargos") {
+    return (
+      <DataGrid
+        empty="Nenhum cargo Atlas encontrado."
+        headers={["Cargo", "Valor base", "ID legado"]}
+        rows={data.atlas.roles.map((role) => [
+          role.name,
+          formatSetupCurrency(role.baseValue ?? 0),
+          role.id,
+        ])}
+      />
+    );
+  }
+
+  if (activeTab === "ocorrencias") {
+    return (
+      <DataGrid
+        empty="Nenhum tipo de ocorrencia Atlas encontrado."
+        headers={["Ocorrencia", "Perfil", "ID legado"]}
+        rows={data.atlas.occurrenceTypes.map((occurrenceType) => [
+          occurrenceType.name,
+          occurrenceType.profileId
+            ? profileNameById.get(occurrenceType.profileId) ?? "-"
+            : "-",
+          occurrenceType.id,
+        ])}
+      />
+    );
+  }
+
+  return (
+    <DataGrid
+      empty="Nenhum perfil de ocorrencia Atlas encontrado."
+      headers={["Perfil", "ID legado"]}
+      rows={data.atlas.occurrenceProfiles.map((profile) => [
+        profile.name,
+        profile.id,
+      ])}
+    />
+  );
+}
+
+function getAtlasConfigTabCount(data: SetupData, activeTab: AtlasConfigTabId) {
+  if (activeTab === "departamentos") {
+    return data.atlas.departments.length;
+  }
+
+  if (activeTab === "cargos") {
+    return data.atlas.roles.length;
+  }
+
+  if (activeTab === "ocorrencias") {
+    return data.atlas.occurrenceTypes.length;
+  }
+
+  return data.atlas.occurrenceProfiles.length;
+}
+
+function getAtlasCreateLabel(activeTab: AtlasConfigTabId) {
+  if (activeTab === "departamentos") {
+    return "departamento";
+  }
+
+  if (activeTab === "cargos") {
+    return "cargo";
+  }
+
+  if (activeTab === "ocorrencias") {
+    return "ocorrencia";
+  }
+
+  return "perfil";
+}
+
+function HermesModuleConfigModal({
   data,
   isSaving,
   onClose,
@@ -1522,8 +2076,8 @@ function PulseXModuleConfigModal({
   data: SetupData;
   isSaving: boolean;
   onClose: () => void;
-  onCreateChannel: (input: CreatePulseXChannelInput) => Promise<void>;
-  onEditChannel: (channel: SetupPulseXChannel) => void;
+  onCreateChannel: (input: CreateHermesChannelInput) => Promise<void>;
+  onEditChannel: (channel: SetupHermesChannel) => void;
   onSyncMembers: (
     channelId: string,
     participantUserIds: readonly string[],
@@ -1547,7 +2101,7 @@ function PulseXModuleConfigModal({
   const selectedChannel =
     scopedChannels.find((channel) => channel.id === selectedChannelId) ??
     scopedChannels[0];
-  const usersForSelectedDepartment = getUsersForPulseXDepartment(
+  const usersForSelectedDepartment = getUsersForHermesDepartment(
     data,
     selectedDepartmentId,
   );
@@ -1590,16 +2144,16 @@ function PulseXModuleConfigModal({
   }, [scopedChannels, selectedChannelId]);
 
   async function handleUpdateMembers(
-    channel: SetupPulseXChannel,
+    channel: SetupHermesChannel,
     participantUserIds: string[],
   ) {
     await onSyncMembers(channel.id, participantUserIds);
   }
 
   return (
-    <SetupModal onClose={onClose} size="full" title="Setup PulseX">
+    <SetupModal onClose={onClose} size="full" title="Setup Hermes">
       <div className="grid max-h-[82vh] overflow-auto lg:grid-cols-[18rem_minmax(0,1fr)_22rem]">
-        <PulseXDepartmentList
+        <HermesDepartmentList
           data={data}
           onSelectDepartment={(departmentId) => {
             setSelectedDepartmentId(departmentId);
@@ -1619,14 +2173,14 @@ function PulseXModuleConfigModal({
             </div>
             <Badge variant="neutral">{scopedChannels.length} canais</Badge>
           </div>
-          <PulseXCreateChannelPanel
+          <HermesCreateChannelPanel
             activeDepartmentId={selectedDepartmentId}
             data={data}
             isSaving={isSaving}
             onCreated={setSelectedChannelId}
             onSubmit={onCreateChannel}
           />
-          <PulseXChannelList
+          <HermesChannelList
             channels={scopedChannels}
             memberCountByChannel={memberCountByChannel}
             onArchive={(channel) =>
@@ -1637,7 +2191,7 @@ function PulseXModuleConfigModal({
             selectedChannelId={selectedChannel?.id ?? ""}
           />
         </main>
-        <PulseXMembersPanel
+        <HermesMembersPanel
           channel={selectedChannel}
           data={data}
           isSaving={isSaving}
@@ -1650,7 +2204,7 @@ function PulseXModuleConfigModal({
   );
 }
 
-function PulseXDepartmentList({
+function HermesDepartmentList({
   data,
   onSelectDepartment,
   selectedDepartmentId,
@@ -1716,7 +2270,7 @@ function PulseXDepartmentList({
   );
 }
 
-function PulseXChannelList({
+function HermesChannelList({
   channels,
   memberCountByChannel,
   onArchive,
@@ -1724,10 +2278,10 @@ function PulseXChannelList({
   onSelectChannel,
   selectedChannelId,
 }: {
-  channels: readonly SetupPulseXChannel[];
+  channels: readonly SetupHermesChannel[];
   memberCountByChannel: ReadonlyMap<string, number>;
-  onArchive: (channel: SetupPulseXChannel) => void;
-  onEdit: (channel: SetupPulseXChannel) => void;
+  onArchive: (channel: SetupHermesChannel) => void;
+  onEdit: (channel: SetupHermesChannel) => void;
   onSelectChannel: (channelId: string) => void;
   selectedChannelId: string;
 }) {
@@ -1769,7 +2323,7 @@ function PulseXChannelList({
                   {channel.name}
                 </span>
                 <span className="mt-1 flex flex-wrap gap-2 text-xs text-[#667085]">
-                  <span>{getPulseXChannelTypeLabel(channel.type)}</span>
+                  <span>{getHermesChannelTypeLabel(channel.type)}</span>
                   <span>{channel.sectorName ?? "Departamento"}</span>
                   <span>
                     {memberCountByChannel.get(channel.id) ?? 0} pessoas
@@ -1793,7 +2347,7 @@ function PulseXChannelList({
   );
 }
 
-function PulseXMembersPanel({
+function HermesMembersPanel({
   channel,
   data,
   isSaving,
@@ -1801,18 +2355,18 @@ function PulseXMembersPanel({
   onSubmit,
   users,
 }: {
-  channel?: SetupPulseXChannel;
+  channel?: SetupHermesChannel;
   data: SetupData;
   isSaving: boolean;
-  onEditChannel: (channel: SetupPulseXChannel) => void;
+  onEditChannel: (channel: SetupHermesChannel) => void;
   onSubmit: (
-    channel: SetupPulseXChannel,
+    channel: SetupHermesChannel,
     participantUserIds: string[],
   ) => Promise<void>;
   users: readonly SetupUser[];
 }) {
   const memberIds = useMemo(
-    () => (channel ? getPulseXChannelMemberIds(data, channel.id) : []),
+    () => (channel ? getHermesChannelMemberIds(data, channel.id) : []),
     [channel, data],
   );
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(memberIds);
@@ -1979,13 +2533,13 @@ function getMemberCountByChannel(data: SetupData) {
   return counts;
 }
 
-function getPulseXChannelMemberIds(data: SetupData, channelId: string) {
+function getHermesChannelMemberIds(data: SetupData, channelId: string) {
   return data.channelMembers
     .filter((member) => member.channelId === channelId)
     .map((member) => member.userId);
 }
 
-function createPulseXChannelId({
+function createHermesChannelId({
   data,
   departmentId,
   name,
@@ -1996,7 +2550,7 @@ function createPulseXChannelId({
   departmentId: string;
   name: string;
   sectorId: string;
-  type: CreatePulseXChannelInput["type"];
+  type: CreateHermesChannelInput["type"];
 }) {
   const nameSlug = slugify(name);
   const departmentSlug =
@@ -2014,7 +2568,7 @@ function createPulseXChannelId({
   return `${departmentSlug}-${nameSlug}`;
 }
 
-function getUsersForPulseXDepartment(data: SetupData, departmentId: string) {
+function getUsersForHermesDepartment(data: SetupData, departmentId: string) {
   const activeUsers = data.users.filter((user) => user.status === "active");
 
   return [...activeUsers].sort((firstUser, secondUser) => {
@@ -2564,7 +3118,7 @@ function getFriendlySetupError(error: unknown, action: "load" | "save") {
   return "Nao foi possivel salvar. Tente novamente.";
 }
 
-function getPulseXChannelTypeLabel(type: SetupPulseXChannel["type"]) {
+function getHermesChannelTypeLabel(type: SetupHermesChannel["type"]) {
   if (type === "sector_channel") {
     return "Canal de setor";
   }
@@ -2576,7 +3130,33 @@ function getPulseXChannelTypeLabel(type: SetupPulseXChannel["type"]) {
   return "Grupo privado";
 }
 
+function formatSetupCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    currency: "BRL",
+    style: "currency",
+  }).format(value);
+}
+
+function parseAtlasCurrencyInput(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const normalizedValue = trimmedValue.replace(/\./g, "").replace(",", ".");
+  const parsedValue = Number(normalizedValue);
+
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+}
+
 const emptySetupData: SetupData = {
+  atlas: {
+    departments: [],
+    occurrenceProfiles: [],
+    occurrenceTypes: [],
+    roles: [],
+  },
   channelMembers: [],
   channels: [],
   departmentModules: [],

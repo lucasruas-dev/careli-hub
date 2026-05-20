@@ -1,8 +1,7 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Tooltip } from "@repo/uix";
@@ -16,6 +15,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  ShieldCheck,
   WalletCards,
 } from "lucide-react";
 
@@ -23,32 +23,32 @@ const menuItems = [
   {
     label: "Dashboard",
     icon: LayoutDashboard,
-    href: "/guardian",
+    href: "/hades",
     released: true,
   },
   {
     label: "Cobrança",
     icon: WalletCards,
-    href: "/guardian/cobranca",
+    href: "/hades/cobranca",
     released: true,
   },
   {
-    label: "CareDesk",
+    label: "Iris",
     icon: Inbox,
-    href: "/caredesk",
+    href: "/iris",
     badge: "3",
     released: false,
   },
   {
     label: "Inteligência",
     icon: Bot,
-    href: "/guardian/inteligencia",
+    href: "/hades/inteligencia",
     released: false,
   },
   {
     label: "Monitoramento",
     icon: LineChart,
-    href: "/guardian/monitoramento",
+    href: "/hades/monitoramento",
     released: false,
   },
   { label: "Relatórios", icon: BarChart3, href: "#", released: false },
@@ -70,136 +70,119 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-40 hidden bg-[#343541] text-[#ECECF1] transition-[width] duration-300 ease-out lg:flex lg:flex-col ${
+      className={`panteon-module-sidebar fixed inset-y-0 left-0 z-40 hidden text-[#ECECF1] transition-[width] duration-300 ease-out lg:flex lg:flex-col ${
         collapsed ? "w-[72px]" : "w-60"
       }`}
     >
-      <div className="px-3 pb-5 pt-4">
-        <div className="relative grid gap-2 rounded-lg">
-          {collapsed ? (
-            <Tooltip
-              content="Voltar ao Hub"
-              placement="right"
-              className="justify-self-center"
-            >
+      <div className="panteon-module-sidebar__top">
+        {collapsed ? (
+          <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
+            <Tooltip content="Voltar ao Panteon" placement="right">
               <Link
-                aria-label="Voltar ao Hub"
+                aria-label="Voltar ao Panteon"
                 href="/"
-                className="flex h-10 w-10 min-w-0 items-center justify-center rounded-lg outline-none transition hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               >
-                <Image
-                  src="/logoiconbranca.png"
-                  alt="Guardian"
-                  width={1976}
-                  height={2374}
-                  priority
-                  sizes="32px"
-                  className="h-8 w-8 object-contain"
-                />
+                <ShieldCheck className="size-[18px]" aria-hidden="true" />
               </Link>
             </Tooltip>
-          ) : (
-            <Tooltip
-              content="Voltar ao Hub"
-              placement="bottom"
-              className="w-full"
-              triggerClassName="w-full"
-            >
-              <Link
-                aria-label="Voltar ao Hub"
-                href="/"
-                className="flex h-12 min-w-0 items-center justify-center rounded-lg outline-none transition hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              >
-                <Image
-                  src="/logoCbranca.png"
-                  alt="Guardian"
-                  width={3300}
-                  height={2047}
-                  priority
-                  sizes="150px"
-                  className="h-11 w-auto max-w-[150px] object-contain"
-                />
-              </Link>
-            </Tooltip>
-          )}
-
-          <div
-            className={`grid items-center ${
-              collapsed
-                ? "w-full justify-items-center gap-2"
-                : "grid-cols-2 gap-2"
-            }`}
-          >
-            <Tooltip
-              content="Abrir sidebar do Hub"
-              placement={collapsed ? "right" : "bottom"}
-              className={collapsed ? "w-full" : undefined}
-              triggerClassName={collapsed ? "w-full" : undefined}
-            >
+            <Tooltip content="Abrir sidebar do Panteon" placement="right">
               <button
                 type="button"
                 onClick={handleOpenModuleLauncher}
-                aria-label="Abrir sidebar do Hub"
-                className={`grid shrink-0 place-items-center rounded-lg border border-white/[0.075] bg-white/[0.055] text-[#C5C5D2] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-[#ECECF1] focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
-                  collapsed ? "h-10 w-full" : "h-8 w-8"
-                }`}
+                aria-label="Abrir sidebar do Panteon"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               >
-                  <LayoutGrid className="size-[15px]" aria-hidden="true" />
+                <LayoutGrid className="size-[15px]" aria-hidden="true" />
               </button>
             </Tooltip>
-            <Tooltip
-              content={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
-              placement={collapsed ? "right" : "bottom"}
-              className={collapsed ? "w-full" : undefined}
-              triggerClassName={collapsed ? "w-full" : undefined}
-            >
+            <Tooltip content="Expandir sidebar" placement="right">
               <button
                 type="button"
                 onClick={onToggle}
-                aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
-                className={`grid shrink-0 place-items-center rounded-lg border border-white/[0.075] text-[#C5C5D2] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-[#ECECF1] focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
-                  collapsed ? "h-10 w-full" : "h-8 w-8"
-                }`}
+                aria-label="Expandir sidebar"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               >
-                {collapsed ? (
-                  <PanelLeftOpen className="size-4" aria-hidden="true" />
-                ) : (
-                  <PanelLeftClose className="size-4" aria-hidden="true" />
-                )}
+                <PanelLeftOpen className="size-4" aria-hidden="true" />
               </button>
             </Tooltip>
           </div>
-        </div>
+        ) : (
+          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
+            <Link
+              aria-label="Voltar ao Panteon"
+              href="/"
+              className="flex min-w-0 items-center gap-2.5 text-[#d5dde8] outline-none transition hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+                <ShieldCheck className="size-[18px]" aria-hidden="true" />
+              </span>
+              <span className="grid min-w-0 gap-0.5">
+                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+                  Hades
+                </span>
+              </span>
+            </Link>
+            <Tooltip content="Abrir sidebar do Panteon" placement="right">
+              <button
+                type="button"
+                onClick={handleOpenModuleLauncher}
+                aria-label="Abrir sidebar do Panteon"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              >
+                <LayoutGrid className="size-[15px]" aria-hidden="true" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Recolher sidebar" placement="right">
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-label="Recolher sidebar"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              >
+                <PanelLeftClose className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+          </div>
+        )}
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="flex flex-1 flex-col gap-1 px-2.5 py-3">
         {visibleMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive =
-            item.href === "/guardian"
-              ? pathname === "/guardian"
+            item.href === "/hades"
+              ? pathname === "/hades"
               : item.href !== "#" && pathname.startsWith(item.href);
 
           const link = (
             <Link
               href={item.href}
-              className={`group relative flex h-11 items-center rounded-lg px-3 text-sm font-medium transition-colors duration-150 ${
-                collapsed ? "justify-center" : "gap-3"
+              className={`group relative grid min-h-[2.625rem] items-center rounded-[0.625rem] border px-2.5 text-sm font-medium transition-colors duration-150 ${
+                collapsed
+                  ? "w-[2.625rem] grid-cols-1 justify-items-center px-0"
+                  : "grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-3"
               } ${
                 isActive
-                  ? "bg-[#2A2B32] text-[#ECECF1]"
-                  : "text-[#C5C5D2] hover:bg-[#2A2B32]/80 hover:text-[#ECECF1]"
+                  ? "border-[#A07C3B]/35 bg-[#171b23] text-white shadow-[inset_0_1px_0_rgb(255_255_255_/_0.04)]"
+                  : "border-transparent text-[#c9d1dc] hover:border-white/[0.08] hover:bg-white/[0.075] hover:text-white"
               }`}
             >
               {isActive ? (
                 <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
               ) : null}
-              <Icon
-                className={`size-[17px] shrink-0 stroke-[1.75] ${
-                  isActive ? "text-[#D5B46F]" : "text-[#8E8EA0]"
+              <span
+                className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                  isActive
+                    ? "panteon-module-sidebar__active-icon"
+                    : "bg-white/[0.055] text-[#d5dde8] group-hover:bg-white/[0.085] group-hover:text-white"
                 }`}
-                aria-hidden="true"
-              />
+              >
+                <Icon
+                  className="size-[17px] stroke-[1.75]"
+                  aria-hidden="true"
+                />
+              </span>
               <span
                 className={`truncate transition-opacity duration-200 ${
                   collapsed

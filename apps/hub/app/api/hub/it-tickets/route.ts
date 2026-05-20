@@ -164,4 +164,4 @@ function getScope(request: NextRequest): HubItTicketListScope {
 }
 
 const hubItTicketsMigrationPendingMessage =
-  "Ticket TI aguarda aplicacao das migrations Supabase de tickets no banco de producao. Acione Hub DataOps/ReleaseOps para aplicar packages/database/migrations/0014_hub_it_tickets.sql e 0017_squadops_ticket_operation_links.sql.";
+  "Ticket TI aguarda aplicacao das migrations Supabase de tickets no banco de producao. Acione Zeus/Hefesto para aplicar packages/database/migrations/0014_hub_it_tickets.sql e 0017_squadops_ticket_operation_links.sql.";

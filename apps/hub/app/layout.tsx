@@ -25,7 +25,10 @@ const isHomologationEnvironment =
     appUrl.includes("homo.c2x.app.br") ||
     appUrl.includes("homolog.c2x.app.br") ||
     gitBranch === "homolog");
-const appTitle = isHomologationEnvironment ? "Homo C2X" : "C2X";
+const appTitle = isHomologationEnvironment ? "Homo Panteon" : "Panteon";
+const appIconUrl = isHomologationEnvironment
+  ? "/panteon-mark-homolog.png?v=1"
+  : "/panteon-mark.png?v=1";
 
 export const metadata: Metadata = {
   applicationName: appTitle,
@@ -35,9 +38,9 @@ export const metadata: Metadata = {
   },
   description: appTitle,
   icons: {
-    apple: [{ url: "/logo-careli-c2x.png?v=2", type: "image/png" }],
-    icon: [{ url: "/logo-careli-c2x.png?v=2", type: "image/png" }],
-    shortcut: [{ url: "/logo-careli-c2x.png?v=2", type: "image/png" }],
+    apple: [{ url: appIconUrl, type: "image/png" }],
+    icon: [{ url: appIconUrl, type: "image/png" }],
+    shortcut: [{ url: appIconUrl, type: "image/png" }],
   },
 };
 

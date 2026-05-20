@@ -3,12 +3,14 @@
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 export type AsanaPerformanceStatus = "configured" | "error" | "missing_config";
+export type AsanaTaskQueryMode = "created_at_search" | "tasks_list_fallback";
 
 export type AsanaPerformanceTotals = {
   averageDelayDays: number;
   completed: number;
   completedLate: number;
   completedOnTime: number;
+  completedRate: number;
   completedWithoutDue: number;
   collaboratorsMatched: number;
   collaboratorsTotal: number;
@@ -16,6 +18,8 @@ export type AsanaPerformanceTotals = {
   onTimeRate: number | null;
   open: number;
   overdue: number;
+  overdueRate: number;
+  pendingRate: number;
   total: number;
 };
 
@@ -27,16 +31,20 @@ export type AsanaCollaboratorPerformance = {
   completed: number;
   completedLate: number;
   completedOnTime: number;
+  completedRate: number;
   completedWithoutDue: number;
   email: string;
   hubUserId: string;
   lateRate: number | null;
+  limitReached: boolean;
   matched: boolean;
   name: string;
   onTimeRate: number | null;
   open: number;
   overdue: number;
   overdueRate: number;
+  pendingRate: number;
+  taskQueryModes: AsanaTaskQueryMode[];
   total: number;
   workspaceNames: string[];
 };
@@ -47,6 +55,7 @@ export type AsanaTeamPerformanceSnapshot = {
   message?: string;
   source: {
     docsUrl: string;
+    limitReached: boolean;
     missingEnv: string[];
     period: {
       endDate: string;
@@ -54,6 +63,9 @@ export type AsanaTeamPerformanceSnapshot = {
       preset: "custom" | "month" | "today" | "week";
       startDate: string;
     };
+    periodBasis: "created_at";
+    queryModes: AsanaTaskQueryMode[];
+    taskOwnerBasis: "assignee";
     taskLimitPerUser: number;
     windowDays: number;
     workspaceConfigured: boolean;

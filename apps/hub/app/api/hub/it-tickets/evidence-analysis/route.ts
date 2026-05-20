@@ -188,7 +188,7 @@ function buildFallbackEvidenceAnalysis(
       `Relato original: ${description}`,
       "Evidencias consideradas:",
       evidenceInsights.map((item) => `- ${item}`).join("\n"),
-      "Triagem Caca: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo SquadOps.",
+      "Triagem Athena: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo Zeus.",
     ].join("\n"),
   };
 }
@@ -233,7 +233,7 @@ async function analyzeEvidenceWithOpenAi({
           },
         ],
         instructions: [
-          "Voce e a Caca, analista operacional do Careli Hub.",
+          "Voce e a Athena, analista operacional do Panteon.",
           "Leia prints/imagens e quadros extraidos de video quando estiverem presentes.",
           "Use transcricoes de audio quando estiverem presentes.",
           "Nao invente evidencia. Se a imagem, audio ou video nao for conclusivo, registre isso de forma objetiva.",
@@ -295,7 +295,7 @@ function buildEvidenceAnalysisPrompt({
   input: HubItTicketEvidenceAnalysisInput;
 }) {
   return [
-    "Monte a leitura tecnica de um Ticket TI para o SquadOps.",
+    "Monte a leitura tecnica de um Ticket TI para o Zeus.",
     "Campos esperados no JSON:",
     '{"technicalSummary":"...","expectedResult":"...","actualResult":"...","evidenceInsights":["..."]}',
     "",

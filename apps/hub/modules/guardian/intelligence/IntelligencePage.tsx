@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
@@ -45,8 +45,8 @@ import {
   getHubAiUserInstruction,
   type HubAiUserContext,
 } from "@/lib/hub-ai/user-context";
-import type { GuardianOverviewSnapshot } from "@/lib/guardian/overview";
-import { getGuardianOverviewSnapshot } from "@/lib/guardian/overview-client";
+import type { HadesOverviewSnapshot } from "@/lib/guardian/overview";
+import { getHadesOverviewSnapshot } from "@/lib/guardian/overview-client";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
@@ -429,7 +429,7 @@ export function IntelligencePage() {
       </section>
 
       <OperationalMapBlock />
-      <GuardianIntelligenceAssistant />
+      <HadesIntelligenceAssistant />
       <KpiContractsDrawer
         items={selectedKpi ? emptyKpiDrawerRows : []}
         onClose={() => setSelectedKpi(null)}
@@ -861,7 +861,7 @@ function TrendMetricCard({
 const assistantSuggestions = [
   {
     label: "Resumir carteira",
-    prompt: "Resuma a carteira do Guardian e destaque os principais pontos para uma reuniao operacional.",
+    prompt: "Resuma a carteira do Hades e destaque os principais pontos para uma reuniao operacional.",
     response: EMPTY_FIELD,
   },
   {
@@ -891,7 +891,7 @@ const assistantSuggestions = [
   },
 ];
 
-function GuardianIntelligenceAssistant() {
+function HadesIntelligenceAssistant() {
   const { hubUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -904,7 +904,7 @@ function GuardianIntelligenceAssistant() {
     {
       id: "initial-intelligence",
       role: "ai",
-      content: "Olá. Sou a IA da Cobrança, especialista do módulo Guardian. Posso explicar tendências, apontar riscos e sugerir ações operacionais com base nos dados desta tela.",
+      content: "Olá. Sou a IA da Cobrança, especialista do módulo Hades. Posso explicar tendências, apontar riscos e sugerir ações operacionais com base nos dados desta tela.",
     },
   ]);
 
@@ -937,8 +937,8 @@ function GuardianIntelligenceAssistant() {
 
     try {
       const response = await askHubAi({
-        context: await buildGuardianIntelligenceRuntimeAiContext(aiUserContext),
-        feature: "Guardian / inteligencia / carteira",
+        context: await buildHadesIntelligenceRuntimeAiContext(aiUserContext),
+        feature: "Hades / inteligencia / carteira",
         messages: mapHubAiMessages(history),
         module: "guardian",
         prompt: question,
@@ -1097,7 +1097,7 @@ function GuardianIntelligenceAssistant() {
   );
 }
 
-function buildGuardianIntelligenceAiContext() {
+function buildHadesIntelligenceAiContext() {
   return {
     indicadores: kpis.map((kpi) => ({
       ajuda: kpi.helper,
@@ -1122,18 +1122,18 @@ function buildGuardianIntelligenceAiContext() {
   };
 }
 
-async function buildGuardianIntelligenceRuntimeAiContext(
+async function buildHadesIntelligenceRuntimeAiContext(
   aiUserContext: HubAiUserContext | null,
 ) {
   const [overviewResult, queueResult] = await Promise.allSettled([
-    getGuardianOverviewSnapshot(),
-    loadGuardianQueueClientsForAi(),
+    getHadesOverviewSnapshot(),
+    loadHadesQueueClientsForAi(),
   ]);
 
   return {
-    ...buildGuardianIntelligenceAiContext(),
+    ...buildHadesIntelligenceAiContext(),
     fonteOperacional:
-      "Contexto da tela de Inteligencia + snapshot financeiro C2X espelhado no Supabase + fila operacional real do Guardian quando disponivel.",
+      "Contexto da tela de Inteligencia + snapshot financeiro C2X espelhado no Supabase + fila operacional real do Hades quando disponivel.",
     instrucaoUsuarioLogado: getHubAiUserInstruction(aiUserContext),
     usuarioLogado: aiUserContext,
     filaOperacional:
@@ -1147,7 +1147,7 @@ async function buildGuardianIntelligenceRuntimeAiContext(
           },
     snapshotFinanceiro:
       overviewResult.status === "fulfilled"
-        ? mapGuardianOverviewForAi(overviewResult.value)
+        ? mapHadesOverviewForAi(overviewResult.value)
         : {
             erro:
               overviewResult.reason instanceof Error
@@ -1157,9 +1157,9 @@ async function buildGuardianIntelligenceRuntimeAiContext(
   };
 }
 
-async function loadGuardianQueueClientsForAi() {
-  const accessToken = await getGuardianAiAccessToken();
-  const response = await fetch("/api/guardian/attendance/queue", {
+async function loadHadesQueueClientsForAi() {
+  const accessToken = await getHadesAiAccessToken();
+  const response = await fetch("/api/hades/attendance/queue", {
     cache: "no-store",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -1205,7 +1205,7 @@ async function loadGuardianQueueClientsForAi() {
   };
 }
 
-async function getGuardianAiAccessToken() {
+async function getHadesAiAccessToken() {
   const client = getHubSupabaseClient();
 
   if (!client) {
@@ -1222,7 +1222,7 @@ async function getGuardianAiAccessToken() {
   return accessToken;
 }
 
-function mapGuardianOverviewForAi(snapshot: GuardianOverviewSnapshot) {
+function mapHadesOverviewForAi(snapshot: HadesOverviewSnapshot) {
   return {
     agingInadimplencia: snapshot.overdueAging.map((bucket) => ({
       faixa: bucket.label,

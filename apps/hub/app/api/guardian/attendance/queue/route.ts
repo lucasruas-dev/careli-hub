@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
 import {
-  loadGuardianAttendanceQueue,
-  loadGuardianAttendanceQueueSummary,
+  loadHadesAttendanceQueue,
+  loadHadesAttendanceQueueSummary,
 } from "@/lib/guardian/attendance";
-import { sanitizeGuardianDbError } from "@/lib/guardian/db";
-import { loadGuardianAttendanceQueueReadModel } from "@/lib/guardian/read-model";
+import { sanitizeHadesDbError } from "@/lib/guardian/db";
+import { loadHadesAttendanceQueueReadModel } from "@/lib/guardian/read-model";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     const limit = parseQueueLimit(url.searchParams.get("limit"));
 
     try {
-      const clients = await loadGuardianAttendanceQueueSummary({
+      const clients = await loadHadesAttendanceQueueSummary({
         limit,
         strict: true,
       });
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       );
     } catch {
       try {
-        const readModelResult = await loadGuardianAttendanceQueueReadModel({
+        const readModelResult = await loadHadesAttendanceQueueReadModel({
           limit,
         });
 
@@ -68,11 +68,11 @@ export async function GET(request: Request) {
       } catch (readModelError) {
         console.warn(
           "[guardian-attendance] Read model fallback failed",
-          sanitizeGuardianDbError(readModelError),
+          sanitizeHadesDbError(readModelError),
         );
       }
 
-      const clients = await loadGuardianAttendanceQueue({
+      const clients = await loadHadesAttendanceQueue({
         includeInstallments: false,
         limit,
         strict: true,
@@ -94,7 +94,7 @@ export async function GET(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        detail: sanitizeGuardianDbError(error),
+        detail: sanitizeHadesDbError(error),
         error: "Nao foi possivel carregar a fila do C2X.",
       },
       { status: 500 },
@@ -106,14 +106,14 @@ function queueJson(payload: QueueResponsePayload, cacheStatus: string) {
   return NextResponse.json(payload, {
     headers: {
       "Cache-Control": "no-store",
-      "X-Guardian-Queue-Cache": cacheStatus,
+      "X-Hades-Queue-Cache": cacheStatus,
     },
   });
 }
 
 function readModelPayload(
   readModelResult: NonNullable<
-    Awaited<ReturnType<typeof loadGuardianAttendanceQueueReadModel>>
+    Awaited<ReturnType<typeof loadHadesAttendanceQueueReadModel>>
   >,
   limit: number,
   options: { stale: boolean },

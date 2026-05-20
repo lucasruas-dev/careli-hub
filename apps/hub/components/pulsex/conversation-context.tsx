@@ -1,11 +1,11 @@
 import type {
-  PulseXChannel,
-  PulseXPresenceUser,
+  HermesChannel,
+  HermesPresenceUser,
 } from "@/lib/pulsex";
 
 type ConversationContextProps = {
-  channel: PulseXChannel;
-  users: readonly PulseXPresenceUser[];
+  channel: HermesChannel;
+  users: readonly HermesPresenceUser[];
 };
 
 export function ConversationContext({

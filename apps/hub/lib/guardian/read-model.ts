@@ -1,8 +1,8 @@
 import { createSupabaseAdminClient } from "@/lib/guardian/read-model-sync";
 import type {
-  GuardianDistributionBucket,
-  GuardianEnterprisePerformance,
-  GuardianOverviewSnapshot,
+  HadesDistributionBucket,
+  HadesEnterprisePerformance,
+  HadesOverviewSnapshot,
 } from "@/lib/guardian/overview";
 import type {
   AgreementRisk,
@@ -103,7 +103,7 @@ const ATTENDANCE_QUEUE_DETAIL_SELECT = `
 `;
 const EMPTY_FIELD = "-";
 
-export async function loadGuardianOverviewReadModel(): Promise<GuardianOverviewSnapshot | null> {
+export async function loadHadesOverviewReadModel(): Promise<HadesOverviewSnapshot | null> {
   const adminClient = createSupabaseAdminClient();
 
   if (!adminClient) {
@@ -177,7 +177,7 @@ export async function loadGuardianOverviewReadModel(): Promise<GuardianOverviewS
   };
 }
 
-export async function loadGuardianAttendanceQueueReadModel(
+export async function loadHadesAttendanceQueueReadModel(
   options: AttendanceQueueReadModelOptions = {},
 ): Promise<AttendanceQueueReadModelResult | null> {
   const adminClient = createSupabaseAdminClient();
@@ -238,7 +238,7 @@ function latestSyncedAt(rows: AttendanceQueueRow[]) {
 
 function mapEnterpriseRows(
   rows: EnterprisePerformanceRow[],
-): GuardianEnterprisePerformance[] {
+): HadesEnterprisePerformance[] {
   return rows.map((row) => ({
     delinquencyBaseAmount: toNumber(row.delinquency_base_amount),
     enterpriseName: row.enterprise_name,
@@ -254,7 +254,7 @@ function mapEnterpriseRows(
 
 function mapDistributionRows(
   rows: DistributionRow[],
-): GuardianDistributionBucket[] {
+): HadesDistributionBucket[] {
   return [...rows]
     .sort(
       (first, second) =>
@@ -281,7 +281,7 @@ function mapAttendanceQueueRow(
     Math.max(Math.round(toNumber(row.risk_score)), 0),
     100,
   );
-  const priority = mapGuardianPriority(row.priority);
+  const priority = mapHadesPriority(row.priority);
   const workflowStage = mapWorkflowStage(row.workflow_status);
   const nextAction = nextActionForStage(workflowStage, priority);
   const rowId = String(row.client_c2x_id ?? row.id);
@@ -543,7 +543,7 @@ function normalizeQueueLimit(value: number | null | undefined) {
   return Math.min(Math.max(Math.trunc(parsed), 20), 2_000);
 }
 
-function mapGuardianPriority(value: string | null): AttendancePriority {
+function mapHadesPriority(value: string | null): AttendancePriority {
   if (value === "critical") {
     return "Crítica";
   }

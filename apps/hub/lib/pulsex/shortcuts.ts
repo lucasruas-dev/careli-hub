@@ -1,22 +1,22 @@
-import type { PulseXChannel, PulseXMessage, PulseXPresenceUser } from "./types";
+import type { HermesChannel, HermesMessage, HermesPresenceUser } from "./types";
 
-export type PulseXShortcutFilter = "favorites" | "mentions" | "unread";
+export type HermesShortcutFilter = "favorites" | "mentions" | "unread";
 
-type PulseXShortcutInput = {
-  channels: readonly PulseXChannel[];
-  currentUserId: PulseXPresenceUser["id"];
-  favoriteChannelIds: readonly PulseXChannel["id"][];
-  messages: readonly PulseXMessage[];
+type HermesShortcutInput = {
+  channels: readonly HermesChannel[];
+  currentUserId: HermesPresenceUser["id"];
+  favoriteChannelIds: readonly HermesChannel["id"][];
+  messages: readonly HermesMessage[];
 };
 
-export function getPulseXShortcutChannels({
+export function getHermesShortcutChannels({
   channels,
   currentUserId,
   favoriteChannelIds,
   messages,
   shortcut,
-}: PulseXShortcutInput & {
-  shortcut: PulseXShortcutFilter | null;
+}: HermesShortcutInput & {
+  shortcut: HermesShortcutFilter | null;
 }) {
   if (!shortcut) {
     return [...channels];
@@ -42,12 +42,12 @@ export function getPulseXShortcutChannels({
   });
 }
 
-export function getPulseXShortcutCounts({
+export function getHermesShortcutCounts({
   channels,
   currentUserId,
   favoriteChannelIds,
   messages,
-}: PulseXShortcutInput) {
+}: HermesShortcutInput) {
   const favoriteIds = new Set(favoriteChannelIds);
 
   return {
@@ -63,8 +63,8 @@ export function getPulseXShortcutCounts({
 }
 
 function isMessageMentioningUser(
-  message: PulseXMessage,
-  userId: PulseXPresenceUser["id"],
+  message: HermesMessage,
+  userId: HermesPresenceUser["id"],
 ) {
   return (
     message.authorId !== userId &&

@@ -22,27 +22,27 @@ import {
 } from "lucide-react";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import type {
-  PulseXMessageAttachment,
-  PulseXMessageMention,
-  PulseXMessageTag,
-  PulseXPresenceUser,
+  HermesMessageAttachment,
+  HermesMessageMention,
+  HermesMessageTag,
+  HermesPresenceUser,
 } from "@/lib/pulsex";
 import {
-  getPulseXMessageTagClassName,
-  pulseXMessageTagOptions,
+  getHermesMessageTagClassName,
+  hermesMessageTagOptions,
 } from "@/lib/pulsex/message-tags";
 
 type MessageComposerProps = {
   channelName: string;
-  mentions: readonly PulseXMessageMention[];
+  mentions: readonly HermesMessageMention[];
   onChange: (
     value: string,
-    mentions: readonly PulseXMessageMention[],
+    mentions: readonly HermesMessageMention[],
   ) => void;
-  onSubmit: (input?: { attachment?: PulseXMessageAttachment }) => void;
-  onToggleTag?: (tag: PulseXMessageTag) => void;
-  selectedTags?: readonly PulseXMessageTag[];
-  users: readonly PulseXPresenceUser[];
+  onSubmit: (input?: { attachment?: HermesMessageAttachment }) => void;
+  onToggleTag?: (tag: HermesMessageTag) => void;
+  selectedTags?: readonly HermesMessageTag[];
+  users: readonly HermesPresenceUser[];
   value: string;
 };
 
@@ -69,7 +69,7 @@ export function MessageComposer({
     trigger: string;
   } | null>(null);
   const [activeOptionIndex, setActiveOptionIndex] = useState(0);
-  const [attachment, setAttachment] = useState<PulseXMessageAttachment | null>(
+  const [attachment, setAttachment] = useState<HermesMessageAttachment | null>(
     null,
   );
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
@@ -164,7 +164,7 @@ export function MessageComposer({
     updateActiveMention(nextValue, nextCaretIndex);
   }
 
-  function selectMention(user: PulseXPresenceUser | undefined) {
+  function selectMention(user: HermesPresenceUser | undefined) {
     if (!user || !activeMention) {
       return;
     }
@@ -176,7 +176,7 @@ export function MessageComposer({
       displayName: user.label,
       trigger: activeMention.trigger,
       userId: user.id,
-    } satisfies PulseXMessageMention;
+    } satisfies HermesMessageMention;
     const nextMentions = [
       ...mentions.filter((mention) => mention.userId !== user.id),
       nextMention,
@@ -190,7 +190,7 @@ export function MessageComposer({
     });
   }
 
-  function removeMention(userId: PulseXPresenceUser["id"]) {
+  function removeMention(userId: HermesPresenceUser["id"]) {
     const mention = mentions.find((currentMention) => currentMention.userId === userId);
 
     if (!mention) {
@@ -428,7 +428,7 @@ export function MessageComposer({
           </div>
         ) : null}
         <div className="mb-1 flex flex-wrap gap-1.5">
-          {pulseXMessageTagOptions.map((tag) => {
+          {hermesMessageTagOptions.map((tag) => {
             const selected = selectedTags.includes(tag.id);
 
             return (
@@ -436,7 +436,7 @@ export function MessageComposer({
                 aria-pressed={selected}
                 className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[0.68rem] font-semibold outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
                   selected
-                    ? getPulseXMessageTagClassName(tag.id)
+                    ? getHermesMessageTagClassName(tag.id)
                     : "border-[#d9e0ea] bg-white text-[#667085]"
                 }`}
                 key={tag.id}
@@ -521,8 +521,8 @@ function MentionAutocomplete({
   users,
 }: {
   activeIndex: number;
-  onSelect: (user: PulseXPresenceUser) => void;
-  users: readonly PulseXPresenceUser[];
+  onSelect: (user: HermesPresenceUser) => void;
+  users: readonly HermesPresenceUser[];
 }) {
   return (
     <div
@@ -590,7 +590,7 @@ function AttachmentChip({
   attachment,
   onRemove,
 }: {
-  attachment: PulseXMessageAttachment;
+  attachment: HermesMessageAttachment;
   onRemove: () => void;
 }) {
   const Icon = getAttachmentIcon(attachment.type);
@@ -636,7 +636,7 @@ function getActiveMentionQuery(value: string, caretIndex: number) {
   };
 }
 
-function matchesMentionQuery(user: PulseXPresenceUser, query: string) {
+function matchesMentionQuery(user: HermesPresenceUser, query: string) {
   const normalizedQuery = normalizeSearchValue(query);
   const searchValues = [
     user.label,
@@ -662,7 +662,7 @@ function normalizeSearchValue(value: string) {
     .trim();
 }
 
-function getPresenceLabel(status: PulseXPresenceUser["status"]) {
+function getPresenceLabel(status: HermesPresenceUser["status"]) {
   const labels = {
     agenda: "agenda",
     away: "ausente",
@@ -670,12 +670,12 @@ function getPresenceLabel(status: PulseXPresenceUser["status"]) {
     lunch: "almoco",
     offline: "offline",
     online: "online",
-  } as const satisfies Record<PulseXPresenceUser["status"], string>;
+  } as const satisfies Record<HermesPresenceUser["status"], string>;
 
   return labels[status];
 }
 
-function getPresenceDotClassName(status: PulseXPresenceUser["status"]) {
+function getPresenceDotClassName(status: HermesPresenceUser["status"]) {
   const classNames = {
     agenda: "bg-sky-500",
     away: "bg-red-500",
@@ -683,7 +683,7 @@ function getPresenceDotClassName(status: PulseXPresenceUser["status"]) {
     lunch: "bg-yellow-400",
     offline: "bg-slate-300",
     online: "bg-emerald-500",
-  } as const satisfies Record<PulseXPresenceUser["status"], string>;
+  } as const satisfies Record<HermesPresenceUser["status"], string>;
 
   return classNames[status];
 }
@@ -818,9 +818,9 @@ async function createAttachmentFromBlob(
     label: string;
     mimeType?: string;
     sizeBytes?: number;
-    type?: PulseXMessageAttachment["type"];
+    type?: HermesMessageAttachment["type"];
   },
-): Promise<PulseXMessageAttachment> {
+): Promise<HermesMessageAttachment> {
   const mimeType = options.mimeType || blob.type || "application/octet-stream";
   const url = await readBlobAsDataUrl(blob);
 
@@ -846,7 +846,7 @@ function readBlobAsDataUrl(blob: Blob) {
   });
 }
 
-function getAttachmentType(mimeType: string): PulseXMessageAttachment["type"] {
+function getAttachmentType(mimeType: string): HermesMessageAttachment["type"] {
   if (mimeType.startsWith("audio/")) {
     return "audio";
   }
@@ -862,7 +862,7 @@ function getAttachmentType(mimeType: string): PulseXMessageAttachment["type"] {
   return "file";
 }
 
-function getAttachmentIcon(type: PulseXMessageAttachment["type"]) {
+function getAttachmentIcon(type: HermesMessageAttachment["type"]) {
   if (type === "audio") {
     return Mic;
   }

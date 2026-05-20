@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 // @ts-nocheck
 "use client";
 
@@ -478,7 +478,7 @@ function PaymentViewingIndicator({ installment }: { installment: Installment }) 
 
       try {
         const response = await fetch(
-          `/api/guardian/asaas/payment-viewing?paymentId=${encodeURIComponent(installment.id ?? "")}`,
+          `/api/hades/asaas/payment-viewing?paymentId=${encodeURIComponent(installment.id ?? "")}`,
           { cache: "no-store" }
         );
         const payload = (await response.json().catch(() => null)) as

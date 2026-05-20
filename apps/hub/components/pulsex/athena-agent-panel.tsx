@@ -2,7 +2,7 @@
 
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
+import { AthenaIcon } from "@/components/athena-icon";
 import { HubTicketOpenForm } from "@/components/hub-support/hub-ticket-open-form";
 import {
   Brain,
@@ -19,9 +19,9 @@ import {
   X,
 } from "lucide-react";
 import type {
-  PulseXChannel,
-  PulseXMessage,
-  PulseXPresenceUser,
+  HermesChannel,
+  HermesMessage,
+  HermesPresenceUser,
 } from "@/lib/pulsex";
 import { Tooltip } from "@repo/uix";
 import { askHubAi, mapHubAiMessages } from "@/lib/hub-ai/client";
@@ -32,12 +32,11 @@ import {
 } from "@/lib/hub-ai/user-context";
 import { useAuth } from "@/providers/auth-provider";
 
-const AI_AGENT_NAME = "Cacá";
-const AI_AGENT_AVATAR = "/caca-profile.png";
+const AI_AGENT_NAME = "Athena";
 const MAX_CONTEXT_MESSAGES = 45;
-const DEFAULT_CACA_TONE_ID = "inteligente";
+const DEFAULT_ATHENA_TONE_ID = "inteligente";
 
-const cacaToneOptions = [
+const athenaToneOptions = [
   {
     icon: Sparkles,
     id: "elegante",
@@ -82,7 +81,7 @@ const cacaToneOptions = [
   },
 ] as const;
 
-type CacaChatMessage = {
+type AthenaChatMessage = {
   actionable?: boolean;
   content: string;
   draftContent?: string;
@@ -90,21 +89,21 @@ type CacaChatMessage = {
   role: "ai" | "user";
 };
 
-type CacaToneId = (typeof cacaToneOptions)[number]["id"];
-type CacaAgentTab = "agent" | "ticket";
+type AthenaToneId = (typeof athenaToneOptions)[number]["id"];
+type AthenaAgentTab = "agent" | "ticket";
 
-type CacaAgentPanelProps = {
-  channel: PulseXChannel;
-  currentUserId: PulseXPresenceUser["id"];
+type AthenaAgentPanelProps = {
+  channel: HermesChannel;
+  currentUserId: HermesPresenceUser["id"];
   draftValue: string;
-  focusedMessage?: PulseXMessage | null;
-  messages: readonly PulseXMessage[];
+  focusedMessage?: HermesMessage | null;
+  messages: readonly HermesMessage[];
   onClose: () => void;
   onUseAsDraft: (content: string) => void;
-  users: readonly PulseXPresenceUser[];
+  users: readonly HermesPresenceUser[];
 };
 
-export function CacaAgentPanel({
+export function AthenaAgentPanel({
   channel,
   currentUserId,
   draftValue,
@@ -113,7 +112,7 @@ export function CacaAgentPanel({
   onClose,
   onUseAsDraft,
   users,
-}: CacaAgentPanelProps) {
+}: AthenaAgentPanelProps) {
   const { hubUser } = useAuth();
   const aiUserContext = useMemo(
     () => buildHubAiUserContext(hubUser),
@@ -126,10 +125,10 @@ export function CacaAgentPanel({
   const hasFocusedMessage = Boolean(focusedMessage);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [activeAgentTab, setActiveAgentTab] = useState<CacaAgentTab>("agent");
+  const [activeAgentTab, setActiveAgentTab] = useState<AthenaAgentTab>("agent");
   const [selectedToneId, setSelectedToneId] =
-    useState<CacaToneId>(DEFAULT_CACA_TONE_ID);
-  const [chatMessages, setChatMessages] = useState<CacaChatMessage[]>(() => [
+    useState<AthenaToneId>(DEFAULT_ATHENA_TONE_ID);
+  const [chatMessages, setChatMessages] = useState<AthenaChatMessage[]>(() => [
     createInitialMessage({
       channelName: channel.name,
       firstName: aiUserContext?.firstName,
@@ -144,9 +143,9 @@ export function CacaAgentPanel({
   );
   const selectedTone = useMemo(
     () =>
-      cacaToneOptions.find((tone) => tone.id === selectedToneId) ??
-      cacaToneOptions.find((tone) => tone.id === DEFAULT_CACA_TONE_ID) ??
-      cacaToneOptions[0],
+      athenaToneOptions.find((tone) => tone.id === selectedToneId) ??
+      athenaToneOptions.find((tone) => tone.id === DEFAULT_ATHENA_TONE_ID) ??
+      athenaToneOptions[0],
     [selectedToneId],
   );
 
@@ -187,7 +186,7 @@ export function CacaAgentPanel({
       content: question,
       id: `${Date.now()}-user`,
       role: "user",
-    } satisfies CacaChatMessage;
+    } satisfies AthenaChatMessage;
     const pendingMessageId = `${Date.now()}-ai`;
     const history = chatMessages;
 
@@ -205,7 +204,7 @@ export function CacaAgentPanel({
 
     try {
       const response = await askHubAi({
-        context: buildPulseXAgentContext({
+        context: buildHermesAgentContext({
           aiUserContext,
           channel,
           currentUserId,
@@ -215,7 +214,7 @@ export function CacaAgentPanel({
           selectedTone,
           users,
         }),
-        feature: "PulseX / comunicacao interna / canal operacional",
+        feature: "Hermes / comunicacao interna / canal operacional",
         messages: mapHubAiMessages(history),
         module: "pulsex",
         prompt: question,
@@ -242,7 +241,7 @@ export function CacaAgentPanel({
                 content:
                   error instanceof Error
                     ? error.message
-                    : "Nao foi possivel consultar a Cacá agora.",
+                    : "Nao foi possivel consultar a Athena agora.",
               }
             : message,
         ),
@@ -261,13 +260,11 @@ export function CacaAgentPanel({
     <aside className="flex h-full min-h-0 flex-col border-l border-[#d9e0ea] bg-white text-[#101820]">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-[#e6ebf2] px-4">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#101820] text-white">
-            <Image
-              alt={AI_AGENT_NAME}
-              className="h-full w-full object-cover"
-              height={40}
-              src={AI_AGENT_AVATAR}
-              width={40}
+          <span className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-[#101820] text-[#A07C3B] shadow-[0_10px_24px_rgba(160,124,59,0.20)]">
+            <AthenaIcon
+              className="size-full object-cover"
+              variant="panel"
+              aria-hidden="true"
             />
             <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />
           </span>
@@ -276,12 +273,12 @@ export function CacaAgentPanel({
               {AI_AGENT_NAME}
             </span>
             <span className="block truncate text-xs text-[#667085]">
-              Agente PulseX
+              Agente Hermes
             </span>
           </span>
         </div>
         <button
-          aria-label="Fechar Cacá"
+          aria-label="Fechar Athena"
           className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onClose}
           type="button"
@@ -307,7 +304,7 @@ export function CacaAgentPanel({
 
       {activeAgentTab === "ticket" ? (
         <div className="min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] p-4">
-          <HubTicketOpenForm defaultModule="PulseX" />
+          <HubTicketOpenForm defaultModule="Hermes" />
         </div>
       ) : (
         <>
@@ -344,7 +341,7 @@ export function CacaAgentPanel({
           <div className="min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] px-3 py-4">
             <div className="grid gap-3">
               {chatMessages.map((message) => (
-                <CacaBubble
+                <AthenaBubble
                   key={message.id}
                   message={message}
                   onUseAsDraft={onUseAsDraft}
@@ -362,7 +359,7 @@ export function CacaAgentPanel({
             onSubmit={handleSubmit}
           >
             <textarea
-              aria-label="Perguntar para Cacá"
+              aria-label="Perguntar para Athena"
               className="max-h-24 min-h-10 resize-none rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-3 py-2 text-sm leading-5 outline-none transition placeholder:text-[#8b98aa] focus:border-[#A07C3B] focus:bg-white"
               disabled={isSending}
               onChange={(event) => setInputValue(event.target.value)}
@@ -372,12 +369,12 @@ export function CacaAgentPanel({
                   void sendAiQuestion();
                 }
               }}
-              placeholder="Pergunte para a Cacá"
+              placeholder="Pergunte para a Athena"
               rows={1}
               value={inputValue}
             />
             <button
-              aria-label="Enviar para Cacá"
+              aria-label="Enviar para Athena"
               className="grid h-10 w-10 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0ea] disabled:text-[#8b98aa]"
               disabled={isSending || !inputValue.trim()}
               type="submit"
@@ -391,12 +388,12 @@ export function CacaAgentPanel({
   );
 }
 
-function CacaBubble({
+function AthenaBubble({
   message,
   onUseAsDraft,
   useAsDraftLabel,
 }: {
-  message: CacaChatMessage;
+  message: AthenaChatMessage;
   onUseAsDraft: (content: string) => void;
   useAsDraftLabel: string;
 }) {
@@ -407,14 +404,8 @@ function CacaBubble({
       className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}
     >
       {!isUser ? (
-        <span className="mt-1 grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#101820]">
-          <Image
-            alt={AI_AGENT_NAME}
-            className="h-full w-full object-cover"
-            height={28}
-            src={AI_AGENT_AVATAR}
-            width={28}
-          />
+        <span className="mt-1 grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full border border-[#A07C3B]/35 bg-[#101820] text-[#A07C3B]">
+          <AthenaIcon className="size-full object-cover" aria-hidden="true" />
         </span>
       ) : null}
       <div
@@ -424,7 +415,7 @@ function CacaBubble({
             : "rounded-bl-md border-[#d9e0ea] bg-white text-[#17202f]"
         }`}
       >
-        <div className="m-0">{renderCacaMessageContent(message.content)}</div>
+        <div className="m-0">{renderAthenaMessageContent(message.content)}</div>
         {message.actionable && !isUser ? (
           <Tooltip content={useAsDraftLabel} placement="top">
             <button
@@ -478,8 +469,8 @@ function FocusedMessageCard({
   focusedMessage,
   users,
 }: {
-  focusedMessage: PulseXMessage;
-  users: readonly PulseXPresenceUser[];
+  focusedMessage: HermesMessage;
+  users: readonly HermesPresenceUser[];
 }) {
   const authorName =
     focusedMessage.authorName ?? getUserLabel(users, focusedMessage.authorId);
@@ -508,8 +499,8 @@ function ToneSelector({
   selectedToneId,
 }: {
   disabled: boolean;
-  onSelectTone: (toneId: CacaToneId) => void;
-  selectedToneId: CacaToneId;
+  onSelectTone: (toneId: AthenaToneId) => void;
+  selectedToneId: AthenaToneId;
 }) {
   return (
     <div className="mb-3">
@@ -517,11 +508,11 @@ function ToneSelector({
         Tom da resposta
       </p>
       <div
-        aria-label="Tom da resposta da Caca"
+        aria-label="Tom da resposta da Athena"
         className="grid grid-cols-3 gap-1.5"
         role="group"
       >
-        {cacaToneOptions.map((tone) => {
+        {athenaToneOptions.map((tone) => {
           const isSelected = tone.id === selectedToneId;
 
           return (
@@ -567,7 +558,7 @@ function createInitialMessage({
     content: `${greeting} estou conectada ao canal ${channelName}.${focusText} Posso resumir a conversa, separar decisoes ou preparar uma resposta para voce enviar.`,
     id: `initial-${channelName}-${Date.now()}`,
     role: "ai",
-  } satisfies CacaChatMessage;
+  } satisfies AthenaChatMessage;
 }
 
 function extractDraftContent(content: string) {
@@ -603,19 +594,19 @@ function normalizeDraftBulletMarkers(content: string) {
   return content.replace(/^(\s*)[-*]\s*/gm, "$1• ");
 }
 
-function renderCacaMessageContent(content: string) {
+function renderAthenaMessageContent(content: string) {
   return content.split(/\r?\n/).map((line, index) => {
     const bulletParts = getBulletLineParts(line);
 
     if (!line.trim()) {
-      return <div className="h-2" key={`caca-line-${index}`} />;
+      return <div className="h-2" key={`athena-line-${index}`} />;
     }
 
     if (bulletParts) {
       return (
         <div
           className="grid grid-cols-[0.85rem_minmax(0,1fr)] gap-1.5 py-0.5"
-          key={`caca-line-${index}`}
+          key={`athena-line-${index}`}
         >
           <span className="pt-px text-center text-base font-black leading-5 text-[#101820]">
             •
@@ -628,7 +619,7 @@ function renderCacaMessageContent(content: string) {
     }
 
     return (
-      <div className="whitespace-pre-wrap" key={`caca-line-${index}`}>
+      <div className="whitespace-pre-wrap" key={`athena-line-${index}`}>
         {line}
       </div>
     );
@@ -671,7 +662,7 @@ const draftHeaderPatterns = [
   /^canal:/,
 ] as const;
 
-function buildPulseXAgentContext({
+function buildHermesAgentContext({
   aiUserContext,
   channel,
   currentUserId,
@@ -682,13 +673,13 @@ function buildPulseXAgentContext({
   users,
 }: {
   aiUserContext: ReturnType<typeof buildHubAiUserContext>;
-  channel: PulseXChannel;
-  currentUserId: PulseXPresenceUser["id"];
+  channel: HermesChannel;
+  currentUserId: HermesPresenceUser["id"];
   draftValue: string;
-  focusedMessage?: PulseXMessage | null;
-  messages: readonly PulseXMessage[];
-  selectedTone: (typeof cacaToneOptions)[number];
-  users: readonly PulseXPresenceUser[];
+  focusedMessage?: HermesMessage | null;
+  messages: readonly HermesMessage[];
+  selectedTone: (typeof athenaToneOptions)[number];
+  users: readonly HermesPresenceUser[];
 }) {
   const messageAuthorIds = new Set(messages.map((message) => message.authorId));
   const channelUsers = users
@@ -749,7 +740,7 @@ function buildPulseXAgentContext({
           tags: focusedMessage.tags ?? [],
         }
       : null,
-    modulo: "PulseX",
+    modulo: "Hermes",
     participantes: channelUsers.map((user) => ({
       id: user.id,
       nome: user.label,
@@ -758,7 +749,7 @@ function buildPulseXAgentContext({
     })),
     rascunhoAtual: draftValue.trim() || null,
     regrasDoAgente: [
-      "Atue como Caca do PulseX, focada em comunicacao interna operacional.",
+      "Atue como Athena do Hermes, focada em comunicacao interna operacional.",
       "Resuma, organize decisoes, destaque riscos, sugira proximos passos e prepare mensagens curtas.",
       "Nao afirme que enviou mensagem, criou tarefa ou acionou alguem. A execucao depende do operador.",
       "Nao invente contexto alem das mensagens, participantes e rascunho recebidos.",
@@ -772,8 +763,8 @@ function buildPulseXAgentContext({
 }
 
 function getUserLabel(
-  users: readonly PulseXPresenceUser[],
-  userId: PulseXPresenceUser["id"],
+  users: readonly HermesPresenceUser[],
+  userId: HermesPresenceUser["id"],
 ) {
   return users.find((user) => user.id === userId)?.label ?? "Sistema";
 }

@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
   if (channelError || !channel) {
     return NextResponse.json(
-      { error: "Canal PulseX invalido." },
+      { error: "Canal Hermes invalido." },
       { status: 400 },
     );
   }
