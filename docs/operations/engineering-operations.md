@@ -6558,3 +6558,20 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nenhuma env, secret, banco, migration, producao ou alias de producao foi alterado neste recorte. A confirmacao real de entrega/leitura depende dos webhooks da Meta retornarem status para o mesmo `wa_message_id`. O teste operacional deve confirmar no WhatsApp do Lucas que a mensagem enviada pela Iris chega e que os checks evoluem apos entrega/leitura.
 - Status operacional: `VALIDADO LOCAL / AUTORIZADO PARA HOMOLOGACAO`.
 - Proxima squad recomendada: `Hefesto` para publicar o recorte em homologacao e executar healthchecks; `Lucas` para testar envio e recebimento real pelo WhatsApp.
+
+Registro de diario:
+
+- Assunto: `[Iris] Envio outbound WhatsApp publicado em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 09:14:16 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / META WHATSAPP / HEALTHCHECK`.
+- Motivo da mudanca: Lucas autorizou subir em homologacao o pacote da Iris que corrige envio outbound pela Meta, mostra o operador na mensagem e troca o texto de status por checks no padrao WhatsApp.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts`, `apps/hub/lib/iris/meta-inbound-processor.ts`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: criei uma worktree limpa baseada em `origin/homolog`, apliquei somente o recorte Iris, validei localmente, criei o commit `f9376c2 feat(iris): send atendimento messages via meta`, publiquei `HEAD:homolog`, aguardei o Preview Git ficar `Ready` e confirmei que o alias de homologacao passou a apontar para o deployment novo.
+- Logica utilizada: a publicacao foi limitada a homologacao para testar o fluxo real WhatsApp sem tocar em producao. O recorte mantem secrets no servidor, nao altera variaveis de ambiente, nao executa migration e depende dos webhooks Meta ja configurados para evoluir o status visual da mensagem.
+- Commit publicado: `f9376c2 feat(iris): send atendimento messages via meta`.
+- Deployment homologacao: Vercel Preview `dpl_Bavi4yFRA2qChmvRE5knaQnGoTG3`; URL tecnica `https://careli-hub-hub-i2bs-4zyeyo97u-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: validacoes locais do commit passaram em `git diff --check`, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`; `vercel inspect` confirmou deployment `Ready`; healthchecks remotos confirmaram `/iris=200`, `/api/iris/meta/webhook=403` esperado sem challenge, `/api/iris/meta/events=401` esperado sem sessao; `vercel logs` dos ultimos minutos mostrou apenas chamadas esperadas 200/401/403 e presence 200.
+- Pendencias ou riscos conhecidos: teste funcional autenticado ainda precisa ser feito por Lucas enviando uma resposta pela Iris para confirmar chegada no WhatsApp e evolucao dos checks conforme os webhooks de status. Nenhuma env, secret, Supabase, banco, migration, producao ou alias de producao foi alterado.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para smoke real de envio outbound pela Iris; `Iris Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
