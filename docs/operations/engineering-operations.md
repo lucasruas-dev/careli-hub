@@ -6434,3 +6434,21 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: deploy manual da Vercel CLI nao herdou variaveis branch-scoped de `homolog`, gerando 503 nas rotas Meta em previews manuais; o alias `homo.c2x.app.br` foi restaurado para o preview anterior enquanto a publicacao correta segue via push da branch `homolog`, para que a Vercel use as variaveis branch-scoped. Ainda falta o smoke final do webhook apos o deploy Git ficar pronto e o teste real do Lucas enviando nova mensagem WhatsApp.
 - Status operacional: `MIGRATION HOMOLOG APLICADA / DEPLOY HOMOLOG EM PUBLICACAO`.
 - Proxima squad recomendada: `Iris Core` para smoke final do webhook e teste real do inbound; `Hefesto` para monitorar o deployment Git da branch `homolog` e apontar o alias para o deployment correto.
+
+Registro de diario:
+
+- Assunto: `[Iris] Inbound WhatsApp AT publicado em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 03:55:10 -03:00.
+- Tipo da alteracao: `MIGRATION HOMOLOG / RELEASE HOMOLOG / HEALTHCHECK`.
+- Motivo da mudanca: Lucas autorizou aplicar diretamente o motor inbound da Iris para que mensagens recebidas pelo WhatsApp criem ticket real no board com protocolo `AT-*` sequencial.
+- Arquivos/modulos afetados: `apps/hub/lib/iris/meta-inbound-processor.ts`, `apps/hub/app/api/iris/meta/webhook/route.ts`, `apps/hub/lib/iris/meta-whatsapp.ts`, `apps/hub/lib/iris/meta-server.ts`, rotas `/api/iris/meta/events`, `/api/iris/meta/messages`, pontes legadas `/api/caredesk/meta/events` e `/api/caredesk/meta/messages`, `apps/hub/modules/caredesk/IrisPage.tsx`, `packages/database/migrations/0025_iris_inbound_ticket_protocols.sql`, `scripts/seed-caredesk-demo.mjs`, docs do modulo Iris e este diario canonico.
+- Como foi feito: apliquei a migration `0025` no Supabase de homologacao usando variaveis Preview branch `homolog` da Vercel, sem imprimir secrets; validei a sequencia/funcao `AT-*`, a permissao do `service_role` e a limpeza do mock `CARE-DEMO-*`; publiquei o recorte por commit na branch `homolog` para a Vercel herdar as variaveis branch-scoped; e apontei `https://homo.c2x.app.br` para o deployment Git validado.
+- Logica utilizada: deploy manual da Vercel CLI nao herdou variaveis branch-scoped de `homolog`, entao o alias foi temporariamente restaurado para o preview anterior e a publicacao correta foi feita via push Git da branch `homolog`. Assim o runtime de homologacao recebeu as envs Meta/Supabase corretas sem ampliar escopo de env nem copiar secrets para comandos.
+- Commit realizado: `bb70062 feat(iris): process meta inbound tickets`.
+- Migration aplicada: `0025_iris_inbound_ticket_protocols.sql`.
+- Deployment homologacao: Vercel Preview `dpl_HDDHNMbu76hjGWm1CzGH3aamVxx8`; URL `https://careli-hub-hub-i2bs-21u19c5ye-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou; `node --check apps/hub/lib/iris/meta-inbound-processor.ts` passou; `node --check apps/hub/lib/iris/meta-server.ts` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; build remoto Vercel passou; validacao SQL confirmou `sequence_present=true`, `function_present=true`, `security_definer=false`, `service_role_can_execute=true`, `demo_tickets=0` e `demo_broadcasts=0`; healthcheck remoto confirmou `/iris=200`, `/api/iris/meta/status=401` sem sessao, `/api/iris/meta/events=401` sem sessao, `GET /api/iris/meta/webhook=403` sem challenge e `POST /api/iris/meta/webhook=401` com assinatura invalida; logs de erro Vercel dos ultimos minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: falta Lucas enviar nova mensagem real pelo WhatsApp para confirmar visualmente o nascimento do ticket `AT-*` no board da Iris. Producao nao foi alterada. O warning Turbopack/NFT e vulnerabilidades herdadas de `npm audit` permanecem fora deste recorte.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Iris Core` acompanhando o teste real de recebimento; depois, se aprovado, `Hefesto` decide promocao futura para producao em recorte separado.
