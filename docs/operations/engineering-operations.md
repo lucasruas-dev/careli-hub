@@ -6761,3 +6761,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: ainda falta publicar o recorte em homologacao e Lucas retestar envio real pela Iris. Nenhuma env, secret, banco, migration, producao ou alias de producao foi alterado nesta etapa.
 - Status operacional: `VALIDADO LOCAL / PUBLICACAO HOMOLOG EM ANDAMENTO`.
 - Proxima squad recomendada: `Iris Core` para publicar homologacao e healthcheck; `Lucas` para testar envio outbound real apos deploy.
+
+Registro de diario:
+
+- Assunto: `[Iris] Fallback de nono digito publicado em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 13:42:36 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / META WHATSAPP / HEALTHCHECK`.
+- Motivo da mudanca: publicar em `https://homo.c2x.app.br` o hotfix que tenta a variacao brasileira complementar do telefone quando a Meta retorna `131030` no envio outbound da Iris.
+- Arquivos/modulos afetados: `apps/hub/lib/iris/meta-whatsapp.ts`, `apps/hub/app/api/iris/meta/messages/route.ts`, `docs/operations/releases-homologation.md`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: o commit `53906b5 fix(iris): retry whatsapp recipient variants` foi rebaseado sobre o topo atual de `origin/homolog`, preservando os recortes recentes do Hermes, e publicado em `homolog`. O Vercel gerou o Preview `dpl_C4JmAzXQExyzWnz8mst2FW8fcm1B`, que ficou `Ready` e passou a responder pelo alias de homologacao.
+- Logica utilizada: a correcao ficou restrita ao envio outbound da Iris e nao altera envs, secrets, Supabase, migrations, producao ou alias de producao. O fallback so roda no erro `131030`; se a Meta rejeitar por token, permissao, janela ou outro motivo, a Iris mantem o erro original.
+- Validacao executada: apos rebase, `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos de `eslint.config.js` typeless/cache; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional e Turbopack/NFT; `vercel inspect` confirmou deployment `Ready`; healthchecks remotos confirmaram `/iris=200`, `/api/iris/meta/webhook=403` esperado sem challenge, `POST /api/iris/meta/messages=401` esperado sem sessao; `vercel logs` dos ultimos minutos mostrou apenas chamadas esperadas.
+- Pendencias ou riscos conhecidos: Lucas precisa retestar envio real pela Iris com um contato cujo numero aprovado na Meta possa existir com ou sem nono digito. Producao nao foi alterada.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para smoke real de envio outbound; `Iris Core` acompanha ajuste fino e logs.
