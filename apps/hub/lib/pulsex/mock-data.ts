@@ -551,6 +551,7 @@ export const pulsexThreadReplies = {
     {
       authorId: "leo",
       body: "Boa. Esse canal pode virar a linha do tempo operacional do Hades.",
+      channelId: "hades",
       id: "reply-001",
       messageId: "msg-001",
       timestamp: "09:14",
@@ -558,6 +559,7 @@ export const pulsexThreadReplies = {
     {
       authorId: "mia",
       body: "Tambem quero filtrar por modulo quando o backend entrar.",
+      channelId: "hades",
       id: "reply-002",
       messageId: "msg-001",
       timestamp: "09:18",
@@ -567,6 +569,7 @@ export const pulsexThreadReplies = {
     {
       authorId: "ana",
       body: "Perfeito. Primeiro local, depois contrato realtime.",
+      channelId: "hades",
       id: "reply-003",
       messageId: "msg-005",
       timestamp: "09:19",

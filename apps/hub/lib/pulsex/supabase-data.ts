@@ -1042,9 +1042,12 @@ function mapThreadReplyFromMessage(
     authorId: message.authorId,
     authorName: message.authorName,
     body: message.body,
+    channelId: message.channelId,
     createdAt: message.createdAt,
     id: message.id,
     messageId: parentMessageId,
+    reactions: message.reactions,
+    tags: message.tags,
     timestamp: message.timestamp,
   };
 }

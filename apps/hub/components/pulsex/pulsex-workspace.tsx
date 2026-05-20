@@ -44,6 +44,7 @@ import type {
   HermesMessageTag,
   HermesMessage,
   HermesPresenceUser,
+  HermesReaction,
   HermesReactionEmoji,
   HermesThreadReply,
 } from "@/lib/pulsex";
@@ -62,6 +63,57 @@ type HermesToastNotification = {
   mentioned: boolean;
   title: string;
 };
+
+function toggleHermesReactions({
+  currentUserId,
+  emoji,
+  reactions,
+}: {
+  currentUserId: HermesPresenceUser["id"];
+  emoji: HermesReactionEmoji;
+  reactions: readonly HermesReaction[];
+}): HermesReaction[] {
+  const nextReactions = [...reactions];
+  const reactionIndex = nextReactions.findIndex(
+    (reaction) => reaction.emoji === emoji,
+  );
+
+  if (reactionIndex < 0) {
+    return [
+      ...nextReactions,
+      {
+        count: 1,
+        emoji,
+        reactedByUserIds: [currentUserId],
+      },
+    ];
+  }
+
+  const reaction = nextReactions[reactionIndex];
+
+  if (!reaction) {
+    return nextReactions;
+  }
+
+  const hasReacted = reaction.reactedByUserIds.includes(currentUserId);
+  const reactedByUserIds = hasReacted
+    ? reaction.reactedByUserIds.filter((userId) => userId !== currentUserId)
+    : [...reaction.reactedByUserIds, currentUserId];
+  const count = hasReacted ? reaction.count - 1 : reaction.count + 1;
+
+  if (count <= 0) {
+    nextReactions.splice(reactionIndex, 1);
+    return nextReactions;
+  }
+
+  nextReactions[reactionIndex] = {
+    ...reaction,
+    count,
+    reactedByUserIds,
+  };
+
+  return nextReactions;
+}
 
 const PULSEX_PRESENCE_REFRESH_MS = 5_000;
 const PULSEX_MESSAGE_REFRESH_MS = 4_000;
@@ -1014,12 +1066,55 @@ export function HermesWorkspace() {
     }
   }
 
+  function updateThreadReplyState(
+    replyId: HermesThreadReply["id"],
+    updater: (reply: HermesThreadReply) => HermesThreadReply,
+  ) {
+    setThreadReplies((currentReplies) => {
+      let changed = false;
+      const nextReplies = Object.fromEntries(
+        Object.entries(currentReplies).map(([messageId, replies]) => [
+          messageId,
+          replies.map((reply) => {
+            if (reply.id !== replyId) {
+              return reply;
+            }
+
+            changed = true;
+            return updater(reply);
+          }),
+        ]),
+      );
+
+      return changed ? nextReplies : currentReplies;
+    });
+  }
+
+  function applySavedThreadReplyMessage(savedMessage: HermesMessage) {
+    updateThreadReplyState(savedMessage.id, (reply) => ({
+      ...reply,
+      attachment: savedMessage.attachment,
+      authorAvatarUrl: savedMessage.authorAvatarUrl,
+      authorId: savedMessage.authorId,
+      authorName: savedMessage.authorName,
+      body: savedMessage.body,
+      channelId: savedMessage.channelId,
+      createdAt: savedMessage.createdAt,
+      reactions: savedMessage.reactions,
+      tags: savedMessage.tags,
+      timestamp: savedMessage.timestamp,
+    }));
+  }
+
   function handleToggleMessageTag(
     messageId: HermesMessage["id"],
     tag: HermesMessageTag,
   ) {
     const currentMessage = messages.find((message) => message.id === messageId);
-    const currentTags = currentMessage?.tags ?? [];
+    const currentReply = Object.values(threadReplies)
+      .flat()
+      .find((reply) => reply.id === messageId);
+    const currentTags = currentMessage?.tags ?? currentReply?.tags ?? [];
     const nextTags = currentTags.includes(tag)
       ? currentTags.filter((currentTag) => currentTag !== tag)
       : [...currentTags, tag];
@@ -1029,8 +1124,16 @@ export function HermesWorkspace() {
         message.id === messageId ? { ...message, tags: nextTags } : message,
       ),
     );
+    updateThreadReplyState(messageId, (reply) => ({
+      ...reply,
+      tags: nextTags,
+    }));
 
-    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
+    if (
+      !hasHubSupabaseConfig() ||
+      messageId.startsWith("local-") ||
+      messageId.startsWith("reply-")
+    ) {
       return;
     }
 
@@ -1048,6 +1151,7 @@ export function HermesWorkspace() {
             message.id === messageId ? savedMessage : message,
           ),
         );
+        applySavedThreadReplyMessage(savedMessage);
       })
       .catch((error: unknown) => {
         if (isLocalDevelopmentRuntime()) {
@@ -1061,62 +1165,33 @@ export function HermesWorkspace() {
     emoji: HermesReactionEmoji,
   ) {
     setMessages((currentMessages) =>
-      currentMessages.map((message) => {
-        if (message.id !== messageId) {
-          return message;
-        }
-
-        const reactions = [...(message.reactions ?? [])];
-        const reactionIndex = reactions.findIndex(
-          (reaction) => reaction.emoji === emoji,
-        );
-
-        if (reactionIndex < 0) {
-          return {
-            ...message,
-            reactions: [
-              ...reactions,
-              {
-                count: 1,
+      currentMessages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              reactions: toggleHermesReactions({
+                currentUserId,
                 emoji,
-                reactedByUserIds: [currentUserId],
-              },
-            ],
-          };
-        }
-
-        const reaction = reactions[reactionIndex];
-
-        if (!reaction) {
-          return message;
-        }
-
-        const hasReacted = reaction.reactedByUserIds.includes(currentUserId);
-        const reactedByUserIds = hasReacted
-          ? reaction.reactedByUserIds.filter(
-              (userId) => userId !== currentUserId,
-            )
-          : [...reaction.reactedByUserIds, currentUserId];
-        const count = hasReacted ? reaction.count - 1 : reaction.count + 1;
-
-        if (count <= 0) {
-          reactions.splice(reactionIndex, 1);
-        } else {
-          reactions[reactionIndex] = {
-            ...reaction,
-            count,
-            reactedByUserIds,
-          };
-        }
-
-        return {
-          ...message,
-          reactions,
-        };
-      }),
+                reactions: message.reactions ?? [],
+              }),
+            }
+          : message,
+      ),
     );
+    updateThreadReplyState(messageId, (reply) => ({
+      ...reply,
+      reactions: toggleHermesReactions({
+        currentUserId,
+        emoji,
+        reactions: reply.reactions ?? [],
+      }),
+    }));
 
-    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
+    if (
+      !hasHubSupabaseConfig() ||
+      messageId.startsWith("local-") ||
+      messageId.startsWith("reply-")
+    ) {
       return;
     }
 
@@ -1134,6 +1209,7 @@ export function HermesWorkspace() {
             message.id === messageId ? savedMessage : message,
           ),
         );
+        applySavedThreadReplyMessage(savedMessage);
       })
       .catch((error: unknown) => {
         if (isLocalDevelopmentRuntime()) {
@@ -1166,6 +1242,7 @@ export function HermesWorkspace() {
       authorName: currentPresenceUser?.label ?? hubUser?.name,
       attachment,
       body: replyBody,
+      channelId: activeThreadMessage.channelId,
       createdAt: new Date().toISOString(),
       id: `reply-${activeThreadMessage.id}-${Date.now()}`,
       messageId: activeThreadMessage.id,

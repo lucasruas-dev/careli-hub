@@ -131,9 +131,12 @@ export type HermesThreadReply = {
   authorId: HermesPresenceUser["id"];
   authorName?: string;
   body: string;
+  channelId: HermesChannel["id"];
   createdAt?: string;
   id: string;
   messageId: HermesMessage["id"];
+  reactions?: readonly HermesReaction[];
+  tags?: readonly HermesMessageTag[];
   timestamp: string;
 };
 
