@@ -6607,3 +6607,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: Lucas precisa recarregar a Iris em homologacao e repetir envio real pelo WhatsApp. Se a mensagem local anterior ainda estiver dentro da janela de 60 minutos, a tela deve tentar sincronizar automaticamente; mensagens antigas fora da janela nao sao disparadas para evitar duplicidade.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
 - Proxima squad recomendada: `Lucas` para reteste real de envio/recebimento; `Iris Core` acompanha os logs se o envio ainda nao chegar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Janela de recuperacao outbound ampliada em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 11:18:42 -03:00.
+- Tipo da alteracao: `AJUSTE HOMOLOG / META WHATSAPP / HEALTHCHECK`.
+- Motivo da mudanca: apos calcular o horario do teste real do Lucas, a janela de 30 minutos poderia deixar a mensagem local de 10:38 fora da recuperacao automatica.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `docs/operations/engineering-operations.md`, branch `homolog` e alias `https://homo.c2x.app.br`.
+- Como foi feito: a janela de recuperacao de mensagens outbound sem `external_message_id` foi ampliada para 60 minutos, mantendo o bloqueio para mensagens antigas a fim de evitar disparos duplicados. O ajuste foi publicado no commit `8239eb4 fix(iris): extend outbound recovery window`.
+- Deployment homologacao: Vercel Preview `dpl_BpkZ1bDLAH9QG8UnHq7N1b8ZhJX6`; URL tecnica `https://careli-hub-hub-i2bs-52xrxj6fg-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos; `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready`; `GET /iris` retornou 200; `POST /api/iris/meta/messages` sem sessao retornou 401 esperado e apareceu nos logs; bundle remoto contem os marcadores de recuperacao.
+- Pendencias ou riscos conhecidos: Lucas precisa recarregar a Iris e testar de novo. Se a mensagem anterior ainda estiver no intervalo de 60 minutos e sem `external_message_id`, a tela deve tentar recupera-la automaticamente.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para reteste real; `Iris Core` acompanhar logs de `/api/iris/meta/messages`.
