@@ -86,9 +86,13 @@ type IrisMessage = {
   createdAt: string;
   deliveryStatus: string;
   direction: "inbound" | "outbound" | "internal";
+  externalMessageId?: string | null;
   id: string;
+  readAt?: string | null;
+  deliveredAt?: string | null;
   senderLabel?: string | null;
   senderType: "customer" | "operator" | "agent" | "system";
+  sentAt?: string | null;
 };
 
 type IrisTicket = {
@@ -1246,6 +1250,7 @@ function IrisConversationPanel({
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] =
     useState(false);
+  const repairingOutboundMessageIds = useRef(new Set<string>());
   const { hubUser } = useAuth();
   const operatorLabel = hubUser?.name ?? "Operador Iris";
 
@@ -1305,6 +1310,33 @@ function IrisConversationPanel({
       ticketChecklist.some((item) => !item.ok));
   const operationReady = !ticketClosed;
   const blockedTooltip = ticketClosed ? "Ticket encerrado" : "Enviar mensagem";
+
+  useEffect(() => {
+    if (!operationReady || sending || !ticket.contactPhone) {
+      return;
+    }
+
+    const pendingLocalMessage = ticket.messages.find((message) =>
+      shouldRepairOutboundMessage(message),
+    );
+
+    if (
+      !pendingLocalMessage ||
+      repairingOutboundMessageIds.current.has(pendingLocalMessage.id)
+    ) {
+      return;
+    }
+
+    void sendExistingLocalMessage(pendingLocalMessage);
+  }, [
+    operationReady,
+    sending,
+    ticket.channelId,
+    ticket.contactId,
+    ticket.contactPhone,
+    ticket.id,
+    ticket.messages,
+  ]);
 
   async function sendMessage() {
     const body = draft.trim();
@@ -1376,6 +1408,62 @@ function IrisConversationPanel({
         error instanceof Error
           ? error.message
           : "Nao foi possivel enviar a mensagem agora.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendExistingLocalMessage(message: IrisMessage) {
+    repairingOutboundMessageIds.current.add(message.id);
+    setSending(true);
+    setFeedback("Sincronizando mensagem local com o WhatsApp.");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body: message.body,
+          channelId: ticket.channelId ?? null,
+          contactId: ticket.contactId ?? null,
+          messageId: message.id,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorLabel(mapMessageRow(payload.message), operatorLabel),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel enviar pelo WhatsApp.",
+        );
+      }
+
+      setFeedback("Mensagem sincronizada e enviada pelo WhatsApp.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel sincronizar mensagem", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel sincronizar a mensagem local.",
       );
     } finally {
       setSending(false);
@@ -3401,7 +3489,7 @@ function MessageBubble({ message }: { message: IrisMessage }) {
         <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-slate-400">
           <span>{formatDateTime(message.createdAt)}</span>
           {outbound ? (
-            <MessageDeliveryIndicator status={message.deliveryStatus} />
+            <MessageDeliveryIndicator message={message} />
           ) : null}
         </div>
       </div>
@@ -3409,22 +3497,39 @@ function MessageBubble({ message }: { message: IrisMessage }) {
   );
 }
 
-function MessageDeliveryIndicator({ status }: { status: string }) {
-  const normalized = normalizeDeliveryStatus(status);
-  const doubleCheck = normalized === "delivered" || normalized === "read";
-  const Icon = doubleCheck ? CheckCheck : Check;
+function MessageDeliveryIndicator({ message }: { message: IrisMessage }) {
+  const normalized = normalizeDeliveryStatus(message.deliveryStatus);
+  const hasMetaConfirmation = Boolean(message.externalMessageId);
+  const pendingMetaSend =
+    !hasMetaConfirmation &&
+    normalized !== "failed" &&
+    normalized !== "delivered" &&
+    normalized !== "read";
+  const doubleCheck =
+    !pendingMetaSend && (normalized === "delivered" || normalized === "read");
+  const Icon =
+    normalized === "failed" || pendingMetaSend
+      ? Clock3
+      : doubleCheck
+        ? CheckCheck
+        : Check;
   const label = getDeliveryStatusLabel(normalized);
   const colorClass =
-    normalized === "read"
+    pendingMetaSend
+      ? "text-amber-500"
+      : normalized === "read"
       ? "text-sky-500"
       : normalized === "failed"
         ? "text-rose-500"
         : "text-slate-400";
+  const tooltip = pendingMetaSend
+    ? "Aguardando envio pela Meta"
+    : label;
 
   return (
-    <Tooltip content={label} placement="top">
+    <Tooltip content={tooltip} placement="top">
       <span
-        aria-label={label}
+        aria-label={tooltip}
         className={`inline-flex items-center ${colorClass}`}
       >
         <Icon className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
@@ -3468,6 +3573,23 @@ function getDeliveryStatusLabel(status: string) {
   }
 
   return "Aguardando envio";
+}
+
+function shouldRepairOutboundMessage(message: IrisMessage) {
+  const normalized = normalizeDeliveryStatus(message.deliveryStatus);
+  const ageInMs = Date.now() - dateValue(message.createdAt);
+  const repairWindowInMs = 30 * 60 * 1000;
+
+  return (
+    message.direction === "outbound" &&
+    message.senderType === "operator" &&
+    !message.externalMessageId &&
+    (normalized === "queued" ||
+      normalized === "sent" ||
+      normalized === "draft") &&
+    ageInMs >= 0 &&
+    ageInMs <= repairWindowInMs
+  );
 }
 
 function ContextItem({ label, value }: { label: string; value: string }) {
@@ -3931,9 +4053,13 @@ function mapMessageRow(row: any): IrisMessage {
     createdAt: row.created_at,
     deliveryStatus: row.delivery_status ?? "queued",
     direction: row.direction ?? "internal",
+    deliveredAt: row.delivered_at ?? null,
+    externalMessageId: row.external_message_id ?? null,
     id: row.id,
+    readAt: row.read_at ?? null,
     senderLabel: readMessageSenderLabel(row),
     senderType: row.sender_type ?? "system",
+    sentAt: row.sent_at ?? null,
   };
 }
 

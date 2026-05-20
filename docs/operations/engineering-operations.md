@@ -6575,3 +6575,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: teste funcional autenticado ainda precisa ser feito por Lucas enviando uma resposta pela Iris para confirmar chegada no WhatsApp e evolucao dos checks conforme os webhooks de status. Nenhuma env, secret, Supabase, banco, migration, producao ou alias de producao foi alterado.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
 - Proxima squad recomendada: `Lucas` para smoke real de envio outbound pela Iris; `Iris Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Recuperacao de envio outbound sem acionamento Meta`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 10:59:36 -03:00.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / META WHATSAPP / VALIDACAO LOCAL`.
+- Motivo da mudanca: Lucas testou responder pela Iris em homologacao e a mensagem apareceu na tela, mas nao chegou ao WhatsApp. A investigacao em logs de runtime mostrou webhook inbound recebido normalmente e ausencia de `POST /api/iris/meta/messages` no horario do envio do operador, indicando que a mensagem local nao acionou a rota server-side da Meta.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts` e este diario canonico.
+- Como foi feito: a rota `/api/iris/meta/messages` passou a aceitar `messageId` para reenviar uma mensagem local existente sem duplicar o registro; quando a mensagem ja possuir `external_message_id`, a rota retorna `alreadySent` e nao dispara novamente. A tela de atendimento agora detecta mensagens outbound recentes de operador sem `external_message_id` e tenta sincronizar automaticamente pela Meta dentro de uma janela curta de recuperacao. O indicador visual deixou de mostrar check de WhatsApp quando nao ha confirmacao Meta e passa a exibir estado pendente com tooltip de aguardando envio pela Meta.
+- Logica utilizada: uma mensagem so deve parecer enviada pelo WhatsApp quando houver confirmacao server-side/Meta (`wa_message_id` em `external_message_id`). A recuperacao cobre abas/bundles antigos ou insercoes locais que tenham gravado `caredesk_messages` sem passar pelo endpoint protegido, preservando secrets no servidor e evitando duplicidade por `messageId`/`external_message_id`.
+- Validacao executada: na worktree limpa de homologacao, `git diff --check -- apps/hub/app/api/iris/meta/messages/route.ts apps/hub/modules/caredesk/IrisPage.tsx` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos de `eslint.config.js` typeless e cache/worktree; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional e Turbopack/NFT.
+- Pendencias ou riscos conhecidos: ainda falta publicar o recorte em homologacao e Lucas retestar com a tela recarregada. A recuperacao automatica so tenta mensagens outbound recentes sem `external_message_id`; mensagens antigas nao serao disparadas automaticamente para evitar duplicidade operacional.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima squad recomendada: `Hefesto` publicar em homologacao; `Lucas` validar envio real para WhatsApp e evolucao dos checks.

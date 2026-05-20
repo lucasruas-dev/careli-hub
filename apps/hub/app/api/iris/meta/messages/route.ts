@@ -17,6 +17,7 @@ type SendMessageBody = {
   body?: unknown;
   channelId?: unknown;
   contactId?: unknown;
+  messageId?: unknown;
   ticketId?: unknown;
   to?: unknown;
 };
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
   const ticketId = normalizeUuid(input?.ticketId);
   const channelId = normalizeUuid(input?.channelId);
   const contactId = normalizeUuid(input?.contactId);
+  const messageId = normalizeUuid(input?.messageId);
 
   if (!to) {
     return NextResponse.json(
@@ -80,7 +82,37 @@ export async function POST(request: NextRequest) {
     userId: authorization.user.id,
   });
 
-  if (ticketId) {
+  if (messageId) {
+    const prepared = await prepareExistingTicketMessage({
+      client: authorization.client,
+      messageId,
+      operatorLabel,
+      ticketId,
+      to,
+      userId: authorization.user.id,
+    });
+
+    if (!prepared.ok) {
+      return NextResponse.json({ error: prepared.error }, { status: 500 });
+    }
+
+    if (prepared.alreadySent) {
+      return NextResponse.json(
+        {
+          alreadySent: true,
+          message: prepared.message,
+          ok: true,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      );
+    }
+
+    localMessage = prepared.message;
+  } else if (ticketId) {
     const created = await createQueuedTicketMessage({
       body,
       channelId,
@@ -212,6 +244,100 @@ async function createQueuedTicketMessage({
   }
 
   return {
+    message: data,
+    ok: true as const,
+  };
+}
+
+async function prepareExistingTicketMessage({
+  client,
+  messageId,
+  operatorLabel,
+  ticketId,
+  to,
+  userId,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  messageId: string;
+  operatorLabel: string;
+  ticketId: string | null;
+  to: string;
+  userId: string;
+}) {
+  const { data: existing, error: existingError } = await client
+    .from("caredesk_messages")
+    .select(`${MESSAGE_SELECT},ticket_id`)
+    .eq("id", messageId)
+    .maybeSingle<
+      {
+        body: string | null;
+        created_at: string;
+        delivery_status: string;
+        direction: string;
+        external_message_id: string | null;
+        id: string;
+        provider_payload?: unknown;
+        sender_type: string;
+        sender_user_id?: string | null;
+        ticket_id: string | null;
+      }
+    >();
+
+  if (existingError || !existing) {
+    return {
+      error: "Mensagem local nao encontrada para envio.",
+      ok: false as const,
+    };
+  }
+
+  if (existing.direction !== "outbound") {
+    return {
+      error: "Somente mensagens outbound podem ser enviadas pela Meta.",
+      ok: false as const,
+    };
+  }
+
+  if (ticketId && existing.ticket_id !== ticketId) {
+    return {
+      error: "Mensagem local nao pertence ao ticket informado.",
+      ok: false as const,
+    };
+  }
+
+  if (existing.external_message_id) {
+    return {
+      alreadySent: true as const,
+      message: existing,
+      ok: true as const,
+    };
+  }
+
+  const { data, error } = await client
+    .from("caredesk_messages")
+    .update({
+      delivery_status: "queued",
+      provider_payload: {
+        destination: to,
+        operatorLabel,
+        provider: "meta",
+        source_module: "iris",
+      },
+      sender_type: "operator",
+      sender_user_id: existing.sender_user_id ?? userId,
+    })
+    .eq("id", messageId)
+    .select(MESSAGE_SELECT)
+    .single();
+
+  if (error) {
+    return {
+      error: "Nao foi possivel preparar a mensagem local para envio.",
+      ok: false as const,
+    };
+  }
+
+  return {
+    alreadySent: false as const,
     message: data,
     ok: true as const,
   };
