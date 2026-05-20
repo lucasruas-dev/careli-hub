@@ -329,21 +329,19 @@ export function MessageItem({
         >
           {onToggleReaction && !message.deletedAt ? (
             <div className="relative">
-              <Tooltip content="Reagir" placement="bottom">
-                <button
-                  aria-expanded={isReactionPickerOpen}
-                  aria-label="Reagir com emoji"
-                  className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-                  onClick={() => {
-                    setIsInfoOpen(false);
-                    setIsTagMenuOpen(false);
-                    setIsReactionPickerOpen((currentValue) => !currentValue);
-                  }}
-                  type="button"
-                >
-                  <SmilePlus aria-hidden="true" size={13} />
-                </button>
-              </Tooltip>
+              <button
+                aria-expanded={isReactionPickerOpen}
+                aria-label="Reagir com emoji"
+                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+                onClick={() => {
+                  setIsInfoOpen(false);
+                  setIsTagMenuOpen(false);
+                  setIsReactionPickerOpen((currentValue) => !currentValue);
+                }}
+                type="button"
+              >
+                <SmilePlus aria-hidden="true" size={13} />
+              </button>
               {isReactionPickerOpen ? (
                 <ReactionPicker
                   currentUserId={currentUserId}
@@ -355,74 +353,66 @@ export function MessageItem({
               ) : null}
             </div>
           ) : null}
-          <Tooltip content="Responder" placement="bottom">
+          <button
+            aria-label={
+              message.threadCount
+                ? `${message.threadCount} respostas`
+                : "Responder"
+            }
+            className={`inline-flex min-w-6 items-center justify-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
+              message.threadCount
+                ? "border border-[#A07C3B] bg-[#A07C3B] text-white opacity-100 shadow-sm shadow-[#A07C3B]/25 hover:brightness-110"
+                : "text-inherit opacity-65 hover:bg-[#A07C3B]/10 hover:opacity-100"
+            }`}
+            onClick={() => onOpenThread?.(message.id)}
+            type="button"
+          >
+            <Reply aria-hidden="true" size={13} />
+            {message.threadCount ? (
+              <span className="text-[0.65rem] font-semibold">
+                {message.threadCount}
+              </span>
+            ) : null}
+          </button>
+          {onAskAiReply && !message.deletedAt ? (
             <button
-              aria-label={
-                message.threadCount
-                  ? `${message.threadCount} respostas`
-                  : "Responder"
-              }
-              className={`inline-flex min-w-6 items-center justify-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
-                message.threadCount
-                  ? "border border-[#A07C3B] bg-[#A07C3B] text-white opacity-100 shadow-sm shadow-[#A07C3B]/25 hover:brightness-110"
-                  : "text-inherit opacity-65 hover:bg-[#A07C3B]/10 hover:opacity-100"
-              }`}
-              onClick={() => onOpenThread?.(message.id)}
+              aria-label="Responder com Athena"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              onClick={() => onAskAiReply(message.id)}
               type="button"
             >
-              <Reply aria-hidden="true" size={13} />
-              {message.threadCount ? (
-                <span className="text-[0.65rem] font-semibold">
-                  {message.threadCount}
-                </span>
-              ) : null}
+              <AthenaIcon aria-hidden="true" className="size-4" />
             </button>
-          </Tooltip>
-          {onAskAiReply && !message.deletedAt ? (
-            <Tooltip content="Responder com Athena" placement="bottom">
-              <button
-                aria-label="Responder com Athena"
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-                onClick={() => onAskAiReply(message.id)}
-                type="button"
-              >
-                <AthenaIcon aria-hidden="true" className="size-4" />
-              </button>
-            </Tooltip>
           ) : null}
           {isOwn && onEditMessage && !message.deletedAt ? (
-            <Tooltip content="Editar mensagem" placement="bottom">
-              <button
-                aria-label="Editar mensagem"
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-                onClick={() => {
-                  setIsReactionPickerOpen(false);
-                  setEditValue(message.body);
-                  setEditError(null);
-                  setIsEditing(true);
-                }}
-                type="button"
-              >
-                <Pencil aria-hidden="true" size={12} />
-              </button>
-            </Tooltip>
+            <button
+              aria-label="Editar mensagem"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              onClick={() => {
+                setIsReactionPickerOpen(false);
+                setEditValue(message.body);
+                setEditError(null);
+                setIsEditing(true);
+              }}
+              type="button"
+            >
+              <Pencil aria-hidden="true" size={12} />
+            </button>
           ) : null}
           <div className="relative">
-            <Tooltip content="Marcar mensagem" placement="bottom">
-              <button
-                aria-expanded={isTagMenuOpen}
-                aria-label="Marcar mensagem"
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-                onClick={() => {
-                  setIsReactionPickerOpen(false);
-                  setIsInfoOpen(false);
-                  setIsTagMenuOpen((currentValue) => !currentValue);
-                }}
-                type="button"
-              >
-                <Tag aria-hidden="true" size={12} />
-              </button>
-            </Tooltip>
+            <button
+              aria-expanded={isTagMenuOpen}
+              aria-label="Marcar mensagem"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              onClick={() => {
+                setIsReactionPickerOpen(false);
+                setIsInfoOpen(false);
+                setIsTagMenuOpen((currentValue) => !currentValue);
+              }}
+              type="button"
+            >
+              <Tag aria-hidden="true" size={12} />
+            </button>
             {isTagMenuOpen ? (
               <div className="absolute right-0 top-full z-[90] mt-2 w-44 overflow-hidden rounded-md border border-[#d9e0ea] bg-[#ffffff] py-1 text-left text-xs text-[#344054] shadow-[0_16px_34px_rgba(16,24,32,0.20)] ring-1 ring-[#d9e0ea]">
                 {hermesMessageTagOptions.map((tag) => {
@@ -459,13 +449,7 @@ export function MessageItem({
             ) : null}
           </div>
           <div className="relative">
-            {isInfoOpen ? (
-              infoButton
-            ) : (
-              <Tooltip content="Informações da mensagem" placement="bottom">
-                {infoButton}
-              </Tooltip>
-            )}
+            {infoButton}
           </div>
         </div>
         {isInfoOpen ? (
