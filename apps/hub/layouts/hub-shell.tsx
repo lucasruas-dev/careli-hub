@@ -40,6 +40,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   ContactRound,
+  Download,
   FileText,
   FolderKanban,
   Headphones,
@@ -541,6 +542,7 @@ export function HubShell({
                       />
                     ) : null}
                   </div>
+                  <PanteonInstallButton />
                   <Tooltip content="Ajustes">
                     <IconButton
                       aria-label="Abrir ajustes"
@@ -736,6 +738,64 @@ export function HubShell({
   );
 }
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+function PanteonInstallButton() {
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    if (isStandalonePwa()) {
+      setInstallPrompt(null);
+      return;
+    }
+
+    function handleBeforeInstallPrompt(event: Event) {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    }
+
+    function handleAppInstalled() {
+      setInstallPrompt(null);
+    }
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt,
+      );
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+
+  if (!installPrompt) {
+    return null;
+  }
+
+  return (
+    <Tooltip content="Instalar Panteon">
+      <button
+        aria-label="Instalar Panteon"
+        className="grid h-8 w-8 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] outline-none transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+        onClick={() => {
+          void installPrompt.prompt().finally(() => {
+            setInstallPrompt(null);
+          });
+        }}
+        type="button"
+      >
+        <Download aria-hidden="true" size={17} />
+      </button>
+    </Tooltip>
+  );
+}
+
 function HubPresenceControl({
   onChange,
   onOpenChange,
@@ -900,6 +960,17 @@ function getInitials(name: string) {
 
 function isLocalhostRuntime() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
+function isStandalonePwa() {
+  const navigatorWithStandalone = navigator as Navigator & {
+    standalone?: boolean;
+  };
+
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    navigatorWithStandalone.standalone === true
+  );
 }
 
 function isHomologationHostname(hostname: string) {

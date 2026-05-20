@@ -6496,3 +6496,18 @@ Registro de diario:
 - Validacao executada: registro documental no diario canonico; sem alteracao de codigo, Supabase, Vercel, env, secret, migration ou producao nesta entrada.
 - Status operacional: `REGRA REGISTRADA / EM HOMOLOGACAO`.
 - Proxima squad recomendada: `Iris Core` deve preservar esta regra em novos recortes; `Hefesto` deve checar a presenca da Iris no menu em releases de homologacao.
+
+Registro de diario:
+
+- Assunto: `[Panteon] Correcao de instalacao PWA em homologacao`.
+- Nome da squad/agente: `Zeus / Hefesto assistido`.
+- Data e hora local: 2026-05-20 04:48:52 -03:00.
+- Tipo da alteracao: `CORRECAO HOMOLOG / PWA / HEALTHCHECK`.
+- Motivo da mudanca: Lucas validou `https://homo.c2x.app.br/iris` e informou que a opcao de instalar nao apareceu no Chrome. A investigacao confirmou que o alias de homologacao havia sido sobrescrito para um deployment mais novo sem `/api/pwa/manifest` e sem `/sw.js`, impedindo o Chrome de reconhecer o Panteon como instalavel.
+- Arquivos/modulos afetados: `apps/hub/app/layout.tsx`, `apps/hub/app/api/pwa/manifest/route.ts`, `apps/hub/components/panteon-pwa-runtime.tsx`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/public/sw.js` e este diario canonico.
+- Como foi feito: o recorte PWA foi reaplicado no pacote limpo baseado no estado mais novo da branch `homolog`, preservando os demais ajustes ja ativos em homologacao. O manifesto passou a ficar em `/api/pwa/manifest`, o service worker em `/sw.js` e o layout raiz passou a declarar explicitamente o manifest e registrar o runtime PWA.
+- Logica utilizada: manter o PWA no proprio branch/deployment de homologacao evita que o alias `homo.c2x.app.br` seja sobrescrito novamente por uma publicacao Git posterior sem manifest/service worker. O botao interno de instalacao continua dependente do evento `beforeinstallprompt`, que so e emitido pelo navegador depois que os criterios PWA sao aceitos.
+- Validacao executada antes da publicacao: `git diff --check` passou no pacote; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos do ambiente; `npm.cmd run build --workspace @repo/hub` passou e listou `/api/pwa/manifest` como rota dinamica; os icones Panteon foram conferidos como `512x512`.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, Supabase, banco, migration, rollback ou producao foi alterado. A exibicao do prompt de instalacao ainda depende do Chrome/Edge atualizar o estado de instalabilidade apos recarregar a pagina; se o navegador tiver bloqueado ou recusado o prompt anteriormente, pode ser necessario fechar/reabrir a aba.
+- Status operacional: `EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` para recarregar `https://homo.c2x.app.br`, testar a aparicao do icone/botao de instalacao e, se necessario, fechar e abrir a aba para o Chrome recalcular a instalabilidade.

@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { AppProviders } from "@/providers/app-providers";
+import { PanteonPwaRuntime } from "@/components/panteon-pwa-runtime";
 import "@repo/uix/styles.css";
 import "@/styles/globals.css";
 
@@ -32,16 +33,36 @@ const appIconUrl = isHomologationEnvironment
 
 export const metadata: Metadata = {
   applicationName: appTitle,
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: appTitle,
+  },
   title: {
     default: appTitle,
     template: `%s | ${appTitle}`,
   },
   description: appTitle,
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
     apple: [{ url: appIconUrl, type: "image/png" }],
     icon: [{ url: appIconUrl, type: "image/png" }],
     shortcut: [{ url: appIconUrl, type: "image/png" }],
   },
+  manifest: "/api/pwa/manifest",
+  other: {
+    "mobile-web-app-capable": "yes",
+    "msapplication-TileColor": "#101820",
+  },
+};
+
+export const viewport: Viewport = {
+  colorScheme: "light",
+  initialScale: 1,
+  themeColor: "#101820",
+  width: "device-width",
 };
 
 export default function RootLayout({
@@ -52,6 +73,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body>
+        <PanteonPwaRuntime />
         <AppProviders>{children}</AppProviders>
       </body>
     </html>
