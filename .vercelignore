@@ -17,3 +17,7 @@ node_modules
 *.temp
 .cache
 **/.cache
+
+# Local Codex work artifacts
+.codex-artifacts
+.codex-deploy

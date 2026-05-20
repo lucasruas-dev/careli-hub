@@ -2,6 +2,36 @@
 
 Use estes scripts para acionar cada squad sem misturar recortes. Eles ja carregam o bloqueio operacional definido por Lucas: nenhuma operacao sensivel em Vercel, Supabase, banco, Production, dominio, env, secret ou migration pode seguir sem autorizacao explicita.
 
+## Padrao atual - modulo homologa, Hefesto produz
+
+```text
+Assunto:
+[Hefesto] Promover producao por modulo homologado
+
+Contexto:
+O agente do modulo ja publicou homologacao do proprio recorte autorizado pelo Lucas e registrou no Zeus/Operations Center o modulo, pacote, atividades/protocolos, commit/deployment de homologacao, validacoes, riscos e status.
+
+Objetivo:
+promover para producao somente o recorte homologado e aprovado, mantendo fora da rodada qualquer item bloqueado, reprovado, pendente ou misturado com outro modulo.
+
+Escopo obrigatorio:
+- modulo: <Zeus/Hades/Iris/Hermes/Chronos/Atlas/Setup/outro>;
+- pacote homologado: <DP/protocolo/commit>;
+- atividades prontas: <AT/CB/TI/OP/AL/LO ou lista equivalente>;
+- commit/deployment de homologacao;
+- validacoes e healthchecks de homologacao;
+- riscos conhecidos e rollback esperado.
+
+Regras:
+- confirmar que o recorte esta homologado por modulo;
+- bloquear producao se o commit misturar modulo aprovado com modulo nao aprovado;
+- publicar somente o aprovado;
+- registrar deployment production, healthchecks, logs, rollback e status final no diario e no Operations Center quando aplicavel.
+
+Status esperado:
+EM PRODUCAO, OPERACIONAL COM ATENCAO ou BLOQUEADO com motivo tecnico concreto.
+```
+
 ## 1. Hub ReleaseOps - commit da governanca documental
 
 ```text
@@ -344,7 +374,7 @@ Regras obrigatorias:
 - Comecar toda resposta com `Assunto: [SquadOps] ...`.
 - Usar `docs/operations/engineering-operations.md` como diario vivo.
 - Manter recorte limpo; nunca considerar entrega concluida se depender de dados estruturados sem reconciliar Operations Center.
-- Se publicar recorte proprio com autorizacao explicita, atualizar `hub_engineering_operation_records`, reconciliar protocolos `AT/AL/DP/TK`, atualizar releases estruturadas quando aplicavel e depois registrar no diario.
+- Se publicar recorte proprio com autorizacao explicita, atualizar `hub_engineering_operation_records`, reconciliar protocolos `AT/CB/TI/OP/AL/DP`, atualizar releases estruturadas quando aplicavel e depois registrar no diario.
 - Validar com `check-types`, `lint`, `build` e smoke local/visual quando aplicavel.
 - Para UI, manter densidade operacional, grafite `#101820`, acento `#A07C3B`, linguagem executiva compacta e tooltips UIX padronizados.
 

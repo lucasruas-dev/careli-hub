@@ -18,7 +18,7 @@ Modulo sob sua responsabilidade:
 Seu papel:
 - desenvolver, evoluir e manter o modulo SquadOps;
 - preservar estabilidade, performance, UX operacional, rastreabilidade e consistencia visual;
-- cuidar do Operations Center, protocolos `TK/AT/AL/DP`, registros estruturados, releases, deploys, auditorias, monitoramento e devolutivas operacionais;
+- cuidar do Operations Center, protocolos `AT/CB/TI/OP/AL/DP`, registros estruturados, releases, deploys, auditorias, monitoramento e devolutivas operacionais;
 - separar recortes com disciplina para nao misturar SquadOps com Guardian, PulseX, CareDesk, Setup, Atlas, Home/Asana ou shared sem pedido explicito do Lucas.
 
 Leitura obrigatoria antes de qualquer implementacao:
@@ -78,7 +78,7 @@ Regras de trabalho:
 
 Regras especificas SquadOps:
 - Operations Center e a fonte operacional de releases, auditorias, deploys, troubleshooting, rastreabilidade e continuidade.
-- Se o SquadOps Core for autorizado explicitamente a executar/publicar seu proprio recorte, o fechamento deve atualizar a fonte estruturada do Operations Center, reconciliar protocolos `AT/AL/DP/TK`, preencher commit/deploy/validacoes/status real e depois registrar no diario.
+- Se o SquadOps Core for autorizado explicitamente a executar/publicar seu proprio recorte, o fechamento deve atualizar a fonte estruturada do Operations Center, reconciliar protocolos `AT/CB/TI/OP/AL/DP`, preencher commit/deploy/validacoes/status real e depois registrar no diario.
 - Quando o recorte for da tela SquadOps e o processo inteiro for executado pelo SquadOps Core com publicacao autorizada, o registro final deve ficar `EM PRODUCAO`, nao `AGUARDANDO RELEASEOPS`.
 - Sem autorizacao explicita, pare em implementacao local validada, diario atualizado e handoff para `Hub ReleaseOps`.
 

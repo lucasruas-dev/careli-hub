@@ -49,9 +49,23 @@ Status operacional protegido:
 
 `/api/iris/meta/status`
 
+Eventos recentes protegidos:
+
+`/api/iris/meta/events`
+
+Envio manual protegido:
+
+`/api/iris/meta/messages`
+
 Status legado mantido como ponte tecnica:
 
 `/api/caredesk/meta/status`
+
+Eventos e envio legados mantidos como ponte tecnica:
+
+`/api/caredesk/meta/events`
+
+`/api/caredesk/meta/messages`
 
 Fluxos suportados nesta etapa:
 
@@ -62,14 +76,22 @@ Fluxos suportados nesta etapa:
 - `GET /api/iris/meta/status`: leitura protegida por sessao `admin` ou
   `leader`, retornando somente nomes de env faltantes, prontidao inbound,
   bloqueio outbound e status da persistencia. Nunca retorna valores de secrets.
+- `GET /api/iris/meta/events`: leitura protegida dos ultimos eventos Meta,
+  retornando resumo operacional sem expor o payload bruto.
+- `POST /api/iris/meta/messages`: envio manual protegido por sessao Hub para
+  teste operacional em homologacao, registrando a referencia em
+  `caredesk_whatsapp_message_refs` quando a Meta aceitar a mensagem.
+- Processamento inbound: mensagens `message:*` recebidas pela Meta criam ou
+  reutilizam contato, abrem ticket real `AT-*` quando nao houver conversa aberta,
+  registram a mensagem em `caredesk_messages` e atualizam o evento bruto para
+  `processed`, `ignored` ou `failed`.
 
 Fluxos ainda nao liberados:
 
-- envio ativo de mensagens;
 - disparo em massa;
 - templates oficiais;
-- criacao automatica de ticket;
 - resposta automatica da Athena.
+- envio automatico sem acao humana.
 
 ## Variaveis server-side esperadas
 
@@ -98,8 +120,9 @@ Variaveis de persistencia ja existentes:
   a variavel server-side.
 - O payload real pode conter dados pessoais de cliente; qualquer exibicao futura
   precisa respeitar permissao e contexto operacional.
-- Outbound WhatsApp permanece bloqueado nesta entrega. Envio exige decisao
-  propria, confirmacao humana para acoes sensiveis e homologacao.
+- Outbound WhatsApp esta liberado somente para envio manual autenticado em
+  homologacao. Disparo em massa, automacao, templates oficiais e respostas
+  automaticas continuam bloqueados ate recorte proprio.
 
 ## Checklist Meta
 
@@ -115,8 +138,9 @@ Variaveis de persistencia ja existentes:
    `whatsapp_business_management`.
 8. Testar primeiro em homologacao, com numero/test account da Meta.
 9. Validar eventos recebidos em `caredesk_meta_webhook_events`.
-10. Liberar processamento para contato/ticket somente depois da ingestao estar
-    estavel.
+10. Aplicar a migration `0025_iris_inbound_ticket_protocols.sql` para ativar a
+    sequencia `AT-*` e remover o mockup `CARE-DEMO-*`.
+11. Enviar mensagem inbound real e confirmar ticket `AT-*` no board da Iris.
 
 ## Referencias oficiais consultadas
 
@@ -136,4 +160,5 @@ publico controlado ao webhook de homologacao, validar:
 - rejeicao de assinatura invalida;
 - recebimento de uma mensagem real de teste;
 - persistencia em `caredesk_meta_webhook_events`;
-- latencia do webhook antes de processar ticket automaticamente.
+- criacao de contato/ticket/mensagem com protocolo `AT-*`;
+- latencia do webhook e idempotencia antes de ampliar automacoes.

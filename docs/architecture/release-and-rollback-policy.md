@@ -21,10 +21,21 @@ Antes de publicar:
 - confirmar escopo e arquivos do recorte;
 - verificar worktree e evitar commit/deploy misturado;
 - confirmar ambiente alvo;
+- quando o projeto Vercel possuir mais de um alias de producao, inspecionar todos os aliases afetados antes do deploy e registrar qual deployment cada dominio aponta;
 - validar em homologacao quando houver risco;
 - registrar aprovacao do Lucas para operacoes sensiveis;
 - executar validacoes aplicaveis;
 - registrar rollback path.
+
+## Homologacao por modulo
+
+- Cada agente de modulo e responsavel por publicar em homologacao apenas o proprio recorte quando Lucas autorizar.
+- O registro de homologacao deve informar modulo, pacote, atividades/protocolos, branch/commit, deployment/alias de homologacao, validacoes, riscos, pendencias e status.
+- O registro objetivo de homologacao deve ser feito em `docs/operations/releases-homologation.md`; o resumo consolidado continua no diario `docs/operations/engineering-operations.md`.
+- Quando o recorte estiver aprovado em homologacao, o agente sinaliza `PRONTO PARA PRODUCAO` no Zeus/Operations Center.
+- `Hefesto` recebe o handoff por modulo e promove producao somente do que estiver homologado, validado e autorizado.
+- Antes de promover producao, `Hefesto` deve consultar `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, o diario canonico e o Git/worktree.
+- Se um commit ou pacote misturar modulos ou itens aprovados e reprovados, `Hefesto` deve bloquear ou exigir novo recorte limpo antes da producao.
 
 ## Registro minimo de deploy
 
@@ -36,6 +47,7 @@ Todo deploy critico deve registrar:
 - deployment novo;
 - deployment anterior;
 - alias ou dominio afetado;
+- impacto sobre aliases compartilhados, incluindo `c2x.app.br` e `ops.c2x.app.br` quando estiverem no mesmo deployment;
 - comandos executados;
 - healthchecks;
 - logs recentes;

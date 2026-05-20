@@ -29,7 +29,7 @@ Novas atividades operacionais nao devem depender de commit no Markdown nem de de
 
 - A criacao corrente acontece pela API protegida `POST /api/zeus/operations/structured` com `action = create-record`; `/api/squadops/operations/structured` permanece compatibilidade tecnica.
 - A API grava em `hub_engineering_operation_records` usando service role apenas server-side.
-- O banco gera o protocolo `AT-0000` sequencial automaticamente.
+- O banco ainda gera o protocolo legado `AT-0000` para registros estruturados do Zeus ate migration autorizada. A regra canonica aprovada em 2026-05-20 reserva `AT` para atendimentos Iris e move novas atividades operacionais Zeus para `OP`.
 - O campo `Necessita deploy` define se o item fica apenas no historico ou entra como candidato para Hefesto agrupar em um `DP`.
 - O botao `Novo registro` no Zeus cria o registro vivo e a timeline pode ser atualizada pela API sem publicar novo build.
 - O Markdown canonico continua como memoria narrativa, exportacao, auditoria e fallback; ele nao deve ser a fonte principal de estado operacional corrente.
@@ -45,7 +45,7 @@ O comportamento obrigatorio e:
 - nao encerrar a entrega apenas com mensagem no chat;
 - nao considerar o Markdown como suficiente para atualizar a tela;
 - criar ou atualizar o registro vivo em `hub_engineering_operation_records`;
-- reconciliar os protocolos afetados `AT/AL/DP/TK` para o status real;
+- reconciliar os protocolos afetados `AT/CB/TI/OP/AL/DP` para o status real;
 - preencher commit, deployment, ambiente, validacoes, healthchecks e riscos quando existirem;
 - atualizar a visao estruturada de releases quando o recorte tiver deploy;
 - confirmar que a timeline do Operations Center passa a exibir o movimento recente;
@@ -76,10 +76,16 @@ Regra de seguranca:
 
 ## Protocolos oficiais
 
-- `TK-0001`: ticket aberto por usuario ou equipe operacional.
-- `AT-0001`: atividade tecnica ou operacional.
+- `AT-0001`: atendimento Iris como canal externo oficial e raiz de comunicacao externa.
+- `CB-0001`: cobranca/Hades, com vinculo ao `AT` raiz quando nascer de atendimento ou comunicacao externa.
+- `TI-000001`: ticket tecnico interno, suporte, bug ou melhoria operacional.
+- `OP-0001`: atividade operacional Zeus, dados, infra, suporte ou governanca, sem virar `AT` quando for trabalho interno.
 - `AL-0001`: alerta operacional.
 - `DP-0001`: pacote macro de deploy/release.
+
+Iris e o canal externo oficial do Panteon. Toda comunicacao externa deve passar por ela e gerar ou reutilizar um `AT` como protocolo raiz. Internamente, cada setor continua com seu protocolo proprio e rastreavel: Hades usa `CB`, Financeiro, Compras e Contratos terao seus prefixos proprios quando forem construidos, e Zeus usa `OP`, `TI`, `AL` ou `DP` conforme a natureza interna do trabalho. Quando uma atividade setorial depender de contato externo, o protocolo do setor deve ficar vinculado ao `AT` raiz, sem trocar a identidade do setor.
+
+`TK` fica legado e nao deve ser usado para novos registros. Protocolos `AT` antigos do Zeus ficam preservados como historico, sem renumeracao. A migracao tecnica que muda geracao real de `hub_engineering_operation_records` de `AT` para `OP` e a criacao de sequencias/vinculos `AT/CB` para Iris/Cobranca dependem de migration autorizada por Lucas.
 
 Os numeros devem ser sequenciais por prefixo, gerados pelo banco central, nunca por memoria local do navegador.
 
@@ -112,13 +118,13 @@ Tambem devem ser registrados:
 
 1. Usuario ou agente abre `TK`, `AT` ou `AL`.
 2. Athena/PO AI organiza o relato, mas nao executa acao sensivel.
-3. Dev trata a atividade e informa se precisa deploy.
-4. Hefesto agrupa somente itens com `necessita_deploy = true` em um `DP`.
-5. `DP` e publicado em homologacao.
+3. Dev/agente do modulo trata a atividade e informa se precisa deploy.
+4. O agente do modulo agrupa os itens do proprio modulo em um pacote `DP` ou pacote equivalente de homologacao.
+5. O agente do modulo publica o recorte em homologacao quando Lucas autorizar e registra commit, deployment, validacoes, riscos e status no Zeus/Operations Center.
 6. Lucas valida item por item em homologacao.
-7. Itens aprovados entram no prompt final de producao.
-8. Itens reprovados, bloqueados ou pendentes ficam fora da rodada.
-9. Hefesto publica producao, registra commit, deployment, healthchecks e resultado.
+7. Itens aprovados ficam `PRONTO PARA PRODUCAO` por modulo e geram handoff/prompt para Hefesto.
+8. Itens reprovados, bloqueados ou pendentes ficam fora da rodada e permanecem no modulo de origem.
+9. Hefesto publica producao somente dos recortes homologados por modulo, registra commit, deployment, healthchecks e resultado.
 10. Tickets vinculados recebem atualizacao de status quando o protocolo associado muda.
 
 ## Status recomendados
@@ -203,7 +209,7 @@ A fila antiga de homologacao de Zeus nao deve ser apagada. Ela deve ser reconcil
 - marcar protocolos ja publicados como `absorvido_em_producao`;
 - manter historico original;
 - remover apenas da visao de pendencias;
-- vincular cada `DP` aos `AT/AL/TK` publicados quando houver evidencia.
+- vincular cada `DP` aos `AT/CB/TI/OP/AL` publicados quando houver evidencia.
 
 ## Decisao V1
 

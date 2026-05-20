@@ -6,7 +6,7 @@ Esta pasta e a casa operacional do Panteon. Ela separa o diario vivo de operacao
 
 - Produto/plataforma: `Panteon` (antes Careli Hub).
 - `Zeus`: antigo SquadOps e agente central de Operations Center, SupportOps, DataOps e InfraOps.
-- `Hefesto`: agente de release, deploy, homologacao, producao, rollback e rastreabilidade oficial.
+- `Hefesto`: agente de promocao para producao, healthchecks finais, rollback e rastreabilidade oficial de producao.
 - `Hades`: antigo Guardian.
 - `Iris`: antigo CareDesk/CoreDesk.
 - `Hermes`: antigo PulseX.
@@ -17,7 +17,10 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 ## Arquivos principais
 
 - `docs/operations/engineering-operations.md`: diario operacional vivo, append-only, com decisoes, incidentes, validacoes, deploys, handoffs e status.
-- `docs/operations/squadops-center-process.md`: processo oficial do Zeus / Operations Center, protocolos `TK/AT/AL/DP`, homologacao, producao e operacao dedicada em `ops.c2x.app.br`.
+- `docs/operations/releases-homologation.md`: indice operacional dos recortes publicados/preparados para homologacao.
+- `docs/operations/releases-production.md`: indice operacional dos recortes publicados/bloqueados em producao.
+- `docs/operations/agent-release-register-prompt.md`: prompt oficial para orientar agentes no registro por ambiente.
+- `docs/operations/squadops-center-process.md`: processo oficial do Zeus / Operations Center, protocolos `AT/CB/TI/OP/AL/DP`, homologacao, producao e operacao dedicada em `ops.c2x.app.br`.
 - `docs/operations/hub-rescueops.md`: protocolo historico de resposta critica, agora absorvido operacionalmente por `Zeus`, para recuperacao operacional, incidentes, rollback, healthchecks e bloqueios sensiveis.
 - `docs/operations/agent-handoff-scripts.md`: scripts de encaminhamento para acionar agentes sem misturar recortes.
 - `docs/operations/guardian-deploy-blocker-review-2026-05-18.md`: parecer Hades em arquivo de nome legado sobre criticidade real e prompts curtos para remover bloqueios.
@@ -35,10 +38,14 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - Leia esta pasta antes de atuar em Vercel, Supabase, banco, dominios, deploys, rollback, envs, secrets ou incidentes.
 - Registre novas entradas somente no diario canonico `docs/operations/engineering-operations.md`.
 - Mantenha o diario append-only: nao apague historico; normalize por entradas novas.
+- Use `docs/operations/releases-homologation.md` como referencia objetiva do que foi homologado, esta em homologacao ou esta pronto para producao.
+- Use `docs/operations/releases-production.md` como referencia objetiva do que foi publicado, bloqueado ou rollbackado em producao.
 - Nao registre valores de secrets, tokens, senhas, service role, `POSTGRES_URL` ou chaves externas.
 - Toda operacao sensivel comeca `BLOQUEADO` ate autorizacao expressa do Lucas.
 - Homologacao e o caminho padrao antes de producao quando houver risco operacional.
-- Se `Zeus` for autorizado por Lucas a executar/publicar seu proprio recorte, o fechamento nao pode ficar so no chat nem so no Markdown: o agente deve atualizar a fonte estruturada do Operations Center, reconciliar protocolos `AT/AL/DP/TK`, preencher commit/deploy/validacoes/status real e depois registrar a decisao no diario canonico. Quando o recorte for da tela Zeus e o Zeus fizer o processo inteiro com publicacao, o registro final deve ficar `EM PRODUCAO`, nao `AGUARDANDO RELEASEOPS`.
+- Cada agente de modulo publica o proprio recorte em homologacao quando Lucas autorizar, registra modulo, pacote, atividades, commit/deploy, validacoes, riscos e status. `Hefesto` recebe esses handoffs homologados e promove producao por modulo, sem assumir homologacao de todos os recortes.
+- Se `Zeus` for autorizado por Lucas a executar/publicar seu proprio recorte, o fechamento nao pode ficar so no chat nem so no Markdown: o agente deve atualizar a fonte estruturada do Operations Center, reconciliar protocolos `AT/CB/TI/OP/AL/DP`, preencher commit/deploy/validacoes/status real e depois registrar a decisao no diario canonico. Quando o recorte for da tela Zeus e o Zeus fizer o processo inteiro com publicacao, o registro final deve ficar `EM PRODUCAO`, nao `AGUARDANDO RELEASEOPS`.
+- Como `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo projeto/deployment Vercel, todo deploy de producao deve inspecionar os dois aliases antes e depois. Se o pacote nao preservar o estado vigente do Panteon principal e do Zeus/OPS, `Hefesto` deve bloquear, preparar recorte limpo que preserve ambos ou registrar rollback/restauracao de alias antes de publicar.
 
 ## Padrao visual oficial
 

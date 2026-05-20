@@ -9,7 +9,7 @@ Lucas e a autoridade humana final. Agentes protegem contexto, qualidade e estabi
 ## Mapa atual de agentes
 
 - `Zeus`: antigo SquadOps Core; dono do Operations Center e tambem responsavel por suporte tecnico, dados, infraestrutura, incidentes e diagnostico nao destrutivo.
-- `Hefesto`: antigo Hub ReleaseOps; responsavel por commit, release, deploy, homologacao, producao, healthchecks, rollback e rastreabilidade oficial.
+- `Hefesto`: antigo Hub ReleaseOps; responsavel por promocao para producao, healthchecks finais, rollback e rastreabilidade oficial de producao.
 - `Hades Core`: antigo Guardian Core.
 - `Iris Core`: antigo CareDesk/CoreDesk Core.
 - `Hermes Core`: antigo PulseX Core.
@@ -28,7 +28,7 @@ Nomes legados em historico, banco, envs, migrations e rotas antigas sao compatib
 
 O guardiao deve proteger a arquitetura, nao centralizar features de produto. Hades Core, Hermes Core, Iris Core, Chronos Core, Atlas Core, Zeus e Setup continuam donos dos seus modulos.
 
-`Zeus` atua como camada unificada de resposta critica quando Lucas acionar um problema envolvendo build, runtime, Vercel, Supabase, envs, secrets, banco, migration, healthcheck, rollback, preview, homologacao, producao, auth, erro `401`, `403`, `500`, `503`, dominio, alias ou incidente operacional. Ele absorve SupportOps, InfraOps e DataOps, mas nao remove os bloqueios de autorizacao humana nem substitui `Hefesto` quando houver release/deploy oficial.
+`Zeus` atua como camada unificada de resposta critica quando Lucas acionar um problema envolvendo build, runtime, Vercel, Supabase, envs, secrets, banco, migration, healthcheck, rollback, preview, homologacao, producao, auth, erro `401`, `403`, `500`, `503`, dominio, alias ou incidente operacional. Ele absorve SupportOps, InfraOps e DataOps, mas nao remove os bloqueios de autorizacao humana nem substitui `Hefesto` quando houver promocao para producao.
 
 ## Comportamento obrigatorio
 
@@ -83,8 +83,9 @@ Quando Lucas solicitar scripts, prompts ou encaminhamentos para agentes/squads:
 
 ## Handoff entre squads
 
-- Produto implementa e valida seu proprio modulo, sem assumir deploy oficial.
-- `Hefesto` organiza commit, deploy, homologacao, producao, healthchecks e rastreabilidade de release.
+- Produto implementa, valida e publica homologacao do proprio modulo quando Lucas autorizar, mantendo recorte isolado e registro no Zeus/Operations Center.
+- Ao fechar homologacao, o agente do modulo deve sinalizar modulo, pacote, atividades, commit/deploy de homologacao, validacoes, riscos e status `PRONTO PARA PRODUCAO` ou bloqueio equivalente.
+- `Hefesto` organiza a promocao para producao a partir desses handoffs por modulo, executa healthchecks finais, registra producao e mantem rollback/rastreabilidade oficial.
 - `Zeus` valida schema, migrations, RLS, grants e banco real em modo bloqueado ate autorizacao; investiga bugs, logs, gargalos e regressao; protege ambientes, secrets, Vercel, Supabase runtime, dominios, healthchecks e estabilidade.
 - `Zeus` centraliza resposta critica ponta a ponta, registra protocolo operacional quando aplicavel e encaminha a squad responsavel apos estabilizar ou bloquear o risco.
 

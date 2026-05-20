@@ -1,0 +1,673 @@
+# Releases Producao
+
+Este arquivo e o indice operacional dos recortes publicados em producao.
+Ele nao substitui o diario canonico `docs/operations/engineering-operations.md`.
+
+Objetivo:
+
+- registrar somente o que foi promovido ou bloqueado para producao;
+- deixar claro qual commit/deployment esta em cada dominio;
+- registrar healthchecks finais, rollback e riscos residuais;
+- fornecer referencia objetiva para auditoria de producao e novos chats.
+
+## Regras
+
+- Registrar apenas recortes de producao.
+- Producoes sensiveis exigem autorizacao explicita do Lucas.
+- `Hefesto` e o responsavel padrao por promocao para producao, healthchecks finais, rollback e rastreabilidade oficial.
+- Quando `Zeus` for autorizado a publicar diretamente o proprio recorte em `https://ops.c2x.app.br`, tambem deve registrar aqui e no diario canonico.
+- Nao registrar valores de env, secrets, tokens, senhas, service role, `POSTGRES_URL` ou chaves externas.
+- Como `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo projeto/deployment Vercel, todo registro de producao deve informar impacto sobre os dois aliases quando aplicavel.
+- O diario canonico continua recebendo o resumo consolidado da decisao, risco ou deploy relevante.
+
+## Status permitidos
+
+- `EM PRODUCAO`
+- `OPERACIONAL COM ATENCAO`
+- `BLOQUEADO`
+- `ROLLBACK EXECUTADO`
+- `NECESSITA CORRECAO`
+
+## Campos obrigatorios
+
+- Assunto
+- Squad/agente responsavel
+- Data e hora local
+- Ambiente
+- Origem/homologacao de referencia
+- Escopo publicado
+- Commit publicado
+- Deployment anterior
+- Deployment novo
+- Aliases/dominos afetados
+- Arquivos/modulos incluidos
+- Arquivos/modulos excluidos
+- Validacoes executadas
+- Healthchecks pos-deploy
+- Logs recentes
+- Rollback definido
+- Riscos conhecidos
+- Pendencias
+- Status
+- Proxima acao
+
+## Template
+
+```text
+Registro de producao:
+
+- Assunto: `[Modulo/Hefesto] Tema objetivo`.
+- Squad/agente responsavel: `<Hefesto / Zeus Core autorizado / outro>`.
+- Data e hora local: `YYYY-MM-DD HH:mm:ss -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `<registro em releases-homologation.md / protocolo / commit / aprovacao Lucas>`.
+- Escopo publicado:
+  - `<alteracao principal 1>`;
+  - `<alteracao principal 2>`;
+  - `<alteracao principal 3>`.
+- Commit publicado: `<hash commit ou pacote limpo>`.
+- Deployment anterior: `<deployment anterior conhecido saudavel>`.
+- Deployment novo: `<deployment Vercel novo / URL tecnica>`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `<deployment/status>`;
+  - `https://ops.c2x.app.br`: `<deployment/status>`;
+  - `<outro alias, se houver>`.
+- Arquivos/modulos incluidos: `<lista objetiva>`.
+- Arquivos/modulos excluidos: `<lista objetiva do que ficou fora>`.
+- Validacoes executadas:
+  - `<check-types/lint/build/smoke/scan de secrets/git diff --check>`;
+  - `<resultado objetivo>`.
+- Healthchecks pos-deploy:
+  - `<endpoint/rota>: <resultado esperado/recebido>`.
+- Logs recentes: `<sem erro critico / achado objetivo / n/a>`.
+- Rollback definido: `<deployment/acao segura de rollback>`.
+- Riscos conhecidos: `<riscos tecnicos, operacionais ou de negocio>`.
+- Pendencias: `<o que falta apos producao>`.
+- Status: `<EM PRODUCAO | OPERACIONAL COM ATENCAO | BLOQUEADO | ROLLBACK EXECUTADO | NECESSITA CORRECAO>`.
+- Proxima acao: `<Lucas validar / modulo acompanhar / Hefesto monitorar / Zeus investigar>`.
+```
+
+## Registros
+
+Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo ou em ordem cronologica consistente por rodada. Nao apagar historico.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Historico do HelpDesk simplificado em producao`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Data e hora local: `2026-05-20 16:24:23 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: ajuste direto autorizado pelo Lucas em OPS para o historico do HelpDesk.
+- Escopo publicado:
+  - removeu rotulos visuais `Minha devolutiva` e `Solicitante` dos baloes do historico;
+  - removeu nome/data exibidos dentro dos baloes, deixando somente a mensagem;
+  - suavizou o tom do balao escuro de devolutiva do Zeus para reduzir contraste agressivo.
+- Commit publicado: pacote limpo `.codex-deploy/prod-zeus-helpdesk-history-20260520-1452`, sem commit novo nesta rodada.
+- Deployment anterior: `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE`.
+- Deployment novo: `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB`; URL tecnica `https://careli-hub-hub-i2bs-d5f53uep0-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://ops.c2x.app.br`: confirmado no deployment novo;
+  - `https://c2x.app.br`: confirmado no deployment novo por alias compartilhado.
+- Arquivos/modulos incluidos: `apps/hub/modules/squadops/HubItTicketsBoard.tsx`.
+- Arquivos/modulos excluidos: demais recortes locais de Iris, Hermes, Hades, Atlas, Setup, Chronos, Apolo, migrations, envs, secrets, banco, dominio e aliases manuais.
+- Validacoes executadas:
+  - no worktree principal: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/modules/squadops/HubItTicketsBoard.tsx`;
+  - no pacote limpo: scan de marcadores confirmou ausencia dos rotulos renderizados no historico, preservacao de `/api/zeus/release-registers` e preservacao dos marcadores Hermes atuais;
+  - no pacote limpo: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`;
+  - Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: `200`;
+  - APIs protegidas sem sessao em `ops.c2x.app.br`: `401` esperado para HelpDesk, release registers e Hermes messages.
+- Logs recentes: `npx.cmd vercel logs --level error --since 10m` em `ops.c2x.app.br` e `c2x.app.br` sem erros.
+- Rollback definido: promover novamente `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE` se HelpDesk, Zeus, login, Hermes ou rotas protegidas apresentarem regressao critica.
+- Riscos conhecidos: smoke visual autenticado ainda depende do Lucas; o smoke local por dev server ficou inconclusivo por timeout, mas build local, build Vercel e healthchecks HTTP passaram.
+- Pendencias: Lucas validar visualmente o historico autenticado no HelpDesk do Zeus em producao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Zeus acompanhar feedback visual do Lucas e manter rollback definido.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Hermes interacoes nas respostas da thread`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-20 15:40:03 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: registro `[Hermes] Validacao final dos icones de interacao`, status `PRONTO PARA PRODUCAO`, validado por Lucas apos restaurar os icones de interacao nas respostas da thread.
+- Escopo publicado:
+  - renderizar respostas de thread com o mesmo `MessageItem` do chat principal;
+  - habilitar reacao, tag/marcacao e informacoes nas respostas da thread, sem reintroduzir o botao de abrir resposta;
+  - ampliar o contrato de `HermesThreadReply` para carregar `channelId`, `reactions` e `tags` vindos da mensagem real.
+- Commit publicado: `344a7e8 fix(hermes): restore thread reply actions`; pacote limpo `.codex-deploy/prod-hermes-thread-actions-20260520-1535`.
+- Deployment anterior: `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K`.
+- Deployment novo: `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE`; URL tecnica `https://careli-hub-hub-i2bs-hcgtl624o-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE`, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/components/pulsex/thread-panel.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/lib/pulsex/types.ts`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `apps/hub/lib/pulsex/mock-data.ts`.
+- Arquivos/modulos excluidos: Apolo, Iris/CareDesk/Meta, Atlas, Hades/Guardian, Zeus fora da base ja publicada, Setup, Chronos, migrations, envs, secrets, banco, dominios, aliases manuais e demais recortes locais do worktree.
+- Validacoes executadas:
+  - no worktree principal: `npx.cmd eslint components/pulsex/thread-panel.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/types.ts lib/pulsex/supabase-data.ts lib/pulsex/mock-data.ts --max-warnings 0`, `git diff --check`, scan de secrets dos cinco arquivos, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`;
+  - no pacote limpo: diff contra a base de producao restrito aos cinco arquivos Hermes, busca confirmando `mapThreadReplyToMessage`, `toggleHermesReactions`, `updateThreadReplyState`, `channelId`, `reactions` e `tags`, scan de secrets, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`;
+  - build remoto Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200` em `0.551657s`;
+  - `GET https://c2x.app.br/login`: `200` em `0.511475s`;
+  - `GET https://c2x.app.br/hermes`: `200` em `0.443630s`;
+  - `GET https://ops.c2x.app.br/zeus`: `200` em `0.699116s`;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: `401` esperado em `0.214217s`;
+  - `GET https://c2x.app.br/api/pulsex/messages` sem sessao: `401` esperado em `0.429925s`;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao: `401` esperado em `0.438633s`;
+  - `GET https://c2x.app.br/api/pwa/manifest`: `200` em `0.496896s`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200` em `1.135062s`.
+- Logs recentes: `npx.cmd vercel logs --level error --since 10m` em `c2x.app.br` e `ops.c2x.app.br` sem logs de erro.
+- Rollback definido: promover novamente `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K` se Hermes, login, Zeus/Deploy ou rotas protegidas apresentarem regressao critica.
+- Riscos conhecidos: validacao visual autenticada do Lucas ainda e recomendada para confirmar os icones nas respostas da thread no chat real; worktree local permanece misturado e nao deve ser usado para deploy amplo.
+- Pendencias: Lucas validar Hermes autenticado em producao; demais recortes locais continuam fora desta publicacao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas` validar respostas de thread no Hermes real; `Hefesto` manter monitoramento e rollback pronto.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Hermes painel de respostas corrigido`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-20 15:12:19 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: registro `[Hermes] Validacao final do painel de respostas`, status `PRONTO PARA PRODUCAO`, validado por Lucas apos correcao de corte de texto/link longo e remocao do botao de resposta na mensagem raiz do painel.
+- Escopo publicado:
+  - corrigir quebra de textos e links longos no corpo da mensagem e nas respostas de thread;
+  - ocultar o botao de resposta na mensagem raiz quando ela ja esta dentro do painel de respostas;
+  - manter reacao, tag e informacoes operacionais no painel, conectando `onToggleTag` no contexto de thread.
+- Commit publicado: `6ee7c20 fix(hermes): stabilize thread panel layout`; pacote limpo `.codex-deploy/prod-hermes-thread-panel-20260520-1505`.
+- Deployment anterior: `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT`.
+- Deployment novo: `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K`; URL tecnica `https://careli-hub-hub-i2bs-f10ufm5xa-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K`, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/thread-panel.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos: Apolo, Iris/CareDesk/Meta, Atlas, Hades/Guardian, Zeus fora da base ja publicada, Setup, Chronos, migrations, envs, secrets, banco, dominios, aliases manuais e demais recortes locais do worktree.
+- Validacoes executadas:
+  - no worktree principal: `npx.cmd eslint components/pulsex/message-item.tsx components/pulsex/thread-panel.tsx components/pulsex/pulsex-workspace.tsx --max-warnings 0`, `git diff --check`, scan de secrets dos tres arquivos, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`;
+  - no pacote limpo: diff contra a base de producao restrito aos tres arquivos Hermes, busca confirmando `overflow-wrap:anywhere`, `onOpenThread ?` e `onToggleTag`, scan de secrets, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`;
+  - build remoto Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200` em `0.422659s`;
+  - `GET https://c2x.app.br/login`: `200` em `0.415906s`;
+  - `GET https://c2x.app.br/hermes`: `200` em `0.588892s`;
+  - `GET https://ops.c2x.app.br/zeus`: `200` em `0.883937s`;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: `401` esperado em `0.243161s`;
+  - `GET https://c2x.app.br/api/pulsex/messages` sem sessao: `401` esperado em `0.366889s`;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao: `401` esperado em `0.508807s`;
+  - `GET https://c2x.app.br/api/pwa/manifest`: `200` em `0.438283s`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200` em `1.237010s`.
+- Logs recentes: `npx.cmd vercel logs --level error --since 10m` em `c2x.app.br` e `ops.c2x.app.br` sem logs de erro.
+- Rollback definido: promover novamente `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT` se Hermes, login, Zeus/Deploy ou rotas protegidas apresentarem regressao critica.
+- Riscos conhecidos: validacao visual autenticada do Lucas ainda e recomendada para confirmar o painel no chat real; worktree local permanece misturado e nao deve ser usado para deploy amplo.
+- Pendencias: Lucas validar Hermes autenticado em producao; demais recortes locais continuam fora desta publicacao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas` validar o painel de respostas no Hermes real; `Hefesto` manter monitoramento e rollback pronto.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Hermes sem tooltips nas mensagens`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-20 14:43:53 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: registro `[Hermes] Recorte visual aprovado para Hefesto`, status `PRONTO PARA PRODUCAO`, aprovado por Lucas apos remocao dos tooltips da barra de acoes das mensagens.
+- Escopo publicado:
+  - remover os tooltips visuais dos botoes de reagir, responder, responder com Athena, editar, marcar e informacoes da mensagem;
+  - preservar `aria-labels`, handlers, acessibilidade, reacoes, threads, edicao, tags e painel de informacoes;
+  - manter a base Hermes ja publicada com reacoes, figurinhas, imagens em thread, painel de respostas maior e popups solidos.
+- Commit publicado: `d009b56 fix(hermes): remove message action tooltips`; pacote limpo `.codex-deploy/prod-hermes-no-tooltips-20260520-1438`.
+- Deployment anterior: `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH`.
+- Deployment novo: `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT`; URL tecnica `https://careli-hub-hub-i2bs-2cq717esx-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT`, status `Ready`.
+- Arquivos/modulos incluidos: `apps/hub/components/pulsex/message-item.tsx`; base de producao preservada do pacote `prod-zeus-deploy-registers-final-20260520-1356`.
+- Arquivos/modulos excluidos: Apolo, Iris/CareDesk/Meta, Atlas, Hades/Guardian, Zeus fora da base ja publicada, Setup, Chronos, migrations, envs, secrets, banco, dominios, aliases manuais e demais recortes locais do worktree.
+- Validacoes executadas:
+  - no worktree principal: `npx.cmd eslint components/pulsex/message-item.tsx --max-warnings 0`, `git diff --check -- apps/hub/components/pulsex/message-item.tsx`, scan de secrets no arquivo, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e busca confirmando ausencia de tooltips visuais alvo;
+  - no pacote limpo: diff contra base de producao restrito a `message-item.tsx`, sem secrets, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`;
+  - build remoto Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/pulsex/messages` sem sessao: `401` esperado;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/pwa/manifest`: `200`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200`.
+- Logs recentes: `npx.cmd vercel logs --level error --since 10m` em `c2x.app.br` e `ops.c2x.app.br` nao retornou erros.
+- Rollback definido: promover novamente `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH` se Hermes, login, Zeus/Deploy ou rotas protegidas apresentarem regressao critica.
+- Riscos conhecidos: validacao visual autenticada do Lucas ainda e recomendada para confirmar a ausencia dos tooltips no chat real; pacote preserva a base de producao anterior e nao inclui recortes locais posteriores de Apolo/Iris/Atlas.
+- Pendencias: Lucas validar Hermes autenticado em producao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar a conversa real no Hermes; Hefesto monitorar logs e manter rollback pronto.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Deploy alimentado por indices de ambiente`.
+- Squad/agente responsavel: `Zeus Core autorizado`.
+- Data e hora local: `2026-05-20 14:01:42 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: Lucas autorizou explicitamente publicar no dominio operacional o recorte local validado que alimenta a aba Deploy do Zeus a partir de `docs/operations/releases-homologation.md` e `docs/operations/releases-production.md`.
+- Escopo publicado:
+  - criar fonte/parser de registros de homologacao e producao para a aba Deploy;
+  - expor `/api/zeus/release-registers` com autorizacao administrativa Zeus;
+  - ajustar a tela Deploy para priorizar os indices por ambiente e manter o diario como fallback;
+  - preservar o hotfix Hermes de painel de respostas/popups publicado imediatamente antes.
+- Commit publicado: pacote limpo `.codex-deploy/prod-zeus-deploy-registers-final-20260520-1356`, sem commit Git novo, baseado no pacote Hermes mais recente e com overlay estrito do recorte Zeus/Deploy.
+- Deployment anterior: producao saudavel antes da janela de publicacao `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM`; deployment intermediario Zeus substituido por pacote final `dpl_2yv1wWYPXHTGuw469usziqP9ZbJV`.
+- Deployment novo: `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH`; URL tecnica `https://careli-hub-hub-i2bs-r3eyazms8-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH`, status `Ready`.
+- Arquivos/modulos incluidos: `apps/hub/lib/squadops/release-registers-source.ts`, `apps/hub/app/api/zeus/release-registers/route.ts`, `apps/hub/modules/squadops/ZeusPage.tsx`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md` e `docs/operations/engineering-operations.md`; base preservada de Hermes `message-item.tsx` e `pulsex-workspace.tsx` do pacote anterior.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets, banco, scripts e recortes locais fora de Zeus/Deploy e da base Hermes ja publicada.
+- Validacoes executadas:
+  - no worktree principal: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` e smokes locais passaram;
+  - pacote inicial `.codex-deploy/prod-zeus-deploy-registers-20260520-1348` passou em build, mas foi supersedido porque partia de base anterior ao hotfix Hermes;
+  - pacote final `.codex-deploy/prod-zeus-deploy-registers-final-20260520-1356` confirmou marcadores Hermes `MessageAttachmentPreview` e `min(31rem,calc(100%-0.75rem))` junto de `Fonte da aba Deploy` e `/api/zeus/release-registers`;
+  - pacote final passou `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e smoke local `GET /zeus` + `GET /api/zeus/release-registers`;
+  - build remoto Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: `200`;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao: `401` esperado;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: `401` esperado.
+- Logs recentes: `vercel logs --level error --since 10m` em `ops.c2x.app.br` e `c2x.app.br` nao retornou erros.
+- Rollback definido: promover novamente `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM` se Zeus/Deploy, Hermes, login ou rotas protegidas apresentarem regressao critica; evitar rollback para `dpl_2yv1wWYPXHTGuw469usziqP9ZbJV` porque ele nao preservava a base Hermes mais recente.
+- Riscos conhecidos: a API nova retorna `401` sem sessao e precisa ser validada pelo Lucas autenticado para ver contagem real na UI; como os indices sao arquivos versionados no deployment, o registro desta propria publicacao fica no workspace/diario e entrara no bundle de uma proxima publicacao documental.
+- Pendencias: Lucas validar visualmente a aba Deploy autenticado em `https://ops.c2x.app.br/zeus`; sync estruturado executado apos deploy com passagem final `recordsTotal=404`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar a aba Deploy; Zeus acompanha logs e ajustes finos se houver divergencia.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Hermes painel de respostas por excecao`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-20 13:50:53 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: registro `[Hermes] Painel de respostas e popups solidos`, originalmente `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`; Lucas autorizou seguir como excecao operacional em 2026-05-20 apos o bloqueio inicial.
+- Escopo publicado:
+  - ampliar painel lateral de respostas do Hermes para `min(31rem, calc(100% - 0.75rem))`;
+  - tornar menus, informacoes, seletor de reacoes e preview de figurinha solidos, sem fundo translucido;
+  - abrir seletor de reacoes abaixo do botao para reduzir sobreposicao no texto da mensagem.
+- Commit publicado: pacote limpo `.codex-deploy/prod-hermes-popups-20260520-1348`, sem commit Git novo, baseado no deployment ativo `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu` e com delta manual restrito a dois arquivos Hermes.
+- Deployment anterior: `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`.
+- Deployment novo: `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM`; URL tecnica `https://careli-hub-hub-i2bs-m6h7xfozt-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM`, status `Ready`.
+- Arquivos/modulos incluidos: `apps/hub/components/pulsex/message-item.tsx` e `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Zeus/HelpDesk fora da base ja publicada, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets, banco e scripts fora do recorte Hermes.
+- Validacoes executadas:
+  - primeira montagem copiando arquivos inteiros foi bloqueada pelo build por remover `MessageAttachmentPreview`; o pacote final preservou a base de producao e aplicou somente o delta visual necessario;
+  - `git diff --no-index --check` nos dois arquivos Hermes passou;
+  - scan de secrets nos dois arquivos Hermes sem valores sensiveis reais;
+  - `npx.cmd eslint components/pulsex/message-item.tsx components/pulsex/pulsex-workspace.tsx --max-warnings 0` passou;
+  - `npm.cmd run check-types:hub` passou;
+  - `npm.cmd run build --workspace @repo/hub` passou;
+  - build remoto Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://c2x.app.br/pulsex`: `200` apos redirecionamento esperado para Hermes;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/pulsex/messages` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/pwa/manifest`: `200`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200`;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200`;
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/hermes`: `200` apos redirecionamento esperado para Zeus no dominio OPS.
+- Logs recentes: `npx.cmd vercel logs https://c2x.app.br --since 10m` mostrou logs `info` e nenhum erro critico nos healthchecks.
+- Rollback definido: promover novamente `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu` se Hermes, login, Zeus/HelpDesk ou rotas protegidas apresentarem regressao critica.
+- Riscos conhecidos: deploy publicado por excecao sem homologacao formal; validacao visual autenticada do Lucas ainda e obrigatoria para confirmar que o painel e os popups resolveram a sobreposicao no chat real; primeiro healthcheck em `ops.c2x.app.br/zeus` e `/hermes` teve latencia acima de 5s, compativel com cold start e sem erro HTTP.
+- Pendencias: Lucas validar Hermes autenticado em producao; Hermes Core acompanhar ajuste fino caso a hierarquia visual ainda incomode.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar o chat Hermes real; Hefesto manter rollback pronto para `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Bloqueio producao Hermes painel de respostas`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-20 13:43:06 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: ultimo registro Hermes no diario canonico, `[Hermes] Painel de respostas e popups solidos`, status `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Escopo solicitado:
+  - promover para producao o ultimo registro do Hermes;
+  - ajuste de largura do painel lateral de respostas;
+  - popups, menus e seletor de reacoes com fundo solido e hierarquia visual corrigida.
+- Commit publicado: `nao publicado`.
+- Deployment anterior: deployment ativo `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`, que ja contem o release Hermes anterior de imagens em threads e preserva Zeus/HelpDesk.
+- Deployment novo: `nao houve deploy`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: permaneceu em `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`;
+  - `https://ops.c2x.app.br`: permaneceu em `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`.
+- Arquivos/modulos incluidos: nenhum arquivo publicado.
+- Arquivos/modulos excluidos: todo o worktree local, incluindo Hermes/PulseX, Iris, Zeus, Hades, Atlas, Setup, Chronos, migrations, envs, secrets, banco e scripts.
+- Validacoes executadas:
+  - leitura de `docs/operations/README.md` e do diario canonico;
+  - consulta aos indices `releases-homologation.md` e `releases-production.md`;
+  - `git status -sb` confirmou worktree principal com recortes misturados;
+  - `git diff --name-only` em Hermes/PulseX mostrou arquivos alem dos dois citados no ultimo registro;
+  - `vercel inspect https://c2x.app.br` confirmou producao ativa em `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`.
+- Healthchecks pos-deploy: nao aplicavel, pois o deploy foi bloqueado antes da publicacao.
+- Logs recentes: nao aplicavel.
+- Rollback definido: nao necessario; nenhum novo deployment foi criado.
+- Riscos conhecidos: promover direto violaria a regra operacional de que `Hefesto` so considera para producao registros `HOMOLOGADO` ou `PRONTO PARA PRODUCAO`; o recorte tambem nao esta isolado em commit/deployment de homologacao e o worktree local mistura varios modulos.
+- Pendencias: `Hermes Core` deve publicar/registrar o recorte em homologacao ou marcar como `PRONTO PARA PRODUCAO` apos validacao do Lucas; depois `Hefesto` pode promover em pacote limpo.
+- Status: `BLOQUEADO`.
+- Proxima acao: Lucas acionar `Hermes Core` para homologacao do recorte ou confirmar formalmente uma excecao de producao sem homologacao, assumindo o risco operacional.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Hermes imagens em threads`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-20 13:10:08 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: ultimo recorte Hermes identificado em `origin/homolog`, commit `3d733ae feat(hermes): attach images to thread replies`, com dependencia Hermes anterior de `1dbebb0 feat(hermes): add reactions and stickers` e `bde6b7e fix(hermes): keep reaction popups above chat`.
+- Escopo publicado:
+  - anexos de imagem em respostas de thread no Hermes;
+  - preservacao de reacoes, tags, emoji e figurinhas ja homologadas;
+  - persistencia de metadata Hermes em `pulsex_messages.metadata`, sem migration nova.
+- Commit publicado: pacote limpo `.codex-deploy/prod-hermes-thread-images-20260520-1330`, sem commit Git novo, baseado no pacote de producao Zeus/HelpDesk atual e com uniao minima dos arquivos Hermes ate `3d733ae`.
+- Deployment anterior: `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke`.
+- Deployment novo: `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`; URL tecnica `https://careli-hub-hub-i2bs-4gtfl8or0-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`, status `Ready`.
+- Arquivos/modulos incluidos: `apps/hub/app/api/pulsex/messages/route.ts`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/lib/pulsex/supabase-data.ts` e `apps/hub/lib/pulsex/types.ts`.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Zeus/HelpDesk fora da base ja publicada, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets, banco e scripts fora do recorte Hermes.
+- Validacoes executadas:
+  - tentativa inicial com apenas `3d733ae` foi bloqueada no build porque faltava a dependencia Hermes de reacoes em `MessageListProps`;
+  - pacote final refez o recorte com a uniao minima dos commits Hermes `1dbebb0`, `bde6b7e` e `3d733ae`;
+  - `git diff --no-index --check` nos arquivos Hermes passou;
+  - scan de secrets nos caminhos Hermes/PulseX sem valores sensiveis reais;
+  - `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram no pacote limpo;
+  - build remoto Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://c2x.app.br/pulsex`: `200` apos redirecionamento esperado para Hermes;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/pulsex/messages` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/pwa/manifest`: `200`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200`;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200`;
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/hermes`: `200` apos redirecionamento esperado para Zeus no dominio OPS.
+- Logs recentes: `npx.cmd vercel logs https://c2x.app.br --since 10m` mostrou apenas logs `info`; sem erro critico identificado nos healthchecks.
+- Rollback definido: promover novamente `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke` se Hermes, login, Zeus/HelpDesk ou rotas protegidas apresentarem regressao critica.
+- Riscos conhecidos: validacao autenticada de upload/colar imagem em resposta de thread ainda depende do Lucas; `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo deployment Vercel e qualquer nova producao sobrescreve ambos; warnings conhecidos de Turbopack/NFT e turbo env persistem sem bloquear build.
+- Pendencias: Lucas validar funcionalmente Hermes autenticado com imagem em thread; Hermes Core acompanhar eventuais ajustes finos.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar Hermes em producao; Hefesto monitorar logs e preservar recortes limpos nas proximas promocoes.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk historico e expansoes compactas em producao`.
+- Squad/agente responsavel: `Zeus Core autorizado`.
+- Data e hora local: `2026-05-20 13:08:11 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: Lucas autorizou explicitamente subir o ajuste no dominio operacional `https://ops.c2x.app.br` apos validacao local do recorte Zeus/HelpDesk.
+- Escopo publicado:
+  - destacar no historico a diferenca entre `Minha devolutiva`, solicitante e Athena;
+  - exibir avatar/foto nos eventos do historico e no relato compacto;
+  - padronizar as expansoes de `Relato do usuario`, `Como deveria funcionar` e `O que ocorreu` no modelo compacto da fila.
+- Commit publicado: pacote limpo `.codex-deploy/prod-zeus-helpdesk-20260520-114226`, sem commit Git novo, com atualizacao pontual de `HubItTicketsBoard.tsx`.
+- Deployment anterior: `dpl_HB6odXW9RR6FMLKnHzTMCzev2RAj`.
+- Deployment novo: `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke`; URL tecnica `https://careli-hub-hub-i2bs-vwttt6h07-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke`, status `Ready`.
+- Arquivos/modulos incluidos: `apps/hub/modules/squadops/HubItTicketsBoard.tsx`.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hermes/PulseX, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets, banco, scripts e recortes locais fora de Zeus/HelpDesk.
+- Validacoes executadas:
+  - no worktree principal: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` e smoke local `/zeus=200`;
+  - no pacote limpo: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/modules/squadops/HubItTicketsBoard.tsx`;
+  - deploy Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: `200`;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all` sem sessao: `401` esperado.
+- Logs recentes: `vercel logs https://ops.c2x.app.br --since 10m --level error` sem logs encontrados.
+- Rollback definido: promover novamente `dpl_HB6odXW9RR6FMLKnHzTMCzev2RAj` se a tela Zeus/HelpDesk, login ou rotas principais apresentarem regressao critica.
+- Riscos conhecidos: `c2x.app.br` e `ops.c2x.app.br` seguem compartilhando o mesmo deployment Vercel; eventos antigos do HelpDesk nao armazenam autor/avatar por evento, entao o historico infere o ator pelo tipo do evento e pelos campos atuais do ticket.
+- Pendencias: Lucas validar visualmente o HelpDesk autenticado em producao; Zeus acompanhar se algum evento antigo exigir regra visual mais especifica. Este deployment foi sucedido pelo release Hermes `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`, que preservou a base Zeus/HelpDesk e e o deployment ativo atual nos aliases compartilhados.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar tela; Zeus monitorar regressao e manter registros estruturados sincronizados.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Correcao de alias apos sobrescrita do HelpDesk`.
+- Squad/agente responsavel: `Zeus Core / Hefesto assistido`.
+- Data e hora local: `2026-05-20 12:01:59 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: publicacao direta autorizada por Lucas para `https://ops.c2x.app.br` e correcao posterior porque o alias foi sobrescrito por outro deployment.
+- Escopo publicado:
+  - restaurar o recorte Zeus/HelpDesk full em producao OPS;
+  - confirmar que o alias `ops.c2x.app.br` aponta para o pacote correto;
+  - registrar risco de aliases compartilhados com `c2x.app.br`.
+- Commit publicado: pacote limpo `.codex-deploy/prod-zeus-helpdesk-20260520-114226`, baseado no production saudavel e com recorte HelpDesk aplicado.
+- Deployment anterior: `dpl_Hrr3kkLjG8TKarMwmNC1E9VK1P9P` sobrescreveu o alias e nao continha o HelpDesk; antes do primeiro deploy Zeus o rollback conhecido era `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9`.
+- Deployment novo: `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`; URL tecnica `https://careli-hub-hub-i2bs-fu7sylzv7-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no mesmo deployment `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`;
+  - `https://ops.c2x.app.br`: confirmado no mesmo deployment `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`.
+- Arquivos/modulos incluidos: `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `apps/hub/modules/squadops/ZeusPage.tsx`, APIs/client/server `hub-it-tickets` e componentes compartilhados de suporte.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hermes, Atlas, migrations, scripts e recortes locais fora de Zeus/HelpDesk.
+- Validacoes executadas:
+  - pacote limpo continha marcadores `HelpDesk`, `isHelpDeskView` e `details=list`;
+  - `vercel inspect https://ops.c2x.app.br` confirmou deployment `Ready`;
+  - service worker remoto verificado sem cache de fetch.
+- Healthchecks pos-deploy:
+  - `GET /zeus`: `200`;
+  - `GET /api/hub/it-tickets?details=list&scope=all` sem sessao: `401` esperado;
+  - logs Vercel mostraram chamada autenticada `GET /api/hub/it-tickets` com `200`.
+- Logs recentes: sem erro critico registrado no check de correcao.
+- Rollback definido: promover novamente `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9` se houver regressao critica.
+- Riscos conhecidos: `c2x.app.br` e `ops.c2x.app.br` compartilham deployment; qualquer novo production deploy pode sobrescrever os dois aliases novamente.
+- Pendencias: Lucas fazer refresh forte e validacao visual autenticada; Zeus monitorar alias.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Hefesto` deve inspecionar os dois aliases antes/depois de qualquer nova producao.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Hermes reacoes e figurinhas`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-20 11:55:01 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: commit homologado `1dbebb0 feat(hermes): add reactions and stickers`, autorizado por Lucas para producao.
+- Escopo publicado:
+  - reacoes rapidas em mensagens Hermes;
+  - envio de emoji/figurinhas;
+  - persistencia Hermes em `metadata` JSONB sem migration.
+- Commit publicado: pacote limpo `7814fd0 feat(hermes): add reactions and stickers`; origem homologada `1dbebb0`.
+- Deployment anterior: `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9`.
+- Deployment novo: `dpl_Hrr3kkLjG8TKarMwmNC1E9VK1P9P`; URL tecnica `https://careli-hub-hub-i2bs-kvesynxt9-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: apontou para `dpl_Hrr3kkLjG8TKarMwmNC1E9VK1P9P` na publicacao;
+  - `https://ops.c2x.app.br`: tambem apontou para `dpl_Hrr3kkLjG8TKarMwmNC1E9VK1P9P` na publicacao, depois sobrescrito pela correcao Zeus `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`.
+- Arquivos/modulos incluidos: `apps/hub/app/api/pulsex/messages/route.ts`, componentes `pulsex/message-*`, `pulsex-workspace`, `apps/hub/lib/pulsex/supabase-data.ts` e `apps/hub/lib/pulsex/types.ts`.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Zeus/HelpDesk, Hades/Guardian, Atlas, Setup, migrations, envs e scripts fora do recorte Hermes.
+- Validacoes executadas:
+  - checagem de escopo confirmou apenas Hermes/PulseX;
+  - scan de secrets sem atribuicoes com valores reais;
+  - `git diff --check`, `check-types`, `lint` e `build` passaram com warnings conhecidos;
+  - smoke local confirmou `/hermes=200` e `/pulsex=307` para `/hermes`.
+- Healthchecks pos-deploy:
+  - `c2x.app.br/`, `/login`, `/hermes`, `/hades`, `/atlas`, `/setup`, `/api/pwa/manifest` e `/api/hades/db/health`: `200`;
+  - `/api/hermes/messages` e `/api/pulsex/messages` sem sessao: `401` esperado;
+  - `ops.c2x.app.br/`: `307` para `/zeus`; `ops.c2x.app.br/zeus`: `200`.
+- Logs recentes: logs Vercel de erro dos ultimos 15 minutos sem ocorrencias.
+- Rollback definido: promover novamente `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9` se Hermes, login, Home, API de mensagens ou rotas principais apresentarem regressao critica.
+- Riscos conhecidos: validacao autenticada de reagir/enviar emoji/figurinha ainda recomendada; persistencia em `metadata.reactions` pode ter corrida em uso simultaneo extremo; deployment foi posteriormente sobrescrito pela correcao Zeus por causa de aliases compartilhados.
+- Pendencias: Lucas validar funcionalmente Hermes; avaliar tabela propria de reacoes se volume crescer.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Proxima acao: Hermes Core acompanha ajustes finos; Hefesto monitora alias compartilhado.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk full publicado em producao ops`.
+- Squad/agente responsavel: `Zeus Core / Hefesto assistido`.
+- Data e hora local: `2026-05-20 11:51:22 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: Lucas autorizou explicitamente publicar o recorte HelpDesk no dominio operacional `https://ops.c2x.app.br`.
+- Escopo publicado:
+  - renomear experiencia visivel para `HelpDesk`;
+  - carregar fila em modo leve `details=list`;
+  - abrir evidencias em overlay;
+  - limpar campos de devolutiva apos envio.
+- Commit publicado: pacote limpo `.codex-deploy/prod-zeus-helpdesk-20260520-114226`, baseado no production saudavel `9cc34eb`.
+- Deployment anterior: `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9`.
+- Deployment novo: `dpl_F3zBKiKSWf8b5KZ58PeP98Gi9RuU`; URL tecnica `https://careli-hub-hub-i2bs-gs3fsx5bu-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment novo na publicacao;
+  - `https://ops.c2x.app.br`: confirmado no deployment novo na publicacao.
+- Arquivos/modulos incluidos: `HubItTicketsBoard`, `ZeusPage`, APIs/client/server `hub-it-tickets` e componentes compartilhados de suporte.
+- Arquivos/modulos excluidos: Iris, Hermes, Atlas, scripts e migrations fora do recorte.
+- Validacoes executadas:
+  - `check-types`, `lint`, `build` e `git diff --no-index --check` passaram no pacote limpo;
+  - smoke local `/zeus` retornou `200`;
+  - Vercel Production ficou `Ready`.
+- Healthchecks pos-deploy:
+  - `ops.c2x.app.br/`: `307` esperado para Zeus;
+  - `/login`: `200`;
+  - `/zeus`: `200`;
+  - `/api/pwa/manifest`: `200`;
+  - APIs protegidas sem sessao: `401` esperado;
+  - `GET /api/hub/it-tickets/evidence-analysis`: `405` esperado.
+- Logs recentes: sem erro 500; chamadas autenticadas `GET /api/hub/it-tickets` com `200`.
+- Rollback definido: promover novamente `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9` se login, Zeus, HelpDesk ou rotas protegidas apresentarem regressao.
+- Riscos conhecidos: o deployment foi sobrescrito em seguida por `dpl_Hrr3kkLjG8TKarMwmNC1E9VK1P9P`, exigindo a correcao registrada acima.
+- Pendencias: registro mantido para rastreabilidade historica; estado ativo atual e o deployment corrigido `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Proxima acao: usar o registro de correcao como fonte atual de producao OPS.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Panteon 19 e 20 sem cortes Iris`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-20 08:48:19 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `DP-20260520-0220-PANTEON-HOMOLOG`, com autorizacao do Lucas para subir dias 19 e 20 excluindo pacotes Iris.
+- Escopo publicado:
+  - PWA Panteon;
+  - login Panteon preservado;
+  - Ticket TI/Zeus;
+  - Athena Ticket Recording;
+  - Hades AI drawer;
+  - Hermes Athena panel/workspace.
+- Commit publicado: pacote limpo com commits `9cc34eb`, `f585d27`, `e046aa7` sobre base `a264bb9`.
+- Deployment anterior: `dpl_5nk1gTh6wwzTLosowcmRha1zjMNb`.
+- Deployment novo: `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9`; URL tecnica `https://careli-hub-hub-i2bs-4mgyqi9lo-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment novo;
+  - `https://ops.c2x.app.br`: confirmado no deployment novo.
+- Arquivos/modulos incluidos: Panteon/PWA, login, Zeus/Ticket TI, Athena, Hades, Hermes e docs operacionais.
+- Arquivos/modulos excluidos: `apps/hub/modules/caredesk`, `apps/hub/lib/iris`, `apps/hub/app/api/iris`, `apps/hub/app/api/caredesk/meta`, migration `0025` e seed demo removido.
+- Validacoes executadas:
+  - `git diff --check`, scan de secrets, `check-types`, `lint` e `build` passaram no pacote limpo;
+  - build remoto Vercel passou com warnings conhecidos.
+- Healthchecks pos-deploy:
+  - `c2x.app.br/`, `/login`, `/hades`, `/hermes`, `/atlas`, `/setup`, `/api/pwa/manifest`, `/sw.js`, `/api/hades/db/health`: `200`;
+  - `/api/hub/it-tickets`, `POST /api/hub/it-tickets/evidence-analysis`, `/api/operations/monitoring` sem sessao: `401` esperado;
+  - `ops.c2x.app.br/`: `307` para `/zeus`; `ops.c2x.app.br/login`: `200`; `ops.c2x.app.br/zeus`: `200`.
+- Logs recentes: logs Vercel de erro dos ultimos 15 minutos sem ocorrencias.
+- Rollback definido: promover novamente `dpl_5nk1gTh6wwzTLosowcmRha1zjMNb` se login, Home, PWA, Zeus/Ticket TI ou rotas principais apresentarem regressao critica.
+- Riscos conhecidos: push da branch limpa foi bloqueado pela politica do ambiente; rastreabilidade fica no deployment e no diario; cortes Iris/Meta ficaram fora; validacao visual autenticada ainda recomendada.
+- Pendencias: Lucas validar PWA e Ticket TI autenticados; Iris segue em recorte separado.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Hefesto acompanhar logs; qualquer Iris em producao exige aprovacao separada.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Login Panteon publicado em producao`.
+- Squad/agente responsavel: `Zeus / Hefesto assistido`.
+- Data e hora local: `2026-05-20 05:28:34 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: Lucas autorizou refazer e publicar a tela de login com identidade Panteon.
+- Escopo publicado:
+  - tela de login com marca Panteon;
+  - base grafite e acento dourado;
+  - formulario compacto preservando autenticacao existente.
+- Commit publicado: pacote minimo em worktree limpa; hash nao registrado no diario para este recorte.
+- Deployment anterior: production anterior conhecido antes do recorte de login.
+- Deployment novo: `dpl_5nk1gTh6wwzTLosowcmRha1zjMNb`; URL tecnica `https://careli-hub-hub-i2bs-mivg9mrhn-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment novo;
+  - `https://ops.c2x.app.br`: confirmado no deployment novo.
+- Arquivos/modulos incluidos: `apps/hub/app/login/page.tsx`.
+- Arquivos/modulos excluidos: recorte Zeus Meta/logs, recortes amplos de homologacao e demais modulos.
+- Validacoes executadas:
+  - `check-types`, `lint`, `build`, `git diff --check` e smoke local `/login` passaram;
+  - Vercel `Ready`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://ops.c2x.app.br/login`: `200`.
+- Logs recentes: logs Vercel mostraram `GET /login` `200` nos dois hosts.
+- Rollback definido: usar deployment production anterior se login quebrar autenticacao ou carregamento.
+- Riscos conhecidos: worktree local principal seguiu com alteracoes abertas; recorte Zeus Meta/logs ficou fora; protocolo `LO-*` persistente segue bloqueado ate modelagem.
+- Pendencias: Lucas validar visualmente login em producao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Zeus fechar desenho oficial de logs/protocolos antes de qualquer gravacao auditavel real.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Producao OPS atualizada para Panteon`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-05-20 02:41:49 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: commit `a264bb9 feat(panteon): consolidate homologation updates`, publicado em homologacao no consolidado Panteon.
+- Escopo publicado:
+  - atualizar tela Zeus/OPS para Panteon;
+  - preservar compatibilidade `/squadops`;
+  - usar worktree limpo para excluir Iris/Meta locais.
+- Commit publicado: `a264bb9 feat(panteon): consolidate homologation updates`.
+- Deployment anterior: `dpl_HPyWL4BBuqzw8VKeYJnqf6G48G2t`.
+- Deployment novo: `dpl_6pEgwbugz9rnAQfLKgiLfWLWbn6U`; URL tecnica `https://careli-hub-hub-i2bs-onawgwhzp-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://ops.c2x.app.br`: confirmado no deployment novo;
+  - `https://c2x.app.br`: tambem atualizado por ser alias production do mesmo projeto.
+- Arquivos/modulos incluidos: consolidado Panteon/Zeus do commit `a264bb9`.
+- Arquivos/modulos excluidos: mudancas locais Iris/Meta e demais recortes fora do commit consolidado.
+- Validacoes executadas:
+  - `check-types`, `lint`, `build` e `git diff --check` passaram no recorte limpo;
+  - smoke local com host `ops.c2x.app.br` passou;
+  - Vercel Production `Ready`.
+- Healthchecks pos-deploy:
+  - `ops.c2x.app.br/`: `307` para `/zeus`;
+  - `ops.c2x.app.br/zeus`: `200`;
+  - `ops.c2x.app.br/squadops`: `200`;
+  - `c2x.app.br/`: `200`;
+  - `c2x.app.br/hades`: `200`;
+  - APIs protegidas sem sessao: `401` esperado.
+- Logs recentes: logs Vercel de erro dos ultimos 15 minutos sem ocorrencias.
+- Rollback definido: promover novamente `dpl_HPyWL4BBuqzw8VKeYJnqf6G48G2t` ou executar rollback Vercel especifico se rota critica, login, isolamento OPS ou logs de producao falharem.
+- Riscos conhecidos: deploy tambem atualizou `c2x.app.br` por alias compartilhado; validacao visual autenticada ainda depende do Lucas.
+- Pendencias: Lucas fazer refresh visual autenticado em OPS.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Zeus acompanhar divergencia visual/operacional; Hefesto sempre validar alias compartilhado.

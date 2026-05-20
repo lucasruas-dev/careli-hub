@@ -64,9 +64,9 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 ## Fluxo oficial
 
 - Lucas define prioridade e escopo.
-- Dev do modulo implementa apenas dentro do proprio escopo e valida localmente.
-- Dev do modulo registra impacto, riscos, validacao e handoff para `Hub ReleaseOps`.
-- `Hub ReleaseOps` organiza commit, build, lint, typecheck, deploy, healthchecks, resumo macro e rastreabilidade.
+- Dev/agente do modulo implementa apenas dentro do proprio escopo, valida e publica homologacao do proprio recorte quando Lucas autorizar.
+- Dev/agente do modulo registra impacto, riscos, validacao, commit/deploy de homologacao e handoff `PRONTO PARA PRODUCAO` por modulo no Zeus/Operations Center.
+- `Hefesto` organiza a promocao para producao a partir de recortes homologados por modulo, executa healthchecks finais, rollback quando necessario e rastreabilidade oficial de producao.
 - `Hub SupportOps` investiga bugs, gargalos, lentidao, APIs instaveis, logs e regressao quando Lucas acionar.
 - Producao so deve ser considerada concluida quando houver healthcheck e registro completo neste arquivo.
 
@@ -78,7 +78,7 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 - Preservar historico: nao apagar registros antigos; novas normalizacoes devem ser feitas por entradas adicionais.
 - Preservar qualidade: validar impacto tecnico antes de concluir e registrar pendencias de forma objetiva.
 - Usar status principal unico por registro; detalhes secundarios ficam em `Pendencias ou riscos conhecidos`.
-- Status normalizados para novos registros: `ANALISANDO`, `IMPLEMENTANDO`, `VALIDANDO`, `AGUARDANDO RELEASEOPS`, `AGUARDANDO ARCHITECT`, `AGUARDANDO DEPLOY`, `FINALIZADO`, `BLOQUEADO`, `EM PRODUCAO`, `OPERACIONAL COM ATENCAO` e `NECESSITA CORRECAO`.
+- Status normalizados para novos registros: `ANALISANDO`, `IMPLEMENTANDO`, `VALIDANDO`, `EM HOMOLOGACAO`, `HOMOLOGADO`, `PRONTO PARA PRODUCAO`, `AGUARDANDO HEFESTO`, `AGUARDANDO RELEASEOPS`, `AGUARDANDO ARCHITECT`, `AGUARDANDO DEPLOY`, `FINALIZADO`, `BLOQUEADO`, `EM PRODUCAO`, `OPERACIONAL COM ATENCAO` e `NECESSITA CORRECAO`.
 
 ## Governanca formal de seguranca e ambientes
 
@@ -101,7 +101,7 @@ SquadOps e o modulo operacional para demandas, squads, agentes, handoffs, commit
 
 ## ReleaseOps
 
-`Hub ReleaseOps` e responsavel por commits, releases, build, lint, typecheck, Vercel, homologacao, producao, healthchecks e rastreabilidade oficial.
+`Hefesto` e responsavel pela promocao para producao, healthchecks finais, rollback e rastreabilidade oficial de producao. A homologacao passa a ser responsabilidade do agente de cada modulo quando Lucas autorizar o deploy do recorte daquele modulo.
 
 Regra permanente: nenhum deploy deve ser considerado concluido sem:
 
@@ -115,7 +115,7 @@ Regra permanente de chaves e ambientes: qualquer deploy, redeploy, promocao ou o
 
 ### Processo ReleaseOps para pedidos de deploy
 
-Quando Lucas pedir deploy, `Hub ReleaseOps` deve atuar como gestora do processo de release, nao como publicadora automatica do worktree inteiro.
+Quando Lucas pedir producao, `Hefesto` deve atuar como gestor do processo de release, nao como publicador automatico do worktree inteiro. Quando Lucas pedir homologacao, o agente do modulo publica apenas o proprio recorte e registra o handoff para producao.
 
 Fluxo obrigatorio:
 
@@ -262,8 +262,8 @@ Regras gerais obrigatorias:
 
 Fluxo operacional oficial:
 
-- Fluxo padrao simplificado definido por Lucas em 2026-05-17: Lucas -> Dev do modulo implementa -> valida localmente -> Hub ReleaseOps realiza commit/deploy/homologacao/producao -> producao.
-- Regra atualizada por Lucas em 2026-05-17: nao existe mais handoff para `Hub QA`; o proprio dev do modulo deve executar a validacao tecnica, funcional e visual possivel antes de encaminhar para `Hub ReleaseOps`.
+- Fluxo padrao atualizado por Lucas em 2026-05-20: Lucas -> agente do modulo implementa -> valida -> publica homologacao do proprio recorte quando autorizado -> sinaliza no Zeus modulo/pacote/atividades prontas para producao -> Hefesto promove producao.
+- Regra preservada: nao existe mais handoff para `Hub QA`; o proprio dev/agente do modulo deve executar a validacao tecnica, funcional e visual possivel antes de sinalizar homologacao ou handoff para producao.
 - Nenhum deploy critico deve ocorrer sem validacao minima.
 - Producao e ambiente critico: validar antes, evitar alteracoes destrutivas, monitorar depois, preservar estabilidade e manter rastreabilidade.
 - Deploys devem preferir homologacao/teste antes de producao quando houver risco operacional.
@@ -272,12 +272,13 @@ Regra oficial de modulo, commit, release e rastreabilidade:
 
 - Guardian Core, CareDesk Core, PulseX Core, Chronos Core, SquadOps Core e futuros modulos do Hub passam a operar como squads completas de desenvolvimento do proprio modulo.
 - Cada dev de modulo e responsavel por implementacao, evolucao, UX operacional, organizacao tecnica, consistencia visual, analise de impacto do proprio modulo, validacoes locais e preservacao das regras operacionais.
-- Devs dos modulos nao devem mais realizar deploy oficial nem assumir responsabilidade principal sobre publicacao em producao.
-- Hub ReleaseOps e responsavel por commits, deploys, build, homologacao, producao, Vercel, healthchecks, organizacao do diario operacional e rastreabilidade oficial das releases.
+- Devs/agentes dos modulos passam a realizar deploy de homologacao do proprio modulo quando Lucas autorizar, mantendo recorte isolado, validado e registrado no Zeus/Operations Center.
+- Devs/agentes dos modulos nao devem assumir responsabilidade principal sobre publicacao em producao.
+- Hefesto e responsavel por promocao para producao, Vercel production, healthchecks finais, rollback, organizacao do diario operacional e rastreabilidade oficial das releases de producao.
 - Hub SupportOps e responsavel por bugs, troubleshooting, gargalos, APIs, integracoes, lentidao, investigacao tecnica, comportamento inesperado e suporte operacional do Hub; deve ser acionado apenas quando necessario pelo Lucas.
-- A regra de 2026-05-17 que dizia que todo agente de implementacao deveria realizar o proprio commit fica substituida por esta metodologia: dev de modulo implementa e valida localmente; Hub ReleaseOps realiza commit e deploy oficial.
+- A regra de 2026-05-17 que centralizava homologacao em ReleaseOps fica substituida: agente de modulo pode publicar homologacao do proprio recorte autorizado; Hefesto promove producao a partir do recorte homologado.
 - Commits de release devem continuar semanticos, objetivos e com responsabilidade principal clara, sem misturar modulos ou responsabilidades sem necessidade real.
-- Ao concluir uma implementacao, o dev de modulo deve informar status operacional, validacoes locais, impactos, pendencias, riscos e orientar handoff para Hub ReleaseOps quando houver necessidade de commit/deploy.
+- Ao concluir uma implementacao com homologacao, o dev/agente de modulo deve informar modulo, pacote, atividades/protocolos, commit/deploy de homologacao, validacoes, impactos, pendencias, riscos e status `PRONTO PARA PRODUCAO` ou bloqueio equivalente para Hefesto.
 - Todos os modulos devem continuar usando obrigatoriamente `docs/operations/engineering-operations.md` como memoria operacional oficial da engenharia Careli Hub. O caminho `docs/codex/engineering-operations.md` permanece somente como ponte de compatibilidade.
 
 Status operacionais obrigatorios:
@@ -285,6 +286,10 @@ Status operacionais obrigatorios:
 - `ANALISANDO`
 - `IMPLEMENTANDO`
 - `VALIDANDO`
+- `EM HOMOLOGACAO`
+- `HOMOLOGADO`
+- `PRONTO PARA PRODUCAO`
+- `AGUARDANDO HEFESTO`
 - `AGUARDANDO RELEASEOPS`
 - `AGUARDANDO ARCHITECT`
 - `AGUARDANDO DEPLOY`
@@ -297,19 +302,19 @@ Status operacionais obrigatorios:
 Fluxo de comunicacao e handoff:
 
 - Toda resposta operacional, direcionamento, handoff, analise, correcao ou implementacao deve comecar com `Assunto:` seguido de um titulo curto, objetivo e pesquisavel.
-- O assunto deve incluir o modulo ou squad relacionado, por exemplo `[Guardian]`, `[CareDesk]`, `[PulseX]`, `[Chronos]`, `[SquadOps]`, `[ReleaseOps]` ou `[SupportOps]`.
+- O assunto deve incluir o modulo ou squad relacionado, por exemplo `[Zeus]`, `[Hades]`, `[Hermes]`, `[Iris]`, `[Chronos]`, `[Atlas]`, `[Hefesto]` ou `[Setup]`.
 - Evitar assuntos genericos; o titulo deve facilitar rastreabilidade, busca futura, continuidade entre sessoes e localizacao de temas especificos.
 - Responder de forma objetiva, executiva e operacional.
 - Sempre informar o que foi feito, o que falta, dependencias de outro agente, proximo passo, riscos conhecidos e status atual.
-- Ao finalizar uma implementacao, indicar o status de handoff. Exemplo: `Status: AGUARDANDO RELEASEOPS`; informar validacoes tecnicas, funcionais e visuais executadas pelo proprio dev do modulo; depois encaminhar commit/deploy/rastreabilidade ao Hub ReleaseOps.
+- Ao finalizar uma implementacao homologada, indicar o status de handoff. Exemplo: `Status: PRONTO PARA PRODUCAO`; informar modulo, pacote, atividades/protocolos, validacoes, riscos e deployment de homologacao para Hefesto.
 
 Regra de orquestracao entre agentes:
 
 - Todo agente faz parte da engenharia coordenada do Careli Hub e nao atua de forma isolada.
 - Ao concluir uma etapa, informar claramente a proxima squad recomendada, validacoes necessarias, dependencias, riscos conhecidos e pendencias.
-- Squads reconhecidas no fluxo operacional simplificado: `Guardian Core`, `CareDesk Core`, `PulseX Core`, `Chronos Core`, `SquadOps Core`, futuros modulos do Hub, `Hub ReleaseOps` e `Hub SupportOps`.
+- Squads reconhecidas no fluxo operacional simplificado: `Zeus Core`, `Hades Core`, `Iris Core`, `Hermes Core`, `Chronos Core`, `Atlas Core`, `Setup`, futuros modulos do Panteon e `Hefesto`.
 - Nunca executar tarefa claramente pertencente a outra squad sem solicitacao explicita do Lucas.
-- Exemplos de limite de escopo: modulo nao assume deploy oficial; Hub ReleaseOps nao redefine UX de modulo; Hub SupportOps nao implementa feature sem pedido explicito; modulo nao redefine arquitetura global sem direcao do Lucas.
+- Exemplos de limite de escopo: modulo assume apenas homologacao do proprio recorte autorizado; Hefesto nao redefine UX de modulo; Zeus nao implementa feature de outro modulo sem pedido explicito; modulo nao redefine arquitetura global sem direcao do Lucas.
 - Operar sempre considerando continuidade entre sessoes, continuidade entre squads, preservacao do diario operacional, estabilidade do ecossistema e possibilidade de outro agente continuar a etapa seguinte.
 
 Regras de UX e interface:
@@ -6399,6 +6404,36 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[Iris] Motor manual Meta WhatsApp`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 02:24:42 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO FUNCIONAL / HOMOLOGACAO WHATSAPP`.
+- Motivo da mudanca: Lucas pediu ligar os motores da Iris para testar envio e recebimento diretamente pelo modulo, depois de confirmar que o webhook Meta ja recebia status e mensagem inbound real.
+- Arquivos/modulos afetados: `apps/hub/lib/iris/meta-whatsapp.ts`, `apps/hub/lib/iris/meta-server.ts`, `apps/hub/app/api/iris/meta/events/route.ts`, `apps/hub/app/api/iris/meta/messages/route.ts`, rotas legadas `apps/hub/app/api/caredesk/meta/events/route.ts` e `apps/hub/app/api/caredesk/meta/messages/route.ts`, `apps/hub/modules/caredesk/IrisPage.tsx`, `docs/modules/caredesk-meta-whatsapp-setup.md` e este diario canonico.
+- Como foi feito: adicionei envio manual server-side para Meta Cloud API usando somente variaveis server-side, criei autenticacao por Bearer/Supabase para endpoints operacionais da Iris, expus leitura protegida dos ultimos webhooks sem retornar payload bruto e incluí um painel de homologacao na tela `Disparos` da Iris com envio manual, refresh de eventos, indicadores de entrada/status/referencias e historico recente.
+- Logica utilizada: o webhook permanece publico apenas para a Meta e continua validando assinatura HMAC no recebimento; todo envio ativo passa por rota protegida por usuario Hub ativo (`admin`, `leader` ou `operator`). O teste fica limitado a envio manual individual, sem disparo em massa, sem automacao e sem expor token/app secret no cliente. A referencia de mensagem aceita pela Meta e registrada em `caredesk_whatsapp_message_refs` para rastreabilidade inicial, enquanto a criacao automatica de contato/ticket continua para recorte posterior.
+- Validacao executada: `npm.cmd run check-types:hub` passou apos a implementacao inicial. Validacoes completas de lint, build, endpoint protegido, deploy homolog e teste real pela UI ainda pendentes nesta etapa do registro.
+- Pendencias ou riscos conhecidos: a protecao SSO da Vercel segue desabilitada para permitir o webhook Meta em homologacao, entao endpoints de envio precisam permanecer autenticados. Ainda falta validar envio pela tela da Iris em homolog e conferir se os eventos de status retornam no painel. Processamento automatico para contato, ticket e conversa operacional permanece fora deste recorte.
+- Status operacional: `IMPLEMENTADO PARCIAL / VALIDACAO EM ANDAMENTO`.
+- Proxima squad recomendada: `Iris Core` para concluir lint/build, deploy homolog autorizado, teste real de envio/recebimento pela UI e atualizar este registro com o resultado final.
+
+Registro de diario:
+
+- Assunto: `[Iris] Motor manual Meta WhatsApp publicado em homolog`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 02:32:16 -03:00.
+- Tipo da alteracao: `DEPLOY HOMOLOG / VALIDACAO META`.
+- Motivo da mudanca: disponibilizar em `homo.c2x.app.br` o painel da Iris para Lucas testar envio manual e recebimento de eventos Meta pela propria interface do modulo.
+- Arquivos/modulos afetados: `.gitignore`, `.vercelignore`, endpoints `/api/iris/meta/events`, `/api/iris/meta/messages`, pontes legadas `/api/caredesk/meta/events`, `/api/caredesk/meta/messages`, tela `/iris`, deployment Vercel `dpl_HjqDuSCHUTUfSYktF2e17P7S4KQE`, alias `homo.c2x.app.br`, documento `docs/modules/caredesk-meta-whatsapp-setup.md` e este diario canonico.
+- Como foi feito: inclui `.codex-artifacts/` e `.codex-deploy/` nos ignores para impedir upload/stage acidental de artefatos locais; publiquei Preview Vercel autorizado; apontei o alias de homologacao para o deployment novo; e validei a rota publica do webhook, os endpoints protegidos e a tela Iris.
+- Logica utilizada: o ambiente precisa permitir que a Meta acesse o webhook publico, mas qualquer envio ativo de WhatsApp deve ficar atras de sessao Hub. Por isso, o handshake do webhook continua aberto somente com verify token correto, enquanto `/api/iris/meta/events` e `/api/iris/meta/messages` rejeitam requisicoes sem Bearer. O envio manual e individual fica liberado em homolog; disparo em massa, automacao, template oficial e criacao automatica de ticket permanecem bloqueados.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; smoke local retornou `/iris=200`, `/api/iris/meta/events=401` sem sessao e `/api/iris/meta/messages=401` sem sessao; build remoto Vercel passou; alias `https://homo.c2x.app.br` aponta para `https://careli-hub-hub-i2bs-9fob1w17m-lucasruas-devs-projects.vercel.app`; webhook de homolog respondeu `200` ao challenge correto; endpoints protegidos em homolog retornaram `401` sem sessao.
+- Pendencias ou riscos conhecidos: falta Lucas abrir `/iris`, acessar `Disparos > Motor de homologacao`, enviar uma mensagem real pelo painel e confirmar que o WhatsApp recebe e que os eventos de status/inbound aparecem no historico. A protecao SSO da Vercel segue desabilitada temporariamente para o webhook Meta; reavaliar depois do teste. Ha warnings conhecidos de build e `npm audit` reportou vulnerabilidades herdadas, fora deste recorte.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Iris Core` acompanhando o teste; depois acionar `Hefesto` para commit/rastreabilidade oficial do recorte validado.
+
+Registro de diario:
+
 - Assunto: `[Hefesto] Deploy homologacao consolidado Panteon 19 e 20`.
 - Nome da squad/agente: `Hefesto`.
 - Data e hora local: 2026-05-20 02:20:21 -03:00.
@@ -6419,3 +6454,1629 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: validacao visual autenticada ainda deve ser feita por Lucas nos modulos Panteon/Hades/Hermes/Iris/Atlas/Setup/Zeus; Iris Meta ja recebe webhook e inbound, mas ainda falta processador para transformar eventos em contato/conversa/ticket visivel; outbound operacional segue bloqueado; Vercel SSO/protection foi desabilitado anteriormente para permitir o webhook Meta em homologacao e deve ser reavaliado por Zeus/Hefesto depois dos testes; nenhuma nova migration foi aplicada por Hefesto nesta rodada; producao nao foi alterada.
 - Status operacional: `EM HOMOLOGACAO`.
 - Proxima squad recomendada: `Lucas` para validacao visual/funcional autenticada em homologacao; `Iris Core` para o processador de inbound; `Zeus/Hefesto` para revisar politica de protecao Vercel apos finalizar testes Meta.
+
+Registro de diario:
+
+- Assunto: `[Atlas] Dados restaurados em homologacao`.
+- Nome da squad/agente: `Atlas Core / Hub DataOps assistido`.
+- Data e hora local: 2026-05-20 02:38:55 -03:00.
+- Tipo da alteracao: `CORRECAO HOMOLOGACAO / MIGRACAO CONTROLADA` - restauracao do schema e dos dados Atlas no Supabase de homologacao.
+- Motivo da mudanca: Lucas informou que `https://homo.c2x.app.br/atlas` subiu em homologacao sem trazer dados e exibia o bloqueio de conexao controlada, porque o deploy havia publicado o codigo do Atlas sem aplicar a migration/importacao Atlas no banco de homologacao.
+- Ambiente: homologacao; sem alteracao em producao; banco Atlas origem e Hub origem usados somente para leitura; nenhuma env, secret ou valor sensivel foi exibido.
+- Arquivos/modulos afetados: `apps/hub/lib/atlas/server.ts`, `scripts/atlas-apply-schema.mjs`, `scripts/atlas-verify-migration.mjs`, `scripts/atlas-copy-hub-data.mjs`, `packages/database/migrations/0023_atlas_core.sql`, Supabase de homologacao via `HOMOLOG_POSTGRES_URL` e este diario canonico.
+- Como foi feito: auditei em runner limpo apenas a presenca de envs de homologacao, sem imprimir valores; ajustei os scripts Atlas para aceitarem `HOMOLOG_POSTGRES_URL`; apliquei a migration nao destrutiva `0023_atlas_core.sql` em homologacao; rodei dry-run de copia Hub-to-Hub; executei upsert idempotente dos dados Atlas para as tabelas `atlas_*` de homologacao; e validei contagens, valores e evidencias por script de verificacao.
+- Logica utilizada: a tela Atlas deve ler primeiro as tabelas `atlas_*` do Supabase Hub/homologacao, nao depender do banco separado `careli-performance`. O loader server-side agora retorna o erro real do Hub quando o runtime Hub esta configurado, evitando mascarar falhas de schema/dados com o fallback antigo `ATLAS_SUPABASE_URL`. Tabelas auxiliares de perfil legado e count exato nao derrubam mais o snapshot inteiro se falharem; o Atlas usa lista vazia/fallback de contagem quando o dado operacional principal esta disponivel.
+- Resultado da importacao em homologacao: 4 departamentos; 7 cargos; 9 colaboradores; 3 perfis de ocorrencia; 6 tipos de ocorrencia; 35 ocorrencias; 0 perfis legados de usuario.
+- Valores confirmados em homologacao: 7 cargos com `base_value`; soma agregada `3682.00`; menor valor `78.00`; maior valor `1500.00`.
+- Evidencias confirmadas em homologacao: 31 ocorrencias com evidencia e 4 sem evidencia; primeira ocorrencia em `2026-04-09`; ultima ocorrencia em `2026-05-15`.
+- Validacao executada: `node --check scripts/atlas-copy-hub-data.mjs`; `node --check scripts/atlas-apply-schema.mjs`; `node --check scripts/atlas-verify-migration.mjs`; auditoria Vercel Preview com booleans de env sem valores; `scripts/atlas-apply-schema.mjs` via `vercel env run` confirmou as 8 tabelas `atlas_*`; `scripts/atlas-copy-hub-data.mjs` dry-run retornou as contagens esperadas; `scripts/atlas-copy-hub-data.mjs --apply` concluiu a copia; `scripts/atlas-verify-migration.mjs` confirmou batch `completed`, contagens, valores e evidencias; `GET https://homo.c2x.app.br/atlas` retornou `200 OK`; `GET /api/atlas/snapshot` sem sessao retornou `401 Unauthorized` esperado; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram, com warnings conhecidos de `eslint.config.js` typeless e Turbopack/NFT em `engineering-operations-source.ts`.
+- Pendencias ou riscos conhecidos: validacao visual autenticada ainda depende do navegador/sessao do Lucas para confirmar que a tela de homologacao atualizou os cards e a tabela; os links de evidencia continuam apontando para URLs importadas do Atlas legado, e a copia fisica para Storage Hub permanece fora deste recorte; regras de bonus, calculos de performance e escrita operacional continuam preservados e bloqueados para alteracao sem validacao humana.
+- Status operacional: `OPERACIONAL COM ATENCAO`.
+- Proxima squad recomendada: `Lucas` para refresh e validacao visual autenticada em homologacao; `Hefesto` para publicar o ajuste de loader/scripts em recorte seguro quando fechar a release; `Hub DataOps` para futura migracao fisica de Storage/evidencias se Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[Atlas] Runtime homolog conectado ao Supabase`.
+- Nome da squad/agente: `Atlas Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 03:58:26 -03:00.
+- Tipo da alteracao: `CORRECAO HOMOLOGACAO / ENV VERCEL / REDEPLOY` - carregamento da chave server-side no runtime Preview que serve `homo.c2x.app.br`.
+- Motivo da mudanca: apos a carga dos dados Atlas em homologacao, Lucas mostrou que a tela ainda exibia `Configure a chave server-side do Hub para carregar o Atlas`. A API `/api/atlas/snapshot` e outras APIs server-side retornavam `503`, indicando que o deployment do alias estava sem chave server-side.
+- Ambiente: homologacao; Vercel Preview; alias `https://homo.c2x.app.br`; sem alteracao em producao; nenhum valor de secret foi exibido.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, env `SUPABASE_SECRET_KEY` em `Preview`, deployment `dpl_EFs6HhmbFxJqjfnGTHUkR5Aotm3W`, alias `https://homo.c2x.app.br`, `apps/hub/lib/supabase/server-config.ts` em ajuste local pendente e este diario canonico.
+- Como foi feito: Lucas autorizou mexer em env/deploy; confirmei que o `Preview` generico tinha `NEXT_PUBLIC_SUPABASE_URL`, mas nao tinha service role, enquanto `Preview (homolog)` possuia as chaves server-side. Criei `SUPABASE_SECRET_KEY` no `Preview` generico via Vercel API usando stdin a partir da chave server-side ja configurada na branch `homolog`, sem imprimir valor no chat, arquivo ou argumento. Em seguida executei `vercel redeploy https://homo.c2x.app.br --target preview` para carregar a nova env no runtime.
+- Logica utilizada: o deployment que servia o alias era Preview generico, nao branch-scoped, portanto nao recebia `SUPABASE_SERVICE_ROLE_KEY` de `Preview (homolog)`. Como o resolvedor server-side do Hub ja aceita `SUPABASE_SECRET_KEY`, criar a env equivalente no Preview generico desbloqueou o runtime sem alterar banco, schema, dados, usuario ou producao.
+- Validacao executada: antes da correcao, `GET /api/atlas/snapshot` retornava `503`; depois do redeploy, `GET /api/atlas/snapshot` sem sessao retornou `401 Unauthorized` esperado e logs autenticados do navegador retornaram `200`; `PATCH /api/hub/presence` tambem passou a registrar `200`; `GET https://homo.c2x.app.br/atlas` retornou `200 OK`; `vercel inspect https://homo.c2x.app.br` confirmou o deployment `dpl_EFs6HhmbFxJqjfnGTHUkR5Aotm3W` em `Ready` com alias `homo.c2x.app.br`; `vercel logs` dos 5 minutos posteriores mostrou `/api/atlas/snapshot` com `200` em chamadas autenticadas.
+- Pendencias ou riscos conhecidos: foi criada uma env server-side no `Preview` generico para evitar que deployments manuais do alias fiquem sem chave; manter este escopo deve ser revisado por Hefesto/InfraOps caso a estrategia futura volte a usar exclusivamente deployments Git branch-scoped. A validacao visual final depende de Lucas dar refresh na tela autenticada do Atlas.
+- Status operacional: `INTEGRADO`.
+- Proxima squad recomendada: `Lucas` para refresh visual autenticado; `Hefesto/Hub InfraOps` para revisar a politica de envs Preview generico versus branch `homolog`.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Producao OPS atualizada para Panteon`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 02:41:49 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / OPS` - publicacao da tela Zeus atualizada no dominio operacional.
+- Protocolo operacional: `DP-20260520-0241-ZEUS-OPS-PROD`.
+- Motivo da mudanca: Lucas informou que a tela Zeus em `ops.c2x.app.br` estava desatualizada e autorizou seguir com a publicacao em producao.
+- Ambiente: producao; dominio operacional `https://ops.c2x.app.br`; sem alteracao de env, secret, migration, banco ou chave.
+- Recorte publicado: commit `a264bb9 feat(panteon): consolidate homologation updates`, isolado em worktree limpo para nao incluir mudancas locais de Iris/Meta que continuam fora deste deploy.
+- Commit realizado: `a264bb9 feat(panteon): consolidate homologation updates`.
+- Deployment anterior de OPS: `dpl_HPyWL4BBuqzw8VKeYJnqf6G48G2t`.
+- Deployment novo de producao: `dpl_6pEgwbugz9rnAQfLKgiLfWLWbn6U`; URL Vercel `https://careli-hub-hub-i2bs-onawgwhzp-lucasruas-devs-projects.vercel.app`.
+- Deploy realizado: Vercel Production `dpl_6pEgwbugz9rnAQfLKgiLfWLWbn6U`; URL `https://careli-hub-hub-i2bs-onawgwhzp-lucasruas-devs-projects.vercel.app`; aliases `https://ops.c2x.app.br` e `https://c2x.app.br`.
+- Aliases afetados: `https://ops.c2x.app.br` e `https://c2x.app.br`, ambos aliases de producao do mesmo projeto Vercel. O dominio OPS foi confirmado apontando para o deployment novo.
+- Como foi feito: criei worktree destacado em `a264bb9`, copiei apenas o vinculo local `.vercel/project.json` sem exibir IDs sensiveis, rodei validacoes no pacote limpo, executei smoke local com host `ops.c2x.app.br`, capturei o deployment anterior para rollback e publiquei `npx.cmd vercel deploy --prod --yes --archive=tgz`.
+- Logica utilizada: como o worktree principal continha alteracoes locais de Iris/Meta, o deploy nao poderia sair da pasta atual. O pacote limpo garantiu que a producao recebesse apenas o consolidado Panteon/Zeus ja validado em homologacao, preservando compatibilidade legada `/squadops` e o acesso canonico `/zeus`.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; `git diff --check` no recorte Zeus passou; smoke local confirmou `ops.c2x.app.br/` 307 para `/zeus`, `/zeus` 200 e `/squadops` 200; build remoto Vercel passou; `vercel inspect https://ops.c2x.app.br` confirmou `Ready` no deployment novo; smoke remoto confirmou `https://ops.c2x.app.br/` 307 para `/zeus`, `https://ops.c2x.app.br/zeus` 200, `https://ops.c2x.app.br/squadops` 200, `https://ops.c2x.app.br/hades` 307 para `/zeus`, `https://c2x.app.br/zeus` 307 para `/`, `https://c2x.app.br/` 200, `https://c2x.app.br/hades` 200 e `https://c2x.app.br/setup` 200; APIs protegidas `/api/zeus/operations/structured` e `/api/operations/monitoring` retornaram 401 sem sessao; logs Vercel de erro dos ultimos 15 minutos nao retornaram ocorrencias.
+- Resultado dos healthchecks: `ops.c2x.app.br/` 307 para `/zeus`; `ops.c2x.app.br/zeus` 200; `ops.c2x.app.br/squadops` 200; `ops.c2x.app.br/hades` 307 para `/zeus`; `c2x.app.br/zeus` 307 para `/`; APIs protegidas 401 sem sessao; logs Vercel sem erros recentes.
+- Rollback definido: promover novamente o deployment anterior `dpl_HPyWL4BBuqzw8VKeYJnqf6G48G2t` ou executar rollback Vercel especifico se rota critica, login, isolamento OPS ou logs de producao falharem.
+- Pendencias ou riscos conhecidos: validacao visual autenticada final ainda depende da sessao do Lucas no navegador; o deploy de producao tambem atualizou o alias principal `c2x.app.br` por ser alias de producao do mesmo projeto, mas os smokes principais retornaram 200 e o acesso direto a `/zeus` no dominio principal redireciona para `/`; warnings conhecidos de Turbopack/NFT, Node engines e `npm audit` permanecem fora deste recorte.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` para refresh visual autenticado em `https://ops.c2x.app.br`; `Zeus` acompanha se houver divergencia visual ou operacional.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Taxonomia de protocolos AT CB TI OP AL DP`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 02:59:26 -03:00.
+- Tipo da alteracao: `DECISAO OPERACIONAL / AJUSTE DE GOVERNANCA E UI`.
+- Motivo da mudanca: Lucas aprovou reservar `AT` para atendimento da Iris, pediu separar os protocolos de TI e acrescentou `CB` para cobranca.
+- Arquivos/modulos afetados: `AGENTS.md`, `docs/operations/README.md`, `docs/operations/agent-handoff-scripts.md`, `docs/operations/squadops-agent-startup-script.md`, `docs/operations/squadops-center-process.md`, `apps/hub/modules/squadops/ZeusPage.tsx`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, componentes `apps/hub/components/hub-support/*` relacionados ao suporte operacional e este diario canonico.
+- Como foi feito: atualizei a documentacao operacional para usar a taxonomia oficial `AT/CB/TI/OP/AL/DP`; ajustei a tela Zeus para listar os prefixos aprovados; incluí a classificacao `CB` na esteira de homologacao; e simplifiquei os rotulos de Ticket TI para `TI` nas superficies compartilhadas de suporte Zeus.
+- Logica utilizada: `AT` passa a significar atendimento Iris; `CB` passa a cobrir cobranca; `TI` fica para suporte tecnico interno, bugs e melhorias operacionais; `OP` cobre atividade operacional Zeus/Data/Infra/Support; `AL` permanece alerta; e `DP` permanece deploy/release. Protocolos legados `TK` e antigos `AT` do Zeus ficam preservados para historico, sem reescrita retroativa.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check` passou nos arquivos alterados com avisos LF/CRLF conhecidos no Windows; smoke local `GET http://localhost:3001/zeus` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: nenhuma migration, Supabase, env, deploy, alias, banco ou registro estruturado foi alterado nesta rodada. A geracao real dos novos prefixos no banco e a reconciliacao historica dos protocolos estruturados permanecem `BLOQUEADO` ate autorizacao explicita do Lucas para migration/operacao de dados.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Hefesto` para isolar o recorte em release quando Lucas autorizar; `Zeus` para preparar migration/ajuste estruturado de protocolos em recorte proprio se Lucas autorizar operacao de dados.
+
+Registro de diario:
+
+- Assunto: `[Athena] Gravacao de ticket preservada ao clicar fora`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 03:22:08 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL / DECISAO DE RASTREABILIDADE`.
+- Motivo da mudanca: Lucas apontou que, ao iniciar gravacao de tela/audio para abrir um ticket pela Athena, clicar fora da janela fechava/desmontava o painel, interrompia o video e perdia o fluxo de abertura.
+- Arquivos/modulos afetados: `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/modules/guardian/attendance/components/AiCopilotDrawer.tsx`, `apps/hub/components/pulsex/athena-agent-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `docs/operations/squadops-center-process.md` e este diario canonico.
+- Como foi feito: o formulario compartilhado de abertura de TI passou a expor estado de gravacao e um modo compacto de gravacao; o dock global da Athena, o painel nativo de Hades e o painel da Hermes agora minimizam a janela quando houver gravacao ativa em vez de desmontar o componente; o modo minimizado mantem `Stop` e `Finalizar` disponiveis e restaura a Athena para revisar evidencias e concluir o ticket.
+- Logica utilizada: o `MediaRecorder` vive dentro do formulario; portanto o painel nao pode ser desmontado enquanto houver gravacao ou processamento da evidencia. Fechar por clique fora, quando gravando, vira uma transicao visual para modo compacto. Fechar sem gravacao continua fechando normalmente.
+- Decisao operacional registrada: Iris e o canal externo oficial do Panteon. Toda comunicacao externa deve passar pela Iris e gerar ou reutilizar um `AT` raiz. Internamente, cada setor mantem seu protocolo proprio e rastreavel; Hades usa `CB`, e Financeiro, Compras e Contratos terao prefixos proprios quando forem construidos. Zeus nao precisa virar `AT` para trabalho interno de Data, Infra, Support ou governanca; nesses casos usa `OP`, `TI`, `AL` ou `DP`. Quando uma atividade setorial depender de contato externo, o protocolo do setor deve se vincular ao `AT` raiz.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check` passou nos arquivos alterados com avisos LF/CRLF conhecidos no Windows; smokes locais retornaram `200 OK` em `http://localhost:3001/`, `http://localhost:3001/hades/cobranca` e `http://localhost:3001/hermes`.
+- Pendencias ou riscos conhecidos: nao houve stage, commit, push, deploy, Supabase, env, migration ou escrita em banco. A tabela canonica de protocolos e vinculos `AT <-> protocolos setoriais` ainda nao foi criada; este recorte fica `BLOQUEADO` para implementacao tecnica ate autorizacao explicita do Lucas por envolver migration/modelagem de dados e possivel reconciliacao historica.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Hefesto` para isolar/publicar a correcao da Athena quando Lucas autorizar; `Iris Core` para detalhar o desenho de `AT` raiz e comunicacao externa; `Zeus` para preparar a migration de rastreabilidade de protocolos em recorte proprio se Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Homologacao da gravacao de ticket Athena`.
+- Nome da squad/agente: `Zeus / Hefesto assistido`.
+- Data e hora local: 2026-05-20 03:34:28 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOGACAO` - publicacao do ajuste de abertura de ticket pela Athena em homologacao.
+- Motivo da mudanca: Lucas autorizou subir em homologacao o recorte que impede a interrupcao da gravacao de tela/audio quando o usuario clica fora da janela da Athena durante abertura de ticket.
+- Ambiente: homologacao; alias `https://homo.c2x.app.br`; sem alteracao em producao.
+- Recorte publicado: somente arquivos do fluxo Athena/ticket e documentacao operacional relacionados ao comportamento de gravacao minimizada e regra Iris/AT como canal externo.
+- Arquivos/modulos afetados: `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/modules/guardian/attendance/components/AiCopilotDrawer.tsx`, `apps/hub/components/pulsex/athena-agent-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `docs/operations/squadops-center-process.md` e este diario canonico.
+- Como foi feito: criei worktree limpo destacado em `6aa4bd3`, copiei apenas os 7 arquivos do recorte validado, preservei o vinculo Vercel local sem expor IDs sensiveis, validei o pacote limpo, publiquei Preview Vercel e apontei `homo.c2x.app.br` para o deployment novo.
+- Deployment realizado: Vercel Preview `dpl_Bhee7MLLr79BCEhnvDnrrxVqgYjV`; URL `https://careli-hub-hub-i2bs-fvuhge83b-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada no pacote limpo: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; build remoto Vercel passou.
+- Healthchecks pos-deploy: `vercel inspect https://homo.c2x.app.br` confirmou deployment `dpl_Bhee7MLLr79BCEhnvDnrrxVqgYjV` em `Ready`; `GET https://homo.c2x.app.br/` retornou `200 OK`; `GET https://homo.c2x.app.br/hades/cobranca` retornou `200 OK`; `GET https://homo.c2x.app.br/hermes` retornou `200 OK`; `GET https://homo.c2x.app.br/api/hub/it-tickets` sem sessao retornou `401 Unauthorized` esperado; logs Vercel de erro dos ultimos 15 minutos nao retornaram ocorrencias.
+- Pendencias ou riscos conhecidos: nao houve stage, commit, push, Supabase, env, migration, alias de producao ou escrita em banco. Validacao visual autenticada ainda depende de Lucas testar a gravacao pela Athena em homologacao, clicando fora durante a gravacao e usando `Stop`/`Finalizar` no modo minimizado.
+- Status operacional: `EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` para teste visual autenticado em `https://homo.c2x.app.br`; `Hefesto` para eventual promocao futura se Lucas aprovar; `Iris Core` para recorte separado de rastreabilidade `AT` com protocolos setoriais.
+
+Registro de diario:
+
+- Assunto: `[Iris] Protocolo AT sequencial para atendimentos`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 03:06:32 -03:00.
+- Tipo da alteracao: `DECISAO OPERACIONAL / IMPLEMENTACAO FUNCIONAL PREPARADA`.
+- Motivo da mudanca: Lucas definiu que os protocolos de atendimento da Iris devem usar o prefixo `AT-` com numeracao sequencial, reservando `AT` para atendimento e impedindo o uso de protocolos mock como `CARE-DEMO-*`.
+- Arquivos/modulos afetados: `apps/hub/lib/iris/meta-inbound-processor.ts`, `apps/hub/app/api/iris/meta/webhook/route.ts`, `packages/database/migrations/0025_iris_inbound_ticket_protocols.sql`, `docs/modules/caredesk-operational-memory.md`, `docs/modules/caredesk-meta-whatsapp-setup.md`, `scripts/seed-caredesk-demo.mjs` e este diario canonico.
+- Como foi feito: o processador inbound Meta da Iris foi preparado para criar ticket real quando chegar mensagem WhatsApp e buscar o protocolo via RPC `next_caredesk_ticket_protocol()`. A migration `0025_iris_inbound_ticket_protocols.sql` cria a sequencia `caredesk_ticket_protocol_seq`, a funcao `next_caredesk_ticket_protocol()` e retorna protocolos no formato `AT-000001`, `AT-000002` e assim por diante. O seed demo `scripts/seed-caredesk-demo.mjs` foi removido e a migration limpa tickets/broadcasts demo.
+- Logica utilizada: o protocolo deve nascer server-side no banco para evitar colisao entre webhooks simultaneos e preservar rastreabilidade operacional. A sequencia considera protocolos `AT-*` ja existentes antes de gerar novos numeros, mantendo continuidade se houver dados anteriores. O prefixo `AT` fica exclusivo da Iris; `CB`, `TI`, `OP`, `AL` e `DP` permanecem para os demais fluxos de Zeus/Panteon conforme taxonomia registrada.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `node --check apps/hub/lib/iris/meta-inbound-processor.ts` passou; `npm.cmd run lint --workspace @repo/hub -- lib/iris/meta-inbound-processor.ts app/api/iris/meta/webhook/route.ts` passou; `npm.cmd run lint:hub` passou com warning Node conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; `git diff --check` no recorte Iris passou com avisos LF/CRLF conhecidos no Windows.
+- Pendencias ou riscos conhecidos: a migration `0025` ainda precisa ser aplicada no Supabase de homologacao e o recorte precisa ser publicado por `Hefesto` antes do teste real na tela Iris. Nenhuma env, secret, token, banco, deploy, alias ou producao foi alterado nesta decisao.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Hefesto` para isolar release homologacao, aplicar migration `0025` com autorizacao de Lucas, publicar o recorte e validar recebimento real de WhatsApp criando ticket `AT-*` na Iris.
+
+Registro de diario:
+
+- Assunto: `[Iris] Inbound WhatsApp AT publicado em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 03:55:10 -03:00.
+- Tipo da alteracao: `MIGRATION HOMOLOG / RELEASE HOMOLOG / HEALTHCHECK`.
+- Motivo da mudanca: Lucas autorizou aplicar diretamente o motor inbound da Iris para que mensagens recebidas pelo WhatsApp criem ticket real no board com protocolo `AT-*` sequencial.
+- Arquivos/modulos afetados: `apps/hub/lib/iris/meta-inbound-processor.ts`, `apps/hub/app/api/iris/meta/webhook/route.ts`, `apps/hub/lib/iris/meta-whatsapp.ts`, `apps/hub/lib/iris/meta-server.ts`, rotas `/api/iris/meta/events`, `/api/iris/meta/messages`, pontes legadas `/api/caredesk/meta/events` e `/api/caredesk/meta/messages`, `apps/hub/modules/caredesk/IrisPage.tsx`, `packages/database/migrations/0025_iris_inbound_ticket_protocols.sql`, `scripts/seed-caredesk-demo.mjs`, docs do modulo Iris e este diario canonico.
+- Como foi feito: apliquei a migration `0025` no Supabase de homologacao usando variaveis Preview branch `homolog` da Vercel, sem imprimir secrets; validei a sequencia/função `AT-*`, a permissao do `service_role` e a limpeza do mock `CARE-DEMO-*`; publiquei o recorte por commit na branch `homolog` para a Vercel herdar as variaveis branch-scoped; e apontei `https://homo.c2x.app.br` para o deployment Git validado.
+- Logica utilizada: deploy manual da Vercel CLI nao herdou variaveis branch-scoped de `homolog`, entao o alias foi temporariamente restaurado para o preview anterior e a publicacao correta foi feita via push Git da branch `homolog`. Assim o runtime de homologacao recebeu as envs Meta/Supabase corretas sem ampliar escopo de env nem copiar secrets para comandos.
+- Commit realizado: `bb70062 feat(iris): process meta inbound tickets`.
+- Migration aplicada: `0025_iris_inbound_ticket_protocols.sql`.
+- Deployment homologacao: Vercel Preview `dpl_HDDHNMbu76hjGWm1CzGH3aamVxx8`; URL `https://careli-hub-hub-i2bs-21u19c5ye-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou; `node --check apps/hub/lib/iris/meta-inbound-processor.ts` passou; `node --check apps/hub/lib/iris/meta-server.ts` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning Node conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; build remoto Vercel passou; validacao SQL confirmou `sequence_present=true`, `function_present=true`, `security_definer=false`, `service_role_can_execute=true`, `demo_tickets=0` e `demo_broadcasts=0`; healthcheck remoto confirmou `/iris=200`, `/api/iris/meta/status=401` sem sessao, `/api/iris/meta/events=401` sem sessao, `GET /api/iris/meta/webhook=403` sem challenge e `POST /api/iris/meta/webhook=401` com assinatura invalida; logs de erro Vercel dos ultimos minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: falta Lucas enviar nova mensagem real pelo WhatsApp para confirmar visualmente o nascimento do ticket `AT-*` no board da Iris. Producao nao foi alterada. O warning Turbopack/NFT e vulnerabilidades herdadas de `npm audit` permanecem fora deste recorte.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Iris Core` acompanhando o teste real de recebimento; depois, se aprovado, `Hefesto` decide promocao futura para producao em recorte separado.
+
+Registro de diario:
+
+- Assunto: `[Athena] Gravacao de ticket persistente entre telas`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 03:52:04 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL / CONTINUIDADE DE EVIDENCIA`.
+- Motivo da mudanca: Lucas confirmou em homologacao que a gravacao de video da Athena ainda caia ao mudar de tela. O comportamento esperado e manter a gravacao ativa enquanto o usuario navega por outra tela, modulo, aba, janela ou aplicativo para demonstrar o problema antes de finalizar o ticket.
+- Arquivos/modulos afetados: `apps/hub/components/hub-support/athena-ticket-recording-provider.tsx`, `apps/hub/components/hub-support/hub-ticket-evidence-utils.ts`, `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/modules/guardian/attendance/components/AiCopilotDrawer.tsx`, `apps/hub/components/pulsex/athena-agent-panel.tsx` e este diario canonico.
+- Como foi feito: centralizei o ciclo do `MediaRecorder` em um provedor global da Athena montado no `HubShell`, fora do ciclo de vida dos paineis de modulo. O formulario de abertura de TI deixou de possuir o recorder diretamente e passou a consumir evidencias prontas do provedor. Hades e Hermes registram quando estao com a Athena nativa montada, e o dock global assume automaticamente a gravacao quando nao houver uma Athena nativa ativa, preservando `Stop` e `Finalizar` apos troca de rota.
+- Logica utilizada: a gravacao nao deve depender do componente local da tela atual. Ao navegar, o formulario pode desmontar, mas o provedor global permanece vivo enquanto a aba do Panteon estiver aberta. Evidencias gravadas ficam pendentes no provedor ate uma Athena em modo completo consumir o anexo, evitando perda quando a gravacao termina em modo compacto. O navegador ainda encerra a captura se a aba do Panteon for fechada ou se a propria aba for navegada para outro site; alternar para outra aba, janela, sistema ou aplicativo continua suportado desde que a aba do Panteon fique aberta.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; `git diff --check` no recorte passou com avisos LF/CRLF conhecidos no Windows; smokes locais retornaram `200 OK` em `http://localhost:3001/`, `http://localhost:3001/hades/cobranca` e `http://localhost:3001/hermes`.
+- Pendencias ou riscos conhecidos: nao houve stage, commit, push, deploy, Vercel, Supabase, env, migration, alias ou escrita em banco. A validacao visual autenticada da gravacao real precisa ser feita no navegador escolhendo a tela/janela correta no seletor do navegador. Publicacao em homologacao deste novo recorte fica `BLOQUEADO` ate autorizacao explicita do Lucas ou handoff para `Hefesto`.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Lucas` para decidir se este recorte deve subir em homologacao agora; `Hefesto` para isolar/publicar o ajuste quando autorizado.
+
+Registro de diario:
+
+- Assunto: `[Panteon] Webapp instalavel como PWA`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 04:01:16 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO FUNCIONAL / EXPERIENCIA DESKTOP`.
+- Motivo da mudanca: Lucas perguntou se seria facil transformar o Panteon em um webapp com comportamento de app desktop e autorizou seguir com a primeira versao.
+- Arquivos/modulos afetados: `apps/hub/app/layout.tsx`, `apps/hub/app/manifest.ts`, `apps/hub/components/panteon-pwa-runtime.tsx`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/public/sw.js` e este diario canonico.
+- Como foi feito: adicionei manifest nativo do Next App Router em `/manifest.webmanifest`, metadados de app instalavel, tema grafite `#101820`, icones Panteon atuais, atalhos para Home/Zeus/Hades/Hermes/Iris, runtime client para registrar service worker em build de producao e um botao discreto de instalacao no topbar quando o navegador emitir `beforeinstallprompt`.
+- Logica utilizada: a primeira versao desktop deve ser PWA para reaproveitar o Panteon atual sem duplicar arquitetura em Electron/Tauri. O service worker foi propositalmente minimo e sem cache de respostas para evitar armazenar dados operacionais, sessao, APIs, telas autenticadas ou informacoes sensiveis no navegador. Homologacao usa o icone dourado quando identificada por env/URL/branch; producao usa o icone principal.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou e listou `/manifest.webmanifest` como rota estatica; `git diff --check` no recorte PWA passou com avisos LF/CRLF conhecidos no Windows; smoke local `GET http://localhost:3001/` retornou `200 OK`; `GET http://localhost:3001/manifest.webmanifest` retornou `200` com `Content-Type: application/manifest+json`, `name=Panteon`, `display=standalone`, `start_url=/`, 2 icones e 5 atalhos; `GET http://localhost:3001/sw.js` retornou `200`.
+- Pendencias ou riscos conhecidos: nao houve stage, commit, push, deploy, Vercel, Supabase, env, migration, alias ou escrita em banco. O botao de instalacao aparece somente em navegadores/ambientes que disparam `beforeinstallprompt`, normalmente apos acessar uma origem segura em homologacao/producao. Validacao visual real da instalacao precisa ocorrer em browser apos publicacao em homologacao.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Hefesto` para isolar/publicar em homologacao quando Lucas autorizar; `Lucas` para testar instalacao no Windows pelo Chrome/Edge.
+
+Registro de diario:
+
+- Assunto: `[Iris] Regra permanente de ativacao em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 04:31:36 -03:00.
+- Tipo da alteracao: `DECISAO OPERACIONAL`.
+- Motivo da mudanca: Lucas determinou explicitamente que a Iris deve ficar ativa no ambiente de homologacao.
+- Regra definida: a Iris deve permanecer visivel e acessivel no sidebar/modulo de `https://homo.c2x.app.br` enquanto estiverem em andamento a homologacao Meta WhatsApp, recebimento/envio de mensagens, criacao de tickets `AT-*` e evolucao do atendimento. Qualquer alteracao futura que possa remover Iris do menu, do registry minimo, das permissoes de homologacao ou da excecao de visibilidade precisa de autorizacao explicita do Lucas.
+- Limite da regra: esta decisao vale para homologacao. Producao real continua separada e so deve receber Iris quando Lucas aprovar a promocao operacional.
+- Logica utilizada: Iris e o coracao do atendimento multicanal e precisa estar sempre disponivel no ambiente de testes para validar Meta/WhatsApp, tickets e atendimento. A regra evita regressao de visibilidade causada por `NODE_ENV=production` em Preview/Homolog da Vercel.
+- Validacao executada: registro documental no diario canonico; sem alteracao de codigo, Supabase, Vercel, env, secret, migration ou producao nesta entrada.
+- Status operacional: `REGRA REGISTRADA / EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Iris Core` deve preservar esta regra em novos recortes; `Hefesto` deve checar a presenca da Iris no menu em releases de homologacao.
+
+Registro de diario:
+
+- Assunto: `[Iris] Atendimento realtime e avatar do contato`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 04:55:20 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO FUNCIONAL / UX OPERACIONAL / HOMOLOGACAO`.
+- Motivo da mudanca: Lucas confirmou que mensagens inbound do WhatsApp chegaram na Iris, mas exigiu que novas mensagens aparecam sem refresh, com notificacao visual e sonora, e pediu desativar temporariamente o bloqueio de "complete o ticket" para validar apenas chegada/envio de mensagem. Lucas tambem perguntou se a Iris consegue trazer foto de perfil.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/lib/iris/notification-effects.ts` e este diario canonico.
+- Como foi feito: adicionei inscricao Supabase Realtime em `caredesk_messages`, `caredesk_tickets` e `caredesk_contacts`, com polling de seguranca a cada 4 segundos para homologacao caso a publicacao realtime nao dispare; criei toast visual, notificacao do navegador e alerta sonoro local para nova mensagem inbound; removi o bloqueio operacional de ticket incompleto no composer, mantendo bloqueio apenas para ticket encerrado; e passei a ler `metadata`/`c2x_payload` do contato para exibir foto de perfil quando existir URL de avatar, com fallback por iniciais.
+- Logica utilizada: o teste atual precisa validar fluxo vivo de mensagem antes de exigir preenchimento completo de perfil/fila/contato/prioridade/SLA. O Realtime entrega atualizacao imediata quando o Supabase publicar o evento; o polling curto evita que a operacao dependa exclusivamente dessa configuracao enquanto a homologacao do Meta esta em andamento. A foto de perfil fica preparada sem migration e sem depender de secrets: se a Meta ou outra fonte salvar URL segura no contato, a UI passa a exibir a imagem automaticamente; caso contrario, usa iniciais.
+- Validacao executada: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; smoke local em `http://localhost:3007/iris` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: notificacao sonora pode depender de interacao previa do usuario com a pagina por regra do navegador; notificacao nativa depende da permissao do navegador. Nenhuma migration, env, secret, producao ou alteracao de dados reais foi executada neste recorte. Ainda falta publicar em homologacao e Lucas testar enviando nova mensagem pelo WhatsApp sem refresh.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Hefesto` para publicar o recorte em homologacao quando Lucas autorizar ou quando este pacote for incluido no proximo deploy homolog.
+
+Registro de diario:
+
+- Assunto: `[Iris] Atendimento realtime publicado em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 05:15:37 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / HEALTHCHECK`.
+- Motivo da mudanca: publicar em `https://homo.c2x.app.br` o recorte que remove temporariamente o bloqueio de ticket incompleto, adiciona atualizacao automatica da fila/conversa e prepara avatar/foto do contato para o teste Meta WhatsApp do Lucas.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/lib/iris/notification-effects.ts`, `docs/operations/engineering-operations.md` e alias de homologacao `https://homo.c2x.app.br`.
+- Como foi feito: rebaseei o commit do Iris sobre a branch `homolog` atual para preservar o recorte PWA publicado antes, resolvi o conflito append-only do diario mantendo os dois registros, publiquei a branch `homolog`, aguardei o Preview Git ficar `READY` e apontei o alias de homologacao para o deployment novo.
+- Logica utilizada: a publicacao foi limitada a homologacao e nao alterou envs, secrets, banco, migrations nem producao. O alias foi atualizado somente depois de confirmar que o Preview do commit `63138a7` estava pronto, evitando sobrescrever `homo.c2x.app.br` com build incompleto.
+- Commit realizado: `63138a7 feat(iris): add realtime inbound alerts`.
+- Deployment homologacao: Vercel Preview `dpl_DUiQaazPSPr5P5yNZqkgdNM3SS6z`; URL `https://careli-hub-hub-i2bs-reffk90d2-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; smoke local em `http://localhost:3007/iris` retornou `200 OK`; `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready`; `GET /iris` retornou 200; `GET /api/iris/meta/webhook` sem challenge retornou 403 esperado; `GET /api/iris/meta/events` sem sessao retornou 401 esperado; `vercel logs` dos ultimos 10 minutos mostrou apenas chamadas esperadas 200/401/403.
+- Pendencias ou riscos conhecidos: Lucas precisa testar enviando nova mensagem pelo WhatsApp com a tela da Iris aberta para confirmar aparicao sem refresh, toast visual e som. A foto de perfil so aparece quando houver URL de avatar gravada em `caredesk_contacts.metadata` ou `caredesk_contacts.c2x_payload`; o webhook Meta atual fornece nome/wa_id, mas nao traz imagem de perfil no payload padrao validado. Notificacao nativa depende da permissao do navegador e som pode depender de interacao previa com a pagina.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para smoke real de mensagem inbound/outbound na Iris; `Iris Core` acompanha ajustes de UX; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Panteon] PWA publicado em homologacao`.
+- Nome da squad/agente: `Zeus / Hefesto assistido`.
+- Data e hora local: 2026-05-20 04:43:12 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / EXPERIENCIA DESKTOP / HEALTHCHECK`.
+- Motivo da mudanca: Lucas autorizou subir para homologacao a primeira versao instalavel do Panteon como webapp/PWA, mantendo o escopo restrito ao Panteon e sem promover nada para producao.
+- Arquivos/modulos afetados: `apps/hub/app/layout.tsx`, `apps/hub/app/api/pwa/manifest/route.ts`, `apps/hub/components/panteon-pwa-runtime.tsx`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/public/sw.js` e este diario canonico.
+- Como foi feito: isolei o recorte PWA em worktree limpo baseado na branch `homolog`, publiquei o pacote por Vercel Preview e apontei o alias de homologacao `https://homo.c2x.app.br` para o deployment validado. Durante a validacao remota, a rota nativa `/manifest.webmanifest` apresentou comportamento instavel no ambiente Vercel; por isso o manifesto final foi movido para a rota controlada `/api/pwa/manifest`, com `Content-Type: application/manifest+json`.
+- Logica utilizada: o PWA usa manifest dinamico para escolher nome e icone conforme ambiente, exibindo `Homo Panteon` e o icone dourado em homologacao. O service worker segue minimo, sem cache operacional, para nao armazenar telas autenticadas, respostas de API, sessao ou dados sensiveis no navegador.
+- Deployment homologacao: Vercel Preview `dpl_F7BVGqZpFWHwXLCpQVgRfyaoUxTX`; URL `https://careli-hub-hub-i2bs-mbm3jewle-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou no recorte; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos do ambiente; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; build remoto Vercel passou; healthchecks remotos confirmaram `/=200`, `/login=200`, `/hades=200`, `/hermes=200`, `/zeus=200`, `/api/pwa/manifest=200` e `/sw.js=200`; o manifesto remoto retornou `name=Homo Panteon`, `display=standalone`, `start_url=/`, `theme_color=#101820`, icone `/panteon-mark-homolog.png` e 5 atalhos; logs de erro Vercel dos ultimos minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: nao houve Supabase, migration, env, secret, banco, rollback ou producao. O prompt de instalacao depende dos criterios do Chrome/Edge para `beforeinstallprompt`; se o navegador ainda nao exibir o botao, Lucas pode instalar pelo menu do navegador enquanto a origem estiver em HTTPS. O service worker ainda nao implementa modo offline por decisao de seguranca operacional. Permanecem warnings herdados de `npm audit` fora deste recorte.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para testar a instalacao do Panteon no Windows via Chrome/Edge; `Hefesto` para decidir promocao futura somente se Lucas aprovar o comportamento em homologacao.
+
+Registro de diario:
+
+- Assunto: `[Panteon] Correcao de instalacao PWA em homologacao`.
+- Nome da squad/agente: `Zeus / Hefesto assistido`.
+- Data e hora local: 2026-05-20 04:58:12 -03:00.
+- Tipo da alteracao: `CORRECAO HOMOLOG / PWA / HEALTHCHECK`.
+- Motivo da mudanca: Lucas validou `https://homo.c2x.app.br/iris` e informou que a opcao de instalar nao apareceu no Chrome. A investigacao confirmou que o alias de homologacao havia sido sobrescrito para um deployment mais novo sem `/api/pwa/manifest` e sem `/sw.js`, impedindo o Chrome de reconhecer o Panteon como instalavel.
+- Arquivos/modulos afetados: `apps/hub/app/layout.tsx`, `apps/hub/app/api/pwa/manifest/route.ts`, `apps/hub/components/panteon-pwa-runtime.tsx`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/public/sw.js` e este diario canonico.
+- Como foi feito: reapliquei o recorte PWA sobre a ponta atual da branch `homolog`, preservei os commits remotos recentes da Iris, resolvi conflito apenas no diario mantendo todos os registros, publiquei o commit `f74309f feat(panteon): enable homologation pwa install` e confirmei que o alias de homologacao passou para o deployment `dpl_Ef59UFw6zR6VvJddSXEaPBs36bFB`.
+- Logica utilizada: manter o PWA no proprio branch/deployment de homologacao evita que o alias `homo.c2x.app.br` seja sobrescrito novamente por uma publicacao Git posterior sem manifest/service worker. O botao interno de instalacao continua dependente do evento `beforeinstallprompt`, emitido pelo navegador somente depois que os criterios PWA sao aceitos.
+- Deployment homologacao: Vercel Preview `dpl_Ef59UFw6zR6VvJddSXEaPBs36bFB`; URL `https://careli-hub-hub-i2bs-l4bar9s70-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou no pacote; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos do ambiente; `npm.cmd run build --workspace @repo/hub` passou e listou `/api/pwa/manifest`; `GET /iris` retornou 200 com link para `/api/pwa/manifest`; `GET /api/pwa/manifest` retornou 200 com `name=Homo Panteon`, `display=standalone`, `start_url=/`, `theme_color=#101820`, icone `/panteon-mark-homolog.png`, 2 icones e 5 atalhos; `GET /sw.js` retornou 200 com fetch handler e `clients.claim`; `vercel inspect https://homo.c2x.app.br` confirmou alias no deployment novo; logs de erro Vercel dos ultimos minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, Supabase, banco, migration, rollback ou producao foi alterado. A exibicao do prompt de instalacao depende do Chrome/Edge recalcular a instalabilidade apos recarregar a pagina; se o navegador tiver recusado o prompt antes, pode ser necessario fechar e abrir a aba.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para recarregar `https://homo.c2x.app.br`, verificar o icone/botao de instalacao e instalar pelo Chrome/Edge.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Login Panteon publicado em producao`.
+- Nome da squad/agente: `Zeus / Hefesto assistido`.
+- Data e hora local: 2026-05-20 05:28:34 -03:00.
+- Tipo da alteracao: `IDENTIDADE VISUAL / RELEASE PRODUCAO / HEALTHCHECK`.
+- Motivo da mudanca: Lucas solicitou refazer a tela de login com a identidade nova do Panteon e autorizou explicitamente a publicacao em producao dessa tela.
+- Arquivos/modulos afetados: `apps/hub/app/login/page.tsx`, dominios `https://c2x.app.br` e `https://ops.c2x.app.br`, e este diario canonico.
+- Como foi feito: reconstruida a tela de login com marca Panteon, acento dourado, base grafite, painel executivo e formulario compacto, preservando o fluxo de autenticacao existente. Para a publicacao, montei uma worktree limpa baseada no ultimo corte de producao conhecido e levei somente o arquivo da tela de login, sem incluir o recorte Zeus Meta/logs nem alteracoes amplas de homologacao.
+- Logica utilizada: o login era um recorte visual autorizado para producao; os indicadores Meta e logs `LO-*` do Zeus foram mantidos fora do deploy de producao porque dependem de validacao propria de dados, retencao, operador autenticado e sequencia persistente no banco antes de virarem protocolo oficial auditavel.
+- Deployment realizado: Vercel Production `dpl_5nk1gTh6wwzTLosowcmRha1zjMNb`; URL tecnica `https://careli-hub-hub-i2bs-mivg9mrhn-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: pacote minimo passou em `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` e smoke local em `/login`; build remoto Vercel passou com warnings conhecidos de Turbopack/NFT, npm audit herdado e envs fora do `turbo.json`; `vercel inspect` confirmou `Ready`; healthchecks `GET https://c2x.app.br/login` e `GET https://ops.c2x.app.br/login` retornaram 200 e confirmaram `Panteon`/`panteon-mark-light`; logs Vercel dos ultimos minutos mostraram `GET /login` 200 nos dois hosts.
+- Pendencias ou riscos conhecidos: a worktree local principal continua com alteracoes abertas de outros recortes e nao foi stageada, commitada ou revertida nesta acao. O recorte Zeus Meta/logs permanece `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`; criar protocolo oficial `LO-*` persistente segue `BLOQUEADO` ate aprovacao de migration/modelagem por Lucas.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` para validar visualmente o login em producao; `Zeus` para fechar o desenho oficial da tabela/sequence `LO-*` antes de qualquer gravacao auditavel real.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Prazo solicitado e decisao de entrega no Ticket TI`.
+- Nome da squad/agente: `Zeus Core`.
+- Data e hora local: 2026-05-20 05:54:42 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO FUNCIONAL / UX OPERACIONAL / VALIDACAO LOCAL`.
+- Motivo da mudanca: Lucas pediu que a abertura de Ticket TI permita ao solicitante informar a data em que precisa da entrega, que Zeus consiga aprovar essa data ou rejeitar informando uma nova data, e que a tela de Ticket TI ganhe uma visao por vencimento com criticidade visual por prazo.
+- Arquivos/modulos afetados: `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`, `apps/hub/lib/hub-it-tickets/types.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx` e este diario canonico.
+- Como foi feito: adicionei campo obrigatorio `Data de entrega desejada` no formulario Athena/Ticket TI; passei a gravar a solicitacao em `metadata.deliveryAgreement` do ticket; adicionei decisao operacional no board Zeus para manter pendente, aprovar a data solicitada ou reprogramar com nova data; e organizei a tela de Ticket TI por vencimento, com filtros e indicadores por hoje, 1-2 dias, 3+ dias e sem data.
+- Logica utilizada: a primeira versao usa o `metadata` JSONB ja existente em `hub_it_tickets`, evitando migration neste recorte. A data efetiva do card prioriza a data aprovada/reprogramada por Zeus e, se ainda nao houver decisao, usa a data solicitada pelo usuario. A regra visual segue o combinado: vencimento no dia ou vencido fica vermelho, 1-2 dias fica amarelo e acima de 3 dias fica verde.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; smoke local via `next start` em `http://localhost:3024` confirmou `/zeus=200` e `/login=200`; `git diff --check` deve ser executado no fechamento final deste recorte.
+- Pendencias ou riscos conhecidos: nenhum deploy, env, secret, Supabase direto, migration, alias ou producao foi executado. Tickets antigos sem `metadata.deliveryAgreement` entram como `Sem data`. A criacao de uma tabela propria de SLA/prazos ou protocolo adicional fica para desenho separado se Lucas quiser historico relacional fora do metadata.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Hefesto` para publicar em homologacao quando Lucas autorizar; `Lucas` para validar o fluxo de aprovar/reprogramar prazo em homologacao antes de qualquer producao.
+
+Registro de diario:
+
+- Assunto: `[Iris] Ajuste de altura no app web instalado`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 06:11:01 -03:00.
+- Tipo da alteracao: `UX OPERACIONAL / PWA / LAYOUT`.
+- Motivo da mudanca: Lucas validou a Iris no Panteon instalado como app web e apontou que a tela nao estava ocupando a area util de forma correta, sobrando/cortando visualmente a parte inferior.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx` e este diario canonico.
+- Como foi feito: a estrutura raiz da Iris deixou de depender de `min-height: calc(100vh - 72px)` e passou a usar `h-full`, `min-h-0` e `overflow-hidden` dentro do shell fullscreen do Panteon; o conteudo principal virou coluna flex com area interna `flex-1`; a tela de Board/Tickets passou a distribuir cards, fila e paineis laterais em grids com altura real disponivel; e a tela de atendimento deixou de usar altura fixa/minima baseada em `100vh`.
+- Logica utilizada: em PWA/standalone o shell ja controla `100dvh`; a Iris precisa herdar essa altura e criar scroll apenas nas regioes operacionais internas, evitando sobra cinza no rodape e evitando corte do composer ou da fila em janelas menores.
+- Validacao executada: `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`.
+- Pendencias ou riscos conhecidos: requer validacao visual em homologacao no app instalado do Panteon para confirmar que a Iris ocupa a area util sem sobra inferior; nenhum env, secret, Supabase, migration, deploy ou producao foi alterado nesta etapa.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HEFESTO`.
+- Proxima squad recomendada: `Hefesto` publicar em homologacao quando Lucas autorizar; `Lucas` validar visualmente a Iris instalada apos reload.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Auditoria de conexoes no ambiente de homologacao`.
+- Nome da squad/agente: `Zeus Core`.
+- Data e hora local: 2026-05-20 06:09:53 -03:00.
+- Tipo da alteracao: `AUDITORIA INFRA / HOMOLOGACAO / CONECTORES / BLOQUEIO SENSIVEL`.
+- Motivo da mudanca: Lucas pediu analisar o Panteon/Hub e liberar todas as conexoes, APIs e conectores no ambiente de homologacao.
+- Arquivos/modulos afetados: Vercel Project `careli-hub-hub-i2bs`, alias `https://homo.c2x.app.br`, envs Preview/branch `homolog`, rotas de API do Panteon e este diario canonico. Nenhum valor de secret foi lido, exibido ou registrado.
+- Como foi feito: auditei as regras em `docs/operations/README.md`, politicas de arquitetura e env registry; listei metadados Vercel de Preview/homolog sem valores; conferi deployment do alias `homo.c2x.app.br`; executei healthchecks nao destrutivos em paginas e APIs publicas/protegidas; e comparei o checklist de envs do codigo contra o Preview/homolog por nome.
+- Logica utilizada: separar o que ja esta operacional do que retorna `401` por protecao normal de sessao e do que depende de cadastrar ou copiar secrets. Operacoes de criacao/alteracao de env, secret, token, banco, alias, migration ou conector externo permanecem `BLOQUEADO` ate autorizacao explicita do Lucas com escopo exato.
+- Evidencias de homologacao: `https://homo.c2x.app.br` aponta para deployment Preview `dpl_Eytmr4pGhpqQ1NzuQDrL9WG4fE3k`, status `Ready`, com aliases `homo.c2x.app.br` e branch `git-homolog`; SSO protection geral do projeto esta nula, com protection bypass existente como env var; paginas `/`, `/login`, `/zeus`, `/iris`, `/hades`, `/atlas`, `/chronos`, `/hermes` e `/setup` retornaram `200`; `/api/hades/db/health` e `/api/guardian/db/health` retornaram `200 connected`; rotas protegidas sem sessao retornaram `401` esperado; `/api/iris/meta/webhook` sem challenge retornou `403` esperado; `/api/pwa/manifest` retornou `200`; logs Vercel de erro recentes nao retornaram ocorrencias.
+- Conexoes com env cadastrada por nome em Preview/homolog: base publica e server-side Supabase/App (`NEXT_PUBLIC_CARELI_APP_ENV`, URLs publicas, Supabase publicas, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY`, `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY`, `HOMOLOG_POSTGRES_URL`); Hades/C2X com `GUARDIAN_DB_HOST`, `GUARDIAN_DB_PORT`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER`, `GUARDIAN_DB_PASSWORD`; Iris Meta com todas as `META_WHATSAPP_*`; Asana com `ASANA_ACCESS_TOKEN`, `ASANA_WORKSPACE_MODE`, `ASANA_WORKSPACE_GID`, `ASANA_TASK_WINDOW_DAYS`, `ASANA_TASK_LIMIT_PER_USER`.
+- Lacunas identificadas por nome: `GUARDIAN_DB_SSL` e `GUARDIAN_SYNC_SECRET` nao aparecem no Preview/homolog; `ASANA_WORKSPACE_GIDS` nao aparece, mas `ASANA_WORKSPACE_GID` existe; `OPENAI_API_KEY`, `HUB_AI_MODEL` e `HUB_IT_TICKET_TRANSCRIPTION_MODEL` nao aparecem; `ASAAS_API_KEY` e `ASAAS_API_BASE_URL` nao aparecem; `D4SIGN_TOKEN_API` e `D4SIGN_CRYPT_KEY` nao aparecem; `NEXT_PUBLIC_PULSEX_TURN_URLS`, `NEXT_PUBLIC_PULSEX_TURN_USERNAME` e `NEXT_PUBLIC_PULSEX_TURN_CREDENTIAL` nao aparecem; `ATLAS_SUPABASE_URL`, `ATLAS_SUPABASE_ANON_KEY` e `ATLAS_SUPABASE_SERVICE_ROLE_KEY` nao aparecem, mas o Atlas atual prioriza Hub Supabase server-side antes do fallback legado.
+- Pendencias ou riscos conhecidos: Hades DB health em homologacao retornou banco `prod_careli`, o que deve ser tratado como conexao de producao/legado em ambiente de homologacao e so deve seguir para leitura controlada ou replica/homologacao com decisao registrada. `vercel env run` nao baixa envs marcadas como `sensitive`, entao a validacao de Meta/Asana/Hades deve ser por metadados Vercel e endpoint runtime, nao por dump local. A liberacao total exige cadastrar/replicar secrets ausentes e possivelmente redeployar o alias de homologacao, operacao sensivel que esta bloqueada ate aprovacao explicita.
+- Status operacional: `BLOQUEADO / AGUARDANDO AUTORIZACAO DO LUCAS`.
+- Proxima squad recomendada: `Lucas + Zeus` para autorizar o pacote exato de envs/conectores que podem ser ativados em homologacao; depois `Hefesto` para redeploy/alias/healthchecks se a alteracao de env exigir novo deployment.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Melhorias Ticket TI publicadas em homologacao`.
+- Nome da squad/agente: `Zeus Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 06:28:42 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / TICKET TI / ATHENA / HEALTHCHECK`.
+- Motivo da mudanca: Lucas autorizou subir para homologacao as melhorias do Ticket TI: data de entrega solicitada, decisao de prazo por Zeus e preservacao da gravacao Athena durante troca de tela/fechamento visual do painel.
+- Arquivos/modulos afetados: `apps/hub/components/hub-support/athena-ticket-recording-provider.tsx`, `apps/hub/components/hub-support/hub-ticket-evidence-utils.ts`, `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`, `apps/hub/components/pulsex/athena-agent-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/lib/hub-it-tickets/types.ts`, `apps/hub/modules/guardian/attendance/components/AiCopilotDrawer.tsx`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: montei uma copia limpa de release baseada em `origin/homolog`, apliquei apenas o pacote Athena/Ticket TI, validei localmente, criei commit semantico, publiquei a branch `homolog`, aguardei o Preview Git ficar `Ready`, confirmei que o alias `homo.c2x.app.br` apontou para o deployment novo e rodei healthchecks remotos. O primeiro deploy da copia limpa tentou criar um projeto temporario `zeus-ticket-remote` porque a pasta nao tinha `.vercel/project.json`; esse artefato nao foi usado como homologacao do Panteon e, em seguida, o deploy foi repetido no projeto Vercel correto antes do push final gerar o deployment Git de homologacao.
+- Logica utilizada: o recorte foi isolado para nao levar o worktree principal sujo. A gravacao Athena passa por provider global para manter estado protegido quando o painel e minimizado ou a tela muda; o Ticket TI passa a exigir data desejada e Zeus consegue aprovar ou reprogramar prazo usando `metadata.deliveryAgreement`, sem migration nesta etapa. A fila Zeus usa a data efetiva para destacar hoje/vencido em vermelho, 1-2 dias em amarelo e 3+ dias em verde.
+- Commit publicado: `fdb4d95 feat(zeus): improve ticket capture and delivery dates`.
+- Deployment homologacao: Vercel Preview Git `dpl_Az2Hrhd4ugWci4RegMLw5TW2JVoy`; URL tecnica `https://careli-hub-hub-i2bs-grgu2upck-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de Turbopack/NFT; `git diff --check` passou; build remoto Vercel passou com warnings conhecidos de `npm audit`, Turbopack/NFT e envs fora do `turbo.json`; healthchecks remotos confirmaram `/=200`, `/login=200`, `/zeus=200`, `/iris=200`, `/hades=200`, `/hermes=200`, `/api/pwa/manifest=200`, `/api/hades/db/health=200`, `/api/hub/it-tickets=401` sem sessao, `/api/hub/it-tickets/evidence-analysis=401` sem sessao e `/api/operations/monitoring=401` sem sessao; `vercel logs` dos ultimos minutos nao retornou erros.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, migration, banco, producao ou alias de producao foi alterado. O projeto temporario Vercel criado no primeiro deploy nao foi usado para homologacao e deve ser limpo apenas se Lucas autorizar exclusao de recurso Vercel. Tickets antigos sem `metadata.deliveryAgreement` continuam como `Sem data`. A validacao funcional autenticada do fluxo de gravacao/data/aprovacao precisa ser feita por Lucas em `https://homo.c2x.app.br`.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para validar abertura de Ticket TI, gravacao ao trocar de tela, data desejada e decisao de prazo; `Zeus` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
+Registro de diario:
+
+- Assunto: `[Hefesto] Producao Panteon 19 e 20 sem cortes Iris`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 08:48:19 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / RECORTE LIMPO / HEALTHCHECK`.
+- Protocolo operacional: `DP-20260520-0848-PANTEON-PROD-NON-IRIS`.
+- Motivo da mudanca: Lucas autorizou subir para producao tudo que foi feito nos dias 19 e 20, excluindo pacotes e cortes da Iris.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; sem alteracao de env, secret, migration, banco, chave ou alias manual.
+- Arquivos/modulos afetados: consolidado base `a264bb9`, PWA Panteon, login Panteon, Ticket TI/Zeus, Athena Ticket Recording, Hades AI drawer, Hermes Athena panel/workspace, Zeus board, `docs/operations/engineering-operations.md`; cortes de codigo Iris foram excluidos do recorte.
+- Como foi feito: montei uma copia limpa em `.codex-deploy/prod-non-iris-20260520-releaseops` baseada em `a264bb9`, apliquei apenas os commits de PWA e Zeus/Ticket TI, preservei o login Panteon ja publicado em producao, resolvi conflito do `hub-shell` mantendo Iris oculta em producao e publiquei via Vercel Production.
+- Logica utilizada: o worktree principal estava divergente e continha alteracoes Iris/Meta e outros recortes locais. Por isso o deploy saiu de copia limpa, com checagem explicita para bloquear caminhos Iris como `apps/hub/modules/caredesk`, `apps/hub/lib/iris`, `apps/hub/app/api/iris`, `apps/hub/app/api/caredesk/meta`, migration `0025` e seed demo removido.
+- Commits do pacote limpo: `9cc34eb feat(panteon): keep production login identity`, `f585d27 feat(zeus): improve ticket capture and delivery dates`, `e046aa7 feat(panteon): enable homologation pwa install`, sobre base `a264bb9 feat(panteon): consolidate homologation updates`.
+- Commit/deployment anterior de producao: `dpl_5nk1gTh6wwzTLosowcmRha1zjMNb`.
+- Deploy realizado: Vercel Production `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9`; URL tecnica `https://careli-hub-hub-i2bs-4mgyqi9lo-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: `git diff --check` passou no pacote; checagem de caminhos Iris no diff nao retornou arquivos de codigo Iris; scan de secrets encontrou apenas nomes/placeholders e nenhuma atribuicao com valor real; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de Turbopack/NFT; build remoto Vercel passou com warnings conhecidos de `npm audit`, Node engines, Turbopack/NFT e envs Postgres/SUPABASE_JWT_SECRET fora de `turbo.json`.
+- Resultado dos healthchecks: `c2x.app.br/` 200; `/login` 200; `/hades` 200; `/hermes` 200; `/atlas` 200; `/setup` 200; `/zeus` 307 para `/`; `/api/pwa/manifest` 200; `/sw.js` 200; `/api/hades/db/health` 200; `/api/hub/it-tickets` 401 esperado sem sessao; `POST /api/hub/it-tickets/evidence-analysis` 401 esperado sem sessao; `/api/operations/monitoring` 401 esperado sem sessao; `ops.c2x.app.br/` 307 para `/zeus`; `ops.c2x.app.br/login` 200; `ops.c2x.app.br/zeus` 200; `ops.c2x.app.br/squadops` 307 para `/zeus`; `ops.c2x.app.br/api/pwa/manifest` 200; logs Vercel de erro dos ultimos 15 minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: o push da branch limpa para o GitHub foi bloqueado pela politica do ambiente, entao a rastreabilidade remota fica no deployment Vercel e neste diario; a copia local permanece em `.codex-deploy/prod-non-iris-20260520-releaseops`. Cortes Iris/Meta continuam fora da producao e devem seguir em recorte separado. Validacao visual autenticada de PWA e Ticket TI por Lucas ainda e recomendada.
+- Rollback definido: promover novamente `dpl_5nk1gTh6wwzTLosowcmRha1zjMNb` se login, Home, PWA, Zeus/Ticket TI ou rotas principais apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` para validacao visual autenticada em `https://c2x.app.br` e `https://ops.c2x.app.br`; `Hefesto` acompanha logs se houver anomalia; `Iris Core` permanece em recorte separado.
+
+Registro de diario:
+
+- Assunto: `[Iris] Envio outbound WhatsApp e status de leitura`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 09:06:16 -03:00.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / META WHATSAPP / UX OPERACIONAL / VALIDACAO LOCAL`.
+- Motivo da mudanca: Lucas respondeu pela Iris e a mensagem nao chegou ao WhatsApp. Lucas tambem pediu que a mensagem exibisse os tracos originais do WhatsApp e destacasse qual operador esta enviando.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts`, `apps/hub/lib/iris/meta-inbound-processor.ts` e este diario canonico.
+- Como foi feito: o composer da tela de atendimento deixou de gravar apenas em `caredesk_messages` pelo client-side e passou a chamar a rota server-side `/api/iris/meta/messages`, que registra a mensagem local como `queued`, envia pela Meta Cloud API, grava o `wa_message_id`, vincula `caredesk_whatsapp_message_refs.message_id` ao registro local e atualiza a mensagem para `sent`. O webhook de status agora propaga `sent`, `delivered`, `read` e `failed` para `caredesk_messages`, preservando timestamps de entrega/leitura quando chegarem. A bolha outbound mostra o operador salvo em `provider_payload.operatorLabel` e exibe um check para enviado/nao entregue, dois checks cinza para entregue e dois checks azuis para visualizado.
+- Logica utilizada: o envio precisa sair sempre pelo servidor para proteger token Meta e manter auditoria; o vinculo entre a referencia Meta e a mensagem local e obrigatorio para que webhooks de status atualizem a UI em realtime; o nome do operador foi persistido no payload da mensagem para que o historico continue legivel mesmo em sessoes futuras.
+- Validacao executada: `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/messages/route.ts apps/hub/lib/iris/meta-inbound-processor.ts` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless e aviso local de cache/worktree; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de Turbopack/NFT e lockfile adicional da worktree temporaria.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, banco, migration, producao ou alias de producao foi alterado neste recorte. A confirmacao real de entrega/leitura depende dos webhooks da Meta retornarem status para o mesmo `wa_message_id`. O teste operacional deve confirmar no WhatsApp do Lucas que a mensagem enviada pela Iris chega e que os checks evoluem apos entrega/leitura.
+- Status operacional: `VALIDADO LOCAL / AUTORIZADO PARA HOMOLOGACAO`.
+- Proxima squad recomendada: `Hefesto` para publicar o recorte em homologacao e executar healthchecks; `Lucas` para testar envio e recebimento real pelo WhatsApp.
+
+Registro de diario:
+
+- Assunto: `[Iris] Envio outbound WhatsApp publicado em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 09:14:16 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / META WHATSAPP / HEALTHCHECK`.
+- Motivo da mudanca: Lucas autorizou subir em homologacao o pacote da Iris que corrige envio outbound pela Meta, mostra o operador na mensagem e troca o texto de status por checks no padrao WhatsApp.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts`, `apps/hub/lib/iris/meta-inbound-processor.ts`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: criei uma worktree limpa baseada em `origin/homolog`, apliquei somente o recorte Iris, validei localmente, criei o commit `f9376c2 feat(iris): send atendimento messages via meta`, publiquei `HEAD:homolog`, aguardei o Preview Git ficar `Ready` e confirmei que o alias de homologacao passou a apontar para o deployment novo.
+- Logica utilizada: a publicacao foi limitada a homologacao para testar o fluxo real WhatsApp sem tocar em producao. O recorte mantem secrets no servidor, nao altera variaveis de ambiente, nao executa migration e depende dos webhooks Meta ja configurados para evoluir o status visual da mensagem.
+- Commit publicado: `f9376c2 feat(iris): send atendimento messages via meta`.
+- Deployment homologacao: Vercel Preview `dpl_Bavi4yFRA2qChmvRE5knaQnGoTG3`; URL tecnica `https://careli-hub-hub-i2bs-4zyeyo97u-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: validacoes locais do commit passaram em `git diff --check`, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`; `vercel inspect` confirmou deployment `Ready`; healthchecks remotos confirmaram `/iris=200`, `/api/iris/meta/webhook=403` esperado sem challenge, `/api/iris/meta/events=401` esperado sem sessao; `vercel logs` dos ultimos minutos mostrou apenas chamadas esperadas 200/401/403 e presence 200.
+- Pendencias ou riscos conhecidos: teste funcional autenticado ainda precisa ser feito por Lucas enviando uma resposta pela Iris para confirmar chegada no WhatsApp e evolucao dos checks conforme os webhooks de status. Nenhuma env, secret, Supabase, banco, migration, producao ou alias de producao foi alterado.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para smoke real de envio outbound pela Iris; `Iris Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Reacoes, respostas com emoji e figurinhas`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 11:09:34 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO FUNCIONAL / UX OPERACIONAL` - interacoes de mensagem no padrao WhatsApp.
+- Motivo da mudanca: Lucas informou que o time quer reagir com emotion nas mensagens, responder com emoji e ter a opcao de mandar figurinhas no Hermes.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/lib/pulsex/types.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/app/api/pulsex/messages/route.ts` e este diario canonico. Os caminhos tecnicos `pulsex` seguem como compatibilidade do modulo chamado operacionalmente de `Hermes`.
+- Como foi feito: adicionei uma barra de reacao rapida nas mensagens, com opcoes no padrao WhatsApp (`curtir`, `coracao`, `risada`, `surpresa`, `triste` e `obrigado`); a lista principal passou a repassar o handler de reacao; o resumo de reacoes aparece abaixo da bolha e permite alternar a propria reacao. No composer, mantive o envio de emoji pelo seletor existente e acrescentei um painel de figurinhas com envio imediato por toque. A figurinha e registrada como attachment `sticker` no metadata da mensagem, sem migration.
+- Logica utilizada: o Hermes ja possuia contrato local de reacoes, entao o ajuste preserva o modelo atual e adiciona persistencia em `metadata.reactions` via PATCH server-side. As figurinhas usam metadata da propria mensagem para evitar nova tabela neste recorte; isso entrega a experiencia visual e operacional agora, mantendo uma futura biblioteca real de stickers como evolucao controlada.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `git diff --check -- apps/hub/components/pulsex/message-item.tsx apps/hub/components/pulsex/message-list.tsx apps/hub/components/pulsex/message-composer.tsx apps/hub/components/pulsex/pulsex-workspace.tsx apps/hub/lib/pulsex/types.ts apps/hub/lib/pulsex/supabase-data.ts apps/hub/app/api/pulsex/messages/route.ts docs/operations/engineering-operations.md` passou; smoke local isolado em `http://localhost:3026/hermes` retornou HTTP 200. O `localhost:3001/hermes` existente nao respondeu dentro do timeout no momento do teste.
+- Pendencias ou riscos conhecidos: nao houve env, secret, migration, banco, deploy ou producao. A persistencia de reacoes depende do metadata JSONB de `pulsex_messages`, portanto conflito simultaneo de duas reacoes no mesmo instante ainda pode sobrescrever o ultimo estado se ocorrer corrida entre clientes; se o uso crescer, evoluir para tabela propria de reacoes. Validacao visual autenticada por Lucas ainda e recomendada para confirmar posicionamento da barra de reacao e painel de figurinhas.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` para autorizar publicacao em homologacao; `Hermes Core` acompanha ajuste fino; `Hefesto` so promove producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Recuperacao de envio outbound sem acionamento Meta`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 10:59:36 -03:00.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / META WHATSAPP / VALIDACAO LOCAL`.
+- Motivo da mudanca: Lucas testou responder pela Iris em homologacao e a mensagem apareceu na tela, mas nao chegou ao WhatsApp. A investigacao em logs de runtime mostrou webhook inbound recebido normalmente e ausencia de `POST /api/iris/meta/messages` no horario do envio do operador, indicando que a mensagem local nao acionou a rota server-side da Meta.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts` e este diario canonico.
+- Como foi feito: a rota `/api/iris/meta/messages` passou a aceitar `messageId` para reenviar uma mensagem local existente sem duplicar o registro; quando a mensagem ja possuir `external_message_id`, a rota retorna `alreadySent` e nao dispara novamente. A tela de atendimento agora detecta mensagens outbound recentes de operador sem `external_message_id` e tenta sincronizar automaticamente pela Meta dentro de uma janela de recuperacao de 60 minutos. O indicador visual deixou de mostrar check de WhatsApp quando nao ha confirmacao Meta e passa a exibir estado pendente com tooltip de aguardando envio pela Meta.
+- Logica utilizada: uma mensagem so deve parecer enviada pelo WhatsApp quando houver confirmacao server-side/Meta (`wa_message_id` em `external_message_id`). A recuperacao cobre abas/bundles antigos ou insercoes locais que tenham gravado `caredesk_messages` sem passar pelo endpoint protegido, preservando secrets no servidor e evitando duplicidade por `messageId`/`external_message_id`.
+- Validacao executada: na worktree limpa de homologacao, `git diff --check -- apps/hub/app/api/iris/meta/messages/route.ts apps/hub/modules/caredesk/IrisPage.tsx` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos de `eslint.config.js` typeless e cache/worktree; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional e Turbopack/NFT.
+- Pendencias ou riscos conhecidos: ainda falta publicar o recorte em homologacao e Lucas retestar com a tela recarregada. A recuperacao automatica so tenta mensagens outbound dos ultimos 60 minutos sem `external_message_id`; mensagens antigas nao serao disparadas automaticamente para evitar duplicidade operacional.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima squad recomendada: `Hefesto` publicar em homologacao; `Lucas` validar envio real para WhatsApp e evolucao dos checks.
+
+Registro de diario:
+
+- Assunto: `[Iris] Recuperacao outbound WhatsApp publicada em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 11:08:00 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / META WHATSAPP / HEALTHCHECK`.
+- Motivo da mudanca: publicar em `https://homo.c2x.app.br` a correcao que recupera mensagens outbound locais sem acionamento Meta e evita falso check de WhatsApp quando nao existe `external_message_id`.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: criei commit limpo `7dac954 fix(iris): recover outbound whatsapp sends`, publiquei `HEAD:homolog`, aguardei o Preview Git ficar `Ready` e apontei o alias de homologacao para o deployment novo.
+- Logica utilizada: manter o envio outbound testavel em homologacao sem alterar secrets, envs, banco, migrations ou producao. O alias de homologacao foi movido somente depois do deployment novo estar pronto.
+- Commit publicado: `7dac954 fix(iris): recover outbound whatsapp sends`.
+- Deployment homologacao: Vercel Preview `dpl_H41f1MvDLVYod2ZiVdRuxbvB73Vs`; URL tecnica `https://careli-hub-hub-i2bs-obowskvv1-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready`; `GET /iris` retornou 200; `POST /api/iris/meta/messages` sem sessao retornou 401 esperado e apareceu nos logs; `GET /api/iris/meta/webhook` sem challenge retornou 403 esperado; o bundle remoto contem os marcadores de recuperacao `Sincronizando mensagem local com o WhatsApp` e `Aguardando envio pela Meta`.
+- Pendencias ou riscos conhecidos: Lucas precisa recarregar a Iris em homologacao e repetir envio real pelo WhatsApp. Se a mensagem local anterior ainda estiver dentro da janela de 60 minutos, a tela deve tentar sincronizar automaticamente; mensagens antigas fora da janela nao sao disparadas para evitar duplicidade.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para reteste real de envio/recebimento; `Iris Core` acompanha os logs se o envio ainda nao chegar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Janela de recuperacao outbound ampliada em homologacao`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 11:18:42 -03:00.
+- Tipo da alteracao: `AJUSTE HOMOLOG / META WHATSAPP / HEALTHCHECK`.
+- Motivo da mudanca: apos calcular o horario do teste real do Lucas, a janela de 30 minutos poderia deixar a mensagem local de 10:38 fora da recuperacao automatica.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `docs/operations/engineering-operations.md`, branch `homolog` e alias `https://homo.c2x.app.br`.
+- Como foi feito: a janela de recuperacao de mensagens outbound sem `external_message_id` foi ampliada para 60 minutos, mantendo o bloqueio para mensagens antigas a fim de evitar disparos duplicados. O ajuste foi publicado no commit `8239eb4 fix(iris): extend outbound recovery window`.
+- Deployment homologacao: Vercel Preview `dpl_BpkZ1bDLAH9QG8UnHq7N1b8ZhJX6`; URL tecnica `https://careli-hub-hub-i2bs-52xrxj6fg-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos; `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready`; `GET /iris` retornou 200; `POST /api/iris/meta/messages` sem sessao retornou 401 esperado e apareceu nos logs; bundle remoto contem os marcadores de recuperacao.
+- Pendencias ou riscos conhecidos: Lucas precisa recarregar a Iris e testar de novo. Se a mensagem anterior ainda estiver no intervalo de 60 minutos e sem `external_message_id`, a tela deve tentar recupera-la automaticamente.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para reteste real; `Iris Core` acompanhar logs de `/api/iris/meta/messages`.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Novo fluxo de homologacao por modulo e producao por Hefesto`.
+- Nome da squad/agente: `Zeus Core`.
+- Data e hora local: 2026-05-20 10:57:15 -03:00.
+- Tipo da alteracao: `DECISAO OPERACIONAL / GOVERNANCA / ZEUS DEPLOYS`.
+- Motivo da mudanca: Lucas definiu que cada agente de modulo passa a ser responsavel por publicar o proprio recorte em homologacao, enquanto Hefesto fica responsavel pela promocao para producao.
+- Arquivos/modulos afetados: `AGENTS.md`, `docs/operations/README.md`, `docs/operations/agent-handoff-scripts.md`, `docs/architecture/agent-operating-model.md`, `docs/architecture/release-and-rollback-policy.md`, `docs/operations/squadops-center-process.md`, `apps/hub/modules/squadops/ZeusPage.tsx`, `apps/hub/lib/squadops/release-protocols.ts` e este diario canonico.
+- Como deve funcionar: agente do modulo implementa, valida, publica homologacao quando Lucas autorizar, registra modulo/pacote/atividades/commit/deployment/validacoes/riscos e sinaliza `PRONTO PARA PRODUCAO` ou bloqueio equivalente. Hefesto recebe o handoff por modulo, separa somente o que esta homologado e autorizado, promove producao, roda healthchecks, registra rollback e fecha rastreabilidade oficial.
+- Logica utilizada: a tela Deploy do Zeus deve priorizar agrupamento por modulo, nao por pacote isolado, para que Hefesto enxergue rapidamente `modulo X`, `pacote X` e `atividades Y` prontas para producao.
+- Validacao executada: `git diff --check` passou nos arquivos do recorte; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless. `npm.cmd run check-types:hub` e `npm.cmd run build --workspace @repo/hub` ficaram bloqueados por erro TypeScript preexistente em `apps/hub/lib/pulsex/supabase-data.ts` (`HermesReaction` recebendo `null`/lista mutavel), arquivo fora do recorte Zeus.
+- Pendencias ou riscos conhecidos: nenhuma operacao Vercel, Supabase, banco, migration, env, secret, alias ou producao foi executada neste registro. O novo fluxo exige que futuras publicacoes de homologacao registrem o modulo responsavel de forma consistente para evitar pacote misto. A validacao global so volta a fechar depois de Hermes corrigir o typecheck em `apps/hub/lib/pulsex/supabase-data.ts` ou Lucas autorizar Zeus a tratar esse bloqueio transversal.
+- Status operacional: `BLOQUEADO / TYPECHECK HERMES FORA DO RECORTE`.
+- Proxima squad recomendada: `Hermes Core` para corrigir o typecheck que bloqueia build global; depois `Zeus` reexecuta typecheck/build e `Hefesto` usa o novo agrupamento por modulo para producao.
+
+Registro de diario:
+
+- Assunto: `[Zeus] HelpDesk full e fila operacional rapida`.
+- Nome da squad/agente: `Zeus Core`.
+- Data e hora local: 2026-05-20 11:36:50 -03:00.
+- Tipo da alteracao: `UX OPERACIONAL / PERFORMANCE / HELPDESK ZEUS`.
+- Motivo da mudanca: Lucas apontou que a antiga aba `Ticket TI` carregava devagar, mostrava informacoes iniciais demais, dificultava trabalhar a fila, mantinha dados da ultima devolutiva e precisava abrir evidencias em tamanho grande. Lucas tambem definiu que a nomenclatura visivel deve passar a ser `HelpDesk`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `apps/hub/modules/squadops/ZeusPage.tsx`, `apps/hub/lib/hub-it-tickets/client.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/app/api/hub/it-tickets/route.ts`, `apps/hub/app/api/hub/it-tickets/evidence-analysis/route.ts`, `apps/hub/components/hub-support/hub-support-dock.tsx`, `apps/hub/components/hub-support/hub-ticket-open-form.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx` e este diario canonico.
+- Como foi feito: a aba foi renomeada para `HelpDesk` e, quando ativa, a tela Zeus deixa de renderizar os paineis iniciais do Operations Center, abrindo direto a area de trabalho. A API/listagem ganhou modo leve `details=list`, com hidratacao completa somente do protocolo selecionado por `details=full&protocol=...`; isso reduz custo inicial da fila. O board passou a trazer avatar do solicitante no card, esconder o relato em bloco expansivel, destacar historico, reorganizar o fluxo por etapas, manter a decisao de data separada e transformar a devolutiva em formulario limpo a cada envio. Evidencias de imagem, video e audio agora podem ser ampliadas em overlay para analise detalhada, com botoes compactos por icone e tooltips UIX.
+- Logica utilizada: a fila precisa ser rapida para triagem e nao deve carregar anexos/eventos pesados de todos os tickets no primeiro render. O protocolo `TI-*` segue preservado como identificador tecnico historico, mas a experiencia e os textos operacionais passam a se chamar `HelpDesk`. A devolutiva e sempre um novo registro operacional no ticket; apos salvar, os campos de resposta/resumo/observacao voltam vazios para evitar reaproveitar texto antigo por engano.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT na leitura do Engineering Operations; `git diff --check` passou nos arquivos do recorte com avisos CRLF conhecidos; smoke local em servidor existente `http://localhost:3001/zeus` retornou HTTP 200.
+- Pendencias ou riscos conhecidos: nenhuma operacao Vercel, Supabase, banco, migration, env, secret, alias ou producao foi executada neste recorte. A validacao visual autenticada por Lucas ainda e recomendada para confirmar densidade, lightbox de evidencias e ergonomia da nova fila com dados reais. O worktree continua com outros recortes locais fora de Zeus/HelpDesk que nao foram revertidos nem publicados.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` para validar localmente a nova experiencia HelpDesk; depois `Zeus` pode publicar homologacao se autorizado, e `Hefesto` fica responsavel por producao.
+
+Registro de diario:
+
+- Assunto: `[Zeus] HelpDesk full publicado em producao ops`.
+- Nome da squad/agente: `Zeus Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 11:51:22 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / HELPDESK ZEUS / OPS.C2X`.
+- Motivo da mudanca: Lucas autorizou explicitamente publicar em producao no dominio `https://ops.c2x.app.br` o recorte do HelpDesk do Zeus, com tela full, fila mais rapida, relato expansivel, evidencias ampliadas e devolutiva limpa apos envio.
+- Arquivos/modulos afetados: pacote limpo `.codex-deploy/prod-zeus-helpdesk-20260520-114226`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `apps/hub/modules/squadops/ZeusPage.tsx`, APIs e client/server de `hub-it-tickets`, componentes compartilhados de suporte, deployment Vercel Production e alias `https://ops.c2x.app.br`.
+- Como foi feito: usei como base o ultimo production saudavel `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9` / commit local limpo `9cc34eb`, criei um pacote isolado sem o worktree sujo, apliquei somente os arquivos do recorte Zeus/HelpDesk e mantive fora os recortes locais de Iris, Hermes, Atlas, scripts e migrations que nao pertenciam ao pedido. Depois das validacoes, publiquei via Vercel Production.
+- Logica utilizada: o rollback precisa voltar para o deployment anterior conhecido; por isso o deploy saiu de copia limpa, nao do worktree principal. A fila HelpDesk usa `details=list` para carregamento inicial e hidrata detalhes/anexos apenas do protocolo selecionado. O protocolo tecnico `TI-*` segue preservado como identificador historico, enquanto a nomenclatura operacional visivel passa a ser `HelpDesk`.
+- Deployment anterior de producao: `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9`.
+- Deployment novo de producao: `dpl_F3zBKiKSWf8b5KZ58PeP98Gi9RuU`; URL tecnica `https://careli-hub-hub-i2bs-gs3fsx5bu-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://ops.c2x.app.br` e `https://c2x.app.br`.
+- Validacao executada: no pacote limpo, `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional da copia e Turbopack/NFT; `git diff --no-index --check` passou nos arquivos centrais com avisos CRLF; smoke local `http://localhost:3033/zeus` retornou 200; deploy remoto Vercel passou; `vercel inspect` confirmou Production Ready; healthchecks remotos retornaram `ops.c2x.app.br/` 307 esperado para Zeus, `/login` 200, `/zeus` 200, `/api/pwa/manifest` 200, `/api/hub/it-tickets` 401 esperado sem sessao, `/api/hub/it-tickets?details=list&scope=all` 401 esperado sem sessao, `/api/hub/it-tickets/evidence-analysis` 405 esperado em GET, `/api/operations/monitoring` 401 esperado sem sessao; logs Vercel dos ultimos minutos nao mostraram erro 500 e exibiram chamadas autenticadas `GET /api/hub/it-tickets` com 200.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, Supabase, banco, migration ou alteracao de dominio foi feita. O pacote publicado nao inclui as novas rotas/cortes Iris em andamento nem recortes Hermes/Atlas locais. A validacao visual autenticada do Lucas ainda e recomendada para conferir a ergonomia final da fila e a abertura ampliada de evidencias com tickets reais.
+- Rollback definido: promover novamente `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9` se login, Zeus, HelpDesk ou rotas protegidas de suporte apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` para validacao visual autenticada em `https://ops.c2x.app.br/zeus`; `Zeus` acompanha logs e ajuste fino; `Hefesto` somente se houver necessidade de rollback.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Correcao de alias apos sobrescrita do HelpDesk`.
+- Nome da squad/agente: `Zeus Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 12:01:59 -03:00.
+- Tipo da alteracao: `CORRECAO RELEASE PRODUCAO / OPS.C2X`.
+- Motivo da mudanca: Lucas validou `https://ops.c2x.app.br/zeus` e informou que as mudancas do HelpDesk nao apareceram; a tela ainda mostrava `Ticket TI` e os paineis antigos.
+- Origem identificada: apos o deployment `dpl_F3zBKiKSWf8b5KZ58PeP98Gi9RuU`, o alias de producao foi sobrescrito por outro deployment `dpl_Hrr3kkLjG8TKarMwmNC1E9VK1P9P` criado as 11:52, que nao continha o recorte HelpDesk.
+- Como foi feito: confirmei que o pacote limpo `.codex-deploy/prod-zeus-helpdesk-20260520-114226` continha `HelpDesk`, `isHelpDeskView` e `details=list`; publiquei novamente esse pacote em Vercel Production e confirmei o alias `https://ops.c2x.app.br` apontando para o deployment correto.
+- Deployment corrigido de producao: `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`; URL tecnica `https://careli-hub-hub-i2bs-fu7sylzv7-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://ops.c2x.app.br` e `https://c2x.app.br`.
+- Validacao executada: `vercel inspect https://ops.c2x.app.br` confirmou o deployment novo `Ready`; `GET /zeus` retornou 200; `GET /api/hub/it-tickets?details=list&scope=all` retornou 401 esperado sem sessao; logs Vercel mostraram chamada autenticada `GET /api/hub/it-tickets` retornando 200 no deployment corrigido. O service worker remoto foi verificado e nao possui cache de fetch.
+- Pendencias ou riscos conhecidos: se a aba ja estava aberta no navegador, pode ser necessario refresh forte para baixar o bundle novo. Nenhuma env, secret, Supabase, banco, migration ou dominio foi alterado.
+- Rollback definido: promover novamente `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9` se houver regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` para refresh forte e validacao visual autenticada; `Zeus` monitora alias para evitar nova sobrescrita.
+
+Registro de diario:
+
+- Assunto: `[Iris] Envio outbound bloqueado por autenticacao Meta`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 11:38:24 -03:00.
+- Tipo da alteracao: `INVESTIGACAO / META WHATSAPP / HOMOLOGACAO`.
+- Motivo da mudanca: Lucas testou novo envio pela Iris em homologacao e a mensagem nao chegou ao WhatsApp; a tela exibiu `Authentication Error`.
+- Arquivos/modulos afetados: `apps/hub/app/api/iris/meta/messages/route.ts`, `apps/hub/lib/iris/meta-whatsapp.ts`, `.codex-artifacts/iris-meta-refresh-access-token.ps1` e este diario canonico.
+- Como foi feito: consultei os logs de runtime do alias `https://homo.c2x.app.br` filtrando `/api/iris/meta/messages` e confirmei duas chamadas no horario do teste, ambas com HTTP 401. Comparei o retorno possivel da autorizacao interna do Iris com o helper de envio Meta e identifiquei que a mensagem `Authentication Error` corresponde ao erro propagado pela Graph API da Meta. Preparei um script local que atualiza apenas `META_WHATSAPP_ACCESS_TOKEN` em Preview/homolog a partir da area de transferencia, sem imprimir ou registrar o valor.
+- Logica utilizada: o problema anterior de a tela nao chamar a rota foi corrigido; agora a rota esta sendo acionada, mas a Meta rejeita o access token outbound. A correcao operacional exige renovar/substituir o token Meta em homologacao e gerar novo deployment para carregar a env atualizada. Nenhum valor sensivel foi consultado, impresso ou registrado.
+- Validacao executada: `vercel logs https://homo.c2x.app.br --since 35m --query "iris/meta/messages"` encontrou chamadas as 11:30; `vercel logs ... --status-code 401` retornou as mesmas chamadas; `GET /iris` seguia operacional no deployment de homologacao anterior. Ainda nao houve validacao de envio apos token novo.
+- Pendencias ou riscos conhecidos: alteracao de env/secret permanece sensivel e deve ser executada somente com autorizacao do Lucas. Token temporario da Meta pode expirar; para operacao estavel sera necessario token permanente de System User com permissoes WhatsApp adequadas. Apos atualizar o token, e necessario redeploy/healthcheck de homologacao e novo smoke real de envio pela Iris.
+- Status operacional: `BLOQUEADO / AGUARDANDO TOKEN META VALIDO EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` para copiar o novo token Meta e autorizar/rodar o script local; `Iris Core` acompanha redeploy e smoke; `Hefesto` so promove producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Token Meta atualizado e homologacao redeployada`.
+- Nome da squad/agente: `Iris Core / Hefesto assistido`.
+- Data e hora local: 2026-05-20 12:03:15 -03:00.
+- Tipo da alteracao: `ENV HOMOLOG / REDEPLOY / HEALTHCHECK`.
+- Motivo da mudanca: apos o teste da Iris retornar `Authentication Error`, Lucas copiou um novo access token da Meta e executou o script local seguro para atualizar `META_WHATSAPP_ACCESS_TOKEN` no Vercel Preview/homolog.
+- Arquivos/modulos afetados: `.codex-artifacts/iris-meta-refresh-access-token.ps1`, alias `https://homo.c2x.app.br`, deployment Vercel de homologacao e este diario canonico.
+- Como foi feito: o token foi atualizado localmente pelo Lucas sem expor o valor no chat ou nos logs; corrigi o script para nao falhar mais ao limpar clipboard; executei redeploy do deployment correto do projeto `careli-hub-hub-i2bs` para `target=preview`; e reapontei o alias `https://homo.c2x.app.br` para o novo Preview.
+- Logica utilizada: a env de token precisa ser carregada por novo deployment server-side antes de novo smoke. Mantive a publicacao em homologacao, sem alterar producao, banco, migrations ou secrets adicionais. Houve uma tentativa inicial de deploy em projeto Vercel separado `iris-homolog` por link local incorreto da worktree; ela nao recebeu o alias `homo.c2x.app.br` e foi desconsiderada. O deploy valido e o do projeto `careli-hub-hub-i2bs`.
+- Deployment homologacao valido: Vercel Preview `dpl_5yad3dxA4xwKCuz4PimMgQLS6hNT`; URL tecnica `https://careli-hub-hub-i2bs-5yl3spao3-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `vercel inspect https://homo.c2x.app.br` confirmou `target=preview`, status `Ready` e alias apontando para o novo deployment; `GET /iris` retornou HTTP 200; `GET /api/iris/meta/webhook` sem challenge retornou HTTP 403 esperado; `POST /api/iris/meta/messages` sem sessao retornou HTTP 401 esperado.
+- Pendencias ou riscos conhecidos: falta Lucas executar novo smoke autenticado pela tela `/iris` enviando mensagem para WhatsApp e confirmar chegada. Se a Meta ainda retornar 401, o proximo diagnostico deve validar tipo/escopo do token gerado no app Meta, permissoes `whatsapp_business_messaging` e vinculo com o phone number id correto. Token temporario segue risco operacional ate criarmos token permanente.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO SMOKE REAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para testar envio real pela Iris; `Iris Core` acompanha logs e corrige se o retorno Meta persistir.
+
+Registro de diario:
+
+- Assunto: `[Iris] Auto-scroll e validacao de token Meta`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 12:12:35 -03:00.
+- Tipo da alteracao: `CORRECAO UX / META WHATSAPP / HOMOLOGACAO`.
+- Motivo da mudanca: Lucas informou que o erro `Authentication Error` persistiu apos atualizar o token e que, ao enviar mensagens, precisava rolar manualmente para baixo para ver a ultima mensagem.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `.codex-artifacts/iris-meta-refresh-access-token.ps1` e este diario canonico.
+- Como foi feito: a area rolavel da conversa passou a ter referencia dedicada e a tela executa scroll automatico para o final sempre que o ticket ativo ou a ultima mensagem muda. O script local de token foi endurecido para recusar clipboard com comando/caminho (`powershell`, `.ps1`, `vercel`, `C:\` ou espacos), evitando que o comando de execucao seja gravado acidentalmente como access token.
+- Logica utilizada: a conversa da Iris deve operar como chat operacional, mantendo o operador sempre no contexto da mensagem mais recente. A persistencia do `Authentication Error` apos token de 156 caracteres levantou risco de o clipboard ter carregado o comando do script em vez do token Meta; a validacao local evita repetir esse falso positivo sem expor segredo.
+- Validacao executada: em andamento; pendente `git diff --check`, `check-types`, `lint/build` conforme recorte e novo deploy homolog.
+- Pendencias ou riscos conhecidos: Lucas precisa copiar novamente apenas o token da Meta e rodar o script atualizado se o token anterior tiver sido o comando. Apos token real, e necessario novo redeploy/healthcheck e smoke autenticado de envio pela Iris.
+- Status operacional: `IMPLEMENTANDO / AGUARDANDO VALIDACAO`.
+- Proxima squad recomendada: `Iris Core` para validar e publicar a correcao de rolagem em homologacao; `Lucas` para renovar o token com o script atualizado se necessario.
+
+Registro de diario:
+
+- Assunto: `[Iris] Auto-scroll publicado em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 12:21:18 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOG / UX OPERACIONAL / HEALTHCHECK`.
+- Motivo da mudanca: publicar em homologacao a correcao que mantem a conversa da Iris sempre posicionada na mensagem mais recente, apos Lucas relatar que precisava rolar manualmente para ver as mensagens enviadas.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, branch `homolog`, alias `https://homo.c2x.app.br` e este diario canonico.
+- Como foi feito: apliquei a correcao em worktree limpa da Iris, validei, criei o commit `6476dc7 fix(iris): keep atendimento scrolled to latest message`, rebaseei sobre o topo atual de `origin/homolog` para preservar o pacote Hermes que entrou em paralelo e publiquei `HEAD:homolog`. O Preview Git de homologacao ficou `Ready` e o alias `https://homo.c2x.app.br` ja aponta para ele.
+- Logica utilizada: a area de mensagens recebeu uma referencia propria e um efeito de scroll para `scrollHeight` sempre que muda o ticket ativo ou a ultima mensagem. A decisao foi manter comportamento de chat operacional: novas mensagens devem ficar imediatamente visiveis, sem exigir rolagem manual do operador.
+- Commit publicado: `6476dc7 fix(iris): keep atendimento scrolled to latest message`.
+- Deployment homologacao: Vercel Preview `dpl_5dme1YjBKHhSJQKRCagoMFGPP7S3`; URL tecnica `https://careli-hub-hub-i2bs-l0wfayw1t-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warnings conhecidos de `eslint.config.js` typeless/cache; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional e Turbopack/NFT; `vercel inspect` confirmou deployment `Ready`; `GET /iris` retornou HTTP 200; `GET /api/iris/meta/webhook` sem challenge retornou HTTP 403 esperado; logs remotos mostraram apenas chamadas esperadas da Iris no healthcheck.
+- Pendencias ou riscos conhecidos: envio outbound ainda depende de token Meta valido; os ultimos testes autenticados seguiram retornando HTTP 401 da Meta. Lucas deve copiar novamente somente o access token e rodar o script atualizado, que agora bloqueia clipboard contendo comando/caminho antes de alterar env.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TOKEN META VALIDO E SMOKE REAL`.
+- Proxima squad recomendada: `Lucas` para atualizar token com o script reforcado e testar envio real; `Iris Core` acompanha logs e resultado.
+Registro de diario:
+
+- Assunto: `[Hefesto] Producao Hermes reacoes e figurinhas`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 11:55:01 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / HERMES / HEALTHCHECK`.
+- Protocolo operacional: `DP-20260520-1155-HERMES-PROD`.
+- Motivo da mudanca: Lucas informou que Hermes realizou as correcoes do pacote de reacoes, emojis e figurinhas, e autorizou Hefesto a promover para producao se a revisao estivesse OK.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; sem alteracao de env, secret, migration, banco, chave ou alias manual.
+- Recorte publicado: somente Hermes/PulseX tecnico, a partir do commit homologado `1dbebb0 feat(hermes): add reactions and stickers`, reaplicado sobre a ultima base limpa de producao.
+- Arquivos/modulos afetados: `apps/hub/app/api/pulsex/messages/route.ts`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/lib/pulsex/types.ts`.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Zeus/HelpDesk, Hades/Guardian, Atlas, Setup, migrations, envs e scripts fora do recorte Hermes.
+- Como foi feito: usei a copia limpa `.codex-deploy/prod-non-iris-20260520-releaseops`, baseada na producao anterior `9cc34eb`, apliquei somente o commit Hermes `1dbebb0` e resolvi conflito apenas documental preservando o pacote de codigo Hermes. Nao usei o worktree principal porque ele continha alteracoes locais de outros recortes.
+- Logica utilizada: `origin/homolog` contem Iris e outros historicos recentes, entao a producao nao poderia sair diretamente da branch completa. O pacote limpo garante que a producao recebeu apenas reacoes, emoji/figurinhas e persistencia Hermes em metadata JSONB, sem migration.
+- Commit limpo do pacote: `7814fd0 feat(hermes): add reactions and stickers` na copia local de release; origem homologada `1dbebb0`.
+- Deployment anterior de producao: `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9`.
+- Deploy realizado: Vercel Production `dpl_Hrr3kkLjG8TKarMwmNC1E9VK1P9P`; URL tecnica `https://careli-hub-hub-i2bs-kvesynxt9-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: checagem de escopo confirmou apenas arquivos Hermes/PulseX; checagem de caminhos Iris/Zeus/Hades/Atlas/Setup nao retornou arquivos; scan de secrets nao encontrou atribuicoes com valores reais; `git diff --check` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional/Turbopack/NFT; smoke local confirmou `/hermes=200` e `/pulsex=307` para `/hermes`; API local `/api/pulsex/messages` retornou `503` por ausencia de env na copia limpa, validada depois no runtime Vercel.
+- Resultado dos healthchecks: `c2x.app.br/` 200; `/login` 200; `/hermes` 200; `/pulsex` 307 para `/hermes`; `/hades` 200; `/atlas` 200; `/setup` 200; `/api/hermes/messages` 401 esperado sem sessao; `/api/pulsex/messages` 401 esperado sem sessao; `/api/pwa/manifest` 200; `/api/hades/db/health` 200; `ops.c2x.app.br/` 307 para `/zeus`; `ops.c2x.app.br/zeus` 200; `ops.c2x.app.br/hermes` 307 para `/zeus`; logs Vercel de erro dos ultimos 15 minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: validacao funcional autenticada por Lucas ainda recomendada para reagir em mensagem, enviar emoji e enviar figurinha em producao. Persistencia de reacoes em `metadata.reactions` pode ter corrida em uso simultaneo extremo; se houver volume, evoluir para tabela propria de reacoes. O worktree principal segue com outros recortes locais fora do escopo e nao foi publicado.
+- Rollback definido: promover novamente `dpl_GHbW8XXWnhCyvLj725hJUPk8XuV9` se Hermes, login, Home, API de mensagens ou rotas principais apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` para validacao visual/autenticada do Hermes em producao; `Hermes Core` acompanha ajustes finos se houver divergencia; `Hefesto` acompanha logs se houver anomalia.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Reconciliacao Iris homologacao e Zeus OPS`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 12:25:40 -03:00.
+- Tipo da alteracao: `AUDITORIA / GOVERNANCA DE RELEASE / RASTREABILIDADE`.
+- Motivo da mudanca: Lucas sinalizou que os registros estavam ficando sujos porque Iris trabalha em homologacao enquanto Zeus publicou diretamente em producao no dominio operacional `https://ops.c2x.app.br`.
+- Arquivos/modulos afetados: `docs/operations/README.md`, `docs/architecture/release-and-rollback-policy.md`, este diario canonico, dominio `https://ops.c2x.app.br`, dominio `https://c2x.app.br`, recortes Iris em homologacao, recorte Zeus/HelpDesk em producao e release Hermes de producao.
+- Como foi feito: auditei as regras operacionais, o diario canonico, o estado Git e os aliases Vercel. `git status -sb` confirmou worktree principal sujo e branch `homolog` divergente de `origin/homolog`; `vercel inspect https://ops.c2x.app.br` e `vercel inspect https://c2x.app.br` confirmaram que ambos apontam para o mesmo deployment de producao `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`, criado apos a correcao de alias do Zeus.
+- Logica utilizada: Iris permanece como lane de homologacao em `https://homo.c2x.app.br`, aguardando token Meta valido e smoke real do Lucas; Zeus/OPS pode publicar direto em `https://ops.c2x.app.br` somente quando Lucas autorizar expressamente e quando o recorte for isolado de Operations Center/HelpDesk. Como `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo projeto/deployment Vercel, qualquer `vercel deploy --prod` pode trocar os dois dominios para o mesmo artefato. Por isso, deploys de producao precisam registrar impacto de alias compartilhado e validar ambos os dominios antes e depois.
+- Validacao executada: leitura de `AGENTS.md`, `docs/operations/README.md`, `docs/architecture/release-and-rollback-policy.md`, `docs/architecture/production-safety-policy.md` e deste diario; `git status -sb`; `git log --all --oneline --decorate --graph -35`; `vercel inspect https://ops.c2x.app.br`; `vercel inspect https://c2x.app.br`; listagem dos pacotes `.codex-deploy`.
+- Pendencias ou riscos conhecidos: o worktree principal segue com recortes misturados de Iris, Hermes, Zeus, Atlas, Hades, PWA, scripts e docs; nao deve ser usado para deploy geral. A publicacao Hermes `dpl_Hrr3kkLjG8TKarMwmNC1E9VK1P9P` sobrescreveu o alias do Zeus/OPS e foi corrigida depois pelo redeploy `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`, o que deixa claro o risco operacional de alias compartilhado. A separacao definitiva recomendada e avaliar projeto Vercel dedicado para `ops.c2x.app.br` ou um protocolo de pacote de producao que sempre preserve Zeus/OPS e Panteon principal juntos.
+- Status operacional: `OPERACIONAL COM ATENCAO`.
+- Proxima squad recomendada: `Hefesto` deve usar a nova checagem de aliases compartilhados antes de qualquer producao; `Zeus` deve reconciliar protocolos estruturados do OPS quando publicar direto; `Iris Core` segue apenas em homologacao ate Lucas aprovar smoke real e promocao separada.
+
+Registro de diario:
+
+- Assunto: `[Zeus] HelpDesk UX compacto e Athena por regra de negocio em producao`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 12:38:40 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / ZEUS HELPDESK / UX OPERACIONAL / ATHENA`.
+- Protocolo operacional: `DP-20260520-1238-ZEUS-HELPDESK-UX`.
+- Motivo da mudanca: Lucas informou que a tela HelpDesk ainda mantinha textos e blocos grandes demais, pediu cards e filtros recolhidos, fila com mais destaque, imagem de evidencia maior, mencao a usuarios cadastrados na devolutiva, detalhes expansivos para relato/data/como deveria funcionar/o que ocorreu e uma Athena capaz de comparar o relato com regras de negocio do Panteon.
+- Ambiente: producao; dominios `https://ops.c2x.app.br` e `https://c2x.app.br`; sem alteracao de env, secret, migration, banco, dominio ou alias manual.
+- Recorte publicado: somente Zeus/HelpDesk e analisador Athena do ticket, aplicado em pacote limpo de producao para evitar mistura com recortes locais de Iris, Hermes, Atlas, Hades, PWA e scripts.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `apps/hub/app/api/hub/it-tickets/evidence-analysis/route.ts` e este diario canonico.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hermes/PulseX, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets e scripts fora do recorte Zeus.
+- Como foi feito: a lateral do HelpDesk passou a manter indicadores, visao por data e status da fila recolhidos por padrao; os cards de ticket ganharam faixa semaforica por vencimento e avatar do solicitante; o detalhe passou a mostrar por padrao apenas leitura tecnica da Athena, evidencias, historico e devolutiva; relato do usuario, como deveria funcionar, o que ocorreu, contexto e data de entrega ficaram expansivos; a imagem/video de evidencia abre em modal quase full-screen; a devolutiva ganhou seletor de mencao que consulta usuarios cadastrados via `/api/setup/users`; e a rota de analise de evidencias recebeu regras de negocio do Panteon para orientar `expectedResult` e `actualResult`.
+- Logica utilizada: a tela deve operar como helpdesk de execucao, com a fila como ponto principal de trabalho e os detalhes auxiliares sob demanda. Athena deixa de apenas resumir evidencia e passa a comparar o relato com regras operacionais conhecidas, como Iris/AT para comunicacao externa, Hades/CB vinculado a AT, Hermes como chat interno, regras de vencimento do HelpDesk e preservacao de gravacao/evidencias.
+- Pacote limpo utilizado: `.codex-deploy/prod-zeus-helpdesk-20260520-114226`, atualizado apenas com os dois arquivos do recorte Zeus.
+- Deployment anterior de producao: `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74`.
+- Deploy realizado: Vercel Production `dpl_HB6odXW9RR6FMLKnHzTMCzev2RAj`; URL tecnica `https://careli-hub-hub-i2bs-h36pr4xpx-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://ops.c2x.app.br` e `https://c2x.app.br`.
+- Validacao executada: `npm.cmd run check-types:hub` passou no worktree principal e no pacote limpo; `npm.cmd run lint:hub` passou no worktree principal e no pacote limpo com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou no worktree principal e no pacote limpo com warning conhecido Turbopack/NFT de `engineering-operations-source.ts`; `git diff --check` no recorte Zeus passou com avisos CRLF conhecidos do Windows; smoke local confirmou `http://localhost:3001/zeus` HTTP 200; build remoto Vercel passou; `vercel inspect` confirmou deployment `Ready` para `ops.c2x.app.br` e `c2x.app.br`; smoke remoto confirmou `https://ops.c2x.app.br/zeus` HTTP 200, `https://c2x.app.br/zeus` HTTP 200 e `https://ops.c2x.app.br/login` HTTP 200; `/api/hub/it-tickets?details=list` sem sessao retornou 401 esperado; logs Vercel de erro dos ultimos 10 minutos nao retornaram ocorrencias.
+- Pendencias ou riscos conhecidos: validacao funcional autenticada por Lucas ainda recomendada para confirmar o comportamento visual da fila, expandir/recolher secoes, mencao de usuarios cadastrados e preview ampliado das evidencias. A consulta de mencoes depende de sessao admin; usuarios nao admin podem receber bloqueio do endpoint de usuarios. Os aliases `c2x.app.br` e `ops.c2x.app.br` seguem compartilhando o mesmo deployment, portanto novos deploys de producao podem sobrescrever ambos.
+- Rollback definido: promover novamente `dpl_FPFyzcWBrs8LX4XnQZTBKPEHWK74` se a tela Zeus/HelpDesk, login ou rotas principais apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` valida visualmente o fluxo autenticado em producao; `Zeus` acompanha ajustes finos e deve sincronizar este diario para a fonte estruturada do Operations Center.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Sync estruturado do HelpDesk UX publicado`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 12:43:08 -03:00.
+- Tipo da alteracao: `SYNC OPERATIONS CENTER / RASTREABILIDADE`.
+- Motivo da mudanca: concluir o ciclo obrigatorio do Zeus apos publicar o proprio recorte em producao, levando o registro do diario canonico para `hub_engineering_operation_records`.
+- Arquivos/modulos afetados: `docs/operations/engineering-operations.md`, endpoint local `POST /api/squadops/operations/structured`, tabelas estruturadas do Operations Center e recorte Zeus/HelpDesk publicado em `dpl_HB6odXW9RR6FMLKnHzTMCzev2RAj`.
+- Como foi feito: o primeiro sync tentou usar o dev server local existente em `localhost:3001`, mas ele estava preso compilando e atingiu timeout; reiniciei apenas o servidor local do Hub para executar a sincronizacao e o encerrei em seguida.
+- Logica utilizada: a API local em modo desenvolvimento aceita sincronizar o conteudo do arquivo local sem bearer remoto, preservando a regra de nao enviar secrets em chat/log e evitando usar endpoint remoto sem token administrativo.
+- Resultado do sync estruturado: HTTP 200; primeira passagem `recordsTotal=386` e segunda passagem final `recordsTotal=387`, `recordsUpserted=387`, `releasesUpserted=27`, `mode=content-upload`, `sourcePath=docs/operations/engineering-operations.md`.
+- Validacao executada: `GET /api/squadops/operations/structured?limit=1` local retornou HTTP 200 antes do sync; `POST /api/squadops/operations/structured` local retornou HTTP 200; nenhum valor sensivel foi impresso.
+- Pendencias ou riscos conhecidos: warnings locais de presenca e timeout de recuperacao de sessao apareceram no dev server durante o smoke, mas fora do recorte HelpDesk e sem afetar o sync estruturado. O worktree principal permanece sujo por recortes paralelos e nao deve ser usado como base de deploy geral.
+- Status operacional: `EM PRODUCAO / SINCRONIZADO`.
+- Proxima squad recomendada: `Lucas` valida visualmente o HelpDesk em producao; `Zeus` acompanha regressao ou ajuste fino se houver divergencia.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Indices oficiais de homologacao e producao`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 12:29:31 -03:00.
+- Tipo da alteracao: `DECISAO OPERACIONAL / GOVERNANCA DE RELEASE / DOCUMENTACAO`.
+- Motivo da mudanca: Lucas propos separar registros objetivos de homologacao e producao para reduzir sujeira no diario consolidado e facilitar que `Hefesto` compare o que foi homologado com o que ja foi para producao.
+- Arquivos/modulos afetados: `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, `docs/operations/agent-release-register-prompt.md`, `docs/operations/README.md` e este diario canonico.
+- Como foi feito: criei um indice de homologacao para registrar apenas recortes em homologacao, homologados, prontos para producao ou bloqueados; criei um indice de producao para registrar apenas publicacoes, bloqueios, rollbacks e healthchecks finais; criei um prompt oficial para Lucas encaminhar aos agentes; e atualizei o README operacional para declarar os novos arquivos como referencias oficiais.
+- Logica utilizada: o diario canonico permanece como memoria consolidada, append-only e historica. Os novos arquivos funcionam como trilhas operacionais filtradas por ambiente: agentes de modulo registram homologacao em `releases-homologation.md`; `Hefesto` usa homologacao + producao + diario + Git como fonte de decisao; producoes entram em `releases-production.md` com commit, deployment, aliases, healthchecks, rollback, riscos e status.
+- Validacao executada: criacao documental via patch; leitura previa de `docs/operations/README.md`, `docs/operations/agent-handoff-scripts.md` e contexto operacional; pendente validacao final de diff documental.
+- Pendencias ou riscos conhecidos: os arquivos novos comecam como templates e nao reescrevem historico antigo. Registros historicos continuam no diario consolidado. Proxima limpeza pode migrar, por entrada nova e sem apagar historico, os ultimos recortes Iris/Zeus/Hermes para os novos indices.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Todos os agentes` devem usar o prompt `docs/operations/agent-release-register-prompt.md`; `Hefesto` deve consultar obrigatoriamente os dois indices antes de qualquer producao.
+
+Registro de diario:
+
+- Assunto: `[Atlas] Registro aplicado no indice de homologacao`.
+- Nome da squad/agente: `Atlas Core / Agente`.
+- Data e hora local: 2026-05-20 12:35:30 -03:00.
+- Tipo da alteracao: `REGISTRO OPERACIONAL / HOMOLOGACAO` - aplicacao da nova regra de registros por ambiente ao recorte Atlas.
+- Motivo da mudanca: Lucas formalizou que recortes de homologacao devem ser registrados em `docs/operations/releases-homologation.md`, mantendo este diario como consolidado canonico e deixando producao fora quando nao houver autorizacao explicita.
+- Arquivos/modulos afetados: `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: registrei no indice de homologacao o pacote `[Atlas] Dados e runtime restaurados em homologacao`, incluindo escopo, deployment, alias, validacoes, healthchecks, riscos, pendencias e status `EM HOMOLOGACAO`.
+- Logica utilizada: o Atlas teve correcao de banco/env/deploy em homologacao, mas nao houve promocao para producao; por isso o registro entrou apenas em `releases-homologation.md` e `releases-production.md` permaneceu sem alteracao.
+- Validacao executada: leitura de `AGENTS.md`, `docs/operations/README.md`, `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, `docs/architecture/release-and-rollback-policy.md`, `docs/architecture/production-safety-policy.md` e `docs/architecture/secret-management-policy.md`; `git diff --check -- docs/operations/releases-homologation.md docs/operations/engineering-operations.md` passou sem erro, com aviso CRLF conhecido; busca de trailing whitespace nos arquivos editados nao retornou ocorrencias.
+- Pendencias ou riscos conhecidos: o registro e retroativo ao recorte Atlas ja executado; producao continua excluida e qualquer promocao futura deve passar por `Hefesto`, recorte limpo, healthchecks e autorizacao explicita do Lucas.
+- Status operacional: `EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` para validacao autenticada do Atlas em homologacao; depois `Hefesto` avalia promocao somente se houver aprovacao.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Carga inicial dos indices de homologacao e producao`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 12:38:44 -03:00.
+- Tipo da alteracao: `AUDITORIA / REGISTRO OPERACIONAL / GOVERNANCA DE RELEASE`.
+- Motivo da mudanca: Lucas solicitou revisar o que foi feito em homologacao e producao e atualizar os novos indices por ambiente para que `Hefesto` use `releases-homologation.md` e `releases-production.md` como referencia objetiva antes de novos deploys.
+- Arquivos/modulos afetados: `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md` e este diario canonico.
+- Como foi feito: revisei registros recentes do diario canonico, com foco nos recortes do ciclo de 2026-05-20 que possuem deploy, commit, alias ou healthcheck registrado; separei os registros de homologacao dos de producao; preservei o registro Atlas ja inserido por outro agente; e acrescentei cargas consolidadas sem apagar historico.
+- Logica utilizada: os indices nao devem virar uma copia integral do diario. Eles registram a trilha operacional filtrada por ambiente: homologacao mostra o que esta em teste ou pronto para validacao; producao mostra o que foi publicado, sobrescrito, corrigido ou exige atencao. O diario permanece como fonte consolidada e historica.
+- Validacao executada: leitura de `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md` e memoria operacional; pendente validacao final de `git diff --check` nos arquivos documentais.
+- Pendencias ou riscos conhecidos: a carga inicial cobre os recortes recentes com evidencia clara no diario, nao todo o historico antigo desde 2026-05-16. Recortes historicos continuam preservados no diario e podem ser migrados depois em lotes menores se Lucas quiser. O worktree principal segue com varios recortes abertos; nenhuma publicacao, env, secret, banco, migration ou alias foi alterado nesta acao.
+- Status operacional: `FINALIZADO`.
+- Proxima squad recomendada: `Hefesto` deve consultar os dois indices antes de qualquer producao; agentes de modulo devem registrar novas homologacoes diretamente em `releases-homologation.md`.
+
+Registro de diario:
+
+- Assunto: `[Hades] Logo principal do modulo`.
+- Nome da squad/agente: `Hades Core`.
+- Data e hora local: 2026-05-20 12:37:33 -03:00.
+- Tipo da alteracao: `UX OPERACIONAL / IDENTIDADE VISUAL / VALIDACAO LOCAL`.
+- Motivo da mudanca: Lucas pediu trocar a logo principal do modulo apos a mudanca oficial de Guardian para Hades; o sidebar local ja estava com a identidade Hades e o ajuste pendente era alinhar o topo mobile ao mesmo simbolo.
+- Arquivos/modulos afetados: `apps/hub/components/guardian/layout/Sidebar.tsx`, `apps/hub/components/guardian/layout/Topbar.tsx`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: preservei/validei o sidebar no padrao Panteon ja vigente, com icone preto do modulo, nome `Hades`, botoes compactos para abrir o launcher do Panteon e recolher/expandir. O ajuste de codigo desta rodada foi alinhar o topbar mobile para usar `ShieldCheck` e texto `Hades`, preservando `PanteonTopbarUser` no canto superior direito.
+- Logica utilizada: como os nomes tecnicos legados ainda podem existir por compatibilidade, a troca foi limitada a identidade visual e navegacao do modulo. Nao houve alteracao em rotas, banco, API, env, secret, dominio, alias, deploy ou regra financeira. Usei `ShieldCheck` porque preserva a leitura operacional de protecao/controle do antigo Guardian sem manter a marca antiga.
+- Registro de ambiente: adicionado registro preparado em `docs/operations/releases-homologation.md` com status `BLOQUEADO`, porque nao houve autorizacao de publicacao em homologacao nem producao.
+- Validacao executada: leitura de `AGENTS.md`, `docs/operations/README.md`, `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, `docs/architecture/release-and-rollback-policy.md`, `docs/architecture/production-safety-policy.md` e `docs/architecture/secret-management-policy.md`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; `git diff --check -- apps/hub/components/guardian/layout/Sidebar.tsx apps/hub/components/guardian/layout/Topbar.tsx` passou com aviso CRLF conhecido; smoke local com `next start` em `localhost:3018/hades` retornou `200` e nao encontrou os assets antigos de logo no HTML. O primeiro smoke com `next dev` excedeu timeout e foi limpo; a porta `3018` ficou sem processo ativo.
+- Pendencias ou riscos conhecidos: falta validacao visual autenticada do Lucas em homologacao caso ele queira ver fora do local; o worktree principal segue com diversos recortes de outras frentes e nao deve ser usado para deploy geral. Producao permanece fora do escopo.
+- Status operacional: `BLOQUEADO / AGUARDANDO AUTORIZACAO DE HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` autorizar ou nao publicacao em homologacao; se autorizado, `Hades Core` publica somente este recorte e registra o deployment; `Hefesto` so promove producao apos homologacao aprovada.
+
+Registro de diario:
+
+- Assunto: `[Iris] Envio outbound bloqueado por lista de destinatarios Meta`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 12:45:45 -03:00.
+- Tipo da alteracao: `INVESTIGACAO / HOMOLOGACAO / META WHATSAPP`.
+- Motivo da mudanca: Lucas reportou novo erro na Iris ao responder uma conversa WhatsApp em homologacao: `(#131030) Recipient phone number not in allowed list`.
+- Arquivos/modulos afetados: `apps/hub/app/api/iris/meta/messages/route.ts`, `apps/hub/lib/iris/meta-whatsapp.ts`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: revisei a politica operacional, consultei logs recentes da Vercel em `https://homo.c2x.app.br`, confirmei duas chamadas `POST /api/iris/meta/messages` com status `400`, validei que nao ha erro `5xx` de runtime e li a rota de envio para confirmar que a mensagem de erro da Meta e repassada para a UI e registrada como falha local.
+- Logica utilizada: o erro anterior de autenticacao foi superado porque a chamada chegou a ser processada pela Meta e voltou como regra de negocio da plataforma. O codigo `131030` indica bloqueio de destinatario permitido no modo de teste/desenvolvimento da Meta, nao falha de token, UI ou webhook inbound.
+- Registro de ambiente: adicionado registro em `docs/operations/releases-homologation.md` com status `BLOQUEADO`; producao permaneceu fora do escopo e `docs/operations/releases-production.md` nao foi alterado.
+- Validacao executada: leitura de `AGENTS.md`, `docs/operations/README.md`, `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, `docs/architecture/release-and-rollback-policy.md`, `docs/architecture/production-safety-policy.md`, `docs/architecture/secret-management-policy.md`, `docs/architecture/environment-governance.md` e `docs/architecture/agent-operating-model.md`; `vercel logs` confirmou status `400` controlado no endpoint de envio; `vercel inspect` confirmou deployment de homologacao `Ready`.
+- Pendencias ou riscos conhecidos: enquanto o destinatario nao estiver adicionado/verificado na lista permitida da Meta, a Iris pode receber mensagens inbound, mas respostas outbound pelo numero de teste continuam rejeitadas pela Meta. Nenhuma env, secret, banco, migration, dominio, alias ou producao foi alterado.
+- Status operacional: `BLOQUEADO / AGUARDANDO LIBERACAO DO DESTINATARIO NA META`.
+- Proxima squad recomendada: `Lucas` liberar o destinatario de teste na Meta; depois `Iris Core` retesta envio outbound e confirma status/checks.
+
+Registro de diario:
+
+- Assunto: `[Iris] Token Meta atualizado em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 13:02:05 -03:00.
+- Tipo da alteracao: `OPERACAO SENSIVEL AUTORIZADA / HOMOLOGACAO / META WHATSAPP`.
+- Motivo da mudanca: Lucas aprovou o numero destinatario no painel Meta, gerou um token novo que enviou mensagem de teste com sucesso pela Meta e autorizou atualizar a homologacao da Iris para continuar o teste outbound.
+- Arquivos/modulos afetados: Vercel Preview env `META_WHATSAPP_ACCESS_TOKEN`, alias `https://homo.c2x.app.br`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: executei o script seguro `.codex-artifacts/iris-meta-refresh-access-token.ps1`, que leu o token da area de transferencia, validou que nao era comando/caminho, atualizou a env no Vercel Preview/homolog sem imprimir valor e limpou a area de transferencia. Em seguida rodei `vercel redeploy` no alias de homologacao para carregar o token novo.
+- Logica utilizada: a atualizacao ficou limitada a homologacao/Preview, porque Iris/Meta ainda esta em teste real. Nenhum valor sensivel foi registrado; producao, banco, migration, dominio de producao e aliases de producao permaneceram fora do escopo.
+- Registro de ambiente: adicionado registro em `docs/operations/releases-homologation.md` com status `EM HOMOLOGACAO`; `docs/operations/releases-production.md` nao foi alterado.
+- Deployment homologacao: `dpl_BeH636FcaUK35icxoUcGmusue8BS`; URL tecnica `https://careli-hub-hub-i2bs-3yy4pw6ri-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready`; `GET /iris` retornou `200`; `GET /api/iris/meta/webhook` sem challenge retornou `403` esperado; `vercel logs --level error --since 5m` nao retornou erros.
+- Pendencias ou riscos conhecidos: falta smoke autenticado real pela tela Iris para confirmar envio outbound e evolucao dos checks depois do token novo. Token Meta temporario pode expirar e deve ser substituido por fluxo permanente quando Iris sair de homologacao.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` enviar nova mensagem pela Iris e confirmar chegada no WhatsApp; `Iris Core` acompanha logs e corrige se houver novo retorno Meta.
+
+Registro de diario:
+
+- Assunto: `[Zeus] HelpDesk historico e expansoes compactas`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 12:55:41 -03:00.
+- Tipo da alteracao: `UX OPERACIONAL / HELPDESK / VALIDACAO LOCAL`.
+- Motivo da mudanca: Lucas pediu destaque visual entre mensagens do operador e do solicitante no historico, com foto/avatar, e pediu que as expansoes de `Relato do usuario`, `Como deveria funcionar` e `O que ocorreu` seguissem o mesmo padrao compacto usado em `Visao por data` e `Status da fila`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/HubItTicketsBoard.tsx` e este diario canonico.
+- Como foi feito: o historico passou a renderizar eventos como conversa, separando `Minha devolutiva` do lado direito em grafite, `Solicitante` do lado esquerdo com avatar/foto e eventos da Athena em tom dourado. Os blocos de relato, comportamento esperado e ocorrencia foram trocados por uma linha expansivel compacta, com resumo curto, chevron e conteudo aberto apenas sob demanda.
+- Logica utilizada: o HelpDesk deve priorizar leitura rapida da fila e do atendimento, deixando detalhes longos recolhidos. A distincao visual do historico reduz ambiguidade entre comunicacao do Zeus/Lucas e retorno do solicitante, sem alterar schema, API, banco ou regras de protocolo.
+- Registro de ambiente: nao houve deploy, homologacao ou producao nesta rodada; por isso `docs/operations/releases-homologation.md` e `docs/operations/releases-production.md` nao foram alterados.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/modules/squadops/HubItTicketsBoard.tsx docs/operations/engineering-operations.md` passou sem erro, com aviso CRLF conhecido do Windows; smoke local com `next start --port 3022` confirmou `GET /zeus` HTTP 200 e o servidor foi encerrado.
+- Pendencias ou riscos conhecidos: falta validacao visual autenticada do Lucas na tela real para confirmar espacamento e leitura dos baloes do historico. Como os eventos antigos nao guardam autor/avatar por evento, a UI infere o ator pelo tipo do evento e usa `lastResponseBy`, `assignedTo` ou fallback `Zeus` para devolutivas antigas.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO AUTORIZACAO DE HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` validar localmente ou autorizar homologacao; `Zeus` publica apenas este recorte se autorizado.
+
+Registro de diario:
+
+- Assunto: `[Zeus] HelpDesk historico e expansoes compactas em producao`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 13:08:11 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / ZEUS HELPDESK / UX OPERACIONAL`.
+- Protocolo operacional: `DP-20260520-1308-ZEUS-HELPDESK-HISTORICO`.
+- Motivo da mudanca: Lucas autorizou subir para producao o ajuste visual do HelpDesk que destaca mensagens do operador e do solicitante, usa foto/avatar no historico e padroniza as expansoes longas no modelo compacto da fila.
+- Ambiente: producao; dominios `https://ops.c2x.app.br` e `https://c2x.app.br`; sem alteracao de env, secret, migration, banco, dominio ou alias manual.
+- Recorte publicado: somente Zeus/HelpDesk, aplicado em pacote limpo de producao para evitar levar recortes locais de Iris, Hermes, Hades, Atlas, Setup, Chronos, PWA, scripts ou docs fora da publicacao.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `docs/operations/releases-production.md` e este diario canonico.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hermes/PulseX, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets, banco e scripts fora do recorte Zeus.
+- Como foi feito: copiei o arquivo validado `HubItTicketsBoard.tsx` para o pacote limpo `.codex-deploy/prod-zeus-helpdesk-20260520-114226`, validei o pacote e executei `npx vercel deploy --prod --yes`. O historico renderiza eventos como conversa: `Minha devolutiva` em grafite do lado direito, solicitante do lado esquerdo com avatar/foto e Athena em tom dourado. `Relato do usuario`, `Como deveria funcionar` e `O que ocorreu` usam linha expansivel compacta com resumo e chevron.
+- Logica utilizada: a fila e o atendimento precisam priorizar leitura rapida; blocos longos permanecem sob demanda e o historico deixa claro quem falou. Como os eventos antigos nao guardam autor/avatar por evento, a UI infere o ator pelo tipo do evento e usa `lastResponseBy`, `assignedTo`, `deliveryDecisionBy` ou fallback `Zeus` para devolutivas antigas.
+- Deployment anterior de producao: `dpl_HB6odXW9RR6FMLKnHzTMCzev2RAj`.
+- Deploy realizado: Vercel Production `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke`; URL tecnica `https://careli-hub-hub-i2bs-vwttt6h07-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://ops.c2x.app.br` e `https://c2x.app.br`.
+- Validacao executada: no worktree principal, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check` e smoke local `/zeus=200` passaram; no pacote limpo, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/modules/squadops/HubItTicketsBoard.tsx` passaram; build remoto Vercel concluiu `READY`; `vercel inspect` confirmou `ops.c2x.app.br` e `c2x.app.br` no deployment novo.
+- Resultado dos healthchecks: `GET https://ops.c2x.app.br/zeus` 200; `GET https://c2x.app.br/zeus` 200; `GET https://ops.c2x.app.br/login` 200; `GET https://c2x.app.br/login` 200; `GET https://ops.c2x.app.br/api/pwa/manifest` 200; `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all` sem sessao retornou 401 esperado; logs Vercel de erro dos ultimos 10 minutos sem ocorrencias.
+- Pendencias ou riscos conhecidos: falta validacao visual autenticada do Lucas em producao. `c2x.app.br` e `ops.c2x.app.br` seguem no mesmo deployment Vercel e qualquer nova producao pode sobrescrever ambos. Worktree principal continua com recortes misturados e nao deve ser usado para deploy geral. O deployment Zeus `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke` foi sucedido pelo release Hermes `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`, que preservou a base Zeus/HelpDesk e e o deployment ativo atual dos aliases compartilhados.
+- Rollback definido: promover novamente `dpl_HB6odXW9RR6FMLKnHzTMCzev2RAj` se a tela Zeus/HelpDesk, login ou rotas principais apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar visualmente a tela autenticada; `Zeus` sincronizar este diario para a fonte estruturada do Operations Center e acompanhar eventuais ajustes finos.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Producao Hermes imagens em threads`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 13:10:08 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / HERMES / THREADS / ANEXOS`.
+- Protocolo operacional: `DP-20260520-1310-HERMES-THREAD-IMAGES`.
+- Motivo da mudanca: Lucas solicitou subir em producao o ultimo registro do Hermes. O ultimo recorte identificado em `origin/homolog` foi `3d733ae feat(hermes): attach images to thread replies`, que dependia dos commits Hermes anteriores de reacoes e figurinhas para compilar corretamente.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; sem alteracao de env, secret, migration, banco, dominio ou alias manual.
+- Recorte publicado: somente Hermes/PulseX tecnico, aplicado em pacote limpo de producao para preservar a base Zeus/HelpDesk ja publicada e evitar levar recortes locais de Iris, Hades, Atlas, Setup, Chronos, PWA, scripts ou migrations.
+- Arquivos/modulos afetados: `apps/hub/app/api/pulsex/messages/route.ts`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/lib/pulsex/types.ts`, `docs/operations/releases-production.md` e este diario canonico.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Zeus/HelpDesk fora da base ja publicada, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets, banco e scripts fora do recorte Hermes.
+- Como foi feito: criei o pacote limpo `.codex-deploy/prod-hermes-thread-images-20260520-1330` a partir da base de producao Zeus/HelpDesk. A primeira tentativa aplicando apenas `3d733ae` foi bloqueada por erro de build (`onToggleReaction` ausente em `MessageListProps`), indicando dependencia Hermes anterior. Reapliquei a uniao minima dos arquivos Hermes dos commits `1dbebb0`, `bde6b7e` e `3d733ae`, validei localmente e publiquei com `npx.cmd vercel deploy --prod --yes --archive=tgz`.
+- Logica utilizada: o ultimo recorte Hermes nao era independente; publicar somente `3d733ae` quebraria a build. A decisao segura foi incluir apenas as dependencias Hermes necessarias, sem misturar outros modulos, preservando a regra de recorte e evitando deploy geral do worktree sujo.
+- Deployment anterior de producao: `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke`.
+- Deploy realizado: Vercel Production `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`; URL tecnica `https://careli-hub-hub-i2bs-4gtfl8or0-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: `git diff --no-index --check` nos arquivos Hermes passou; scan de secrets nos caminhos Hermes/PulseX nao encontrou valores sensiveis reais; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; build remoto Vercel concluiu `READY`; `vercel inspect` confirmou os dois aliases no deployment novo.
+- Resultado dos healthchecks: `GET https://c2x.app.br/` 200; `GET https://c2x.app.br/login` 200; `GET https://c2x.app.br/hermes` 200; `GET https://c2x.app.br/pulsex` 200 apos redirecionamento esperado; `GET https://c2x.app.br/api/hermes/messages` sem sessao 401 esperado; `GET https://c2x.app.br/api/pulsex/messages` sem sessao 401 esperado; `GET https://c2x.app.br/api/pwa/manifest` 200; `GET https://c2x.app.br/api/hades/db/health` 200; `GET https://c2x.app.br/api/guardian/db/health` 200; `GET https://ops.c2x.app.br/zeus` 200; `GET https://ops.c2x.app.br/hermes` 200 apos redirecionamento esperado para Zeus no dominio OPS.
+- Logs recentes: `npx.cmd vercel logs https://c2x.app.br --since 10m` mostrou apenas logs `info`; sem erro critico identificado nos healthchecks.
+- Pendencias ou riscos conhecidos: falta validacao autenticada do Lucas para upload/colar imagem em resposta de thread. `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo deployment Vercel e qualquer nova producao sobrescreve ambos. Nao houve mudanca de env, secret, Supabase, banco, migration, dominio ou alias manual.
+- Rollback definido: promover novamente `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke` se Hermes, login, Zeus/HelpDesk ou rotas protegidas apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar Hermes autenticado em producao; `Hermes Core` acompanha ajustes finos se houver divergencia; `Hefesto` monitora logs e preserva recortes limpos nas proximas promocoes.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Sync estruturado do HelpDesk historico publicado`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 13:12:18 -03:00.
+- Tipo da alteracao: `SYNC OPERATIONS CENTER / RASTREABILIDADE / PRODUCAO`.
+- Motivo da mudanca: concluir o ciclo obrigatorio do Zeus apos publicacao direta em producao, levando o diario canonico atualizado para a fonte estruturada do Operations Center.
+- Arquivos/modulos afetados: `docs/operations/engineering-operations.md`, `docs/operations/releases-production.md`, endpoint local `POST /api/squadops/operations/structured`, deployment Zeus `dpl_2uiVA9QxBMdjZ44Pwm4bBRY2kpke` e deployment ativo atual `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`.
+- Como foi feito: iniciei temporariamente o servidor local do Hub em `localhost:3001`, executei o sync estruturado via API local e encerrei o servidor em seguida. Nenhum valor sensivel foi impresso ou registrado.
+- Logica utilizada: a sincronizacao local usa o arquivo canonico atualizado e evita depender de token administrativo remoto no chat. O registro de producao ja esta separado em `docs/operations/releases-production.md`, enquanto o diario permanece como memoria consolidada.
+- Resultado do sync estruturado: HTTP 200; `recordsTotal=393`, `recordsUpserted=393`, `releasesUpserted=29`, `handoffsUpserted=77`, `healthchecksUpserted=72`, `sourcePath=docs/operations/engineering-operations.md`.
+- Validacao executada: `GET /api/squadops/operations/structured?limit=1` local retornou HTTP 200 antes do primeiro sync; `POST /api/squadops/operations/structured` local retornou HTTP 200; uma segunda passagem confirmou os contadores finais acima.
+- Pendencias ou riscos conhecidos: nenhuma pendencia tecnica do sync. A validacao visual autenticada do Lucas ainda e recomendada para a tela HelpDesk em producao. Checagem posterior confirmou que o bundle ativo em `ops.c2x.app.br` no deployment `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu` contem o texto novo `Minha devolutiva`, preservando o recorte Zeus apos o release Hermes.
+- Status operacional: `EM PRODUCAO / SINCRONIZADO`.
+- Proxima squad recomendada: `Lucas` validar visualmente o HelpDesk em producao; `Zeus` acompanhar ajustes finos se houver divergencia.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Painel de respostas e popups solidos`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 13:22:29 -03:00.
+- Tipo da alteracao: `HOTFIX UX / THREADS / REACOES`.
+- Motivo da mudanca: Lucas informou que a janela de respostas do Hermes ainda estava pequena/quebrada e que popups/reacoes com transparencia dificultavam a leitura por misturar com conteudo atras.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/message-item.tsx` e este diario canonico. Os caminhos tecnicos `pulsex` seguem por compatibilidade do modulo operacionalmente chamado `Hermes`.
+- Como foi feito: aumentei a largura do painel lateral de respostas de um limite fixo de `24rem` para `min(31rem, calc(100% - 0.75rem))` e elevei sua camada para `z-40`. Nos itens de mensagem, quando informacoes, marcacao ou reacao ficam abertas, a linha sobe para `z-[80]`; menus e paineis usam `z-[90]`, fundo `#ffffff`, ring e sombra mais forte. O seletor de reacoes passou a abrir abaixo dos botoes em vez de sobrepor o texto da mensagem, e o preview de figurinha deixou de usar `bg-white/80`.
+- Logica utilizada: o problema era de hierarquia visual, nao de dados. A correcao preserva contratos de mensagens, threads, reacoes e figurinhas, alterando apenas composicao, empilhamento e opacidade para manter leitura no padrao chat operacional/WhatsApp Desktop.
+- Validacao executada: leitura de `AGENTS.md`, `docs/operations/README.md` e registros Hermes no diario canonico; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/components/pulsex/message-item.tsx apps/hub/components/pulsex/pulsex-workspace.tsx` passou com avisos CRLF conhecidos; busca por fundos transluscidos nos arquivos alvo nao encontrou `bg-white/80`, `bg-white/70`, `backdrop-blur` ou `bg-white/`; smoke local temporario em `http://localhost:3031/hermes` e depois `http://localhost:3032/hermes` retornou HTTP 200. Tentativa de browser smoke via runtime local ficou indisponivel porque o pacote Playwright exposto nao encontrou `playwright-core`.
+- Pendencias ou riscos conhecidos: nao houve env, secret, Supabase, banco, migration, dominio, alias, deploy ou producao. Validacao visual autenticada pelo Lucas ainda e recomendada para confirmar no chat real que o painel maior e os popups solidos resolveram a sobreposicao. O worktree principal segue com recortes misturados de outras frentes e nao deve ser publicado como pacote geral.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` validar visualmente local/homologacao; `Hermes Core` publica somente este recorte em homologacao se Lucas autorizar; `Hefesto` fica fora ate existir recorte homologado/aprovado para producao.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Deploy alimentado por indices de ambiente`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 13:34:29 -03:00.
+- Tipo da alteracao: `OPERATIONS CENTER / DEPLOYS / FONTE OPERACIONAL`.
+- Motivo da mudanca: Lucas definiu que os dois arquivos oficiais de registro, `docs/operations/releases-homologation.md` e `docs/operations/releases-production.md`, devem alimentar a tela de Deploy do Zeus.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/release-registers-source.ts`, `apps/hub/app/api/zeus/release-registers/route.ts`, `apps/hub/modules/squadops/ZeusPage.tsx` e este diario canonico.
+- Como foi feito: criei um parser dedicado para os registros de homologacao e producao, ignorando os templates e lendo apenas a secao `## Registros`; expus a fonte em `/api/zeus/release-registers` com a mesma autorizacao administrativa do Zeus; e ajustei a aba Deploy para usar esses registros como fonte primaria, incluindo filtros, contadores e painel de origem. Se os indices nao tiverem registros disponiveis, a tela preserva o diario canonico como fallback.
+- Logica utilizada: o diario continua sendo a memoria consolidada, mas a decisao de deploy precisa partir dos indices filtrados por ambiente. Homologacao mostra o que esta em teste, bloqueado, homologado ou pronto para producao; producao mostra o que foi publicado, corrigido, bloqueado ou exige atencao. A aba Deploy passa a refletir essa separacao para facilitar o handoff dos agentes de modulo para `Hefesto`.
+- Registro de ambiente: nao houve deploy, promocao, rollback, env, secret, banco, migration, dominio ou alias nesta rodada; por isso `releases-homologation.md` e `releases-production.md` foram usados como fonte, mas nao receberam novo registro de release.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou e confirmou a rota `/api/zeus/release-registers`, mantendo o warning conhecido Turbopack/NFT ligado a `engineering-operations-source.ts`; `git diff --check` nos arquivos do recorte passou com aviso CRLF conhecido do Windows; smoke local com `next start --port 3035` confirmou `GET /zeus` HTTP 200 e `GET /api/zeus/release-registers` sem sessao HTTP 401 esperado; smoke local em modo dev com `next dev --port 3036` confirmou `GET /api/zeus/release-registers` HTTP 200, `records=16`, `homologacao=8` e `producao=8`.
+- Pendencias ou riscos conhecidos: validacao visual autenticada do Lucas ainda recomendada para confirmar a leitura da aba Deploy com os filtros reais. Como os arquivos de indice ainda sao historicos recentes e nao todo o passado antigo, a tela Deploy passa a priorizar o que esta registrado nos indices; registros antigos continuam acessiveis pelo diario/timeline.
+- Status operacional: `VALIDADO LOCAL`.
+- Proxima squad recomendada: `Lucas` validar a aba Deploy; `Zeus` ajusta a apresentacao se houver divergencia; `Hefesto` continua usando os dois indices antes de producao.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Deploy por indices publicado em producao`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 14:01:42 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / ZEUS DEPLOYS / OPERATIONS CENTER`.
+- Protocolo operacional: `DP-20260520-1401-ZEUS-DEPLOY-REGISTERS`.
+- Motivo da mudanca: Lucas autorizou publicar em producao o recorte que alimenta a aba Deploy do Zeus a partir dos indices oficiais de homologacao e producao.
+- Ambiente: producao; dominios `https://ops.c2x.app.br` e `https://c2x.app.br`; sem alteracao de env, secret, migration, banco, dominio ou alias manual.
+- Recorte publicado: fonte/parser de `releases-homologation.md` e `releases-production.md`, rota protegida `/api/zeus/release-registers` e tela Deploy priorizando esses indices com fallback para o diario canonico.
+- Arquivos/modulos afetados: `apps/hub/lib/squadops/release-registers-source.ts`, `apps/hub/app/api/zeus/release-registers/route.ts`, `apps/hub/modules/squadops/ZeusPage.tsx`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md` e este diario canonico.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets, banco, scripts e recortes locais fora de Zeus/Deploy e da base Hermes ja publicada.
+- Como foi feito: primeiro publiquei pacote limpo `.codex-deploy/prod-zeus-deploy-registers-20260520-1348`, que gerou `dpl_2yv1wWYPXHTGuw469usziqP9ZbJV`, mas durante a janela identifiquei que o hotfix Hermes `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM` havia sido publicado logo antes. Para preservar os aliases compartilhados, montei o pacote final `.codex-deploy/prod-zeus-deploy-registers-final-20260520-1356` sobre a base Hermes mais recente, reapliquei o recorte Zeus e publiquei o deployment final.
+- Logica utilizada: `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo projeto/deployment; portanto, qualquer publicacao Zeus precisa preservar o estado vigente do Panteon principal e dos demais recortes ja publicados. O deployment intermediario ficou supersedido pelo pacote final justamente para nao perder o hotfix Hermes.
+- Deployment anterior de producao: producao saudavel antes da janela `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM`; intermediario substituido `dpl_2yv1wWYPXHTGuw469usziqP9ZbJV`.
+- Deploy realizado: Vercel Production final `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH`; URL tecnica `https://careli-hub-hub-i2bs-r3eyazms8-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://ops.c2x.app.br` e `https://c2x.app.br`.
+- Validacao executada: no worktree principal, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, `git diff --check`, smoke local `/zeus` e smoke local `/api/zeus/release-registers` passaram; no pacote final, os marcadores Hermes `MessageAttachmentPreview` e `min(31rem,calc(100%-0.75rem))` coexistem com `Fonte da aba Deploy` e `/api/zeus/release-registers`; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e smoke local final passaram; build remoto Vercel concluiu `READY`.
+- Resultado dos healthchecks: `GET https://ops.c2x.app.br/zeus` 200; `GET https://c2x.app.br/zeus` 200; `GET https://ops.c2x.app.br/login` 200; `GET https://c2x.app.br/hermes` 200; `GET https://ops.c2x.app.br/api/pwa/manifest` 200; `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao 401 esperado; `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all` sem sessao 401 esperado; `GET https://c2x.app.br/api/hermes/messages` sem sessao 401 esperado; logs Vercel de erro dos ultimos 10 minutos em ambos os aliases sem ocorrencias.
+- Pendencias ou riscos conhecidos: validacao visual autenticada do Lucas ainda necessaria para confirmar a aba Deploy consumindo os indices na UI. Como os indices sao arquivos empacotados no deployment, o registro desta propria publicacao fica no workspace/diario e entrara no bundle em proxima publicacao documental. Warnings conhecidos de Turbopack/NFT e turbo env persistem sem bloquear build.
+- Rollback definido: promover novamente `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM` se Zeus/Deploy, Hermes, login ou rotas protegidas apresentarem regressao critica; nao usar `dpl_2yv1wWYPXHTGuw469usziqP9ZbJV` como rollback porque ele nao preservava a base Hermes mais recente.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar a aba Deploy autenticado em producao; `Zeus` sincronizar este diario para a fonte estruturada e acompanhar regressao.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Sync estruturado do Deploy por indices publicado`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 14:05:26 -03:00.
+- Tipo da alteracao: `SYNC OPERATIONS CENTER / RASTREABILIDADE / PRODUCAO`.
+- Motivo da mudanca: concluir o ciclo obrigatorio do Zeus apos publicar diretamente em producao a tela Deploy alimentada pelos indices de homologacao e producao.
+- Arquivos/modulos afetados: `docs/operations/engineering-operations.md`, `docs/operations/releases-production.md`, endpoint local `POST /api/squadops/operations/structured` e deployment final `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH`.
+- Como foi feito: encerrei um `next dev` local remanescente de smoke, iniciei temporariamente o Hub em `localhost:3001`, executei o sync estruturado pela API local e encerrei o servidor em seguida. Nenhum valor sensivel foi impresso ou registrado.
+- Logica utilizada: o sync estruturado usa o diario canonico como fonte consolidada e preserva os indices por ambiente como trilha especifica de homologacao/producao. O procedimento evita depender de token administrativo remoto no chat.
+- Resultado do sync estruturado: primeira passagem HTTP 200 com `recordsTotal=402`, `recordsUpserted=402`, `releasesUpserted=34`, `handoffsUpserted=86` e `healthchecksUpserted=81`; passagem final apos registrar este fechamento retornou `recordsTotal=404`, `recordsUpserted=404`, `releasesUpserted=36`, `handoffsUpserted=88`, `healthchecksUpserted=83`, `status=sincronizado`.
+- Validacao executada: `GET /api/squadops/operations/structured?limit=1` local retornou HTTP 200; `POST /api/squadops/operations/structured` local retornou HTTP 200 nas duas passagens; checagem de portas confirmou sem listeners remanescentes em `3001`, `3037` e `3038`.
+- Pendencias ou riscos conhecidos: a fonte estruturada foi sincronizada, mas a validacao visual autenticada da aba Deploy em producao segue pendente do Lucas. Como `releases-production.md` foi atualizado apos o deploy final, este registro documental aparecera no bundle apenas em uma proxima publicacao.
+- Status operacional: `EM PRODUCAO / SINCRONIZADO`.
+- Proxima squad recomendada: `Lucas` validar a aba Deploy em producao; `Zeus` acompanhar ajustes finos se houver divergencia.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Script inicial do CRM central`.
+- Nome da squad/agente: `Athena / Apolo handoff`.
+- Data e hora local: 2026-05-20 13:37:52 -03:00.
+- Tipo da alteracao: `PROMPT INICIAL / NOVO MODULO / CRM`.
+- Motivo da mudanca: Lucas definiu o novo modulo `Apolo` como CRM central do Panteon para concentrar clientes, usuarios, fornecedores, parceiros, colaboradores, imobiliarias, corretores, vida operacional do cliente, dados comerciais, financeiros, documentos e integracoes consultaveis pelos demais aplicativos.
+- Arquivos/modulos afetados: `docs/operations/apolo-agent-startup-script.md` e este diario canonico.
+- Como foi feito: criei o script inicial do agente Apolo Core com identidade, missao, contexto C2X, perfis, visao 360, integracao MOSTQI, arquitetura inicial, APIs futuras, regras de UX/layout, limites, primeira entrega recomendada e validacoes obrigatorias.
+- Logica utilizada: o Apolo deve nascer como cadastro mestre/CRM, mas a primeira etapa deve ser descoberta e mapeamento completo do C2X legado e das integracoes Hades/Iris/Chronos antes de qualquer migration, escrita no legado ou mudanca de fonte oficial.
+- Referencia externa consultada: documentacao MOSTQI Enrichment indicada por Lucas, com datasets de pessoa fisica/pessoa juridica, consumo sync/async e estrutura unificada de retorno por `result/datasets`.
+- Validacao executada: `git diff --check -- docs/operations/apolo-agent-startup-script.md docs/operations/engineering-operations.md` passou, com aviso conhecido de conversao LF/CRLF no Windows.
+- Pendencias ou riscos conhecidos: nenhum codigo de produto, env, secret, banco, migration, alias ou deploy foi alterado. O agente Apolo ainda deve mapear campos reais do C2X e validar com Lucas antes de propor schema definitivo.
+- Status operacional: `PRONTO PARA USO`.
+- Proxima squad recomendada: `Apolo Core` para iniciar descoberta do CRM central com base no script.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Bloqueio producao Hermes painel de respostas`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 13:43:06 -03:00.
+- Tipo da alteracao: `BLOQUEIO DE PRODUCAO / GOVERNANCA DE RELEASE / HERMES`.
+- Motivo da mudanca: Lucas solicitou subir em producao o ultimo registro do Hermes. A analise mostrou que o ultimo registro Hermes e `[Hermes] Painel de respostas e popups solidos`, com status `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`, portanto ainda nao esta apto para promocao por Hefesto.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; nenhum deploy, env, secret, migration, banco, dominio ou alias manual foi alterado.
+- Recorte solicitado: ajuste visual do Hermes para ampliar painel lateral de respostas e tornar popups/reacoes solidos.
+- Arquivos/modulos avaliados: `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/message-item.tsx`, registros `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, este diario canonico e estado Git local.
+- Como foi feito: li o README operacional e o diario canonico, consultei os indices de homologacao/producao, verifiquei o status do ultimo registro Hermes, conferi `git status`, listei diffs Hermes/PulseX e inspecionei o deployment atual de producao com `vercel inspect`.
+- Logica utilizada: `Hefesto` so deve promover para producao recortes homologados ou marcados como `PRONTO PARA PRODUCAO`. Como o ultimo Hermes ainda esta aguardando homologacao e o worktree principal contem recortes misturados, publicar agora criaria risco de levar alteracoes fora do escopo e quebraria a rastreabilidade por ambiente.
+- Deployment atual preservado: Vercel Production `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`, ativo em `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: `docs/operations/releases-homologation.md` declara que Hefesto so considera para producao registros `HOMOLOGADO` ou `PRONTO PARA PRODUCAO`; `docs/operations/engineering-operations.md` registra o ultimo Hermes como `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`; `git diff --name-only` em Hermes/PulseX mostrou arquivos alem dos dois citados no registro; `vercel inspect https://c2x.app.br` confirmou producao `Ready` no deployment atual.
+- Resultado: deploy bloqueado antes da publicacao; nenhum healthcheck pos-deploy foi necessario porque nenhum novo deployment foi criado.
+- Pendencias ou riscos conhecidos: o recorte visual Hermes precisa ficar explicitamente registrado no indice de homologacao para Hefesto nao confundir validacao local com homologacao aprovada.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hermes Core` deve registrar o recorte no indice de homologacao e publicar somente quando Lucas autorizar; `Hefesto` deve bloquear producao ate status `HOMOLOGADO` ou `PRONTO PARA PRODUCAO`.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Registro de homologacao para painel de respostas`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 13:56:43 -03:00.
+- Tipo da alteracao: `REGISTRO OPERACIONAL / HOMOLOGACAO / GOVERNANCA DE RELEASE`.
+- Motivo da mudanca: Lucas apontou que o Hermes subiu em producao sem refletir o hotfix visual e reforcou que e necessario marcar no indice qual recorte esta em homologacao para o Hefesto saber o que pode ou nao promover.
+- Arquivos/modulos afetados: `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: adicionei no indice de homologacao o recorte `[Hermes] Painel de respostas e popups solidos`, com ambiente descrito como recorte preparado localmente e publicacao pendente de autorizacao. O status ficou `BLOQUEADO`, porque ainda nao houve deploy em `https://homo.c2x.app.br` nem aprovacao visual do Lucas.
+- Logica utilizada: o indice de homologacao deve diferenciar tres estados: preparado localmente, em homologacao publicada e pronto para producao. Como Hefesto so deve considerar producao quando o registro estiver `HOMOLOGADO` ou `PRONTO PARA PRODUCAO`, marcar este recorte como `BLOQUEADO` evita nova promocao indevida.
+- Validacao executada: leitura de `AGENTS.md`, `docs/operations/README.md`, `docs/operations/releases-homologation.md` e registros Hermes no diario; registro documental aplicado sem operar Vercel, Supabase, banco, migration, env, dominio, alias ou producao.
+- Pendencias ou riscos conhecidos: falta Lucas autorizar publicacao do recorte Hermes em homologacao; depois Hermes Core deve publicar apenas os arquivos do recorte visual, validar e atualizar o indice para `EM HOMOLOGACAO`, `HOMOLOGADO` ou `PRONTO PARA PRODUCAO`.
+- Status operacional: `BLOQUEADO / AGUARDANDO AUTORIZACAO DE HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` autorizar ou nao a homologacao do hotfix; `Hermes Core` publica homologacao se autorizado; `Hefesto` permanece bloqueado para producao deste recorte.
+- Pendencias ou riscos conhecidos: `Hermes Core` precisa publicar o recorte em homologacao e registrar status `HOMOLOGADO` ou `PRONTO PARA PRODUCAO`, ou Lucas precisa registrar uma excecao explicita aceitando producao sem homologacao. O worktree principal permanece misturado e nao deve ser usado para deploy geral.
+- Status operacional: `BLOQUEADO`.
+- Proxima squad recomendada: `Hermes Core` para homologar o recorte; depois `Hefesto` promove para producao em pacote limpo.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Producao Hermes painel de respostas por excecao`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 13:50:53 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / EXCECAO AUTORIZADA / HERMES`.
+- Protocolo operacional: `DP-20260520-1350-HERMES-POPUPS-EXCECAO`.
+- Motivo da mudanca: apos o bloqueio inicial por falta de homologacao, Lucas autorizou explicitamente seguir com o ultimo registro Hermes mesmo como excecao operacional.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; sem alteracao de env, secret, migration, banco, dominio ou alias manual.
+- Recorte publicado: ajuste visual do Hermes para ampliar o painel lateral de respostas e tornar popups/reacoes solidos, publicado em pacote limpo sem usar o worktree principal misturado.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `docs/operations/releases-production.md` e este diario canonico.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Zeus/HelpDesk fora da base ja publicada, Hades/Guardian, Atlas, Setup, Chronos, migrations, envs, secrets, banco e scripts fora do recorte Hermes.
+- Como foi feito: criei o pacote limpo `.codex-deploy/prod-hermes-popups-20260520-1348` a partir da producao ativa `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`. A primeira montagem copiando os arquivos Hermes inteiros do worktree local foi bloqueada pelo build porque removeria `MessageAttachmentPreview`, export ja necessario em producao. Corrigi o pacote restaurando a base de producao e aplicando apenas o delta visual: painel de thread `w-[min(31rem,calc(100%-0.75rem))]`, popups com `bg-[#ffffff]`, sombras/ring solidos e seletor de reacoes abaixo do botao.
+- Logica utilizada: como a producao ja continha o release anterior de imagens em thread, substituir arquivos inteiros por versoes locais criaria regressao. O delta manual preservou `MessageAttachmentPreview`, mensagens com emoji standalone, reacoes existentes e a base Zeus/HelpDesk ja publicada, alterando somente a hierarquia visual do Hermes.
+- Deployment anterior de producao: `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu`.
+- Deploy realizado: Vercel Production `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM`; URL tecnica `https://careli-hub-hub-i2bs-m6h7xfozt-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: `git diff --no-index --check` nos dois arquivos Hermes passou; scan de secrets nos dois arquivos Hermes nao encontrou valores sensiveis reais; `npx.cmd eslint components/pulsex/message-item.tsx components/pulsex/pulsex-workspace.tsx --max-warnings 0` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run check-types:hub` passou; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT; build remoto Vercel concluiu `READY`; `vercel inspect` confirmou os dois aliases no deployment novo.
+- Resultado dos healthchecks: `GET https://c2x.app.br/` 200; `GET https://c2x.app.br/login` 200; `GET https://c2x.app.br/hermes` 200; `GET https://c2x.app.br/pulsex` 200 apos redirecionamento esperado; `GET https://c2x.app.br/api/hermes/messages` sem sessao 401 esperado; `GET https://c2x.app.br/api/pulsex/messages` sem sessao 401 esperado; `GET https://c2x.app.br/api/pwa/manifest` 200; `GET https://c2x.app.br/api/hades/db/health` 200; `GET https://c2x.app.br/api/guardian/db/health` 200; `GET https://ops.c2x.app.br/zeus` 200; `GET https://ops.c2x.app.br/hermes` 200 apos redirecionamento esperado para Zeus no dominio OPS.
+- Logs recentes: `npx.cmd vercel logs https://c2x.app.br --since 10m` mostrou logs `info`, chamadas Hermes/presenca com 200, rotas protegidas sem sessao com 401 esperado e nenhum erro critico nos healthchecks.
+- Pendencias ou riscos conhecidos: deploy ocorreu por excecao sem homologacao formal; validacao visual autenticada pelo Lucas ainda e necessaria para confirmar o comportamento do painel e dos popups no chat real. Primeiro healthcheck do dominio OPS teve latencia acima de 5s, sem erro HTTP, compativel com cold start. Nao houve mudanca de env, secret, Supabase, banco, migration, dominio ou alias manual.
+- Rollback definido: promover novamente `dpl_GcUGb52LBPtDVzxf8FL9LTin4kbu` se Hermes, login, Zeus/HelpDesk ou rotas protegidas apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar Hermes autenticado em producao; `Hermes Core` acompanhar ajustes finos; `Hefesto` manter monitoramento e rollback pronto.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Descoberta inicial do CRM central`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 13:44:56 -03:00.
+- Tipo da alteracao: `DESCOBERTA / ARQUITETURA SEM MIGRATION`.
+- Motivo da mudanca: Lucas iniciou o agente Apolo Core para estruturar o CRM central/cadastro mestre do Panteon, herdando a vida cadastral, comercial, financeira e relacional do C2X antes de qualquer virada de fonte primaria.
+- Arquivos/modulos afetados: `docs/operations/apolo-core-discovery-2026-05-20.md` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Chronos, Atlas, Zeus, Setup, codigo de produto, migrations, envs, secrets, banco, Supabase, Vercel, dominio, alias, MOSTQI ativo e qualquer escrita no C2X.
+- Como foi feito: li a governanca obrigatoria, o diario canonico, os indices de homologacao/producao, o schema operacional documentado, as migracoes/read models C2X/Hades/Iris/Chronos, as rotas de atendimento e reunioes, o registry/permissoes de modulos e a documentacao oficial atual da MOSTQI Enrichment/Authentication/Sync/Async Status. Usei `rg` para localizar referencias de C2X, legado, cliente, imobiliaria, corretor, pagamento, contrato, unidade, empreendimento, pessoa, CPF e CNPJ.
+- Logica utilizada: o Apolo deve nascer como cadastro mestre e camada 360 consultavel pelos demais modulos, mas sem assumir schema definitivo antes de mapear o C2X. Hades permanece cobranca/carteira, Iris permanece atendimento/comunicacao, Chronos permanece reunioes formais e Zeus permanece governanca operacional. O Apolo consolida identidade, perfis, documentos, contatos, enderecos, relacionamentos, vinculos C2X/comerciais, timeline, documentos e auditoria.
+- Modelo proposto: identidade mestre para pessoa fisica/juridica/organizacao/usuario interno; perfis muitos-para-muitos; identificadores e documentos com origem/auditoria; contatos; enderecos; relacionamentos; vinculos C2X; vinculos comerciais; financeiro consultivo Hades; atendimento consultivo Iris; reunioes consultivas Chronos; timeline consolidada; area de documentos com leitura assistida MOSTQI; eventos de integracao e auditoria.
+- UX proposta: busca forte no topo, lista compacta, detalhe 360 com abas `Resumo`, `Cadastro`, `Comercial`, `Financeiro`, `Atendimento`, `Cobranca`, `Reunioes`, `Documentos`, `Relacionamentos`, `Timeline` e `Auditoria`, formulario por perfil e area de documentos com revisao humana. A composicao deve seguir Home/sidebar canonicos do Panteon, com `@repo/uix Tooltip` em controles compactos.
+- MOSTQI: documentacao oficial consultada; integracao deve ser server-side, tratar sync/async, PF/PJ, `result/datasets`, evidencias, status, divergencias e revisao humana. Credenciais, tokens, envs, storage/webhook e provider externo seguem `BLOQUEADO` ate autorizacao expressa do Lucas.
+- Validacao executada: `git diff --check -- docs/operations/apolo-core-discovery-2026-05-20.md docs/operations/engineering-operations.md` passou para o diario, com aviso conhecido de conversao LF/CRLF no Windows; `git diff --no-index --check -- NUL docs/operations/apolo-core-discovery-2026-05-20.md` passou para o arquivo novo, tambem com aviso conhecido de LF/CRLF; varredura ASCII do novo documento nao encontrou caracteres fora do padrao.
+- Pendencias ou riscos conhecidos: faltam confirmacao de perfis C2X, obrigatoriedades por perfil/contrato, status completos de `acquisition_requests`, regras de duplicidade, representantes, participantes secundarios, split, origem de anexos, decisao sobre substituir/coexistir com `contatos` e autorizacao para qualquer schema/env/integracao. O worktree segue com recortes misturados de outras frentes e nao deve ser publicado como pacote geral.
+- Status operacional: `DESCOBERTA DOCUMENTADA / BLOQUEADO PARA MIGRATION, ENV, INTEGRACAO EXTERNA, BANCO E DEPLOY`.
+- Proxima squad recomendada: `Apolo Core` confirmar lacunas com Lucas e propor primeiro recorte read-only; `Zeus` apenas se houver autorizacao expressa para operacao sensivel; `Hefesto` fora do fluxo ate existir recorte homologado e pronto para producao.
+
+Registro de diario:
+
+- Assunto: `[Apolo] V1 navegavel CRM 360`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 13:59:44 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / MODULO V1 READ-ONLY / SEM MIGRATION`.
+- Motivo da mudanca: Lucas autorizou acelerar a criacao do Apolo como CRM central do Panteon, mantendo bloqueadas as partes sensiveis de banco, env, MOSTQI, escrita no C2X, Supabase, Vercel e deploy.
+- Arquivos/modulos afetados: `packages/shared/src/permissions/types.ts`, `packages/shared/src/permissions/matrix.ts`, `packages/shared/src/modules/registry.ts`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/app/apolo/page.tsx`, `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/lib/apolo/types.ts`, `apps/hub/lib/apolo/structural-snapshot.ts` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Chronos, Atlas, Zeus, Setup, migrations, banco, envs, secrets, Supabase, Vercel, MOSTQI ativo, storage, webhook, dominio, alias, homologacao, producao e qualquer escrita no C2X.
+- Como foi feito: adicionei permissao `apolo:view/manage`, registrei o modulo `Apolo` em `/apolo`, inclui o icone no shell/launcher do Panteon e criei a tela V1 com sidebar interna no padrao grafite/accent, busca forte, lista compacta, detalhe 360, abas de resumo/cadastro/comercial/financeiro/atendimento/cobranca/reunioes/documentos/relacionamentos/timeline/auditoria, formulario read-only por perfil e area documental com bloqueio explicito para MOSTQI/storage/env.
+- Logica utilizada: o V1 nasce navegavel para acelerar validacao de produto, mas usa somente snapshot estrutural mascarado e nao consulta banco real. O Apolo organiza a futura camada mestre sem absorver responsabilidade operacional de Hades, Iris, Chronos ou Zeus.
+- UX implementada: composicao densa e operacional inspirada na Home do Panteon; sidebar interna sem perfil de usuario; perfil segue no topbar global; tooltips usam `@repo/uix Tooltip`; acoes sensiveis aparecem bloqueadas; filtros e busca operam localmente sobre dados mascarados; auditoria e documentos evidenciam origem/status sem expor dado sensivel.
+- Registro de ambiente: nao houve registro em `docs/operations/releases-homologation.md` ou `docs/operations/releases-production.md`, porque nao houve deploy, homologacao, promocao ou producao.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou e confirmou a rota `/apolo`, mantendo warning conhecido Turbopack/NFT ligado a `engineering-operations-source.ts`; `git diff --check` nos arquivos rastreados do recorte passou com avisos conhecidos de LF/CRLF; `git diff --no-index --check -- NUL` passou para os arquivos novos do Apolo com avisos LF/CRLF; varredura ASCII nos arquivos novos do Apolo nao encontrou caracteres fora do padrao; smoke local em `http://localhost:3037/apolo` retornou HTTP 200. Validacao visual automatizada nao foi concluida porque o runtime local nao possui `playwright` instalado.
+- Servidor local: `http://localhost:3037/apolo` ficou ativo para avaliacao local, iniciado por `next dev --port 3037`; processo Node identificado em `PID 114524` no momento da validacao.
+- Pendencias ou riscos conhecidos: a tela ainda usa snapshot estrutural mascarado, nao dados reais. Proximo recorte depende de decisao de Lucas sobre fonte inicial read-only, schema `apolo_*`, permissao/rota final, substituicao ou coexistencia com `contatos`, inventario C2X, deduplicacao e autorizacao explicita para qualquer banco/env/MOSTQI/Supabase/Vercel/deploy. O worktree principal segue com recortes misturados de outras frentes e nao deve ser publicado como pacote geral.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO AVALIACAO DO LUCAS / BLOQUEADO PARA BANCO, ENV, MOSTQI, MIGRATION, DEPLOY E ESCRITA C2X`.
+- Proxima squad recomendada: `Lucas` validar a experiencia local do Apolo; `Apolo Core` preparar conexao read-only real somente apos autorizacao de fonte/escopo; `Hefesto` fica fora ate existir recorte homologado e pronto para producao.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Recut UX full CRM e tabelas proprias`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 16:04:20 -03:00.
+- Tipo da alteracao: `CORRECAO UX / SCHEMA APOLO PROPRIO / SEM APLICAR MIGRATION`.
+- Motivo da mudanca: Lucas rejeitou a primeira tela por repetir abas no sidebar, ocupar mal o espaco, usar tarja preta e expor referencias de origem dos dados. Lucas tambem definiu que o Apolo deve ter tabelas proprias e ler o proprio modelo, mesmo quando alimentado por sincronizacao.
+- Arquivos/modulos afetados: `apps/hub/app/apolo/page.tsx`, `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/lib/apolo/types.ts`, `apps/hub/lib/apolo/structural-snapshot.ts`, `packages/database/migrations/0026_apolo_core.sql` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Chronos, Atlas, Zeus, Setup, envs, secrets, banco real, Supabase, Vercel, MOSTQI ativo, storage, webhook, dominio, alias, homologacao, producao e aplicacao real de migration.
+- Como foi feito: removi a sidebar interna do Apolo, alterei a rota para chrome operacional/full, substitui a composicao com tarja preta por um record workspace claro no padrao de densidade do Hades, reorganizei busca/lista/detalhe/contexto em tres colunas, mantive abas apenas dentro do registro, simplifiquei icones e acoes compactas, removi textos visiveis de origem dos dados e deixei a tela falando apenas como CRM Apolo. Criei tambem a migration `0026_apolo_core.sql` com tabelas `apolo_*` para entidades, perfis, contatos, enderecos, relacionamentos, vinculos comerciais, snapshots financeiros, sinais de atendimento, documentos, timeline, auditoria, source links e sync runs.
+- Referencias de UX consultadas: HubSpot record page para estrutura de propriedades/associacoes/timeline/right sidebar; Pipedrive activities/detail views para acoes, atividades e vinculos com pessoas/organizacoes; padrao visual local do Hades para icones compactos, cards operacionais e detalhe sem hero.
+- Logica utilizada: o Apolo precisa parecer fonte primaria e nao vitrine de importacao. A UI nao deve expor de onde o dado veio; origem, hash, source link e sincronizacao ficam na camada de tabela/auditoria. Como aplicar migration, sincronizar dados e operar banco real sao atos sensiveis, a migration foi criada como contrato versionado, mas nao aplicada.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou e confirmou `/apolo`, mantendo warning conhecido Turbopack/NFT ligado a `engineering-operations-source.ts`; `git diff --check` passou nos arquivos rastreados com aviso LF/CRLF; `git diff --no-index --check -- NUL` passou para arquivos novos; varredura ASCII passou; varredura local nao encontrou `C2X`, `legado`, `legacy`, `MOSTQI`, `write`, `read-only` ou `bloque` nos arquivos visiveis do Apolo; smoke local em `http://localhost:3001/apolo` retornou HTTP 200.
+- Registro de ambiente: nao houve registro em homologacao/producao porque nao houve deploy, promocao, env, secret, banco, migration aplicada ou Vercel.
+- Pendencias ou riscos conhecidos: `0026_apolo_core.sql` ainda nao foi aplicada. O Apolo ainda usa snapshot local mascarado ate Lucas autorizar a aplicacao das tabelas e o primeiro sync controlado. A sincronizacao deve alimentar `apolo_*`; a tela do Apolo deve ler as tabelas Apolo, nao a fonte de alimentacao. Validacao visual autenticada do Lucas ainda e necessaria.
+- Status operacional: `VALIDADO LOCAL / UX RECORTADA / MIGRATION CRIADA NAO APLICADA / BLOQUEADO PARA BANCO, ENV, SYNC REAL, DEPLOY E PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar a nova UX full; `Apolo Core` preparar rota/API de leitura das tabelas Apolo apos autorizacao de migration/sync; `Zeus` so entra se Lucas autorizar operacao sensivel de banco/env; `Hefesto` fora ate homologacao.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Continuidade Hermes apos registro de homologacao`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 14:05:38 -03:00.
+- Tipo da alteracao: `RECONCILIACAO OPERACIONAL / HEALTHCHECK PRODUCAO / HERMES`.
+- Motivo da mudanca: Lucas informou que o Hermes atualizou o registro e solicitou dar seguimento. A analise precisava diferenciar o registro de homologacao pendente do que ja estava efetivamente publicado em producao por excecao e preservado pelo pacote Zeus final.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; sem alteracao de env, secret, migration, banco, dominio, alias manual ou novo deploy.
+- Arquivos/modulos afetados: `docs/operations/engineering-operations.md`; registros consultados em `docs/operations/releases-homologation.md` e `docs/operations/releases-production.md`; Vercel Production atual.
+- Como foi feito: li o registro Hermes no indice de homologacao, confirmei que ele permanece `BLOQUEADO / AGUARDANDO AUTORIZACAO DE HOMOLOGACAO`, conferi que a producao atual esta no deployment final `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH` e validei que esse pacote ja preserva o hotfix Hermes publicado antes em `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM`.
+- Logica utilizada: como ja existe producao atual registrada e saudavel contendo a base Hermes, publicar novamente criaria duplicidade operacional. O seguimento correto e manter producao em monitoramento, deixar o registro de homologacao Hermes como pendencia formal e exigir Hermes Core/Lucas para regularizar homologacao se isso ainda for necessario.
+- Validacao executada: `rg` nos indices e no diario confirmou os registros Hermes/Zeus; `git status --short` confirmou worktree principal misturado e inadequado para deploy geral; `npx.cmd vercel inspect https://c2x.app.br` e `npx.cmd vercel inspect https://ops.c2x.app.br` confirmaram `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH` `Ready`; healthchecks retornaram `GET https://c2x.app.br/` 200, `GET https://c2x.app.br/hermes` 200, `GET https://ops.c2x.app.br/zeus` 200, `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao 401 esperado e `GET https://c2x.app.br/api/hermes/messages` sem sessao 401 esperado; `npx.cmd vercel logs --level error --since 10m` em ambos os aliases nao retornou erros.
+- Pendencias ou riscos conhecidos: Hermes segue sem homologacao formal registrada como `HOMOLOGADO` ou `PRONTO PARA PRODUCAO`; validacao visual autenticada do Lucas ainda e necessaria para confirmar o comportamento final no chat real; o worktree local segue misturado e nao deve ser publicado como pacote amplo.
+- Status operacional: `EM PRODUCAO / OPERACIONAL COM ATENCAO`.
+- Proxima squad recomendada: `Lucas` validar Hermes autenticado em producao; `Hermes Core` regularizar homologacao se o fluxo formal ainda for exigido; `Hefesto` manter rollback para `dpl_HNUJJyMxgeQFkndei9v2tjg77mYM` se Zeus/Deploy ou Hermes apresentarem regressao critica.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Alinhamento local de todas as melhorias Hermes`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 14:11:06 -03:00.
+- Tipo da alteracao: `RECONCILIACAO DE CODIGO / HERMES / PRODUCAO JA PUBLICADA`.
+- Motivo da mudanca: Lucas solicitou atualizar todas as melhorias do Hermes. A analise mostrou que producao ja continha as melhorias via pacotes limpos, mas o worktree local ainda nao preservava integralmente o mesmo conjunto, criando risco de uma proxima publicacao remover funcionalidades ja publicadas.
+- Ambiente: local alinhado com producao atual; producao permanece em `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH`; sem novo deploy, sem alteracao de env, secret, migration, Supabase, banco, dominio ou alias.
+- Arquivos/modulos afetados: `apps/hub/app/api/pulsex/messages/route.ts`, `apps/hub/components/pulsex/athena-agent-panel.tsx`, `apps/hub/components/pulsex/message-composer.tsx`, `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/message-list.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/lib/pulsex/types.ts` e este diario canonico.
+- Como foi feito: comparei os arquivos Hermes locais com o pacote ativo `.codex-deploy/prod-zeus-deploy-registers-final-20260520-1356`, identifiquei que o local perderia `MessageAttachmentPreview` exportado, mensagens de emoji standalone e anexos/imagens em respostas de thread, e sincronizei os arquivos divergentes com a base de producao atual preservando reacoes, figurinhas, imagens em thread, painel de respostas maior e popups solidos.
+- Logica utilizada: a fonte operacional correta para reconciliacao era o pacote de producao mais recente, porque ele ja preservava o hotfix Hermes e o overlay Zeus final. O objetivo foi transformar o Git/local em uma base segura para proximos recortes, evitando regressao por publicar arquivos Hermes antigos ou incompletos.
+- Validacao executada: `git diff --no-index --stat` confirmou que `apps/hub/components/pulsex` e `apps/hub/lib/pulsex` agora batem com o pacote de producao atual; `rg` confirmou `export function MessageAttachmentPreview`, `getStandaloneEmojiMessage`, `ThreadAttachmentPreview`, `attachment?: HermesMessageAttachment` e `w-[min(31rem,calc(100%-0.75rem))]`; `npx.cmd eslint components/pulsex/message-item.tsx components/pulsex/pulsex-workspace.tsx components/pulsex/thread-panel.tsx --max-warnings 0` passou; `git diff --check` dos arquivos Hermes passou com avisos LF/CRLF conhecidos; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Pendencias ou riscos conhecidos: nao houve nova publicacao porque producao ja estava com as melhorias; validacao visual autenticada do Lucas ainda e recomendada no Hermes real; o worktree geral continua misturado por outros modulos e nao deve ser usado para deploy amplo.
+- Status operacional: `VALIDADO LOCAL`.
+- Proxima squad recomendada: `Lucas` validar Hermes em producao; `Hefesto` so publicar novo deployment se surgir recorte novo ou se Lucas pedir republicacao formal a partir desta base reconciliada.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Remocao de tooltips da barra de mensagem`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 14:26:07 -03:00.
+- Tipo da alteracao: `HOTFIX UX / MENSAGENS / TOOLTIP`.
+- Motivo da mudanca: Lucas pediu remover os tooltips dos botoes da barra de acoes das mensagens, porque o balao visual como `Reagir` estava cobrindo a conversa e poluindo a interacao.
+- Ambiente: local; recorte de homologacao atualizado; sem deploy, sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `docs/operations/releases-homologation.md` e este diario canonico. O caminho tecnico `pulsex` permanece por compatibilidade, embora o modulo operacional seja `Hermes`.
+- Como foi feito: removi os wrappers `Tooltip` dos botoes de reagir, responder, responder com Athena, editar, marcar e informacoes da mensagem. Mantive os botoes, classes, handlers, `aria-labels`, estados `aria-expanded` e os popups funcionais de reacoes, tags e informacoes.
+- Logica utilizada: o problema era apenas o balao de hover, nao a acao dos botoes. Preservar `aria-label` mantem a acessibilidade e remover o wrapper visual elimina sobreposicao sem alterar contratos de mensagem, reacao, thread, edicao ou marcacao.
+- Validacao executada: `Select-String` confirmou que nao restaram tooltips visuais para `Reagir`, `Responder`, `Responder com Athena`, `Editar mensagem`, `Marcar mensagem` ou `Informacoes da mensagem`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/components/pulsex/message-item.tsx docs/operations/releases-homologation.md` passou com aviso CRLF conhecido.
+- Pendencias ou riscos conhecidos: validacao visual autenticada ainda recomendada para confirmar no chat real que nenhum tooltip residual aparece na barra da mensagem. O recorte segue sem publicacao em homologacao/producao nesta etapa.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` validar visualmente; `Hermes Core` publicar em homologacao se Lucas autorizar; `Hefesto` considerar producao apenas com recorte homologado ou autorizacao explicita.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Recorte visual aprovado para Hefesto`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 14:32:54 -03:00.
+- Tipo da alteracao: `APROVACAO OPERACIONAL / HOMOLOGACAO / HANDOFF`.
+- Motivo da mudanca: Lucas informou que o ajuste visual do Hermes esta aprovado apos a remocao dos tooltips dos botoes de mensagem.
+- Ambiente: registro de homologacao atualizado; sem deploy, sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias.
+- Arquivos/modulos afetados: `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: atualizei o registro `[Hermes] Painel de respostas e popups solidos` em `docs/operations/releases-homologation.md`, saindo de `BLOQUEADO` para `PRONTO PARA PRODUCAO`, com nota explicita de aprovacao do Lucas e ressalva de que Hefesto deve usar pacote limpo.
+- Logica utilizada: a aprovacao humana do Lucas desbloqueia o recorte para o fluxo de release, mas nao autoriza misturar o worktree inteiro nem publicar alteracoes fora do escopo Hermes. O Hefesto deve continuar validando build, healthchecks, aliases e rastreabilidade antes de qualquer producao.
+- Validacao executada: registro documental aplicado sem operar Vercel, Supabase, banco, env, migration, dominio, alias ou producao; `git diff --check -- docs/operations/releases-homologation.md docs/operations/engineering-operations.md` deve ser executado apos este registro.
+- Pendencias ou riscos conhecidos: o worktree local segue com recortes misturados de outras frentes; producao deve ser feita apenas por pacote limpo do Hermes. Nao houve novo deploy nesta etapa.
+- Status operacional: `PRONTO PARA PRODUCAO`.
+- Proxima squad recomendada: `Hefesto` preparar/publicar somente o recorte Hermes aprovado, ou manter bloqueado se detectar mistura de modulos, envs, banco, migrations, secrets, dominios ou aliases sem autorizacao explicita.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Correcao de corte e acoes no painel de respostas`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 14:50:32 -03:00.
+- Tipo da alteracao: `HOTFIX UX / THREADS / ACOES DE MENSAGEM`.
+- Motivo da mudanca: Lucas mostrou que a mensagem raiz no painel de respostas ainda cortava textos/links longos e que, nesse contexto, nao deve aparecer o botao de resposta, mas devem permanecer reagir, tag e visualizacao/informacoes.
+- Ambiente: local; indice de homologacao atualizado; sem deploy, sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: adicionei quebra forcada para texto/link longo nos corpos das mensagens e respostas de thread usando `break-words` e `overflow-wrap:anywhere`; condicionei o botao de resposta do `MessageItem` a existencia real de `onOpenThread`, removendo-o automaticamente da mensagem raiz dentro do painel; conectei `onToggleTag` no `ThreadPanel` e no `PulsexWorkspace` para a tag funcionar nesse contexto.
+- Logica utilizada: o painel de respostas ja representa uma thread aberta, entao a mensagem raiz nao precisa reabrir resposta dentro dela. Reagir, marcar/tag e informacoes seguem operacionais porque sao acoes de classificacao/leitura da propria mensagem, enquanto links longos precisam quebrar dentro da largura disponivel para preservar a composicao do painel.
+- Validacao executada: `Select-String` confirmou `overflow-wrap:anywhere`, condicional `onOpenThread ?` e passagem de `onToggleTag`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/components/pulsex/message-item.tsx apps/hub/components/pulsex/thread-panel.tsx apps/hub/components/pulsex/pulsex-workspace.tsx` passou com avisos CRLF conhecidos.
+- Pendencias ou riscos conhecidos: como Lucas encontrou regressao apos a aprovacao anterior, o recorte foi marcado novamente como `BLOQUEADO` no indice de homologacao ate validacao visual desta correcao incremental. O worktree geral segue misturado e nao deve ser publicado como pacote amplo.
+- Status operacional: `VALIDADO LOCAL / BLOQUEADO PARA PRODUCAO ATE VALIDACAO VISUAL`.
+- Proxima squad recomendada: `Lucas` validar visualmente o painel de respostas; `Hermes Core` reabrir status para `PRONTO PARA PRODUCAO` se aprovado; `Hefesto` permanece bloqueado para producao deste recorte enquanto o status estiver `BLOQUEADO`.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Validacao final do painel de respostas`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 15:01:53 -03:00.
+- Tipo da alteracao: `VALIDACAO HUMANA / HANDOFF PARA HEFESTO`.
+- Motivo da mudanca: Lucas informou `validado` apos a correcao de corte de mensagem e acoes no painel de respostas do Hermes.
+- Ambiente: registro de homologacao atualizado; sem deploy, sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias.
+- Arquivos/modulos afetados: `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: atualizei o registro `[Hermes] Painel de respostas e popups solidos` para refletir a validacao final do Lucas e retornar o status para `PRONTO PARA PRODUCAO`.
+- Logica utilizada: a validacao humana remove o bloqueio criado pela regressao visual anterior, mas a promocao ainda deve ser feita apenas pelo Hefesto em pacote limpo, sem misturar o worktree amplo nem operar env/banco/migration/alias sem autorizacao explicita.
+- Validacao executada: registro documental aplicado sem operar Vercel, Supabase, banco, env, migration, dominio, alias ou producao; `git diff --check -- docs/operations/releases-homologation.md docs/operations/engineering-operations.md` deve ser executado apos este registro.
+- Pendencias ou riscos conhecidos: o ajuste ainda nao foi publicado em homologacao/producao nesta etapa; o worktree geral segue misturado e exige recorte limpo pelo Hefesto.
+- Status operacional: `PRONTO PARA PRODUCAO`.
+- Proxima squad recomendada: `Hefesto` preparar pacote limpo do Hermes, validar build/healthchecks e registrar a publicacao se Lucas seguir com release.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Icones de interacao nas respostas da thread`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 15:25:12 -03:00.
+- Tipo da alteracao: `HOTFIX UX / THREADS / INTERACOES`.
+- Motivo da mudanca: Lucas mostrou que, embora a mensagem raiz do painel exibisse os controles, as respostas da thread ainda estavam sem os icones de interacao.
+- Ambiente: local; indice de homologacao atualizado; sem deploy, sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/lib/pulsex/types.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/lib/pulsex/mock-data.ts`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: passei as respostas da thread a renderizar com o mesmo `MessageItem` usado no chat principal, convertendo `HermesThreadReply` para `HermesMessage` dentro do painel. Ampliei o tipo de resposta para carregar `channelId`, `reactions` e `tags`, preservei esses campos no mapeamento Supabase e atualizei mocks. No workspace, atualizei o estado local de `threadReplies` ao alternar tag ou reacao, inclusive quando a API retorna a mensagem salva.
+- Logica utilizada: respostas de thread sao mensagens reais armazenadas em `pulsex_messages` com `threadParentMessageId`; portanto devem herdar o mesmo contrato visual/operacional de mensagem, exceto abrir nova thread. Isso entrega reagir, tag/marcar e informacoes/visualizacao nas respostas sem reintroduzir o botao de resposta.
+- Validacao executada: primeiro `npm.cmd run check-types:hub` falhou porque mocks antigos nao tinham `channelId`; corrigi os mocks e rodei novamente. Depois `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/lib/pulsex/types.ts apps/hub/lib/pulsex/supabase-data.ts apps/hub/lib/pulsex/mock-data.ts apps/hub/components/pulsex/thread-panel.tsx apps/hub/components/pulsex/pulsex-workspace.tsx` passou com avisos CRLF conhecidos.
+- Pendencias ou riscos conhecidos: como houve nova correcao visual apos a validacao anterior, o indice de homologacao voltou para `BLOQUEADO` ate Lucas confirmar visualmente os icones nas respostas. O worktree geral segue misturado e nao deve ser publicado como pacote amplo.
+- Status operacional: `VALIDADO LOCAL / BLOQUEADO PARA PRODUCAO ATE VALIDACAO VISUAL`.
+- Proxima squad recomendada: `Lucas` validar visualmente as respostas da thread; `Hermes Core` reabrir status para `PRONTO PARA PRODUCAO` se aprovado; `Hefesto` permanece bloqueado enquanto o recorte estiver `BLOQUEADO`.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Validacao final dos icones de interacao`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 15:30:23 -03:00.
+- Tipo da alteracao: `VALIDACAO HUMANA / HANDOFF PARA HEFESTO`.
+- Motivo da mudanca: Lucas informou `validado` apos a correcao que restaurou os icones de interacao nas respostas da thread.
+- Ambiente: registro de homologacao atualizado; sem deploy, sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias.
+- Arquivos/modulos afetados: `docs/operations/releases-homologation.md` e este diario canonico.
+- Como foi feito: atualizei o registro `[Hermes] Painel de respostas e popups solidos` para incluir a validacao visual final dos icones de interacao e retornar o status para `PRONTO PARA PRODUCAO`.
+- Logica utilizada: a validacao humana remove o bloqueio criado pela correcao visual incremental. O recorte fica pronto para o Hefesto, mas ainda exige pacote limpo e validacoes de release antes de qualquer producao.
+- Validacao executada: registro documental aplicado sem operar Vercel, Supabase, banco, env, migration, dominio, alias ou producao; `git diff --check -- docs/operations/releases-homologation.md docs/operations/engineering-operations.md` deve ser executado apos este registro.
+- Pendencias ou riscos conhecidos: o ajuste ainda nao foi publicado em homologacao/producao nesta etapa; o worktree geral segue misturado e exige recorte limpo pelo Hefesto.
+- Status operacional: `PRONTO PARA PRODUCAO`.
+- Proxima squad recomendada: `Hefesto` preparar pacote limpo do Hermes, validar build/healthchecks e registrar a publicacao se Lucas seguir com release.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Producao Hermes sem tooltips nas mensagens`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 14:43:53 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / HERMES / HOTFIX UX`.
+- Protocolo operacional: `DP-20260520-1443-HERMES-NO-TOOLTIPS`.
+- Motivo da mudanca: Lucas autorizou subir o registro Hermes aprovado. O registro `[Hermes] Recorte visual aprovado para Hefesto` estava `PRONTO PARA PRODUCAO` e pedia a publicacao do recorte visual que remove os tooltips da barra de acoes das mensagens.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias manual.
+- Recorte publicado: remocao dos tooltips visuais dos botoes de reagir, responder, responder com Athena, editar, marcar e informacoes da mensagem, preservando `aria-labels`, handlers, acessibilidade, reacoes, threads, edicao, tags, painel de informacoes e a base Hermes ja publicada.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `docs/operations/releases-production.md` e este diario canonico.
+- Arquivos/modulos excluidos: Apolo, Iris/CareDesk/Meta, Atlas, Hades/Guardian, Zeus fora da base ja publicada, Setup, Chronos, migrations, envs, secrets, banco, dominios, aliases manuais e demais recortes locais do worktree.
+- Commit realizado: `d009b56 fix(hermes): remove message action tooltips`.
+- Como foi feito: criei o pacote limpo `.codex-deploy/prod-hermes-no-tooltips-20260520-1438` a partir da producao atual `prod-zeus-deploy-registers-final-20260520-1356`, apliquei somente o arquivo `message-item.tsx` do recorte Hermes aprovado, validei localmente, publiquei via Vercel Production e rodei healthchecks nos dois aliases compartilhados.
+- Logica utilizada: como `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo deployment, a publicacao precisava preservar o pacote Zeus/Hermes atual e aplicar somente o delta visual aprovado, sem usar o worktree principal misturado.
+- Deployment anterior de producao: `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH`.
+- Deploy realizado: Vercel Production `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT`; URL tecnica `https://careli-hub-hub-i2bs-2cq717esx-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: no worktree principal, `npx.cmd eslint components/pulsex/message-item.tsx --max-warnings 0`, `git diff --check -- apps/hub/components/pulsex/message-item.tsx`, scan de secrets, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e busca confirmando ausencia de tooltips visuais alvo passaram; no pacote limpo, diff contra producao ficou restrito a `message-item.tsx`, sem secrets, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; build remoto Vercel concluiu `READY`.
+- Resultado dos healthchecks: `GET https://c2x.app.br/` 200; `GET https://c2x.app.br/login` 200; `GET https://c2x.app.br/hermes` 200; `GET https://ops.c2x.app.br/zeus` 200; `GET https://c2x.app.br/api/hermes/messages` sem sessao 401 esperado; `GET https://c2x.app.br/api/pulsex/messages` sem sessao 401 esperado; `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao 401 esperado; `GET https://c2x.app.br/api/pwa/manifest` 200; `GET https://c2x.app.br/api/hades/db/health` 200; `npx.cmd vercel logs --level error --since 10m` em ambos os aliases sem erros.
+- Pendencias ou riscos conhecidos: validacao visual autenticada do Lucas ainda e recomendada para confirmar que os tooltips sumiram no chat real. O pacote publicado nao inclui recortes locais posteriores de Apolo/Iris/Atlas.
+- Rollback definido: promover novamente `dpl_HjpYaiDDk2m9HDA4jf8bchhK8RhH` se Hermes, login, Zeus/Deploy ou rotas protegidas apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar Hermes autenticado em producao; `Hefesto` manter monitoramento e rollback pronto.
+
+Registro de diario:
+
+- Assunto: `[Iris] UX WhatsApp V1 validada localmente`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 16:00:14 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / UX WHATSAPP / META`.
+- Motivo da mudanca: Lucas pediu retomar as melhorias de UX da Iris apos resolver o token permanente da Meta. A demanda operacional foi aproximar o atendimento da experiencia do WhatsApp: estados de entrega/leitura, emoji, audio, resposta, reacao, edicao local, nome/foto do operador, rolagem no fim e base para realtime.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts`, `apps/hub/lib/iris/meta-whatsapp.ts` e este diario canonico. Alteracoes feitas em worktree limpo `.codex-deploy/iris-homolog` para nao misturar recortes paralelos do workspace principal.
+- Como foi feito: adicionei modelagem de mensagens com audio, reacoes, resposta, edicao local, avatar do operador e status efetivo; implementei composer com emoji, audio e contexto de resposta/edicao; atualizei a API de mensagens para enviar texto/audio pela Meta, responder com `context.message_id`, registrar edicoes locais e reacoes; limitei reacao enviada para a Meta a mensagens inbound do cliente; deixei anexo desabilitado enquanto nao ha fluxo real de arquivo.
+- Logica usada: a Iris deve parecer WhatsApp para o operador, mas sem prometer capacidades que a Cloud API nao oferece. Por isso a edicao de mensagem ja enviada e registrada como edicao local no Iris, enquanto envio, resposta, audio e reacao em mensagem recebida usam a API da Meta quando ha `external_message_id`. O indicador de status usa `read_at`, `delivered_at`, `delivery_status` e `external_message_id` para representar enviado, entregue e lido.
+- Validacao executada: no worktree limpo da Iris, `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/messages/route.ts apps/hub/lib/iris/meta-whatsapp.ts`, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram. Warnings conhecidos: CRLF, `turbo` global, `eslint.config.js` sem `type: module` e warning Turbopack/NFT existente de leitura do Engineering Operations.
+- Pendencias ou riscos conhecidos: ainda falta smoke autenticado em homologacao com envio/recebimento real da Iris apos Lucas autorizar publicacao do recorte; audio inbound e download/reproducao de midia recebida dependem de etapa posterior de media fetch/storage; foto do cliente segue dependendo de metadata/perfil disponivel, enquanto foto do operador usa `hub_users.avatar_url`; catalogo completo de emojis/attachments e padrao 100% WhatsApp ficam para evolucao incremental.
+- Status operacional: `VALIDADO LOCAL / BLOQUEADO PARA HOMOLOGACAO ATE AUTORIZACAO DO LUCAS`.
+- Proxima squad recomendada: `Lucas` autorizar ou nao publicacao em homologacao; `Iris Core` publica somente este recorte quando autorizado.
+
+Registro de diario:
+
+- Assunto: `[Iris] UX WhatsApp V1 publicada em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 16:29:43 -03:00.
+- Tipo da alteracao: `RELEASE HOMOLOGACAO / UX WHATSAPP / META`.
+- Motivo da mudanca: Lucas autorizou publicar em homologacao o recorte UX WhatsApp V1 da Iris, validado localmente no worktree limpo `.codex-deploy/iris-homolog`.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/messages/route.ts`, `apps/hub/lib/iris/meta-whatsapp.ts`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Hermes, Atlas, Zeus, Setup, Chronos, migrations, banco, production, envs/secrets e demais alteracoes soltas do workspace principal.
+- Commit publicado: `3b796ec feat(iris): improve whatsapp attendance ux` em `origin/homolog`.
+- Como foi feito: criei commit limpo no worktree destacado da Iris e publiquei `HEAD:homolog` para acionar o deploy Git da Vercel com o escopo correto de branch. Um primeiro deploy manual Preview (`dpl_5dQY1wydV2jXW3L5UerygVBg92C4`) foi descartado para homologacao porque saiu sem o contexto da branch `homolog` e retornou `503` no webhook por nao carregar as envs branch-scoped da Meta. A publicacao final foi o deployment Git `dpl_Aegh3A9fomxmRXyKdS792dy2fNdd`.
+- Logica usada: as variaveis Meta da Iris estao escopadas como `Preview (homolog)`, portanto o pacote precisa nascer da branch `homolog` para carregar webhook token, app secret e token outbound corretos. O alias `https://homo.c2x.app.br` ficou apontado para o deployment Git final, preservando producao intocada.
+- Deployment anterior de homologacao: `dpl_7QHfaSdVTMZMRmHDCiZN1EaHu4ak`.
+- Deploy final de homologacao: Vercel Preview `dpl_Aegh3A9fomxmRXyKdS792dy2fNdd`; URL tecnica `https://careli-hub-hub-i2bs-66dqqb87r-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://homo.c2x.app.br` e `https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app`.
+- Validacao executada: antes do deploy, `git diff --check`, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram no worktree limpo; build remoto Vercel concluiu `READY`; `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou deployment final `Ready`.
+- Resultado dos healthchecks: `GET https://homo.c2x.app.br/iris` 200; `GET https://homo.c2x.app.br/login` 200; `GET https://homo.c2x.app.br/api/iris/meta/webhook` sem challenge 403 esperado; `POST https://homo.c2x.app.br/api/iris/meta/messages` sem sessao 401 esperado; `npx.cmd vercel logs https://homo.c2x.app.br --level error --since 10m` sem logs de erro.
+- Pendencias ou riscos conhecidos: smoke autenticado do Lucas ainda e necessario para confirmar envio, recebimento, status, reacao, audio e resposta no atendimento real. Midia inbound/download/storage e catalogo completo de anexos seguem para etapa posterior. Edicao de mensagem ja enviada e apenas local no Iris.
+- Rollback definido: voltar o alias de homologacao para `dpl_7QHfaSdVTMZMRmHDCiZN1EaHu4ak` se a Iris autenticada apresentar regressao critica.
+- Status operacional: `EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` validar a Iris autenticada em `https://homo.c2x.app.br/iris`; `Iris Core` acompanhar smoke real e corrigir qualquer regressao antes de sinalizar producao.
+
+Registro de diario:
+
+- Assunto: `[Iris] Token permanente Meta aplicado em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 15:32:28 -03:00.
+- Tipo da alteracao: `ENV HOMOLOG / META WHATSAPP / REDEPLOY`.
+- Motivo da mudanca: Lucas criou o usuario de sistema `Iris Core` no Business Manager, atribuiu ativos do app Iris e contas WhatsApp, gerou um access token permanente e autorizou a atualizacao da variavel `META_WHATSAPP_ACCESS_TOKEN` em homologacao para remover dependencia de token temporario da tela de teste da Meta.
+- Arquivos/modulos afetados: variavel Vercel Preview/homolog `META_WHATSAPP_ACCESS_TOKEN`, alias `https://homo.c2x.app.br`, modulo Iris e este diario canonico. Nenhum valor de token foi registrado.
+- Como foi feito: li o token apenas da area de transferencia local, validei formato minimo sem imprimir o valor, atualizei a env sensivel no Vercel Preview/homolog, limpei a area de transferencia e redeployei o ultimo deployment homologado limpo para carregar a nova env sem levar alteracoes locais em andamento da UX da Iris.
+- Logica utilizada: token temporario da tela de teste da Meta expira/some e nao deve sustentar operacao real. A Iris deve usar token server-side de usuario do sistema, com ativos WhatsApp atribuidos e permissoes `whatsapp_business_messaging` e `whatsapp_business_management`, preservando secrets fora do client, do Git, do chat e dos registros.
+- Deployment homologacao: Vercel Preview `dpl_7QHfaSdVTMZMRmHDCiZN1EaHu4ak`; URL tecnica `https://careli-hub-hub-i2bs-mpqydi9mg-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready` e alias apontando para o redeploy novo; `GET https://homo.c2x.app.br/iris` retornou `200 OK`; `GET /api/iris/meta/webhook` sem challenge retornou `403 Forbidden` esperado; `POST /api/iris/meta/messages` sem sessao retornou `401 Unauthorized` esperado.
+- Pendencias ou riscos conhecidos: falta Lucas testar envio real outbound pela Iris para confirmar que a Meta aceita o token permanente e que os checks evoluem via webhook. Producao nao foi alterada. O pacote de UX WhatsApp da Iris continua em worktree separada, validado parcialmente, mas ainda nao publicado.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO SMOKE REAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para enviar uma mensagem pela Iris em homologacao; `Iris Core` acompanha resultado e volta ao pacote UX apos o smoke do token.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Producao Hermes painel de respostas corrigido`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 15:12:19 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / HERMES / HOTFIX UX`.
+- Protocolo operacional: `DP-20260520-1505-HERMES-THREAD-PANEL`.
+- Motivo da mudanca: Lucas solicitou subir a ultima atualizacao do Hermes. O registro `[Hermes] Validacao final do painel de respostas` estava `PRONTO PARA PRODUCAO`, com validacao humana apos correcao de corte de texto/link longo e ajuste das acoes no painel de respostas.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias manual.
+- Recorte publicado: quebra robusta de textos e links longos no corpo da mensagem e nas respostas de thread, remocao do botao de resposta da mensagem raiz quando ela ja esta dentro do painel, e preservacao de reacao, tag e informacoes no contexto da thread.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx`, `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `docs/operations/releases-production.md` e este diario canonico. O caminho tecnico `pulsex` permanece por compatibilidade, embora o modulo operacional seja `Hermes`.
+- Arquivos/modulos excluidos: Apolo, Iris/CareDesk/Meta, Atlas, Hades/Guardian, Zeus fora da base ja publicada, Setup, Chronos, migrations, envs, secrets, banco, dominios, aliases manuais e demais recortes locais do worktree.
+- Commit realizado: `6ee7c20 fix(hermes): stabilize thread panel layout`.
+- Como foi feito: revisei o registro Hermes validado, comparei o diff real do Git com os tres arquivos do recorte, validei que nao havia secrets no escopo, criei o pacote limpo `.codex-deploy/prod-hermes-thread-panel-20260520-1505` a partir da producao anterior, apliquei somente os arquivos Hermes aprovados, validei localmente no worktree e no pacote, publiquei via Vercel Production e rodei healthchecks nos dois aliases compartilhados.
+- Logica utilizada: como `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo deployment Vercel, a publicacao precisava aplicar apenas o delta Hermes aprovado sobre a base de producao saudavel `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT`, evitando levar recortes paralelos do worktree.
+- Deployment anterior de producao: `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT`.
+- Deploy realizado: Vercel Production `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K`; URL tecnica `https://careli-hub-hub-i2bs-f10ufm5xa-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: no worktree principal, `npx.cmd eslint components/pulsex/message-item.tsx components/pulsex/thread-panel.tsx components/pulsex/pulsex-workspace.tsx --max-warnings 0`, `git diff --check`, scan de secrets, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; no pacote limpo, diff contra a base anterior ficou restrito aos tres arquivos Hermes, buscas confirmaram `overflow-wrap:anywhere`, `onOpenThread ?` e `onToggleTag`, scan de secrets passou, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; build remoto Vercel concluiu `READY`.
+- Resultado dos healthchecks: `GET https://c2x.app.br/` 200; `GET https://c2x.app.br/login` 200; `GET https://c2x.app.br/hermes` 200; `GET https://ops.c2x.app.br/zeus` 200; `GET https://c2x.app.br/api/hermes/messages` sem sessao 401 esperado; `GET https://c2x.app.br/api/pulsex/messages` sem sessao 401 esperado; `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao 401 esperado; `GET https://c2x.app.br/api/pwa/manifest` 200; `GET https://c2x.app.br/api/hades/db/health` 200; `npx.cmd vercel logs --level error --since 10m` em ambos os aliases sem erros.
+- Pendencias ou riscos conhecidos: validacao visual autenticada do Lucas ainda e recomendada para confirmar o painel no chat real. O pacote publicado nao inclui recortes locais posteriores/paralelos de Apolo, Iris, Atlas ou outros modulos.
+- Rollback definido: promover novamente `dpl_EeH5aGSWi9HDy9gE5MCg94quq8jT` se Hermes, login, Zeus/Deploy ou rotas protegidas apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar Hermes autenticado em producao; `Hefesto` manter monitoramento e rollback pronto.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Producao Hermes interacoes nas respostas da thread`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 15:40:03 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / HERMES / HOTFIX UX`.
+- Protocolo operacional: `DP-20260520-1540-HERMES-THREAD-ACTIONS`.
+- Motivo da mudanca: Lucas solicitou subir o pacote Hermes. O registro `[Hermes] Validacao final dos icones de interacao` estava `PRONTO PARA PRODUCAO`, com validacao humana apos restaurar os icones de interacao nas respostas da thread.
+- Ambiente: producao; dominios `https://c2x.app.br` e `https://ops.c2x.app.br`; sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias manual.
+- Recorte publicado: respostas da thread renderizadas pelo `MessageItem`, com reacao, tag/marcacao e informacoes preservadas; contrato de `HermesThreadReply` ampliado para `channelId`, `reactions` e `tags`; estado local de respostas atualizado ao alternar tag ou reacao.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/thread-panel.tsx`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `apps/hub/lib/pulsex/types.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/lib/pulsex/mock-data.ts`, `docs/operations/releases-production.md` e este diario canonico. O caminho tecnico `pulsex` permanece por compatibilidade, embora o modulo operacional seja `Hermes`.
+- Arquivos/modulos excluidos: Apolo, Iris/CareDesk/Meta, Atlas, Hades/Guardian, Zeus fora da base ja publicada, Setup, Chronos, migrations, envs, secrets, banco, dominios, aliases manuais e demais recortes locais do worktree.
+- Commit realizado: `344a7e8 fix(hermes): restore thread reply actions`.
+- Como foi feito: revisei o registro Hermes validado, comparei o diff real do Git com os cinco arquivos do recorte, validei que nao havia secrets literais no escopo, criei o pacote limpo `.codex-deploy/prod-hermes-thread-actions-20260520-1535` a partir da producao anterior, apliquei somente os arquivos Hermes aprovados, validei localmente no worktree e no pacote, publiquei via Vercel Production e rodei healthchecks nos dois aliases compartilhados.
+- Logica utilizada: como `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo deployment Vercel, a publicacao precisava aplicar apenas o delta Hermes aprovado sobre a base de producao saudavel `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K`, evitando levar recortes paralelos do worktree.
+- Deployment anterior de producao: `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K`.
+- Deploy realizado: Vercel Production `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE`; URL tecnica `https://careli-hub-hub-i2bs-hcgtl624o-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada: no worktree principal, `npx.cmd eslint components/pulsex/thread-panel.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/types.ts lib/pulsex/supabase-data.ts lib/pulsex/mock-data.ts --max-warnings 0`, `git diff --check`, scan de secrets, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; no pacote limpo, diff contra a base anterior ficou restrito aos cinco arquivos Hermes, buscas confirmaram `mapThreadReplyToMessage`, `toggleHermesReactions`, `updateThreadReplyState`, `channelId`, `reactions` e `tags`, scan de secrets passou, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; build remoto Vercel concluiu `READY`.
+- Resultado dos healthchecks: `GET https://c2x.app.br/` 200; `GET https://c2x.app.br/login` 200; `GET https://c2x.app.br/hermes` 200; `GET https://ops.c2x.app.br/zeus` 200; `GET https://c2x.app.br/api/hermes/messages` sem sessao 401 esperado; `GET https://c2x.app.br/api/pulsex/messages` sem sessao 401 esperado; `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao 401 esperado; `GET https://c2x.app.br/api/pwa/manifest` 200; `GET https://c2x.app.br/api/hades/db/health` 200; `npx.cmd vercel logs --level error --since 10m` em ambos os aliases sem erros.
+- Pendencias ou riscos conhecidos: validacao visual autenticada do Lucas ainda e recomendada para confirmar os icones nas respostas da thread no chat real. O pacote publicado nao inclui recortes locais posteriores/paralelos de Apolo, Iris, Atlas ou outros modulos.
+- Rollback definido: promover novamente `dpl_2tU2g9KXF5T15cNbLWYZrwSNAK5K` se Hermes, login, Zeus/Deploy ou rotas protegidas apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar Hermes autenticado em producao; `Hefesto` manter monitoramento e rollback pronto.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Historico do HelpDesk simplificado em producao`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 16:24:23 -03:00.
+- Tipo da alteracao: `RELEASE PRODUCAO / ZEUS / HELPDESK UX`.
+- Protocolo operacional: `DP-20260520-1624-ZEUS-HELPDESK-HISTORY`.
+- Motivo da mudanca: Lucas pediu remover os rotulos `Minha devolutiva` e `Solicitante` do historico do HelpDesk, deixando somente a mensagem nos baloes, e suavizar o preto usado nas devolutivas do Zeus.
+- Ambiente: producao; dominios `https://ops.c2x.app.br` e `https://c2x.app.br`; sem alteracao de env, secret, Supabase, banco, migration, dominio ou alias manual.
+- Recorte publicado: historico do HelpDesk renderizando apenas o texto da mensagem dentro do balao; metadados de ator/data deixaram de aparecer no balao; tom escuro do balao do operador ajustado para `#344150`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `docs/operations/releases-production.md` e este diario canonico.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hermes fora da base ja publicada, Hades/Guardian, Atlas, Setup, Chronos, Apolo, migrations, envs, secrets, banco, dominios, aliases manuais e demais recortes locais do worktree.
+- Como foi feito: apliquei o ajuste no componente do historico, validei o recorte no worktree principal, montei o pacote limpo `.codex-deploy/prod-zeus-helpdesk-history-20260520-1452` a partir da ultima base de producao saudavel, sobrepus apenas o arquivo Zeus afetado, validei o pacote e publiquei via Vercel Production.
+- Logica utilizada: como os aliases `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo deployment, a publicacao precisava preservar o estado vigente de Hermes e do Panteon principal enquanto entregava apenas o ajuste visual do HelpDesk do Zeus.
+- Deployment anterior de producao: `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE`.
+- Deploy realizado: Vercel Production `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB`; URL tecnica `https://careli-hub-hub-i2bs-d5f53uep0-lucasruas-devs-projects.vercel.app`; aliases confirmados `https://ops.c2x.app.br` e `https://c2x.app.br`.
+- Validacao executada: no worktree principal, `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/modules/squadops/HubItTicketsBoard.tsx` passaram; no pacote limpo, buscas confirmaram ausencia dos rotulos renderizados no historico e preservacao dos marcadores Hermes/Zeus atuais; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; build remoto Vercel concluiu `READY`.
+- Resultado dos healthchecks: `GET https://ops.c2x.app.br/zeus` 200; `GET https://c2x.app.br/zeus` 200; `GET https://ops.c2x.app.br/login` 200; `GET https://c2x.app.br/hermes` 200; `GET https://ops.c2x.app.br/api/pwa/manifest` 200; APIs protegidas sem sessao retornaram 401 esperado; logs Vercel de erro dos ultimos 10 minutos em ambos aliases sem ocorrencias.
+- Pendencias ou riscos conhecidos: smoke visual autenticado ainda depende do Lucas; o smoke local por dev server ficou inconclusivo por timeout, mas build local, build remoto e healthchecks HTTP passaram.
+- Rollback definido: promover novamente `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE` se HelpDesk, Zeus, login, Hermes ou rotas protegidas apresentarem regressao critica.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar o historico autenticado no HelpDesk do Zeus; `Zeus` acompanhar feedback e manter rollback pronto.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Sync estruturado do historico HelpDesk publicado`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 16:35:51 -03:00.
+- Tipo da alteracao: `SYNC OPERATIONS CENTER / PRODUCAO`.
+- Protocolo operacional: `OP-20260520-1635-ZEUS-HELPDESK-HISTORY-SYNC`.
+- Motivo da mudanca: concluir o ciclo obrigatorio do Zeus apos publicar o proprio recorte em producao, levando o registro do diario canonico para a base estruturada do Operations Center.
+- Arquivos/modulos afetados: `docs/operations/engineering-operations.md`, `docs/operations/releases-production.md`, endpoint local `POST /api/squadops/operations/structured` e deployment Zeus `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB`.
+- Como foi feito: iniciei temporariamente o Hub local em `127.0.0.1:3043`, executei o sync estruturado por upload de conteudo do diario canonico e encerrei o servidor local em seguida. Nenhum valor sensivel foi impresso ou registrado.
+- Logica utilizada: o sync estruturado usa o diario canonico como fonte consolidada e preserva os indices por ambiente como trilha especifica de producao. O procedimento evita depender de token administrativo remoto no chat.
+- Resultado do sync estruturado: primeira passagem HTTP 200 com `recordsTotal=419`, `recordsUpserted=419`, `releasesUpserted=42`, `mode=content-upload` e `sourcePath=docs/operations/engineering-operations.md`; passagem final HTTP 200 com `recordsTotal=420`, `recordsUpserted=420`, `releasesUpserted=42`, `mode=content-upload` e `status=sincronizado`.
+- Validacao executada: `GET /login` local retornou HTTP 200; `POST /api/squadops/operations/structured` local retornou HTTP 200; servidor local temporario foi encerrado apos a sincronizacao.
+- Pendencias ou riscos conhecidos: nenhuma pendencia tecnica do sync; validacao visual autenticada do historico em producao segue recomendada para Lucas.
+- Status operacional: `EM PRODUCAO`.
+- Proxima squad recomendada: `Lucas` validar visualmente o historico no HelpDesk; `Zeus` monitorar feedback e preservar rollback pronto.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Relacionamentos com dados reais e sidebar de telas`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 16:39:48 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / CRM RELACIONAMENTOS / C2X READ`.
+- Motivo da mudanca: Lucas aprovou acelerar o Apolo, pediu voltar a ter sidebar com telas, evitar chamar tudo de cliente, nomear a tela principal corretamente, trazer cards por perfil e abandonar dados mockados. Lucas tambem reforcou a regra de negocio: no C2X o perfil `Cliente` representa o usuario comprador; `Incorporador` representa cliente comercial da Careli; `Imobiliaria` e `Corretor` sao perfis proprios; administradores/coordenadoras entram como colaboradores; todo usuario comprador deve ter vinculo comercial por `vinculed_by_id` ou equivalente.
+- Decisao de produto: a tela principal do Apolo passa a se chamar `Relacionamentos`, porque o modulo concentra pessoas, empresas e vinculos sem confundir usuario comprador com cliente comercial da Careli. A sidebar de telas fica no nivel do modulo, enquanto as abas continuam no detalhe 360 do relacionamento selecionado.
+- Arquivos/modulos afetados: `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/lib/apolo/types.ts`, `apps/hub/lib/apolo/catalog.ts`, `apps/hub/lib/apolo/server.ts`, `apps/hub/app/api/apolo/relationships/route.ts`, `apps/hub/app/api/apolo/sync/c2x/route.ts`, `packages/database/migrations/0026_apolo_core.sql` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Iris/CareDesk, Hermes, Atlas, Zeus, Setup, Chronos, Vercel, envs, secrets, banco real, migrations aplicadas e escrita no C2X.
+- Como foi feito: removi o snapshot estrutural/mock do Apolo, criei catalogo canonico de perfis/telas, redesenhei a pagina full com sidebar de telas no padrao grafite/accent do Panteon, mantive as abas apenas no detalhe 360, adicionei cards quantitativos por perfil e criei endpoint server-side para carregar dados reais. O endpoint tenta ler primeiro as tabelas `apolo_*`; quando elas ainda nao existem/sincronizaram, carrega agregados reais controlados do C2X com documentos/contatos mascarados no payload. Tambem deixei rota `POST /api/apolo/sync/c2x` protegida por usuario admin para sincronizar C2X -> Apolo quando a migration estiver aplicada.
+- Logica utilizada: `Cliente` do C2X foi mapeado para `Usuario` no Apolo; `Incorporador` virou perfil proprio; `Administrador` e `Coordenadora de venda` entram em `Colaboradores`; `Imobiliaria` e `Corretor` ficam como telas e cards proprios. A migration `0026_apolo_core.sql` foi ajustada para aceitar `usuario`, `incorporador` e `acesso_incorporador`, preservando nomes de dominio do Apolo em vez de expor nomenclatura tecnica do legado na UI.
+- Descoberta segura de dados: leitura agregada do C2X confirmou `users_total=3927`, `Cliente=3431` com `3430` registros vinculados, `Incorporador=21`, `Usuario de acesso incorporador=4`, `Administrador=68`, `Coordenadora de venda=5`, `Imobiliaria=374` e `Corretor=24`; `person_type` indica `3448` pessoas fisicas e `479` juridicas. Nenhum CPF/CNPJ/e-mail/telefone completo foi registrado no diario ou no chat.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT fora do Apolo; smoke local temporario confirmou `GET /api/apolo/relationships` HTTP 200 com payload real e `GET /apolo` HTTP 200. Browser visual automatizado nao foi executado porque o runtime disponivel nao tem `playwright`.
+- Pendencias ou riscos conhecidos: a migration Apolo nao foi aplicada em banco real neste pacote; portanto o endpoint local usa fallback server-side real do C2X ate `apolo_*` existir e a sincronizacao admin ser rodada. Para cumprir 100% a regra "Apolo le Apolo", Lucas/Zeus precisam autorizar aplicacao controlada da migration e sync inicial em ambiente correto. A rota de sync nao escreve no C2X e nao altera env/secrets, mas grava no Supabase quando executada com admin autenticado apos schema aplicado.
+- Status operacional: `VALIDADO LOCAL / DADOS REAIS C2X EM READ-ONLY / MIGRATION E SYNC BLOQUEADOS ATE AUTORIZACAO`.
+- Proxima squad recomendada: `Lucas` validar o nome `Relacionamentos` e autorizar ou nao a aplicacao das tabelas Apolo; `Apolo Core` aplica sync inicial apenas apos o schema estar no ambiente correto e autorizado.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Banco central de relacionamentos autorizado`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 16:47:32 -03:00.
+- Tipo da alteracao: `ARQUITETURA / SCHEMA CENTRAL / API INTERMODULOS`.
+- Motivo da mudanca: Lucas confirmou que o Apolo tem liberdade para criar tabelas e deve ser a tabela/camada central dos dados cadastrais, com os demais modulos consultando o Apolo em vez de cada um depender diretamente do C2X.
+- Decisao arquitetural: o Apolo passa a ser o cadastro mestre operacional do Panteon. O C2X alimenta o Apolo por sincronizacao; Hades, Iris, Chronos, Zeus e modulos futuros devem consultar APIs/tabelas Apolo para identidade, perfis, vinculos, busca e trilha 360. A troca dos modulos existentes para consumo Apolo deve ser incremental para nao quebrar rotas operacionais ja publicadas.
+- Arquivos/modulos afetados: `packages/database/migrations/0026_apolo_core.sql`, `apps/hub/lib/apolo/server.ts`, `apps/hub/app/api/apolo/search/route.ts`, `scripts/apolo-apply-schema.mjs`, `scripts/apolo-verify-schema.mjs` e este diario canonico.
+- Como foi feito: ampliei a migration `0026_apolo_core.sql` com tabelas centrais complementares `apolo_entity_identifiers`, `apolo_module_records`, `apolo_search_entries` e `apolo_merge_candidates`, mantendo RLS ligado e grants de leitura para `authenticated`. A sincronizacao C2X -> Apolo agora prepara entidades, perfis, identificadores hash/mascarados, contatos, enderecos, relacionamentos, vinculos comerciais, registros por modulo e indice de busca. Tambem criei `GET /api/apolo/search` como primeira API central para outros modulos consultarem relacionamentos via Apolo.
+- Logica utilizada: `apolo_entities` e o nucleo mestre; `apolo_entity_profiles` classifica o papel de negocio; `apolo_entity_identifiers` sustenta deduplicacao por CPF/CNPJ/e-mail/telefone/legacy_id sem expor valores em logs; `apolo_module_records` liga eventos e registros de Hades/Iris/Chronos/Zeus a uma entidade; `apolo_search_entries` e o indice rapido para busca intermodulos; `apolo_merge_candidates` prepara revisao humana de duplicidades.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram; `node --check scripts/apolo-apply-schema.mjs` e `node --check scripts/apolo-verify-schema.mjs` passaram. A tentativa controlada de aplicar o schema parou com mensagem segura de falta de `POSTGRES_URL`, `POSTGRES_URL_NON_POOLING`, `POSTGRES_PRISMA_URL`, `DATABASE_URL` ou `HOMOLOG_POSTGRES_URL`, sem imprimir secrets.
+- Referencia Supabase verificada: changelog atual indica mudanca/breaking change sobre tabelas nao serem expostas automaticamente para Data/GraphQL API; docs de seguranca da Data API reforcam grants explicitos + RLS. Por isso o schema Apolo mantem RLS e grants controlados, e o consumo principal fica por API server-side.
+- Pendencias ou riscos conhecidos: a migration ainda nao foi aplicada por falta de conexao Postgres no ambiente local. A centralizacao real dos outros modulos depende de aplicar a migration no ambiente correto, rodar o sync inicial e depois migrar Hades/Iris/Chronos/Zeus para consumir `/api/apolo/search` e endpoints de entidade/detalhe em recortes pequenos.
+- Status operacional: `SCHEMA CENTRAL PRONTO / APLICACAO EM BANCO BLOQUEADA POR CONEXAO POSTGRES AUSENTE`.
+- Proxima squad recomendada: `Lucas` fornecer/autorizar a conexao Postgres do ambiente alvo ou executar `scripts/apolo-apply-schema.mjs` no ambiente com `POSTGRES_URL`; `Apolo Core` roda verificacao, sync inicial e depois prepara recortes de consumo para os demais modulos.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Schema aplicado manualmente e sync aguardando alinhamento de ambiente`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 17:05:11 -03:00.
+- Tipo da alteracao: `SUPABASE / SYNC C2X -> APOLO / BLOQUEIO DE AMBIENTE`.
+- Motivo da mudanca: Lucas executou manualmente a SQL da migration Apolo no SQL Editor do Supabase e enviou evidencia visual de sucesso. Ao tentar iniciar o sync local C2X -> Apolo, o ambiente configurado no Hub local apontou para outro projeto Supabase, onde o schema `apolo_*` ainda nao estava disponivel no cache/schema acessado pela API.
+- Arquivos/modulos afetados: `scripts/apolo-sync-c2x.mjs`, `packages/database/migrations/0026_apolo_core.sql` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Iris/CareDesk, Hermes, Atlas, Zeus, Setup, Chronos, Vercel, envs, secrets, dominio, alias, deploy e escrita no C2X.
+- Como foi feito: rodei validacao sintatica do script de sync, executei uma tentativa controlada de sincronizacao com acesso de rede autorizado e interrompi ao receber a indicacao de que as tabelas `apolo_*` nao existem no projeto Supabase configurado no `.env.local`. Ajustei o script para tratar esse erro de forma operacional, sem stack trace cru e sem expor chaves ou dados sensiveis.
+- Logica utilizada: como o Apolo vai escrever dados cadastrais reais no Supabase, o sync nao deve assumir automaticamente outro ambiente nem alterar `env` para apontar para homologacao/producao. O proximo passo precisa alinhar explicitamente se o alvo do sync sera o projeto configurado localmente ou o projeto onde Lucas aplicou o SQL manualmente.
+- Validacao executada: `node --check scripts/apolo-sync-c2x.mjs` passou; a tentativa controlada de `node scripts/apolo-sync-c2x.mjs` retornou erro seguro e agregado informando que as tabelas `apolo_*` nao foram encontradas no Supabase configurado; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` do recorte passaram; smoke local confirmou `GET /apolo` HTTP 200 e `GET /api/apolo/relationships` HTTP 200 com `totalCount=3927`, `entitiesReturned=90` e fonte `live-c2x`. Nenhum dado sensivel foi registrado no diario.
+- Pendencias ou riscos conhecidos: o sync inicial ainda nao foi executado. Se o SQL tiver sido aplicado apenas em homologacao/producao e o Hub local continuar apontando para outro projeto, a tela local seguira sem ler `apolo_*` reais desse projeto. Qualquer troca de env ou uso de credenciais de outro projeto segue bloqueado ate autorizacao expressa do Lucas.
+- Status operacional: `SCHEMA APLICADO MANUALMENTE POR LUCAS / SYNC BLOQUEADO POR ALINHAMENTO DE AMBIENTE`.
+- Proxima squad recomendada: `Lucas` confirmar o ambiente alvo do sync; `Apolo Core` roda o sync C2X -> Apolo assim que o projeto configurado tiver a migration aplicada ou que Lucas autorize explicitamente usar o ambiente onde o SQL foi executado.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Sync inicial C2X para homologacao concluido`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 17:23:21 -03:00.
+- Tipo da alteracao: `SUPABASE HOMOLOGACAO / SYNC C2X -> APOLO / CADASTRO MESTRE`.
+- Protocolo operacional: `OP-20260520-1723-APOLO-HOMOLOG-SYNC`.
+- Motivo da mudanca: Lucas confirmou que o ambiente alvo do sync inicial do Apolo e homologacao. A SQL do schema Apolo ja havia sido aplicada manualmente no SQL Editor do Supabase de homologacao, e a carga precisava alimentar as tabelas proprias `apolo_*` a partir do C2X sem expor origem tecnica na UX.
+- Ambiente: homologacao; sem deploy Vercel, sem alias, sem alteracao de env remoto, sem escrita no C2X e sem operacao em producao.
+- Arquivos/modulos afetados: `scripts/apolo-sync-c2x.mjs`, `apps/hub/lib/apolo/server.ts`, `packages/database/migrations/0026_apolo_core.sql`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Iris/CareDesk, Hermes, Atlas, Zeus fora dos registros, Setup, Chronos, Vercel deploy, dominios, aliases, producao e escrita no C2X.
+- Como foi feito: baixei temporariamente as envs de Preview/homologacao para `.codex-artifacts/apolo-homolog.env`, caminho ignorado pelo Git, usei somente para executar e validar o sync, e removi o arquivo ao final. O script foi ajustado para aceitar `--target=homolog` e `--env-file`, nao sobrescrever credenciais locais com valores vazios vindos da env de homologacao e deduplicar linhas dentro do mesmo lote antes do `upsert`.
+- Logica utilizada: o C2X segue como fonte de alimentacao inicial, mas o Apolo passa a ler as tabelas proprias em homologacao. O destino do sync foi explicitamente homologacao; as credenciais C2X foram usadas apenas para leitura controlada, e o Supabase recebeu apenas registros nas tabelas `apolo_*`.
+- Resultado do sync: run final concluido com `rowsScanned=3927`, `rowsWritten=50958`, `status=completed`. Um run anterior ficou `failed` por duplicidade em lote antes do ajuste de deduplicacao e permanece auditavel em `apolo_sync_runs`.
+- Contagens agregadas em homologacao: `apolo_entities=3927`, `apolo_entity_profiles=7854`, `apolo_entity_identifiers=11775`, `apolo_contacts=4019`, `apolo_addresses=3846`, `apolo_relationships=3829`, `apolo_module_records=3927`, `apolo_commercial_links=3927`, `apolo_source_links=3927` e `apolo_search_entries=3927`.
+- Perfis agregados em homologacao: `usuario=3431`, `incorporador=21`, `imobiliaria=374`, `corretor=24`, `colaborador=73`, `pessoa_fisica=3448`, `pessoa_juridica=479` e `acesso_incorporador=4`.
+- Validacao executada: `node --check scripts/apolo-sync-c2x.mjs` passou; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check` do recorte passaram; smoke local com envs de homologacao confirmou `GET /apolo` HTTP 200 e `GET /api/apolo/relationships` HTTP 200 com `source=apolo`, `totalCount=3927`, `entitiesReturned=120` e `profileSummaries=7`.
+- Registro de homologacao atualizado: `docs/operations/releases-homologation.md` recebeu o registro `[Apolo] Sync inicial C2X para cadastro mestre`, status `EM HOMOLOGACAO`.
+- Pendencias ou riscos conhecidos: o recorte ainda nao foi publicado no alias `https://homo.c2x.app.br`; a validacao foi local apontada para o banco de homologacao. Falta validacao visual autenticada do Lucas, decisao sobre cadencia de sync incremental e recortes futuros para Hades/Iris/Chronos/Zeus consumirem o Apolo como fonte central.
+- Status operacional: `EM HOMOLOGACAO / APOLO LENDO TABELAS PROPRIAS EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` validar a tela Apolo com dados de homologacao; `Apolo Core` preparar commit/deploy de homologacao quando Lucas autorizar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Numero real de testes ativado em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 17:24:51 -03:00.
+- Tipo da alteracao: `VERCEL PREVIEW / META WHATSAPP / ENV HOMOLOGACAO`.
+- Protocolo operacional: `ENV-20260520-1724-IRIS-PHONE-HOMOLOG`.
+- Motivo da mudanca: Lucas cadastrou/localizou o numero real de testes da Iris na Meta e autorizou explicitamente alterar `META_WHATSAPP_PHONE_NUMBER_ID` em homologacao para esse numero, antes de qualquer virada para o numero principal.
+- Ambiente: homologacao; Vercel Preview com escopo `homolog`; sem alteracao em producao.
+- Arquivos/modulos afetados: Vercel Preview/homolog, variavel `META_WHATSAPP_PHONE_NUMBER_ID`, modulo Iris, `docs/operations/releases-homologation.md` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Hermes, Atlas, Apolo, Zeus, Setup, Chronos, banco, Supabase, migrations, dominios de producao, aliases de producao, tokens Meta e demais envs.
+- Como foi feito: confirmei a existencia da env no escopo `Preview (homolog)`, removi somente a variavel antiga desse escopo e recriei a mesma env com o novo identificador tecnico do numero real de testes, sem registrar o valor no diario. Em seguida, rodei `vercel redeploy` sobre o deployment homologado anterior para carregar a nova env, preservando o worktree local sujo fora do pacote publicado.
+- Logica utilizada: a Cloud API envia mensagens pelo `phone_number_id` configurado no endpoint server-side; portanto a troca correta para homologacao era substituir apenas `META_WHATSAPP_PHONE_NUMBER_ID` no branch `homolog`, mantendo token, app, webhook e WABA existentes. O redeploy foi feito a partir do deployment homologado ja validado para evitar publicar recortes locais paralelos.
+- Deployment anterior de homologacao: `dpl_Aegh3A9fomxmRXyKdS792dy2fNdd`.
+- Deployment novo de homologacao: `dpl_8JRthzASvxdxPFx7aHngZT18Ev4i`; alias `https://homo.c2x.app.br`; URL tecnica `https://careli-hub-hub-i2bs-o459ufmpl-lucasruas-devs-projects.vercel.app`.
+- Validacao executada: `vercel env ls preview` confirmou `META_WHATSAPP_PHONE_NUMBER_ID` recriada em `Preview (homolog)`; `vercel inspect https://homo.c2x.app.br` confirmou deployment `Ready` e alias apontando para o novo redeploy; `GET https://homo.c2x.app.br/iris` retornou `200 OK`; `GET /api/iris/meta/webhook` sem challenge retornou `403 Forbidden` esperado; `POST /api/iris/meta/messages` sem sessao retornou `401 Unauthorized` esperado; `vercel logs https://homo.c2x.app.br --level error --since 10m` nao encontrou erros.
+- Pendencias ou riscos conhecidos: falta Lucas fazer smoke autenticado real pelo WhatsApp usando o numero novo: enviar mensagem para o numero real de testes, confirmar entrada realtime na Iris, responder pela Iris e verificar se a Meta aceita o envio outbound sem erro de permissao. Caso ocorra erro de permissao, revisar atribuicao do ativo WhatsApp ao usuario de sistema `Iris Core` e, se necessario, gerar novo token permanente sem expor valor.
+- Status operacional: `EM HOMOLOGACAO / AGUARDANDO SMOKE REAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` validar recebimento/envio real em `https://homo.c2x.app.br/iris`; `Iris Core` acompanha resultado e volta ao pacote de UX apos confirmacao do numero.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Mensagens diretas persistentes`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 17:30:14 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / HERMES / MENSAGENS DIRETAS`.
+- Motivo da mudanca: Lucas reportou que as mensagens individuais nao estavam chegando no Hermes; a conversa direta abria com o usuario correto, mas ficava em `Nenhuma mensagem` porque o canal direto era apenas sintetico no frontend e o fluxo atual bloqueava leitura, polling, realtime, marcar como lido e persistencia para `direct-*`.
+- Arquivos/modulos afetados: `apps/hub/lib/pulsex/direct-channel.ts`, `apps/hub/app/api/pulsex/messages/route.ts`, `apps/hub/lib/pulsex/supabase-data.ts`, `apps/hub/components/pulsex/pulsex-workspace.tsx`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Arquivos/modulos excluidos: Iris/CareDesk, Hades/Guardian, Apolo, Atlas, Zeus, Setup, Chronos, Vercel, envs, secrets, banco/migration real, dominios, aliases e producao.
+- Como foi feito: criei um helper deterministico para gerar o ID do canal direto a partir dos dois usuarios; ajustei a API de mensagens para reconhecer `direct-*`, validar que o usuario autenticado participa da conversa, garantir o registro em `pulsex_channels`, garantir os dois registros em `pulsex_channel_members` e entao permitir GET/POST/PATCH no mesmo contrato das mensagens de canal. No frontend, os canais diretos passaram a usar o mesmo ID deterministico, mantendo nome/foto do contato na sidebar, e foram removidos os bloqueios que impediam carregar mensagens, fazer polling, abrir realtime/broadcast, marcar como lido e persistir envio em direct.
+- Logica utilizada: o problema nao era visual; era de contrato. Antes, Lucas via `direct-{idDaPessoa}` e a outra pessoa veria outro ID, entao nunca haveria uma conversa compartilhada real. O novo contrato usa `direct-{menorUserId}--{maiorUserId}`, igual para os dois lados. A API server-side cria/reativa o canal e seus membros no primeiro acesso/envio usando o schema atual, sem migration, e o Hermes usa esse mesmo ID para leitura, envio e realtime.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/lib/pulsex/direct-channel.ts apps/hub/app/api/pulsex/messages/route.ts apps/hub/lib/pulsex/supabase-data.ts apps/hub/components/pulsex/pulsex-workspace.tsx` passou com avisos CRLF conhecidos; smoke local confirmou `GET http://localhost:3001/hermes` `200 OK`; smoke local confirmou `GET http://localhost:3001/api/hermes/messages` sem sessao `401 Unauthorized` esperado.
+- Referencia Supabase verificada: changelog e documentacao oficial de Realtime/Postgres Changes foram consultados para confirmar que o ajuste deveria preservar RLS/acesso server-side e nao depender de migration nova; o Hermes continua usando broadcast de canal alem da leitura/polling via API.
+- Pendencias ou riscos conhecidos: falta validacao funcional multiusuario autenticada, especialmente Lucas -> Catherine e Catherine -> Lucas, com a tela direta aberta nos dois lados; como nao houve deploy/homologacao, producao segue sem este recorte. O worktree contem outros recortes paralelos fora de Hermes e nao deve ser publicado como pacote geral.
+- Status operacional: `VALIDADO LOCAL / BLOQUEADO PARA HOMOLOGACAO ATE AUTORIZACAO DO LUCAS`.
+- Proxima squad recomendada: `Lucas` validar em `http://localhost:3001/hermes`; se aprovado, `Hermes Core` publica somente este recorte em homologacao quando autorizado e depois registra o resultado.
+
+Registro de diario:
+
+- Assunto: `[Iris] Numero real registrado na API de Nuvem da Meta`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 18:45:48 -03:00.
+- Tipo da alteracao: `META WHATSAPP / HOMOLOGACAO / REGISTRO OPERACIONAL`.
+- Protocolo operacional: `ENV-20260520-1724-IRIS-PHONE-HOMOLOG`.
+- Motivo da mudanca: Lucas concluiu no painel da Meta a etapa que faltava para registrar o numero real de testes da Iris na API de Nuvem. Antes disso, a Iris recebia eventos, mas o envio pela API retornava `#133010 Account not registered` e a propria Meta enviou mensagem de orientacao para concluir o setup do numero.
+- Ambiente: homologacao; sem alteracao em producao, sem troca adicional de env e sem exposicao de token.
+- Arquivos/modulos afetados: modulo Iris, configuracao operacional do numero real na Meta e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Hermes, Atlas, Apolo, Zeus, Setup, Chronos, banco, Supabase, migrations, dominios, aliases, production deployment, tokens e demais envs.
+- Como foi feito: Lucas executou a conclusao do setup no painel da Meta. A evidencia visual do registro de atividades mostrou o numero marcado como registrado na API de Nuvem no horario local. A Iris ja estava apontada em homologacao para o identificador tecnico desse numero desde o redeploy anterior.
+- Logica utilizada: o erro `#133010` nao indicava falha da tela Iris nem do webhook; indicava que o `phone_number_id` configurado ainda nao estava completamente registrado/ativo na Cloud API. Com o registro concluido na Meta, o proximo teste deve validar o ciclo completo: mensagem recebida na Iris, resposta outbound pela Iris, status da mensagem e tratamento de formato com/sem nono digito quando aplicavel.
+- Validacao executada: validacao visual pelo painel da Meta confirmou o registro do numero na API de Nuvem; a Iris ja havia recebido mensagem operacional da Meta e criado ticket em homologacao, confirmando webhook/inbound ativo. Nao houve nova validacao automatizada neste marco porque nenhuma mudanca de codigo/env foi aplicada por mim.
+- Pendencias ou riscos conhecidos: falta smoke autenticado completo em `https://homo.c2x.app.br/iris` apos o registro: enviar mensagem real para o numero, confirmar entrada realtime, responder pela Iris e validar entrega no WhatsApp. Se outbound ainda falhar, revisar token permanente do usuario de sistema `Iris Core`, permissoes do ativo WhatsApp e regra de formato com/sem nono digito.
+- Status operacional: `EM HOMOLOGACAO / NUMERO REAL REGISTRADO / AGUARDANDO SMOKE OUTBOUND`.
+- Proxima squad recomendada: `Iris Core` acompanhar teste real com Lucas e, se envio/recebimento estabilizar, retomar o pacote de UX WhatsApp.
+
+Registro de diario:
+
+- Assunto: `[Iris] UX da conversa e seletor de emojis`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 19:09:09 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / IRIS / UX ATENDIMENTO WHATSAPP`.
+- Motivo da mudanca: Lucas reportou que a lista lateral de conversas e a tela de conversa estavam visualmente parecidas demais, reduzindo leitura operacional, e que o seletor de emojis permanecia aberto ate clicar novamente no icone.
+- Ambiente: desenvolvimento local; sem deploy, sem alteracao em homologacao/producao, sem Vercel, sem Supabase, sem env e sem token.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Hermes, Atlas, Apolo, Zeus, Setup, Chronos, banco, Supabase, migrations, dominios, aliases, Vercel, tokens e producao.
+- Como foi feito: diferenciei a coluna de conversas com fundo proprio, header mais compacto, contador, busca com superficie distinta, cards com avatar, badge de canal, sombra leve, estado ativo com borda/accent Careli e hover controlado. No compositor, substitui a grade simples por um seletor de emojis agrupado por uso rapido, atendimento e tom de conversa, com insercao no cursor do textarea.
+- Logica utilizada: a inbox precisa parecer uma lista operacional de conversas, enquanto o painel central deve continuar sendo o espaco de atendimento. O seletor de emojis foi tratado como popover real: `refs` separam botao, painel e compositor; um listener global fecha ao clicar fora ou pressionar `Escape`, preservando foco e insercao no ponto atual da mensagem.
+- Validacao executada: `npx.cmd eslint modules/caredesk/IrisPage.tsx --max-warnings 0` passou no escopo isolado da Iris; `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx` passou com aviso CRLF conhecido; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` foram tentados e seguem bloqueados por erros/warnings existentes fora do recorte, no modulo Apolo (`Landmark`, tipos de `ApoloProfileFilter`, imports/refs nao usados). Smoke HTTP local em `http://localhost:3001/iris` nao foi concluido porque a requisicao expirou.
+- Pendencias ou riscos conhecidos: falta validacao visual autenticada no navegador confirmando diferenciacao da lista, fechamento do popover ao clicar fora e insercao de emojis no composer. As falhas globais de typecheck/lint/build precisam ser tratadas no Apolo antes de usar essas validacoes como gate do app inteiro.
+- Status operacional: `VALIDADO LOCAL PARCIAL / BLOQUEADO POR FALHAS GLOBAIS FORA DA IRIS`.
+- Proxima squad recomendada: `Iris Core` validar visualmente com Lucas no ambiente em execucao; `Apolo Core` corrigir bloqueios globais de typecheck/lint/build quando Lucas priorizar.
+
+Registro de diario:
+
+- Assunto: `[Iris] Disposicao lateral dos baloes de conversa`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 19:16:55 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / IRIS / UX ATENDIMENTO WHATSAPP`.
+- Motivo da mudanca: Lucas reportou que os baloes estavam presos no centro da tela e pediu a disposicao das mensagens mais proxima dos cantos, para a conversa lembrar melhor a leitura operacional de WhatsApp.
+- Ambiente: desenvolvimento local; sem deploy, sem alteracao em homologacao/producao, sem Vercel, sem Supabase, sem env e sem token.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Hermes, Atlas, Apolo, Zeus, Setup, Chronos, banco, Supabase, migrations, dominios, aliases, Vercel, tokens e producao.
+- Como foi feito: removi a trilha central `max-w-5xl` do viewport de mensagens e passei a usar a largura real da area de conversa. Os baloes agora usam alinhamento full-width, com respiro apenas no lado oposto (`pl` para outbound e `pr` para inbound), mantendo largura maxima do balao para preservar leitura.
+- Logica utilizada: o container central limitava o ponto de alinhamento; por isso `justify-end` e `justify-start` nao levavam os baloes aos cantos reais da area. A nova regra deixa o trilho ocupar toda a largura e controla apenas o tamanho do balao, aproximando cliente da esquerda e operador da direita sem encostar no painel.
+- Validacao executada: `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx` passou com aviso CRLF conhecido; `..\..\node_modules\.bin\eslint.cmd modules/caredesk/IrisPage.tsx --max-warnings 0` passou no escopo isolado da Iris com warning conhecido de `eslint.config.js` sem `type: module`. O primeiro `npx.cmd eslint` tentou acessar o registry/cache e falhou por `EACCES`; a validacao foi refeita com o binario local do workspace.
+- Pendencias ou riscos conhecidos: falta validacao visual no navegador/homologacao para confirmar a composicao em telas largas e estreitas. Nao houve publicacao em homologacao nesta etapa.
+- Status operacional: `VALIDADO LOCAL PARCIAL / AGUARDANDO AUTORIZACAO PARA HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` autorizar publicacao em homologacao se quiser ver a alteracao em `https://homo.c2x.app.br`; `Iris Core` publica somente o recorte da Iris apos autorizacao explicita.
+
+Registro de diario:
+
+- Assunto: `[Apolo] UX CRM central e leitura por tabelas Apolo`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 19:23:37 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / APOLO / UX CRM CENTRAL`.
+- Motivo da mudanca: Lucas pediu que o Apolo deixasse de parecer uma tela generica, seguisse o padrao visual do Panteon/Hades, mantivesse apenas as telas executivas `Dashboard`, `CRM` e `Relatorios`, concentrasse a busca em um unico campo forte, destacasse perfil e diferencasse usuario comprador de nao comprador. Lucas tambem reforcou que a experiencia nao deve expor referencia operacional ao legado e que a tela deve ler as tabelas proprias do Apolo.
+- Ambiente: desenvolvimento local; sem deploy, sem alteracao em homologacao/producao, sem operacao Supabase, sem migration nova, sem env e sem token.
+- Arquivos/modulos afetados: `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/lib/apolo/catalog.ts`, `apps/hub/lib/apolo/server.ts` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Iris/CareDesk, Hermes, Atlas, Zeus, Setup, Chronos, banco real, Supabase, migrations, dominios, aliases, Vercel, envs, secrets e producao.
+- Como foi feito: reorganizei o sidebar interno para as tres telas de alto nivel, mantendo o padrao grafite/accent do Panteon; transformei a tela `CRM` em fila operacional com busca unica por pessoa, documento, unidade, empreendimento, responsavel, vinculos, contatos, atendimentos e timeline; reforcei os cards da fila com perfil principal, tipo de pessoa e status comprador/nao comprador; inclui a aba `Carteira`; reorganizei `Resumo`, `Cadastro`, `Carteira`, `Financeiro` e `Timeline` em uma composicao mais proxima do Hades; e removi textos de origem tecnica da UX do Apolo.
+- Logica utilizada: o `Dashboard` concentra insights e quantitativos por perfil; `CRM` concentra cadastro, consulta e detalhe 360; `Relatorios` prepara as consultas gerenciais. A aba `Carteira` passa a receber os vinculos comerciais/unidades, enquanto `Financeiro` fica reservado para acordos/promessas sem duplicar dados de carteira. A timeline separa eventos informativos de acoes operacionais e deixa espaco visual para protocolos quando a fonte do evento fornecer esse dado. No backend, o caminho padrao de leitura do dashboard passou a exigir tabelas `apolo_*`; o fallback direto de leitura viva do C2X ficou desativado para preservar o Apolo como fonte central da tela.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `GET http://127.0.0.1:3001/apolo` respondeu `200 OK`; `GET http://127.0.0.1:3001/api/apolo/relationships` respondeu `200 OK` na instancia local atual com `source=unavailable`, `status=configuration_pending`, `totalCount=0`, confirmando que o fallback direto para C2X nao esta mais alimentando a tela quando as tabelas `apolo_*` nao estao disponiveis no `.env.local` ativo.
+- Pendencias ou riscos conhecidos: a instancia local atual do dev server nao esta apontando para o ambiente onde o sync Apolo homologado retornou `source=apolo`; por isso o smoke local confirmou rota viva, mas sem dados. Para ver os 3.927 registros pela tela apos esta mudanca, o app precisa rodar com a configuracao server-side do projeto onde as tabelas `apolo_*` ja foram criadas e alimentadas. A definicao fina de comprador/nao comprador ainda deve evoluir quando Lucas validar os campos comerciais definitivos de contrato/carteira.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO SMOKE EM HOMOLOGACAO COM TABELAS APOLO`.
+- Proxima squad recomendada: `Apolo Core` validar visualmente em ambiente apontado para as tabelas `apolo_*` homologadas; `Lucas` revisar a UX de `Dashboard`, `CRM`, `Carteira`, `Financeiro` e `Timeline` antes de autorizar qualquer publicacao.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Sidebar Panteon restaurado e dados locais reativados`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 20:04:06 -03:00.
+- Tipo da alteracao: `CORRECAO LOCAL / APOLO / SHELL E DADOS`.
+- Motivo da mudanca: Lucas apontou que a tela Apolo estava sem o sidebar global dos demais modulos e sem dados no `localhost`. O problema visual vinha do uso de chrome operacional, que escondia o sidebar principal do Panteon; o problema de dados vinha do bloqueio total do fallback local quando o `.env.local` nao aponta para o projeto Supabase onde as tabelas `apolo_*` homologadas foram alimentadas.
+- Ambiente: desenvolvimento local; sem deploy, sem alteracao em homologacao/producao, sem Supabase, sem migration, sem env, sem token e sem escrita no C2X.
+- Arquivos/modulos afetados: `apps/hub/app/apolo/page.tsx`, `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/lib/apolo/server.ts` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Iris/CareDesk, Hermes, Atlas, Zeus, Setup, Chronos, banco real, Supabase, migrations, Vercel, dominios, aliases, envs, secrets e producao.
+- Como foi feito: a rota `/apolo` voltou a usar o chrome padrao do `HubShell`, preservando o sidebar principal do Panteon; a tela Apolo passou a ocupar `h-full` dentro do shell em vez de `100dvh`; o botao de launcher do sidebar interno agora dispara o evento padrao `careli:toggle-module-launcher`; e o fallback de leitura real do C2X foi reativado somente para `NODE_ENV=development`, evitando tela vazia no localhost sem expor origem tecnica ao operador.
+- Logica utilizada: em homologacao/producao, o Apolo deve ler as tabelas proprias `apolo_*`. No desenvolvimento local, enquanto o `.env.local` nao estiver apontando para o projeto de homologacao alimentado, o fallback real permite validar UX e fluxo com dados operacionais sem mock e sem escrever no legado.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `GET http://127.0.0.1:3001/apolo` respondeu `200 OK`; `GET http://127.0.0.1:3001/api/apolo/relationships` respondeu `200 OK` com `source=live-c2x`, `status=sync_pending`, `totalCount=3927`, `entitiesReturned=90`, `profileSummaries=7` e `linkedUsers=3430`.
+- Pendencias ou riscos conhecidos: o fallback local e apenas para desenvolvimento e nao substitui o smoke em homologacao com `source=apolo`. Para validar 100% a regra de fonte central, o proximo smoke precisa ser no ambiente apontado para as tabelas Apolo alimentadas.
+- Status operacional: `CORRIGIDO LOCAL / DADOS REAIS DISPONIVEIS NO LOCALHOST`.
+- Proxima squad recomendada: `Lucas` atualizar/recarregar `http://localhost:3001/apolo` e validar visualmente o sidebar global + CRM com dados; `Apolo Core` segue refinando a UX apos feedback.
+
+Registro de diario:
+
+- Assunto: `[Panteon] Iris sempre visivel no sidebar`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 20:31:57 -03:00.
+- Tipo da alteracao: `CORRECAO LOCAL / SIDEBAR GLOBAL / VISIBILIDADE IRIS`.
+- Motivo da mudanca: Lucas informou que a Iris nao aparece no sidebar de homologacao e que recortes ja feitos pareciam ter sumido; pediu remover a camada que ocultava a Iris.
+- Ambiente: desenvolvimento local; sem deploy, sem alteracao em homologacao/producao, sem Supabase, sem env, sem dominio, sem alias e sem token.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Hermes, Atlas, Apolo, Setup, Chronos, banco, migrations, Vercel, dominios, aliases, envs, secrets e producao.
+- Como foi feito: removi `hiddenProductionModuleIds` e a funcao `isVisibleInCurrentEnvironment` do shell global. A lista visivel volta a depender do registry ativo, dos modulos minimos liberados e das permissoes, sem regra especial escondendo a Iris por ambiente.
+- Logica utilizada: a Iris e modulo operacional ativo do Panteon e nao deve ser ocultada por regra de producao/homologacao no sidebar. Se houver bloqueio futuro, ele deve ocorrer por permissao ou status operacional explicito, nunca por lista fixa escondida no shell.
+- Validacao executada: `rg hiddenProductionModuleIds|isVisibleInCurrentEnvironment apps/hub/layouts/hub-shell.tsx` nao encontrou mais a regra; `git diff --check -- apps/hub/layouts/hub-shell.tsx docs/operations/engineering-operations.md` passou com avisos conhecidos LF/CRLF no Windows; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; smoke local `GET http://127.0.0.1:3001/iris` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: precisa publicar em homologacao para refletir em `https://homo.c2x.app.br`; o worktree segue com varios recortes paralelos e qualquer deploy deve isolar o pacote para nao sobrescrever outras entregas.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima squad recomendada: `Zeus` preparar validacoes e, se Lucas autorizar, publicar somente este hotfix de sidebar em homologacao.
+
+Registro de diario:
+
+- Assunto: `[Iris] Homologacao restaurada apos deploy sem env Meta`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 20:37:13 -03:00.
+- Tipo da alteracao: `INCIDENTE DE HOMOLOGACAO / ROLLBACK DE ALIAS / IRIS`.
+- Motivo da mudanca: Lucas autorizou subir o recorte UX da Iris para homologacao, mas o pacote publicado a partir de worktree temporario gerou Preview sem as variaveis branch-specific da Meta WhatsApp no runtime. O alias `https://homo.c2x.app.br` chegou a apontar para deployments que exibiam `Envio Meta WhatsApp ainda nao esta configurado na Iris`.
+- Ambiente: homologacao; sem alteracao em producao, sem Supabase, sem banco, sem migration, sem troca de secrets e sem exposicao de valores sensiveis.
+- Arquivos/modulos afetados: alias de homologacao `https://homo.c2x.app.br`, modulo Iris, `docs/operations/releases-homologation.md` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian, Hermes, Atlas, Apolo, Setup, Chronos, banco, migrations, dominios de producao, aliases de producao, tokens e valores de env.
+- Como foi feito: primeiro foi publicado um Preview do recorte Iris a partir de worktree temporario, depois outro Preview a partir de worktree na branch `homolog`. Ambos passaram build, mas o runtime do webhook acusou ausencia de configuracao Meta. Ao perceber o impacto, restaurei imediatamente o alias `homo.c2x.app.br` para o deployment anterior funcional `dpl_8JRthzASvxdxPFx7aHngZT18Ev4i`.
+- Logica utilizada: a falha nao era de dados nem de banco da Iris; era de ambiente do deployment. Como as mensagens e tickets persistem no Supabase, o rollback de alias para o deployment anterior preserva o estado operacional e restaura o runtime com as envs Meta ja funcionais. O recorte UX nao deve ser promovido novamente ate usar um pacote que herde corretamente o branch alias/env da Vercel.
+- Deployments afetados: `dpl_EEpkkUjs3vw7MKwFcyX1a3teSNZd` e `dpl_UpC4wKgzEmEDDHxamC25WCVnHnUg` foram tentativas de Preview; `dpl_8JRthzASvxdxPFx7aHngZT18Ev4i` foi restaurado como homologacao vigente.
+- Validacao executada: `vercel inspect https://homo.c2x.app.br` confirmou alias novamente no deployment `dpl_8JRthzASvxdxPFx7aHngZT18Ev4i`; `GET https://homo.c2x.app.br/iris` retornou `200 OK`; `GET /api/iris/meta/webhook` sem challenge retornou `403 Forbidden` esperado; `POST /api/iris/meta/messages` sem sessao retornou `401 Unauthorized` esperado.
+- Limpeza executada: o arquivo temporario `.vercel/.env.preview.local` criado no worktree de homologacao foi removido; nenhum valor de secret foi registrado no diario ou no chat.
+- Pendencias ou riscos conhecidos: o recorte UX da Iris continua validado localmente, mas nao esta publicado em homologacao. Antes de nova tentativa, preparar uma estrategia de deploy que preserve branch alias/env `Preview (homolog)` ou usar caminho oficial de release a partir de uma branch/commit limpo.
+- Status operacional: `OPERACIONAL RESTAURADO / UX IRIS NAO PUBLICADA`.
+- Proxima squad recomendada: `Iris Core` refazer a estrategia de pacote de homologacao sem sobrescrever o runtime Meta; `Lucas` pode validar que o ambiente voltou ao estado anterior em `https://homo.c2x.app.br/iris`.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Auditoria de commits e registros por ambiente`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 20:39:35 -03:00.
+- Tipo da alteracao: `AUDITORIA OPERACIONAL / RASTREABILIDADE / GIT`.
+- Motivo da mudanca: Lucas solicitou revisar commits, diario, indices de homologacao/producao e worktree porque varios agentes estavam reportando sujeira operacional.
+- Ambiente: local; sem deploy, sem Vercel, sem Supabase, sem banco, sem env, sem migration, sem dominio, sem alias e sem secret.
+- Arquivos/modulos afetados: `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, Git local da branch `homolog` e registros recentes de Apolo, Iris, Hermes, Zeus, Hades, Atlas e Panteon.
+- Como foi feito: comparei `git status -sb`, `git status --short`, `git log --oneline --all --since 2026-05-20`, `git diff --name-only`, `git diff --stat`, `git ls-files` dos arquivos operacionais e buscas por `Assunto`, `Commit`, `Deployment` e `Status` nos tres arquivos oficiais. Em seguida, organizei por append-only o indice de homologacao para cobrir registros recentes que estavam apenas no diario consolidado.
+- Logica utilizada: `docs/operations/engineering-operations.md` permanece como diario consolidado; `docs/operations/releases-homologation.md` deve receber recortes preparados/publicados/bloqueados para homologacao; `docs/operations/releases-production.md` deve receber apenas o que foi efetivamente publicado/bloqueado em producao. Registros locais sem autorizacao de deploy devem ficar `BLOQUEADO` no indice de homologacao quando representarem pacote futuro de ambiente.
+- Ajustes documentais executados: acrescentei no indice de homologacao os registros `[Iris] Homologacao restaurada apos deploy sem env Meta`, `[Panteon] Iris sempre visivel no sidebar`, `[Apolo] UX CRM e sidebar Panteon local` e `[Iris] Ajustes UX conversa e baloes locais`, sem apagar nem reescrever historico anterior.
+- Achados Git: branch local `homolog` esta `ahead 5` e `behind 27` em relacao a `origin/homolog`; os cinco commits locais recentes sao `344a7e8`, `6ee7c20`, `d009b56`, `9731a79` e `d721c1b`; o remoto contem, entre outros, `3b796ec feat(iris): improve whatsapp attendance ux` e varios commits Iris/Hermes anteriores que nao estao na ponta local.
+- Achados de rastreabilidade: `docs/operations/releases-homologation.md` e `docs/operations/releases-production.md` ainda nao estao rastreados pelo Git local (`git ls-files` lista apenas `README.md` e `engineering-operations.md` na pasta operacional principal), o que faz novos agentes enxergarem os indices oficiais como arquivos sujos/untracked. Esta e a principal causa documental da percepcao de sujeira.
+- Achados de worktree: existem alteracoes locais abertas em Apolo, Iris, Zeus/HelpDesk, Panteon shell/sidebar, Atlas, Hades, scripts, docs e configuracoes; elas nao formam um unico recorte publicavel. O arquivo `scripts/seed-caredesk-demo.mjs` aparece como deletado; isso deve ser tratado em recorte proprio ou restaurado se a exclusao nao for intencional.
+- Classificacao atual: Hermes producao esta registrada e publicada ate `dpl_635a6k4awUnB1KfUQ3wgwiVrNGGE`; Zeus HelpDesk historico esta registrado em producao ate `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB`; Iris homologacao esta restaurada em `dpl_8JRthzASvxdxPFx7aHngZT18Ev4i` e UX Iris nao esta vigente; Apolo possui sync homologado e varias UX locais ainda bloqueadas para deploy; Panteon/Iris sidebar esta local e aguardando homologacao; Hermes mensagens diretas persistentes esta local e bloqueado para homologacao ate autorizacao.
+- Pendencias ou riscos conhecidos: enquanto os indices por ambiente estiverem untracked, cada novo agente pode perder a fonte objetiva de homologacao/producao. Enquanto o worktree permanecer misturado, nenhum deploy geral deve ser feito; somente pacotes limpos por modulo. Antes de qualquer commit documental amplo, revisar porque `engineering-operations.md` tem diff grande acumulado e os indices por ambiente sao arquivos novos de 44KB/51KB.
+- Validacao executada: `git diff --check -- docs/operations/engineering-operations.md docs/operations/releases-homologation.md docs/operations/releases-production.md` deve ser executado apos esta auditoria; nao executei build porque a acao foi documental/auditoria sem alteracao de codigo de runtime.
+- Status operacional: `AUDITORIA CONCLUIDA / REGISTROS PARCIALMENTE ORGANIZADOS / WORKTREE BLOQUEADO PARA DEPLOY GERAL`.
+- Proxima squad recomendada: `Hefesto` preparar um commit documental separado para versionar os indices por ambiente e a auditoria, somente se Lucas autorizar; cada agente de modulo deve separar seu recorte local antes de pedir homologacao/producao.
+
+Registro de diario:
+
+- Assunto: `[Apolo] CRM usando estrutura operacional do Hades`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 20:38:18 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / APOLO / CRM 360 E SIDEBAR GLOBAL`.
+- Motivo da mudanca: Lucas apontou que o sidebar interno do Apolo nao seguia o padrao dos demais modulos, que o Apolo precisava aparecer no sidebar global do Panteon e que as abas operacionais de carteira, acordos, documentos e contrato deveriam reaproveitar a mesma experiencia ja validada no Hades. Lucas tambem reforcou que cadastros sem compra nao devem operar carteira/acordos/contratos.
+- Ambiente: desenvolvimento local; sem deploy, sem alteracao em homologacao/producao, sem Supabase, sem migration, sem env, sem token, sem escrita no C2X e sem alteracao nas regras internas do Hades.
+- Arquivos/modulos afetados: `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/lib/apolo/server.ts`, `apps/hub/lib/apolo/types.ts`, `apps/hub/layouts/hub-shell.tsx`, `packages/shared/src/modules/registry.ts`, `packages/shared/dist/modules/registry.js`, `packages/shared/dist/modules/registry.d.ts`, `packages/shared/dist/permissions/matrix.js`, `packages/shared/dist/permissions/matrix.d.ts`, `packages/shared/dist/permissions/types.d.ts` e este diario canonico.
+- Arquivos/modulos excluidos: Hades/Guardian internals, Iris/CareDesk, Hermes, Atlas, Zeus, Setup, Chronos, banco real, Supabase, migrations, Vercel, dominios, aliases, envs, secrets e producao.
+- Como foi feito: removi o sidebar interno do Apolo e mantive apenas o shell global padrao do Panteon; garanti o modulo `Apolo` no registry/shared e no fallback por perfil do sidebar global; mantive `Dashboard`, `CRM` e `Relatorios` como navegacao compacta do cabecalho do modulo; vinculei entidades de perfil `usuario` ao identificador operacional usado pelo Hades; e no workspace do detalhe passei a renderizar o `ClientDetailPanel` real do Hades quando houver carteira operacional. Quando o cadastro nao tiver compra/carteira, o Apolo mostra um estado operacional limpo com botoes de carteira, acordos e contrato desabilitados.
+- Logica utilizada: o Apolo continua sendo a tela de CRM/fila e cadastro mestre, mas a experiencia de cliente comprador deve reutilizar a estrutura operacional ja validada no Hades para evitar divergencia de regra: carteira usa unidades/contratos do Hades, acordos usa o centro de acordos do Hades, documentos/contratos usam a aba e a rota D4Sign ja existentes. A tela do Apolo nao expõe a origem tecnica ao operador; mensagens vindas de API com termos de legado sao sanitizadas para texto operacional.
+- Validacao executada: `npm.cmd run build --workspace @repo/shared` passou; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; smoke local `GET http://localhost:3001/api/apolo/relationships` retornou `200 OK` com `source=live-c2x`, `status=sync_pending`, `totalCount=3927`, `entitiesReturned=90` e `hadesLinked=90`; amostra dos 20 primeiros vinculos Hades retornou 9 clientes com detalhe `200` e 11 cadastros sem carteira `404`, confirmando o caminho comprador/nao comprador.
+- Validacao visual: a verificacao automatizada abriu uma sessao nova sem login e parou em `Carregando sessao`; por isso a confirmacao visual final do sidebar global com Apolo deve ser feita na sessao autenticada do navegador do Lucas em `http://localhost:3001/apolo`. O codigo e o build ja confirmam o registro do modulo no shell global e no pacote `@repo/shared` compilado.
+- Pendencias ou riscos conhecidos: falta smoke visual autenticado do Lucas para confirmar o Apolo aparecendo no sidebar global no navegador ja logado; a regra fina de comprador/nao comprador ainda depende do conjunto definitivo de campos comerciais do Apolo quando as tabelas `apolo_*` forem a fonte unica em homologacao/producao; contratos/documentos dependem dos IDs operacionais existentes no Hades para abrir o documento real.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO VALIDACAO VISUAL AUTENTICADA`.
+- Proxima squad recomendada: `Lucas` recarregar `http://localhost:3001/apolo` na sessao autenticada e validar sidebar global, fila operacional e detalhe Hades; `Apolo Core` ajustar qualquer diferenca visual encontrada sem alterar Hades/Guardian.
+
+Registro de diario:
+
+- Assunto: `[Panteon] Iris fixa publicada em homologacao`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 20:39:22 -03:00.
+- Tipo da alteracao: `DEPLOY HOMOLOG / SIDEBAR GLOBAL / VISIBILIDADE IRIS`.
+- Motivo da mudanca: Lucas autorizou publicar a correcao que remove a camada de ocultacao da Iris no sidebar global, apos reportar que a Iris nao aparecia em homologacao e que partes recentes do Panteon pareciam ter sumido.
+- Ambiente: homologacao; sem producao, sem Supabase, sem banco, sem migration, sem env, sem secret e sem token.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Arquivos/modulos excluidos: alteracoes de env/secret, banco, migrations, dominios de producao, aliases de producao e qualquer operacao em `ops.c2x.app.br`.
+- Como foi feito: publiquei um deployment Preview preservando o pacote atual de homologacao e removendo a regra `hiddenProductionModuleIds`/`isVisibleInCurrentEnvironment`, depois apontei `https://homo.c2x.app.br` para o deployment novo.
+- Logica utilizada: a Iris e modulo operacional ativo do Panteon e nao deve depender de uma lista fixa escondida no shell para aparecer ou sumir. A visibilidade passa a seguir o fluxo normal de registry, status e permissao, reduzindo risco de divergencia entre ambiente local, homologacao e producao.
+- Deployment de homologacao: Vercel Preview `dpl_8Gp3wGhtjtVzeWDjDwdNG69aBULh`; URL tecnica `https://careli-hub-hub-i2bs-qc8b5t2lt-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Validacao executada: `rg hiddenProductionModuleIds|isVisibleInCurrentEnvironment apps/hub/layouts/hub-shell.tsx` nao encontrou mais a regra; `git diff --check -- apps/hub/layouts/hub-shell.tsx docs/operations/engineering-operations.md` passou com avisos conhecidos LF/CRLF no Windows; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; build remoto Vercel concluiu `READY`.
+- Healthchecks executados: `GET https://homo.c2x.app.br/` retornou `200 OK`; `GET https://homo.c2x.app.br/login` retornou `200 OK`; `GET https://homo.c2x.app.br/iris` retornou `200 OK`; `GET /api/iris/meta/webhook` sem challenge retornou `403 Forbidden` esperado; `POST /api/iris/meta/messages` sem sessao retornou `401 Unauthorized` esperado; `vercel inspect https://homo.c2x.app.br` confirmou alias no deployment novo; `vercel logs https://homo.c2x.app.br --level error --since 10m` nao encontrou erros.
+- Registro de homologacao atualizado: `docs/operations/releases-homologation.md` recebeu a entrada `[Panteon] Iris fixa no sidebar de homologacao`, status `EM HOMOLOGACAO`.
+- Pendencias ou riscos conhecidos: o deploy foi manual e sem commit para preservar rapidamente o estado atual de homologacao; o worktree segue misturado e deve ser limpo/organizado antes de qualquer promocao. Falta Lucas validar visualmente autenticado que a Iris voltou ao sidebar e que o runtime Meta segue operacional no fluxo real.
+- Status operacional: `EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` recarregar `https://homo.c2x.app.br` e validar o sidebar; se aprovado, `Zeus` marca o recorte como `HOMOLOGADO`.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Regularizacao documental e auditoria Vercel`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 20:49:33 -03:00.
+- Tipo da alteracao: `AUDITORIA OPERACIONAL / VERCEL / RASTREABILIDADE / DOCUMENTACAO`.
+- Motivo da mudanca: Lucas solicitou organizar commits e registros, assumir operacionalmente os registros pendentes dos demais agentes e analisar por que ocorreram erros de acesso/env na Vercel durante as publicacoes do dia.
+- Ambiente: local e Vercel em modo leitura; sem deploy, sem redeploy, sem alias novo, sem alteracao de env, sem Supabase, sem banco, sem migration, sem secret e sem exposicao de valor sensivel.
+- Arquivos/modulos afetados: `AGENTS.md`, `.gitignore`, `.vercelignore`, `docs/operations/README.md`, `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, `docs/operations/agent-release-register-prompt.md`, `docs/operations/agent-handoff-scripts.md`, `docs/operations/squadops-agent-startup-script.md`, `docs/operations/squadops-center-process.md`, `docs/operations/apolo-agent-startup-script.md`, `docs/operations/apolo-core-discovery-2026-05-20.md`, `docs/architecture/agent-operating-model.md`, `docs/architecture/release-and-rollback-policy.md`, `docs/modules/caredesk-meta-whatsapp-setup.md` e `docs/modules/caredesk-operational-memory.md`.
+- Como foi feito: reli os documentos operacionais obrigatorios, comparei os registros recentes do diario com os indices `releases-homologation.md` e `releases-production.md`, normalizei um status de homologacao fora da lista permitida, revisei os diffs documentais e consultei a Vercel somente por metadados (`env ls` e `inspect`) para cruzar nomes/escopos de variaveis e deployments ativos.
+- Logica utilizada: a autoria tecnica dos recortes permanece com os agentes de origem (`Iris Core`, `Apolo Core`, `Hermes Core`, `Zeus` etc.); Hefesto apenas regularizou a rastreabilidade em nome operacional quando os registros estavam fora dos indices oficiais. Para Vercel/envs, a regra permanente segue: auditar nomes e impacto e manter qualquer criacao, alteracao, remocao, renomeacao, pull sensivel ou exposicao de valor como `BLOQUEADO` ate autorizacao explicita do Lucas.
+- Achados de Vercel: Production esta em `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB`, compartilhado por `https://c2x.app.br` e `https://ops.c2x.app.br`; homologacao esta em Preview `dpl_8Gp3wGhtjtVzeWDjDwdNG69aBULh` com alias `https://homo.c2x.app.br`; as envs Meta WhatsApp aparecem no escopo `Preview (homolog)`, nao como Preview generico; portanto deployments Preview gerados fora da branch/escopo `homolog` podem subir sem `META_WHATSAPP_*`, explicando o incidente em que a Iris ficou sem configuracao Meta no runtime.
+- Achados de chaves/envs: Production possui `SUPABASE_SECRET_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; nao apareceu `SUPABASE_SERVICE_ROLE_KEY` em Production, mas o resolvedor server-side atual aceita `SUPABASE_SECRET_KEY` como fallback. Preview/homolog possui `SUPABASE_SERVICE_ROLE_KEY`, `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY`, `HOMOLOG_POSTGRES_URL`, envs Guardian, Asana e Meta branch-specific. O `.env.local` contem apenas nomes locais essenciais e nao contem as envs Meta de homologacao, o que reforca que testes locais/temporarios nao devem ser tratados como equivalentes ao runtime homologado.
+- Achados de processo: os arquivos `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, `docs/operations/agent-release-register-prompt.md`, `docs/operations/apolo-agent-startup-script.md` e `docs/operations/apolo-core-discovery-2026-05-20.md` estavam sem rastreamento Git, causando percepcao de sujeira para novos agentes. `.gitignore` e `.vercelignore` tambem receberam regras para manter `.codex-artifacts/` e `.codex-deploy/` fora de Git/deploy.
+- Validacao executada: `vercel env ls production` e `vercel env ls preview` foram usados somente para nomes/escopos; `vercel inspect https://homo.c2x.app.br`, `vercel inspect https://c2x.app.br` e `vercel inspect https://ops.c2x.app.br` confirmaram deployments ativos e aliases; listagem local de `.env.local` extraiu apenas nomes de variaveis; `rg process.env` cruzou nomes esperados no codigo; nenhum valor de secret/token/chave foi impresso ou registrado.
+- Pendencias ou riscos conhecidos: worktree segue misturado entre Apolo, Iris, Hermes, Zeus, Hades, Atlas, scripts, migrations e documentos; nenhum deploy geral deve ocorrer ate separar recortes. Qualquer correcao real de env na Vercel continua `BLOQUEADO` e exige autorizacao explicita do Lucas. A principal correcao operacional recomendada e evitar deploy Preview de pacote temporario sem garantir branch/escopo `homolog`; para Iris/Meta, publicar por branch/commit limpo ou por redeploy de deployment que carregue `Preview (homolog)`.
+- Status operacional: `FINALIZADO / DEPLOY GERAL BLOQUEADO / ALTERACOES DE ENV BLOQUEADAS`.
+- Proxima squad recomendada: `Hefesto` criar commit documental separado com registros oficiais e indices por ambiente; agentes de modulo devem continuar separando seus recortes antes de pedir homologacao; `Lucas` deve autorizar explicitamente qualquer ajuste real de env/chave na Vercel.
