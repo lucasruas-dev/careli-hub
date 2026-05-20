@@ -16,6 +16,8 @@ import {
   Clock3,
   ClipboardList,
   DatabaseZap,
+  CircleStop,
+  Edit3,
   FileText,
   Headphones,
   Inbox,
@@ -24,13 +26,16 @@ import {
   LockKeyhole,
   Megaphone,
   MessageCircle,
+  MessageSquareReply,
   MessageSquareText,
   Mic,
   Network,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
+  Play,
   Plus,
+  Reply,
   Route,
   Save,
   Search,
@@ -44,6 +49,7 @@ import {
   UsersRound,
   Workflow,
   Wifi,
+  X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
@@ -82,17 +88,42 @@ type IrisStatus =
   | "cancelled";
 
 type IrisMessage = {
+  audioDurationMs?: number | null;
+  audioMimeType?: string | null;
+  audioUrl?: string | null;
   body: string;
   createdAt: string;
   deliveryStatus: string;
   direction: "inbound" | "outbound" | "internal";
+  editedAt?: string | null;
   externalMessageId?: string | null;
   id: string;
+  messageType?: string | null;
+  operatorAvatarUrl?: string | null;
   readAt?: string | null;
   deliveredAt?: string | null;
+  reactions?: IrisMessageReaction[];
+  replyTo?: IrisReplyPreview | null;
   senderLabel?: string | null;
   senderType: "customer" | "operator" | "agent" | "system";
   sentAt?: string | null;
+};
+
+type IrisReplyPreview = {
+  body: string;
+  createdAt?: string | null;
+  direction?: IrisMessage["direction"] | null;
+  externalMessageId?: string | null;
+  messageId: string;
+  senderLabel?: string | null;
+};
+
+type IrisMessageReaction = {
+  actorAvatarUrl?: string | null;
+  actorLabel?: string | null;
+  actorUserId?: string | null;
+  createdAt?: string | null;
+  emoji: string;
 };
 
 type IrisTicket = {
@@ -272,6 +303,22 @@ const setupStatusLabel: Record<string, string> = {
   paused: "Pausado",
   planned: "Planejado",
 };
+const IRIS_EMOJI_OPTIONS = [
+  "😀",
+  "😄",
+  "😊",
+  "😉",
+  "😍",
+  "🙏",
+  "👍",
+  "👏",
+  "✅",
+  "⚠️",
+  "📌",
+  "💬",
+];
+const IRIS_REACTION_OPTIONS = ["👍", "❤️", "😂", "🙏", "✅"];
+const IRIS_AUDIO_MAX_DATA_URL_LENGTH = 4_000_000;
 
 export function IrisPage({
   embedded = false,
@@ -444,6 +491,13 @@ export function IrisPage({
       )
       .on(
         "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "caredesk_messages" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: false });
+        },
+      )
+      .on(
+        "postgres_changes",
         { event: "INSERT", schema: "public", table: "caredesk_tickets" },
         () => {
           void refreshIrisData({ notifyNewInbound: true });
@@ -516,12 +570,44 @@ export function IrisPage({
           ? {
               ...ticket,
               lastMessageAt: message.createdAt,
-              lastMessagePreview: message.body,
+              lastMessagePreview: irisMessagePreview(message),
               messages: [...ticket.messages, message],
               status: ticket.status === "new" ? "open" : ticket.status,
             }
           : ticket,
       ),
+    }));
+  }
+
+  function handleMessageUpdated(ticketId: string, message: IrisMessage) {
+    knownMessageIdsRef.current.add(message.id);
+    setIrisData((current) => ({
+      ...current,
+      tickets: current.tickets.map((ticket) => {
+        if (ticket.id !== ticketId) {
+          return ticket;
+        }
+
+        const hasMessage = ticket.messages.some(
+          (currentMessage) => currentMessage.id === message.id,
+        );
+        const messages = hasMessage
+          ? ticket.messages.map((currentMessage) =>
+              currentMessage.id === message.id ? message : currentMessage,
+            )
+          : [...ticket.messages, message];
+        const latestMessage = messages[messages.length - 1];
+
+        return {
+          ...ticket,
+          lastMessageAt: latestMessage?.createdAt ?? ticket.lastMessageAt,
+          lastMessagePreview: latestMessage
+            ? irisMessagePreview(latestMessage)
+            : ticket.lastMessagePreview,
+          messages,
+          status: ticket.status === "new" ? "open" : ticket.status,
+        };
+      }),
     }));
   }
 
@@ -705,6 +791,7 @@ export function IrisPage({
                 onSelectTicket={setSelectedTicketId}
                 onClose={() => setActiveView("gestao")}
                 onMessageCreated={handleLocalMessage}
+                onMessageUpdated={handleMessageUpdated}
               />
             ) : activeView === "disparos" ? (
               <BroadcastView data={irisData} snapshot={snapshot} />
@@ -1192,6 +1279,7 @@ function IrisTicketRow({
 function AttendanceView({
   onClose,
   onMessageCreated,
+  onMessageUpdated,
   onSelectTicket,
   selectedTicketId,
   ticket,
@@ -1199,6 +1287,7 @@ function AttendanceView({
 }: {
   onClose: () => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
+  onMessageUpdated: (ticketId: string, message: IrisMessage) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
   ticket: IrisTicket | null;
@@ -1223,6 +1312,7 @@ function AttendanceView({
       onSelectTicket={onSelectTicket}
       onClose={onClose}
       onMessageCreated={onMessageCreated}
+      onMessageUpdated={onMessageUpdated}
     />
   );
 }
@@ -1230,6 +1320,7 @@ function AttendanceView({
 function IrisConversationPanel({
   onClose,
   onMessageCreated,
+  onMessageUpdated,
   onSelectTicket,
   selectedTicketId,
   ticket,
@@ -1237,6 +1328,7 @@ function IrisConversationPanel({
 }: {
   onClose: () => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
+  onMessageUpdated: (ticketId: string, message: IrisMessage) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
   ticket: IrisTicket;
@@ -1244,16 +1336,26 @@ function IrisConversationPanel({
 }) {
   const [conversationFilter, setConversationFilter] = useState("Abertas");
   const [draft, setDraft] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [recordingAudio, setRecordingAudio] = useState(false);
+  const [replyToMessage, setReplyToMessage] =
+    useState<IrisReplyPreview | null>(null);
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [search, setSearch] = useState("");
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] =
     useState(false);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioStartedAtRef = useRef<number | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const repairingOutboundMessageIds = useRef(new Set<string>());
   const { hubUser } = useAuth();
   const operatorLabel = hubUser?.name ?? "Operador Iris";
+  const operatorAvatarUrl = hubUser?.avatarUrl ?? null;
 
   const conversations = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -1311,8 +1413,20 @@ function IrisConversationPanel({
       ticketChecklist.some((item) => !item.ok));
   const operationReady = !ticketClosed;
   const blockedTooltip = ticketClosed ? "Ticket encerrado" : "Enviar mensagem";
-  const latestMessageId =
-    ticket.messages[ticket.messages.length - 1]?.id ?? "";
+  const editingMessage = editingMessageId
+    ? ticket.messages.find((message) => message.id === editingMessageId) ?? null
+    : null;
+  const latestMessage = ticket.messages[ticket.messages.length - 1] ?? null;
+  const latestMessageSignature = latestMessage
+    ? [
+        latestMessage.id,
+        latestMessage.body,
+        latestMessage.deliveryStatus,
+        latestMessage.deliveredAt,
+        latestMessage.readAt,
+        latestMessage.reactions?.length ?? 0,
+      ].join(":")
+    : "";
 
   useEffect(() => {
     if (!operationReady || sending || !ticket.contactPhone) {
@@ -1356,12 +1470,17 @@ function IrisConversationPanel({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [latestMessageId, ticket.id, ticket.messages.length]);
+  }, [latestMessageSignature, ticket.id, ticket.messages.length]);
 
   async function sendMessage() {
     const body = draft.trim();
 
     if (!body || sending || !operationReady) {
+      return;
+    }
+
+    if (editingMessageId) {
+      await saveEditedMessage(body);
       return;
     }
 
@@ -1376,6 +1495,9 @@ function IrisConversationPanel({
         deliveryStatus: "queued",
         direction: "outbound",
         id: `local-${now}`,
+        messageType: "text",
+        operatorAvatarUrl,
+        replyTo: replyToMessage,
         senderLabel: operatorLabel,
         senderType: "operator",
       };
@@ -1386,6 +1508,7 @@ function IrisConversationPanel({
           body,
           channelId: ticket.channelId ?? null,
           contactId: ticket.contactId ?? null,
+          replyToMessageId: replyToMessage?.messageId ?? null,
           ticketId: ticket.id,
           to: ticket.contactPhone ?? "",
         }),
@@ -1406,7 +1529,11 @@ function IrisConversationPanel({
       if (payload?.message) {
         onMessageCreated(
           ticket.id,
-          ensureOperatorLabel(mapMessageRow(payload.message), operatorLabel),
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
         );
       }
 
@@ -1421,6 +1548,8 @@ function IrisConversationPanel({
       }
 
       setDraft("");
+      setReplyToMessage(null);
+      setEmojiPickerOpen(false);
       setFeedback("Mensagem enviada pelo WhatsApp.");
     } catch (error) {
       console.error("[caredesk] nao foi possivel enviar mensagem", error);
@@ -1428,6 +1557,69 @@ function IrisConversationPanel({
         error instanceof Error
           ? error.message
           : "Nao foi possivel enviar a mensagem agora.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function saveEditedMessage(body: string) {
+    if (!editingMessageId || sending) {
+      return;
+    }
+
+    setSending(true);
+    setFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          action: "edit",
+          body,
+          messageId: editingMessageId,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel editar a mensagem.",
+        );
+      }
+
+      if (payload?.message) {
+        onMessageUpdated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      setDraft("");
+      setEditingMessageId(null);
+      setEmojiPickerOpen(false);
+      setFeedback("Mensagem atualizada no Iris.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel editar mensagem", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel editar a mensagem agora.",
       );
     } finally {
       setSending(false);
@@ -1467,7 +1659,11 @@ function IrisConversationPanel({
       if (payload?.message) {
         onMessageCreated(
           ticket.id,
-          ensureOperatorLabel(mapMessageRow(payload.message), operatorLabel),
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
         );
       }
 
@@ -1484,6 +1680,235 @@ function IrisConversationPanel({
         error instanceof Error
           ? error.message
           : "Nao foi possivel sincronizar a mensagem local.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function reactToMessage(message: IrisMessage, emoji: string) {
+    if (sending || !operationReady) {
+      return;
+    }
+
+    setFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          action: "react",
+          emoji,
+          messageId: message.id,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel reagir a mensagem.",
+        );
+      }
+
+      if (payload?.message) {
+        onMessageUpdated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel reagir", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel reagir a mensagem agora.",
+      );
+    }
+  }
+
+  function prepareReply(message: IrisMessage) {
+    setReplyToMessage(createReplyPreview(message));
+    setEditingMessageId(null);
+    setEmojiPickerOpen(false);
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  function prepareEdit(message: IrisMessage) {
+    if (message.direction !== "outbound" || message.senderType !== "operator") {
+      return;
+    }
+
+    setDraft(message.body);
+    setEditingMessageId(message.id);
+    setReplyToMessage(null);
+    setEmojiPickerOpen(false);
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  function cancelComposerContext() {
+    setEditingMessageId(null);
+    setReplyToMessage(null);
+    setEmojiPickerOpen(false);
+  }
+
+  function insertEmoji(emoji: string) {
+    setDraft((current) => `${current}${emoji}`);
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  async function toggleAudioRecording() {
+    if (sending || !operationReady) {
+      return;
+    }
+
+    if (recordingAudio) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setFeedback("Gravacao de audio indisponivel neste navegador.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+
+      audioChunksRef.current = [];
+      audioStartedAtRef.current = Date.now();
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const chunks = [...audioChunksRef.current];
+        const durationMs = audioStartedAtRef.current
+          ? Date.now() - audioStartedAtRef.current
+          : null;
+
+        stream.getTracks().forEach((track) => track.stop());
+        setRecordingAudio(false);
+        mediaRecorderRef.current = null;
+        audioStartedAtRef.current = null;
+        audioChunksRef.current = [];
+
+        if (chunks.length) {
+          const audioBlob = new Blob(chunks, {
+            type: recorder.mimeType || "audio/webm",
+          });
+          void sendAudioMessage(audioBlob, durationMs);
+        }
+      };
+      recorder.start();
+      setRecordingAudio(true);
+      setFeedback("Gravando audio. Clique novamente no microfone para enviar.");
+    } catch (error) {
+      console.error("[caredesk] microfone indisponivel", error);
+      setRecordingAudio(false);
+      setFeedback("Nao foi possivel acessar o microfone.");
+    }
+  }
+
+  async function sendAudioMessage(audioBlob: Blob, durationMs: number | null) {
+    if (sending || !operationReady) {
+      return;
+    }
+
+    if (audioBlob.size <= 0) {
+      setFeedback("Audio vazio. Grave novamente.");
+      return;
+    }
+
+    setSending(true);
+    setFeedback("");
+
+    try {
+      const dataUrl = await readBlobAsDataUrl(audioBlob);
+
+      if (dataUrl.length > IRIS_AUDIO_MAX_DATA_URL_LENGTH) {
+        throw new Error("Audio muito grande para este recorte de homologacao.");
+      }
+
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body: "Audio WhatsApp",
+          channelId: ticket.channelId ?? null,
+          contactId: ticket.contactId ?? null,
+          media: {
+            dataUrl,
+            durationMs,
+            fileName: `iris-audio-${Date.now()}.webm`,
+            mimeType: audioBlob.type || "audio/webm",
+            type: "audio",
+          },
+          replyToMessageId: replyToMessage?.messageId ?? null,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel enviar audio pelo WhatsApp.",
+        );
+      }
+
+      setReplyToMessage(null);
+      setFeedback("Audio enviado pelo WhatsApp.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel enviar audio", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar o audio agora.",
       );
     } finally {
       setSending(false);
@@ -1731,7 +2156,14 @@ function IrisConversationPanel({
 
             {ticket.messages.length > 0 ? (
               ticket.messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onEdit={prepareEdit}
+                  onReact={reactToMessage}
+                  onReply={prepareReply}
+                  ticket={ticket}
+                />
               ))
             ) : (
               <EmptyState
@@ -1761,58 +2193,123 @@ function IrisConversationPanel({
             ) : null}
           </div>
 
-          <div
-            className={[
-              "flex items-end gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity",
-              operationReady ? "opacity-100" : "opacity-55",
-            ].join(" ")}
-          >
-            <ComposerIconButton
-              disabled={!operationReady}
-              label="Emoji"
-              onClick={() => setDraft((current) => `${current}:)`)}
-            >
-              <Smile className="size-4" aria-hidden="true" />
-            </ComposerIconButton>
-            <ComposerIconButton
-              disabled={!operationReady}
-              label="Anexar arquivo"
-              onClick={() => undefined}
-            >
-              <Paperclip className="size-4" aria-hidden="true" />
-            </ComposerIconButton>
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder={
-                operationReady
-                  ? "Escrever mensagem WhatsApp..."
-                  : "Ticket encerrado"
-              }
-              disabled={!operationReady}
-              className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-            />
-            <ComposerIconButton
-              disabled={!operationReady}
-              label="Enviar audio"
-              onClick={() => undefined}
-            >
-              <Mic className="size-4" aria-hidden="true" />
-            </ComposerIconButton>
-            <Tooltip
-              content={operationReady ? "Enviar mensagem" : blockedTooltip}
-              placement="top"
-            >
+          {replyToMessage || editingMessage ? (
+            <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-[#eadcc2] bg-[#fbf6ec] px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
+                  {editingMessage ? "Editando mensagem" : "Respondendo"}
+                </p>
+                <p className="mt-0.5 line-clamp-1 text-xs font-medium text-slate-600">
+                  {editingMessage
+                    ? editingMessage.body
+                    : replyToMessage?.body ?? "Mensagem selecionada"}
+                </p>
+              </div>
               <button
                 type="button"
-                disabled={sending || !draft.trim() || !operationReady}
-                onClick={sendMessage}
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
-                aria-label={operationReady ? "Enviar mensagem" : blockedTooltip}
+                onClick={cancelComposerContext}
+                className="flex size-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-[#7A5E2C]"
+                aria-label="Cancelar contexto"
               >
-                <Send className="size-4" aria-hidden="true" />
+                <X className="size-4" aria-hidden="true" />
               </button>
-            </Tooltip>
+            </div>
+          ) : null}
+
+          <div className="relative">
+            {emojiPickerOpen && operationReady ? (
+              <div className="absolute bottom-full left-0 z-20 mb-2 grid w-56 grid-cols-6 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
+                {IRIS_EMOJI_OPTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => insertEmoji(emoji)}
+                    className="flex size-8 items-center justify-center rounded-lg text-base transition-colors hover:bg-slate-100"
+                    aria-label={`Inserir ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <div
+              className={[
+                "flex items-end gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity",
+                operationReady ? "opacity-100" : "opacity-55",
+              ].join(" ")}
+            >
+              <ComposerIconButton
+                disabled={!operationReady}
+                label="Emoji"
+                onClick={() => setEmojiPickerOpen((current) => !current)}
+              >
+                <Smile className="size-4" aria-hidden="true" />
+              </ComposerIconButton>
+              <ComposerIconButton
+                disabled
+                label="Anexos em breve"
+                onClick={() => undefined}
+              >
+                <Paperclip className="size-4" aria-hidden="true" />
+              </ComposerIconButton>
+              <textarea
+                ref={composerTextareaRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={
+                  operationReady
+                    ? editingMessage
+                      ? "Editar mensagem no Iris..."
+                      : "Escrever mensagem WhatsApp..."
+                    : "Ticket encerrado"
+                }
+                disabled={!operationReady}
+                className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              />
+              <ComposerIconButton
+                disabled={!operationReady || sending}
+                label={recordingAudio ? "Parar e enviar audio" : "Enviar audio"}
+                onClick={toggleAudioRecording}
+              >
+                {recordingAudio ? (
+                  <CircleStop
+                    className="size-4 text-rose-500"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Mic className="size-4" aria-hidden="true" />
+                )}
+              </ComposerIconButton>
+              <Tooltip
+                content={
+                  operationReady
+                    ? editingMessage
+                      ? "Salvar edicao"
+                      : "Enviar mensagem"
+                    : blockedTooltip
+                }
+                placement="top"
+              >
+                <button
+                  type="button"
+                  disabled={
+                    sending || !draft.trim() || !operationReady || recordingAudio
+                  }
+                  onClick={sendMessage}
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  aria-label={
+                    operationReady
+                      ? editingMessage
+                        ? "Salvar edicao"
+                        : "Enviar mensagem"
+                      : blockedTooltip
+                  }
+                >
+                  <Send className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
           </div>
         </footer>
       </main>
@@ -3476,10 +3973,27 @@ function ContactAvatar({
   );
 }
 
-function MessageBubble({ message }: { message: IrisMessage }) {
+function MessageBubble({
+  message,
+  onEdit,
+  onReact,
+  onReply,
+  ticket,
+}: {
+  message: IrisMessage;
+  onEdit: (message: IrisMessage) => void;
+  onReact: (message: IrisMessage, emoji: string) => void;
+  onReply: (message: IrisMessage) => void;
+  ticket: IrisTicket;
+}) {
   const outbound = message.direction === "outbound";
   const internal =
     message.direction === "internal" || message.senderType === "system";
+  const canEdit = outbound && message.senderType === "operator";
+  const avatarLabel = outbound
+    ? message.senderLabel ?? "Operador Iris"
+    : ticket.contactLabel;
+  const avatarUrl = outbound ? message.operatorAvatarUrl : ticket.contactAvatarUrl;
 
   if (internal) {
     return (
@@ -3492,27 +4006,58 @@ function MessageBubble({ message }: { message: IrisMessage }) {
   }
 
   return (
-    <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
+    <div className={`group flex ${outbound ? "justify-end" : "justify-start"}`}>
       <div
         className={[
-          "max-w-[72%] rounded-2xl px-4 py-3 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.05)]",
-          outbound
-            ? "border border-[#eadcc2] bg-[#f8f4ed] text-slate-900"
-            : "border border-slate-200 bg-white text-slate-800",
+          "flex max-w-[78%] items-end gap-2",
+          outbound ? "flex-row-reverse" : "flex-row",
         ].join(" ")}
       >
-        {outbound && message.senderLabel ? (
-          <div className="mb-1.5 flex items-center justify-end">
-            <span className="rounded-full border border-[#eadcc2] bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
-              {message.senderLabel}
-            </span>
+        <InlineAvatar
+          avatarUrl={avatarUrl}
+          label={avatarLabel}
+          tone={outbound ? "gold" : "green"}
+        />
+        <div className="relative min-w-0">
+          <MessageBubbleActions
+            canEdit={canEdit}
+            message={message}
+            onEdit={onEdit}
+            onReact={onReact}
+            onReply={onReply}
+            outbound={outbound}
+          />
+          <div
+            className={[
+              "min-w-[128px] rounded-2xl px-4 py-3 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.05)]",
+              outbound
+                ? "border border-[#eadcc2] bg-[#f8f4ed] text-slate-900"
+                : "border border-slate-200 bg-white text-slate-800",
+            ].join(" ")}
+          >
+            {outbound && message.senderLabel ? (
+              <div className="mb-1.5 flex items-center justify-end gap-1.5">
+                <span className="rounded-full border border-[#eadcc2] bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
+                  {message.senderLabel}
+                </span>
+              </div>
+            ) : null}
+            {message.replyTo ? (
+              <MessageReplyPreview reply={message.replyTo} outbound={outbound} />
+            ) : null}
+            {message.messageType === "audio" ? (
+              <AudioMessageContent message={message} outbound={outbound} />
+            ) : (
+              <p className="whitespace-pre-wrap leading-6">{message.body}</p>
+            )}
+            <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-slate-400">
+              {message.editedAt ? <span>editada</span> : null}
+              <span>{formatDateTime(message.createdAt)}</span>
+              {outbound ? <MessageDeliveryIndicator message={message} /> : null}
+            </div>
           </div>
-        ) : null}
-        <p className="whitespace-pre-wrap leading-6">{message.body}</p>
-        <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-slate-400">
-          <span>{formatDateTime(message.createdAt)}</span>
-          {outbound ? (
-            <MessageDeliveryIndicator message={message} />
+          {message.reactions?.length ? (
+            <MessageReactionStrip reactions={message.reactions} outbound={outbound} />
           ) : null}
         </div>
       </div>
@@ -3520,8 +4065,200 @@ function MessageBubble({ message }: { message: IrisMessage }) {
   );
 }
 
+function MessageBubbleActions({
+  canEdit,
+  message,
+  onEdit,
+  onReact,
+  onReply,
+  outbound,
+}: {
+  canEdit: boolean;
+  message: IrisMessage;
+  onEdit: (message: IrisMessage) => void;
+  onReact: (message: IrisMessage, emoji: string) => void;
+  onReply: (message: IrisMessage) => void;
+  outbound: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "absolute -top-3 z-10 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-0.5 opacity-0 shadow-[0_8px_22px_rgba(15,23,42,0.12)] transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+        outbound ? "right-2" : "left-2",
+      ].join(" ")}
+    >
+      {IRIS_REACTION_OPTIONS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={() => onReact(message, emoji)}
+          className="flex size-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-slate-100"
+          aria-label={`Reagir com ${emoji}`}
+        >
+          {emoji}
+        </button>
+      ))}
+      <span className="h-5 w-px bg-slate-200" aria-hidden="true" />
+      <Tooltip content="Responder" placement="top">
+        <button
+          type="button"
+          onClick={() => onReply(message)}
+          className="flex size-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#7A5E2C]"
+          aria-label="Responder mensagem"
+        >
+          <Reply className="size-3.5" aria-hidden="true" />
+        </button>
+      </Tooltip>
+      {canEdit ? (
+        <Tooltip content="Editar no Iris" placement="top">
+          <button
+            type="button"
+            onClick={() => onEdit(message)}
+            className="flex size-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#7A5E2C]"
+            aria-label="Editar mensagem"
+          >
+            <Edit3 className="size-3.5" aria-hidden="true" />
+          </button>
+        </Tooltip>
+      ) : null}
+    </div>
+  );
+}
+
+function MessageReplyPreview({
+  outbound,
+  reply,
+}: {
+  outbound: boolean;
+  reply: IrisReplyPreview;
+}) {
+  return (
+    <div
+      className={[
+        "mb-2 rounded-xl border-l-2 px-3 py-2 text-xs",
+        outbound
+          ? "border-[#A07C3B] bg-white/70 text-slate-600"
+          : "border-emerald-400 bg-emerald-50/70 text-slate-600",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-1.5 font-semibold text-slate-700">
+        <MessageSquareReply className="size-3.5" aria-hidden="true" />
+        <span>{reply.senderLabel ?? "Mensagem"}</span>
+      </div>
+      <p className="mt-1 line-clamp-2">{reply.body}</p>
+    </div>
+  );
+}
+
+function MessageReactionStrip({
+  outbound,
+  reactions,
+}: {
+  outbound: boolean;
+  reactions: IrisMessageReaction[];
+}) {
+  return (
+    <div
+      className={[
+        "absolute -bottom-3 flex rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-sm shadow-[0_6px_16px_rgba(15,23,42,0.12)]",
+        outbound ? "right-3" : "left-3",
+      ].join(" ")}
+    >
+      {reactions.slice(0, 4).map((reaction, index) => (
+        <Tooltip
+          key={`${reaction.actorUserId ?? reaction.actorLabel ?? "actor"}-${reaction.emoji}-${index}`}
+          content={reaction.actorLabel ?? "Reacao"}
+          placement="top"
+        >
+          <span className="-ml-0.5 first:ml-0">{reaction.emoji}</span>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
+function AudioMessageContent({
+  message,
+  outbound,
+}: {
+  message: IrisMessage;
+  outbound: boolean;
+}) {
+  return (
+    <div className="flex min-w-[220px] items-center gap-3">
+      <span
+        className={[
+          "flex size-9 shrink-0 items-center justify-center rounded-full",
+          outbound ? "bg-[#A07C3B] text-white" : "bg-emerald-50 text-emerald-700",
+        ].join(" ")}
+      >
+        <Play className="ml-0.5 size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        {message.audioUrl ? (
+          <audio
+            aria-label="Audio WhatsApp"
+            controls
+            className="h-8 w-full max-w-[260px]"
+            src={message.audioUrl}
+          />
+        ) : (
+          <>
+            <div className="h-2 rounded-full bg-slate-200">
+              <div className="h-2 w-1/3 rounded-full bg-[#A07C3B]" />
+            </div>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              Audio WhatsApp
+            </p>
+          </>
+        )}
+      </div>
+      <span className="shrink-0 text-xs font-semibold text-slate-500">
+        {formatAudioDuration(message.audioDurationMs)}
+      </span>
+    </div>
+  );
+}
+
+function InlineAvatar({
+  avatarUrl,
+  label,
+  tone,
+}: {
+  avatarUrl?: string | null;
+  label: string;
+  tone: "gold" | "green";
+}) {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = avatarUrl && !failed ? avatarUrl : null;
+
+  if (imageUrl) {
+    return (
+      <img
+        alt={label}
+        className="size-8 shrink-0 rounded-full border border-slate-200 object-cover shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+        src={imageUrl}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={[
+        "flex size-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold uppercase shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+        tone === "gold"
+          ? "border-[#eadcc2] bg-[#fbf6ec] text-[#7A5E2C]"
+          : "border-emerald-100 bg-emerald-50 text-emerald-700",
+      ].join(" ")}
+    >
+      {contactInitials(label)}
+    </span>
+  );
+}
+
 function MessageDeliveryIndicator({ message }: { message: IrisMessage }) {
-  const normalized = normalizeDeliveryStatus(message.deliveryStatus);
+  const normalized = getEffectiveDeliveryStatus(message);
   const hasMetaConfirmation = Boolean(message.externalMessageId);
   const pendingMetaSend =
     !hasMetaConfirmation &&
@@ -3578,6 +4315,18 @@ function normalizeDeliveryStatus(status?: string | null) {
   return "queued";
 }
 
+function getEffectiveDeliveryStatus(message: IrisMessage) {
+  if (message.readAt) {
+    return "read";
+  }
+
+  if (message.deliveredAt) {
+    return "delivered";
+  }
+
+  return normalizeDeliveryStatus(message.deliveryStatus);
+}
+
 function getDeliveryStatusLabel(status: string) {
   if (status === "read") {
     return "Visualizado";
@@ -3606,6 +4355,7 @@ function shouldRepairOutboundMessage(message: IrisMessage) {
   return (
     message.direction === "outbound" &&
     message.senderType === "operator" &&
+    message.messageType !== "audio" &&
     !message.externalMessageId &&
     (normalized === "queued" ||
       normalized === "sent" ||
@@ -3861,7 +4611,7 @@ async function loadIrisData(): Promise<IrisData> {
         ? supabase
           .from("caredesk_messages")
           .select(
-            "id,ticket_id,body,direction,sender_type,sender_user_id,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id",
+            "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
           )
           .in("ticket_id", ticketIds)
           .order("created_at", { ascending: true })
@@ -4049,7 +4799,9 @@ function mapTicketRow(input: {
     id: input.row.id,
     lastMessageAt:
       lastMessage?.createdAt ?? input.row.updated_at ?? input.row.opened_at,
-    lastMessagePreview: lastMessage?.body ?? "Sem mensagens registradas",
+    lastMessagePreview: lastMessage
+      ? irisMessagePreview(lastMessage)
+      : "Sem mensagens registradas",
     messages: input.messages,
     openedAt: input.row.opened_at,
     priority: normalizePriority(input.row.priority),
@@ -4072,14 +4824,22 @@ function mapTicketRow(input: {
 
 function mapMessageRow(row: any): IrisMessage {
   return {
+    audioDurationMs: readMessageAudioDuration(row),
+    audioMimeType: readMessageAudioMimeType(row),
+    audioUrl: readMessageAudioUrl(row),
     body: row.body ?? "",
     createdAt: row.created_at,
     deliveryStatus: row.delivery_status ?? "queued",
     direction: row.direction ?? "internal",
+    editedAt: readMessageEditedAt(row),
     deliveredAt: row.delivered_at ?? null,
     externalMessageId: row.external_message_id ?? null,
     id: row.id,
+    messageType: row.message_type ?? readMessageType(row),
+    operatorAvatarUrl: readMessageOperatorAvatarUrl(row),
     readAt: row.read_at ?? null,
+    reactions: readMessageReactions(row),
+    replyTo: readMessageReplyPreview(row),
     senderLabel: readMessageSenderLabel(row),
     senderType: row.sender_type ?? "system",
     sentAt: row.sent_at ?? null,
@@ -4116,14 +4876,204 @@ function readMessageSenderLabel(row: any) {
   return row?.sender_type === "operator" ? "Operador Iris" : null;
 }
 
-function ensureOperatorLabel(message: IrisMessage, operatorLabel: string) {
-  if (message.direction !== "outbound" || message.senderLabel) {
+function readMessageOperatorAvatarUrl(row: any) {
+  const payload = row?.provider_payload;
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const avatarUrl = (payload as Record<string, unknown>).operatorAvatarUrl;
+
+    if (isUsableUrl(avatarUrl)) {
+      return avatarUrl;
+    }
+  }
+
+  const nestedUser = row?.sender_user;
+
+  if (
+    nestedUser &&
+    typeof nestedUser === "object" &&
+    !Array.isArray(nestedUser) &&
+    isUsableUrl(nestedUser.avatar_url)
+  ) {
+    return nestedUser.avatar_url;
+  }
+
+  return null;
+}
+
+function readMessageType(row: any) {
+  const payload = row?.provider_payload;
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const media = (payload as Record<string, unknown>).media;
+
+    if (media && typeof media === "object" && !Array.isArray(media)) {
+      const type = (media as Record<string, unknown>).type;
+
+      if (typeof type === "string" && type.trim()) {
+        return type.trim();
+      }
+    }
+  }
+
+  return "text";
+}
+
+function readMessageEditedAt(row: any) {
+  const payload = row?.provider_payload;
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const editedAt = (payload as Record<string, unknown>).editedAt;
+
+    if (typeof editedAt === "string" && editedAt.trim()) {
+      return editedAt.trim();
+    }
+  }
+
+  return null;
+}
+
+function readMessageReplyPreview(row: any): IrisReplyPreview | null {
+  const payload = row?.provider_payload;
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const reply = (payload as Record<string, unknown>).replyTo;
+
+  if (!reply || typeof reply !== "object" || Array.isArray(reply)) {
+    return null;
+  }
+
+  const record = reply as Record<string, unknown>;
+  const messageId = typeof record.messageId === "string" ? record.messageId : "";
+
+  if (!messageId) {
+    return null;
+  }
+
+  return {
+    body: typeof record.body === "string" ? record.body : "Mensagem selecionada",
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : null,
+    direction:
+      record.direction === "inbound" ||
+      record.direction === "outbound" ||
+      record.direction === "internal"
+        ? record.direction
+        : null,
+    externalMessageId:
+      typeof record.externalMessageId === "string"
+        ? record.externalMessageId
+        : null,
+    messageId,
+    senderLabel:
+      typeof record.senderLabel === "string" && record.senderLabel.trim()
+        ? record.senderLabel.trim()
+        : null,
+  };
+}
+
+function readMessageReactions(row: any): IrisMessageReaction[] {
+  const payload = row?.provider_payload;
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return [];
+  }
+
+  const reactions = (payload as Record<string, unknown>).reactions;
+
+  if (!Array.isArray(reactions)) {
+    return [];
+  }
+
+  return reactions
+    .map((reaction) => {
+      if (!reaction || typeof reaction !== "object" || Array.isArray(reaction)) {
+        return null;
+      }
+
+      const record = reaction as Record<string, unknown>;
+      const emoji = typeof record.emoji === "string" ? record.emoji.trim() : "";
+
+      if (!emoji) {
+        return null;
+      }
+
+      return {
+        actorAvatarUrl: isUsableUrl(record.actorAvatarUrl)
+          ? record.actorAvatarUrl
+          : null,
+        actorLabel:
+          typeof record.actorLabel === "string" && record.actorLabel.trim()
+            ? record.actorLabel.trim()
+            : null,
+        actorUserId:
+          typeof record.actorUserId === "string" && record.actorUserId.trim()
+            ? record.actorUserId.trim()
+            : null,
+        createdAt:
+          typeof record.createdAt === "string" && record.createdAt.trim()
+            ? record.createdAt.trim()
+            : null,
+        emoji,
+      } satisfies IrisMessageReaction;
+    })
+    .filter(Boolean) as IrisMessageReaction[];
+}
+
+function readMessageAudioDuration(row: any) {
+  const media = readMessageMediaPayload(row);
+  const duration = media?.durationMs;
+
+  return typeof duration === "number" && Number.isFinite(duration)
+    ? duration
+    : null;
+}
+
+function readMessageAudioMimeType(row: any) {
+  const media = readMessageMediaPayload(row);
+  const mimeType = media?.mimeType;
+
+  return typeof mimeType === "string" && mimeType.trim()
+    ? mimeType.trim()
+    : null;
+}
+
+function readMessageAudioUrl(row: any) {
+  const media = readMessageMediaPayload(row);
+  const url = media?.url ?? media?.externalUrl;
+
+  return isUsableUrl(url) ? url : null;
+}
+
+function readMessageMediaPayload(row: any): Record<string, unknown> | null {
+  const payload = row?.provider_payload;
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const media = (payload as Record<string, unknown>).media;
+
+  return media && typeof media === "object" && !Array.isArray(media)
+    ? (media as Record<string, unknown>)
+    : null;
+}
+
+function ensureOperatorIdentity(
+  message: IrisMessage,
+  operatorLabel: string,
+  operatorAvatarUrl?: string | null,
+) {
+  if (message.direction !== "outbound") {
     return message;
   }
 
   return {
     ...message,
-    senderLabel: operatorLabel,
+    operatorAvatarUrl: message.operatorAvatarUrl ?? operatorAvatarUrl ?? null,
+    senderLabel: message.senderLabel ?? operatorLabel,
   };
 }
 
@@ -4514,6 +5464,56 @@ function collectIrisMessageIds(data: IrisData) {
       ticket.messages.map((message) => message.id).filter(Boolean),
     ),
   );
+}
+
+function createReplyPreview(message: IrisMessage): IrisReplyPreview {
+  return {
+    body: irisMessagePreview(message),
+    createdAt: message.createdAt,
+    direction: message.direction,
+    externalMessageId: message.externalMessageId ?? null,
+    messageId: message.id,
+    senderLabel:
+      message.senderLabel ??
+      (message.direction === "inbound" ? "Cliente" : "Operador Iris"),
+  };
+}
+
+function irisMessagePreview(message: IrisMessage) {
+  if (message.messageType === "audio") {
+    return "Audio WhatsApp";
+  }
+
+  if (message.messageType && message.messageType !== "text") {
+    return message.body || `Mensagem ${message.messageType}`;
+  }
+
+  return message.body || "Mensagem sem texto";
+}
+
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("Nao foi possivel ler o audio."));
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("Audio invalido."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function formatAudioDuration(durationMs?: number | null) {
+  if (!durationMs || !Number.isFinite(durationMs)) {
+    return "0:00";
+  }
+
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function getContactAvatarUrl(contact: any) {
