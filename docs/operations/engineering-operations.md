@@ -6482,3 +6482,17 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: validacao visual autenticada deve ser confirmada pelo Lucas no navegador com reload da pagina; producao nao foi alterada; nenhum secret/env foi exibido ou alterado.
 - Status operacional: `EM HOMOLOGACAO`.
 - Proxima squad recomendada: `Lucas` para confirmar visualmente a Iris no sidebar; se reaparecer ausencia depois de reload, acionar `Iris Core` para investigar permissao de usuario em runtime.
+
+Registro de diario:
+
+- Assunto: `[Iris] Regra permanente de ativacao em homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 04:31:36 -03:00.
+- Tipo da alteracao: `DECISAO OPERACIONAL`.
+- Motivo da mudanca: Lucas determinou explicitamente que a Iris deve ficar ativa no ambiente de homologacao.
+- Regra definida: a Iris deve permanecer visivel e acessivel no sidebar/modulo de `https://homo.c2x.app.br` enquanto estiverem em andamento a homologacao Meta WhatsApp, recebimento/envio de mensagens, criacao de tickets `AT-*` e evolucao do atendimento. Qualquer alteracao futura que possa remover Iris do menu, do registry minimo, das permissoes de homologacao ou da excecao de visibilidade precisa de autorizacao explicita do Lucas.
+- Limite da regra: esta decisao vale para homologacao. Producao real continua separada e so deve receber Iris quando Lucas aprovar a promocao operacional.
+- Logica utilizada: Iris e o coracao do atendimento multicanal e precisa estar sempre disponivel no ambiente de testes para validar Meta/WhatsApp, tickets e atendimento. A regra evita regressao de visibilidade causada por `NODE_ENV=production` em Preview/Homolog da Vercel.
+- Validacao executada: registro documental no diario canonico; sem alteracao de codigo, Supabase, Vercel, env, secret, migration ou producao nesta entrada.
+- Status operacional: `REGRA REGISTRADA / EM HOMOLOGACAO`.
+- Proxima squad recomendada: `Iris Core` deve preservar esta regra em novos recortes; `Hefesto` deve checar a presenca da Iris no menu em releases de homologacao.
