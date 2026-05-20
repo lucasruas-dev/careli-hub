@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -59,6 +60,12 @@ type MessageItemProps = {
   users?: readonly HermesPresenceUser[];
 };
 
+type ReactionPickerPosition = {
+  align: "left" | "right";
+  left: number;
+  top: number;
+};
+
 export function MessageItem({
   author,
   currentUserId,
@@ -76,9 +83,12 @@ export function MessageItem({
   const [editValue, setEditValue] = useState(message.body);
   const [isEditing, setIsEditing] = useState(false);
   const [isReactionPickerOpen, setIsReactionPickerOpen] = useState(false);
+  const [reactionPickerPosition, setReactionPickerPosition] =
+    useState<ReactionPickerPosition | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isTagMenuOpen, setIsTagMenuOpen] = useState(false);
   const messageItemRef = useRef<HTMLDivElement | null>(null);
+  const reactionButtonRef = useRef<HTMLButtonElement | null>(null);
   const isOwn = message.authorId === currentUserId;
   const authorName = getAuthorName(author, message);
   const authorAvatarUrl = author?.avatarUrl ?? message.authorAvatarUrl;
@@ -93,12 +103,63 @@ export function MessageItem({
       message.attachment?.type === "sticker" &&
       message.body === message.attachment.label
     );
+  const standaloneEmoji = getStandaloneEmojiMessage(message.body, message.attachment);
+  const isStandaloneEmoji =
+    Boolean(standaloneEmoji) &&
+    !message.deletedAt &&
+    !message.tags?.length &&
+    !isEditing;
+
+  const updateReactionPickerPosition = useCallback(() => {
+    const button = reactionButtonRef.current;
+
+    if (!button) {
+      setReactionPickerPosition(null);
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const margin = 12;
+    const pickerWidthEstimate = 292;
+    const align: ReactionPickerPosition["align"] = isOwn ? "right" : "left";
+    const rawLeft = isOwn ? rect.right : rect.left;
+    const left =
+      align === "right"
+        ? Math.max(pickerWidthEstimate + margin, Math.min(viewportWidth - margin, rawLeft))
+        : Math.min(
+            Math.max(margin, rawLeft),
+            viewportWidth - pickerWidthEstimate - margin,
+          );
+
+    setReactionPickerPosition({
+      align,
+      left,
+      top: Math.max(margin, rect.top - 48),
+    });
+  }, [isOwn]);
 
   useEffect(() => {
     if (!isEditing) {
       setEditValue(message.body);
     }
   }, [isEditing, message.body]);
+
+  useEffect(() => {
+    if (!isReactionPickerOpen) {
+      setReactionPickerPosition(null);
+      return;
+    }
+
+    updateReactionPickerPosition();
+    window.addEventListener("resize", updateReactionPickerPosition);
+    window.addEventListener("scroll", updateReactionPickerPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateReactionPickerPosition);
+      window.removeEventListener("scroll", updateReactionPickerPosition, true);
+    };
+  }, [isReactionPickerOpen, updateReactionPickerPosition]);
 
   useEffect(() => {
     if (!isInfoOpen && !isReactionPickerOpen && !isTagMenuOpen) {
@@ -194,7 +255,7 @@ export function MessageItem({
     <div
       className={`relative flex items-end gap-2 px-4 py-1 ${
         isOwn ? "justify-end" : "justify-start"
-      } ${isTagMenuOpen ? "z-40" : "z-0"}`}
+      } ${isInfoOpen || isReactionPickerOpen || isTagMenuOpen ? "z-[80]" : "z-0"}`}
       ref={messageItemRef}
     >
       {!isOwn ? (
@@ -205,20 +266,26 @@ export function MessageItem({
         />
       ) : null}
       <div
-        className={`group relative max-w-[min(72%,46rem)] border px-3 py-2 shadow-[0_1px_2px_rgba(16,24,32,0.12)] ${
-          isOwn
-            ? "rounded-2xl rounded-br-md border-[#d6e7df] bg-[#effaf5] text-[#101820]"
-            : "rounded-2xl rounded-bl-md border-[#e5e9ef] bg-white text-[var(--uix-text-primary)]"
+        className={`group relative ${
+          isStandaloneEmoji
+            ? "max-w-[9rem] border-0 bg-transparent px-1 py-0 text-[#101820] shadow-none"
+            : `max-w-[min(72%,46rem)] border px-3 py-2 shadow-[0_1px_2px_rgba(16,24,32,0.12)] ${
+                isOwn
+                  ? "rounded-2xl rounded-br-md border-[#d6e7df] bg-[#effaf5] text-[#101820]"
+                  : "rounded-2xl rounded-bl-md border-[#e5e9ef] bg-white text-[var(--uix-text-primary)]"
+              }`
         }`}
       >
-        <span
-          aria-hidden="true"
-          className={`absolute bottom-0 h-3 w-3 rotate-45 ${
-            isOwn
-              ? "-right-1 border-r border-b border-[#d6e7df] bg-[#effaf5]"
-              : "-left-1 border-l border-b border-[#e5e9ef] bg-white"
-          }`}
-        />
+        {!isStandaloneEmoji ? (
+          <span
+            aria-hidden="true"
+            className={`absolute bottom-0 h-3 w-3 rotate-45 ${
+              isOwn
+                ? "-right-1 border-r border-b border-[#d6e7df] bg-[#effaf5]"
+                : "-left-1 border-l border-b border-[#e5e9ef] bg-white"
+            }`}
+          />
+        ) : null}
         {message.tags?.length ? (
           <div className="relative z-10 mb-2 flex flex-wrap gap-1">
             {message.tags.map((tag) => (
@@ -276,6 +343,10 @@ export function MessageItem({
               </button>
             </span>
           </form>
+        ) : isStandaloneEmoji ? (
+          <div className="relative z-10 text-[3.45rem] leading-none drop-shadow-sm">
+            {standaloneEmoji}
+          </div>
         ) : shouldShowBody ? (
           <div className="relative z-10 text-sm leading-6">
             {message.deletedAt
@@ -323,6 +394,7 @@ export function MessageItem({
                     setIsTagMenuOpen(false);
                     setIsReactionPickerOpen((currentValue) => !currentValue);
                   }}
+                  ref={reactionButtonRef}
                   type="button"
                 >
                   <SmilePlus aria-hidden="true" size={13} />
@@ -335,6 +407,7 @@ export function MessageItem({
                   onSelect={handleSelectReaction}
                   options={reactionOptions}
                   placement={isOwn ? "right" : "left"}
+                  position={reactionPickerPosition}
                 />
               ) : null}
             </div>
@@ -408,7 +481,7 @@ export function MessageItem({
               </button>
             </Tooltip>
             {isTagMenuOpen ? (
-              <div className="absolute bottom-full right-0 z-20 mb-2 w-44 overflow-hidden rounded-md border border-[#d9e0ea] bg-white py-1 text-left text-xs text-[#344054] shadow-lg">
+              <div className="absolute bottom-full right-0 z-[900] mb-2 w-44 overflow-hidden rounded-md border border-[#d9e0ea] bg-white py-1 text-left text-xs text-[#344054] shadow-lg">
                 {hermesMessageTagOptions.map((tag) => {
                   const selected = message.tags?.includes(tag.id) ?? false;
 
@@ -523,7 +596,7 @@ function MessageInfoPanel({
   });
 
   return (
-    <div className="relative z-10 mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-[0_8px_18px_rgba(16,24,32,0.10)]">
+    <div className="relative z-[900] mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-[#d9e0ea] bg-white p-3 text-left text-xs text-[#344054] shadow-[0_8px_18px_rgba(16,24,32,0.10)]">
       <div className="mb-2 flex items-center gap-2 border-b border-[#eef2f7] pb-2 text-sm font-semibold text-[#121722]">
         <CheckCheck aria-hidden="true" size={15} />
         Informações
@@ -568,18 +641,27 @@ function ReactionPicker({
   onSelect,
   options,
   placement,
+  position,
 }: {
   currentUserId?: HermesPresenceUser["id"];
   messageReactions: readonly HermesReaction[];
   onSelect: (emoji: HermesReactionEmoji) => void;
   options: readonly HermesReactionEmoji[];
   placement: "left" | "right";
+  position: ReactionPickerPosition | null;
 }) {
+  if (!position) {
+    return null;
+  }
+
   return (
     <div
-      className={`absolute bottom-full z-30 mb-2 flex items-center gap-1 rounded-full border border-[#d9e0ea] bg-white px-1.5 py-1 shadow-[0_12px_30px_rgba(16,24,32,0.16)] ${
-        placement === "right" ? "right-0" : "left-0"
-      }`}
+      className="fixed z-[1000] flex items-center gap-1 rounded-full border border-[#d9e0ea] bg-white px-1.5 py-1 shadow-[0_18px_42px_rgba(16,24,32,0.22)]"
+      style={{
+        left: position.left,
+        top: position.top,
+        transform: placement === "right" ? "translateX(-100%)" : undefined,
+      }}
     >
       {options.map((emoji) => {
         const selected = messageReactions.some(
@@ -896,6 +978,39 @@ function getInitials(value: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+function getStandaloneEmojiMessage(
+  body: string,
+  attachment: HermesMessage["attachment"],
+) {
+  if (attachment) {
+    return null;
+  }
+
+  const value = body.trim();
+
+  if (!value || value.length > 32 || /[A-Za-z0-9]/.test(value)) {
+    return null;
+  }
+
+  const compactValue = value.replace(/\s/g, "");
+  const emojiOnlyPattern =
+    /^(?:[\u00A9\u00AE\u203C-\u3299]\uFE0F?|[\u{1F000}-\u{1FAFF}]|\uFE0F|\u200D)+$/u;
+
+  if (!emojiOnlyPattern.test(compactValue)) {
+    return null;
+  }
+
+  const visibleCharacters = Array.from(
+    compactValue.replace(/[\uFE0F\u200D]/g, ""),
+  );
+
+  if (visibleCharacters.length > 6) {
+    return null;
+  }
+
+  return value;
 }
 
 function getUsersById(

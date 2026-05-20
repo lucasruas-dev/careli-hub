@@ -6654,3 +6654,18 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: nenhuma env, secret, migration, banco, producao ou alias de producao foi alterado. A validacao funcional autenticada ainda precisa ser feita por Lucas reagindo em uma mensagem, enviando emoji e enviando figurinha no Hermes homologado. Persistencia por metadata pode ter corrida em uso simultaneo extremo; evoluir para tabela propria se houver volume.
 - Status operacional: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
 - Proxima squad recomendada: `Lucas` para teste visual/autenticado em `https://homo.c2x.app.br/hermes`; `Hermes Core` acompanha ajuste fino; `Hefesto` so promove para producao em recorte separado se Lucas aprovar.
+
+Registro de diario:
+
+- Assunto: `[Hermes] Correcao de sobreposicao e emoji standalone`.
+- Nome da squad/agente: `Hermes Core`.
+- Data e hora local: 2026-05-20 12:13:17 -03:00.
+- Tipo da alteracao: `CORRECAO UX OPERACIONAL / HOMOLOGACAO`.
+- Motivo da mudanca: Lucas validou o Hermes em homologacao e apontou que popups de reacao estavam ficando atras ou cortados por mensagens/painel de respostas, que mensagem composta apenas por emoji deveria aparecer grande e sem borda, e que o fluxo de resposta continuava sofrendo sobreposicao.
+- Arquivos/modulos afetados: `apps/hub/components/pulsex/message-item.tsx` e este diario canonico. O caminho tecnico `pulsex` permanece por compatibilidade; o modulo operacional e `Hermes`.
+- Como foi feito: o seletor de reacoes deixou de depender de `absolute` dentro da bolha e passou a usar posicionamento `fixed`, calculado a partir do botao de reagir, com camada visual elevada. O item da mensagem tambem eleva a camada enquanto popups estao abertos. Mensagens cujo corpo e somente emoji agora sao detectadas e renderizadas em formato standalone, grande, sem borda, sem fundo e sem a ponta do balao. Menus e painel de informacoes tiveram camada reforcada para nao ficarem atras de outras mensagens.
+- Logica utilizada: o problema nao era regra de mensagem nem persistencia; era empilhamento visual. Ao ancorar o popup no viewport e reposicionar em resize/scroll, o seletor deixa de ser cortado por containers com scroll ou pela lateral do painel de respostas. O emoji standalone segue o comportamento esperado de mensageria tipo WhatsApp, preservando tags, figurinhas, anexos, edicao, respostas e reacoes existentes.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` typeless/cache da worktree; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de lockfile adicional da worktree e Turbopack/NFT; `git diff --check` passou; smoke local `GET http://localhost:3028/hermes` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: nenhuma env, secret, Supabase, banco, migration, producao ou alias de producao foi alterado nesta etapa. A validacao visual autenticada final ainda depende de Lucas testar em `https://homo.c2x.app.br/hermes` apos publicacao do hotfix.
+- Status operacional: `VALIDADO LOCAL / PUBLICACAO HOMOLOG EM ANDAMENTO`.
+- Proxima squad recomendada: `Hermes Core` para publicar o hotfix em `homolog` e executar healthcheck; `Lucas` para reteste visual/autenticado.
