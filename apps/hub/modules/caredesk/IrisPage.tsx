@@ -65,9 +65,11 @@ import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
 
 type IrisPageProps = {
+  boardOnly?: boolean;
   embedded?: boolean;
   initialTickets?: IrisTicket[];
   loadFromSupabase?: boolean;
+  operatorScoped?: boolean;
 };
 
 type IrisView =
@@ -474,10 +476,14 @@ const IRIS_TEMPLATE_STATUS_FILTERS = [
 ];
 
 export function IrisPage({
+  boardOnly = false,
   embedded = false,
   initialTickets = emptyIrisTickets,
   loadFromSupabase = true,
+  operatorScoped = false,
 }: IrisPageProps) {
+  const { hubUser } = useAuth();
+  const operatorUserId = operatorScoped ? hubUser?.id ?? null : null;
   const [irisData, setIrisData] = useState<IrisData>({
     ...emptyIrisData,
     tickets: initialTickets,
@@ -527,10 +533,16 @@ export function IrisPage({
         return;
       }
 
+      if (operatorScoped && !operatorUserId) {
+        return;
+      }
+
       refreshInFlightRef.current = true;
 
       try {
-        const nextData = await enrichIrisDataWithCrm360(await loadIrisData());
+        const nextData = await enrichIrisDataWithCrm360(
+          await loadIrisData({ operatorUserId }),
+        );
         let latestInbound: { message: IrisMessage; ticket: IrisTicket } | null =
           null;
         const knownMessageIds = knownMessageIdsRef.current;
@@ -571,7 +583,7 @@ export function IrisPage({
         refreshInFlightRef.current = false;
       }
     },
-    [enrichIrisDataWithCrm360, loadFromSupabase],
+    [enrichIrisDataWithCrm360, loadFromSupabase, operatorScoped, operatorUserId],
   );
 
   useEffect(() => {
@@ -591,11 +603,19 @@ export function IrisPage({
     let active = true;
 
     async function loadIris() {
+      if (operatorScoped && !operatorUserId) {
+        setIrisData(emptyIrisData);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setLoadError(null);
 
       try {
-        const nextData = await enrichIrisDataWithCrm360(await loadIrisData());
+        const nextData = await enrichIrisDataWithCrm360(
+          await loadIrisData({ operatorUserId }),
+        );
 
         if (!active) {
           return;
@@ -624,7 +644,7 @@ export function IrisPage({
     return () => {
       active = false;
     };
-  }, [enrichIrisDataWithCrm360, initialTickets, loadFromSupabase]);
+  }, [enrichIrisDataWithCrm360, initialTickets, loadFromSupabase, operatorScoped, operatorUserId]);
 
   useEffect(() => {
     if (!loadFromSupabase) {
@@ -759,10 +779,11 @@ export function IrisPage({
         ticket.id === ticketId
           ? {
               ...ticket,
+              assignedToLabel: assignedToLabelAfterMessage(ticket, message),
               lastMessageAt: message.createdAt,
               lastMessagePreview: irisMessagePreview(message),
               messages: [...ticket.messages, message],
-              status: ticket.status === "new" ? "open" : ticket.status,
+              status: statusAfterMessage(ticket, message),
             }
           : ticket,
       ),
@@ -790,12 +811,13 @@ export function IrisPage({
 
         return {
           ...ticket,
+          assignedToLabel: assignedToLabelAfterMessage(ticket, message),
           lastMessageAt: latestMessage?.createdAt ?? ticket.lastMessageAt,
           lastMessagePreview: latestMessage
             ? irisMessagePreview(latestMessage)
             : ticket.lastMessagePreview,
           messages,
-          status: ticket.status === "new" ? "open" : ticket.status,
+          status: statusAfterMessage(ticket, message),
         };
       }),
     }));
@@ -808,9 +830,20 @@ export function IrisPage({
     }));
   }
 
+  function handleQueuesChanged(queues: IrisQueueConfig[]) {
+    setIrisData((current) => ({
+      ...current,
+      queues,
+    }));
+  }
+
   function handleOpenModuleLauncher() {
     window.dispatchEvent(new Event("careli:toggle-module-launcher"));
   }
+
+  const visibleNavigationItems = boardOnly
+    ? navigationItems.filter((item) => item.id === "gestao")
+    : navigationItems;
 
   return (
     <div
@@ -927,7 +960,7 @@ export function IrisPage({
           </div>
 
           <nav className="space-y-1">
-            {navigationItems.map((item) => (
+            {visibleNavigationItems.map((item) => (
               <IrisNavButton
                 key={item.id}
                 active={activeView === item.id}
@@ -975,6 +1008,7 @@ export function IrisPage({
               <SetupView
                 data={irisData}
                 snapshot={snapshot}
+                onQueuesChanged={handleQueuesChanged}
                 onProfilesChanged={handleProfilesChanged}
               />
             ) : (
@@ -1972,7 +2006,7 @@ function IrisConversationPanel({
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const repairingOutboundMessageIds = useRef(new Set<string>());
   const { hubUser } = useAuth();
-  const operatorLabel = hubUser?.name ?? "Operador Iris";
+  const operatorLabel = formatIrisOperatorLabel(hubUser?.name);
   const operatorAvatarUrl = hubUser?.avatarUrl ?? null;
 
   const conversations = useMemo(() => {
@@ -2409,6 +2443,29 @@ function IrisConversationPanel({
   function insertEmoji(emoji: string) {
     setDraft((current) => `${current}${emoji}`);
     window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  function handleComposerKeyDown(
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.nativeEvent.isComposing
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (!draft.trim() || sending || !operationReady || recordingAudio) {
+      return;
+    }
+
+    void sendMessage();
   }
 
   async function toggleAudioRecording() {
@@ -2895,6 +2952,7 @@ function IrisConversationPanel({
                 ref={composerTextareaRef}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
                 placeholder={
                   operationReady
                     ? editingMessage
@@ -3578,10 +3636,12 @@ function BroadcastView({
 
 function SetupView({
   data,
+  onQueuesChanged,
   onProfilesChanged,
   snapshot,
 }: {
   data: IrisData;
+  onQueuesChanged: (queues: IrisQueueConfig[]) => void;
   onProfilesChanged: (profiles: IrisTicketProfileConfig[]) => void;
   snapshot: ReturnType<typeof buildIrisSnapshot>;
 }) {
@@ -3591,15 +3651,21 @@ function SetupView({
     [data.queues],
   );
   const [selectedQueueId, setSelectedQueueId] = useState("all");
+  const [editingQueueId, setEditingQueueId] = useState("");
   const [editingProfileId, setEditingProfileId] = useState("");
+  const [queueForm, setQueueForm] = useState(() => createQueueForm());
   const [profileForm, setProfileForm] = useState(() =>
     createProfileForm(firstQueueId),
   );
+  const [subjectSearch, setSubjectSearch] = useState("");
+  const [savingQueue, setSavingQueue] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [queueFeedback, setQueueFeedback] = useState<string | null>(null);
   const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
   const [setupTab, setSetupTab] = useState<"profiles" | "templates">(
     "profiles",
   );
+  const selectedQueue = data.queues.find((queue) => queue.id === selectedQueueId);
 
   useEffect(() => {
     if (!profileForm.queueId && firstQueueId) {
@@ -3613,19 +3679,54 @@ function SetupView({
   const visibleProfiles = useMemo(
     () =>
       data.profiles
-        .filter(
-          (profile) =>
-            selectedQueueId === "all" || profile.queueId === selectedQueueId,
-        )
+        .filter((profile) => {
+          const matchesQueue =
+            selectedQueueId === "all" || profile.queueId === selectedQueueId;
+          const search = subjectSearch.trim().toLowerCase();
+          const matchesSearch =
+            !search ||
+            [
+              profile.name,
+              profile.slug,
+              profile.category,
+              profile.queueLabel,
+              profile.description,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase()
+              .includes(search);
+
+          return matchesQueue && matchesSearch;
+        })
         .sort(sortIrisProfiles),
-    [data.profiles, selectedQueueId],
+    [data.profiles, selectedQueueId, subjectSearch],
   );
   const activeProfiles = data.profiles.filter(
     (profile) => profile.status === "active",
   ).length;
+  const activeQueues = data.queues.filter(
+    (queue) => queue.status === "active",
+  ).length;
   const categories = unique(
     data.profiles.map((profile) => profile.category).filter(Boolean),
   );
+
+  function updateQueueForm(field: string, value: string) {
+    setQueueFeedback(null);
+    setQueueForm((current) => {
+      const next = {
+        ...current,
+        [field]: value,
+      };
+
+      if (field === "name" && !editingQueueId) {
+        next.slug = slugifyIrisQueue(value);
+      }
+
+      return next;
+    });
+  }
 
   function updateProfileForm(field: string, value: string) {
     setProfileFeedback(null);
@@ -3643,10 +3744,29 @@ function SetupView({
     });
   }
 
+  function startNewQueue() {
+    setEditingQueueId("");
+    setQueueFeedback(null);
+    setQueueForm(createQueueForm());
+  }
+
+  function startEditQueue(queue: IrisQueueConfig) {
+    setEditingQueueId(queue.id);
+    setQueueFeedback(null);
+    setQueueForm(queueToForm(queue));
+    setSelectedQueueId(queue.id);
+    setProfileForm((current) => ({
+      ...current,
+      queueId: current.queueId || queue.id,
+    }));
+  }
+
   function startNewProfile() {
     setEditingProfileId("");
     setProfileFeedback(null);
-    setProfileForm(createProfileForm(firstQueueId));
+    setProfileForm(
+      createProfileForm(selectedQueueId === "all" ? firstQueueId : selectedQueueId),
+    );
   }
 
   function startEditProfile(profile: IrisTicketProfileConfig) {
@@ -3655,11 +3775,53 @@ function SetupView({
     setProfileForm(profileToForm(profile));
   }
 
+  async function saveQueue(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!queueForm.name.trim() || !queueForm.slug.trim()) {
+      setQueueFeedback("Preencha nome e slug da fila.");
+      return;
+    }
+
+    setSavingQueue(true);
+    setQueueFeedback(null);
+
+    try {
+      const savedRow = await saveIrisQueue(queueForm);
+      const savedQueue = mapQueueRow(savedRow);
+      const nextQueues = [
+        ...data.queues.filter(
+          (queue) =>
+            queue.id !== savedQueue.id && queue.slug !== savedQueue.slug,
+        ),
+        savedQueue,
+      ].sort(sortIrisQueues);
+
+      onQueuesChanged(nextQueues);
+      setEditingQueueId(savedQueue.id);
+      setSelectedQueueId(savedQueue.id);
+      setQueueForm(queueToForm(savedQueue));
+      setProfileForm((current) => ({
+        ...current,
+        queueId: current.queueId || savedQueue.id,
+      }));
+      setQueueFeedback("Fila salva no Iris.");
+    } catch (error) {
+      setQueueFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar a fila do Iris.",
+      );
+    } finally {
+      setSavingQueue(false);
+    }
+  }
+
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!profileForm.queueId) {
-      setProfileFeedback("Selecione uma fila antes de salvar o motivo.");
+      setProfileFeedback("Selecione uma fila antes de salvar o assunto.");
       return;
     }
 
@@ -3668,7 +3830,7 @@ function SetupView({
       !profileForm.slug.trim() ||
       !profileForm.category.trim()
     ) {
-      setProfileFeedback("Preencha nome, slug e categoria do motivo.");
+      setProfileFeedback("Preencha nome, slug e categoria do assunto.");
       return;
     }
 
@@ -3696,12 +3858,12 @@ function SetupView({
       onProfilesChanged(nextProfiles);
       setEditingProfileId(savedProfile.id);
       setProfileForm(profileToForm(savedProfile));
-      setProfileFeedback("Motivo de atendimento salvo no Iris.");
+      setProfileFeedback("Assunto de atendimento salvo no Iris.");
     } catch (error) {
       setProfileFeedback(
         error instanceof Error
           ? error.message
-          : "Nao foi possivel salvar o motivo do Iris.",
+          : "Nao foi possivel salvar o assunto do Iris.",
       );
     } finally {
       setSavingProfile(false);
@@ -3780,38 +3942,342 @@ function SetupView({
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#A07C3B]">
-              Motivos e perfis
+              Setup Iris
             </p>
             <h3 className="mt-1 text-base font-semibold text-[#101820]">
-              Configuracao operacional do atendimento
+              Filas e assuntos
             </h3>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[#63708a]">
-              Cada motivo define fila, categoria, prioridade e SLA. Essa
-              configuracao alimenta triagem, metricas e abertura de ticket sem
-              depender de outro modulo.
+              Cada fila define roteamento e SLA base. Cada assunto define o
+              tipo de atendimento que o operador vai usar no ticket.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <IrisSetupTabs active={setupTab} onChange={setSetupTab} />
             <button
               type="button"
-              onClick={startNewProfile}
+              onClick={startNewQueue}
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
-              Novo motivo
+              Nova fila
+            </button>
+            <button
+              type="button"
+              onClick={startNewProfile}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937]"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Novo assunto
             </button>
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <IrisTemplateMetricCard
+            icon={Workflow}
+            label="Filas"
+            value={formatCount(data.queues.length)}
+          />
+          <IrisTemplateMetricCard
+            icon={Route}
+            label="Filas ativas"
+            tone="green"
+            value={formatCount(activeQueues)}
+          />
+          <IrisTemplateMetricCard
+            icon={MessageSquareText}
+            label="Assuntos"
+            tone="gold"
+            value={formatCount(data.profiles.length)}
+          />
+          <IrisTemplateMetricCard
+            icon={SlidersHorizontal}
+            label="Categorias"
+            tone="blue"
+            value={formatCount(categories.length)}
+          />
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[310px_minmax(0,1fr)_380px]">
           <div className="min-w-0 space-y-3">
-            <div className="grid gap-2 rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-2 sm:grid-cols-[minmax(0,1fr)_180px]">
-              <label className="flex h-10 items-center gap-2 rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm text-[#63708a]">
-                <Search className="h-4 w-4 text-[#A07C3B]" aria-hidden="true" />
-                <span className="font-semibold">
-                  {formatCount(visibleProfiles.length)} motivos visiveis
+            <div className="rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
+                    Filas
+                  </p>
+                  <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                    Rotas de atendimento
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={startNewQueue}
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-[#dbe3ef] bg-white text-[#A07C3B] transition-colors hover:border-[#A07C3B]/35"
+                  aria-label="Nova fila"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedQueueId("all")}
+                  className={[
+                    "w-full rounded-xl border p-3 text-left transition-colors",
+                    selectedQueueId === "all"
+                      ? "border-[#101820] bg-white"
+                      : "border-[#e4eaf3] bg-white hover:border-[#A07C3B]/35",
+                  ].join(" ")}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-[#101820]">
+                      Todas as filas
+                    </span>
+                    <span className="rounded-full bg-[#f4f6fa] px-2 py-0.5 text-[11px] font-semibold text-[#63708a]">
+                      {formatCount(data.profiles.length)}
+                    </span>
+                  </div>
+                </button>
+
+                {data.queues.map((queue) => {
+                  const selected = selectedQueueId === queue.id;
+                  const queueSubjects = data.profiles.filter(
+                    (profile) => profile.queueId === queue.id,
+                  ).length;
+
+                  return (
+                    <button
+                      key={queue.id}
+                      type="button"
+                      onClick={() => startEditQueue(queue)}
+                      className={[
+                        "w-full rounded-xl border p-3 text-left transition-colors",
+                        selected
+                          ? "border-[#A07C3B]/55 bg-[#fbf6ec]"
+                          : "border-[#e4eaf3] bg-white hover:border-[#A07C3B]/35",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: queue.color }}
+                            />
+                            <span className="truncate text-sm font-semibold text-[#101820]">
+                              {queue.name}
+                            </span>
+                          </div>
+                          <p className="mt-1 truncate text-xs font-medium text-[#63708a]">
+                            {queue.slug} | {queue.assignmentStrategy}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                          {setupStatusLabel[queue.status] ?? queue.status}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                          {priorityLabel[queue.defaultPriority]}
+                        </span>
+                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                          {formatCount(queueSubjects)} assuntos
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <form
+              onSubmit={saveQueue}
+              className="rounded-2xl border border-[#dbe3ef] bg-white p-3"
+            >
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
+                  <Workflow className="h-4 w-4" aria-hidden="true" />
                 </span>
+                <div>
+                  <h4 className="text-sm font-semibold text-[#101820]">
+                    {editingQueueId ? "Editar fila" : "Nova fila"}
+                  </h4>
+                  <p className="text-xs text-[#63708a]">
+                    caredesk_queues
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <SetupField label="Nome da fila">
+                  <input
+                    value={queueForm.name}
+                    onChange={(event) =>
+                      updateQueueForm("name", event.target.value)
+                    }
+                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    placeholder="Atendimento"
+                  />
+                </SetupField>
+                <div className="grid grid-cols-[minmax(0,1fr)_72px] gap-2">
+                  <SetupField label="Slug">
+                    <input
+                      value={queueForm.slug}
+                      onChange={(event) =>
+                        updateQueueForm(
+                          "slug",
+                          slugifyIrisQueue(event.target.value),
+                        )
+                      }
+                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      placeholder="atendimento"
+                    />
+                  </SetupField>
+                  <SetupField label="Cor">
+                    <input
+                      type="color"
+                      value={queueForm.color}
+                      onChange={(event) =>
+                        updateQueueForm("color", event.target.value)
+                      }
+                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white p-1 outline-none"
+                    />
+                  </SetupField>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <SetupField label="Prioridade">
+                    <select
+                      value={queueForm.defaultPriority}
+                      onChange={(event) =>
+                        updateQueueForm("defaultPriority", event.target.value)
+                      }
+                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    >
+                      {priorityOptions.map((priority) => (
+                        <option key={priority} value={priority}>
+                          {priorityLabel[priority]}
+                        </option>
+                      ))}
+                    </select>
+                  </SetupField>
+                  <SetupField label="Status">
+                    <select
+                      value={queueForm.status}
+                      onChange={(event) =>
+                        updateQueueForm("status", event.target.value)
+                      }
+                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    >
+                      {setupStatusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {setupStatusLabel[status]}
+                        </option>
+                      ))}
+                    </select>
+                  </SetupField>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <SetupField label="1a resposta">
+                    <input
+                      type="number"
+                      min="1"
+                      value={queueForm.slaFirstResponseMinutes}
+                      onChange={(event) =>
+                        updateQueueForm(
+                          "slaFirstResponseMinutes",
+                          event.target.value,
+                        )
+                      }
+                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    />
+                  </SetupField>
+                  <SetupField label="Resolucao">
+                    <input
+                      type="number"
+                      min="1"
+                      value={queueForm.slaResolutionMinutes}
+                      onChange={(event) =>
+                        updateQueueForm(
+                          "slaResolutionMinutes",
+                          event.target.value,
+                        )
+                      }
+                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    />
+                  </SetupField>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <SetupField label="Roteamento">
+                    <input
+                      value={queueForm.routingStrategy}
+                      onChange={(event) =>
+                        updateQueueForm("routingStrategy", event.target.value)
+                      }
+                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    />
+                  </SetupField>
+                  <SetupField label="Distribuicao">
+                    <input
+                      value={queueForm.assignmentStrategy}
+                      onChange={(event) =>
+                        updateQueueForm(
+                          "assignmentStrategy",
+                          event.target.value,
+                        )
+                      }
+                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    />
+                  </SetupField>
+                </div>
+              </div>
+
+              {queueFeedback ? (
+                <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-[#fbfcfe] px-3 py-2 text-xs font-semibold text-[#63708a]">
+                  {queueFeedback}
+                </p>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={savingQueue}
+                className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                <Save className="h-4 w-4" aria-hidden="true" />
+                {savingQueue ? "Salvando..." : "Salvar fila"}
+              </button>
+            </form>
+          </div>
+
+          <div className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
+                  Assuntos
+                </p>
+                <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                  {selectedQueue?.name ?? "Todas as filas"}
+                </h4>
+              </div>
+              <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                {formatCount(visibleProfiles.length)} visiveis
+              </span>
+            </div>
+
+            <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_180px]">
+              <label className="relative block min-w-0">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A07C3B]"
+                  aria-hidden="true"
+                />
+                <input
+                  value={subjectSearch}
+                  onChange={(event) => setSubjectSearch(event.target.value)}
+                  placeholder="Buscar assunto"
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white pl-9 pr-3 text-sm font-semibold text-[#34415a] outline-none"
+                />
               </label>
               <FilterSelect
                 label="Fila"
@@ -3827,7 +4293,7 @@ function SetupView({
               />
             </div>
 
-            <div className="max-h-[620px] overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+            <div className="mt-3 max-h-[680px] overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
               <div className="space-y-2">
                 {visibleProfiles.length > 0 ? (
                   visibleProfiles.map((profile) => (
@@ -3839,7 +4305,7 @@ function SetupView({
                         "w-full rounded-xl border p-3 text-left transition-colors",
                         editingProfileId === profile.id
                           ? "border-[#A07C3B]/45 bg-[#fbf6ec]"
-                          : "border-[#e4eaf3] bg-[#fbfcfe] hover:border-[#A07C3B]/30 hover:bg-white",
+                          : "border-[#e4eaf3] bg-white hover:border-[#A07C3B]/30",
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -3847,7 +4313,7 @@ function SetupView({
                           <p className="truncate text-sm font-semibold text-[#101820]">
                             {profile.name}
                           </p>
-                          <p className="mt-1 text-xs font-medium text-[#63708a]">
+                          <p className="mt-1 truncate text-xs font-medium text-[#63708a]">
                             {profile.queueLabel} | {profile.category} |{" "}
                             {profile.slug}
                           </p>
@@ -3861,11 +4327,10 @@ function SetupView({
                           {priorityLabel[profile.priority]}
                         </span>
                         <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
-                          1a resposta {profile.slaFirstResponseMinutes} min
+                          TPR {profile.slaFirstResponseMinutes} min
                         </span>
                         <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
-                          Resolucao{" "}
-                          {formatSlaMinutes(profile.slaResolutionMinutes)}
+                          TMA {formatSlaMinutes(profile.slaResolutionMinutes)}
                         </span>
                       </div>
                     </button>
@@ -3873,8 +4338,8 @@ function SetupView({
                 ) : (
                   <EmptyState
                     icon={Route}
-                    title="Nenhum motivo configurado"
-                    description="Crie motivos de atendimento para padronizar fila, prioridade, SLA e metricas do Iris."
+                    title="Nenhum assunto configurado"
+                    description="Cadastre assuntos para padronizar triagem, prioridade, SLA e metricas da Iris."
                   />
                 )}
               </div>
@@ -3883,7 +4348,7 @@ function SetupView({
 
           <form
             onSubmit={saveProfile}
-            className="rounded-xl border border-[#dbe3ef] bg-[#fbfcfe] p-3"
+            className="rounded-2xl border border-[#dbe3ef] bg-white p-3"
           >
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
@@ -3891,10 +4356,10 @@ function SetupView({
               </span>
               <div>
                 <h4 className="text-sm font-semibold text-[#101820]">
-                  {editingProfileId ? "Editar motivo" : "Novo motivo"}
+                  {editingProfileId ? "Editar assunto" : "Novo assunto"}
                 </h4>
                 <p className="text-xs text-[#63708a]">
-                  Salvo em caredesk_ticket_profiles
+                  caredesk_ticket_profiles
                 </p>
               </div>
             </div>
@@ -3917,7 +4382,7 @@ function SetupView({
                 </select>
               </SetupField>
 
-              <SetupField label="Nome do motivo">
+              <SetupField label="Nome do assunto">
                 <input
                   value={profileForm.name}
                   onChange={(event) =>
@@ -3988,7 +4453,7 @@ function SetupView({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <SetupField label="SLA 1a resposta">
+                <SetupField label="TPR">
                   <input
                     type="number"
                     min="1"
@@ -4002,7 +4467,7 @@ function SetupView({
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                   />
                 </SetupField>
-                <SetupField label="SLA resolucao">
+                <SetupField label="TMA alvo">
                   <input
                     type="number"
                     min="1"
@@ -4025,7 +4490,7 @@ function SetupView({
                     updateProfileForm("requiredFields", event.target.value)
                   }
                   className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
-                  placeholder="contact_id, queue_id, priority"
+                  placeholder="contact_id, queue_id"
                 />
               </SetupField>
 
@@ -4036,13 +4501,13 @@ function SetupView({
                     updateProfileForm("description", event.target.value)
                   }
                   className="min-h-20 w-full resize-none rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-sm font-medium text-[#34415a] outline-none"
-                  placeholder="Quando usar este motivo no atendimento."
+                  placeholder="Quando usar este assunto no atendimento."
                 />
               </SetupField>
             </div>
 
             {profileFeedback ? (
-              <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
+              <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-[#fbfcfe] px-3 py-2 text-xs font-semibold text-[#63708a]">
                 {profileFeedback}
               </p>
             ) : null}
@@ -4053,7 +4518,7 @@ function SetupView({
               className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Save className="h-4 w-4" aria-hidden="true" />
-              {savingProfile ? "Salvando..." : "Salvar motivo"}
+              {savingProfile ? "Salvando..." : "Salvar assunto"}
             </button>
           </form>
         </div>
@@ -4074,12 +4539,12 @@ function SetupView({
         />
         <SetupSection
           icon={Route}
-          title="Motivos"
+          title="Assuntos"
           items={[
-            ["Ativos", `${formatCount(activeProfiles)} motivos`],
+            ["Ativos", `${formatCount(activeProfiles)} assuntos`],
             ["Categorias", `${formatCount(categories.length)} categorias`],
             ["Roteamento", "Fila + prioridade + SLA"],
-            ["Metricas", "Motivo obrigatorio"],
+            ["Metricas", "Assunto obrigatorio"],
           ]}
         />
         <SetupSection
@@ -4146,7 +4611,7 @@ function IrisSetupTabs({
   onChange: (tab: "profiles" | "templates") => void;
 }) {
   const tabs = [
-    { id: "profiles" as const, icon: Route, label: "Motivos" },
+    { id: "profiles" as const, icon: Route, label: "Filas e assuntos" },
     { id: "templates" as const, icon: MessageSquareText, label: "Templates" },
   ];
 
@@ -5925,24 +6390,13 @@ function StatusPill({
   );
 }
 
-function Crm360Badge({
-  compact = false,
-  registration,
-}: {
+function Crm360Badge({ registration }: {
   compact?: boolean;
   registration?: IrisCrm360Registration | null;
 }) {
   const registered = registration?.status === "registered";
   const missing = registration?.status === "missing";
-  const label = registered
-    ? compact
-      ? "CRM"
-      : "CRM 360"
-    : missing
-      ? "Sem cadastro"
-      : compact
-        ? "CRM"
-        : "CRM 360";
+  const label = "Apolo";
   const classes = registered
     ? "border-emerald-100 bg-emerald-50 text-emerald-700"
     : missing
@@ -6097,12 +6551,24 @@ function toneText(tone: IrisTone) {
   return "text-[#63708a]";
 }
 
-async function loadIrisData(): Promise<IrisData> {
+async function loadIrisData({
+  operatorUserId,
+}: {
+  operatorUserId?: string | null;
+} = {}): Promise<IrisData> {
   const supabase = getHubSupabaseClient();
 
   if (!supabase) {
     return emptyIrisData;
   }
+
+  const ticketsQuery = supabase
+    .from("caredesk_tickets")
+    .select(
+      "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at",
+    )
+    .order("opened_at", { ascending: false })
+    .limit(200);
 
   const [
     ticketsResult,
@@ -6112,13 +6578,9 @@ async function loadIrisData(): Promise<IrisData> {
     channelsResult,
     broadcastsResult,
   ] = await Promise.all([
-    supabase
-      .from("caredesk_tickets")
-      .select(
-        "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at",
-      )
-      .order("opened_at", { ascending: false })
-      .limit(200),
+    operatorUserId
+      ? ticketsQuery.eq("assigned_to_user_id", operatorUserId)
+      : ticketsQuery,
     supabase
       .from("caredesk_queues")
       .select(
@@ -6165,8 +6627,11 @@ async function loadIrisData(): Promise<IrisData> {
   const contactIds = unique(
     ticketsRows.map((ticket) => ticket.contact_id).filter(Boolean),
   );
+  const assignedUserIds = unique(
+    ticketsRows.map((ticket) => ticket.assigned_to_user_id).filter(Boolean),
+  );
 
-  const [contactsResult, messagesResult] = await Promise.all([
+  const [contactsResult, messagesResult, assignedUsersResult] = await Promise.all([
     contactIds.length
       ? supabase
           .from("caredesk_contacts")
@@ -6184,9 +6649,15 @@ async function loadIrisData(): Promise<IrisData> {
           .in("ticket_id", ticketIds)
           .order("created_at", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
+    assignedUserIds.length
+      ? supabase
+          .from("hub_users")
+          .select("id,display_name,avatar_url")
+          .in("id", assignedUserIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const failedNestedResult = [contactsResult, messagesResult].find(
+  const failedNestedResult = [contactsResult, messagesResult, assignedUsersResult].find(
     (result) => result.error,
   );
 
@@ -6226,6 +6697,9 @@ async function loadIrisData(): Promise<IrisData> {
   const contactById = new Map(
     (contactsResult.data ?? []).map((contact) => [contact.id, contact]),
   );
+  const assignedUserById = new Map(
+    (assignedUsersResult.data ?? []).map((user) => [user.id, user]),
+  );
   const profileRows = profilesResult.data ?? [];
   const profiles = profileRows.map((profile) =>
     mapTicketProfileRow(
@@ -6251,6 +6725,9 @@ async function loadIrisData(): Promise<IrisData> {
         messages: messagesByTicket.get(ticket.id) ?? [],
         profile: ticket.profile_id ? profileById.get(ticket.profile_id) : null,
         queue: ticket.queue_id ? queueById.get(ticket.queue_id) : null,
+        assignedUser: ticket.assigned_to_user_id
+          ? assignedUserById.get(ticket.assigned_to_user_id)
+          : null,
         row: ticket,
       }),
     ),
@@ -6389,6 +6866,48 @@ function formatIrisDisplayNameWord(word: string, index: number) {
   return lower.replace(/(^|[-'`])(\p{L})/gu, (match, prefix, letter) => {
     return `${prefix}${letter.toLocaleUpperCase("pt-BR")}`;
   });
+}
+
+function maybeIrisOperatorLabel(value?: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  if (!normalized || normalized.includes("@")) {
+    return null;
+  }
+
+  return formatIrisDisplayName(normalized);
+}
+
+function formatIrisOperatorLabel(value?: unknown) {
+  return maybeIrisOperatorLabel(value) ?? "Operador Iris";
+}
+
+function assignedToLabelAfterMessage(ticket: IrisTicket, message: IrisMessage) {
+  if (message.direction !== "outbound" || message.senderType !== "operator") {
+    return ticket.assignedToLabel;
+  }
+
+  return maybeIrisOperatorLabel(message.senderLabel) ?? ticket.assignedToLabel;
+}
+
+function statusAfterMessage(ticket: IrisTicket, message: IrisMessage): IrisStatus {
+  if (isClosedTicket(ticket)) {
+    return ticket.status;
+  }
+
+  if (message.direction === "outbound" && message.senderType === "operator") {
+    return "waiting_customer";
+  }
+
+  if (message.direction === "inbound" && ticket.status !== "new") {
+    return "pending";
+  }
+
+  return ticket.status;
 }
 
 function formatIrisChannelLabel(value: string) {
@@ -6809,7 +7328,7 @@ async function saveIrisTicketProfile(
   const supabase = getHubSupabaseClient();
 
   if (!supabase) {
-    throw new Error("Conexao do Supabase indisponivel para salvar o motivo.");
+    throw new Error("Conexao do Supabase indisponivel para salvar o assunto.");
   }
 
   const payload = {
@@ -6848,8 +7367,55 @@ async function saveIrisTicketProfile(
 
   if (result.error || !result.data) {
     throw new Error(
-      result.error?.message ?? "Nao foi possivel salvar o motivo.",
+      result.error?.message ?? "Nao foi possivel salvar o assunto.",
     );
+  }
+
+  return result.data;
+}
+
+async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
+  const supabase = getHubSupabaseClient();
+
+  if (!supabase) {
+    throw new Error("Conexao do Supabase indisponivel para salvar a fila.");
+  }
+
+  const payload = {
+    assignment_strategy: form.assignmentStrategy.trim() || "manual",
+    color: /^#[0-9a-fA-F]{6}$/.test(form.color) ? form.color : "#A07C3B",
+    default_priority: normalizePriority(form.defaultPriority),
+    name: form.name.trim(),
+    routing_strategy: form.routingStrategy.trim() || "manual",
+    sla_first_response_minutes: normalizePositiveInteger(
+      form.slaFirstResponseMinutes,
+      60,
+    ),
+    sla_resolution_minutes: normalizePositiveInteger(
+      form.slaResolutionMinutes,
+      480,
+    ),
+    slug: slugifyIrisQueue(form.slug || form.name),
+    status: setupStatusOptions.includes(form.status) ? form.status : "active",
+  };
+  const selectColumns =
+    "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy";
+
+  const result = form.id
+    ? await supabase
+        .from("caredesk_queues")
+        .update(payload)
+        .eq("id", form.id)
+        .select(selectColumns)
+        .single()
+    : await supabase
+        .from("caredesk_queues")
+        .upsert(payload, { onConflict: "slug" })
+        .select(selectColumns)
+        .single();
+
+  if (result.error || !result.data) {
+    throw new Error(result.error?.message ?? "Nao foi possivel salvar a fila.");
   }
 
   return result.data;
@@ -6891,6 +7457,7 @@ function mapTicketProfileRow(
 }
 
 function mapTicketRow(input: {
+  assignedUser?: any;
   channel: any;
   contact: any;
   messages: IrisMessage[];
@@ -6902,9 +7469,10 @@ function mapTicketRow(input: {
   const sourceModule = String(input.row.source_module ?? "").trim();
 
   return {
-    assignedToLabel: input.row.assigned_to_user_id
-      ? "Operador vinculado"
-      : "Sem responsavel",
+    assignedToLabel: readTicketAssignedToLabel(
+      input.assignedUser,
+      input.messages,
+    ),
     channelId: input.row.channel_id,
     channelLabel: input.channel?.name ?? "Canal nao definido",
     contactAvatarUrl: getContactAvatarUrl(input.contact),
@@ -6973,9 +7541,10 @@ function readMessageSenderLabel(row: any) {
 
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     const operatorLabel = (payload as Record<string, unknown>).operatorLabel;
+    const displayLabel = maybeIrisOperatorLabel(operatorLabel);
 
-    if (typeof operatorLabel === "string" && operatorLabel.trim()) {
-      return operatorLabel.trim();
+    if (displayLabel) {
+      return displayLabel;
     }
   }
 
@@ -6988,11 +7557,13 @@ function readMessageSenderLabel(row: any) {
     typeof nestedUser.display_name === "string" &&
     nestedUser.display_name.trim()
   ) {
-    return nestedUser.display_name.trim();
+    return maybeIrisOperatorLabel(nestedUser.display_name) ?? "Operador Iris";
   }
 
   if (typeof row?.sender_label === "string" && row.sender_label.trim()) {
-    return row.sender_label.trim();
+    return row?.sender_type === "operator"
+      ? formatIrisOperatorLabel(row.sender_label)
+      : row.sender_label.trim();
   }
 
   return row?.sender_type === "operator" ? "Operador Iris" : null;
@@ -7195,7 +7766,9 @@ function ensureOperatorIdentity(
   return {
     ...message,
     operatorAvatarUrl: message.operatorAvatarUrl ?? operatorAvatarUrl ?? null,
-    senderLabel: message.senderLabel ?? operatorLabel,
+    senderLabel:
+      maybeIrisOperatorLabel(message.senderLabel) ??
+      formatIrisOperatorLabel(operatorLabel),
   };
 }
 
@@ -7279,6 +7852,28 @@ function ticketScore(ticket: IrisTicket) {
   );
 }
 
+function readTicketAssignedToLabel(assignedUser: any, messages: IrisMessage[]) {
+  const assignedLabel = maybeIrisOperatorLabel(assignedUser?.display_name);
+
+  if (assignedLabel) {
+    return assignedLabel;
+  }
+
+  const latestOperatorMessage = [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.direction === "outbound" &&
+        message.senderType === "operator" &&
+        Boolean(maybeIrisOperatorLabel(message.senderLabel)),
+    );
+  const latestOperatorLabel = maybeIrisOperatorLabel(
+    latestOperatorMessage?.senderLabel,
+  );
+
+  return latestOperatorLabel ?? "Sem responsavel";
+}
+
 function sortIrisTickets(first: IrisTicket, second: IrisTicket) {
   const scoreDifference = ticketScore(second) - ticketScore(first);
   if (scoreDifference !== 0) {
@@ -7297,6 +7892,40 @@ function sortIrisProfiles(
     first.category.localeCompare(second.category, "pt-BR") ||
     first.name.localeCompare(second.name, "pt-BR")
   );
+}
+
+function sortIrisQueues(first: IrisQueueConfig, second: IrisQueueConfig) {
+  return first.name.localeCompare(second.name, "pt-BR");
+}
+
+function createQueueForm() {
+  return {
+    assignmentStrategy: "manual",
+    color: "#A07C3B",
+    defaultPriority: "medium" as IrisPriority,
+    id: "",
+    name: "",
+    routingStrategy: "manual",
+    slaFirstResponseMinutes: "60",
+    slaResolutionMinutes: "480",
+    slug: "",
+    status: "active",
+  };
+}
+
+function queueToForm(queue: IrisQueueConfig) {
+  return {
+    assignmentStrategy: queue.assignmentStrategy,
+    color: queue.color || "#A07C3B",
+    defaultPriority: queue.defaultPriority,
+    id: queue.id,
+    name: queue.name,
+    routingStrategy: queue.routingStrategy,
+    slaFirstResponseMinutes: String(queue.slaFirstResponseMinutes),
+    slaResolutionMinutes: String(queue.slaResolutionMinutes),
+    slug: queue.slug,
+    status: queue.status,
+  };
 }
 
 function createProfileForm(queueId = "") {
@@ -7376,7 +8005,18 @@ function slugifyIrisProfile(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  return slug || "motivo-atendimento";
+  return slug || "assunto-atendimento";
+}
+
+function slugifyIrisQueue(value: string) {
+  const slug = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "fila-atendimento";
 }
 
 function formatSlaMinutes(minutes: number) {

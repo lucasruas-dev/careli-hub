@@ -38,6 +38,7 @@ const EMPTY_FIELD = "-";
 
 type WhatsAppConversationPanelProps = {
   client: QueueClient;
+  initialAttendanceProtocol?: string | null;
   initialOrigin?: TicketOrigin;
   onClose: () => void;
   onTimelineEvent: (clientId: string, event: OperationalTimelineEvent) => void;
@@ -80,6 +81,16 @@ type IrisTicketQueueOption = {
   slug: string;
   status: string;
 };
+type IrisTicketTemplateOption = {
+  body?: string | null;
+  category?: string | null;
+  id: string;
+  language: string;
+  metaStatus: string;
+  name: string;
+  slug?: string | null;
+  templateName: string;
+};
 type IrisTicketOptions = {
   channels: IrisTicketChannelOption[];
   operator: {
@@ -88,6 +99,7 @@ type IrisTicketOptions = {
   };
   profiles: IrisTicketProfileOption[];
   queues: IrisTicketQueueOption[];
+  templates: IrisTicketTemplateOption[];
 };
 type TicketStatus =
   | "Pendente"
@@ -101,6 +113,8 @@ type TicketStatus =
   | "Cancelado";
 
 type WhatsAppTicket = {
+  attendanceProtocol?: string;
+  collectionProtocol?: string;
   irisMessageId?: string;
   irisTicketId?: string;
   protocol: string;
@@ -200,11 +214,15 @@ const IRIS_OPT_IN_TEMPLATE = {
 
 export function WhatsAppConversationPanel({
   client,
+  initialAttendanceProtocol,
   initialOrigin = "Careli iniciou",
   onClose,
   onTimelineEvent,
   open,
 }: WhatsAppConversationPanelProps) {
+  const linkedAttendanceProtocol =
+    normalizeAttendanceProtocol(initialAttendanceProtocol) ??
+    findLatestAttendanceProtocol(client);
   const [selectedUnitId, setSelectedUnitId] = useState(client.carteira.unidades[0]?.id ?? "");
   const [templateOpen, setTemplateOpen] = useState(false);
   const [operationDrawer, setOperationDrawer] = useState<OperationDrawerMode | null>(null);
@@ -212,7 +230,8 @@ export function WhatsAppConversationPanel({
   const [ticketIncomplete, setTicketIncomplete] = useState(initialOrigin === "Cliente iniciou");
   const [ticketCloseOpen, setTicketCloseOpen] = useState(false);
   const [ticket, setTicket] = useState<WhatsAppTicket>({
-    protocol: EMPTY_FIELD,
+    attendanceProtocol: linkedAttendanceProtocol ?? undefined,
+    protocol: linkedAttendanceProtocol ?? EMPTY_FIELD,
     origin: initialOrigin,
     profileId: "",
     profileName: EMPTY_FIELD,
@@ -233,6 +252,7 @@ export function WhatsAppConversationPanel({
     operator: { label: EMPTY_FIELD },
     profiles: [],
     queues: [],
+    templates: [],
   });
   const [irisOptionsLoading, setIrisOptionsLoading] = useState(false);
   const [irisOptionsError, setIrisOptionsError] = useState("");
@@ -344,6 +364,7 @@ export function WhatsAppConversationPanel({
             operator: { label: EMPTY_FIELD },
             profiles: [],
             queues: [],
+            templates: [],
           });
         }
       } finally {
@@ -364,16 +385,23 @@ export function WhatsAppConversationPanel({
 
   async function openTicket(
     profileId: string,
-    unitId?: string,
+    unitIds: string[] = [],
     relatedInstallments: string[] = [],
-    options: { channelId?: string; initialNote?: string } = {}
+    options: { channelId?: string; initialNote?: string; queueId?: string; templateId?: string } = {}
   ) {
-    if (unitId) setSelectedUnitId(unitId);
-    const unit = client.carteira.unidades.find((item) => item.id === unitId) ?? selectedUnit;
+    const selectedUnitIds = unitIds.length ? unitIds : selectedUnitId ? [selectedUnitId] : [];
+    if (selectedUnitIds[0]) setSelectedUnitId(selectedUnitIds[0]);
+    const selectedUnits = selectedUnitIds
+      .map((unitId) => client.carteira.unidades.find((item) => item.id === unitId))
+      .filter(Boolean);
+    const primaryUnit = selectedUnits[0] ?? selectedUnit;
     const profile = irisTicketProfiles.find((item) => item.id === profileId) ?? irisTicketProfiles[0];
     const channel =
       irisWhatsAppChannels.find((item) => item.id === options.channelId) ??
       irisWhatsAppChannels[0];
+    const template =
+      irisTicketOptions.templates.find((item) => item.id === options.templateId) ??
+      irisTicketOptions.templates[0];
 
     if (!profile) {
       throw new Error("Selecione um perfil real da Iris para abrir o ticket.");
@@ -383,37 +411,52 @@ export function WhatsAppConversationPanel({
       throw new Error("Canal WhatsApp da Iris nao localizado.");
     }
 
+    if (!template?.id) {
+      throw new Error("Selecione um template Meta aprovado na Iris.");
+    }
+
     const completingAutoTicket = ticketIncomplete;
+    const existingAttendanceProtocol =
+      normalizeAttendanceProtocol(ticket.attendanceProtocol) ??
+      normalizeAttendanceProtocol(ticket.protocol) ??
+      linkedAttendanceProtocol;
     const response = await fetch("/api/iris/tickets", {
       body: JSON.stringify({
         channelId: channel.id,
         contactName: client.nome,
         firstName: firstName(client.nome),
+        linkedAttendanceProtocol: existingAttendanceProtocol,
         metadata: {
+          attendanceProtocol: existingAttendanceProtocol,
           hadesClientId: client.id,
+          linkedAttendanceProtocol: existingAttendanceProtocol,
           relatedInstallments,
-          unitCode: unit?.matricula ?? null,
-          unitLabel: unit?.unidadeLote ?? null,
+          selectedUnitIds,
+          unitCodes: selectedUnits.map((unit) => unit?.matricula).filter(Boolean),
+          unitLabels: selectedUnits.map((unit) => unit?.unidadeLote).filter(Boolean),
         },
         phone: client.dados360.telefone,
         profileId: profile.id,
-        queueId: profile.queueId,
-        sendTemplate: true,
+        queueId: options.queueId ?? profile.queueId,
+        sendTemplate: !completingAutoTicket,
         sourceContext: {
           clientDocument: client.cpf,
           clientId: client.id,
-          enterprise: unit?.empreendimento ?? client.carteira.empreendimento,
+          enterprise: primaryUnit?.empreendimento ?? client.carteira.empreendimento,
+          linkedAttendanceProtocol: existingAttendanceProtocol,
           initialNote: options.initialNote?.trim() || null,
           relatedInstallments,
-          unitCode: unit?.matricula ?? null,
-          unitLabel: unit?.unidadeLote ?? null,
+          selectedUnitIds,
+          unitCodes: selectedUnits.map((unit) => unit?.matricula).filter(Boolean),
+          unitLabels: selectedUnits.map((unit) => unit?.unidadeLote).filter(Boolean),
         },
         sourceEntityId: client.c2xAcquisitionRequestId ?? client.id,
         sourceEntityType: "hades-collection-client",
         sourceModule: "hades",
         subject: `Cobranca Hades - ${profile.name}`,
-        templateLanguage: IRIS_OPT_IN_TEMPLATE.language,
-        templateName: IRIS_OPT_IN_TEMPLATE.name,
+        templateId: template.id,
+        templateLanguage: template.language,
+        templateName: template.templateName,
       }),
       cache: "no-store",
       headers: {
@@ -433,10 +476,13 @@ export function WhatsAppConversationPanel({
     const openedAt = payload.ticket.opened_at
       ? formatDateTime(payload.ticket.opened_at)
       : formatDateTime(new Date().toISOString());
-    const protocol = payload.ticket.protocol ?? EMPTY_FIELD;
+    const attendanceProtocol = payload.ticket.protocol ?? EMPTY_FIELD;
+    const collectionProtocol = payload.collectionProtocol ?? attendanceProtocol;
 
     setTicket((current) => ({
       ...current,
+      attendanceProtocol,
+      collectionProtocol,
       irisMessageId: payload.messageId,
       irisTicketId: payload.ticket.id,
       origin: current.origin,
@@ -444,7 +490,7 @@ export function WhatsAppConversationPanel({
       profileName: profile.name,
       profileCategory: profile.category,
       priority: mapIrisPriority(profile.priority),
-      protocol,
+      protocol: collectionProtocol,
       slaHours: Math.max(Math.ceil(profile.slaFirstResponseMinutes / 60), 1),
       relatedInstallments,
       status: "Aguardando cliente",
@@ -452,21 +498,21 @@ export function WhatsAppConversationPanel({
     }));
     setTicketSetupOpen(false);
     setTicketIncomplete(false);
-    setFeedback(`Ticket ${protocol} aberto pela Iris e template Meta enviado.`);
+    setFeedback(`Cobranca ${collectionProtocol} vinculada ao atendimento ${attendanceProtocol} na Iris.`);
     onTimelineEvent(client.id, {
       actionType: "ticket",
       id: completingAutoTicket ? `${client.id}-whatsapp-ticket-completed` : `${client.id}-whatsapp-ticket-open`,
-      protocol,
+      protocol: collectionProtocol,
       type: "Observação operacional",
       title: completingAutoTicket ? "Dados do ticket completados na Iris" : "Ticket WhatsApp iniciado pela Iris",
       description: completingAutoTicket
-        ? `Dados obrigatórios do Ticket ${protocol} completados pelo operador via Iris. Perfil: ${profile.name}.`
-        : `Atendimento iniciado pelo Hades via Iris/Meta com perfil ${profile.name}. Prioridade ${mapIrisPriority(profile.priority)} e SLA de ${formatSlaMinutes(profile.slaFirstResponseMinutes)}.`,
+        ? `Dados obrigatórios da cobranca ${collectionProtocol} completados pelo operador via Iris. Atendimento raiz: ${attendanceProtocol}. Perfil: ${profile.name}.`
+        : `Cobranca ${collectionProtocol} iniciada pelo Hades via Iris/Meta e vinculada ao atendimento ${attendanceProtocol}. Perfil ${profile.name}, prioridade ${mapIrisPriority(profile.priority)} e SLA ${formatSlaMinutes(profile.slaFirstResponseMinutes)}.`,
       occurredAt: openedAt,
       operator: operatorLabel,
       status: "Registrado",
-      unitCode: unit?.matricula,
-      unitLabel: unit?.unidadeLote,
+      unitCode: selectedUnits.map((unit) => unit?.matricula).filter(Boolean).join(", "),
+      unitLabel: selectedUnits.map((unit) => unit?.unidadeLote).filter(Boolean).join(", "),
     });
   }
 
@@ -992,11 +1038,21 @@ export function WhatsAppConversationPanel({
           error={irisOptionsError}
           loading={irisOptionsLoading}
           mode={ticketIncomplete ? "complete" : "open"}
-          onClose={() => setTicketSetupOpen(false)}
+          onClose={() => {
+            if (ticketIncomplete) {
+              setTicketSetupOpen(false);
+              return;
+            }
+
+            onClose();
+          }}
           onOpenTicket={openTicket}
           operatorLabel={operatorLabel}
           profiles={irisTicketProfiles}
+          queues={irisTicketOptions.queues}
+          linkedAttendanceProtocol={linkedAttendanceProtocol}
           selectedUnitId={selectedUnit?.id}
+          templates={irisTicketOptions.templates}
         />
       ) : null}
 
@@ -1105,46 +1161,93 @@ function TicketSetupModal({
   client,
   defaultProfileId,
   error,
+  linkedAttendanceProtocol,
   loading,
   mode = "open",
   onClose,
   onOpenTicket,
   operatorLabel,
   profiles,
+  queues,
   selectedUnitId,
+  templates,
 }: {
   channels: IrisTicketChannelOption[];
   client: QueueClient;
   defaultProfileId: string;
   error?: string;
+  linkedAttendanceProtocol?: string | null;
   loading?: boolean;
   mode?: "open" | "complete";
   onClose: () => void;
   onOpenTicket: (
     profileId: string,
-    unitId?: string,
+    unitIds?: string[],
     relatedInstallments?: string[],
-    options?: { channelId?: string; initialNote?: string },
+    options?: { channelId?: string; initialNote?: string; queueId?: string; templateId?: string },
   ) => Promise<void>;
   operatorLabel: string;
   profiles: IrisTicketProfileOption[];
+  queues: IrisTicketQueueOption[];
   selectedUnitId?: string;
+  templates: IrisTicketTemplateOption[];
 }) {
-  const [profileId, setProfileId] = useState(defaultProfileId);
+  const preferredQueueId = findPreferredQueueId(queues, profiles);
+  const initialQueueId =
+    profiles.find((profile) => profile.id === defaultProfileId)?.queueId ??
+    preferredQueueId ??
+    queues[0]?.id ??
+    "";
+  const initialProfileId =
+    defaultProfileId ||
+    findDefaultProfileId(profiles, initialQueueId) ||
+    profiles[0]?.id ||
+    "";
+  const initialTemplateId = templates[0]?.id ?? "";
+  const [queueId, setQueueId] = useState(initialQueueId);
+  const [profileId, setProfileId] = useState(initialProfileId);
   const [channelId, setChannelId] = useState(channels[0]?.id ?? "");
-  const [unitId, setUnitId] = useState(selectedUnitId ?? client.carteira.unidades[0]?.id ?? "");
+  const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>(
+    selectedUnitId
+      ? [selectedUnitId]
+      : client.carteira.unidades[0]?.id
+        ? [client.carteira.unidades[0].id]
+        : [],
+  );
+  const [templateId, setTemplateId] = useState(initialTemplateId);
   const [relatedInstallments, setRelatedInstallments] = useState<string[]>([]);
   const [initialNote, setInitialNote] = useState("");
+  const [slaExpanded, setSlaExpanded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
-  const [templateStatus, setTemplateStatus] = useState<string | null>(null);
-  const [templateFeedback, setTemplateFeedback] = useState("");
-  const selectedProfile = profiles.find((profile) => profile.id === profileId) ?? null;
-  const installmentOptions = buildInstallmentOptions(client);
-  const templateApproved = templateStatus === "APPROVED";
+  const profilesForQueue = queueId
+    ? profiles.filter((profile) => profile.queueId === queueId)
+    : profiles;
+  const selectedProfile =
+    profilesForQueue.find((profile) => profile.id === profileId) ??
+    profiles.find((profile) => profile.id === profileId) ??
+    null;
+  const selectedQueue =
+    queues.find((queue) => queue.id === queueId) ??
+    (selectedProfile?.queueId
+      ? queues.find((queue) => queue.id === selectedProfile.queueId)
+      : null) ??
+    null;
+  const selectedChannel = channels.find((channel) => channel.id === channelId) ?? null;
+  const selectedTemplate = templates.find((template) => template.id === templateId) ?? null;
+  const selectedUnits = selectedUnitIds
+    .map((unitId) => client.carteira.unidades.find((unit) => unit.id === unitId))
+    .filter(Boolean);
+  const installmentOptions = useMemo(
+    () => buildInstallmentOptions(client, selectedUnitIds),
+    [client, selectedUnitIds],
+  );
+  const templateApproved = Boolean(selectedTemplate?.id && selectedTemplate.metaStatus === "APPROVED");
   const missingProfile = !profileId;
   const missingChannel = !channelId;
-  const missingUnit = requiresIrisUnit(selectedProfile) && !unitId;
+  const missingQueue = !queueId;
+  const missingTemplate = !templateId;
+  const missingUnit = requiresIrisUnit(selectedProfile) && selectedUnitIds.length === 0;
   const missingInstallment =
     requiresIrisInstallment(selectedProfile) && relatedInstallments.length === 0;
   const missingPriority = !selectedProfile?.priority;
@@ -1154,6 +1257,8 @@ function TicketSetupModal({
     !error &&
     templateApproved &&
     !missingChannel &&
+    !missingQueue &&
+    !missingTemplate &&
     !missingProfile &&
     !missingUnit &&
     !missingInstallment &&
@@ -1162,13 +1267,23 @@ function TicketSetupModal({
     !submitting;
 
   useEffect(() => {
-    if (profileId || !profiles.length) return;
+    if (queueId || !queues.length) return;
+    setQueueId(findPreferredQueueId(queues, profiles) ?? queues[0]?.id ?? "");
+  }, [profiles, queueId, queues]);
+
+  useEffect(() => {
+    const availableProfiles = queueId
+      ? profiles.filter((profile) => profile.queueId === queueId)
+      : profiles;
+
+    if (availableProfiles.some((profile) => profile.id === profileId)) return;
+
     setProfileId(
-      profiles.find((profile) => profile.slug === "cobranca")?.id ??
-        profiles[0]?.id ??
+      availableProfiles.find((profile) => profile.slug === "cobranca")?.id ??
+        availableProfiles[0]?.id ??
         "",
     );
-  }, [profileId, profiles]);
+  }, [profileId, profiles, queueId]);
 
   useEffect(() => {
     if (channelId || !channels.length) return;
@@ -1176,55 +1291,30 @@ function TicketSetupModal({
   }, [channelId, channels]);
 
   useEffect(() => {
-    let active = true;
+    if (templateId || !templates.length) return;
+    setTemplateId(templates[0]?.id ?? "");
+  }, [templateId, templates]);
 
-    async function loadTemplateStatus() {
-      try {
-        const accessToken = await getIrisAccessToken();
-        const response = await fetch(
-          `/api/iris/meta/templates?name=${encodeURIComponent(IRIS_OPT_IN_TEMPLATE.name)}`,
-          {
-            cache: "no-store",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          },
-        );
-        const payload = await response.json().catch(() => null);
+  useEffect(() => {
+    setRelatedInstallments((current) => {
+      const next = current.filter((installment) =>
+        installmentOptions.some((option) => option.value === installment),
+      );
 
-        if (!active) return;
+      return next.length === current.length ? current : next;
+    });
+  }, [installmentOptions]);
 
-        if (!response.ok) {
-          setTemplateFeedback(
-            payload?.error ?? "Nao foi possivel consultar o template Meta na Iris.",
-          );
-          return;
-        }
-
-        const template = payload?.templates?.[0];
-        setTemplateStatus(template?.status ?? null);
-        setTemplateFeedback(
-          template
-            ? `Template Meta ${templateStatusLabel(template.status)}.`
-            : "Template Meta ainda nao localizado na Iris.",
-        );
-      } catch (templateError) {
-        if (active) {
-          setTemplateFeedback(
-            templateError instanceof Error
-              ? templateError.message
-              : "Nao foi possivel consultar o template Meta na Iris.",
-          );
-        }
+  function toggleUnit(unitId: string) {
+    setSelectedUnitIds((current) => {
+      if (current.includes(unitId)) {
+        const next = current.filter((item) => item !== unitId);
+        return next.length ? next : current;
       }
-    }
 
-    void loadTemplateStatus();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+      return [...current, unitId];
+    });
+  }
 
   function toggleInstallment(installment: string) {
     setRelatedInstallments((current) =>
@@ -1241,9 +1331,11 @@ function TicketSetupModal({
     setFormError("");
 
     try {
-      await onOpenTicket(profileId, unitId, relatedInstallments, {
+      await onOpenTicket(profileId, selectedUnitIds, relatedInstallments, {
         channelId,
         initialNote,
+        queueId,
+        templateId,
       });
     } catch (openError) {
       setFormError(
@@ -1267,15 +1359,15 @@ function TicketSetupModal({
       <section className="relative z-10 w-full max-w-4xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
         <header className="border-b border-slate-100 px-5 py-4">
           <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-            {mode === "complete" ? "Completar ticket" : "Abertura Iris"}
+            {mode === "complete" ? "Completar cobranca" : "Abertura Iris"}
           </p>
           <h2 className="mt-1 text-lg font-semibold text-slate-950">
-            {mode === "complete" ? "Completar dados do atendimento" : "Iniciar atendimento pela Iris"}
+            {mode === "complete" ? "Completar dados da cobranca" : "Iniciar cobranca pela Iris"}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             {mode === "complete"
-              ? "Complete os dados operacionais do ticket criado automaticamente pela mensagem do cliente."
-              : "Abertura real pela Iris: perfil, SLA, canal Meta e ticket AT ficam registrados no modulo de atendimento."}
+              ? "Complete os dados operacionais da cobranca criada a partir do atendimento do cliente."
+              : "A Iris cria o atendimento AT e o Hades registra a cobranca CB vinculada a esse atendimento."}
           </p>
         </header>
 
@@ -1285,7 +1377,7 @@ function TicketSetupModal({
               <ReadonlyField label="Cliente" value={client.nome} />
               <ReadonlyField label="Telefone" value={client.dados360.telefone} />
               <label className="min-w-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-                <span className="text-xs font-medium text-slate-500">Canal Iris</span>
+                <span className="text-xs font-medium text-slate-500">Canal</span>
                 <select
                   value={channelId}
                   onChange={(event) => setChannelId(event.target.value)}
@@ -1301,76 +1393,113 @@ function TicketSetupModal({
               <ReadonlyField label="Operador Iris" value={operatorLabel} />
             </div>
 
-            <label className="block rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
-              <span className="mb-2 block text-xs font-semibold text-[#7A5E2C]">Perfil do ticket</span>
-              <select
-                value={profileId}
-                onChange={(event) => setProfileId(event.target.value)}
-                className="h-10 w-full rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition-colors focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
-              >
-                {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name} / {profile.queueLabel ?? "Iris"}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                {selectedProfile?.description ?? "Aguardando perfis reais da Iris."}
-              </p>
-            </label>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <ReadonlyField label="Categoria" value={selectedProfile?.category ?? EMPTY_FIELD} />
-              <ReadonlyField label="Prioridade Iris" value={selectedProfile ? mapIrisPriority(selectedProfile.priority) : EMPTY_FIELD} />
-              <ReadonlyField label="SLA Iris" value={selectedProfile ? formatSlaMinutes(selectedProfile.slaFirstResponseMinutes) : EMPTY_FIELD} />
-            </div>
-
-            {requiresIrisUnit(selectedProfile) ? (
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-slate-500">Unidade vinculada ao ticket</span>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
+                <span className="text-xs font-medium text-slate-500">Fila Iris</span>
                 <select
-                  value={unitId}
-                  onChange={(event) => setUnitId(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition-colors focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
+                  value={queueId}
+                  onChange={(event) => setQueueId(event.target.value)}
+                  className="mt-1 h-9 w-full rounded-lg border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
                 >
-                  {client.carteira.unidades.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.matricula} · {unit.empreendimento} · {unit.unidadeLote}
+                  {queues.map((queue) => (
+                    <option key={queue.id} value={queue.id}>
+                      {queue.name}
                     </option>
                   ))}
                 </select>
               </label>
+              <label className="block rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2.5">
+                <span className="text-xs font-semibold text-[#7A5E2C]">Perfil</span>
+                <select
+                  value={profileId}
+                  onChange={(event) => setProfileId(event.target.value)}
+                  className="mt-1 h-9 w-full rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition-colors focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
+                >
+                  {profilesForQueue.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="block rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
+              <span className="text-xs font-medium text-slate-500">Template Meta aprovado</span>
+              <select
+                value={templateId}
+                onChange={(event) => setTemplateId(event.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
+              >
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs font-medium text-slate-500">
+                {selectedTemplate?.templateName ?? "Aguardando template aprovado na Iris."}
+              </p>
+            </label>
+
+            {requiresIrisUnit(selectedProfile) ? (
+              <div className="rounded-xl border border-slate-200/70 bg-white p-3">
+                <p className="text-xs font-semibold text-slate-500">Unidade vinculada a cobranca</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {client.carteira.unidades.map((unit) => {
+                    const active = selectedUnitIds.includes(unit.id);
+
+                    return (
+                      <button
+                        key={unit.id}
+                        type="button"
+                        onClick={() => toggleUnit(unit.id)}
+                        className={`min-h-9 rounded-lg px-3 py-1.5 text-left text-xs font-semibold transition-colors ${
+                          active
+                            ? "bg-[#A07C3B] text-white"
+                            : "border border-slate-200/70 bg-white text-slate-600 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+                        }`}
+                      >
+                        {unit.matricula} · {unit.unidadeLote}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             ) : (
               <ReadonlyField label="Unidade relacionada" value="Opcional para este perfil" />
             )}
 
             {requiresIrisInstallment(selectedProfile) ? (
               <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-                <p className="text-xs font-semibold text-slate-500">Parcelas relacionadas ao atendimento</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {installmentOptions.length ? installmentOptions.map((installment) => {
-                    const active = relatedInstallments.includes(installment.value);
-
-                    return (
-                      <button
-                        key={installment.value}
-                        type="button"
-                        onClick={() => toggleInstallment(installment.value)}
-                        className={`h-8 rounded-lg px-3 text-xs font-semibold transition-colors ${
-                          active
-                            ? "bg-[#A07C3B] text-white"
-                            : "border border-slate-200/70 bg-white text-slate-600 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
-                        }`}
-                      >
-                        {installment.label}
-                      </button>
-                    );
-                  }) : (
-                    <p className="text-sm font-medium text-slate-500">
-                      Aguardando parcelas reais do C2X para este cliente.
-                    </p>
-                  )}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-slate-500">Parcelas relacionadas</p>
+                  <span className="text-xs font-semibold text-[#7A5E2C]">
+                    {relatedInstallments.length} selecionada(s)
+                  </span>
                 </div>
+                {installmentOptions.length ? (
+                  <select
+                    multiple
+                    value={relatedInstallments}
+                    onChange={(event) =>
+                      setRelatedInstallments(
+                        Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
+                      )
+                    }
+                    className="mt-3 min-h-40 w-full rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
+                  >
+                    {installmentOptions.map((installment) => (
+                      <option key={installment.value} value={installment.value}>
+                        {installment.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                    <p className="text-sm font-medium text-slate-500">
+                      Aguardando parcelas reais do C2X para a unidade selecionada.
+                    </p>
+                )}
               </div>
             ) : (
               <ReadonlyField label="Parcelas relacionadas" value="Nao obrigatorio para este perfil" />
@@ -1388,35 +1517,38 @@ function TicketSetupModal({
           </div>
 
           <aside className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Estrutura Iris / Meta</p>
+            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Iris</p>
             <div className="mt-3 grid gap-2">
-              <ReadonlyField label="Template Meta" value={templateStatusLabel(templateStatus)} />
-              <ReadonlyField label="Fila Iris" value={selectedProfile?.queueLabel ?? EMPTY_FIELD} />
+              <ReadonlyField label="Canal" value={selectedChannel?.name ?? EMPTY_FIELD} />
+              <ReadonlyField label="Fila" value={selectedQueue?.name ?? EMPTY_FIELD} />
+              <ReadonlyField label="Template" value={selectedTemplate?.name ?? EMPTY_FIELD} />
+              <ReadonlyField label="Protocolo Iris" value={linkedAttendanceProtocol ?? "AT gerado na abertura"} />
+              <ReadonlyField
+                label="Protocolo Hades"
+                value={linkedAttendanceProtocol ? "CB sera vinculado ao AT existente" : "CB vinculado ao AT"}
+              />
             </div>
-            {templateFeedback ? (
-              <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
-                {templateFeedback}
-              </p>
+            <button
+              type="button"
+              onClick={() => setSlaExpanded((current) => !current)}
+              className="mt-3 inline-flex h-9 w-full items-center justify-between rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:text-[#7A5E2C]"
+            >
+              SLA e prioridade
+              <span>{slaExpanded ? "Ocultar" : "Expandir"}</span>
+            </button>
+            {slaExpanded ? (
+              <div className="mt-3 grid gap-2">
+                <ReadonlyField label="Categoria" value={selectedProfile?.category ?? EMPTY_FIELD} />
+                <ReadonlyField label="Prioridade" value={selectedProfile ? mapIrisPriority(selectedProfile.priority) : EMPTY_FIELD} />
+                <ReadonlyField label="Primeira resposta" value={selectedProfile ? formatSlaMinutes(selectedProfile.slaFirstResponseMinutes) : EMPTY_FIELD} />
+                <ReadonlyField label="Resolucao" value={selectedProfile ? formatSlaMinutes(selectedProfile.slaResolutionMinutes) : EMPTY_FIELD} />
+              </div>
             ) : null}
-            <div className="mt-3 space-y-2">
-              {profiles.slice(0, 8).map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  onClick={() => setProfileId(profile.id)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                    profile.id === profileId
-                      ? "border-[#A07C3B]/30 bg-white"
-                      : "border-slate-200/70 bg-white/60 hover:bg-white"
-                  }`}
-                >
-                  <p className="text-xs font-semibold text-slate-950">{profile.name}</p>
-                  <p className="mt-0.5 text-[11px] text-slate-500">
-                    {profile.category} · {mapIrisPriority(profile.priority)} · {formatSlaMinutes(profile.slaFirstResponseMinutes)}
-                  </p>
-                </button>
-              ))}
-            </div>
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              {selectedUnits.length
+                ? `Unidade(s): ${selectedUnits.map((unit) => unit?.matricula).filter(Boolean).join(", ")}`
+                : "Selecione a unidade para carregar as parcelas."}
+            </p>
           </aside>
         </div>
 
@@ -1428,20 +1560,24 @@ function TicketSetupModal({
                 : formError
                   ? formError
                   : !templateApproved
-                    ? "O template Meta precisa estar aprovado na Iris antes de iniciar contato externo."
+                    ? "Selecione um template Meta aprovado dentro da Iris."
                     : loading
                       ? "Carregando estrutura real da Iris."
                       : missingChannel
                         ? "Selecione o canal WhatsApp da Iris."
-                        : missingProfile
-                          ? "Selecione um perfil de ticket."
-                          : missingUnit
-                            ? "Selecione uma unidade para este perfil."
-                            : missingInstallment
-                              ? "Selecione ao menos uma parcela relacionada para este perfil."
-                              : missingPriority
-                                ? "Defina a prioridade do perfil."
-                                : "Defina o SLA do perfil."}
+                        : missingQueue
+                          ? "Selecione a fila da Iris."
+                          : missingTemplate
+                            ? "Selecione o template Meta aprovado."
+                            : missingProfile
+                              ? "Selecione um perfil."
+                              : missingUnit
+                                ? "Selecione uma ou mais unidades para este perfil."
+                                : missingInstallment
+                                  ? "Selecione ao menos uma parcela relacionada."
+                                  : missingPriority
+                                    ? "Defina a prioridade do perfil."
+                                    : "Defina o SLA do perfil."}
             </p>
           ) : null}
           <button
@@ -2258,6 +2394,18 @@ function mapIrisTicketOptions(payload: any): IrisTicketOptions {
         };
       })
     : [];
+  const templates = Array.isArray(payload?.templates)
+    ? payload.templates.map((template: any) => ({
+        body: typeof template.body === "string" ? template.body : null,
+        category: template.category ?? null,
+        id: String(template.id ?? ""),
+        language: String(template.language ?? IRIS_OPT_IN_TEMPLATE.language),
+        metaStatus: String(template.metaStatus ?? "APPROVED"),
+        name: String(template.name ?? "Template Iris"),
+        slug: template.slug ?? null,
+        templateName: String(template.templateName ?? template.slug ?? IRIS_OPT_IN_TEMPLATE.name),
+      }))
+    : [];
 
   return {
     channels: channels.filter((channel) => channel.id),
@@ -2267,7 +2415,67 @@ function mapIrisTicketOptions(payload: any): IrisTicketOptions {
     },
     profiles: profiles.filter((profile) => profile.id),
     queues: queues.filter((queue) => queue.id),
+    templates: templates.filter((template) => template.id),
   };
+}
+
+function findPreferredQueueId(
+  queues: IrisTicketQueueOption[],
+  profiles: IrisTicketProfileOption[],
+) {
+  const queue =
+    queues.find((item) => isCollectionText(item.slug)) ??
+    queues.find((item) => isCollectionText(item.name)) ??
+    null;
+
+  if (queue?.id) return queue.id;
+
+  return profiles.find((profile) => isCollectionText(profile.category))?.queueId ?? null;
+}
+
+function findDefaultProfileId(
+  profiles: IrisTicketProfileOption[],
+  queueId?: string | null,
+) {
+  const scopedProfiles = queueId
+    ? profiles.filter((profile) => profile.queueId === queueId)
+    : profiles;
+
+  return (
+    scopedProfiles.find((profile) => profile.slug === "cobranca")?.id ??
+    scopedProfiles.find((profile) => isCollectionText(profile.name))?.id ??
+    scopedProfiles[0]?.id ??
+    null
+  );
+}
+
+function isCollectionText(value?: string | null) {
+  const normalized = normalizeOptionText(value);
+
+  return normalized.includes("cobranca");
+}
+
+function normalizeOptionText(value?: string | null) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function normalizeAttendanceProtocol(value?: string | null) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+
+  return /^AT-\d{1,12}$/.test(normalized) ? normalized : null;
+}
+
+function findLatestAttendanceProtocol(client: QueueClient) {
+  return (
+    client.timeline
+      ?.map((event) => normalizeAttendanceProtocol(event.protocol))
+      .filter(Boolean)
+      .at(-1) ?? null
+  );
 }
 
 function normalizeRequiredFields(value: unknown) {
@@ -2348,11 +2556,15 @@ function templateStatusLabel(status?: string | null) {
   return status;
 }
 
-function buildInstallmentOptions(client: QueueClient) {
-  return (client.c2xInstallments ?? []).map((installment) => ({
-    label: `${installment.number} · ${installment.dueDate} · ${installment.value}`,
-    value: `${installment.number} | ${installment.dueDate} | ${installment.value}`,
-  }));
+function buildInstallmentOptions(client: QueueClient, selectedUnitIds: string[] = []) {
+  const allowedUnitIds = new Set(selectedUnitIds);
+
+  return (client.c2xInstallments ?? [])
+    .filter((installment) => !allowedUnitIds.size || allowedUnitIds.has(installment.unitId))
+    .map((installment) => ({
+      label: `${installment.unitCode ?? installment.unitLabel ?? "Unidade"} · ${installment.number} · ${installment.dueDate} · ${installment.value}`,
+      value: `${installment.id} | ${installment.unitId} | ${installment.number} | ${installment.dueDate} | ${installment.value}`,
+    }));
 }
 
 async function getIrisAccessToken() {

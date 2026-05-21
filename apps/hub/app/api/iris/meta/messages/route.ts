@@ -682,6 +682,16 @@ async function createQueuedTicketMessage({
   to: string;
   userId: string;
 }) {
+  const assignment = await assignTicketToOperator({
+    client,
+    ticketId,
+    userId,
+  });
+
+  if (!assignment.ok) {
+    return assignment;
+  }
+
   const { data, error } = await client
     .from("caredesk_messages")
     .insert({
@@ -790,6 +800,16 @@ async function prepareExistingTicketMessage({
     };
   }
 
+  const assignment = await assignTicketToOperator({
+    client,
+    ticketId: existing.ticket_id,
+    userId,
+  });
+
+  if (!assignment.ok) {
+    return assignment;
+  }
+
   const { data, error } = await client
     .from("caredesk_messages")
     .update({
@@ -821,6 +841,37 @@ async function prepareExistingTicketMessage({
     message: data,
     ok: true as const,
   };
+}
+
+async function assignTicketToOperator({
+  client,
+  ticketId,
+  userId,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  ticketId: string | null;
+  userId: string;
+}) {
+  if (!ticketId) {
+    return { ok: true as const };
+  }
+
+  const { error } = await client
+    .from("caredesk_tickets")
+    .update({
+      assigned_to_user_id: userId,
+      status: "waiting_customer",
+    })
+    .eq("id", ticketId);
+
+  if (error) {
+    return {
+      error: "Nao foi possivel assumir o responsavel do atendimento.",
+      ok: false as const,
+    };
+  }
+
+  return { ok: true as const };
 }
 
 async function persistOutboundReference({
@@ -980,7 +1031,7 @@ async function getOperatorIdentity({
 
   return {
     avatarUrl: normalizeUrl(data?.avatar_url),
-    label: name || data?.email?.trim() || "Operador Iris",
+    label: name || "Operador Iris",
   };
 }
 

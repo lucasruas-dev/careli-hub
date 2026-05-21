@@ -29,9 +29,16 @@ export async function GET(request: NextRequest) {
   }
 
   const { client } = authorization;
+  const protocol = normalizeOperationalProtocol(
+    new URL(request.url).searchParams.get("protocol"),
+  );
+
+  if (protocol) {
+    return resolveTicketByProtocol(client, protocol);
+  }
 
   try {
-    const [channelsResult, queuesResult, profilesResult, operator] =
+    const [channelsResult, queuesResult, profilesResult, templatesResult, operator] =
       await Promise.all([
         client
           .from("caredesk_channels")
@@ -55,10 +62,16 @@ export async function GET(request: NextRequest) {
           .eq("status", "active")
           .order("category", { ascending: true })
           .order("name", { ascending: true }),
+        client
+          .from("caredesk_templates")
+          .select("id,name,slug,category,channel_kind,body,variables,status,metadata")
+          .eq("channel_kind", "whatsapp")
+          .eq("status", "active")
+          .order("name", { ascending: true }),
         getOperatorIdentity(client, authorization.user.id),
       ]);
 
-    const failedResult = [channelsResult, queuesResult, profilesResult].find(
+    const failedResult = [channelsResult, queuesResult, profilesResult, templatesResult].find(
       (result) => result.error,
     );
 
@@ -72,6 +85,7 @@ export async function GET(request: NextRequest) {
         operator,
         profiles: profilesResult.data ?? [],
         queues: queuesResult.data ?? [],
+        templates: mapApprovedTemplateRows(templatesResult.data ?? []),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
@@ -114,6 +128,7 @@ export async function POST(request: NextRequest) {
   const channelId = normalizeUuid(input?.channelId);
   const profileId = normalizeUuid(input?.profileId);
   const requestedQueueId = normalizeUuid(input?.queueId);
+  const templateId = normalizeUuid(input?.templateId);
   const sourceContextInput = normalizeRecord(input?.sourceContext);
   const sourceEntityId =
     normalizeText(input?.sourceEntityId) ?? apoloEntityId ?? null;
@@ -122,6 +137,13 @@ export async function POST(request: NextRequest) {
   const sourceModule = normalizeSourceModule(input?.sourceModule);
   const subject = normalizeText(input?.subject);
   const metadataInput = normalizeRecord(input?.metadata);
+  const linkedAttendanceProtocol =
+    normalizeAttendanceProtocol(input?.linkedAttendanceProtocol) ??
+    normalizeAttendanceProtocol(input?.attendanceProtocol) ??
+    normalizeAttendanceProtocol(sourceContextInput.linkedAttendanceProtocol) ??
+    normalizeAttendanceProtocol(sourceContextInput.attendanceProtocol) ??
+    normalizeAttendanceProtocol(metadataInput.linkedAttendanceProtocol) ??
+    normalizeAttendanceProtocol(metadataInput.attendanceProtocol);
   const sendTemplate = input?.sendTemplate !== false;
 
   if (!contactName) {
@@ -179,17 +201,43 @@ export async function POST(request: NextRequest) {
       ? await getQueueById(client, profile.queue_id)
       : null;
     const queue = profileQueue ?? requestedQueue ?? defaultQueue;
+    const linkedAttendanceTicket =
+      sourceModule === "hades" && linkedAttendanceProtocol
+        ? await findTicketByAttendanceProtocol(client, linkedAttendanceProtocol)
+        : null;
+
+    if (sourceModule === "hades" && linkedAttendanceProtocol && !linkedAttendanceTicket) {
+      return NextResponse.json(
+        { error: "Atendimento Iris informado para vincular a cobranca nao foi localizado." },
+        { status: 404 },
+      );
+    }
+
+    const localTemplate = sendTemplate
+      ? await getApprovedLocalTemplate(client, {
+          name: requestedTemplateName,
+          templateId,
+        })
+      : null;
+
+    if (sendTemplate && sourceModule === "hades" && !localTemplate) {
+      return NextResponse.json(
+        { error: "Selecione um template Meta aprovado dentro da Iris." },
+        { status: 400 },
+      );
+    }
 
     const approvedTemplate = sendTemplate
       ? await resolveApprovedMetaTemplate({
-          language: requestedTemplateLanguage,
-          name: requestedTemplateName,
+          language: localTemplate?.language ?? requestedTemplateLanguage,
+          name: localTemplate?.templateName ?? requestedTemplateName,
         })
       : null;
     const templateName = approvedTemplate?.name ?? requestedTemplateName;
     const templateLanguage =
       approvedTemplate?.language ?? requestedTemplateLanguage;
-    const templatePreview = renderTemplatePreview(firstName);
+    const templateBody = localTemplate?.body ?? IRIS_OPT_IN_TEMPLATE.bodyText;
+    const templatePreview = renderTemplatePreview(templateBody, firstName);
     const sent = sendTemplate
       ? await sendMetaWhatsAppTemplateMessage({
           bodyParameters: [firstName],
@@ -200,7 +248,11 @@ export async function POST(request: NextRequest) {
       : null;
     const now = new Date();
     const queueId = profile?.queue_id ?? queue?.id ?? null;
-    const protocol = await nextTicketProtocol(client);
+    const protocol = linkedAttendanceTicket?.protocol ?? await nextTicketProtocol(client);
+    const collectionProtocol =
+      sourceModule === "hades"
+        ? collectionProtocolFromAttendanceProtocol(protocol)
+        : null;
     const contact = await findOrCreateContact({
       apoloEntityId,
       apoloProfileLabel,
@@ -216,105 +268,175 @@ export async function POST(request: NextRequest) {
       Number(profile?.sla_resolution_minutes) ||
       Number(queue?.sla_resolution_minutes) ||
       480;
-    const ticketResult = await client
-      .from("caredesk_tickets")
-      .insert({
-        assigned_to_user_id: authorization.user.id,
-        channel_id: channel.id,
-        contact_id: contact.id,
-        created_by_user_id: authorization.user.id,
-        first_response_due_at: addMinutes(now, firstResponseMinutes),
-        metadata: {
-          ...metadataInput,
-          activeContactConsent: "awaiting_customer_reply",
-          initialTemplateName: templateName,
-          initialTemplateLanguage: templateLanguage,
-          metaTemplateStatus: sendTemplate ? "sent" : "not_sent",
-          sourceModule,
-        },
-        opened_at: now.toISOString(),
-        priority: profile?.priority ?? queue?.default_priority ?? "medium",
-        profile_id: profile?.id ?? null,
-        protocol,
-        queue_id: queueId,
-        resolution_due_at: addMinutes(now, resolutionMinutes),
-        source_context: {
-          ...sourceContextInput,
-          apoloEntityId,
-          apoloProfileLabel,
-          contactOrigin: "active",
-          templateBody: IRIS_OPT_IN_TEMPLATE.bodyText,
-        },
-        source_entity_id: sourceEntityId,
-        source_entity_type: sourceEntityType,
-        source_module: sourceModule,
-        status: "waiting_customer",
-        subject:
-          subject ??
-          (sourceModule === "hades"
-            ? `Cobranca Hades - ${profile?.name ?? "Atendimento WhatsApp"}`
-            : "Contato ativo - aceite Iris"),
-      })
-      .select("id,protocol,profile_id,queue_id,priority,status,opened_at,subject")
-      .single();
+    const ticketProjection = "id,protocol,profile_id,queue_id,priority,status,opened_at,subject";
+    const ticketSubject =
+      subject ??
+      (sourceModule === "hades"
+        ? `Cobranca Hades - ${profile?.name ?? "Atendimento WhatsApp"}`
+        : "Contato ativo - aceite Iris");
+    let ticket: { id: string; protocol: string; [key: string]: unknown } | null = null;
 
-    if (ticketResult.error || !ticketResult.data) {
-      throw ticketResult.error ?? new Error("Ticket nao foi criado.");
-    }
-
-    const ticket = ticketResult.data;
-    const messageResult = await client
-      .from("caredesk_messages")
-      .insert({
-        body: templatePreview,
-        channel_id: channel.id,
-        delivery_status: sent?.messageId ? "sent" : "queued",
-        direction: "outbound",
-        external_message_id: sent?.messageId ?? null,
-        message_type: "template",
-        provider_payload: {
-          meta: sent?.raw ?? null,
-          operatorAvatarUrl: operator.avatarUrl,
-          operatorLabel: operator.label,
-          template: {
-            bodyParameters: [firstName],
-            language: templateLanguage,
-            name: templateName,
+    if (linkedAttendanceTicket) {
+      const currentMetadata = normalizeRecord(linkedAttendanceTicket.metadata);
+      const currentSourceContext = normalizeRecord(linkedAttendanceTicket.source_context);
+      const ticketResult = await client
+        .from("caredesk_tickets")
+        .update({
+          assigned_to_user_id: authorization.user.id,
+          metadata: {
+            ...currentMetadata,
+            ...metadataInput,
+            activeContactConsent: "awaiting_customer_reply",
+            attendanceProtocol: protocol,
+            collectionProtocol,
+            initialTemplateName: templateName,
+            initialTemplateLanguage: templateLanguage,
+            initialTemplateId: localTemplate?.id ?? null,
+            linkedAttendanceProtocol: protocol,
+            metaTemplateStatus: sendTemplate ? "sent" : "not_sent",
+            sourceModule,
           },
-        },
-        sender_type: "operator",
-        sender_user_id: authorization.user.id,
-        sent_at: sent?.messageId ? now.toISOString() : null,
-        ticket_id: ticket.id,
-      })
-      .select("id")
-      .single();
+          priority: profile?.priority ?? linkedAttendanceTicket.priority ?? queue?.default_priority ?? "medium",
+          profile_id: profile?.id ?? linkedAttendanceTicket.profile_id ?? null,
+          queue_id: queueId ?? linkedAttendanceTicket.queue_id ?? null,
+          source_context: {
+            ...currentSourceContext,
+            ...sourceContextInput,
+            apoloEntityId,
+            apoloProfileLabel,
+            attendanceProtocol: protocol,
+            collectionProtocol,
+            collectionSourceModule: sourceModule,
+            contactOrigin: currentSourceContext.contactOrigin ?? "active",
+            linkedAttendanceProtocol: protocol,
+            templateBody,
+          },
+          source_entity_id: sourceEntityId ?? linkedAttendanceTicket.source_entity_id ?? null,
+          source_entity_type: sourceEntityType ?? linkedAttendanceTicket.source_entity_type ?? null,
+          status: isClosedTicketStatus(linkedAttendanceTicket.status)
+            ? linkedAttendanceTicket.status
+            : "waiting_customer",
+          subject: ticketSubject ?? linkedAttendanceTicket.subject ?? null,
+          updated_at: now.toISOString(),
+        })
+        .eq("id", linkedAttendanceTicket.id)
+        .select(ticketProjection)
+        .single();
 
-    if (messageResult.error || !messageResult.data) {
-      throw messageResult.error ?? new Error("Mensagem inicial nao foi criada.");
+      if (ticketResult.error || !ticketResult.data) {
+        throw ticketResult.error ?? new Error("Atendimento Iris nao foi atualizado.");
+      }
+
+      ticket = ticketResult.data;
+    } else {
+      const ticketResult = await client
+        .from("caredesk_tickets")
+        .insert({
+          assigned_to_user_id: authorization.user.id,
+          channel_id: channel.id,
+          contact_id: contact.id,
+          created_by_user_id: authorization.user.id,
+          first_response_due_at: addMinutes(now, firstResponseMinutes),
+          metadata: {
+            ...metadataInput,
+            activeContactConsent: "awaiting_customer_reply",
+            attendanceProtocol: protocol,
+            collectionProtocol,
+            initialTemplateName: templateName,
+            initialTemplateLanguage: templateLanguage,
+            initialTemplateId: localTemplate?.id ?? null,
+            metaTemplateStatus: sendTemplate ? "sent" : "not_sent",
+            sourceModule,
+          },
+          opened_at: now.toISOString(),
+          priority: profile?.priority ?? queue?.default_priority ?? "medium",
+          profile_id: profile?.id ?? null,
+          protocol,
+          queue_id: queueId,
+          resolution_due_at: addMinutes(now, resolutionMinutes),
+          source_context: {
+            ...sourceContextInput,
+            apoloEntityId,
+            apoloProfileLabel,
+            attendanceProtocol: protocol,
+            collectionProtocol,
+            contactOrigin: "active",
+            templateBody,
+          },
+          source_entity_id: sourceEntityId,
+          source_entity_type: sourceEntityType,
+          source_module: sourceModule,
+          status: "waiting_customer",
+          subject: ticketSubject,
+        })
+        .select(ticketProjection)
+        .single();
+
+      if (ticketResult.error || !ticketResult.data) {
+        throw ticketResult.error ?? new Error("Ticket nao foi criado.");
+      }
+
+      ticket = ticketResult.data;
     }
+    let messageId: string | null = null;
 
-    if (sent?.messageId) {
-      const refResult = await client.from("caredesk_whatsapp_message_refs").insert({
-        channel_id: channel.id,
-        delivery_status: "sent",
-        direction: "outbound",
-        message_id: messageResult.data.id,
-        payload: sent.raw,
-        phone_number_id: process.env.META_WHATSAPP_PHONE_NUMBER_ID ?? null,
-        provider: "meta",
-        wa_contact_id: sent.contactWaId,
-        wa_message_id: sent.messageId,
-      });
+    if (sendTemplate) {
+      const messageResult = await client
+        .from("caredesk_messages")
+        .insert({
+          body: templatePreview,
+          channel_id: channel.id,
+          delivery_status: sent?.messageId ? "sent" : "queued",
+          direction: "outbound",
+          external_message_id: sent?.messageId ?? null,
+          message_type: "template",
+          provider_payload: {
+            meta: sent?.raw ?? null,
+            operatorAvatarUrl: operator.avatarUrl,
+            operatorLabel: operator.label,
+            template: {
+              bodyParameters: [firstName],
+              language: templateLanguage,
+              name: templateName,
+            },
+          },
+          sender_type: "operator",
+          sender_user_id: authorization.user.id,
+          sent_at: sent?.messageId ? now.toISOString() : null,
+          ticket_id: ticket.id,
+        })
+        .select("id")
+        .single();
 
-      if (refResult.error) {
-        throw refResult.error;
+      if (messageResult.error || !messageResult.data) {
+        throw messageResult.error ?? new Error("Mensagem inicial nao foi criada.");
+      }
+
+      messageId = messageResult.data.id;
+
+      if (sent?.messageId) {
+        const refResult = await client.from("caredesk_whatsapp_message_refs").insert({
+          channel_id: channel.id,
+          delivery_status: "sent",
+          direction: "outbound",
+          message_id: messageId,
+          payload: sent.raw,
+          phone_number_id: process.env.META_WHATSAPP_PHONE_NUMBER_ID ?? null,
+          provider: "meta",
+          wa_contact_id: sent.contactWaId,
+          wa_message_id: sent.messageId,
+        });
+
+        if (refResult.error) {
+          throw refResult.error;
+        }
       }
     }
 
     return NextResponse.json(
       {
-        messageId: messageResult.data.id,
+        messageId,
+        collectionProtocol,
         ok: true,
         ticket,
       },
@@ -337,6 +459,169 @@ export async function POST(request: NextRequest) {
       { status },
     );
   }
+}
+
+async function resolveTicketByProtocol(client: SupabaseClient, protocol: string) {
+  try {
+    const ticket =
+      protocol.startsWith("CB-")
+        ? await findTicketByCollectionProtocol(client, protocol)
+        : await findTicketByAttendanceProtocol(client, protocol);
+
+    if (!ticket) {
+      return NextResponse.json(
+        { error: "Protocolo nao localizado na Iris." },
+        { status: 404 },
+      );
+    }
+
+    const sourceContext = normalizeRecord(ticket.source_context);
+    const metadata = normalizeRecord(ticket.metadata);
+
+    return NextResponse.json(
+      {
+        collectionProtocol:
+          normalizeOperationalProtocol(sourceContext.collectionProtocol) ??
+          normalizeOperationalProtocol(metadata.collectionProtocol) ??
+          null,
+        ok: true,
+        ticket,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel localizar o protocolo na Iris.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+async function findTicketByAttendanceProtocol(client: SupabaseClient, protocol: string) {
+  const { data, error } = await client
+    .from("caredesk_tickets")
+    .select("id,protocol,profile_id,queue_id,priority,status,opened_at,subject,source_module,source_entity_type,source_entity_id,source_context,metadata")
+    .eq("protocol", protocol)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? null;
+}
+
+async function findTicketByCollectionProtocol(client: SupabaseClient, protocol: string) {
+  const sourceContextResult = await client
+    .from("caredesk_tickets")
+    .select("id,protocol,profile_id,queue_id,priority,status,opened_at,subject,source_module,source_entity_type,source_entity_id,source_context,metadata")
+    .contains("source_context", { collectionProtocol: protocol })
+    .order("opened_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (sourceContextResult.error) {
+    throw sourceContextResult.error;
+  }
+
+  if (sourceContextResult.data) {
+    return sourceContextResult.data;
+  }
+
+  const metadataResult = await client
+    .from("caredesk_tickets")
+    .select("id,protocol,profile_id,queue_id,priority,status,opened_at,subject,source_module,source_entity_type,source_entity_id,source_context,metadata")
+    .contains("metadata", { collectionProtocol: protocol })
+    .order("opened_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (metadataResult.error) {
+    throw metadataResult.error;
+  }
+
+  return metadataResult.data ?? null;
+}
+
+function mapApprovedTemplateRows(rows: Record<string, unknown>[]) {
+  return rows
+    .map(mapLocalTemplateRow)
+    .filter((template): template is NonNullable<ReturnType<typeof mapLocalTemplateRow>> =>
+      Boolean(template && template.metaStatus === "APPROVED"),
+    );
+}
+
+function mapLocalTemplateRow(row: Record<string, unknown>) {
+  const metadata = normalizeRecord(row.metadata);
+  const templateName =
+    normalizeTemplateName(metadata.metaTemplateName) ??
+    normalizeTemplateName(row.slug) ??
+    normalizeTemplateName(row.name);
+  const language =
+    normalizeLanguage(metadata.metaLanguage) ?? IRIS_OPT_IN_TEMPLATE.language;
+  const metaStatus = normalizeTemplateStatus(metadata.metaStatus);
+
+  if (!templateName || metaStatus !== "APPROVED") {
+    return null;
+  }
+
+  return {
+    body: normalizeText(row.body),
+    category: normalizeText(row.category),
+    id: String(row.id ?? ""),
+    language,
+    metaStatus,
+    name: normalizeText(row.name) ?? templateName,
+    slug: normalizeText(row.slug),
+    templateName,
+  };
+}
+
+async function getApprovedLocalTemplate(
+  client: SupabaseClient,
+  {
+    name,
+    templateId,
+  }: {
+    name: string;
+    templateId?: string | null;
+  },
+) {
+  if (templateId) {
+    const { data, error } = await client
+      .from("caredesk_templates")
+      .select("id,name,slug,category,channel_kind,body,variables,status,metadata")
+      .eq("id", templateId)
+      .eq("channel_kind", "whatsapp")
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return mapLocalTemplateRow(data);
+  }
+
+  const { data, error } = await client
+    .from("caredesk_templates")
+    .select("id,name,slug,category,channel_kind,body,variables,status,metadata")
+    .eq("channel_kind", "whatsapp")
+    .eq("status", "active")
+    .limit(50);
+
+  if (error || !data) {
+    return null;
+  }
+
+  return mapApprovedTemplateRows(data).find(
+    (template) => template.templateName === name || template.slug === name,
+  ) ?? null;
 }
 
 async function resolveApprovedMetaTemplate({
@@ -482,10 +767,7 @@ async function getOperatorIdentity(client: SupabaseClient, userId: string) {
 
   return {
     avatarUrl: normalizeText(data?.avatar_url),
-    label:
-      normalizeText(data?.display_name) ??
-      normalizeText(data?.email) ??
-      "Operador Iris",
+    label: normalizeText(data?.display_name) ?? "Operador Iris",
   };
 }
 
@@ -564,8 +846,18 @@ function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60000).toISOString();
 }
 
-function renderTemplatePreview(firstName: string) {
-  return IRIS_OPT_IN_TEMPLATE.bodyText.replace("{{1}}", firstName);
+function renderTemplatePreview(bodyText: string, firstName: string) {
+  return bodyText.replace("{{1}}", firstName);
+}
+
+function collectionProtocolFromAttendanceProtocol(protocol: string) {
+  const match = /^AT-(\d+)$/i.exec(protocol.trim());
+
+  if (match?.[1]) {
+    return `CB-${match[1]}`;
+  }
+
+  return `CB-${Date.now()}`;
 }
 
 function normalizeWhatsAppDestination(value: unknown) {
@@ -604,6 +896,44 @@ function normalizeLanguage(value: unknown) {
   const normalized = value.trim();
 
   return /^[a-z]{2}_[A-Z]{2}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeTemplateStatus(value: unknown) {
+  const normalized = normalizeText(value)?.toUpperCase();
+
+  if (
+    normalized === "APPROVED" ||
+    normalized === "PENDING" ||
+    normalized === "REJECTED" ||
+    normalized === "PAUSED"
+  ) {
+    return normalized;
+  }
+
+  return "PENDING";
+}
+
+function normalizeOperationalProtocol(value: unknown) {
+  const normalized = normalizeText(value)?.toUpperCase();
+
+  return normalized && /^(AT|CB)-\d{1,12}$/.test(normalized)
+    ? normalized
+    : null;
+}
+
+function normalizeAttendanceProtocol(value: unknown) {
+  const protocol = normalizeOperationalProtocol(value);
+
+  return protocol?.startsWith("AT-") ? protocol : null;
+}
+
+function isClosedTicketStatus(value: unknown) {
+  const normalized = normalizeText(value)?.toLowerCase();
+
+  return Boolean(
+    normalized &&
+      ["cancelled", "canceled", "closed", "resolved"].includes(normalized),
+  );
 }
 
 function normalizeUuid(value: unknown) {

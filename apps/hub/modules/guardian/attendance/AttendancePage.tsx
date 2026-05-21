@@ -2,14 +2,15 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Inbox, MapPinned, MessageCircle } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
 import { AiCopilotDrawer } from "@/modules/guardian/attendance/components/AiCopilotDrawer";
 import { QueuePanel } from "@/modules/guardian/attendance/components/QueuePanel";
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
-import { DeskPage } from "@/modules/guardian/attendance/DeskPage";
+import { IrisPage } from "@/modules/caredesk/IrisPage";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { queueClients } from "@/modules/guardian/attendance/data";
 import type {
@@ -50,6 +51,17 @@ type AttendancePageProps = {
 };
 
 export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageProps) {
+  const searchParams = useSearchParams();
+  const routeOpenHandledRef = useRef(false);
+  const routeAttendanceProtocol = normalizeAttendanceProtocol(
+    searchParams.get("attendanceProtocol") ??
+      searchParams.get("atProtocol") ??
+      searchParams.get("at"),
+  );
+  const routeClientId =
+    searchParams.get("clientId") ??
+    searchParams.get("client") ??
+    searchParams.get("hadesClientId");
   const initialClients = clients ?? queueClients;
   const [sourceClients, setSourceClients] = useState(initialClients);
   const [queueTotalCount, setQueueTotalCount] = useState(initialClients.length);
@@ -62,6 +74,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [priority, setPriority] = useState<AttendancePriority | "Todos">("Todos");
   const [stage, setStage] = useState<WorkflowStage | "Todas">("Todas");
   const [whatsAppClientId, setWhatsAppClientId] = useState<string | null>(null);
+  const [whatsAppAttendanceProtocol, setWhatsAppAttendanceProtocol] = useState<string | null>(null);
   const [timelineEventsByClient, setTimelineEventsByClient] = useState<
     Record<string, OperationalTimelineEvent[]>
   >({});
@@ -252,6 +265,28 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     };
   }, [selectedId]);
 
+  useEffect(() => {
+    if (routeOpenHandledRef.current || !routeAttendanceProtocol || sourceClients.length === 0) {
+      return;
+    }
+
+    const routeClient =
+      (routeClientId
+        ? sourceClients.find((client) => client.id === routeClientId)
+        : null) ??
+      sourceClients.find((client) => client.id === selectedId) ??
+      sourceClients[0];
+
+    if (!routeClient) {
+      return;
+    }
+
+    routeOpenHandledRef.current = true;
+    setSelectedId(routeClient.id);
+    setWhatsAppClientId(routeClient.id);
+    setWhatsAppAttendanceProtocol(routeAttendanceProtocol);
+  }, [routeAttendanceProtocol, routeClientId, selectedId, sourceClients]);
+
   const enterpriseOptions = useMemo(() => {
     const enterprises = sourceClients
       .flatMap((client) => [
@@ -330,9 +365,10 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     );
   }
 
-  function openWhatsApp(clientId = selectedClient.id) {
+  function openWhatsApp(clientId = selectedClient.id, attendanceProtocol?: string | null) {
     setSelectedId(clientId);
     setWhatsAppClientId(clientId);
+    setWhatsAppAttendanceProtocol(normalizeAttendanceProtocol(attendanceProtocol));
   }
 
   async function saveManualTimelineEvent(
@@ -469,9 +505,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     <>
       {whatsAppClientId ? (
         <WhatsAppConversationPanel
-          key={whatsAppClient.id}
+          key={`${whatsAppClient.id}-${whatsAppAttendanceProtocol ?? "novo"}`}
           client={whatsAppClient}
-          onClose={() => setWhatsAppClientId(null)}
+          initialAttendanceProtocol={whatsAppAttendanceProtocol}
+          onClose={() => {
+            setWhatsAppClientId(null);
+            setWhatsAppAttendanceProtocol(null);
+          }}
           onTimelineEvent={addTimelineEvent}
           open={Boolean(whatsAppClientId)}
         />
@@ -507,7 +547,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
           </nav>
 
           {activeSection === "desk" ? (
-            <DeskPage embedded clients={sourceClients} />
+            <IrisPage embedded boardOnly operatorScoped />
           ) : (
             <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
               <QueuePanel
@@ -570,6 +610,12 @@ function mergeCommitments(
 
 function dedupeTimelineEvents(events: OperationalTimelineEvent[]) {
   return upsertById(events, []);
+}
+
+function normalizeAttendanceProtocol(value?: string | null) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+
+  return /^AT-\d{1,12}$/.test(normalized) ? normalized : null;
 }
 
 async function getHadesAccessToken() {
