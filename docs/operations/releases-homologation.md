@@ -1150,3 +1150,58 @@ Registro preparado para homologacao:
 - Pendencias: Lucas validar o preview interno em mensagem de canal e em respostas/thread antes de autorizar homologacao.
 - Status: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
 - Proxima acao: publicar em homologacao somente quando Lucas autorizar o recorte Hermes.
+
+Registro de homologacao:
+
+- Assunto: `[Hades] Board Iris filtrado e abertura ativa/passiva`.
+- Modulo/agente: `Hades Core`.
+- Data e hora local: `2026-05-21 17:19:13 -03:00`.
+- Ambiente: `homologacao`, Vercel Preview em `https://homo.c2x.app.br`.
+- Origem: Lucas autorizou commit e deploy do recorte Hades/Iris.
+- Escopo do recorte:
+  - reexibicao do board real da Iris dentro de Hades/Cobranca;
+  - `IrisPage` embutida em modo `boardOnly` e `operatorScoped`;
+  - visao do board Iris filtrada por `assigned_to_user_id` do operador logado;
+  - abertura ativa somente apos formulario confirmado;
+  - abandono do formulario ativo retornando para a tela anterior;
+  - fluxo passivo completando formulario sem disparo ativo/template artificial;
+  - vinculo operacional `CB-*` com atendimento Iris `AT-*`;
+  - busca de ticket Iris por protocolo `AT-*` ou `CB-*`.
+- Protocolos/atividades relacionados: `HADES-IRIS-BOARD-OPERATOR-ACTIVE-PASSIVE-20260521-1659`, `HADES-IRIS-CB-AT-OPENING-20260521-1603`.
+- Commit de codigo: `0a9bb9d`.
+- Pacote limpo de deploy: `.codex-deploy/hades-iris-board-homolog-20260521-1735`.
+- Deployment Vercel oficial: `dpl_CFcPPXF7o3wouRcKcNC8h23YFUmu`.
+- URL tecnica: `https://careli-hub-hub-i2bs-5kcllaank-lucasruas-devs-projects.vercel.app`.
+- Alias de homologacao: `https://homo.c2x.app.br`.
+- Arquivos incluidos:
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, aliases `c2x.app.br` e `ops.c2x.app.br`, envs, secrets, migrations, banco mutavel, Atlas, Apolo, Zeus, Hermes, Chronos e Setup fora do recorte Hades/Iris.
+- Validacoes executadas:
+  - pacote limpo `npx.cmd eslint ... --max-warnings 0`: OK, com warning conhecido do Node/ESLint sobre `type: module`;
+  - pacote limpo `npm.cmd run check-types:hub`: OK;
+  - pacote limpo `npm.cmd run lint:hub`: OK;
+  - pacote limpo `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `npx.cmd vercel deploy --yes --target preview --archive=tgz`: OK;
+  - `npx.cmd vercel alias set ... homo.c2x.app.br`: OK;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`;
+  - `GET https://homo.c2x.app.br/hades/cobranca`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/tickets` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Riscos conhecidos:
+  - validacao funcional autenticada depende de Lucas;
+  - tickets Iris sem `assigned_to_user_id` nao aparecem na visao Hades filtrada por operador;
+  - deploy tecnico inicial sem `project.json` oficial criou projeto temporario sem alias de homologacao, depois corrigido e redeployado no projeto oficial;
+  - worktree principal segue mista, por isso o deployment oficial foi feito por pacote limpo.
+- Pendencias: Lucas validar `/hades/cobranca` autenticado em homologacao.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: se Lucas aprovar, Hefesto prepara promocao de producao em recorte limpo somente para Hades/Iris.

@@ -9967,3 +9967,66 @@ Rollback:
 Proximo passo:
 - Lucas validar Hermes autenticado em producao com imagem anexada real e conversa direta entre usuarios.
 - Hermes Core acompanhar ajuste fino se houver divergencia visual ou funcional.
+
+## 2026-05-21 17:19:13 -03:00 - Hades Core - Homologacao Board Iris filtrado
+
+Assunto: [Hades] Homologacao Board Iris e abertura ativa/passiva
+
+Status: EM HOMOLOGACAO
+
+Motivo:
+- Lucas autorizou commit e deploy do recorte Hades/Iris.
+- O recorte precisava publicar em homologacao a cobranca conectada ao board real da Iris, com visao filtrada pelo operador e regra ativa/passiva.
+
+Arquivos/modulos afetados:
+- `apps/hub/app/api/iris/meta/messages/route.ts`
+- `apps/hub/app/api/iris/tickets/route.ts`
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `apps/hub/modules/guardian/attendance/AttendancePage.tsx`
+- `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`
+- `docs/operations/engineering-operations.md`
+- `docs/operations/releases-homologation.md`
+
+Arquivos/modulos excluidos:
+- Producao, aliases `c2x.app.br` e `ops.c2x.app.br`, envs, secrets, migrations, banco mutavel, Atlas, Apolo, Zeus, Hermes, Chronos e Setup fora do recorte Hades/Iris.
+
+Como foi feito:
+- Criei commit de codigo `0a9bb9d` com o recorte Hades/Iris.
+- Montei pacote limpo em `.codex-deploy/hades-iris-board-homolog-20260521-1735` a partir do HEAD e copiei apenas os arquivos Hades/Iris autorizados.
+- Publiquei o pacote no projeto Vercel oficial `careli-hub-hub-i2bs` em Preview.
+- Apontei `https://homo.c2x.app.br` para o deployment de homologacao `dpl_CFcPPXF7o3wouRcKcNC8h23YFUmu`.
+- O primeiro deploy tecnico sem o `project.json` oficial criou deployment em projeto temporario sem apontar o alias de homologacao; o pacote foi corrigido com o vinculo oficial e redeployado no projeto correto.
+
+Logica:
+- Hades continua dono do fluxo de cobranca e dos protocolos `CB-*`.
+- Iris continua dona do board, atendimento, mensagens, canal, fila e templates Meta.
+- A acao ativa so entra no chat apos formulario confirmado.
+- A acao passiva preserva atendimento recebido e apenas completa classificacao operacional.
+- O board embutido em Hades usa `operatorScoped` e limita a visao a `caredesk_tickets.assigned_to_user_id` do operador logado.
+
+Validacoes executadas:
+- Pacote limpo: `npx.cmd eslint modules/caredesk/IrisPage.tsx modules/guardian/attendance/AttendancePage.tsx modules/guardian/attendance/components/WhatsAppConversationPanel.tsx app/api/iris/meta/messages/route.ts app/api/iris/tickets/route.ts --max-warnings 0`: OK, com warning conhecido do Node/ESLint sobre `type: module`.
+- Pacote limpo: `npm.cmd run check-types:hub`: OK.
+- Pacote limpo: `npm.cmd run lint:hub`: OK, com warning conhecido do Node/ESLint.
+- Pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Deploy remoto: `npx.cmd vercel deploy --yes --target preview --archive=tgz`: OK.
+- Alias homologacao: `npx.cmd vercel alias set ... homo.c2x.app.br`: OK.
+- `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_CFcPPXF7o3wouRcKcNC8h23YFUmu`, target `preview`.
+- `GET https://homo.c2x.app.br/hades/cobranca`: `200 OK`.
+- `GET https://homo.c2x.app.br/iris`: `200 OK`.
+- `GET https://homo.c2x.app.br/login`: `200 OK`.
+- `GET https://homo.c2x.app.br/api/iris/tickets` sem sessao: `401 Unauthorized` esperado.
+- `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401 Unauthorized` esperado.
+- `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+
+Riscos conhecidos:
+- Validacao funcional autenticada ainda depende de Lucas testar `/hades/cobranca` em homologacao.
+- Tickets Iris sem `assigned_to_user_id` nao aparecem no board embutido filtrado por operador.
+- Nao houve alteracao de env, secret, migration, banco ou producao.
+- Worktree principal segue mista com recortes de outras squads; o deploy foi feito por pacote limpo para evitar mistura.
+
+Pendencias:
+- Lucas validar em `https://homo.c2x.app.br/hades/cobranca`: board Iris filtrado, abertura ativa pelo formulario, abandono do formulario ativo voltando para a tela anterior e completude do formulario passivo.
+
+Proximo passo:
+- Se Lucas aprovar a homologacao, preparar handoff para Hefesto promover producao em recorte limpo.
