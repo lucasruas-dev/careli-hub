@@ -18,6 +18,7 @@ import type {
   ApoloDashboardData,
   ApoloDocumentSignal,
   ApoloEntity,
+  ApoloInstallment,
   ApoloProfile,
   ApoloTimelineEvent,
 } from "@/lib/apolo/types";
@@ -82,6 +83,7 @@ type ApoloPortfolioUnit = {
   contractUrl?: string;
   enterprise: string;
   id: string;
+  installments: ApoloInstallment[];
   lot: string;
   referenceLabel: string;
   role: string;
@@ -181,8 +183,12 @@ export function ApoloPage() {
           params.set("limit", "20");
         }
 
+        const accessToken = await getApoloAccessToken();
         const response = await fetch(`/api/apolo/relationships?${params.toString()}`, {
           cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
           signal: controller.signal,
         });
         const payload = (await response.json()) as {
@@ -1764,16 +1770,36 @@ function ApoloInstallmentsPanel({
   entity: ApoloEntity;
   unit: ApoloPortfolioUnit;
 }) {
-  const hasOverdue = entity.financial.overdueInstallments > 0 || currencyLabelToNumber(entity.financial.overdueAmount) > 0;
+  const installments = unit.installments;
+  const overdueInstallments = installments.filter((installment) => installment.status === "Vencida");
+  const paidAmount = installments
+    .filter((installment) => installment.status === "Liquidada")
+    .reduce((total, installment) => total + installment.valueNumber, 0);
+  const overdueAmount = overdueInstallments.reduce(
+    (total, installment) => total + installment.valueNumber,
+    0,
+  );
+  const totalAmount = installments.reduce(
+    (total, installment) => total + installment.valueNumber,
+    0,
+  );
+  const risk =
+    overdueInstallments.length >= 7
+      ? "critico"
+      : overdueInstallments.length >= 3
+        ? "alto"
+        : overdueInstallments.length > 0
+          ? "medio"
+          : "baixo";
 
   return (
     <div className="grid gap-4">
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        <CompactInfo label="Valor em carteira" value={entity.financial.totalPortfolio} />
-        <CompactInfo label="Valor pago" value={entity.financial.paidAmount} />
-        <CompactInfo label="Valor em atraso" value={entity.financial.overdueAmount} />
-        <CompactInfo label="Parcelas vencidas" value={String(entity.financial.overdueInstallments)} />
-        <CompactInfo label="Risco" value={entity.financial.risk} />
+        <CompactInfo label="Valor em carteira" value={formatMoneyLabel(totalAmount, entity.financial.totalPortfolio)} />
+        <CompactInfo label="Valor pago" value={formatMoneyLabel(paidAmount, entity.financial.paidAmount)} />
+        <CompactInfo label="Valor em atraso" value={formatMoneyLabel(overdueAmount, entity.financial.overdueAmount)} />
+        <CompactInfo label="Parcelas vencidas" value={String(overdueInstallments.length)} />
+        <CompactInfo label="Risco" value={risk} />
       </div>
 
       <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
@@ -1789,34 +1815,73 @@ function ApoloInstallmentsPanel({
           </span>
         </div>
 
-        {hasOverdue ? (
-          <article className="rounded-xl border border-rose-100 bg-white p-3">
-            <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="m-0 text-sm font-semibold text-slate-950">
-                    Parcelas vencidas consolidadas
-                  </p>
-                  <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-100">
-                    Vencida
-                  </span>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <CompactInfo label="Quantidade" value={String(entity.financial.overdueInstallments)} />
-                  <CompactInfo label="Valor em atraso" value={entity.financial.overdueAmount} />
-                  <CompactInfo label="Unidade" value={unit.unitCode} />
-                  <CompactInfo label="Comportamento" value={entity.financial.paymentBehavior} />
-                </div>
-              </div>
-            </div>
-          </article>
+        {installments.length ? (
+          <div className="grid max-h-[34rem] gap-3 overflow-y-auto pr-1">
+            {installments.map((installment) => {
+              const boletoUrl = installment.paymentUrl ?? installment.invoiceUrl;
+
+              return (
+                <article
+                  className="rounded-xl border border-slate-200/70 bg-white p-3"
+                  key={installment.id}
+                >
+                  <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="m-0 text-sm font-semibold text-slate-950">
+                          Parcela {installment.number}
+                        </p>
+                        <InstallmentStatusBadge status={installment.status} />
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                        <CompactInfo label="Referencia" value={installment.reference} />
+                        <CompactInfo label="Vencimento" value={installment.dueDate} />
+                        <CompactInfo label="Pagamento" value={installment.paidAt ?? "-"} />
+                        <CompactInfo label="Valor" value={installment.value} />
+                        <CompactInfo label="Dias de atraso" value={String(installment.overdueDays)} />
+                      </div>
+                    </div>
+                    {boletoUrl ? (
+                      <a
+                        className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+                        href={boletoUrl}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Abrir boleto
+                        <ExternalLink className="size-3.5" aria-hidden="true" />
+                      </a>
+                    ) : (
+                      <span className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/70 bg-slate-50 px-3 text-sm font-semibold text-slate-400">
+                        Sem boleto
+                      </span>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         ) : (
           <div className="rounded-xl border border-slate-200/70 bg-white px-4 py-6 text-center text-sm font-medium text-slate-500">
-            Nenhuma parcela vencida materializada no Apolo para esta unidade.
+            Nenhuma parcela real encontrada para esta unidade.
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function InstallmentStatusBadge({ status }: { status: ApoloInstallment["status"] }) {
+  const className = {
+    "A vencer": "bg-sky-50 text-sky-700 ring-sky-100",
+    Liquidada: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    Vencida: "bg-rose-50 text-rose-700 ring-rose-100",
+  }[status];
+
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${className}`}>
+      {status}
+    </span>
   );
 }
 
@@ -2949,6 +3014,19 @@ function currencyLabelToNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatMoneyLabel(value: number, fallback: string) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+
+  return new Intl.NumberFormat("pt-BR", {
+    currency: "BRL",
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+    style: "currency",
+  }).format(value);
+}
+
 function displayText(value: string | null | undefined) {
   const normalized = String(value ?? "")
     .trim()
@@ -3192,6 +3270,7 @@ function buildPortfolioUnits(entity: ApoloEntity): ApoloPortfolioUnit[] {
       contractUrl: link.contractUrl,
       enterprise: displayText(legacyEnterprise ? "-" : link.enterprise || "-"),
       id: `${portfolioKey(link)}::${index}`,
+      installments: link.installments ?? [],
       lot,
       referenceLabel: displayText(
         link.brokerAgency ||

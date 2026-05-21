@@ -21,6 +21,7 @@ import type {
   ApoloEntityKind,
   ApoloEntityStatus,
   ApoloFinancialSnapshot,
+  ApoloInstallment,
   ApoloProfile,
   ApoloProfileSummary,
   ApoloRelationship,
@@ -224,6 +225,65 @@ type C2xUserRow = RowDataPacket & {
   vinculed_by_id: number | null;
 };
 
+type C2xDocumentLookupRow = RowDataPacket & {
+  cnpj: string | null;
+  cpf: string | null;
+  id: number;
+};
+
+type C2xPortfolioRow = RowDataPacket & {
+  acquisition_request_code: string | null;
+  acquisition_request_id: number | string;
+  area: number | string | null;
+  block: string | null;
+  broker_agency: string | null;
+  enterprise_code: string | null;
+  enterprise_name: string | null;
+  lot: string | null;
+  max_overdue_days: number | string | null;
+  overdue_amount: number | string | null;
+  overdue_payments: number | string;
+  paid_amount: number | string | null;
+  pending_payments: number | string;
+  signed_contract_document_id: string | null;
+  signed_contract_status: string | null;
+  signed_contract_url: string | null;
+  stage_name: string | null;
+  total_payments: number | string;
+  total_portfolio_amount: number | string | null;
+  unit_price: number | string | null;
+  unity_id: number | string | null;
+  unity_name: string | null;
+  user_id: number | string;
+};
+
+type C2xPortfolioInstallmentRow = RowDataPacket & {
+  acquisition_request_id: number | string;
+  asaas_payment_id: string | null;
+  current_signal_parcel: number | string | null;
+  current_total_parcel: number | string | null;
+  due_date: Date | string | null;
+  due_date_value: string | null;
+  id: number | string;
+  initial_value: number | string | null;
+  interest_value: number | string | null;
+  invoice_url: string | null;
+  mulct_value: number | string | null;
+  paid_value: number | string | null;
+  parcel_type_id: number | string | null;
+  parcel_type_name: string | null;
+  payment_date_value: string | null;
+  payment_status_id: number | string | null;
+  payment_url: string | null;
+  total_parcels: number | string | null;
+  total_signal_parcels: number | string | null;
+};
+
+type C2xPortfolioHydration = {
+  commercialLinks: ApoloCommercialLink[];
+  financial: ApoloFinancialSnapshot;
+};
+
 type SyncResult =
   | {
       ok: true;
@@ -239,6 +299,33 @@ const SYNC_BATCH_SIZE = 500;
 const DEFAULT_CRM_LIMIT = 20;
 const LIVE_C2X_DEFAULT_ENTITY_LIMIT = 150;
 const LIVE_C2X_MAX_ENTITY_LIMIT = 500;
+const C2X_ACTIVE_PAYMENT_WHERE =
+  "(p.payment_to_delete is null or p.payment_to_delete = 0)";
+const C2X_OUTSTANDING_PAYMENT_EXPRESSION = `
+  coalesce(
+    nullif(p.paid_value, 0),
+    coalesce(p.initial_value, 0)
+      + coalesce(p.interest_value, 0)
+      + coalesce(p.mulct_value, 0),
+    0
+  )
+`;
+const C2X_ENTERPRISE_DISPLAY_EXPRESSION = `
+  case
+    when upper(trim(e.code)) = 'REP' then 'Recanto do Para'
+    when upper(trim(e.code)) = 'EDL' then 'Estancia do Lago'
+    when upper(trim(e.code)) in ('LOU', 'LOS') then 'Lavra do Ouro'
+    when upper(trim(e.code)) in ('PDV', 'PVS') then 'Portal dos Vales'
+    when upper(trim(e.code)) in ('RDP', 'RPS', 'RPC') then 'Rio de Pedras'
+    when upper(trim(e.code)) in ('LBR', 'LBP', 'LBF') then concat('Lagoa Bonita - ', upper(trim(e.code)))
+    when upper(trim(e.code)) = 'MDS' then 'Morada da Serra'
+    when upper(trim(e.code)) = 'MLN' then 'Milenium'
+    when upper(trim(e.code)) = 'VDO' then 'Veredas do Ouro'
+    when upper(trim(e.code)) = 'VAL' then 'Vista Alegre'
+    when upper(trim(e.code)) = 'VDP' then 'Vistas da Praia'
+    else trim(coalesce(nullif(e.divulgation_name, ''), nullif(e.name, ''), concat('Empreendimento ', e.id)))
+  end
+`;
 
 export async function loadApoloDashboard(
   options: ApoloDashboardOptions = {},
@@ -416,6 +503,8 @@ async function loadApoloTablesDashboard(
     profileSummaries,
     pendingReviewCount,
     linkedUsersCount,
+    buyerUsersCount,
+    portfolioUnitsCount,
   ] = await Promise.all([
     fetchRows<ApoloProfileRow>(adminClient, "apolo_entity_profiles", "entity_id,profile", entityIds),
     fetchRows<ApoloContactRow>(
@@ -481,9 +570,15 @@ async function loadApoloTablesDashboard(
     fetchProfileSummaryCounts(adminClient),
     countPendingApoloEntities(adminClient),
     countVerifiedApoloRelationships(adminClient),
+    countApoloBuyerEntities(adminClient),
+    countApoloBuyerCommercialLinks(adminClient),
   ]);
 
   const hasStalePortfolio = hasStaleCommercialPortfolio(commercialLinks);
+  const documentLabelsByEntity =
+    await fetchC2xDocumentLabelsByEntity(sourceLinks);
+  const c2xPortfolioByEntity =
+    await fetchC2xPortfolioByEntity(sourceLinks);
 
   const profilesByEntity = groupRowsBy(profiles, "entity_id");
   const entities = entityRows.map((row) =>
@@ -499,11 +594,10 @@ async function loadApoloTablesDashboard(
       serviceSignals: groupRowsBy(serviceSignals, "entity_id").get(row.id) ?? [],
       sourceLinks: groupRowsBy(sourceLinks, "entity_id").get(row.id) ?? [],
       timelineEvents: groupRowsBy(timelineEvents, "entity_id").get(row.id) ?? [],
-    }),
+    }, documentLabelsByEntity.get(row.id), c2xPortfolioByEntity.get(row.id)),
   );
 
   const usuarioCount = profileSummaries.find((summary) => summary.profile === "usuario")?.count ?? 0;
-  const buyerUsersCount = usuarioCount;
 
   return {
     data: {
@@ -521,7 +615,7 @@ async function loadApoloTablesDashboard(
       nonBuyerUsersCount: Math.max(usuarioCount - buyerUsersCount, 0),
       pendingReviewCount,
       portfolioPaymentsCount: 0,
-      portfolioUnitsCount: buyerUsersCount,
+      portfolioUnitsCount,
       profileSummaries,
       totalCount: entityResult.totalCount,
     },
@@ -555,6 +649,461 @@ function hasStaleCommercialPortfolio(rows: ApoloCommercialLinkRow[]) {
       legacyText.includes("sem carteira por pagamento")
     );
   });
+}
+
+async function fetchC2xDocumentLabelsByEntity(
+  sourceLinks: ApoloSourceLinkRow[],
+) {
+  if (process.env.NODE_ENV !== "development") {
+    return new Map<string, string>();
+  }
+
+  const c2xUserLinks = sourceLinks.filter(
+    (link) =>
+      link.source_system === "c2x" &&
+      link.source_table === "users" &&
+      Boolean(link.source_id),
+  );
+  const userIds = uniqueStrings(
+    c2xUserLinks
+      .map((link) => link.source_id ?? "")
+      .filter((sourceId) => /^\d+$/.test(sourceId)),
+  );
+
+  if (!userIds.length) {
+    return new Map<string, string>();
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return new Map<string, string>();
+  }
+
+  try {
+    const placeholders = userIds.map(() => "?").join(",");
+    const [rows] = await poolResult.pool.query<C2xDocumentLookupRow[]>(
+      `select id, cpf, cnpj from users where id in (${placeholders})`,
+      userIds,
+    );
+    const documentsByUserId = new Map(
+      rows
+        .map((row) => [
+          String(row.id),
+          formatDocumentForDisplay(row.cpf ?? row.cnpj),
+        ] as const)
+        .filter(([, document]) => document !== "Documento em revisao"),
+    );
+    const documentsByEntity = new Map<string, string>();
+
+    for (const link of c2xUserLinks) {
+      const document = documentsByUserId.get(link.source_id ?? "");
+
+      if (document) {
+        documentsByEntity.set(link.entity_id, document);
+      }
+    }
+
+    return documentsByEntity;
+  } catch {
+    return new Map<string, string>();
+  }
+}
+
+async function fetchC2xPortfolioByEntity(
+  sourceLinks: ApoloSourceLinkRow[],
+) {
+  const c2xUserLinks = sourceLinks.filter(
+    (link) =>
+      link.source_system === "c2x" &&
+      link.source_table === "users" &&
+      Boolean(link.source_id) &&
+      /^\d+$/.test(String(link.source_id)),
+  );
+  const entityIdByUserId = new Map(
+    c2xUserLinks.map((link) => [String(link.source_id), link.entity_id] as const),
+  );
+  const userIds = uniqueStrings(Array.from(entityIdByUserId.keys()));
+
+  if (!userIds.length) {
+    return new Map<string, C2xPortfolioHydration>();
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return new Map<string, C2xPortfolioHydration>();
+  }
+
+  try {
+    const userPlaceholders = userIds.map(() => "?").join(",");
+    const [portfolioRows] = await poolResult.pool.query<C2xPortfolioRow[]>(
+      `
+        select
+          participants.user_id,
+          ar.id as acquisition_request_id,
+          coalesce(nullif(trim(ar.code), ''), cast(ar.id as char)) as acquisition_request_code,
+          ars.name as stage_name,
+          eu.id as unity_id,
+          eu.name as unity_name,
+          eu.block,
+          eu.lot,
+          eu.area,
+          eu.price as unit_price,
+          e.code as enterprise_code,
+          ${C2X_ENTERPRISE_DISPLAY_EXPRESSION} as enterprise_name,
+          coalesce(
+            nullif(trim(linked.fantasy_name), ''),
+            nullif(trim(linked.social_name), ''),
+            nullif(trim(linked.name), '')
+          ) as broker_agency,
+          (
+            select nullif(trim(cs.uuidDoc), '')
+            from contract_signatures cs
+            left join acquisition_request_contracts arc_sig on arc_sig.id = cs.acquisition_request_contract_id
+            where arc_sig.acquisition_request_id = ar.id
+              and trim(coalesce(cs.uuidDoc, '')) <> ''
+            order by cs.updated_at desc, cs.id desc
+            limit 1
+          ) as signed_contract_document_id,
+          (
+            select nullif(trim(cs.link_pdf_signed_file), '')
+            from contract_signatures cs
+            left join acquisition_request_contracts arc_sig on arc_sig.id = cs.acquisition_request_contract_id
+            where arc_sig.acquisition_request_id = ar.id
+              and trim(coalesce(cs.link_pdf_signed_file, '')) <> ''
+            order by cs.updated_at desc, cs.id desc
+            limit 1
+          ) as signed_contract_url,
+          (
+            select coalesce(css_sig.name, 'Assinado')
+            from contract_signatures cs
+            left join contract_signature_statuses css_sig on css_sig.id = cs.contract_signature_status_id
+            left join acquisition_request_contracts arc_sig on arc_sig.id = cs.acquisition_request_contract_id
+            where arc_sig.acquisition_request_id = ar.id
+              and trim(coalesce(cs.uuidDoc, '')) <> ''
+            order by cs.updated_at desc, cs.id desc
+            limit 1
+          ) as signed_contract_status,
+          count(case when p.payment_status_id in (5, 6, 7) then p.id end) as total_payments,
+          count(case when p.payment_status_id = 5 then p.id end) as paid_payments,
+          count(case when p.payment_status_id = 6 then p.id end) as pending_payments,
+          count(case when p.payment_status_id = 7 then p.id end) as overdue_payments,
+          coalesce(sum(case when p.payment_status_id in (5, 6, 7) then coalesce(p.initial_value, 0) else 0 end), 0) as total_portfolio_amount,
+          coalesce(sum(case when p.payment_status_id = 5 then coalesce(p.paid_value, p.initial_value, 0) else 0 end), 0) as paid_amount,
+          coalesce(sum(case when p.payment_status_id = 7 then ${C2X_OUTSTANDING_PAYMENT_EXPRESSION} else 0 end), 0) as overdue_amount,
+          max(case when p.payment_status_id = 7 and p.due_date is not null then datediff(curdate(), p.due_date) else 0 end) as max_overdue_days
+        from (
+          select id as request_id, client_id as user_id from acquisition_requests where client_id is not null
+          union all select id, client_2_id from acquisition_requests where client_2_id is not null
+          union all select id, client_3_id from acquisition_requests where client_3_id is not null
+          union all select id, client_4_id from acquisition_requests where client_4_id is not null
+          union all select id, client_5_id from acquisition_requests where client_5_id is not null
+        ) participants
+        inner join acquisition_requests ar on ar.id = participants.request_id
+        inner join payments p on p.acquisition_request_id = ar.id
+        left join users client on client.id = participants.user_id
+        left join users linked on linked.id = client.vinculed_by_id
+        left join acquisition_request_stages ars on ars.id = ar.acquisition_request_stage_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where participants.user_id in (${userPlaceholders})
+          and p.payment_status_id in (5, 6, 7)
+          and ${C2X_ACTIVE_PAYMENT_WHERE}
+        group by
+          participants.user_id,
+          ar.id,
+          ar.code,
+          ars.name,
+          eu.id,
+          eu.name,
+          eu.block,
+          eu.lot,
+          eu.area,
+          eu.price,
+          e.id,
+          e.code,
+          e.divulgation_name,
+          e.name,
+          linked.fantasy_name,
+          linked.social_name,
+          linked.name
+        order by ar.updated_at desc, ar.id desc
+      `,
+      userIds,
+    );
+
+    const requestIds = uniqueStrings(
+      portfolioRows.map((row) => String(row.acquisition_request_id)),
+    );
+    const installmentsByRequestId = new Map<string, ApoloInstallment[]>();
+
+    if (requestIds.length) {
+      const requestPlaceholders = requestIds.map(() => "?").join(",");
+      const [installmentRows] = await poolResult.pool.query<C2xPortfolioInstallmentRow[]>(
+        `
+          select
+            p.id,
+            p.acquisition_request_id,
+            p.parcel_type_id,
+            pt.name as parcel_type_name,
+            p.payment_status_id,
+            p.due_date,
+            date_format(p.due_date, '%Y-%m-%d') as due_date_value,
+            date_format(p.payment_date, '%Y-%m-%d') as payment_date_value,
+            p.paid_value,
+            p.initial_value,
+            p.interest_value,
+            p.mulct_value,
+            p.current_total_parcel,
+            p.total_parcels,
+            p.current_signal_parcel,
+            p.total_signal_parcels,
+            p.payment_asaas_id as asaas_payment_id,
+            p.payment_asaas_url as payment_url,
+            p.payment_asaas_invoice_url as invoice_url
+          from payments p
+          left join parcel_types pt on pt.id = p.parcel_type_id
+          where p.acquisition_request_id in (${requestPlaceholders})
+            and p.payment_status_id in (5, 6, 7)
+            and ${C2X_ACTIVE_PAYMENT_WHERE}
+          order by p.acquisition_request_id asc, p.due_date asc, p.id asc
+        `,
+        requestIds,
+      );
+
+      for (const row of installmentRows) {
+        const requestId = String(row.acquisition_request_id);
+        const current = installmentsByRequestId.get(requestId) ?? [];
+
+        current.push(mapC2xPortfolioInstallment(row));
+        installmentsByRequestId.set(requestId, current);
+      }
+    }
+
+    const rowsByEntity = new Map<string, C2xPortfolioRow[]>();
+
+    for (const row of portfolioRows) {
+      const entityId = entityIdByUserId.get(String(row.user_id));
+
+      if (!entityId) {
+        continue;
+      }
+
+      rowsByEntity.set(entityId, [...(rowsByEntity.get(entityId) ?? []), row]);
+    }
+
+    const portfolioByEntity = new Map<string, C2xPortfolioHydration>();
+
+    for (const [entityId, rows] of rowsByEntity) {
+      portfolioByEntity.set(entityId, {
+        commercialLinks: rows.map((row) =>
+          mapC2xPortfolioRowToCommercialLink(
+            row,
+            installmentsByRequestId.get(String(row.acquisition_request_id)) ?? [],
+          ),
+        ),
+        financial: mapC2xPortfolioFinancialSnapshot(rows),
+      });
+    }
+
+    return portfolioByEntity;
+  } catch {
+    return new Map<string, C2xPortfolioHydration>();
+  }
+}
+
+function mapC2xPortfolioRowToCommercialLink(
+  row: C2xPortfolioRow,
+  installments: ApoloInstallment[],
+): ApoloCommercialLink {
+  const block = normalizeC2xBlock(row.block);
+  const lot = normalizeC2xLot(row.lot);
+  const unitCode = firstFilled(row.unity_name) ?? undefined;
+  const enterprise = firstFilled(row.enterprise_name) ?? "Carteira comercial";
+  const brokerAgency = firstFilled(row.broker_agency) ?? undefined;
+
+  return {
+    acquisitionRequestId: optionalString(row.acquisition_request_id),
+    area: formatC2xArea(row.area),
+    block,
+    brokerAgency,
+    contractDocumentId: firstFilled(row.signed_contract_document_id) ?? undefined,
+    contractStatus: firstFilled(row.signed_contract_status) ?? undefined,
+    contractUrl: firstFilled(row.signed_contract_url) ?? undefined,
+    enterprise,
+    enterpriseCode: firstFilled(row.enterprise_code) ?? undefined,
+    installments,
+    lot,
+    referenceLabel:
+      brokerAgency ??
+      firstFilled(row.acquisition_request_code) ??
+      "Vinculo comercial",
+    role: "Usuario comprador",
+    stage: firstFilled(row.stage_name) ?? "Relacionamento ativo",
+    tableValue: positiveCurrencyOrEmpty(row.unit_price),
+    unit: c2xUnitLabel(block, lot, unitCode),
+    unitCode,
+    unitId: optionalString(row.unity_id),
+  };
+}
+
+function mapC2xPortfolioInstallment(
+  row: C2xPortfolioInstallmentRow,
+): ApoloInstallment {
+  const dueDateInput = normalizeDateOnly(row.due_date_value) || dateOnlyFromValue(row.due_date);
+  const paidDateInput = normalizeDateOnly(row.payment_date_value);
+  const status = portfolioInstallmentStatus(row.payment_status_id);
+
+  return {
+    acquisitionRequestId: String(row.acquisition_request_id),
+    asaasPaymentId: firstFilled(row.asaas_payment_id) ?? undefined,
+    dueDate: formatDateOnlyLabel(dueDateInput),
+    id: String(row.id),
+    invoiceUrl: firstFilled(row.invoice_url) ?? undefined,
+    number: portfolioInstallmentNumber(row),
+    overdueDays:
+      status === "Vencida" && dueDateInput
+        ? Math.max(daysBetweenDateOnly(dueDateInput, new Date()), 1)
+        : 0,
+    paidAt: paidDateInput ? formatDateOnlyLabel(paidDateInput) : undefined,
+    paymentUrl: firstFilled(row.payment_url) ?? undefined,
+    reference: formatReferenceFromDateOnly(dueDateInput),
+    status,
+    value: formatCurrency(portfolioInstallmentAmount(row)),
+    valueNumber: portfolioInstallmentAmount(row),
+  };
+}
+
+function mapC2xPortfolioFinancialSnapshot(
+  rows: C2xPortfolioRow[],
+): ApoloFinancialSnapshot {
+  const paymentCount = rows.reduce((total, row) => total + toNumber(row.total_payments), 0);
+  const unitsCount = uniqueStrings(
+    rows
+      .map((row) => optionalString(row.unity_id))
+      .filter((value): value is string => Boolean(value)),
+  ).length;
+  const overdueInstallments = rows.reduce((total, row) => total + toNumber(row.overdue_payments), 0);
+  const totalPortfolio = rows.reduce((total, row) => total + toNumber(row.total_portfolio_amount), 0);
+  const paidAmount = rows.reduce((total, row) => total + toNumber(row.paid_amount), 0);
+  const overdueAmount = rows.reduce((total, row) => total + toNumber(row.overdue_amount), 0);
+  const maxOverdueDays = Math.max(...rows.map((row) => toNumber(row.max_overdue_days)), 0);
+
+  return {
+    overdueAmount: formatCurrency(overdueAmount),
+    overdueInstallments,
+    paidAmount: formatCurrency(paidAmount),
+    paymentBehavior: `${paymentCount} pagamento(s), ${unitsCount} unidade(s) e ${overdueInstallments} parcela(s) em atraso.`,
+    risk:
+      overdueInstallments >= 7 || maxOverdueDays >= 180
+        ? "critico"
+        : overdueInstallments >= 3 || maxOverdueDays >= 90
+          ? "alto"
+          : overdueInstallments > 0
+            ? "medio"
+            : "baixo",
+    totalPortfolio: formatCurrency(totalPortfolio),
+  };
+}
+
+function portfolioInstallmentNumber(row: C2xPortfolioInstallmentRow) {
+  const parcelTypeId = toNumber(row.parcel_type_id);
+  const current =
+    parcelTypeId === 2
+      ? toNumber(row.current_signal_parcel)
+      : toNumber(row.current_total_parcel);
+  const total =
+    parcelTypeId === 2
+      ? toNumber(row.total_signal_parcels)
+      : toNumber(row.total_parcels);
+  const label = firstFilled(row.parcel_type_name) ?? "Parcela";
+
+  if (current > 0 && total > 0) {
+    return `${String(current).padStart(2, "0")}/${String(total).padStart(2, "0")}`;
+  }
+
+  return label;
+}
+
+function portfolioInstallmentStatus(
+  value: number | string | null | undefined,
+): ApoloInstallment["status"] {
+  const status = toNumber(value);
+
+  if (status === 5) return "Liquidada";
+  if (status === 6) return "A vencer";
+
+  return "Vencida";
+}
+
+function portfolioInstallmentAmount(row: C2xPortfolioInstallmentRow) {
+  const paidValue = toNumber(row.paid_value);
+  const baseValue =
+    toNumber(row.initial_value) +
+    toNumber(row.interest_value) +
+    toNumber(row.mulct_value);
+
+  return Math.max(paidValue || baseValue, 0);
+}
+
+function normalizeDateOnly(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+function dateOnlyFromValue(value: Date | string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  return normalizeDateOnly(String(value).slice(0, 10));
+}
+
+function formatDateOnlyLabel(value: string) {
+  const normalized = normalizeDateOnly(value);
+
+  if (!normalized) {
+    return "Sem data";
+  }
+
+  const [year, month, day] = normalized.split("-");
+
+  return `${day}/${month}/${year}`;
+}
+
+function formatReferenceFromDateOnly(value: string) {
+  const normalized = normalizeDateOnly(value);
+
+  if (!normalized) {
+    return "-";
+  }
+
+  const [year, month] = normalized.split("-");
+
+  return `${month}/${year}`;
+}
+
+function daysBetweenDateOnly(start: string, end: Date) {
+  const normalized = normalizeDateOnly(start);
+
+  if (!normalized) {
+    return 0;
+  }
+
+  const startDate = new Date(`${normalized}T00:00:00.000Z`);
+  const endDate = new Date(Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()));
+
+  if (Number.isNaN(startDate.getTime())) {
+    return 0;
+  }
+
+  return Math.floor((endDate.getTime() - startDate.getTime()) / 86_400_000);
 }
 
 async function fetchApoloEntityRows(
@@ -918,6 +1467,29 @@ async function countVerifiedApoloRelationships(adminClient: ApoloSupabaseClient)
   return count ?? 0;
 }
 
+async function countApoloBuyerEntities(adminClient: ApoloSupabaseClient) {
+  const result = await fetchBuyerEntityIds(adminClient);
+
+  if (result.error) {
+    return 0;
+  }
+
+  return result.ids.length;
+}
+
+async function countApoloBuyerCommercialLinks(adminClient: ApoloSupabaseClient) {
+  const { count, error } = await adminClient
+    .from("apolo_commercial_links")
+    .select("entity_id", { count: "exact", head: true })
+    .eq("relationship_role", "Usuario comprador");
+
+  if (error) {
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
 async function loadLiveC2xDashboard(
   previousResult: ApoloLoadResult,
   options: ApoloDashboardOptions,
@@ -1253,22 +1825,30 @@ function mapApoloEntityRow(
     sourceLinks: ApoloSourceLinkRow[];
     timelineEvents: ApoloTimelineRow[];
   },
+  documentDisplayValue?: string,
+  c2xPortfolio?: C2xPortfolioHydration,
 ): ApoloEntity {
   const profiles = related.profiles
     .map((profile) => normalizeApoloProfile(profile.profile))
     .filter((profile): profile is ApoloProfile => Boolean(profile));
+  const commercialLinks =
+    c2xPortfolio?.commercialLinks.length
+      ? c2xPortfolio.commercialLinks
+      : related.commercialLinks.map(mapApoloCommercialRow);
 
   return {
     addresses: related.addresses.map(mapApoloAddressRow),
     audit: related.audit.map(mapApoloAuditRow),
-    commercialLinks: related.commercialLinks.map(mapApoloCommercialRow),
+    commercialLinks,
     confidenceScore: clampScore(row.quality_score ?? 0),
     contacts: related.contacts.map(mapApoloContactRow),
     createdAt: formatDateLabel(row.created_at),
     displayName: row.display_name,
-    documentMasked: row.document_masked ?? "Documento em revisao",
+    documentMasked: visibleDocumentValue(
+      documentDisplayValue ?? row.document_masked,
+    ),
     documents: related.documents.map(mapApoloDocumentRow),
-    financial: mapApoloFinancialRow(related.financialSnapshots[0]),
+    financial: c2xPortfolio?.financial ?? mapApoloFinancialRow(related.financialSnapshots[0]),
     hadesClientId: hadesClientIdFromSourceLinks(related.sourceLinks),
     id: row.id,
     kind: normalizeEntityKind(row.entity_kind),
@@ -1288,22 +1868,22 @@ function mapApoloEntityRow(
 function mapC2xUserToApoloEntity(row: C2xUserRow): ApoloEntity {
   const profiles = mapC2xProfiles(row.profile_id, row.person_type_id);
   const document = row.cpf ?? row.cnpj ?? null;
-  const documentMasked = maskDocument(document);
+  const documentDisplay = formatDocumentForDisplay(document);
   const contacts = buildMaskedContacts(row);
   const relationships = buildC2xRelationships(row);
-  const status = deriveC2xEntityStatus(row, documentMasked, relationships);
+  const status = deriveC2xEntityStatus(row, documentDisplay, relationships);
   const kind = deriveC2xEntityKind(row);
 
   return {
     addresses: buildC2xAddresses(row),
     audit: buildC2xAudit(row),
     commercialLinks: buildC2xCommercialLinks(row),
-    confidenceScore: deriveC2xConfidenceScore(row, contacts, relationships, documentMasked),
+    confidenceScore: deriveC2xConfidenceScore(row, contacts, relationships, documentDisplay),
     contacts,
     createdAt: formatDateLabel(row.updated_at),
     displayName: row.display_name?.trim() || `Cadastro ${row.id}`,
-    documentMasked,
-    documents: buildC2xDocuments(documentMasked),
+    documentMasked: documentDisplay,
+    documents: buildC2xDocuments(documentDisplay),
     financial: buildC2xFinancialSnapshot(row),
     hadesClientId: `c2x-client-${row.id}`,
     id: `rel-${row.id}`,
@@ -1356,14 +1936,15 @@ async function persistApoloEntityBatch(
 ) {
   const entityRows = users.map((user) => {
     const document = user.cpf ?? user.cnpj ?? null;
+    const documentDisplay = formatDocumentForDisplay(document);
     const kind = deriveC2xEntityKind(user);
-    const status = deriveC2xEntityStatus(user, maskDocument(document), buildC2xRelationships(user));
+    const status = deriveC2xEntityStatus(user, documentDisplay, buildC2xRelationships(user));
 
     return {
       display_name: user.display_name?.trim() || `Cadastro ${user.id}`,
       document_hash: null,
       document_kind: documentKind(document),
-      document_masked: maskDocument(document),
+      document_masked: documentDisplay,
       entity_kind: kind,
       id: deterministicUuid(`apolo:c2x:users:${user.id}`),
       legal_name: legalNameFromC2x(user),
@@ -1374,7 +1955,7 @@ async function persistApoloEntityBatch(
       next_action: deriveC2xNextAction(user, status),
       primary_city: splitLocation(user.location_label).city,
       primary_state: splitLocation(user.location_label).state,
-      quality_score: deriveC2xConfidenceScore(user, buildMaskedContacts(user), buildC2xRelationships(user), maskDocument(document)),
+      quality_score: deriveC2xConfidenceScore(user, buildMaskedContacts(user), buildC2xRelationships(user), documentDisplay),
       status,
       trade_name: tradeNameFromC2x(user),
       updated_at: syncedAt,
@@ -1717,8 +2298,9 @@ function buildFinancialRow(user: C2xUserRow, syncedAt: string) {
 
 function buildDocumentRows(user: C2xUserRow, syncedAt: string) {
   const document = user.cpf ?? user.cnpj ?? null;
+  const documentDisplay = formatDocumentForDisplay(document);
 
-  return buildC2xDocuments(maskDocument(document)).map((documentSignal) => ({
+  return buildC2xDocuments(documentDisplay).map((documentSignal) => ({
     document_type: "identity",
     entity_id: deterministicUuid(`apolo:c2x:users:${user.id}`),
     id: deterministicUuid(`apolo:c2x:users:${user.id}:document:${documentSignal.label}`),
@@ -1733,8 +2315,9 @@ function buildDocumentRows(user: C2xUserRow, syncedAt: string) {
 
 function buildTimelineRows(user: C2xUserRow, syncedAt: string) {
   const document = user.cpf ?? user.cnpj ?? null;
+  const documentDisplay = formatDocumentForDisplay(document);
   const relationships = buildC2xRelationships(user);
-  const status = deriveC2xEntityStatus(user, maskDocument(document), relationships);
+  const status = deriveC2xEntityStatus(user, documentDisplay, relationships);
 
   return buildC2xTimeline(user, status).map((event) => ({
     description: event.description,
@@ -1774,9 +2357,10 @@ function buildSearchRow(user: C2xUserRow, syncedAt: string) {
   const profiles = mapC2xProfiles(user.profile_id, user.person_type_id);
   const profileLabels = profiles.map((profile) => apoloProfileLabels[profile]);
   const document = user.cpf ?? user.cnpj ?? null;
+  const documentDisplay = formatDocumentForDisplay(document);
   const entityKind = deriveC2xEntityKind(user);
   const relationships = buildC2xRelationships(user);
-  const status = deriveC2xEntityStatus(user, maskDocument(document), relationships);
+  const status = deriveC2xEntityStatus(user, documentDisplay, relationships);
   const displayName = user.display_name?.trim() || `Cadastro ${user.id}`;
   const location = normalizeLocationLabel(user.location_label);
   const buyerSearchLabel = toNumber(user.payment_count) > 0
@@ -1787,7 +2371,7 @@ function buildSearchRow(user: C2xUserRow, syncedAt: string) {
 
   return {
     display_name: displayName,
-    document_masked: maskDocument(document),
+    document_masked: documentDisplay,
     entity_id: deterministicUuid(`apolo:c2x:users:${user.id}`),
     entity_kind: entityKind,
     last_synced_at: syncedAt,
@@ -1800,7 +2384,7 @@ function buildSearchRow(user: C2xUserRow, syncedAt: string) {
         displayName,
         legalNameFromC2x(user),
         tradeNameFromC2x(user),
-        maskDocument(document),
+        documentDisplay,
         location,
         buyerSearchLabel,
         user.linked_party_name,
@@ -1824,7 +2408,7 @@ function buildSearchRow(user: C2xUserRow, syncedAt: string) {
       user,
       buildMaskedContacts(user),
       relationships,
-      maskDocument(document),
+      documentDisplay,
     ),
     status,
     updated_at: syncedAt,
@@ -2086,10 +2670,7 @@ function buildC2xCommercialLinks(row: C2xUserRow): ApoloCommercialLink[] {
     if (paymentCount > 0) {
       const paidBlock = normalizeC2xBlock(row.latest_paid_unit_block);
       const paidLot = normalizeC2xLot(row.latest_paid_unit_lot);
-      const paidUnitCode =
-        firstFilled(row.latest_paid_unit_code) ??
-        c2xUnitCode(row.latest_paid_enterprise_code, paidBlock, paidLot) ??
-        undefined;
+      const paidUnitCode = firstFilled(row.latest_paid_unit_code) ?? undefined;
       const paidUnitLabel = c2xUnitLabel(
         paidBlock,
         paidLot,
@@ -2336,6 +2917,7 @@ function mapApoloCommercialRow(row: ApoloCommercialLinkRow): ApoloCommercialLink
     contractUrl: metadataString(metadata, "contractUrl"),
     enterprise: row.enterprise_name ?? "Relacionamento Careli",
     enterpriseCode: metadataString(metadata, "enterpriseCode"),
+    installments: mapMetadataInstallments(metadata.installments),
     lot: metadataString(metadata, "lot"),
     referenceLabel: row.reference_label ?? "Cadastro",
     role: row.relationship_role ?? "Relacionamento",
@@ -2345,6 +2927,47 @@ function mapApoloCommercialRow(row: ApoloCommercialLinkRow): ApoloCommercialLink
     unitCode: metadataString(metadata, "unitCode"),
     unitId: metadataString(metadata, "unitId"),
   };
+}
+
+function mapMetadataInstallments(value: unknown): ApoloInstallment[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const installments: ApoloInstallment[] = [];
+
+  for (const rawItem of value) {
+    const item = metadataRecord(rawItem);
+    const id = metadataString(item, "id");
+    const acquisitionRequestId = metadataString(item, "acquisitionRequestId");
+    const number = metadataString(item, "number");
+    const status = metadataString(item, "status");
+
+    if (!id || !acquisitionRequestId || !number) {
+      continue;
+    }
+
+    installments.push({
+      acquisitionRequestId,
+      asaasPaymentId: metadataString(item, "asaasPaymentId"),
+      dueDate: metadataString(item, "dueDate") ?? "Sem data",
+      id,
+      invoiceUrl: metadataString(item, "invoiceUrl"),
+      number,
+      overdueDays: toNumber(item.overdueDays),
+      paidAt: metadataString(item, "paidAt"),
+      paymentUrl: metadataString(item, "paymentUrl"),
+      reference: metadataString(item, "reference") ?? "-",
+      status:
+        status === "Liquidada" || status === "A vencer" || status === "Vencida"
+          ? status
+          : "Vencida",
+      value: metadataString(item, "value") ?? "A consultar",
+      valueNumber: toNumber(item.valueNumber),
+    });
+  }
+
+  return installments;
 }
 
 function mapApoloFinancialRow(row: ApoloFinancialRow | undefined): ApoloFinancialSnapshot {
@@ -2576,6 +3199,30 @@ function normalizeAuditStatus(value: string | null): ApoloAuditSignal["status"] 
   return "pending";
 }
 
+function visibleDocumentValue(value: string | null | undefined) {
+  const normalized = firstFilled(value);
+
+  if (!normalized || normalized.includes("*")) {
+    return "Documento em revisao";
+  }
+
+  return normalized;
+}
+
+function formatDocumentForDisplay(value: string | null | undefined) {
+  const digits = onlyDigits(value);
+
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+
+  if (digits.length === 14) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+  }
+
+  return "Documento em revisao";
+}
+
 function maskDocument(value: string | null | undefined) {
   const digits = onlyDigits(value);
 
@@ -2779,29 +3426,6 @@ function c2xUnitLabel(block: string, lot: string, unityName?: string | null) {
   }
 
   return firstFilled(unityName) ?? "-";
-}
-
-function c2xUnitCode(
-  enterpriseCode: string | null | undefined,
-  block: string,
-  lot: string,
-) {
-  if (block === "Sem quadra" || lot === "Sem lote") {
-    return null;
-  }
-
-  const code = String(enterpriseCode ?? "")
-    .replace(/[^a-z0-9]/gi, "")
-    .toUpperCase()
-    .slice(0, 3);
-  const blockCode = block.replace(/[^a-z0-9]/gi, "").toUpperCase();
-  const lotCode = lot.replace(/[^a-z0-9]/gi, "").replace(/^L/i, "").toUpperCase();
-
-  if (!code || !blockCode || !lotCode) {
-    return null;
-  }
-
-  return `${code.padEnd(3, "X")}${blockCode}${lotCode}`;
 }
 
 function normalizeSearchText(value: string) {

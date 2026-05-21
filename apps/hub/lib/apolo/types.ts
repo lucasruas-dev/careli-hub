@@ -47,6 +47,7 @@ export type ApoloCommercialLink = {
   contractUrl?: string;
   enterprise: string;
   enterpriseCode?: string;
+  installments?: ApoloInstallment[];
   lot?: string;
   referenceLabel: string;
   role: string;
@@ -55,6 +56,22 @@ export type ApoloCommercialLink = {
   unit: string;
   unitCode?: string;
   unitId?: string;
+};
+
+export type ApoloInstallment = {
+  acquisitionRequestId: string;
+  asaasPaymentId?: string;
+  dueDate: string;
+  id: string;
+  invoiceUrl?: string;
+  number: string;
+  overdueDays: number;
+  paidAt?: string;
+  paymentUrl?: string;
+  reference: string;
+  status: "A vencer" | "Liquidada" | "Vencida";
+  value: string;
+  valueNumber: number;
 };
 
 export type ApoloFinancialSnapshot = {
