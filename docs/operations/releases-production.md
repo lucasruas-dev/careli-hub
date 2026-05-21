@@ -832,3 +832,59 @@ Registro de producao:
 - Pendencias: Lucas validar salvamento, envio e renderizacao de figurinha personalizada em producao.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Hermes Core acompanhar ajuste fino se houver divergencia visual/funcional.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Zeus diagnostico Auth x hub_users`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-21 14:47:35 -03:00`.
+- Ambiente: `producao`.
+- Autorizacao: Lucas encaminhou a devolutiva do Zeus e solicitou dar andamento ao recorte homologado.
+- Origem/homologacao de referencia: `[Zeus] Diagnostico Auth x hub_users em homologacao`, commit `f24c56e`, deployment homologacao `dpl_F22Kfzpj1Fx2ghwYw7YDpdHrEh7o`.
+- Escopo publicado:
+  - rota protegida `GET /api/zeus/auth-diagnostics`;
+  - botao `Auth` no Database Monitoring do Zeus;
+  - diagnostico agregado de Supabase Auth x `public.hub_users`;
+  - auditoria sob demanda, fora do polling automatico.
+- Commit de referencia homologado: `f24c56e fix(zeus): add auth diagnostics`.
+- Pacote limpo publicado: `.codex-deploy/prod-zeus-authdiag-20260521-144153`, baseado na producao vigente `dpl_JEA6MdUWm9EPwT5CKfXWMdi7nDMo`.
+- Deployment anterior: `dpl_JEA6MdUWm9EPwT5CKfXWMdi7nDMo`.
+- Deployment novo: `dpl_EbeEXXYKKSu9KYZQfK5t9uRBCo8F`; URL tecnica `https://careli-hub-hub-i2bs-a68kpejv5-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado em `dpl_EbeEXXYKKSu9KYZQfK5t9uRBCo8F`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado em `dpl_EbeEXXYKKSu9KYZQfK5t9uRBCo8F`, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/lib/operations/auth-diagnostics.ts`;
+  - `apps/hub/app/api/zeus/auth-diagnostics/route.ts`;
+  - `apps/hub/modules/squadops/ZeusPage.tsx`.
+- Arquivos/modulos excluidos: Hermes, Iris, Hades, Atlas, Apolo, Chronos, Setup, PWA, scripts, migrations, envs, secrets, tokens, service role mutavel, banco e Supabase escrita.
+- Validacoes executadas:
+  - conferencia do diario e do indice de homologacao;
+  - `git show --name-only f24c56e`: escopo restrito aos tres arquivos Zeus;
+  - revisao de codigo: rota `GET`, admin guard e leitura agregada; sem escrita/migration/env;
+  - eslint focado no pacote limpo: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - build remoto Vercel Production: `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://c2x.app.br/pulsex`: `200`;
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/hermes`: `200`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200`;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200`;
+  - `GET https://c2x.app.br/api/zeus/auth-diagnostics` sem sessao: `401` esperado;
+  - `GET https://ops.c2x.app.br/api/zeus/auth-diagnostics` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/operations/monitoring` sem sessao: `401` esperado.
+- Logs recentes: `npx.cmd vercel logs` em `c2x.app.br` e `ops.c2x.app.br` retornou chamadas `info`, sem erro critico observado.
+- Riscos conhecidos:
+  - diagnostico autenticado de producao ainda precisa ser executado por Lucas/admin;
+  - qualquer backfill, correcao de usuario, ativacao, ajuste de env ou escrita Supabase continua `BLOQUEADO` ate autorizacao explicita;
+  - rota usa service role server-side apenas para leitura agregada, sem expor valores.
+- Rollback definido: promover novamente `dpl_JEA6MdUWm9EPwT5CKfXWMdi7nDMo` se login, Zeus/OPS, Hermes, Hades/Guardian health ou rotas protegidas apresentarem regressao critica.
+- Pendencias: Lucas executar o botao `Auth` no Zeus em producao e repassar o diagnostico agregado para decisao DataOps/Zeus.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Zeus/DataOps avaliar o resultado do diagnostico antes de qualquer escrita ou correcao de cadastro.
