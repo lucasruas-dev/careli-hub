@@ -329,8 +329,9 @@ const C2X_ENTERPRISE_DISPLAY_EXPRESSION = `
 
 export async function loadApoloDashboard(
   options: ApoloDashboardOptions = {},
+  client?: ApoloSupabaseClient,
 ): Promise<ApoloDashboardData> {
-  const apoloResult = await loadApoloTablesDashboard(options);
+  const apoloResult = await loadApoloTablesDashboard(options, client);
 
   if (apoloResult.ok) {
     return apoloResult.data;
@@ -439,7 +440,7 @@ export async function syncApoloFromC2x(): Promise<SyncResult> {
 export function createApoloAdminClient() {
   const { serviceRoleKey, url } = getServerSupabaseConfig();
 
-  if (!url || !serviceRoleKey) {
+  if (!url || !serviceRoleKey || isSupabaseSecretKey(serviceRoleKey)) {
     return null;
   }
 
@@ -451,10 +452,31 @@ export function createApoloAdminClient() {
   });
 }
 
+export function createApoloUserClient(accessToken: string) {
+  const { anonKey, url } = getServerSupabaseConfig();
+
+  if (!url || !anonKey || !accessToken) {
+    return null;
+  }
+
+  return createClient(url, anonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+}
+
 async function loadApoloTablesDashboard(
   options: ApoloDashboardOptions,
+  client?: ApoloSupabaseClient,
 ): Promise<ApoloLoadResult> {
-  const adminClient = createApoloAdminClient();
+  const adminClient = client ?? createApoloAdminClient();
 
   if (!adminClient) {
     return {
@@ -621,6 +643,10 @@ async function loadApoloTablesDashboard(
     },
     ok: true,
   };
+}
+
+function isSupabaseSecretKey(value: string) {
+  return value.startsWith("sb_secret_");
 }
 
 function hasStaleCommercialPortfolio(rows: ApoloCommercialLinkRow[]) {

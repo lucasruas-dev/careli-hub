@@ -1,7 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 import {
   createApoloAdminClient,
+  createApoloUserClient,
   loadApoloDashboard,
 } from "@/lib/apolo/server";
 import type { ApoloDashboardData, ApoloProfile } from "@/lib/apolo/types";
@@ -18,16 +19,27 @@ const localDevCache = new Map<
 >();
 
 export async function GET(request: Request) {
-  const adminClient = createApoloAdminClient();
+  const accessToken = getBearerToken(request);
 
-  if (!adminClient) {
+  if (!accessToken) {
     return NextResponse.json(
-      { error: "Configure a chave server-side para carregar o Apolo." },
+      { error: "Sessao do Apolo ausente." },
+      { status: 401 },
+    );
+  }
+
+  const adminClient = createApoloAdminClient();
+  const userClient = createApoloUserClient(accessToken);
+  const authClient = adminClient ?? userClient;
+
+  if (!authClient) {
+    return NextResponse.json(
+      { error: "Configure o Supabase server-side para carregar o Apolo." },
       { status: 503 },
     );
   }
 
-  const authorization = await authorizeApoloReadRequest(request, adminClient);
+  const authorization = await authorizeApoloReadRequest(accessToken, authClient);
 
   if (!authorization.ok) {
     return authorization.response;
@@ -48,7 +60,7 @@ export async function GET(request: Request) {
     limit,
     profile,
     query,
-  });
+  }, userClient ?? adminClient ?? undefined);
 
   writeLocalDevCache(cacheKey, data);
 
@@ -102,22 +114,12 @@ function createApoloResponse(
 }
 
 async function authorizeApoloReadRequest(
-  request: NextRequest | Request,
-  adminClient: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  accessToken: string,
+  client: NonNullable<
+    ReturnType<typeof createApoloAdminClient> | ReturnType<typeof createApoloUserClient>
+  >,
 ) {
-  const accessToken = getBearerToken(request);
-
-  if (!accessToken) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { error: "Sessao do Apolo ausente." },
-        { status: 401 },
-      ),
-    };
-  }
-
-  const { data: authData, error: authError } = await adminClient.auth.getUser(
+  const { data: authData, error: authError } = await client.auth.getUser(
     accessToken,
   );
 
@@ -131,7 +133,7 @@ async function authorizeApoloReadRequest(
     };
   }
 
-  const { data: user, error: userError } = await adminClient
+  const { data: user, error: userError } = await client
     .from("hub_users")
     .select("id,role,status")
     .eq("id", authData.user.id)
@@ -162,7 +164,7 @@ function isHubUserRole(value: string): value is HubUserRole {
   return ["admin", "leader", "operator", "viewer"].includes(value);
 }
 
-function getBearerToken(request: NextRequest | Request) {
+function getBearerToken(request: Request) {
   const authorization = request.headers.get("authorization");
 
   if (!authorization?.startsWith("Bearer ")) {

@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import mysql from "mysql2/promise";
+import pg from "pg";
 
 const batchSize = readNumberArg("--batch-size", 400);
 const envFile = readArg("--env-file");
@@ -18,7 +19,9 @@ if (envFile) {
 }
 
 const supabaseUrl = resolveSupabaseUrl();
-const serviceRoleKey = resolveSupabaseServiceRoleKey();
+const serviceRoleKey = normalizeSupabaseJwt(resolveSupabaseServiceRoleKey());
+const postgresUrl = resolvePostgresUrl();
+const usePostgresWriter = !serviceRoleKey && Boolean(postgresUrl);
 
 const missing = [
   supabaseUrl
@@ -26,11 +29,11 @@ const missing = [
     : target === "homolog"
       ? "HOMOLOG_SUPABASE_URL or --env-file"
       : "NEXT_PUBLIC_SUPABASE_URL",
-  serviceRoleKey
+  serviceRoleKey || usePostgresWriter
     ? null
     : target === "homolog"
       ? "HOMOLOG_SUPABASE_SERVICE_ROLE_KEY or --env-file"
-      : "SUPABASE_SERVICE_ROLE_KEY",
+      : "SUPABASE_SERVICE_ROLE_KEY or POSTGRES_URL",
   readEnv("GUARDIAN_DB_HOST") ? null : "GUARDIAN_DB_HOST",
   readEnv("GUARDIAN_DB_NAME") ? null : "GUARDIAN_DB_NAME",
   readEnv("GUARDIAN_DB_USER") ? null : "GUARDIAN_DB_USER",
@@ -41,17 +44,29 @@ if (missing.length > 0) {
   fail(`Missing required env vars: ${missing.join(", ")}. No secret values were printed.`);
 }
 
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+const supabase = serviceRoleKey
+  ? createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+  : null;
 
 let pool;
+let postgresClient;
 let syncRun;
 
 try {
+  if (usePostgresWriter) {
+    const { Client } = pg;
+    postgresClient = new Client({
+      connectionString: postgresUrl,
+      ssl: { rejectUnauthorized: false },
+    });
+    await postgresClient.connect();
+  }
+
   pool = await mysql.createPool({
     charset: "utf8mb4",
     connectTimeout: 8000,
@@ -126,9 +141,33 @@ try {
   process.exitCode = 1;
 } finally {
   await pool?.end();
+  await postgresClient?.end();
 }
 
 async function startSyncRun() {
+  if (postgresClient) {
+    const { rows } = await postgresClient.query(
+      `
+        insert into public.apolo_sync_runs (metadata, source_system, status)
+        values ($1::jsonb, 'c2x', 'running')
+        returning id;
+      `,
+      [
+        {
+          runner: "scripts/apolo-sync-c2x.mjs",
+          strategy: "apolo-c2x-users-initial",
+          writer: "postgres",
+        },
+      ],
+    );
+
+    if (!rows[0]?.id) {
+      throw new Error("Sync run sem ID.");
+    }
+
+    return rows[0];
+  }
+
   const { data, error } = await supabase
     .from("apolo_sync_runs")
     .insert({
@@ -150,6 +189,11 @@ async function startSyncRun() {
 }
 
 async function updateSyncRun(id, values) {
+  if (postgresClient) {
+    await updatePostgresRow("apolo_sync_runs", values, "id", id);
+    return;
+  }
+
   const { error } = await supabase
     .from("apolo_sync_runs")
     .update(values)
@@ -198,6 +242,12 @@ async function upsertRows(table, rows, onConflict) {
   }
 
   const uniqueRows = dedupeRows(rows, onConflict);
+
+  if (postgresClient) {
+    await upsertPostgresRows(table, uniqueRows, onConflict);
+    return uniqueRows.length;
+  }
+
   const { error } = await supabase.from(table).upsert(uniqueRows, { onConflict });
 
   if (error) {
@@ -205,6 +255,83 @@ async function upsertRows(table, rows, onConflict) {
   }
 
   return uniqueRows.length;
+}
+
+async function updatePostgresRow(table, values, conflictKey, conflictValue) {
+  const columns = Object.keys(values);
+
+  if (columns.length === 0) {
+    return;
+  }
+
+  const assignments = columns
+    .map((column, index) => `${quoteIdentifier(column)} = $${index + 1}`)
+    .join(", ");
+  const params = columns.map((column) => values[column]);
+
+  await postgresClient.query(
+    `
+      update public.${quoteIdentifier(table)}
+      set ${assignments}
+      where ${quoteIdentifier(conflictKey)} = $${columns.length + 1};
+    `,
+    [...params, conflictValue],
+  );
+}
+
+async function upsertPostgresRows(table, rows, onConflict) {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const columns = Array.from(
+    rows.reduce((columnSet, row) => {
+      Object.keys(row).forEach((column) => columnSet.add(column));
+      return columnSet;
+    }, new Set()),
+  ).sort();
+  const conflictColumns = onConflict.split(",").map((column) => column.trim());
+  const updateColumns = columns.filter(
+    (column) => !conflictColumns.includes(column),
+  );
+  const rowPlaceholders = [];
+  const params = [];
+
+  for (const row of rows) {
+    const valuePlaceholders = [];
+
+    for (const column of columns) {
+      params.push(row[column] ?? null);
+      valuePlaceholders.push(`$${params.length}`);
+    }
+
+    rowPlaceholders.push(`(${valuePlaceholders.join(", ")})`);
+  }
+
+  const updateClause =
+    updateColumns.length > 0
+      ? `do update set ${updateColumns
+          .map(
+            (column) =>
+              `${quoteIdentifier(column)} = excluded.${quoteIdentifier(column)}`,
+          )
+          .join(", ")}`
+      : "do nothing";
+
+  await postgresClient.query(
+    `
+      insert into public.${quoteIdentifier(table)}
+        (${columns.map(quoteIdentifier).join(", ")})
+      values ${rowPlaceholders.join(", ")}
+      on conflict (${conflictColumns.map(quoteIdentifier).join(", ")})
+      ${updateClause};
+    `,
+    params,
+  );
+}
+
+function quoteIdentifier(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
 }
 
 function dedupeRows(rows, onConflict) {
@@ -750,6 +877,24 @@ function resolveSupabaseServiceRoleKey() {
   }
 
   return readEnv("SUPABASE_SERVICE_ROLE_KEY") ?? readEnv("SUPABASE_SECRET_KEY");
+}
+
+function resolvePostgresUrl() {
+  return (
+    readEnv("POSTGRES_URL") ??
+    readEnv("POSTGRES_URL_NON_POOLING") ??
+    readEnv("POSTGRES_PRISMA_URL") ??
+    readEnv("DATABASE_URL") ??
+    readEnv("HOMOLOG_POSTGRES_URL")
+  );
+}
+
+function normalizeSupabaseJwt(value) {
+  if (!value || value.startsWith("sb_secret_")) {
+    return undefined;
+  }
+
+  return value;
 }
 
 function fail(message) {
