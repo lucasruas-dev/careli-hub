@@ -438,6 +438,22 @@ function buildAlertsForCheck(check: OperationsCheckMetric): OperationsAlert[] {
     );
   }
 
+  if (check.id === "supabase-auth-profile-alignment" && !check.ok) {
+    alerts.push(
+      createAlert(check, {
+        impact:
+          "Usuarios podem existir no cadastro operacional sem conseguir autenticar, ou autenticar sem perfil ativo no Panteon.",
+        level: "critico",
+        recommendation:
+          "Acionar Zeus para auditar Auth x public.hub_users e executar backfill controlado somente com autorizacao do Lucas.",
+        title: "Auth x hub_users desalinhado",
+        type: "supabase_instavel",
+      }),
+    );
+
+    return alerts;
+  }
+
   if (check.group === "supabase" && !check.ok) {
     alerts.push(
       createAlert(check, {

@@ -117,6 +117,12 @@ export function AuthProvider({
       let isMounted = true;
       const client = getHubSupabaseClient();
 
+      if (isLoginRoute) {
+        setProfileStatus("idle");
+        setAuthState(createUnauthenticatedAuthState());
+        return;
+      }
+
       setAuthState({
         session: null,
         status: "loading",
@@ -146,7 +152,7 @@ export function AuthProvider({
             client.auth.getSession(),
             "Tempo excedido ao carregar a sessao Supabase.",
             "session",
-            20_000,
+            getLocalAuthTimeoutMs(20_000, 6_000),
           );
         })
         .then(async (sessionResult) => {
@@ -269,7 +275,7 @@ export function AuthProvider({
       logAuthDebug("auth error", "invalid mock session");
       setAuthState(createUnauthenticatedAuthState());
     }
-  }, [authRetryKey]);
+  }, [authRetryKey, isLoginRoute]);
 
   useEffect(() => {
     if (authState.status === "loading") {
@@ -334,7 +340,7 @@ export function AuthProvider({
           }),
           "Tempo excedido ao autenticar com Supabase.",
           "session",
-          12_000,
+          getLocalAuthTimeoutMs(12_000, 8_000),
         );
 
         if (error || !data.session) {
@@ -498,7 +504,7 @@ export function AuthProvider({
           client.auth.signOut({ scope: "local" }),
           "Tempo excedido ao encerrar a sessao Supabase.",
           "signOut",
-          5_000,
+          getLocalAuthTimeoutMs(5_000, 3_000),
         );
 
         if (error) {
@@ -609,7 +615,7 @@ async function signInViaApiFallback({
       }),
       "Tempo excedido ao autenticar com Supabase pelo servidor.",
       "session",
-      25_000,
+      getLocalAuthTimeoutMs(25_000, 10_000),
     );
     const payload = (await response.json().catch(() => null)) as
       | PasswordSignInFallbackResponse
@@ -643,7 +649,7 @@ async function signInViaApiFallback({
       }),
       "Tempo excedido ao gravar a sessao Supabase.",
       "session",
-      10_000,
+      getLocalAuthTimeoutMs(10_000, 5_000),
     );
 
     if (error || !data.session) {
@@ -739,7 +745,7 @@ async function recoverHubSessionViaApiFallback({
       }),
       "Tempo excedido ao recuperar a sessao pelo servidor.",
       "session",
-      20_000,
+      getLocalAuthTimeoutMs(20_000, 6_000),
     );
     const payload = (await response.json().catch(() => null)) as
       | SessionRecoveryResponse
@@ -888,7 +894,7 @@ async function loadHubProfileInBackground({
         .maybeSingle<HubProfileRow>(),
       "Tempo excedido ao carregar o perfil operacional do Panteon.",
       "profile",
-      15_000,
+      getLocalAuthTimeoutMs(15_000, 6_000),
     );
 
     if (error || !data || data.status !== "active") {
@@ -985,7 +991,7 @@ async function loadHubProfileViaApi(
       }),
       "Tempo excedido ao carregar o perfil operacional pelo servidor.",
       "profile",
-      10_000,
+      getLocalAuthTimeoutMs(10_000, 5_000),
     );
     const payload = (await response.json().catch(() => null)) as
       | ProfileFallbackResponse
@@ -1136,7 +1142,7 @@ function syncRecoveredSupabaseSession(
     }),
     "Tempo excedido ao sincronizar a sessao Supabase.",
     "session",
-    8_000,
+    getLocalAuthTimeoutMs(8_000, 4_000),
   ).catch((error: unknown) => {
     logSupabaseDiagnostic("auth", "session sync error", {
       error: serializeDiagnosticError(error),
@@ -1274,6 +1280,10 @@ function withMeasuredTimeout<Result>(
       },
     );
   });
+}
+
+function getLocalAuthTimeoutMs(productionMs: number, localMs: number) {
+  return isLocalDevelopmentRuntime() ? localMs : productionMs;
 }
 
 function clearLocalAuthStorage() {

@@ -68,6 +68,7 @@ export const rolePermissionMatrix = {
   operator: [
     "hub:view",
     "apolo:view",
+    "atlas:view",
     "hades:view",
     "guardian:view",
     "iris:view",
@@ -83,6 +84,7 @@ export const rolePermissionMatrix = {
   viewer: [
     "hub:view",
     "apolo:view",
+    "atlas:view",
     "hades:view",
     "guardian:view",
     "iris:view",

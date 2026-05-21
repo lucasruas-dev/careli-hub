@@ -1,11 +1,26 @@
 "use client";
 
-import { loadAtlasSnapshot } from "@/lib/atlas/client";
+import {
+  addAtlasOccurrenceEvidences,
+  createAtlasFpeEntry as createAtlasFpeEntryRequest,
+  createAtlasOccurrence as createAtlasOccurrenceRequest,
+  loadAtlasSnapshot,
+  reviewAtlasOccurrenceJustification,
+  submitAtlasOccurrenceJustification,
+  type AddAtlasOccurrenceEvidencesClientInput,
+  type AtlasEvidenceClientInput,
+  type CreateAtlasFpeEntryClientInput,
+  type CreateAtlasOccurrenceClientInput,
+  type ReviewAtlasJustificationClientInput,
+  type SubmitAtlasJustificationClientInput,
+} from "@/lib/atlas/client";
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 import type {
   AtlasBlocker,
   AtlasCollaborator,
   AtlasDepartment,
+  AtlasFpeEntry,
+  AtlasFpeEntryKind,
   AtlasOccurrence,
   AtlasOccurrenceProfile,
   AtlasOccurrenceType,
@@ -16,22 +31,37 @@ import { useAuth } from "@/providers/auth-provider";
 import {
   Activity,
   AlertTriangle,
+  ArrowDownCircle,
+  ArrowUpCircle,
   BarChart3,
   Building2,
   CheckCircle2,
   ClipboardList,
+  CircleDollarSign,
   ExternalLink,
   FileDown,
   Gauge,
+  HandCoins,
   Layers3,
   LayoutGrid,
   LockKeyhole,
+  MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
+  Paperclip,
+  PiggyBank,
+  Plus,
   RefreshCcw,
   Search,
+  SendHorizontal,
+  ShieldCheck,
+  TrendingDown,
+  TrendingUp,
+  Trash2,
   Trophy,
   UsersRound,
+  WalletCards,
+  XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -44,7 +74,9 @@ import {
 import { Tooltip } from "@repo/uix";
 
 type AtlasLoadState = "idle" | "loading" | "ready" | "error";
+type AtlasMutationState = "idle" | "saving";
 type AtlasSection =
+  | "fpe"
   | "relatorios"
   | "ocorrencias"
   | "colaboradores";
@@ -67,10 +99,48 @@ type AtlasFilterState = {
   typeId: string;
 };
 
+type AtlasDialogState =
+  | { mode: "create" }
+  | { mode: "evidences"; occurrence: AtlasOccurrence }
+  | { mode: "fpe-create" }
+  | { mode: "justify"; occurrence: AtlasOccurrence }
+  | { mode: "review"; occurrence: AtlasOccurrence }
+  | null;
+
+type AtlasFpeDepartmentRow = {
+  balance: number;
+  baseAmount: number;
+  collaboratorCount: number;
+  departmentId: string;
+  departmentName: string;
+  entryDelta: number;
+  entriesCount: number;
+  perCollaboratorAmount: number;
+  status: "negative" | "neutral" | "positive";
+};
+
+type AtlasFpeViewModel = {
+  activeCollaborators: AtlasCollaborator[];
+  baseAmount: number;
+  departmentBalance: number;
+  departmentRows: AtlasFpeDepartmentRow[];
+  departmentShareRate: number;
+  entries: AtlasFpeEntry[];
+  globalBalance: number;
+  globalPerCollaborator: number;
+  globalShareRate: number;
+  negativeImpact: number;
+  positiveImpact: number;
+  targetPercent: number;
+  totalBalance: number;
+  totalEntriesImpact: number;
+};
+
 type AtlasViewModel = {
   collaboratorsById: Map<string, AtlasCollaborator>;
   departmentById: Map<string, AtlasDepartment>;
   departmentRows: Array<{ count: number; id: string; label: string }>;
+  fpe: AtlasFpeViewModel;
   filteredOccurrences: AtlasOccurrence[];
   occurrenceProfileRows: Array<{ count: number; id: string; label: string }>;
   occurrenceTypeRows: Array<{
@@ -106,6 +176,12 @@ const atlasNavigationItems = [
   },
   {
     adminOnly: false,
+    icon: PiggyBank,
+    id: "fpe",
+    label: "FPE",
+  },
+  {
+    adminOnly: false,
     icon: ClipboardList,
     id: "ocorrencias",
     label: "Lancamentos",
@@ -125,11 +201,19 @@ export function AtlasPage() {
   const [snapshot, setSnapshot] = useState<AtlasSnapshot | null>(null);
   const [status, setStatus] = useState<AtlasLoadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<AtlasDialogState>(null);
+  const [mutationStatus, setMutationStatus] =
+    useState<AtlasMutationState>("idle");
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [filters, setFilters] = useState<AtlasFilterState>(initialFilters);
   const [isAtlasSidebarCollapsed, setIsAtlasSidebarCollapsed] =
     useState(false);
   const accessToken = authState.session?.accessToken ?? null;
   const isAdmin = hubUser?.role === "admin";
+  const canOpenOccurrences = Boolean(snapshot && hubUser);
+  const canManageFpe = hubUser?.role === "admin" || hubUser?.role === "leader";
+  const canReviewJustifications =
+    hubUser?.role === "admin" || hubUser?.role === "leader";
   const atlasData = useMemo(
     () => snapshot ?? createEmptyAtlasSnapshot(errorMessage),
     [errorMessage, snapshot],
@@ -160,6 +244,65 @@ export function AtlasPage() {
       );
     }
   }, [accessToken]);
+
+  const runAtlasMutation = useCallback(
+    async (mutation: () => Promise<unknown>) => {
+      setMutationStatus("saving");
+      setMutationError(null);
+
+      try {
+        await mutation();
+        await refreshAtlas();
+        setMutationStatus("idle");
+        return true;
+      } catch (error) {
+        setMutationStatus("idle");
+        setMutationError(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel atualizar o Atlas.",
+        );
+        return false;
+      }
+    },
+    [refreshAtlas],
+  );
+
+  const handleCreateOccurrence = useCallback(
+    (input: CreateAtlasOccurrenceClientInput) =>
+      runAtlasMutation(() => createAtlasOccurrenceRequest(input, accessToken)),
+    [accessToken, runAtlasMutation],
+  );
+
+  const handleCreateFpeEntry = useCallback(
+    (input: CreateAtlasFpeEntryClientInput) =>
+      runAtlasMutation(() => createAtlasFpeEntryRequest(input, accessToken)),
+    [accessToken, runAtlasMutation],
+  );
+
+  const handleAddEvidences = useCallback(
+    (input: AddAtlasOccurrenceEvidencesClientInput) =>
+      runAtlasMutation(() =>
+        addAtlasOccurrenceEvidences(input, accessToken),
+      ),
+    [accessToken, runAtlasMutation],
+  );
+
+  const handleSubmitJustification = useCallback(
+    (input: SubmitAtlasJustificationClientInput) =>
+      runAtlasMutation(() =>
+        submitAtlasOccurrenceJustification(input, accessToken),
+      ),
+    [accessToken, runAtlasMutation],
+  );
+
+  const handleReviewJustification = useCallback(
+    (input: ReviewAtlasJustificationClientInput) =>
+      runAtlasMutation(() =>
+        reviewAtlasOccurrenceJustification(input, accessToken),
+      ),
+    [accessToken, runAtlasMutation],
+  );
 
   useEffect(() => {
     if (profileStatus !== "ready") {
@@ -210,10 +353,30 @@ export function AtlasPage() {
 
           {activeSection === "relatorios" ? (
             <ReportsSection
+              canReviewJustifications={canReviewJustifications}
               filters={filters}
               isBlocked={isBlocked}
               onChangeFilters={setFilters}
+              onOpenEvidence={(occurrence) =>
+                setDialog({ mode: "evidences", occurrence })
+              }
+              onOpenJustification={(occurrence) =>
+                setDialog({ mode: "justify", occurrence })
+              }
+              onOpenReview={(occurrence) =>
+                setDialog({ mode: "review", occurrence })
+              }
               onResetFilters={() => setFilters(initialFilters)}
+              snapshot={atlasData}
+              viewModel={viewModel}
+            />
+          ) : null}
+
+          {activeSection === "fpe" ? (
+            <FpeSection
+              canManageFpe={canManageFpe}
+              isBlocked={isBlocked}
+              onOpenCreate={() => setDialog({ mode: "fpe-create" })}
               snapshot={atlasData}
               viewModel={viewModel}
             />
@@ -221,9 +384,21 @@ export function AtlasPage() {
 
           {activeSection === "ocorrencias" ? (
             <OccurrencesSection
+              canOpenOccurrences={canOpenOccurrences}
+              canReviewJustifications={canReviewJustifications}
               filters={filters}
               isBlocked={isBlocked}
               onChangeFilters={setFilters}
+              onOpenCreate={() => setDialog({ mode: "create" })}
+              onOpenEvidence={(occurrence) =>
+                setDialog({ mode: "evidences", occurrence })
+              }
+              onOpenJustification={(occurrence) =>
+                setDialog({ mode: "justify", occurrence })
+              }
+              onOpenReview={(occurrence) =>
+                setDialog({ mode: "review", occurrence })
+              }
               onResetFilters={() => setFilters(initialFilters)}
               snapshot={atlasData}
               viewModel={viewModel}
@@ -238,6 +413,72 @@ export function AtlasPage() {
           ) : null}
         </main>
       </div>
+      {dialog?.mode === "create" ? (
+        <CreateOccurrenceDialog
+          error={mutationError}
+          isSaving={mutationStatus === "saving"}
+          onClose={() => {
+            setDialog(null);
+            setMutationError(null);
+          }}
+          onSubmit={handleCreateOccurrence}
+          snapshot={atlasData}
+        />
+      ) : null}
+      {dialog?.mode === "fpe-create" ? (
+        <CreateFpeEntryDialog
+          error={mutationError}
+          isSaving={mutationStatus === "saving"}
+          onClose={() => {
+            setDialog(null);
+            setMutationError(null);
+          }}
+          onSubmit={handleCreateFpeEntry}
+          snapshot={atlasData}
+          viewModel={viewModel}
+        />
+      ) : null}
+      {dialog?.mode === "evidences" ? (
+        <EvidenceDialog
+          error={mutationError}
+          isSaving={mutationStatus === "saving"}
+          occurrence={dialog.occurrence}
+          onClose={() => {
+            setDialog(null);
+            setMutationError(null);
+          }}
+          onSubmit={handleAddEvidences}
+          viewModel={viewModel}
+        />
+      ) : null}
+      {dialog?.mode === "justify" ? (
+        <JustificationDialog
+          error={mutationError}
+          isSaving={mutationStatus === "saving"}
+          mode="justify"
+          occurrence={dialog.occurrence}
+          onClose={() => {
+            setDialog(null);
+            setMutationError(null);
+          }}
+          onSubmitJustification={handleSubmitJustification}
+          viewModel={viewModel}
+        />
+      ) : null}
+      {dialog?.mode === "review" ? (
+        <JustificationDialog
+          error={mutationError}
+          isSaving={mutationStatus === "saving"}
+          mode="review"
+          occurrence={dialog.occurrence}
+          onClose={() => {
+            setDialog(null);
+            setMutationError(null);
+          }}
+          onReviewJustification={handleReviewJustification}
+          viewModel={viewModel}
+        />
+      ) : null}
     </div>
   );
 }
@@ -397,7 +638,7 @@ function AtlasSidebar({
         <div className="m-3 rounded-md border border-[#A07C3B]/25 bg-[#A07C3B]/10 p-3 text-xs leading-5 text-[#ead7a6]">
           <p className="m-0 font-bold uppercase text-[#D6B56F]">V1 Hub</p>
           <p className="m-0 mt-1">
-            Escrita, Auth legado e bonus ficam bloqueados ate validacao.
+            Bonus, Auth legado e edicoes sensiveis seguem bloqueados.
           </p>
         </div>
       )}
@@ -431,7 +672,7 @@ function AtlasModuleToolbar({
         type="button"
       >
         <LockKeyhole aria-hidden="true" size={15} />
-        {isBlocked ? "Operacao bloqueada" : "Read-only"}
+        {isBlocked ? "Operacao bloqueada" : "Escrita controlada"}
       </button>
       <PanteonTopbarUser className="ml-1 border-l border-[#d9e0e7] pl-3" />
     </div>
@@ -486,16 +727,24 @@ function BlockedNotice({
 }
 
 function ReportsSection({
+  canReviewJustifications,
   filters,
   isBlocked,
   onChangeFilters,
+  onOpenEvidence,
+  onOpenJustification,
+  onOpenReview,
   onResetFilters,
   snapshot,
   viewModel,
 }: {
+  canReviewJustifications: boolean;
   filters: AtlasFilterState;
   isBlocked: boolean;
   onChangeFilters: (filters: AtlasFilterState) => void;
+  onOpenEvidence: (occurrence: AtlasOccurrence) => void;
+  onOpenJustification: (occurrence: AtlasOccurrence) => void;
+  onOpenReview: (occurrence: AtlasOccurrence) => void;
   onResetFilters: () => void;
   snapshot: AtlasSnapshot;
   viewModel: AtlasViewModel;
@@ -564,8 +813,12 @@ function ReportsSection({
       </div>
 
       <OccurrencesTable
+        canReviewJustifications={canReviewJustifications}
         isBlocked={isBlocked}
         mode="analytics"
+        onOpenEvidence={onOpenEvidence}
+        onOpenJustification={onOpenJustification}
+        onOpenReview={onOpenReview}
         occurrences={viewModel.filteredOccurrences}
         viewModel={viewModel}
       />
@@ -573,17 +826,628 @@ function ReportsSection({
   );
 }
 
+function FpeSection({
+  canManageFpe,
+  isBlocked,
+  onOpenCreate,
+  snapshot,
+  viewModel,
+}: {
+  canManageFpe: boolean;
+  isBlocked: boolean;
+  onOpenCreate: () => void;
+  snapshot: AtlasSnapshot;
+  viewModel: AtlasViewModel;
+}) {
+  const [activeTab, setActiveTab] = useState<"caixinha" | "lancamentos">(
+    "caixinha",
+  );
+  const isSchemaMissing = snapshot.fpe.config.schemaStatus !== "available";
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-md border border-[#d9e0e7] bg-white p-1 shadow-sm">
+          <button
+            className={`inline-flex h-8 items-center gap-2 rounded px-3 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B]/35 ${
+              activeTab === "caixinha"
+                ? "bg-[#101820] text-white"
+                : "text-[#526078] hover:bg-[#f4f7fa] hover:text-[#101820]"
+            }`}
+            onClick={() => setActiveTab("caixinha")}
+            type="button"
+          >
+            <PiggyBank aria-hidden="true" size={15} />
+            Caixinha
+          </button>
+          <button
+            className={`inline-flex h-8 items-center gap-2 rounded px-3 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B]/35 ${
+              activeTab === "lancamentos"
+                ? "bg-[#101820] text-white"
+                : "text-[#526078] hover:bg-[#f4f7fa] hover:text-[#101820]"
+            }`}
+            onClick={() => setActiveTab("lancamentos")}
+            type="button"
+          >
+            <WalletCards aria-hidden="true" size={15} />
+            Lancamentos
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={isSchemaMissing ? "blocked" : "online"}>
+            {isSchemaMissing ? "migration pendente" : "ativo"}
+          </StatusBadge>
+          <StatusBadge tone="gold">
+            ciclo {formatNumber(snapshot.fpe.config.cycleYear)}
+          </StatusBadge>
+        </div>
+      </div>
+
+      {isSchemaMissing ? (
+        <section className="rounded-lg border border-[#eadfca] bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-start gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
+              <LockKeyhole className="size-4 stroke-[1.8]" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="m-0 text-sm font-bold uppercase text-[#8a682f]">
+                FPE aguardando estrutura controlada
+              </p>
+              <p className="m-0 mt-1 text-sm leading-6 text-[#526078]">
+                A tela ja esta pronta para a regra 30/70, mas a gravacao depende
+                da migration 0029 aprovada e aplicada no ambiente.
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {activeTab === "caixinha" ? (
+        <FpeDashboard viewModel={viewModel.fpe} />
+      ) : (
+        <FpeEntriesTable
+          canManageFpe={canManageFpe}
+          isBlocked={isBlocked || isSchemaMissing}
+          onOpenCreate={onOpenCreate}
+          viewModel={viewModel}
+        />
+      )}
+    </div>
+  );
+}
+
+function FpeDashboard({ viewModel }: { viewModel: AtlasFpeViewModel }) {
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(0,1.5fr)]">
+        <Surface
+          icon={PiggyBank}
+          title="Caixinha FPE"
+          toolbar={
+            <StatusBadge tone={viewModel.totalEntriesImpact >= 0 ? "online" : "warning"}>
+              {viewModel.totalEntriesImpact >= 0 ? "crescendo" : "reduzindo"}
+            </StatusBadge>
+          }
+        >
+          <FpeJar
+            balance={viewModel.totalBalance}
+            baseAmount={viewModel.baseAmount}
+            percent={viewModel.targetPercent}
+            trend={
+              viewModel.totalEntriesImpact > 0
+                ? "up"
+                : viewModel.totalEntriesImpact < 0
+                  ? "down"
+                  : "neutral"
+            }
+          />
+        </Surface>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MetricCard
+            icon={CircleDollarSign}
+            label="Saldo total acumulado"
+            tone={viewModel.totalBalance >= 10_000 ? "green" : "gold"}
+            value={formatCurrency(viewModel.totalBalance)}
+          />
+          <MetricCard
+            icon={HandCoins}
+            label="Caixa global hoje"
+            tone="gold"
+            value={formatCurrency(viewModel.globalBalance)}
+          />
+          <MetricCard
+            icon={Building2}
+            label="Caixa dos departamentos"
+            tone="gold"
+            value={formatCurrency(viewModel.departmentBalance)}
+          />
+          <MetricCard
+            icon={UsersRound}
+            label="Global por colaborador ativo"
+            tone="green"
+            value={formatCurrency(viewModel.globalPerCollaborator)}
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <MetricCard
+          icon={TrendingUp}
+          label="Bonificacoes no ciclo"
+          tone="green"
+          value={formatCurrency(viewModel.positiveImpact)}
+        />
+        <MetricCard
+          icon={TrendingDown}
+          label="Prejuizos no ciclo"
+          tone="warning"
+          value={formatCurrency(viewModel.negativeImpact)}
+        />
+        <MetricCard
+          icon={WalletCards}
+          label="Impacto liquido"
+          tone={viewModel.totalEntriesImpact >= 0 ? "green" : "warning"}
+          value={formatSignedCurrency(viewModel.totalEntriesImpact)}
+        />
+      </div>
+
+      <Surface
+        icon={Building2}
+        title="Contribuicao dos departamentos"
+        toolbar={
+          <StatusBadge tone="neutral">
+            {formatNumber(viewModel.departmentRows.length)} departamentos
+          </StatusBadge>
+        }
+      >
+        <div className="overflow-x-auto rounded-md border border-[#d9e0e7]">
+          <table className="min-w-[72rem] w-full border-separate border-spacing-0 text-left text-sm">
+            <thead className="bg-[#f4f7fa] text-xs uppercase text-[#697386]">
+              <tr>
+                <TableHead>Departamento</TableHead>
+                <TableHead>Colaboradores</TableHead>
+                <TableHead>Base</TableHead>
+                <TableHead>Impacto</TableHead>
+                <TableHead>Saldo se fechasse hoje</TableHead>
+                <TableHead>Por colaborador</TableHead>
+                <TableHead>Status</TableHead>
+              </tr>
+            </thead>
+            <tbody>
+              {viewModel.departmentRows.length === 0 ? (
+                <EmptyTableRow
+                  colSpan={7}
+                  label="Nenhum departamento mapeado para o FPE."
+                />
+              ) : (
+                viewModel.departmentRows.map((department) => (
+                  <tr className="hover:bg-[#f8fafc]" key={department.departmentId}>
+                    <TableCell strong>{department.departmentName}</TableCell>
+                    <TableCell>{formatNumber(department.collaboratorCount)}</TableCell>
+                    <TableCell>{formatCurrency(department.baseAmount)}</TableCell>
+                    <TableCell>
+                      <span
+                        className={
+                          department.entryDelta >= 0
+                            ? "font-semibold text-emerald-700"
+                            : "font-semibold text-amber-700"
+                        }
+                      >
+                        {formatSignedCurrency(department.entryDelta)}
+                      </span>
+                    </TableCell>
+                    <TableCell>{formatCurrency(department.balance)}</TableCell>
+                    <TableCell>
+                      {formatCurrency(department.perCollaboratorAmount)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        tone={
+                          department.status === "positive"
+                            ? "online"
+                            : department.status === "negative"
+                              ? "warning"
+                              : "neutral"
+                        }
+                      >
+                        {department.status === "positive"
+                          ? "ajudando"
+                          : department.status === "negative"
+                            ? "prejuizo"
+                            : "neutro"}
+                      </StatusBadge>
+                    </TableCell>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Surface>
+    </div>
+  );
+}
+
+function FpeJar({
+  balance,
+  baseAmount,
+  percent,
+  trend,
+}: {
+  balance: number;
+  baseAmount: number;
+  percent: number;
+  trend: "down" | "neutral" | "up";
+}) {
+  const fillPercent = Math.round(clamp(percent, 0, 1) * 100);
+  const isAboveBase = balance >= baseAmount;
+  const health =
+    fillPercent >= 80 ? "green" : fillPercent >= 50 ? "yellow" : "red";
+  const healthLabel =
+    health === "green" ? "saudavel" : health === "yellow" ? "atencao" : "critico";
+  const healthClasses = {
+    green: {
+      bar: "bg-emerald-500",
+      badge: "online",
+      text: "text-emerald-700",
+    },
+    red: {
+      bar: "bg-red-500",
+      badge: "blocked",
+      text: "text-red-700",
+    },
+    yellow: {
+      bar: "bg-amber-400",
+      badge: "warning",
+      text: "text-amber-700",
+    },
+  }[health];
+  const coinMotionClass =
+    trend === "down"
+      ? "fpe-meter-coin--falling"
+      : trend === "up"
+        ? "fpe-meter-coin--rising"
+        : "fpe-meter-coin--steady";
+  const trendLabel =
+    trend === "down" ? "descendo" : trend === "up" ? "subindo" : "estavel";
+
+  return (
+    <div className="grid gap-4">
+      <div className="rounded-xl border border-[#d9e0e7] bg-[#f8fafc] p-4 shadow-inner">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="m-0 text-xs font-bold uppercase text-[#697386]">
+              reserva FPE
+            </p>
+            <p className="m-0 mt-1 text-3xl font-semibold text-[#101820]">
+              {formatCurrency(balance)}
+            </p>
+            <p className="m-0 mt-1 text-xs font-semibold uppercase text-[#697386]">
+              base anual {formatCurrency(baseAmount)}
+            </p>
+          </div>
+          <StatusBadge tone={healthClasses.badge as "blocked" | "online" | "warning"}>
+            {healthLabel}
+          </StatusBadge>
+        </div>
+
+        <div className="mt-5 rounded-lg border border-[#d9e0e7] bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="m-0 text-xs font-bold uppercase text-[#697386]">
+                saude do fundo
+              </p>
+              <p className={`m-0 mt-1 text-2xl font-semibold ${healthClasses.text}`}>
+                {formatPercent(percent)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#697386]">
+              <span className="grid size-7 place-items-center rounded-full border border-[#d9e0e7] bg-[#f8fafc]">
+                <CircleDollarSign
+                  aria-hidden="true"
+                  className="size-4 stroke-[1.8] text-[#A07C3B]"
+                />
+              </span>
+              moedas {trendLabel}
+            </div>
+          </div>
+
+          <div className="relative mt-6 h-16">
+            <div className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-full bg-gradient-to-r from-red-100 via-amber-100 to-emerald-100 ring-1 ring-[#d9e0e7]" />
+            <div
+              className={`absolute left-0 top-1/2 h-4 -translate-y-1/2 rounded-full ${healthClasses.bar} transition-all duration-700 ease-out`}
+              style={{ width: `${fillPercent}%` }}
+            />
+            <div
+              className="absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${fillPercent}%` }}
+            >
+              <span className={`fpe-meter-coin ${coinMotionClass}`} />
+            </div>
+            <div className="absolute left-1/2 top-10 h-4 border-l border-[#8b96a8]/45" />
+            <div className="absolute left-[80%] top-10 h-4 border-l border-[#8b96a8]/45" />
+            <span className="absolute left-1/2 top-14 -translate-x-1/2 text-[0.68rem] font-bold uppercase text-[#697386]">
+              50%
+            </span>
+            <span className="absolute left-[80%] top-14 -translate-x-1/2 text-[0.68rem] font-bold uppercase text-[#697386]">
+              80%
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2">
+            <p className="m-0 text-xs font-bold uppercase text-red-700">
+              abaixo de 50%
+            </p>
+            <p className="m-0 mt-1 text-xs font-semibold text-red-700">
+              vermelho
+            </p>
+          </div>
+          <div className="rounded-md border border-amber-100 bg-amber-50 px-3 py-2">
+            <p className="m-0 text-xs font-bold uppercase text-amber-700">
+              50% a 80%
+            </p>
+            <p className="m-0 mt-1 text-xs font-semibold text-amber-700">
+              amarelo
+            </p>
+          </div>
+          <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2">
+            <p className="m-0 text-xs font-bold uppercase text-emerald-700">
+              acima de 80%
+            </p>
+            <p className="m-0 mt-1 text-xs font-semibold text-emerald-700">
+              verde
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-1.5">
+        <div className="flex items-center justify-between text-xs font-semibold uppercase text-[#697386]">
+          <span>{isAboveBase ? "acima da base" : "acompanhamento"}</span>
+          <span>{formatCurrency(balance)} / {formatCurrency(baseAmount)}</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-[#edf0f3]">
+          <div
+            className={`h-full rounded-full ${healthClasses.bar} transition-all duration-700`}
+            style={{ width: `${fillPercent}%` }}
+          />
+        </div>
+      </div>
+      <style>{`
+        @keyframes atlas-fpe-coin-rise {
+          0%,
+          100% {
+            transform: translateY(0) rotate(-8deg);
+          }
+          50% {
+            transform: translateY(-12px) rotate(8deg);
+          }
+        }
+
+        @keyframes atlas-fpe-coin-fall {
+          0%,
+          100% {
+            transform: translateY(-2px) rotate(6deg);
+          }
+          50% {
+            transform: translateY(12px) rotate(-8deg);
+          }
+        }
+
+        @keyframes atlas-fpe-coin-steady {
+          0%,
+          100% {
+            transform: translateY(0) scale(1);
+          }
+          50% {
+            transform: translateY(-4px) scale(1.03);
+          }
+        }
+
+        .fpe-meter-coin {
+          display: block;
+          height: 2.25rem;
+          position: relative;
+          width: 2.25rem;
+          border-radius: 9999px;
+          border: 1px solid rgb(160 124 59 / 0.38);
+          background:
+            radial-gradient(circle at 35% 28%, #fff8df 0 12%, transparent 13%),
+            linear-gradient(135deg, #f4d990 0%, #c79742 55%, #9f7834 100%);
+          box-shadow:
+            inset 0 0 0 0.23rem rgb(255 255 255 / 0.22),
+            0 0.35rem 0.7rem rgb(16 24 32 / 0.12);
+          animation: atlas-fpe-coin-steady 3.6s ease-in-out infinite;
+        }
+
+        .fpe-meter-coin::after {
+          position: absolute;
+          display: block;
+          inset: 0.32rem;
+          border-radius: 9999px;
+          border: 1px solid rgb(255 255 255 / 0.45);
+          content: "";
+        }
+
+        .fpe-meter-coin--rising {
+          animation-name: atlas-fpe-coin-rise;
+          animation-duration: 2.8s;
+        }
+
+        .fpe-meter-coin--falling {
+          animation-name: atlas-fpe-coin-fall;
+          animation-duration: 2.8s;
+        }
+
+        .fpe-meter-coin--steady {
+          animation-name: atlas-fpe-coin-steady;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function FpeEntriesTable({
+  canManageFpe,
+  isBlocked,
+  onOpenCreate,
+  viewModel,
+}: {
+  canManageFpe: boolean;
+  isBlocked: boolean;
+  onOpenCreate: () => void;
+  viewModel: AtlasViewModel;
+}) {
+  return (
+    <Surface
+      icon={WalletCards}
+      title="Lancamentos FPE"
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">
+            {formatNumber(viewModel.fpe.entries.length)} registros
+          </StatusBadge>
+          <button
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-[#A07C3B]/30 bg-[#A07C3B] px-3 text-xs font-semibold text-white shadow-sm outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={!canManageFpe || isBlocked}
+            onClick={onOpenCreate}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={14} />
+            Novo lancamento
+          </button>
+        </div>
+      }
+    >
+      <div className="overflow-x-auto rounded-md border border-[#d9e0e7]">
+        <table className="min-w-[92rem] w-full border-separate border-spacing-0 text-left text-sm">
+          <thead className="bg-[#f4f7fa] text-xs uppercase text-[#697386]">
+            <tr>
+              <TableHead>Data</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Valor</TableHead>
+              <TableHead>Global 30%</TableHead>
+              <TableHead>Departamento 70%</TableHead>
+              <TableHead>Colaborador</TableHead>
+              <TableHead>Departamento</TableHead>
+              <TableHead>Ocorrencia</TableHead>
+              <TableHead>Observacao</TableHead>
+            </tr>
+          </thead>
+          <tbody>
+            {viewModel.fpe.entries.length === 0 ? (
+              <EmptyTableRow
+                colSpan={9}
+                label={
+                  isBlocked
+                    ? "FPE aguardando estrutura controlada."
+                    : "Nenhum lancamento FPE registrado."
+                }
+              />
+            ) : (
+              viewModel.fpe.entries.map((entry) => {
+                const collaborator = viewModel.collaboratorsById.get(
+                  entry.collaboratorId,
+                );
+                const department = viewModel.departmentById.get(
+                  entry.departmentId,
+                );
+                const type = entry.occurrenceTypeId
+                  ? viewModel.typeById.get(entry.occurrenceTypeId)
+                  : undefined;
+                const signedAmount = getFpeSignedAmount(entry);
+
+                return (
+                  <tr className="hover:bg-[#f8fafc]" key={entry.id}>
+                    <TableCell>{formatDate(entry.entryDate)}</TableCell>
+                    <TableCell>
+                      <FpeEntryKindBadge kind={entry.kind} />
+                    </TableCell>
+                    <TableCell strong>{formatCurrency(entry.amount)}</TableCell>
+                    <TableCell>
+                      {formatSignedCurrency(
+                        signedAmount * viewModel.fpe.globalShareRate,
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {formatSignedCurrency(
+                        signedAmount * viewModel.fpe.departmentShareRate,
+                      )}
+                    </TableCell>
+                    <TableCell>{collaborator?.name ?? "-"}</TableCell>
+                    <TableCell>{department?.name ?? "-"}</TableCell>
+                    <TableCell>
+                      <div className="grid gap-1">
+                        <span className="font-semibold">
+                          #{entry.occurrenceCode ?? "-"}
+                        </span>
+                        <span className="text-xs text-[#697386]">
+                          {type?.name ?? "-"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="block max-w-[24rem] truncate">
+                        {entry.description ?? "-"}
+                      </span>
+                    </TableCell>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Surface>
+  );
+}
+
+function FpeEntryKindBadge({ kind }: { kind: AtlasFpeEntryKind }) {
+  const isBonus = kind === "bonus";
+
+  return (
+    <span
+      className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-bold uppercase ${
+        isBonus
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-amber-200 bg-amber-50 text-amber-700"
+      }`}
+    >
+      {isBonus ? (
+        <ArrowUpCircle aria-hidden="true" size={14} />
+      ) : (
+        <ArrowDownCircle aria-hidden="true" size={14} />
+      )}
+      {isBonus ? "bonificacao" : "prejuizo"}
+    </span>
+  );
+}
+
 function OccurrencesSection({
+  canOpenOccurrences,
+  canReviewJustifications,
   filters,
   isBlocked,
   onChangeFilters,
+  onOpenCreate,
+  onOpenEvidence,
+  onOpenJustification,
+  onOpenReview,
   onResetFilters,
   snapshot,
   viewModel,
 }: {
+  canOpenOccurrences: boolean;
+  canReviewJustifications: boolean;
   filters: AtlasFilterState;
   isBlocked: boolean;
   onChangeFilters: (filters: AtlasFilterState) => void;
+  onOpenCreate: () => void;
+  onOpenEvidence: (occurrence: AtlasOccurrence) => void;
+  onOpenJustification: (occurrence: AtlasOccurrence) => void;
+  onOpenReview: (occurrence: AtlasOccurrence) => void;
   onResetFilters: () => void;
   snapshot: AtlasSnapshot;
   viewModel: AtlasViewModel;
@@ -599,8 +1463,14 @@ function OccurrencesSection({
       />
 
       <OccurrencesTable
+        canOpenOccurrences={canOpenOccurrences}
+        canReviewJustifications={canReviewJustifications}
         isBlocked={isBlocked}
         mode="operations"
+        onOpenCreate={onOpenCreate}
+        onOpenEvidence={onOpenEvidence}
+        onOpenJustification={onOpenJustification}
+        onOpenReview={onOpenReview}
         occurrences={viewModel.filteredOccurrences}
         viewModel={viewModel}
       />
@@ -793,13 +1663,25 @@ function FilterSurface({
 }
 
 function OccurrencesTable({
+  canOpenOccurrences = false,
+  canReviewJustifications,
   isBlocked,
   mode,
+  onOpenCreate,
+  onOpenEvidence,
+  onOpenJustification,
+  onOpenReview,
   occurrences,
   viewModel,
 }: {
+  canOpenOccurrences?: boolean;
+  canReviewJustifications: boolean;
   isBlocked: boolean;
   mode: "analytics" | "operations";
+  onOpenCreate?: () => void;
+  onOpenEvidence: (occurrence: AtlasOccurrence) => void;
+  onOpenJustification: (occurrence: AtlasOccurrence) => void;
+  onOpenReview: (occurrence: AtlasOccurrence) => void;
   occurrences: AtlasOccurrence[];
   viewModel: AtlasViewModel;
 }) {
@@ -814,6 +1696,17 @@ function OccurrencesTable({
       toolbar={
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge tone="neutral">{formatNumber(occurrences.length)} registros</StatusBadge>
+          {mode === "operations" ? (
+            <button
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-[#A07C3B]/30 bg-[#A07C3B] px-3 text-xs font-semibold text-white shadow-sm outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={!canOpenOccurrences || isBlocked}
+              onClick={onOpenCreate}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={14} />
+              Abrir ocorrencia
+            </button>
+          ) : null}
           {mode === "analytics" ? (
             <button
               className="inline-flex h-8 cursor-not-allowed items-center gap-2 rounded-md border border-[#d9e0e7] px-3 text-xs font-semibold text-[#697386]"
@@ -828,7 +1721,7 @@ function OccurrencesTable({
       }
     >
       <div className="overflow-x-auto rounded-md border border-[#d9e0e7]">
-        <table className="min-w-[72rem] w-full border-separate border-spacing-0 text-left text-sm">
+        <table className="min-w-[94rem] w-full border-separate border-spacing-0 text-left text-sm">
           <thead className="bg-[#f4f7fa] text-xs uppercase text-[#697386]">
             <tr>
               <TableHead>{mode === "analytics" ? "Codigo" : "ID"}</TableHead>
@@ -839,13 +1732,16 @@ function OccurrencesTable({
               <TableHead>Ocorrencia</TableHead>
               <TableHead>Perfil</TableHead>
               <TableHead>Evidencia</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Justificativa</TableHead>
               <TableHead>Observacao</TableHead>
+              <TableHead>Acoes</TableHead>
             </tr>
           </thead>
           <tbody>
             {occurrences.length === 0 ? (
               <EmptyTableRow
-                colSpan={9}
+                colSpan={12}
                 label={
                   isBlocked
                     ? "Aguardando leitura controlada do Supabase Atlas."
@@ -876,9 +1772,24 @@ function OccurrencesTable({
                       <EvidenceLink occurrence={occurrence} />
                     </TableCell>
                     <TableCell>
+                      <OccurrenceStatusBadge occurrence={occurrence} />
+                    </TableCell>
+                    <TableCell>
+                      <JustificationSummary occurrence={occurrence} />
+                    </TableCell>
+                    <TableCell>
                       <span className="block max-w-[18rem] truncate">
                         {occurrence.observation ?? "-"}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      <OccurrenceActions
+                        canReviewJustifications={canReviewJustifications}
+                        occurrence={occurrence}
+                        onOpenEvidence={onOpenEvidence}
+                        onOpenJustification={onOpenJustification}
+                        onOpenReview={onOpenReview}
+                      />
                     </TableCell>
                   </tr>
                 );
@@ -896,24 +1807,136 @@ function EvidenceLink({ occurrence }: { occurrence: AtlasOccurrence }) {
     return <StatusBadge tone="neutral">-</StatusBadge>;
   }
 
-  if (!occurrence.evidenceUrl) {
+  const evidences = occurrence.evidences ?? [];
+  const primaryEvidence = evidences[0];
+
+  if (!primaryEvidence?.url && !occurrence.evidenceUrl) {
     return <StatusBadge tone="online">Sim</StatusBadge>;
   }
 
-  const label = occurrence.evidenceName?.trim() || "Abrir evidencia";
+  const evidenceUrl = primaryEvidence?.url ?? occurrence.evidenceUrl ?? "";
+  const label =
+    primaryEvidence?.name?.trim() ||
+    occurrence.evidenceName?.trim() ||
+    "Abrir evidencia";
+  const evidenceCount = evidences.length || 1;
 
   return (
-    <Tooltip content={label} placement="top">
-      <a
-        className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-[#A07C3B]/5 px-2.5 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15 transition hover:bg-[#A07C3B]/10 hover:text-[#101820]"
-        href={occurrence.evidenceUrl}
-        rel="noreferrer"
-        target="_blank"
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Tooltip content={label} placement="top">
+        <a
+          className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-[#A07C3B]/5 px-2.5 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15 transition hover:bg-[#A07C3B]/10 hover:text-[#101820]"
+          href={evidenceUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <ExternalLink className="size-3.5 stroke-[1.8]" aria-hidden="true" />
+          Abrir
+        </a>
+      </Tooltip>
+      {evidenceCount > 1 ? (
+        <StatusBadge tone="gold">+{evidenceCount - 1}</StatusBadge>
+      ) : null}
+    </div>
+  );
+}
+
+function OccurrenceStatusBadge({
+  occurrence,
+}: {
+  occurrence: AtlasOccurrence;
+}) {
+  if (occurrence.operationalStatus === "improcedente") {
+    return <StatusBadge tone="online">Improcedente</StatusBadge>;
+  }
+
+  return <StatusBadge tone="warning">Procedente</StatusBadge>;
+}
+
+function JustificationSummary({
+  occurrence,
+}: {
+  occurrence: AtlasOccurrence;
+}) {
+  const status = occurrence.justification?.status ?? "none";
+
+  if (status === "none") {
+    return <StatusBadge tone="neutral">Sem justificativa</StatusBadge>;
+  }
+
+  const tone = {
+    accepted: "online",
+    pending: "gold",
+    rejected: "blocked",
+  }[status] as "blocked" | "gold" | "online";
+  const label = {
+    accepted: "Aceita",
+    pending: "Pendente",
+    rejected: "Nao aceita",
+  }[status];
+
+  return (
+    <div className="grid max-w-[20rem] gap-1">
+      <StatusBadge tone={tone}>{label}</StatusBadge>
+      {occurrence.justification?.text ? (
+        <span className="truncate text-xs font-medium text-[#697386]">
+          {occurrence.justification.text}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function OccurrenceActions({
+  canReviewJustifications,
+  occurrence,
+  onOpenEvidence,
+  onOpenJustification,
+  onOpenReview,
+}: {
+  canReviewJustifications: boolean;
+  occurrence: AtlasOccurrence;
+  onOpenEvidence: (occurrence: AtlasOccurrence) => void;
+  onOpenJustification: (occurrence: AtlasOccurrence) => void;
+  onOpenReview: (occurrence: AtlasOccurrence) => void;
+}) {
+  const justificationStatus = occurrence.justification?.status ?? "none";
+  const canJustify =
+    justificationStatus === "none" || justificationStatus === "rejected";
+  const canReview =
+    canReviewJustifications && justificationStatus === "pending";
+
+  return (
+    <div className="flex min-w-[12rem] flex-wrap items-center gap-2">
+      <button
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#243044] outline-none transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
+        onClick={() => onOpenEvidence(occurrence)}
+        type="button"
       >
-        <ExternalLink className="size-3.5 stroke-[1.8]" aria-hidden="true" />
-        Abrir
-      </a>
-    </Tooltip>
+        <Paperclip aria-hidden="true" size={14} />
+        Evidencias
+      </button>
+      {canJustify ? (
+        <button
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#243044] outline-none transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
+          onClick={() => onOpenJustification(occurrence)}
+          type="button"
+        >
+          <MessageSquareText aria-hidden="true" size={14} />
+          Justificar
+        </button>
+      ) : null}
+      {canReview ? (
+        <button
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#A07C3B]/30 bg-[#A07C3B]/10 px-2.5 text-xs font-semibold text-[#7A5E2C] outline-none transition hover:bg-[#A07C3B]/15 focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
+          onClick={() => onOpenReview(occurrence)}
+          type="button"
+        >
+          <ShieldCheck aria-hidden="true" size={14} />
+          Revisar
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -1070,6 +2093,746 @@ function Select({
   );
 }
 
+function TextArea({
+  disabled = false,
+  label,
+  onChange,
+  placeholder,
+  value = "",
+}: {
+  disabled?: boolean;
+  label: string;
+  onChange?: (value: string) => void;
+  placeholder?: string;
+  value?: string;
+}) {
+  return (
+    <label className="grid gap-1.5 text-xs font-semibold uppercase text-[#697386]">
+      {label}
+      <textarea
+        className="min-h-28 resize-y rounded-md border border-[#d9e0e7] bg-white px-3 py-2 text-sm font-medium normal-case leading-6 text-[#243044] outline-none transition placeholder:text-[#98a2b3] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20 disabled:cursor-not-allowed disabled:bg-[#f4f7fa] disabled:text-[#8b96a8]"
+        disabled={disabled}
+        onChange={(event) => onChange?.(event.target.value)}
+        placeholder={placeholder}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function CreateOccurrenceDialog({
+  error,
+  isSaving,
+  onClose,
+  onSubmit,
+  snapshot,
+}: {
+  error: string | null;
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (input: CreateAtlasOccurrenceClientInput) => Promise<boolean>;
+  snapshot: AtlasSnapshot;
+}) {
+  const [collaboratorId, setCollaboratorId] = useState("");
+  const [typeId, setTypeId] = useState("");
+  const [occurrenceDate, setOccurrenceDate] = useState(getTodayInputValue());
+  const [observation, setObservation] = useState("");
+  const [evidenceDrafts, setEvidenceDrafts] = useState<EvidenceDraft[]>([
+    createEvidenceDraft(),
+  ]);
+  const canSubmit = Boolean(collaboratorId && typeId && occurrenceDate);
+  const evidences = normalizeEvidenceDrafts(evidenceDrafts);
+
+  async function handleSubmit() {
+    if (!canSubmit) {
+      return;
+    }
+
+    const saved = await onSubmit({
+      collaboratorId,
+      evidences,
+      occurrenceDate,
+      observation,
+      typeId,
+    });
+
+    if (saved) {
+      onClose();
+    }
+  }
+
+  return (
+    <AtlasDialogShell
+      action={
+        <button
+          className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
+          disabled={!canSubmit || isSaving}
+          onClick={() => void handleSubmit()}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={15} />
+          Criar
+        </button>
+      }
+      error={error}
+      icon={ClipboardList}
+      onClose={onClose}
+      title="Abrir ocorrencia"
+    >
+      <div className="grid gap-3 md:grid-cols-2">
+        <Select
+          disabled={isSaving}
+          label="Colaborador"
+          onChange={setCollaboratorId}
+          value={collaboratorId}
+        >
+          <option value="">Selecione</option>
+          {snapshot.collaborators.map((collaborator) => (
+            <option key={collaborator.id} value={collaborator.id}>
+              {collaborator.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          disabled={isSaving}
+          label="Ocorrencia"
+          onChange={setTypeId}
+          value={typeId}
+        >
+          <option value="">Selecione</option>
+          {snapshot.occurrenceTypes.map((type) => (
+            <option key={type.id} value={type.id}>
+              {type.name}
+            </option>
+          ))}
+        </Select>
+        <Field
+          disabled={isSaving}
+          label="Data"
+          onChange={setOccurrenceDate}
+          type="date"
+          value={occurrenceDate}
+        />
+      </div>
+      <TextArea
+        disabled={isSaving}
+        label="Observacao"
+        onChange={setObservation}
+        placeholder="Descreva o fato operacional registrado."
+        value={observation}
+      />
+      <EvidenceDraftList
+        disabled={isSaving}
+        drafts={evidenceDrafts}
+        onChange={setEvidenceDrafts}
+      />
+    </AtlasDialogShell>
+  );
+}
+
+function CreateFpeEntryDialog({
+  error,
+  isSaving,
+  onClose,
+  onSubmit,
+  snapshot,
+  viewModel,
+}: {
+  error: string | null;
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (input: CreateAtlasFpeEntryClientInput) => Promise<boolean>;
+  snapshot: AtlasSnapshot;
+  viewModel: AtlasViewModel;
+}) {
+  const [collaboratorId, setCollaboratorId] = useState("");
+  const [typeId, setTypeId] = useState("");
+  const [entryDate, setEntryDate] = useState(getTodayInputValue());
+  const [kind, setKind] = useState<AtlasFpeEntryKind>("loss");
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [evidenceDrafts, setEvidenceDrafts] = useState<EvidenceDraft[]>([
+    createEvidenceDraft(),
+  ]);
+  const collaborator = collaboratorId
+    ? viewModel.collaboratorsById.get(collaboratorId)
+    : undefined;
+  const department = collaborator?.departmentId
+    ? viewModel.departmentById.get(collaborator.departmentId)
+    : undefined;
+  const parsedAmount = parseMoneyInput(amount);
+  const canSubmit = Boolean(
+    collaboratorId &&
+      typeId &&
+      entryDate &&
+      parsedAmount > 0 &&
+      collaborator?.departmentId,
+  );
+  const evidences = normalizeEvidenceDrafts(evidenceDrafts);
+  const globalShare = parsedAmount * snapshot.fpe.config.globalShareRate;
+  const departmentShare = parsedAmount * snapshot.fpe.config.departmentShareRate;
+
+  async function handleSubmit() {
+    if (!canSubmit) {
+      return;
+    }
+
+    const saved = await onSubmit({
+      amount: parsedAmount,
+      collaboratorId,
+      description,
+      entryDate,
+      evidences,
+      kind,
+      typeId,
+    });
+
+    if (saved) {
+      onClose();
+    }
+  }
+
+  return (
+    <AtlasDialogShell
+      action={
+        <button
+          className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
+          disabled={!canSubmit || isSaving}
+          onClick={() => void handleSubmit()}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={15} />
+          Criar
+        </button>
+      }
+      error={error}
+      icon={PiggyBank}
+      onClose={onClose}
+      title="Novo lancamento FPE"
+    >
+      <div className="grid gap-3 md:grid-cols-2">
+        <Select
+          disabled={isSaving}
+          label="Colaborador"
+          onChange={setCollaboratorId}
+          value={collaboratorId}
+        >
+          <option value="">Selecione</option>
+          {snapshot.collaborators.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          disabled={isSaving}
+          label="Ocorrencia"
+          onChange={setTypeId}
+          value={typeId}
+        >
+          <option value="">Selecione</option>
+          {snapshot.occurrenceTypes.map((type) => (
+            <option key={type.id} value={type.id}>
+              {type.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          disabled={isSaving}
+          label="Tipo FPE"
+          onChange={(value) => setKind(value as AtlasFpeEntryKind)}
+          value={kind}
+        >
+          <option value="loss">Prejuizo / desconto</option>
+          <option value="bonus">Bonificacao</option>
+        </Select>
+        <Field
+          disabled={isSaving}
+          label="Valor"
+          onChange={setAmount}
+          placeholder="0,00"
+          value={amount}
+        />
+        <Field
+          disabled={isSaving}
+          label="Data"
+          onChange={setEntryDate}
+          type="date"
+          value={entryDate}
+        />
+      </div>
+
+      <div className="grid gap-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={department ? "online" : "warning"}>
+            {department ? department.name : "departamento pendente"}
+          </StatusBadge>
+          <StatusBadge tone="gold">
+            {formatPercent(snapshot.fpe.config.globalShareRate)} global
+          </StatusBadge>
+          <StatusBadge tone="gold">
+            {formatPercent(snapshot.fpe.config.departmentShareRate)} departamento
+          </StatusBadge>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div>
+            <p className="m-0 text-xs font-semibold uppercase text-[#697386]">
+              impacto global
+            </p>
+            <p className="m-0 mt-1 text-lg font-semibold text-[#101820]">
+              {formatSignedCurrency(kind === "bonus" ? globalShare : -globalShare)}
+            </p>
+          </div>
+          <div>
+            <p className="m-0 text-xs font-semibold uppercase text-[#697386]">
+              impacto do departamento
+            </p>
+            <p className="m-0 mt-1 text-lg font-semibold text-[#101820]">
+              {formatSignedCurrency(
+                kind === "bonus" ? departmentShare : -departmentShare,
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <TextArea
+        disabled={isSaving}
+        label="Observacao"
+        onChange={setDescription}
+        placeholder="Descreva o motivo operacional do lancamento."
+        value={description}
+      />
+      <EvidenceDraftList
+        disabled={isSaving}
+        drafts={evidenceDrafts}
+        onChange={setEvidenceDrafts}
+      />
+    </AtlasDialogShell>
+  );
+}
+
+type EvidenceDraft = {
+  id: string;
+  name: string;
+  type: string;
+  url: string;
+};
+
+function EvidenceDialog({
+  error,
+  isSaving,
+  occurrence,
+  onClose,
+  onSubmit,
+  viewModel,
+}: {
+  error: string | null;
+  isSaving: boolean;
+  occurrence: AtlasOccurrence;
+  onClose: () => void;
+  onSubmit: (input: AddAtlasOccurrenceEvidencesClientInput) => Promise<boolean>;
+  viewModel: AtlasViewModel;
+}) {
+  const [evidenceDrafts, setEvidenceDrafts] = useState<EvidenceDraft[]>([
+    createEvidenceDraft(),
+  ]);
+  const collaborator = viewModel.collaboratorsById.get(occurrence.collaboratorId);
+  const type = viewModel.typeById.get(occurrence.typeId);
+  const evidences = normalizeEvidenceDrafts(evidenceDrafts);
+
+  async function handleSubmit() {
+    if (evidences.length === 0) {
+      return;
+    }
+
+    const saved = await onSubmit({
+      evidences,
+      occurrenceId: occurrence.id,
+    });
+
+    if (saved) {
+      onClose();
+    }
+  }
+
+  return (
+    <AtlasDialogShell
+      action={
+        <button
+          className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
+          disabled={isSaving || evidences.length === 0}
+          onClick={() => void handleSubmit()}
+          type="button"
+        >
+          <Paperclip aria-hidden="true" size={15} />
+          Adicionar
+        </button>
+      }
+      error={error}
+      icon={Paperclip}
+      onClose={onClose}
+      title="Evidencias da ocorrencia"
+    >
+      <div className="grid gap-2 rounded-md border border-[#edf0f3] bg-[#f8fafc] p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">#{occurrence.code ?? "-"}</StatusBadge>
+          <StatusBadge tone={occurrence.hasEvidence ? "online" : "neutral"}>
+            {formatNumber(occurrence.evidences.length)} evidencias
+          </StatusBadge>
+        </div>
+        <p className="m-0 font-semibold text-[#101820]">
+          {collaborator?.name ?? "Colaborador nao mapeado"}
+        </p>
+        <p className="m-0 text-[#526078]">
+          {type?.name ?? "Ocorrencia nao mapeada"} em {formatDate(occurrence.date)}
+        </p>
+      </div>
+
+      {occurrence.evidences.length > 0 ? (
+        <div className="grid gap-2">
+          <p className="m-0 text-xs font-semibold uppercase text-[#697386]">
+            Evidencias atuais
+          </p>
+          <div className="grid gap-2">
+            {occurrence.evidences.map((evidence) => (
+              <a
+                className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-[#d9e0e7] bg-white px-3 py-2 text-sm font-semibold text-[#243044] outline-none transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
+                href={evidence.url}
+                key={evidence.id}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <ExternalLink
+                    aria-hidden="true"
+                    className="size-4 shrink-0 stroke-[1.8] text-[#A07C3B]"
+                  />
+                  <span className="truncate">
+                    {evidence.name?.trim() || evidence.url}
+                  </span>
+                </span>
+                <StatusBadge tone="neutral">
+                  {formatNumber(evidence.position)}
+                </StatusBadge>
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <EvidenceDraftList
+        disabled={isSaving}
+        drafts={evidenceDrafts}
+        onChange={setEvidenceDrafts}
+      />
+    </AtlasDialogShell>
+  );
+}
+
+function EvidenceDraftList({
+  disabled,
+  drafts,
+  onChange,
+}: {
+  disabled: boolean;
+  drafts: EvidenceDraft[];
+  onChange: (drafts: EvidenceDraft[]) => void;
+}) {
+  function updateDraft(
+    id: string,
+    field: keyof Omit<EvidenceDraft, "id">,
+    value: string,
+  ) {
+    onChange(
+      drafts.map((draft) =>
+        draft.id === id
+          ? {
+              ...draft,
+              [field]: value,
+            }
+          : draft,
+      ),
+    );
+  }
+
+  function removeDraft(id: string) {
+    const nextDrafts = drafts.filter((draft) => draft.id !== id);
+
+    onChange(nextDrafts.length > 0 ? nextDrafts : [createEvidenceDraft()]);
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="m-0 text-xs font-semibold uppercase text-[#697386]">
+          Novas evidencias
+        </p>
+        <button
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#243044] outline-none transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30 disabled:cursor-not-allowed disabled:opacity-55"
+          disabled={disabled || drafts.length >= 12}
+          onClick={() => onChange([...drafts, createEvidenceDraft()])}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={14} />
+          Adicionar linha
+        </button>
+      </div>
+      <div className="grid gap-2">
+        {drafts.map((draft, index) => (
+          <div
+            className="grid gap-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-3 lg:grid-cols-[minmax(14rem,1fr)_minmax(10rem,0.7fr)_minmax(8rem,0.5fr)_2rem]"
+            key={draft.id}
+          >
+            <Field
+              disabled={disabled}
+              label={`Link ${index + 1}`}
+              onChange={(value) => updateDraft(draft.id, "url", value)}
+              placeholder="https://..."
+              value={draft.url}
+            />
+            <Field
+              disabled={disabled}
+              label="Nome"
+              onChange={(value) => updateDraft(draft.id, "name", value)}
+              placeholder="Print, arquivo, protocolo..."
+              value={draft.name}
+            />
+            <Field
+              disabled={disabled}
+              label="Tipo"
+              onChange={(value) => updateDraft(draft.id, "type", value)}
+              placeholder="imagem, pdf..."
+              value={draft.type}
+            />
+            <div className="flex items-end">
+              <Tooltip content="Remover linha" placement="top">
+                <button
+                  aria-label="Remover evidencia"
+                  className="grid h-10 w-10 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#697386] outline-none transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-not-allowed disabled:opacity-55"
+                  disabled={disabled}
+                  onClick={() => removeDraft(draft.id)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={15} />
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function JustificationDialog({
+  error,
+  isSaving,
+  mode,
+  occurrence,
+  onClose,
+  onReviewJustification,
+  onSubmitJustification,
+  viewModel,
+}: {
+  error: string | null;
+  isSaving: boolean;
+  mode: "justify" | "review";
+  occurrence: AtlasOccurrence;
+  onClose: () => void;
+  onReviewJustification?: (
+    input: ReviewAtlasJustificationClientInput,
+  ) => Promise<boolean>;
+  onSubmitJustification?: (
+    input: SubmitAtlasJustificationClientInput,
+  ) => Promise<boolean>;
+  viewModel: AtlasViewModel;
+}) {
+  const [justification, setJustification] = useState(
+    occurrence.justification?.text ?? "",
+  );
+  const [reviewNote, setReviewNote] = useState("");
+  const collaborator = viewModel.collaboratorsById.get(occurrence.collaboratorId);
+  const type = viewModel.typeById.get(occurrence.typeId);
+
+  async function handleSubmitJustification() {
+    if (!onSubmitJustification) {
+      return;
+    }
+
+    const saved = await onSubmitJustification({
+      justification,
+      occurrenceId: occurrence.id,
+    });
+
+    if (saved) {
+      onClose();
+    }
+  }
+
+  async function handleReview(action: "accept" | "reject") {
+    if (!onReviewJustification) {
+      return;
+    }
+
+    const saved = await onReviewJustification({
+      action,
+      occurrenceId: occurrence.id,
+      reviewNote,
+    });
+
+    if (saved) {
+      onClose();
+    }
+  }
+
+  return (
+    <AtlasDialogShell
+      action={
+        mode === "justify" ? (
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={isSaving || !justification.trim()}
+            onClick={() => void handleSubmitJustification()}
+            type="button"
+          >
+            <SendHorizontal aria-hidden="true" size={15} />
+            Enviar
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 outline-none transition hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={isSaving}
+              onClick={() => void handleReview("reject")}
+              type="button"
+            >
+              <XCircle aria-hidden="true" size={15} />
+              Nao aceitar
+            </button>
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-600 px-3 text-sm font-semibold text-white outline-none transition hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={isSaving}
+              onClick={() => void handleReview("accept")}
+              type="button"
+            >
+              <CheckCircle2 aria-hidden="true" size={15} />
+              Aceitar
+            </button>
+          </div>
+        )
+      }
+      error={error}
+      icon={mode === "justify" ? MessageSquareText : ShieldCheck}
+      onClose={onClose}
+      title={mode === "justify" ? "Justificar ocorrencia" : "Revisar justificativa"}
+    >
+      <div className="grid gap-2 rounded-md border border-[#edf0f3] bg-[#f8fafc] p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">#{occurrence.code ?? "-"}</StatusBadge>
+          <OccurrenceStatusBadge occurrence={occurrence} />
+          <JustificationSummary occurrence={occurrence} />
+        </div>
+        <p className="m-0 font-semibold text-[#101820]">
+          {collaborator?.name ?? "Colaborador nao mapeado"}
+        </p>
+        <p className="m-0 text-[#526078]">
+          {type?.name ?? "Ocorrencia nao mapeada"} em {formatDate(occurrence.date)}
+        </p>
+        {occurrence.observation ? (
+          <p className="m-0 text-[#243044]">{occurrence.observation}</p>
+        ) : null}
+      </div>
+      {mode === "justify" ? (
+        <TextArea
+          disabled={isSaving}
+          label="Justificativa"
+          onChange={setJustification}
+          placeholder="Explique o contexto da ocorrencia."
+          value={justification}
+        />
+      ) : (
+        <>
+          <div className="grid gap-1.5">
+            <p className="m-0 text-xs font-semibold uppercase text-[#697386]">
+              Justificativa enviada
+            </p>
+            <div className="min-h-20 rounded-md border border-[#d9e0e7] bg-white px-3 py-2 text-sm leading-6 text-[#243044]">
+              {occurrence.justification?.text ?? "-"}
+            </div>
+          </div>
+          <TextArea
+            disabled={isSaving}
+            label="Nota da revisao"
+            onChange={setReviewNote}
+            placeholder="Registre o criterio usado na decisao."
+            value={reviewNote}
+          />
+        </>
+      )}
+    </AtlasDialogShell>
+  );
+}
+
+function AtlasDialogShell({
+  action,
+  children,
+  error,
+  icon: Icon,
+  onClose,
+  title,
+}: {
+  action: ReactNode;
+  children: ReactNode;
+  error: string | null;
+  icon: LucideIcon;
+  onClose: () => void;
+  title: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[#101820]/35 p-4 backdrop-blur-sm">
+      <section className="w-full max-w-2xl overflow-hidden rounded-lg border border-[#d9e0e7] bg-white shadow-xl">
+        <div className="flex items-center justify-between gap-3 border-b border-[#edf0f3] px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
+              <Icon className="size-4 stroke-[1.8]" aria-hidden="true" />
+            </span>
+            <h2 className="m-0 truncate text-base font-semibold text-[#101820]">
+              {title}
+            </h2>
+          </div>
+          <button
+            className="grid h-8 w-8 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
+            onClick={onClose}
+            type="button"
+          >
+            <XCircle aria-hidden="true" size={16} />
+            <span className="sr-only">Fechar</span>
+          </button>
+        </div>
+        <div className="grid gap-4 p-4">
+          {children}
+          {error ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {error}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-[#edf0f3] px-4 py-3">
+          <button
+            className="inline-flex h-9 items-center justify-center rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#243044] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
+            onClick={onClose}
+            type="button"
+          >
+            Cancelar
+          </button>
+          {action}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function TableHead({
   align = "left",
   children,
@@ -1126,13 +2889,15 @@ function StatusBadge({
   tone,
 }: {
   children: ReactNode;
-  tone: "blocked" | "dark" | "neutral" | "online";
+  tone: "blocked" | "dark" | "gold" | "neutral" | "online" | "warning";
 }) {
   const toneClass = {
     blocked: "border-red-200 bg-red-50 text-red-700",
     dark: "border-white/[0.12] bg-white/[0.06] text-[#d7dee8]",
+    gold: "border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C]",
     neutral: "border-[#d9e0e7] bg-[#f8fafc] text-[#526078]",
     online: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-700",
   }[tone];
 
   return (
@@ -1208,11 +2973,13 @@ function createAtlasViewModel(
   const withEvidence = filteredOccurrences.filter(
     (occurrence) => occurrence.hasEvidence,
   ).length;
+  const fpe = createAtlasFpeViewModel(snapshot);
 
   return {
     collaboratorsById,
     departmentById,
     departmentRows,
+    fpe,
     filteredOccurrences,
     occurrenceProfileRows,
     occurrenceTypeRows,
@@ -1221,6 +2988,101 @@ function createAtlasViewModel(
     typeById,
     withEvidence,
     withoutEvidence: filteredOccurrences.length - withEvidence,
+  };
+}
+
+function createAtlasFpeViewModel(
+  snapshot: AtlasSnapshot,
+): AtlasFpeViewModel {
+  const activeCollaborators = snapshot.collaborators.filter(
+    isActiveCollaborator,
+  );
+  const config = snapshot.fpe.config;
+  const entries = snapshot.fpe.entries;
+  const activeCollaboratorsByDepartment = countBy(
+    activeCollaborators,
+    (collaborator) => collaborator.departmentId ?? undefined,
+  );
+  const totalDepartments = Math.max(snapshot.departments.length, 1);
+  const departmentBaseShare = config.departmentBaseAmount / totalDepartments;
+  const globalDelta = sumFpeEntries(entries, config.globalShareRate);
+  const departmentDelta = sumFpeEntries(entries, config.departmentShareRate);
+  const globalBalance = config.globalBaseAmount + globalDelta;
+  const departmentBalance = config.departmentBaseAmount + departmentDelta;
+  const positiveImpact = entries
+    .filter((entry) => entry.kind === "bonus")
+    .reduce((total, entry) => total + entry.amount, 0);
+  const negativeImpact = entries
+    .filter((entry) => entry.kind === "loss")
+    .reduce((total, entry) => total + entry.amount, 0);
+  const entryDeltaByDepartment = new Map<string, number>();
+  const entryCountByDepartment = new Map<string, number>();
+
+  for (const entry of entries) {
+    const currentDelta = entryDeltaByDepartment.get(entry.departmentId) ?? 0;
+    const currentCount = entryCountByDepartment.get(entry.departmentId) ?? 0;
+
+    entryDeltaByDepartment.set(
+      entry.departmentId,
+      currentDelta + getFpeSignedAmount(entry) * config.departmentShareRate,
+    );
+    entryCountByDepartment.set(entry.departmentId, currentCount + 1);
+  }
+
+  const departmentRows = snapshot.departments
+    .map((department) => {
+      const entryDelta = entryDeltaByDepartment.get(department.id) ?? 0;
+      const collaboratorCount =
+        activeCollaboratorsByDepartment.get(department.id) ?? 0;
+      const balance = departmentBaseShare + entryDelta;
+
+      return {
+        balance,
+        baseAmount: departmentBaseShare,
+        collaboratorCount,
+        departmentId: department.id,
+        departmentName: department.name,
+        entryDelta,
+        entriesCount: entryCountByDepartment.get(department.id) ?? 0,
+        perCollaboratorAmount:
+          collaboratorCount > 0 ? balance / collaboratorCount : 0,
+        status:
+          entryDelta > 0
+            ? "positive"
+            : entryDelta < 0
+              ? "negative"
+              : "neutral",
+      } satisfies AtlasFpeDepartmentRow;
+    })
+    .sort((firstRow, secondRow) => {
+      const firstAbsDelta = Math.abs(firstRow.entryDelta);
+      const secondAbsDelta = Math.abs(secondRow.entryDelta);
+
+      return (
+        secondAbsDelta - firstAbsDelta ||
+        firstRow.departmentName.localeCompare(secondRow.departmentName, "pt-BR")
+      );
+    });
+
+  return {
+    activeCollaborators,
+    baseAmount: config.baseAmount,
+    departmentBalance,
+    departmentRows,
+    departmentShareRate: config.departmentShareRate,
+    entries,
+    globalBalance,
+    globalPerCollaborator:
+      activeCollaborators.length > 0
+        ? globalBalance / activeCollaborators.length
+        : 0,
+    globalShareRate: config.globalShareRate,
+    negativeImpact,
+    positiveImpact,
+    targetPercent:
+      config.baseAmount > 0 ? (globalBalance + departmentBalance) / config.baseAmount : 0,
+    totalBalance: globalBalance + departmentBalance,
+    totalEntriesImpact: positiveImpact - negativeImpact,
   };
 }
 
@@ -1301,6 +3163,7 @@ function createEmptyAtlasSnapshot(errorMessage: string | null): AtlasSnapshot {
     counts: {
       collaborators: 0,
       departments: 0,
+      fpeEntries: 0,
       occurrenceProfiles: 0,
       occurrences: 0,
       occurrenceTypes: 0,
@@ -1308,6 +3171,18 @@ function createEmptyAtlasSnapshot(errorMessage: string | null): AtlasSnapshot {
       userProfiles: 0,
     },
     departments: [],
+    fpe: {
+      config: {
+        baseAmount: 10_000,
+        cycleYear: new Date().getFullYear(),
+        departmentBaseAmount: 7_000,
+        departmentShareRate: 0.7,
+        globalBaseAmount: 3_000,
+        globalShareRate: 0.3,
+        schemaStatus: "missing",
+      },
+      entries: [],
+    },
     generatedAt: new Date().toISOString(),
     limits: {
       occurrencesLoaded: 0,
@@ -1399,8 +3274,67 @@ function countCollaborators(occurrences: AtlasOccurrence[]) {
   ).size;
 }
 
+function createEvidenceDraft(): EvidenceDraft {
+  return {
+    id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    name: "",
+    type: "",
+    url: "",
+  };
+}
+
+function normalizeEvidenceDrafts(
+  drafts: EvidenceDraft[],
+): AtlasEvidenceClientInput[] {
+  return drafts
+    .map((draft) => ({
+      name: draft.name.trim() || null,
+      type: draft.type.trim() || null,
+      url: draft.url.trim(),
+    }))
+    .filter((draft) => draft.url.length > 0);
+}
+
+function parseMoneyInput(value: string) {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    return 0;
+  }
+
+  const numericValue = Number(
+    normalizedValue.includes(",")
+      ? normalizedValue.replace(/\./g, "").replace(",", ".")
+      : normalizedValue,
+  );
+
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function getTodayInputValue() {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+
+  return date.toISOString().slice(0, 10);
+}
+
 function isAdminSection(section: AtlasSection) {
   return section === "colaboradores";
+}
+
+function isActiveCollaborator(collaborator: AtlasCollaborator) {
+  return !collaborator.status || collaborator.status === "active";
+}
+
+function getFpeSignedAmount(entry: AtlasFpeEntry) {
+  return entry.kind === "bonus" ? entry.amount : -entry.amount;
+}
+
+function sumFpeEntries(entries: AtlasFpeEntry[], shareRate: number) {
+  return entries.reduce(
+    (total, entry) => total + getFpeSignedAmount(entry) * shareRate,
+    0,
+  );
 }
 
 function formatDate(value?: string | null) {
@@ -1449,4 +3383,22 @@ function formatCurrency(value: number) {
     currency: "BRL",
     style: "currency",
   }).format(value);
+}
+
+function formatSignedCurrency(value: number) {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+
+  return `${sign}${formatCurrency(Math.abs(value))}`;
+}
+
+function formatPercent(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 0,
+    style: "percent",
+  }).format(value);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }

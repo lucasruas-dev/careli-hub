@@ -38,8 +38,8 @@ export type HubReleaseProtocol = {
 };
 
 const releaseProtocolStatusLabels = {
-  aguardando_homologacao: "Aguardando homologacao",
-  aguardando_producao: "Aguardando producao",
+  aguardando_homologacao: "Aguardando homologacao do modulo",
+  aguardando_producao: "Pronto para producao",
   bloqueado: "Bloqueado",
   em_homologacao: "Em homologacao",
   em_producao: "Em producao",
@@ -89,9 +89,12 @@ export function buildReleaseCommitTemplate(releaseProtocol: HubReleaseProtocol) 
     .replace(/^\[[^\]]+\]\s*/, "")
     .toLowerCase()
     .slice(0, 70);
+  const moduleSlug = normalizeModuleSlug(
+    releaseProtocol.modules[0] ?? releaseProtocol.module,
+  );
 
   return [
-    `feat(squadops): ${title} [${releaseProtocol.protocol}]`,
+    `feat(${moduleSlug}): ${title} [${releaseProtocol.protocol}]`,
     "",
     "Protocolos incluidos:",
     ...releaseProtocol.includedProtocols.map((protocol) => `- ${protocol}`),
@@ -195,8 +198,9 @@ function isReleaseProtocolCandidate(record: EngineeringOperationRecord) {
 }
 
 function inferReleaseStatus(record: EngineeringOperationRecord): ReleaseProtocolStatus {
+  const status = normalizeText(record.status);
   const text = normalizeText(
-    `${record.status} ${record.subject} ${record.deploy} ${record.healthchecks} ${record.risks}`,
+    `${record.status} ${record.subject} ${record.deploy} ${record.healthchecks} ${record.risks} ${record.reason} ${record.how}`,
   );
 
   if (text.includes("rollback")) {
@@ -207,23 +211,37 @@ function inferReleaseStatus(record: EngineeringOperationRecord): ReleaseProtocol
     return "bloqueado";
   }
 
-  if (text.includes("em producao") || isKnownValue(record.deploy)) {
-    return "em_producao";
+  if (status.includes("finalizado")) {
+    return "finalizado";
   }
 
-  if (text.includes("homologado")) {
-    return "homologado";
-  }
-
-  if (text.includes("homologacao")) {
-    return "em_homologacao";
-  }
-
-  if (text.includes("aguardando deploy")) {
+  if (
+    status.includes("pronto para producao") ||
+    status.includes("aguardando producao")
+  ) {
     return "aguardando_producao";
   }
 
-  if (text.includes("aguardando releaseops")) {
+  if (status.includes("em producao")) {
+    return "em_producao";
+  }
+
+  if (status.includes("homologado") || text.includes("homologado completo")) {
+    return "homologado";
+  }
+
+  if (status.includes("homologacao") || text.includes("homologacao")) {
+    return "em_homologacao";
+  }
+
+  if (status.includes("aguardando deploy")) {
+    return "aguardando_producao";
+  }
+
+  if (
+    status.includes("aguardando releaseops") ||
+    status.includes("aguardando hefesto")
+  ) {
     return "aguardando_homologacao";
   }
 
@@ -233,15 +251,26 @@ function inferReleaseStatus(record: EngineeringOperationRecord): ReleaseProtocol
 function inferReleaseEnvironment(
   record: EngineeringOperationRecord,
 ): ReleaseProtocolEnvironment {
+  const status = normalizeText(record.status);
+  const subject = normalizeText(record.subject);
+  const deploy = normalizeText(record.deploy);
   const text = normalizeText(
     `${record.status} ${record.subject} ${record.deploy} ${record.healthchecks}`,
   );
 
-  if (text.includes("producao") || isKnownValue(record.deploy)) {
+  if (status.includes("producao") || subject.includes("producao")) {
     return "producao";
   }
 
-  if (text.includes("homolog")) {
+  if (status.includes("homolog") || subject.includes("homolog")) {
+    return "homologacao";
+  }
+
+  if (deploy.includes("production") || deploy.includes("producao")) {
+    return "producao";
+  }
+
+  if (deploy.includes("preview") || deploy.includes("homolog")) {
     return "homologacao";
   }
 
@@ -358,4 +387,16 @@ function normalizeText(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function normalizeModuleSlug(value: string) {
+  const normalized = normalizeText(value || "panteon")
+    .replace(/\bguardian\b/g, "hades")
+    .replace(/\bcaredesk\b|\bcoredesk\b/g, "iris")
+    .replace(/\bpulsex\b/g, "hermes")
+    .replace(/\bsquadops\b/g, "zeus")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "panteon";
 }

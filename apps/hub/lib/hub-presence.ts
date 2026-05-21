@@ -96,6 +96,10 @@ export async function getHubPresenceSnapshot(input?: {
   rangeEnd?: Date;
   rangeStart?: Date;
 }): Promise<HubPresenceSnapshot> {
+  if (shouldSkipLocalPresenceNetwork()) {
+    return { data: [] };
+  }
+
   const accessToken = await getHubPresenceAccessToken();
 
   if (!accessToken) {
@@ -153,6 +157,10 @@ export async function markHubPresence(input: {
   source?: string;
   status: HubPresenceStatus;
 }): Promise<HubPresenceRecord | null> {
+  if (shouldSkipLocalPresenceNetwork()) {
+    return null;
+  }
+
   const accessToken = await getHubPresenceAccessToken();
 
   if (!accessToken) {
@@ -200,6 +208,21 @@ async function getHubPresenceAccessToken() {
   }
 
   return sessionResult.data.session?.access_token ?? null;
+}
+
+function shouldSkipLocalPresenceNetwork() {
+  return (
+    isLocalDevelopmentRuntime() &&
+    process.env.NEXT_PUBLIC_ENABLE_LOCAL_PRESENCE !== "true"
+  );
+}
+
+function isLocalDevelopmentRuntime() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
 function createPresenceRange(input: {

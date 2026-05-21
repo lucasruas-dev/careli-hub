@@ -171,6 +171,7 @@ Tabelas alvo propostas no Hub:
 - `atlas_occurrence_profiles`;
 - `atlas_occurrence_types`;
 - `atlas_occurrences`;
+- `atlas_occurrence_evidences`;
 - `atlas_legacy_user_profiles`.
 
 O script de migracao importa, nesta ordem:
@@ -181,7 +182,8 @@ O script de migracao importa, nesta ordem:
 4. `tipos_ocorrencia` -> `atlas_occurrence_types`;
 5. `colaboradores` -> `atlas_collaborators`;
 6. `ocorrencias` -> `atlas_occurrences`;
-7. `usuarios_perfis` -> `atlas_legacy_user_profiles`.
+7. evidencia principal herdada de `ocorrencias` -> `atlas_occurrence_evidences`;
+8. `usuarios_perfis` -> `atlas_legacy_user_profiles`.
 
 Estado da execucao:
 
@@ -222,6 +224,122 @@ Validacao pos-migracao:
 - `/atlas` local passou a exibir `Supabase: Hub Atlas`;
 - o dashboard passou a carregar 35 registros e filtros com dados reais;
 - o aviso `Atlas aguardando conexao controlada` deixou de aparecer.
+
+## Fluxo V1 de ocorrencias e justificativas
+
+Regra operacional definida em 2026-05-21:
+
+- qualquer usuario ativo com acesso ao Atlas pode abrir ocorrencia para qualquer
+  colaborador;
+- a ocorrencia aberta pelo Hub nasce como `procedente`;
+- colaboradores/usuarios podem registrar uma justificativa em uma ocorrencia;
+- a justificativa fica com status `pending` ate revisao;
+- usuarios com perfil Hub `leader` ou `admin` podem revisar justificativas;
+- justificativa aceita altera a ocorrencia para `improcedente`;
+- justificativa nao aceita mantem a ocorrencia como `procedente` e marca a
+  justificativa como `rejected`;
+- bonus, calculos de performance, Auth legado, upload/storage fisico e edicoes
+  sensiveis seguem preservados e bloqueados fora deste recorte.
+
+Campos adicionados por `packages/database/migrations/0027_atlas_occurrence_justifications.sql`:
+
+- `created_by_user_id`;
+- `operational_status`;
+- `justification_status`;
+- `justification_text`;
+- `justification_submitted_by_user_id`;
+- `justification_submitted_at`;
+- `justification_reviewed_by_user_id`;
+- `justification_reviewed_at`;
+- `justification_review_note`.
+
+APIs Hub criadas:
+
+- `POST /api/atlas/occurrences`: abertura controlada de ocorrencia;
+- `POST /api/atlas/occurrences/[occurrenceId]/evidences`: inclusao de
+  evidencias por link em ocorrencia existente;
+- `PATCH /api/atlas/occurrences/[occurrenceId]/justification`: envio e revisao
+  de justificativas.
+
+Observacao operacional:
+
+- ate a reconciliacao completa Hub Users x colaboradores Atlas, o envio de
+  justificativa fica atrelado ao usuario Hub autenticado que executou a acao;
+- a revisao de lideranca usa o perfil Hub (`leader` ou `admin`), nao o perfil
+  legado do Atlas.
+
+## Fluxo V1 de evidencias multiplas
+
+Regra operacional definida em 2026-05-21:
+
+- uma ocorrencia Atlas pode ter mais de uma evidencia;
+- a mesma URL/caminho de evidencia pode ser repetida entre ocorrencias e
+  colaboradores diferentes;
+- nao existe unicidade operacional por `evidence_url`;
+- a coluna historica `atlas_occurrences.evidence_url` fica preservada como
+  compatibilidade e fallback da primeira evidencia importada;
+- novas ocorrencias abertas com evidencias tambem gravam a primeira evidencia
+  nas colunas historicas para preservar compatibilidade;
+- a tabela `atlas_occurrence_evidences` passa a ser a fonte operacional para
+  multiplas evidencias por ocorrencia;
+- `legacy_evidence_key` existe apenas para idempotencia da evidencia principal
+  importada do legado, nao para impedir repeticao de links;
+- cada envio pelo Hub aceita ate 12 evidencias por requisicao;
+- o recorte atual registra URL/caminho controlado; upload fisico em Storage
+  segue fora do escopo e bloqueado ate nova autorizacao.
+
+Estrutura preparada por `packages/database/migrations/0028_atlas_occurrence_evidences.sql`:
+
+- tabela `atlas_occurrence_evidences`;
+- vinculo com `atlas_occurrences.id` e `atlas_occurrences.legacy_id`;
+- `position` para ordenar evidencias por ocorrencia;
+- backfill idempotente da evidencia principal ja existente em
+  `atlas_occurrences.evidence_url`;
+- RLS habilitado, leitura para usuarios ativos e escrita por usuario ativo via
+  `created_by_user_id`;
+- grants explicitos para `authenticated` e `service_role`.
+
+Status da aplicacao:
+
+- codigo, API, UI e scripts estao preparados localmente;
+- aplicar a migration `0028` e publicar homologacao continua `BLOQUEADO` ate
+  autorizacao explicita do Lucas para esse recorte.
+
+## Fluxo V1 de FPE - Fundo de Participacao
+
+Regra operacional definida em 2026-05-21:
+
+- o FPE parte de uma base anual de R$ 10.000,00;
+- R$ 3.000,00 formam o caixa global, dividido no fechamento anual entre
+  colaboradores ativos;
+- R$ 7.000,00 formam o caixa dos departamentos, dividido entre departamentos e
+  depois entre colaboradores ativos do respectivo departamento;
+- lancamentos FPE sao vinculados a uma ocorrencia Atlas e a um colaborador;
+- o departamento do lancamento e inferido pelo departamento do colaborador;
+- cada valor informado pelo gestor e sempre positivo, com `bonus` aumentando o
+  FPE e `loss` reduzindo o FPE;
+- 30% do valor impacta o caixa global;
+- 70% do valor impacta o caixa do departamento do colaborador;
+- a tela FPE possui aba de caixinha com saldo acumulado e contribuicao por
+  departamento, e aba de lancamentos seguindo o padrao de ocorrencias Atlas;
+- apenas perfis Hub `admin` e `leader` podem criar lancamentos FPE;
+- aplicacao da estrutura FPE em banco real segue `BLOQUEADO` ate autorizacao
+  explicita de Lucas para a migration `0029_atlas_fpe.sql`.
+
+Estrutura preparada por `packages/database/migrations/0029_atlas_fpe.sql`:
+
+- tabela `atlas_fpe_entries`;
+- vinculo com colaborador, departamento, ocorrencia e tipo de ocorrencia;
+- `cycle_year`, `entry_date`, `kind`, `amount`, `description` e metadata;
+- RLS com leitura para usuarios ativos e insert por `admin`/`leader`;
+- correcao preparada para vincular `Lucas Ruas` ao departamento `Tecnologia`.
+
+Observacao operacional:
+
+- a correcao de departamento do Lucas Ruas e alteracao real de dado e so deve
+  ser aplicada junto da migration `0029` no ambiente autorizado;
+- a regra FPE nao substitui nem recalcula a regra de bonus/performance ja
+  existente, que permanece preservada e pendente de validacao humana.
 
 Historico anterior:
 

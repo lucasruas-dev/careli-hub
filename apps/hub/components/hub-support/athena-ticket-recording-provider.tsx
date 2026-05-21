@@ -192,7 +192,7 @@ export function AthenaTicketRecordingProvider({
       timeoutMs: number;
     },
   ) {
-    const recorder = new MediaRecorder(stream);
+    const recorder = createMediaRecorder(stream, options.attachmentType);
 
     recordingChunksRef.current = [];
     recordingStreamRef.current = stream;
@@ -345,4 +345,20 @@ export function useAthenaTicketRecording() {
   }
 
   return context;
+}
+
+function createMediaRecorder(
+  stream: MediaStream,
+  attachmentType: HubItTicketAttachmentInput["type"],
+) {
+  const recorderOptions: MediaRecorderOptions =
+    attachmentType === "audio"
+      ? { audioBitsPerSecond: 64_000 }
+      : { videoBitsPerSecond: 450_000 };
+
+  try {
+    return new MediaRecorder(stream, recorderOptions);
+  } catch {
+    return new MediaRecorder(stream);
+  }
 }

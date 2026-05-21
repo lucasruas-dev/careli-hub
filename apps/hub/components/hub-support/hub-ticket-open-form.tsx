@@ -84,6 +84,7 @@ export function HubTicketOpenForm({
     isProcessingRecording,
     isRecordingProtected,
     lastRecordingFileName,
+    pendingAttachmentCount,
     pendingAttachmentVersion,
     recordingKind,
     registerTicketFormHost,
@@ -100,21 +101,33 @@ export function HubTicketOpenForm({
   const [technicalSummary, setTechnicalSummary] = useState("");
   const [expectedResult, setExpectedResult] = useState("");
   const [actualResult, setActualResult] = useState("");
+  const [
+    shouldRestoreAfterCompactRecordingStop,
+    setShouldRestoreAfterCompactRecordingStop,
+  ] = useState(false);
   const [attachments, setAttachments] = useState<HubItTicketAttachmentInput[]>(
     [],
   );
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
+  const isRecordingAttachmentPending = Boolean(
+    recordingKind || isProcessingRecording || pendingAttachmentCount > 0,
+  );
   const hasTicketContext =
     description.trim().length >= 3 || attachments.length > 0;
-  const canSubmit = hasTicketContext && requestedDeliveryDate.length > 0;
+  const canSubmit =
+    hasTicketContext &&
+    requestedDeliveryDate.length > 0 &&
+    !isRecordingAttachmentPending;
   const [isAnalyzingEvidence, setIsAnalyzingEvidence] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const submitNeedsContext = !canSubmit && !isSaving;
-  const submitTooltip = canSubmit
-    ? "Enviar HelpDesk para Zeus"
-    : requestedDeliveryDate
-      ? "Descreva o que aconteceu ou anexe uma evidencia"
-      : "Informe a data de entrega desejada";
+  const submitTooltip = isRecordingAttachmentPending
+    ? "Aguarde a evidencia ser anexada ao ticket"
+    : canSubmit
+      ? "Enviar HelpDesk para Zeus"
+      : requestedDeliveryDate
+        ? "Descreva o que aconteceu ou anexe uma evidencia"
+        : "Informe a data de entrega desejada";
   const [error, setError] = useState<string | null>(null);
   const visibleError = error ?? recordingError;
   const [successProtocol, setSuccessProtocol] = useState<string | null>(null);
@@ -243,8 +256,39 @@ export function HubTicketOpenForm({
     onRecordingStateChange?.(isRecordingProtected);
   }, [isRecordingProtected, onRecordingStateChange]);
 
+  useEffect(() => {
+    if (
+      !compactRecordingMode ||
+      !shouldRestoreAfterCompactRecordingStop ||
+      recordingKind ||
+      isProcessingRecording
+    ) {
+      return;
+    }
+
+    if (pendingAttachmentCount > 0 || recordingError) {
+      setShouldRestoreAfterCompactRecordingStop(false);
+      onRestoreRequest?.();
+    }
+  }, [
+    compactRecordingMode,
+    isProcessingRecording,
+    onRestoreRequest,
+    pendingAttachmentCount,
+    recordingError,
+    recordingKind,
+    shouldRestoreAfterCompactRecordingStop,
+  ]);
+
   async function handleSubmit() {
     const ticketDescription = buildUserDescription(description, attachments);
+
+    if (isRecordingAttachmentPending) {
+      setError(
+        "Aguarde a gravacao entrar como evidencia antes de enviar o ticket.",
+      );
+      return;
+    }
 
     if (!canSubmit || ticketDescription.length < 3) {
       setError(
@@ -436,12 +480,9 @@ export function HubTicketOpenForm({
     onRestoreRequest?.();
   }
 
-  function finishCompactRecording() {
-    if (recordingKind) {
-      stopActiveRecording();
-    }
-
-    restoreFromCompactRecording();
+  function handleCompactStopRecording() {
+    setShouldRestoreAfterCompactRecordingStop(true);
+    stopActiveRecording();
   }
 
   if (compactRecordingMode) {
@@ -455,9 +496,20 @@ export function HubTicketOpenForm({
       ? `Gravando ${recordingLabel}.`
       : isProcessingRecording
         ? "Preparando evidencia."
-        : lastRecordingFileName
+        : pendingAttachmentCount > 0 || lastRecordingFileName
           ? "Gravacao salva."
           : "Athena minimizada.";
+    const compactDescription = recordingKind
+      ? "A janela foi minimizada para manter a gravacao ativa."
+      : isProcessingRecording
+        ? "Aguarde alguns segundos enquanto a Athena prepara o anexo."
+        : pendingAttachmentCount > 0 || lastRecordingFileName
+          ? "Volte para revisar a evidencia anexada e enviar o ticket."
+          : "Volte para a Athena para revisar a evidencia e enviar o ticket.";
+    const compactActionLabel =
+      pendingAttachmentCount > 0 || lastRecordingFileName
+        ? "Revisar ticket"
+        : "Voltar ao ticket";
 
     return (
       <div className="rounded-xl border border-[#A07C3B]/25 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.22)]">
@@ -474,13 +526,17 @@ export function HubTicketOpenForm({
               {compactStatus}
             </p>
             <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
-              {recordingKind
-                ? "A janela foi minimizada para manter a gravacao ativa."
-                : "Volte para a Athena para revisar a evidencia e enviar o ticket."}
+              {compactDescription}
             </p>
             {lastRecordingFileName ? (
               <p className="m-0 mt-1 truncate text-xs font-semibold text-slate-600">
                 {lastRecordingFileName}
+              </p>
+            ) : null}
+            {pendingAttachmentCount > 0 ? (
+              <p className="m-0 mt-1 text-xs font-semibold text-emerald-700">
+                {pendingAttachmentCount} evidencia
+                {pendingAttachmentCount > 1 ? "s" : ""} aguardando revisao.
               </p>
             ) : null}
           </div>
@@ -490,28 +546,28 @@ export function HubTicketOpenForm({
           {recordingKind ? (
             <button
               className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 transition hover:bg-red-100"
-              onClick={stopActiveRecording}
+              onClick={handleCompactStopRecording}
               type="button"
             >
               <Square className="size-3.5" aria-hidden="true" />
-              Stop
+              Parar gravacao
             </button>
           ) : null}
-          <button
-            className="inline-flex h-8 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition hover:bg-[#1b2835] disabled:cursor-wait disabled:opacity-60"
-            disabled={isProcessingRecording}
-            onClick={
-              recordingKind ? finishCompactRecording : restoreFromCompactRecording
-            }
-            type="button"
-          >
-            {isProcessingRecording ? (
-              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <CheckCircle2 className="size-3.5" aria-hidden="true" />
-            )}
-            Finalizar
-          </button>
+          {!recordingKind ? (
+            <button
+              className="inline-flex h-8 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition hover:bg-[#1b2835] disabled:cursor-wait disabled:opacity-60"
+              disabled={isProcessingRecording}
+              onClick={restoreFromCompactRecording}
+              type="button"
+            >
+              {isProcessingRecording ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <CheckCircle2 className="size-3.5" aria-hidden="true" />
+              )}
+              {isProcessingRecording ? "Salvando" : compactActionLabel}
+            </button>
+          ) : null}
         </div>
       </div>
     );

@@ -208,6 +208,44 @@ type StructuredOperationsApiResponse = {
   };
 };
 
+type ReleaseRegisterSourceApiSummary = {
+  environment: "homologacao" | "producao";
+  error: string | null;
+  exists: boolean;
+  path: string;
+  recordsCount: number;
+};
+
+type ReleaseRegistersApiResponse = {
+  error?: string;
+  filters: EngineeringOperationsResponse["filters"];
+  generatedAt: string;
+  records: EngineeringOperationRecord[];
+  releaseRecords: EngineeringOperationRecord[];
+  sourcePath: string;
+  sourcePaths: string[];
+  sources: ReleaseRegisterSourceApiSummary[];
+  status?: string;
+};
+
+type AuthDiagnosticsApiResponse = {
+  generatedAt?: string;
+  meta?: {
+    activeProfileWithoutAuth: number;
+    activeProfiles: number;
+    authUsers: number;
+    authWithoutProfile: number;
+    disabledProfiles: number;
+    hubProfiles: number;
+    invalidRoleProfiles: number;
+    sampledAuthUsers: boolean;
+    sampledHubProfiles: boolean;
+  };
+  recommendations?: string[];
+  status?: "bloqueado" | "desalinhado" | "indisponivel" | "sincronizado";
+  error?: string;
+};
+
 type OperationsSourceState = {
   description: string;
   error: string | null;
@@ -252,7 +290,13 @@ type HomologationReviewState = Record<
 >;
 
 type HomologationItem = {
-  kind: "alerta" | "atividade" | "deploy";
+  kind:
+    | "alerta"
+    | "atendimento"
+    | "cobranca"
+    | "deploy"
+    | "operacao"
+    | "ticket";
   module: string;
   protocol: string;
   record: EngineeringOperationRecord | null;
@@ -271,6 +315,21 @@ type HomologationSummary = {
   rejected: number;
   total: number;
   waiting: number;
+};
+
+type ReleaseModuleGroup = {
+  activityCount: number;
+  agent: string;
+  latestAt: string;
+  module: string;
+  protocols: HubReleaseProtocol[];
+};
+
+type HomologationModuleSummary = {
+  approved: number;
+  blocked: number;
+  readyPackages: number;
+  total: number;
 };
 
 const allFilterValue = "__all";
@@ -400,41 +459,40 @@ type PromptTemplate = {
 const promptTemplates: PromptTemplate[] = [
   {
     id: "deploy-hefesto",
-    label: "Deploy por recorte",
+    label: "Producao por modulo",
     description:
-      "Hefesto le o diario, separa recortes e publica apenas o que estiver autorizado.",
+      "Hefesto recebe modulos homologados e promove apenas o que estiver aprovado.",
     target: "Hefesto",
     type: "deploy",
     body: `Assunto:
-[Hefesto] Planejamento de deploy por recorte
+[Hefesto] Planejamento de producao por modulo homologado
 
-Hefesto, solicito planejar e executar deploy somente por recorte operacional autorizado.
+Hefesto, solicito planejar e executar producao somente por modulo homologado e autorizado.
 
 Este pedido NAO autoriza deploy de todo o worktree.
-O deploy deve ser programado a partir do Engineering Operations e confirmado contra o Git.
+O deploy de producao deve ser programado a partir do Engineering Operations, do Zeus/Operations Center e confirmado contra o Git.
 
 Fontes obrigatorias:
 - Diario operacional: docs/operations/engineering-operations.md.
 - Git/worktree: git status, git diff, git log e arquivos alterados.
-- Validacoes locais registradas no diario.
-- Healthchecks e Vercel quando o recorte for publicado.
+- Validacoes e deployment de homologacao registrados pelo agente do modulo.
+- Healthchecks e Vercel quando o recorte for promovido para producao.
 
 Como descobrir o recorte:
 - Ler os registros mais recentes do Engineering Operations.
-- Identificar registros com status AGUARDANDO RELEASEOPS ou AGUARDANDO DEPLOY.
-- Agrupar por modulo/frente/squad: Zeus, Hades, Hermes, Iris, Setup ou Hefesto.
+- Identificar registros com status PRONTO PARA PRODUCAO, HOMOLOGADO ou AGUARDANDO PRODUCAO.
+- Agrupar por modulo/frente/squad: Zeus, Hades, Hermes, Iris, Chronos, Atlas ou Setup.
 - Para cada grupo, listar assunto, arquivos/modulos afetados, validacoes, riscos e proxima squad.
 - Cruzar os arquivos citados no diario com o Git diff real.
 - Confirmar se o diff pertence ao mesmo modulo/frente.
 - Ignorar registros ja marcados como EM PRODUCAO, salvo se houver novo diff local relacionado.
 
 Protocolo de deploy:
-- Criar ou selecionar um protocolo macro no padrao DP-0001.
-- O DP deve agrupar todos os protocolos AT-* e AL-* incluidos no release.
-- O DP deve ter ambiente atual: desenvolvimento, QA, homologacao ou producao.
-- Antes de producao, registrar etapa de homologacao quando aplicavel.
-- O commit deve citar o DP no titulo e os AT/AL no corpo.
-- Exemplo de commit: feat(squadops): publish operations center updates [DP-0007].
+- Usar o pacote homologado pelo agente do modulo no padrao DP-0001 ou equivalente.
+- O DP deve agrupar todos os protocolos AT-*, CB-*, TI-*, OP-* e AL-* incluidos no modulo.
+- O DP deve ter homologacao registrada antes de producao.
+- O commit deve citar o DP no titulo e os protocolos incluidos no corpo.
+- Exemplo de commit: feat(zeus): publish operations center updates [DP-0007].
 
 Regras de release:
 - Nao usar deploy geral se houver mais de um recorte misturado.
@@ -446,11 +504,11 @@ Regras de release:
 - Se houver duvida de escopo, bloquear com motivo tecnico concreto.
 
 Quando publicar:
-- Somente se o recorte tiver status AGUARDANDO RELEASEOPS ou AGUARDANDO DEPLOY.
+- Somente se o recorte tiver status PRONTO PARA PRODUCAO, HOMOLOGADO ou AGUARDANDO PRODUCAO.
 - Somente se os arquivos do Git baterem com o recorte do diario.
-- Somente se as validacoes minimas passarem: check-types, lint, build, smoke da rota afetada e healthchecks aplicaveis.
-- Criar commit semantico por recorte.
-- Fazer deploy Vercel apenas depois do commit coerente.
+- Somente se as validacoes minimas e a homologacao registrada estiverem coerentes.
+- Criar ou selecionar commit semantico por modulo.
+- Fazer deploy Vercel Production apenas depois do commit coerente e autorizacao do Lucas.
 - Executar healthchecks pos-deploy.
 - Atualizar o Engineering Operations com commit, deployment, healthchecks, riscos, pendencias e status final.
 
@@ -461,7 +519,7 @@ Quando bloquear:
 - Validacao obrigatoria falhando.
 - Risco de secret exposto.
 - Dependencia de validacao visual/autenticada ainda pendente e essencial.
-- Status no diario diferente de AGUARDANDO RELEASEOPS ou AGUARDANDO DEPLOY.
+- Status no diario diferente de PRONTO PARA PRODUCAO, HOMOLOGADO ou AGUARDANDO PRODUCAO.
 
 Saida esperada antes de agir:
 - Recortes encontrados no diario.
@@ -487,7 +545,7 @@ Formato esperado da resposta:
 - Validacoes executadas
 - Commit realizado, se houver
 - Deploy realizado, se houver
-- Protocolo DP, ambiente e protocolos AT/AL incluidos
+- Protocolo DP, ambiente e protocolos AT/CB/TI/OP/AL incluidos
 - Homologacao executada ou pendente
 - Healthchecks executados
 - Riscos ou pendencias
@@ -715,7 +773,7 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
 ];
 
 const zeusViews = [
-  { id: "itTickets", label: "Ticket TI" },
+  { id: "itTickets", label: "HelpDesk" },
   { id: "overview", label: "Visão geral" },
   { id: "monitoring", label: "Database Monitoring" },
   { id: "deploys", label: "Deploys" },
@@ -741,6 +799,11 @@ export function ZeusPage({
     useState<EngineeringOperationsResponse | null>(null);
   const [structuredOperations, setStructuredOperations] =
     useState<EngineeringOperationsResponse | null>(null);
+  const [releaseRegisters, setReleaseRegisters] =
+    useState<ReleaseRegistersApiResponse | null>(null);
+  const [releaseRegistersError, setReleaseRegistersError] = useState<
+    string | null
+  >(null);
   const [operationsSource, setOperationsSource] =
     useState<OperationsSourceState>(initialOperationsSourceState);
   const [isLoading, setIsLoading] = useState(true);
@@ -911,6 +974,59 @@ export function ZeusPage({
     };
   }, [canAccessZeus, profileStatus, zeusAccessToken]);
 
+  const loadReleaseRegisters = useCallback(async () => {
+    if (!canAccessZeus || profileStatus === "loading") {
+      return;
+    }
+
+    try {
+      const accessToken = await getZeusAccessToken(zeusAccessToken);
+      const headers: Record<string, string> = {};
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/zeus/release-registers", {
+        cache: "no-store",
+        headers,
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | ReleaseRegistersApiResponse
+        | { error?: string }
+        | null;
+
+      if (!response.ok || !isReleaseRegistersResponse(payload)) {
+        const maybeError =
+          payload && typeof payload === "object" && "error" in payload
+            ? payload.error
+            : null;
+
+        throw new Error(
+          typeof maybeError === "string"
+            ? maybeError
+            : "Nao foi possivel carregar os registros de deploy por ambiente.",
+        );
+      }
+
+      setReleaseRegisters(payload);
+      setReleaseRegistersError(null);
+    } catch (error) {
+      setReleaseRegisters(null);
+      setReleaseRegistersError(getReleaseRegistersErrorMessage(error));
+    }
+  }, [canAccessZeus, profileStatus, zeusAccessToken]);
+
+  useEffect(() => {
+    if (!canAccessZeus || profileStatus === "loading") {
+      setReleaseRegisters(null);
+      setReleaseRegistersError(null);
+      return;
+    }
+
+    void loadReleaseRegisters();
+  }, [canAccessZeus, loadReleaseRegisters, profileStatus]);
+
   const loadStructuredOperations = useCallback(async () => {
     if (!canAccessZeus || profileStatus === "loading") {
       return;
@@ -1036,6 +1152,7 @@ export function ZeusPage({
     try {
       const tickets = await loadHubItTickets({
         accessToken: zeusAccessToken,
+        details: "list",
         scope: "all",
       });
 
@@ -1189,17 +1306,22 @@ export function ZeusPage({
   );
 
   useEffect(() => {
-    if (!canAccessZeus || profileStatus === "loading") {
+    if (
+      !canAccessZeus ||
+      profileStatus === "loading" ||
+      activeView !== "monitoring"
+    ) {
       return;
     }
 
     void loadMonitoringSnapshot({ analyze: true });
-  }, [canAccessZeus, loadMonitoringSnapshot, profileStatus]);
+  }, [activeView, canAccessZeus, loadMonitoringSnapshot, profileStatus]);
 
   useEffect(() => {
     if (
       !canAccessZeus ||
       profileStatus === "loading" ||
+      activeView !== "monitoring" ||
       monitoringIntervalMs === 0
     ) {
       return;
@@ -1211,6 +1333,7 @@ export function ZeusPage({
 
     return () => window.clearInterval(interval);
   }, [
+    activeView,
     canAccessZeus,
     loadMonitoringSnapshot,
     monitoringIntervalMs,
@@ -1233,6 +1356,13 @@ export function ZeusPage({
   const allReleaseRecords =
     activeOperations?.releaseRecords ??
     records.filter((record) => record.isRelease);
+  const releaseRegisterRecords = releaseRegisters?.records ?? [];
+  const deployRecords =
+    releaseRegisterRecords.length > 0 ? releaseRegisterRecords : allReleaseRecords;
+  const deployFilterOptions =
+    releaseRegisterRecords.length > 0
+      ? releaseRegisters?.filters
+      : activeOperations?.filters;
   const latestDeploys = allReleaseRecords
     .filter((record) => record.deploy !== UNKNOWN_OPERATION_VALUE)
     .slice(0, 5);
@@ -1790,9 +1920,13 @@ export function ZeusPage({
     }));
   }
 
+  const isHelpDeskView = activeView === "itTickets";
+
   const pageContent = (
     <>
       <WorkspaceLayout>
+        {!isHelpDeskView ? (
+        <>
         <section className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
@@ -1844,6 +1978,8 @@ export function ZeusPage({
           ref={operationsFileInputRef}
           type="file"
         />
+        </>
+        ) : null}
 
         {error ? (
           <Surface bordered className="border-red-100 bg-red-50 p-4">
@@ -1854,6 +1990,7 @@ export function ZeusPage({
           </Surface>
         ) : null}
 
+        {!isHelpDeskView ? (
         <ZeusCommandCenter
           actionCount={actionCount}
           isLoading={isLoading}
@@ -1867,11 +2004,12 @@ export function ZeusPage({
           onOpenCritical={() => setActiveView("overview")}
           onOpenMonitoring={() => setActiveView("monitoring")}
         />
+        ) : null}
 
         <ZeusViewTabs
           activeView={activeView}
           actionCount={actionCount}
-          deployCount={allReleaseRecords.length}
+          deployCount={deployRecords.length}
           filteredCount={filteredRecords.length}
           itTicketAttentionCount={itTicketAttentionCount}
           itTicketCount={itTicketCount}
@@ -1934,6 +2072,7 @@ export function ZeusPage({
         {activeView === "monitoring" ? (
           <DatabaseMonitoringView
             acknowledgingProtocol={acknowledgingProtocol}
+            accessToken={zeusAccessToken}
             alertProtocols={alertProtocols}
             copiedCommandId={copiedCommandId}
             error={monitoringError}
@@ -1962,7 +2101,7 @@ export function ZeusPage({
           <>
             <OperationsFiltersBar
               filters={filters}
-              options={activeOperations?.filters}
+              options={deployFilterOptions}
               onChange={setFilters}
             />
             <DeployProtocolsView
@@ -1971,7 +2110,9 @@ export function ZeusPage({
               filters={filters}
               onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
               onSelectRecord={setSelectedRecord}
-              records={records}
+              records={deployRecords}
+              releaseRegisterError={releaseRegistersError}
+              releaseRegisters={releaseRegisters}
             />
           </>
         ) : null}
@@ -2902,6 +3043,7 @@ function FocusMetric({
 
 function DatabaseMonitoringView({
   acknowledgingProtocol,
+  accessToken,
   alertProtocols,
   copiedCommandId,
   error,
@@ -2923,6 +3065,7 @@ function DatabaseMonitoringView({
   watcher,
 }: {
   acknowledgingProtocol: string | null;
+  accessToken: string | null;
   alertProtocols: OperationsAlertProtocolSummary[];
   copiedCommandId: string | null;
   error: string | null;
@@ -2943,6 +3086,13 @@ function DatabaseMonitoringView({
   snapshot: OperationsMonitoringSnapshot | null;
   watcher: OpsWatcherDecision | null;
 }) {
+  const [authDiagnostics, setAuthDiagnostics] =
+    useState<AuthDiagnosticsApiResponse | null>(null);
+  const [authDiagnosticsError, setAuthDiagnosticsError] = useState<
+    string | null
+  >(null);
+  const [isAuthDiagnosticsLoading, setIsAuthDiagnosticsLoading] =
+    useState(false);
   const [isAlertsDialogOpen, setIsAlertsDialogOpen] = useState(false);
   const [isTvMode, setIsTvMode] = useState(false);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
@@ -2976,6 +3126,54 @@ function DatabaseMonitoringView({
   const selectedSource =
     sourceCards.find((source) => source.id === selectedSourceId) ?? null;
   const monitoringChecks = snapshot?.checks.length ? snapshot.checks : history;
+  const performanceChecks = history.length ? history : monitoringChecks;
+  const performanceIndicators = useMemo(
+    () =>
+      buildPanteonPerformanceIndicators({
+        checks: performanceChecks,
+        snapshot,
+      }),
+    [performanceChecks, snapshot],
+  );
+  const runAuthDiagnostics = useCallback(async () => {
+    if (!accessToken) {
+      setAuthDiagnosticsError(
+        "Sessao Zeus indisponivel para diagnostico protegido.",
+      );
+      return;
+    }
+
+    setIsAuthDiagnosticsLoading(true);
+    setAuthDiagnosticsError(null);
+
+    try {
+      const response = await fetch("/api/zeus/auth-diagnostics", {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | AuthDiagnosticsApiResponse
+        | null;
+
+      if (!response.ok) {
+        setAuthDiagnosticsError(
+          payload?.error ??
+            "Nao foi possivel executar diagnostico Auth x hub_users.",
+        );
+        return;
+      }
+
+      setAuthDiagnostics(payload);
+    } catch {
+      setAuthDiagnosticsError(
+        "Nao foi possivel executar diagnostico Auth x hub_users.",
+      );
+    } finally {
+      setIsAuthDiagnosticsLoading(false);
+    }
+  }, [accessToken]);
 
   useEffect(() => {
     if (!isTvMode) {
@@ -3042,6 +3240,19 @@ function DatabaseMonitoringView({
               Ops Copilot
             </button>
             <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isAuthDiagnosticsLoading}
+              onClick={() => void runAuthDiagnostics()}
+              type="button"
+            >
+              <ShieldAlert
+                className={`size-4 text-[#A07C3B] ${
+                  isAuthDiagnosticsLoading ? "animate-pulse" : ""
+                }`}
+              />
+              Auth
+            </button>
+            <button
               aria-label={
                 isTvMode
                   ? "Sair do modo tela cheia"
@@ -3075,6 +3286,17 @@ function DatabaseMonitoringView({
           highestAlert={highestVisibleAlert}
           latestNotification={bannerNotification ?? latestNotification}
           onOpen={() => setIsAlertsDialogOpen(true)}
+        />
+
+        <AuthDiagnosticsPanel
+          diagnostics={authDiagnostics}
+          error={authDiagnosticsError}
+          isLoading={isAuthDiagnosticsLoading}
+        />
+
+        <PanteonPerformanceIndicators
+          indicators={performanceIndicators}
+          isTvMode={isTvMode}
         />
 
         <MonitoringSourceGrid
@@ -3127,6 +3349,542 @@ function DatabaseMonitoringView({
   );
 }
 
+type PanteonPerformanceIndicatorId =
+  | "api"
+  | "cache"
+  | "cold-start"
+  | "page"
+  | "payload"
+  | "supabase-query";
+
+type PanteonPerformanceIndicator = {
+  detail: string;
+  evidence: string;
+  id: PanteonPerformanceIndicatorId;
+  label: string;
+  tone: PerformanceTone;
+  value: string;
+};
+
+function AuthDiagnosticsPanel({
+  diagnostics,
+  error,
+  isLoading,
+}: {
+  diagnostics: AuthDiagnosticsApiResponse | null;
+  error: string | null;
+  isLoading: boolean;
+}) {
+  if (!diagnostics && !error && !isLoading) {
+    return null;
+  }
+
+  const meta = diagnostics?.meta;
+  const status = diagnostics?.status ?? (error ? "indisponivel" : "bloqueado");
+  const statusVariant: BadgeVariant =
+    status === "sincronizado"
+      ? "success"
+      : status === "desalinhado"
+        ? "danger"
+        : "warning";
+
+  return (
+    <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PanelTitle
+          eyebrow="diagnostico sob demanda"
+          icon={<ShieldAlert size={18} />}
+          title="Auth x hub_users"
+        />
+        <Badge variant={statusVariant}>
+          {isLoading ? "verificando" : status}
+        </Badge>
+      </div>
+      {error ? (
+        <p className="m-0 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+          {error}
+        </p>
+      ) : null}
+      {meta ? (
+        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
+          <AuthDiagnosticsMetric label="Auth users" value={meta.authUsers} />
+          <AuthDiagnosticsMetric label="hub_users" value={meta.hubProfiles} />
+          <AuthDiagnosticsMetric
+            label="perfis ativos"
+            value={meta.activeProfiles}
+          />
+          <AuthDiagnosticsMetric
+            label="Auth sem perfil"
+            tone={meta.authWithoutProfile > 0 ? "danger" : "neutral"}
+            value={meta.authWithoutProfile}
+          />
+          <AuthDiagnosticsMetric
+            label="ativo sem Auth"
+            tone={meta.activeProfileWithoutAuth > 0 ? "danger" : "neutral"}
+            value={meta.activeProfileWithoutAuth}
+          />
+          <AuthDiagnosticsMetric
+            label="roles invalidas"
+            tone={meta.invalidRoleProfiles > 0 ? "danger" : "neutral"}
+            value={meta.invalidRoleProfiles}
+          />
+          <AuthDiagnosticsMetric
+            label="inativos"
+            tone={meta.disabledProfiles > 0 ? "warning" : "neutral"}
+            value={meta.disabledProfiles}
+          />
+        </div>
+      ) : null}
+      {diagnostics?.recommendations?.length ? (
+        <div className="mt-3 grid gap-2">
+          {diagnostics.recommendations.map((recommendation) => (
+            <p
+              className="m-0 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium leading-5 text-slate-600 ring-1 ring-slate-200/70"
+              key={recommendation}
+            >
+              {recommendation}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AuthDiagnosticsMetric({
+  label,
+  tone = "neutral",
+  value,
+}: {
+  label: string;
+  tone?: "danger" | "neutral" | "warning";
+  value: number;
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-slate-200 bg-slate-50 text-slate-700";
+
+  return (
+    <div className={`rounded-xl border p-3 ${toneClass}`}>
+      <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] opacity-75">
+        {label}
+      </p>
+      <p className="m-0 mt-1 text-xl font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function PanteonPerformanceIndicators({
+  indicators,
+  isTvMode,
+}: {
+  indicators: PanteonPerformanceIndicator[];
+  isTvMode: boolean;
+}) {
+  return (
+    <div className="mt-5 rounded-2xl border border-slate-200/70 bg-slate-50/60 p-4">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-[#A07C3B]">
+            Vercel + Supabase
+          </p>
+          <h3 className="m-0 mt-1 text-lg font-semibold text-slate-950">
+            Minha visao pro Panteon
+          </h3>
+          <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
+            Vercel mede entrada e funcao; Supabase mostra dados, consultas e
+            estabilidade.
+          </p>
+        </div>
+        <Badge variant="neutral">6 indicadores</Badge>
+      </div>
+      <div
+        className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${
+          isTvMode ? "xl:grid-cols-6" : "xl:grid-cols-3 2xl:grid-cols-6"
+        }`}
+      >
+        {indicators.map((indicator) => (
+          <PanteonPerformanceIndicatorCard
+            indicator={indicator}
+            key={indicator.id}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PanteonPerformanceIndicatorCard({
+  indicator,
+}: {
+  indicator: PanteonPerformanceIndicator;
+}) {
+  return (
+    <div
+      className={`min-w-0 rounded-xl border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${performanceCardBorderClass(indicator.tone)}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 truncate text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+            {indicator.label}
+          </p>
+          <p className="m-0 mt-2 truncate text-2xl font-semibold text-slate-950">
+            {indicator.value}
+          </p>
+        </div>
+        <span
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ${performanceIconClass(indicator.tone)}`}
+        >
+          {getPanteonIndicatorIcon(indicator.id)}
+        </span>
+      </div>
+      <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-slate-500">
+        {indicator.detail}
+      </p>
+      <p className="m-0 mt-2 truncate text-[0.68rem] font-semibold text-slate-400">
+        {indicator.evidence}
+      </p>
+    </div>
+  );
+}
+
+function buildPanteonPerformanceIndicators({
+  checks,
+  snapshot,
+}: {
+  checks: OperationsCheckMetric[];
+  snapshot: OperationsMonitoringSnapshot | null;
+}): PanteonPerformanceIndicator[] {
+  const latestChecks = getLatestChecksByEndpoint(
+    sortMonitoringChecksByLatest(checks),
+  );
+  const pageChecks = latestChecks.filter((check) => check.group === "page");
+  const apiChecks = latestChecks.filter((check) =>
+    ["api", "guardian-queue", "protected-api"].includes(check.group),
+  );
+  const supabaseChecks = latestChecks.filter(
+    (check) => check.group === "supabase",
+  );
+  const highestPayloadCheck = getHighestPayloadCheck(latestChecks);
+  const coldStartSummary = getColdStartSummary(checks);
+  const cacheSummary = getCacheSummary(latestChecks);
+  const slowestPageCheck = getSlowestCheck(pageChecks);
+  const slowestApiCheck = getSlowestCheck(apiChecks);
+  const slowestSupabaseCheck = getSlowestCheck(supabaseChecks);
+  const supabaseStatus = snapshot?.cards.supabase
+    ? [
+        `Auth ${generalStatusLabel(snapshot.cards.supabase.auth)}`,
+        `REST ${generalStatusLabel(snapshot.cards.supabase.rest)}`,
+        `Realtime ${generalStatusLabel(snapshot.cards.supabase.realtime)}`,
+      ].join(" / ")
+    : `${supabaseChecks.length} leitura(s)`;
+
+  return [
+    {
+      detail: slowestPageCheck
+        ? `Abertura HTML mais lenta em ${slowestPageCheck.label}.`
+        : "Aguardando leitura de abertura do Login e Zeus.",
+      evidence: formatIndicatorEvidence(pageChecks),
+      id: "page",
+      label: "Pagina",
+      tone: getResponseChecksTone(pageChecks),
+      value: formatMetricMs(getMaxResponseMs(pageChecks)),
+    },
+    {
+      detail: slowestApiCheck
+        ? `Maior tempo em ${slowestApiCheck.label}; media ${formatMetricMs(
+            getAverageResponseMs(apiChecks),
+          )}.`
+        : "Aguardando leitura das APIs operacionais.",
+      evidence: `${apiChecks.length} endpoint(s)`,
+      id: "api",
+      label: "APIs",
+      tone: getResponseChecksTone(apiChecks),
+      value: formatMetricMs(getMaxResponseMs(apiChecks)),
+    },
+    {
+      detail: slowestSupabaseCheck
+        ? `Supabase mais lento em ${slowestSupabaseCheck.label}.`
+        : "Aguardando Auth, REST e Realtime.",
+      evidence: supabaseStatus,
+      id: "supabase-query",
+      label: "Supabase",
+      tone: getResponseChecksTone(supabaseChecks),
+      value: formatMetricMs(getMaxResponseMs(supabaseChecks)),
+    },
+    {
+      detail: highestPayloadCheck
+        ? `${highestPayloadCheck.label} concentra o maior payload atual.`
+        : "Aguardando payload das fontes monitoradas.",
+      evidence: highestPayloadCheck
+        ? `${highestPayloadCheck.module} / ${highestPayloadCheck.payloadRisk}`
+        : "sem leitura",
+      id: "payload",
+      label: "Payload",
+      tone: highestPayloadCheck
+        ? payloadPerformanceTone(highestPayloadCheck.payloadRisk)
+        : "neutral",
+      value: highestPayloadCheck
+        ? formatBytes(highestPayloadCheck.payloadBytes)
+        : "--",
+    },
+    {
+      detail: coldStartSummary.detail,
+      evidence: coldStartSummary.evidence,
+      id: "cold-start",
+      label: "Cold start",
+      tone: coldStartSummary.tone,
+      value: coldStartSummary.value,
+    },
+    {
+      detail: cacheSummary.detail,
+      evidence: cacheSummary.evidence,
+      id: "cache",
+      label: "Cache",
+      tone: cacheSummary.tone,
+      value: cacheSummary.value,
+    },
+  ];
+}
+
+function getPanteonIndicatorIcon(id: PanteonPerformanceIndicatorId) {
+  if (id === "page") {
+    return <LayoutGrid size={17} />;
+  }
+
+  if (id === "api") {
+    return <Activity size={17} />;
+  }
+
+  if (id === "supabase-query") {
+    return <Database size={17} />;
+  }
+
+  if (id === "payload") {
+    return <Layers3 size={17} />;
+  }
+
+  if (id === "cold-start") {
+    return <Rocket size={17} />;
+  }
+
+  return <RefreshCcw size={17} />;
+}
+
+function sortMonitoringChecksByLatest(checks: OperationsCheckMetric[]) {
+  return checks
+    .slice()
+    .sort(
+      (first, second) =>
+        new Date(second.checkedAt).getTime() -
+        new Date(first.checkedAt).getTime(),
+    );
+}
+
+function getSlowestCheck(checks: OperationsCheckMetric[]) {
+  return checks
+    .slice()
+    .sort((first, second) => second.responseMs - first.responseMs)[0];
+}
+
+function getHighestPayloadCheck(checks: OperationsCheckMetric[]) {
+  return checks
+    .slice()
+    .sort((first, second) => second.payloadBytes - first.payloadBytes)[0];
+}
+
+function getMaxResponseMs(checks: OperationsCheckMetric[]) {
+  return Math.max(0, ...checks.map((check) => check.responseMs));
+}
+
+function getAverageResponseMs(checks: OperationsCheckMetric[]) {
+  if (checks.length === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    checks.reduce((total, check) => total + check.responseMs, 0) /
+      checks.length,
+  );
+}
+
+function formatMetricMs(value: number) {
+  return value > 0 ? `${value}ms` : "--";
+}
+
+function formatIndicatorEvidence(checks: OperationsCheckMetric[]) {
+  if (checks.length === 0) {
+    return "sem leitura";
+  }
+
+  return checks.map((check) => check.label).join(" / ");
+}
+
+function getResponseChecksTone(checks: OperationsCheckMetric[]): PerformanceTone {
+  if (checks.length === 0) {
+    return "neutral";
+  }
+
+  return responsePerformanceTone(getMaxResponseMs(checks));
+}
+
+function payloadPerformanceTone(
+  payloadRisk: OperationsCheckMetric["payloadRisk"],
+): PerformanceTone {
+  if (payloadRisk === "critico") {
+    return "red";
+  }
+
+  if (payloadRisk === "pesado" || payloadRisk === "atencao") {
+    return "yellow";
+  }
+
+  return "green";
+}
+
+function getColdStartSummary(
+  checks: OperationsCheckMetric[],
+): Pick<PanteonPerformanceIndicator, "detail" | "evidence" | "tone" | "value"> {
+  const checksById = new Map<string, OperationsCheckMetric[]>();
+
+  checks.forEach((check) => {
+    const currentChecks = checksById.get(check.id) ?? [];
+    currentChecks.push(check);
+    checksById.set(check.id, currentChecks);
+  });
+
+  const signals: OperationsCheckMetric[] = [];
+  let comparableSeries = 0;
+
+  checksById.forEach((series) => {
+    const orderedSeries = sortMonitoringChecksByLatest(series);
+    const latest = orderedSeries[0];
+    const previous = orderedSeries[1];
+
+    if (!latest || !previous) {
+      return;
+    }
+
+    comparableSeries += 1;
+
+    if (latest.responseMs > 1_500 && latest.responseMs - previous.responseMs > 800) {
+      signals.push(latest);
+    }
+  });
+
+  if (comparableSeries === 0) {
+    return {
+      detail: "Ainda falta serie temporal para inferir cold start.",
+      evidence: "comparativo pendente",
+      tone: "neutral",
+      value: "sem base",
+    };
+  }
+
+  if (signals.length === 0) {
+    return {
+      detail: "Sem salto brusco de latencia entre as ultimas leituras.",
+      evidence: `${comparableSeries} serie(s) comparada(s)`,
+      tone: "green",
+      value: "0 sinais",
+    };
+  }
+
+  return {
+    detail: `Pico brusco em ${signals
+      .slice(0, 2)
+      .map((check) => check.label)
+      .join(" / ")}.`,
+    evidence: `${comparableSeries} serie(s) comparada(s)`,
+    tone: signals.length > 1 ? "red" : "yellow",
+    value: `${signals.length} sinal(is)`,
+  };
+}
+
+function getCacheSummary(
+  checks: OperationsCheckMetric[],
+): Pick<PanteonPerformanceIndicator, "detail" | "evidence" | "tone" | "value"> {
+  const cacheReadings = checks
+    .map((check) => ({
+      check,
+      value: getCacheHeaderValue(check),
+    }))
+    .filter(
+      (item): item is { check: OperationsCheckMetric; value: string } =>
+        Boolean(item.value),
+    );
+
+  if (cacheReadings.length === 0) {
+    return {
+      detail: "Headers de cache ainda nao foram observados nas fontes atuais.",
+      evidence: "cache-control sem sinal",
+      tone: "neutral",
+      value: "sem sinal",
+    };
+  }
+
+  const hitCount = cacheReadings.filter((item) =>
+    normalizeSearchText(item.value).includes("hit"),
+  ).length;
+  const missCount = cacheReadings.filter((item) => {
+    const normalizedValue = normalizeSearchText(item.value);
+
+    return (
+      normalizedValue.includes("miss") ||
+      normalizedValue.includes("bypass") ||
+      normalizedValue.includes("stale")
+    );
+  }).length;
+
+  if (hitCount > 0) {
+    return {
+      detail: "Pelo menos uma fonte respondeu com cache aproveitado.",
+      evidence: `${cacheReadings.length} header(s) de cache`,
+      tone: "green",
+      value: `${hitCount} HIT`,
+    };
+  }
+
+  if (missCount > 0) {
+    return {
+      detail: "Cache observado, mas ainda sem reaproveitamento na leitura atual.",
+      evidence: `${cacheReadings.length} header(s) de cache`,
+      tone: "yellow",
+      value: `${missCount} MISS`,
+    };
+  }
+
+  return {
+    detail: `Cache declarado em ${cacheReadings[0]?.check.label ?? "fonte monitorada"}.`,
+    evidence: `${cacheReadings.length} header(s) de cache`,
+    tone: "green",
+    value: "ativo",
+  };
+}
+
+function getCacheHeaderValue(check: OperationsCheckMetric) {
+  const keys = [
+    "cacheStatus",
+    "hadesQueueCache",
+    "vercelCache",
+    "cacheControl",
+    "age",
+  ];
+
+  for (const key of keys) {
+    const value = check.meta?.[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
 type MonitoringSourceSummary = {
   alertCount: number;
   averageResponseMs: number;
@@ -3149,6 +3907,7 @@ type MonitoringSourceSummary = {
 };
 
 const monitoringSourceOrder = [
+  "page",
   "c2x",
   "supabase",
   "guardian-queue",
@@ -4508,6 +5267,8 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
 }
 
 function CheckMetricCard({ check }: { check: OperationsCheckMetric }) {
+  const metaEntries = formatCheckMetaEntries(check);
+
   return (
     <article className="rounded-xl border border-slate-200/70 bg-slate-50/40 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       <div className="flex items-start justify-between gap-3">
@@ -4546,8 +5307,98 @@ function CheckMetricCard({ check }: { check: OperationsCheckMetric }) {
           </p>
         </div>
       </div>
+      {metaEntries.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {metaEntries.map((entry) => (
+            <span
+              className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70"
+              key={entry.key}
+            >
+              {entry.label}:{" "}
+              <span className="text-slate-950">{entry.value}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
+}
+
+function formatCheckMetaEntries(check: OperationsCheckMetric) {
+  const meta = check.meta;
+
+  if (!meta) {
+    return [];
+  }
+
+  const labels: Record<string, string> = {
+    activeProfiles: "perfis ativos",
+    activeProfileWithoutAuth: "perfis ativos sem Auth",
+    age: "age",
+    authUsers: "Auth users",
+    authWithoutProfile: "Auth sem perfil",
+    cacheControl: "cache",
+    cacheStatus: "cache local",
+    count: "count",
+    database: "database",
+    disabledProfiles: "perfis inativos",
+    elapsedMs: "tempo fonte",
+    hadesQueueCache: "cache Hades",
+    hubProfiles: "hub_users",
+    invalidRoleProfiles: "roles invalidas",
+    limit: "limit",
+    loadedCount: "carregados",
+    sampledAuthUsers: "Auth amostrado",
+    sampledHubProfiles: "Hub amostrado",
+    source: "source",
+    status: "status",
+    vercelCache: "cache Vercel",
+  };
+  const preferredKeys = [
+    "authUsers",
+    "hubProfiles",
+    "activeProfiles",
+    "authWithoutProfile",
+    "activeProfileWithoutAuth",
+    "invalidRoleProfiles",
+    "disabledProfiles",
+    "sampledAuthUsers",
+    "sampledHubProfiles",
+    "database",
+    "source",
+    "status",
+    "count",
+    "loadedCount",
+    "limit",
+    "cacheStatus",
+    "hadesQueueCache",
+    "vercelCache",
+    "cacheControl",
+    "age",
+    "elapsedMs",
+  ];
+
+  return preferredKeys
+    .filter((key) => key in meta)
+    .map((key) => ({
+      key,
+      label: labels[key] ?? key,
+      value: formatCheckMetaValue(meta[key]),
+    }))
+    .filter((entry) => entry.value.length > 0)
+    .slice(0, 10);
+}
+
+function formatCheckMetaValue(value: unknown) {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+
+  return "";
 }
 
 type CheckHistoryGroup = {
@@ -4739,6 +5590,13 @@ function getMonitoringSourceId(check: OperationsCheckMetric) {
 }
 
 function getMonitoringSourceMeta(sourceId: string) {
+  if (sourceId === "page") {
+    return {
+      description: "Abertura HTML do Login e Zeus.",
+      label: "Paginas",
+    };
+  }
+
   if (sourceId === "c2x") {
     return {
       description: "Banco e healthcheck do legado C2X.",
@@ -4781,6 +5639,10 @@ function getMonitoringSourceMeta(sourceId: string) {
 }
 
 function getMonitoringSourceIcon(sourceId: string) {
+  if (sourceId === "page") {
+    return <LayoutGrid size={17} />;
+  }
+
   if (sourceId === "c2x") {
     return <ServerCog size={17} />;
   }
@@ -4903,6 +5765,8 @@ function DeployProtocolsView({
   onCopyCommand,
   onSelectRecord,
   records,
+  releaseRegisterError,
+  releaseRegisters,
 }: {
   accessToken: string | null;
   copiedCommandId: string | null;
@@ -4910,6 +5774,8 @@ function DeployProtocolsView({
   onCopyCommand: (command: string, id: string) => void;
   onSelectRecord: (record: EngineeringOperationRecord) => void;
   records: EngineeringOperationRecord[];
+  releaseRegisterError: string | null;
+  releaseRegisters: ReleaseRegistersApiResponse | null;
 }) {
   const [homologationReviews, setHomologationReviews] =
     useState<HomologationReviewState>(() => readHomologationReviews());
@@ -4928,9 +5794,14 @@ function DeployProtocolsView({
   const homologationProtocols = filteredReleaseProtocols
     .filter(isReleaseProtocolInHomologation)
     .slice(0, 8);
-  const releaseProtocols = filteredReleaseProtocols.slice(0, 12);
+  const releaseModuleGroups = buildReleaseModuleGroups(
+    filteredReleaseProtocols,
+  ).slice(0, 8);
   const deployCount = filteredReleaseProtocols.length;
   const moduleGroups = buildProtocolModuleGroups(filteredRecords.slice(0, 120));
+  const usingReleaseRegisters = Boolean(
+    releaseRegisters && releaseRegisters.records.length > 0,
+  );
 
   useEffect(() => {
     writeHomologationReviews(homologationReviews);
@@ -5087,6 +5958,13 @@ function DeployProtocolsView({
 
   return (
     <section className="grid gap-5">
+      <ReleaseRegistersSourcePanel
+        error={releaseRegisterError}
+        recordsCount={records.length}
+        releaseRegisters={releaseRegisters}
+        usingReleaseRegisters={usingReleaseRegisters}
+      />
+
       <HomologationOperationsPanel
         copiedCommandId={copiedCommandId}
         reviewError={homologationReviewError}
@@ -5105,22 +5983,23 @@ function DeployProtocolsView({
           className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
         >
           <PanelTitle
-            eyebrow={`${deployCount} releases`}
+            eyebrow={`${releaseModuleGroups.length} modulos / ${deployCount} pacotes`}
             icon={<Rocket size={18} />}
-            title="Protocolos de deploy"
+            title="Deploys por modulo"
           />
           <p className="m-0 mt-3 text-sm leading-6 text-slate-600">
-            Cada deploy deve ter um protocolo DP, citar os AT/AL incluidos no
-            commit e passar por homologacao antes de producao quando aplicavel.
+            Cada agente de modulo publica o proprio recorte em homologacao.
+            Zeus organiza modulo, pacote e atividades para Hefesto promover
+            somente o que estiver pronto para producao.
           </p>
 
           <div className="mt-4 grid max-h-[58vh] gap-3 overflow-y-auto pr-1">
-            {releaseProtocols.length > 0 ? (
-              releaseProtocols.map((releaseProtocol) => (
-                <ReleaseProtocolCard
-                  key={releaseProtocol.protocol}
+            {releaseModuleGroups.length > 0 ? (
+              releaseModuleGroups.map((moduleGroup) => (
+                <ReleaseModuleGroupSection
+                  group={moduleGroup}
+                  key={moduleGroup.module}
                   onSelectRecord={onSelectRecord}
-                  releaseProtocol={releaseProtocol}
                 />
               ))
             ) : (
@@ -5139,12 +6018,15 @@ function DeployProtocolsView({
             title="Como o protocolo nasce"
           />
           <ul className="m-0 mt-4 grid list-none gap-2 p-0 text-sm leading-6 text-slate-600">
-            <li>Atividade operacional: AT-0001.</li>
+            <li>Atendimento Iris: AT-0001.</li>
+            <li>Cobranca: CB-0001.</li>
+            <li>HelpDesk tecnico: TI-000001.</li>
+            <li>Atividade operacional Zeus: OP-0001.</li>
             <li>Alerta operacional: AL-0001.</li>
             <li>Deploy/release macro: DP-0001.</li>
-            <li>O commit cita o DP no titulo e lista os AT/AL no corpo.</li>
-            <li>Homologacao vira ambiente oficial antes de producao.</li>
-            <li>Vercel cruza pelo commit SHA e deployment id.</li>
+            <li>Agente do modulo publica homologacao autorizada.</li>
+            <li>O handoff informa modulo, pacote, atividades e validacoes.</li>
+            <li>Hefesto promove producao somente do homologado.</li>
             <li>
               O status final fecha o ciclo: homologado, em producao, bloqueado
               ou rollback.
@@ -5170,7 +6052,7 @@ function DeployProtocolsView({
                 <section className="grid gap-3" key={moduleGroup.module}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="m-0 text-base font-semibold text-slate-950">
-                      {moduleGroup.module}
+                      {formatPanteonModuleName(moduleGroup.module)}
                     </h3>
                     <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
                       {moduleGroup.count} protocolos
@@ -5216,6 +6098,116 @@ function DeployProtocolsView({
   );
 }
 
+function ReleaseRegistersSourcePanel({
+  error,
+  recordsCount,
+  releaseRegisters,
+  usingReleaseRegisters,
+}: {
+  error: string | null;
+  recordsCount: number;
+  releaseRegisters: ReleaseRegistersApiResponse | null;
+  usingReleaseRegisters: boolean;
+}) {
+  const homologationCount =
+    releaseRegisters?.sources.find(
+      (source) => source.environment === "homologacao",
+    )?.recordsCount ?? 0;
+  const productionCount =
+    releaseRegisters?.sources.find((source) => source.environment === "producao")
+      ?.recordsCount ?? 0;
+
+  return (
+    <Surface
+      bordered
+      className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PanelTitle
+          eyebrow={`${recordsCount} registros de deploy`}
+          icon={<Rocket size={18} />}
+          title="Fonte da aba Deploy"
+        />
+        <Badge variant={usingReleaseRegisters ? "success" : "warning"}>
+          {usingReleaseRegisters ? "indices por ambiente" : "fallback diario"}
+        </Badge>
+      </div>
+      <p className="m-0 mt-3 text-sm leading-6 text-slate-600">
+        {usingReleaseRegisters
+          ? "Homologacao e producao agora alimentam a tela a partir dos registros operacionais separados."
+          : "Sem registros por ambiente disponiveis; a tela preserva o diario canonico como fallback."}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className="rounded-full bg-[#A07C3B]/10 px-3 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          Homologacao {homologationCount}
+        </span>
+        <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+          Producao {productionCount}
+        </span>
+        <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+          {releaseRegisters?.sourcePath ??
+            "docs/operations/engineering-operations.md"}
+        </span>
+      </div>
+      {error ? (
+        <p className="m-0 mt-3 rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-800 ring-1 ring-amber-200/70">
+          {error}
+        </p>
+      ) : null}
+    </Surface>
+  );
+}
+
+function ReleaseModuleGroupSection({
+  group,
+  onSelectRecord,
+}: {
+  group: ReleaseModuleGroup;
+  onSelectRecord: (record: EngineeringOperationRecord) => void;
+}) {
+  const readyForProduction = group.protocols.filter(
+    isReleaseProtocolReadyForProduction,
+  ).length;
+  const homologationCount = group.protocols.filter(
+    isReleaseProtocolInHomologation,
+  ).length;
+
+  return (
+    <section className="grid gap-3 border-b border-slate-100 pb-4 last:border-b-0 last:pb-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#7A5E2C]">
+            {group.agent}
+          </p>
+          <h3 className="m-0 mt-1 text-base font-semibold text-slate-950">
+            {group.module}
+          </h3>
+          <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
+            {group.protocols.length} pacote(s) / {group.activityCount} atividade(s)
+            sinalizadas para rastreabilidade.
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge variant={readyForProduction > 0 ? "success" : "info"}>
+            {readyForProduction} pronto(s) producao
+          </Badge>
+          <Badge variant="warning">{homologationCount} em homologacao</Badge>
+        </div>
+      </div>
+
+      <div className="grid gap-3">
+        {group.protocols.map((releaseProtocol) => (
+          <ReleaseProtocolCard
+            key={`${group.module}-${releaseProtocol.protocol}`}
+            onSelectRecord={onSelectRecord}
+            releaseProtocol={releaseProtocol}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function HomologationOperationsPanel({
   copiedCommandId,
   onCopyCommand,
@@ -5242,7 +6234,7 @@ function HomologationOperationsPanel({
   const summaries = protocols.map((protocol) =>
     getHomologationSummary(protocol, reviews),
   );
-  const totalItems = summaries.reduce((sum, summary) => sum + summary.total, 0);
+  const moduleGroups = buildReleaseModuleGroups(protocols);
   const approvedItems = summaries.reduce(
     (sum, summary) => sum + summary.approved,
     0,
@@ -5263,15 +6255,15 @@ function HomologationOperationsPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <PanelTitle
-            eyebrow={`${protocols.length} deploys em homologacao`}
+            eyebrow={`${moduleGroups.length} modulos em homologacao`}
             icon={<ClipboardCheck size={18} />}
-            title="Em Homologacao"
+            title="Homologacao por modulo"
           />
           <p className="m-0 mt-3 max-w-4xl text-sm leading-6 text-slate-600">
-            Valide cada protocolo publicado em homologacao. No final, a Athena
-            gera o prompt para Hefesto publicar somente os itens
-            aprovados; reprovados ou bloqueados ficam fora do recorte de
-            producao.
+            Valide cada pacote publicado pelo agente do modulo em homologacao.
+            No final, a Athena gera o prompt por modulo para Hefesto publicar
+            somente os itens aprovados; reprovados ou bloqueados ficam fora do
+            recorte de producao.
           </p>
         </div>
         <Badge variant={blockedItems > 0 ? "danger" : "info"}>
@@ -5300,27 +6292,27 @@ function HomologationOperationsPanel({
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
-        <HomologationMetric label="Protocolos" value={String(totalItems)} />
+        <HomologationMetric label="Modulos" value={String(moduleGroups.length)} />
         <HomologationMetric label="Aprovados" value={String(approvedItems)} />
         <HomologationMetric label="Com bloqueio" value={String(blockedItems)} />
-        <HomologationMetric label="Prompts liberados" value={String(readyDeploys)} />
+        <HomologationMetric label="Prompts Hefesto" value={String(readyDeploys)} />
       </div>
 
       <div className="mt-5 grid max-h-[62vh] gap-3 overflow-y-auto pr-1">
-        {protocols.length > 0 ? (
-          protocols.map((releaseProtocol) => (
-            <HomologationReleaseCard
+        {moduleGroups.length > 0 ? (
+          moduleGroups.map((moduleGroup) => (
+            <HomologationModuleGroupSection
               copiedCommandId={copiedCommandId}
-              key={`homologation-${releaseProtocol.protocol}`}
+              group={moduleGroup}
+              key={`homologation-${moduleGroup.module}`}
               onCopyCommand={onCopyCommand}
               onSelectRecord={onSelectRecord}
               onUpdateItem={onUpdateItem}
-              releaseProtocol={releaseProtocol}
               reviews={reviews}
             />
           ))
         ) : (
-          <EmptyState message="Nenhum protocolo em homologacao para os filtros atuais." />
+          <EmptyState message="Nenhum modulo em homologacao para os filtros atuais." />
         )}
       </div>
     </Surface>
@@ -5341,6 +6333,65 @@ function HomologationMetric({
       </p>
       <p className="m-0 mt-2 text-xl font-semibold text-slate-950">{value}</p>
     </div>
+  );
+}
+
+function HomologationModuleGroupSection({
+  copiedCommandId,
+  group,
+  onCopyCommand,
+  onSelectRecord,
+  onUpdateItem,
+  reviews,
+}: {
+  copiedCommandId: string | null;
+  group: ReleaseModuleGroup;
+  onCopyCommand: (command: string, id: string) => void;
+  onSelectRecord: (record: EngineeringOperationRecord) => void;
+  onUpdateItem: (
+    deployProtocol: string,
+    item: HomologationItem,
+    patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
+  ) => void;
+  reviews: HomologationReviewState;
+}) {
+  const summary = getHomologationModuleSummary(group.protocols, reviews);
+
+  return (
+    <section className="grid gap-3 border-b border-slate-100 pb-4 last:border-b-0 last:pb-0">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-slate-50/70 p-3 ring-1 ring-slate-200/70">
+        <div className="min-w-0">
+          <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#7A5E2C]">
+            {group.agent}
+          </p>
+          <h3 className="m-0 mt-1 text-sm font-semibold text-slate-950">
+            {group.module}
+          </h3>
+          <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
+            {group.protocols.length} pacote(s), {summary.total} item(ns) de
+            homologacao e {summary.readyPackages} prompt(s) liberado(s).
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge variant="success">{summary.approved} aprovados</Badge>
+          <Badge variant={summary.blocked > 0 ? "danger" : "info"}>
+            {summary.blocked} bloqueios
+          </Badge>
+        </div>
+      </div>
+
+      {group.protocols.map((releaseProtocol) => (
+        <HomologationReleaseCard
+          copiedCommandId={copiedCommandId}
+          key={`homologation-${group.module}-${releaseProtocol.protocol}`}
+          onCopyCommand={onCopyCommand}
+          onSelectRecord={onSelectRecord}
+          onUpdateItem={onUpdateItem}
+          releaseProtocol={releaseProtocol}
+          reviews={reviews}
+        />
+      ))}
+    </section>
   );
 }
 
@@ -5391,7 +6442,7 @@ function HomologationReleaseCard({
             {releaseProtocol.title}
           </h3>
           <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-            {releaseProtocol.modules.join(", ") || releaseProtocol.module} /{" "}
+            {formatReleaseModuleList(releaseProtocol)} /{" "}
             {formatOperationDateTime(releaseProtocol.plannedAt)}
           </p>
         </div>
@@ -5569,7 +6620,7 @@ function ReleaseProtocolCard({
               {releaseProtocol.protocol}
             </span>
             <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[0.68rem] font-semibold uppercase text-slate-500 ring-1 ring-slate-200/70">
-              Protocolo de deploy
+              Pacote do modulo
             </span>
           </button>
           <h3 className="m-0 mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
@@ -5617,7 +6668,7 @@ function ReleaseProtocolCard({
             })}
           </div>
           <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-            {releaseProtocol.modules.join(", ") || releaseProtocol.module} /{" "}
+            {formatReleaseModuleList(releaseProtocol)} /{" "}
             {formatOperationDateTime(releaseProtocol.plannedAt)}
           </p>
         </div>
@@ -5643,8 +6694,8 @@ function ReleaseProtocolCard({
             Vinculo operacional
           </p>
           <p className="m-0 mt-1 text-xs leading-5 text-slate-600">
-            Este DP agrupa os protocolos AT/AL acima; clique no protocolo para
-            abrir o detalhe operacional.
+            Este pacote agrupa protocolos do modulo para homologacao; clique
+            em cada protocolo para abrir o detalhe operacional.
           </p>
         </div>
 
@@ -5678,7 +6729,7 @@ function ReleaseProtocolPipeline({
   const steps = [
     {
       id: "homologacao",
-      label: "Homologacao",
+      label: "Modulo homologa",
       isActive:
         releaseProtocol.environment === "homologacao" ||
         releaseProtocol.status === "em_homologacao" ||
@@ -5691,7 +6742,7 @@ function ReleaseProtocolPipeline({
     },
     {
       id: "producao",
-      label: "Producao",
+      label: "Hefesto produz",
       isActive:
         releaseProtocol.environment === "producao" ||
         releaseProtocol.status === "aguardando_producao" ||
@@ -7624,6 +8675,158 @@ function writeHomologationReviews(reviews: HomologationReviewState) {
   }
 }
 
+function buildReleaseModuleGroups(
+  releaseProtocols: HubReleaseProtocol[],
+): ReleaseModuleGroup[] {
+  const groups = new Map<string, HubReleaseProtocol[]>();
+
+  releaseProtocols.forEach((releaseProtocol) => {
+    const moduleNames = getReleaseProtocolModules(releaseProtocol);
+
+    moduleNames.forEach((moduleName) => {
+      const current = groups.get(moduleName) ?? [];
+      groups.set(moduleName, [...current, releaseProtocol]);
+    });
+  });
+
+  return Array.from(groups.entries())
+    .map(([moduleName, protocols]) => {
+      const sortedProtocols = protocols.sort(
+        (first, second) =>
+          parseReleaseProtocolTime(second) - parseReleaseProtocolTime(first),
+      );
+      const activityCount = new Set(
+        sortedProtocols.flatMap((protocol) => protocol.includedProtocols),
+      ).size;
+
+      return {
+        activityCount,
+        agent: getModuleHomologationAgent(moduleName),
+        latestAt: sortedProtocols[0]?.plannedAt ?? "",
+        module: moduleName,
+        protocols: sortedProtocols,
+      } satisfies ReleaseModuleGroup;
+    })
+    .sort(
+      (first, second) =>
+        parseOperationDateTime(second.latestAt) -
+        parseOperationDateTime(first.latestAt),
+    );
+}
+
+function getHomologationModuleSummary(
+  protocols: HubReleaseProtocol[],
+  reviews: HomologationReviewState,
+): HomologationModuleSummary {
+  const summaries = protocols.map((protocol) =>
+    getHomologationSummary(protocol, reviews),
+  );
+
+  return {
+    approved: summaries.reduce((sum, summary) => sum + summary.approved, 0),
+    blocked: summaries.reduce(
+      (sum, summary) => sum + summary.blocked + summary.rejected,
+      0,
+    ),
+    readyPackages: summaries.filter((summary) => summary.canGeneratePrompt)
+      .length,
+    total: summaries.reduce((sum, summary) => sum + summary.total, 0),
+  };
+}
+
+function isReleaseProtocolReadyForProduction(
+  releaseProtocol: HubReleaseProtocol,
+) {
+  return (
+    releaseProtocol.status === "homologado" ||
+    releaseProtocol.status === "aguardando_producao"
+  );
+}
+
+function getReleaseProtocolModules(releaseProtocol: HubReleaseProtocol) {
+  const modules = releaseProtocol.modules.length
+    ? releaseProtocol.modules
+    : [releaseProtocol.module];
+
+  const normalizedModules = Array.from(
+    new Set(
+      modules
+        .filter(isKnownOperationValue)
+        .map((moduleName) => formatPanteonModuleName(moduleName)),
+    ),
+  );
+
+  return normalizedModules.length ? normalizedModules : ["Panteon"];
+}
+
+function formatReleaseModuleList(releaseProtocol: HubReleaseProtocol) {
+  return getReleaseProtocolModules(releaseProtocol).join(", ");
+}
+
+function formatPrimaryReleaseModule(releaseProtocol: HubReleaseProtocol) {
+  return getReleaseProtocolModules(releaseProtocol)[0] ?? "Panteon";
+}
+
+function formatPanteonModuleName(moduleName: string) {
+  const normalized = normalizeSearchText(moduleName);
+
+  if (
+    normalized.includes("squadops") ||
+    normalized.includes("hubops") ||
+    normalized.includes("operations")
+  ) {
+    return "Zeus";
+  }
+
+  if (normalized.includes("guardian") || normalized.includes("hades")) {
+    return "Hades";
+  }
+
+  if (
+    normalized.includes("caredesk") ||
+    normalized.includes("coredesk") ||
+    normalized.includes("iris")
+  ) {
+    return "Iris";
+  }
+
+  if (normalized.includes("pulsex") || normalized.includes("hermes")) {
+    return "Hermes";
+  }
+
+  if (normalized.includes("chronos")) {
+    return "Chronos";
+  }
+
+  if (normalized.includes("atlas")) {
+    return "Atlas";
+  }
+
+  if (normalized.includes("setup")) {
+    return "Setup";
+  }
+
+  return moduleName.trim() || "Panteon";
+}
+
+function getModuleHomologationAgent(moduleName: string) {
+  const normalizedModule = formatPanteonModuleName(moduleName);
+
+  if (normalizedModule === "Panteon") {
+    return "Agente do modulo";
+  }
+
+  return `${normalizedModule} Core`;
+}
+
+function parseReleaseProtocolTime(releaseProtocol: HubReleaseProtocol) {
+  return parseOperationDateTime(releaseProtocol.plannedAt);
+}
+
+function parseOperationDateTime(value: string) {
+  return parseLocalDateTime(value)?.getTime() ?? 0;
+}
+
 function isReleaseProtocolInHomologation(releaseProtocol: HubReleaseProtocol) {
   const text = normalizeSearchText(
     [
@@ -7667,7 +8870,7 @@ function getHomologationItems(
     const record = protocolRecords.get(protocol) ?? null;
 
     return {
-      kind: protocol.startsWith("AL-") ? "alerta" : "atividade",
+      kind: getHomologationProtocolKind(protocol),
       module: record?.module ?? releaseProtocol.module,
       protocol,
       record,
@@ -7738,6 +8941,8 @@ function buildProductionReleasePrompt(
   reviews: HomologationReviewState,
   summary: HomologationSummary,
 ) {
+  const moduleLabel = formatPrimaryReleaseModule(releaseProtocol);
+  const moduleAgent = getModuleHomologationAgent(moduleLabel);
   const itemLines = items.map((item) => {
     const review = getHomologationItemReview(
       reviews,
@@ -7775,15 +8980,20 @@ function buildProductionReleasePrompt(
     "",
     "Contexto:",
     `Athena gerou este prompt a partir da homologacao operacional validada pelo Lucas no Zeus.`,
-    `Deploy homologado: ${releaseProtocol.protocol}.`,
+    `Modulo homologado: ${moduleLabel}.`,
+    `Agente responsavel pela homologacao: ${moduleAgent}.`,
+    `Pacote homologado: ${releaseProtocol.protocol}.`,
     `Titulo: ${releaseProtocol.title}.`,
     `Ambiente homologado: ${getReleaseProtocolEnvironmentLabel(releaseProtocol.environment)}.`,
+    "Regra vigente: agente de modulo publica homologacao; Hefesto promove producao somente do recorte aprovado.",
     summary.isPartial
       ? "A homologacao foi parcial: publicar somente os itens aprovados e deixar os demais fora desta rodada."
       : "A homologacao foi completa: todos os itens listados foram aprovados para producao.",
     "",
     "Protocolo de deploy:",
     `- ${releaseProtocol.protocol}`,
+    `- Modulo: ${moduleLabel}`,
+    `- Agente homologacao: ${moduleAgent}`,
     "",
     "Resultado completo da homologacao:",
     ...itemLines,
@@ -7825,8 +9035,8 @@ function buildProductionReleasePrompt(
     `- ${releaseProtocol.healthchecks}`,
     "",
     "Tarefas para publicacao:",
-    "- Confirmar commit/branch do recorte homologado.",
-    "- Publicar somente os protocolos aprovados na secao de producao.",
+    "- Confirmar commit/branch do recorte homologado pelo agente do modulo.",
+    "- Publicar em producao somente os protocolos aprovados na secao de producao.",
     "- Executar healthchecks pos-deploy.",
     "- Registrar commit, deploy, ambiente e resultado no Engineering Operations.",
     "",
@@ -7855,11 +9065,33 @@ function homologationKindVariant(kind: HomologationItem["kind"]): BadgeVariant {
     return "success";
   }
 
-  if (kind === "alerta") {
+  if (kind === "alerta" || kind === "cobranca") {
     return "warning";
   }
 
   return "info";
+}
+
+function getHomologationProtocolKind(
+  protocol: string,
+): Exclude<HomologationItem["kind"], "deploy"> {
+  if (protocol.startsWith("AL-")) {
+    return "alerta";
+  }
+
+  if (protocol.startsWith("AT-")) {
+    return "atendimento";
+  }
+
+  if (protocol.startsWith("CB-")) {
+    return "cobranca";
+  }
+
+  if (protocol.startsWith("TI-")) {
+    return "ticket";
+  }
+
+  return "operacao";
 }
 
 function matchesFilters(
@@ -7955,6 +9187,25 @@ function isOperationsResponse(
     "metrics" in value &&
     "filters" in value,
   );
+}
+
+function isReleaseRegistersResponse(
+  value: ReleaseRegistersApiResponse | { error?: string } | null,
+): value is ReleaseRegistersApiResponse {
+  return Boolean(
+    value &&
+      "records" in value &&
+      Array.isArray(value.records) &&
+      "filters" in value &&
+      "sources" in value &&
+      Array.isArray(value.sources),
+  );
+}
+
+function getReleaseRegistersErrorMessage(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "Nao foi possivel carregar os registros de deploy por ambiente.";
 }
 
 function isStructuredOperationsMigrationMissingError(error: string) {

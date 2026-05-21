@@ -7,6 +7,7 @@ export type OperationsSourceGroup =
   | "api"
   | "c2x"
   | "guardian-queue"
+  | "page"
   | "protected-api"
   | "supabase"
   | "vercel";
@@ -69,6 +70,7 @@ export async function collectOperationsDataSources({
         label: "C2X DB Health",
         module: "Hades",
       }),
+      ...createPageChecks(normalizedOrigin).map(measureEndpoint),
       ...createProtectedEndpointChecks(normalizedOrigin).map(measureEndpoint),
       ...createSupabaseChecks().map(measureEndpoint),
       ...createVercelChecks().map(measureEndpoint),
@@ -76,31 +78,56 @@ export async function collectOperationsDataSources({
   );
 
   checks.push(
-    await measureEndpoint({
-      endpoint: `${normalizedOrigin}/api/hades/attendance/queue?limit=20`,
-      expectedDescription: "200 com limite seguro 20",
-      expectedStatusCodes: [200],
-      group: "guardian-queue",
-      id: "guardian-queue-20",
-      label: "Hades Queue limit=20",
-      module: "Hades",
-      timeoutMs: QUEUE_TIMEOUT_MS,
-    }),
-  );
-  checks.push(
-    await measureEndpoint({
-      endpoint: `${normalizedOrigin}/api/hades/attendance/queue?limit=50`,
-      expectedDescription: "200 com limite seguro 50",
-      expectedStatusCodes: [200],
-      group: "guardian-queue",
-      id: "guardian-queue-50",
-      label: "Hades Queue limit=50",
-      module: "Hades",
-      timeoutMs: QUEUE_TIMEOUT_MS,
-    }),
+    ...(await Promise.all([
+      measureEndpoint({
+        endpoint: `${normalizedOrigin}/api/hades/attendance/queue?limit=20`,
+        expectedDescription: "200 com limite seguro 20",
+        expectedStatusCodes: [200],
+        group: "guardian-queue",
+        id: "guardian-queue-20",
+        label: "Hades Queue limit=20",
+        module: "Hades",
+        timeoutMs: QUEUE_TIMEOUT_MS,
+      }),
+      measureEndpoint({
+        endpoint: `${normalizedOrigin}/api/hades/attendance/queue?limit=50`,
+        expectedDescription: "200 com limite seguro 50",
+        expectedStatusCodes: [200],
+        group: "guardian-queue",
+        id: "guardian-queue-50",
+        label: "Hades Queue limit=50",
+        module: "Hades",
+        timeoutMs: QUEUE_TIMEOUT_MS,
+      }),
+    ])),
   );
 
   return checks;
+}
+
+function createPageChecks(origin: string): EndpointCheckConfig[] {
+  return [
+    {
+      endpoint: `${origin}/login`,
+      expectedDescription: "200 abertura login",
+      expectedStatusCodes: [200],
+      group: "page",
+      id: "page-login",
+      label: "Login",
+      module: "Panteon",
+      timeoutMs: 5_000,
+    },
+    {
+      endpoint: `${origin}/zeus`,
+      expectedDescription: "200 abertura Zeus",
+      expectedStatusCodes: [200],
+      group: "page",
+      id: "page-zeus",
+      label: "Zeus",
+      module: "Zeus",
+      timeoutMs: 5_000,
+    },
+  ];
 }
 
 function createProtectedEndpointChecks(origin: string): EndpointCheckConfig[] {
@@ -278,7 +305,12 @@ async function measureEndpoint(config: EndpointCheckConfig): Promise<OperationsR
     const responseText =
       config.method === "HEAD" ? "" : await response.text().catch(() => "");
     const payloadBytes = Buffer.byteLength(responseText, "utf8");
-    const meta = extractSafeMeta(responseText);
+    const meta = extractSafeMeta(responseText) ?? {};
+    copyResponseHeader(meta, "cacheStatus", response, "x-panteon-local-cache");
+    copyResponseHeader(meta, "hadesQueueCache", response, "x-hades-queue-cache");
+    copyResponseHeader(meta, "vercelCache", response, "x-vercel-cache");
+    copyResponseHeader(meta, "cacheControl", response, "cache-control");
+    copyResponseHeader(meta, "age", response, "age");
     const statusCode = response.status;
 
     return {
@@ -291,7 +323,7 @@ async function measureEndpoint(config: EndpointCheckConfig): Promise<OperationsR
       group: config.group,
       id: config.id,
       label: config.label,
-      meta,
+      meta: Object.keys(meta).length > 0 ? meta : undefined,
       method: config.method ?? "GET",
       module: config.module,
       ok: config.expectedStatusCodes.includes(statusCode),
@@ -352,6 +384,19 @@ function extractSafeMeta(responseText: string) {
     return Object.keys(meta).length > 0 ? meta : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function copyResponseHeader(
+  target: Record<string, string | number | boolean | null>,
+  key: string,
+  response: Response,
+  headerName: string,
+) {
+  const value = response.headers.get(headerName);
+
+  if (value?.trim()) {
+    target[key] = value.trim();
   }
 }
 

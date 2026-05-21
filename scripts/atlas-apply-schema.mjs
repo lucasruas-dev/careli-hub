@@ -4,7 +4,15 @@ import { resolve } from "node:path";
 import pg from "pg";
 
 const envFile = readArg("--env-file");
-const sqlFile = readArg("--sql-file") ?? "packages/database/migrations/0023_atlas_core.sql";
+const explicitSqlFile = readArg("--sql-file");
+const sqlFiles = explicitSqlFile
+  ? [explicitSqlFile]
+  : [
+      "packages/database/migrations/0023_atlas_core.sql",
+      "packages/database/migrations/0027_atlas_occurrence_justifications.sql",
+      "packages/database/migrations/0028_atlas_occurrence_evidences.sql",
+      "packages/database/migrations/0029_atlas_fpe.sql",
+    ];
 
 loadEnvFile(".env");
 loadEnvFile(".env.local");
@@ -17,19 +25,25 @@ if (envFile) {
 const postgresUrl =
   readEnv("POSTGRES_URL") ??
   readEnv("POSTGRES_URL_NON_POOLING") ??
-  readEnv("POSTGRES_PRISMA_URL");
+  readEnv("POSTGRES_PRISMA_URL") ??
+  readEnv("HOMOLOG_POSTGRES_URL");
 
 if (!postgresUrl) {
-  fail("Missing POSTGRES_URL, POSTGRES_URL_NON_POOLING or POSTGRES_PRISMA_URL. No secret values were printed.");
+  fail("Missing POSTGRES_URL, POSTGRES_URL_NON_POOLING, POSTGRES_PRISMA_URL or HOMOLOG_POSTGRES_URL. No secret values were printed.");
 }
 
-const sqlPath = resolve(process.cwd(), sqlFile);
+const sqlBatches = sqlFiles.map((sqlFile) => {
+  const sqlPath = resolve(process.cwd(), sqlFile);
 
-if (!existsSync(sqlPath)) {
-  fail(`SQL file not found: ${sqlFile}`);
-}
+  if (!existsSync(sqlPath)) {
+    fail(`SQL file not found: ${sqlFile}`);
+  }
 
-const sql = readFileSync(sqlPath, "utf8");
+  return {
+    sql: readFileSync(sqlPath, "utf8"),
+    sqlFile,
+  };
+});
 const { Client } = pg;
 const client = new Client({
   connectionString: postgresUrl,
@@ -39,7 +53,10 @@ const client = new Client({
 await client.connect();
 
 try {
-  await client.query(sql);
+  for (const batch of sqlBatches) {
+    await client.query(batch.sql);
+    console.log(`Atlas schema batch applied: ${batch.sqlFile}`);
+  }
 
   const { rows } = await client.query(`
     select table_name, to_regclass('public.' || table_name) is not null as present
@@ -51,7 +68,9 @@ try {
         ('atlas_collaborators'),
         ('atlas_occurrence_profiles'),
         ('atlas_occurrence_types'),
+        ('atlas_occurrence_evidences'),
         ('atlas_occurrences'),
+        ('atlas_fpe_entries'),
         ('atlas_legacy_user_profiles')
     ) as expected(table_name)
     order by table_name;

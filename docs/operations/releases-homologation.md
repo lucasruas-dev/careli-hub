@@ -1153,6 +1153,762 @@ Registro preparado para homologacao:
 
 Registro de homologacao:
 
+- Assunto: `[Zeus] Diagnostico Auth x hub_users em homologacao`.
+- Modulo/agente: `Zeus Core`.
+- Data e hora local: `2026-05-21 14:27:27 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas reportou que usuarios cadastrados nao conseguiam logar em producao e autorizou subir o recorte em homologacao.
+- Escopo do recorte:
+  - adicionar diagnostico protegido sob demanda para comparar Supabase Auth com `public.hub_users`;
+  - expor a rota administrativa `GET /api/zeus/auth-diagnostics`;
+  - adicionar botao `Auth` no `Database Monitoring` do Zeus para admins executarem a auditoria;
+  - retornar somente contagens agregadas e recomendacoes, sem e-mails, tokens, service role, senhas ou valores de env;
+  - manter a auditoria fora do monitoring automatico para nao piorar tempo de carregamento.
+- Protocolos/atividades relacionados: `ZEUS-HOMOLOG-AUTH-DIAGNOSTICS-20260521-1427`.
+- Commit de homologacao: `f24c56e` (`fix(zeus): add auth diagnostics`).
+- Deployment/alias de homologacao: Preview `dpl_F22Kfzpj1Fx2ghwYw7YDpdHrEh7o`; URL tecnica `https://careli-hub-hub-i2bs-80cli2nbg-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Arquivos incluidos:
+  - `apps/hub/lib/operations/auth-diagnostics.ts`;
+  - `apps/hub/app/api/zeus/auth-diagnostics/route.ts`;
+  - `apps/hub/modules/squadops/ZeusPage.tsx`.
+- Arquivos/modulos excluidos:
+  - Hades, Hermes, Iris, Atlas, Chronos, Apolo, Setup, migrations, banco, Supabase mutavel, envs, secrets, tokens, service role, producao e alias de producao.
+- Validacoes executadas:
+  - `git diff --check`: OK na worktree limpa;
+  - `npx.cmd eslint lib/operations/auth-diagnostics.ts app/api/zeus/auth-diagnostics/route.ts modules/squadops/ZeusPage.tsx --max-warnings 0`: OK, com aviso conhecido do ESLint/Node;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com aviso conhecido do ESLint/Node;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com aviso conhecido Turbopack/NFT;
+  - smoke local `GET /api/zeus/auth-diagnostics`: `200`, status `sincronizado`, sem expor dados sensiveis;
+  - build remoto Vercel: OK, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e variaveis `HOMOLOG_*` fora do `turbo.json`;
+  - `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_F22Kfzpj1Fx2ghwYw7YDpdHrEh7o`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/zeus`: `200 OK` via redirecionamento esperado sem sessao;
+  - `GET https://homo.c2x.app.br/api/zeus/auth-diagnostics` sem bearer: `401 Unauthorized` esperado;
+  - logs Vercel dos ultimos 10 minutos: apenas chamadas `info`, sem erro critico.
+- Riscos conhecidos:
+  - o diagnostico autenticado precisa ser executado por um admin Zeus em homologacao para revelar o estado do ambiente de homologacao;
+  - o incidente real em producao continua pendente de diagnostico read-only em producao e/ou backfill autorizado pelo Lucas;
+  - a leitura de Auth pode levar alguns segundos no Supabase, por isso ficou sob demanda e nao no polling automatico.
+- Pendencias: Lucas validar o botao `Auth` em `https://homo.c2x.app.br/zeus` com sessao admin; depois autorizar diagnostico read-only em producao se quiser confirmar a causa real.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: apos validacao, Zeus pode usar o resultado para propor backfill controlado ou correcao de env/projeto Supabase, mantendo qualquer escrita em `BLOQUEADO` ate nova autorizacao.
+
+Registro preparado para homologacao:
+
+- Assunto: `[Hermes] Biblioteca local de figurinhas`.
+- Modulo/agente: `Hermes Core`.
+- Data e hora local: `2026-05-21 14:23:28 -03:00`.
+- Ambiente: `local`, preparado para homologacao.
+- Origem: Lucas solicitou envio de figurinhas no padrao WhatsApp e um local para usuarios salvarem suas figurinhas.
+- Escopo do recorte:
+  - adicionar abas `Minhas` e `Padrao` ao seletor de figurinhas;
+  - permitir salvar imagens pequenas como figurinhas locais do usuario;
+  - persistir a biblioteca em `localStorage` por usuario, sem migration;
+  - enviar figurinha com metadata de imagem quando for personalizada;
+  - renderizar sticker grande, sem card/legenda interna, mais proximo de conversa WhatsApp.
+- Protocolos/atividades relacionados: `HERMES-STICKER-LIBRARY-HOMOLOG-20260521-1423`.
+- Commit de homologacao: nao realizado neste recorte local.
+- Deployment/alias de homologacao: nao publicado neste recorte local.
+- Arquivos incluidos:
+  - `apps/hub/components/pulsex/message-composer.tsx`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos:
+  - Hades, Iris, Zeus, Atlas, Chronos, Setup, banco, migrations, envs, secrets, Supabase mutavel, Vercel, producao e aliases de producao.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do ESLint/Node;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de Turbopack/NFT;
+  - `git diff --check -- apps/hub/components/pulsex/message-composer.tsx apps/hub/components/pulsex/message-item.tsx apps/hub/components/pulsex/pulsex-workspace.tsx`: OK, apenas avisos de CRLF;
+  - `GET http://localhost:3001/hermes`: `200 OK`.
+- Riscos conhecidos:
+  - figurinhas salvas ficam locais ao navegador/dispositivo; sincronizacao entre dispositivos exigira persistencia Supabase autorizada;
+  - limite atual de figurinha personalizada: `512 KB`, ate `24` salvas por usuario;
+  - validacao visual autenticada do envio real depende do Lucas;
+  - worktree principal segue misto com recortes de outros agentes.
+- Pendencias: Lucas validar salvamento, envio e renderizacao de figurinha personalizada no Hermes.
+- Status: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima acao: publicar em homologacao somente quando Lucas autorizar este recorte Hermes.
+
+Registro preparado para homologacao:
+
+- Assunto: `[Atlas] Justificativas e abertura publica de ocorrencias`.
+- Modulo/agente: `Atlas Core`.
+- Data e hora local: `2026-05-21 14:54:02 -03:00`.
+- Ambiente: `local`, preparado para homologacao.
+- Origem: Lucas solicitou que colaboradores possam justificar ocorrencias, que lideres ou administradores aceitem ou nao a justificativa, e que qualquer usuario possa abrir ocorrencia para qualquer colaborador.
+- Escopo do recorte:
+  - permitir abertura de ocorrencia na tela `Lancamentos` do Atlas para qualquer usuario com acesso ao modulo;
+  - ampliar acesso `atlas:view` para perfis Hub `operator` e `viewer`, preservando `atlas:manage` somente para admin;
+  - criar fluxo server-side de abertura de ocorrencia com status inicial `procedente`;
+  - criar fluxo de justificativa com status `pending`;
+  - permitir revisao por usuarios Hub `leader` ou `admin`;
+  - quando a justificativa for aceita, marcar a ocorrencia como `improcedente`;
+  - quando a justificativa nao for aceita, manter a ocorrencia como `procedente` e marcar a justificativa como `rejected`.
+- Protocolos/atividades relacionados: `ATLAS-JUSTIFICATIVAS-HOMOLOG-20260521-1454`.
+- Commit de homologacao: nao realizado neste recorte local.
+- Deployment/alias de homologacao: nao publicado neste recorte local.
+- Arquivos incluidos:
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `apps/hub/lib/atlas/client.ts`;
+  - `apps/hub/lib/atlas/server.ts`;
+  - `apps/hub/lib/atlas/types.ts`;
+  - `apps/hub/lib/atlas/mutations.ts`;
+  - `apps/hub/app/api/atlas/occurrences/route.ts`;
+  - `apps/hub/app/api/atlas/occurrences/[occurrenceId]/justification/route.ts`;
+  - `packages/shared/src/permissions/matrix.ts`;
+  - `packages/database/migrations/0027_atlas_occurrence_justifications.sql`;
+  - `scripts/atlas-apply-schema.mjs`;
+  - `scripts/atlas-verify-migration.mjs`;
+  - `docs/modules/atlas-operational-map.md`.
+- Arquivos/modulos excluidos:
+  - Hades, Hermes, Iris, Zeus, Chronos, Apolo, Setup fora de permissoes compartilhadas, envs, secrets, Vercel, producao, aliases de producao, regra de bonus e calculos de performance.
+- Validacoes executadas:
+  - `node --check scripts/atlas-apply-schema.mjs`: OK;
+  - `node --check scripts/atlas-verify-migration.mjs`: OK;
+  - `node --check scripts/atlas-copy-hub-data.mjs`: OK;
+  - `npm.cmd run build --workspace @repo/shared`: OK;
+  - lint focado dos arquivos Atlas: OK, com warning conhecido do ESLint/Node;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do ESLint/Node;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `git diff --check` do recorte Atlas/permissoes/migration: OK, apenas avisos CRLF;
+  - smoke local em porta alternativa `GET http://localhost:3002/atlas`: `200 OK`.
+- Healthchecks de homologacao:
+  - nao executados, pois este recorte nao foi publicado em homologacao.
+- Riscos conhecidos:
+  - migration `0027_atlas_occurrence_justifications.sql` precisa ser aplicada em homologacao antes de testar escrita real;
+  - aplicacao de migration em Supabase/homologacao segue sensivel e permanece bloqueada ate autorizacao explicita do Lucas;
+  - como o vinculo Hub Users x colaboradores Atlas ainda nao esta totalmente reconciliado, a justificativa fica atribuida ao usuario Hub autenticado que enviou a acao;
+  - a interpretacao usada foi: justificativa aceita => `improcedente`; justificativa nao aceita => `procedente`.
+- Pendencias: Lucas autorizar aplicacao da migration e deploy do recorte Atlas em homologacao; depois validar abertura, justificativa e revisao com sessao de usuario comum e de lider/admin.
+- Status: `BLOQUEADO`.
+- Proxima acao: aplicar migration e publicar homologacao somente com autorizacao explicita do Lucas.
+
+Registro de homologacao:
+
+- Assunto: `[Atlas] Justificativas e abertura publica de ocorrencias`.
+- Modulo/agente: `Atlas Core`.
+- Data e hora local: `2026-05-21 15:52:19 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas autorizou explicitamente executar o arquivo `0027` e subir o recorte em homologacao.
+- Escopo do recorte:
+  - aplicar a migration `0027_atlas_occurrence_justifications.sql` no banco de homologacao;
+  - preservar as 35 ocorrencias existentes como `procedente` e `justification_status = none`;
+  - publicar abertura controlada de ocorrencias para usuarios com acesso ao Atlas;
+  - publicar envio de justificativa por usuario autenticado;
+  - publicar revisao de justificativa por perfis Hub `leader` e `admin`;
+  - marcar justificativa aceita como `improcedente` e justificativa rejeitada como `procedente`.
+- Protocolos/atividades relacionados: `ATLAS-JUSTIFICATIVAS-HOMOLOG-20260521-1454`.
+- Commit de homologacao: nao criado; deploy feito por pacote limpo a partir do commit homologado `592b4a3` para preservar o recorte Iris vigente, com overlay restrito ao recorte Atlas.
+- Migration aplicada: `packages/database/migrations/0027_atlas_occurrence_justifications.sql`.
+- Deployment/alias de homologacao: Preview `dpl_2o2N84nQ8CwGLGiu6CySqPkZT29X`; URL tecnica `https://careli-hub-hub-i2bs-1bqgdnivq-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Deployment anterior do alias de homologacao: `dpl_2YtoMuakNykESwKGnBkVthnpjEUm`.
+- Arquivos incluidos:
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `apps/hub/lib/atlas/client.ts`;
+  - `apps/hub/lib/atlas/server.ts`;
+  - `apps/hub/lib/atlas/types.ts`;
+  - `apps/hub/lib/atlas/mutations.ts`;
+  - `apps/hub/app/api/atlas/occurrences/route.ts`;
+  - `apps/hub/app/api/atlas/occurrences/[occurrenceId]/justification/route.ts`;
+  - `packages/shared/src/permissions/matrix.ts`;
+  - `packages/database/migrations/0027_atlas_occurrence_justifications.sql`;
+  - `scripts/atlas-apply-schema.mjs`;
+  - `scripts/atlas-verify-migration.mjs`.
+- Arquivos/modulos excluidos:
+  - Hades, Hermes, Iris, Zeus, Chronos, Apolo, Setup fora de permissoes compartilhadas, PWA, envs, secrets, tokens, service role exposta, producao, aliases de producao, regra de bonus e calculos de performance.
+- Validacoes executadas:
+  - `npx.cmd vercel env run -e preview --git-branch homolog -- node scripts/atlas-apply-schema.mjs --sql-file=packages/database/migrations/0027_atlas_occurrence_justifications.sql`: OK;
+  - `npx.cmd vercel env run -e preview --git-branch homolog -- node scripts/atlas-verify-migration.mjs`: OK;
+  - verificacao do banco: 4 departamentos, 7 cargos, 9 colaboradores, 3 perfis de ocorrencia, 6 tipos de ocorrencia, 35 ocorrencias e 31 evidencias;
+  - verificacao do fluxo: 35 `procedente`, 0 `improcedente`, 35 `justification_none`, 0 pendentes/aceitas/rejeitadas;
+  - primeiro build remoto bloqueado por contaminacao de `matrix.ts` com permissao Apolo em base sem tipo Apolo; pacote reconstruido sobre `592b4a3` para preservar Iris e manter compatibilidade;
+  - deploy intermediario `dpl_5yHMkapVsfVmRY7VutTNjHy2cpcy` substituido pelo deployment final `dpl_2o2N84nQ8CwGLGiu6CySqPkZT29X`;
+  - `git diff --no-index --name-status` do pacote limpo contra base `592b4a3`: restrito ao recorte Atlas, permissao compartilhada necessaria, migration e scripts Atlas;
+  - build remoto Vercel Preview: OK, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs `HOMOLOG_*` fora do `turbo.json`.
+- Healthchecks de homologacao:
+  - `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_2o2N84nQ8CwGLGiu6CySqPkZT29X`;
+  - `GET /atlas`: `200`;
+  - `GET /iris`: `200`;
+  - `GET /login`: `200`;
+  - `GET /api/atlas/snapshot` sem sessao: `401` esperado;
+  - `POST /api/atlas/occurrences` sem sessao: `401` esperado;
+  - `PATCH /api/atlas/occurrences/test/justification` sem sessao: `401` esperado;
+  - `GET /api/iris/meta/templates` sem sessao: `401` esperado;
+  - `GET /api/zeus/auth-diagnostics` sem sessao: `401` esperado;
+  - `GET /api/hades/db/health`: `200`;
+  - `GET /api/guardian/db/health`: `200`;
+  - logs Vercel dos ultimos 10 minutos: chamadas `info`, sem erro critico observado.
+- Riscos conhecidos:
+  - validacao funcional autenticada ainda depende de Lucas testar usuario comum, lider e admin;
+  - a migration e aditiva, mas rollback de schema em banco real exige nova autorizacao explicita;
+  - regra de bonus e calculos de performance permanecem preservados e sem alteracao;
+  - vinculo Hub Users x colaboradores Atlas ainda segue em reconciliacao gradual.
+- Pendencias: Lucas validar em `https://homo.c2x.app.br/atlas` a abertura de ocorrencia, justificativa e revisao/aceite ou rejeicao por lider/admin.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: se Lucas aprovar a homologacao funcional, preparar handoff para `Hefesto` promover somente o recorte Atlas para producao.
+
+Registro de homologacao:
+
+- Assunto: `[Iris] Gestao de templates Meta em homologacao`.
+- Modulo/agente: `Iris Core`.
+- Data e hora local: `2026-05-21 15:40:23 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas validou a tela de gestao de templates e autorizou subir em homologacao.
+- Escopo do recorte:
+  - biblioteca de templates Meta da Iris com busca, filtro por fila e filtro por status;
+  - indicadores de templates totais, aprovados, pendentes e rejeitados;
+  - painel de criacao/edicao com `Fila`, `Assunto`, nome interno, nome Meta, categoria, idioma, botoes e mensagem;
+  - variavel `Operador` no catalogo de variaveis;
+  - atualizacao automatica do status Meta do template selecionado;
+  - persistencia de `queueLabel` e `subjectLabel` no metadata local do template durante criacao/sincronizacao.
+- Protocolos/atividades relacionados: `IRIS-TEMPLATE-MANAGEMENT-HOMOLOG-20260521-1540`.
+- Commit local de referencia: `215cb74` (`feat(iris): improve meta template management`).
+- Commit publicado na worktree limpa: `592b4a3` (`feat(iris): improve meta template management`), aplicado sobre `f24c56e` para preservar o estado homologado do Zeus.
+- Deployment/alias de homologacao: Preview `dpl_2YtoMuakNykESwKGnBkVthnpjEUm`; URL tecnica `https://careli-hub-hub-i2bs-e85p81jp9-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Arquivos incluidos:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`.
+- Arquivos/modulos excluidos:
+  - Hades, Hermes, Atlas, Chronos, Apolo, Setup global, migrations, banco, envs, secrets, tokens, service role, producao e alias de producao.
+- Validacoes executadas:
+  - worktree limpa `592b4a3`: `git status --short` sem saida;
+  - worktree limpa `592b4a3`: `git diff --check` sem apontamentos;
+  - worktree limpa `592b4a3`: `git show --name-status --oneline --no-renames HEAD` restrito aos dois arquivos Iris;
+  - `npm.cmd run check-types:hub`: OK na worktree principal e na worktree limpa;
+  - `npm.cmd run lint:hub`: OK na worktree principal e na worktree limpa, com warning conhecido do Node/ESLint;
+  - `npm.cmd run build --workspace @repo/hub`: OK na worktree principal e na worktree limpa, com warnings conhecidos de Turbopack/NFT;
+  - build remoto Vercel Preview: `READY`, com warnings conhecidos;
+  - `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_2YtoMuakNykESwKGnBkVthnpjEUm`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem bearer: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/zeus/auth-diagnostics` sem bearer: `401 Unauthorized` esperado;
+  - logs Vercel dos ultimos 10 minutos: apenas `info`, sem erro critico.
+- Riscos conhecidos:
+  - validacao visual autenticada depende do Lucas em homologacao;
+  - historico auditavel completo de status Meta exigira recorte futuro com persistencia em banco;
+  - criacao/aprovacao real segue dependente da Meta e da WABA/telefone configurados;
+  - worktree principal segue misto com recortes de outros agentes.
+- Pendencias: Lucas validar `Setup > Templates` em `https://homo.c2x.app.br/iris`.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: se aprovado, sinalizar para handoff de producao por Hefesto em recorte limpo.
+
+Registro de homologacao:
+
+- Assunto: `[Hades] Abertura de chat CB vinculada a Iris`.
+- Modulo/agente: `Hades Core`.
+- Data e hora local: `2026-05-21 16:03:08 -03:00`.
+- Ambiente: `local`, preparando recorte para homologacao.
+- Origem: Lucas solicitou que a abertura de atendimento de cobranca use a estrutura real da Iris, com protocolo `CB-*` vinculado ao `AT-*`, unidade multi-selecao, parcelas filtradas, fila/canal/template vindos da Iris e SLA recolhivel.
+- Escopo do recorte:
+  - modal de abertura de chat Hades conectado a opcoes da Iris;
+  - perfil do ticket sem sufixo repetido de fila;
+  - fila Iris pre-selecionada em `Cobranca`;
+  - canal Iris carregado das opcoes reais;
+  - template Meta selecionavel a partir de templates locais ativos/aprovados da Iris;
+  - unidade multi-selecao e parcelas em seletor multiplo filtrado por unidade;
+  - painel lateral reduzido para `Iris`, com detalhes de SLA em expandir/ocultar;
+  - `POST /api/iris/tickets` gerando `AT-*` e `CB-*` vinculado para origem Hades;
+  - reaproveitamento de `AT-*` existente quando o cliente vem do atendimento para a cobranca;
+  - leitura de `attendanceProtocol`, `atProtocol` ou `at` na URL de `/hades/cobranca` para abrir o fluxo ja vinculado;
+  - `GET /api/iris/tickets?protocol=...` resolvendo busca por `AT-*` ou `CB-*`.
+- Protocolos/atividades relacionados: `HADES-IRIS-CB-AT-OPENING-20260521-1603`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Deployment/alias de homologacao: `nao executado`; sem alteracao em Vercel, envs, banco ou producao.
+- Arquivos incluidos:
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, Vercel, envs, secrets, migrations, banco mutavel, Hermes, Atlas, Chronos, Apolo, Setup e modulos fora do recorte Hades/Iris.
+- Validacoes executadas:
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do Node/ESLint sobre `type: module`;
+  - `GET http://localhost:3001/hades/cobranca`: `200 OK`;
+  - `GET http://localhost:3001/hades/cobranca?attendanceProtocol=AT-0001`: `200 OK`;
+  - `GET http://localhost:3001/api/iris/tickets` sem sessao: `401 Unauthorized` esperado;
+  - `GET http://localhost:3001/api/iris/tickets?protocol=CB-0001` sem sessao: `401 Unauthorized` esperado;
+  - browser local em `/hades/cobranca`: redirecionou para `/login` sem sessao e sem erros de console;
+  - browser local em `/hades/cobranca?attendanceProtocol=AT-0001`: carregou sem erros de console;
+  - `npm.cmd run check-types:hub`: BLOQUEADO por erros externos ao recorte em Atlas;
+  - `npm.cmd run build --workspace @repo/hub`: BLOQUEADO pelo mesmo erro externo de typecheck em Atlas.
+- Riscos conhecidos:
+  - validacao funcional autenticada ainda depende de Lucas abrir o fluxo com sessao real;
+  - templates/canais/filas dependem do cadastro real da Iris e da Meta;
+  - sequencia independente `CB-*` via banco segue bloqueada ate autorizacao explicita de migration/schema;
+  - erros atuais em Atlas bloqueiam `check-types`/`build` globais enquanto a worktree principal permanecer mista;
+  - pacote limpo de homologacao ainda precisa ser separado por causa da worktree principal mista.
+- Pendencias: Lucas validar o fluxo em `/hades/cobranca` e autorizar preparo de recorte limpo para homologacao.
+- Status: `BLOQUEADO`.
+- Proxima acao: separar recorte limpo Hades/Iris para homologacao quando Lucas aprovar a validacao funcional.
+
+Registro de homologacao:
+
+- Assunto: `[Zeus] Acesso homologacao sincronizado no Supabase`.
+- Modulo/agente: `Zeus Core`.
+- Data e hora local: `2026-05-21 16:06:29 -03:00`.
+- Ambiente: `homologacao`, Supabase Preview usado por `https://homo.c2x.app.br`.
+- Origem: Lucas informou que usuarios cadastrados continuavam com acesso negado em homologacao e autorizou operar Supabase para resolucao.
+- Escopo do recorte:
+  - auditoria agregada de Supabase Auth x `public.hub_users`;
+  - leitura de candidatos reais em `atlas_collaborators`;
+  - criacao dos usuarios faltantes no Auth de homologacao;
+  - reconciliacao dos perfis ativos em `hub_users`;
+  - fallback sem exposicao de senha quando o Supabase limitou envio de e-mail.
+- Protocolos/atividades relacionados: `INC-20260521-1606-HOMOLOG-AUTH-USERS`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Deployment/alias de homologacao: sem novo deploy; validado `GET https://homo.c2x.app.br/login` com `200 OK`.
+- Arquivos incluidos:
+  - `scripts/zeus-auth-env-diagnostics.mjs`;
+  - `scripts/zeus-postgres-auth-counts.mjs`;
+  - `scripts/zeus-supabase-table-counts.mjs`;
+  - `scripts/zeus-provision-homolog-users.mjs`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, aliases `c2x.app.br` e `ops.c2x.app.br`, dominio, migrations, schema, codigo de login, Iris, Hades, Hermes, Atlas, Chronos, Apolo e Setup.
+- Validacoes executadas:
+  - `node --check scripts/zeus-auth-env-diagnostics.mjs`: OK;
+  - `node --check scripts/zeus-postgres-auth-counts.mjs`: OK;
+  - `node --check scripts/zeus-supabase-table-counts.mjs`: OK;
+  - `node --check scripts/zeus-provision-homolog-users.mjs`: OK;
+  - `npm.cmd run check-types:hub`: falhou fora do recorte Supabase/Auth em `apps/hub/lib/atlas/mutations.ts(480,9)`, com erro de tipo entre `occurrence_legacy_id` e `position`;
+  - diagnostico Supabase Preview: `status=sincronizado`, `authUsers=9`, `hubProfiles=9`, `activeProfileWithoutAuth=0`, `authWithoutProfile=0`, `invalidRoleProfiles=0`;
+  - dry-run final: `sourceCandidates=9`, `existingCandidates=9`, `missingCandidates=0`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`.
+- Riscos conhecidos:
+  - tres usuarios foram criados por fallback porque o Supabase limitou convites por e-mail;
+  - esses usuarios precisam de recuperacao/reenvio de acesso quando o limite liberar;
+  - senhas nao foram copiadas, impressas ou registradas;
+  - `check-types:hub` segue bloqueado por erro no recorte Atlas, independente desta operacao Supabase.
+- Pendencias: usuarios validarem login em homologacao; se algum caso especifico seguir negado, auditar o e-mail informado pelo Lucas sem expor PII no diario.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Proxima acao: acompanhar testes dos usuarios em `https://homo.c2x.app.br/login`.
+
+Registro de homologacao:
+
+- Assunto: `[Zeus] Reset temporario de acesso em homologacao`.
+- Modulo/agente: `Zeus Core`.
+- Data e hora local: `2026-05-21 16:49:03 -03:00`.
+- Ambiente: `homologacao`, Supabase Preview usado por `https://homo.c2x.app.br`.
+- Origem: Lucas informou que uma usuaria ainda nao conseguia acessar, o diagnostico confirmou senha invalida e o Supabase bloqueou recuperacao por limite de e-mail.
+- Escopo do recorte:
+  - diagnostico seguro de usuario especifico;
+  - reset em lote dos usuarios ativos de `hub_users` com Auth correspondente;
+  - validacao de login de uma usuaria afetada;
+  - registro sem expor senha, token, e-mail completo ou secrets.
+- Protocolos/atividades relacionados: `INC-20260521-1649-HOMOLOG-AUTH-RESET`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Deployment/alias de homologacao: sem novo deploy; validado `GET https://homo.c2x.app.br/login` com `200 OK`.
+- Arquivos incluidos:
+  - `scripts/zeus-auth-user-access-check.mjs`;
+  - `scripts/zeus-auth-reset-homolog-passwords.mjs`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, aliases `c2x.app.br` e `ops.c2x.app.br`, Vercel deploy, migrations, schema, codigo de login, Iris, Hades, Hermes, Atlas, Chronos, Apolo e Setup.
+- Validacoes executadas:
+  - `node --check scripts/zeus-auth-user-access-check.mjs`: OK;
+  - `node --check scripts/zeus-auth-reset-homolog-passwords.mjs`: OK;
+  - reset Supabase Preview: `resetSucceeded=9`, `failed=0`;
+  - verificacao Supabase de login da usuaria afetada: `ok=true`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `git diff --check` no recorte Zeus/Auth: OK, apenas avisos CRLF do Git no Windows.
+- Riscos conhecidos:
+  - senha temporaria compartilhada e medida emergencial de homologacao;
+  - usuarios devem trocar senha quando possivel;
+  - convites/recuperacoes por e-mail podem seguir bloqueados pelo limite do Supabase;
+  - nenhuma senha foi impressa ou armazenada em artefato do projeto.
+- Pendencias: usuarios testarem login em homologacao.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Proxima acao: acompanhar testes dos usuarios em `https://homo.c2x.app.br/login`.
+
+Registro preparado para homologacao:
+
+- Assunto: `[Atlas] Evidencias multiplas por ocorrencia`.
+- Modulo/agente: `Atlas Core`.
+- Data e hora local: `2026-05-21 16:19:50 -03:00`.
+- Ambiente: `local`, preparando recorte para homologacao.
+- Origem: Lucas solicitou permitir mais de uma evidencia por ocorrencia e permitir repeticao da mesma evidencia entre colaboradores.
+- Escopo do recorte:
+  - nova tabela aditiva `atlas_occurrence_evidences`;
+  - backfill idempotente da evidencia principal herdada de `atlas_occurrences.evidence_url`;
+  - preservacao da coluna historica `evidence_url` como compatibilidade e fallback;
+  - gravacao da primeira evidencia tambem nas colunas historicas quando uma nova ocorrencia nasce com evidencias;
+  - API `POST /api/atlas/occurrences/[occurrenceId]/evidences`;
+  - abertura de ocorrencia com lista opcional de evidencias;
+  - dialogo Atlas para listar evidencias atuais e adicionar multiplas novas linhas;
+  - scripts de migracao/copia/verificacao preparados para contar e transportar evidencias;
+  - documentacao do contrato operacional no mapa do Atlas.
+- Protocolos/atividades relacionados: `ATLAS-EVIDENCES-MULTI-20260521-1619`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Deployment/alias de homologacao: `nao executado`; aplicar migration `0028` e publicar homologacao seguem bloqueados ate autorizacao explicita do Lucas para este recorte.
+- Arquivos incluidos:
+  - `packages/database/migrations/0028_atlas_occurrence_evidences.sql`;
+  - `apps/hub/lib/atlas/client.ts`;
+  - `apps/hub/lib/atlas/server.ts`;
+  - `apps/hub/lib/atlas/types.ts`;
+  - `apps/hub/lib/atlas/mutations.ts`;
+  - `apps/hub/app/api/atlas/occurrences/route.ts`;
+  - `apps/hub/app/api/atlas/occurrences/[occurrenceId]/evidences/route.ts`;
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `scripts/atlas-apply-schema.mjs`;
+  - `scripts/atlas-verify-migration.mjs`;
+  - `scripts/atlas-copy-hub-data.mjs`;
+  - `scripts/atlas-migrate-data.mjs`;
+  - `docs/modules/atlas-operational-map.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, aliases, dominios, envs, secrets, service role exposto, aplicacao real de migration, upload fisico em Storage, Hades, Iris, Hermes, Chronos, Apolo, Setup e modulos fora do Atlas.
+- Validacoes executadas:
+  - `node --check scripts/atlas-apply-schema.mjs`: OK;
+  - `node --check scripts/atlas-verify-migration.mjs`: OK;
+  - `node --check scripts/atlas-copy-hub-data.mjs`: OK;
+  - `node --check scripts/atlas-migrate-data.mjs`: OK;
+  - `npx.cmd eslint modules/atlas/AtlasPage.tsx lib/atlas/client.ts lib/atlas/server.ts lib/atlas/mutations.ts app/api/atlas/occurrences/route.ts app/api/atlas/occurrences/[occurrenceId]/justification/route.ts app/api/atlas/occurrences/[occurrenceId]/evidences/route.ts --max-warnings 0`: OK, com warning conhecido do Node sobre `type: module`;
+  - `npm.cmd run check-types:hub`: FALHOU fora do recorte Atlas em `apps/hub/lib/apolo/server.ts`, sem erro Atlas remanescente;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do Node/ESLint;
+  - `npm.cmd run build --workspace @repo/hub`: FALHOU fora do recorte Atlas em `apps/hub/lib/apolo/server.ts`, apos compilacao inicial bem-sucedida e com warning conhecido de Turbopack/NFT em `lib/squadops/engineering-operations-source.ts`;
+  - `GET http://localhost:3001/atlas`: `200 OK`;
+  - `GET http://localhost:3001/api/atlas/snapshot` sem sessao: `401 Unauthorized` esperado;
+  - `POST http://localhost:3001/api/atlas/occurrences/test/evidences` sem sessao: `401 Unauthorized` esperado;
+  - `git diff --check` no recorte Atlas: OK, apenas avisos CRLF do Git no Windows.
+- Riscos conhecidos:
+  - aplicar a migration `0028` em banco real e publicar homologacao sao operacoes sensiveis e permanecem bloqueadas;
+  - upload fisico para bucket/Storage nao foi implementado neste recorte;
+  - validacao autenticada de criacao/listagem de multiplas evidencias depende de homologacao com sessao real;
+  - `check-types:hub` e build globais estao bloqueados por erro externo em Apolo enquanto a worktree principal permanecer mista;
+  - worktree principal segue mista com recortes de outros agentes.
+- Pendencias: Lucas autorizar explicitamente aplicacao da migration `0028` e deploy de homologacao do recorte Atlas.
+- Status: `BLOQUEADO`.
+- Proxima acao: apos autorizacao, Atlas Core aplica somente o recorte Atlas em homologacao, executa healthchecks e atualiza este registro para `EM HOMOLOGACAO`.
+
+Registro preparado para homologacao:
+
+- Assunto: `[Apolo] Carteira por pagamentos C2X`.
+- Modulo/agente: `Apolo Core`.
+- Data e hora local: `2026-05-21 16:26:18 -03:00`.
+- Ambiente: `local`, preparando recorte para homologacao.
+- Origem: Lucas apontou que comprador precisa ter unidade e parcelas reais, seguindo `payments -> acquisition_requests -> enterprise_unities`.
+- Escopo do recorte:
+  - hidratacao server-side read-only da carteira visivel do Apolo pelo caminho C2X de pagamentos;
+  - uso de `enterprise_unities.name` como codigo real da unidade;
+  - exposicao de quadra, lote, area, valor de tabela, imobiliaria/corretor, contrato e parcelas por unidade;
+  - lista de parcelas por unidade com vencimento, pagamento, valor, status, atraso e boleto/fatura quando houver link no C2X;
+  - contagem de compradores/unidades baseada em vinculo `Usuario comprador`, nao no total bruto de usuarios.
+- Protocolos/atividades relacionados: `APOLO-CARTEIRA-C2X-20260521-1626`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Deployment/alias de homologacao: `nao executado`; publicar `homo.c2x.app.br` depende de autorizacao explicita do Lucas.
+- Arquivos incluidos:
+  - `apps/hub/lib/apolo/types.ts`;
+  - `apps/hub/lib/apolo/server.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `apps/hub/app/api/apolo/relationships/route.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, Vercel deploy, aliases, dominios, envs, secrets, migrations, escrita no C2X legado, Supabase schema e modulos Hades/Iris/Hermes/Chronos/Atlas/Setup fora de leitura de referencia.
+- Validacoes executadas:
+  - `npx.cmd eslint modules/apolo/ApoloPage.tsx lib/apolo/server.ts lib/apolo/types.ts app/api/apolo/relationships/route.ts --max-warnings 0`: OK, com warning conhecido do Node sobre `type: module`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do Node sobre `type: module`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido do Turbopack/NFT em `lib/squadops/engineering-operations-source.ts`;
+  - `GET http://localhost:3001/apolo`: `200 OK`;
+  - `GET http://localhost:3001/api/apolo/relationships?limit=1` sem sessao: `401 Unauthorized` esperado;
+  - `git diff --check` no recorte Apolo: OK, apenas avisos CRLF do Git no Windows.
+- Riscos conhecidos:
+  - a correcao so aparece em homologacao publica apos deploy autorizado;
+  - validacao visual autenticada da Gislaine e demais compradores depende de sessao real no navegador;
+  - a leitura adicionada e server-side e read-only, mas usa conexao C2X configurada no ambiente de execucao.
+- Pendencias: Lucas autorizar deploy de homologacao do recorte Apolo e validar comprador real em `/apolo`.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: apos autorizacao, Apolo Core publica somente este recorte em homologacao e compara unidade/parcelas da Gislaine com Hades/C2X.
+
+Registro de homologacao:
+
+- Assunto: `[Iris] Setup, Apolo e envio por Enter`.
+- Modulo/agente: `Iris Core`.
+- Data e hora local: `2026-05-21 17:00:23 -03:00`.
+- Ambiente: `homologacao`, Vercel Preview em `https://homo.c2x.app.br`.
+- Origem: Lucas autorizou subir o recorte Iris em homologacao e pediu corrigir antes o envio de mensagem pelo `Enter`.
+- Escopo do recorte:
+  - Setup executivo da Iris para gestao de Filas e Assuntos;
+  - preservacao da aba de Templates Meta;
+  - badge visual `Apolo` verde para cadastro localizado e vermelho para sem cadastro;
+  - responsavel do ticket assumindo o operador que enviou mensagem pelo nome de exibicao;
+  - composer enviando mensagem com `Enter` e preservando `Shift+Enter` para quebra de linha.
+- Protocolos/atividades relacionados: `IRIS-SETUP-APOLO-ENTER-20260521-1700`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Pacote limpo de deploy: `.codex-deploy/iris-setup-responsavel-homolog-20260521-1710`.
+- Deployment Vercel: `dpl_46ud1aWN799T6DdmyrzoZCUap5aQ`.
+- URL tecnica: `https://careli-hub-hub-i2bs-2k9oiv0ke-lucasruas-devs-projects.vercel.app`.
+- Alias de homologacao: `https://homo.c2x.app.br`.
+- Arquivos incluidos:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, aliases `c2x.app.br` e `ops.c2x.app.br`, banco, migrations, envs, secrets, Hades, Hermes, Zeus, Atlas, Chronos e Apolo fora do consumo CRM 360 ja existente.
+- Validacoes executadas:
+  - pacote limpo `git diff --check`: OK;
+  - pacote limpo `npm.cmd run check-types:hub`: OK;
+  - pacote limpo `npm.cmd run lint:hub`: OK, com warning conhecido do Node sobre `type: module`;
+  - pacote limpo `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de workspace root e Turbopack/NFT;
+  - `npx.cmd vercel deploy --yes --target preview --archive=tgz`: OK;
+  - `npx.cmd vercel alias set`: OK;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405 Method Not Allowed` esperado para rota POST;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem bearer;
+  - `GET https://homo.c2x.app.br/api/iris/tickets`: `401 Unauthorized` esperado sem bearer;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Riscos conhecidos:
+  - validacao autenticada de envio por `Enter`, badge `Apolo`, Setup e responsavel depende de teste do Lucas com sessao real;
+  - worktree principal segue mista, por isso o deployment foi feito por pacote limpo.
+- Pendencias: Lucas validar o fluxo real em `https://homo.c2x.app.br/iris`.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: se aprovado pelo Lucas, preparar handoff para producao/Hefesto sem misturar outros recortes.
+
+Registro preparado para homologacao:
+
+- Assunto: `[Hades] Board Iris filtrado e abertura ativa/passiva`.
+- Modulo/agente: `Hades Core`.
+- Data e hora local: `2026-05-21 16:59:04 -03:00`.
+- Ambiente: `local`, preparando recorte para homologacao.
+- Origem: Lucas definiu que contato ativo so entra no chat Iris apos formulario; contato passivo apenas completa formulario; e a tela Iris deve voltar a aparecer dentro do Hades como board real filtrado pelo operador.
+- Escopo do recorte:
+  - reexibicao do board real da Iris dentro de Hades/Cobranca;
+  - modo embutido `boardOnly` para mostrar board e mensagens sem Setup/Disparos;
+  - modo `operatorScoped` filtrando `caredesk_tickets.assigned_to_user_id` pelo operador logado;
+  - fechamento do formulario ativo retornando para a tela anterior, sem manter chat aberto;
+  - formulario passivo preservando o atendimento recebido e apenas completando dados operacionais;
+  - `sendTemplate=false` para completude passiva, evitando disparo ativo e mensagem artificial;
+  - `POST /api/iris/tickets` criando mensagem/template apenas quando houver disparo ativo.
+- Protocolos/atividades relacionados: `HADES-IRIS-BOARD-OPERATOR-ACTIVE-PASSIVE-20260521-1659`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Deployment/alias de homologacao: `nao executado`; publicar `homo.c2x.app.br` depende de recorte limpo e autorizacao explicita do Lucas.
+- Arquivos incluidos:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, Vercel deploy, aliases, dominios, envs, secrets, migrations, banco mutavel, Hermes, Atlas, Chronos, Apolo e Setup fora do recorte Hades/Iris.
+- Validacoes executadas:
+  - `npx.cmd eslint modules/caredesk/IrisPage.tsx modules/guardian/attendance/AttendancePage.tsx modules/guardian/attendance/components/WhatsAppConversationPanel.tsx app/api/iris/tickets/route.ts --max-warnings 0`: OK, com warning conhecido do Node/ESLint sobre `type: module`;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do Node/ESLint sobre `type: module`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido do Turbopack/NFT;
+  - `git diff --check` no recorte Hades/Iris: OK, apenas avisos CRLF do Git no Windows;
+  - `GET http://localhost:3001/hades/cobranca`: `200 OK`;
+  - `GET http://localhost:3001/hades/cobranca?attendanceProtocol=AT-0001`: `200 OK`;
+  - `GET http://localhost:3001/iris`: `200 OK`;
+  - `GET http://localhost:3001/api/iris/tickets?protocol=CB-0001` sem sessao: `401 Unauthorized` esperado;
+  - browser local em `/hades/cobranca`: redirecionou para `/login` sem sessao e sem erros de console.
+- Riscos conhecidos:
+  - validacao funcional autenticada ainda depende de Lucas confirmar o board filtrado, abertura ativa e completude passiva;
+  - tickets Iris sem `assigned_to_user_id` nao aparecem na visao Hades filtrada por operador;
+  - pacote limpo de homologacao ainda precisa ser separado por causa da worktree principal mista.
+- Pendencias: Lucas validar local autenticado em `/hades/cobranca` e autorizar preparo/publicacao do recorte limpo.
+- Status: `BLOQUEADO`.
+- Proxima acao: separar recorte limpo Hades/Iris e publicar homologacao somente apos autorizacao de Lucas.
+
+Registro preparado para homologacao:
+
+- Assunto: `[Atlas] FPE Fundo de Participacao`.
+- Modulo/agente: `Atlas Core`.
+- Data e hora local: `2026-05-21 17:08:21 -03:00`.
+- Ambiente: `local`, preparando recorte para homologacao.
+- Origem: Lucas solicitou a nova tela FPE para acompanhar a caixinha anual de participacao, com base de R$ 10.000,00, divisao R$ 3.000,00 global e R$ 7.000,00 departamentos, e lancamentos de prejuizo/bonificacao com regra 30% global e 70% departamento.
+- Escopo do recorte:
+  - navegacao Atlas `FPE`;
+  - aba `Caixinha` com saldo total, global, departamentos, impacto liquido e contribuicao por departamento;
+  - animacao leve de caixinha enchendo/reduzindo conforme saldo;
+  - aba `Lancamentos` com tabela FPE;
+  - modal de criacao de lancamento FPE com colaborador, ocorrencia, tipo, valor, data, observacao e multiplas evidencias;
+  - API `POST /api/atlas/fpe/entries`;
+  - migration preparada `0029_atlas_fpe.sql`;
+  - correcao preparada do departamento de Lucas Ruas para Tecnologia.
+- Protocolos/atividades relacionados: `ATLAS-FPE-20260521-1708`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Deployment/alias de homologacao: `nao executado`; publicar `homo.c2x.app.br` depende de autorizacao explicita e pacote limpo.
+- Arquivos incluidos:
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `apps/hub/lib/atlas/types.ts`;
+  - `apps/hub/lib/atlas/server.ts`;
+  - `apps/hub/lib/atlas/client.ts`;
+  - `apps/hub/lib/atlas/mutations.ts`;
+  - `apps/hub/app/api/atlas/fpe/entries/route.ts`;
+  - `packages/database/migrations/0029_atlas_fpe.sql`;
+  - `scripts/atlas-apply-schema.mjs`;
+  - `scripts/atlas-verify-migration.mjs`;
+  - `scripts/atlas-copy-hub-data.mjs`;
+  - `scripts/atlas-migrate-data.mjs`;
+  - `docs/modules/atlas-operational-map.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, Vercel deploy, aliases, envs, secrets, Hades, Hermes, Iris, Chronos, Apolo, Zeus e Setup fora de leituras ja existentes.
+- Validacoes executadas:
+  - `node --check scripts/atlas-apply-schema.mjs`: OK;
+  - `node --check scripts/atlas-verify-migration.mjs`: OK;
+  - `node --check scripts/atlas-copy-hub-data.mjs`: OK;
+  - `node --check scripts/atlas-migrate-data.mjs`: OK;
+  - `npx.cmd eslint modules/atlas/AtlasPage.tsx lib/atlas/client.ts lib/atlas/server.ts lib/atlas/mutations.ts app/api/atlas/fpe/entries/route.ts --max-warnings 0`: OK, com warning conhecido do Node sobre `type: module`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do Node sobre `type: module`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `GET http://localhost:3001/atlas`: `200 OK`;
+  - `POST http://localhost:3001/api/atlas/fpe/entries` sem sessao: `401 Unauthorized` esperado;
+  - tentativa Playwright: BLOQUEADO porque o pacote `playwright` nao esta disponivel;
+  - `git diff --check` no recorte Atlas versionado: OK, apenas avisos CRLF do Git no Windows.
+- Riscos conhecidos:
+  - migration `0029` e correcao de departamento de Lucas Ruas sao operacoes de banco real e seguem bloqueadas ate autorizacao explicita;
+  - sem `0029` aplicada, a tela FPE fica em modo estrutura pendente e nao grava lancamentos;
+  - worktree principal esta mista com recortes de outros agentes.
+- Pendencias: Lucas autorizar aplicacao da `0029` e publicacao de homologacao se quiser seguir para ambiente.
+- Status: `BLOQUEADO`.
+- Proxima acao: preparar pacote limpo Atlas para homologacao apos autorizacao.
+
+Atualizacao do recorte preparado:
+
+- Assunto: `[Atlas] Visual porquinho FPE`.
+- Data e hora local: `2026-05-21 17:20:43 -03:00`.
+- Escopo adicional:
+  - troca da visualizacao da caixinha FPE por um porquinho/mealheiro;
+  - moedas internas sobem quando o impacto liquido e positivo;
+  - moedas internas descem quando o impacto liquido e negativo;
+  - estado neutro mantem movimento discreto;
+  - preservacao do padrao Guardian-like.
+- Arquivos incluidos:
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Validacoes executadas:
+  - `npx.cmd eslint modules/atlas/AtlasPage.tsx --max-warnings 0`: OK, com warning conhecido do Node sobre `type: module`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT.
+- Status: `BLOQUEADO`.
+
+Atualizacao do recorte preparado:
+
+- Assunto: `[Atlas] Medidor FPE por faixa`.
+- Data e hora local: `2026-05-21 17:25:26 -03:00`.
+- Escopo adicional:
+  - remocao do porquinho visual;
+  - medidor horizontal de reserva FPE;
+  - faixa vermelha abaixo de 50%;
+  - faixa amarela de 50% a 80%;
+  - faixa verde acima de 80%;
+  - moeda discreta como marcador animado de tendencia.
+- Arquivos incluidos:
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Validacoes executadas:
+  - `npx.cmd eslint modules/atlas/AtlasPage.tsx --max-warnings 0`: OK, com warning conhecido do Node sobre `type: module`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT.
+- Status: `BLOQUEADO`.
+
+Registro preparado para homologacao:
+
+- Assunto: `[Hermes] Correcao gravacao de evidencia`.
+- Modulo/agente: `Hermes Core`.
+- Data e hora local: `2026-05-21 17:07:13 -03:00`.
+- Ambiente: `local`, preparando recorte para homologacao.
+- Origem: relato de colaboradores via leitura tecnica da Athena informando que a gravacao minimizada encerrava o fluxo do ticket e impedia o envio de evidencia.
+- Escopo do recorte:
+  - remocao do botao `Finalizar` enquanto a gravacao minimizada esta ativa;
+  - acao unica `Parar gravacao` durante captura de tela/audio;
+  - retorno automatico ao formulario somente depois que a evidencia foi processada e ficou pendente para revisao;
+  - bloqueio do envio enquanto houver gravacao/processamento/anexo pendente;
+  - bitrate controlado no `MediaRecorder` para reduzir risco de exceder o limite de 6 MB do HelpDesk.
+- Protocolos/atividades relacionados: `HERMES-ATHENA-EVIDENCE-RECORDING-20260521-1707`.
+- Commit local de referencia: `pendente`; worktree principal possui recortes mistos de outros agentes.
+- Deployment/alias de homologacao: `nao executado`; publicar `homo.c2x.app.br` depende de recorte limpo e autorizacao explicita do Lucas.
+- Arquivos incluidos:
+  - `apps/hub/components/hub-support/hub-ticket-open-form.tsx`;
+  - `apps/hub/components/hub-support/athena-ticket-recording-provider.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, Vercel deploy, alias, dominio, envs, secrets, migrations, banco, Supabase schema, Hades, Iris, Atlas, Chronos, Apolo e Setup fora do componente compartilhado de HelpDesk ja usado pelo Hermes.
+- Validacoes executadas:
+  - `npx.cmd eslint components/hub-support/hub-ticket-open-form.tsx components/hub-support/athena-ticket-recording-provider.tsx --max-warnings 0`: OK, com warning conhecido do Node sobre `type: module`;
+  - `git diff --check -- apps/hub/components/hub-support/athena-ticket-recording-provider.tsx apps/hub/components/hub-support/hub-ticket-open-form.tsx`: OK, apenas avisos CRLF do Git no Windows;
+  - `GET http://localhost:3001/hermes`: `200 OK`;
+  - `npm.cmd run check-types:hub`: BLOQUEADO fora do Hermes por erros existentes em `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `npm.cmd run lint:hub`: BLOQUEADO fora do Hermes por warnings existentes em `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `npm.cmd run build --workspace @repo/hub`: BLOQUEADO fora do Hermes pelo erro de typecheck em Atlas.
+- Riscos conhecidos:
+  - validacao real de captura depende de sessao autenticada e permissao do navegador para tela/microfone;
+  - como o formulario de HelpDesk e compartilhado, o mesmo comportamento seguro tambem vale para outros hosts que usam a Athena;
+  - worktree principal segue mista e precisa de recorte limpo para homologacao.
+- Pendencias: Lucas validar o fluxo real no Hermes e Atlas remover bloqueios de typecheck/lint/build ou preparar pacote Hermes isolado para homologacao.
+- Status: `BLOQUEADO`.
+- Proxima acao: validar o fluxo de `Parar gravacao` no Hermes autenticado e, se aprovado, preparar homologacao limpa do recorte Hermes.
+
+Registro de homologacao:
+
+- Assunto: `[Hefesto] Homologacao Apolo Carteira C2X`.
+- Modulo/agente: `Hefesto` sobre recorte `Apolo Core`.
+- Data e hora local: `2026-05-21 17:17:34 -03:00`.
+- Ambiente: `homologacao`, Vercel Preview em `https://homo.c2x.app.br`.
+- Origem: rotina horaria de homologacao identificou o recorte Apolo como seguro, sem migration, sem env, sem secret e sem producao.
+- Escopo publicado:
+  - leitura server-side da Carteira Apolo por pagamentos C2X;
+  - exibicao de unidade, contrato, parcelas, status, atraso e links por unidade;
+  - protecao da API `/api/apolo/relationships` por bearer real;
+  - contagens de compradores/unidades baseadas em vinculo materializado por pagamentos.
+- Protocolos/atividades relacionados: `APOLO-CARTEIRA-C2X-20260521-1626`, `HEFESTO-HOMOLOG-APOLO-CARTEIRA-20260521-1717`.
+- Commit de homologacao: `9951b77` (`feat(apolo): hydrate carteira from c2x payments`).
+- Pacote limpo de deploy: `.codex-deploy/apolo-carteira-homolog-20260521-171127`.
+- Deployment/alias de homologacao: Preview `dpl_Fgkitryhg1PwPpzAeeMS6daJfe9a`; URL tecnica `https://careli-hub-hub-i2bs-hfmss4u56-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Arquivos incluidos:
+  - `apps/hub/app/api/apolo/relationships/route.ts`;
+  - `apps/hub/lib/apolo/server.ts`;
+  - `apps/hub/lib/apolo/types.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Atlas, Hades, Iris, Zeus scripts/Auth, PWA, Hermes, migrations, scripts de sync/migration, envs, secrets, banco mutavel, Supabase schema, producao e aliases `c2x.app.br`/`ops.c2x.app.br`.
+- Validacoes executadas:
+  - pacote limpo `npx.cmd eslint modules/apolo/ApoloPage.tsx lib/apolo/server.ts lib/apolo/types.ts app/api/apolo/relationships/route.ts --max-warnings 0`: OK;
+  - pacote limpo `npm.cmd run check-types:hub`: OK;
+  - pacote limpo `npm.cmd run lint:hub`: OK;
+  - pacote limpo `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `git diff --cached --check`: OK;
+  - `npx.cmd vercel deploy --yes --target preview --archive=tgz`: OK, `READY`;
+  - `npx.cmd vercel alias set ... homo.c2x.app.br`: OK;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: Ready em `dpl_Fgkitryhg1PwPpzAeeMS6daJfe9a`;
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/apolo`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/apolo/relationships?limit=1` sem bearer: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/hades/db/health`: `200 OK`;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Riscos conhecidos:
+  - validacao autenticada da carteira real depende de Lucas;
+  - se env server-side de homologacao estiver ausente, a rota falha de forma controlada;
+  - worktree principal segue mista e os demais recortes continuam separados.
+- Pendencias: Lucas validar `/apolo` autenticado em homologacao com comprador real, unidade, contrato, parcelas, status e links.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: se Lucas aprovar, Hefesto prepara promocao de producao em recorte limpo somente para Apolo.
+
+Registro de homologacao:
+
 - Assunto: `[Hades] Board Iris filtrado e abertura ativa/passiva`.
 - Modulo/agente: `Hades Core`.
 - Data e hora local: `2026-05-21 17:19:13 -03:00`.

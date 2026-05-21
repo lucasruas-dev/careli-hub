@@ -199,6 +199,19 @@ try {
     })),
   );
 
+  const occurrenceIds = await loadLegacyIdMap("atlas_occurrences");
+
+  await insertOccurrenceEvidences(
+    sourceData.occurrences.map((row) => ({
+      evidence_name: row.evidencia_nome ?? null,
+      evidence_type: row.evidencia_tipo ?? null,
+      evidence_url: row.evidencia_url ?? null,
+      legacy_id: row.id,
+    })),
+    occurrenceIds,
+    migrationBatch.id,
+  );
+
   await upsertRows(
     "atlas_legacy_user_profiles",
     sourceData.userProfiles
@@ -274,6 +287,81 @@ async function loadLegacyIdMap(tableName) {
   return new Map(rows.map((row) => [row.legacy_id, row.id]));
 }
 
+async function insertOccurrenceEvidences(rows, occurrenceIds, migrationBatchId) {
+  const evidenceRows = rows
+    .filter((row) => row.evidence_url)
+    .map((row) => ({
+      evidence_name: row.evidence_name ?? null,
+      evidence_type: row.evidence_type ?? null,
+      evidence_url: row.evidence_url,
+      legacy_evidence_key: `legacy:${row.legacy_id}:primary`,
+      metadata: {
+        imported_via: "atlas-migrate-data",
+        migration_batch_id: migrationBatchId,
+        record_type: "atlas_occurrence_evidences",
+      },
+      occurrence_id: occurrenceIds.get(row.legacy_id),
+      occurrence_legacy_id: row.legacy_id,
+      position: 1,
+    }))
+    .filter((row) => row.occurrence_id);
+
+  if (evidenceRows.length === 0) {
+    return;
+  }
+
+  const existingKeys = await loadExistingEvidenceKeys(
+    evidenceRows.map((row) => row.legacy_evidence_key),
+  );
+  const rowsToInsert = evidenceRows.filter(
+    (row) => !existingKeys.has(row.legacy_evidence_key),
+  );
+
+  if (rowsToInsert.length === 0) {
+    console.log("Imported 0 rows into atlas_occurrence_evidences.");
+    return;
+  }
+
+  for (const chunk of chunkRows(rowsToInsert, batchSize)) {
+    const { error } = await target
+      .from("atlas_occurrence_evidences")
+      .insert(chunk);
+
+    if (error) {
+      throw new Error(
+        `Failed to insert atlas_occurrence_evidences: ${error.message}`,
+      );
+    }
+  }
+
+  console.log(`Imported ${rowsToInsert.length} rows into atlas_occurrence_evidences.`);
+}
+
+async function loadExistingEvidenceKeys(keys) {
+  const existingKeys = new Set();
+
+  for (const chunk of chunkRows(keys, batchSize)) {
+    const { data, error } = await target
+      .from("atlas_occurrence_evidences")
+      .select("legacy_evidence_key")
+      .in("legacy_evidence_key", chunk);
+
+    if (error) {
+      throw new Error(
+        `Failed to read atlas_occurrence_evidences: ${error.message}`,
+      );
+    }
+
+    for (const row of data ?? []) {
+      if (row.legacy_evidence_key) {
+        existingKeys.add(row.legacy_evidence_key);
+      }
+    }
+  }
+
+  return existingKeys;
+}
+
 async function insertMigrationBatch(sourceCounts) {
   const { data, error } = await target
     .from("atlas_migration_batches")
@@ -318,6 +406,8 @@ async function loadImportedCounts() {
     "atlas_occurrence_profiles",
     "atlas_occurrence_types",
     "atlas_occurrences",
+    "atlas_occurrence_evidences",
+    "atlas_fpe_entries",
     "atlas_legacy_user_profiles",
   ];
   const result = {};

@@ -34,22 +34,23 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-[#f3f6fa] px-6 py-10 text-[#101820]">
-      <section className="grid w-full max-w-[25rem] justify-items-center">
-        <div className="mb-5 grid justify-items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element -- query string cache busting is intentional here. */}
+    <main className="grid min-h-screen place-items-center bg-[#101820] px-5 py-8 text-[#101820]">
+      <section className="grid w-full max-w-sm gap-5">
+        <div className="grid justify-items-center gap-3 text-center text-white">
+          {/* eslint-disable-next-line @next/next/no-img-element -- static public asset keeps login independent from image optimization. */}
           <img
-            alt="Careli"
-            className="h-auto w-40 object-contain"
+            alt="Panteon"
+            className="h-auto w-56 max-w-[82vw] object-contain sm:w-64"
             decoding="async"
-            height="160"
-            src="/logo-careli-c2x.png?v=1"
-            width="160"
+            height="772"
+            src="/panteon-logo-light.png?v=1"
+            width="870"
           />
+          <h1 className="sr-only">Panteon</h1>
         </div>
 
         <form
-          className="grid w-full gap-4 rounded-md border border-[#d9e0ea] bg-white p-6 shadow-[0_20px_55px_rgb(16_24_32_/_0.10)]"
+          className="grid w-full gap-4 rounded-md border border-[#d9e0ea] bg-white p-5 shadow-[0_22px_60px_rgb(0_0_0_/_0.28)]"
           onSubmit={handleSubmit}
         >
           <TextField
@@ -86,7 +87,7 @@ export default function LoginPage() {
             <Tooltip content="Entrar">
               <button
                 aria-label="Entrar"
-                className="grid h-11 w-11 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#d8dde6] disabled:text-[#7d8796]"
+                className="grid h-11 w-11 place-items-center rounded-md bg-[#101820] text-white outline-none transition hover:bg-[#A07C3B] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#d8dde6] disabled:text-[#7d8796]"
                 disabled={isSubmitting}
                 type="submit"
               >
@@ -95,9 +96,6 @@ export default function LoginPage() {
             </Tooltip>
           </div>
         </form>
-        <p className="m-0 mt-6 text-xs font-medium uppercase tracking-[0.18em] text-[#8A682F]">
-          Panteon
-        </p>
       </section>
     </main>
   );
@@ -112,9 +110,9 @@ function getLoginErrorMessage(error: unknown) {
       normalizedMessage.includes("fetch failed") ||
       normalizedMessage.includes("network")
     ) {
-      return "Não foi possível conectar ao Supabase agora. Verifique sua conexão e tente novamente.";
+      return "Nao foi possivel conectar ao Supabase agora. Verifique sua conexao e tente novamente.";
     }
   }
 
-  return "Não foi possível validar seu acesso ao Panteon. Tente novamente.";
+  return "Nao foi possivel validar seu acesso ao Panteon. Tente novamente.";
 }

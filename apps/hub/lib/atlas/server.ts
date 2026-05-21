@@ -1,6 +1,6 @@
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { getPermissionsForRole, type HubPermission, type HubUserRole } from "@repo/shared";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   getAtlasSupabaseConfig,
@@ -9,8 +9,14 @@ import {
 import type {
   AtlasCollaborator,
   AtlasDepartment,
+  AtlasFpeEntry,
+  AtlasFpeEntryKind,
+  AtlasFpeSnapshot,
   AtlasLegacyUserProfile,
   AtlasOccurrence,
+  AtlasOccurrenceEvidence,
+  AtlasOccurrenceJustificationStatus,
+  AtlasOccurrenceOperationalStatus,
   AtlasOccurrenceProfile,
   AtlasOccurrenceType,
   AtlasRole,
@@ -101,10 +107,12 @@ type HubAtlasRoleRow = {
 };
 
 type HubAtlasCollaboratorRow = {
+  id: string;
   department_legacy_id?: string | null;
   legacy_id: string;
   name: string;
   role_legacy_id?: string | null;
+  status?: string | null;
 };
 
 type HubAtlasOccurrenceProfileRow = {
@@ -120,15 +128,34 @@ type HubAtlasOccurrenceTypeRow = {
 
 type HubAtlasOccurrenceRow = {
   collaborator_legacy_id: string;
+  created_by_user_id?: string | null;
   evidence_name?: string | null;
   evidence_type?: string | null;
   evidence_url?: string | null;
+  justification_review_note?: string | null;
+  justification_reviewed_at?: string | null;
+  justification_reviewed_by_user_id?: string | null;
+  justification_status?: string | null;
+  justification_submitted_at?: string | null;
+  justification_submitted_by_user_id?: string | null;
+  justification_text?: string | null;
   legacy_code?: number | string | null;
   legacy_id: string;
   observation?: string | null;
   occurrence_date: string;
   occurrence_type_legacy_id: string;
+  operational_status?: string | null;
   source_created_at?: string | null;
+};
+
+type HubAtlasOccurrenceEvidenceRow = {
+  created_at?: string | null;
+  evidence_name?: string | null;
+  evidence_type?: string | null;
+  evidence_url: string;
+  id: string;
+  occurrence_legacy_id: string;
+  position?: number | null;
 };
 
 type HubAtlasLegacyUserProfileRow = {
@@ -136,6 +163,21 @@ type HubAtlasLegacyUserProfileRow = {
   display_name?: string | null;
   legacy_role?: string | null;
   legacy_user_id: string;
+};
+
+type HubAtlasFpeEntryRow = {
+  amount: number | string;
+  collaborator_legacy_id: string;
+  created_at?: string | null;
+  created_by_user_id?: string | null;
+  cycle_year: number;
+  department_legacy_id: string;
+  description?: string | null;
+  entry_date: string;
+  id: string;
+  kind: string;
+  occurrence_legacy_id?: string | null;
+  occurrence_type_legacy_id?: string | null;
 };
 
 type AtlasDatabase = {
@@ -203,6 +245,12 @@ type HubAtlasDatabase = {
         Row: HubAtlasCollaboratorRow;
         Update: never;
       };
+      atlas_fpe_entries: {
+        Insert: never;
+        Relationships: [];
+        Row: HubAtlasFpeEntryRow;
+        Update: never;
+      };
       atlas_departments: {
         Insert: never;
         Relationships: [];
@@ -225,6 +273,12 @@ type HubAtlasDatabase = {
         Insert: never;
         Relationships: [];
         Row: HubAtlasOccurrenceTypeRow;
+        Update: never;
+      };
+      atlas_occurrence_evidences: {
+        Insert: never;
+        Relationships: [];
+        Row: HubAtlasOccurrenceEvidenceRow;
         Update: never;
       };
       atlas_occurrences: {
@@ -261,6 +315,12 @@ type AuthorizedAtlasContext =
     };
 
 const ATLAS_OCCURRENCES_LIMIT = 250;
+const ATLAS_FPE_ENTRIES_LIMIT = 500;
+const ATLAS_FPE_BASE_AMOUNT = 10_000;
+const ATLAS_FPE_GLOBAL_BASE_AMOUNT = 3_000;
+const ATLAS_FPE_DEPARTMENT_BASE_AMOUNT = 7_000;
+const ATLAS_FPE_GLOBAL_SHARE_RATE = 0.3;
+const ATLAS_FPE_DEPARTMENT_SHARE_RATE = 0.7;
 
 type AtlasSnapshotResult =
   | { data: AtlasSnapshot; ok: true }
@@ -347,12 +407,17 @@ export async function createAuthorizedAtlasContext(
 
 export async function loadAtlasSnapshot(): Promise<AtlasSnapshotResult> {
   const hubConfig = getServerSupabaseConfig();
+  const hasHubServerConfig = Boolean(hubConfig.url && hubConfig.serviceRoleKey);
   const hubSnapshot = await loadHubAtlasSnapshot(
     hubConfig.url,
     hubConfig.serviceRoleKey,
   );
 
   if (hubSnapshot.ok) {
+    return hubSnapshot;
+  }
+
+  if (hasHubServerConfig && hubSnapshot.code !== "atlas_hub_env_missing") {
     return hubSnapshot;
   }
 
@@ -451,7 +516,7 @@ export async function loadAtlasSnapshot(): Promise<AtlasSnapshotResult> {
         },
         {
           code: "atlas_legacy_write_blocked",
-          label: "Escritas, uploads e Auth legado bloqueados na V1 Hub",
+          label: "Bonus, uploads e Auth legado bloqueados na V1 Hub",
           status: "BLOQUEADO",
         },
         {
@@ -464,6 +529,7 @@ export async function loadAtlasSnapshot(): Promise<AtlasSnapshotResult> {
       counts: {
         collaborators: collaborators.length,
         departments: departments.length,
+        fpeEntries: 0,
         occurrenceProfiles: occurrenceProfiles.length,
         occurrences: occurrenceCountResult.count ?? occurrences.length,
         occurrenceTypes: occurrenceTypes.length,
@@ -471,6 +537,7 @@ export async function loadAtlasSnapshot(): Promise<AtlasSnapshotResult> {
         userProfiles: userProfiles.length,
       },
       departments,
+      fpe: createAtlasFpeSnapshot([], "missing"),
       generatedAt: new Date().toISOString(),
       limits: {
         occurrencesLoaded: occurrences.length,
@@ -529,7 +596,7 @@ async function loadHubAtlasSnapshot(
       .order("name"),
     hubClient
       .from("atlas_collaborators")
-      .select("legacy_id,name,department_legacy_id,role_legacy_id")
+      .select("id,legacy_id,name,department_legacy_id,role_legacy_id,status")
       .order("name"),
     hubClient
       .from("atlas_occurrence_profiles")
@@ -542,7 +609,7 @@ async function loadHubAtlasSnapshot(
     hubClient
       .from("atlas_occurrences")
       .select(
-        "legacy_id,legacy_code,collaborator_legacy_id,occurrence_type_legacy_id,occurrence_date,observation,evidence_url,evidence_name,evidence_type,source_created_at",
+        "legacy_id,legacy_code,collaborator_legacy_id,occurrence_type_legacy_id,occurrence_date,observation,evidence_url,evidence_name,evidence_type,source_created_at,created_by_user_id,operational_status,justification_status,justification_text,justification_submitted_by_user_id,justification_submitted_at,justification_reviewed_by_user_id,justification_reviewed_at,justification_review_note",
       )
       .order("occurrence_date", { ascending: false })
       .order("source_created_at", { ascending: false })
@@ -556,21 +623,19 @@ async function loadHubAtlasSnapshot(
     }),
   ]);
 
-  const failedTables = [
+  const failedCoreTables = [
     getFailedTable("atlas_departments", departmentsResult),
     getFailedTable("atlas_roles", rolesResult),
     getFailedTable("atlas_collaborators", collaboratorsResult),
     getFailedTable("atlas_occurrence_profiles", occurrenceProfilesResult),
     getFailedTable("atlas_occurrence_types", occurrenceTypesResult),
     getFailedTable("atlas_occurrences", occurrencesResult),
-    getFailedTable("atlas_legacy_user_profiles", userProfilesResult),
-    getFailedTable("atlas_occurrences_count", occurrenceCountResult),
   ].filter(Boolean);
 
-  if (failedTables.length > 0) {
+  if (failedCoreTables.length > 0) {
     return {
       code: "atlas_hub_snapshot_unavailable",
-      error: `Snapshot Atlas Hub indisponivel: ${failedTables.join(", ")}.`,
+      error: `Snapshot Atlas Hub indisponivel: ${failedCoreTables.join(", ")}.`,
       ok: false,
       status: 503,
     };
@@ -585,8 +650,21 @@ async function loadHubAtlasSnapshot(
   const occurrenceTypes = mapHubOccurrenceTypes(
     occurrenceTypesResult.data ?? [],
   );
-  const occurrences = mapHubOccurrences(occurrencesResult.data ?? []);
-  const userProfiles = mapHubUserProfiles(userProfilesResult.data ?? []);
+  const occurrenceEvidenceRows = await loadHubOccurrenceEvidenceRows(
+    hubClient,
+    occurrencesResult.data ?? [],
+  );
+  const occurrences = mapHubOccurrences(
+    occurrencesResult.data ?? [],
+    occurrenceEvidenceRows,
+  );
+  const fpeResult = await loadHubFpeEntries(hubClient);
+  const userProfiles = userProfilesResult.error
+    ? []
+    : mapHubUserProfiles(userProfilesResult.data ?? []);
+  const occurrenceCount = occurrenceCountResult.error
+    ? occurrences.length
+    : occurrenceCountResult.count ?? occurrences.length;
 
   return {
     data: {
@@ -598,7 +676,7 @@ async function loadHubAtlasSnapshot(
         },
         {
           code: "atlas_legacy_write_blocked",
-          label: "Escritas e bonus seguem bloqueados na V1 Hub",
+          label: "Bonus, Auth legado e edicoes sensiveis seguem bloqueados",
           status: "BLOQUEADO",
         },
         {
@@ -611,13 +689,18 @@ async function loadHubAtlasSnapshot(
       counts: {
         collaborators: collaborators.length,
         departments: departments.length,
+        fpeEntries: fpeResult.rows.length,
         occurrenceProfiles: occurrenceProfiles.length,
-        occurrences: occurrenceCountResult.count ?? occurrences.length,
+        occurrences: occurrenceCount,
         occurrenceTypes: occurrenceTypes.length,
         roles: roles.length,
         userProfiles: userProfiles.length,
       },
       departments,
+      fpe: createAtlasFpeSnapshot(
+        mapHubFpeEntries(fpeResult.rows, occurrences),
+        fpeResult.available ? "available" : "missing",
+      ),
       generatedAt: new Date().toISOString(),
       limits: {
         occurrencesLoaded: occurrences.length,
@@ -629,7 +712,7 @@ async function loadHubAtlasSnapshot(
       roles,
       source: {
         gitRepository: "lucasruas-dev/careli-performance",
-        mode: "read-only",
+        mode: "controlled-write",
         schema: "public",
         supabaseProjectRef: "Hub Atlas",
         vercelProject: "careli-performance",
@@ -637,6 +720,59 @@ async function loadHubAtlasSnapshot(
       userProfiles,
     },
     ok: true,
+  };
+}
+
+async function loadHubOccurrenceEvidenceRows(
+  hubClient: SupabaseClient<HubAtlasDatabase>,
+  occurrences: HubAtlasOccurrenceRow[],
+): Promise<HubAtlasOccurrenceEvidenceRow[]> {
+  const occurrenceIds = occurrences.map((occurrence) => occurrence.legacy_id);
+
+  if (occurrenceIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await hubClient
+    .from("atlas_occurrence_evidences")
+    .select(
+      "id,occurrence_legacy_id,evidence_url,evidence_name,evidence_type,position,created_at",
+    )
+    .in("occurrence_legacy_id", occurrenceIds)
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    return [];
+  }
+
+  return data ?? [];
+}
+
+async function loadHubFpeEntries(
+  hubClient: SupabaseClient<HubAtlasDatabase>,
+): Promise<{ available: boolean; rows: HubAtlasFpeEntryRow[] }> {
+  const currentCycleYear = getCurrentFpeCycleYear();
+  const { data, error } = await hubClient
+    .from("atlas_fpe_entries")
+    .select(
+      "id,cycle_year,entry_date,kind,amount,collaborator_legacy_id,department_legacy_id,occurrence_legacy_id,occurrence_type_legacy_id,description,created_by_user_id,created_at",
+    )
+    .eq("cycle_year", currentCycleYear)
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(ATLAS_FPE_ENTRIES_LIMIT);
+
+  if (error) {
+    return {
+      available: false,
+      rows: [],
+    };
+  }
+
+  return {
+    available: true,
+    rows: data ?? [],
   };
 }
 
@@ -681,6 +817,7 @@ function mapHubCollaborators(
     id: row.legacy_id,
     name: row.name,
     roleId: row.role_legacy_id ?? null,
+    status: row.status ?? "active",
   }));
 }
 
@@ -703,20 +840,151 @@ function mapHubOccurrenceTypes(
   }));
 }
 
-function mapHubOccurrences(rows: HubAtlasOccurrenceRow[]): AtlasOccurrence[] {
-  return rows.map((row) => ({
-    code: row.legacy_code ?? null,
-    collaboratorId: row.collaborator_legacy_id,
-    createdAt: row.source_created_at ?? null,
-    date: row.occurrence_date,
-    evidenceName: row.evidence_name ?? null,
-    evidenceType: row.evidence_type ?? null,
-    evidenceUrl: row.evidence_url ?? null,
-    hasEvidence: Boolean(row.evidence_url),
-    id: row.legacy_id,
-    observation: row.observation ?? null,
-    typeId: row.occurrence_type_legacy_id,
-  }));
+function groupEvidenceRowsByOccurrence(rows: HubAtlasOccurrenceEvidenceRow[]) {
+  const rowsByOccurrence = new Map<string, HubAtlasOccurrenceEvidenceRow[]>();
+
+  for (const row of rows) {
+    const currentRows = rowsByOccurrence.get(row.occurrence_legacy_id) ?? [];
+
+    currentRows.push(row);
+    rowsByOccurrence.set(row.occurrence_legacy_id, currentRows);
+  }
+
+  return rowsByOccurrence;
+}
+
+function getOccurrenceEvidences(
+  rows: HubAtlasOccurrenceEvidenceRow[],
+  fallback: {
+    createdAt?: string | null;
+    id: string;
+    name?: string | null;
+    type?: string | null;
+    url?: string | null;
+  },
+): AtlasOccurrenceEvidence[] {
+  const evidences = rows
+    .filter((row) => Boolean(row.evidence_url?.trim()))
+    .map((row, index) => ({
+      createdAt: row.created_at ?? null,
+      id: row.id,
+      name: row.evidence_name ?? null,
+      position: row.position ?? index + 1,
+      type: row.evidence_type ?? null,
+      url: row.evidence_url,
+    }));
+
+  if (evidences.length > 0 || !fallback.url) {
+    return evidences;
+  }
+
+  return [
+    {
+      createdAt: fallback.createdAt ?? null,
+      id: fallback.id,
+      name: fallback.name ?? null,
+      position: 1,
+      type: fallback.type ?? null,
+      url: fallback.url,
+    },
+  ];
+}
+
+function mapHubOccurrences(
+  rows: HubAtlasOccurrenceRow[],
+  evidenceRows: HubAtlasOccurrenceEvidenceRow[],
+): AtlasOccurrence[] {
+  const evidenceRowsByOccurrence = groupEvidenceRowsByOccurrence(evidenceRows);
+
+  return rows.map((row) => {
+    const evidences = getOccurrenceEvidences(
+      evidenceRowsByOccurrence.get(row.legacy_id) ?? [],
+      {
+        createdAt: row.source_created_at ?? null,
+        id: `${row.legacy_id}:legacy-evidence`,
+        name: row.evidence_name ?? null,
+        type: row.evidence_type ?? null,
+        url: row.evidence_url ?? null,
+      },
+    );
+    const primaryEvidence = evidences[0];
+
+    return {
+      code: row.legacy_code ?? null,
+      collaboratorId: row.collaborator_legacy_id,
+      createdByUserId: row.created_by_user_id ?? null,
+      createdAt: row.source_created_at ?? null,
+      date: row.occurrence_date,
+      evidenceName: primaryEvidence?.name ?? row.evidence_name ?? null,
+      evidenceType: primaryEvidence?.type ?? row.evidence_type ?? null,
+      evidenceUrl: primaryEvidence?.url ?? row.evidence_url ?? null,
+      evidences,
+      hasEvidence: evidences.length > 0,
+      id: row.legacy_id,
+      justification: {
+        reviewedAt: row.justification_reviewed_at ?? null,
+        reviewedByUserId: row.justification_reviewed_by_user_id ?? null,
+        reviewNote: row.justification_review_note ?? null,
+        status: normalizeJustificationStatus(row.justification_status),
+        submittedAt: row.justification_submitted_at ?? null,
+        submittedByUserId: row.justification_submitted_by_user_id ?? null,
+        text: row.justification_text ?? null,
+      },
+      observation: row.observation ?? null,
+      operationalStatus: normalizeOperationalStatus(row.operational_status),
+      typeId: row.occurrence_type_legacy_id,
+    };
+  });
+}
+
+function mapHubFpeEntries(
+  rows: HubAtlasFpeEntryRow[],
+  occurrences: AtlasOccurrence[],
+): AtlasFpeEntry[] {
+  const occurrencesById = new Map(
+    occurrences.map((occurrence) => [occurrence.id, occurrence]),
+  );
+
+  return rows.map((row) => {
+    const occurrence = row.occurrence_legacy_id
+      ? occurrencesById.get(row.occurrence_legacy_id)
+      : undefined;
+
+    return {
+      amount: normalizeCurrencyNumber(row.amount),
+      collaboratorId: row.collaborator_legacy_id,
+      createdAt: row.created_at ?? null,
+      createdByUserId: row.created_by_user_id ?? null,
+      cycleYear: row.cycle_year,
+      departmentId: row.department_legacy_id,
+      description: row.description ?? null,
+      entryDate: row.entry_date,
+      id: row.id,
+      kind: normalizeFpeEntryKind(row.kind),
+      occurrenceCode: occurrence?.code ?? null,
+      occurrenceId: row.occurrence_legacy_id ?? null,
+      occurrenceTypeId:
+        row.occurrence_type_legacy_id ?? occurrence?.typeId ?? null,
+    };
+  });
+}
+
+function createAtlasFpeSnapshot(
+  entries: AtlasFpeEntry[],
+  schemaStatus: AtlasFpeSnapshot["config"]["schemaStatus"],
+): AtlasFpeSnapshot {
+  return {
+    config: {
+      baseAmount: ATLAS_FPE_BASE_AMOUNT,
+      cycleYear: getCurrentFpeCycleYear(),
+      departmentBaseAmount: ATLAS_FPE_DEPARTMENT_BASE_AMOUNT,
+      departmentShareRate: ATLAS_FPE_DEPARTMENT_SHARE_RATE,
+      globalBaseAmount: ATLAS_FPE_GLOBAL_BASE_AMOUNT,
+      globalShareRate: ATLAS_FPE_GLOBAL_SHARE_RATE,
+      schemaStatus,
+    },
+    entries,
+  };
 }
 
 function mapHubUserProfiles(
@@ -744,6 +1012,7 @@ function mapCollaborators(rows: AtlasCollaboratorRow[]): AtlasCollaborator[] {
     id: row.id,
     name: row.nome,
     roleId: row.cargo_id ?? null,
+    status: "active",
   }));
 }
 
@@ -767,19 +1036,73 @@ function mapOccurrenceTypes(
 }
 
 function mapOccurrences(rows: AtlasOccurrenceRow[]): AtlasOccurrence[] {
-  return rows.map((row) => ({
-    code: row.codigo ?? null,
-    collaboratorId: row.colaborador_id,
-    createdAt: row.created_at ?? null,
-    date: row.data_ocorrencia,
-    evidenceName: row.evidencia_nome ?? null,
-    evidenceType: row.evidencia_tipo ?? null,
-    evidenceUrl: row.evidencia_url ?? null,
-    hasEvidence: Boolean(row.evidencia_url),
-    id: row.id,
-    observation: row.observacao ?? null,
-    typeId: row.tipo_ocorrencia_id,
-  }));
+  return rows.map((row) => {
+    const evidences = row.evidencia_url
+      ? [
+          {
+            createdAt: row.created_at ?? null,
+            id: `${row.id}:legacy-evidence`,
+            name: row.evidencia_nome ?? null,
+            position: 1,
+            type: row.evidencia_tipo ?? null,
+            url: row.evidencia_url,
+          },
+        ]
+      : [];
+
+    return {
+      code: row.codigo ?? null,
+      collaboratorId: row.colaborador_id,
+      createdAt: row.created_at ?? null,
+      date: row.data_ocorrencia,
+      evidenceName: row.evidencia_nome ?? null,
+      evidenceType: row.evidencia_tipo ?? null,
+      evidenceUrl: row.evidencia_url ?? null,
+      evidences,
+      hasEvidence: evidences.length > 0,
+      id: row.id,
+      justification: {
+        status: "none",
+      },
+      observation: row.observacao ?? null,
+      operationalStatus: "procedente",
+      typeId: row.tipo_ocorrencia_id,
+    };
+  });
+}
+
+function normalizeOperationalStatus(
+  status?: string | null,
+): AtlasOccurrenceOperationalStatus {
+  return status === "improcedente" ? "improcedente" : "procedente";
+}
+
+function normalizeJustificationStatus(
+  status?: string | null,
+): AtlasOccurrenceJustificationStatus {
+  if (
+    status === "accepted" ||
+    status === "pending" ||
+    status === "rejected"
+  ) {
+    return status;
+  }
+
+  return "none";
+}
+
+function normalizeFpeEntryKind(kind?: string | null): AtlasFpeEntryKind {
+  return kind === "bonus" ? "bonus" : "loss";
+}
+
+function normalizeCurrencyNumber(value: number | string | null | undefined) {
+  const parsedValue = Number(value ?? 0);
+
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+}
+
+function getCurrentFpeCycleYear() {
+  return new Date().getFullYear();
 }
 
 function mapUserProfiles(rows: AtlasLegacyUserProfileRow[]): AtlasLegacyUserProfile[] {
