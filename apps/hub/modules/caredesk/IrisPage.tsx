@@ -2,18 +2,22 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowLeft,
   BarChart3,
   Bot,
   CalendarClock,
+  Check,
   CheckCircle2,
+  CheckCheck,
   ChevronRight,
   Clock3,
   ClipboardList,
   DatabaseZap,
+  CircleStop,
+  Edit3,
   FileText,
   Headphones,
   Inbox,
@@ -22,13 +26,16 @@ import {
   LockKeyhole,
   Megaphone,
   MessageCircle,
+  MessageSquareReply,
   MessageSquareText,
   Mic,
   Network,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
+  Play,
   Plus,
+  Reply,
   Route,
   Save,
   Search,
@@ -42,11 +49,20 @@ import {
   UsersRound,
   Workflow,
   Wifi,
+  X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
+import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import {
+  playIrisInboundSound,
+  registerIrisNotificationPermissionIntent,
+  showBrowserIrisNotification,
+} from "@/lib/iris/notification-effects";
+import { getHubPresenceSnapshot } from "@/lib/hub-presence";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import { useAuth } from "@/providers/auth-provider";
 
 type IrisPageProps = {
   embedded?: boolean;
@@ -62,6 +78,7 @@ type IrisView =
   | "relatorios";
 
 type IrisTone = "gold" | "green" | "red" | "blue" | "neutral";
+type IrisOrigin = "active" | "passive";
 type IrisPriority = "low" | "medium" | "high" | "critical";
 type IrisStatus =
   | "new"
@@ -74,18 +91,50 @@ type IrisStatus =
   | "cancelled";
 
 type IrisMessage = {
+  audioDurationMs?: number | null;
+  audioMimeType?: string | null;
+  audioUrl?: string | null;
   body: string;
   createdAt: string;
   deliveryStatus: string;
   direction: "inbound" | "outbound" | "internal";
+  editedAt?: string | null;
+  externalMessageId?: string | null;
   id: string;
+  messageType?: string | null;
+  operatorAvatarUrl?: string | null;
+  readAt?: string | null;
+  deliveredAt?: string | null;
+  reactions?: IrisMessageReaction[];
+  replyTo?: IrisReplyPreview | null;
+  senderLabel?: string | null;
   senderType: "customer" | "operator" | "agent" | "system";
+  sentAt?: string | null;
+};
+
+type IrisReplyPreview = {
+  body: string;
+  createdAt?: string | null;
+  direction?: IrisMessage["direction"] | null;
+  externalMessageId?: string | null;
+  messageId: string;
+  senderLabel?: string | null;
+};
+
+type IrisMessageReaction = {
+  actorAvatarUrl?: string | null;
+  actorLabel?: string | null;
+  actorUserId?: string | null;
+  createdAt?: string | null;
+  emoji: string;
 };
 
 type IrisTicket = {
+  crm360Registration?: IrisCrm360Registration | null;
   assignedToLabel: string;
   channelId?: string | null;
   channelLabel: string;
+  contactAvatarUrl?: string | null;
   contactDocument?: string | null;
   contactEmail?: string | null;
   contactId?: string | null;
@@ -105,10 +154,24 @@ type IrisTicket = {
   queueLabel: string;
   queueSlug?: string | null;
   resolutionDueAt?: string | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
   sourceLabel: string;
   status: IrisStatus;
   subject: string;
   unread: boolean;
+};
+
+type IrisCrm360Registration = {
+  documentMasked?: string | null;
+  entityId?: string;
+  entityKind?: string;
+  label?: string;
+  matchedPhone?: string;
+  profileLabel?: string | null;
+  profiles?: string[];
+  relationLabel?: string | null;
+  status: "registered" | "missing" | "unknown";
 };
 
 type IrisQueueConfig = {
@@ -140,12 +203,15 @@ type IrisTicketProfileConfig = {
 };
 
 type IrisTemplate = {
+  body?: string | null;
   category: string;
   channelKind: string;
   id: string;
+  metadata?: Record<string, unknown> | null;
   name: string;
   slug: string;
   status: string;
+  variables?: string[];
 };
 
 type IrisBroadcast = {
@@ -164,6 +230,59 @@ type IrisData = {
   tickets: IrisTicket[];
 };
 
+type IrisInboundNotice = {
+  body: string;
+  id: string;
+  receivedAt: string;
+  ticketId: string;
+  title: string;
+};
+
+type IrisMetaEvent = {
+  contactName?: string | null;
+  contactWaId?: string | null;
+  direction: "inbound" | "status" | "system";
+  id: string;
+  messageId?: string | null;
+  messageText?: string | null;
+  providerEventType: string;
+  receivedAt: string;
+  signatureValid: boolean;
+  statusDetail?: string | null;
+};
+
+type IrisMetaRef = {
+  contactWaId?: string | null;
+  createdAt: string;
+  deliveryStatus?: string | null;
+  direction: string;
+  id: string;
+  messageId: string;
+};
+
+type IrisMetaEventsResponse = {
+  error?: string;
+  events?: IrisMetaEvent[];
+  refs?: IrisMetaRef[];
+  summary?: {
+    inbound: number;
+    refsKnown: number;
+    statuses: number;
+    total: number;
+  };
+};
+
+type IrisApoloClientOption = {
+  documentMasked?: string | null;
+  firstName: string;
+  id: string;
+  label: string;
+  locationLabel?: string | null;
+  phone: string;
+  profileLabel: string;
+  profiles: string[];
+};
+
 const emptyIrisData: IrisData = {
   broadcasts: [],
   channels: [],
@@ -173,6 +292,7 @@ const emptyIrisData: IrisData = {
   tickets: [],
 };
 const emptyIrisTickets: IrisTicket[] = [];
+const IRIS_REFRESH_INTERVAL_MS = 12000;
 
 const navigationItems: Array<{
   id: IrisView;
@@ -186,14 +306,14 @@ const navigationItems: Array<{
 ];
 
 const statusLabel: Record<IrisStatus, string> = {
-  cancelled: "Cancelado",
-  closed: "Fechado",
+  cancelled: "Encerrado",
+  closed: "Encerrado",
   new: "Novo",
-  open: "Em atendimento",
+  open: "Pendente",
   pending: "Pendente",
-  resolved: "Resolvido",
-  waiting_customer: "Aguardando cliente",
-  waiting_operator: "Aguardando operador",
+  resolved: "Encerrado",
+  waiting_customer: "Espera",
+  waiting_operator: "Pendente",
 };
 
 const priorityLabel: Record<IrisPriority, string> = {
@@ -215,6 +335,98 @@ const setupStatusLabel: Record<string, string> = {
   paused: "Pausado",
   planned: "Planejado",
 };
+const IRIS_EMOJI_OPTIONS = [
+  "😀",
+  "😄",
+  "😊",
+  "😉",
+  "😍",
+  "🙏",
+  "👍",
+  "👏",
+  "✅",
+  "⚠️",
+  "📌",
+  "💬",
+];
+const IRIS_REACTION_OPTIONS = ["👍", "❤️", "😂", "🙏", "✅"];
+const IRIS_AUDIO_MAX_DATA_URL_LENGTH = 4_000_000;
+const IRIS_OPT_IN_TEMPLATE = {
+  bodyText: "Olá {{1}}, estou testando a Iris, podemos conversar?",
+  buttons: ["Sim", "Não"],
+  category: "MARKETING",
+  exampleName: "Lucas",
+  language: "pt_BR",
+  name: "iris_opt_in_teste_v1",
+  title: "Opt-in Iris teste",
+  variables: [
+    {
+      example: "Lucas",
+      key: "primeiro_nome",
+      label: "Primeiro nome",
+      placeholder: "{{1}}",
+    },
+  ],
+};
+
+const IRIS_META_TEMPLATE_VARIABLES = [
+  {
+    example: "Lucas",
+    key: "primeiro_nome",
+    label: "Primeiro nome",
+    placeholder: "{{1}}",
+    readiness: "Pronta",
+  },
+  {
+    example: "Lucas Moreira Ruas",
+    key: "nome_cliente",
+    label: "Nome completo",
+    placeholder: "{{2}}",
+    readiness: "Pronta",
+  },
+  {
+    example: "AT-000001",
+    key: "protocolo",
+    label: "Protocolo Iris",
+    placeholder: "{{3}}",
+    readiness: "Pronta",
+  },
+  {
+    example: "Lagoa Bonita",
+    key: "empreendimento",
+    label: "Empreendimento",
+    placeholder: "{{4}}",
+    readiness: "CRM",
+  },
+  {
+    example: "Quadra 01 lote 02",
+    key: "unidade",
+    label: "Unidade",
+    placeholder: "{{5}}",
+    readiness: "CRM",
+  },
+  {
+    example: "25/05/2026",
+    key: "vencimento",
+    label: "Vencimento",
+    placeholder: "{{6}}",
+    readiness: "Controlada",
+  },
+  {
+    example: "R$ 1.200,00",
+    key: "valor",
+    label: "Valor",
+    placeholder: "{{7}}",
+    readiness: "Controlada",
+  },
+  {
+    example: "https://c2x.app.br/...",
+    key: "link",
+    label: "Link",
+    placeholder: "{{8}}",
+    readiness: "Controlada",
+  },
+];
 
 export function IrisPage({
   embedded = false,
@@ -232,6 +444,90 @@ export function IrisPage({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(loadFromSupabase);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [inboundNotice, setInboundNotice] = useState<IrisInboundNotice | null>(
+    null,
+  );
+  const [onlineOperators, setOnlineOperators] = useState(0);
+  const [startAttendanceOpen, setStartAttendanceOpen] = useState(false);
+  const knownMessageIdsRef = useRef<Set<string>>(
+    collectIrisMessageIds({ ...emptyIrisData, tickets: initialTickets }),
+  );
+  const refreshInFlightRef = useRef(false);
+
+  const enrichIrisDataWithCrm360 = useCallback(async (data: IrisData) => {
+    return enrichTicketsWithCrm360(data);
+  }, []);
+
+  function notifyInbound(ticket: IrisTicket, message: IrisMessage) {
+    const notice = {
+      body: message.body || "Nova mensagem recebida no WhatsApp.",
+      id: message.id,
+      receivedAt: message.createdAt,
+      ticketId: ticket.id,
+      title: ticketContactLabel(ticket),
+    };
+
+    setInboundNotice(notice);
+    playIrisInboundSound();
+    showBrowserIrisNotification({
+      body: notice.body,
+      tag: `iris-${ticket.id}`,
+      title: `Iris - ${notice.title}`,
+    });
+  }
+
+  const refreshIrisData = useCallback(
+    async ({ notifyNewInbound = false } = {}) => {
+      if (!loadFromSupabase || refreshInFlightRef.current) {
+        return;
+      }
+
+      refreshInFlightRef.current = true;
+
+      try {
+        const nextData = await enrichIrisDataWithCrm360(await loadIrisData());
+        let latestInbound: { message: IrisMessage; ticket: IrisTicket } | null =
+          null;
+        const knownMessageIds = knownMessageIdsRef.current;
+
+        nextData.tickets.forEach((ticket) => {
+          ticket.messages.forEach((message) => {
+            const alreadyKnown = knownMessageIds.has(message.id);
+
+            if (!alreadyKnown) {
+              knownMessageIds.add(message.id);
+
+              if (notifyNewInbound && message.direction === "inbound") {
+                if (
+                  !latestInbound ||
+                  dateValue(message.createdAt) >
+                    dateValue(latestInbound.message.createdAt)
+                ) {
+                  latestInbound = { message, ticket };
+                }
+              }
+            }
+          });
+        });
+
+        setIrisData(nextData);
+        setSelectedTicketId((current) =>
+          current && nextData.tickets.some((ticket) => ticket.id === current)
+            ? current
+            : nextData.tickets[0]?.id || "",
+        );
+
+        if (latestInbound) {
+          notifyInbound(latestInbound.ticket, latestInbound.message);
+        }
+      } catch (error) {
+        console.error("[iris] nao foi possivel atualizar a operacao", error);
+      } finally {
+        refreshInFlightRef.current = false;
+      }
+    },
+    [enrichIrisDataWithCrm360, loadFromSupabase],
+  );
 
   useEffect(() => {
     if (!loadFromSupabase) {
@@ -239,6 +535,10 @@ export function IrisPage({
         ...current,
         tickets: initialTickets,
       }));
+      knownMessageIdsRef.current = collectIrisMessageIds({
+        ...emptyIrisData,
+        tickets: initialTickets,
+      });
       setSelectedTicketId((current) => current || initialTickets[0]?.id || "");
       return;
     }
@@ -250,13 +550,14 @@ export function IrisPage({
       setLoadError(null);
 
       try {
-        const nextData = await loadIrisData();
+        const nextData = await enrichIrisDataWithCrm360(await loadIrisData());
 
         if (!active) {
           return;
         }
 
         setIrisData(nextData);
+        knownMessageIdsRef.current = collectIrisMessageIds(nextData);
         setSelectedTicketId(
           (current) => current || nextData.tickets[0]?.id || "",
         );
@@ -278,7 +579,110 @@ export function IrisPage({
     return () => {
       active = false;
     };
-  }, [initialTickets, loadFromSupabase]);
+  }, [enrichIrisDataWithCrm360, initialTickets, loadFromSupabase]);
+
+  useEffect(() => {
+    if (!loadFromSupabase) {
+      return;
+    }
+
+    registerIrisNotificationPermissionIntent();
+
+    const client = getHubSupabaseClient();
+
+    if (!client) {
+      return;
+    }
+
+    const channel = client
+      .channel("iris-caredesk-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "caredesk_messages" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: true });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "caredesk_messages" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: false });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "caredesk_tickets" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: true });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "caredesk_tickets" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: false });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "caredesk_contacts" },
+        () => {
+          void refreshIrisData({ notifyNewInbound: false });
+        },
+      )
+      .subscribe();
+
+    const refreshInterval = window.setInterval(() => {
+      void refreshIrisData({ notifyNewInbound: true });
+    }, IRIS_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(refreshInterval);
+      void client.removeChannel(channel);
+    };
+  }, [loadFromSupabase, refreshIrisData]);
+
+  useEffect(() => {
+    if (!inboundNotice) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setInboundNotice(null), 7000);
+
+    return () => window.clearTimeout(timeout);
+  }, [inboundNotice]);
+
+  useEffect(() => {
+    if (!loadFromSupabase) {
+      return;
+    }
+
+    let active = true;
+
+    async function refreshPresence() {
+      try {
+        const snapshot = await getHubPresenceSnapshot();
+        const online = snapshot.data.filter(
+          (presence) => presence.status === "online",
+        ).length;
+
+        if (active) {
+          setOnlineOperators(online);
+        }
+      } catch (error) {
+        console.warn("[iris] nao foi possivel carregar presenca", error);
+      }
+    }
+
+    void refreshPresence();
+    const interval = window.setInterval(refreshPresence, 30000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [loadFromSupabase]);
 
   const selectedTicket = useMemo(() => {
     return (
@@ -289,8 +693,8 @@ export function IrisPage({
   }, [irisData.tickets, selectedTicketId]);
 
   const snapshot = useMemo(
-    () => buildIrisSnapshot(irisData),
-    [irisData],
+    () => buildIrisSnapshot(irisData, onlineOperators),
+    [irisData, onlineOperators],
   );
 
   function openAttendance(ticketId?: string) {
@@ -303,6 +707,7 @@ export function IrisPage({
   }
 
   function handleLocalMessage(ticketId: string, message: IrisMessage) {
+    knownMessageIdsRef.current.add(message.id);
     setIrisData((current) => ({
       ...current,
       tickets: current.tickets.map((ticket) =>
@@ -310,12 +715,44 @@ export function IrisPage({
           ? {
               ...ticket,
               lastMessageAt: message.createdAt,
-              lastMessagePreview: message.body,
+              lastMessagePreview: irisMessagePreview(message),
               messages: [...ticket.messages, message],
               status: ticket.status === "new" ? "open" : ticket.status,
             }
           : ticket,
       ),
+    }));
+  }
+
+  function handleMessageUpdated(ticketId: string, message: IrisMessage) {
+    knownMessageIdsRef.current.add(message.id);
+    setIrisData((current) => ({
+      ...current,
+      tickets: current.tickets.map((ticket) => {
+        if (ticket.id !== ticketId) {
+          return ticket;
+        }
+
+        const hasMessage = ticket.messages.some(
+          (currentMessage) => currentMessage.id === message.id,
+        );
+        const messages = hasMessage
+          ? ticket.messages.map((currentMessage) =>
+              currentMessage.id === message.id ? message : currentMessage,
+            )
+          : [...ticket.messages, message];
+        const latestMessage = messages[messages.length - 1];
+
+        return {
+          ...ticket,
+          lastMessageAt: latestMessage?.createdAt ?? ticket.lastMessageAt,
+          lastMessagePreview: latestMessage
+            ? irisMessagePreview(latestMessage)
+            : ticket.lastMessagePreview,
+          messages,
+          status: ticket.status === "new" ? "open" : ticket.status,
+        };
+      }),
     }));
   }
 
@@ -332,14 +769,39 @@ export function IrisPage({
 
   return (
     <div
+      onClick={registerIrisNotificationPermissionIntent}
       className={[
-        "min-h-[calc(100vh-72px)] bg-[#f3f6fa] text-[#101820]",
+        "h-full min-h-0 overflow-hidden bg-[#f3f6fa] text-[#101820]",
         embedded ? "rounded-2xl border border-[#dbe3ef]" : "",
       ].join(" ")}
     >
+      {inboundNotice ? (
+        <IrisInboundNoticeToast
+          notice={inboundNotice}
+          onDismiss={() => setInboundNotice(null)}
+          onOpen={() => {
+            setSelectedTicketId(inboundNotice.ticketId);
+            setActiveView("atendimento");
+            setInboundNotice(null);
+          }}
+        />
+      ) : null}
+      {startAttendanceOpen ? (
+        <IrisStartAttendanceModal
+          onClose={() => setStartAttendanceOpen(false)}
+          onTicketCreated={(ticketId) => {
+            setStartAttendanceOpen(false);
+            void refreshIrisData({ notifyNewInbound: false });
+            if (ticketId) {
+              setSelectedTicketId(ticketId);
+              setActiveView("atendimento");
+            }
+          }}
+        />
+      ) : null}
       <div
         className={[
-          "grid min-h-[calc(100vh-72px)] transition-[grid-template-columns] duration-200",
+          "grid h-full min-h-0 transition-[grid-template-columns] duration-200",
           sidebarCollapsed
             ? "grid-cols-[72px_minmax(0,1fr)]"
             : "grid-cols-[240px_minmax(0,1fr)]",
@@ -432,43 +894,15 @@ export function IrisPage({
             ))}
           </nav>
 
-          {!sidebarCollapsed ? (
-            <div className="mt-auto space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/60">Operacao</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-1 text-xs font-semibold text-emerald-200">
-                  <Wifi className="h-3 w-3" />
-                  Online
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <MiniStat label="Tickets" value={formatCount(snapshot.total)} />
-                <MiniStat
-                  label="SLA"
-                  value={formatCount(snapshot.slaCritical)}
-                />
-              </div>
-            </div>
-          ) : (
-            <Tooltip
-              content="Operacao online"
-              placement="right"
-              className="mt-auto w-full"
-              triggerClassName="w-full"
-            >
-              <div className="flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-emerald-200">
-                <Wifi className="h-4 w-4" />
-              </div>
-            </Tooltip>
-          )}
+          <div className="mt-auto" />
         </aside>
 
-        <main className="min-w-0">
-          <IrisTopbar activeView={activeView} snapshot={snapshot} />
+        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+          <IrisTopbar />
 
-          <section className="p-4">
+          <section className="min-h-0 flex-1 overflow-hidden p-3">
             {loadError ? (
-              <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
+              <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
                 {loadError}
               </div>
             ) : activeView === "gestao" ? (
@@ -478,6 +912,7 @@ export function IrisPage({
                 snapshot={snapshot}
                 onOpenAttendance={openAttendance}
                 onSelectTicket={setSelectedTicketId}
+                onStartAttendance={() => setStartAttendanceOpen(true)}
               />
             ) : activeView === "atendimento" ? (
               <AttendanceView
@@ -487,6 +922,7 @@ export function IrisPage({
                 onSelectTicket={setSelectedTicketId}
                 onClose={() => setActiveView("gestao")}
                 onMessageCreated={handleLocalMessage}
+                onMessageUpdated={handleMessageUpdated}
               />
             ) : activeView === "disparos" ? (
               <BroadcastView data={irisData} snapshot={snapshot} />
@@ -506,59 +942,17 @@ export function IrisPage({
   );
 }
 
-function IrisTopbar({
-  activeView,
-  snapshot,
-}: {
-  activeView: IrisView;
-  snapshot: ReturnType<typeof buildIrisSnapshot>;
-}) {
-  const titleByView: Record<IrisView, string> = {
-    atendimento: "Atendimento",
-    disparos: "Disparos em massa",
-    gestao: "Tickets",
-    relatorios: "Relatorios",
-    setup: "Setup operacional",
-  };
-
+function IrisTopbar() {
   return (
     <header className="sticky top-0 z-20 border-b border-[#dbe3ef] bg-white/95 px-4 py-3 backdrop-blur">
       <div className="flex flex-wrap items-center gap-4">
         <div className="min-w-[230px]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#A07C3B]">
-            Iris
-          </p>
           <h2 className="text-lg font-semibold text-[#101820]">
-            {titleByView[activeView]}
+            Ticket
           </h2>
         </div>
 
-        <label className="flex h-10 min-w-[280px] max-w-[520px] flex-1 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-[#f8fafc] px-3 text-sm text-[#63708a]">
-          <Search className="h-4 w-4" />
-          <input
-            className="w-full bg-transparent outline-none placeholder:text-[#8b97ad]"
-            placeholder="Buscar ticket, cliente ou protocolo"
-          />
-        </label>
-
         <div className="ml-auto flex items-center gap-2">
-          <HeaderMetric
-            icon={Wifi}
-            label="Operacao"
-            value="Online"
-            tone="green"
-          />
-          <HeaderMetric
-            icon={TicketCheck}
-            label="Tickets"
-            value={formatCount(snapshot.total)}
-          />
-          <HeaderMetric
-            icon={ShieldAlert}
-            label="SLA critico"
-            value={formatCount(snapshot.slaCritical)}
-            tone="red"
-          />
           <PanteonTopbarUser className="ml-1 border-l border-[#dbe3ef] pl-3" compact />
         </div>
       </div>
@@ -572,44 +966,46 @@ function ManagementView({
   snapshot,
   onOpenAttendance,
   onSelectTicket,
+  onStartAttendance,
 }: {
   data: IrisData;
   loading: boolean;
   snapshot: ReturnType<typeof buildIrisSnapshot>;
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
+  onStartAttendance: () => void;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-3">
-        <SignalCard
-          icon={Inbox}
-          title="Entrada"
-          value={`${formatCount(snapshot.inbox)} na fila`}
-          tone="green"
-        />
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <SignalCard
           icon={Clock3}
-          title="Primeira resposta"
+          title="TPR"
           value={snapshot.firstResponseLabel}
           tone="gold"
         />
         <SignalCard
-          icon={Bot}
-          title="Athena"
-          value={`${formatCount(snapshot.aiActions)} acoes`}
+          icon={MessageCircle}
+          title="TDR"
+          value={snapshot.responseTimeLabel}
           tone="blue"
         />
         <SignalCard
-          icon={Route}
-          title="Handoff"
-          value={`${formatCount(snapshot.waitingOperator)} casos`}
-          tone="neutral"
+          icon={TicketCheck}
+          title="TMA"
+          value={snapshot.averageHandlingTimeLabel}
+          tone="green"
+        />
+        <SignalCard
+          icon={ShieldAlert}
+          title="SLA critico"
+          value={formatCount(snapshot.slaCritical)}
+          tone={snapshot.slaCritical ? "red" : "neutral"}
         />
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-4">
-        <div className="min-w-0">
+      <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-h-0 min-w-0">
           {loading ? (
             <IrisLoading />
           ) : (
@@ -617,37 +1013,15 @@ function ManagementView({
               tickets={data.tickets}
               onOpenAttendance={onOpenAttendance}
               onSelectTicket={onSelectTicket}
+              onStartAttendance={onStartAttendance}
             />
           )}
         </div>
 
-        <aside className="space-y-3">
-          <ActionPanel
-            icon={Sparkles}
-            title="Athena na fila"
-            items={[
-              {
-                detail: snapshot.topTicket
-                  ? `${snapshot.topTicket.queueLabel} | ${priorityLabel[snapshot.topTicket.priority]}`
-                  : "Aguardando novos tickets",
-                title: "Caso recomendado",
-                value: snapshot.topTicket?.contactLabel ?? "Sem fila ativa",
-              },
-              {
-                detail: "SLA vencido ou prioridade critica",
-                title: "Tickets prioritarios",
-                value: formatCount(snapshot.critical),
-              },
-              {
-                detail: "Cliente aguardando retorno do operador",
-                title: "Sem resposta",
-                value: formatCount(snapshot.unanswered),
-              },
-            ]}
-          />
+        <aside className="min-h-0 space-y-3 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
           <ActionPanel
             icon={CalendarClock}
-            title="Agenda operacional"
+            title="Agenda"
             items={[
               {
                 detail: "Tickets com proxima resposta vencendo",
@@ -670,10 +1044,12 @@ function ManagementView({
 function IrisTicketQueue({
   onOpenAttendance,
   onSelectTicket,
+  onStartAttendance,
   tickets,
 }: {
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
+  onStartAttendance: () => void;
   tickets: IrisTicket[];
 }) {
   const [queue, setQueue] = useState("Todos");
@@ -688,7 +1064,9 @@ function IrisTicketQueue({
   const statuses = useMemo(
     () => [
       "Todos",
-      ...unique(tickets.map((ticket) => statusLabel[ticket.status])),
+      ...unique(
+        tickets.map((ticket) => statusLabel[effectiveIrisStatus(ticket)]),
+      ),
     ],
     [tickets],
   );
@@ -698,8 +1076,12 @@ function IrisTicketQueue({
 
     return tickets
       .filter((ticket) => {
+        const displayLabel = ticketContactLabel(ticket).toLowerCase();
+        const crmSubtitle = ticketCrmSubtitle(ticket).toLowerCase();
         const matchesSearch =
           normalized.length === 0 ||
+          displayLabel.includes(normalized) ||
+          crmSubtitle.includes(normalized) ||
           ticket.protocol.toLowerCase().includes(normalized) ||
           ticket.contactLabel.toLowerCase().includes(normalized) ||
           ticket.subject.toLowerCase().includes(normalized);
@@ -707,7 +1089,8 @@ function IrisTicketQueue({
         return (
           matchesSearch &&
           (queue === "Todos" || ticket.queueLabel === queue) &&
-          (status === "Todos" || statusLabel[ticket.status] === status) &&
+          (status === "Todos" ||
+            statusLabel[effectiveIrisStatus(ticket)] === status) &&
           (priority === "Todas" || priorityLabel[ticket.priority] === priority)
         );
       })
@@ -715,16 +1098,28 @@ function IrisTicketQueue({
   }, [priority, queue, search, status, tickets]);
 
   return (
-    <section className="rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <header className="border-b border-slate-100 px-4 py-3">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="shrink-0 border-b border-slate-100 px-4 py-3">
         <div className="flex flex-col gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-              Fila operacional de tickets
-            </p>
-            <h2 className="mt-1 text-base font-semibold text-slate-950">
-              Inbox operacional
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold text-slate-950">
+              Inbox
             </h2>
+            <Tooltip
+              content="Novo atendimento"
+              placement="left"
+              triggerClassName="shrink-0"
+            >
+              <button
+                type="button"
+                aria-label="Novo atendimento"
+                title="Novo atendimento"
+                onClick={onStartAttendance}
+                className="inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white shadow-sm transition-colors hover:bg-[#1f2c3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+              >
+                <Plus className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             <KpiCard
@@ -769,8 +1164,8 @@ function IrisTicketQueue({
         </div>
       </header>
 
-      <div className="grid gap-3 p-3 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0 space-y-3">
+      <div className="grid min-h-0 flex-1 gap-3 p-3">
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
           <div className="grid gap-2 rounded-xl border border-slate-200/70 bg-slate-50/60 p-2 lg:grid-cols-[minmax(0,1fr)_150px_150px_150px]">
             <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-500">
               <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
@@ -801,17 +1196,23 @@ function IrisTicketQueue({
             />
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200/70">
-            <div className="hidden grid-cols-[1fr_0.75fr_0.75fr_0.75fr_0.9fr_0.75fr_0.75fr] gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-2 text-xs font-semibold uppercase tracking-normal text-slate-400 xl:grid">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200/70">
+            <div className="hidden min-w-0 grid-cols-[repeat(10,minmax(0,1fr))_40px] gap-2 border-b border-slate-100 bg-slate-50/80 px-3 py-2 text-xs font-semibold uppercase tracking-normal text-slate-400 xl:grid">
               <span>Ticket</span>
               <span>Fila</span>
               <span>Canal</span>
-              <span>SLA</span>
               <span>Status</span>
+              <span>SLA</span>
+              <span>Origem</span>
+              <span>Perfil</span>
+              <span>Assunto</span>
+              <span>TDR</span>
               <span>Responsavel</span>
-              <span className="text-right">Atendimento</span>
+              <span className="text-right" title="Atendimento">
+                Chat
+              </span>
             </div>
-            <div className="max-h-[430px] overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
               {filteredTickets.length > 0 ? (
                 filteredTickets.map((ticket) => (
                   <IrisTicketRow
@@ -831,45 +1232,450 @@ function IrisTicketQueue({
             </div>
           </div>
         </div>
-
-        <aside className="space-y-3">
-          <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
-            <div className="flex items-center gap-2">
-              <Bot className="size-4 text-[#A07C3B]" aria-hidden="true" />
-              <p className="text-sm font-semibold text-slate-950">
-                Athena na fila
-              </p>
-            </div>
-            <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-700">
-              Priorizar cliente sem resposta, SLA vencendo e tickets sem
-              responsavel. O Iris mede a operacao de atendimento,
-              independente do modulo que originou o contato.
-            </p>
-          </div>
-
-          <InsightCard
-            title="Tickets prioritarios"
-            value={`${tickets.filter((ticket) => ticket.priority === "critical" || isSlaCritical(ticket)).length}`}
-            description="Prioridade critica ou SLA em risco."
-          />
-          <InsightCard
-            title="Entrada sem dono"
-            value={`${tickets.filter((ticket) => ticket.status === "waiting_operator").length}`}
-            description="Tickets aguardando operador assumir."
-          />
-          <InsightCard
-            title="Fila de suporte"
-            value={`${tickets.filter((ticket) => ticket.queueSlug === "suporte").length}`}
-            description="Duvidas e solicitacoes de clientes."
-          />
-          <InsightCard
-            title="Follow-ups"
-            value={`${tickets.filter(isWaitingForIris).length}`}
-            description="Conversas que dependem de retorno humano."
-          />
-        </aside>
       </div>
     </section>
+  );
+}
+
+function IrisStartAttendanceModal({
+  onClose,
+  onTicketCreated,
+}: {
+  onClose: () => void;
+  onTicketCreated: (ticketId?: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<IrisApoloClientOption[]>([]);
+  const [selectedClient, setSelectedClient] =
+    useState<IrisApoloClientOption | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [templateStatus, setTemplateStatus] = useState<string | null>(null);
+  const [templateFeedback, setTemplateFeedback] = useState("");
+  const [error, setError] = useState("");
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [startingTicket, setStartingTicket] = useState(false);
+
+  const firstName = selectedClient?.firstName ?? IRIS_OPT_IN_TEMPLATE.exampleName;
+  const preview = renderIrisOptInTemplate(firstName);
+  const templateApproved = templateStatus === "APPROVED";
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadTemplateStatus() {
+      try {
+        const accessToken = await getIrisAccessToken();
+        const response = await fetch(
+          `/api/iris/meta/templates?name=${encodeURIComponent(IRIS_OPT_IN_TEMPLATE.name)}`,
+          {
+            cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        );
+        const payload = await response.json().catch(() => null);
+
+        if (!active) {
+          return;
+        }
+
+        if (!response.ok) {
+          setTemplateFeedback(
+            payload?.error ??
+              "Nao foi possivel consultar o template Meta neste ambiente.",
+          );
+          return;
+        }
+
+        const template = payload?.templates?.[0];
+        setTemplateStatus(template?.status ?? null);
+        setTemplateFeedback(
+          template
+            ? `Template Meta ${templateStatusLabel(template.status)}.`
+            : "Template ainda nao encontrado na Meta.",
+        );
+      } catch (templateError) {
+        if (active) {
+          setTemplateFeedback(
+            templateError instanceof Error
+              ? templateError.message
+              : "Nao foi possivel consultar o template Meta.",
+          );
+        }
+      }
+    }
+
+    void loadTemplateStatus();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const normalized = query.trim();
+
+    if (normalized.length < 2) {
+      setResults([]);
+      return;
+    }
+
+    let active = true;
+    const timeout = window.setTimeout(async () => {
+      setSearching(true);
+      setError("");
+
+      try {
+        const accessToken = await getIrisAccessToken();
+        const response = await fetch(
+          `/api/iris/apolo/search?q=${encodeURIComponent(normalized)}&limit=12`,
+          {
+            cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        );
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(
+            payload?.error ?? "Nao foi possivel buscar no CRM 360.",
+          );
+        }
+
+        if (active) {
+          setResults(extractIrisApoloClientOptions(payload));
+        }
+      } catch (searchError) {
+        if (active) {
+          setResults([]);
+          setError(
+            searchError instanceof Error
+              ? searchError.message
+              : "Nao foi possivel buscar no CRM 360.",
+          );
+        }
+      } finally {
+        if (active) {
+          setSearching(false);
+        }
+      }
+    }, 320);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [query]);
+
+  async function createTemplate() {
+    setCreatingTemplate(true);
+    setTemplateFeedback("");
+    setError("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/templates", {
+        body: JSON.stringify({
+          bodyText: IRIS_OPT_IN_TEMPLATE.bodyText,
+          buttons: IRIS_OPT_IN_TEMPLATE.buttons,
+          category: IRIS_OPT_IN_TEMPLATE.category,
+          exampleName: IRIS_OPT_IN_TEMPLATE.exampleName,
+          language: IRIS_OPT_IN_TEMPLATE.language,
+          name: IRIS_OPT_IN_TEMPLATE.name,
+          variables: IRIS_OPT_IN_TEMPLATE.variables,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel criar o template real na Meta.",
+        );
+      }
+
+      const status = payload?.template?.status ?? null;
+      setTemplateStatus(status);
+      setTemplateFeedback(
+        payload?.created
+          ? `Template real criado na Meta como ${templateStatusLabel(status)}.`
+          : `Template real ja existia na Meta como ${templateStatusLabel(status)}.`,
+      );
+    } catch (templateError) {
+      setTemplateFeedback(
+        templateError instanceof Error
+          ? templateError.message
+          : "Nao foi possivel criar o template real na Meta.",
+      );
+    } finally {
+      setCreatingTemplate(false);
+    }
+  }
+
+  async function startTicket() {
+    if (!selectedClient || !templateApproved) {
+      return;
+    }
+
+    setStartingTicket(true);
+    setError("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/tickets", {
+        body: JSON.stringify({
+          apoloEntityId: selectedClient.id,
+          apoloProfileLabel: selectedClient.profileLabel,
+          contactName: selectedClient.label,
+          firstName: selectedClient.firstName,
+          phone: selectedClient.phone,
+          sendTemplate: true,
+          templateLanguage: IRIS_OPT_IN_TEMPLATE.language,
+          templateName: IRIS_OPT_IN_TEMPLATE.name,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel iniciar o atendimento.",
+        );
+      }
+
+      onTicketCreated(payload?.ticket?.id);
+    } catch (ticketError) {
+      setError(
+        ticketError instanceof Error
+          ? ticketError.message
+          : "Nao foi possivel iniciar o atendimento.",
+      );
+    } finally {
+      setStartingTicket(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4 py-6 backdrop-blur-[2px]">
+      <button
+        type="button"
+        aria-label="Fechar novo atendimento"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default"
+      />
+      <section className="relative z-10 flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_90px_rgba(15,23,42,0.24)]">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+              Contato ativo
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">
+              Novo atendimento
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Buscar cliente no CRM 360, escolher o template aprovado e aguardar aceite.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar formulario"
+            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_360px] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+          <div className="min-w-0 space-y-4">
+            <label className="block rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+              <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                Cliente CRM 360 / Apolo
+              </span>
+              <div className="mt-2 flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-500">
+                <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Buscar por cliente ou telefone..."
+                  className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+                />
+              </div>
+              {searching ? (
+                <p className="mt-2 text-xs font-medium text-slate-500">
+                  Buscando no CRM 360...
+                </p>
+              ) : null}
+            </label>
+
+            <div className="rounded-xl border border-slate-200/70">
+              <div className="border-b border-slate-100 bg-slate-50/70 px-3 py-2 text-xs font-semibold uppercase tracking-normal text-slate-400">
+                Resultado da busca
+              </div>
+              <div className="max-h-72 overflow-y-auto p-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                {results.length ? (
+                  results.map((client) => {
+                    const active = selectedClient?.id === client.id;
+
+                    return (
+                      <button
+                        key={client.id}
+                        type="button"
+                        onClick={() => setSelectedClient(client)}
+                        className={[
+                          "mb-2 grid w-full gap-1 rounded-lg border px-3 py-2 text-left transition-colors last:mb-0",
+                          active
+                            ? "border-[#A07C3B]/35 bg-[#A07C3B]/5"
+                            : "border-slate-200/70 bg-white hover:bg-slate-50",
+                        ].join(" ")}
+                      >
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                          <p className="truncate text-sm font-semibold text-slate-950">
+                            {client.label}
+                          </p>
+                          <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                            CRM 360
+                          </span>
+                        </div>
+                        <p className="truncate text-xs text-slate-500">
+                          {client.profileLabel} · {formatPhoneForDisplay(client.phone)}
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          {client.documentMasked ?? client.locationLabel ?? "Cadastro Apolo"}
+                        </p>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-8 text-center text-sm text-slate-500">
+                    {query.trim().length < 2
+                      ? "Digite pelo menos 2 caracteres para buscar."
+                      : "Nenhum cliente localizado com telefone para WhatsApp."}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <aside className="min-w-0 space-y-4">
+            <div className="rounded-xl border border-slate-200/70 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                    Template Meta
+                  </p>
+                  <h3 className="mt-1 text-sm font-semibold text-slate-950">
+                    {IRIS_OPT_IN_TEMPLATE.title}
+                  </h3>
+                </div>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(templateStatus)}`}
+                >
+                  {templateStatusLabel(templateStatus)}
+                </span>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
+                <p className="text-sm font-medium leading-6 text-slate-800">
+                  {preview}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {IRIS_OPT_IN_TEMPLATE.buttons.map((button) => (
+                    <span
+                      key={button}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-100 bg-white text-sm font-semibold text-emerald-700"
+                    >
+                      {button}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                No contato ativo, a Iris envia somente o template aprovado e o chat livre fica condicionado ao aceite do cliente.
+              </p>
+
+              <button
+                type="button"
+                onClick={createTemplate}
+                disabled={creatingTemplate}
+                className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <CheckCircle2 className="size-4" aria-hidden="true" />
+                {creatingTemplate ? "Criando na Meta..." : "Criar template real"}
+              </button>
+
+              {templateFeedback ? (
+                <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                  {templateFeedback}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                Atendimento
+              </p>
+              <div className="mt-3 space-y-2">
+                <ReadonlyMini label="Cliente" value={selectedClient?.label ?? "-"} />
+                <ReadonlyMini label="Telefone" value={selectedClient ? formatPhoneForDisplay(selectedClient.phone) : "-"} />
+                <ReadonlyMini label="Origem" value="Ativo" />
+                <ReadonlyMini label="Status inicial" value="Espera" />
+                <ReadonlyMini label="Perfil" value="Primeiro contato" />
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <footer className="border-t border-slate-100 p-4">
+          {error ? (
+            <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+              {error}
+            </p>
+          ) : null}
+          {!templateApproved ? (
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+              O template precisa estar aprovado pela Meta antes de iniciar contato ativo real.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={startTicket}
+            disabled={!selectedClient || !templateApproved || startingTicket}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Send className="size-4" aria-hidden="true" />
+            {startingTicket ? "Iniciando atendimento..." : "Iniciar atendimento"}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ReadonlyMini({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200/70 bg-white px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-400">
+        {label}
+      </p>
+      <p className="mt-0.5 truncate text-sm font-semibold text-slate-800">
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -882,9 +1688,12 @@ function IrisTicketRow({
   onSelectTicket: (ticketId: string) => void;
   ticket: IrisTicket;
 }) {
+  const effectiveStatus = effectiveIrisStatus(ticket);
+  const origin = ticketOrigin(ticket);
+
   return (
     <article
-      className={`grid gap-3 border-b border-slate-100 px-4 py-3 transition-colors last:border-b-0 hover:bg-slate-50/70 xl:grid-cols-[1fr_0.75fr_0.75fr_0.75fr_0.9fr_0.75fr_0.75fr] xl:items-center ${
+      className={`grid min-w-0 gap-2 overflow-hidden border-b border-slate-100 px-3 py-2.5 transition-colors last:border-b-0 hover:bg-slate-50/70 xl:grid-cols-[repeat(10,minmax(0,1fr))_40px] xl:items-center ${
         ticket.unread ? "bg-[#A07C3B]/5 shadow-[inset_3px_0_0_#A07C3B]" : ""
       }`}
     >
@@ -893,40 +1702,52 @@ function IrisTicketRow({
         onClick={() => onSelectTicket(ticket.id)}
         className="min-w-0 text-left"
       >
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-sm font-semibold text-[#7A5E2C]">
-            {ticket.protocol}
-          </span>
-          {ticket.unread ? (
-            <span className="rounded-full bg-[#A07C3B] px-2 py-0.5 text-[11px] font-semibold text-white shadow-[0_0_0_3px_rgba(160,124,59,0.12)]">
-              nova
-            </span>
-          ) : null}
-          <PriorityPill priority={ticket.priority} />
+        <div className="flex items-start gap-2">
+          <ContactAvatar ticket={ticket} size="sm" />
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className="min-w-0 truncate font-mono text-sm font-semibold text-[#7A5E2C]">
+                {ticket.protocol}
+              </span>
+              {ticket.unread ? (
+                <span className="rounded-full bg-[#A07C3B] px-2 py-0.5 text-[11px] font-semibold text-white shadow-[0_0_0_3px_rgba(160,124,59,0.12)]">
+                  nova
+                </span>
+              ) : null}
+              <PriorityPill priority={ticket.priority} />
+              <Crm360Badge compact registration={ticket.crm360Registration} />
+            </div>
+            <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+              {ticketContactLabel(ticket)}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-500">
+              {ticketCrmSubtitle(ticket)}
+            </p>
+          </div>
         </div>
-        <p className="mt-1 truncate text-sm font-semibold text-slate-950">
-          {ticket.contactLabel}
-        </p>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {ticket.subject}
-        </p>
       </button>
 
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-slate-800">
           {ticket.queueLabel}
         </p>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {ticket.profileLabel}
-        </p>
       </div>
 
-      <div className="text-sm font-medium text-slate-600">
-        <p className="truncate">{ticket.channelLabel}</p>
-        <p className="mt-0.5 text-xs text-slate-400">{ticket.sourceLabel}</p>
+      <div className="min-w-0 text-sm font-medium text-slate-600">
+        <p className="truncate">{formatIrisChannelLabel(ticket.channelLabel)}</p>
       </div>
 
-      <div>
+      <div className="min-w-0 overflow-hidden">
+        <StatusPill
+          label={statusLabel[effectiveStatus]}
+          tone={statusTone(effectiveStatus)}
+        />
+        {effectiveStatus === "pending" && ticket.status === "new" ? (
+          <p className="mt-1 truncate text-xs text-rose-500">+3 min</p>
+        ) : null}
+      </div>
+
+      <div className="min-w-0">
         <span
           className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${slaClasses(ticket)}`}
         >
@@ -937,13 +1758,37 @@ function IrisTicketRow({
         </p>
       </div>
 
-      <div>
-        <StatusPill
-          label={statusLabel[ticket.status]}
-          tone={statusTone(ticket.status)}
-        />
-        <p className="mt-1 truncate text-xs text-slate-500">
+      <div className="min-w-0">
+        <OriginPill origin={origin} />
+        <p className="mt-1 truncate text-xs text-slate-400">
+          {ticket.sourceLabel}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-slate-800">
+          {ticket.profileLabel}
+        </p>
+      </div>
+
+      <div className="min-w-0 overflow-hidden">
+        <p className="truncate text-sm font-semibold text-slate-800">
+          {ticket.subject}
+        </p>
+        <p
+          className="mt-1 max-w-full truncate text-xs text-slate-500"
+          title={ticket.lastMessagePreview}
+        >
           {ticket.lastMessagePreview}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-slate-800">
+          {ticketResponseTimeLabel(ticket)}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-slate-500">
+          {ticketResponseTimeState(ticket)}
         </p>
       </div>
 
@@ -969,6 +1814,7 @@ function IrisTicketRow({
 function AttendanceView({
   onClose,
   onMessageCreated,
+  onMessageUpdated,
   onSelectTicket,
   selectedTicketId,
   ticket,
@@ -976,6 +1822,7 @@ function AttendanceView({
 }: {
   onClose: () => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
+  onMessageUpdated: (ticketId: string, message: IrisMessage) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
   ticket: IrisTicket | null;
@@ -983,7 +1830,7 @@ function AttendanceView({
 }) {
   if (!ticket) {
     return (
-      <div className="flex min-h-[620px] items-center justify-center rounded-2xl border border-[#dbe3ef] bg-white">
+      <div className="flex h-full min-h-0 items-center justify-center rounded-2xl border border-[#dbe3ef] bg-white">
         <div className="text-center">
           <MessageCircle className="mx-auto h-8 w-8 text-[#A07C3B]" />
           <h3 className="mt-3 text-base font-semibold">Selecione um ticket</h3>
@@ -1000,6 +1847,7 @@ function AttendanceView({
       onSelectTicket={onSelectTicket}
       onClose={onClose}
       onMessageCreated={onMessageCreated}
+      onMessageUpdated={onMessageUpdated}
     />
   );
 }
@@ -1007,6 +1855,7 @@ function AttendanceView({
 function IrisConversationPanel({
   onClose,
   onMessageCreated,
+  onMessageUpdated,
   onSelectTicket,
   selectedTicketId,
   ticket,
@@ -1014,6 +1863,7 @@ function IrisConversationPanel({
 }: {
   onClose: () => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
+  onMessageUpdated: (ticketId: string, message: IrisMessage) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
   ticket: IrisTicket;
@@ -1021,20 +1871,39 @@ function IrisConversationPanel({
 }) {
   const [conversationFilter, setConversationFilter] = useState("Abertas");
   const [draft, setDraft] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [recordingAudio, setRecordingAudio] = useState(false);
+  const [replyToMessage, setReplyToMessage] =
+    useState<IrisReplyPreview | null>(null);
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [search, setSearch] = useState("");
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] =
     useState(false);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioStartedAtRef = useRef<number | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
+  const repairingOutboundMessageIds = useRef(new Set<string>());
+  const { hubUser } = useAuth();
+  const operatorLabel = hubUser?.name ?? "Operador Iris";
+  const operatorAvatarUrl = hubUser?.avatarUrl ?? null;
 
   const conversations = useMemo(() => {
     const normalized = search.trim().toLowerCase();
 
     return tickets
       .filter((item) => {
+        const displayLabel = ticketContactLabel(item).toLowerCase();
+        const crmSubtitle = ticketCrmSubtitle(item).toLowerCase();
         const matchesSearch =
           !normalized ||
+          displayLabel.includes(normalized) ||
+          crmSubtitle.includes(normalized) ||
           item.contactLabel.toLowerCase().includes(normalized) ||
           item.protocol.toLowerCase().includes(normalized) ||
           item.lastMessagePreview.toLowerCase().includes(normalized);
@@ -1047,9 +1916,9 @@ function IrisConversationPanel({
           return [
             "new",
             "waiting_operator",
-            "waiting_customer",
             "pending",
-          ].includes(item.status);
+            "open",
+          ].includes(effectiveIrisStatus(item));
         }
 
         if (conversationFilter === "Encerradas") {
@@ -1067,25 +1936,97 @@ function IrisConversationPanel({
       .filter((item) =>
         ticket.contactId
           ? item.contactId === ticket.contactId
+          : ticket.contactPhone
+            ? item.contactPhone === ticket.contactPhone
           : item.contactLabel === ticket.contactLabel,
       )
       .sort(
         (first, second) =>
           dateValue(second.openedAt) - dateValue(first.openedAt),
       );
-  }, [ticket.contactId, ticket.contactLabel, ticket.id, tickets]);
+  }, [
+    ticket.contactId,
+    ticket.contactLabel,
+    ticket.contactPhone,
+    ticket.id,
+    tickets,
+  ]);
 
   const ticketChecklist = buildTicketChecklist(ticket);
   const ticketClosed = isClosedTicket(ticket);
+  const ticketStatus = effectiveIrisStatus(ticket);
   const ticketIncomplete =
     !ticketClosed &&
-    (ticket.status === "new" ||
-      ticket.status === "waiting_operator" ||
+    (ticketStatus === "new" ||
+      ticketStatus === "pending" ||
+      ticketStatus === "waiting_operator" ||
       ticketChecklist.some((item) => !item.ok));
-  const operationReady = !ticketClosed && !ticketIncomplete;
-  const blockedTooltip = ticketClosed
-    ? "Ticket encerrado"
-    : "Complete o ticket para iniciar o atendimento.";
+  const operationReady = !ticketClosed;
+  const blockedTooltip = ticketClosed ? "Ticket encerrado" : "Enviar mensagem";
+  const editingMessage = editingMessageId
+    ? ticket.messages.find((message) => message.id === editingMessageId) ?? null
+    : null;
+  const latestMessage = ticket.messages[ticket.messages.length - 1] ?? null;
+  const latestMessageSignature = latestMessage
+    ? [
+        latestMessage.id,
+        latestMessage.body,
+        latestMessage.deliveryStatus,
+        latestMessage.deliveredAt,
+        latestMessage.readAt,
+        latestMessage.reactions?.length ?? 0,
+      ].join(":")
+    : "";
+
+  useOutsideDismiss({
+    enabled: emojiPickerOpen,
+    onDismiss: () => setEmojiPickerOpen(false),
+    ref: emojiPickerRef,
+  });
+
+  useEffect(() => {
+    if (!operationReady || sending || !ticket.contactPhone) {
+      return;
+    }
+
+    const pendingLocalMessage = ticket.messages.find((message) =>
+      shouldRepairOutboundMessage(message),
+    );
+
+    if (
+      !pendingLocalMessage ||
+      repairingOutboundMessageIds.current.has(pendingLocalMessage.id)
+    ) {
+      return;
+    }
+
+    void sendExistingLocalMessage(pendingLocalMessage);
+  }, [
+    operationReady,
+    sending,
+    ticket.channelId,
+    ticket.contactId,
+    ticket.contactPhone,
+    ticket.id,
+    ticket.messages,
+  ]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const viewport = messagesViewportRef.current;
+
+      if (!viewport) {
+        return;
+      }
+
+      viewport.scrollTo({
+        behavior: "auto",
+        top: viewport.scrollHeight,
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestMessageSignature, ticket.id, ticket.messages.length]);
 
   async function sendMessage() {
     const body = draft.trim();
@@ -1094,11 +2035,15 @@ function IrisConversationPanel({
       return;
     }
 
+    if (editingMessageId) {
+      await saveEditedMessage(body);
+      return;
+    }
+
     setSending(true);
     setFeedback("");
 
     try {
-      const supabase = getHubSupabaseClient();
       const now = new Date().toISOString();
       const optimisticMessage: IrisMessage = {
         body,
@@ -1106,49 +2051,431 @@ function IrisConversationPanel({
         deliveryStatus: "queued",
         direction: "outbound",
         id: `local-${now}`,
+        messageType: "text",
+        operatorAvatarUrl,
+        replyTo: replyToMessage,
+        senderLabel: operatorLabel,
         senderType: "operator",
       };
 
-      if (supabase) {
-        const { data, error } = await supabase
-          .from("caredesk_messages")
-          .insert({
-            body,
-            channel_id: ticket.channelId ?? null,
-            delivery_status: "queued",
-            direction: "outbound",
-            message_type: "text",
-            sender_type: "operator",
-            sent_at: now,
-            ticket_id: ticket.id,
-          })
-          .select("id,body,direction,sender_type,delivery_status,created_at")
-          .single();
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body,
+          channelId: ticket.channelId ?? null,
+          contactId: ticket.contactId ?? null,
+          replyToMessageId: replyToMessage?.messageId ?? null,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
 
-        if (error) {
-          throw error;
-        }
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
 
-        onMessageCreated(ticket.id, mapMessageRow(data));
-      } else {
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel enviar pelo WhatsApp.",
+        );
+      }
+
+      if (!payload?.message) {
         onMessageCreated(ticket.id, optimisticMessage);
       }
 
       setDraft("");
-      setFeedback("Mensagem registrada no Iris.");
+      setReplyToMessage(null);
+      setEmojiPickerOpen(false);
+      setFeedback("Mensagem enviada pelo WhatsApp.");
     } catch (error) {
-      console.error("[caredesk] nao foi possivel registrar mensagem", error);
-      setFeedback("Nao foi possivel registrar a mensagem agora.");
+      console.error("[caredesk] nao foi possivel enviar mensagem", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar a mensagem agora.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function saveEditedMessage(body: string) {
+    if (!editingMessageId || sending) {
+      return;
+    }
+
+    setSending(true);
+    setFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          action: "edit",
+          body,
+          messageId: editingMessageId,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel editar a mensagem.",
+        );
+      }
+
+      if (payload?.message) {
+        onMessageUpdated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      setDraft("");
+      setEditingMessageId(null);
+      setEmojiPickerOpen(false);
+      setFeedback("Mensagem atualizada no Iris.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel editar mensagem", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel editar a mensagem agora.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendExistingLocalMessage(message: IrisMessage) {
+    repairingOutboundMessageIds.current.add(message.id);
+    setSending(true);
+    setFeedback("Sincronizando mensagem local com o WhatsApp.");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body: message.body,
+          channelId: ticket.channelId ?? null,
+          contactId: ticket.contactId ?? null,
+          messageId: message.id,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel enviar pelo WhatsApp.",
+        );
+      }
+
+      setFeedback("Mensagem sincronizada e enviada pelo WhatsApp.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel sincronizar mensagem", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel sincronizar a mensagem local.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function reactToMessage(message: IrisMessage, emoji: string) {
+    if (sending || !operationReady) {
+      return;
+    }
+
+    setFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          action: "react",
+          emoji,
+          messageId: message.id,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel reagir a mensagem.",
+        );
+      }
+
+      if (payload?.message) {
+        onMessageUpdated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel reagir", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel reagir a mensagem agora.",
+      );
+    }
+  }
+
+  function prepareReply(message: IrisMessage) {
+    setReplyToMessage(createReplyPreview(message));
+    setEditingMessageId(null);
+    setEmojiPickerOpen(false);
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  function prepareEdit(message: IrisMessage) {
+    if (message.direction !== "outbound" || message.senderType !== "operator") {
+      return;
+    }
+
+    setDraft(message.body);
+    setEditingMessageId(message.id);
+    setReplyToMessage(null);
+    setEmojiPickerOpen(false);
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  function cancelComposerContext() {
+    setEditingMessageId(null);
+    setReplyToMessage(null);
+    setEmojiPickerOpen(false);
+  }
+
+  function insertEmoji(emoji: string) {
+    setDraft((current) => `${current}${emoji}`);
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  async function toggleAudioRecording() {
+    if (sending || !operationReady) {
+      return;
+    }
+
+    if (recordingAudio) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setFeedback("Gravacao de audio indisponivel neste navegador.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+
+      audioChunksRef.current = [];
+      audioStartedAtRef.current = Date.now();
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const chunks = [...audioChunksRef.current];
+        const durationMs = audioStartedAtRef.current
+          ? Date.now() - audioStartedAtRef.current
+          : null;
+
+        stream.getTracks().forEach((track) => track.stop());
+        setRecordingAudio(false);
+        mediaRecorderRef.current = null;
+        audioStartedAtRef.current = null;
+        audioChunksRef.current = [];
+
+        if (chunks.length) {
+          const audioBlob = new Blob(chunks, {
+            type: recorder.mimeType || "audio/webm",
+          });
+          void sendAudioMessage(audioBlob, durationMs);
+        }
+      };
+      recorder.start();
+      setRecordingAudio(true);
+      setFeedback("Gravando audio. Clique novamente no microfone para enviar.");
+    } catch (error) {
+      console.error("[caredesk] microfone indisponivel", error);
+      setRecordingAudio(false);
+      setFeedback("Nao foi possivel acessar o microfone.");
+    }
+  }
+
+  async function sendAudioMessage(audioBlob: Blob, durationMs: number | null) {
+    if (sending || !operationReady) {
+      return;
+    }
+
+    if (audioBlob.size <= 0) {
+      setFeedback("Audio vazio. Grave novamente.");
+      return;
+    }
+
+    setSending(true);
+    setFeedback("");
+
+    try {
+      const dataUrl = await readBlobAsDataUrl(audioBlob);
+
+      if (dataUrl.length > IRIS_AUDIO_MAX_DATA_URL_LENGTH) {
+        throw new Error("Audio muito grande para este recorte de homologacao.");
+      }
+
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body: "Audio WhatsApp",
+          channelId: ticket.channelId ?? null,
+          contactId: ticket.contactId ?? null,
+          media: {
+            dataUrl,
+            durationMs,
+            fileName: `iris-audio-${Date.now()}.webm`,
+            mimeType: audioBlob.type || "audio/webm",
+            type: "audio",
+          },
+          replyToMessageId: replyToMessage?.messageId ?? null,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: Record<string, unknown> | null;
+          }
+        | null;
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel enviar audio pelo WhatsApp.",
+        );
+      }
+
+      setReplyToMessage(null);
+      setFeedback("Audio enviado pelo WhatsApp.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel enviar audio", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar o audio agora.",
+      );
     } finally {
       setSending(false);
     }
   }
 
   return (
-    <section className="relative flex h-[calc(100vh-154px)] min-h-[660px] w-full overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="relative flex h-full min-h-0 w-full overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <aside
         className={[
-          "hidden shrink-0 border-r border-slate-100 bg-slate-50/70 transition-all duration-300 lg:flex lg:flex-col",
+          "hidden shrink-0 border-r border-slate-300/80 bg-white shadow-[4px_0_18px_rgba(15,23,42,0.05)] transition-all duration-300 lg:flex lg:flex-col",
           conversationListCollapsed ? "w-14" : "w-72",
         ].join(" ")}
       >
@@ -1241,17 +2568,22 @@ function IrisConversationPanel({
                       : "border-slate-200/70 bg-white hover:bg-slate-50",
                   ].join(" ")}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 truncate text-sm font-semibold text-slate-950">
-                      {conversation.contactLabel}
-                    </p>
-                    <span className="shrink-0 text-[11px] text-slate-400">
-                      {conversationTime(conversation)}
-                    </span>
+                  <div className="flex items-start gap-2.5">
+                    <ContactAvatar ticket={conversation} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="min-w-0 truncate text-sm font-semibold text-slate-950">
+                          {ticketContactLabel(conversation)}
+                        </p>
+                        <span className="shrink-0 text-[11px] text-slate-400">
+                          {conversationTime(conversation)}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-1 text-xs text-slate-500 [overflow-wrap:anywhere]">
+                        {conversation.lastMessagePreview}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 line-clamp-1 text-xs text-slate-500">
-                    {conversation.lastMessagePreview}
-                  </p>
                 </button>
               ))
             ) : (
@@ -1263,21 +2595,19 @@ function IrisConversationPanel({
         ) : null}
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
         <header className="shrink-0 border-b border-slate-100 bg-white">
           <div className="flex flex-col gap-2 px-4 py-2.5 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
-                <MessageCircle className="size-5" aria-hidden="true" />
-              </div>
+              <ContactAvatar ticket={ticket} size="md" />
               <div className="min-w-0">
                 <h2 className="truncate text-base font-semibold text-slate-950">
-                  {ticket.contactLabel}
+                  {ticketContactLabel(ticket)}
                 </h2>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
                   <span>{ticket.protocol}</span>
                   <span aria-hidden="true">-</span>
-                  <span>{statusLabel[ticket.status]}</span>
+                  <span>{statusLabel[ticketStatus]}</span>
                   {ticketIncomplete ? (
                     <>
                       <span aria-hidden="true">-</span>
@@ -1347,8 +2677,11 @@ function IrisConversationPanel({
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 px-4 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-          <div className="mx-auto max-w-5xl space-y-4">
+        <div
+          ref={messagesViewportRef}
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50/40 px-3 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] sm:px-4"
+        >
+          <div className="w-full min-w-0 space-y-5">
             {previousTickets.length > 0 ? (
               <div className="flex flex-col items-center gap-2">
                 <button
@@ -1379,7 +2712,14 @@ function IrisConversationPanel({
 
             {ticket.messages.length > 0 ? (
               ticket.messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onEdit={prepareEdit}
+                  onReact={reactToMessage}
+                  onReply={prepareReply}
+                  ticket={ticket}
+                />
               ))
             ) : (
               <EmptyState
@@ -1392,15 +2732,11 @@ function IrisConversationPanel({
         </div>
 
         <footer className="shrink-0 border-t border-slate-100 bg-white p-2.5">
-          {!operationReady ? (
+          {ticketClosed ? (
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
                 <LockKeyhole className="size-3.5" aria-hidden="true" />
-                <span>
-                  {ticketClosed
-                    ? "Ticket encerrado"
-                    : "Complete o ticket para iniciar o atendimento"}
-                </span>
+                <span>Ticket encerrado</span>
               </div>
               <TicketChecklist items={ticketChecklist} />
             </div>
@@ -1413,58 +2749,123 @@ function IrisConversationPanel({
             ) : null}
           </div>
 
-          <div
-            className={[
-              "flex items-end gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity",
-              operationReady ? "opacity-100" : "opacity-55",
-            ].join(" ")}
-          >
-            <ComposerIconButton
-              disabled={!operationReady}
-              label="Emoji"
-              onClick={() => setDraft((current) => `${current}:)`)}
-            >
-              <Smile className="size-4" aria-hidden="true" />
-            </ComposerIconButton>
-            <ComposerIconButton
-              disabled={!operationReady}
-              label="Anexar arquivo"
-              onClick={() => undefined}
-            >
-              <Paperclip className="size-4" aria-hidden="true" />
-            </ComposerIconButton>
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder={
-                operationReady
-                  ? "Escrever mensagem WhatsApp..."
-                  : "Ticket incompleto"
-              }
-              disabled={!operationReady}
-              className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-            />
-            <ComposerIconButton
-              disabled={!operationReady}
-              label="Enviar audio"
-              onClick={() => undefined}
-            >
-              <Mic className="size-4" aria-hidden="true" />
-            </ComposerIconButton>
-            <Tooltip
-              content={operationReady ? "Enviar mensagem" : blockedTooltip}
-              placement="top"
-            >
+          {replyToMessage || editingMessage ? (
+            <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-[#eadcc2] bg-[#fbf6ec] px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
+                  {editingMessage ? "Editando mensagem" : "Respondendo"}
+                </p>
+                <p className="mt-0.5 line-clamp-1 text-xs font-medium text-slate-600">
+                  {editingMessage
+                    ? editingMessage.body
+                    : replyToMessage?.body ?? "Mensagem selecionada"}
+                </p>
+              </div>
               <button
                 type="button"
-                disabled={sending || !draft.trim() || !operationReady}
-                onClick={sendMessage}
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
-                aria-label={operationReady ? "Enviar mensagem" : blockedTooltip}
+                onClick={cancelComposerContext}
+                className="flex size-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-[#7A5E2C]"
+                aria-label="Cancelar contexto"
               >
-                <Send className="size-4" aria-hidden="true" />
+                <X className="size-4" aria-hidden="true" />
               </button>
-            </Tooltip>
+            </div>
+          ) : null}
+
+          <div ref={emojiPickerRef} className="relative">
+            {emojiPickerOpen && operationReady ? (
+              <div className="absolute bottom-full left-0 z-20 mb-2 grid w-56 grid-cols-6 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
+                {IRIS_EMOJI_OPTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => insertEmoji(emoji)}
+                    className="flex size-8 items-center justify-center rounded-lg text-base transition-colors hover:bg-slate-100"
+                    aria-label={`Inserir ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <div
+              className={[
+                "flex items-end gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity",
+                operationReady ? "opacity-100" : "opacity-55",
+              ].join(" ")}
+            >
+              <ComposerIconButton
+                disabled={!operationReady}
+                label="Emoji"
+                onClick={() => setEmojiPickerOpen((current) => !current)}
+              >
+                <Smile className="size-4" aria-hidden="true" />
+              </ComposerIconButton>
+              <ComposerIconButton
+                disabled
+                label="Anexos em breve"
+                onClick={() => undefined}
+              >
+                <Paperclip className="size-4" aria-hidden="true" />
+              </ComposerIconButton>
+              <textarea
+                ref={composerTextareaRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={
+                  operationReady
+                    ? editingMessage
+                      ? "Editar mensagem no Iris..."
+                      : "Escrever mensagem WhatsApp..."
+                    : "Ticket encerrado"
+                }
+                disabled={!operationReady}
+                className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              />
+              <ComposerIconButton
+                disabled={!operationReady || sending}
+                label={recordingAudio ? "Parar e enviar audio" : "Enviar audio"}
+                onClick={toggleAudioRecording}
+              >
+                {recordingAudio ? (
+                  <CircleStop
+                    className="size-4 text-rose-500"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Mic className="size-4" aria-hidden="true" />
+                )}
+              </ComposerIconButton>
+              <Tooltip
+                content={
+                  operationReady
+                    ? editingMessage
+                      ? "Salvar edicao"
+                      : "Enviar mensagem"
+                    : blockedTooltip
+                }
+                placement="top"
+              >
+                <button
+                  type="button"
+                  disabled={
+                    sending || !draft.trim() || !operationReady || recordingAudio
+                  }
+                  onClick={sendMessage}
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  aria-label={
+                    operationReady
+                      ? editingMessage
+                        ? "Salvar edicao"
+                        : "Enviar mensagem"
+                      : blockedTooltip
+                  }
+                >
+                  <Send className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
           </div>
         </footer>
       </main>
@@ -1472,16 +2873,19 @@ function IrisConversationPanel({
       <aside className="hidden w-[330px] shrink-0 border-l border-slate-100 bg-white xl:block">
         <div className="border-b border-slate-100 p-3">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                Contexto
-              </p>
-              <h3 className="mt-1 truncate text-sm font-semibold text-slate-950">
-                {ticket.contactLabel}
-              </h3>
-              <p className="mt-0.5 text-xs font-medium text-slate-500">
-                {ticket.contactPhone ?? "Sem telefone"}
-              </p>
+            <div className="flex min-w-0 items-start gap-2.5">
+              <ContactAvatar ticket={ticket} size="lg" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                  Contexto
+                </p>
+                <h3 className="mt-1 truncate text-sm font-semibold text-slate-950">
+                  {ticketContactLabel(ticket)}
+                </h3>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
+                  {ticket.contactPhone ?? "Sem telefone"}
+                </p>
+              </div>
             </div>
             <MessageSquareText
               className="size-4 text-slate-300"
@@ -1510,11 +2914,18 @@ function IrisConversationPanel({
         </div>
 
         <div className="min-h-0 space-y-2 overflow-y-auto p-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-          <ContextItem label="Cliente" value={ticket.contactLabel} />
+          <ContextItem label="Cliente" value={ticketContactLabel(ticket)} />
+          <ContextItem label="CRM 360" value={crm360ContextLabel(ticket.crm360Registration)} />
           <ContextItem label="Telefone" value={ticket.contactPhone ?? "-"} />
           <ContextItem
             label="Documento"
-            value={ticket.contactDocument ?? "-"}
+            value={
+              ticket.crm360Registration?.status === "registered"
+                ? ticket.crm360Registration.documentMasked ??
+                  ticket.contactDocument ??
+                  "-"
+                : ticket.contactDocument ?? "-"
+            }
           />
           <ContextItem label="E-mail" value={ticket.contactEmail ?? "-"} />
           <ContextItem label="Fila" value={ticket.queueLabel} />
@@ -1527,7 +2938,10 @@ function IrisConversationPanel({
             value={priorityLabel[ticket.priority]}
           />
           <ContextItem label="Origem" value={ticket.sourceLabel} />
-          <ContextItem label="Canal" value={ticket.channelLabel} />
+          <ContextItem
+            label="Canal"
+            value={formatIrisChannelLabel(ticket.channelLabel)}
+          />
 
           <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
             <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
@@ -1553,6 +2967,8 @@ function TicketSeparator({
   compact?: boolean;
   ticket: IrisTicket;
 }) {
+  const status = effectiveIrisStatus(ticket);
+
   return (
     <div className="flex items-center justify-center gap-3">
       <div className="h-px flex-1 bg-slate-200/70" />
@@ -1567,17 +2983,17 @@ function TicketSeparator({
             Ticket {ticket.protocol}
           </span>
           <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
-            {statusLabel[ticket.status]}
+            {statusLabel[status]}
           </span>
         </div>
         {!compact ? (
           <>
             <p className="mt-2 text-sm font-semibold text-slate-950">
-              {ticket.profileLabel}
+              {ticketCrmSubtitle(ticket)}
             </p>
             <p className="mt-1 text-xs font-medium text-slate-500">
               {formatDateTime(ticket.openedAt)} - {ticket.queueLabel} -{" "}
-              {ticket.channelLabel}
+              {formatIrisChannelLabel(ticket.channelLabel)}
             </p>
           </>
         ) : (
@@ -1671,6 +3087,308 @@ function TicketChecklist({
   );
 }
 
+function MetaWhatsAppEnginePanel() {
+  const [events, setEvents] = useState<IrisMetaEvent[]>([]);
+  const [refs, setRefs] = useState<IrisMetaRef[]>([]);
+  const [summary, setSummary] = useState<IrisMetaEventsResponse["summary"]>({
+    inbound: 0,
+    refsKnown: 0,
+    statuses: 0,
+    total: 0,
+  });
+  const [to, setTo] = useState("");
+  const [body, setBody] = useState("Teste Iris - WhatsApp homologacao.");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadEvents();
+  }, []);
+
+  async function loadEvents() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/events?limit=20", {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | IrisMetaEventsResponse
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel carregar eventos Meta.",
+        );
+      }
+
+      setEvents(payload?.events ?? []);
+      setRefs(payload?.refs ?? []);
+      setSummary(payload?.summary ?? summary);
+    } catch (eventError) {
+      console.error("[iris] falha ao carregar eventos meta", eventError);
+      setError(
+        eventError instanceof Error
+          ? eventError.message
+          : "Nao foi possivel carregar eventos Meta.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendTestMessage() {
+    if (sending) {
+      return;
+    }
+
+    setSending(true);
+    setFeedback(null);
+    setError(null);
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body,
+          to,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            messageId?: string;
+            persistence?: { ok?: boolean; warning?: string };
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Meta rejeitou o envio.");
+      }
+
+      setFeedback(
+        payload?.persistence?.warning ??
+          `Mensagem enviada pela Iris: ${payload?.messageId ?? "sem id"}.`,
+      );
+      setBody("");
+      await loadEvents();
+    } catch (sendError) {
+      console.error("[iris] falha ao enviar meta whatsapp", sendError);
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Nao foi possivel enviar pelo WhatsApp.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const latestOutbound = refs.find((ref) => ref.direction === "outbound");
+  const latestInbound = events.find((event) => event.direction === "inbound");
+
+  return (
+    <section className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                Meta WhatsApp
+              </p>
+              <h3 className="text-base font-semibold text-slate-950">
+                Motor de homologacao
+              </h3>
+            </div>
+          </div>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Envio manual protegido e leitura dos webhooks recebidos. Automacoes
+            e disparo em massa continuam fora deste teste.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={loadEvents}
+          disabled={loading}
+          className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Activity className="h-4 w-4" aria-hidden="true" />
+          Atualizar
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-3">
+          <div className="grid grid-cols-4 gap-2">
+            <MiniMetaStat label="Eventos" value={summary?.total ?? 0} />
+            <MiniMetaStat label="Entradas" value={summary?.inbound ?? 0} />
+            <MiniMetaStat label="Status" value={summary?.statuses ?? 0} />
+            <MiniMetaStat label="Refs" value={summary?.refsKnown ?? 0} />
+          </div>
+
+          <div className="rounded-xl border border-slate-200/70 bg-slate-50/60">
+            <div className="flex items-center justify-between border-b border-slate-200/70 px-3 py-2">
+              <p className="text-sm font-semibold text-slate-950">
+                Ultimos webhooks
+              </p>
+              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                {loading ? "Carregando" : `${events.length} eventos`}
+              </span>
+            </div>
+            <div className="max-h-72 overflow-y-auto p-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+              {events.length ? (
+                events.map((event) => (
+                  <MetaEventRow event={event} key={event.id} />
+                ))
+              ) : (
+                <div className="rounded-lg border border-slate-200/70 bg-white p-4 text-center text-sm font-medium text-slate-500">
+                  {loading
+                    ? "Carregando eventos..."
+                    : "Nenhum webhook encontrado."}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <aside className="space-y-3">
+          <div className="rounded-xl border border-[#A07C3B]/15 bg-[#fbf6ec] p-3">
+            <p className="text-sm font-semibold text-slate-950">
+              Envio manual
+            </p>
+            <label className="mt-3 block text-xs font-semibold text-slate-600">
+              WhatsApp destino
+              <input
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+                placeholder="55DDDnumero"
+                className="mt-1 h-10 w-full rounded-lg border border-[#d8c8aa] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]"
+              />
+            </label>
+            <label className="mt-3 block text-xs font-semibold text-slate-600">
+              Mensagem
+              <textarea
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+                rows={4}
+                className="mt-1 w-full resize-none rounded-lg border border-[#d8c8aa] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#A07C3B]"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={sendTestMessage}
+              disabled={sending || !to.trim() || !body.trim()}
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <Send className="h-4 w-4" aria-hidden="true" />
+              {sending ? "Enviando" : "Enviar pela Iris"}
+            </button>
+          </div>
+
+          {feedback ? (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+              {feedback}
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+              {error}
+            </div>
+          ) : null}
+
+          <BuilderCard
+            icon={Wifi}
+            title="Estado do motor"
+            rows={[
+              ["Ultima entrada", latestInbound?.messageText ?? "Sem entrada"],
+              [
+                "Ultima saida",
+                latestOutbound?.deliveryStatus
+                  ? latestOutbound.deliveryStatus
+                  : "Aguardando envio",
+              ],
+              ["Canal", "Meta Cloud API"],
+              ["Modo", "Homologacao manual"],
+            ]}
+          />
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function MiniMetaStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-slate-200/70 bg-white p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-semibold text-slate-950">
+        {formatCount(value)}
+      </p>
+    </div>
+  );
+}
+
+function MetaEventRow({ event }: { event: IrisMetaEvent }) {
+  const tone =
+    event.direction === "inbound"
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+      : event.direction === "status"
+        ? "bg-sky-50 text-sky-700 ring-sky-100"
+        : "bg-slate-50 text-slate-600 ring-slate-200";
+
+  return (
+    <div className="mb-2 rounded-lg border border-slate-200/70 bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${tone}`}
+            >
+              {event.providerEventType}
+            </span>
+            <span className="text-[11px] font-semibold text-slate-400">
+              {formatDateTime(event.receivedAt)}
+            </span>
+          </div>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+            {event.contactName ?? event.contactWaId ?? "Contato Meta"}
+          </p>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+            {event.messageText ??
+              event.statusDetail ??
+              event.messageId ??
+              "Evento sem texto operacional."}
+          </p>
+        </div>
+        <StatusPill
+          label={event.signatureValid ? "Assinado" : "Sem assinatura"}
+          tone={event.signatureValid ? "green" : "danger"}
+        />
+      </div>
+    </div>
+  );
+}
+
 function BroadcastView({
   data,
   snapshot,
@@ -1706,6 +3424,8 @@ function BroadcastView({
             tone="green"
           />
         </div>
+
+        <MetaWhatsAppEnginePanel />
 
         <div className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
           <div className="mb-4 flex items-center justify-between">
@@ -1760,8 +3480,8 @@ function BroadcastView({
           ]}
         />
         <BuilderCard
-          icon={Bot}
-          title="Athena"
+          icon={LockKeyhole}
+          title="Governanca"
           rows={[
             ["Mensagem", "Personalizada"],
             ["Anexos", "Controlados"],
@@ -1795,6 +3515,9 @@ function SetupView({
   );
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
+  const [setupTab, setSetupTab] = useState<"profiles" | "templates">(
+    "profiles",
+  );
 
   useEffect(() => {
     if (!profileForm.queueId && firstQueueId) {
@@ -1903,6 +3626,68 @@ function SetupView({
     }
   }
 
+  if (setupTab === "templates") {
+    return (
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-white p-4">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#A07C3B]">
+                Setup Iris
+              </p>
+              <h3 className="mt-1 text-base font-semibold text-[#101820]">
+                Templates Meta WhatsApp
+              </h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#63708a]">
+                Criacao, status Meta e variaveis CRM 360 para contato ativo.
+              </p>
+            </div>
+            <IrisSetupTabs active={setupTab} onChange={setSetupTab} />
+          </div>
+
+          <IrisTemplateSetupPanel templates={data.templates} />
+        </section>
+
+        <aside className="space-y-4">
+          <SetupSection
+            icon={MessageSquareText}
+            title="Templates"
+            items={
+              data.templates.length
+                ? data.templates
+                    .slice(0, 6)
+                    .map((template) => [
+                      template.name,
+                      templateStatusLabel(readTemplateMetaStatus(template)),
+                    ])
+                : [["Nenhum template", "Criar no Setup"]]
+            }
+          />
+          <SetupSection
+            icon={LockKeyhole}
+            title="Meta"
+            items={[
+              ["Canal", "WhatsApp"],
+              ["Aprovacao", "Meta"],
+              ["Botao", "Quick reply"],
+              ["Envio ativo", "Template aprovado"],
+            ]}
+          />
+          <SetupSection
+            icon={DatabaseZap}
+            title="CRM 360"
+            items={[
+              ["Cliente", "Nome e telefone"],
+              ["Contrato", "Empreendimento/unidade"],
+              ["Atendimento", "Protocolo Iris"],
+              ["Restritas", "Financeiro/link"],
+            ]}
+          />
+        </aside>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
       <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-white p-4">
@@ -1920,14 +3705,17 @@ function SetupView({
               depender de outro modulo.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={startNewProfile}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Novo motivo
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <IrisSetupTabs active={setupTab} onChange={setSetupTab} />
+            <button
+              type="button"
+              onClick={startNewProfile}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Novo motivo
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -2264,6 +4052,394 @@ function SetupView({
   );
 }
 
+function IrisSetupTabs({
+  active,
+  onChange,
+}: {
+  active: "profiles" | "templates";
+  onChange: (tab: "profiles" | "templates") => void;
+}) {
+  const tabs = [
+    { id: "profiles" as const, icon: Route, label: "Motivos" },
+    { id: "templates" as const, icon: MessageSquareText, label: "Templates" },
+  ];
+
+  return (
+    <div className="inline-flex h-10 rounded-xl border border-[#dbe3ef] bg-[#fbfcfe] p-1">
+      {tabs.map((tab) => {
+        const Icon = tab.icon;
+        const selected = active === tab.id;
+
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={[
+              "inline-flex items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors",
+              selected
+                ? "bg-[#101820] text-white shadow-sm"
+                : "text-[#63708a] hover:bg-white hover:text-[#101820]",
+            ].join(" ")}
+          >
+            <Icon className="h-4 w-4" aria-hidden="true" />
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
+  const [templateForm, setTemplateForm] = useState(() =>
+    createIrisTemplateForm(),
+  );
+  const [checkingTemplate, setCheckingTemplate] = useState(false);
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [metaStatus, setMetaStatus] = useState<string | null>(null);
+  const [templateFeedback, setTemplateFeedback] = useState("");
+  const localTemplate = useMemo(
+    () => findIrisTemplateByMetaName(templates, templateForm.name),
+    [templateForm.name, templates],
+  );
+  const displayedStatus =
+    metaStatus ?? readTemplateMetaStatus(localTemplate) ?? null;
+  const buttons = parseTemplateButtons(templateForm.buttonsText);
+  const preview = renderMetaTemplatePreview(
+    templateForm.bodyText,
+    templateForm.variables,
+  );
+
+  useEffect(() => {
+    setMetaStatus(readTemplateMetaStatus(localTemplate));
+  }, [localTemplate]);
+
+  function updateTemplateForm(field: string, value: string) {
+    setTemplateFeedback("");
+    setTemplateForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function addTemplateVariable(variable: (typeof IRIS_META_TEMPLATE_VARIABLES)[number]) {
+    setTemplateFeedback("");
+    setTemplateForm((current) => {
+      const variables = mergeTemplateVariable(current.variables, variable);
+      const bodyText = current.bodyText.includes(variable.placeholder)
+        ? current.bodyText
+        : `${current.bodyText.trim()} ${variable.placeholder}`.trim();
+
+      return {
+        ...current,
+        bodyText,
+        variables,
+      };
+    });
+  }
+
+  async function checkTemplateStatus() {
+    setCheckingTemplate(true);
+    setTemplateFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch(
+        `/api/iris/meta/templates?name=${encodeURIComponent(templateForm.name)}`,
+        {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel consultar o template na Meta.",
+        );
+      }
+
+      const template = payload?.templates?.[0];
+      const status = template?.status ?? null;
+      setMetaStatus(status);
+      setTemplateFeedback(
+        template
+          ? `Status Meta: ${templateStatusLabel(status)}.`
+          : "Template ainda nao encontrado na Meta.",
+      );
+    } catch (error) {
+      setTemplateFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel consultar o template na Meta.",
+      );
+    } finally {
+      setCheckingTemplate(false);
+    }
+  }
+
+  async function createTemplate() {
+    setCreatingTemplate(true);
+    setTemplateFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/templates", {
+        body: JSON.stringify({
+          bodyText: templateForm.bodyText,
+          buttons,
+          category: templateForm.category,
+          displayName: templateForm.displayName,
+          language: templateForm.language,
+          name: templateForm.name,
+          variables: templateForm.variables,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel criar o template real na Meta.",
+        );
+      }
+
+      const status = payload?.template?.status ?? null;
+      setMetaStatus(status);
+      setTemplateFeedback(
+        payload?.created
+          ? `Template enviado para a Meta como ${templateStatusLabel(status)}.`
+          : `Template ja existia na Meta como ${templateStatusLabel(status)}.`,
+      );
+    } catch (error) {
+      setTemplateFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel criar o template real na Meta.",
+      );
+    } finally {
+      setCreatingTemplate(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-w-0 space-y-4">
+        <div className="grid gap-3 lg:grid-cols-2">
+          <SetupField label="Nome interno">
+            <input
+              value={templateForm.displayName}
+              onChange={(event) =>
+                updateTemplateForm("displayName", event.target.value)
+              }
+              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+            />
+          </SetupField>
+          <SetupField label="Nome Meta">
+            <input
+              value={templateForm.name}
+              onChange={(event) =>
+                updateTemplateForm(
+                  "name",
+                  event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
+                )
+              }
+              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+            />
+          </SetupField>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[180px_150px_minmax(0,1fr)]">
+          <SetupField label="Categoria Meta">
+            <select
+              value={templateForm.category}
+              onChange={(event) =>
+                updateTemplateForm("category", event.target.value)
+              }
+              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+            >
+              <option value="MARKETING">Marketing</option>
+              <option value="UTILITY">Utility</option>
+              <option value="AUTHENTICATION">Authentication</option>
+            </select>
+          </SetupField>
+          <SetupField label="Idioma">
+            <input
+              value={templateForm.language}
+              onChange={(event) =>
+                updateTemplateForm("language", event.target.value)
+              }
+              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+            />
+          </SetupField>
+          <SetupField label="Botoes quick reply">
+            <input
+              value={templateForm.buttonsText}
+              onChange={(event) =>
+                updateTemplateForm("buttonsText", event.target.value)
+              }
+              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+            />
+          </SetupField>
+        </div>
+
+        <SetupField label="Mensagem">
+          <textarea
+            value={templateForm.bodyText}
+            onChange={(event) =>
+              updateTemplateForm("bodyText", event.target.value)
+            }
+            className="min-h-28 w-full resize-none rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-sm font-medium leading-6 text-[#34415a] outline-none"
+          />
+        </SetupField>
+
+        <div className="rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h4 className="text-sm font-semibold text-[#101820]">
+              Variaveis CRM 360
+            </h4>
+            <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+              Meta usa {`{{1}}`}, {`{{2}}`}...
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {IRIS_META_TEMPLATE_VARIABLES.map((variable) => (
+              <button
+                key={variable.key}
+                type="button"
+                onClick={() => addTemplateVariable(variable)}
+                className="min-w-0 rounded-lg border border-[#dbe3ef] bg-white p-2 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#fbf6ec]"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-semibold text-[#101820]">
+                    {variable.label}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-[#f4f6fa] px-1.5 py-0.5 text-[10px] font-semibold text-[#63708a]">
+                    {variable.readiness}
+                  </span>
+                </div>
+                <p className="mt-1 font-mono text-[11px] text-[#A07C3B]">
+                  {variable.placeholder}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
+          <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+            Preview
+          </p>
+          <p className="mt-2 text-sm font-medium leading-6 text-[#101820]">
+            {preview}
+          </p>
+          {buttons.length ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {buttons.map((button) => (
+                <span
+                  key={button}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-100 bg-white text-sm font-semibold text-emerald-700"
+                >
+                  {button}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <aside className="min-w-0 space-y-4">
+        <div className="rounded-xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                Status Meta
+              </p>
+              <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                {templateForm.displayName}
+              </h4>
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(displayedStatus)}`}
+            >
+              {templateStatusLabel(displayedStatus)}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            <button
+              type="button"
+              onClick={checkTemplateStatus}
+              disabled={checkingTemplate}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              <Search className="h-4 w-4" aria-hidden="true" />
+              {checkingTemplate ? "Consultando..." : "Consultar Meta"}
+            </button>
+            <button
+              type="button"
+              onClick={createTemplate}
+              disabled={creatingTemplate}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <Send className="h-4 w-4" aria-hidden="true" />
+              {creatingTemplate ? "Enviando..." : "Enviar para Meta"}
+            </button>
+          </div>
+
+          {templateFeedback ? (
+            <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
+              {templateFeedback}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-[#dbe3ef] bg-white">
+          <div className="border-b border-[#edf1f6] px-3 py-2 text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
+            Templates Iris
+          </div>
+          <div className="max-h-72 overflow-y-auto p-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+            {templates.length ? (
+              templates.slice(0, 8).map((template) => (
+                <div
+                  key={template.id}
+                  className="mb-2 rounded-lg border border-[#e4eaf3] bg-[#fbfcfe] p-2 last:mb-0"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-[#101820]">
+                      {template.name}
+                    </p>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${templateStatusTone(readTemplateMetaStatus(template))}`}
+                    >
+                      {templateStatusLabel(readTemplateMetaStatus(template))}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-[#63708a]">
+                    {readTemplateMetaName(template) ?? template.slug}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="px-3 py-8 text-center text-sm text-[#63708a]">
+                Nenhum template cadastrado no Iris.
+              </p>
+            )}
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function ReportsView({
   data,
   snapshot,
@@ -2350,12 +4526,12 @@ function ReportsView({
         />
         <BuilderCard
           icon={CalendarClock}
-          title="Agenda operacional"
+          title="Agenda"
           rows={[
             ["Retornos", formatCount(snapshot.followUpsToday)],
             ["Sem resposta", formatCount(snapshot.unanswered)],
             ["Escalados", formatCount(snapshot.waitingOperator)],
-            ["Athena", "Ativa"],
+            ["Proxima janela", "Hoje"],
           ]}
         />
       </aside>
@@ -2468,7 +4644,7 @@ function SignalCard({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[#dbe3ef] bg-white p-4 shadow-sm">
+    <div className="flex h-full min-h-[88px] flex-col rounded-2xl border border-[#dbe3ef] bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <span
           className={[
@@ -2482,8 +4658,41 @@ function SignalCard({
           {value}
         </span>
       </div>
-      <h3 className="mt-4 text-sm font-semibold">{title}</h3>
+      <h3 className="mt-auto pt-3 text-sm font-semibold">{title}</h3>
     </div>
+  );
+}
+
+function IconOnlySignalCard({
+  icon: Icon,
+  label,
+  tone = "neutral",
+  tooltip,
+}: {
+  icon: typeof Inbox;
+  label: string;
+  tone?: IrisTone;
+  tooltip: string;
+}) {
+  return (
+    <Tooltip
+      className="h-full w-full"
+      content={tooltip}
+      placement="top"
+      triggerClassName="h-full w-full"
+    >
+      <div className="flex min-h-[84px] items-center justify-center rounded-2xl border border-[#dbe3ef] bg-white p-4 shadow-sm">
+        <span
+          className={[
+            "flex h-11 w-11 items-center justify-center rounded-xl",
+            toneBg(tone),
+          ].join(" ")}
+        >
+          <Icon className={["h-5 w-5", toneText(tone)].join(" ")} />
+        </span>
+        <span className="sr-only">{label}</span>
+      </div>
+    </Tooltip>
   );
 }
 
@@ -2734,15 +4943,120 @@ function FilterSelect({
   );
 }
 
-function MessageBubble({ message }: { message: IrisMessage }) {
+function IrisInboundNoticeToast({
+  notice,
+  onDismiss,
+  onOpen,
+}: {
+  notice: IrisInboundNotice;
+  onDismiss: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="fixed right-5 top-20 z-[90] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#eadcc2] bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+          <MessageCircle className="size-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+            Nova mensagem WhatsApp
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+            {notice.title}
+          </p>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+            {notice.body}
+          </p>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium text-slate-400">
+              {formatDateTime(notice.receivedAt)}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="h-7 rounded-md px-2 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={onOpen}
+                className="h-7 rounded-md bg-[#A07C3B] px-2 text-[11px] font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+              >
+                Abrir
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactAvatar({
+  size = "md",
+  ticket,
+}: {
+  size?: "sm" | "md" | "lg";
+  ticket: IrisTicket;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const sizeClass =
+    size === "lg" ? "size-11" : size === "sm" ? "size-8" : "size-9";
+  const textClass =
+    size === "lg" ? "text-sm" : size === "sm" ? "text-[11px]" : "text-xs";
+  const imageUrl =
+    ticket.contactAvatarUrl && !imageFailed ? ticket.contactAvatarUrl : null;
+  const label = ticketContactLabel(ticket);
+
+  if (imageUrl) {
+    return (
+      <img
+        alt={label}
+        className={`${sizeClass} shrink-0 rounded-full border border-slate-200 object-cover shadow-[0_1px_2px_rgba(15,23,42,0.08)]`}
+        src={imageUrl}
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`${sizeClass} ${textClass} flex shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 font-semibold uppercase text-emerald-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)]`}
+    >
+      {contactInitials(label)}
+    </span>
+  );
+}
+
+function MessageBubble({
+  message,
+  onEdit,
+  onReact,
+  onReply,
+  ticket,
+}: {
+  message: IrisMessage;
+  onEdit: (message: IrisMessage) => void;
+  onReact: (message: IrisMessage, emoji: string) => void;
+  onReply: (message: IrisMessage) => void;
+  ticket: IrisTicket;
+}) {
   const outbound = message.direction === "outbound";
   const internal =
     message.direction === "internal" || message.senderType === "system";
+  const canEdit = outbound && message.senderType === "operator";
+  const avatarLabel = outbound
+    ? message.senderLabel ?? "Operador Iris"
+    : ticketContactLabel(ticket);
+  const avatarUrl = outbound ? message.operatorAvatarUrl : ticket.contactAvatarUrl;
 
   if (internal) {
     return (
       <div className="flex justify-center">
-        <div className="max-w-[70%] rounded-full border border-slate-200/70 bg-white px-3 py-1.5 text-center text-xs font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="max-w-[70%] rounded-full border border-slate-200/70 bg-white px-3 py-1.5 text-center text-xs font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] [overflow-wrap:anywhere]">
           {message.body}
         </div>
       </div>
@@ -2750,21 +5064,369 @@ function MessageBubble({ message }: { message: IrisMessage }) {
   }
 
   return (
-    <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
+    <div
+      className={[
+        "group flex w-full min-w-0",
+        outbound ? "justify-end pr-1 sm:pr-2" : "justify-start pl-1 sm:pl-2",
+      ].join(" ")}
+    >
       <div
         className={[
-          "max-w-[72%] rounded-2xl px-4 py-3 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.05)]",
-          outbound
-            ? "border border-[#eadcc2] bg-[#f8f4ed] text-slate-900"
-            : "border border-slate-200 bg-white text-slate-800",
+          "flex min-w-0 max-w-[88%] items-end gap-2 sm:max-w-[76%] 2xl:max-w-[860px]",
+          outbound ? "flex-row-reverse" : "flex-row",
         ].join(" ")}
       >
-        <p className="whitespace-pre-wrap leading-6">{message.body}</p>
-        <p className="mt-2 text-right text-[11px] text-slate-400">
-          {formatDateTime(message.createdAt)} | {message.deliveryStatus}
-        </p>
+        <InlineAvatar
+          avatarUrl={avatarUrl}
+          label={avatarLabel}
+          tone={outbound ? "gold" : "green"}
+        />
+        <div className="relative min-w-0">
+          <MessageBubbleActions
+            canEdit={canEdit}
+            message={message}
+            onEdit={onEdit}
+            onReact={onReact}
+            onReply={onReply}
+            outbound={outbound}
+          />
+          <div
+            className={[
+              "min-w-[128px] max-w-full rounded-2xl px-4 py-3 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.05)] [overflow-wrap:anywhere]",
+              outbound
+                ? "border border-[#eadcc2] bg-[#f8f4ed] text-slate-900"
+                : "border border-slate-200 bg-white text-slate-800",
+            ].join(" ")}
+          >
+            {outbound && message.senderLabel ? (
+              <div className="mb-1.5 flex items-center justify-end gap-1.5">
+                <span className="rounded-full border border-[#eadcc2] bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
+                  {message.senderLabel}
+                </span>
+              </div>
+            ) : null}
+            {message.replyTo ? (
+              <MessageReplyPreview reply={message.replyTo} outbound={outbound} />
+            ) : null}
+            {message.messageType === "audio" ? (
+              <AudioMessageContent message={message} outbound={outbound} />
+            ) : (
+              <p className="whitespace-pre-wrap leading-6 [overflow-wrap:anywhere]">
+                {message.body}
+              </p>
+            )}
+            <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-slate-400">
+              {message.editedAt ? <span>editada</span> : null}
+              <span>{formatDateTime(message.createdAt)}</span>
+              {outbound ? <MessageDeliveryIndicator message={message} /> : null}
+            </div>
+          </div>
+          {message.reactions?.length ? (
+            <MessageReactionStrip reactions={message.reactions} outbound={outbound} />
+          ) : null}
+        </div>
       </div>
     </div>
+  );
+}
+
+function MessageBubbleActions({
+  canEdit,
+  message,
+  onEdit,
+  onReact,
+  onReply,
+  outbound,
+}: {
+  canEdit: boolean;
+  message: IrisMessage;
+  onEdit: (message: IrisMessage) => void;
+  onReact: (message: IrisMessage, emoji: string) => void;
+  onReply: (message: IrisMessage) => void;
+  outbound: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "absolute -top-3 z-10 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-0.5 opacity-0 shadow-[0_8px_22px_rgba(15,23,42,0.12)] transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+        outbound ? "right-2" : "left-2",
+      ].join(" ")}
+    >
+      {IRIS_REACTION_OPTIONS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={() => onReact(message, emoji)}
+          className="flex size-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-slate-100"
+          aria-label={`Reagir com ${emoji}`}
+        >
+          {emoji}
+        </button>
+      ))}
+      <span className="h-5 w-px bg-slate-200" aria-hidden="true" />
+      <Tooltip content="Responder" placement="top">
+        <button
+          type="button"
+          onClick={() => onReply(message)}
+          className="flex size-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#7A5E2C]"
+          aria-label="Responder mensagem"
+        >
+          <Reply className="size-3.5" aria-hidden="true" />
+        </button>
+      </Tooltip>
+      {canEdit ? (
+        <Tooltip content="Editar no Iris" placement="top">
+          <button
+            type="button"
+            onClick={() => onEdit(message)}
+            className="flex size-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#7A5E2C]"
+            aria-label="Editar mensagem"
+          >
+            <Edit3 className="size-3.5" aria-hidden="true" />
+          </button>
+        </Tooltip>
+      ) : null}
+    </div>
+  );
+}
+
+function MessageReplyPreview({
+  outbound,
+  reply,
+}: {
+  outbound: boolean;
+  reply: IrisReplyPreview;
+}) {
+  return (
+    <div
+      className={[
+        "mb-2 rounded-xl border-l-2 px-3 py-2 text-xs",
+        outbound
+          ? "border-[#A07C3B] bg-white/70 text-slate-600"
+          : "border-emerald-400 bg-emerald-50/70 text-slate-600",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-1.5 font-semibold text-slate-700">
+        <MessageSquareReply className="size-3.5" aria-hidden="true" />
+        <span>{reply.senderLabel ?? "Mensagem"}</span>
+      </div>
+      <p className="mt-1 line-clamp-2 [overflow-wrap:anywhere]">{reply.body}</p>
+    </div>
+  );
+}
+
+function MessageReactionStrip({
+  outbound,
+  reactions,
+}: {
+  outbound: boolean;
+  reactions: IrisMessageReaction[];
+}) {
+  return (
+    <div
+      className={[
+        "absolute -bottom-3 flex rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-sm shadow-[0_6px_16px_rgba(15,23,42,0.12)]",
+        outbound ? "right-3" : "left-3",
+      ].join(" ")}
+    >
+      {reactions.slice(0, 4).map((reaction, index) => (
+        <Tooltip
+          key={`${reaction.actorUserId ?? reaction.actorLabel ?? "actor"}-${reaction.emoji}-${index}`}
+          content={reaction.actorLabel ?? "Reacao"}
+          placement="top"
+        >
+          <span className="-ml-0.5 first:ml-0">{reaction.emoji}</span>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
+function AudioMessageContent({
+  message,
+  outbound,
+}: {
+  message: IrisMessage;
+  outbound: boolean;
+}) {
+  return (
+    <div className="flex min-w-[220px] items-center gap-3">
+      <span
+        className={[
+          "flex size-9 shrink-0 items-center justify-center rounded-full",
+          outbound ? "bg-[#A07C3B] text-white" : "bg-emerald-50 text-emerald-700",
+        ].join(" ")}
+      >
+        <Play className="ml-0.5 size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        {message.audioUrl ? (
+          <audio
+            aria-label="Audio WhatsApp"
+            controls
+            className="h-8 w-full max-w-[260px]"
+            src={message.audioUrl}
+          />
+        ) : (
+          <>
+            <div className="h-2 rounded-full bg-slate-200">
+              <div className="h-2 w-1/3 rounded-full bg-[#A07C3B]" />
+            </div>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              Audio WhatsApp
+            </p>
+          </>
+        )}
+      </div>
+      <span className="shrink-0 text-xs font-semibold text-slate-500">
+        {formatAudioDuration(message.audioDurationMs)}
+      </span>
+    </div>
+  );
+}
+
+function InlineAvatar({
+  avatarUrl,
+  label,
+  tone,
+}: {
+  avatarUrl?: string | null;
+  label: string;
+  tone: "gold" | "green";
+}) {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = avatarUrl && !failed ? avatarUrl : null;
+
+  if (imageUrl) {
+    return (
+      <img
+        alt={label}
+        className="size-8 shrink-0 rounded-full border border-slate-200 object-cover shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+        src={imageUrl}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={[
+        "flex size-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold uppercase shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+        tone === "gold"
+          ? "border-[#eadcc2] bg-[#fbf6ec] text-[#7A5E2C]"
+          : "border-emerald-100 bg-emerald-50 text-emerald-700",
+      ].join(" ")}
+    >
+      {contactInitials(label)}
+    </span>
+  );
+}
+
+function MessageDeliveryIndicator({ message }: { message: IrisMessage }) {
+  const normalized = getEffectiveDeliveryStatus(message);
+  const hasMetaConfirmation = Boolean(message.externalMessageId);
+  const pendingMetaSend =
+    !hasMetaConfirmation &&
+    normalized !== "failed" &&
+    normalized !== "delivered" &&
+    normalized !== "read";
+  const doubleCheck =
+    !pendingMetaSend && (normalized === "delivered" || normalized === "read");
+  const Icon =
+    normalized === "failed" || pendingMetaSend
+      ? Clock3
+      : doubleCheck
+        ? CheckCheck
+        : Check;
+  const label = getDeliveryStatusLabel(normalized);
+  const colorClass =
+    pendingMetaSend
+      ? "text-amber-500"
+      : normalized === "read"
+      ? "text-sky-500"
+      : normalized === "failed"
+        ? "text-rose-500"
+        : "text-slate-400";
+  const tooltip = pendingMetaSend
+    ? "Aguardando envio pela Meta"
+    : label;
+
+  return (
+    <Tooltip content={tooltip} placement="top">
+      <span
+        aria-label={tooltip}
+        className={`inline-flex items-center ${colorClass}`}
+      >
+        <Icon className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+      </span>
+    </Tooltip>
+  );
+}
+
+function normalizeDeliveryStatus(status?: string | null) {
+  const normalized = status?.toLowerCase();
+
+  if (
+    normalized === "read" ||
+    normalized === "delivered" ||
+    normalized === "sent" ||
+    normalized === "failed" ||
+    normalized === "queued" ||
+    normalized === "draft"
+  ) {
+    return normalized;
+  }
+
+  return "queued";
+}
+
+function getEffectiveDeliveryStatus(message: IrisMessage) {
+  if (message.readAt) {
+    return "read";
+  }
+
+  if (message.deliveredAt) {
+    return "delivered";
+  }
+
+  return normalizeDeliveryStatus(message.deliveryStatus);
+}
+
+function getDeliveryStatusLabel(status: string) {
+  if (status === "read") {
+    return "Visualizado";
+  }
+
+  if (status === "delivered") {
+    return "Entregue, ainda nao visualizado";
+  }
+
+  if (status === "failed") {
+    return "Falha no envio";
+  }
+
+  if (status === "sent") {
+    return "Enviado, ainda nao entregue";
+  }
+
+  return "Aguardando envio";
+}
+
+function shouldRepairOutboundMessage(message: IrisMessage) {
+  const normalized = normalizeDeliveryStatus(message.deliveryStatus);
+  const ageInMs = Date.now() - dateValue(message.createdAt);
+  const repairWindowInMs = 60 * 60 * 1000;
+
+  return (
+    message.direction === "outbound" &&
+    message.senderType === "operator" &&
+    message.messageType !== "audio" &&
+    !message.externalMessageId &&
+    (normalized === "queued" ||
+      normalized === "sent" ||
+      normalized === "draft") &&
+    ageInMs >= 0 &&
+    ageInMs <= repairWindowInMs
   );
 }
 
@@ -2772,7 +5434,7 @@ function ContextItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
       <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+      <p className="mt-1 break-words text-sm font-semibold text-slate-950 [overflow-wrap:anywhere]">
         {value}
       </p>
     </div>
@@ -2806,22 +5468,90 @@ function StatusPill({
   tone = "gold",
 }: {
   label: string;
-  tone?: "danger" | "gold" | "green" | "neutral";
+  tone?: "blue" | "danger" | "gold" | "green" | "neutral";
 }) {
   const classes =
     tone === "danger"
       ? "border-rose-100 bg-rose-50 text-rose-700"
-      : tone === "green"
-        ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-        : tone === "neutral"
-          ? "border-slate-200 bg-slate-50 text-slate-600"
-          : "border-[#eadcc2] bg-[#fbf6ec] text-[#8a682f]";
+      : tone === "blue"
+        ? "border-sky-100 bg-sky-50 text-sky-700"
+        : tone === "green"
+          ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+          : tone === "neutral"
+            ? "border-slate-200 bg-slate-50 text-slate-600"
+            : "border-[#eadcc2] bg-[#fbf6ec] text-[#8a682f]";
 
   return (
     <span
       className={`inline-flex w-fit rounded-full border px-2 py-1 text-xs font-semibold ${classes}`}
     >
       {label}
+    </span>
+  );
+}
+
+function Crm360Badge({
+  compact = false,
+  registration,
+}: {
+  compact?: boolean;
+  registration?: IrisCrm360Registration | null;
+}) {
+  const registered = registration?.status === "registered";
+  const missing = registration?.status === "missing";
+  const label = registered
+    ? compact
+      ? "CRM"
+      : "CRM 360"
+    : missing
+      ? "Sem cadastro"
+      : compact
+        ? "CRM"
+        : "CRM 360";
+  const classes = registered
+    ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+    : missing
+      ? "border-rose-100 bg-rose-50 text-rose-700"
+      : "border-slate-200 bg-slate-50 text-slate-500";
+
+  return (
+    <Tooltip
+      content={crm360ContextLabel(registration)}
+      placement="top"
+      triggerClassName="inline-flex"
+    >
+      <span
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${classes}`}
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${
+            registered
+              ? "bg-emerald-500"
+              : missing
+                ? "bg-rose-500"
+                : "bg-slate-400"
+          }`}
+          aria-hidden="true"
+        />
+        {label}
+      </span>
+    </Tooltip>
+  );
+}
+
+function OriginPill({ origin }: { origin: IrisOrigin }) {
+  const active = origin === "active";
+
+  return (
+    <span
+      className={[
+        "inline-flex w-fit rounded-full border px-2 py-1 text-xs font-semibold",
+        active
+          ? "border-sky-100 bg-sky-50 text-sky-700"
+          : "border-violet-100 bg-violet-50 text-violet-700",
+      ].join(" ")}
+    >
+      {active ? "Ativo" : "Passivo"}
     </span>
   );
 }
@@ -2969,7 +5699,7 @@ async function loadIrisData(): Promise<IrisData> {
       .order("name", { ascending: true }),
     supabase
       .from("caredesk_templates")
-      .select("id,name,slug,category,channel_kind,status")
+      .select("id,name,slug,category,channel_kind,body,variables,status,metadata")
       .order("name", { ascending: true }),
     supabase
       .from("caredesk_channels")
@@ -3005,14 +5735,16 @@ async function loadIrisData(): Promise<IrisData> {
     contactIds.length
       ? supabase
           .from("caredesk_contacts")
-          .select("id,display_name,document,email,phone,whatsapp_phone")
+          .select(
+            "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload",
+          )
           .in("id", contactIds)
       : Promise.resolve({ data: [], error: null }),
     ticketIds.length
-      ? supabase
+        ? supabase
           .from("caredesk_messages")
           .select(
-            "id,ticket_id,body,direction,sender_type,delivery_status,created_at,sent_at",
+            "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
           )
           .in("ticket_id", ticketIds)
           .order("created_at", { ascending: true })
@@ -3035,12 +5767,18 @@ async function loadIrisData(): Promise<IrisData> {
     status: channel.status,
   }));
   const templates = (templatesResult.data ?? []).map((template) => ({
+    body: template.body ?? null,
     category: template.category,
     channelKind: template.channel_kind,
     id: template.id,
+    metadata:
+      template.metadata && typeof template.metadata === "object"
+        ? template.metadata
+        : null,
     name: template.name,
     slug: template.slug,
     status: template.status,
+    variables: normalizeTemplateVariablesValue(template.variables),
   }));
   const broadcasts = (broadcastsResult.data ?? []).map((broadcast) => ({
     id: broadcast.id,
@@ -3082,6 +5820,389 @@ async function loadIrisData(): Promise<IrisData> {
       }),
     ),
   };
+}
+
+async function enrichTicketsWithCrm360(data: IrisData): Promise<IrisData> {
+  const phones = unique(
+    data.tickets
+      .map((ticket) => ticket.contactPhone)
+      .filter((phone): phone is string => Boolean(phone?.trim())),
+  );
+
+  if (!phones.length) {
+    return data;
+  }
+
+  try {
+    const accessToken = await getIrisAccessToken();
+    const response = await fetch("/api/iris/apolo/phone-match", {
+      body: JSON.stringify({ phones }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      return data;
+    }
+
+    const payload = (await response.json().catch(() => null)) as
+      | {
+          results?: Record<string, IrisCrm360Registration>;
+        }
+      | null;
+    const results = payload?.results ?? {};
+
+    return {
+      ...data,
+      tickets: data.tickets.map((ticket) => ({
+        ...ticket,
+        crm360Registration: ticket.contactPhone
+          ? results[ticket.contactPhone] ?? { status: "missing" }
+          : null,
+      })),
+    };
+  } catch (error) {
+    console.error("[iris] nao foi possivel consultar o CRM 360", error);
+    return data;
+  }
+}
+
+function crm360ContextLabel(registration?: IrisCrm360Registration | null) {
+  if (!registration) {
+    return "Nao consultado";
+  }
+
+  if (registration.status === "registered") {
+    const profile = registration.profileLabel ?? registration.profiles?.join(", ");
+    const parts = [
+      registration.label ? formatIrisDisplayName(registration.label) : null,
+      profile,
+      registration.relationLabel,
+    ].filter(Boolean);
+
+    return parts.length ? parts.join(" - ") : "Cadastro localizado";
+  }
+
+  if (registration.status === "missing") {
+    return "Sem cadastro";
+  }
+
+  return "Nao consultado";
+}
+
+function ticketContactLabel(ticket: IrisTicket) {
+  const registration = ticket.crm360Registration;
+
+  if (registration?.status === "registered" && registration.label) {
+    return formatIrisDisplayName(registration.label);
+  }
+
+  if (registration?.status === "missing") {
+    return "Sem cadastro";
+  }
+
+  return formatIrisDisplayName(stripWhatsAppContactPrefix(ticket.contactLabel));
+}
+
+function ticketCrmSubtitle(ticket: IrisTicket) {
+  const registration = ticket.crm360Registration;
+
+  if (registration?.status === "registered") {
+    return (
+      registration.profileLabel ??
+      registration.profiles?.join(" | ") ??
+      registration.relationLabel ??
+      "CRM 360"
+    );
+  }
+
+  if (registration?.status === "missing") {
+    return "Telefone sem cadastro no CRM 360";
+  }
+
+  return ticket.subject;
+}
+
+function stripWhatsAppContactPrefix(value: string) {
+  return value.replace(/^WhatsApp\s*-\s*/i, "").trim() || value;
+}
+
+function formatIrisDisplayName(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  if (!normalized) {
+    return value;
+  }
+
+  return normalized
+    .split(" ")
+    .map((word, index) => formatIrisDisplayNameWord(word, index))
+    .join(" ");
+}
+
+function formatIrisDisplayNameWord(word: string, index: number) {
+  const lower = word.toLocaleLowerCase("pt-BR");
+  const smallWords = new Set(["da", "das", "de", "do", "dos", "e"]);
+
+  if (index > 0 && smallWords.has(lower)) {
+    return lower;
+  }
+
+  return lower.replace(/(^|[-'`])(\p{L})/gu, (match, prefix, letter) => {
+    return `${prefix}${letter.toLocaleUpperCase("pt-BR")}`;
+  });
+}
+
+function formatIrisChannelLabel(value: string) {
+  return value
+    .replace(/\s*Careli\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim() || value;
+}
+
+function extractIrisApoloClientOptions(payload: any): IrisApoloClientOption[] {
+  const entities = Array.isArray(payload?.data?.results)
+    ? payload.data.results
+    : Array.isArray(payload?.data?.entities)
+      ? payload.data.entities
+      : [];
+
+  return entities
+    .map((entity: any) => {
+      const phone = pickIrisApoloPhone(entity);
+
+      if (!phone) {
+        return null;
+      }
+
+      const label = formatIrisDisplayName(
+        entity.displayName ?? entity.tradeName ?? entity.legalName ?? "Cliente",
+      );
+      const profiles = Array.isArray(entity.profiles) ? entity.profiles : [];
+
+      return {
+        documentMasked: entity.documentMasked ?? null,
+        firstName: extractFirstName(label),
+        id: String(entity.id ?? phone),
+        label,
+        locationLabel: entity.locationLabel ?? null,
+        phone,
+        profileLabel: formatApoloProfileLabel(profiles, entity.kind),
+        profiles,
+      } satisfies IrisApoloClientOption;
+    })
+    .filter(Boolean) as IrisApoloClientOption[];
+}
+
+function pickIrisApoloPhone(entity: any) {
+  const directPhone = String(entity?.phone ?? "").replace(/\D/g, "");
+
+  if (directPhone.length >= 12 && directPhone.length <= 15) {
+    return directPhone;
+  }
+
+  if (directPhone.length === 10 || directPhone.length === 11) {
+    return `55${directPhone}`;
+  }
+
+  const contacts = Array.isArray(entity?.contacts) ? entity.contacts : [];
+  const whatsapp =
+    contacts.find((contact: any) => contact?.type === "whatsapp") ??
+    contacts.find((contact: any) => contact?.type === "phone");
+  const raw = String(whatsapp?.value ?? "").replace(/\D/g, "");
+
+  if (raw.length >= 12 && raw.length <= 15) {
+    return raw;
+  }
+
+  if (raw.length === 10 || raw.length === 11) {
+    return `55${raw}`;
+  }
+
+  return null;
+}
+
+function formatApoloProfileLabel(profiles: string[], kind?: string) {
+  const labels = profiles
+    .map((profile) =>
+      profile
+        .replace(/_/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter(Boolean)
+    .map((profile) => formatIrisDisplayName(profile));
+
+  if (labels.length) {
+    return labels.slice(0, 2).join(" | ");
+  }
+
+  if (kind === "pj") {
+    return "Pessoa juridica";
+  }
+
+  if (kind === "pf") {
+    return "Pessoa fisica";
+  }
+
+  return "CRM 360";
+}
+
+function extractFirstName(value: string) {
+  return value.split(/\s+/).filter(Boolean)[0] ?? "cliente";
+}
+
+function renderIrisOptInTemplate(firstName: string) {
+  return IRIS_OPT_IN_TEMPLATE.bodyText.replace(
+    "{{1}}",
+    firstName || IRIS_OPT_IN_TEMPLATE.exampleName,
+  );
+}
+
+function createIrisTemplateForm() {
+  return {
+    bodyText: IRIS_OPT_IN_TEMPLATE.bodyText,
+    buttonsText: IRIS_OPT_IN_TEMPLATE.buttons.join(", "),
+    category: IRIS_OPT_IN_TEMPLATE.category,
+    displayName: IRIS_OPT_IN_TEMPLATE.title,
+    language: IRIS_OPT_IN_TEMPLATE.language,
+    name: IRIS_OPT_IN_TEMPLATE.name,
+    variables: [...IRIS_OPT_IN_TEMPLATE.variables],
+  };
+}
+
+function findIrisTemplateByMetaName(
+  templates: IrisTemplate[],
+  metaName: string,
+) {
+  const normalizedName = metaName.trim().toLowerCase();
+
+  return templates.find((template) => {
+    const metadataName = readTemplateMetaName(template)?.toLowerCase();
+
+    return (
+      metadataName === normalizedName ||
+      template.slug === slugifyIrisProfile(normalizedName).replace(/_/g, "-") ||
+      template.slug === normalizedName.replace(/_/g, "-")
+    );
+  });
+}
+
+function readTemplateMetaStatus(template?: IrisTemplate | null) {
+  const status = readTemplateMetadataString(template, "metaStatus");
+
+  return status ?? null;
+}
+
+function readTemplateMetaName(template?: IrisTemplate | null) {
+  return readTemplateMetadataString(template, "metaTemplateName");
+}
+
+function readTemplateMetadataString(
+  template: IrisTemplate | null | undefined,
+  key: string,
+) {
+  const value = template?.metadata?.[key];
+
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeTemplateVariablesValue(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : null))
+    .filter((item): item is string => Boolean(item));
+}
+
+function parseTemplateButtons(value: string) {
+  return value
+    .split(/[,;\n]/)
+    .map((button) => button.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function mergeTemplateVariable(
+  current: typeof IRIS_OPT_IN_TEMPLATE.variables,
+  variable: (typeof IRIS_META_TEMPLATE_VARIABLES)[number],
+) {
+  if (current.some((item) => item.key === variable.key)) {
+    return current;
+  }
+
+  return [
+    ...current,
+    {
+      example: variable.example,
+      key: variable.key,
+      label: variable.label,
+      placeholder: variable.placeholder,
+    },
+  ];
+}
+
+function renderMetaTemplatePreview(
+  bodyText: string,
+  variables: typeof IRIS_OPT_IN_TEMPLATE.variables,
+) {
+  return variables.reduce(
+    (text, variable) =>
+      text.replaceAll(variable.placeholder, variable.example || variable.label),
+    bodyText,
+  );
+}
+
+function templateStatusLabel(status?: string | null) {
+  if (status === "APPROVED") {
+    return "Aprovado";
+  }
+
+  if (status === "PENDING") {
+    return "Pendente";
+  }
+
+  if (status === "REJECTED") {
+    return "Rejeitado";
+  }
+
+  return "Nao criado";
+}
+
+function templateStatusTone(status?: string | null) {
+  if (status === "APPROVED") {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+  }
+
+  if (status === "PENDING") {
+    return "bg-amber-50 text-amber-700 ring-amber-100";
+  }
+
+  if (status === "REJECTED") {
+    return "bg-rose-50 text-rose-700 ring-rose-100";
+  }
+
+  return "bg-slate-50 text-slate-600 ring-slate-200";
+}
+
+function formatPhoneForDisplay(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const withoutCountry = digits.startsWith("55") ? digits.slice(2) : digits;
+
+  if (withoutCountry.length === 11) {
+    return `+55 (${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 7)}-${withoutCountry.slice(7)}`;
+  }
+
+  if (withoutCountry.length === 10) {
+    return `+55 (${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 6)}-${withoutCountry.slice(6)}`;
+  }
+
+  return digits ? `+${digits}` : "-";
 }
 
 async function saveIrisTicketProfile(
@@ -3188,18 +6309,22 @@ function mapTicketRow(input: {
       : "Sem responsavel",
     channelId: input.row.channel_id,
     channelLabel: input.channel?.name ?? "Canal nao definido",
+    contactAvatarUrl: getContactAvatarUrl(input.contact),
     contactDocument: input.contact?.document ?? null,
     contactEmail: input.contact?.email ?? null,
     contactId: input.row.contact_id,
     contactLabel: input.contact?.display_name ?? "Cliente sem cadastro",
     contactPhone: input.contact?.whatsapp_phone ?? input.contact?.phone ?? null,
+    closedAt: input.row.closed_at,
     createdAt: input.row.created_at,
     firstRespondedAt: input.row.first_responded_at,
     firstResponseDueAt: input.row.first_response_due_at,
     id: input.row.id,
     lastMessageAt:
       lastMessage?.createdAt ?? input.row.updated_at ?? input.row.opened_at,
-    lastMessagePreview: lastMessage?.body ?? "Sem mensagens registradas",
+    lastMessagePreview: lastMessage
+      ? irisMessagePreview(lastMessage)
+      : "Sem mensagens registradas",
     messages: input.messages,
     openedAt: input.row.opened_at,
     priority: normalizePriority(input.row.priority),
@@ -3208,6 +6333,7 @@ function mapTicketRow(input: {
     queueLabel: input.queue?.name ?? "Sem fila",
     queueSlug: input.queue?.slug ?? null,
     resolutionDueAt: input.row.resolution_due_at,
+    resolvedAt: input.row.resolved_at,
     sourceLabel: sourceModule ? labelForSource(sourceModule) : "Entrada direta",
     status: normalizeStatus(input.row.status),
     subject:
@@ -3222,12 +6348,256 @@ function mapTicketRow(input: {
 
 function mapMessageRow(row: any): IrisMessage {
   return {
+    audioDurationMs: readMessageAudioDuration(row),
+    audioMimeType: readMessageAudioMimeType(row),
+    audioUrl: readMessageAudioUrl(row),
     body: row.body ?? "",
     createdAt: row.created_at,
     deliveryStatus: row.delivery_status ?? "queued",
     direction: row.direction ?? "internal",
+    editedAt: readMessageEditedAt(row),
+    deliveredAt: row.delivered_at ?? null,
+    externalMessageId: row.external_message_id ?? null,
     id: row.id,
+    messageType: row.message_type ?? readMessageType(row),
+    operatorAvatarUrl: readMessageOperatorAvatarUrl(row),
+    readAt: row.read_at ?? null,
+    reactions: readMessageReactions(row),
+    replyTo: readMessageReplyPreview(row),
+    senderLabel: readMessageSenderLabel(row),
     senderType: row.sender_type ?? "system",
+    sentAt: row.sent_at ?? null,
+  };
+}
+
+function readMessageSenderLabel(row: any) {
+  const payload = row?.provider_payload;
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const operatorLabel = (payload as Record<string, unknown>).operatorLabel;
+
+    if (typeof operatorLabel === "string" && operatorLabel.trim()) {
+      return operatorLabel.trim();
+    }
+  }
+
+  const nestedUser = row?.sender_user;
+
+  if (
+    nestedUser &&
+    typeof nestedUser === "object" &&
+    !Array.isArray(nestedUser) &&
+    typeof nestedUser.display_name === "string" &&
+    nestedUser.display_name.trim()
+  ) {
+    return nestedUser.display_name.trim();
+  }
+
+  if (typeof row?.sender_label === "string" && row.sender_label.trim()) {
+    return row.sender_label.trim();
+  }
+
+  return row?.sender_type === "operator" ? "Operador Iris" : null;
+}
+
+function readMessageOperatorAvatarUrl(row: any) {
+  const payload = row?.provider_payload;
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const avatarUrl = (payload as Record<string, unknown>).operatorAvatarUrl;
+
+    if (isUsableUrl(avatarUrl)) {
+      return avatarUrl;
+    }
+  }
+
+  const nestedUser = row?.sender_user;
+
+  if (
+    nestedUser &&
+    typeof nestedUser === "object" &&
+    !Array.isArray(nestedUser) &&
+    isUsableUrl(nestedUser.avatar_url)
+  ) {
+    return nestedUser.avatar_url;
+  }
+
+  return null;
+}
+
+function readMessageType(row: any) {
+  const payload = row?.provider_payload;
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const media = (payload as Record<string, unknown>).media;
+
+    if (media && typeof media === "object" && !Array.isArray(media)) {
+      const type = (media as Record<string, unknown>).type;
+
+      if (typeof type === "string" && type.trim()) {
+        return type.trim();
+      }
+    }
+  }
+
+  return "text";
+}
+
+function readMessageEditedAt(row: any) {
+  const payload = row?.provider_payload;
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const editedAt = (payload as Record<string, unknown>).editedAt;
+
+    if (typeof editedAt === "string" && editedAt.trim()) {
+      return editedAt.trim();
+    }
+  }
+
+  return null;
+}
+
+function readMessageReplyPreview(row: any): IrisReplyPreview | null {
+  const payload = row?.provider_payload;
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const reply = (payload as Record<string, unknown>).replyTo;
+
+  if (!reply || typeof reply !== "object" || Array.isArray(reply)) {
+    return null;
+  }
+
+  const record = reply as Record<string, unknown>;
+  const messageId = typeof record.messageId === "string" ? record.messageId : "";
+
+  if (!messageId) {
+    return null;
+  }
+
+  return {
+    body: typeof record.body === "string" ? record.body : "Mensagem selecionada",
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : null,
+    direction:
+      record.direction === "inbound" ||
+      record.direction === "outbound" ||
+      record.direction === "internal"
+        ? record.direction
+        : null,
+    externalMessageId:
+      typeof record.externalMessageId === "string"
+        ? record.externalMessageId
+        : null,
+    messageId,
+    senderLabel:
+      typeof record.senderLabel === "string" && record.senderLabel.trim()
+        ? record.senderLabel.trim()
+        : null,
+  };
+}
+
+function readMessageReactions(row: any): IrisMessageReaction[] {
+  const payload = row?.provider_payload;
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return [];
+  }
+
+  const reactions = (payload as Record<string, unknown>).reactions;
+
+  if (!Array.isArray(reactions)) {
+    return [];
+  }
+
+  return reactions
+    .map((reaction) => {
+      if (!reaction || typeof reaction !== "object" || Array.isArray(reaction)) {
+        return null;
+      }
+
+      const record = reaction as Record<string, unknown>;
+      const emoji = typeof record.emoji === "string" ? record.emoji.trim() : "";
+
+      if (!emoji) {
+        return null;
+      }
+
+      return {
+        actorAvatarUrl: isUsableUrl(record.actorAvatarUrl)
+          ? record.actorAvatarUrl
+          : null,
+        actorLabel:
+          typeof record.actorLabel === "string" && record.actorLabel.trim()
+            ? record.actorLabel.trim()
+            : null,
+        actorUserId:
+          typeof record.actorUserId === "string" && record.actorUserId.trim()
+            ? record.actorUserId.trim()
+            : null,
+        createdAt:
+          typeof record.createdAt === "string" && record.createdAt.trim()
+            ? record.createdAt.trim()
+            : null,
+        emoji,
+      } satisfies IrisMessageReaction;
+    })
+    .filter(Boolean) as IrisMessageReaction[];
+}
+
+function readMessageAudioDuration(row: any) {
+  const media = readMessageMediaPayload(row);
+  const duration = media?.durationMs;
+
+  return typeof duration === "number" && Number.isFinite(duration)
+    ? duration
+    : null;
+}
+
+function readMessageAudioMimeType(row: any) {
+  const media = readMessageMediaPayload(row);
+  const mimeType = media?.mimeType;
+
+  return typeof mimeType === "string" && mimeType.trim()
+    ? mimeType.trim()
+    : null;
+}
+
+function readMessageAudioUrl(row: any) {
+  const media = readMessageMediaPayload(row);
+  const url = media?.url ?? media?.externalUrl;
+
+  return isUsableUrl(url) ? url : null;
+}
+
+function readMessageMediaPayload(row: any): Record<string, unknown> | null {
+  const payload = row?.provider_payload;
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const media = (payload as Record<string, unknown>).media;
+
+  return media && typeof media === "object" && !Array.isArray(media)
+    ? (media as Record<string, unknown>)
+    : null;
+}
+
+function ensureOperatorIdentity(
+  message: IrisMessage,
+  operatorLabel: string,
+  operatorAvatarUrl?: string | null,
+) {
+  if (message.direction !== "outbound") {
+    return message;
+  }
+
+  return {
+    ...message,
+    operatorAvatarUrl: message.operatorAvatarUrl ?? operatorAvatarUrl ?? null,
+    senderLabel: message.senderLabel ?? operatorLabel,
   };
 }
 
@@ -3248,7 +6618,7 @@ function groupMessagesByTicket(rows: any[]) {
   return groups;
 }
 
-function buildIrisSnapshot(data: IrisData) {
+function buildIrisSnapshot(data: IrisData, onlineOperators = 0) {
   const tickets = data.tickets;
   const total = tickets.length;
   const openTickets = tickets.filter((ticket) => !isClosedTicket(ticket));
@@ -3259,11 +6629,14 @@ function buildIrisSnapshot(data: IrisData) {
   const unanswered = tickets.filter(isWaitingForIris).length;
   const waitingOperator = tickets.filter(
     (ticket) =>
-      ticket.status === "waiting_operator" ||
+      effectiveIrisStatus(ticket) === "waiting_operator" ||
       ticket.assignedToLabel === "Sem responsavel",
   ).length;
   const inbox = tickets.filter(
-    (ticket) => ticket.status === "new" || ticket.status === "waiting_operator",
+    (ticket) =>
+      effectiveIrisStatus(ticket) === "new" ||
+      effectiveIrisStatus(ticket) === "waiting_operator" ||
+      effectiveIrisStatus(ticket) === "pending",
   ).length;
   const contacts = unique(
     tickets.map((ticket) => ticket.contactId).filter(Boolean),
@@ -3278,11 +6651,14 @@ function buildIrisSnapshot(data: IrisData) {
     aiActions: Math.max(critical + unanswered + waitingOperator, 0),
     contacts,
     critical,
+    averageHandlingTimeLabel: estimateAverageHandlingTime(tickets),
     firstResponseLabel: estimateFirstResponse(tickets),
     followUpsToday: unanswered + slaCritical,
     inbox,
     messages,
+    onlineOperators,
     open: openTickets.length,
+    responseTimeLabel: estimateAverageResponse(tickets),
     slaCritical,
     topTicket,
     total,
@@ -3301,7 +6677,7 @@ function ticketScore(ticket: IrisTicket) {
     (ticket.priority === "high" ? 250 : 0) +
     (isSlaCritical(ticket) ? 300 : 0) +
     (isWaitingForIris(ticket) ? 180 : 0) +
-    (ticket.status === "waiting_operator" ? 120 : 0)
+    (effectiveIrisStatus(ticket) === "waiting_operator" ? 120 : 0)
   );
 }
 
@@ -3451,6 +6827,154 @@ function isClosedTicket(ticket: IrisTicket) {
   return ["cancelled", "closed", "resolved"].includes(ticket.status);
 }
 
+function effectiveIrisStatus(ticket: IrisTicket): IrisStatus {
+  if (shouldPromoteNewTicketToPending(ticket)) {
+    return "pending";
+  }
+
+  return ticket.status;
+}
+
+function shouldPromoteNewTicketToPending(ticket: IrisTicket) {
+  if (ticket.status !== "new" || hasCareliResponse(ticket)) {
+    return false;
+  }
+
+  const openedAt = dateValue(ticket.openedAt);
+
+  if (!openedAt) {
+    return false;
+  }
+
+  return Date.now() - openedAt >= 3 * 60 * 1000;
+}
+
+function hasCareliResponse(ticket: IrisTicket) {
+  return Boolean(ticket.firstRespondedAt) || getFirstCareliResponseAt(ticket) > 0;
+}
+
+function ticketOrigin(ticket: IrisTicket): IrisOrigin {
+  const firstMessage = sortedTicketMessages(ticket)
+    .filter((message) => message.direction !== "internal")[0];
+
+  if (firstMessage && isCareliMessage(firstMessage)) {
+    return "active";
+  }
+
+  return "passive";
+}
+
+function ticketResponseTimeLabel(ticket: IrisTicket) {
+  const currentWait = getCurrentCustomerWaitMinutes(ticket);
+
+  if (currentWait !== null) {
+    return formatDuration(currentWait);
+  }
+
+  const responseTimes = ticketResponseTimeMinutes(ticket);
+
+  if (responseTimes.length) {
+    return formatDuration(average(responseTimes));
+  }
+
+  return "-";
+}
+
+function ticketResponseTimeState(ticket: IrisTicket) {
+  if (getCurrentCustomerWaitMinutes(ticket) !== null) {
+    return "Aguardando";
+  }
+
+  if (isClosedTicket(ticket)) {
+    return "Encerrado";
+  }
+
+  return hasCareliResponse(ticket) ? "Respondido" : "Sem dados";
+}
+
+function sortedTicketMessages(ticket: IrisTicket) {
+  return [...ticket.messages].sort(
+    (first, second) => dateValue(first.createdAt) - dateValue(second.createdAt),
+  );
+}
+
+function isCareliMessage(message: IrisMessage) {
+  return message.direction === "outbound" || message.senderType === "operator";
+}
+
+function isCustomerMessage(message: IrisMessage) {
+  return message.direction === "inbound" || message.senderType === "customer";
+}
+
+function getFirstCareliResponseAt(ticket: IrisTicket) {
+  const firstRespondedAt = dateValue(ticket.firstRespondedAt);
+
+  if (firstRespondedAt) {
+    return firstRespondedAt;
+  }
+
+  const openedAt = dateValue(ticket.openedAt);
+  const firstResponse = sortedTicketMessages(ticket).find((message) => {
+    return isCareliMessage(message) && dateValue(message.createdAt) >= openedAt;
+  });
+
+  return dateValue(firstResponse?.createdAt);
+}
+
+function ticketResponseTimeMinutes(ticket: IrisTicket) {
+  const waits: number[] = [];
+  let waitingFrom: number | null = null;
+
+  sortedTicketMessages(ticket).forEach((message) => {
+    const createdAt = dateValue(message.createdAt);
+
+    if (!createdAt) {
+      return;
+    }
+
+    if (isCustomerMessage(message) && waitingFrom === null) {
+      waitingFrom = createdAt;
+      return;
+    }
+
+    if (isCareliMessage(message) && waitingFrom !== null && createdAt >= waitingFrom) {
+      waits.push((createdAt - waitingFrom) / 60000);
+      waitingFrom = null;
+    }
+  });
+
+  return waits;
+}
+
+function getCurrentCustomerWaitMinutes(ticket: IrisTicket) {
+  if (isClosedTicket(ticket)) {
+    return null;
+  }
+
+  let waitingFrom: number | null = null;
+
+  sortedTicketMessages(ticket).forEach((message) => {
+    const createdAt = dateValue(message.createdAt);
+
+    if (!createdAt) {
+      return;
+    }
+
+    if (isCustomerMessage(message)) {
+      waitingFrom = waitingFrom ?? createdAt;
+      return;
+    }
+
+    if (isCareliMessage(message)) {
+      waitingFrom = null;
+    }
+  });
+
+  return waitingFrom === null
+    ? null
+    : Math.max(0, Date.now() - waitingFrom) / 60000;
+}
+
 function isClosedToday(ticket: IrisTicket) {
   if (!isClosedTicket(ticket)) {
     return false;
@@ -3463,11 +6987,14 @@ function isClosedToday(ticket: IrisTicket) {
 }
 
 function isWaitingForIris(ticket: IrisTicket) {
+  const status = effectiveIrisStatus(ticket);
+
   return (
     !isClosedTicket(ticket) &&
     (ticket.unread ||
-      ticket.status === "new" ||
-      ticket.status === "waiting_operator")
+      status === "new" ||
+      status === "pending" ||
+      status === "waiting_operator")
   );
 }
 
@@ -3524,62 +7051,77 @@ function slaClasses(ticket: IrisTicket) {
 }
 
 function statusTone(status: IrisStatus) {
-  if (status === "closed" || status === "resolved") {
+  if (status === "closed" || status === "resolved" || status === "cancelled") {
     return "green";
   }
 
-  if (status === "cancelled") {
-    return "neutral";
+  if (status === "new") {
+    return "blue";
   }
 
-  if (status === "waiting_operator" || status === "new") {
+  if (status === "waiting_customer") {
+    return "gold";
+  }
+
+  if (status === "waiting_operator" || status === "pending" || status === "open") {
     return "danger";
   }
 
-  return "gold";
+  return "neutral";
 }
 
 function estimateFirstResponse(tickets: IrisTicket[]) {
-  const responded = tickets.filter((ticket) => ticket.firstRespondedAt);
+  const responseTimes = tickets
+    .map((ticket) => {
+      const openedAt = dateValue(ticket.openedAt);
+      const firstResponseAt = getFirstCareliResponseAt(ticket);
 
-  if (!responded.length) {
+      return openedAt && firstResponseAt
+        ? Math.max(0, firstResponseAt - openedAt) / 60000
+        : null;
+    })
+    .filter((minutes): minutes is number => minutes !== null);
+
+  if (!responseTimes.length) {
     return "Sem dados";
   }
 
-  const averageMinutes =
-    responded.reduce((total, ticket) => {
-      return (
-        total +
-        Math.max(
-          0,
-          dateValue(ticket.firstRespondedAt) - dateValue(ticket.openedAt),
-        ) /
-          60000
-      );
-    }, 0) / responded.length;
-
-  return formatDuration(averageMinutes);
+  return formatDuration(average(responseTimes));
 }
 
 function estimateAverageResponse(tickets: IrisTicket[]) {
-  const withMessages = tickets.filter((ticket) => ticket.messages.length > 1);
+  const responseTimes = tickets.flatMap(ticketResponseTimeMinutes);
 
-  if (!withMessages.length) {
+  if (!responseTimes.length) {
     return "Sem dados";
   }
 
-  const averageMinutes =
-    withMessages.reduce((total, ticket) => {
-      const first = ticket.messages[0];
-      const last = ticket.messages[ticket.messages.length - 1];
-      return (
-        total +
-        Math.max(0, dateValue(last.createdAt) - dateValue(first.createdAt)) /
-          60000
-      );
-    }, 0) / withMessages.length;
+  return formatDuration(average(responseTimes));
+}
 
-  return formatDuration(averageMinutes);
+function estimateAverageHandlingTime(tickets: IrisTicket[]) {
+  const handlingTimes = tickets
+    .map((ticket) => {
+      const openedAt = dateValue(ticket.openedAt);
+      const closedAt = dateValue(ticket.closedAt) || dateValue(ticket.resolvedAt);
+
+      return openedAt && closedAt ? Math.max(0, closedAt - openedAt) / 60000 : null;
+    })
+    .filter((minutes): minutes is number => minutes !== null);
+
+  if (!handlingTimes.length) {
+    return "Sem dados";
+  }
+
+  return formatDuration(average(handlingTimes));
+}
+
+function average(values: number[]) {
+  if (!values.length) {
+    return 0;
+  }
+
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function formatDuration(minutes: number) {
@@ -3610,6 +7152,125 @@ function labelForSource(source: string) {
 
 function formatCount(value: number) {
   return Number(value ?? 0).toLocaleString("pt-BR");
+}
+
+function collectIrisMessageIds(data: IrisData) {
+  return new Set(
+    data.tickets.flatMap((ticket) =>
+      ticket.messages.map((message) => message.id).filter(Boolean),
+    ),
+  );
+}
+
+function createReplyPreview(message: IrisMessage): IrisReplyPreview {
+  return {
+    body: irisMessagePreview(message),
+    createdAt: message.createdAt,
+    direction: message.direction,
+    externalMessageId: message.externalMessageId ?? null,
+    messageId: message.id,
+    senderLabel:
+      message.senderLabel ??
+      (message.direction === "inbound" ? "Cliente" : "Operador Iris"),
+  };
+}
+
+function irisMessagePreview(message: IrisMessage) {
+  if (message.messageType === "audio") {
+    return "Audio WhatsApp";
+  }
+
+  if (message.messageType && message.messageType !== "text") {
+    return message.body || `Mensagem ${message.messageType}`;
+  }
+
+  return message.body || "Mensagem sem texto";
+}
+
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("Nao foi possivel ler o audio."));
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("Audio invalido."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function formatAudioDuration(durationMs?: number | null) {
+  if (!durationMs || !Number.isFinite(durationMs)) {
+    return "0:00";
+  }
+
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getContactAvatarUrl(contact: any) {
+  const candidates = [
+    contact?.metadata?.avatar_url,
+    contact?.metadata?.avatarUrl,
+    contact?.metadata?.profile_picture_url,
+    contact?.metadata?.profilePictureUrl,
+    contact?.metadata?.profile_photo_url,
+    contact?.metadata?.profilePhotoUrl,
+    contact?.metadata?.picture,
+    contact?.metadata?.image,
+    contact?.c2x_payload?.avatar_url,
+    contact?.c2x_payload?.avatarUrl,
+    contact?.c2x_payload?.profile_picture_url,
+    contact?.c2x_payload?.profilePictureUrl,
+    contact?.c2x_payload?.picture,
+  ];
+
+  return candidates.find(isUsableUrl) ?? null;
+}
+
+function isUsableUrl(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^https?:\/\//i.test(value.trim()) &&
+    value.trim().length <= 2048
+  );
+}
+
+function contactInitials(name: string) {
+  const words = name
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+
+  if (!words.length) {
+    return "IR";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("");
+}
+
+async function getIrisAccessToken() {
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    throw new Error("Conexao do Supabase indisponivel.");
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const accessToken = sessionResult.data.session?.access_token;
+
+  if (sessionResult.error || !accessToken) {
+    throw new Error("Sessao administrativa ausente.");
+  }
+
+  return accessToken;
 }
 
 function formatDateTime(value?: string | null) {

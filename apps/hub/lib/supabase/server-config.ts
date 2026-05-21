@@ -15,10 +15,12 @@ export function getServerSupabaseConfig(): ServerSupabaseConfig {
       readEnvValue(env.SUPABASE_PUBLISHABLE_KEY),
     serviceRoleKey:
       readEnvValue(env.SUPABASE_SERVICE_ROLE_KEY) ??
-      readEnvValue(env.SUPABASE_SECRET_KEY),
+      readEnvValue(env.SUPABASE_SECRET_KEY) ??
+      readEnvValue(env.HOMOLOG_SUPABASE_SERVICE_ROLE_KEY),
     url:
       readEnvValue(env.NEXT_PUBLIC_SUPABASE_URL) ??
-      readEnvValue(env.SUPABASE_URL),
+      readEnvValue(env.SUPABASE_URL) ??
+      readEnvValue(env.HOMOLOG_SUPABASE_URL),
   };
 }
 

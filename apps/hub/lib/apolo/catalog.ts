@@ -1,0 +1,116 @@
+import {
+  BarChart3,
+  BriefcaseBusiness,
+  Building2,
+  ContactRound,
+  FileSpreadsheet,
+  Handshake,
+  IdCard,
+  Landmark,
+  LayoutDashboard,
+  ShieldCheck,
+  Store,
+  UserRoundCog,
+  UsersRound,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import type { ApoloProfile } from "./types";
+
+export type ApoloScreen =
+  | "dashboard"
+  | "crm"
+  | "relatorios";
+
+export type ApoloScreenItem = {
+  description: string;
+  icon: LucideIcon;
+  id: ApoloScreen;
+  label: string;
+  profileFilter?: ApoloProfile;
+};
+
+export const apoloProfileLabels = {
+  acesso_incorporador: "Incorporador",
+  colaborador: "Colaborador",
+  corretor: "Corretor",
+  fornecedor: "Fornecedor",
+  imobiliaria: "Imobiliaria",
+  incorporador: "Incorporador",
+  parceiro: "Parceiro",
+  pessoa_fisica: "Pessoa fisica",
+  pessoa_juridica: "Pessoa juridica",
+  usuario: "Usuario",
+} as const satisfies Record<ApoloProfile, string>;
+
+export const apoloProfileOptions = [
+  "usuario",
+  "incorporador",
+  "imobiliaria",
+  "corretor",
+  "parceiro",
+  "fornecedor",
+  "colaborador",
+  "acesso_incorporador",
+  "pessoa_fisica",
+  "pessoa_juridica",
+] as const satisfies readonly ApoloProfile[];
+
+export const apoloProfileCardOrder = [
+  "usuario",
+  "incorporador",
+  "imobiliaria",
+  "corretor",
+  "parceiro",
+  "fornecedor",
+  "colaborador",
+] as const satisfies readonly ApoloProfile[];
+
+export const apoloScreens = [
+  {
+    description: "Insights executivos do cadastro mestre.",
+    icon: LayoutDashboard,
+    id: "dashboard",
+    label: "Dashboard",
+  },
+  {
+    description: "Cadastro, consulta, carteira e timeline 360.",
+    icon: ContactRound,
+    id: "crm",
+    label: "CRM 360",
+  },
+  {
+    description: "Relatorios de perfis, qualidade e operacao.",
+    icon: FileSpreadsheet,
+    id: "relatorios",
+    label: "Relatorios",
+  },
+] as const satisfies readonly ApoloScreenItem[];
+
+export function getApoloScreenTitle(screen: ApoloScreen) {
+  return apoloScreens.find((item) => item.id === screen)?.label ?? "CRM";
+}
+
+export function getApoloScreenDescription(screen: ApoloScreen) {
+  return (
+    apoloScreens.find((item) => item.id === screen)?.description ??
+    "Visao operacional do cadastro mestre."
+  );
+}
+
+export function getApoloProfileIcon(profile: ApoloProfile): LucideIcon {
+  const icons = {
+    acesso_incorporador: BarChart3,
+    colaborador: UserRoundCog,
+    corretor: IdCard,
+    fornecedor: BriefcaseBusiness,
+    imobiliaria: Store,
+    incorporador: Landmark,
+    parceiro: Handshake,
+    pessoa_fisica: ContactRound,
+    pessoa_juridica: Building2,
+    usuario: UsersRound,
+  } as const satisfies Record<ApoloProfile, LucideIcon>;
+
+  return icons[profile] ?? ShieldCheck;
+}

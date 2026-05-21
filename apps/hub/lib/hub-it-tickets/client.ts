@@ -40,18 +40,31 @@ export async function getHubItTicketAccessToken(fallback?: string | null) {
 
 export async function loadHubItTickets({
   accessToken,
+  details = "full",
+  protocol,
   scope = "mine",
 }: {
   accessToken?: string | null;
+  details?: "full" | "list";
+  protocol?: string;
   scope?: HubItTicketListScope;
 }) {
   const token = await getHubItTicketAccessToken(accessToken);
 
   if (!token) {
-    throw new Error("Sessao ausente para carregar tickets TI.");
+    throw new Error("Sessao ausente para carregar HelpDesk.");
   }
 
-  const response = await fetch(`/api/hub/it-tickets?scope=${scope}`, {
+  const params = new URLSearchParams({
+    details,
+    scope,
+  });
+
+  if (protocol) {
+    params.set("protocol", protocol);
+  }
+
+  const response = await fetch(`/api/hub/it-tickets?${params.toString()}`, {
     cache: "no-store",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -65,7 +78,7 @@ export async function loadHubItTickets({
     throw new Error(
       getHubItTicketResponseMessage(
         payload,
-        "Nao foi possivel carregar tickets TI.",
+        "Nao foi possivel carregar HelpDesk.",
       ),
     );
   }
@@ -83,7 +96,7 @@ export async function createHubItTicket({
   const token = await getHubItTicketAccessToken(accessToken);
 
   if (!token) {
-    throw new Error("Sessao ausente para enviar ticket TI.");
+    throw new Error("Sessao ausente para enviar HelpDesk.");
   }
 
   const response = await fetch("/api/hub/it-tickets", {
@@ -103,7 +116,7 @@ export async function createHubItTicket({
     throw new Error(
       getHubItTicketResponseMessage(
         payload,
-        "Nao foi possivel enviar ticket TI.",
+        "Nao foi possivel enviar HelpDesk.",
       ),
     );
   }
@@ -160,7 +173,7 @@ export async function updateHubItTicket({
   const token = await getHubItTicketAccessToken(accessToken);
 
   if (!token) {
-    throw new Error("Sessao ausente para atualizar ticket TI.");
+    throw new Error("Sessao ausente para atualizar HelpDesk.");
   }
 
   const response = await fetch("/api/hub/it-tickets", {
@@ -180,7 +193,7 @@ export async function updateHubItTicket({
     throw new Error(
       getHubItTicketResponseMessage(
         payload,
-        "Nao foi possivel atualizar ticket TI.",
+        "Nao foi possivel atualizar HelpDesk.",
       ),
     );
   }
@@ -195,7 +208,8 @@ export function isHubItTicketsMigrationPendingMessage(
 
   return (
     normalizedMessage.includes("migration") &&
-    normalizedMessage.includes("ticket ti")
+    (normalizedMessage.includes("ticket ti") ||
+      normalizedMessage.includes("helpdesk"))
   );
 }
 
@@ -206,7 +220,7 @@ function getHubItTicketResponseMessage(
   if (payload?.status === "migration_pendente") {
     return (
       payload.message ??
-      "Ticket TI aguarda aplicacao da migration Supabase no banco."
+      "HelpDesk aguarda aplicacao da migration Supabase no banco."
     );
   }
 

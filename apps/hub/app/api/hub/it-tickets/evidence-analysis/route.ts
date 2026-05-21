@@ -27,6 +27,17 @@ const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const OPENAI_TIMEOUT_MS = 45_000;
 const MAX_IMAGE_EVIDENCES = 6;
 const MAX_AUDIO_EVIDENCES = 2;
+const PANTEON_BUSINESS_RULES = [
+  "Iris e o canal oficial de comunicacao externa. Demandas que exigem retorno ao cliente devem gerar ou referenciar um protocolo AT.",
+  "Zeus centraliza HelpDesk, operacao, dados, infra e suporte interno. Demandas tecnicas abertas pela Athena usam protocolo TI e precisam preservar evidencias, historico e devolutivas.",
+  "Hades trata cobranca. Quando Hades gerar comunicacao externa, o fluxo operacional deve manter protocolo CB vinculado a um AT da Iris.",
+  "Hermes e o chat interno. Mensagens, respostas, mencoes, reacoes, imagens e anexos devem manter contexto da conversa sem fechar paineis ou perder fluxo do usuario.",
+  "Athena deve registrar prints, audio, video e leitura tecnica para apoiar a triagem, sem inventar evidencia ausente.",
+  "A data de entrega solicitada pelo usuario deve ser exibida no HelpDesk; Zeus pode aprovar ou rejeitar propondo nova data, com historico visivel da decisao.",
+  "A fila HelpDesk deve destacar vencimento: hoje ou atrasado em vermelho, 1-2 dias em amarelo, acima de 3 dias em verde e sem data como pendencia de classificacao.",
+  "Gravacao de tela da Athena nao deve ser interrompida por troca de tela ou clique fora; quando estiver gravando, o fluxo deve minimizar ou preservar os controles ate finalizar.",
+  "Todos os modulos seguem a identidade Panteon: sidebar padronizado, topbar com usuario logado e linguagem operacional objetiva.",
+] as const;
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -80,7 +91,7 @@ function parseEvidenceAnalysisRequest(
 ): ParsedEvidenceAnalysisRequest {
   if (!input || typeof input !== "object") {
     return {
-      error: "Informe as evidencias do ticket TI.",
+      error: "Informe as evidencias do HelpDesk.",
       ok: false,
     };
   }
@@ -176,9 +187,9 @@ function buildFallbackEvidenceAnalysis(
   const evidenceInsights = buildEvidenceInsights(input.attachments);
 
   return {
-    actualResult: inferActualResult(description),
+    actualResult: inferActualResult(description, input),
     evidenceInsights,
-    expectedResult: inferExpectedResult(description),
+    expectedResult: inferExpectedResult(description, input),
     source: "fallback",
     technicalSummary: [
       `Modulo afetado: ${input.module}`,
@@ -186,9 +197,11 @@ function buildFallbackEvidenceAnalysis(
       `Tipo classificado: ${hubItTicketCategoryLabels[input.category]}`,
       `Impacto estimado: ${hubItTicketPriorityLabels[input.priority]}`,
       `Relato original: ${description}`,
+      "Regras de negocio consideradas:",
+      getBusinessRulesForInput(input).map((rule) => `- ${rule}`).join("\n"),
       "Evidencias consideradas:",
       evidenceInsights.map((item) => `- ${item}`).join("\n"),
-      "Triagem Athena: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo Zeus.",
+      "Triagem Athena: comparar o comportamento observado com as regras do Panteon, preencher como deveria funcionar, o que ocorreu, validar evidencias e devolver status ao usuario pelo Zeus.",
     ].join("\n"),
   };
 }
@@ -236,6 +249,9 @@ async function analyzeEvidenceWithOpenAi({
           "Voce e a Athena, analista operacional do Panteon.",
           "Leia prints/imagens e quadros extraidos de video quando estiverem presentes.",
           "Use transcricoes de audio quando estiverem presentes.",
+          "Compare o relato e as evidencias com as regras de negocio do Panteon enviadas no prompt.",
+          "Preencha expectedResult com o comportamento correto segundo a regra de negocio.",
+          "Preencha actualResult com a divergencia observada ou relatada pelo usuario.",
           "Nao invente evidencia. Se a imagem, audio ou video nao for conclusivo, registre isso de forma objetiva.",
           "Responda somente JSON valido, sem markdown.",
         ].join("\n"),
@@ -295,7 +311,7 @@ function buildEvidenceAnalysisPrompt({
   input: HubItTicketEvidenceAnalysisInput;
 }) {
   return [
-    "Monte a leitura tecnica de um Ticket TI para o Zeus.",
+    "Monte a leitura tecnica de um HelpDesk para o Zeus.",
     "Campos esperados no JSON:",
     '{"technicalSummary":"...","expectedResult":"...","actualResult":"...","evidenceInsights":["..."]}',
     "",
@@ -304,6 +320,9 @@ function buildEvidenceAnalysisPrompt({
     `Tipo: ${hubItTicketCategoryLabels[input.category]}`,
     `Impacto: ${hubItTicketPriorityLabels[input.priority]}`,
     `Relato do usuario: ${input.userDescription || "Nao informado."}`,
+    "",
+    "Regras de negocio do Panteon para comparar comportamento observado:",
+    getBusinessRulesForInput(input).map((rule) => `- ${rule}`).join("\n"),
     "",
     "Transcricoes de audio:",
     audioTranscripts.length
@@ -570,16 +589,69 @@ function isAttachmentType(
   );
 }
 
-function inferExpectedResult(description: string) {
-  const match = description.match(/esperava(?: que)?(.+?)(?:\.|\n|$)/i);
+function getBusinessRulesForInput(input: HubItTicketEvidenceAnalysisInput) {
+  const normalizedModule = normalizeRuleText(input.module);
+  const normalizedPath = normalizeRuleText(input.pathname);
+  const scopedRules = PANTEON_BUSINESS_RULES.filter((rule) => {
+    const normalizedRule = normalizeRuleText(rule);
+    const matchesModule =
+      normalizedModule.length > 0 && normalizedRule.includes(normalizedModule);
+    const matchesPath =
+      (normalizedPath.includes("hermes") &&
+        normalizedRule.includes("hermes")) ||
+      (normalizedPath.includes("hades") && normalizedRule.includes("hades")) ||
+      (normalizedPath.includes("iris") && normalizedRule.includes("iris")) ||
+      (normalizedPath.includes("zeus") && normalizedRule.includes("zeus"));
 
-  return match?.[1]?.trim() ?? undefined;
+    return (
+      normalizedRule.includes("panteon") ||
+      normalizedRule.includes("athena") ||
+      matchesModule ||
+      matchesPath
+    );
+  });
+
+  return scopedRules.length > 0
+    ? scopedRules
+    : Array.from(PANTEON_BUSINESS_RULES);
 }
 
-function inferActualResult(description: string) {
+function normalizeRuleText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+function inferExpectedResult(
+  description: string,
+  input: HubItTicketEvidenceAnalysisInput,
+) {
+  const match = description.match(/esperava(?: que)?(.+?)(?:\.|\n|$)/i);
+
+  if (match?.[1]?.trim()) {
+    return match[1].trim();
+  }
+
+  return [
+    "O comportamento esperado deve seguir as regras de negocio do Panteon para o modulo informado.",
+    getBusinessRulesForInput(input)[0],
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function inferActualResult(
+  description: string,
+  input: HubItTicketEvidenceAnalysisInput,
+) {
   const match = description.match(/(?:aconteceu|ocorreu|erro)(.+?)(?:\.|\n|$)/i);
 
-  return match?.[1]?.trim() ?? description;
+  if (match?.[1]?.trim()) {
+    return match[1].trim();
+  }
+
+  return description || `Usuario relatou divergencia no modulo ${input.module}.`;
 }
 
 function getAttachmentLabel(type: HubItTicketAttachmentInput["type"]) {

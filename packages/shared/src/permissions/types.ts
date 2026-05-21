@@ -7,6 +7,8 @@ export type HubPermission =
   | "hub:manage"
   | "setup:view"
   | "setup:manage"
+  | "apolo:view"
+  | "apolo:manage"
   | "hades:view"
   | "hades:manage"
   | "guardian:view"

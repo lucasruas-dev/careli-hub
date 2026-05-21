@@ -2,6 +2,7 @@
 
 import { useHubPresenceController } from "@/hooks/use-hub-presence";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import { AthenaTicketRecordingProvider } from "@/components/hub-support/athena-ticket-recording-provider";
 import { HubSupportDock } from "@/components/hub-support/hub-support-dock";
 import {
   getHubPresenceLabel,
@@ -40,6 +41,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   ContactRound,
+  Download,
   FileText,
   FolderKanban,
   Headphones,
@@ -87,6 +89,7 @@ const isShellHomologationEnvironment =
 
 const moduleIconMap: Record<string, ReactNode> = {
   agenda: <CalendarDays aria-hidden="true" size={18} />,
+  apolo: <ContactRound aria-hidden="true" size={18} />,
   atlas: <BarChart3 aria-hidden="true" size={18} />,
   compras: <ShoppingCart aria-hidden="true" size={18} />,
   contatos: <ContactRound aria-hidden="true" size={18} />,
@@ -101,6 +104,7 @@ const moduleIconMap: Record<string, ReactNode> = {
 };
 
 const minimumReleasedModuleIds = [
+  "apolo",
   "hades",
   "atlas",
   "iris",
@@ -158,7 +162,7 @@ export function HubShell({
   }, []);
 
   const visibleHubModules = orderedHubModules.filter((hubModule) => {
-    if (!isVisibleInCurrentEnvironment(hubModule.id)) {
+    if (!isVisibleInCurrentEnvironment(hubModule.id, isHomologationBrand)) {
       return false;
     }
 
@@ -397,7 +401,7 @@ export function HubShell({
   }
 
   return (
-    <>
+    <AthenaTicketRecordingProvider>
       <AppShell
         className="careli-hub-shell"
         layoutMode={isOperationalChrome ? "fullscreen" : layoutMode}
@@ -541,6 +545,7 @@ export function HubShell({
                       />
                     ) : null}
                   </div>
+                  <PanteonInstallButton />
                   <Tooltip content="Ajustes">
                     <IconButton
                       aria-label="Abrir ajustes"
@@ -732,7 +737,65 @@ export function HubShell({
         title="Comandos do Panteon"
       />
       <HubSupportDock />
-    </>
+    </AthenaTicketRecordingProvider>
+  );
+}
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+function PanteonInstallButton() {
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    if (isStandalonePwa()) {
+      setInstallPrompt(null);
+      return;
+    }
+
+    function handleBeforeInstallPrompt(event: Event) {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    }
+
+    function handleAppInstalled() {
+      setInstallPrompt(null);
+    }
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt,
+      );
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+
+  if (!installPrompt) {
+    return null;
+  }
+
+  return (
+    <Tooltip content="Instalar Panteon">
+      <button
+        aria-label="Instalar Panteon"
+        className="grid h-8 w-8 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] outline-none transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+        onClick={() => {
+          void installPrompt.prompt().finally(() => {
+            setInstallPrompt(null);
+          });
+        }}
+        type="button"
+      >
+        <Download aria-hidden="true" size={17} />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -902,6 +965,17 @@ function isLocalhostRuntime() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
+function isStandalonePwa() {
+  const navigatorWithStandalone = navigator as Navigator & {
+    standalone?: boolean;
+  };
+
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    navigatorWithStandalone.standalone === true
+  );
+}
+
 function isHomologationHostname(hostname: string) {
   const normalizedHostname = hostname.toLowerCase();
 
@@ -945,9 +1019,13 @@ function createMinimumReleasedModuleIds() {
   return new Set<string>(minimumReleasedModuleIds);
 }
 
-function isVisibleInCurrentEnvironment(moduleId: string) {
+function isVisibleInCurrentEnvironment(
+  moduleId: string,
+  isHomologationEnvironment: boolean,
+) {
   return (
     process.env.NODE_ENV !== "production" ||
+    isHomologationEnvironment ||
     !hiddenProductionModuleIds.has(moduleId)
   );
 }

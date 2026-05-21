@@ -29,6 +29,12 @@ export const hubItTicketStatuses = [
   "fechado",
 ] as const;
 
+export const hubItTicketDeliveryDecisionStatuses = [
+  "pendente",
+  "aprovada",
+  "reprogramada",
+] as const;
+
 export const hubItTicketStatusLabels = {
   aguardando_cliente: "Aguardando cliente",
   em_analise: "Em analise",
@@ -63,6 +69,12 @@ export const hubItTicketPriorityLabels = {
 export type HubItTicketCategory = (typeof hubItTicketCategories)[number];
 export type HubItTicketPriority = (typeof hubItTicketPriorities)[number];
 export type HubItTicketStatus = (typeof hubItTicketStatuses)[number];
+export type HubItTicketDeliveryDecisionStatus =
+  (typeof hubItTicketDeliveryDecisionStatuses)[number];
+
+export type HubItTicketDeliveryDecisionAction =
+  | "approve_requested"
+  | "reject_with_new_date";
 
 export type HubItTicketRequester = {
   avatarUrl?: string | null;
@@ -107,11 +119,16 @@ export type HubItTicketEvent = {
 export type HubItTicket = {
   actualResult?: string | null;
   adminResponse?: string | null;
+  approvedDeliveryDate?: string | null;
   assignedTo?: HubItTicketUserRef | null;
   assignedToUserId?: string | null;
   attachments: HubItTicketAttachment[];
   category: HubItTicketCategory;
   createdAt: string;
+  deliveryDecisionAt?: string | null;
+  deliveryDecisionBy?: HubItTicketUserRef | null;
+  deliveryDecisionNote?: string | null;
+  deliveryDecisionStatus?: HubItTicketDeliveryDecisionStatus;
   events: HubItTicketEvent[];
   expectedResult?: string | null;
   id: string;
@@ -120,6 +137,7 @@ export type HubItTicket = {
   protocol: string;
   requester: HubItTicketRequester;
   lastResponseBy?: HubItTicketUserRef | null;
+  requestedDeliveryDate?: string | null;
   resolutionSummary?: string | null;
   resolvedAt?: string | null;
   sourcePath?: string | null;
@@ -138,6 +156,7 @@ export type HubItTicketCreateInput = {
   expectedResult?: string;
   module: string;
   priority: HubItTicketPriority;
+  requestedDeliveryDate: string;
   sourcePath?: string;
   sourceUrl?: string;
   technicalSummary: string;
@@ -167,6 +186,9 @@ export type HubItTicketUpdateInput = {
   adminResponse?: string;
   attachments?: HubItTicketAttachmentInput[];
   customerResponse?: string;
+  approvedDeliveryDate?: string;
+  deliveryDecision?: HubItTicketDeliveryDecisionAction;
+  deliveryDecisionNote?: string;
   protocol: string;
   resolutionSummary?: string;
   status?: HubItTicketStatus;

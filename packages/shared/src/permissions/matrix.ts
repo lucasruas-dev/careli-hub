@@ -5,6 +5,8 @@ const allPermissions = [
   "hub:manage",
   "setup:view",
   "setup:manage",
+  "apolo:view",
+  "apolo:manage",
   "hades:view",
   "hades:manage",
   "guardian:view",
@@ -41,6 +43,8 @@ export const rolePermissionMatrix = {
   admin: allPermissions,
   leader: [
     "hub:view",
+    "apolo:view",
+    "apolo:manage",
     "hades:view",
     "atlas:view",
     "guardian:view",
@@ -63,6 +67,7 @@ export const rolePermissionMatrix = {
   ],
   operator: [
     "hub:view",
+    "apolo:view",
     "hades:view",
     "guardian:view",
     "iris:view",
@@ -77,6 +82,7 @@ export const rolePermissionMatrix = {
   ],
   viewer: [
     "hub:view",
+    "apolo:view",
     "hades:view",
     "guardian:view",
     "iris:view",

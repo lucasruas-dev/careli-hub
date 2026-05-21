@@ -31,6 +31,35 @@ export const hubModules = [
     ],
   },
   {
+    id: "apolo",
+    name: "Apolo",
+    description: "CRM central, cadastro mestre e visao 360 de pessoas e empresas do Panteon.",
+    category: "commercial",
+    status: "active",
+    basePath: "/apolo",
+    iconKey: "apolo",
+    realtimeEnabled: false,
+    order: 17,
+    requiredPermissions: ["apolo:view"],
+    routes: [
+      {
+        id: "apolo-overview",
+        label: "CRM 360",
+        path: "/apolo",
+        description: "Busca, cadastro mestre e vida operacional consolidada.",
+      },
+    ],
+    navigationItems: [
+      {
+        id: "apolo-overview",
+        label: "Apolo",
+        path: "/apolo",
+        iconKey: "apolo",
+        order: 10,
+      },
+    ],
+  },
+  {
     id: "iris",
     name: "Iris",
     description: "Atendimento multicanal e mensagens operacionais do Panteon.",

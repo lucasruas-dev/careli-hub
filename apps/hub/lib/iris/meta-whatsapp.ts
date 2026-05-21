@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 
 export const META_WHATSAPP_WEBHOOK_PATH = "/api/iris/meta/webhook";
 
@@ -31,6 +32,58 @@ export type MetaWhatsAppWebhookConfig = {
   verifyToken?: string;
   whatsappBusinessAccountId?: string;
 };
+
+export type MetaWhatsAppOutboundConfig = {
+  accessToken?: string;
+  graphVersion?: string;
+  phoneNumberId?: string;
+  whatsappBusinessAccountId?: string;
+};
+
+export type MetaWhatsAppSendMessageResult = {
+  contactWaId: string | null;
+  messageId: string | null;
+  raw: unknown;
+};
+
+export type MetaWhatsAppSendTextResult = MetaWhatsAppSendMessageResult;
+export type MetaWhatsAppCreateTemplateResult = {
+  category: string | null;
+  id: string | null;
+  name: string | null;
+  raw: unknown;
+  status: string | null;
+};
+
+export type MetaWhatsAppTemplateSummary = {
+  category: string | null;
+  components: unknown;
+  id: string | null;
+  language: string | null;
+  name: string | null;
+  status: string | null;
+};
+
+export class MetaWhatsAppSendError extends Error {
+  code: number | string | null;
+  details: unknown;
+  status: number;
+
+  constructor(
+    message: string,
+    status: number,
+    options?: {
+      code?: number | string | null;
+      details?: unknown;
+    },
+  ) {
+    super(message);
+    this.name = "MetaWhatsAppSendError";
+    this.code = options?.code ?? null;
+    this.details = options?.details ?? null;
+    this.status = status;
+  }
+}
 
 export type MetaWhatsAppWebhookEventSummary = {
   changeField: string | null;
@@ -122,6 +175,538 @@ export function getMetaWhatsAppWebhookConfig(
     whatsappBusinessAccountId: readEnvValue(
       env.META_WHATSAPP_BUSINESS_ACCOUNT_ID,
     ),
+  };
+}
+
+export function getMetaWhatsAppOutboundConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): MetaWhatsAppOutboundConfig {
+  return {
+    accessToken: readEnvValue(env.META_WHATSAPP_ACCESS_TOKEN),
+    graphVersion: readEnvValue(env.META_WHATSAPP_GRAPH_VERSION),
+    phoneNumberId: readEnvValue(env.META_WHATSAPP_PHONE_NUMBER_ID),
+    whatsappBusinessAccountId: readEnvValue(
+      env.META_WHATSAPP_BUSINESS_ACCOUNT_ID,
+    ),
+  };
+}
+
+export async function sendMetaWhatsAppTextMessage({
+  body,
+  config = getMetaWhatsAppOutboundConfig(),
+  contextMessageId,
+  to,
+}: {
+  body: string;
+  config?: MetaWhatsAppOutboundConfig;
+  contextMessageId?: string | null;
+  to: string;
+}): Promise<MetaWhatsAppSendTextResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const phoneNumberId = readEnvValue(config.phoneNumberId);
+
+  if (!accessToken || !graphVersion || !phoneNumberId) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao outbound Meta WhatsApp incompleta.",
+      503,
+    );
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+    {
+      body: JSON.stringify({
+        ...(contextMessageId
+          ? { context: { message_id: contextMessageId } }
+          : {}),
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        text: {
+          body,
+          preview_url: false,
+        },
+        to,
+        type: "text",
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        contacts?: Array<{ wa_id?: unknown }>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        messages?: Array<{ id?: unknown }>;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou o envio.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    contactWaId: normalizeText(payload?.contacts?.[0]?.wa_id),
+    messageId: normalizeText(payload?.messages?.[0]?.id),
+    raw: payload,
+  };
+}
+
+export async function sendMetaWhatsAppTemplateMessage({
+  bodyParameters = [],
+  config = getMetaWhatsAppOutboundConfig(),
+  language,
+  name,
+  to,
+}: {
+  bodyParameters?: string[];
+  config?: MetaWhatsAppOutboundConfig;
+  language: string;
+  name: string;
+  to: string;
+}): Promise<MetaWhatsAppSendMessageResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const phoneNumberId = readEnvValue(config.phoneNumberId);
+
+  if (!accessToken || !graphVersion || !phoneNumberId) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao outbound Meta WhatsApp incompleta.",
+      503,
+    );
+  }
+
+  const components = bodyParameters.length
+    ? [
+        {
+          parameters: bodyParameters.map((text) => ({ text, type: "text" })),
+          type: "body",
+        },
+      ]
+    : [];
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+    {
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        template: {
+          components,
+          language: { code: language },
+          name,
+        },
+        to,
+        type: "template",
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        contacts?: Array<{ wa_id?: unknown }>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        messages?: Array<{ id?: unknown }>;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou o envio do template.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    contactWaId: normalizeText(payload?.contacts?.[0]?.wa_id),
+    messageId: normalizeText(payload?.messages?.[0]?.id),
+    raw: payload,
+  };
+}
+
+export async function listMetaWhatsAppMessageTemplates({
+  config = getMetaWhatsAppOutboundConfig(),
+  limit = 20,
+  name,
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+  limit?: number;
+  name?: string | null;
+} = {}): Promise<MetaWhatsAppTemplateSummary[]> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const whatsappBusinessAccountId = readEnvValue(
+    config.whatsappBusinessAccountId,
+  );
+
+  if (!accessToken || !graphVersion || !whatsappBusinessAccountId) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao de templates Meta WhatsApp incompleta.",
+      503,
+    );
+  }
+
+  const searchParams = new URLSearchParams({
+    fields: "id,name,status,category,language,components",
+    limit: String(Math.min(Math.max(Math.trunc(limit), 1), 100)),
+  });
+
+  if (name?.trim()) {
+    searchParams.set("name", name.trim());
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${whatsappBusinessAccountId}/message_templates?${searchParams.toString()}`,
+    {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        data?: Array<Record<string, unknown>>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou a consulta de templates.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return Array.isArray(payload?.data)
+    ? payload.data.map((template) => ({
+        category: normalizeText(template.category),
+        components: template.components ?? null,
+        id: normalizeText(template.id),
+        language: normalizeText(template.language),
+        name: normalizeText(template.name),
+        status: normalizeText(template.status),
+      }))
+    : [];
+}
+
+export async function createMetaWhatsAppMessageTemplate({
+  category,
+  components,
+  config = getMetaWhatsAppOutboundConfig(),
+  language,
+  name,
+}: {
+  category: "AUTHENTICATION" | "MARKETING" | "UTILITY";
+  components: unknown[];
+  config?: MetaWhatsAppOutboundConfig;
+  language: string;
+  name: string;
+}): Promise<MetaWhatsAppCreateTemplateResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const whatsappBusinessAccountId = readEnvValue(
+    config.whatsappBusinessAccountId,
+  );
+
+  if (!accessToken || !graphVersion || !whatsappBusinessAccountId) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao de templates Meta WhatsApp incompleta.",
+      503,
+    );
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${whatsappBusinessAccountId}/message_templates`,
+    {
+      body: JSON.stringify({
+        category,
+        components,
+        language,
+        name,
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        category?: unknown;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        id?: unknown;
+        name?: unknown;
+        status?: unknown;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou a criacao do template.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    category: normalizeText(payload?.category) ?? category,
+    id: normalizeText(payload?.id),
+    name: normalizeText(payload?.name) ?? name,
+    raw: payload,
+    status: normalizeText(payload?.status),
+  };
+}
+
+export async function sendMetaWhatsAppAudioMessage({
+  audioBase64,
+  config = getMetaWhatsAppOutboundConfig(),
+  contextMessageId,
+  fileName,
+  mimeType,
+  to,
+}: {
+  audioBase64: string;
+  config?: MetaWhatsAppOutboundConfig;
+  contextMessageId?: string | null;
+  fileName: string;
+  mimeType: string;
+  to: string;
+}): Promise<MetaWhatsAppSendMessageResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const phoneNumberId = readEnvValue(config.phoneNumberId);
+
+  if (!accessToken || !graphVersion || !phoneNumberId) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao outbound Meta WhatsApp incompleta.",
+      503,
+    );
+  }
+
+  const mediaId = await uploadMetaWhatsAppAudio({
+    accessToken,
+    audioBase64,
+    fileName,
+    graphVersion,
+    mimeType,
+    phoneNumberId,
+  });
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+    {
+      body: JSON.stringify({
+        audio: {
+          id: mediaId,
+        },
+        ...(contextMessageId
+          ? { context: { message_id: contextMessageId } }
+          : {}),
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "audio",
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        contacts?: Array<{ wa_id?: unknown }>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        messages?: Array<{ id?: unknown }>;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou o envio do audio.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    contactWaId: normalizeText(payload?.contacts?.[0]?.wa_id),
+    messageId: normalizeText(payload?.messages?.[0]?.id),
+    raw: payload,
+  };
+}
+
+async function uploadMetaWhatsAppAudio({
+  accessToken,
+  audioBase64,
+  fileName,
+  graphVersion,
+  mimeType,
+  phoneNumberId,
+}: {
+  accessToken: string;
+  audioBase64: string;
+  fileName: string;
+  graphVersion: string;
+  mimeType: string;
+  phoneNumberId: string;
+}) {
+  const bytes = Uint8Array.from(Buffer.from(audioBase64, "base64"));
+  const formData = new FormData();
+
+  formData.append("messaging_product", "whatsapp");
+  formData.append("type", mimeType);
+  formData.append("file", new Blob([bytes], { type: mimeType }), fileName);
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/media`,
+    {
+      body: formData,
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        id?: unknown;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou o upload do audio.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  const mediaId = normalizeText(payload?.id);
+
+  if (!mediaId) {
+    throw new MetaWhatsAppSendError(
+      "Meta WhatsApp nao retornou ID de midia.",
+      502,
+    );
+  }
+
+  return mediaId;
+}
+
+export async function sendMetaWhatsAppReactionMessage({
+  config = getMetaWhatsAppOutboundConfig(),
+  emoji,
+  messageId,
+  to,
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+  emoji: string;
+  messageId: string;
+  to: string;
+}): Promise<MetaWhatsAppSendMessageResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const phoneNumberId = readEnvValue(config.phoneNumberId);
+
+  if (!accessToken || !graphVersion || !phoneNumberId) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao outbound Meta WhatsApp incompleta.",
+      503,
+    );
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+    {
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        reaction: {
+          emoji,
+          message_id: messageId,
+        },
+        recipient_type: "individual",
+        to,
+        type: "reaction",
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        contacts?: Array<{ wa_id?: unknown }>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        messages?: Array<{ id?: unknown }>;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou a reacao.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    contactWaId: normalizeText(payload?.contacts?.[0]?.wa_id),
+    messageId: normalizeText(payload?.messages?.[0]?.id),
+    raw: payload,
   };
 }
 
@@ -280,8 +865,22 @@ function normalizeText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizeErrorCode(value: unknown) {
+  if (typeof value === "number" || typeof value === "string") {
+    return value;
+  }
+
+  return null;
+}
+
 function readEnvValue(value: string | undefined) {
   const normalizedValue = value?.trim();
 
   return normalizedValue ? normalizedValue : undefined;
+}
+
+function normalizeGraphVersion(value: string | undefined) {
+  const normalizedValue = readEnvValue(value)?.replace(/^\/+|\/+$/g, "");
+
+  return normalizedValue || undefined;
 }
