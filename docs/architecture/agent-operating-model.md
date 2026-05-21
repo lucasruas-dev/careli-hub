@@ -24,6 +24,7 @@ Nomes legados em historico, banco, envs, migrations e rotas antigas sao compatib
 - Vercel, ambientes, deploys, previews, aliases, dominios ou protection bypass.
 - Supabase, Auth, REST, Realtime, Storage, RLS, grants, migrations, service role, secret key, anon key, publishable key ou `POSTGRES_URL`.
 - Banco real, scripts operacionais, healthchecks, rollback, safe mode ou incidentes de infraestrutura.
+- APIs externas, webhooks, conectores, bearers, tokens de provider, filas, storage externo ou integracoes entre modulos.
 - Regras transversais que possam afetar Hades, Hermes, Iris, Chronos, Atlas, Zeus, Setup ou producao.
 
 O guardiao deve proteger a arquitetura, nao centralizar features de produto. Hades Core, Hermes Core, Iris Core, Chronos Core, Atlas Core, Zeus e Setup continuam donos dos seus modulos.
@@ -38,6 +39,7 @@ Antes de agir, o agente deve:
 - Ler `docs/operations/README.md`.
 - Ler `docs/operations/engineering-operations.md`.
 - Conferir as politicas em `docs/architecture/*` quando a demanda tocar seguranca, ambiente, secrets, release, rollback ou incidente.
+- Ler `docs/architecture/api-connection-governance.md` quando a demanda tocar API externa, webhook, conector, token, bearer, banco, Supabase, Meta, Asaas, D4Sign, OpenAI, Asana, Atlas, Hermes TURN ou sync operacional.
 - Conferir Git/worktree e separar escopo de produto, infraestrutura, dados e release.
 
 Em demandas de infraestrutura, tambem deve ler `package.json`, `turbo.json`, scripts operacionais em `scripts/` e configuracao Vercel do projeto antes de propor ou executar acao.
@@ -47,6 +49,7 @@ Em demandas de infraestrutura, tambem deve ler `package.json`, `turbo.json`, scr
 O agente deve iniciar como `BLOQUEADO` quando a demanda envolver:
 
 - Criar, alterar, remover, renomear, copiar, rotacionar ou expor envs, secrets, tokens, service role, `POSTGRES_URL`, Supabase keys, Vercel envs, chaves externas ou credenciais.
+- Alterar webhook, bearer, API key, app secret, phone number id operacional, connection string, fila externa, storage externo ou conector de terceiro.
 - Production deployment, promocao, rollback, alias, dominio ou protection bypass.
 - Migration, seed, script com escrita real, alteracao de RLS/grants ou banco real.
 - Mistura de recortes de modulo, infraestrutura, banco e release sem pacote claro.

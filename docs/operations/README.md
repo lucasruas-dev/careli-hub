@@ -28,6 +28,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `docs/architecture/agent-operating-model.md`: comportamento esperado dos agentes e papel de guardiao da arquitetura operacional.
 - `docs/architecture/security-governance.md`: regras gerais de seguranca, autorizacao humana, operacoes sensiveis e safe mode.
 - `docs/architecture/environment-governance.md`: ambientes, env registry e bloqueio padrao para envs.
+- `docs/architecture/api-connection-governance.md`: mapa de APIs, conectores, env names, autorizacoes e roteiro seguro de diagnostico para agentes.
 - `docs/architecture/production-safety-policy.md`: protecao de producao.
 - `docs/architecture/incident-response-policy.md`: resposta a incidentes.
 - `docs/architecture/release-and-rollback-policy.md`: release, healthcheck e rollback.
@@ -36,6 +37,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 ## Regras de uso
 
 - Leia esta pasta antes de atuar em Vercel, Supabase, banco, dominios, deploys, rollback, envs, secrets ou incidentes.
+- Leia `docs/architecture/api-connection-governance.md` antes de diagnosticar ou alterar qualquer API externa, webhook, conector, bearer, token, service role, banco ou integracao.
 - Registre novas entradas somente no diario canonico `docs/operations/engineering-operations.md`.
 - Mantenha o diario append-only: nao apague historico; normalize por entradas novas.
 - Use `docs/operations/releases-homologation.md` como referencia objetiva do que foi homologado, esta em homologacao ou esta pronto para producao.

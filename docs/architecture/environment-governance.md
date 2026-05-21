@@ -27,6 +27,12 @@ Exemplos:
 
 O registry deve documentar nomes, finalidade, owner e criticidade, nunca valores.
 
+Para APIs, conectores, webhooks e bancos, o detalhamento de relacao com o Hub,
+nomes das chaves, autorizacao e smokes seguros fica em
+`docs/architecture/api-connection-governance.md`. Este arquivo resume o
+registry; o guia de conexoes explica como analisar cada integracao sem expor
+segredos.
+
 | Nome ou familia | Owner | Finalidade | Criticidade |
 | --- | --- | --- | --- |
 | `NEXT_PUBLIC_CARELI_APP_ENV` | Zeus | Identificar ambiente publico do app. | Media |
@@ -40,6 +46,11 @@ O registry deve documentar nomes, finalidade, owner e criticidade, nunca valores
 | `POSTGRES_USER`, `POSTGRES_HOST`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE` | Zeus/Zeus | Componentes de conexao Postgres. | Critica |
 | `GUARDIAN_DB_*` | Zeus/Hades Core | Conexao C2X/Hades. | Critica |
 | `ASAAS_*`, `D4SIGN_*`, `OPENAI_API_KEY`, `GUARDIAN_SYNC_SECRET` | Zeus/Squad responsavel | Integracoes externas. | Critica |
+| `META_WHATSAPP_*` | Iris Core/Zeus | Cloud API da Meta, webhook e envio WhatsApp. | Critica |
+| `ASANA_*` | Zeus/Hefesto | Integracao operacional com Asana. | Alta |
+| `NEXT_PUBLIC_PULSEX_TURN_*` | Hermes Core | Configuracao WebRTC/TURN exposta ao browser. | Alta |
+| `ATLAS_SUPABASE_*`, `SOURCE_SUPABASE_*`, `TARGET_SUPABASE_*` | Atlas Core/Zeus | Fontes Supabase Atlas e rotinas de copia/sync. | Critica |
+| `SQUADOPS_*` | Zeus | Sync e administracao operacional do Operations Center. | Critica |
 | `VERCEL_GIT_COMMIT_REF` | Hefesto/Zeus | Rastreabilidade de build/deploy. | Baixa |
 
 ## Regras por ambiente

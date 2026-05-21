@@ -18,7 +18,7 @@ Uma operacao deve ser tratada como sensivel quando envolver:
 - Vercel Project, Vercel envs, aliases, dominios, custom environments, protection bypass ou production deployment.
 - Supabase Auth, REST/Data API, Realtime, Storage, RLS, grants, migrations, service role, secret key, anon key ou publishable key.
 - Banco real, `POSTGRES_URL`, pooler, direct connection, replicas, dumps, seeds ou scripts que escrevem dados.
-- Chaves externas como Asaas, D4Sign, OpenAI, Meta, WhatsApp, e-mail, storage ou filas.
+- APIs, webhooks, conectores e chaves externas como Asaas, D4Sign, OpenAI, Meta, WhatsApp, e-mail, storage ou filas.
 - Rollback, promocao, redeploy, troca de branch, troca de dominio ou mudanca de ambiente.
 
 ## Protocolo minimo
@@ -54,6 +54,7 @@ Quando uma env critica estiver ausente, invalida ou apontando para ambiente inco
 
 ## Referencias internas
 
+- `docs/architecture/api-connection-governance.md`
 - `docs/architecture/environment-governance.md`
 - `docs/architecture/production-safety-policy.md`
 - `docs/architecture/incident-response-policy.md`
