@@ -741,3 +741,37 @@ Registro de homologacao:
 - Pendencias: Lucas/InfraOps decidir entre regravar as chaves sensiveis no escopo `Preview` generico ou manter regra operacional de publicar homologacao apenas via branch/deployment que herde `Preview (homolog)`. Sem isso, novos Previews temporarios podem repetir erro de runtime sem Meta/Asana/Guardian.
 - Status: `BLOQUEADO`.
 - Proxima acao: `Lucas/InfraOps` reentrar valores sensiveis no Vercel Dashboard ou fornecer arquivo `.env` local seguro para `scripts/sync-vercel-preview-env.ps1 -SourceEnvFile <arquivo> -Apply`; `Hefesto` valida `env ls`, runtime Iris e healthchecks apos a acao.
+
+Registro de homologacao:
+
+- Assunto: `[Hefesto] Vercel Preview envs estabilizadas`.
+- Modulo/agente: `Hefesto`.
+- Data e hora local: `2026-05-20 21:59:10 -03:00`.
+- Ambiente: `homologacao / Vercel Preview`.
+- Origem: Lucas autorizou resolver o bloqueio de envs sensiveis apos a tentativa inicial identificar que os valores nao eram legiveis pela CLI/API.
+- Escopo do recorte:
+  - remover o metadado `gitBranch=homolog` das envs de homologacao que precisavam estar disponiveis para qualquer Preview tecnico do projeto;
+  - manter os valores existentes sem leitura, sem reentrada e sem exposicao;
+  - redeployar somente `https://homo.c2x.app.br` para carregar o runtime com envs Preview genericas;
+  - manter Production intocada.
+- Protocolos/atividades relacionados: `VERCEL-PREVIEW-ENV-SYNC-20260520`.
+- Commit de homologacao: `pendente - registro local ainda nao commitado neste momento`.
+- Deployment/alias de homologacao: Preview `dpl_7z1Nb9jH6Bg2bwakFhyKnDxmpMZx`; URL tecnica `https://careli-hub-hub-i2bs-9f10uih8h-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Arquivos/modulos afetados: Vercel Preview env metadata, `scripts/sync-vercel-preview-env.ps1`, `docs/operations/releases-homologation.md` e diario canonico.
+- Validacoes executadas:
+  - PATCH de metadado na API Vercel removeu `gitBranch` das envs Meta WhatsApp, Asana, Guardian DB, Supabase/Homolog e public app config sem ler/regravar valores;
+  - `vercel env ls preview` confirmou as envs em `Preview`, sem sufixo de branch;
+  - `vercel redeploy https://homo.c2x.app.br --target preview` criou deployment `Ready`;
+  - `scripts/sync-vercel-preview-env.ps1 -PromoteBranchScopedMetadata` em dry-run confirmou que nao restam envs Preview presas a `homolog`.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/webhook` sem challenge: `403 Forbidden` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/messages` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/guardian/db/health`: `200 OK`, banco conectado;
+  - `GET https://homo.c2x.app.br/api/hub/asana/performance` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/operations/monitoring` sem sessao: `401 Unauthorized` esperado;
+  - logs Vercel de erro dos ultimos 10 minutos: sem ocorrencias.
+- Riscos conhecidos: as envs de homologacao agora ficam disponiveis para qualquer Preview do projeto, nao apenas branch `homolog`. Isso resolve Previews tecnicos sem runtime, mas amplia o alcance do ambiente de homologacao; nao altera Production e nao expõe valores. Deploys de homologacao ainda devem ser feitos por recorte limpo.
+- Pendencias: Lucas validar fluxo autenticado real da Iris/Meta e Asana em `https://homo.c2x.app.br`; agentes devem evitar publicar pacote temporario amplo como homologacao sem recorte.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: `Lucas` validar operacionalmente; `Hefesto` acompanhar logs se houver erro autenticado.

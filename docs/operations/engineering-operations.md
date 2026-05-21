@@ -8101,6 +8101,23 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[Hefesto] Vercel Preview envs estabilizadas`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 21:59:10 -03:00.
+- Tipo da alteracao: `VERCEL / ENV / HOMOLOGACAO / CORRECAO OPERACIONAL`.
+- Motivo da mudanca: Lucas autorizou resolver o bloqueio dos Previews tecnicos sem envs de homologacao. A tentativa anterior mostrou que envs `sensitive` nao podem ser relidas, entao a solucao segura foi alterar apenas metadados das envs existentes.
+- Ambiente: Vercel Preview/homolog; Production intocada; sem alteracao de valor de secret, sem banco, sem Supabase, sem migration e sem codigo runtime de modulos.
+- Arquivos/modulos afetados: Vercel Preview env metadata, alias `https://homo.c2x.app.br`, `scripts/sync-vercel-preview-env.ps1`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Arquivos/modulos excluidos: Production, `https://c2x.app.br`, `https://ops.c2x.app.br`, codigo de Iris/Hades/Hermes/Apolo/Zeus/Atlas/Setup, Supabase, banco, migrations e valores de secrets.
+- Como foi feito: testei PATCH isolado em uma env sensivel Meta sem enviar valor e confirmei que a API aceita remover apenas `gitBranch` quando o corpo nao inclui `key` nem `value`. Em seguida, removi `gitBranch=homolog` das envs Meta WhatsApp, Asana, Guardian DB, Supabase/Homolog e public app config que estavam em `Preview (homolog)`, mantendo `target=["preview"]`. Depois redeployei somente `https://homo.c2x.app.br` com `--target preview`.
+- Logica utilizada: a falha vinha do fato de deployments Preview temporarios nao herdarem envs branch-specific. Como os valores ja estavam corretos na Vercel, a solucao sustentavel foi promover o escopo dessas mesmas envs para Preview generico, sem ler, copiar, regravar ou expor secrets. Isso estabiliza homologacao para pacotes tecnicos, mas exige disciplina de recorte porque qualquer Preview do projeto passa a ter acesso ao ambiente de homologacao.
+- Validacao executada: `vercel env ls preview` confirmou as envs em `Preview` sem branch; `vercel inspect https://homo.c2x.app.br` confirmou deployment novo `dpl_7z1Nb9jH6Bg2bwakFhyKnDxmpMZx` `Ready`; `powershell -File scripts/sync-vercel-preview-env.ps1 -PromoteBranchScopedMetadata` confirmou que nao restam envs branch-specific `homolog` no conjunto operacional; healthchecks retornaram `/iris` 200, webhook Iris sem challenge 403 esperado, envio Iris sem sessao 401 esperado, Guardian DB health 200 com banco conectado, Asana sem sessao 401 esperado, Operations Monitoring sem sessao 401 esperado e logs de erro recentes sem ocorrencias.
+- Pendencias ou riscos conhecidos: risco residual de escopo ampliado em Preview: qualquer Preview do projeto agora carrega chaves de homologacao. Nao usar isso para publicar pacote amplo; seguir recortes limpos e nao apontar alias de homologacao para deploy experimental sem validação. Falta Lucas validar fluxo autenticado real da Iris/Meta e Asana.
+- Status operacional: `EM HOMOLOGACAO / ENVS PREVIEW ESTABILIZADAS`.
+- Proxima squad recomendada: `Lucas` validar fluxo autenticado em homologacao; `Hefesto` monitorar logs se surgirem erros; agentes de modulo manter recorte limpo antes de qualquer novo deploy.
+
+Registro de diario:
+
 - Assunto: `[Iris] Localhost sincronizado com homologacao`.
 - Nome da squad/agente: `Iris Core`.
 - Data e hora local: 2026-05-20 20:56:23 -03:00.
@@ -8132,3 +8149,88 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: os nomes documentados precisam continuar sendo atualizados quando uma nova API, connector, provider, storage, fila, webhook ou banco entrar no Panteon. Alterar valores reais, envs, secrets, aliases, dominios ou conexoes permanece `BLOQUEADO` ate autorizacao explicita do Lucas.
 - Status operacional: `VALIDADO LOCAL / DOCUMENTACAO OPERACIONAL`.
 - Proxima squad recomendada: futuros agentes devem ler `docs/architecture/api-connection-governance.md` antes de diagnosticar ou alterar qualquer conexao; `Zeus` deve manter o mapa atualizado quando novas APIs entrarem no Panteon.
+
+Registro de diario:
+
+- Assunto: `[Iris] Localhost apontado para dados reais de homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 21:22:24 -03:00.
+- Tipo da alteracao: `CONFIGURACAO LOCAL / PARIDADE HOMOLOGACAO / UX`.
+- Motivo da mudanca: Lucas definiu que a etapa de UX da Iris deve acontecer primeiro em `localhost`, depois homologacao e somente depois producao; a tela local ainda carregava tickets seed/mock `CARE-DEMO-*`, impedindo validar a experiencia real.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem alteracao em homologacao/producao, sem migration, sem mutacao de banco e sem exposicao de valores sensiveis.
+- Arquivos/modulos afetados: `apps/hub/.env.local` (gitignored), `.codex-artifacts/iris-env-local-backup-20260520-ux-sync.env`, `.codex-artifacts/iris-homolog-branch.env` e este diario canonico.
+- Arquivos/modulos excluidos: codigo runtime da Iris, Hades, Hermes, Apolo, Zeus, Atlas, Setup, Production, dominios, aliases, Supabase mutavel, migrations e dados de negocio.
+- Como foi feito: preservei backup do `.env.local`, puxei as variaveis de Vercel Preview com override da branch `homolog` para arquivo temporario ignorado pelo Git, mesclei no `.env.local` somente as variaveis necessarias/locais, descartando metadados `VERCEL_*` e flags de build, e reiniciei o dev server local em `localhost:3001`.
+- Logica utilizada: a consulta local confirmou que a base anterior do `.env.local` continha 20 tickets e todos eram `CARE-DEMO-*`. A branch `homolog` possui as envs Meta/Supabase corretas e a base real da Iris com protocolos `AT-*`; portanto o localhost deve usar esse mesmo recorte para validar UX sem depender de mock. Nenhum valor de token, secret ou chave foi impresso ou registrado.
+- Validacao executada: listagem de variaveis mostrou apenas nomes e confirmou presença de `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_BUSINESS_ACCOUNT_ID` e `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN`; consulta read-only ao Supabase com o novo `.env.local` retornou `caredesk_tickets=3`, `caredesk_messages=36`, `caredesk_contacts=3`, `caredesk_broadcasts=0` e `CARE-DEMO=0`; amostra operacional retornou `AT-000001`, `AT-000002` e `AT-000003`; `GET http://127.0.0.1:3001/iris` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: ao trocar Supabase local, sessoes antigas do navegador podem falhar com JWT de outro projeto; limpar a sessao/localStorage ou fazer login novamente resolve. O arquivo `.env.local` permanece fora do Git. As melhorias de UX da Iris devem continuar em localhost usando estes dados reais antes de nova homologacao.
+- Status operacional: `LOCALHOST CONFIGURADO / PRONTO PARA UX`.
+- Proxima squad recomendada: `Iris Core` continuar as melhorias de UX em localhost; `Lucas` recarregar `http://localhost:3001/iris` e, se aparecer erro de sessao, sair/entrar novamente ou limpar dados locais do site.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Regra de comprador cruzada por pagamentos`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 21:24:02 -03:00.
+- Tipo da alteracao: `CRM / C2X / UX / REGRA DE CARTEIRA`.
+- Motivo da mudanca: Lucas corrigiu que comprador nao pode ser inferido apenas por vinculo comercial ou registro em `acquisition_requests`; comprador precisa existir na tabela de pagamentos e, quando confirmado, carregar dados de carteira, unidade, parcelas e contrato.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem Supabase mutavel, sem migration, sem escrita no C2X, sem alteracao de env e sem exposicao de valores sensiveis.
+- Arquivos/modulos afetados: `apps/hub/lib/apolo/server.ts`, `apps/hub/lib/apolo/types.ts`, `apps/hub/modules/apolo/ApoloPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: a query de leitura C2X do Apolo passou a calcular `payment_count`, `unit_count`, totais financeiros e ultimos dados pagos cruzando `payments` com `acquisition_requests` pelos participantes `client_id`, `client_2_id`, `client_3_id`, `client_4_id` e `client_5_id`. O card global de compradores passou a depender de contadores financeiros globais, e a UI separa `Comprador`, `Em jornada` e `Nao comprador`.
+- Logica utilizada: `request_count` continua servindo para indicar jornada ou vinculo comercial; `payment_count > 0` e a evidencia financeira passam a ser o divisor oficial para abrir carteira, financeiro, acordos e contrato. Se nao houver pagamento confirmado, a tela pode mostrar cadastro/vinculo, mas nao promete carteira operacional.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido de NFT em `engineering-operations-source.ts`; `GET http://localhost:3001/api/apolo/relationships` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: no ambiente local atual, `GUARDIAN_DB_HOST`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER` e `GUARDIAN_DB_PASSWORD` estao ausentes/vazios, entao o fallback vivo para C2X fica indisponivel e o endpoint retorna as tabelas Apolo ja sincronizadas. Como essas tabelas locais ainda nao carregam a nova evidencia financeira, o contador local fica zerado ate um sync autorizado/ambiente com envs C2X ativas. Qualquer sync real, escrita em Supabase ou alteracao de env continua `BLOQUEADO` sem autorizacao explicita do Lucas.
+- Status operacional: `VALIDADO LOCAL / SYNC REAL BLOQUEADO POR ENV C2X AUSENTE`.
+- Proxima squad recomendada: `Apolo Core` validar a contagem em ambiente com envs C2X ativas ou, com autorizacao expressa do Lucas, executar o sync Apolo C2X em homologacao para materializar as novas evidencias nas tabelas centrais.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Login simplificado com HUB C2X`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 21:37:39 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / LOGIN / IDENTIDADE VISUAL`.
+- Motivo da mudanca: Lucas pediu remover o layout dividido da tela de login e voltar para uma experiencia simples, com somente a sessao de logar, logo centralizada e identificacao `HUB C2X` abaixo da marca.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem homologacao/producao, sem Supabase mutavel, sem banco, sem migration, sem env, sem secret e sem token.
+- Arquivos/modulos afetados: `apps/hub/app/login/page.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Atlas, Apolo, Setup, Chronos, Zeus/Operations Center, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: removi o painel institucional lateral, os cards de apoio e o titulo extra da tela. A pagina passou a renderizar apenas fundo grafite, logo centralizada, texto `HUB C2X` e formulario de e-mail/senha com botoes de recuperar senha e entrar.
+- Logica utilizada: preservar o fluxo de autenticacao existente (`useAuth().signIn`) e alterar somente composicao visual da rota `/login`, sem tocar em provider, sessao, Supabase, permissao ou redirect.
+- Validacao executada: `GET http://127.0.0.1:3001/login` retornou `200 OK`; verificacao visual automatizada confirmou `formCount=1`, uma imagem da marca, presenca de `HUB C2X`, campos de e-mail/senha e ausencia das copias antigas `Centro executivo da operacao Careli`, `Ambientes` e `Agentes`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/app/login/page.tsx` passou com aviso conhecido LF/CRLF no Windows.
+- Pendencias ou riscos conhecidos: ajuste ainda nao publicado em homologacao/producao; falta Lucas validar visualmente no navegador local se a proporcao da logo e do card esta como esperado.
+- Status operacional: `VALIDADO LOCAL`.
+- Proxima squad recomendada: `Lucas` validar visualmente `http://localhost:3001/login`; se aprovado, `Zeus` pode publicar homologacao quando autorizado.
+
+Registro de diario:
+
+- Assunto: `[Panteon] Login final e Apolo no sidebar`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 21:48:37 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / LOGIN / SIDEBAR GLOBAL`.
+- Motivo da mudanca: Lucas ajustou a direcao visual da tela de login e pediu incluir o modulo Apolo no sidebar global do Panteon.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem homologacao/producao, sem Supabase mutavel, sem banco, sem migration, sem env, sem secret e sem token.
+- Arquivos/modulos afetados: `apps/hub/app/login/page.tsx`, `apps/hub/public/panteon-logo-light.png`, `apps/hub/layouts/hub-shell.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Atlas, Setup, Chronos, Zeus/Operations Center, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: gerei uma versao transparente da logo completa a partir do arquivo enviado por Lucas, preservei o texto `PANTEON` dentro da marca, removi a caixa preta externa, removi a escrita visivel `HUB C2X`, deixei o botao de envio somente com icone e ajustei a proporcao da logo para `w-56`/`sm:w-64`. No shell global, Apolo ganhou entrada no mapa de icones e entrou em `minimumReleasedModuleIds`, mantendo o registry/permissoes ja existentes.
+- Logica utilizada: a tela de login deve ficar minimalista e usar apenas a marca completa do Panteon acima do formulario. O sidebar global deve considerar Apolo como modulo minimo liberado, para aparecer mesmo antes da consulta Supabase de modulos retornar, e continuar respeitando registry, permissao e status ativo.
+- Validacao executada: verificacao visual local em `http://127.0.0.1:3001/login` confirmou logo completa com largura 256px no desktop, sem texto visivel `HUB C2X` e botao submit sem texto; `GET http://127.0.0.1:3001/apolo` retornou `200 OK`; `rg` confirmou `apolo` no registry, permissoes e shell; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`; `git diff --check` passou com avisos conhecidos LF/CRLF no Windows.
+- Pendencias ou riscos conhecidos: ajuste ainda nao publicado em homologacao/producao. O worktree segue misturado com recortes de outras frentes; qualquer publicacao deve ser feita em pacote limpo ou com autorizacao especifica do Lucas.
+- Status operacional: `VALIDADO LOCAL`.
+- Proxima squad recomendada: `Lucas` validar visualmente login e sidebar em sessao autenticada local; se aprovado, `Zeus` pode publicar homologacao quando autorizado.
+
+Registro de diario:
+
+- Assunto: `[Iris] Correcao de quebra visual na fila de tickets`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 21:58:01 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / UX / FILA OPERACIONAL`.
+- Motivo da mudanca: Lucas reportou que a primeira linha da fila da Iris misturava protocolo, cliente, tags e previa longa de mensagem, deixando a leitura operacional quebrada em `localhost`.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem homologacao/producao, sem Supabase mutavel, sem banco, sem migration, sem env, sem secret e sem token.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Hermes, Atlas, Apolo, Zeus, Setup, Chronos, login, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: a lista de tickets passou a ter corpo rolavel com largura minima somente em desktop, colunas `minmax` mais estaveis e filhos de grid com `min-w-0`/`truncate` nos campos sujeitos a texto longo. A previa da ultima mensagem tambem recebeu truncamento com `title` para preservar o conteudo completo no hover.
+- Logica utilizada: o problema vinha de conteudo longo forçando o tamanho minimo das colunas do grid e comprimindo os campos de identificacao. A solucao manteve a tabela compacta e operacional, mas isolou a expansao horizontal da fila e impediu que a previa de atendimento invadisse protocolo, cliente, SLA ou responsavel.
+- Validacao executada: `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx` passou com aviso conhecido de LF/CRLF no Windows; `GET http://127.0.0.1:3001/iris` retornou `200 OK`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Pendencias ou riscos conhecidos: ajuste ainda nao publicado em homologacao/producao. Lucas precisa recarregar `localhost:3001/iris` e validar visualmente a primeira linha da fila com mensagem longa; se aprovado, Iris Core pode preparar homologacao quando autorizado.
+- Status operacional: `VALIDADO LOCAL`.
+- Proxima squad recomendada: `Lucas` validar visualmente em localhost; depois `Iris Core` continua as melhorias de UX ou publica homologacao mediante autorizacao explicita.

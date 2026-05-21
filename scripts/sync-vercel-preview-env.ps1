@@ -4,6 +4,7 @@ param(
   [string[]]$Keys = @(),
   [switch]$AllowPartial,
   [switch]$Apply,
+  [switch]$PromoteBranchScopedMetadata,
   [string]$ProjectRoot = ""
 )
 
@@ -90,10 +91,51 @@ if (-not (Test-Path -LiteralPath $projectConfig)) {
   throw "Vercel project config not found at .vercel/project.json."
 }
 
+$projectId = (Get-Content -LiteralPath $projectConfig -Raw | ConvertFrom-Json).projectId
+if (-not $projectId) {
+  throw "Vercel project id not found in .vercel/project.json."
+}
+
 New-Item -ItemType Directory -Force -Path $runnerVercelDir | Out-Null
 Copy-Item -LiteralPath $projectConfig -Destination (Join-Path $runnerVercelDir "project.json") -Force
 
 try {
+  if ($PromoteBranchScopedMetadata) {
+    $envsJson = & npx.cmd vercel --cwd $runnerPath api "/v10/projects/$projectId/env" --raw
+    $envs = ($envsJson | ConvertFrom-Json).envs
+    $items = @(
+      $envs | Where-Object {
+        $Keys -contains $_.key -and
+        $_.target -contains "preview" -and
+        $_.gitBranch -eq $SourceBranch
+      }
+    )
+
+    if ($items.Count -eq 0) {
+      Write-Output ("No branch-scoped Preview envs found for branch {0}." -f $SourceBranch)
+      exit 0
+    }
+
+    if (-not $Apply) {
+      Write-Output ("Dry run only. Branch-scoped Preview envs that would be promoted: " + (($items | ForEach-Object { $_.key }) -join ", "))
+      Write-Output "Use -Apply with -PromoteBranchScopedMetadata to remove the gitBranch metadata without reading secret values."
+      exit 0
+    }
+
+    $body = @{ target = @("preview"); gitBranch = $null } | ConvertTo-Json -Compress
+    foreach ($item in $items) {
+      $response = $body | npx.cmd vercel --cwd $runnerPath api "/v9/projects/$projectId/env/$($item.id)" -X PATCH --input - --raw
+      if ($LASTEXITCODE -ne 0) {
+        throw ("Failed to promote metadata for {0}." -f $item.key)
+      }
+
+      $updated = $response | ConvertFrom-Json
+      Write-Output ("Promoted to Preview scope: {0}" -f $updated.key)
+    }
+
+    exit 0
+  }
+
   if ($SourceEnvFile) {
     if (-not (Test-Path -LiteralPath $SourceEnvFile)) {
       throw "Source env file not found."
