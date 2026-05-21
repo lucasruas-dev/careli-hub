@@ -712,3 +712,32 @@ Registro de homologacao:
 - Pendencias: Lucas recarregar `https://homo.c2x.app.br` em sessao autenticada e confirmar a Iris no sidebar.
 - Status: `EM HOMOLOGACAO`.
 - Proxima acao: se Lucas validar visualmente, marcar como `HOMOLOGADO`; producao fica fora deste recorte.
+
+Registro de homologacao:
+
+- Assunto: `[Hefesto] Correcao Vercel Preview envs bloqueada por secrets sensiveis`.
+- Modulo/agente: `Hefesto`.
+- Data e hora local: `2026-05-20 21:12:46 -03:00`.
+- Ambiente: `homologacao / Vercel Preview`.
+- Origem: Lucas autorizou corrigir a falha em que deployments Preview de homologacao podiam nascer sem envs branch-specific da Iris/Meta, Asana e Hades/Guardian.
+- Escopo do recorte:
+  - tentar sincronizar envs de `Preview (homolog)` para `Preview` generico;
+  - manter Production intocada;
+  - nao imprimir, commitar ou registrar valores de secrets;
+  - criar script operacional seguro para sincronizacao futura via arquivo local ignorado.
+- Protocolos/atividades relacionados: `VERCEL-PREVIEW-ENV-SYNC-20260520`.
+- Commit de homologacao: `pendente - script/registro documental local ainda nao commitado neste momento`.
+- Deployment/alias de homologacao: `n/a - sem deploy, sem redeploy e sem alias alterado`.
+- Arquivos/modulos afetados: `scripts/sync-vercel-preview-env.ps1`, `docs/operations/releases-homologation.md` e diario canonico.
+- Validacoes executadas:
+  - `vercel env ls preview` confirmou que `META_WHATSAPP_*`, `ASANA_*` e `GUARDIAN_DB_*` existem apenas como `Preview (homolog)` e tipo `sensitive`;
+  - `vercel env pull --environment=preview --git-branch=homolog` confirmou nomes, mas valores sensiveis voltam vazios/nao legiveis;
+  - `vercel env run -e preview --git-branch homolog` nao injetou valores sensiveis branch-specific no processo;
+  - API oficial de leitura de uma env sensivel retornou metadados sem `value`;
+  - documentacao oficial da Vercel confirma que envs `sensitive` ficam nao legiveis apos criacao e precisam de novo valor para edicao.
+- Healthchecks de homologacao:
+  - `n/a - nao houve deployment novo`.
+- Riscos conhecidos: copiar essas chaves para `Preview` generico ampliaria o acesso de qualquer Preview do projeto aos recursos de homologacao; se Lucas decidir seguir por esse caminho, os valores precisam ser regravados manualmente no Dashboard ou fornecidos em arquivo local ignorado para o script.
+- Pendencias: Lucas/InfraOps decidir entre regravar as chaves sensiveis no escopo `Preview` generico ou manter regra operacional de publicar homologacao apenas via branch/deployment que herde `Preview (homolog)`. Sem isso, novos Previews temporarios podem repetir erro de runtime sem Meta/Asana/Guardian.
+- Status: `BLOQUEADO`.
+- Proxima acao: `Lucas/InfraOps` reentrar valores sensiveis no Vercel Dashboard ou fornecer arquivo `.env` local seguro para `scripts/sync-vercel-preview-env.ps1 -SourceEnvFile <arquivo> -Apply`; `Hefesto` valida `env ls`, runtime Iris e healthchecks apos a acao.

@@ -8080,3 +8080,55 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: worktree segue misturado entre Apolo, Iris, Hermes, Zeus, Hades, Atlas, scripts, migrations e documentos; nenhum deploy geral deve ocorrer ate separar recortes. Qualquer correcao real de env na Vercel continua `BLOQUEADO` e exige autorizacao explicita do Lucas. A principal correcao operacional recomendada e evitar deploy Preview de pacote temporario sem garantir branch/escopo `homolog`; para Iris/Meta, publicar por branch/commit limpo ou por redeploy de deployment que carregue `Preview (homolog)`.
 - Status operacional: `FINALIZADO / DEPLOY GERAL BLOQUEADO / ALTERACOES DE ENV BLOQUEADAS`.
 - Proxima squad recomendada: `Hefesto` criar commit documental separado com registros oficiais e indices por ambiente; agentes de modulo devem continuar separando seus recortes antes de pedir homologacao; `Lucas` deve autorizar explicitamente qualquer ajuste real de env/chave na Vercel.
+
+Registro de diario:
+
+- Assunto: `[Hefesto] Correcao Vercel Preview envs bloqueada por secrets sensiveis`.
+- Nome da squad/agente: `Hefesto`.
+- Data e hora local: 2026-05-20 21:12:46 -03:00.
+- Tipo da alteracao: `VERCEL / ENV / HOMOLOGACAO / BLOQUEIO TECNICO`.
+- Motivo da mudanca: Lucas autorizou corrigir a causa dos erros de acesso/runtime em homologacao, especialmente Previews temporarios sem as envs Meta/Asana/Hades configuradas em `Preview (homolog)`.
+- Ambiente: Vercel Preview/homolog em modo auditoria e tentativa controlada; Production intocada; sem deploy, sem redeploy, sem alias, sem banco, sem Supabase e sem migration.
+- Arquivos/modulos afetados: `scripts/sync-vercel-preview-env.ps1`, `docs/operations/releases-homologation.md` e este diario canonico.
+- Arquivos/modulos excluidos: codigo runtime de Iris, Hades, Hermes, Apolo, Zeus, Atlas, Setup, migrations, Supabase e Production.
+- Como foi feito: tentei primeiro copiar os valores existentes de `Preview (homolog)` para `Preview` generico por `vercel env pull`; depois testei `vercel env run` em runner limpo e a API oficial de leitura por ID. Nenhum comando imprimiu valores; os arquivos temporarios foram removidos. Como a Vercel retorna envs `sensitive` sem valor, converti a tentativa em um script seguro que bloqueia automaticamente quando os valores nao sao legiveis e aceita, se autorizado, um arquivo `.env` local ignorado com valores reais para aplicar via stdin.
+- Logica utilizada: os erros de runtime vinham de deployments Preview que nao herdavam envs branch-specific. A correcao estrutural desejada seria disponibilizar essas chaves no escopo `Preview` generico ou garantir que todo deployment de homologacao nasca da branch/escopo `homolog`. Como as chaves sensiveis atuais nao podem ser relidas pela CLI/API, Hefesto nao deve tentar reconstruir ou adivinhar valores; precisa bloquear e exigir reentrada segura dos valores por Lucas/InfraOps.
+- Referencia oficial verificada: documentacao da Vercel sobre `Sensitive environment variables` informa que variaveis sensiveis ficam nao legiveis apos criacao e que, para edita-las, e necessario fornecer novo valor; a documentacao de `Edit an environment variable` confirma que `gitBranch` pode ser editado, mas a operacao exige corpo com valor para o caso sensivel.
+- Validacao executada: `npx.cmd vercel env ls preview` confirmou `META_WHATSAPP_*`, `ASANA_*` e `GUARDIAN_DB_*` em `Preview (homolog)`; `vercel env pull --environment=preview --git-branch=homolog` retornou nomes, mas valores sensiveis vazios/nao usaveis; `vercel env run -e preview --git-branch homolog` nao injetou `META_WHATSAPP_APP_ID`; API oficial para uma env Meta retornou `type=sensitive`, `decrypted=false` e sem campo `value`; `powershell -File scripts/sync-vercel-preview-env.ps1` bloqueou corretamente sem expor valores.
+- Pendencias ou riscos conhecidos: o problema nao foi corrigido na Vercel porque os valores sensiveis nao sao recuperaveis. Para corrigir de fato, Lucas/InfraOps precisa reentrar as chaves no Dashboard Vercel em `Preview` generico ou fornecer arquivo local ignorado com os valores reais para o script `scripts/sync-vercel-preview-env.ps1 -SourceEnvFile <arquivo> -Apply`. Enquanto isso nao acontecer, deployments temporarios fora de `Preview (homolog)` continuam com risco de subir sem Meta/Asana/Hades.
+- Status operacional: `BLOQUEADO POR SECRETS SENSIVEIS NAO LEGIVEIS`.
+- Proxima squad recomendada: `Lucas/InfraOps` decidir se amplia envs para `Preview` generico ou restringe deploys de homologacao a branch/commit limpo `homolog`; `Hefesto` valida apos a reentrada segura dos valores.
+
+Registro de diario:
+
+- Assunto: `[Iris] Localhost sincronizado com homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 20:56:23 -03:00.
+- Tipo da alteracao: `SINCRONIZACAO LOCAL / IRIS / PARIDADE COM HOMOLOGACAO`.
+- Motivo da mudanca: Lucas reportou que a Iris em `localhost` estava desatualizada e com comportamento visual/mockado em relacao ao ultimo recorte de homologacao.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem alteracao de homologacao/producao, sem Supabase, sem banco, sem migration, sem env, sem secret e sem token.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/*`, `apps/hub/lib/iris/*`, `apps/hub/layouts/hub-shell.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Hermes, Atlas, Apolo, Zeus, Setup, Chronos, banco, migrations, Vercel, dominios, aliases, envs, secrets e producao.
+- Como foi feito: confirmei `origin/homolog` na ponta `3b796ec feat(iris): improve whatsapp attendance ux`, criei um stash de seguranca apenas do recorte Iris (`backup iris local before homolog sync 2026-05-20`) e restaurei os arquivos Iris/shell a partir de `origin/homolog` no worktree local para o servidor `localhost:3001` recarregar com o mesmo pacote de homologacao.
+- Logica utilizada: nao foi feito `reset` nem limpeza geral porque o worktree local contem recortes misturados de varios modulos. A sincronizacao ficou restrita aos arquivos que diferiam entre o HEAD local e o recorte Iris de homologacao, preservando as alteracoes anteriores da Iris em stash para recuperacao futura.
+- Validacao executada: `git fetch origin homolog` confirmou a ponta remota; comparacao por hash (`git hash-object` versus `git rev-parse origin/homolog:path`) retornou `MATCH` para todos os arquivos Iris/shell sincronizados; `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris apps/hub/lib/iris apps/hub/layouts/hub-shell.tsx` passou; `GET http://127.0.0.1:3001/iris` retornou `200 OK`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`.
+- Pendencias ou riscos conhecidos: o `.env.local` atual nao possui as variaveis Meta WhatsApp locais, entao envio real pela Meta em localhost continua dependente de configuracao local/tunnel autorizada. A paridade feita aqui e de codigo/UI/API local com `origin/homolog`, nao de secrets. `npm.cmd run build --workspace @repo/hub` compilou, mas falhou no typecheck final por erro existente fora da Iris em `apps/hub/lib/apolo/server.ts` (`buildC2xFinancialSnapshot` nao encontrado).
+- Status operacional: `LOCALHOST SINCRONIZADO / SEM DEPLOY`.
+- Proxima squad recomendada: `Lucas` recarregar `http://localhost:3001/iris` e validar a tela; `Iris Core` retoma as melhorias de UX apos confirmacao visual.
+
+Registro de diario:
+
+- Assunto: `[Zeus] Governanca de conexoes API do Panteon`.
+- Nome da squad/agente: `Zeus`.
+- Data e hora local: 2026-05-20 21:04:03 -03:00.
+- Tipo da alteracao: `DOCUMENTACAO OPERACIONAL / SEGURANCA / API CONNECTIONS`.
+- Motivo da mudanca: Lucas solicitou registrar como cada API se relaciona com o Hub, explicar nomes das chaves, o que cada uma autoriza e ensinar os agentes a analisar conexoes sem expor valores sensiveis.
+- Ambiente: documentacao local; sem deploy, sem redeploy, sem Vercel mutavel, sem Supabase mutavel, sem banco, sem migration, sem env, sem secret, sem token e sem exposicao de valores.
+- Arquivos/modulos afetados: `docs/architecture/api-connection-governance.md`, `docs/architecture/environment-governance.md`, `docs/architecture/security-governance.md`, `docs/architecture/agent-operating-model.md`, `docs/operations/README.md`, `AGENTS.md` e este diario canonico.
+- Arquivos/modulos excluidos: codigo de runtime, Hades, Iris, Hermes, Atlas, Apolo, Setup, Chronos, banco real, migrations, scripts destrutivos, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: criei o guia `docs/architecture/api-connection-governance.md` com regra central, metodo de analise, itens que podem ou nao ser registrados, mapa de conexoes oficiais, diagnostico por sintoma e checklist para agentes. Depois vinculei esse guia nos documentos de governanca e nas regras gerais dos agentes.
+- Logica utilizada: o agente deve registrar nome, finalidade, owner, ambiente, tipo de autorizacao e smoke seguro, nunca o valor. O mapa cobre runtime/Vercel, Supabase Hub, Postgres direto, C2X/Hades DB, Asaas, D4Sign, Iris Meta WhatsApp, Asana, OpenAI, Atlas, Apolo, Zeus Operations Center e Hermes TURN, preservando a separacao entre envs publicas, server-only, privilegiadas, identificadores e configuracoes operacionais.
+- Validacao executada: varredura local de `process.env.*` e exemplos de env para conferir cobertura de nomes; `rg` confirmou as referencias ao novo guia nos documentos operacionais e de arquitetura; `git diff --check -- AGENTS.md docs/operations/README.md docs/architecture/api-connection-governance.md docs/architecture/environment-governance.md docs/architecture/security-governance.md docs/architecture/agent-operating-model.md docs/operations/engineering-operations.md` passou, com avisos conhecidos de LF/CRLF no Windows; `rg -n "[ \t]+$"` nao encontrou trailing whitespace no pacote documental; nenhuma validacao de runtime foi necessaria porque nao houve alteracao de codigo.
+- Pendencias ou riscos conhecidos: os nomes documentados precisam continuar sendo atualizados quando uma nova API, connector, provider, storage, fila, webhook ou banco entrar no Panteon. Alterar valores reais, envs, secrets, aliases, dominios ou conexoes permanece `BLOQUEADO` ate autorizacao explicita do Lucas.
+- Status operacional: `VALIDADO LOCAL / DOCUMENTACAO OPERACIONAL`.
+- Proxima squad recomendada: futuros agentes devem ler `docs/architecture/api-connection-governance.md` antes de diagnosticar ou alterar qualquer conexao; `Zeus` deve manter o mapa atualizado quando novas APIs entrarem no Panteon.
