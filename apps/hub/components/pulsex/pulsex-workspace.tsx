@@ -1381,6 +1381,7 @@ export function HermesWorkspace() {
           </div>
           <MessageComposer
             channelName={activeChannel.name}
+            currentUserId={currentUserId}
             mentions={composerMentions}
             onChange={handleComposerChange}
             onSubmit={handleSendMessage}

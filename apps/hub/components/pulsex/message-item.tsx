@@ -103,6 +103,13 @@ export function MessageItem({
     !message.deletedAt &&
     !message.tags?.length &&
     !isEditing;
+  const isStandaloneSticker =
+    message.attachment?.type === "sticker" &&
+    message.body === message.attachment.label &&
+    !message.deletedAt &&
+    !message.tags?.length &&
+    !isEditing;
+  const isStandaloneVisual = isStandaloneEmoji || isStandaloneSticker;
 
   useEffect(() => {
     if (!isEditing) {
@@ -216,8 +223,8 @@ export function MessageItem({
       ) : null}
       <div
         className={`group relative ${
-          isStandaloneEmoji
-            ? "max-w-[9rem] border-0 bg-transparent px-1 py-0 text-[#101820] shadow-none"
+          isStandaloneVisual
+            ? "max-w-[10rem] border-0 bg-transparent px-1 py-0 text-[#101820] shadow-none"
             : `max-w-[min(72%,46rem)] border px-3 py-2 shadow-[0_1px_2px_rgba(16,24,32,0.12)] ${
                 isOwn
                   ? "rounded-2xl rounded-br-md border-[#d6e7df] bg-[#effaf5] text-[#101820]"
@@ -225,7 +232,7 @@ export function MessageItem({
               }`
         }`}
       >
-        {!isStandaloneEmoji ? (
+        {!isStandaloneVisual ? (
           <span
             aria-hidden="true"
             className={`absolute bottom-0 h-3 w-3 rotate-45 ${
@@ -669,13 +676,23 @@ export function MessageAttachmentPreview({
 }) {
   if (attachment.type === "sticker") {
     return (
-      <div className="mb-1 inline-grid min-w-28 justify-items-center gap-1 rounded-2xl border border-[#d9e0ea] bg-[#ffffff] px-4 py-3 text-center shadow-sm">
-        <span className="text-5xl leading-none" role="img" aria-label={attachment.label}>
-          {attachment.emoji ?? "\u{1F642}"}
-        </span>
-        <span className="text-[0.68rem] font-semibold uppercase text-[#667085]">
-          {attachment.label}
-        </span>
+      <div className="mb-1 inline-grid justify-items-center text-center">
+        {attachment.url ? (
+          <span
+            aria-label={attachment.label}
+            className="block h-32 w-32 bg-contain bg-center bg-no-repeat drop-shadow-sm"
+            role="img"
+            style={{ backgroundImage: `url(${attachment.url})` }}
+          />
+        ) : (
+          <span
+            className="text-6xl leading-none drop-shadow-sm"
+            role="img"
+            aria-label={attachment.label}
+          >
+            {attachment.emoji ?? "\u{1F642}"}
+          </span>
+        )}
       </div>
     );
   }

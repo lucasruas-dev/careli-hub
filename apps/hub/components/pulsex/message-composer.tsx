@@ -13,11 +13,13 @@ import {
   Image as ImageIcon,
   Mic,
   Paperclip,
+  Plus,
   Send,
   Smile,
   Square,
   Sticker,
   Tag,
+  Trash2,
   Video,
   X,
 } from "lucide-react";
@@ -35,6 +37,7 @@ import {
 
 type MessageComposerProps = {
   channelName: string;
+  currentUserId?: HermesPresenceUser["id"];
   mentions: readonly HermesMessageMention[];
   onChange: (
     value: string,
@@ -49,6 +52,7 @@ type MessageComposerProps = {
 
 export function MessageComposer({
   channelName,
+  currentUserId,
   mentions,
   onChange,
   onSubmit,
@@ -252,8 +256,11 @@ export function MessageComposer({
       attachment: {
         emoji: sticker.emoji,
         label: sticker.label,
+        mimeType: sticker.mimeType,
+        sizeBytes: sticker.sizeBytes,
         stickerId: sticker.id,
         type: "sticker",
+        url: sticker.url,
       },
     });
     setAttachment(null);
@@ -413,7 +420,10 @@ export function MessageComposer({
           }}
         />
         {isStickerPickerOpen ? (
-          <StickerPicker onSelect={handleSelectSticker} />
+          <StickerPicker
+            currentUserId={currentUserId}
+            onSelect={handleSelectSticker}
+          />
         ) : null}
       </div>
       <ComposerAction
@@ -553,39 +563,186 @@ function EmojiPicker({
 }
 
 function StickerPicker({
+  currentUserId,
   onSelect,
 }: {
+  currentUserId?: HermesPresenceUser["id"];
   onSelect: (sticker: ComposerStickerOption) => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const storageKey = getStickerStorageKey(currentUserId);
+  const [activeTab, setActiveTab] = useState<"default" | "saved">("saved");
+  const [savedStickers, setSavedStickers] = useState<ComposerStickerOption[]>([]);
+  const [stickerError, setStickerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSavedStickers(loadSavedStickers(storageKey));
+    setStickerError(null);
+  }, [storageKey]);
+
+  async function handleStickerInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setStickerError("Selecione uma imagem.");
+      return;
+    }
+
+    if (file.size > MAX_STICKER_BYTES) {
+      setStickerError("Figurinha acima de 512 KB.");
+      return;
+    }
+
+    try {
+      const nextSticker = {
+        id: `saved-${Date.now().toString(36)}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`,
+        label: getStickerLabel(file.name),
+        mimeType: file.type,
+        sizeBytes: file.size,
+        url: await readBlobAsDataUrl(file),
+      } satisfies ComposerStickerOption;
+      const nextStickers = [nextSticker, ...savedStickers]
+        .filter(
+          (sticker, index, allStickers) =>
+            allStickers.findIndex((item) => item.url === sticker.url) === index,
+        )
+        .slice(0, MAX_SAVED_STICKERS);
+
+      if (!saveStickers(storageKey, nextStickers)) {
+        setStickerError("Espaco local insuficiente para salvar.");
+        return;
+      }
+
+      setSavedStickers(nextStickers);
+      setActiveTab("saved");
+      setStickerError(null);
+    } catch {
+      setStickerError("Nao foi possivel salvar a figurinha.");
+    }
+  }
+
+  function handleDeleteSticker(stickerId: string) {
+    const nextStickers = savedStickers.filter((sticker) => sticker.id !== stickerId);
+
+    setSavedStickers(nextStickers);
+    saveStickers(storageKey, nextStickers);
+  }
+
+  const stickers =
+    activeTab === "saved" ? savedStickers : [...composerStickerOptions];
+
   return (
-    <div className="absolute bottom-full left-0 z-40 mb-2 w-80 rounded-xl border border-[#d9e0ea] bg-white p-2 shadow-xl">
+    <div className="absolute bottom-full left-0 z-40 mb-2 w-[22rem] rounded-xl border border-[#d9e0ea] bg-white p-2 shadow-xl">
+      <input
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={handleStickerInputChange}
+        ref={fileInputRef}
+        type="file"
+      />
       <div className="mb-2 flex items-center justify-between px-1">
         <span className="text-xs font-semibold uppercase text-[#667085]">
           Figurinhas
         </span>
-        <span className="text-[0.68rem] text-[#8b98aa]">
-          toque para enviar
-        </span>
+        <button
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-2 text-xs font-semibold text-[#344054] outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          onClick={() => fileInputRef.current?.click()}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={14} />
+          Salvar
+        </button>
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        {composerStickerOptions.map((sticker) => (
-          <button
-            aria-label={`Enviar figurinha ${sticker.label}`}
-            className="grid min-h-24 justify-items-center gap-1 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] px-2 py-3 text-center outline-none transition hover:-translate-y-0.5 hover:border-[#A07C3B]/60 hover:bg-[#fffaf0] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-            key={sticker.id}
-            onClick={() => onSelect(sticker)}
-            type="button"
-          >
-            <span className="text-4xl leading-none" aria-hidden="true">
-              {sticker.emoji}
-            </span>
-            <span className="text-[0.68rem] font-semibold text-[#344054]">
-              {sticker.label}
-            </span>
-          </button>
-        ))}
+      <div className="mb-2 grid grid-cols-2 rounded-lg bg-[#f3f6fa] p-1">
+        <button
+          aria-pressed={activeTab === "saved"}
+          className="h-8 rounded-md text-xs font-semibold text-[#667085] outline-none transition hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-white aria-pressed:text-[#101820] aria-pressed:shadow-sm"
+          onClick={() => setActiveTab("saved")}
+          type="button"
+        >
+          Minhas
+        </button>
+        <button
+          aria-pressed={activeTab === "default"}
+          className="h-8 rounded-md text-xs font-semibold text-[#667085] outline-none transition hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-white aria-pressed:text-[#101820] aria-pressed:shadow-sm"
+          onClick={() => setActiveTab("default")}
+          type="button"
+        >
+          Padrao
+        </button>
       </div>
+      {stickerError ? (
+        <p className="m-0 mb-2 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-700">
+          {stickerError}
+        </p>
+      ) : null}
+      {stickers.length > 0 ? (
+        <div className="grid max-h-80 grid-cols-3 gap-2 overflow-y-auto pr-1">
+          {stickers.map((sticker) => (
+            <div className="relative" key={sticker.id}>
+              <button
+                aria-label={`Enviar figurinha ${sticker.label}`}
+                className="grid min-h-24 w-full justify-items-center gap-1 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] px-2 py-3 text-center outline-none transition hover:-translate-y-0.5 hover:border-[#A07C3B]/60 hover:bg-[#fffaf0] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                onClick={() => onSelect(sticker)}
+                type="button"
+              >
+                <StickerArtwork sticker={sticker} />
+                <span className="max-w-full truncate text-[0.68rem] font-semibold text-[#344054]">
+                  {sticker.label}
+                </span>
+              </button>
+              {activeTab === "saved" ? (
+                <button
+                  aria-label={`Remover figurinha ${sticker.label}`}
+                  className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full border border-[#d9e0ea] bg-white text-[#667085] shadow-sm outline-none transition hover:border-red-200 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                  onClick={() => handleDeleteSticker(sticker.id)}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={12} />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid min-h-36 place-items-center rounded-xl border border-dashed border-[#cfd8e3] bg-[#f8fafc] px-4 text-center">
+          <div>
+            <p className="m-0 text-sm font-semibold text-[#344054]">
+              Nenhuma figurinha salva
+            </p>
+            <p className="m-0 mt-1 text-xs leading-5 text-[#667085]">
+              Salve imagens pequenas para enviar como figurinha.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function StickerArtwork({ sticker }: { sticker: ComposerStickerOption }) {
+  if (sticker.url) {
+    return (
+      <span
+        aria-hidden="true"
+        className="block h-14 w-14 bg-contain bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${sticker.url})` }}
+      />
+    );
+  }
+
+  return (
+    <span className="text-4xl leading-none" aria-hidden="true">
+      {sticker.emoji}
+    </span>
   );
 }
 
@@ -763,9 +920,12 @@ function getPresenceDotClassName(status: HermesPresenceUser["status"]) {
 }
 
 type ComposerStickerOption = {
-  emoji: string;
+  emoji?: string;
   id: string;
   label: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  url?: string;
 };
 
 const composerStickerOptions = [
@@ -800,6 +960,10 @@ const composerStickerOptions = [
     label: "Sol",
   },
 ] as const satisfies readonly ComposerStickerOption[];
+
+const HERMES_STICKER_STORAGE_KEY_PREFIX = "panteon:hermes:stickers";
+const MAX_SAVED_STICKERS = 24;
+const MAX_STICKER_BYTES = 512 * 1024;
 
 const composerEmojiOptions = [
   "😀",
@@ -923,6 +1087,80 @@ const composerEmojiOptions = [
 ] as const;
 
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+
+function getStickerStorageKey(currentUserId?: HermesPresenceUser["id"]) {
+  return `${HERMES_STICKER_STORAGE_KEY_PREFIX}:${currentUserId ?? "anonimo"}`;
+}
+
+function loadSavedStickers(storageKey: string): ComposerStickerOption[] {
+  try {
+    const storedValue = window.localStorage.getItem(storageKey);
+    const parsedValue = storedValue ? JSON.parse(storedValue) : [];
+
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return parsedValue
+      .map((item) => normalizeSavedSticker(item))
+      .filter((item): item is ComposerStickerOption => Boolean(item))
+      .slice(0, MAX_SAVED_STICKERS);
+  } catch {
+    return [];
+  }
+}
+
+function saveStickers(
+  storageKey: string,
+  stickers: readonly ComposerStickerOption[],
+) {
+  try {
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify(stickers.slice(0, MAX_SAVED_STICKERS)),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSavedSticker(value: unknown): ComposerStickerOption | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const input = value as Partial<ComposerStickerOption>;
+  const id = typeof input.id === "string" ? input.id : "";
+  const label = typeof input.label === "string" ? input.label : "";
+  const url = typeof input.url === "string" ? input.url : "";
+
+  if (!id || !label || !url.startsWith("data:image/")) {
+    return null;
+  }
+
+  return {
+    id,
+    label,
+    mimeType: typeof input.mimeType === "string" ? input.mimeType : undefined,
+    sizeBytes:
+      typeof input.sizeBytes === "number" && Number.isFinite(input.sizeBytes)
+        ? input.sizeBytes
+        : undefined,
+    url,
+  };
+}
+
+function getStickerLabel(fileName: string) {
+  const fallbackLabel = "Figurinha";
+  const [name] = fileName.split(".");
+  const label = (name || fallbackLabel)
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return label ? label.slice(0, 28) : fallbackLabel;
+}
 
 async function createAttachmentFromBlob(
   blob: Blob,
