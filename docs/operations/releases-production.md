@@ -710,3 +710,68 @@ Registro de producao:
 - Pendencias: Lucas fazer refresh visual autenticado em OPS.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Zeus acompanhar divergencia visual/operacional; Hefesto sempre validar alias compartilhado.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Hermes preview de anexos e diretas`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-21 14:03:16 -03:00`.
+- Ambiente: `producao`.
+- Autorizacao: Lucas solicitou explicitamente subir em producao as correcoes feitas pelo Hermes.
+- Origem/homologacao de referencia: registro Hermes local `[Hermes] Visualizacao interna de imagens anexadas` e correcao Hermes acoplada para conversas diretas persistidas; promocao feita por excecao autorizada pelo Lucas, sem homologacao formal separada deste recorte.
+- Escopo publicado:
+  - preview interno de imagens anexadas no Hermes, evitando abertura externa/tela vazia;
+  - propagacao do preview para lista de mensagens, mensagem raiz de thread e respostas;
+  - lightbox com fechar por `Esc`, clique fora e botao, preservando download;
+  - identificador estavel de conversa direta Hermes entre dois usuarios;
+  - preparacao server-side de canal direto e membros em `pulsex_channels`/`pulsex_channel_members` quando a conversa direta for usada por usuario autenticado.
+- Commit de referencia no branch local: `a7b477d fix(hermes): preview attachments and persist direct chats`.
+- Pacote limpo publicado: `.codex-deploy/prod-hermes-preview-direct-20260521-135349`, baseado na producao vigente `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7` e com delta restrito a Hermes/PulseX.
+- Deployment anterior: `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7`.
+- Deployment novo: `dpl_6315rmvTMtBikupELU37FmEtS7ek`; URL tecnica `https://careli-hub-hub-i2bs-i811tygp0-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado em `dpl_6315rmvTMtBikupELU37FmEtS7ek`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado em `dpl_6315rmvTMtBikupELU37FmEtS7ek`, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/app/api/pulsex/messages/route.ts`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/components/pulsex/thread-panel.tsx`;
+  - `apps/hub/lib/pulsex/direct-channel.ts`;
+  - `apps/hub/lib/pulsex/mock-data.ts`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `apps/hub/lib/pulsex/types.ts`.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hades/Guardian, Zeus/HelpDesk fora da base ja vigente, Atlas, Apolo, PWA, migrations, scripts, envs, secrets, banco, dominios e aliases manuais.
+- Validacoes executadas:
+  - worktree principal: `npx.cmd eslint app/api/pulsex/messages/route.ts components/pulsex/message-item.tsx components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx components/pulsex/thread-panel.tsx lib/pulsex/direct-channel.ts lib/pulsex/supabase-data.ts --max-warnings 0` passou;
+  - worktree principal: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --cached --check` passaram;
+  - scan staged de secrets nos arquivos Hermes sem valores sensiveis reais;
+  - pacote limpo: diff contra a base de producao ficou restrito aos nove arquivos Hermes/PulseX listados;
+  - pacote limpo: focused eslint dos nove arquivos passou;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub` passou;
+  - build remoto Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://c2x.app.br/pulsex`: `200`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200`;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200`;
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/hermes`: `200`;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/pulsex/messages` sem sessao: `401` esperado;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/operations/monitoring` sem sessao: `401` esperado.
+- Logs recentes: `npx.cmd vercel logs` com `--level error --since 10m` em `c2x.app.br` e `ops.c2x.app.br` sem logs encontrados.
+- Riscos conhecidos:
+  - promocao feita por excecao direta autorizada pelo Lucas, sem homologacao formal separada do recorte;
+  - validacao autenticada do clique em imagem real e de conversa direta real ainda depende do Lucas;
+  - conversas diretas passam a preparar registros em tabelas Hermes existentes quando usadas, sem migration nova;
+  - `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo deployment Vercel;
+  - warnings conhecidos de Turbopack/NFT, `npm audit`, engines Node e envs Postgres/Supabase fora do `turbo.json` persistem sem bloquear build.
+- Rollback definido: promover novamente `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7` se Hermes, login, Zeus/OPS, Hades/Guardian health ou rotas protegidas apresentarem regressao critica.
+- Pendencias: Lucas validar Hermes autenticado em producao com imagem anexada real e conversa direta entre usuarios; Hermes Core acompanhar ajuste fino se houver divergencia visual ou funcional.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar Hermes em producao; Hefesto manter rollback pronto para `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7`.

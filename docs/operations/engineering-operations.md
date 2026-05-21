@@ -9807,3 +9807,70 @@ Registro de release:
 Proximo passo:
 - Lucas validar a Home e a aba HelpDesk em `https://homo.c2x.app.br` com sessao autenticada.
 - Se aprovado, solicitar ao Hefesto promocao para producao por recorte limpo.
+
+## 2026-05-21 14:03:16 -03:00 - Hefesto - Producao Hermes preview de anexos e diretas
+
+Assunto: [Hefesto] Producao Hermes preview de anexos e diretas
+
+Status: EM PRODUCAO
+
+Autorizacao:
+- Lucas solicitou explicitamente subir em producao as correcoes feitas pelo Hermes.
+
+Escopo publicado:
+- Preview interno de imagens anexadas no Hermes, evitando abertura externa/tela vazia.
+- Propagacao do preview para lista de mensagens, mensagem raiz de thread e respostas.
+- Lightbox com fechar por `Esc`, clique fora e botao, preservando download.
+- Identificador estavel de conversa direta Hermes entre dois usuarios.
+- Preparacao server-side de canal direto e membros em `pulsex_channels`/`pulsex_channel_members` quando a conversa direta for usada por usuario autenticado.
+
+Como foi feito:
+- Criei commit local de referencia `a7b477d fix(hermes): preview attachments and persist direct chats` apenas com arquivos Hermes/PulseX do recorte.
+- Para nao publicar o HEAD amplo, montei pacote limpo `.codex-deploy/prod-hermes-preview-direct-20260521-135349` a partir da producao vigente `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7`.
+- Apliquei somente arquivos Hermes/PulseX necessarios ao pacote coerente, preservando Iris, Hades, Zeus, Atlas, Apolo, PWA, migrations, scripts, envs, secrets, banco, dominios e aliases manuais fora do release.
+- Publiquei o pacote via Vercel Production e confirmei os dois aliases compartilhados.
+
+Arquivos/modulos afetados:
+- `apps/hub/app/api/pulsex/messages/route.ts`
+- `apps/hub/components/pulsex/message-item.tsx`
+- `apps/hub/components/pulsex/message-list.tsx`
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`
+- `apps/hub/components/pulsex/thread-panel.tsx`
+- `apps/hub/lib/pulsex/direct-channel.ts`
+- `apps/hub/lib/pulsex/mock-data.ts`
+- `apps/hub/lib/pulsex/supabase-data.ts`
+- `apps/hub/lib/pulsex/types.ts`
+- `docs/operations/releases-production.md`
+- `docs/operations/engineering-operations.md`
+
+Deploy:
+- Deployment anterior: `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7`.
+- Deployment novo: `dpl_6315rmvTMtBikupELU37FmEtS7ek`.
+- URL tecnica: `https://careli-hub-hub-i2bs-i811tygp0-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+
+Validacao executada:
+- Worktree principal: focused eslint dos arquivos Hermes/PulseX passou.
+- Worktree principal: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --cached --check` passaram.
+- Scan staged de secrets nos arquivos Hermes sem valores sensiveis reais.
+- Pacote limpo: diff contra a base de producao restrito aos nove arquivos Hermes/PulseX listados.
+- Pacote limpo: focused eslint dos nove arquivos passou.
+- Pacote limpo: `npm.cmd run build --workspace @repo/hub` passou.
+- Build remoto Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy: `/`, `/login`, `/hermes`, `/pulsex`, `/api/hades/db/health`, `/api/guardian/db/health`, `ops/zeus` e `ops/hermes` retornaram `200`.
+- Rotas protegidas sem sessao `/api/hermes/messages`, `/api/pulsex/messages`, `/api/zeus/release-registers` e `/api/operations/monitoring` retornaram `401` esperado.
+- Logs Vercel de erro dos ultimos 10 minutos em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+
+Riscos conhecidos:
+- Promocao feita por excecao direta autorizada pelo Lucas, sem homologacao formal separada do recorte.
+- Validacao autenticada do clique em imagem real e de conversa direta real ainda depende do Lucas.
+- Conversas diretas passam a preparar registros em tabelas Hermes existentes quando usadas, sem migration nova.
+- `c2x.app.br` e `ops.c2x.app.br` compartilham o mesmo deployment Vercel.
+- Warnings conhecidos de Turbopack/NFT, `npm audit`, engines Node e envs Postgres/Supabase fora do `turbo.json` persistem sem bloquear build.
+
+Rollback:
+- Promover novamente `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7` se Hermes, login, Zeus/OPS, Hades/Guardian health ou rotas protegidas apresentarem regressao critica.
+
+Proximo passo:
+- Lucas validar Hermes autenticado em producao com imagem anexada real e conversa direta entre usuarios.
+- Hermes Core acompanhar ajuste fino se houver divergencia visual ou funcional.
