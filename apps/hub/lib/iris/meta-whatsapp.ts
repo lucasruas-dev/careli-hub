@@ -518,15 +518,32 @@ export async function createMetaWhatsAppMessageTemplate({
   config = getMetaWhatsAppOutboundConfig(),
   language,
   name,
+  preferPhoneNumberEdge = false,
 }: {
   category: "AUTHENTICATION" | "MARKETING" | "UTILITY";
   components: unknown[];
   config?: MetaWhatsAppOutboundConfig;
   language: string;
   name: string;
+  preferPhoneNumberEdge?: boolean;
 }): Promise<MetaWhatsAppCreateTemplateResult> {
   const accessToken = readEnvValue(config.accessToken);
   const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const phoneNumberId = readEnvValue(config.phoneNumberId);
+
+  if (preferPhoneNumberEdge && accessToken && graphVersion && phoneNumberId) {
+    return createMetaWhatsAppMessageTemplateByNode({
+      accessToken,
+      category,
+      components,
+      graphVersion,
+      language,
+      name,
+      nodeId: phoneNumberId,
+      nodeKind: "phone",
+    });
+  }
+
   const whatsappBusinessAccountId =
     await resolveMetaWhatsAppTemplateBusinessAccountId(config);
 
@@ -537,8 +554,39 @@ export async function createMetaWhatsAppMessageTemplate({
     );
   }
 
+  return createMetaWhatsAppMessageTemplateByNode({
+    accessToken,
+    category,
+    components,
+    graphVersion,
+    language,
+    name,
+    nodeId: whatsappBusinessAccountId,
+    nodeKind: "business",
+  });
+}
+
+async function createMetaWhatsAppMessageTemplateByNode({
+  accessToken,
+  category,
+  components,
+  graphVersion,
+  language,
+  name,
+  nodeId,
+  nodeKind,
+}: {
+  accessToken: string;
+  category: "AUTHENTICATION" | "MARKETING" | "UTILITY";
+  components: unknown[];
+  graphVersion: string;
+  language: string;
+  name: string;
+  nodeId: string;
+  nodeKind: "business" | "phone";
+}) {
   const response = await fetch(
-    `https://graph.facebook.com/${graphVersion}/${whatsappBusinessAccountId}/message_templates`,
+    `https://graph.facebook.com/${graphVersion}/${nodeId}/message_templates`,
     {
       body: JSON.stringify({
         category,
@@ -565,9 +613,13 @@ export async function createMetaWhatsAppMessageTemplate({
     | null;
 
   if (!response.ok) {
+    const fallbackMessage =
+      nodeKind === "phone"
+        ? "Meta WhatsApp nao permitiu criar o template diretamente pelo telefone de envio. Ajuste a WABA do telefone nas configuracoes Meta e tente novamente."
+        : "Meta WhatsApp rejeitou a criacao do template.";
+
     throw new MetaWhatsAppSendError(
-      normalizeText(payload?.error?.message) ??
-        "Meta WhatsApp rejeitou a criacao do template.",
+      normalizeText(payload?.error?.message) ?? fallbackMessage,
       response.status,
       {
         code: normalizeErrorCode(payload?.error?.code),

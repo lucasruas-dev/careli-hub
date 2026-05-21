@@ -272,6 +272,13 @@ type IrisMetaEventsResponse = {
   };
 };
 
+type IrisMetaTemplatesResponse = {
+  error?: string;
+  ignoredTemplateCount?: number;
+  phoneNumberLink?: IrisMetaPhoneNumberLink | null;
+  templates?: IrisMetaTemplateOption[];
+};
+
 type IrisMetaTemplateOption = {
   category?: string | null;
   id?: string | null;
@@ -1307,7 +1314,9 @@ function IrisStartAttendanceModal({
             },
           },
         );
-        const payload = await response.json().catch(() => null);
+        const payload = (await response.json().catch(
+          () => null,
+        )) as IrisMetaTemplatesResponse | null;
 
         if (!active) {
           return;
@@ -1327,6 +1336,9 @@ function IrisStartAttendanceModal({
         setTemplatePhoneLink(payload?.phoneNumberLink ?? null);
         setTemplateFeedback(
           joinFeedback(
+            payload?.ignoredTemplateCount
+              ? "Template aprovado em outra WABA ignorado para este telefone de envio."
+              : null,
             template
               ? `Template Meta ${templateStatusLabel(template.status)}.`
               : "Template pt_BR ainda nao encontrado na Meta.",
@@ -1432,7 +1444,12 @@ function IrisStartAttendanceModal({
         },
         method: "POST",
       });
-      const payload = await response.json().catch(() => null);
+      const payload = (await response.json().catch(
+        () => null,
+      )) as IrisMetaTemplatesResponse & {
+        created?: boolean;
+        template?: IrisMetaTemplateOption;
+      };
 
       if (!response.ok) {
         throw new Error(
@@ -6220,7 +6237,7 @@ function phoneNumberLinkFeedback(link?: IrisMetaPhoneNumberLink | null) {
       return "Template validado pela WABA real do telefone de envio.";
     }
 
-    return "Telefone de envio nao vinculado a WABA deste template.";
+    return "Crie um novo template para o telefone de envio.";
   }
 
   if (link.checkStatus === "missing_config") {

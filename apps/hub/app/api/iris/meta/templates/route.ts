@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     normalizeLanguage(url.searchParams.get("language")) ?? undefined;
 
   try {
+    const phoneNumberLink = await getSafePhoneNumberLinkStatus();
     const templates = (
       await listMetaWhatsAppMessageTemplates({
         limit: 50,
@@ -60,14 +61,16 @@ export async function GET(request: NextRequest) {
         (!language || template.language === language)
       );
     });
-
-    const phoneNumberLink = await getSafePhoneNumberLinkStatus();
+    const effectiveTemplates = isConfiguredWabaMismatch(phoneNumberLink)
+      ? []
+      : templates;
 
     return NextResponse.json(
       {
+        ignoredTemplateCount: templates.length - effectiveTemplates.length,
         ok: true,
         phoneNumberLink,
-        templates,
+        templates: effectiveTemplates,
       },
       { headers: { "Cache-Control": "no-store" } },
     );
@@ -92,14 +95,17 @@ export async function POST(request: NextRequest) {
   const template = buildTemplateRequest(input);
 
   try {
+    const phoneNumberLink = await getSafePhoneNumberLinkStatus();
     const existing = await listMetaWhatsAppMessageTemplates({
       limit: 10,
       name: template.name,
     });
-    const matched = existing.find(
-      (item) =>
-        item.name === template.name && item.language === template.language,
-    );
+    const matched = isConfiguredWabaMismatch(phoneNumberLink)
+      ? null
+      : existing.find(
+          (item) =>
+            item.name === template.name && item.language === template.language,
+        );
 
     if (matched) {
       await upsertLocalTemplate({
@@ -113,7 +119,7 @@ export async function POST(request: NextRequest) {
         {
           created: false,
           ok: true,
-          phoneNumberLink: await getSafePhoneNumberLinkStatus(),
+          phoneNumberLink,
           template: matched,
         },
         { headers: { "Cache-Control": "no-store" } },
@@ -125,6 +131,7 @@ export async function POST(request: NextRequest) {
       components: template.components,
       language: template.language,
       name: template.name,
+      preferPhoneNumberEdge: isConfiguredWabaMismatch(phoneNumberLink),
     });
 
     await upsertLocalTemplate({
@@ -152,6 +159,16 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return metaTemplateErrorResponse(error);
   }
+}
+
+function isConfiguredWabaMismatch(
+  link: Awaited<ReturnType<typeof getSafePhoneNumberLinkStatus>>,
+) {
+  return (
+    link.checkStatus === "checked" &&
+    link.linked === false &&
+    link.templateBusinessAccountSource !== "phone"
+  );
 }
 
 async function getSafePhoneNumberLinkStatus() {
