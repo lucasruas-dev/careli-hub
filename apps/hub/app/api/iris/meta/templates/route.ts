@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MetaWhatsAppSendError,
   createMetaWhatsAppMessageTemplate,
+  getMetaWhatsAppPhoneNumberLinkStatus,
   listMetaWhatsAppMessageTemplates,
 } from "@/lib/iris/meta-whatsapp";
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
@@ -60,9 +61,12 @@ export async function GET(request: NextRequest) {
       );
     });
 
+    const phoneNumberLink = await getSafePhoneNumberLinkStatus();
+
     return NextResponse.json(
       {
         ok: true,
+        phoneNumberLink,
         templates,
       },
       { headers: { "Cache-Control": "no-store" } },
@@ -109,6 +113,7 @@ export async function POST(request: NextRequest) {
         {
           created: false,
           ok: true,
+          phoneNumberLink: await getSafePhoneNumberLinkStatus(),
           template: matched,
         },
         { headers: { "Cache-Control": "no-store" } },
@@ -133,6 +138,7 @@ export async function POST(request: NextRequest) {
       {
         created: true,
         ok: true,
+        phoneNumberLink: await getSafePhoneNumberLinkStatus(),
         template: {
           category: created.category,
           id: created.id,
@@ -145,6 +151,28 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     return metaTemplateErrorResponse(error);
+  }
+}
+
+async function getSafePhoneNumberLinkStatus() {
+  try {
+    const status = await getMetaWhatsAppPhoneNumberLinkStatus();
+
+    return {
+      checkStatus: status.configured ? "checked" : "missing_config",
+      linked: status.linked,
+      phoneBusinessAccountDetected: status.phoneBusinessAccountDetected,
+      phoneCount: status.phoneCount,
+      templateBusinessAccountSource: status.templateBusinessAccountSource,
+    };
+  } catch {
+    return {
+      checkStatus: "unavailable",
+      linked: null,
+      phoneBusinessAccountDetected: null,
+      phoneCount: null,
+      templateBusinessAccountSource: "unavailable",
+    };
   }
 }
 

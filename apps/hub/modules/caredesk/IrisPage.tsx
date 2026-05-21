@@ -280,6 +280,19 @@ type IrisMetaTemplateOption = {
   status?: string | null;
 };
 
+type IrisMetaPhoneNumberLink = {
+  checkStatus?: "checked" | "missing_config" | "unavailable" | string;
+  linked?: boolean | null;
+  phoneBusinessAccountDetected?: boolean | null;
+  phoneCount?: number | null;
+  templateBusinessAccountSource?:
+    | "configured"
+    | "missing_config"
+    | "phone"
+    | "unavailable"
+    | string;
+};
+
 type IrisApoloClientOption = {
   documentMasked?: string | null;
   firstName: string;
@@ -1260,6 +1273,8 @@ function IrisStartAttendanceModal({
   const [templateStatus, setTemplateStatus] = useState<string | null>(null);
   const [templateMeta, setTemplateMeta] =
     useState<IrisMetaTemplateOption | null>(null);
+  const [templatePhoneLink, setTemplatePhoneLink] =
+    useState<IrisMetaPhoneNumberLink | null>(null);
   const [templateFeedback, setTemplateFeedback] = useState("");
   const [error, setError] = useState("");
   const [creatingTemplate, setCreatingTemplate] = useState(false);
@@ -1271,6 +1286,11 @@ function IrisStartAttendanceModal({
   const startTemplateName = templateMeta?.name ?? IRIS_OPT_IN_TEMPLATE.name;
   const startTemplateLanguage =
     templateMeta?.language ?? IRIS_OPT_IN_TEMPLATE.language;
+  const templatePhoneMismatch =
+    templatePhoneLink?.checkStatus === "checked" &&
+    templatePhoneLink.linked === false &&
+    templatePhoneLink.templateBusinessAccountSource !== "phone";
+  const templateCanStart = templateApproved && !templatePhoneMismatch;
 
   useEffect(() => {
     let active = true;
@@ -1304,10 +1324,14 @@ function IrisStartAttendanceModal({
         const template = payload?.templates?.[0];
         setTemplateStatus(template?.status ?? null);
         setTemplateMeta(template ?? null);
+        setTemplatePhoneLink(payload?.phoneNumberLink ?? null);
         setTemplateFeedback(
-          template
-            ? `Template Meta ${templateStatusLabel(template.status)}.`
-            : "Template pt_BR ainda nao encontrado na Meta.",
+          joinFeedback(
+            template
+              ? `Template Meta ${templateStatusLabel(template.status)}.`
+              : "Template pt_BR ainda nao encontrado na Meta.",
+            phoneNumberLinkFeedback(payload?.phoneNumberLink),
+          ),
         );
       } catch (templateError) {
         if (active) {
@@ -1419,10 +1443,14 @@ function IrisStartAttendanceModal({
       const status = payload?.template?.status ?? null;
       setTemplateStatus(status);
       setTemplateMeta(payload?.template ?? null);
+      setTemplatePhoneLink(payload?.phoneNumberLink ?? null);
       setTemplateFeedback(
-        payload?.created
-          ? `Template real criado na Meta como ${templateStatusLabel(status)}.`
-          : `Template real ja existia na Meta como ${templateStatusLabel(status)}.`,
+        joinFeedback(
+          payload?.created
+            ? `Template real criado na Meta como ${templateStatusLabel(status)}.`
+            : `Template real ja existia na Meta como ${templateStatusLabel(status)}.`,
+          phoneNumberLinkFeedback(payload?.phoneNumberLink),
+        ),
       );
     } catch (templateError) {
       setTemplateFeedback(
@@ -1436,7 +1464,7 @@ function IrisStartAttendanceModal({
   }
 
   async function startTicket() {
-    if (!selectedClient || !templateApproved) {
+    if (!selectedClient || !templateCanStart) {
       return;
     }
 
@@ -1661,6 +1689,11 @@ function IrisStartAttendanceModal({
               {error}
             </p>
           ) : null}
+          {templatePhoneMismatch ? (
+            <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+              O telefone de envio Meta nao pertence a WABA onde o template foi aprovado. Ajuste a configuracao Meta de homologacao ou crie o template na WABA do telefone de envio.
+            </p>
+          ) : null}
           {!templateApproved ? (
             <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
               O template precisa estar aprovado pela Meta antes de iniciar contato ativo real.
@@ -1669,7 +1702,7 @@ function IrisStartAttendanceModal({
           <button
             type="button"
             onClick={startTicket}
-            disabled={!selectedClient || !templateApproved || startingTicket}
+            disabled={!selectedClient || !templateCanStart || startingTicket}
             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send className="size-4" aria-hidden="true" />
@@ -6171,6 +6204,34 @@ function renderMetaTemplatePreview(
       text.replaceAll(variable.placeholder, variable.example || variable.label),
     bodyText,
   );
+}
+
+function joinFeedback(...messages: Array<string | null | undefined>) {
+  return messages.filter(Boolean).join(" ");
+}
+
+function phoneNumberLinkFeedback(link?: IrisMetaPhoneNumberLink | null) {
+  if (!link) {
+    return null;
+  }
+
+  if (link.checkStatus === "checked" && link.linked === false) {
+    if (link.templateBusinessAccountSource === "phone") {
+      return "Template validado pela WABA real do telefone de envio.";
+    }
+
+    return "Telefone de envio nao vinculado a WABA deste template.";
+  }
+
+  if (link.checkStatus === "missing_config") {
+    return "Configuracao Meta incompleta para validar o telefone de envio.";
+  }
+
+  if (link.checkStatus === "unavailable") {
+    return "Nao foi possivel validar se o telefone de envio pertence a WABA do template.";
+  }
+
+  return null;
 }
 
 function templateStatusLabel(status?: string | null) {

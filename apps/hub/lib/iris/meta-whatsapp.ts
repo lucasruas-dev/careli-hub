@@ -64,6 +64,18 @@ export type MetaWhatsAppTemplateSummary = {
   status: string | null;
 };
 
+export type MetaWhatsAppPhoneNumberLinkStatus = {
+  configured: boolean;
+  linked: boolean | null;
+  phoneBusinessAccountDetected: boolean;
+  phoneCount: number | null;
+  templateBusinessAccountSource:
+    | "configured"
+    | "missing_config"
+    | "phone"
+    | "unavailable";
+};
+
 export class MetaWhatsAppSendError extends Error {
   code: number | string | null;
   details: unknown;
@@ -357,9 +369,8 @@ export async function listMetaWhatsAppMessageTemplates({
 } = {}): Promise<MetaWhatsAppTemplateSummary[]> {
   const accessToken = readEnvValue(config.accessToken);
   const graphVersion = normalizeGraphVersion(config.graphVersion);
-  const whatsappBusinessAccountId = readEnvValue(
-    config.whatsappBusinessAccountId,
-  );
+  const whatsappBusinessAccountId =
+    await resolveMetaWhatsAppTemplateBusinessAccountId(config);
 
   if (!accessToken || !graphVersion || !whatsappBusinessAccountId) {
     throw new MetaWhatsAppSendError(
@@ -417,6 +428,90 @@ export async function listMetaWhatsAppMessageTemplates({
     : [];
 }
 
+export async function getMetaWhatsAppPhoneNumberLinkStatus({
+  config = getMetaWhatsAppOutboundConfig(),
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+} = {}): Promise<MetaWhatsAppPhoneNumberLinkStatus> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const phoneNumberId = readEnvValue(config.phoneNumberId);
+  const whatsappBusinessAccountId = readEnvValue(
+    config.whatsappBusinessAccountId,
+  );
+  const phoneBusinessAccountId = await readMetaWhatsAppPhoneBusinessAccountId({
+    config,
+  });
+
+  if (!accessToken || !graphVersion || !phoneNumberId) {
+    return {
+      configured: false,
+      linked: null,
+      phoneBusinessAccountDetected: Boolean(phoneBusinessAccountId),
+      phoneCount: null,
+      templateBusinessAccountSource: "missing_config",
+    };
+  }
+
+  if (!whatsappBusinessAccountId) {
+    return {
+      configured: false,
+      linked: null,
+      phoneBusinessAccountDetected: Boolean(phoneBusinessAccountId),
+      phoneCount: null,
+      templateBusinessAccountSource: phoneBusinessAccountId
+        ? "phone"
+        : "missing_config",
+    };
+  }
+
+  const searchParams = new URLSearchParams({
+    fields: "id",
+    limit: "100",
+  });
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${whatsappBusinessAccountId}/phone_numbers?${searchParams.toString()}`,
+    {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        data?: Array<Record<string, unknown>>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou a validacao do telefone de envio.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  const phoneNumberIds = Array.isArray(payload?.data)
+    ? payload.data.map((phoneNumber) => normalizeText(phoneNumber.id))
+    : [];
+
+  return {
+    configured: true,
+    linked: phoneNumberIds.includes(phoneNumberId),
+    phoneBusinessAccountDetected: Boolean(phoneBusinessAccountId),
+    phoneCount: phoneNumberIds.length,
+    templateBusinessAccountSource: phoneBusinessAccountId
+      ? "phone"
+      : "configured",
+  };
+}
+
 export async function createMetaWhatsAppMessageTemplate({
   category,
   components,
@@ -432,9 +527,8 @@ export async function createMetaWhatsAppMessageTemplate({
 }): Promise<MetaWhatsAppCreateTemplateResult> {
   const accessToken = readEnvValue(config.accessToken);
   const graphVersion = normalizeGraphVersion(config.graphVersion);
-  const whatsappBusinessAccountId = readEnvValue(
-    config.whatsappBusinessAccountId,
-  );
+  const whatsappBusinessAccountId =
+    await resolveMetaWhatsAppTemplateBusinessAccountId(config);
 
   if (!accessToken || !graphVersion || !whatsappBusinessAccountId) {
     throw new MetaWhatsAppSendError(
@@ -489,6 +583,52 @@ export async function createMetaWhatsAppMessageTemplate({
     raw: payload,
     status: normalizeText(payload?.status),
   };
+}
+
+async function resolveMetaWhatsAppTemplateBusinessAccountId(
+  config: MetaWhatsAppOutboundConfig,
+) {
+  const phoneBusinessAccountId = await readMetaWhatsAppPhoneBusinessAccountId({
+    config,
+  });
+
+  return phoneBusinessAccountId ?? readEnvValue(config.whatsappBusinessAccountId);
+}
+
+async function readMetaWhatsAppPhoneBusinessAccountId({
+  config,
+}: {
+  config: MetaWhatsAppOutboundConfig;
+}) {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const phoneNumberId = readEnvValue(config.phoneNumberId);
+
+  if (!accessToken || !graphVersion || !phoneNumberId) {
+    return null;
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}?fields=id,whatsapp_business_account`,
+    {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        whatsapp_business_account?: { id?: unknown };
+      }
+    | null;
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return normalizeText(payload?.whatsapp_business_account?.id);
 }
 
 export async function sendMetaWhatsAppAudioMessage({

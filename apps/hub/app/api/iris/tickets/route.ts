@@ -323,8 +323,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const status = error instanceof MetaWhatsAppSendError ? error.status : 500;
     const message =
-      error instanceof MetaWhatsAppSendError && isMetaTemplateTranslationError(error)
-        ? "A Meta aprovou outro registro, mas nao encontrou este template para o idioma/telefone de envio. Consulte ou recrie a traducao pt_BR do template na aba Templates e tente novamente."
+      error instanceof MetaWhatsAppSendError &&
+      isMetaTemplateTranslationError(error)
+        ? "A Meta nao encontrou este template na WABA do telefone de envio. Consulte ou crie novamente o template na aba Templates e aguarde a aprovacao."
         : error instanceof Error
           ? error.message
           : "Nao foi possivel iniciar o atendimento Iris.";
@@ -359,7 +360,7 @@ async function resolveApprovedMetaTemplate({
 
   if (!preferred?.name || !preferred.language) {
     throw new MetaWhatsAppSendError(
-      `Template Meta ${name} ainda nao possui traducao aprovada para envio.`,
+      `Template Meta ${name} ainda nao possui traducao aprovada para o telefone de envio.`,
       409,
       {
         code: "IRIS_TEMPLATE_NOT_APPROVED",
