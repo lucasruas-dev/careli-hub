@@ -477,13 +477,21 @@ export async function updateHubItTicket({
 
     const userAction = normalizedInput.action;
 
-    if (userAction === "customer_close" || userAction === "customer_review") {
+    if (
+      userAction === "customer_close" ||
+      userAction === "customer_comment" ||
+      userAction === "customer_review"
+    ) {
       if (currentTicket.requested_by_user_id !== user.id) {
         throw new Error("Somente o solicitante pode encerrar ou devolver o ticket para revisao.");
       }
 
       const nextStatus =
-        userAction === "customer_close" ? "fechado" : "em_revisao";
+        userAction === "customer_close"
+          ? "fechado"
+          : userAction === "customer_review"
+            ? "em_revisao"
+            : currentTicket.status;
       const { data: ticket, error } = await adminClient
         .from("hub_it_tickets")
         .update({
@@ -491,7 +499,8 @@ export async function updateHubItTicket({
           last_response_by_email: user.email,
           last_response_by_name: user.name,
           last_response_by_user_id: user.id,
-          resolved_at: nextStatus === "fechado" ? now : null,
+          resolved_at:
+            userAction === "customer_close" ? now : currentTicket.resolved_at,
           status: nextStatus,
         })
         .eq("protocol", normalizedInput.protocol)
@@ -512,16 +521,24 @@ export async function updateHubItTicket({
           userAction === "customer_close"
             ? "Solicitante confirmou a resolucao e encerrou o ticket."
             : normalizedInput.customerResponse ||
-              "Solicitante devolveu o ticket para revisao.",
+              (userAction === "customer_review"
+                ? "Solicitante devolveu o ticket para revisao."
+                : "Solicitante enviou uma mensagem para Zeus."),
         metadata: { source: "hub-ticket-ti-user" },
         technicalNote: null,
         ticketId: ticket.id,
-        type: userAction === "customer_close" ? "closed" : "review_requested",
+        type:
+          userAction === "customer_close"
+            ? "closed"
+            : userAction === "customer_review"
+              ? "review_requested"
+              : "user_comment",
         visibleToRequester: true,
       });
 
       if (
-        userAction === "customer_review" &&
+        (userAction === "customer_review" ||
+          userAction === "customer_comment") &&
         normalizedInput.attachments &&
         normalizedInput.attachments.length > 0
       ) {
@@ -660,15 +677,55 @@ async function hydrateTicketRows(
       .order("created_at", { ascending: false }),
   ]);
 
-  const eventsByTicketId = groupByTicketId(events ?? []);
+  const eventRows = events ?? [];
+  const actorIds = [
+    ...new Set(
+      eventRows
+        .map((event) => event.created_by_user_id)
+        .filter((userId): userId is string => Boolean(userId)),
+    ),
+  ];
+  const eventActorsById = await loadHubItTicketEventActors(
+    adminClient,
+    actorIds,
+  );
+  const eventsByTicketId = groupByTicketId(eventRows);
   const attachmentsByTicketId = groupByTicketId(attachments ?? []);
 
   return rows.map((row) =>
     mapTicketRow(
       row,
-      eventsByTicketId.get(row.id)?.map(mapEventRow) ?? [],
+      eventsByTicketId
+        .get(row.id)
+        ?.map((event) => mapEventRow(event, eventActorsById)) ?? [],
       attachmentsByTicketId.get(row.id)?.map(mapAttachmentRow) ?? [],
     ),
+  );
+}
+
+async function loadHubItTicketEventActors(
+  adminClient: HubItTicketsClient,
+  userIds: string[],
+) {
+  if (userIds.length === 0) {
+    return new Map<string, HubItTicket["requester"]>();
+  }
+
+  const { data } = await adminClient
+    .from("hub_users")
+    .select("id,display_name,email,avatar_url")
+    .in("id", userIds);
+
+  return new Map(
+    (data ?? []).map((user) => [
+      user.id,
+      {
+        avatarUrl: user.avatar_url,
+        email: user.email,
+        id: user.id,
+        name: user.display_name,
+      } satisfies HubItTicket["requester"],
+    ]),
   );
 }
 
@@ -917,8 +974,14 @@ function mapTicketRow(
   };
 }
 
-function mapEventRow(row: HubItTicketEventRow): HubItTicketEvent {
+function mapEventRow(
+  row: HubItTicketEventRow,
+  actorsById: ReadonlyMap<string, HubItTicket["requester"]>,
+): HubItTicketEvent {
   return {
+    actor: row.created_by_user_id
+      ? (actorsById.get(row.created_by_user_id) ?? null)
+      : null,
     createdAt: row.created_at,
     id: row.id,
     message: row.message,
@@ -1196,6 +1259,12 @@ async function createLocalHubItTicket({
   const deliveryAgreement = buildInitialDeliveryMetadata(
     input.requestedDeliveryDate,
   );
+  const actor = {
+    avatarUrl: user.avatarUrl,
+    email: user.email,
+    id: user.id,
+    name: user.name,
+  };
   const ticket: HubItTicket = {
     actualResult: input.actualResult,
     adminResponse: null,
@@ -1214,6 +1283,7 @@ async function createLocalHubItTicket({
     deliveryDecisionStatus: "pendente",
     events: [
       {
+        actor,
         createdAt: now,
         id: `local-event-${randomBytes(6).toString("hex")}`,
         message: `HelpDesk aberto pelo usuario via Athena. Data solicitada: ${formatDateOnlyForMessage(input.requestedDeliveryDate)}.`,
@@ -1223,22 +1293,12 @@ async function createLocalHubItTicket({
     ],
     expectedResult: input.expectedResult,
     id: `local-ticket-${randomBytes(8).toString("hex")}`,
-    lastResponseBy: {
-      avatarUrl: user.avatarUrl,
-      email: user.email,
-      id: user.id,
-      name: user.name,
-    },
+    lastResponseBy: actor,
     module: input.module,
     priority: input.priority,
     protocol,
     requestedDeliveryDate: deliveryAgreement.requestedDate,
-    requester: {
-      avatarUrl: user.avatarUrl,
-      email: user.email,
-      id: user.id,
-      name: user.name,
-    },
+    requester: actor,
     resolutionSummary: null,
     resolvedAt: null,
     sourcePath: input.sourcePath,
@@ -1282,15 +1342,23 @@ async function updateLocalHubItTicket({
     name: user.name,
   };
 
-  if (userAction === "customer_close" || userAction === "customer_review") {
+  if (
+    userAction === "customer_close" ||
+    userAction === "customer_comment" ||
+    userAction === "customer_review"
+  ) {
     if (currentTicket.requester.id !== user.id) {
       throw new Error("Somente o solicitante pode encerrar ou devolver o ticket para revisao.");
     }
 
     const nextStatus =
-      userAction === "customer_close" ? "fechado" : "em_revisao";
+      userAction === "customer_close"
+        ? "fechado"
+        : userAction === "customer_review"
+          ? "em_revisao"
+          : currentTicket.status;
     const reviewAttachments =
-      userAction === "customer_review"
+      userAction === "customer_review" || userAction === "customer_comment"
         ? (input.attachments ?? []).map((attachment) => ({
             ...attachment,
             id: `local-att-${randomBytes(6).toString("hex")}`,
@@ -1301,20 +1369,29 @@ async function updateLocalHubItTicket({
       attachments: [...reviewAttachments, ...currentTicket.attachments],
       events: [
         {
+          actor,
           createdAt: now,
           id: `local-event-${randomBytes(6).toString("hex")}`,
           message:
             userAction === "customer_close"
               ? "Solicitante confirmou a resolucao e encerrou o ticket."
               : input.customerResponse ||
-                "Solicitante devolveu o ticket para revisao.",
-          type: userAction === "customer_close" ? "closed" : "review_requested",
+                (userAction === "customer_review"
+                  ? "Solicitante devolveu o ticket para revisao."
+                  : "Solicitante enviou uma mensagem para Zeus."),
+          type:
+            userAction === "customer_close"
+              ? "closed"
+              : userAction === "customer_review"
+                ? "review_requested"
+                : "user_comment",
           visibleToRequester: true,
         },
         ...currentTicket.events,
       ],
       lastResponseBy: actor,
-      resolvedAt: nextStatus === "fechado" ? now : null,
+      resolvedAt:
+        userAction === "customer_close" ? now : currentTicket.resolvedAt,
       status: nextStatus,
       updatedAt: now,
     };
@@ -1358,6 +1435,7 @@ async function updateLocalHubItTicket({
       deliveryDecision.status ?? currentTicket.deliveryDecisionStatus,
     events: [
       {
+        actor,
         createdAt: now,
         id: `local-event-${randomBytes(6).toString("hex")}`,
         message: buildAdminTicketEventMessage({
@@ -1502,6 +1580,7 @@ function isTicketUpdateAction(
   return (
     value === "admin_reply" ||
     value === "customer_close" ||
+    value === "customer_comment" ||
     value === "customer_review"
   );
 }

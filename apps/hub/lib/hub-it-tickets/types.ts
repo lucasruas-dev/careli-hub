@@ -100,6 +100,7 @@ export type HubItTicketAttachmentInput = Omit<HubItTicketAttachment, "id"> & {
 };
 
 export type HubItTicketEvent = {
+  actor?: HubItTicketUserRef | null;
   createdAt: string;
   id: string;
   message: string;
@@ -182,7 +183,11 @@ export type HubItTicketEvidenceAnalysis = {
 };
 
 export type HubItTicketUpdateInput = {
-  action?: "admin_reply" | "customer_close" | "customer_review";
+  action?:
+    | "admin_reply"
+    | "customer_close"
+    | "customer_comment"
+    | "customer_review";
   adminResponse?: string;
   attachments?: HubItTicketAttachmentInput[];
   customerResponse?: string;

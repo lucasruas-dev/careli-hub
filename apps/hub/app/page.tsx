@@ -207,7 +207,7 @@ export default function HomePage() {
         />
 
         {activeHomeTab === "tickets" ? (
-          <HubUserTicketsPanel title="Meus tickets TI" />
+          <HubUserTicketsPanel title="Meus chamados" />
         ) : (
           <>
             <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -339,7 +339,7 @@ function HomeTabs({
         onClick={() => onTabChange("tickets")}
         type="button"
       >
-        Ticket TI
+        HelpDesk
       </button>
     </nav>
   );

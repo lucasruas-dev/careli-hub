@@ -126,28 +126,28 @@ export function HubUserTicketsPanel({
   }, [filteredTickets, selectedProtocol]);
 
   async function sendCustomerAction(
-    action: "customer_close" | "customer_review",
+    action: "customer_close" | "customer_comment" | "customer_review",
     payload: {
       attachments?: HubItTicketAttachmentInput[];
       customerResponse?: string;
     } = {},
   ) {
     if (!selectedTicket) {
-      return;
+      return false;
     }
 
     const reviewText = payload.customerResponse?.trim() ?? "";
     const reviewAttachments = payload.attachments ?? [];
 
     if (
-      action === "customer_review" &&
+      (action === "customer_comment" || action === "customer_review") &&
       reviewText.length < 3 &&
       reviewAttachments.length === 0
     ) {
       setError(
         "Descreva rapidamente o que ainda precisa ser revisado ou anexe uma evidencia.",
       );
-      return;
+      return false;
     }
 
     setIsSaving(true);
@@ -159,9 +159,13 @@ export function HubUserTicketsPanel({
         input: {
           action,
           attachments:
-            action === "customer_review" ? reviewAttachments : undefined,
+            action === "customer_review" || action === "customer_comment"
+              ? reviewAttachments
+              : undefined,
           customerResponse:
-            action === "customer_review" ? reviewText : undefined,
+            action === "customer_review" || action === "customer_comment"
+              ? reviewText
+              : undefined,
           protocol: selectedTicket.protocol,
         },
       });
@@ -172,12 +176,14 @@ export function HubUserTicketsPanel({
         ),
       );
       setSelectedProtocol(updatedTicket.protocol);
+      return true;
     } catch (saveError) {
       setError(
         saveError instanceof Error
           ? saveError.message
           : "Nao foi possivel atualizar o ticket.",
       );
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -269,9 +275,12 @@ export function HubUserTicketsPanel({
         >
           <TicketDetail
             isSaving={isSaving}
-            onClose={() => void sendCustomerAction("customer_close")}
+            onClose={() => sendCustomerAction("customer_close")}
+            onComment={(payload) =>
+              sendCustomerAction("customer_comment", payload)
+            }
             onReview={(payload) =>
-              void sendCustomerAction("customer_review", payload)
+              sendCustomerAction("customer_review", payload)
             }
             ticket={selectedTicket}
           />
@@ -370,18 +379,25 @@ function TicketHistoryItem({
 function TicketDetail({
   isSaving,
   onClose,
+  onComment,
   onReview,
   ticket,
 }: {
   isSaving: boolean;
-  onClose: () => void;
+  onClose: () => Promise<boolean>;
+  onComment: (payload: {
+    attachments: HubItTicketAttachmentInput[];
+    customerResponse: string;
+  }) => Promise<boolean>;
   onReview: (payload: {
     attachments: HubItTicketAttachmentInput[];
     customerResponse: string;
-  }) => void;
+  }) => Promise<boolean>;
   ticket: HubItTicket;
 }) {
   const awaitingClient = ticket.status === "aguardando_cliente";
+  const isClosed = ticket.status === "fechado";
+  const canInteract = !isClosed;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -617,16 +633,43 @@ function TicketDetail({
     setRecordingKind(null);
   }
 
-  function submitReview() {
+  function clearInteractionDraft() {
+    setIsReviewMode(false);
+    setReviewText("");
+    setReviewAttachments([]);
+    setEvidenceError(null);
+  }
+
+  async function submitCustomerComment() {
+    if (!canSubmitReview || isSaving) {
+      setEvidenceError("Informe uma mensagem curta ou anexe uma evidencia.");
+      return;
+    }
+
+    const wasSent = await onComment({
+      attachments: reviewAttachments,
+      customerResponse: reviewText.trim(),
+    });
+
+    if (wasSent) {
+      clearInteractionDraft();
+    }
+  }
+
+  async function submitReview() {
     if (!canSubmitReview || isSaving) {
       setEvidenceError("Informe uma observacao curta ou anexe uma evidencia.");
       return;
     }
 
-    onReview({
+    const wasSent = await onReview({
       attachments: reviewAttachments,
       customerResponse: reviewText.trim(),
     });
+
+    if (wasSent) {
+      clearInteractionDraft();
+    }
   }
 
   return (
@@ -653,16 +696,17 @@ function TicketDetail({
         </div>
       </header>
 
+      <RequesterWorkflow status={ticket.status} />
+
       <div className="grid gap-3 md:grid-cols-2">
         <UserInfoCard
           label="Solicitante"
-          name={ticket.requester.name}
-          email={ticket.requester.email}
+          user={ticket.requester}
         />
         <UserInfoCard
           label="Tratando"
-          name={ticket.assignedTo?.name ?? "Zeus ainda nao atribuido"}
-          email={ticket.assignedTo?.email}
+          fallback="Zeus ainda nao atribuido"
+          user={ticket.assignedTo}
         />
       </div>
 
@@ -709,52 +753,71 @@ function TicketDetail({
         </div>
       ) : null}
 
-      {awaitingClient ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-            <MessageSquareReply className="size-4" />
-            Zeus devolveu. Voce decide se encerra ou volta para revisao.
+      {canInteract ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-950">
+              <MessageSquareReply className="size-4 text-[#A07C3B]" />
+              {awaitingClient
+                ? "Zeus devolveu. Voce pode responder, revisar ou encerrar."
+                : "Conversa com Zeus"}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Tooltip content="Encerrar ticket" placement="top">
+                <button
+                  aria-label="Encerrar ticket"
+                  className="grid size-10 place-items-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                  disabled={isSaving}
+                  onClick={() => void onClose()}
+                  type="button"
+                >
+                  {isSaving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-4" />
+                  )}
+                </button>
+              </Tooltip>
+              <Tooltip content={isReviewMode ? "Voltar para mensagem" : "Solicitar revisao"} placement="top">
+                <button
+                  aria-label={
+                    isReviewMode ? "Voltar para mensagem" : "Solicitar revisao"
+                  }
+                  aria-pressed={isReviewMode}
+                  className={`grid size-10 place-items-center rounded-lg border transition disabled:opacity-60 ${
+                    isReviewMode
+                      ? "border-[#A07C3B]/40 bg-[#A07C3B]/10 text-[#7A5E2C]"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-[#A07C3B]/30 hover:text-slate-950"
+                  }`}
+                  disabled={isSaving}
+                  onClick={() => setIsReviewMode((currentValue) => !currentValue)}
+                  type="button"
+                >
+                  <RotateCcw className="size-4" />
+                </button>
+              </Tooltip>
+            </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
-              disabled={isSaving}
-              onClick={onClose}
-              type="button"
-            >
-              {isSaving ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="size-4" />
-              )}
-              Encerrar ticket
-            </button>
-            <button
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-800 transition hover:border-amber-400 disabled:opacity-60"
-              disabled={isSaving}
-              onClick={() => setIsReviewMode((currentValue) => !currentValue)}
-              type="button"
-            >
-              <RotateCcw className="size-4" />
-              Solicitar revisao
-            </button>
-          </div>
-          {isReviewMode ? (
-            <div className="mt-3 grid gap-3 rounded-lg border border-amber-200 bg-white p-3">
-              <input
-                accept="audio/*,image/*,video/*,.doc,.docx,.pdf,.ppt,.pptx,.xls,.xlsx,.txt"
-                className="hidden"
-                multiple
-                onChange={handleFileChange}
-                ref={fileInputRef}
-                type="file"
-              />
-              <textarea
-                className="min-h-24 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
-                onChange={(event) => setReviewText(event.target.value)}
-                placeholder="Descreva o que ainda nao resolveu ou o que precisa revisar."
-                value={reviewText}
-              />
+          <div className="mt-3 grid gap-3 rounded-lg border border-slate-200 bg-white p-3">
+            <input
+              accept="audio/*,image/*,video/*,.doc,.docx,.pdf,.ppt,.pptx,.xls,.xlsx,.txt"
+              className="hidden"
+              multiple
+              onChange={handleFileChange}
+              ref={fileInputRef}
+              type="file"
+            />
+            <textarea
+              className="min-h-24 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              onChange={(event) => setReviewText(event.target.value)}
+              placeholder={
+                isReviewMode
+                  ? "Descreva o que ainda nao resolveu ou o que precisa revisar."
+                  : "Envie uma mensagem para Zeus sobre este HelpDesk."
+              }
+              value={reviewText}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-2">
                 <EvidenceButton
                   icon={<Camera className="size-4" />}
@@ -791,27 +854,21 @@ function TicketDetail({
                   onClick={() => fileInputRef.current?.click()}
                 />
               </div>
-              <ReviewEvidenceList
-                attachments={reviewAttachments}
-                onRemove={(fileName) =>
-                  setReviewAttachments((currentAttachments) =>
-                    currentAttachments.filter(
-                      (attachment) => attachment.fileName !== fileName,
-                    ),
-                  )
-                }
-              />
-              {evidenceError ? (
-                <p className="m-0 text-xs font-semibold text-red-600">
-                  {evidenceError}
-                </p>
-              ) : null}
-              <Tooltip content="Enviar revisao" placement="top">
+              <Tooltip
+                content={isReviewMode ? "Enviar revisao" : "Enviar mensagem"}
+                placement="top"
+              >
                 <button
-                  aria-label="Enviar revisao para Zeus"
-                  className="grid size-11 place-items-center rounded-lg bg-[#A07C3B] text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                  aria-label={
+                    isReviewMode ? "Enviar revisao para Zeus" : "Enviar mensagem para Zeus"
+                  }
+                  className="grid size-11 place-items-center rounded-lg bg-[#101820] text-white transition hover:bg-[#243241] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                   disabled={!canSubmitReview || isSaving}
-                  onClick={submitReview}
+                  onClick={() =>
+                    isReviewMode
+                      ? void submitReview()
+                      : void submitCustomerComment()
+                  }
                   type="button"
                 >
                   {isSaving ? (
@@ -822,38 +879,201 @@ function TicketDetail({
                 </button>
               </Tooltip>
             </div>
-          ) : null}
+            <ReviewEvidenceList
+              attachments={reviewAttachments}
+              onRemove={(fileName) =>
+                setReviewAttachments((currentAttachments) =>
+                  currentAttachments.filter(
+                    (attachment) => attachment.fileName !== fileName,
+                  ),
+                )
+              }
+            />
+            {evidenceError ? (
+              <p className="m-0 text-xs font-semibold text-red-600">
+                {evidenceError}
+              </p>
+            ) : null}
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">
+          HelpDesk encerrado.
+        </div>
+      )}
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-500">
-          <Clock3 className="size-4 text-[#A07C3B]" />
-          Historico
-        </div>
-        <div className="mt-3 grid gap-2">
-          {ticket.events.length > 0 ? (
-            ticket.events.map((event) => (
-              <div
-                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600"
-                key={event.id}
-              >
-                <span className="font-semibold text-slate-950">
-                  {formatDateTime(event.createdAt)}
-                </span>
-                {" / "}
-                {event.message}
-              </div>
-            ))
-          ) : (
-            <p className="m-0 text-sm text-slate-500">
-              Sem historico registrado.
-            </p>
-          )}
-        </div>
-      </div>
+      <CustomerTicketHistory ticket={ticket} />
     </article>
   );
+}
+
+function RequesterWorkflow({ status }: { status: HubItTicketStatus }) {
+  const steps = [
+    { id: "novo", label: "Entrada" },
+    { id: "em_triagem", label: "Triagem" },
+    { id: "em_tratativa", label: "Tratativa" },
+    { id: "em_homologacao", label: "Homologacao" },
+    { id: "aguardando_cliente", label: "Sua validacao" },
+    { id: "fechado", label: "Encerrado" },
+  ] as const;
+  const activeIndex = Math.max(
+    steps.findIndex((step) => step.id === normalizeRequesterWorkflowStatus(status)),
+    0,
+  );
+
+  return (
+    <div className="flex gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50/80 p-2">
+      {steps.map((step, index) => {
+        const isDone = index < activeIndex || status === "fechado";
+        const isActive = index === activeIndex && status !== "fechado";
+
+        return (
+          <div
+            className={`min-w-[8rem] rounded-md border px-3 py-2 ${
+              isDone
+                ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                : isActive
+                  ? "border-[#A07C3B]/35 bg-[#A07C3B]/10 text-[#7A5E2C]"
+                  : "border-slate-200 bg-white text-slate-500"
+            }`}
+            key={step.id}
+          >
+            <p className="m-0 text-[0.68rem] font-semibold uppercase">
+              {step.label}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function normalizeRequesterWorkflowStatus(status: HubItTicketStatus) {
+  if (status === "em_analise" || status === "em_revisao") {
+    return "em_triagem";
+  }
+
+  if (status === "em_execucao" || status === "em_producao") {
+    return "em_tratativa";
+  }
+
+  if (status === "resolvido") {
+    return "aguardando_cliente";
+  }
+
+  return status;
+}
+
+function CustomerTicketHistory({ ticket }: { ticket: HubItTicket }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-500">
+        <Clock3 className="size-4 text-[#A07C3B]" />
+        Conversa e historico
+      </div>
+      <div className="mt-3 grid max-h-80 gap-3 overflow-y-auto pr-1">
+        {ticket.events.length > 0 ? (
+          ticket.events.map((event) => (
+            <CustomerTicketHistoryEvent
+              event={event}
+              key={event.id}
+              ticket={ticket}
+            />
+          ))
+        ) : (
+          <p className="m-0 text-sm text-slate-500">
+            Sem historico registrado.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CustomerTicketHistoryEvent({
+  event,
+  ticket,
+}: {
+  event: HubItTicket["events"][number];
+  ticket: HubItTicket;
+}) {
+  const actor = getCustomerHistoryActor(event, ticket);
+  const isRequester = actor.kind === "requester";
+  const bubbleClass = isRequester
+    ? "border-[#3f4c5d] bg-[#3f4c5d] text-white"
+    : actor.kind === "athena"
+      ? "border-[#A07C3B]/20 bg-[#A07C3B]/10 text-slate-800"
+      : "border-slate-200 bg-white text-slate-700";
+  const timestampClass = isRequester ? "text-white/65" : "text-slate-400";
+
+  return (
+    <div className={`flex gap-2 ${isRequester ? "justify-end" : "justify-start"}`}>
+      {!isRequester ? (
+        <TicketAvatar user={actor.user} size="xs" variant={actor.variant} />
+      ) : null}
+      <div
+        className={`max-w-[86%] rounded-2xl border px-3 py-2 text-xs leading-5 shadow-sm ${bubbleClass}`}
+      >
+        <p className="m-0 whitespace-pre-wrap">{event.message}</p>
+        <p className={`m-0 mt-1 font-mono text-[0.62rem] ${timestampClass}`}>
+          {formatDateTime(event.createdAt)}
+        </p>
+      </div>
+      {isRequester ? (
+        <TicketAvatar user={actor.user} size="xs" variant="dark" />
+      ) : null}
+    </div>
+  );
+}
+
+function getCustomerHistoryActor(
+  event: HubItTicket["events"][number],
+  ticket: HubItTicket,
+) {
+  if (event.type === "triaged") {
+    return {
+      kind: "athena" as const,
+      user: event.actor ?? {
+        avatarUrl: null,
+        email: null,
+        id: "athena",
+        name: "Athena",
+      },
+      variant: "gold" as const,
+    };
+  }
+
+  const requesterEvent =
+    event.type === "created" ||
+    event.type === "attachment_added" ||
+    event.type === "closed" ||
+    event.type === "review_requested" ||
+    event.type === "user_comment";
+
+  if (event.actor) {
+    return {
+      kind: requesterEvent ? ("requester" as const) : ("operator" as const),
+      user: event.actor,
+      variant: requesterEvent ? ("dark" as const) : ("gold" as const),
+    };
+  }
+
+  const operator =
+    ticket.assignedTo ??
+    ticket.deliveryDecisionBy ??
+    ticket.lastResponseBy ??
+    ({
+      avatarUrl: null,
+      email: null,
+      id: "zeus",
+      name: "Zeus",
+    } satisfies HubItTicket["requester"]);
+
+  return {
+    kind: requesterEvent ? ("requester" as const) : ("operator" as const),
+    user: requesterEvent ? ticket.requester : operator,
+    variant: requesterEvent ? ("dark" as const) : ("gold" as const),
+  };
 }
 
 function DeliveryAgreementBlock({ ticket }: { ticket: HubItTicket }) {
@@ -989,27 +1209,74 @@ function DetailBlock({ label, value }: { label: string; value: string }) {
 }
 
 function UserInfoCard({
-  email,
+  fallback = "Sem responsavel",
   label,
-  name,
+  user,
 }: {
-  email?: string | null;
+  fallback?: string;
   label: string;
-  name: string;
+  user: HubItTicket["requester"] | HubItTicket["assignedTo"] | null;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-      <p className="m-0 text-xs font-semibold uppercase text-slate-500">
-        {label}
-      </p>
-      <p className="m-0 mt-2 truncate text-sm font-semibold text-slate-950">
-        {name}
-      </p>
-      <p className="m-0 mt-1 truncate text-xs text-slate-500">
-        {email ?? "sem e-mail registrado"}
-      </p>
+    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+      <TicketAvatar user={user} size="md" variant="dark" />
+      <div className="min-w-0">
+        <p className="m-0 text-xs font-semibold uppercase text-slate-500">
+          {label}
+        </p>
+        <p className="m-0 mt-1 truncate text-sm font-semibold text-slate-950">
+          {user?.name ?? fallback}
+        </p>
+        <p className="m-0 mt-1 truncate text-xs text-slate-500">
+          {user?.email ?? "sem e-mail registrado"}
+        </p>
+      </div>
     </div>
   );
+}
+
+function TicketAvatar({
+  size,
+  user,
+  variant = "dark",
+}: {
+  size: "md" | "xs";
+  user: HubItTicket["requester"] | HubItTicket["assignedTo"] | null;
+  variant?: "dark" | "gold";
+}) {
+  const sizeClass = size === "md" ? "size-10 text-xs" : "size-8 text-[0.62rem]";
+  const imageSize = size === "md" ? 40 : 32;
+  const fallbackClass =
+    variant === "dark"
+      ? "bg-[#101820] text-white"
+      : "bg-[#A07C3B]/15 text-[#7A5E2C]";
+
+  if (user?.avatarUrl) {
+    return (
+      <Image
+        alt={user.name}
+        className={`${sizeClass} shrink-0 rounded-full object-cover ring-1 ring-slate-200`}
+        height={imageSize}
+        src={user.avatarUrl}
+        unoptimized
+        width={imageSize}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`grid ${sizeClass} shrink-0 place-items-center rounded-full font-semibold ${fallbackClass}`}
+    >
+      {user ? getInitials(user.name) : "--"}
+    </span>
+  );
+}
+
+function getInitials(name: string) {
+  const [first = "", second = ""] = name.trim().split(/\s+/);
+
+  return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase() || "--";
 }
 
 function EvidenceButton({
