@@ -272,6 +272,14 @@ type IrisMetaEventsResponse = {
   };
 };
 
+type IrisMetaTemplateOption = {
+  category?: string | null;
+  id?: string | null;
+  language?: string | null;
+  name?: string | null;
+  status?: string | null;
+};
+
 type IrisApoloClientOption = {
   documentMasked?: string | null;
   firstName: string;
@@ -1250,6 +1258,8 @@ function IrisStartAttendanceModal({
     useState<IrisApoloClientOption | null>(null);
   const [searching, setSearching] = useState(false);
   const [templateStatus, setTemplateStatus] = useState<string | null>(null);
+  const [templateMeta, setTemplateMeta] =
+    useState<IrisMetaTemplateOption | null>(null);
   const [templateFeedback, setTemplateFeedback] = useState("");
   const [error, setError] = useState("");
   const [creatingTemplate, setCreatingTemplate] = useState(false);
@@ -1258,6 +1268,9 @@ function IrisStartAttendanceModal({
   const firstName = selectedClient?.firstName ?? IRIS_OPT_IN_TEMPLATE.exampleName;
   const preview = renderIrisOptInTemplate(firstName);
   const templateApproved = templateStatus === "APPROVED";
+  const startTemplateName = templateMeta?.name ?? IRIS_OPT_IN_TEMPLATE.name;
+  const startTemplateLanguage =
+    templateMeta?.language ?? IRIS_OPT_IN_TEMPLATE.language;
 
   useEffect(() => {
     let active = true;
@@ -1266,7 +1279,7 @@ function IrisStartAttendanceModal({
       try {
         const accessToken = await getIrisAccessToken();
         const response = await fetch(
-          `/api/iris/meta/templates?name=${encodeURIComponent(IRIS_OPT_IN_TEMPLATE.name)}`,
+          `/api/iris/meta/templates?name=${encodeURIComponent(IRIS_OPT_IN_TEMPLATE.name)}&language=${encodeURIComponent(IRIS_OPT_IN_TEMPLATE.language)}`,
           {
             cache: "no-store",
             headers: {
@@ -1290,10 +1303,11 @@ function IrisStartAttendanceModal({
 
         const template = payload?.templates?.[0];
         setTemplateStatus(template?.status ?? null);
+        setTemplateMeta(template ?? null);
         setTemplateFeedback(
           template
             ? `Template Meta ${templateStatusLabel(template.status)}.`
-            : "Template ainda nao encontrado na Meta.",
+            : "Template pt_BR ainda nao encontrado na Meta.",
         );
       } catch (templateError) {
         if (active) {
@@ -1404,6 +1418,7 @@ function IrisStartAttendanceModal({
 
       const status = payload?.template?.status ?? null;
       setTemplateStatus(status);
+      setTemplateMeta(payload?.template ?? null);
       setTemplateFeedback(
         payload?.created
           ? `Template real criado na Meta como ${templateStatusLabel(status)}.`
@@ -1438,8 +1453,8 @@ function IrisStartAttendanceModal({
           firstName: selectedClient.firstName,
           phone: selectedClient.phone,
           sendTemplate: true,
-          templateLanguage: IRIS_OPT_IN_TEMPLATE.language,
-          templateName: IRIS_OPT_IN_TEMPLATE.name,
+          templateLanguage: startTemplateLanguage,
+          templateName: startTemplateName,
         }),
         cache: "no-store",
         headers: {
@@ -4146,7 +4161,7 @@ function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
     try {
       const accessToken = await getIrisAccessToken();
       const response = await fetch(
-        `/api/iris/meta/templates?name=${encodeURIComponent(templateForm.name)}`,
+        `/api/iris/meta/templates?name=${encodeURIComponent(templateForm.name)}&language=${encodeURIComponent(templateForm.language)}`,
         {
           cache: "no-store",
           headers: {

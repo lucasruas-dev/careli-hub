@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   MetaWhatsAppSendError,
+  listMetaWhatsAppMessageTemplates,
   sendMetaWhatsAppTemplateMessage,
 } from "@/lib/iris/meta-whatsapp";
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
@@ -103,9 +104,9 @@ export async function POST(request: NextRequest) {
     | null;
   const contactName = normalizeText(input?.contactName);
   const phone = normalizeWhatsAppDestination(input?.phone);
-  const templateName =
+  const requestedTemplateName =
     normalizeTemplateName(input?.templateName) ?? IRIS_OPT_IN_TEMPLATE.name;
-  const templateLanguage =
+  const requestedTemplateLanguage =
     normalizeLanguage(input?.templateLanguage) ?? IRIS_OPT_IN_TEMPLATE.language;
   const firstName = normalizeFirstName(input?.firstName ?? contactName);
   const apoloEntityId = normalizeText(input?.apoloEntityId);
@@ -179,6 +180,15 @@ export async function POST(request: NextRequest) {
       : null;
     const queue = profileQueue ?? requestedQueue ?? defaultQueue;
 
+    const approvedTemplate = sendTemplate
+      ? await resolveApprovedMetaTemplate({
+          language: requestedTemplateLanguage,
+          name: requestedTemplateName,
+        })
+      : null;
+    const templateName = approvedTemplate?.name ?? requestedTemplateName;
+    const templateLanguage =
+      approvedTemplate?.language ?? requestedTemplateLanguage;
     const templatePreview = renderTemplatePreview(firstName);
     const sent = sendTemplate
       ? await sendMetaWhatsAppTemplateMessage({
@@ -312,17 +322,62 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     const status = error instanceof MetaWhatsAppSendError ? error.status : 500;
+    const message =
+      error instanceof MetaWhatsAppSendError && isMetaTemplateTranslationError(error)
+        ? "A Meta aprovou outro registro, mas nao encontrou este template para o idioma/telefone de envio. Consulte ou recrie a traducao pt_BR do template na aba Templates e tente novamente."
+        : error instanceof Error
+          ? error.message
+          : "Nao foi possivel iniciar o atendimento Iris.";
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Nao foi possivel iniciar o atendimento Iris.",
+        error: message,
       },
       { status },
     );
   }
+}
+
+async function resolveApprovedMetaTemplate({
+  language,
+  name,
+}: {
+  language: string;
+  name: string;
+}) {
+  const templates = await listMetaWhatsAppMessageTemplates({
+    limit: 50,
+    name,
+  });
+  const exactTemplates = templates.filter((template) => template.name === name);
+  const approvedTemplates = exactTemplates.filter(
+    (template) => template.status === "APPROVED",
+  );
+  const preferred = approvedTemplates.find(
+    (template) => template.language === language,
+  );
+
+  if (!preferred?.name || !preferred.language) {
+    throw new MetaWhatsAppSendError(
+      `Template Meta ${name} ainda nao possui traducao aprovada para envio.`,
+      409,
+      {
+        code: "IRIS_TEMPLATE_NOT_APPROVED",
+      },
+    );
+  }
+
+  return {
+    language: preferred.language,
+    name: preferred.name,
+  };
+}
+
+function isMetaTemplateTranslationError(error: MetaWhatsAppSendError) {
+  return (
+    String(error.code) === "132001" ||
+    error.message.toLowerCase().includes("translation")
+  );
 }
 
 async function getWhatsAppChannel(

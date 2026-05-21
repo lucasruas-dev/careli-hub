@@ -44,11 +44,20 @@ export async function GET(request: NextRequest) {
 
   const url = new URL(request.url);
   const name = normalizeTemplateName(url.searchParams.get("name")) ?? undefined;
+  const language =
+    normalizeLanguage(url.searchParams.get("language")) ?? undefined;
 
   try {
-    const templates = await listMetaWhatsAppMessageTemplates({
-      limit: 50,
-      name,
+    const templates = (
+      await listMetaWhatsAppMessageTemplates({
+        limit: 50,
+        name,
+      })
+    ).filter((template) => {
+      return (
+        (!name || template.name === name) &&
+        (!language || template.language === language)
+      );
     });
 
     return NextResponse.json(
@@ -83,7 +92,10 @@ export async function POST(request: NextRequest) {
       limit: 10,
       name: template.name,
     });
-    const matched = existing.find((item) => item.name === template.name);
+    const matched = existing.find(
+      (item) =>
+        item.name === template.name && item.language === template.language,
+    );
 
     if (matched) {
       await upsertLocalTemplate({
