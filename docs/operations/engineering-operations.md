@@ -11369,3 +11369,72 @@ Pendencias:
 
 Proximo passo:
 - Se Lucas aprovar a homologacao, preparar handoff para Hefesto promover producao em recorte limpo.
+## 2026-05-21 18:12:15 -03:00 - Hefesto - Producao consolidada recortes pendentes
+
+Assunto: [Hefesto] Producao consolidada recortes pendentes
+
+- Nome da squad/agente: `Hefesto`.
+- Tipo da alteracao: `RELEASE`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou explicitamente commitar, aplicar arquivos pendentes no Supabase e publicar em producao, com a restricao de nao alterar envs ativas ja cadastradas e rodando.
+- Motivo da mudanca: consolidar os recortes pendentes no Git/local/diario, reconciliar branch local divergente com `origin/homolog`, aplicar migrations pendentes em Production e publicar o pacote final para `c2x.app.br` e `ops.c2x.app.br`.
+- Arquivos/modulos afetados: Panteon/Hefesto, Apolo, Atlas, Iris, Hades, Hermes, Zeus, PWA, HelpDesk/Ticket TI, migrations `0025`, `0026`, `0027`, `0028`, `0029`, scripts Apolo/Atlas/Zeus, `docs/operations/engineering-operations.md` e `docs/operations/releases-production.md`.
+- Como foi feito: criei commit consolidado local `fe8144a release(panteon): consolidate pending recortes`; reconciliei `origin/homolog` por merge `31453e4`; corrigi o runtime Apolo para nao tratar `sb_secret_*` como service-role JWT e permitir leitura autenticada via anon/publishable + bearer; adaptei `scripts/apolo-sync-c2x.mjs` para usar `POSTGRES_URL` quando nao houver service-role JWT; criei commit `c5f984e fix(apolo): support production sync without service role env`; apliquei as migrations autorizadas no Supabase Production; executei sync Apolo C2X; publiquei Vercel Production.
+- Logica utilizada: manter envs ativas intactas; usar `POSTGRES_URL` existente apenas para schema/sync autorizado; preservar aliases compartilhados `c2x.app.br` e `ops.c2x.app.br`; bloquear exposicao de valores sensiveis; validar schema antes/depois; manter APIs protegidas retornando `401` sem sessao quando aplicavel.
+- Migrations/scripts executados em Production:
+  - `0025_iris_inbound_ticket_protocols.sql`: aplicado; canal Meta `whatsapp-careli` ficou com inbound/outbound habilitados e protocolo AT sequencial preparado.
+  - `0026_apolo_core.sql`: aplicado; tabelas `apolo_*` presentes com RLS e policies de leitura autenticada.
+  - `0023_atlas_core.sql`, `0027_atlas_occurrence_justifications.sql`, `0028_atlas_occurrence_evidences.sql`, `0029_atlas_fpe.sql`: aplicados; `atlas_occurrence_evidences` e `atlas_fpe_entries` presentes.
+  - `scripts/apolo-sync-c2x.mjs --target=production`: concluido com `rowsScanned=3928`, `rowsWritten=50971`, `syncRunId=2de141d0-ddcf-4f77-9009-cc08ff509314`.
+- Deployment Production:
+  - Anterior: `dpl_EbeEXXYKKSu9KYZQfK5t9uRBCo8F`.
+  - Novo: `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL`.
+  - URL tecnica: `https://careli-hub-hub-i2bs-poyjt5g4b-lucasruas-devs-projects.vercel.app`.
+  - Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada:
+  - `git diff --check`: OK.
+  - Scan simples de secrets no diff: sem valores sensiveis reais encontrados.
+  - `npm.cmd run check-types:hub`: OK.
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do Node/ESLint sobre `type: module`.
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+  - `node --check scripts/apolo-sync-c2x.mjs`: OK.
+  - `scripts/apolo-verify-schema.mjs` em Production: RLS/policies presentes; `apolo_entities=3928`, `apolo_contacts=4020`, `apolo_entity_identifiers=11778`, `apolo_entity_profiles=7856`, `apolo_search_entries=3928`.
+  - `scripts/atlas-verify-migration.mjs` em Production: batch `completed`; `35` ocorrencias, `31` evidencias, `atlas_fpe_entries` presente com `0` lancamentos.
+  - Build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs Postgres/Supabase fora de `turbo.json`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200`.
+  - `GET https://c2x.app.br/login`: `200`.
+  - `GET https://c2x.app.br/hades/cobranca`: `200`.
+  - `GET https://c2x.app.br/iris`: `200`.
+  - `GET https://c2x.app.br/hermes`: `200`.
+  - `GET https://c2x.app.br/apolo`: `200`.
+  - `GET https://c2x.app.br/atlas`: `200`.
+  - `GET https://c2x.app.br/zeus`: `200`.
+  - `GET https://ops.c2x.app.br/zeus`: `200`.
+  - `GET https://ops.c2x.app.br/apolo`: `200`.
+  - `GET https://c2x.app.br/api/hades/db/health`: `200`.
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200`.
+  - `GET https://c2x.app.br/api/apolo/relationships?limit=1` sem bearer: `401` esperado.
+  - `GET https://c2x.app.br/api/atlas/snapshot` sem bearer: `401` esperado.
+  - `GET https://c2x.app.br/api/zeus/release-registers` sem bearer: `401` esperado.
+  - `GET https://c2x.app.br/api/operations/monitoring` sem bearer: `401` esperado.
+  - `POST https://c2x.app.br/api/squadops/copilot` com payload valido e sem sessao: `401` esperado.
+  - Logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br` nos ultimos 10 minutos: sem logs encontrados.
+- Riscos conhecidos:
+  - `SUPABASE_SERVICE_ROLE_KEY` segue ausente em Production e nao foi criada/alterada; Apolo foi mitigado para leitura autenticada via bearer e sync via `POSTGRES_URL`.
+  - `SUPABASE_SECRET_KEY`/`sb_secret_*` nao deve ser tratado como service-role JWT por `supabase-js`.
+  - Merge teve conflitos em arquivos Iris/Hermes/HelpDesk/Zeus; os conflitos foram resolvidos preservando o pacote local consolidado ja validado e mantendo os arquivos remotos sem conflito.
+  - Validacao autenticada visual/funcional final ainda depende de Lucas nos modulos Hades, Iris, Hermes, Apolo, Atlas e Zeus.
+  - Apolo Production recebeu carga inicial real; futuras sincronizacoes devem ser executadas de forma controlada para evitar carga operacional desnecessaria.
+- Pendencias:
+  - Lucas validar autenticado: Apolo CRM, Atlas FPE/evidencias, Hades board Iris, Iris atendimento, Hermes gravacao/anexos e Zeus registros.
+  - Avaliar com Zeus/DataOps se vale cadastrar uma `SUPABASE_SERVICE_ROLE_KEY` JWT real no futuro; nao foi alterado nesta release.
+  - Monitorar proximos logs de Production apos uso real da operacao.
+- Rollback definido: se houver regressao critica de login, rotas principais, Hades/Guardian DB health, Iris/Hermes/Apolo/Atlas/Zeus ou APIs protegidas, promover novamente `dpl_EbeEXXYKKSu9KYZQfK5t9uRBCo8F`.
+- Proxima squad recomendada: Lucas para validacao autenticada operacional; Hefesto segue monitorando producao; Zeus/DataOps apenas se a validacao indicar necessidade de service-role JWT ou novo sync.
+
+Conclusao:
+- O pacote pendente foi consolidado, versionado, migrado e publicado em producao sem alterar envs ativas.
+- O ambiente esta online e os healthchecks publicos/protegidos passaram.
+- Status operacional consolidado: `EM PRODUCAO`, com atencao apenas para validacao autenticada e governanca futura da service-role.

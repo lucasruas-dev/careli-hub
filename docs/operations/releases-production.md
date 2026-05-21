@@ -888,3 +888,51 @@ Registro de producao:
 - Pendencias: Lucas executar o botao `Auth` no Zeus em producao e repassar o diagnostico agregado para decisao DataOps/Zeus.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Zeus/DataOps avaliar o resultado do diagnostico antes de qualquer escrita ou correcao de cadastro.
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao consolidada recortes pendentes`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-21 18:12:15 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou commit, Supabase pendente e deploy Production, preservando envs ativas ja cadastradas.
+- Escopo publicado:
+  - consolidacao dos recortes locais/remotos pendentes do Panteon;
+  - Apolo com schema `0026`, sync C2X -> Apolo e leitura autenticada sem depender de service-role JWT;
+  - Atlas com migrations `0027`, `0028` e `0029`, evidencias multiplas e FPE;
+  - Iris/Hades/Hermes/Zeus/HelpDesk/PWA incluidos no pacote consolidado validado;
+  - remocao do script legado `scripts/seed-caredesk-demo.mjs`.
+- Commits publicados:
+  - `fe8144a release(panteon): consolidate pending recortes`;
+  - `31453e4 Merge remote-tracking branch 'origin/homolog' into homolog`;
+  - `c5f984e fix(apolo): support production sync without service role env`.
+- Migrations/scripts Production:
+  - `0025_iris_inbound_ticket_protocols.sql`: OK;
+  - `0026_apolo_core.sql`: OK;
+  - `0023_atlas_core.sql`, `0027_atlas_occurrence_justifications.sql`, `0028_atlas_occurrence_evidences.sql`, `0029_atlas_fpe.sql`: OK;
+  - `scripts/apolo-sync-c2x.mjs --target=production`: OK, `rowsScanned=3928`, `rowsWritten=50971`.
+- Deployment:
+  - anterior: `dpl_EbeEXXYKKSu9KYZQfK5t9uRBCo8F`;
+  - novo: `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-poyjt5g4b-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacoes:
+  - `check-types:hub`: OK;
+  - `lint:hub`: OK;
+  - `build --workspace @repo/hub`: OK;
+  - build remoto Vercel: `READY`;
+  - Apolo schema/sync verificado com `apolo_entities=3928`;
+  - Atlas verificado com `35` ocorrencias, `31` evidencias e `atlas_fpe_entries` presente;
+  - logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Healthchecks:
+  - `/`, `/login`, `/hades/cobranca`, `/iris`, `/hermes`, `/apolo`, `/atlas`, `/zeus`: `200`;
+  - `ops.c2x.app.br/zeus` e `ops.c2x.app.br/apolo`: `200`;
+  - `/api/hades/db/health` e `/api/guardian/db/health`: `200`;
+  - APIs protegidas Apolo, Atlas, Zeus e Operations sem bearer: `401` esperado;
+  - `POST /api/squadops/copilot` com payload valido sem sessao: `401` esperado.
+- Riscos:
+  - Production segue sem `SUPABASE_SERVICE_ROLE_KEY` JWT; nao foi alterado nesta release.
+  - Apolo foi mitigado para leitura via bearer e sync via `POSTGRES_URL`.
+  - Validacao autenticada visual/funcional ainda depende de Lucas.
+- Rollback: promover novamente `dpl_EbeEXXYKKSu9KYZQfK5t9uRBCo8F` se houver regressao critica.
+- Proxima acao: Lucas validar modulos autenticados; Hefesto monitorar producao; Zeus/DataOps avaliar service-role JWT apenas se necessario.
