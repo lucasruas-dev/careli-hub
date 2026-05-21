@@ -1026,6 +1026,51 @@ Registro de homologacao:
 
 Registro de homologacao:
 
+- Assunto: `[Iris] Criar template pelo telefone em homologacao`.
+- Modulo/agente: `Iris Core`.
+- Data e hora local: `2026-05-21 13:57:13 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas apontou que o template precisa ser criado a partir do telefone de envio.
+- Escopo do recorte:
+  - ignorar template aprovado em WABA nao vinculada ao telefone de envio;
+  - mostrar o template como nao criado para o telefone atual quando houver mismatch;
+  - orientar `Criar template real`;
+  - tentar criar o template pelo node do telefone de envio;
+  - manter respostas sem expor IDs, tokens, WABA, phone ID ou valores de env.
+- Protocolos/atividades relacionados: `IRIS-HOMOLOG-PHONE-TEMPLATE-CREATE-20260521-1357`.
+- Commit de homologacao: `892545e` (`fix(iris): create meta template from sending phone`).
+- Deployment/alias de homologacao: deployment `dpl_5w1EcjVgxRrv44J5GJahLREVwV7c`, URL `https://careli-hub-hub-i2bs-pfdsqk5wx-lucasruas-devs-projects.vercel.app`, alias `https://homo.c2x.app.br`.
+- Arquivos/modulos afetados:
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - diario canonico e este indice de homologacao.
+- Arquivos/modulos excluidos:
+  - Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, envs, secrets, tokens, service role, producao e alias de producao;
+  - nenhum valor sensivel foi registrado.
+- Validacoes executadas:
+  - worktree limpa em `892545e`: `git status --short` sem saida;
+  - worktree limpa em `892545e`: `git diff --check` sem apontamentos;
+  - `npx.cmd eslint lib/iris/meta-whatsapp.ts app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts modules/caredesk/IrisPage.tsx --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK no worktree principal e na worktree limpa;
+  - `npm.cmd run lint:hub`: OK no worktree principal e na worktree limpa;
+  - `npm.cmd run build --workspace @repo/hub`: OK no worktree principal e na worktree limpa;
+  - build remoto Vercel: OK, com warnings conhecidos sem exposicao de valores de env;
+  - `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_5w1EcjVgxRrv44J5GJahLREVwV7c`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/tickets` sem bearer: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates?name=iris_opt_in_teste_v1&language=pt_BR` sem bearer: `401 Unauthorized` esperado;
+  - logs Vercel dos ultimos 10 minutos: apenas `info`, sem erro critico.
+- Riscos conhecidos:
+  - se a Meta nao suportar/permanecer sem permissao para `PHONE_NUMBER_ID/message_templates`, sera necessario alinhar WABA/telefone nas configuracoes Meta/Vercel;
+  - teste real depende do Lucas clicar em `Criar template real` e aguardar aprovacao Meta;
+  - producao permanece sem alteracao.
+- Pendencias: Lucas validar criacao do template na tela Iris autenticada.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: Lucas abrir `Novo atendimento`; se aparecer `Nao criado` ou mensagem de WABA diferente, clicar em `Criar template real` e reportar o retorno da Meta.
+
+Registro de homologacao:
+
 - Assunto: `[Hefesto] Hub HelpDesk do Zeus em homologacao`.
 - Modulo/agente: `Hefesto`.
 - Data e hora local: `2026-05-21 12:26:38 -03:00`.

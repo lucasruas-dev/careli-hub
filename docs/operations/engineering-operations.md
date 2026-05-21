@@ -9740,6 +9740,99 @@ Registro de release:
 Proximo passo:
 - Lucas validar em `https://homo.c2x.app.br/iris`: abrir `Novo atendimento`; se o status estiver `Aprovado`, iniciar atendimento; se aparecer `Nao criado`, clicar em `Criar template real` e aguardar aprovacao da Meta nessa WABA correta.
 
+## 2026-05-21 13:49:15 -03:00 - Iris Core - Criacao do template pelo telefone de envio
+
+Assunto: [Iris] Criar template real pelo telefone Meta
+
+Status: IMPLEMENTADO LOCAL / VALIDADO / AGUARDANDO HOMOLOGACAO
+
+Motivo:
+- Lucas validou em homologacao que o modal ainda mostrava `Aprovado`, mas tambem informava que o telefone de envio nao estava vinculado a WABA daquele template.
+- Decisao operacional: quando o aprovado pertence a outra WABA, a Iris deve ignorar esse template para o telefone atual e permitir criar um novo template a partir do telefone de envio.
+
+Como foi feito:
+- A rota `/api/iris/meta/templates` passou a ignorar templates aprovados vindos da WABA configurada quando o telefone de envio nao esta vinculado a ela.
+- A tela passa a tratar esse caso como template ainda nao criado para o telefone de envio, orientando `Criar template real`.
+- O POST de criacao de template passa a tentar criar pelo node do telefone de envio quando detecta mismatch WABA/telefone.
+- Se a Meta nao permitir criacao direta pelo telefone, a resposta orienta ajustar a WABA do telefone nas configuracoes Meta, sem expor valores sensiveis.
+
+Arquivos/modulos afetados:
+- `apps/hub/lib/iris/meta-whatsapp.ts`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, producao, envs, secrets, tokens, service role e valores sensiveis.
+
+Validacao executada:
+- `npx.cmd eslint lib/iris/meta-whatsapp.ts app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts modules/caredesk/IrisPage.tsx --max-warnings 0`: OK, apenas aviso conhecido do Node sobre `eslint.config.js`.
+- `git diff --check -- apps/hub/lib/iris/meta-whatsapp.ts apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK, apenas avisos CRLF.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, apenas aviso conhecido de `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, apenas aviso conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+
+Riscos conhecidos:
+- A criacao direta por `PHONE_NUMBER_ID/message_templates` depende da permissao/suporte da Meta nesse edge; se a Meta rejeitar, sera necessario corrigir a WABA de template/env para a WABA real do telefone no proprio Meta/Vercel.
+- Homologacao ainda precisa receber este recorte e Lucas testar o botao `Criar template real`.
+
+Proximo passo:
+- Publicar este recorte em homologacao e Lucas clicar em `Criar template real` quando o modal indicar que o template aprovado pertence a outra WABA.
+
+## 2026-05-21 13:57:13 -03:00 - Iris Core - Homologacao criar template pelo telefone
+
+Assunto: [Iris] Criar template pelo telefone em homologacao
+
+Status: EM HOMOLOGACAO
+
+Autorizacao:
+- Lucas orientou que o template deveria ser criado a partir do telefone de envio e autorizou corrigir o fluxo.
+
+Escopo publicado:
+- Quando a Iris detecta template aprovado em WABA nao vinculada ao telefone de envio, a consulta passa a ignorar esse aprovado para o telefone atual.
+- O modal passa a orientar criacao de um novo template para o telefone de envio.
+- O POST de criacao tenta criar o template diretamente pelo node do telefone de envio quando ha mismatch WABA/telefone.
+- Se a Meta rejeitar criacao direta pelo telefone, a mensagem orienta corrigir a WABA do telefone nas configuracoes Meta, sem expor valores sensiveis.
+
+Commit e deployment:
+- Commit de homologacao: `892545e` (`fix(iris): create meta template from sending phone`).
+- Deployment Vercel: `dpl_5w1EcjVgxRrv44J5GJahLREVwV7c`.
+- URL Preview: `https://careli-hub-hub-i2bs-pfdsqk5wx-lucasruas-devs-projects.vercel.app`.
+- Alias de homologacao atualizado: `https://homo.c2x.app.br`.
+
+Arquivos incluidos no commit:
+- `apps/hub/lib/iris/meta-whatsapp.ts`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, envs, secrets, tokens, service role, producao e alias de producao.
+
+Validacao executada:
+- Worktree limpa em `892545e`: `git status --short` sem saida.
+- Worktree limpa em `892545e`: `git diff --check` sem apontamentos.
+- `npx.cmd eslint lib/iris/meta-whatsapp.ts app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts modules/caredesk/IrisPage.tsx --max-warnings 0`: OK, apenas aviso conhecido do Node.
+- `npm.cmd run check-types:hub`: OK no worktree principal e na worktree limpa.
+- `npm.cmd run lint:hub`: OK no worktree principal e na worktree limpa.
+- `npm.cmd run build --workspace @repo/hub`: OK no worktree principal e na worktree limpa, com aviso conhecido de Turbopack/NFT.
+- Build remoto Vercel: OK, com warnings conhecidos sem exposicao de valores de env.
+- `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_5w1EcjVgxRrv44J5GJahLREVwV7c`.
+- `GET https://homo.c2x.app.br/iris`: `200 OK`.
+- `GET https://homo.c2x.app.br/api/iris/tickets` sem bearer: `401 Unauthorized` esperado.
+- `GET https://homo.c2x.app.br/api/iris/meta/templates?name=iris_opt_in_teste_v1&language=pt_BR` sem bearer: `401 Unauthorized` esperado.
+- Logs Vercel dos ultimos 10 minutos: apenas `info` em `/iris`, rotas Iris protegidas sem bearer, presença e Hades overview; sem erro critico.
+
+Riscos conhecidos:
+- A criacao direta por `PHONE_NUMBER_ID/message_templates` depende de suporte/permissao da Meta; se a Meta rejeitar, o caminho correto sera ajustar o WABA ID de templates para a WABA real do telefone ou configurar uma WABA/telefone coerente no Meta/Vercel.
+- O teste real de criacao/aprovacao depende do Lucas clicar em `Criar template real` na tela autenticada.
+- Producao permanece sem alteracao.
+
+Registro de release:
+- `docs/operations/releases-homologation.md` atualizado com o recorte `IRIS-HOMOLOG-PHONE-TEMPLATE-CREATE-20260521-1357`.
+
+Proximo passo:
+- Lucas validar `https://homo.c2x.app.br/iris`: abrir `Novo atendimento`; se o template aparecer `Nao criado` ou indicar outra WABA, clicar em `Criar template real` e observar o retorno da Meta.
+
 ## 2026-05-21 12:26:38 -03:00 - Hefesto - Homologacao Hub HelpDesk Zeus
 
 Assunto: [Hefesto] Homologacao Hub do HelpDesk apontado pelo Zeus
