@@ -9498,6 +9498,55 @@ Riscos conhecidos:
 Proximo passo:
 - Lucas validar a UX em homologacao antes de qualquer promocao de producao.
 
+## 2026-05-21 12:29:16 -03:00 - Hermes Core - Visualizacao interna de imagens anexadas
+
+Assunto: [Hermes] Visualizacao interna de imagens anexadas
+
+Status: VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO
+
+Motivo da mudanca:
+- Lucas identificou que imagens anexadas no chat abriam uma tela vazia ao clicar.
+- O comportamento esperado e visualizar a imagem dentro do Hermes, em primeiro plano, sem sair do app e sem abrir nova aba vazia.
+
+Arquivos/modulos afetados:
+- `apps/hub/components/pulsex/message-item.tsx`;
+- `apps/hub/components/pulsex/message-list.tsx`;
+- `apps/hub/components/pulsex/thread-panel.tsx`;
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+- `docs/operations/engineering-operations.md`;
+- `docs/operations/releases-homologation.md`.
+
+Arquivos/modulos excluidos:
+- Hades, Iris, Zeus, Atlas, Chronos, Setup, banco, migrations, envs, secrets, Supabase mutavel, Vercel, homologacao deployada e producao.
+
+Como foi feito:
+- A pre-visualizacao de imagem deixou de renderizar como link externo `target=_blank`.
+- `MessageItem` passou a aceitar um callback de preview de anexo.
+- `MessageList` e `ThreadPanel` repassam o callback para mensagens do canal, mensagem raiz da thread e respostas.
+- `HermesWorkspace` controla o estado do anexo aberto e renderiza um lightbox interno solido, com fundo 100% opaco, area de imagem em `bg-contain`, botao de fechar, fechamento por Escape, clique fora e acao de baixar.
+
+Logica usada:
+- A mensagem continua sendo a fonte unica do anexo; o clique apenas altera estado de UI no workspace.
+- Imagens ficam dentro do app para evitar aba vazia e preservar contexto operacional.
+- Arquivos nao imagem preservam o comportamento existente de abrir/baixar.
+- O lightbox usa z-index alto para ficar acima de popups, thread panel e demais controles do Hermes.
+
+Validacao executada:
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK apos trocar `<img>` por visualizacao via `background-image` para respeitar `@next/next/no-img-element`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com aviso conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check -- apps/hub/components/pulsex/message-item.tsx apps/hub/components/pulsex/message-list.tsx apps/hub/components/pulsex/thread-panel.tsx apps/hub/components/pulsex/pulsex-workspace.tsx`: OK, apenas avisos de CRLF.
+- `GET http://localhost:3001/hermes`: `200 OK`.
+- Browser local confirmou carregamento da rota; validacao autenticada do clique real no anexo ficou pendente porque o navegador automatizado nao possuia sessao ativa.
+
+Riscos conhecidos:
+- Validacao funcional autenticada pelo Lucas ainda e necessaria em conversa com imagem real anexada.
+- O worktree segue misto por recortes de outros agentes/modulos; este registro cobre somente o recorte Hermes de visualizacao de imagem.
+
+Proximo passo:
+- Lucas validar no Hermes: clicar em uma imagem anexada no canal e em respostas/thread, confirmar abertura interna, fechamento por `Esc`/clique fora/X e download.
+- Se aprovado, publicar o recorte em homologacao antes de qualquer promocao de producao.
+
 ## 2026-05-21 12:25:21 -03:00 - Zeus Core - HelpDesk autoria em producao
 
 Assunto: [Zeus] HelpDesk autoria e conversa publicado em producao
@@ -9515,7 +9564,7 @@ Escopo publicado:
 
 Como foi feito:
 - Montei pacote limpo `.codex-deploy/prod-zeus-helpdesk-author-20260521-1024` a partir do pacote ativo de producao `prod-zeus-helpdesk-history-20260520-1452`.
-- Apliquei somente os cinco arquivos do recorte Zeus/HelpDesk/Home ja validados localmente.
+- Apliquei somente os cinco arquivos do recorte Zeus/HelpDesk/Home ja validados localmente; parte do recorte esta versionada em `8a6480c fix(hub): improve helpdesk requester flow` e `HubItTicketsBoard.tsx` seguiu como overlay do pacote limpo.
 - Publiquei com Vercel Production e confirmei que `https://ops.c2x.app.br` e `https://c2x.app.br` apontam para o mesmo deployment novo.
 
 Deploy:
@@ -9530,6 +9579,7 @@ Validacao executada:
 - Pacote limpo: `git diff --no-index --check` nos cinco arquivos do recorte sem erro de whitespace, apenas avisos CRLF.
 - Healthchecks pos-deploy: `/zeus` e `/login` retornaram `200` em `ops.c2x.app.br` e `c2x.app.br`; API protegida `/api/hub/it-tickets?details=list&scope=all` retornou `401` sem sessao, esperado.
 - Logs Vercel dos ultimos 10 minutos: sem logs de erro.
+- Sync estruturado manual via endpoint local do Operations Center retornou HTTP 200 com `recordsTotal=454`, `recordsUpserted=454`, `releasesUpserted=64` e `mode=content-upload`.
 
 Riscos conhecidos:
 - `https://c2x.app.br` e `https://ops.c2x.app.br` seguem compartilhando o mesmo deployment Vercel.
@@ -9584,6 +9634,111 @@ Riscos conhecidos:
 
 Proximo passo:
 - Lucas autorizar subida deste recorte Iris em homologacao ou autorizar auditoria segura das envs Meta por nome/presenca para corrigir o vinculo WABA/telefone sem expor valores.
+
+## 2026-05-21 12:34:46 -03:00 - Iris Core - Template Meta resolvido pela WABA do telefone
+
+Assunto: [Iris] Correcao definitiva do template pelo telefone Meta
+
+Status: IMPLEMENTADO LOCAL / VALIDADO / AUTORIZADO PARA HOMOLOGACAO
+
+Autorizacao:
+- Lucas autorizou corrigir o problema e executar o necessario em homologacao, mantendo producao fora do escopo.
+
+Motivo:
+- A validacao anterior detectava o risco de WABA/telefone desalinhados, mas ainda deixava a Iris dependente da WABA configurada em env para consultar/criar templates.
+- Para WhatsApp ativo, o template valido precisa existir na WABA associada ao telefone que efetivamente envia a mensagem.
+
+Como foi feito:
+- A Iris passou a resolver internamente a WABA real do `META_WHATSAPP_PHONE_NUMBER_ID` por meio do Graph API do telefone.
+- `listMetaWhatsAppMessageTemplates` e `createMetaWhatsAppMessageTemplate` passaram a usar essa WABA real do telefone quando ela esta disponivel, usando a WABA configurada apenas como fallback.
+- O modal de `Novo atendimento` agora trata o caso de WABA configurada diferente da WABA do telefone como diagnostico, nao como bloqueio, desde que a WABA real do telefone tenha sido detectada.
+- A rota `/api/iris/tickets` valida o template aprovado contra a WABA real do telefone antes do envio.
+- A mensagem de erro do `132001` foi ajustada para orientar criacao/aprovacao do template na WABA do telefone de envio.
+
+Arquivos/modulos afetados:
+- `apps/hub/lib/iris/meta-whatsapp.ts`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `apps/hub/app/api/iris/tickets/route.ts`
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, dominio, alias de producao, producao, tokens, service role e valores de env.
+
+Auditoria sensivel:
+- `npx.cmd vercel env ls preview` confirmou a presenca das variaveis Meta de Preview sem revelar valores.
+- `vercel env pull` temporario retornou variaveis sensiveis sem valores utilizaveis; o arquivo temporario em `.codex-artifacts/iris-meta-audit/` foi removido.
+- Nenhum token, secret, WABA ID, phone ID ou valor de env foi registrado no chat ou no diario.
+
+Validacao executada:
+- `npx.cmd eslint lib/iris/meta-whatsapp.ts app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts modules/caredesk/IrisPage.tsx --max-warnings 0`: OK, apenas aviso conhecido do Node sobre `eslint.config.js`.
+- `git diff --check -- apps/hub/lib/iris/meta-whatsapp.ts apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK, apenas avisos CRLF.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, apenas aviso conhecido de `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, apenas aviso conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+
+Riscos conhecidos:
+- Se o template ainda nao existir/aprovar na WABA real do telefone de envio, a tela deve deixar de mostrar `Aprovado` e Lucas precisara clicar em `Criar template real` novamente e aguardar aprovacao da Meta.
+- Se a Meta nao permitir leitura da WABA do telefone pelo token atual, a Iris volta ao fallback da WABA configurada e o erro pode persistir; nesse caso a correcao passa a ser env/permissao Meta.
+- Homologacao ainda precisa receber este recorte e ser validada em tela autenticada.
+
+Proximo passo:
+- Publicar recorte Iris em homologacao, validar `https://homo.c2x.app.br/iris`, e Lucas testar `Novo atendimento`. Se a tela mudar para `Nao criado`, criar o template real novamente para a WABA do telefone e aguardar aprovacao.
+
+## 2026-05-21 12:39:59 -03:00 - Iris Core - Homologacao template pela WABA do telefone
+
+Assunto: [Iris] Template Meta pela WABA do telefone em homologacao
+
+Status: EM HOMOLOGACAO
+
+Autorizacao:
+- Lucas autorizou executar o necessario para corrigir o problema do template Meta no recorte Iris.
+
+Escopo publicado:
+- Templates Meta da Iris agora sao consultados/criados pela WABA real resolvida a partir do telefone de envio.
+- A WABA configurada em env permanece como fallback quando a Meta nao retorna a WABA do telefone.
+- O modal de `Novo atendimento` passa a informar quando o template foi validado pela WABA real do telefone.
+- A abertura do ticket valida o template aprovado contra a WABA do telefone antes do envio.
+
+Commit e deployment:
+- Commit de homologacao: `065c85d` (`fix(iris): resolve meta templates by phone waba`).
+- Deployment Vercel: `dpl_4mF2weR6ajqUUdmxnUfqT3DUg421`.
+- URL Preview: `https://careli-hub-hub-i2bs-9zizgdj8i-lucasruas-devs-projects.vercel.app`.
+- Alias de homologacao atualizado: `https://homo.c2x.app.br`.
+
+Arquivos incluidos no commit:
+- `apps/hub/lib/iris/meta-whatsapp.ts`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `apps/hub/app/api/iris/tickets/route.ts`
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, envs, secrets, tokens, service role, producao e alias de producao.
+
+Validacao executada:
+- Worktree limpa em `065c85d`: `git status --short` sem saida.
+- Worktree limpa em `065c85d`: `git diff --check` sem apontamentos.
+- `npx.cmd eslint lib/iris/meta-whatsapp.ts app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts modules/caredesk/IrisPage.tsx --max-warnings 0`: OK, apenas aviso conhecido do Node.
+- `npm.cmd run check-types:hub`: OK no worktree principal e na worktree limpa.
+- `npm.cmd run lint:hub`: OK no worktree principal e na worktree limpa.
+- `npm.cmd run build --workspace @repo/hub`: OK no worktree principal e na worktree limpa, com aviso conhecido de Turbopack/NFT.
+- Build remoto Vercel: OK, com warnings conhecidos sem exposicao de valores de env.
+- `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_4mF2weR6ajqUUdmxnUfqT3DUg421`.
+- `GET https://homo.c2x.app.br/iris`: `200 OK`.
+- `GET https://homo.c2x.app.br/api/iris/tickets` sem bearer: `401 Unauthorized` esperado.
+- `GET https://homo.c2x.app.br/api/iris/meta/templates?name=iris_opt_in_teste_v1&language=pt_BR` sem bearer: `401 Unauthorized` esperado.
+- Logs Vercel dos ultimos 10 minutos: apenas `info` em `/iris` e rotas Iris protegidas chamadas sem bearer, sem erro critico.
+
+Riscos conhecidos:
+- Se o template ainda nao existir na WABA real do telefone, a tela deve mostrar `Nao criado`; nesse caso Lucas precisa clicar em `Criar template real` novamente e aguardar aprovacao da Meta.
+- Envio real autenticado ainda depende de teste em tela pelo Lucas.
+- Producao permanece sem alteracao.
+
+Registro de release:
+- `docs/operations/releases-homologation.md` atualizado com o recorte `IRIS-HOMOLOG-PHONE-WABA-TEMPLATE-20260521-1239`.
+
+Proximo passo:
+- Lucas validar em `https://homo.c2x.app.br/iris`: abrir `Novo atendimento`; se o status estiver `Aprovado`, iniciar atendimento; se aparecer `Nao criado`, clicar em `Criar template real` e aguardar aprovacao da Meta nessa WABA correta.
 
 ## 2026-05-21 12:26:38 -03:00 - Hefesto - Homologacao Hub HelpDesk Zeus
 

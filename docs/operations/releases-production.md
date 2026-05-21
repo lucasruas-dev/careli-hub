@@ -93,6 +93,45 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Zeus] HelpDesk autoria e conversa em producao`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Data e hora local: `2026-05-21 12:25:21 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: Lucas autorizou publicar em `https://ops.c2x.app.br` as correcoes locais do registro canonico `2026-05-21 10:24:00 -03:00 - Zeus Core - HelpDesk solicitante e historico com autor real`.
+- Escopo publicado:
+  - corrigir o historico do HelpDesk para usar o autor real do evento e evitar avatar incorreto em devolutivas antigas;
+  - exibir data e horario das mensagens no historico do operador e na tela do solicitante;
+  - trocar a nomenclatura visivel da Home de `Ticket TI` para `HelpDesk`;
+  - evoluir a tela do solicitante com workflow, conversa com Zeus, anexos, revisao e encerramento do chamado.
+- Commit publicado: pacote limpo `.codex-deploy/prod-zeus-helpdesk-author-20260521-1024`, baseado no deployment ativo `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB`, com parte do recorte ja versionada em `8a6480c fix(hub): improve helpdesk requester flow` e overlay estrito de `HubItTicketsBoard.tsx`.
+- Deployment anterior: `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB`.
+- Deployment novo: `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7`; URL tecnica `https://careli-hub-hub-i2bs-2us1axmkv-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7`, status `Ready`;
+  - `https://c2x.app.br`: confirmado no mesmo deployment por alias compartilhado, status `Ready`.
+- Arquivos/modulos incluidos: `apps/hub/lib/hub-it-tickets/types.ts`, `apps/hub/lib/hub-it-tickets/server.ts`, `apps/hub/modules/squadops/HubItTicketsBoard.tsx`, `apps/hub/components/hub-support/hub-user-tickets-panel.tsx` e `apps/hub/app/page.tsx`.
+- Arquivos/modulos excluidos: Iris/CareDesk/Meta, Hermes, Hades/Guardian, Atlas, Setup, Chronos, Apolo, migrations, scripts, envs, secrets, banco, dominios e aliases manuais.
+- Validacoes executadas:
+  - pacote limpo: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub`;
+  - pacote limpo: `git diff --no-index --check` nos cinco arquivos do recorte sem erro de whitespace, apenas avisos CRLF do Windows;
+  - scan de marcadores confirmou `event.actor`, `formatDateTime(event.createdAt)`, `customer_comment`, `Conversa com Zeus` e o tom suavizado `#3f4c5d`;
+  - sync estruturado manual via endpoint local do Operations Center retornou HTTP 200 com `recordsTotal=454`, `recordsUpserted=454`, `releasesUpserted=64` e `mode=content-upload`;
+  - Vercel Production concluiu `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all` sem sessao: `401` esperado.
+- Logs recentes: `vercel logs https://ops.c2x.app.br --since 10m --level error` sem logs encontrados.
+- Rollback definido: promover novamente `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB` se Zeus/HelpDesk, Home, login ou rotas protegidas apresentarem regressao critica.
+- Riscos conhecidos: `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo deployment; eventos antigos sem `created_by_user_id` ou sem usuario correspondente em `hub_users` ainda usam fallback por tipo; validacao autenticada visual do Lucas continua recomendada; o build remoto informou vulnerabilidades de dependencias via `npm audit`, sem bloquear a publicacao.
+- Pendencias: Lucas validar o fluxo autenticado do HelpDesk como operador e solicitante; Zeus acompanhar se algum historico legado precisar de fallback visual mais especifico.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas testar no navegador autenticado; Zeus monitorar regressao e preparar hotfix apenas se aparecer divergencia real.
+
+Registro de producao:
+
 - Assunto: `[Zeus] Historico do HelpDesk simplificado em producao`.
 - Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
 - Data e hora local: `2026-05-20 16:24:23 -03:00`.

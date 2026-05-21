@@ -979,6 +979,53 @@ Registro de homologacao:
 
 Registro de homologacao:
 
+- Assunto: `[Iris] Template Meta pela WABA do telefone em homologacao`.
+- Modulo/agente: `Iris Core`.
+- Data e hora local: `2026-05-21 12:39:59 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas autorizou corrigir o problema do template Meta aprovado que nao iniciava atendimento.
+- Escopo do recorte:
+  - resolver internamente a WABA real a partir do telefone Meta de envio;
+  - consultar templates Meta pela WABA do telefone;
+  - criar templates Meta pela WABA do telefone quando necessario;
+  - validar o template aprovado contra a WABA do telefone antes do envio;
+  - manter a WABA configurada como fallback;
+  - preservar logs e respostas sem expor IDs, tokens ou valores de env.
+- Protocolos/atividades relacionados: `IRIS-HOMOLOG-PHONE-WABA-TEMPLATE-20260521-1239`.
+- Commit de homologacao: `065c85d` (`fix(iris): resolve meta templates by phone waba`).
+- Deployment/alias de homologacao: deployment `dpl_4mF2weR6ajqUUdmxnUfqT3DUg421`, URL `https://careli-hub-hub-i2bs-9zizgdj8i-lucasruas-devs-projects.vercel.app`, alias `https://homo.c2x.app.br`.
+- Arquivos/modulos afetados:
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - diario canonico e este indice de homologacao.
+- Arquivos/modulos excluidos:
+  - Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, envs, secrets, tokens, service role, producao e alias de producao;
+  - nenhum valor sensivel foi registrado.
+- Validacoes executadas:
+  - worktree limpa em `065c85d`: `git status --short` sem saida;
+  - worktree limpa em `065c85d`: `git diff --check` sem apontamentos;
+  - `npx.cmd eslint lib/iris/meta-whatsapp.ts app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts modules/caredesk/IrisPage.tsx --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK no worktree principal e na worktree limpa;
+  - `npm.cmd run lint:hub`: OK no worktree principal e na worktree limpa;
+  - `npm.cmd run build --workspace @repo/hub`: OK no worktree principal e na worktree limpa;
+  - build remoto Vercel: OK, com warnings conhecidos sem exposicao de valores de env;
+  - `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_4mF2weR6ajqUUdmxnUfqT3DUg421`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/tickets` sem bearer: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates?name=iris_opt_in_teste_v1&language=pt_BR` sem bearer: `401 Unauthorized` esperado;
+  - logs Vercel dos ultimos 10 minutos: apenas `info` em `/iris` e rotas Iris protegidas chamadas sem bearer, sem erro critico.
+- Riscos conhecidos:
+  - se o template ainda nao existir na WABA real do telefone, a tela deve mostrar `Nao criado` e Lucas precisara criar o template real novamente;
+  - envio real autenticado ainda depende de teste funcional pelo Lucas na tela Iris;
+  - producao permanece sem alteracao.
+- Pendencias: Lucas validar `Novo atendimento` em `https://homo.c2x.app.br/iris`.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: Lucas testar o fluxo; se a Meta mostrar `Nao criado`, criar o template real na tela e aguardar aprovacao na WABA correta do telefone.
+
+Registro de homologacao:
+
 - Assunto: `[Hefesto] Hub HelpDesk do Zeus em homologacao`.
 - Modulo/agente: `Hefesto`.
 - Data e hora local: `2026-05-21 12:26:38 -03:00`.
@@ -1023,3 +1070,38 @@ Registro de homologacao:
 - Pendencias: Lucas validar Home e HelpDesk autenticado em `https://homo.c2x.app.br`; producao depende de aprovacao explicita e novo recorte limpo.
 - Status: `EM HOMOLOGACAO`.
 - Proxima acao: Lucas testar; Hefesto promove para producao apenas se Lucas aprovar.
+
+Registro preparado para homologacao:
+
+- Assunto: `[Hermes] Visualizacao interna de imagens anexadas`.
+- Modulo/agente: `Hermes Core`.
+- Data e hora local: `2026-05-21 12:29:16 -03:00`.
+- Ambiente: `local`, preparado para homologacao.
+- Origem: Lucas reportou que imagens anexadas no chat abriam tela vazia ao clicar.
+- Escopo do recorte:
+  - substituir abertura externa de imagem anexada por preview interno no app;
+  - propagar o preview para mensagens do canal, mensagem raiz de thread e respostas;
+  - adicionar lightbox solido, em primeiro plano, com fechar por X, Escape e clique fora;
+  - preservar download da imagem e comportamento existente para anexos nao imagem.
+- Protocolos/atividades relacionados: `HERMES-IMAGE-PREVIEW-HOMOLOG-20260521-1229`.
+- Commit de homologacao: nao realizado neste recorte local.
+- Deployment/alias de homologacao: nao publicado neste recorte local.
+- Arquivos incluidos:
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `apps/hub/components/pulsex/thread-panel.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos:
+  - Hades, Iris, Zeus, Atlas, Chronos, Setup, banco, migrations, envs, secrets, Supabase mutavel, Vercel, producao e aliases de producao.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK apos ajuste do preview para nao usar `<img>`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de Turbopack/NFT;
+  - `git diff --check -- apps/hub/components/pulsex/message-item.tsx apps/hub/components/pulsex/message-list.tsx apps/hub/components/pulsex/thread-panel.tsx apps/hub/components/pulsex/pulsex-workspace.tsx`: OK, apenas avisos de CRLF;
+  - `GET http://localhost:3001/hermes`: `200 OK`.
+- Riscos conhecidos:
+  - clique real em imagem anexada ainda precisa ser validado por Lucas em sessao autenticada;
+  - worktree principal segue misto com recortes de outros agentes.
+- Pendencias: Lucas validar o preview interno em mensagem de canal e em respostas/thread antes de autorizar homologacao.
+- Status: `VALIDADO LOCAL / AGUARDANDO HOMOLOGACAO`.
+- Proxima acao: publicar em homologacao somente quando Lucas autorizar o recorte Hermes.
