@@ -8186,6 +8186,40 @@ Registro de diario:
 
 Registro de diario:
 
+- Assunto: `[Apolo] CRM carregando base completa`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 23:21:01 -03:00.
+- Tipo da alteracao: `UX / CRM / CONSULTA GLOBAL`.
+- Motivo da mudanca: Lucas apontou que a busca do CRM precisava consultar toda a base, pois a tela carregava apenas uma fatia inicial e podia retornar zero mesmo existindo cadastro fora da primeira pagina.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem Supabase mutavel, sem migration, sem escrita no C2X, sem alteracao de env e sem exposicao de valores sensiveis.
+- Arquivos/modulos afetados: `apps/hub/lib/apolo/server.ts`, `apps/hub/modules/apolo/ApoloPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: o loader de entidades Apolo deixou de usar `limit(120)` e passou a paginar todas as linhas ativas de `apolo_entities`; as tabelas relacionadas sao buscadas em lotes por `entity_id`, preservando a consulta global da tela CRM. A leitura viva C2X tambem deixou de limitar a previa local quando o fallback estiver disponivel.
+- Logica utilizada: a tela CRM deve permitir busca operacional sobre a base completa, nao apenas sobre a primeira janela carregada no navegador. A lista continua filtrando localmente, mas agora recebe todos os registros do endpoint.
+- Validacao executada: `GET http://localhost:3001/api/apolo/relationships` retornou `200 OK`, `total=3927`, `returned=3927` e encontrou registros para a busca usada no print do Lucas; `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub` passaram.
+- Pendencias ou riscos conhecidos: carregar a base completa aumenta o tempo inicial do endpoint local. Se a base crescer muito, o proximo passo tecnico recomendado e evoluir para busca server-side/paginada com detalhe sob demanda, mantendo a experiencia de busca global.
+- Status operacional: `VALIDADO LOCAL / BASE COMPLETA NO CRM`.
+- Proxima squad recomendada: `Apolo Core` seguir refinando a UX e avaliar busca server-side incremental quando Lucas aprovar a proxima etapa de performance.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Badge financeiro somente para comprador`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 23:24:16 -03:00.
+- Tipo da alteracao: `UX / CRM / REGRA VISUAL`.
+- Motivo da mudanca: Lucas pediu que a tag no canto dos cards da fila nao exibisse mais status cadastral generico, e aparecesse apenas para clientes compradores informando se estao adimplentes ou inadimplentes.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem Supabase mutavel, sem migration, sem escrita no C2X, sem alteracao de env e sem exposicao de valores sensiveis.
+- Arquivos/modulos afetados: `apps/hub/modules/apolo/ApoloPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: a tag do card deixou de usar `status cadastral`; agora ela so renderiza quando `buyerStatusLabel(entity) === "Comprador"`. Para compradores com parcelas ou valor em atraso, exibe `Inadimplente`; para compradores sem atraso, exibe `Adimplente`; nao compradores ficam sem tag no canto.
+- Logica utilizada: o card da fila deve priorizar leitura operacional rapida de carteira; status cadastral permanece disponivel no detalhe, enquanto o selo do card passa a comunicar o risco financeiro apenas quando houver compra confirmada.
+- Validacao executada: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx` passaram; lint manteve warning conhecido de `eslint.config.js` sem `type: module`, build manteve warning conhecido de NFT em `engineering-operations-source.ts`.
+- Pendencias ou riscos conhecidos: sem pendencia funcional nesta alteracao; a classificacao depende da evidencia financeira ja carregada no Apolo.
+- Status operacional: `VALIDADO LOCAL`.
+- Proxima squad recomendada: `Apolo Core` seguir refinando a fila e o detalhe CRM conforme validacao visual do Lucas.
+
+Registro de diario:
+
 - Assunto: `[Zeus] Login simplificado com HUB C2X`.
 - Nome da squad/agente: `Zeus`.
 - Data e hora local: 2026-05-20 21:37:39 -03:00.
@@ -8234,3 +8268,289 @@ Registro de diario:
 - Pendencias ou riscos conhecidos: ajuste ainda nao publicado em homologacao/producao. Lucas precisa recarregar `localhost:3001/iris` e validar visualmente a primeira linha da fila com mensagem longa; se aprovado, Iris Core pode preparar homologacao quando autorizado.
 - Status operacional: `VALIDADO LOCAL`.
 - Proxima squad recomendada: `Lucas` validar visualmente em localhost; depois `Iris Core` continua as melhorias de UX ou publica homologacao mediante autorizacao explicita.
+
+Registro de diario:
+
+- Assunto: `[Iris] Localhost realinhado ao layout de homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 22:07:53 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / UX / PARIDADE HOMOLOGACAO`.
+- Motivo da mudanca: Lucas identificou que o layout da Iris em `localhost` estava diferente do layout publicado em homologacao e pediu priorizar a paridade visual com `homo.c2x.app.br/iris`.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem homologacao/producao, sem Supabase mutavel, sem banco, sem migration, sem env, sem secret e sem token.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Hermes, Atlas, Apolo, Zeus, Setup, Chronos, login, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: comparei o arquivo local da Iris contra `origin/homolog` e desfiz o ajuste local da fila que havia aberto diferenca visual em relacao ao recorte homologado. O arquivo `IrisPage.tsx` voltou a ficar sem diferenca funcional contra `origin/homolog`.
+- Logica utilizada: como o objetivo imediato passou a ser paridade localhost/homologacao, a correcao visual da fila deve ser retomada depois sobre a mesma base visual da homologacao, para nao gerar divergencia entre ambientes enquanto Lucas valida a UX da Iris.
+- Validacao executada: `git diff --stat origin/homolog -- apps/hub/modules/caredesk/IrisPage.tsx` nao retornou diferencas; `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md` passou com aviso conhecido LF/CRLF no Windows; `GET http://127.0.0.1:3001/iris` retornou `200 OK`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido do Turbopack/NFT em `engineering-operations-source.ts`.
+- Pendencias ou riscos conhecidos: a quebra de texto longo na fila continua existindo no recorte homologado e deve ser corrigida em uma nova iteracao mantendo a base visual homologada. Nenhum deploy foi executado.
+- Status operacional: `VALIDADO LOCAL / PARIDADE COM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` recarregar `localhost:3001/iris` e confirmar se a tela esta visualmente igual a homologacao; `Iris Core` retoma a correcao fina da fila depois dessa confirmacao.
+
+Registro de diario:
+
+- Assunto: `[Iris] Revisao de paridade localhost e homologacao`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 23:18:58 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / UX / SHELL / PARIDADE`.
+- Motivo da mudanca: Lucas reportou que `localhost:3001/iris` ainda nao estava igual ao ambiente de homologacao e pediu revisar o codigo para identificar diferencas reais entre os ambientes.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem homologacao/producao, sem Supabase mutavel, sem banco, sem migration, sem env, sem secret e sem token.
+- Arquivos/modulos afetados: `apps/hub/layouts/hub-shell.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Hermes, Atlas, Zeus, Setup, Chronos, login, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: comparei `IrisPage.tsx`, `app/iris/page.tsx`, `hub-shell.tsx` e as rotas Meta da Iris contra `origin/homolog`. A pagina da Iris ja estava sem diferenca contra homologacao; a diferenca objetiva estava no shell local, que tinha `apolo` liberado no mapa minimo de modulos enquanto a homologacao nao tinha esse item. Removi essa exposicao local para o wrapper da Iris voltar a seguir a mesma composicao homologada.
+- Logica utilizada: quando a meta e paridade visual com homologacao, o modulo Iris precisa rodar sobre o mesmo shell minimo que esta publicado. Mudancas locais de navegacao global podem alterar a percepcao da tela mesmo sem tocar no componente da Iris, entao a correcao foi feita no wrapper compartilhado apenas no ponto divergente.
+- Validacao executada: `git diff --stat origin/homolog -- apps/hub/layouts/hub-shell.tsx apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/iris/page.tsx` nao retornou diferencas; `git hash-object` confirmou que `apps/hub/app/api/iris/meta/events/route.ts` e `apps/hub/app/api/iris/meta/messages/route.ts` batem com os blobs de `origin/homolog`; `git diff --check -- apps/hub/layouts/hub-shell.tsx apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/iris/page.tsx` passou com avisos conhecidos LF/CRLF no Windows; `GET http://127.0.0.1:3001/iris` retornou `200 OK`.
+- Pendencias ou riscos conhecidos: as rotas `apps/hub/app/api/iris/meta/events/route.ts` e `apps/hub/app/api/iris/meta/messages/route.ts` continuam como arquivos nao rastreados neste checkout local apesar de o conteudo bater com homologacao; se houver commit futuro, o pacote deve tratar esses arquivos com cuidado para nao misturar recortes. O worktree segue com alteracoes de outras frentes, entao qualquer deploy precisa de recorte limpo.
+- Status operacional: `VALIDADO LOCAL / PARIDADE DE CODIGO COM HOMOLOGACAO`.
+- Proxima squad recomendada: `Lucas` recarregar `localhost:3001/iris` e validar visualmente; `Iris Core` retoma as melhorias de UX sobre esta base homologada.
+
+Registro de diario:
+
+- Assunto: `[Apolo] CRM 360 com carga inicial leve`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 23:38:59 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / UX / PERFORMANCE / CRM`.
+- Motivo da mudanca: Lucas pediu que a tela se chamasse `CRM 360`, removesse a coluna lateral de contexto do print, exibisse `Acesso Incorporador` como `Incorporador`, mantivesse rolagem propria no CRM e resolvesse a lentidao causada por carregar toda a base no primeiro acesso.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem Supabase mutavel, sem migration, sem escrita no C2X, sem alteracao de env e sem exposicao de valores sensiveis.
+- Arquivos/modulos afetados: `apps/hub/lib/apolo/catalog.ts`, `apps/hub/app/api/apolo/relationships/route.ts`, `apps/hub/lib/apolo/server.ts`, `apps/hub/modules/apolo/ApoloPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: a API `/api/apolo/relationships` passou a aceitar `limit`, `q` e `profile`. Sem busca textual, o CRM carrega 20 relacionamentos em ordem crescente por nome; com busca textual, consulta o indice server-side da base Apolo e retorna todos os resultados encontrados. O painel removeu a coluna lateral de contexto, manteve a lista com rolagem interna e adotou o titulo `CRM 360`.
+- Logica utilizada: a base completa continua consultavel, mas o navegador nao precisa receber os 3.927 registros no primeiro carregamento. Os cards de perfil e indicadores usam contagens server-side leves, e a lista busca apenas os relacionamentos necessarios para a interacao atual.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido de NFT em `engineering-operations-source.ts`; `GET http://localhost:3001/api/apolo/relationships?limit=20` retornou `200 OK`, `total=3927`, `returned=20` em 3,40s; `GET http://localhost:3001/api/apolo/relationships?q=Nivea` retornou `200 OK`, `returned=3` em 3,67s; `git diff --check -- apps/hub/lib/apolo/server.ts apps/hub/modules/apolo/ApoloPage.tsx apps/hub/lib/apolo/catalog.ts apps/hub/app/api/apolo/relationships/route.ts` passou.
+- Pendencias ou riscos conhecidos: a validacao visual no navegador interno parou na tela de login por falta de sessao autenticada nessa instancia; Lucas pode validar no Chrome ja logado. Os contadores financeiros locais continuam dependentes das evidencias materializadas nas tabelas Apolo; qualquer novo sync real, migration ou escrita em Supabase/C2X segue bloqueado sem autorizacao expressa.
+- Status operacional: `VALIDADO LOCAL / SEM DEPLOY`.
+- Proxima squad recomendada: `Lucas` recarregar `localhost:3001/apolo` em sessao autenticada e validar a UX do `CRM 360`; `Apolo Core` seguir para a proxima rodada de carteira/contratos/documentos quando aprovado.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Ajustes de leitura do resumo CRM 360`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-20 23:50:24 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / UX / CRM`.
+- Motivo da mudanca: Lucas pediu remover campos e tags que confundiam a leitura do CRM 360: vinculo em cards que nao sao usuarios, status `Revisao` e `score` no cabecalho, tag `Nao aplicavel` no resumo, icone de contrato/documento no cabecalho e rotulos genericos da aba Resumo.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem Supabase mutavel, sem migration, sem escrita no C2X, sem alteracao de env e sem exposicao de valores sensiveis.
+- Arquivos/modulos afetados: `apps/hub/modules/apolo/ApoloPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: o card da fila passou a exibir o bloco `Vinculo` somente para perfil `usuario`; o cabecalho do detalhe troca status por perfil principal e nao mostra mais `score`; as acoes rapidas do detalhe ficaram apenas com atendimento/chat e agenda; o resumo passou a usar campos `CPF` ou `CNPJ`, `E-mail`, `Cidade`, `Telefone`, `Estado civil`, `Unidades adquiridas` e `Proxima acao`.
+- Logica utilizada: o resumo deve privilegiar dados cadastrais abertos e legiveis, sem badges tecnicos. A tag financeira so aparece para usuario comprador, como `Adimplente` ou `Inadimplente`; perfis nao compradores ou nao usuarios nao exibem tag de compra.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido de NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md` passou com aviso conhecido LF/CRLF no Windows.
+- Pendencias ou riscos conhecidos: a tela precisa de validacao visual no Chrome autenticado do Lucas, pois o navegador interno desta sessao fica na tela de login. Estado civil ainda depende de mapeamento de campo especifico nas tabelas Apolo/C2X para sair de `A consultar`.
+- Status operacional: `VALIDADO LOCAL / SEM DEPLOY`.
+- Proxima squad recomendada: `Lucas` validar `localhost:3001/apolo`; `Apolo Core` seguir refinando carteira, documentos e contratos depois da aprovacao visual.
+
+Registro de diario:
+
+- Assunto: `[Apolo] Resumo CRM 360 com vinculo comercial navegavel`.
+- Nome da squad/agente: `Apolo Core`.
+- Data e hora local: 2026-05-21 00:05:42 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / UX / CRM`.
+- Motivo da mudanca: Lucas pediu liberar a leitura dos dados no resumo, deixar estado civil vazio para quem nao e pessoa fisica, exibir a data de cadastro no cabecalho, remover os blocos `Carteira e vinculos` e `Relacionamento` da aba Resumo e transformar o vinculo comercial do usuario em botao para abrir a imobiliaria.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem Supabase mutavel, sem migration, sem escrita no C2X, sem alteracao de env e sem exposicao de valores sensiveis no chat/logs.
+- Arquivos/modulos afetados: `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/lib/apolo/server.ts`, `apps/hub/lib/apolo/types.ts` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: a entidade Apolo passou a carregar `createdAt` a partir de `apolo_entities.created_at`; o cabecalho exibe o perfil principal seguido de `Ativo: mm/aa`; os contatos passam a ser exibidos sem mascara adicional na composicao server-side; o Resumo removeu os dois blocos secundarios e ganhou o botao `Vinculo comercial`, que aplica filtro de perfil `imobiliaria` e pesquisa pelo nome do responsavel comercial.
+- Logica utilizada: o resumo deve ser uma ficha cadastral direta, com dados abertos para operador autenticado. O vinculo comercial e uma porta de navegacao entre usuario e imobiliaria, sem carregar a base inteira no navegador. CPF/CNPJ continuam limitados ao que esta materializado nas tabelas Apolo atuais; documento completo depende de coluna futura autorizada, pois hoje o schema central preserva apenas `document_masked` e identificadores hash/mascarados.
+- Validacao executada: `npm.cmd run check-types:hub` passou; `GET http://localhost:3001/api/apolo/relationships?limit=20` retornou `200 OK`, `total=3927`, `returned=20`, `createdAt=20/05/2026` em 2,75s; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido de NFT em `engineering-operations-source.ts`; `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx apps/hub/lib/apolo/server.ts apps/hub/lib/apolo/types.ts docs/operations/engineering-operations.md` passou com aviso conhecido LF/CRLF no Windows.
+- Pendencias ou riscos conhecidos: a navegacao do botao depende da imobiliaria existir e ser encontrada no indice Apolo; documento completo ainda nao pode ser exibido a partir das tabelas atuais sem evoluir o schema/sync com autorizacao explicita. A validacao visual continua dependendo do Chrome autenticado do Lucas.
+- Status operacional: `VALIDADO LOCAL / SEM DEPLOY`.
+- Proxima squad recomendada: `Lucas` validar visualmente o Resumo e o botao de vinculo comercial em `localhost:3001/apolo`; `Apolo Core` aguarda aprovacao para seguir refinando documentos, contratos e carteira.
+
+Registro de diario:
+
+- Assunto: `[Iris] Ancoragem lateral da timeline de atendimento`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: 2026-05-20 23:43:52 -03:00.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / UX / ATENDIMENTO`.
+- Motivo da mudanca: Lucas reportou que a tela de atendimento da Iris ainda deixava as mensagens quase centralizadas e com pouca separacao visual entre a lista de conversas e a area do chat.
+- Ambiente: desenvolvimento local; sem deploy, sem redeploy, sem homologacao/producao, sem Supabase mutavel, sem banco, sem migration, sem env, sem secret e sem token.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx` e este diario canonico.
+- Arquivos/modulos excluidos: Hades, Hermes, Atlas, Apolo, Zeus, Setup, Chronos, login, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Como foi feito: removi a limitacao centralizada da timeline (`mx-auto max-w-5xl`), travei a area principal do atendimento com `overflow-hidden`, impedi overflow horizontal na viewport de mensagens, reforcei a borda/sombra da coluna de conversas e ajustei as linhas de mensagens para ocupar a largura util completa antes de alinhar entrada e saida.
+- Logica utilizada: a bolha pode ter largura maxima para manter legibilidade, mas a linha da mensagem precisa ocupar toda a area util do chat. Assim mensagens recebidas nascem perto da divisoria da lista de conversas, mensagens enviadas encostam no lado direito da conversa, e textos longos nao criam scroll horizontal nem deslocam a leitura para o centro.
+- Validacao executada: `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx` passou com aviso conhecido LF/CRLF no Windows; `GET http://127.0.0.1:3001/iris` retornou `200 OK`; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`; `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Pendencias ou riscos conhecidos: nao foi feito deploy. A validacao visual automatizada no navegador interno parou em `Carregando sessao...` por falta de sessao autenticada nessa instancia; Lucas deve recarregar o Chrome ja autenticado em `localhost:3001/iris` para confirmar visualmente. O worktree segue misturado com recortes de outras frentes, entao qualquer publicacao exige pacote limpo ou autorizacao explicita.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO VALIDACAO VISUAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` validar a tela local; depois `Iris Core` pode publicar homologacao se Lucas autorizar.
+## 2026-05-21 00:32:23 -03:00 - Iris Core - Prompt de continuidade para novo agente
+
+Assunto: [Iris] Prompt de continuidade para novo agente
+
+Status: FINALIZADO / HANDOFF PRONTO
+
+Motivo:
+- Lucas informou que o chat atual da Iris ficou pesado/lento e pediu um prompt para iniciar um novo agente Iris sem depender do historico da conversa.
+- Lucas solicitou incluir tambem o ultimo comando funcional e o que ficou pendente para execucao.
+
+Arquivos/modulos afetados:
+- `docs/operations/iris-agent-startup-script.md`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Nenhum codigo de aplicacao foi alterado neste recorte.
+- Nenhuma variavel de ambiente, token, secret, Vercel, Supabase, banco, migration, dominio, alias ou producao foi alterado.
+
+Como foi feito:
+- Criado script inicial para o proximo agente Iris Core em `docs/operations/iris-agent-startup-script.md`.
+- O script inclui leituras obrigatorias, regras de seguranca, estado atual da Iris, arquivos provaveis em andamento, comando mais recente do Lucas e checklist de pendencias.
+- O ultimo comando pendente foi registrado com foco em CRM 360/Apolo, status oficiais da Iris, simplificacao do topo, remocao de duplicidades, correcao de quebra visual no board e preservacao das melhorias de UX WhatsApp.
+
+Logica usada:
+- O handoff foi documentado em arquivo operacional para que o proximo agente possa continuar sem depender do chat.
+- O diario canonico recebeu apenas o resumo consolidado e rastreavel do handoff, sem valores sensiveis.
+- O recorte foi mantido em documentacao, sem tocar em codigo ou infraestrutura.
+
+Validacao executada:
+- Pendente de `git diff --check` apos escrita dos arquivos.
+
+Proximo passo recomendado:
+- Novo agente Iris Core deve iniciar lendo `docs/operations/iris-agent-startup-script.md`, depois revisar `AGENTS.md` e o diario canonico antes de continuar a implementacao.
+
+## 2026-05-21 00:39:50 -03:00 - Apolo Core - CRM 360 PF/PJ, documentos e contrato Hades
+
+Assunto: [Apolo] CRM 360 PF/PJ, documentos e contrato Hades
+
+Status: IMPLEMENTADO LOCAL / BUILD E TYPES OK / LINT GLOBAL BLOQUEADO FORA DO RECORTE / SEM DEPLOY
+
+Motivo:
+- Lucas pediu corrigir o telefone que estava usando e-mail como fallback, separar a leitura de pessoa juridica com nome fantasia no destaque e razao social no resumo, trocar `Proxima acao` por `Responsavel` em PJ, remover abas de Atendimento e Relacionamentos, deixar o cadastro aberto com campos no padrao Hades, organizar Documentos e reaproveitar o comportamento de contrato ja existente no Hades.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/apolo/ApoloPage.tsx`
+- `apps/hub/lib/apolo/server.ts`
+- `apps/hub/lib/apolo/types.ts`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Nenhuma escrita no C2X, Supabase real, migration ou integracao externa foi executada.
+
+Como foi feito:
+- O resumo do CRM 360 passou a usar telefone apenas de contatos `phone`/`whatsapp`, sem cair para e-mail.
+- Para pessoa juridica, o cabecalho privilegia `trade_name`/nome fantasia, o resumo privilegia `legal_name`/razao social, e o campo de acao vira `Responsavel`.
+- A aba `Atendimento` e a aba `Relacionamentos` foram removidas do detalhe do Apolo; a `Timeline` permanece como area propria para o registro operacional completo.
+- A aba `Cadastro` agora mostra os campos abertos no desenho do Hades: dados principais, tipo pessoa, documento, nascimento, idade, sexo, estado civil, regime, profissao, renda, escolaridade, cidade, CEP, bairro, numero, complemento, naturalidade, nacionalidade, nome da mae, relacionamento, responsavel e area de conjuge/representantes.
+- A aba `Documentos` foi reorganizada em `Contrato` e `Cadastro e anexos`, usando o mesmo padrao de abertura segura do Hades quando houver `uuidDoc`/documento D4Sign materializado.
+- A decisao tecnica de contratos foi baseada no Hades: `apps/hub/modules/guardian/attendance/components/ClientDetailPanel.tsx` monta `DocumentsTab`, usa `signedContractDocumentId` da unidade e abre `/api/hades/d4sign/contracts/[documentId]`; `apps/hub/lib/guardian/attendance.ts` busca `contract_signatures.uuidDoc`, `link_pdf_signed_file` e status via `acquisition_request_contracts`.
+- A busca do Apolo passou a considerar `comprador` pelo indice textual e tambem por `apolo_financial_snapshots`/`apolo_commercial_links`, sem carregar toda a base no primeiro acesso.
+- O workspace Hades dentro do Apolo passou a abrir para usuario comprador com carteira, mesmo sem parcela vencida, aproveitando a rota do Hades que ja carrega cliente com `includeClientsWithoutOverdue`.
+
+Logica usada:
+- O Apolo continua lendo as tabelas proprias materializadas (`apolo_*`) como fonte operacional da tela. O Hades permanece apenas como motor visual/operacional reutilizado para comprador quando ja existe carteira e contrato.
+- Documentos de contrato dependem de `contract_signatures.uuidDoc` associado a `acquisition_request_contracts`. Sem esse identificador no Apolo, a tela exibe contrato como nao localizado em vez de simular link.
+- Dados completos de CPF/CNPJ e campos ainda nao materializados permanecem dependentes de evolucao do sync/schema autorizada; o front mostra o campo aberto, mas nao inventa valor.
+
+Validacao executada:
+- `npm.cmd run check-types:hub` passou apos a correcao inicial de tipo na abertura de documentos.
+- `rg -n "[ \t]+$" apps/hub/modules/apolo/ApoloPage.tsx apps/hub/lib/apolo/server.ts apps/hub/lib/apolo/types.ts` nao encontrou espacos finais.
+
+Pendencias ou riscos conhecidos:
+- Ainda falta completar `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub`, smoke da API e `git diff --check` deste recorte.
+- A validacao visual segue dependente do Chrome autenticado do Lucas.
+- A exposicao completa de campos cadastrais historicos do C2X dentro das tabelas Apolo ainda depende de evolucao do sync/schema, sem migration real nesta rodada.
+
+Proximo passo recomendado:
+- `Apolo Core` finalizar as validacoes locais e, se aprovadas, Lucas recarregar `localhost:3001/apolo` para validar visualmente PF/PJ, busca por comprador, documentos e contrato.
+
+Atualizacao de validacao local:
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, mantendo apenas o warning conhecido de `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou, mantendo o warning conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+- `GET http://localhost:3001/api/apolo/relationships?limit=20` retornou `200 OK`, `total=3927`, `returned=20`, `buyerUsersCount=3431`, `source=apolo`, mas o smoke local mediu 37,23s nesta sessao.
+- `GET http://localhost:3001/api/apolo/relationships?q=comprador` foi ajustado para filtro estruturado com lote operacional de 120 registros, evitando varredura textual ampla por `comprador`; uma tentativa local anterior ainda mediu latencia alta enquanto o servidor estava recompilando/ocupado.
+- `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx apps/hub/lib/apolo/server.ts apps/hub/lib/apolo/types.ts docs/operations/engineering-operations.md` passou com aviso conhecido LF/CRLF no diario.
+- Risco atualizado: performance do endpoint Apolo no dev server local segue oscilando e precisa de uma rodada dedicada de DataOps/indice materializado para contadores de comprador e busca ampla sem depender de contagens filtradas em tempo de requisicao.
+
+## 2026-05-21 00:49:02 -03:00 - Iris Core - CRM 360, status oficiais e board Inbox
+
+Assunto: [Iris] CRM 360, status oficiais e board Inbox
+
+Status: EM VALIDACAO LOCAL / SEM DEPLOY
+
+Motivo:
+- Lucas pediu concluir o recorte pendente da Iris para substituir o subtitulo `WhatsApp - Nome` pelo perfil do cliente no CRM 360/Apolo quando o telefone existir, exibir `Sem cadastro` quando nao houver match, considerar telefone de conjuge, simplificar a tela para `Inbox`/`Ticket`, remover blocos Athena/Handoff/Operacao e corrigir quebras de textos longos e URLs no board.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `apps/hub/app/api/iris/apolo/phone-match/route.ts`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Setup, Atlas, Chronos, Apolo fora da rota de leitura CRM 360 consumida pela Iris, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Nenhum deploy, redeploy, homologacao/producao, migration, escrita direta em Supabase/C2X ou alteracao de token/env foi executado.
+
+Como foi feito:
+- A rota `iris/apolo/phone-match` passou a retornar tambem perfis CRM 360 e a resolver telefone de conjuge para o cliente principal quando houver relacionamento de conjuge cadastrado.
+- A tela da Iris passou a usar o nome do CRM 360 no ticket/conversa, o perfil CRM 360 como subtitulo e o estado `Sem cadastro` quando o telefone nao bater com cliente ou conjuge.
+- Os status oficiais foram normalizados na UI: `Novo` azul, `Espera` amarelo, `Pendente` vermelho e `Encerrado` verde.
+- Os cards superiores foram reduzidos para Caixa de entrada com icone e tooltip, Primeira resposta e Operadores online.
+- A busca duplicada do topo foi removida; a busca permanece somente no board/inbox.
+- O board foi reforcado contra overflow horizontal com `min-w-0`, `overflow-hidden` e quebra de texto/URL nas linhas, previews, bolhas e contexto.
+- A area principal manteve as melhorias de UX ja iniciadas: emojis, seletor fechando ao clicar fora, audio, responder mensagem, reagir a mensagem, indicador WhatsApp de entrega/leitura, operador com nome/foto e auto-scroll.
+
+Logica usada:
+- A Iris continua lendo os dados operacionais existentes e apenas enriquece a apresentacao com a leitura do CRM 360/Apolo ja materializada, sem inventar cadastro e sem escrever em banco.
+- Quando a Iris encontra telefone de conjuge, o atendimento mostra o cliente principal como cadastro localizado e indica o contexto do conjuge no tooltip/contexto.
+- Quando nao existe telefone cadastrado, o operador recebe um sinal visual vermelho e o texto `Sem cadastro`, evitando assumir que o nome recebido pelo WhatsApp e um cliente do CRM.
+
+Validacao executada:
+- `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/apolo/phone-match/route.ts docs/operations/engineering-operations.md` passou, com avisos conhecidos LF/CRLF no Windows.
+- `rg -n "[ \t]+$" apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/apolo/phone-match/route.ts docs/operations/engineering-operations.md` nao encontrou espacos finais.
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` falhou por warning fora do recorte Iris em `apps/hub/modules/apolo/ApoloPage.tsx` (`hasOperationalPortfolio` definido e nao usado). O arquivo Apolo nao foi alterado neste pacote para nao misturar squads.
+- `npx.cmd eslint modules/caredesk/IrisPage.tsx app/api/iris/apolo/phone-match/route.ts --max-warnings 0` passou no recorte Iris, com o warning conhecido de `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- `GET http://localhost:3001/iris` retornou `200 OK`.
+- Validacao visual headless via Chrome local abriu a rota, mas caiu em `Redirecionando para login...` por falta de sessao autenticada nesse perfil temporario; a validacao visual completa do board/inbox continua dependente de sessao autenticada no Chrome do Lucas.
+
+Pendencias ou riscos conhecidos:
+- A validacao visual pode depender de sessao autenticada no navegador local do Lucas.
+- O worktree continua misto com alteracoes de outras squads; qualquer publicacao futura precisa recorte limpo e autorizacao explicita do Lucas.
+- O lint global do Hub permanece bloqueado por warning em Apolo fora do recorte; nao foi corrigido aqui por isolamento de escopo.
+
+Proximo passo recomendado:
+- `Lucas` validar visualmente `localhost:3001/iris` em sessao autenticada. `Iris Core` aguarda autorizacao explicita para qualquer publicacao em homologacao e nao deve misturar o warning Apolo neste recorte.
+
+## 2026-05-21 01:45:47 -03:00 - Hefesto - Rotina horaria de homologacao bloqueada por worktree misto
+
+Assunto: [Hefesto] Release homologacao horaria bloqueada por recortes mistos
+
+Status: BLOQUEADO / SEM COMMIT DE CODIGO / SEM DEPLOY
+
+Motivo:
+- A automacao horaria do Hefesto foi executada para preparar commit e deploy de homologacao do que estivesse pendente e seguro.
+- A leitura do diario e do indice de homologacao indicou recortes locais de Apolo e Iris ainda dependentes de validacao visual/autenticada e/ou com pendencias registradas.
+- O Git confirmou worktree misto com alteracoes simultaneas em Iris, Apolo, Hermes, Zeus/HelpDesk, Hades, Atlas, permissoes/registry, scripts e migrations, sem um recorte unico limpo para publicacao automatica.
+
+Arquivos/modulos afetados:
+- Leitura/auditoria: `AGENTS.md`, `docs/operations/README.md`, `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, politicas de release/env/secret/producao e estado Git.
+- Registro operacional: `docs/operations/engineering-operations.md` e `docs/operations/releases-homologation.md`.
+
+Arquivos/modulos excluidos:
+- Nenhum codigo de aplicacao foi alterado nesta rodada.
+- Nenhum deploy, redeploy, alias, dominio, migration, env, secret, Supabase ou banco foi alterado.
+- Nenhum recorte de producao foi tocado.
+
+Como foi feito:
+- Revisei as regras obrigatorias de agentes, governanca operacional, release/rollback, ambiente, secrets e protecao de producao.
+- Consultei os registros recentes do diario canonico e dos indices de homologacao/producao.
+- Auditei `git status --short --branch`, `git diff --name-status`, `git diff --stat`, `git log --oneline -12` e `git diff --check`.
+- Classifiquei o pacote atual como inseguro para deploy automatico por mistura de responsabilidades.
+
+Logica usada:
+- A rotina horaria pode commitar e publicar homologacao somente quando o recorte estiver coerente, validado e sem risco de misturar modulos.
+- O estado atual contem arquivos de multiplas squads e migrations novas, alem de registros com validacao visual pendente; publicar isso como um unico Preview transformaria homologacao em pacote amplo nao rastreavel.
+- O comportamento correto do Hefesto e bloquear a rodada, registrar o motivo e pedir recorte limpo por modulo.
+
+Validacao executada:
+- `git diff --check` passou, com avisos conhecidos de LF/CRLF no Windows.
+- Nao foram executados `check-types`, `lint` e `build` nesta rodada porque nao houve selecao de recorte de codigo para commit/deploy.
+- Nao foram executados healthchecks Vercel porque nenhum deploy/redeploy foi feito.
+
+Pendencias ou riscos conhecidos:
+- Apolo possui recorte local validado parcialmente, mas ainda com validacao visual pendente e risco de performance no endpoint de relacionamentos.
+- Iris possui recorte local com validacoes de build, mas validacao visual autenticada pendente e lint global bloqueado por warning fora do recorte.
+- O worktree mistura tambem Hermes, Zeus/HelpDesk, Hades, Atlas, permissoes/registry, scripts e migrations, exigindo separacao antes de qualquer homologacao automatica.
+- Branch local `homolog` esta adiantada e atrasada em relacao a `origin/homolog`; antes de novos deploys amplos, Hefesto deve considerar o risco de divergencia remota.
+
+Proximo passo recomendado:
+- Cada agente deve entregar recorte limpo por modulo ou Lucas deve autorizar explicitamente qual pacote deseja publicar apesar da mistura.
+- Para a proxima rodada horaria, Hefesto deve repetir a auditoria e publicar apenas se houver recorte isolado, validado e sem bloqueio sensivel.

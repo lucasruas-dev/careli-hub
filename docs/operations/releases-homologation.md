@@ -775,3 +775,29 @@ Registro de homologacao:
 - Pendencias: Lucas validar fluxo autenticado real da Iris/Meta e Asana em `https://homo.c2x.app.br`; agentes devem evitar publicar pacote temporario amplo como homologacao sem recorte.
 - Status: `EM HOMOLOGACAO`.
 - Proxima acao: `Lucas` validar operacionalmente; `Hefesto` acompanhar logs se houver erro autenticado.
+
+Registro de homologacao:
+
+- Assunto: `[Hefesto] Release homologacao horaria bloqueada por recortes mistos`.
+- Modulo/agente: `Hefesto`.
+- Data e hora local: `2026-05-21 01:45:47 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: automacao horaria autorizada por Lucas para commitar e publicar em homologacao somente recortes seguros.
+- Escopo do recorte:
+  - auditar diario canonico, indices de release e Git;
+  - identificar pendencias nao commitadas;
+  - bloquear publicacao se houver mistura de modulos ou dependencia sensivel.
+- Protocolos/atividades relacionados: `HEFESTO-HOURLY-HOMOLOG-20260521-0145`.
+- Commit de homologacao: `n/a - nenhum recorte de codigo seguro foi selecionado`.
+- Deployment/alias de homologacao: `n/a - sem deploy, sem redeploy e sem alteracao de alias`.
+- Arquivos/modulos afetados: registro operacional em `docs/operations/engineering-operations.md` e este indice.
+- Validacoes executadas:
+  - leitura de `AGENTS.md`, `docs/operations/README.md`, diario canonico e indices de release;
+  - `git status --short --branch`, `git diff --name-status`, `git diff --stat`, `git log --oneline -12`;
+  - `git diff --check` passou com avisos conhecidos LF/CRLF.
+- Healthchecks de homologacao:
+  - `n/a - nenhum deploy/redeploy foi executado`.
+- Riscos conhecidos: worktree misto com Iris, Apolo, Hermes, Zeus/HelpDesk, Hades, Atlas, permissoes/registry, scripts e migrations; publicar o snapshot atual quebraria a regra de recorte limpo.
+- Pendencias: separar recortes por modulo e concluir validacoes visuais/autenticadas pendentes antes de homologacao automatica.
+- Status: `BLOQUEADO`.
+- Proxima acao: agentes responsaveis limparem/commitarem seus recortes; Hefesto repetira a auditoria na proxima rodada horaria.
