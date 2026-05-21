@@ -880,3 +880,146 @@ Registro de homologacao:
 - Pendencias: Lucas validar Hades/Iris/Apolo autenticado em `https://homo.c2x.app.br`; Apolo Core/DataOps tratar schema/sync se necessario; Hefesto preparar producao somente apos aprovacao explicita.
 - Status: `EM HOMOLOGACAO`.
 - Proxima acao: Lucas validar o pacote em homologacao e, se aprovado, solicitar promocao de producao por recorte limpo ao Hefesto.
+
+Registro de homologacao:
+
+- Assunto: `[Zeus] Sync usuarios Setup e Hermes em homologacao`.
+- Modulo/agente: `Zeus Core`.
+- Data e hora local: `2026-05-21 09:56:40 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas autorizou aplicar em homologacao a liberacao dos usuarios cadastrados em producao e os cadastros/configuracoes do Hermes, apos dry-run read-only sem PII.
+- Escopo do recorte:
+  - ler producao somente em modo leitura;
+  - escrever somente no Supabase de homologacao;
+  - criar/atualizar usuarios no Supabase Auth de homologacao sem copiar senhas, hashes, tokens ou secrets;
+  - sincronizar perfis `hub_users`, vinculos Setup, departamentos, setores, modulos/permissoes, canais Hermes, membros Hermes e mensagens Hermes autorizadas;
+  - remapear referencias de usuario por e-mail e recalcular IDs de conversas diretas do Hermes para os UUIDs de homologacao.
+- Protocolos/atividades relacionados: `ZEUS-HOMOLOG-USERS-HERMES-20260521-0956`.
+- Commit de homologacao: `n/a - operacao de dados em homologacao, sem commit de codigo`.
+- Deployment/alias de homologacao: `n/a - sem deploy, sem redeploy e sem alteracao de alias`; validado em `https://homo.c2x.app.br`.
+- Arquivos/modulos afetados: Supabase homologacao (`auth.users`, `hub_users`, `hub_user_assignments`, `hub_departments`, `hub_sectors`, `hub_department_modules`, `hub_modules`, `hub_permissions`, `hub_user_permissions`, `pulsex_channels`, `pulsex_channel_members`, `pulsex_messages`), diario canonico e este indice.
+- Arquivos/modulos excluidos:
+  - producao recebeu somente leitura;
+  - nenhum env, secret, service role, token, alias, dominio, deploy, migration ou schema foi alterado;
+  - nenhum valor sensivel foi registrado.
+- Resultado aplicado:
+  - Auth usuarios em homologacao: `4` total; `3` criados e `1` existente atualizado/preservado;
+  - `hub_users`: `4`;
+  - `hub_user_assignments`: `11`;
+  - `hub_departments`: `5`;
+  - `hub_sectors`: `5`;
+  - `hub_department_modules`: `5`;
+  - `hub_modules`: `10`;
+  - `hub_permissions`: `22`;
+  - `hub_user_permissions`: `0`;
+  - `pulsex_channels`: `12`;
+  - `pulsex_channel_members`: `19`;
+  - `pulsex_messages`: `222`.
+- Validacoes executadas:
+  - preflight confirmou ambiente de homologacao por REST e banco antes do apply;
+  - backup local ignorado pelo Git foi gerado antes do apply em `.codex-artifacts/zeus-homolog-sync/`;
+  - apply idempotente concluiu sem erro;
+  - validacao pos-apply confirmou zero referencias quebradas em Auth/perfis, assignments, departamentos, setores, modulos, canais, membros, mensagens e conversas diretas;
+  - `GET https://homo.c2x.app.br/hermes`: `200 OK`;
+  - `GET https://homo.c2x.app.br/setup`: `200 OK`.
+- Riscos conhecidos:
+  - usuarios criados/liberados em Auth de homologacao podem precisar fluxo de recuperacao/definicao de senha para login real;
+  - mensagens e metadados do Hermes foram sincronizados para homologacao conforme autorizacao; nao foram exibidos no chat nem no diario;
+  - validacao funcional autenticada pelo Lucas ainda e recomendada.
+- Pendencias: Lucas validar login e navegação autenticada em Setup/Hermes em `https://homo.c2x.app.br`.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: se Lucas aprovar o comportamento em homologacao, manter como base operacional de homologacao; producao permanece sem alteracao.
+Registro de homologacao:
+
+- Assunto: `[Iris] Template Meta pt_BR em homologacao`.
+- Modulo/agente: `Iris Core`.
+- Data e hora local: `2026-05-21 10:19:08 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas autorizou `sobe em homologacao` para o hotfix do template Meta aprovado que nao iniciava atendimento.
+- Escopo do recorte:
+  - consultar templates Meta por `name + language`;
+  - gravar no modal de `Novo atendimento` o template retornado pela Meta;
+  - enviar `templateName` e `templateLanguage` reais para abertura de ticket ativo;
+  - validar novamente a traducao aprovada antes de chamar a Meta;
+  - tratar erro `132001` como falha de traducao/idioma/telefone de envio.
+- Protocolos/atividades relacionados: `IRIS-HOMOLOG-TEMPLATE-PTBR-20260521-1019`.
+- Commit de homologacao: `036efd0` (`fix(iris): validate meta template translations`).
+- Deployment/alias de homologacao: deployment `dpl_9DEPjKpifmNMPWPP7sqqR6Mh7buc`, URL `https://careli-hub-hub-i2bs-pivbo6v0n-lucasruas-devs-projects.vercel.app`, alias `https://homo.c2x.app.br`.
+- Arquivos/modulos afetados:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - diario canonico e este indice de homologacao.
+- Arquivos/modulos excluidos:
+  - Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, envs, secrets, tokens, service role e producao;
+  - nenhum valor sensivel foi registrado.
+- Validacoes executadas:
+  - worktree limpa em `036efd0`: `git status --short` sem saida;
+  - worktree limpa em `036efd0`: `git diff --check` sem apontamentos;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com aviso conhecido do ESLint do Hub;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com aviso conhecido de Turbopack/NFT;
+  - build remoto Vercel: OK, com warnings conhecidos e sem exposicao de valores de env;
+  - `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_9DEPjKpifmNMPWPP7sqqR6Mh7buc`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/tickets` sem bearer: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates?name=iris_opt_in_teste_v1&language=pt_BR` sem bearer: `401 Unauthorized` esperado;
+  - logs Vercel dos ultimos 10 minutos: somente `info` em `/iris`, `/api/iris/*` e `/api/hub/presence`, sem erro critico.
+- Observacao operacional:
+  - um primeiro deploy a partir de worktree sem vinculo `.vercel` criou um projeto Vercel avulso `iris-template-translation-20260521-1015`; ele nao recebeu alias `c2x` nem substituiu `homo.c2x.app.br`;
+  - a worktree foi relincada ao projeto correto `careli-hub-hub-i2bs` antes do deploy valido de homologacao.
+- Riscos conhecidos:
+  - envio real autenticado do template ainda precisa ser validado pelo Lucas na tela Iris;
+  - se a Meta ainda retornar `132001`, o proximo recorte deve auditar WABA/phone-number/env somente por nome/presenca, sem expor valores;
+  - remocao do projeto Vercel avulso exige autorizacao explicita do Lucas;
+  - worktree principal segue misto com recortes de outros agentes.
+- Pendencias: Lucas validar o fluxo em `https://homo.c2x.app.br/iris` e autorizar limpeza do projeto Vercel avulso se desejar.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: Lucas testar `Novo atendimento` com cliente CRM 360/Apolo e template aprovado `pt_BR`; producao permanece sem alteracao.
+
+Registro de homologacao:
+
+- Assunto: `[Hefesto] Hub HelpDesk do Zeus em homologacao`.
+- Modulo/agente: `Hefesto`.
+- Data e hora local: `2026-05-21 12:26:38 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas autorizou subir os apontamentos novos do Zeus somente no escopo Hub, sem publicar recortes do modulo Zeus.
+- Escopo do recorte:
+  - atualizar Home do Hub de `Ticket TI` para `HelpDesk`;
+  - evoluir o painel do solicitante em `HubUserTicketsPanel`;
+  - adicionar comentario do solicitante no contrato compartilhado do HelpDesk;
+  - carregar autoria real dos eventos do HelpDesk quando `created_by_user_id` existir.
+- Protocolos/atividades relacionados: `HUB-HELPDESK-ZEUS-HOMOLOG-20260521-1226`.
+- Commit de homologacao: `8a6480c fix(hub): improve helpdesk requester flow`.
+- Deployment/alias de homologacao: Preview `dpl_2A5ZWbRSmMk9kkkzd1WodZZPT5Xr`; URL tecnica `https://careli-hub-hub-i2bs-pjpr9qw3o-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Arquivos incluidos:
+  - `apps/hub/app/page.tsx`;
+  - `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`;
+  - `apps/hub/lib/hub-it-tickets/server.ts`;
+  - `apps/hub/lib/hub-it-tickets/types.ts`.
+- Arquivos/modulos excluidos:
+  - `apps/hub/modules/squadops/HubItTicketsBoard.tsx`;
+  - `apps/hub/modules/squadops/ZeusPage.tsx`;
+  - Hermes, Iris, Hades, Atlas, Apolo, PWA, migrations, scripts, envs, secrets, Supabase mutavel, producao e aliases de producao.
+- Validacoes executadas:
+  - `git diff --cached --check`: OK;
+  - varredura staged para secrets: `0` matches criticos;
+  - `npx.cmd eslint app/page.tsx components/hub-support/hub-user-tickets-panel.tsx lib/hub-it-tickets/server.ts lib/hub-it-tickets/types.ts --max-warnings 0`: OK, com warning conhecido do ESLint/Node;
+  - worktree limpo `8a6480c`: `git status --short`, `git diff --check`, `check-types:hub`, `lint:hub` e `build --workspace @repo/hub`: OK;
+  - build remoto Vercel: OK, com warnings conhecidos.
+- Healthchecks de homologacao:
+  - `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_2A5ZWbRSmMk9kkkzd1WodZZPT5Xr`;
+  - `GET /`: `200`;
+  - `GET /login`: `200`;
+  - `GET /zeus`: `200`;
+  - `GET /api/hub/home` sem bearer: `401` esperado;
+  - `GET /api/hub/it-tickets` sem bearer: `401` esperado;
+  - `POST /api/hub/it-tickets` sem bearer: `401` esperado;
+  - `PATCH /api/hub/it-tickets` sem bearer: `401` esperado;
+  - `GET /api/hades/db/health`: `200`;
+  - `GET /api/guardian/db/health`: `200`;
+  - logs Vercel dos ultimos 15 minutos: sem logs retornados, sem erro critico observado.
+- Riscos conhecidos: validacao autenticada do solicitante depende do Lucas; modulo Zeus operador ficou fora por regra de escopo; historicos antigos sem autor ainda usam fallback; worktree principal segue misto.
+- Pendencias: Lucas validar Home e HelpDesk autenticado em `https://homo.c2x.app.br`; producao depende de aprovacao explicita e novo recorte limpo.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: Lucas testar; Hefesto promove para producao apenas se Lucas aprovar.

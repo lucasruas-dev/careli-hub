@@ -8991,6 +8991,48 @@ Proximo passo recomendado:
 - Lucas validar em `localhost:3001/iris`: icone de novo atendimento, busca `Nivea`/telefone no modal e nova aba `Setup > Templates`.
 - Se Lucas quiser criar o template real em homologacao, autorizar um deploy de homologacao limpo do recorte Iris em ambiente com envs Meta configuradas; producao continua fora do escopo.
 
+## 2026-05-21 10:07:24 -03:00 - Iris Core - Correcao envio template aprovado Meta
+
+Assunto: [Iris] Template aprovado sem iniciar atendimento
+
+Status: IMPLEMENTADO LOCAL / VALIDACAO EM ANDAMENTO / SEM DEPLOY
+
+Motivo:
+- Lucas reportou no modal de `Novo atendimento` que o template aparecia como `Aprovado`, mas o inicio do atendimento falhava com `(#132001) Template name does not exist in the translation`.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `apps/hub/app/api/iris/tickets/route.ts`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Atlas, Chronos, Setup global, Apolo UI, banco real, migrations, Vercel, dominios, aliases, envs e secrets.
+- Nenhum valor de env, token, bearer, service role ou payload sensivel foi exposto ou alterado.
+
+Como foi feito:
+- A consulta de template Meta passou a filtrar exatamente por `name` e `language`, evitando que um template aprovado em outro idioma/traducao seja exibido como aprovado para `pt_BR`.
+- A criacao de template real deixou de considerar apenas o `name` como existente; agora o match local/Meta exige `name + language`.
+- O modal de `Novo atendimento` passou a guardar o `name` e `language` retornados pela Meta e a enviar esses dados para a rota de abertura do ticket.
+- A rota `/api/iris/tickets` passou a resolver novamente o template aprovado antes de enviar, exigindo traducao aprovada para o idioma solicitado.
+- O erro `132001` passou a retornar mensagem operacional orientando recriar/consultar a traducao `pt_BR` ou revisar o vinculo WABA/telefone de envio, sem expor detalhes sensiveis.
+
+Logica usada:
+- Para WhatsApp Cloud API, template aprovado precisa existir na combinacao correta de nome e idioma da conta/telefone usados no envio.
+- Um template com o mesmo nome em outro idioma nao prova que a traducao `pt_BR` esta disponivel para envio ativo.
+- Se a Meta ainda rejeitar com `132001` mesmo com `pt_BR` aprovado, o proximo ponto provavel e divergencia entre `META_WHATSAPP_BUSINESS_ACCOUNT_ID` consultado e `META_WHATSAPP_PHONE_NUMBER_ID` usado no disparo; essa auditoria de env continua bloqueada ate autorizacao explicita do Lucas.
+
+Validacao executada:
+- `npx.cmd eslint modules/caredesk/IrisPage.tsx app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts --max-warnings 0` passou, com warning conhecido do Node sobre `eslint.config.js` sem `type: module`.
+
+Pendencias ou riscos conhecidos:
+- Lucas precisa recarregar o localhost para a tela consultar novamente a traducao `pt_BR`.
+- Se a tela mudar de `Aprovado` para `Nao criado`, clicar em `Criar template real` novamente para criar a traducao correta em `pt_BR` e aguardar aprovacao da Meta.
+- Se continuar aprovado em `pt_BR` e ainda falhar com `132001`, abrir recorte bloqueado de auditoria segura das envs Meta por nome/presenca, sem expor valores.
+
+Proximo passo recomendado:
+- `Lucas` recarregar `localhost:3001/iris`, abrir `Novo atendimento`, consultar o template e tentar iniciar novamente. Se o erro persistir, Iris Core isola a auditoria Meta/WABA em modo `BLOQUEADO`.
+
 ## 2026-05-21 08:48:03 -03:00 - Zeus Core - Performance local estabilizada
 
 Assunto: [Zeus] Performance do localhost e APIs de apoio
@@ -9221,3 +9263,392 @@ Proximo passo recomendado:
 - Iris Core acompanhar Meta/tickets/templates em sessao real.
 - Apolo Core validar dados/relacionamentos exibidos e solicitar DataOps se precisar aplicar schema/sync.
 - Hefesto so promove para producao depois de aprovacao explicita e novo recorte limpo.
+
+## 2026-05-21 09:38:44 -03:00 - Zeus Core - Usuarios e Hermes em homologacao
+
+Assunto: [Zeus] Liberacao de usuarios e Hermes em homologacao
+
+Status: BLOQUEADO / AGUARDANDO AUTORIZACAO DE DADOS
+
+Motivo:
+- Lucas solicitou liberar no ambiente de homologacao os usuarios cadastrados em producao e trazer tambem configuracoes e cadastros do Hermes.
+- O pedido envolve Supabase Auth, perfis de usuario, vinculos de Setup, permissoes, canais/membros/mensagens do Hermes e possiveis dados pessoais.
+
+Bloqueio:
+- Nenhuma copia, escrita, sync, dump, deploy, alias, env, service role, migration ou operacao mutavel foi executada.
+- Producao para homologacao com Supabase/Auth/banco/dados reais exige autorizacao explicita de ambiente, escopo, estrategia e validacao.
+- Nao copiar senhas, hashes, service role, tokens, chaves ou valores sensiveis entre ambientes.
+
+Inventario preliminar:
+- Usuarios/acesso: `auth.users`, `hub_users`, `hub_user_assignments`, `hub_departments`, `hub_sectors`, `hub_department_modules`, `hub_modules`, `hub_permissions`, `hub_user_permissions`.
+- Hermes: `pulsex_channels`, `pulsex_channel_members`, `pulsex_messages` e dependencias de usuarios/departamentos/setores.
+- Regra tecnica: `auth.users` e a fonte de autenticacao; `hub_users` nao deve ser populado isoladamente sem criar/liberar o usuario pelo fluxo seguro do Supabase Auth.
+
+Plano seguro proposto:
+- Executar primeiro auditoria read-only, sem imprimir PII, comparando contagens e divergencias entre producao e homologacao.
+- Preparar dry-run idempotente com allowlist de tabelas, backup/export e relatorio de impacto antes de qualquer apply.
+- Liberar usuarios em homologacao por fluxo seguro de Auth, com convite/reset/senha temporaria aprovada, sem copiar credenciais de producao.
+- Upsert de Setup/Hermes por chaves estaveis e com preservacao de ambiente de homologacao.
+- Validar login em homologacao, Setup/usuarios, Hermes, canais, membros e mensagens/cadastros autorizados.
+
+Validacao executada:
+- Leitura de politicas obrigatorias e inventario local de schema/codigo.
+- Nenhum comando sensivel executado.
+
+Proximo passo:
+- Aguardar autorizacao explicita do Lucas para iniciar o dry-run read-only ou para preparar script de sync controlado.
+
+## 2026-05-21 09:44:48 -03:00 - Zeus Core - Dry-run usuarios e Hermes prod x homolog
+
+Assunto: [Zeus] Dry-run read-only de usuarios e Hermes
+
+Status: BLOQUEADO / DRY-RUN CONCLUIDO / AGUARDANDO AUTORIZACAO DE APPLY
+
+Autorizacao:
+- Lucas autorizou executar o dry-run read-only depois do bloqueio inicial registrado.
+
+Escopo executado:
+- Comparacao de contagens entre producao e homologacao para Supabase Auth, perfis operacionais, Setup e Hermes.
+- O dry-run nao listou nomes, e-mails, mensagens, ids, tokens, chaves ou qualquer valor sensivel.
+- Nenhuma escrita, copia, sync, migration, env, alias, deploy, dump ou alteracao de dados foi executada.
+
+Resultado agregado:
+- `auth.users`: producao 4, homologacao 1, delta 3.
+- `hub_users`: producao 4 total / 4 ativos, homologacao 1 total / 1 ativo, delta 3.
+- `hub_user_assignments`: producao 11 total / 4 ativos, homologacao 0, delta 11 total / 4 ativos.
+- `hub_departments`: producao 5 total / 5 ativos, homologacao 0, delta 5.
+- `hub_sectors`: producao 5 total / 5 ativos, homologacao 0, delta 5.
+- `hub_department_modules`: producao 5 total / 5 habilitados, homologacao 0, delta 5.
+- `hub_modules`: producao 10 total / 4 ativos, homologacao 3 total / 3 ativos, delta 7 total / 1 ativo.
+- `hub_permissions`: producao 22, homologacao 6, delta 16.
+- `hub_user_permissions`: producao 0, homologacao 0, delta 0.
+- `pulsex_channels`: producao 12 total / 7 ativos, homologacao 0, delta 12 total / 7 ativos.
+- `pulsex_channel_members`: producao 19 total / 19 ativos, homologacao 0, delta 19.
+- `pulsex_messages`: producao 222 total / 222 nao deletados, homologacao 0, delta 222.
+
+Leitura operacional:
+- Homologacao possui apenas base minima de usuario/modulos/permissoes e nao possui estrutura Setup completa.
+- Hermes em homologacao nao possui canais, membros ou mensagens; por isso o modulo nao representa o cadastro/configuracao de producao.
+- O apply deve respeitar a ordem de dependencias: Auth users, `hub_users`, modulos/permissoes, departamentos, setores, vinculos, liberacao de modulos, canais Hermes, membros Hermes e mensagens autorizadas.
+- Usuarios devem ser liberados pelo fluxo seguro do Supabase Auth; nao inserir apenas em `hub_users` e nao copiar senhas/hashes de producao.
+
+Proximo passo seguro:
+- Preparar script de sync controlado com dry-run/apply separados, allowlist de tabelas, backup/export antes do apply, upsert idempotente e validacao apos escrita.
+- Aguardar autorizacao explicita do Lucas antes de qualquer apply em homologacao.
+
+## 2026-05-21 09:56:40 -03:00 - Zeus Core - Apply usuarios e Hermes em homologacao
+
+Assunto: [Zeus] Usuarios Setup e Hermes sincronizados em homologacao
+
+Status: EM HOMOLOGACAO
+
+Autorizacao:
+- Lucas autorizou subir em homologacao o recorte de usuarios/Setup/Hermes apos o dry-run read-only.
+
+Escopo executado:
+- Producao foi usada somente como fonte de leitura.
+- Homologacao recebeu escrita controlada no Supabase Auth e nas tabelas publicas autorizadas.
+- Nao houve deploy, redeploy, alias, dominio, env, secret, token, service role, migration ou alteracao de schema.
+- Nao foram copiados senhas, hashes, tokens, chaves ou valores sensiveis.
+- Nenhum nome, e-mail, mensagem, id sensivel ou conteudo de conversa foi registrado no chat ou no diario.
+
+Como foi feito:
+- Executei preflight para confirmar que o endpoint REST de homologacao correspondia ao banco `HOMOLOG_POSTGRES_URL`.
+- Gereei backup local antes do apply em `.codex-artifacts/zeus-homolog-sync/`, ignorado pelo Git.
+- Criei/atualizei usuarios no Supabase Auth de homologacao sem copiar senha/hash de producao.
+- Remapeei os UUIDs de usuarios por e-mail para preservar integridade entre Auth, `hub_users`, assignments, membros e mensagens.
+- Recalculei IDs de conversas diretas do Hermes para os UUIDs de homologacao e remapeei metadados de mencoes/reacoes/participantes quando aplicavel.
+- Apliquei upserts idempotentes em Setup e Hermes na ordem de dependencias.
+
+Resultado aplicado:
+- Auth usuarios em homologacao: `4` total; `3` criados e `1` existente atualizado/preservado.
+- `hub_users`: `4`.
+- `hub_user_assignments`: `11`.
+- `hub_departments`: `5`.
+- `hub_sectors`: `5`.
+- `hub_department_modules`: `5`.
+- `hub_modules`: `10`.
+- `hub_permissions`: `22`.
+- `hub_user_permissions`: `0`.
+- `pulsex_channels`: `12`.
+- `pulsex_channel_members`: `19`.
+- `pulsex_messages`: `222`.
+
+Validacao executada:
+- Validacao pos-apply retornou zero referencias quebradas em:
+  - `hub_users` sem Auth;
+  - assignments sem usuario/departamento/setor;
+  - department modules sem dependencia;
+  - canais sem departamento/setor/usuario criador;
+  - membros sem canal/usuario;
+  - mensagens sem canal/autor;
+  - conversas diretas invalidas.
+- `GET https://homo.c2x.app.br/hermes`: `200 OK`.
+- `GET https://homo.c2x.app.br/setup`: `200 OK`.
+- `git diff --check` sera executado nos registros ao fechar esta entrega.
+
+Riscos conhecidos:
+- Usuarios criados/liberados em Auth de homologacao podem precisar fluxo de recuperacao/definicao de senha para login real.
+- Conteudo Hermes foi sincronizado para homologacao conforme autorizacao, mas nao foi exibido em logs operacionais.
+- O worktree principal segue misto por recortes de outros agentes; esta operacao nao deve ser tratada como pacote geral de deploy.
+
+Registro de release:
+- `docs/operations/releases-homologation.md` atualizado com o recorte `ZEUS-HOMOLOG-USERS-HERMES-20260521-0956`.
+
+Proximo passo:
+- Lucas validar login e navegacao autenticada em Setup/Hermes em `https://homo.c2x.app.br`.
+
+Proximo passo:
+- Lucas validar login e navegação autenticada em Setup/Hermes em `https://homo.c2x.app.br`.
+## 2026-05-21 10:19:08 -03:00 - Iris Core - Homologacao correcao template Meta pt_BR
+
+Assunto: [Iris] Template Meta pt_BR em homologacao
+
+Status: EM HOMOLOGACAO
+
+Autorizacao:
+- Lucas solicitou `sobe em homologacao` para o recorte Iris de correcao do template aprovado que nao iniciava atendimento.
+
+Escopo publicado:
+- Correcoes para consultar e enviar o template Meta pela combinacao exata `name + language`.
+- O modal de `Novo atendimento` passa a guardar o template retornado pela Meta e enviar `templateName`/`templateLanguage` reais para abertura do ticket.
+- A rota `/api/iris/tickets` valida novamente se a traducao solicitada esta aprovada antes do envio e trata o erro Meta `132001` com mensagem operacional.
+
+Arquivos incluidos no commit de homologacao:
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `apps/hub/app/api/iris/tickets/route.ts`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, envs, secrets, tokens, service role, producao e aliases de producao.
+- Os registros ja existentes de Zeus no diario/release permaneceram fora do commit Iris.
+
+Commit e deployment:
+- Commit de homologacao: `036efd0` (`fix(iris): validate meta template translations`).
+- Deployment Vercel correto: `dpl_9DEPjKpifmNMPWPP7sqqR6Mh7buc`.
+- URL Preview: `https://careli-hub-hub-i2bs-pivbo6v0n-lucasruas-devs-projects.vercel.app`.
+- Alias de homologacao atualizado: `https://homo.c2x.app.br`.
+- Projeto Vercel correto: `careli-hub-hub-i2bs`.
+
+Validacoes executadas:
+- Worktree limpa em `036efd0`: `git status --short` sem saida.
+- Worktree limpa em `036efd0`: `git diff --check` sem apontamentos.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, apenas aviso conhecido de `MODULE_TYPELESS_PACKAGE_JSON` no ESLint do Hub.
+- `npm.cmd run build --workspace @repo/hub`: OK, apenas aviso conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+- Build remoto Vercel: OK, com warnings conhecidos de Turbopack/NFT e aviso de variaveis de ambiente no Turbo sem valores expostos.
+- `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_9DEPjKpifmNMPWPP7sqqR6Mh7buc`.
+- `GET https://homo.c2x.app.br/iris`: `200 OK`.
+- `GET https://homo.c2x.app.br/api/iris/tickets` sem bearer: `401 Unauthorized` esperado.
+- `GET https://homo.c2x.app.br/api/iris/meta/templates?name=iris_opt_in_teste_v1&language=pt_BR` sem bearer: `401 Unauthorized` esperado.
+- Logs Vercel dos ultimos 10 minutos: somente `info` em `/iris`, `/api/iris/*` e `/api/hub/presence`, sem erro critico.
+
+Observacao operacional:
+- O primeiro deploy executado a partir da worktree sem vinculo `.vercel` criou um projeto Vercel avulso `iris-template-translation-20260521-1015`. Ele nao recebeu alias `c2x` nem substituiu `homo.c2x.app.br`; a worktree foi relincada ao projeto correto e o alias de homologacao foi aplicado somente no deployment `dpl_9DEPjKpifmNMPWPP7sqqR6Mh7buc`.
+
+Riscos conhecidos:
+- O envio real do template aprovado nao foi exercitado por mim em homologacao autenticada para evitar manipular bearer/token no chat ou logs; Lucas deve testar pelo fluxo da Iris.
+- Se a Meta ainda retornar `132001`, o proximo recorte deve auditar somente nomes/presenca das envs Meta/WABA/phone-number, sem expor valores.
+- O projeto Vercel avulso criado no primeiro deploy permanece como pendencia de limpeza e exige autorizacao explicita do Lucas para remocao.
+- O worktree principal segue misto com recortes de outros agentes; o deploy foi feito a partir de worktree limpa do commit Iris.
+
+Registro de release:
+- `docs/operations/releases-homologation.md` atualizado com o recorte `IRIS-HOMOLOG-TEMPLATE-PTBR-20260521-1019`.
+
+Proximo passo:
+- Lucas validar em `https://homo.c2x.app.br/iris`: abrir `Novo atendimento`, selecionar cliente CRM 360/Apolo, confirmar se o template aparece aprovado em `pt_BR` e iniciar atendimento.
+
+## 2026-05-21 10:24:00 -03:00 - Zeus Core - HelpDesk solicitante e historico com autor real
+
+Assunto: [Zeus] HelpDesk com conversa e autoria correta
+
+Status: VALIDADO LOCAL
+
+Escopo:
+- Corrigir o historico do HelpDesk para usar o autor real de cada evento, evitando que respostas antigas de Zeus sejam exibidas com foto do solicitante quando `lastResponseBy` muda.
+- Exibir data e horario em cada mensagem do historico no painel do operador e na tela do solicitante.
+- Trocar a nomenclatura visivel da Home de `Ticket TI` para `HelpDesk`.
+- Evoluir a tela de HelpDesk do solicitante com workflow, cards de solicitante/operador com avatar, conversa com Zeus, anexos, solicitacao de revisao e botao de encerramento.
+
+Arquivos alterados:
+- `apps/hub/lib/hub-it-tickets/types.ts`
+- `apps/hub/lib/hub-it-tickets/server.ts`
+- `apps/hub/modules/squadops/HubItTicketsBoard.tsx`
+- `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`
+- `apps/hub/app/page.tsx`
+
+Como foi feito:
+- O contrato `HubItTicketEvent` passou a aceitar `actor`, preenchido no backend a partir de `hub_it_ticket_events.created_by_user_id`.
+- O historico do operador agora prioriza `event.actor` e usa fallback por tipo de evento somente para registros antigos sem ator carregado.
+- A tela do solicitante passou a permitir `customer_comment`, mantendo `customer_review` para devolucao formal e `customer_close` para encerramento.
+- Eventos locais de fallback tambem passam a carregar ator, preservando consistencia quando o Supabase server-side nao estiver disponivel.
+
+Validacao executada:
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, apenas aviso conhecido de `MODULE_TYPELESS_PACKAGE_JSON` no ESLint do Hub.
+- `npm.cmd run build --workspace @repo/hub`: OK, apenas aviso conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check -- apps/hub/lib/hub-it-tickets/types.ts apps/hub/lib/hub-it-tickets/server.ts apps/hub/modules/squadops/HubItTicketsBoard.tsx apps/hub/components/hub-support/hub-user-tickets-panel.tsx apps/hub/app/page.tsx`: OK, apenas avisos de CRLF.
+- Smoke local em `next start` temporario na porta `3020`: `GET /` 200 OK e `GET /zeus` 200 OK.
+
+Riscos conhecidos:
+- Historicos antigos sem `created_by_user_id` ou sem usuario correspondente em `hub_users` ainda dependem do fallback por tipo de evento.
+- O localhost existente em `3001` nao respondeu em 15s durante o smoke; a validacao foi feita em processo temporario isolado na porta `3020`.
+- O worktree segue misto com recortes de outros agentes; este registro cobre somente HelpDesk/Zeus/Home.
+
+Proximo passo:
+- Lucas validar a UX em homologacao antes de qualquer promocao de producao.
+
+## 2026-05-21 12:25:21 -03:00 - Zeus Core - HelpDesk autoria em producao
+
+Assunto: [Zeus] HelpDesk autoria e conversa publicado em producao
+
+Status: EM PRODUCAO
+
+Autorizacao:
+- Lucas autorizou publicar em producao no dominio operacional `https://ops.c2x.app.br` as correcoes locais do HelpDesk/Zeus.
+
+Escopo publicado:
+- Historico do operador usando autor real do evento para evitar avatar incorreto em devolutivas antigas.
+- Data e horario exibidos nas mensagens do historico.
+- Home/tela do solicitante renomeada visualmente de `Ticket TI` para `HelpDesk`.
+- Tela do solicitante com workflow, conversa com Zeus, anexos, revisao e encerramento do chamado.
+
+Como foi feito:
+- Montei pacote limpo `.codex-deploy/prod-zeus-helpdesk-author-20260521-1024` a partir do pacote ativo de producao `prod-zeus-helpdesk-history-20260520-1452`.
+- Apliquei somente os cinco arquivos do recorte Zeus/HelpDesk/Home ja validados localmente.
+- Publiquei com Vercel Production e confirmei que `https://ops.c2x.app.br` e `https://c2x.app.br` apontam para o mesmo deployment novo.
+
+Deploy:
+- Deployment anterior: `dpl_9yemD5qSch5sqicRtN6RRuQBYUjB`.
+- Deployment novo: `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7`.
+- URL tecnica: `https://careli-hub-hub-i2bs-2us1axmkv-lucasruas-devs-projects.vercel.app`.
+
+Validacao executada:
+- Pacote limpo: `npm.cmd run check-types:hub`: OK.
+- Pacote limpo: `npm.cmd run lint:hub`: OK, com aviso conhecido de `MODULE_TYPELESS_PACKAGE_JSON`.
+- Pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com aviso conhecido de Turbopack/NFT.
+- Pacote limpo: `git diff --no-index --check` nos cinco arquivos do recorte sem erro de whitespace, apenas avisos CRLF.
+- Healthchecks pos-deploy: `/zeus` e `/login` retornaram `200` em `ops.c2x.app.br` e `c2x.app.br`; API protegida `/api/hub/it-tickets?details=list&scope=all` retornou `401` sem sessao, esperado.
+- Logs Vercel dos ultimos 10 minutos: sem logs de erro.
+
+Riscos conhecidos:
+- `https://c2x.app.br` e `https://ops.c2x.app.br` seguem compartilhando o mesmo deployment Vercel.
+- Eventos antigos sem `created_by_user_id` ou sem usuario correspondente em `hub_users` ainda dependem de fallback por tipo.
+- Validacao autenticada visual do Lucas continua recomendada para operador e solicitante.
+- O build remoto exibiu aviso de `npm audit` para dependencias, sem falha de build.
+
+Registro de release:
+- `docs/operations/releases-production.md` atualizado com o recorte `[Zeus] HelpDesk autoria e conversa em producao`.
+
+Proximo passo:
+- Lucas testar o fluxo autenticado do HelpDesk no OPS; Zeus monitora regressao e prepara hotfix somente se surgir divergencia real.
+
+## 2026-05-21 12:19:34 -03:00 - Iris Core - Diagnostico WABA telefone template Meta
+
+Assunto: [Iris] Template aprovado mas telefone Meta sem vinculo
+
+Status: IMPLEMENTADO LOCAL / AGUARDANDO AUTORIZACAO DE HOMOLOGACAO
+
+Motivo:
+- Lucas reportou que, em homologacao, o modal de `Novo atendimento` mostrava o template `Opt-in Iris teste` como `Aprovado`, mas o envio continuava falhando com erro operacional derivado do Meta `132001`.
+- A leitura tecnica e que a consulta de templates encontra aprovacao na WABA configurada, mas o disparo acontece pelo `META_WHATSAPP_PHONE_NUMBER_ID`; quando esse telefone nao pertence a mesma WABA, a Meta rejeita o envio como template inexistente na traducao do telefone.
+
+Como foi feito:
+- A biblioteca Meta da Iris ganhou uma validacao segura que lista apenas IDs de telefones da WABA configurada e retorna um status sanitizado, sem expor token, secret, WABA ID, phone ID ou numero.
+- A rota `/api/iris/meta/templates` passou a devolver `phoneNumberLink` com `checked`, `missing_config` ou `unavailable`.
+- O modal de `Novo atendimento` passou a avisar quando o telefone de envio nao esta vinculado a WABA do template e bloqueia o botao antes do disparo real.
+- A rota `/api/iris/tickets` passou a fazer a mesma guarda server-side antes de chamar o endpoint de envio da Meta.
+- O erro `132001` agora orienta a conferir se a WABA do template e o telefone de envio sao os mesmos.
+
+Arquivos/modulos afetados:
+- `apps/hub/lib/iris/meta-whatsapp.ts`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `apps/hub/app/api/iris/tickets/route.ts`
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Atlas, Chronos, Apolo UI, Setup global, banco, migrations, Vercel, dominios, aliases, envs, secrets, tokens, service role e producao.
+
+Validacao executada:
+- `npx.cmd eslint lib/iris/meta-whatsapp.ts app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts modules/caredesk/IrisPage.tsx --max-warnings 0`: OK, apenas aviso conhecido do Node sobre `eslint.config.js`.
+- `git diff --check -- apps/hub/lib/iris/meta-whatsapp.ts apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK, apenas avisos CRLF.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, apenas aviso conhecido de `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, apenas aviso conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+
+Riscos conhecidos:
+- A correcao nao troca env nem resolve sozinha um desalinhamento real entre WABA e telefone; ela impede o envio enganoso e aponta a causa operacional.
+- Se o status novo confirmar telefone fora da WABA, o ajuste final exige auditoria/alteracao de env Meta em homologacao, que permanece `BLOQUEADO` ate autorizacao explicita do Lucas.
+- Homologacao ainda nao foi atualizada com este novo diagnostico; novo deploy/alias de homologacao depende de autorizacao explicita.
+
+Proximo passo:
+- Lucas autorizar subida deste recorte Iris em homologacao ou autorizar auditoria segura das envs Meta por nome/presenca para corrigir o vinculo WABA/telefone sem expor valores.
+
+## 2026-05-21 12:26:38 -03:00 - Hefesto - Homologacao Hub HelpDesk Zeus
+
+Assunto: [Hefesto] Homologacao Hub do HelpDesk apontado pelo Zeus
+
+Status: EM HOMOLOGACAO
+
+Autorizacao:
+- Lucas solicitou subir em homologacao os apontamentos novos do Zeus, restringindo o escopo ao que foi feito para o Hub e sem publicar os recortes do modulo Zeus.
+
+Escopo publicado:
+- Home do Hub: troca visual de `Ticket TI` para `HelpDesk` e titulo de `Meus chamados`.
+- HelpDesk do solicitante: workflow visual, conversa com Zeus, cards de solicitante/operador com avatar, anexos, solicitacao de revisao, comentario do solicitante e encerramento.
+- Backend/tipos compartilhados do HelpDesk: eventos passam a carregar `actor` real quando disponivel e o solicitante pode enviar `customer_comment` sem mudar status.
+
+Arquivos incluidos:
+- `apps/hub/app/page.tsx`
+- `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`
+- `apps/hub/lib/hub-it-tickets/server.ts`
+- `apps/hub/lib/hub-it-tickets/types.ts`
+
+Arquivos/modulos excluidos:
+- `apps/hub/modules/squadops/HubItTicketsBoard.tsx`
+- `apps/hub/modules/squadops/ZeusPage.tsx`
+- Hermes, Iris, Hades, Atlas, Apolo, PWA, migrations, scripts, envs, secrets, Supabase mutavel, producao e aliases de producao.
+
+Commit/deploy:
+- Commit de homologacao: `8a6480c fix(hub): improve helpdesk requester flow`.
+- Deployment Vercel Preview: `dpl_2A5ZWbRSmMk9kkkzd1WodZZPT5Xr`.
+- URL tecnica: `https://careli-hub-hub-i2bs-pjpr9qw3o-lucasruas-devs-projects.vercel.app`.
+- Alias de homologacao: `https://homo.c2x.app.br`.
+
+Validacao executada:
+- `git diff --cached --check`: OK.
+- Varredura staged para secrets: `0` matches criticos.
+- `npx.cmd eslint app/page.tsx components/hub-support/hub-user-tickets-panel.tsx lib/hub-it-tickets/server.ts lib/hub-it-tickets/types.ts --max-warnings 0`: OK, com warning conhecido do ESLint/Node.
+- Worktree limpo `8a6480c`: `git status --short` sem saida.
+- Worktree limpo `8a6480c`: `git diff --check` sem apontamentos.
+- Worktree limpo `8a6480c`: `npm.cmd run check-types:hub`: OK.
+- Worktree limpo `8a6480c`: `npm.cmd run lint:hub`: OK, com warning conhecido do ESLint/Node.
+- Worktree limpo `8a6480c`: `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT.
+- Build remoto Vercel: OK, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e variaveis `HOMOLOG_*` fora do `turbo.json`.
+
+Healthchecks de homologacao:
+- `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_2A5ZWbRSmMk9kkkzd1WodZZPT5Xr`.
+- `GET https://homo.c2x.app.br/`: `200`.
+- `GET https://homo.c2x.app.br/login`: `200`.
+- `GET https://homo.c2x.app.br/zeus`: `200`.
+- `GET https://homo.c2x.app.br/api/hub/home` sem bearer: `401` esperado para rota autenticada.
+- `GET https://homo.c2x.app.br/api/hub/it-tickets` sem bearer: `401` esperado.
+- `POST https://homo.c2x.app.br/api/hub/it-tickets` sem bearer: `401` esperado.
+- `PATCH https://homo.c2x.app.br/api/hub/it-tickets` sem bearer: `401` esperado.
+- `GET https://homo.c2x.app.br/api/hades/db/health`: `200`.
+- `GET https://homo.c2x.app.br/api/guardian/db/health`: `200`.
+- `vercel logs https://homo.c2x.app.br --since 15m --limit 50`: sem logs retornados no momento da consulta, sem erro critico observado.
+
+Riscos conhecidos:
+- Validacao visual/autenticada do solicitante ainda depende do Lucas em homologacao.
+- A tela operacional do modulo Zeus nao entrou neste deploy por restricao de escopo; se Lucas quiser o painel do operador com o mesmo refinamento, precisa autorizar recorte Zeus separado.
+- Historicos antigos sem `created_by_user_id` ou usuario correspondente ainda usam fallback de autoria.
+- O worktree principal permanece misto com recortes de outros agentes; nao usar como pacote geral.
+
+Registro de release:
+- `docs/operations/releases-homologation.md` atualizado com o recorte `HUB-HELPDESK-ZEUS-HOMOLOG-20260521-1226`.
+
+Proximo passo:
+- Lucas validar a Home e a aba HelpDesk em `https://homo.c2x.app.br` com sessao autenticada.
+- Se aprovado, solicitar ao Hefesto promocao para producao por recorte limpo.
