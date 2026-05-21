@@ -320,7 +320,8 @@ const emptyIrisData: IrisData = {
   tickets: [],
 };
 const emptyIrisTickets: IrisTicket[] = [];
-const IRIS_REFRESH_INTERVAL_MS = 12000;
+const IRIS_REFRESH_INTERVAL_MS =
+  process.env.NODE_ENV === "development" ? 120_000 : 12_000;
 
 const navigationItems: Array<{
   id: IrisView;
@@ -406,54 +407,70 @@ const IRIS_META_TEMPLATE_VARIABLES = [
     readiness: "Pronta",
   },
   {
+    example: "Lucas",
+    key: "operador",
+    label: "Operador",
+    placeholder: "{{2}}",
+    readiness: "Iris",
+  },
+  {
     example: "Lucas Moreira Ruas",
     key: "nome_cliente",
     label: "Nome completo",
-    placeholder: "{{2}}",
+    placeholder: "{{3}}",
     readiness: "Pronta",
   },
   {
     example: "AT-000001",
     key: "protocolo",
     label: "Protocolo Iris",
-    placeholder: "{{3}}",
+    placeholder: "{{4}}",
     readiness: "Pronta",
   },
   {
     example: "Lagoa Bonita",
     key: "empreendimento",
     label: "Empreendimento",
-    placeholder: "{{4}}",
+    placeholder: "{{5}}",
     readiness: "CRM",
   },
   {
     example: "Quadra 01 lote 02",
     key: "unidade",
     label: "Unidade",
-    placeholder: "{{5}}",
+    placeholder: "{{6}}",
     readiness: "CRM",
   },
   {
     example: "25/05/2026",
     key: "vencimento",
     label: "Vencimento",
-    placeholder: "{{6}}",
+    placeholder: "{{7}}",
     readiness: "Controlada",
   },
   {
     example: "R$ 1.200,00",
     key: "valor",
     label: "Valor",
-    placeholder: "{{7}}",
+    placeholder: "{{8}}",
     readiness: "Controlada",
   },
   {
     example: "https://c2x.app.br/...",
     key: "link",
     label: "Link",
-    placeholder: "{{8}}",
+    placeholder: "{{9}}",
     readiness: "Controlada",
   },
+];
+
+const IRIS_TEMPLATE_AUTO_REFRESH_MS = 45_000;
+const IRIS_TEMPLATE_STATUS_FILTERS = [
+  { id: "all", label: "Todos" },
+  { id: "APPROVED", label: "Aprovados" },
+  { id: "PENDING", label: "Pendentes" },
+  { id: "REJECTED", label: "Rejeitados" },
+  { id: "NONE", label: "Nao criados" },
 ];
 
 export function IrisPage({
@@ -3710,7 +3727,11 @@ function SetupView({
             <IrisSetupTabs active={setupTab} onChange={setSetupTab} />
           </div>
 
-          <IrisTemplateSetupPanel templates={data.templates} />
+          <IrisTemplateSetupPanel
+            profiles={data.profiles}
+            queues={data.queues}
+            templates={data.templates}
+          />
         </section>
 
         <aside className="space-y-4">
@@ -4156,13 +4177,26 @@ function IrisSetupTabs({
   );
 }
 
-function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
+function IrisTemplateSetupPanel({
+  profiles,
+  queues,
+  templates,
+}: {
+  profiles: IrisTicketProfileConfig[];
+  queues: IrisQueueConfig[];
+  templates: IrisTemplate[];
+}) {
   const [templateForm, setTemplateForm] = useState(() =>
     createIrisTemplateForm(),
   );
   const [checkingTemplate, setCheckingTemplate] = useState(false);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [autoRefreshStatus, setAutoRefreshStatus] = useState(true);
+  const [lastTemplateRefreshAt, setLastTemplateRefreshAt] = useState("");
   const [metaStatus, setMetaStatus] = useState<string | null>(null);
+  const [queueFilter, setQueueFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [templateSearch, setTemplateSearch] = useState("");
   const [templateFeedback, setTemplateFeedback] = useState("");
   const localTemplate = useMemo(
     () => findIrisTemplateByMetaName(templates, templateForm.name),
@@ -4175,10 +4209,85 @@ function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
     templateForm.bodyText,
     templateForm.variables,
   );
+  const queueOptions = useMemo(
+    () =>
+      unique([
+        "Atendimento",
+        ...queues.map((queue) => queue.name),
+        ...templates.map(readTemplateQueueLabel),
+        templateForm.queueLabel,
+      ].filter(Boolean)).slice(0, 12),
+    [queues, templateForm.queueLabel, templates],
+  );
+  const subjectOptions = useMemo(
+    () =>
+      unique([
+        "Opt-in ativo",
+        ...profiles.map((profile) => profile.name),
+        ...profiles.map((profile) => profile.category),
+        ...templates.map(readTemplateSubjectLabel),
+        templateForm.subjectLabel,
+      ].filter(Boolean)).slice(0, 16),
+    [profiles, templateForm.subjectLabel, templates],
+  );
+  const templateStats = useMemo(
+    () => ({
+      approved: templates.filter(
+        (template) => readTemplateStatusGroup(template) === "APPROVED",
+      ).length,
+      pending: templates.filter(
+        (template) => readTemplateStatusGroup(template) === "PENDING",
+      ).length,
+      rejected: templates.filter(
+        (template) => readTemplateStatusGroup(template) === "REJECTED",
+      ).length,
+      total: templates.length,
+    }),
+    [templates],
+  );
+  const filteredTemplates = useMemo(() => {
+    const search = templateSearch.trim().toLowerCase();
+
+    return templates
+      .filter((template) => {
+        const queueLabel = readTemplateQueueLabel(template);
+        const subjectLabel = readTemplateSubjectLabel(template);
+        const statusGroup = readTemplateStatusGroup(template);
+        const searchable = [
+          template.name,
+          readTemplateMetaName(template),
+          queueLabel,
+          subjectLabel,
+          template.body,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return (
+          (queueFilter === "all" || queueLabel === queueFilter) &&
+          (statusFilter === "all" || statusGroup === statusFilter) &&
+          (!search || searchable.includes(search))
+        );
+      })
+      .sort(sortIrisTemplatesForSetup);
+  }, [queueFilter, statusFilter, templateSearch, templates]);
 
   useEffect(() => {
     setMetaStatus(readTemplateMetaStatus(localTemplate));
   }, [localTemplate]);
+
+  useEffect(() => {
+    if (!autoRefreshStatus || !templateForm.name.trim()) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void checkTemplateStatus({ silent: true });
+    }, IRIS_TEMPLATE_AUTO_REFRESH_MS);
+
+    return () => window.clearInterval(timer);
+  }, [autoRefreshStatus, templateForm.language, templateForm.name]);
 
   function updateTemplateForm(field: string, value: string) {
     setTemplateFeedback("");
@@ -4186,6 +4295,18 @@ function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
       ...current,
       [field]: value,
     }));
+  }
+
+  function startNewTemplate() {
+    setMetaStatus(null);
+    setTemplateFeedback("");
+    setTemplateForm(createIrisTemplateForm());
+  }
+
+  function loadTemplateIntoForm(template: IrisTemplate) {
+    setMetaStatus(readTemplateMetaStatus(template));
+    setTemplateFeedback("");
+    setTemplateForm(irisTemplateToForm(template));
   }
 
   function addTemplateVariable(variable: (typeof IRIS_META_TEMPLATE_VARIABLES)[number]) {
@@ -4204,9 +4325,13 @@ function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
     });
   }
 
-  async function checkTemplateStatus() {
-    setCheckingTemplate(true);
-    setTemplateFeedback("");
+  async function checkTemplateStatus(options?: { silent?: boolean }) {
+    const silent = Boolean(options?.silent);
+
+    if (!silent) {
+      setCheckingTemplate(true);
+      setTemplateFeedback("");
+    }
 
     try {
       const accessToken = await getIrisAccessToken();
@@ -4230,19 +4355,31 @@ function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
       const template = payload?.templates?.[0];
       const status = template?.status ?? null;
       setMetaStatus(status);
-      setTemplateFeedback(
-        template
-          ? `Status Meta: ${templateStatusLabel(status)}.`
-          : "Template ainda nao encontrado na Meta.",
+      setLastTemplateRefreshAt(
+        new Date().toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
       );
+      if (!silent) {
+        setTemplateFeedback(
+          template
+            ? `Status Meta: ${templateStatusLabel(status)}.`
+            : "Template ainda nao encontrado na Meta.",
+        );
+      }
     } catch (error) {
-      setTemplateFeedback(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel consultar o template na Meta.",
-      );
+      if (!silent) {
+        setTemplateFeedback(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel consultar o template na Meta.",
+        );
+      }
     } finally {
-      setCheckingTemplate(false);
+      if (!silent) {
+        setCheckingTemplate(false);
+      }
     }
   }
 
@@ -4260,6 +4397,8 @@ function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
           displayName: templateForm.displayName,
           language: templateForm.language,
           name: templateForm.name,
+          queueLabel: templateForm.queueLabel,
+          subjectLabel: templateForm.subjectLabel,
           variables: templateForm.variables,
         }),
         cache: "no-store",
@@ -4279,6 +4418,12 @@ function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
 
       const status = payload?.template?.status ?? null;
       setMetaStatus(status);
+      setLastTemplateRefreshAt(
+        new Date().toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
       setTemplateFeedback(
         payload?.created
           ? `Template enviado para a Meta como ${templateStatusLabel(status)}.`
@@ -4296,211 +4441,436 @@ function IrisTemplateSetupPanel({ templates }: { templates: IrisTemplate[] }) {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="min-w-0 space-y-4">
-        <div className="grid gap-3 lg:grid-cols-2">
-          <SetupField label="Nome interno">
-            <input
-              value={templateForm.displayName}
-              onChange={(event) =>
-                updateTemplateForm("displayName", event.target.value)
-              }
-              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
-            />
-          </SetupField>
-          <SetupField label="Nome Meta">
-            <input
-              value={templateForm.name}
-              onChange={(event) =>
-                updateTemplateForm(
-                  "name",
-                  event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
-                )
-              }
-              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
-            />
-          </SetupField>
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-[180px_150px_minmax(0,1fr)]">
-          <SetupField label="Categoria Meta">
-            <select
-              value={templateForm.category}
-              onChange={(event) =>
-                updateTemplateForm("category", event.target.value)
-              }
-              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
-            >
-              <option value="MARKETING">Marketing</option>
-              <option value="UTILITY">Utility</option>
-              <option value="AUTHENTICATION">Authentication</option>
-            </select>
-          </SetupField>
-          <SetupField label="Idioma">
-            <input
-              value={templateForm.language}
-              onChange={(event) =>
-                updateTemplateForm("language", event.target.value)
-              }
-              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
-            />
-          </SetupField>
-          <SetupField label="Botoes quick reply">
-            <input
-              value={templateForm.buttonsText}
-              onChange={(event) =>
-                updateTemplateForm("buttonsText", event.target.value)
-              }
-              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
-            />
-          </SetupField>
-        </div>
-
-        <SetupField label="Mensagem">
-          <textarea
-            value={templateForm.bodyText}
-            onChange={(event) =>
-              updateTemplateForm("bodyText", event.target.value)
-            }
-            className="min-h-28 w-full resize-none rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-sm font-medium leading-6 text-[#34415a] outline-none"
-          />
-        </SetupField>
-
-        <div className="rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="text-sm font-semibold text-[#101820]">
-              Variaveis CRM 360
-            </h4>
-            <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
-              Meta usa {`{{1}}`}, {`{{2}}`}...
-            </span>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {IRIS_META_TEMPLATE_VARIABLES.map((variable) => (
-              <button
-                key={variable.key}
-                type="button"
-                onClick={() => addTemplateVariable(variable)}
-                className="min-w-0 rounded-lg border border-[#dbe3ef] bg-white p-2 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#fbf6ec]"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-xs font-semibold text-[#101820]">
-                    {variable.label}
-                  </span>
-                  <span className="shrink-0 rounded-full bg-[#f4f6fa] px-1.5 py-0.5 text-[10px] font-semibold text-[#63708a]">
-                    {variable.readiness}
-                  </span>
-                </div>
-                <p className="mt-1 font-mono text-[11px] text-[#A07C3B]">
-                  {variable.placeholder}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
-          <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-            Preview
-          </p>
-          <p className="mt-2 text-sm font-medium leading-6 text-[#101820]">
-            {preview}
-          </p>
-          {buttons.length ? (
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {buttons.map((button) => (
-                <span
-                  key={button}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-100 bg-white text-sm font-semibold text-emerald-700"
-                >
-                  {button}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <IrisTemplateMetricCard
+          icon={MessageSquareText}
+          label="Templates"
+          value={formatCount(templateStats.total)}
+        />
+        <IrisTemplateMetricCard
+          icon={CheckCircle2}
+          label="Aprovados"
+          tone="green"
+          value={formatCount(templateStats.approved)}
+        />
+        <IrisTemplateMetricCard
+          icon={Clock3}
+          label="Pendentes"
+          tone="gold"
+          value={formatCount(templateStats.pending)}
+        />
+        <IrisTemplateMetricCard
+          icon={CircleStop}
+          label="Rejeitados"
+          tone="red"
+          value={formatCount(templateStats.rejected)}
+        />
       </div>
 
-      <aside className="min-w-0 space-y-4">
-        <div className="rounded-xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
-          <div className="flex items-start justify-between gap-3">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_430px]">
+        <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                Status Meta
-              </p>
-              <h4 className="mt-1 text-sm font-semibold text-[#101820]">
-                {templateForm.displayName}
+              <h4 className="text-sm font-semibold text-[#101820]">
+                Biblioteca de templates
               </h4>
-            </div>
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(displayedStatus)}`}
-            >
-              {templateStatusLabel(displayedStatus)}
-            </span>
-          </div>
-
-          <div className="mt-4 grid gap-2">
-            <button
-              type="button"
-              onClick={checkTemplateStatus}
-              disabled={checkingTemplate}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 disabled:cursor-not-allowed disabled:bg-slate-100"
-            >
-              <Search className="h-4 w-4" aria-hidden="true" />
-              {checkingTemplate ? "Consultando..." : "Consultar Meta"}
-            </button>
-            <button
-              type="button"
-              onClick={createTemplate}
-              disabled={creatingTemplate}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              <Send className="h-4 w-4" aria-hidden="true" />
-              {creatingTemplate ? "Enviando..." : "Enviar para Meta"}
-            </button>
-          </div>
-
-          {templateFeedback ? (
-            <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
-              {templateFeedback}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="rounded-xl border border-[#dbe3ef] bg-white">
-          <div className="border-b border-[#edf1f6] px-3 py-2 text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
-            Templates Iris
-          </div>
-          <div className="max-h-72 overflow-y-auto p-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-            {templates.length ? (
-              templates.slice(0, 8).map((template) => (
-                <div
-                  key={template.id}
-                  className="mb-2 rounded-lg border border-[#e4eaf3] bg-[#fbfcfe] p-2 last:mb-0"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-[#101820]">
-                      {template.name}
-                    </p>
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${templateStatusTone(readTemplateMetaStatus(template))}`}
-                    >
-                      {templateStatusLabel(readTemplateMetaStatus(template))}
-                    </span>
-                  </div>
-                  <p className="mt-1 truncate text-xs text-[#63708a]">
-                    {readTemplateMetaName(template) ?? template.slug}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="px-3 py-8 text-center text-sm text-[#63708a]">
-                Nenhum template cadastrado no Iris.
+              <p className="mt-1 text-xs font-medium text-[#63708a]">
+                Fila, assunto e status Meta em uma visao unica.
               </p>
+            </div>
+            <button
+              type="button"
+              onClick={startNewTemplate}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937]"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Novo template
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_190px]">
+            <label className="relative block min-w-0">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A07C3B]"
+                aria-hidden="true"
+              />
+              <input
+                value={templateSearch}
+                onChange={(event) => setTemplateSearch(event.target.value)}
+                placeholder="Buscar template"
+                className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white pl-9 pr-3 text-sm font-semibold text-[#34415a] outline-none"
+              />
+            </label>
+            <select
+              value={queueFilter}
+              onChange={(event) => setQueueFilter(event.target.value)}
+              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+            >
+              <option value="all">Todas as filas</option>
+              {queueOptions.map((queue) => (
+                <option key={queue} value={queue}>
+                  {queue}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {IRIS_TEMPLATE_STATUS_FILTERS.map((filter) => {
+              const selected = statusFilter === filter.id;
+
+              return (
+                <button
+                  key={filter.id}
+                  type="button"
+                  onClick={() => setStatusFilter(filter.id)}
+                  className={[
+                    "inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
+                    selected
+                      ? "bg-[#101820] text-white ring-[#101820]"
+                      : "bg-white text-[#63708a] ring-[#dbe3ef] hover:text-[#101820]",
+                  ].join(" ")}
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+            {filteredTemplates.length ? (
+              filteredTemplates.map((template) => {
+                const status = readTemplateMetaStatus(template);
+                const selected = localTemplate?.id === template.id;
+
+                return (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => loadTemplateIntoForm(template)}
+                    className={[
+                      "w-full rounded-xl border bg-white p-3 text-left transition-colors",
+                      selected
+                        ? "border-[#A07C3B] shadow-sm"
+                        : "border-[#e4eaf3] hover:border-[#A07C3B]/40",
+                    ].join(" ")}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <p className="max-w-full truncate text-sm font-semibold text-[#101820]">
+                            {template.name}
+                          </p>
+                          <span className="shrink-0 rounded-full bg-[#f4f6fa] px-2 py-0.5 text-[10px] font-semibold text-[#63708a]">
+                            {readTemplateQueueLabel(template)}
+                          </span>
+                        </div>
+                        <p className="mt-1 truncate text-xs font-semibold text-[#63708a]">
+                          {readTemplateSubjectLabel(template)}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${templateStatusTone(status)}`}
+                      >
+                        {templateStatusLabel(status)}
+                      </span>
+                    </div>
+                    <p className="mt-2 truncate text-xs text-[#63708a]">
+                      {template.body ?? readTemplateMetaName(template) ?? template.slug}
+                    </p>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="rounded-xl border border-dashed border-[#dbe3ef] bg-white px-4 py-10 text-center">
+                <p className="text-sm font-semibold text-[#101820]">
+                  Nenhum template neste filtro.
+                </p>
+                <p className="mt-1 text-xs text-[#63708a]">
+                  Ajuste fila, status ou busca para visualizar outros registros.
+                </p>
+              </div>
             )}
           </div>
-        </div>
-      </aside>
+        </section>
+
+        <aside className="min-w-0 space-y-4">
+          <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                  Criacao
+                </p>
+                <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                  Template Meta
+                </h4>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(displayedStatus)}`}
+              >
+                {templateStatusLabel(displayedStatus)}
+              </span>
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <SetupField label="Fila">
+                <input
+                  list="iris-template-queues"
+                  value={templateForm.queueLabel}
+                  onChange={(event) =>
+                    updateTemplateForm("queueLabel", event.target.value)
+                  }
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                />
+                <datalist id="iris-template-queues">
+                  {queueOptions.map((queue) => (
+                    <option key={queue} value={queue} />
+                  ))}
+                </datalist>
+              </SetupField>
+              <SetupField label="Assunto">
+                <input
+                  list="iris-template-subjects"
+                  value={templateForm.subjectLabel}
+                  onChange={(event) =>
+                    updateTemplateForm("subjectLabel", event.target.value)
+                  }
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                />
+                <datalist id="iris-template-subjects">
+                  {subjectOptions.map((subject) => (
+                    <option key={subject} value={subject} />
+                  ))}
+                </datalist>
+              </SetupField>
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <SetupField label="Nome interno">
+                <input
+                  value={templateForm.displayName}
+                  onChange={(event) =>
+                    updateTemplateForm("displayName", event.target.value)
+                  }
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                />
+              </SetupField>
+              <SetupField label="Nome Meta">
+                <input
+                  value={templateForm.name}
+                  onChange={(event) =>
+                    updateTemplateForm(
+                      "name",
+                      event.target.value
+                        .toLowerCase()
+                        .replace(/[^a-z0-9_]/g, "_"),
+                    )
+                  }
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                />
+              </SetupField>
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_130px]">
+              <SetupField label="Categoria Meta">
+                <select
+                  value={templateForm.category}
+                  onChange={(event) =>
+                    updateTemplateForm("category", event.target.value)
+                  }
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                >
+                  <option value="MARKETING">Marketing</option>
+                  <option value="UTILITY">Utility</option>
+                  <option value="AUTHENTICATION">Authentication</option>
+                </select>
+              </SetupField>
+              <SetupField label="Idioma">
+                <input
+                  value={templateForm.language}
+                  onChange={(event) =>
+                    updateTemplateForm("language", event.target.value)
+                  }
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                />
+              </SetupField>
+            </div>
+
+            <div className="mt-3">
+              <SetupField label="Botoes quick reply">
+                <input
+                  value={templateForm.buttonsText}
+                  onChange={(event) =>
+                    updateTemplateForm("buttonsText", event.target.value)
+                  }
+                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                />
+              </SetupField>
+            </div>
+
+            <div className="mt-3">
+              <SetupField label="Mensagem">
+                <textarea
+                  value={templateForm.bodyText}
+                  onChange={(event) =>
+                    updateTemplateForm("bodyText", event.target.value)
+                  }
+                  className="min-h-28 w-full resize-none rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-sm font-medium leading-6 text-[#34415a] outline-none"
+                />
+              </SetupField>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h5 className="text-sm font-semibold text-[#101820]">
+                  Variaveis
+                </h5>
+                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                  Meta {`{{1}}`}, {`{{2}}`}
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {IRIS_META_TEMPLATE_VARIABLES.map((variable) => (
+                  <button
+                    key={variable.key}
+                    type="button"
+                    onClick={() => addTemplateVariable(variable)}
+                    className="min-w-0 rounded-lg border border-[#dbe3ef] bg-white p-2 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#fbf6ec]"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-semibold text-[#101820]">
+                        {variable.label}
+                      </span>
+                      <span className="shrink-0 rounded-full bg-[#f4f6fa] px-1.5 py-0.5 text-[10px] font-semibold text-[#63708a]">
+                        {variable.readiness}
+                      </span>
+                    </div>
+                    <p className="mt-1 font-mono text-[11px] text-[#A07C3B]">
+                      {variable.placeholder}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                Preview
+              </p>
+              <span className="truncate text-xs font-semibold text-[#63708a]">
+                {templateForm.queueLabel} / {templateForm.subjectLabel}
+              </span>
+            </div>
+            <p className="mt-2 break-words text-sm font-medium leading-6 text-[#101820]">
+              {preview}
+            </p>
+            {buttons.length ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {buttons.map((button) => (
+                  <span
+                    key={button}
+                    className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-100 bg-white px-2 text-sm font-semibold text-emerald-700"
+                  >
+                    <span className="truncate">{button}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                  Status Meta
+                </p>
+                <h4 className="mt-1 truncate text-sm font-semibold text-[#101820]">
+                  {templateForm.displayName}
+                </h4>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(displayedStatus)}`}
+              >
+                {templateStatusLabel(displayedStatus)}
+              </span>
+            </div>
+
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
+              <span>Atualizar aprovacao automaticamente</span>
+              <input
+                type="checkbox"
+                checked={autoRefreshStatus}
+                onChange={(event) => setAutoRefreshStatus(event.target.checked)}
+                className="h-4 w-4 accent-[#A07C3B]"
+              />
+            </label>
+
+            {lastTemplateRefreshAt ? (
+              <p className="mt-2 text-xs font-medium text-[#63708a]">
+                Ultima consulta: {lastTemplateRefreshAt}
+              </p>
+            ) : null}
+
+            <div className="mt-3 grid gap-2">
+              <button
+                type="button"
+                onClick={() => checkTemplateStatus()}
+                disabled={checkingTemplate}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 disabled:cursor-not-allowed disabled:bg-slate-100"
+              >
+                <Search className="h-4 w-4" aria-hidden="true" />
+                {checkingTemplate ? "Consultando..." : "Consultar Meta"}
+              </button>
+              <button
+                type="button"
+                onClick={createTemplate}
+                disabled={creatingTemplate}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                <Send className="h-4 w-4" aria-hidden="true" />
+                {creatingTemplate ? "Enviando..." : "Enviar para Meta"}
+              </button>
+            </div>
+
+            {templateFeedback ? (
+              <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
+                {templateFeedback}
+              </p>
+            ) : null}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function IrisTemplateMetricCard({
+  icon: Icon,
+  label,
+  tone = "neutral",
+  value,
+}: {
+  icon: typeof MessageSquareText;
+  label: string;
+  tone?: IrisTone;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
+      <div className="flex items-center justify-between gap-3">
+        <span
+          className={`grid h-9 w-9 place-items-center rounded-xl ${toneBg(tone)}`}
+        >
+          <Icon className={`h-4 w-4 ${toneText(tone)}`} aria-hidden="true" />
+        </span>
+        <span className="text-lg font-semibold text-[#101820]">{value}</span>
+      </div>
+      <p className="mt-3 truncate text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
+        {label}
+      </p>
     </div>
   );
 }
@@ -6135,7 +6505,32 @@ function createIrisTemplateForm() {
     displayName: IRIS_OPT_IN_TEMPLATE.title,
     language: IRIS_OPT_IN_TEMPLATE.language,
     name: IRIS_OPT_IN_TEMPLATE.name,
+    queueLabel: "Atendimento",
+    subjectLabel: "Opt-in ativo",
     variables: [...IRIS_OPT_IN_TEMPLATE.variables],
+  };
+}
+
+function irisTemplateToForm(template: IrisTemplate) {
+  const buttons = readTemplateButtons(template);
+  const variables = readTemplateVariables(template);
+
+  return {
+    bodyText: template.body ?? IRIS_OPT_IN_TEMPLATE.bodyText,
+    buttonsText: buttons.length
+      ? buttons.join(", ")
+      : IRIS_OPT_IN_TEMPLATE.buttons.join(", "),
+    category:
+      readTemplateMetadataString(template, "metaCategory") ??
+      IRIS_OPT_IN_TEMPLATE.category,
+    displayName: template.name,
+    language:
+      readTemplateMetadataString(template, "metaLanguage") ??
+      IRIS_OPT_IN_TEMPLATE.language,
+    name: readTemplateMetaName(template) ?? template.slug.replace(/-/g, "_"),
+    queueLabel: readTemplateQueueLabel(template),
+    subjectLabel: readTemplateSubjectLabel(template),
+    variables: variables.length ? variables : [...IRIS_OPT_IN_TEMPLATE.variables],
   };
 }
 
@@ -6166,6 +6561,34 @@ function readTemplateMetaName(template?: IrisTemplate | null) {
   return readTemplateMetadataString(template, "metaTemplateName");
 }
 
+function readTemplateQueueLabel(template?: IrisTemplate | null) {
+  return (
+    readTemplateMetadataString(template, "queueLabel") ??
+    template?.category ??
+    "Atendimento"
+  );
+}
+
+function readTemplateSubjectLabel(template?: IrisTemplate | null) {
+  const purpose = readTemplateMetadataString(template, "templatePurpose");
+
+  return (
+    readTemplateMetadataString(template, "subjectLabel") ??
+    (purpose === "active_contact_opt_in" ? "Opt-in ativo" : null) ??
+    "Sem assunto"
+  );
+}
+
+function readTemplateStatusGroup(template?: IrisTemplate | null) {
+  const status = readTemplateMetaStatus(template);
+
+  if (status === "APPROVED" || status === "PENDING" || status === "REJECTED") {
+    return status;
+  }
+
+  return "NONE";
+}
+
 function readTemplateMetadataString(
   template: IrisTemplate | null | undefined,
   key: string,
@@ -6183,6 +6606,68 @@ function normalizeTemplateVariablesValue(value: unknown) {
   return value
     .map((item) => (typeof item === "string" ? item.trim() : null))
     .filter((item): item is string => Boolean(item));
+}
+
+function readTemplateButtons(template?: IrisTemplate | null) {
+  const value = template?.metadata?.buttons;
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : null))
+    .filter((item): item is string => Boolean(item));
+}
+
+function readTemplateVariables(template?: IrisTemplate | null) {
+  const metadataVariables = template?.metadata?.variables;
+
+  if (Array.isArray(metadataVariables)) {
+    return metadataVariables
+      .map((item, index) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          return null;
+        }
+
+        const variable = item as Record<string, unknown>;
+        const key =
+          typeof variable.key === "string" && variable.key.trim()
+            ? variable.key.trim()
+            : `variavel_${index + 1}`;
+        const label =
+          typeof variable.label === "string" && variable.label.trim()
+            ? variable.label.trim()
+            : key;
+        const placeholder =
+          typeof variable.placeholder === "string" &&
+          variable.placeholder.trim()
+            ? variable.placeholder.trim()
+            : `{{${index + 1}}}`;
+        const example =
+          typeof variable.example === "string" && variable.example.trim()
+            ? variable.example.trim()
+            : label;
+
+        return { example, key, label, placeholder };
+      })
+      .filter(Boolean);
+  }
+
+  return normalizeTemplateVariablesValue(template?.variables).map(
+    (key, index) => {
+      const known = IRIS_META_TEMPLATE_VARIABLES.find(
+        (variable) => variable.key === key,
+      );
+
+      return {
+        example: known?.example ?? key,
+        key,
+        label: known?.label ?? key,
+        placeholder: known?.placeholder ?? `{{${index + 1}}}`,
+      };
+    },
+  );
 }
 
 function parseTemplateButtons(value: string) {
@@ -6220,6 +6705,26 @@ function renderMetaTemplatePreview(
     (text, variable) =>
       text.replaceAll(variable.placeholder, variable.example || variable.label),
     bodyText,
+  );
+}
+
+function sortIrisTemplatesForSetup(left: IrisTemplate, right: IrisTemplate) {
+  const statusOrder: Record<string, number> = {
+    PENDING: 0,
+    REJECTED: 1,
+    NONE: 2,
+    APPROVED: 3,
+  };
+  const leftStatus = statusOrder[readTemplateStatusGroup(left)] ?? 9;
+  const rightStatus = statusOrder[readTemplateStatusGroup(right)] ?? 9;
+
+  if (leftStatus !== rightStatus) {
+    return leftStatus - rightStatus;
+  }
+
+  return `${readTemplateQueueLabel(left)} ${readTemplateSubjectLabel(left)} ${left.name}`.localeCompare(
+    `${readTemplateQueueLabel(right)} ${readTemplateSubjectLabel(right)} ${right.name}`,
+    "pt-BR",
   );
 }
 

@@ -206,6 +206,8 @@ function buildTemplateRequest(input: Record<string, unknown> | null) {
     normalizeText(input?.displayName) ?? IRIS_OPT_IN_TEMPLATE.displayName;
   const exampleName =
     normalizeText(input?.exampleName) ?? IRIS_OPT_IN_TEMPLATE.exampleName;
+  const queueLabel = normalizeText(input?.queueLabel) ?? "Atendimento";
+  const subjectLabel = normalizeText(input?.subjectLabel) ?? "Opt-in ativo";
   const buttons =
     normalizeButtons(input?.buttons) ?? IRIS_OPT_IN_TEMPLATE.buttons;
   const variables = normalizeTemplateVariables(
@@ -245,7 +247,9 @@ function buildTemplateRequest(input: Record<string, unknown> | null) {
     displayName,
     language,
     name,
+    queueLabel,
     slug: slugifyTemplateName(name),
+    subjectLabel,
     variables,
   };
 }
@@ -289,7 +293,9 @@ async function upsertLocalTemplate({
         metaTemplateId: metaTemplate.id ?? null,
         metaTemplateName: metaTemplate.name ?? template.name,
         provider: "meta",
+        queueLabel: template.queueLabel,
         source: "iris",
+        subjectLabel: template.subjectLabel,
         templatePurpose: "active_contact_opt_in",
         variables: template.variables,
       },
