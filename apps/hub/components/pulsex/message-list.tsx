@@ -29,6 +29,9 @@ type MessageListProps = {
     messageId: HermesMessage["id"],
     emoji: HermesReactionEmoji,
   ) => void;
+  onPreviewAttachment?: (
+    attachment: NonNullable<HermesMessage["attachment"]>,
+  ) => void;
   reactionOptions?: readonly HermesReactionEmoji[];
   users: readonly HermesPresenceUser[];
 };
@@ -40,6 +43,7 @@ export function MessageList({
   onEditMessage,
   onAskAiReply,
   onOpenThread,
+  onPreviewAttachment,
   onToggleReaction,
   onToggleTag,
   reactionOptions,
@@ -91,6 +95,7 @@ export function MessageList({
           onAskAiReply={onAskAiReply}
           onEditMessage={onEditMessage}
           onOpenThread={onOpenThread}
+          onPreviewAttachment={onPreviewAttachment}
           onToggleReaction={onToggleReaction}
           onToggleTag={onToggleTag}
           reactionOptions={reactionOptions}

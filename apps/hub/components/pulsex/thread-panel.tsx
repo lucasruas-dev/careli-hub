@@ -34,6 +34,9 @@ type ThreadPanelProps = {
     messageId: HermesMessage["id"],
     emoji: HermesReactionEmoji,
   ) => void;
+  onPreviewAttachment?: (
+    attachment: NonNullable<HermesMessage["attachment"]>,
+  ) => void;
   onToggleTag: (
     messageId: HermesMessage["id"],
     tag: HermesMessageTag,
@@ -52,6 +55,7 @@ export function ThreadPanel({
   onEditMessage,
   onSubmitReply,
   onToggleReaction,
+  onPreviewAttachment,
   onToggleTag,
   reactionOptions,
   replies,
@@ -194,6 +198,7 @@ export function ThreadPanel({
           currentUserId={currentUserId}
           message={message}
           onEditMessage={onEditMessage}
+          onPreviewAttachment={onPreviewAttachment}
           onToggleReaction={onToggleReaction}
           onToggleTag={onToggleTag}
           reactionOptions={reactionOptions}
@@ -211,6 +216,7 @@ export function ThreadPanel({
                 author={author}
                 currentUserId={currentUserId}
                 message={mapThreadReplyToMessage(reply, message)}
+                onPreviewAttachment={onPreviewAttachment}
                 onToggleReaction={onToggleReaction}
                 onToggleTag={onToggleTag}
                 reactionOptions={reactionOptions}

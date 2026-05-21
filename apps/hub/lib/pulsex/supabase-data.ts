@@ -24,6 +24,7 @@ import type {
   HermesThreadReply,
 } from "./types";
 import { normalizeHermesMessageTags } from "./message-tags";
+import { isHermesDirectChannelId } from "./direct-channel";
 
 type QueryResult<T> = {
   data: T | null;
@@ -429,7 +430,7 @@ export async function listChannelMessages(
 ): Promise<HermesMessage[]> {
   const client = getHubSupabaseClient();
 
-  if (!client || channelId.startsWith("direct-")) {
+  if (!client) {
     return [];
   }
 
@@ -437,6 +438,10 @@ export async function listChannelMessages(
 
   if (apiMessages) {
     return apiMessages;
+  }
+
+  if (isHermesDirectChannelId(channelId)) {
+    return [];
   }
 
   const result = await runHermesQuery<HermesMessageRow[]>(
@@ -478,6 +483,10 @@ export async function createHermesMessage(input: {
 
   if (apiMessage) {
     return apiMessage;
+  }
+
+  if (isHermesDirectChannelId(input.channelId)) {
+    throw new Error("Nao foi possivel enviar a mensagem direta.");
   }
 
   const tags = normalizeHermesMessageTags(input.tags);
@@ -703,7 +712,7 @@ export async function markHermesChannelRead(input: {
 }): Promise<{ channelId: string; lastReadAt: string; userId: string } | null> {
   const client = getHubSupabaseClient();
 
-  if (!client || input.channelId.startsWith("direct-")) {
+  if (!client) {
     return null;
   }
 

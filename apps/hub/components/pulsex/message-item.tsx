@@ -55,6 +55,9 @@ type MessageItemProps = {
     messageId: HermesMessage["id"],
     emoji: HermesReactionEmoji,
   ) => void;
+  onPreviewAttachment?: (
+    attachment: NonNullable<HermesMessage["attachment"]>,
+  ) => void;
   reactionOptions?: readonly HermesReactionEmoji[];
   users?: readonly HermesPresenceUser[];
 };
@@ -66,6 +69,7 @@ export function MessageItem({
   onEditMessage,
   onAskAiReply,
   onOpenThread,
+  onPreviewAttachment,
   onToggleReaction,
   onToggleTag,
   reactionOptions = defaultReactionOptions,
@@ -246,7 +250,10 @@ export function MessageItem({
           </div>
         ) : null}
         {message.attachment ? (
-          <MessageAttachmentPreview attachment={message.attachment} />
+          <MessageAttachmentPreview
+            attachment={message.attachment}
+            onPreview={onPreviewAttachment}
+          />
         ) : null}
         {isEditing ? (
           <form className="relative grid gap-2" onSubmit={handleSubmitEdit}>
@@ -655,8 +662,10 @@ function ReactionSummary({
 
 export function MessageAttachmentPreview({
   attachment,
+  onPreview,
 }: {
   attachment: NonNullable<HermesMessage["attachment"]>;
+  onPreview?: (attachment: NonNullable<HermesMessage["attachment"]>) => void;
 }) {
   if (attachment.type === "sticker") {
     return (
@@ -673,11 +682,11 @@ export function MessageAttachmentPreview({
 
   if (attachment.type === "image" && attachment.url) {
     return (
-      <a
-        className="mb-2 block overflow-hidden rounded-md border border-[#d9e0ea] bg-[#f3f6fa]"
-        href={attachment.url}
-        rel="noreferrer"
-        target="_blank"
+      <button
+        aria-label={`Visualizar imagem ${attachment.label}`}
+        className="mb-2 block w-full overflow-hidden rounded-md border border-[#d9e0ea] bg-[#f3f6fa] text-left outline-none transition hover:border-[#A07C3B] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+        onClick={() => onPreview?.(attachment)}
+        type="button"
       >
         <span
           aria-label={attachment.label}
@@ -686,7 +695,7 @@ export function MessageAttachmentPreview({
           style={{ backgroundImage: `url(${attachment.url})` }}
         />
         <AttachmentCaption attachment={attachment} />
-      </a>
+      </button>
     );
   }
 

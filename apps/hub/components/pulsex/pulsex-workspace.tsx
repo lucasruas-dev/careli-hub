@@ -22,6 +22,10 @@ import {
   getHermesMessageRealtimeTopic,
   parseHermesMessageBroadcastPayload,
 } from "@/lib/pulsex/realtime";
+import {
+  createHermesDirectChannelId,
+  getHermesDirectPeerUserId,
+} from "@/lib/pulsex/direct-channel";
 import { playHermesIncomingMessageSound } from "@/lib/pulsex/notification-effects";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { Tooltip } from "@repo/uix";
@@ -32,7 +36,7 @@ import {
 } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
 import { useHermesCall } from "@/providers/pulsex-call-provider";
-import { Bell, X } from "lucide-react";
+import { Bell, Download, X } from "lucide-react";
 import type {
   HermesCallSession,
   HermesCallType,
@@ -181,6 +185,9 @@ export function HermesWorkspace() {
   const [notifications, setNotifications] = useState<HermesToastNotification[]>(
     [],
   );
+  const [attachmentPreview, setAttachmentPreview] = useState<
+    NonNullable<HermesMessage["attachment"]> | null
+  >(null);
   const activeChannel =
     channels.find((channel) => channel.id === activeChannelId) ??
     channels[0] ??
@@ -264,6 +271,16 @@ export function HermesWorkspace() {
     setIsAthenaAgentOpen(true);
   }
 
+  function handlePreviewAttachment(
+    attachment: NonNullable<HermesMessage["attachment"]>,
+  ) {
+    if (attachment.type !== "image" || !attachment.url) {
+      return;
+    }
+
+    setAttachmentPreview(attachment);
+  }
+
   const loadOperationalData = useCallback(() => {
     if (profileStatus === "loading") {
       setDataStatus("loading");
@@ -290,7 +307,6 @@ export function HermesWorkspace() {
         const nextPresenceUsers = withUserChannelAccess(
           payload.users,
           nextChannels,
-          currentUserId,
         );
 
         const nextMessages = withMessageDeliveryData(
@@ -390,6 +406,7 @@ export function HermesWorkspace() {
           setChannels((currentChannels) =>
             applyPresenceStatusesToDirectChannels(
               currentChannels,
+              currentUserId,
               presenceByUserId,
             ),
           );
@@ -400,7 +417,7 @@ export function HermesWorkspace() {
           }
         });
     },
-    [],
+    [currentUserId],
   );
 
   useEffect(() => {
@@ -462,7 +479,6 @@ export function HermesWorkspace() {
     (shouldApply: () => boolean = () => true) => {
       if (
         !hasHubSupabaseConfig() ||
-        activeChannel.kind === "direct" ||
         activeChannel.id === emptyHermesChannel.id
       ) {
         return;
@@ -515,7 +531,6 @@ export function HermesWorkspace() {
     },
     [
       activeChannel.id,
-      activeChannel.kind,
       channels,
       currentUserId,
       notifyIncomingMessages,
@@ -525,7 +540,6 @@ export function HermesWorkspace() {
   useEffect(() => {
     if (
       !hasHubSupabaseConfig() ||
-      activeChannel.kind === "direct" ||
       activeChannel.id === emptyHermesChannel.id
     ) {
       return;
@@ -548,7 +562,6 @@ export function HermesWorkspace() {
     if (
       !hasHubSupabaseConfig() ||
       dataStatus !== "ready" ||
-      activeChannel.kind === "direct" ||
       activeChannel.id === emptyHermesChannel.id
     ) {
       return;
@@ -642,7 +655,6 @@ export function HermesWorkspace() {
   useEffect(() => {
     if (
       !hasHubSupabaseConfig() ||
-      activeChannel.kind === "direct" ||
       activeChannel.id === emptyHermesChannel.id
     ) {
       return;
@@ -935,7 +947,7 @@ export function HermesWorkspace() {
     setComposerMentions([]);
     setComposerTags([]);
 
-    if (!hasHubSupabaseConfig() || activeChannel.kind === "direct") {
+    if (!hasHubSupabaseConfig()) {
       return;
     }
 
@@ -1360,6 +1372,7 @@ export function HermesWorkspace() {
               onAskAiReply={handleOpenAthenaAgentForMessage}
               onEditMessage={handleEditMessage}
               onOpenThread={handleOpenThread}
+              onPreviewAttachment={handlePreviewAttachment}
               onToggleReaction={handleToggleReaction}
               onToggleTag={handleToggleMessageTag}
               reactionOptions={hermesReactionOptions}
@@ -1447,6 +1460,7 @@ export function HermesWorkspace() {
                   setThreadComposerValue("");
                 }}
                 onEditMessage={handleEditMessage}
+                onPreviewAttachment={handlePreviewAttachment}
                 onSubmitReply={handleSubmitThreadReply}
                 onToggleReaction={handleToggleReaction}
                 onToggleTag={handleToggleMessageTag}
@@ -1457,6 +1471,10 @@ export function HermesWorkspace() {
               />
             </div>
           ) : null}
+          <HermesAttachmentLightbox
+            attachment={attachmentPreview}
+            onClose={() => setAttachmentPreview(null)}
+          />
         </main>
       </div>
     </div>
@@ -1468,31 +1486,45 @@ function withDirectUserChannels(
   users: readonly HermesPresenceUser[],
   currentUserId: HermesPresenceUser["id"],
 ): HermesChannel[] {
-  const existingChannelIds = new Set(channels.map((channel) => channel.id));
+  const channelsById = new Map(channels.map((channel) => [channel.id, channel]));
+  const nonDirectChannels = channels.filter((channel) => channel.kind !== "direct");
   const directChannels = users
     .filter((user) => user.id !== currentUserId)
-    .map((user) => ({
-      avatar: user.initials,
-      avatarUrl: user.avatarUrl,
-      context: {
-        filesCount: 0,
-        owner: user.label,
-        status: "Direta",
-        unit: user.role,
-      },
-      description: `Conversa direta com ${user.label}.`,
-      id: `direct-${user.id}`,
-      kind: "direct",
-      lastMessageAt: "-",
-      name: user.label,
-      preview: user.email ?? "Usuario do Hub",
-      status: user.status,
-    })) satisfies HermesChannel[];
+    .map((user) => {
+      const directChannelId = createHermesDirectChannelId(currentUserId, user.id);
+      const existingChannel = channelsById.get(directChannelId);
 
-  return [
-    ...channels,
-    ...directChannels.filter((channel) => !existingChannelIds.has(channel.id)),
-  ];
+      return {
+        ...existingChannel,
+        avatar: user.initials,
+        avatarUrl: user.avatarUrl,
+        context: {
+          ...(existingChannel?.context ?? {
+            filesCount: 0,
+            owner: user.label,
+            status: "Direta",
+            unit: user.role,
+          }),
+          owner: user.label,
+          status: "Direta",
+          unit: user.role,
+        },
+        description:
+          existingChannel?.description ?? `Conversa direta com ${user.label}.`,
+        id: directChannelId,
+        kind: "direct" as const,
+        lastMessageAt: existingChannel?.lastMessageAt ?? "-",
+        memberReadAtByUserId: existingChannel?.memberReadAtByUserId ?? {},
+        memberUserIds: existingChannel?.memberUserIds ?? [currentUserId, user.id],
+        name: user.label,
+        preview: existingChannel?.preview ?? user.email ?? "Usuario do Hub",
+        status: user.status,
+        unreadCount: existingChannel?.unreadCount,
+      };
+    })
+    .filter((channel) => Boolean(channel.id)) satisfies HermesChannel[];
+
+  return [...nonDirectChannels, ...directChannels];
 }
 
 function HermesNotificationStack({
@@ -1550,6 +1582,107 @@ function HermesNotificationStack({
       ))}
     </div>
   );
+}
+
+function HermesAttachmentLightbox({
+  attachment,
+  onClose,
+}: {
+  attachment: NonNullable<HermesMessage["attachment"]> | null;
+  onClose: () => void;
+}) {
+  const imageUrl =
+    attachment?.type === "image" && attachment.url ? attachment.url : null;
+
+  useEffect(() => {
+    if (!imageUrl) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [imageUrl, onClose]);
+
+  if (!attachment || !imageUrl) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-label={`Visualizacao de ${attachment.label}`}
+      aria-modal="true"
+      className="fixed inset-0 z-[300] grid bg-[#101820] p-4 text-white sm:p-6"
+      role="dialog"
+    >
+      <button
+        aria-label="Fechar visualizacao de imagem"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <section className="relative z-10 grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[#2c3947] bg-[#101820] shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
+        <header className="flex min-h-16 items-center justify-between gap-3 border-b border-[#2c3947] bg-[#101820] px-4 py-3">
+          <div className="min-w-0">
+            <p className="m-0 truncate text-sm font-semibold text-white">
+              {attachment.label}
+            </p>
+            {attachment.sizeBytes ? (
+              <p className="m-0 mt-0.5 text-xs text-[#b8c2ce]">
+                {formatPreviewFileSize(attachment.sizeBytes)}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#3a4857] bg-[#182431] px-3 text-xs font-semibold text-white no-underline outline-none transition hover:border-[#A07C3B] hover:text-[#f5dca8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              download={attachment.label}
+              href={imageUrl}
+            >
+              <Download aria-hidden="true" size={15} />
+              Baixar
+            </a>
+            <button
+              aria-label="Fechar visualizacao"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-[#3a4857] bg-[#182431] text-white outline-none transition hover:border-[#A07C3B] hover:text-[#f5dca8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={onClose}
+              type="button"
+            >
+              <X aria-hidden="true" size={17} />
+            </button>
+          </div>
+        </header>
+        <div className="min-h-0 bg-black p-3 sm:p-4">
+          <div
+            aria-label={attachment.label}
+            className="h-full max-h-full w-full bg-contain bg-center bg-no-repeat"
+            role="img"
+            style={{ backgroundImage: `url(${imageUrl})` }}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function formatPreviewFileSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 async function broadcastHermesMessage(
@@ -1673,6 +1806,7 @@ function applyPresenceStatusesToUsers(
 
 function applyPresenceStatusesToDirectChannels(
   channels: HermesChannel[],
+  currentUserId: HermesPresenceUser["id"],
   presenceByUserId: Record<
     HermesPresenceUser["id"],
     HermesPresenceUser["status"]
@@ -1684,7 +1818,14 @@ function applyPresenceStatusesToDirectChannels(
       return channel;
     }
 
-    const userId = channel.id.replace(/^direct-/, "");
+    const userId =
+      getHermesDirectPeerUserId(channel.id, currentUserId) ??
+      channel.memberUserIds?.find((memberUserId) => memberUserId !== currentUserId);
+
+    if (!userId) {
+      return channel;
+    }
+
     const nextStatus = presenceByUserId[userId] ?? "offline";
 
     if (channel.status === nextStatus) {
@@ -1839,7 +1980,6 @@ function createPresenceUserFromMessage(
 function withUserChannelAccess(
   users: readonly HermesPresenceUser[],
   channels: readonly HermesChannel[],
-  currentUserId: HermesPresenceUser["id"],
 ): HermesPresenceUser[] {
   return users.map((user) => {
     return {
@@ -1847,9 +1987,7 @@ function withUserChannelAccess(
       channelIds: channels
         .filter((channel) => {
           if (channel.kind === "direct") {
-            return (
-              user.id === currentUserId || channel.id === `direct-${user.id}`
-            );
+            return Boolean(channel.memberUserIds?.includes(user.id));
           }
 
           return channel.memberUserIds?.includes(user.id);

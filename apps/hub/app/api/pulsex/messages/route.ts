@@ -1,4 +1,8 @@
 import { normalizeHermesMessageTags } from "@/lib/pulsex/message-tags";
+import {
+  getHermesDirectPeerUserId,
+  parseHermesDirectChannelId,
+} from "@/lib/pulsex/direct-channel";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
@@ -6,6 +10,9 @@ import { NextResponse, type NextRequest } from "next/server";
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
 type HubUserAccessRow = {
+  avatar_url?: string | null;
+  display_name?: string | null;
+  email?: string | null;
   id: string;
   role: HubUserRole;
   status: string;
@@ -86,22 +93,52 @@ type HermesMessagesApiDatabase = {
         Update: never;
       };
       pulsex_channel_members: {
-        Insert: never;
+        Insert: {
+          channel_id: string;
+          last_read_at?: string | null;
+          role?: string;
+          status?: string;
+          user_id: string;
+        };
         Relationships: [];
         Row: {
           channel_id: string;
+          last_read_at?: string | null;
           status: string;
           user_id: string;
         };
         Update: {
           last_read_at?: string;
+          status?: string;
         };
       };
       pulsex_channels: {
-        Insert: never;
+        Insert: {
+          created_by_user_id?: string | null;
+          department_id?: string | null;
+          description?: string | null;
+          id: string;
+          kind?: "department" | "direct" | "sector" | "system";
+          metadata?: Record<string, unknown>;
+          name: string;
+          order?: number;
+          sector_id?: string | null;
+          status?: string;
+        };
         Relationships: [];
-        Row: HermesChannelAccessRow;
-        Update: never;
+        Row: HermesChannelAccessRow & {
+          created_by_user_id?: string | null;
+          description?: string | null;
+          metadata?: Record<string, unknown> | null;
+          name?: string;
+          order?: number;
+          sector_id?: string | null;
+        };
+        Update: {
+          metadata?: Record<string, unknown>;
+          name?: string;
+          status?: string;
+        };
       };
       pulsex_messages: {
         Insert: {
@@ -680,6 +717,10 @@ async function ensureChannelAccess(
   | { channel: HermesChannelAccessRow; ok: true }
   | { ok: false; response: NextResponse }
 > {
+  if (channelId.startsWith("direct-")) {
+    return ensureDirectChannelAccess(adminClient, user, channelId);
+  }
+
   const { data: channel, error: channelError } = await adminClient
     .from("pulsex_channels")
     .select("id,kind,department_id,status")
@@ -730,6 +771,116 @@ async function ensureChannelAccess(
       { status: 403 },
     ),
   };
+}
+
+async function ensureDirectChannelAccess(
+  adminClient: SupabaseAdminClient,
+  user: HubUserAccessRow,
+  channelId: string,
+): Promise<
+  | { channel: HermesChannelAccessRow; ok: true }
+  | { ok: false; response: NextResponse }
+> {
+  const parsedChannel = parseHermesDirectChannelId(channelId);
+  const peerUserId = getHermesDirectPeerUserId(channelId, user.id);
+
+  if (!parsedChannel || !peerUserId) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Conversa direta invalida." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  const { data: participants, error: participantsError } = await adminClient
+    .from("hub_users")
+    .select("id,display_name,email,status")
+    .in("id", [...parsedChannel.userIds]);
+
+  if (participantsError || !participants || participants.length !== 2) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Participantes da conversa direta nao encontrados." },
+        { status: 404 },
+      ),
+    };
+  }
+
+  const inactiveParticipant = participants.find(
+    (participant) => participant.status !== "active",
+  );
+
+  if (inactiveParticipant) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Participante sem acesso ativo ao Hermes." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  const channelName = participants
+    .map((participant) => getUserLabel(participant))
+    .sort((first, second) => first.localeCompare(second, "pt-BR"))
+    .join(" / ");
+
+  const { data: channel, error: channelError } = await adminClient
+    .from("pulsex_channels")
+    .upsert(
+      {
+        created_by_user_id: user.id,
+        description: "Conversa direta do Hermes.",
+        id: channelId,
+        kind: "direct",
+        metadata: {
+          source: "hermes_direct",
+          userIds: [...parsedChannel.userIds],
+        },
+        name: channelName || "Conversa direta",
+        status: "active",
+      },
+      { onConflict: "id" },
+    )
+    .select("id,kind,department_id,status")
+    .single<HermesChannelAccessRow>();
+
+  if (channelError || !channel) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Nao foi possivel preparar a conversa direta." },
+        { status: 500 },
+      ),
+    };
+  }
+
+  const { error: membersError } = await adminClient
+    .from("pulsex_channel_members")
+    .upsert(
+      parsedChannel.userIds.map((participantUserId) => ({
+        channel_id: channelId,
+        role: participantUserId === user.id ? "owner" : "member",
+        status: "active",
+        user_id: participantUserId,
+      })),
+      { onConflict: "channel_id,user_id" },
+    );
+
+  if (membersError) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Nao foi possivel preparar os membros da conversa direta." },
+        { status: 500 },
+      ),
+    };
+  }
+
+  return { channel, ok: true };
 }
 
 function parseMessagePayload(payload: unknown):
@@ -964,6 +1115,10 @@ function getPositiveNumber(value: unknown) {
 
 function getString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getUserLabel(user: Pick<HubUserAccessRow, "display_name" | "email" | "id">) {
+  return getString(user.display_name) || getString(user.email) || user.id;
 }
 
 function getRecord(value: unknown): Record<string, unknown> {
