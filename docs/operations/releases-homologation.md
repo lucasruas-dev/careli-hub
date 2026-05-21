@@ -801,3 +801,82 @@ Registro de homologacao:
 - Pendencias: separar recortes por modulo e concluir validacoes visuais/autenticadas pendentes antes de homologacao automatica.
 - Status: `BLOQUEADO`.
 - Proxima acao: agentes responsaveis limparem/commitarem seus recortes; Hefesto repetira a auditoria na proxima rodada horaria.
+
+Registro de homologacao:
+
+- Assunto: `[Hades] Atendimento de cobranca via Iris/Meta`.
+- Modulo/agente: `Hades Core`.
+- Data e hora local: `2026-05-21 09:00:28 -03:00`.
+- Ambiente: `homologacao / preparado localmente`.
+- Origem: Lucas solicitou que a abertura de atendimento de cobranca do Hades use a estrutura real da Iris, que e a ponte externa Meta/WhatsApp.
+- Escopo do recorte:
+  - conectar o formulario de abertura do Hades a `GET /api/iris/tickets`;
+  - abrir ticket real pela Iris com `POST /api/iris/tickets` e `sourceModule: "hades"`;
+  - enviar o template Meta inicial pela rota Iris quando o operador abre atendimento;
+  - usar `/api/iris/meta/messages` para envio texto posterior pelo ticket real.
+- Protocolos/atividades relacionados: `n/a`.
+- Commit de homologacao: `n/a - recorte local ainda nao commitado/publicado`.
+- Deployment/alias de homologacao: `n/a - sem deploy, sem redeploy e sem alteracao de alias`.
+- Arquivos/modulos afetados: `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`, `apps/hub/app/api/iris/tickets/route.ts`, `docs/operations/engineering-operations.md` e este indice.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub` passou;
+  - `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js` sem `type: module`;
+  - `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx docs/operations/engineering-operations.md` passou com avisos conhecidos LF/CRLF;
+  - `rg -n "[ \t]+$"` nos arquivos do recorte nao encontrou espacos finais.
+- Healthchecks de homologacao:
+  - `GET http://localhost:3001/hades/cobranca`: `200 OK`;
+  - `GET http://localhost:3001/api/iris/tickets` sem bearer: `401 Unauthorized` esperado;
+  - `GET http://localhost:3001/api/iris/meta/templates?name=iris_opt_in_teste_v1` sem bearer: `401 Unauthorized` esperado.
+- Riscos conhecidos: abertura real com envio Meta exige sessao autenticada e template aprovado; audio/documento ainda devem ser conduzidos pela experiencia real da Iris; `apps/hub/app/api/iris/tickets/route.ts` esta em recorte local Iris nao rastreado no worktree.
+- Pendencias: Lucas validar fluxo autenticado em `localhost:3001/hades/cobranca`; separar pacote limpo Hades/Iris antes de publicar em homologacao.
+- Status: `BLOQUEADO`.
+- Proxima acao: apos validacao do Lucas, preparar recorte limpo para homologacao; producao permanece fora do escopo e deve passar por Hefesto.
+
+Registro de homologacao:
+
+- Assunto: `[Hefesto] Homologacao Hades/Iris/Apolo`.
+- Modulo/agente: `Hefesto`.
+- Data e hora local: `2026-05-21 09:15:04 -03:00`.
+- Ambiente: `homologacao`.
+- Origem: Lucas solicitou homologacao dos pontos pendentes de Hades, Iris e Apolo.
+- Escopo do recorte:
+  - publicar Hades cobranca com abertura de atendimento via Iris/Meta;
+  - publicar Iris com Meta events/messages/templates/status, tickets e integracao Apolo;
+  - publicar Apolo CRM/relacionamentos e entrada no shell;
+  - publicar dependencias compartilhadas de HelpDesk/Athena necessarias ao fluxo de ticket/gravação.
+- Protocolos/atividades relacionados: `HADES-IRIS-APOLO-HOMOLOG-20260521-0915`.
+- Commit de homologacao: `44d1e80 feat(panteon): homologate hades iris apolo recortes`.
+- Deployment/alias de homologacao: Preview `dpl_9ffymgKWRCf6DE8bK9XnbYrvbwh4`; URL tecnica `https://careli-hub-hub-i2bs-8z51pla43-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Arquivos/modulos afetados: Hades cobranca/atendimento, Iris Meta/tickets/Apolo, Apolo CRM, HelpDesk/Athena compartilhado, shell, registry/permissoes e diario canonico.
+- Arquivos/modulos excluidos:
+  - Hermes/PulseX, Atlas, Zeus/SquadOps, PWA, scripts Atlas, scripts Apolo, `apps/hub/app/api/apolo/sync/c2x/route.ts`, migrations `0025` e `0026`, `.env.local` e qualquer env/secret/chave;
+  - producao nao foi alterada.
+- Validacoes executadas:
+  - `git diff --cached --check` passou;
+  - varredura staged para secrets nao encontrou valor sensivel;
+  - `npm.cmd run check-types:hub` passou no workspace principal;
+  - `npm.cmd run lint:hub` passou no workspace principal;
+  - `npm.cmd run build --workspace @repo/hub` passou no workspace principal;
+  - worktree limpo em `44d1e80` passou em `git status --short`, `git diff --check`, `check-types:hub`, `lint:hub` e `build --workspace @repo/hub`;
+  - build remoto Vercel passou com warnings conhecidos.
+- Healthchecks de homologacao:
+  - `vercel inspect https://homo.c2x.app.br`: `Ready`, deployment `dpl_9ffymgKWRCf6DE8bK9XnbYrvbwh4`;
+  - `GET /`: `200`;
+  - `GET /hades`: `200`;
+  - `GET /hades/cobranca`: `200`;
+  - `GET /iris`: `200`;
+  - `GET /apolo`: `200`;
+  - `GET /api/hades/db/health`: `200`;
+  - `GET /api/guardian/db/health`: `200`;
+  - `GET /api/iris/meta/webhook` sem challenge: `403` esperado;
+  - `GET /api/iris/meta/events` sem sessao: `401` esperado;
+  - `POST /api/iris/meta/messages` sem sessao: `401` esperado;
+  - `GET /api/iris/tickets` sem sessao: `401` esperado;
+  - `GET /api/iris/apolo/search?q=teste&limit=5` sem sessao: `401` esperado;
+  - `GET /api/apolo/relationships?limit=10`: `200`;
+  - logs Vercel dos ultimos 20 minutos: apenas `info` esperado, sem erro critico.
+- Riscos conhecidos: validacao autenticada real ainda depende do Lucas; envio Meta real nao foi exercitado sem bearer; migrations/sync de Iris/Apolo ficaram fora por serem DataOps/Zeus; worktree principal permanece misto.
+- Pendencias: Lucas validar Hades/Iris/Apolo autenticado em `https://homo.c2x.app.br`; Apolo Core/DataOps tratar schema/sync se necessario; Hefesto preparar producao somente apos aprovacao explicita.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: Lucas validar o pacote em homologacao e, se aprovado, solicitar promocao de producao por recorte limpo ao Hefesto.

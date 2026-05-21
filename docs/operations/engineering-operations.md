@@ -8408,7 +8408,7 @@ Proximo passo recomendado:
 
 Assunto: [Apolo] CRM 360 PF/PJ, documentos e contrato Hades
 
-Status: IMPLEMENTADO LOCAL / BUILD E TYPES OK / LINT GLOBAL BLOQUEADO FORA DO RECORTE / SEM DEPLOY
+Status: IMPLEMENTADO LOCAL / LINT IRIS OK / TYPES E BUILD GLOBAIS BLOQUEADOS FORA DO RECORTE / SEM DEPLOY
 
 Motivo:
 - Lucas pediu corrigir o telefone que estava usando e-mail como fallback, separar a leitura de pessoa juridica com nome fantasia no destaque e razao social no resumo, trocar `Proxima acao` por `Responsavel` em PJ, remover abas de Atendimento e Relacionamentos, deixar o cadastro aberto com campos no padrao Hades, organizar Documentos e reaproveitar o comportamento de contrato ja existente no Hades.
@@ -8454,6 +8454,9 @@ Atualizacao de validacao local:
 - `npm.cmd run check-types:hub` passou.
 - `npm.cmd run lint:hub` passou, mantendo apenas o warning conhecido de `eslint.config.js` sem `type: module`.
 - `npm.cmd run build --workspace @repo/hub` passou, mantendo o warning conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md` passou com aviso conhecido LF/CRLF no diario.
+- `rg -n "[ \t]+$" apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md` nao encontrou espacos finais.
+- `GET http://localhost:3001/apolo` retornou `200 OK`.
 - `GET http://localhost:3001/api/apolo/relationships?limit=20` retornou `200 OK`, `total=3927`, `returned=20`, `buyerUsersCount=3431`, `source=apolo`, mas o smoke local mediu 37,23s nesta sessao.
 - `GET http://localhost:3001/api/apolo/relationships?q=comprador` foi ajustado para filtro estruturado com lote operacional de 120 registros, evitando varredura textual ampla por `comprador`; uma tentativa local anterior ainda mediu latencia alta enquanto o servidor estava recompilando/ocupado.
 - `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx apps/hub/lib/apolo/server.ts apps/hub/lib/apolo/types.ts docs/operations/engineering-operations.md` passou com aviso conhecido LF/CRLF no diario.
@@ -8481,9 +8484,21 @@ Como foi feito:
 - A rota `iris/apolo/phone-match` passou a retornar tambem perfis CRM 360 e a resolver telefone de conjuge para o cliente principal quando houver relacionamento de conjuge cadastrado.
 - A tela da Iris passou a usar o nome do CRM 360 no ticket/conversa, o perfil CRM 360 como subtitulo e o estado `Sem cadastro` quando o telefone nao bater com cliente ou conjuge.
 - Os status oficiais foram normalizados na UI: `Novo` azul, `Espera` amarelo, `Pendente` vermelho e `Encerrado` verde.
-- Os cards superiores foram reduzidos para Caixa de entrada com icone e tooltip, Primeira resposta e Operadores online.
+- Os cards superiores foram reduzidos inicialmente para Caixa de entrada com icone e tooltip, Primeira resposta e Operadores online.
 - A busca duplicada do topo foi removida; a busca permanece somente no board/inbox.
 - O board foi reforcado contra overflow horizontal com `min-w-0`, `overflow-hidden` e quebra de texto/URL nas linhas, previews, bolhas e contexto.
+- A grade desktop do Inbox foi compactada com trilhos fixos menores, `gap` e padding reduzidos, para aproximar as colunas e liberar area util para mais informacoes.
+- A grade desktop do Inbox passou a preservar `Fila` e `Canal`, reordenar `Status` antes de `SLA` e incluir os indicadores `Origem`, `Perfil`, `Assunto` e `TR`.
+- A origem exibida segue a regra operacional: `Ativo` quando a Careli inicia o contato e `Passivo` quando o cliente inicia o contato.
+- O indicador `TR` mostra o tempo de resposta do ticket; quando ainda nao houve resposta da Careli, mostra o tempo aguardando.
+- O indicador `TR` foi renomeado para `TDR` (`Tempo de Resposta`) e passou a medir a espera entre mensagem do cliente e a resposta seguinte da Careli.
+- Os cards superiores passaram a ter o mesmo tamanho e ficaram somente com indicadores de performance: `TPR` (`Tempo de Primeira Resposta`), `TDR` (`Tempo de Resposta`), `TMA` (`Tempo Medio de Atendimento`) e `SLA critico`.
+- O `TMA` calcula a media entre abertura do ticket e encerramento/resolucao quando o ticket possui data final; se nao houver ticket encerrado, exibe `Sem dados`.
+- O cabecalho da coluna de chat no Inbox foi renomeado de `Acao` para `Chat`.
+- A regra visual de status passou a considerar `Novo` como `Pendente` quando o ticket fica mais de 3 minutos sem interacao/resposta da Careli, sem escrita em banco nesta rodada.
+- Os nomes exibidos na Iris passaram a ser normalizados para leitura natural, com apenas a primeira letra de cada palavra em maiuscula e particulas como `de`, `da`, `do` em minusculo. O valor bruto do CRM/WhatsApp permanece intacto.
+- A grade desktop do Inbox passou a usar colunas equivalentes, com o texto de referencia da mensagem sempre truncado com reticencias dentro da coluna `Assunto`, sem expandir a largura da tabela.
+- O canal exibido no Inbox/contexto passou a remover o sufixo `Careli`, exibindo `WhatsApp` em vez de `WhatsApp Careli`.
 - A area principal manteve as melhorias de UX ja iniciadas: emojis, seletor fechando ao clicar fora, audio, responder mensagem, reagir a mensagem, indicador WhatsApp de entrega/leitura, operador com nome/foto e auto-scroll.
 
 Logica usada:
@@ -8500,11 +8515,19 @@ Validacao executada:
 - `npm.cmd run build --workspace @repo/hub` passou, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
 - `GET http://localhost:3001/iris` retornou `200 OK`.
 - Validacao visual headless via Chrome local abriu a rota, mas caiu em `Redirecionando para login...` por falta de sessao autenticada nesse perfil temporario; a validacao visual completa do board/inbox continua dependente de sessao autenticada no Chrome do Lucas.
+- Apos ajuste de densidade da grade, `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md` passou com aviso LF/CRLF conhecido e `npx.cmd eslint modules/caredesk/IrisPage.tsx --max-warnings 0` passou no recorte Iris com warning conhecido do `eslint.config.js`.
+- Apos inclusao de `Fila`, `Canal`, `Origem`, `Perfil`, `Assunto`, `TR` e regra de 3 minutos, `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md` passou com aviso LF/CRLF conhecido e `npx.cmd eslint modules/caredesk/IrisPage.tsx --max-warnings 0` passou no recorte Iris com warning conhecido do `eslint.config.js`.
+- `npm.cmd run check-types:hub` passou e `npm.cmd run build --workspace @repo/hub` passou com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Apos normalizacao visual dos nomes, `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md`, `npx.cmd eslint modules/caredesk/IrisPage.tsx --max-warnings 0` e `npm.cmd run check-types:hub` passaram; permaneceu apenas o warning conhecido do `eslint.config.js`.
+- Apos ajuste de colunas equivalentes e canal sem sufixo `Careli`, `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md` e `npx.cmd eslint modules/caredesk/IrisPage.tsx --max-warnings 0` passaram; permaneceu apenas o warning conhecido do `eslint.config.js`.
+- `npm.cmd run check-types:hub` passou novamente apos o ajuste de colunas equivalentes e canal sem sufixo.
+- Apos padronizacao dos cards de performance (`TPR`, `TDR`, `TMA`, `SLA critico`) e troca de `Acao` para `Chat`, `npx.cmd eslint modules/caredesk/IrisPage.tsx --max-warnings 0` e `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md` passaram; `npm.cmd run check-types:hub` e `npm.cmd run build --workspace @repo/hub` foram tentados e ficaram bloqueados por erros de tipo fora do recorte Iris em `apps/hub/lib/apolo/server.ts` nas linhas 2036, 2039 e 2056.
 
 Pendencias ou riscos conhecidos:
 - A validacao visual pode depender de sessao autenticada no navegador local do Lucas.
 - O worktree continua misto com alteracoes de outras squads; qualquer publicacao futura precisa recorte limpo e autorizacao explicita do Lucas.
 - O lint global do Hub permanece bloqueado por warning em Apolo fora do recorte; nao foi corrigido aqui por isolamento de escopo.
+- `check-types` e `build` globais agora tambem estao bloqueados por erros de tipo no Apolo fora deste recorte; nao foram corrigidos aqui por isolamento de escopo.
 
 Proximo passo recomendado:
 - `Lucas` validar visualmente `localhost:3001/iris` em sessao autenticada. `Iris Core` aguarda autorizacao explicita para qualquer publicacao em homologacao e nao deve misturar o warning Apolo neste recorte.
@@ -8554,3 +8577,647 @@ Pendencias ou riscos conhecidos:
 Proximo passo recomendado:
 - Cada agente deve entregar recorte limpo por modulo ou Lucas deve autorizar explicitamente qual pacote deseja publicar apesar da mistura.
 - Para a proxima rodada horaria, Hefesto deve repetir a auditoria e publicar apenas se houver recorte isolado, validado e sem bloqueio sensivel.
+
+## 2026-05-21 07:27:24 -03:00 - Apolo Core - Carteira e financeiro nativos no CRM 360
+
+Assunto: [Apolo] Carteira e financeiro nativos no CRM 360
+
+Status: IMPLEMENTADO LOCAL / BUILD, TYPES E LINT OK / SEM DEPLOY
+
+Motivo:
+- Lucas pediu padronizar o detalhe do CRM 360 para todos os perfis e manter sempre a mesma sequencia de abas do Apolo: `Resumo`, `Cadastro`, `Carteira`, `Financeiro`, `Documentos` e `Timeline`.
+- Lucas tambem pediu que a aba `Carteira` tivesse a estrutura operacional inspirada no Hades, mas construida dentro do Apolo, e que a aba `Financeiro` trouxesse a estrutura de acordos sem buscar o workspace do Hades.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/apolo/ApoloPage.tsx`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Supabase mutavel, Vercel, dominios, aliases, envs e secrets.
+
+Como foi feito:
+- O detalhe do Apolo deixou de acionar o workspace alternativo do Hades para compradores, preservando uma unica casca visual do CRM 360 para todos os perfis.
+- A navegacao principal do detalhe ficou limitada as abas operacionais solicitadas: `Resumo`, `Cadastro`, `Carteira`, `Financeiro`, `Documentos` e `Timeline`.
+- A aba `Carteira` ganhou componente nativo com lista lateral de unidades/lotes, unidade selecionada, resumo por unidade, leitura de parcelas consolidada a partir do snapshot financeiro do Apolo, timeline filtrada e bloco de contrato quando houver documento materializado.
+- A aba `Financeiro` ganhou central nativa de acordos e promessas com metricas, filtros, lista operacional e leitura financeira do Apolo; botoes de criacao ficam bloqueados ate existir API de escrita autorizada do Apolo.
+
+Logica usada:
+- O Apolo deve manter sua propria experiencia de CRM 360 e nao depender do layout do Hades para renderizar carteira ou acordos.
+- O Hades segue como referencia visual/regra operacional, mas a tela do Apolo usa `apolo_commercial_links`, `apolo_financial_snapshots` e `apolo_timeline_events` como base local materializada.
+- Sem tabela detalhada de parcelas/acordos do Apolo nesta rodada, a interface mostra o agregado existente e evita simular registros inexistentes.
+
+Validacao executada:
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, mantendo apenas o warning conhecido de `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou, mantendo o warning conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md` passou com aviso conhecido LF/CRLF no diario.
+- `rg -n "[ \t]+$" apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md` nao encontrou espacos finais.
+- `GET http://localhost:3001/apolo` retornou `200 OK`.
+
+Pendencias ou riscos conhecidos:
+- A lista detalhada de parcelas e acordos depende de evolucao futura do schema/sync Apolo para materializar registros transacionais completos; nenhuma migration real foi aplicada nesta rodada.
+- Botoes de criar promessa/acordo continuam desabilitados ate Lucas autorizar escrita/API do Apolo.
+- Validacao visual final depende do Chrome autenticado do Lucas em `localhost:3001/apolo`.
+
+Proximo passo recomendado:
+- `Lucas` validar o comportamento visual em `CRM 360` para comprador e nao comprador; `Apolo Core` seguir para materializacao detalhada de parcelas/acordos somente com autorizacao de schema/sync.
+
+## 2026-05-21 07:39:41 -03:00 - Apolo Core - Subaba Acordos dentro de Financeiro
+
+Assunto: [Apolo] Subaba Acordos dentro de Financeiro
+
+Status: IMPLEMENTADO LOCAL / BUILD, TYPES E LINT OK / SEM DEPLOY
+
+Motivo:
+- Lucas pediu que a aba `Financeiro` ganhasse subabas e que o conteudo atual de acordos ficasse dentro de `Acordos`, preparando a area financeira para futuras leituras.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/apolo/ApoloPage.tsx`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Supabase mutavel, Vercel, dominios, aliases, envs e secrets.
+
+Como foi feito:
+- Criada a navegacao interna da aba `Financeiro` com a subaba inicial `Acordos`.
+- Os indicadores, filtros, leitura operacional e lista de acordos/promessas foram movidos para dentro da subaba `Acordos`.
+- A estrutura ficou pronta para receber novas subabas financeiras futuras sem alterar a navegacao principal do CRM 360.
+
+Validacao executada:
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, mantendo apenas o warning conhecido de `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou, mantendo o warning conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+
+Pendencias ou riscos conhecidos:
+- A subaba `Acordos` ainda trabalha com dados materializados atuais do Apolo; novos tipos financeiros dependem de schema/sync autorizados.
+- Nenhum deploy, migration ou escrita em banco foi executado.
+
+Proximo passo recomendado:
+- `Lucas` validar a navegacao interna de `Financeiro > Acordos` em `localhost:3001/apolo`.
+
+## 2026-05-21 08:15:43 -03:00 - Iris Core - Inicio ativo de ticket e template Meta opt-in
+
+Assunto: [Iris] Inicio ativo de ticket e template Meta opt-in
+
+Status: IMPLEMENTADO LOCAL / TEMPLATE REAL BLOQUEADO POR ENV LOCAL SEM VALOR / BUILD, TYPES E LINT OK / SEM DEPLOY
+
+Motivo:
+- Lucas pediu iniciar a etapa de abertura e finalizacao de tickets na Iris, com botao `Novo atendimento` no Board, busca do cliente no Apolo/CRM 360 por nome ou telefone, escolha de template inicial Meta e regra de contato ativo condicionada ao aceite do cliente.
+- Lucas autorizou criar o template real na Meta para teste com a mensagem `Ola {{1}}, estou testando a Iris, podemos conversar?` e botoes `Sim`/`Nao`.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `apps/hub/app/api/iris/tickets/route.ts`
+- `apps/hub/lib/iris/meta-whatsapp.ts`
+- `apps/hub/lib/iris/meta-inbound-processor.ts`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades fora da leitura de referencia do formulario, Hermes, Zeus, Setup, Atlas, Chronos, Apolo fora da API de busca ja existente, migrations, Vercel, dominios, aliases, producao, envs e secrets.
+- Nenhum valor de token, secret, service role ou env foi exibido, alterado, commitado ou registrado.
+- Nenhum deploy, redeploy, migration ou alteracao de banco/schema foi executado.
+
+Como foi feito:
+- A Iris ganhou o botao `Novo atendimento` no header do Inbox/Board.
+- O modal de abertura segue o padrao operacional encontrado no Hades em `WhatsAppConversationPanel.tsx`/`TicketSetupModal`, mas foi implementado dentro da Iris para evitar acoplamento direto entre modulos.
+- O modal busca clientes reais pelo endpoint existente `/api/apolo/relationships?q=...&limit=12`, usa nome natural, perfil CRM 360 e telefone normalizado para WhatsApp.
+- Foi criado o template local/operacional `iris_opt_in_teste_v1`, idioma `pt_BR`, categoria Meta `MARKETING`, corpo `Ola {{1}}, estou testando a Iris, podemos conversar?` e botoes quick reply `Sim` e `Nao`.
+- Foi criada a rota server-side `/api/iris/meta/templates` para consultar/criar templates reais na Meta usando WABA/token server-side, com permissao restrita a `admin`/`leader` para criacao e sem expor valores sensiveis.
+- A rota sincroniza o template em `caredesk_templates` com status local `planned`/`active`/`paused` conforme `PENDING`/`APPROVED`/`REJECTED`, registrando apenas metadados nao sensiveis.
+- Foi criada a rota `/api/iris/tickets` para iniciar contato ativo autenticado: seleciona canal WhatsApp, fila/perfil padrao, cria/reusa contato, envia o template aprovado pela Meta, cria ticket `AT-*` com status inicial `waiting_customer`/`Espera` e persiste a mensagem inicial.
+- A tela so libera `Iniciar atendimento` quando o template estiver `APPROVED`; enquanto estiver pendente/rejeitado/nao criado, o operador ve bloqueio operacional claro.
+- O processador inbound da Meta passou a reconhecer respostas de botao/template (`button` e `interactive`) para registrar `Sim`/`Nao` como conteudo legivel na conversa, em vez de gravar apenas mensagem generica.
+
+Logica usada:
+- Contato ativo na Iris deve iniciar por template aprovado e ficar em `Espera` ate o cliente aceitar responder; a conversa livre permanece dependente do retorno/aceite do cliente dentro da regra da Meta.
+- A categoria `MARKETING` foi usada porque o conteudo e uma abordagem ativa de opt-in/teste, nao uma autenticacao nem uma atualizacao transacional de utilidade.
+- A criacao real foi tentada localmente apos autorizacao do Lucas, mas ficou bloqueada porque `apps/hub/.env.local` contem os nomes `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_BUSINESS_ACCOUNT_ID` e `META_WHATSAPP_GRAPH_VERSION` sem valor nao vazio. A validacao registrou apenas presenca/ausencia, sem imprimir segredo.
+
+Validacao executada:
+- `npx.cmd eslint modules/caredesk/IrisPage.tsx app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts lib/iris/meta-whatsapp.ts lib/iris/meta-inbound-processor.ts --max-warnings 0` passou, com warning conhecido do Node sobre `eslint.config.js` sem `type: module`.
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, com warning conhecido do Node sobre `eslint.config.js`.
+- `npm.cmd run build --workspace @repo/hub` passou, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/operations/engineering-operations.md` passou, com avisos conhecidos LF/CRLF no Windows.
+- `rg -n "[ \t]+$" apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/operations/engineering-operations.md` nao encontrou espacos finais.
+- `GET http://localhost:3001/iris` retornou `200 OK`.
+
+Pendencias ou riscos conhecidos:
+- O template real ainda nao foi criado nesta maquina porque os valores Meta nao estao disponiveis no `.env.local`; a criacao real deve ocorrer em runtime que possua as envs Meta carregadas ou apos Lucas autorizar uma publicacao de homologacao/fornecer caminho seguro sem expor secret.
+- Como nao houve deploy, a rota `/api/iris/meta/templates` ainda nao esta disponivel em homologacao/producao.
+- O envio real do template inicial depende de o template voltar `APPROVED` pela Meta; se vier `PENDING`, o operador deve aguardar aprovacao antes de iniciar contato ativo.
+- Validacao visual autenticada no Board ainda depende do navegador/sessao do Lucas em `localhost:3001/iris`; a tentativa headless via `node_repl` nao prosseguiu porque o modulo `playwright` nao esta instalado neste runtime.
+
+Proximo passo recomendado:
+- `Lucas` validar visualmente o modal `Novo atendimento` no Board da Iris em `localhost:3001/iris`.
+- Se Lucas quiser criar o template real pela UI em homologacao, autorizar deploy de homologacao do recorte Iris em pacote limpo; se quiser criar localmente antes disso, carregar as envs Meta por caminho seguro sem expor valores no chat/log.
+
+## 2026-05-21 08:08:40 -03:00 - Hades Core - Localhost sem fonte real C2X
+
+Assunto: [Hades] Localhost sem fonte real C2X
+
+Status: BLOQUEADO / AGUARDANDO AUTORIZACAO PARA ENV OU SYNC
+
+Motivo:
+- Lucas reportou que `localhost:3001/hades` nao estava trazendo os dados reais e a tela exibia apenas tracos/aguardando C2X.
+
+Arquivos/modulos afetados:
+- Leitura/auditoria: `apps/hub/app/api/guardian/overview/route.ts`, `apps/hub/lib/guardian/overview-client.ts`, `apps/hub/lib/guardian/overview.ts`, `apps/hub/lib/guardian/read-model.ts`, `apps/hub/lib/guardian/read-model-sync.ts`, `apps/hub/lib/guardian/db.ts`, `apps/hub/app/api/guardian/db/health/route.ts`, `apps/hub/app/api/guardian/sync/c2x/route.ts` e `docs/architecture/api-connection-governance.md`.
+- Registro operacional: este diario canonico.
+
+Arquivos/modulos excluidos:
+- Nenhum codigo foi alterado nesta investigacao.
+- Nenhum env, secret, banco, Supabase, migration, Vercel, dominio, alias, homologacao ou producao foi alterado.
+
+Como foi feito:
+- Validei `GET http://localhost:3001/api/hades/db/health`, que retornou `503 unconfigured`.
+- Verifiquei somente presenca/ausencia das envs, sem imprimir valores: `GUARDIAN_DB_HOST`, `GUARDIAN_DB_PORT`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER` e `GUARDIAN_DB_PASSWORD` existem em `apps/hub/.env.local`, mas estao vazias; `GUARDIAN_DB_SSL` nao existe.
+- Consultei o read model Supabase apontado pelo `.env.local`, registrando apenas contagens agregadas: `c2x_guardian_financial_snapshots` com `is_current=true` retornou `0`; `c2x_guardian_attendance_queue` com `is_current=true` retornou `0`.
+- Confirmei que `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` existe, mas `HOMOLOG_SUPABASE_URL` nao esta presente localmente, entao nao ha par URL/chave de homologacao completo para o Hades no localhost.
+
+Logica usada:
+- O Hades local precisa de uma das duas fontes reais: read model Supabase atual (`c2x_guardian_*`) ou conexao server-side direta com o C2X (`GUARDIAN_DB_*`). Nesta sessao, as duas fontes estao indisponiveis para o dashboard local.
+- A tela esta correta ao mostrar tracos: isso evita reintroduzir mock e protege a operacao contra leitura falsa.
+- Corrigir de fato exige autorizacao explicita do Lucas para uma acao sensivel: preencher envs locais do C2X, puxar env segura para local, ou executar sync autorizado C2X -> read model.
+
+Validacao executada:
+- Leitura de `AGENTS.md`, `docs/operations/README.md`, `docs/operations/engineering-operations.md` e `docs/architecture/api-connection-governance.md`.
+- `GET http://localhost:3001/api/hades/db/health` retornou `503 unconfigured`, sem expor segredo.
+- `GET http://localhost:3001/api/hades/overview` sem bearer retornou `401 Sessao administrativa ausente`, comportamento esperado para rota protegida.
+- Consulta segura por contagem agregada no Supabase local confirmou `0` snapshot financeiro atual e `0` itens atuais na fila Hades.
+
+Pendencias ou riscos conhecidos:
+- Sem credencial C2X local e sem read model populado, `localhost:3001/hades` continuara exibindo tracos.
+- Qualquer correcao que envolva env, secret, banco, sync, Vercel ou Supabase deve permanecer `BLOQUEADO` ate autorizacao explicita do Lucas.
+- O worktree permanece misto com recortes de outras frentes; nao usar para deploy geral.
+
+Proximo passo recomendado:
+- `Lucas` escolher e autorizar uma rota segura: preencher `GUARDIAN_DB_*` local para leitura direta do C2X, fornecer `HOMOLOG_SUPABASE_URL` pareado com a chave de homologacao existente, ou autorizar sync C2X -> read model no ambiente correto. Depois disso, `Hades Core` executa o smoke local e valida os cards/fila.
+
+## 2026-05-21 08:05:13 -03:00 - Apolo Core - Carteira sem fallback fake e metadata real C2X
+
+Assunto: [Apolo] Carteira real do CRM 360 sem dados inventados
+
+Status: IMPLEMENTADO LOCAL / BUILD, TYPES E LINT OK / SEM DEPLOY
+
+Motivo:
+- Lucas identificou que a aba `Carteira` do Apolo ainda exibia dados fabricados como `UN-01`, `Carteira comercial`, `A consultar` e `Vinculo identificado`, enquanto o Hades ja conseguia montar a carteira real pelo C2X.
+- Lucas pediu que o Apolo copie o caminho de mapeamento do Hades sem depender do workspace do Hades em runtime, trazendo unidade, empreendimento, quadra, lote, area, valor de tabela, imobiliaria/corretor e contrato com dados reais.
+
+Arquivos/modulos afetados:
+- `apps/hub/lib/apolo/types.ts`
+- `apps/hub/lib/apolo/server.ts`
+- `apps/hub/modules/apolo/ApoloPage.tsx`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Supabase mutavel, Vercel, dominios, aliases, envs e secrets.
+- Nenhum sync, deploy, redeploy, migration ou escrita direta em Supabase/C2X foi executado nesta rodada.
+
+Como foi feito:
+- O contrato `ApoloCommercialLink` passou a suportar os campos reais de carteira: `unitCode`, `unitId`, `block`, `lot`, `area`, `tableValue`, `brokerAgency`, `enterpriseCode`, `acquisitionRequestId` e dados de contrato.
+- A composicao server-side do Apolo passou a buscar, pelo mesmo caminho logico do Hades, `payments -> acquisition_requests -> enterprise_unities -> enterprises`, alem de `contract_signatures/acquisition_request_contracts` para contrato assinado.
+- A sincronizacao interna do Apolo agora grava esses campos no `metadata` de `apolo_commercial_links`, sem exigir nova migration porque a tabela ja possui `metadata jsonb`.
+- A leitura de `apolo_commercial_links` passou a carregar `metadata` e mapear esses campos de volta para a tela.
+- A aba `Carteira` deixou de inventar codigo de unidade (`UN-01`) e deixou de usar o agregado financeiro como valor de tabela; passa a ler `unitCode` e `tableValue` do link comercial.
+- A tela normaliza nomes e textos operacionais para leitura natural, evitando caixa alta agressiva em nomes de pessoas, empresas e empreendimentos.
+- Quando a tabela local ainda tem linhas antigas sem metadata real, a UI nao trata placeholders antigos como dado de unidade. Em desenvolvimento, se o C2X estiver configurado, a carga pode recompor a leitura viva ate o sync materializar os dados no Apolo.
+
+Logica usada:
+- Comprador no Apolo continua sendo obrigatoriamente usuario com pagamento valido em `payments` (`payment_status_id in (5, 6, 7)` e sem exclusao), nao apenas proposta.
+- Unidade, empreendimento, quadra, lote, area, valor e imobiliaria/corretor devem vir de campos reais do C2X ou do metadata materializado do Apolo; quando o dado real ainda nao foi sincronizado, o Apolo mostra vazio/indisponivel em vez de fabricar codigo ou carteira.
+- O Hades segue apenas como referencia de regra e layout; o Apolo nao chama componentes de carteira/acordos do Hades para renderizar a experiencia do CRM 360.
+
+Validacao executada:
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, mantendo apenas o warning conhecido de `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou, mantendo o warning conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+- `GET http://localhost:3001/apolo` retornou `200 OK`.
+- `GET http://localhost:3001/api/apolo/relationships?q=Gislaine&limit=1` retornou `200 OK`; o servidor local atual nao tinha configuracao C2X carregada para recomposicao viva, entao a populacao real completa depende de executar o sync Apolo com as novas regras.
+
+Pendencias ou riscos conhecidos:
+- As linhas ja gravadas em `apolo_commercial_links` antes deste ajuste precisam de nova sincronizacao autorizada para preencher `metadata` real de unidade/carteira.
+- Se o ambiente local/dev nao tiver as variaveis C2X carregadas no processo do Next, a recomposicao viva de desenvolvimento nao acontece; a tela evita dados falsos, mas nao consegue criar unidade real sem fonte real disponivel.
+- Nenhuma operacao sensivel foi executada; aplicar sync em homologacao/producao continua dependendo de autorizacao operacional do Lucas.
+
+Proximo passo recomendado:
+- `Lucas` autorizar uma nova sincronizacao Apolo em homologacao quando quiser materializar os campos reais nas tabelas `apolo_*`; depois disso, validar a Gislaine e outros compradores comparando `Carteira` do Apolo com a carteira do Hades/C2X.
+
+## 2026-05-21 08:14:57 -03:00 - Apolo Core - Apolo no sidebar global do Hub
+
+Assunto: [Apolo] Entrada do modulo no sidebar global
+
+Status: IMPLEMENTADO LOCAL / BUILD, TYPES E LINT OK / SEM DEPLOY
+
+Motivo:
+- Lucas informou que o Apolo nao estava aparecendo no sidebar global do Hub em `localhost:3001/apolo`.
+- O modulo ja estava ativo no registry compartilhado e com permissao `apolo:view`, mas o shell global ainda nao incluia `apolo` no conjunto minimo de modulos liberados para o menu lateral.
+
+Arquivos/modulos afetados:
+- `apps/hub/layouts/hub-shell.tsx`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Iris, Hermes, Atlas, Zeus, Setup, Chronos, banco real, migrations, Supabase mutavel, Vercel, dominios, aliases, envs e secrets.
+
+Como foi feito:
+- Adicionei `apolo` ao `minimumReleasedModuleIds` do `HubShell`, permitindo que o modulo entre no sidebar global mesmo quando o cadastro operacional `hub_modules`/`hub_department_modules` ainda nao tiver sido reconciliado.
+- Adicionei icone para `apolo` em `moduleIconMap`, usando o mesmo padrao visual dos demais itens do sidebar do Panteon.
+- Nenhum banco, seed, migration, env, Supabase, Vercel ou deploy foi alterado.
+
+Logica usada:
+- A decisao e local ao shell de navegacao: o Apolo continua respeitando `apolo:view` para abertura quando o perfil do usuario estiver carregado, e a lista minima evita que o item desapareca durante bootstrap/local.
+- O ajuste corrige apenas a exposicao do modulo no sidebar global, sem mudar regras de CRM, sync, carteira, documentos ou financeiro.
+
+Validacao executada:
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, mantendo apenas o warning conhecido de `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou e confirmou a rota `/apolo`, mantendo o warning conhecido de Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check -- apps/hub/layouts/hub-shell.tsx docs/operations/engineering-operations.md` passou com aviso conhecido LF/CRLF no Windows.
+- `rg -n "[ \t]+$" apps/hub/layouts/hub-shell.tsx docs/operations/engineering-operations.md` nao encontrou espacos finais.
+- `GET http://localhost:3001/apolo` retornou `200 OK`.
+
+Pendencias ou riscos conhecidos:
+- Validacao visual final depende do Chrome autenticado do Lucas ou de smoke local autenticado.
+- O worktree permanece misto com recortes locais paralelos; nao usar como pacote de deploy geral sem separar escopo.
+
+Proximo passo recomendado:
+- `Lucas` recarregar `localhost:3001/apolo` e confirmar visualmente que o item `Apolo` aparece no sidebar global do Hub.
+
+## 2026-05-21 08:23:09 -03:00 - Hades Core - Localhost conectado ao C2X real
+
+Assunto: [Hades] Recuperacao do carregamento local com dados reais
+
+Status: OPERACIONAL COM ATENCAO / LOCALHOST CONECTADO AO C2X / SEM DEPLOY
+
+Motivo:
+- Lucas reportou que `localhost:3001/hades` nao estava trazendo dados reais e exibia estado de falha/aguardando C2X.
+- A verificacao inicial mostrou `GET /api/hades/db/health` como `503 unconfigured`, com as variaveis `GUARDIAN_DB_*` vazias no `.env.local`.
+- O read model Supabase local tambem nao tinha snapshot corrente para suprir fallback, mantendo o Hades corretamente sem dados mockados.
+
+Arquivos/modulos afetados:
+- `apps/hub/.env.local` somente no ambiente local ignorado pelo Git, com restauracao das chaves `GUARDIAN_DB_*` sem exposicao de valores.
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Nenhum codigo-fonte do Hades foi alterado.
+- Nenhuma migration, tabela, Supabase mutavel, deploy, dominio, alias, ambiente Vercel ou producao foi alterado.
+- Arquivos temporarios de env gerados para auditoria foram removidos de `.codex-artifacts` ao final da validacao.
+
+Como foi feito:
+- Com autorizacao explicita do Lucas, auditei a presenca das variaveis `GUARDIAN_DB_*` sem imprimir valores sensiveis.
+- Confirmei que os envs Vercel de Preview/Production auditados estavam sem valores efetivos para `GUARDIAN_DB_*`, entao usei uma copia local ignorada ja existente como fonte de recuperacao do ambiente localhost.
+- Atualizei apenas as variaveis locais `GUARDIAN_DB_HOST`, `GUARDIAN_DB_PORT`, `GUARDIAN_DB_NAME`, `GUARDIAN_DB_USER` e `GUARDIAN_DB_PASSWORD` no `.env.local`.
+- Reiniciei o dev server local na porta `3001` para o Next carregar as variaveis corrigidas.
+
+Logica usada:
+- O Hades deve preferir dados reais do C2X e, quando a fonte real nao estiver disponivel, deve mostrar traco/estado vazio em vez de mock.
+- A tela estava se comportando corretamente ao evitar dado falso; a causa operacional era ausencia de configuracao local para conectar no C2X.
+- A correcao foi mantida fora de release, porque foi ajuste de ambiente local ignorado pelo Git, sem mudanca de contrato, regra de negocio ou componente.
+
+Validacao executada:
+- `GET http://localhost:3001/api/hades/db/health` retornou `200 connected` apos reinicio do dev server.
+- `GET http://localhost:3001/hades` retornou `200 OK`.
+- O HTML entregue por `/hades` nao continha os textos `falha ao carregar dados reais` nem `Aguardando dados reais do C2X` no smoke local.
+- O smoke de saude ainda ficou proximo de 10s, indicando conexao real funcionando, mas com latencia relevante para acompanhamento operacional.
+
+Pendencias ou riscos conhecidos:
+- Lucas deve recarregar a aba autenticada do navegador para o client-side refazer o fetch com a sessao atual.
+- A latencia da conexao local com o C2X segue alta e pode afetar a percepcao de carregamento; se persistir acima do aceitavel, o proximo recorte deve revisar read model/cache do Hades.
+- Como a correcao foi local, outros ambientes continuam dependendo de configuracao propria e nao foram alterados nesta rodada.
+
+Proximo passo recomendado:
+- `Lucas` atualizar `localhost:3001/hades` no Chrome autenticado e confirmar visualmente os cards/listas.
+- Se o ambiente produtivo ou homologacao tambem estiver sem dados, tratar como recorte separado de governanca de env, iniciando `BLOQUEADO` ate autorizacao explicita.
+
+## 2026-05-21 08:35:45 -03:00 - Zeus Core - Performance do localhost normalizada
+
+Assunto: [Zeus] Diagnostico de lentidao no localhost
+
+Status: OPERACIONAL COM ATENCAO / LOCALHOST NORMALIZADO / SEM DEPLOY
+
+Motivo:
+- Lucas reportou que o `localhost` estava muito lento e demorando para carregar.
+- A medicao inicial mostrou lentidao global, inclusive em `/login`, indicando problema no dev server local antes de investigar uma tela especifica.
+
+Arquivos/modulos afetados:
+- `docs/operations/engineering-operations.md`
+- Processo local do Next dev na porta `3001`
+
+Arquivos/modulos excluidos:
+- Nenhum codigo-fonte foi alterado.
+- Nenhum banco, migration, Supabase mutavel, Vercel, dominio, alias, env, secret, homologacao ou producao foi alterado.
+
+Como foi feito:
+- Confirmei que havia um Next dev antigo segurando a porta `3001`, com consumo aproximado de 10 GB de memoria.
+- O terminal tambem mostrava tentativa recente de `npm run dev` falhando com `EADDRINUSE`, porque a porta ja estava ocupada.
+- Medi `/login`, `/zeus`, assets e endpoints locais antes e depois do restart para separar gargalo do servidor de gargalo de API.
+- Finalizei apenas os processos locais do dev server antigo e subi um novo `npm.cmd run dev` em `apps/hub`, sem alterar codigo ou configuracao sensivel.
+
+Validacao executada:
+- Novo dev server iniciou em `317ms` na porta `3001`.
+- `GET http://127.0.0.1:3001/panteon-logo-light.png?v=1` caiu de aproximadamente `6308ms` para `64ms`.
+- `GET http://127.0.0.1:3001/login` caiu de aproximadamente `25505ms` para `200ms` apos aquecimento.
+- `GET http://127.0.0.1:3001/zeus` respondeu em aproximadamente `151ms` apos aquecimento.
+- `GET http://127.0.0.1:3001/hades` respondeu em aproximadamente `684ms`.
+- `GET http://127.0.0.1:3001/iris` respondeu em aproximadamente `276ms`.
+- `GET http://127.0.0.1:3001/setup` respondeu em aproximadamente `259ms`.
+- `GET http://127.0.0.1:3001/apolo` respondeu em aproximadamente `291ms`.
+
+Pendencias ou riscos conhecidos:
+- A API `GET /api/apolo/relationships?limit=10` continua lenta no localhost, entre aproximadamente `10s` e `14s`, por leitura real pesada do CRM 360/C2X em modo desenvolvimento.
+- Se o Lucas quiser atacar esse ponto, o recorte correto e otimizar o Apolo com cache/read model/sync, sem misturar com Zeus ou Hades.
+- O worktree permanece misto com varios recortes locais paralelos; nao usar como pacote de deploy geral sem separar escopo.
+
+Proximo passo recomendado:
+- Lucas pode recarregar as abas locais do navegador. Se apenas o Apolo continuar lento ao abrir o CRM 360, abrir recorte separado para performance do Apolo.
+
+## 2026-05-21 08:40:21 -03:00 - Iris Core - Templates Meta no Setup e busca CRM enxuta
+
+Assunto: [Iris] Templates Meta no Setup e busca CRM 360
+
+Status: IMPLEMENTADO LOCAL / BUILD, TYPES E LINT OK / SEM DEPLOY / TEMPLATE REAL DEPENDE DE ENV META APTO
+
+Motivo:
+- Lucas pediu deixar o botao `Novo atendimento` somente como icone, garantir que a abertura de contato ativo busque cliente real na base do CRM 360/Apolo e mover a gestao de template Meta para o Setup da Iris.
+- Lucas pediu estudar a parte de templates Meta, variaveis possiveis e preparar uma tela para criar templates e acompanhar aprovacao/reprovacao da Meta.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `apps/hub/app/api/iris/apolo/search/route.ts`
+- `apps/hub/app/api/iris/meta/templates/route.ts`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Hades, Hermes, Zeus, Atlas, Chronos, Setup global, Apolo UI, banco real, migrations, Vercel, dominios, aliases, producao, envs e secrets.
+- Nenhum token, secret, service role, bearer, valor de env ou payload sensivel foi exibido, alterado ou registrado.
+- Nenhum deploy, redeploy, migration, sync, alias ou alteracao de ambiente foi executado.
+
+Como foi feito:
+- O botao `Novo atendimento` do Board/Inbox da Iris virou botao icon-only com tooltip e `aria-label`, preservando o comando sem ocupar espaco de coluna.
+- O modal de contato ativo deixou de usar a leitura pesada de `/api/apolo/relationships` e passou a consultar `/api/iris/apolo/search`, uma rota enxuta e autenticada da Iris para buscar entidade, perfis e telefones WhatsApp/telefone no CRM 360/Apolo.
+- A rota nova usa indice `apolo_search_entries` para nome/dados cadastrais e `apolo_entity_identifiers` para busca por telefone normalizado, retornando somente o necessario para abrir atendimento ativo.
+- O Setup interno da Iris ganhou abas `Motivos` e `Templates`.
+- A aba `Templates` permite editar nome interno, nome tecnico Meta, categoria, idioma, corpo, botoes quick reply, preview e variaveis CRM 360.
+- A tela lista variaveis operacionais preparadas para templates: `primeiro_nome`, `nome_cliente`, `protocolo`, `empreendimento`, `unidade`, `vencimento`, `valor` e `link`, separando as variaveis prontas/CRM das controladas.
+- A tela consulta status Meta e envia o template real pela rota `/api/iris/meta/templates`, sempre server-side e com sessao Iris.
+- A rota de templates foi ampliada para aceitar `displayName`, lista de variaveis, exemplos por placeholder e botoes quick reply; a persistencia local em `caredesk_templates` registra metadados nao sensiveis de status/categoria/idioma/template Meta.
+
+Logica usada:
+- Para contato ativo no WhatsApp, a Iris deve iniciar por template aprovado pela Meta e o chat livre continua condicionado ao aceite/resposta do cliente.
+- O template de teste segue com quick replies `Sim` e `Nao`; pela documentacao Meta consultada, corpo e botoes sao componentes de template, variaveis precisam de exemplos de criacao e quick replies retornam uma resposta do usuario.
+- Variaveis financeiras, links e dados de contrato foram tratadas como controladas para evitar template com dado sensivel sem regra de consentimento/finalidade clara.
+- A criacao real em Meta continua dependente de runtime com `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_BUSINESS_ACCOUNT_ID`, `META_WHATSAPP_PHONE_NUMBER_ID` e `META_WHATSAPP_GRAPH_VERSION` corretamente configurados, sem expor valores.
+
+Validacao executada:
+- `npx.cmd eslint modules/caredesk/IrisPage.tsx app/api/iris/apolo/search/route.ts app/api/iris/meta/templates/route.ts app/api/iris/tickets/route.ts lib/iris/meta-whatsapp.ts lib/iris/meta-inbound-processor.ts --max-warnings 0` passou, com warning conhecido do Node sobre `eslint.config.js` sem `type: module`.
+- `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/apolo/search/route.ts apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/operations/engineering-operations.md` passou, com avisos conhecidos LF/CRLF no Windows.
+- `rg -n "[ \t]+$" apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/apolo/search/route.ts apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/operations/engineering-operations.md` nao encontrou espacos finais.
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, com warning conhecido do Node sobre `eslint.config.js`.
+- `npm.cmd run build --workspace @repo/hub` passou, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- `GET http://localhost:3001/iris` retornou `200 OK`.
+- `GET http://localhost:3001/api/iris/apolo/search?q=Nivea&limit=5` sem bearer retornou `401`, comportamento esperado para rota protegida.
+- Validacao visual automatizada com navegador nao foi concluida porque o runtime local de `node_repl` nao possui `playwright` instalado.
+
+Pendencias ou riscos conhecidos:
+- A criacao/aprovacao real do template depende de ambiente com envs Meta carregadas e permissao correta na Graph API; se a configuracao estiver ausente, a UI mostra erro operacional sem segredo.
+- A busca autenticada no CRM 360 precisa ser validada pelo Lucas em sessao real do navegador, pois o smoke CLI sem bearer valida apenas o bloqueio de seguranca.
+- O worktree permanece misto com recortes de outras frentes; nao usar como pacote de deploy geral sem separar o escopo Iris.
+- Nenhuma publicacao em homologacao/producao foi feita nesta rodada.
+
+Proximo passo recomendado:
+- Lucas validar em `localhost:3001/iris`: icone de novo atendimento, busca `Nivea`/telefone no modal e nova aba `Setup > Templates`.
+- Se Lucas quiser criar o template real em homologacao, autorizar um deploy de homologacao limpo do recorte Iris em ambiente com envs Meta configuradas; producao continua fora do escopo.
+
+## 2026-05-21 08:48:03 -03:00 - Zeus Core - Performance local estabilizada
+
+Assunto: [Zeus] Performance do localhost e APIs de apoio
+
+Status: VALIDADO LOCAL / SEM DEPLOY
+
+Motivo:
+- Depois do restart inicial, o localhost voltou a responder, mas a investigacao mostrou que chamadas reais de apoio podiam fazer o processo Next crescer de memoria novamente.
+- A rota `GET /api/apolo/relationships?limit=10` estava forcando `live-c2x` por metadata antiga no read model e levava cerca de `10s` a `14s`.
+- A Iris fazia refresh de fila a cada `4s` e repetia o match de telefones no Apolo, pressionando o localhost enquanto abas ficavam abertas.
+
+Arquivos/modulos afetados:
+- `apps/hub/app/api/apolo/relationships/route.ts`
+- `apps/hub/lib/apolo/server.ts`
+- `apps/hub/app/api/iris/apolo/phone-match/route.ts`
+- `apps/hub/modules/caredesk/IrisPage.tsx`
+- `apps/hub/app/api/iris/tickets/route.ts`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Nenhum banco, migration, Supabase mutavel, Vercel, dominio, alias, env, secret, homologacao ou producao foi alterado.
+- Nenhum valor sensivel foi exibido ou registrado.
+
+Como foi feito:
+- Reiniciei o Next dev local que estava degradado na porta `3001`.
+- O Apolo deixou de descartar o read model real sincronizado apenas por metadata antiga de carteira; agora responde com `source: apolo` e mensagem de sync recomendado, reservando C2X vivo para falta de read model.
+- A rota de relacionamentos do Apolo ganhou cache curto somente em `NODE_ENV=development`.
+- A rota `POST /api/iris/apolo/phone-match` ganhou cache curto somente em `NODE_ENV=development`, apos autorizacao da request, para reduzir consultas repetidas.
+- O refresh de fallback da Iris passou de `4s` para `12s`; o Realtime Supabase segue como caminho principal para eventos novos.
+- Corrigi o helper `normalizeUuid` duplicado/ausente em `app/api/iris/tickets/route.ts`, que estava bloqueando o build do Hub.
+
+Validacao executada:
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, mantendo apenas o warning conhecido de `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou, mantendo o warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check` nos arquivos alterados passou, com avisos conhecidos LF/CRLF no Windows.
+- Smoke final em `localhost:3001`: `/login` `200`, `/zeus` `200`, `/hades` `200`, `/iris` `200`.
+- `GET /api/apolo/relationships?limit=10` passou a responder via `source: apolo`; primeira chamada medida em aproximadamente `1,4s` e repeticao em cache local curto abaixo de `100ms` quando reutilizada.
+- Dev server local foi reiniciado ao final para deixar `localhost:3001` limpo apos build/smokes.
+
+Pendencias ou riscos conhecidos:
+- O processo Next dev ainda pode crescer durante build ou muitas abas abertas, mas a causa de degradacao recorrente por `live-c2x` do Apolo foi removida do carregamento padrao.
+- A API de presenca ainda tem latencia local proxima de `700ms` a `1s` em algumas chamadas e pode ser um recorte futuro se Lucas continuar percebendo lentidao.
+- O worktree permanece misto com varios recortes locais paralelos; nao usar como pacote de deploy geral sem separar escopo.
+
+Proximo passo recomendado:
+- Lucas recarregar o navegador em `localhost:3001`. Se a lentidao voltar, o proximo diagnostico deve medir especificamente presenca/topbar e abas abertas, nao o carregamento base do Panteon.
+
+## 2026-05-21 09:12:05 -03:00 - Zeus Core - Indicadores de performance Panteon
+
+Assunto: [Zeus] Indicadores Vercel, Supabase, payload, cold start e cache
+
+Status: VALIDADO LOCAL / SEM DEPLOY
+
+Motivo:
+- Lucas pediu que o modulo Zeus exibisse a visao operacional de performance do Panteon com seis indicadores: tempo de abertura da pagina, tempo das APIs, tempo das queries Supabase, tamanho do payload, cold starts e cache.
+- A premissa registrada foi que Vercel mede a porta de entrada e entrega, enquanto Supabase concentra os dados; lentidao recorrente deve ser analisada cruzando API, query, payload, cache e indice.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/squadops/ZeusPage.tsx`
+- `apps/hub/lib/operations/data-sources.ts`
+- `apps/hub/app/api/operations/monitoring/route.ts`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Nenhum outro modulo foi alterado por este recorte.
+- Nenhum banco, migration, Supabase mutavel, Vercel, dominio, alias, env, secret, homologacao ou producao foi alterado.
+- Nenhum valor sensivel foi exibido ou registrado.
+
+Como foi feito:
+- A tela `Database Monitoring` do Zeus ganhou o bloco `Minha visao pro Panteon`, com indicadores compactos para pagina, APIs, Supabase, payload, cold start e cache.
+- O coletor operacional passou a medir abertura de `/login` e `/zeus` no grupo `page`, mantendo as leituras reais dentro da API de monitoring.
+- A captura de metadados passou a guardar headers seguros de cache: `x-panteon-local-cache`, `x-hades-queue-cache`, `x-vercel-cache`, `cache-control` e `age`.
+- Os dois checks da fila Hades (`limit=20` e `limit=50`) passaram a rodar em paralelo, reduzindo tempo total da coleta sem esconder o tempo individual de cada fonte.
+- A rota `/api/operations/monitoring` passou a timeboxar sincronizacao de protocolos e persistencia do snapshot. Se Supabase estruturado demorar, a API devolve o snapshot com `protocolSyncStatus: indisponivel` em vez de travar a tela.
+
+Validacao executada:
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, mantendo o warning conhecido de `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou, mantendo o warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check -- apps/hub/lib/operations/data-sources.ts apps/hub/modules/squadops/ZeusPage.tsx` passou, com avisos conhecidos LF/CRLF no Windows.
+- Smoke local: `GET http://localhost:3001/zeus` retornou `200 OK`.
+- Smoke local: `GET http://localhost:3001/api/operations/monitoring` retornou `200 OK`, com `12` checks, grupos `c2x, guardian-queue, page, protected-api, supabase, vercel`, `2` checks de pagina e `protocolSyncStatus: indisponivel` quando a persistencia estruturada estourou o timeout controlado.
+
+Pendencias ou riscos conhecidos:
+- A primeira abertura local de `/zeus` depois de restart ainda ficou pesada no dev server; agora o proprio indicador de pagina deve evidenciar esse tempo para separar lentidao de pagina, API e Supabase.
+- A persistencia estruturada de alertas/snapshot pode ficar `indisponivel` quando Supabase ou a tabela operacional demorar; o snapshot visual continua sendo entregue, mas a reconciliacao historica precisa ser revisitada em recorte proprio se o timeout persistir.
+- O worktree permanece misto com varios recortes locais paralelos; nao usar como pacote de deploy geral sem separar escopo Zeus.
+
+Proximo passo recomendado:
+- Lucas abrir `localhost:3001/zeus`, entrar em `Database Monitoring` e conferir se a visao dos seis indicadores ajuda a decidir onde a lentidao nasce: pagina, API, Supabase, payload, cold start ou cache.
+
+## 2026-05-21 09:00:28 -03:00 - Hades Core - Abertura de cobranca pela Iris
+
+Assunto: [Hades] Atendimento de cobranca via Iris/Meta
+
+Status: OPERACIONAL COM ATENCAO / VALIDADO LOCAL / SEM DEPLOY
+
+Motivo:
+- Lucas definiu que toda comunicacao externa do Panteon deve passar pela Iris, inclusive o processo de cobranca do Hades.
+- Ao abrir atendimento em `Hades > Cobranca`, o formulario precisava deixar de usar estrutura local/mockada e consumir a estrutura real da Iris, que e a ponte operacional com Meta/WhatsApp.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`
+- `apps/hub/app/api/iris/tickets/route.ts`
+- `docs/operations/engineering-operations.md`
+- `docs/operations/releases-homologation.md`
+
+Arquivos/modulos excluidos:
+- Hades dashboard, Hermes, Zeus, Atlas, Chronos, Setup global, migrations, banco, Vercel, dominios, aliases, homologacao e producao.
+- Nenhum token, secret, service role, bearer, valor de env ou payload sensivel foi exibido, alterado ou registrado.
+- Nenhum deploy, redeploy, migration, sync, alias ou alteracao de ambiente foi executado.
+
+Como foi feito:
+- O modal de abertura de atendimento do Hades passou a carregar `GET /api/iris/tickets` para buscar canais WhatsApp/Meta ativos, filas ativas, perfis de ticket ativos e operador logado pela autorizacao Iris.
+- O formulario agora exibe canal Iris, operador Iris, perfil real, fila, prioridade, SLA, template Meta e parcelas reais do cliente quando o perfil exige parcela.
+- A abertura do atendimento chama `POST /api/iris/tickets` com `sourceModule: "hades"`, `sourceEntityType: "hades-collection-client"`, contexto de cliente/unidade/parcela e template `iris_opt_in_teste_v1`.
+- A rota Iris cria o ticket real em `caredesk_tickets`, registra mensagem inicial em `caredesk_messages`, preserva vinculo Meta em `caredesk_whatsapp_message_refs` quando a Meta retorna identificador e devolve protocolo `AT-*` para o Hades.
+- O envio de mensagem texto pelo painel Hades passou a usar `/api/iris/meta/messages` com `ticketId` real da Iris. Audio e documento permanecem bloqueados no painel Hades com aviso operacional para serem conduzidos no ticket real da Iris.
+- Canais Iris foram restringidos a `kind=whatsapp`, `provider=meta` e `status=active`, evitando abertura por canal inativo.
+
+Logica usada:
+- A Iris fica como fonte viva do atendimento externo e do contrato Meta; o Hades apenas inicia o processo de cobranca e registra o contexto financeiro/operacional.
+- O disparo externo fica condicionado a sessao autorizada da Iris, template Meta aprovado e escolha de canal/perfil reais.
+- O Hades nao cria nova infraestrutura paralela de comunicacao: ele delega ticket, mensagem e rastreabilidade externa para a Iris, mantendo o contexto de cobranca no `source_context`.
+
+Validacao executada:
+- `npm.cmd run check-types:hub` passou.
+- `npm.cmd run lint:hub` passou, mantendo warning conhecido do Node sobre `eslint.config.js` sem `type: module`.
+- `npm.cmd run build --workspace @repo/hub` passou, mantendo warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- `GET http://localhost:3001/hades/cobranca` retornou `200`.
+- `GET http://localhost:3001/api/iris/tickets` sem bearer retornou `401`, comportamento esperado para rota protegida.
+- `GET http://localhost:3001/api/iris/meta/templates?name=iris_opt_in_teste_v1` sem bearer retornou `401`, comportamento esperado para rota protegida.
+- `docs/operations/releases-homologation.md` recebeu registro de homologacao bloqueada/preparada localmente, sem deploy.
+
+Pendencias ou riscos conhecidos:
+- A abertura real com envio Meta precisa ser validada pelo Lucas em sessao autenticada no navegador, pois o smoke CLI sem bearer valida apenas pagina e protecao de rota.
+- O template Meta precisa estar aprovado na Iris; se estiver pendente/rejeitado/ausente, o formulario bloqueia abertura para evitar disparo externo invalido.
+- Audio e documento ainda devem ser tratados pela experiencia real da Iris; o painel Hades evita envio local para nao duplicar ponte externa.
+- O arquivo `apps/hub/app/api/iris/tickets/route.ts` ja estava em recorte local Iris nao rastreado no worktree antes deste fechamento; nao usar o worktree inteiro como pacote de deploy sem separar recortes.
+
+Proximo passo recomendado:
+- Lucas validar em `localhost:3001/hades/cobranca`: abrir cliente, acionar novo atendimento, conferir canal/perfil/fila/template Iris e testar abertura real com um contato autorizado.
+- Se aprovado, preparar recorte limpo Hades/Iris para homologacao antes de qualquer producao, por envolver rota server-side protegida e integracao externa Meta.
+
+## 2026-05-21 09:15:04 -03:00 - Hefesto - Homologacao Hades/Iris/Apolo
+
+Assunto: [Hefesto] Homologacao dos recortes pendentes Hades, Iris e Apolo
+
+Status: EM HOMOLOGACAO
+
+Motivo:
+- Lucas solicitou ao Hefesto homologar os pontos pendentes de Hades, Iris e Apolo.
+- O worktree principal estava misto, entao a homologacao foi feita por recorte seletivo e worktree limpo para evitar levar Hermes, Atlas, Zeus, PWA, scripts, migrations ou envs fora do escopo.
+
+Arquivos/modulos afetados:
+- Hades: `apps/hub/modules/guardian/attendance/components/AiCopilotDrawer.tsx`, `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`, `apps/hub/components/guardian/layout/Topbar.tsx`.
+- Iris: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/meta/*`, `apps/hub/app/api/iris/tickets/route.ts`, `apps/hub/app/api/iris/apolo/*`, `apps/hub/lib/iris/*`, pontes legadas `apps/hub/app/api/caredesk/meta/*`.
+- Apolo: `apps/hub/app/apolo/page.tsx`, `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/app/api/apolo/relationships/route.ts`, `apps/hub/app/api/apolo/search/route.ts`, `apps/hub/lib/apolo/*`.
+- Dependencias compartilhadas do recorte: `apps/hub/components/hub-support/*`, `apps/hub/app/api/hub/it-tickets/*`, `apps/hub/lib/hub-it-tickets/*`, `apps/hub/layouts/hub-shell.tsx`, `apps/hub/lib/supabase/server-config.ts`, `packages/shared/src/modules/registry.ts`, `packages/shared/src/permissions/*`.
+- Indice de homologacao: `docs/operations/releases-homologation.md`.
+
+Arquivos/modulos excluidos:
+- Hermes/PulseX, Atlas, Zeus/SquadOps, PWA, docs de arquitetura fora do recorte, scripts Atlas, scripts Apolo, `apps/hub/app/api/apolo/sync/c2x/route.ts`, migrations `0025` e `0026`, `.env.local` e qualquer alteracao de env/secret/chave.
+- Producao nao foi alterada.
+- Nenhuma migration, sync, Supabase mutavel, chave, secret, dominio de producao ou alias de producao foi executado.
+
+Como foi feito:
+- Cruzei diario, indice de homologacao e `git status` para localizar recortes pendentes.
+- Stageei somente 39 arquivos relacionados a Hades/Iris/Apolo e dependencias compartilhadas necessarias.
+- Rodei `git diff --cached --check` e varredura staged para padroes criticos de segredo; o unico match foi falso positivo em nome de canal `iris-caredesk-*`, sem valor sensivel.
+- Criei o commit `44d1e80 feat(panteon): homologate hades iris apolo recortes`.
+- Criei worktree limpo em `.codex-deploy/hades-iris-apolo-20260521-090737` a partir do commit `44d1e80`.
+- Validei e publiquei Vercel Preview a partir do worktree limpo, depois apontei apenas `https://homo.c2x.app.br` para o novo deployment.
+
+Logica usada:
+- Hades inicia atendimento de cobranca, mas Iris permanece a fonte operacional externa para Meta/WhatsApp e tickets `AT`.
+- Apolo entra como camada CRM/relacionamentos para consulta operacional, sem executar sync automatico e sem aplicar migration.
+- HelpDesk/Athena entrou apenas como dependencia tecnica do fluxo de ticket/gravação usado pelo Hades e pelo shell.
+- Homologacao recebeu somente o que estava apto e validado; pacotes sensiveis ou de outros agentes ficaram pendentes.
+
+Commit/deploy:
+- Commit de homologacao: `44d1e80 feat(panteon): homologate hades iris apolo recortes`.
+- Deployment Vercel Preview: `dpl_9ffymgKWRCf6DE8bK9XnbYrvbwh4`.
+- URL tecnica: `https://careli-hub-hub-i2bs-8z51pla43-lucasruas-devs-projects.vercel.app`.
+- Alias de homologacao: `https://homo.c2x.app.br`.
+
+Validacao executada:
+- Worktree principal: `git diff --cached --check` passou.
+- Worktree principal: varredura staged para secrets nao encontrou valor sensivel.
+- Worktree principal: `npm.cmd run check-types:hub` passou.
+- Worktree principal: `npm.cmd run lint:hub` passou, mantendo warning conhecido do `eslint.config.js`.
+- Worktree principal: `npm.cmd run build --workspace @repo/hub` passou, mantendo warning conhecido Turbopack/NFT.
+- Worktree limpo `44d1e80`: `git status --short` limpo.
+- Worktree limpo `44d1e80`: `git diff --check` passou.
+- Worktree limpo `44d1e80`: `npm.cmd run check-types:hub` passou.
+- Worktree limpo `44d1e80`: `npm.cmd run lint:hub` passou.
+- Worktree limpo `44d1e80`: `npm.cmd run build --workspace @repo/hub` passou.
+- Build remoto Vercel passou com warnings conhecidos: `npm audit`, engines Node, Turbopack/NFT e variaveis `HOMOLOG_*` fora do `turbo.json` para pacotes compartilhados.
+
+Healthchecks de homologacao:
+- `vercel inspect https://homo.c2x.app.br`: deployment `dpl_9ffymgKWRCf6DE8bK9XnbYrvbwh4` em `Ready`.
+- `GET https://homo.c2x.app.br/`: `200`, 1030ms.
+- `GET https://homo.c2x.app.br/hades`: `200`, 899ms.
+- `GET https://homo.c2x.app.br/hades/cobranca`: `200`, 775ms.
+- `GET https://homo.c2x.app.br/iris`: `200`, 828ms.
+- `GET https://homo.c2x.app.br/apolo`: `200`, 581ms.
+- `GET https://homo.c2x.app.br/api/hades/db/health`: `200`, 469ms.
+- `GET https://homo.c2x.app.br/api/guardian/db/health`: `200`, 486ms.
+- `GET https://homo.c2x.app.br/api/iris/meta/webhook` sem challenge: `403` esperado.
+- `GET https://homo.c2x.app.br/api/iris/meta/events` sem sessao: `401` esperado.
+- `POST https://homo.c2x.app.br/api/iris/meta/messages` sem sessao: `401` esperado.
+- `GET https://homo.c2x.app.br/api/iris/tickets` sem sessao: `401` esperado.
+- `GET https://homo.c2x.app.br/api/iris/apolo/search?q=teste&limit=5` sem sessao: `401` esperado.
+- `GET https://homo.c2x.app.br/api/apolo/relationships?limit=10`: `200`, 1187ms.
+- `vercel logs https://homo.c2x.app.br --since 20m --limit 50`: apenas logs `info` esperados dos healthchecks, sem erro critico.
+
+Pendencias ou riscos conhecidos:
+- Validacao autenticada real ainda depende do Lucas em `https://homo.c2x.app.br` para abrir Hades cobranca, Iris e Apolo com sessao adm.
+- Envio Meta real depende de template/canal/aprovacao e nao foi exercitado por smoke sem bearer.
+- Apolo publicou leitura/consulta, mas migration `0026` e scripts de sync ficaram fora; DataOps/Zeus deve tratar banco/sync em recorte proprio se necessario.
+- Migration `0025` da Iris tambem ficou fora desta homologacao.
+- O worktree principal permanece com outros recortes locais mistos; nao usar como pacote geral de deploy.
+
+Proximo passo recomendado:
+- Lucas validar visual e fluxo autenticado em homologacao.
+- Hades Core acompanhar abertura de atendimento pela Iris.
+- Iris Core acompanhar Meta/tickets/templates em sessao real.
+- Apolo Core validar dados/relacionamentos exibidos e solicitar DataOps se precisar aplicar schema/sync.
+- Hefesto so promove para producao depois de aprovacao explicita e novo recorte limpo.
