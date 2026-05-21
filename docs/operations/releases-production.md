@@ -775,3 +775,60 @@ Registro de producao:
 - Pendencias: Lucas validar Hermes autenticado em producao com imagem anexada real e conversa direta entre usuarios; Hermes Core acompanhar ajuste fino se houver divergencia visual ou funcional.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Lucas validar Hermes em producao; Hefesto manter rollback pronto para `dpl_38UfuTya4R6SS24dJKzi1PA3Ecv7`.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao Hermes biblioteca local de figurinhas`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-21 14:37:12 -03:00`.
+- Ambiente: `producao`.
+- Autorizacao: Lucas solicitou explicitamente subir em producao a melhoria feita pelo Hermes.
+- Origem/homologacao de referencia: registro Hermes local `[Hermes] Biblioteca local de figurinhas`; promocao direta autorizada pelo Lucas, sem homologacao formal separada.
+- Escopo publicado:
+  - biblioteca local de figurinhas no Hermes com abas `Minhas` e `Padrao`;
+  - salvamento de imagens pequenas como figurinhas locais do usuario;
+  - persistencia em `localStorage` por usuario, sem migration;
+  - envio de sticker personalizado com metadata de imagem;
+  - renderizacao de sticker grande, sem card/legenda interna.
+- Commit de referencia no branch local: `49179b7 feat(hermes): add local sticker library`.
+- Pacote limpo publicado: `.codex-deploy/prod-hermes-stickers-20260521-143155`, baseado no pacote Hermes de producao anterior `.codex-deploy/prod-hermes-preview-direct-20260521-135349`.
+- Deployment anterior: `dpl_6315rmvTMtBikupELU37FmEtS7ek`.
+- Deployment novo: `dpl_JEA6MdUWm9EPwT5CKfXWMdi7nDMo`; URL tecnica `https://careli-hub-hub-i2bs-f3zacogzc-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado em `dpl_JEA6MdUWm9EPwT5CKfXWMdi7nDMo`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado em `dpl_JEA6MdUWm9EPwT5CKfXWMdi7nDMo`, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/components/pulsex/message-composer.tsx`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos: Iris, Hades, Zeus, Atlas, Apolo, Chronos, Setup, PWA, scripts, migrations, envs, secrets, tokens, service role, banco e Supabase mutavel.
+- Validacoes executadas:
+  - eslint focado nos tres arquivos Hermes: OK;
+  - `git diff --check` focado: OK, apenas avisos CRLF;
+  - scan simples de secrets nos tres arquivos: sem matches;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - build do pacote limpo: OK;
+  - build remoto Vercel Production: `READY`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://c2x.app.br/pulsex`: `200`;
+  - `GET https://ops.c2x.app.br/hermes`: `200`;
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200`;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200`;
+  - `GET https://c2x.app.br/api/pulsex/messages` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/operations/monitoring` sem sessao: `401` esperado.
+- Logs recentes: `npx.cmd vercel logs` em `c2x.app.br` e `ops.c2x.app.br` retornou chamadas `info`, sem erro critico observado.
+- Riscos conhecidos:
+  - promocao direta por autorizacao do Lucas, sem homologacao formal separada;
+  - figurinhas locais nao sincronizam entre dispositivos nesta V1;
+  - limite de `512 KB` e ate `24` figurinhas salvas por usuario;
+  - validacao autenticada final depende do Lucas.
+- Rollback definido: promover novamente `dpl_6315rmvTMtBikupELU37FmEtS7ek` se Hermes, login, Zeus/OPS, Hades/Guardian health ou rotas protegidas apresentarem regressao critica.
+- Pendencias: Lucas validar salvamento, envio e renderizacao de figurinha personalizada em producao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Hermes Core acompanhar ajuste fino se houver divergencia visual/funcional.
