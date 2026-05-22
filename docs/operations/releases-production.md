@@ -1286,3 +1286,47 @@ Registro de producao:
   - `npm audit` remoto segue apontando vulnerabilidades conhecidas sem bloqueio de build.
 - Rollback: promover novamente `dpl_77iPfbbj1e8ohnc5tHm6obmxeMRt` se houver regressao critica em Home, Asana, Panteon principal ou OPS.
 - Proxima acao: Hefesto pode identificar este recorte pelo identificador `HEFESTO-PROD-20260522-1804-ZEUS-ASANA-DUE-DATES`; Lucas validar a Home autenticada para confirmar os numeros reais do Asana.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Rotulos Asana por data de entrega em producao`.
+- Identificador Hefesto: `HEFESTO-PROD-20260522-1825-ZEUS-ASANA-DUE-LABELS`.
+- Squad/agente responsavel: `Zeus Core`, com publicacao direta autorizada por Lucas.
+- Data e hora local: `2026-05-22 18:25:44 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou subir a correcao de nomenclatura para remover a leitura de tarefa criada e reforcar que o KPI representa atividades com data de entrega no periodo.
+- Escopo publicado:
+  - troca do rotulo `programadas` para `com entrega`;
+  - troca do badge `prazo no periodo` para `data de entrega no periodo`;
+  - sem alteracao de schema, env, secret, banco, migration ou API externa.
+- Commit publicado:
+  - `5cb293d fix(zeus): clarify asana due date labels`.
+- Pacote limpo publicado:
+  - `.codex-deploy/asana-labels-prod-5cb293d/workspace`.
+- Deployment:
+  - anterior: `dpl_66CR8Tw74aXkkfNZHNfT2GQy1dK7`;
+  - novo: `dpl_3EpJcaxKw1xExNwbZ2sP3C87ZFqn`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-bb95d15w0-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/app/page.tsx`.
+- Arquivos/modulos excluidos:
+  - Iris, Hades, Hermes, Atlas, Chronos, Apolo, Setup, login, migrations, banco, Supabase mutavel, envs, secrets e alteracoes locais paralelas nao commitadas.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `git diff --cached --check`: OK antes do commit;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs fora de `turbo.json`;
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/asana/performance` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel inspect careli-hub-hub-i2bs-bb95d15w0-lucasruas-devs-projects.vercel.app`: `Ready`, aliases `c2x.app.br` e `ops.c2x.app.br`;
+  - logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br` apos deploy: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada do texto final no painel Asana depende de Lucas acessar a Home com sessao real e atualizar o cache do navegador;
+  - a regra numerica continua sendo a do deploy anterior: base por `due_on`/`due_at`.
+- Rollback: promover novamente `dpl_66CR8Tw74aXkkfNZHNfT2GQy1dK7` se houver regressao visual critica na Home/Asana.
+- Proxima acao: Lucas validar a Home autenticada; Hefesto pode identificar este recorte pelo identificador `HEFESTO-PROD-20260522-1825-ZEUS-ASANA-DUE-LABELS`.
