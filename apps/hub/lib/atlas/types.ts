@@ -72,10 +72,12 @@ export type AtlasOccurrence = {
   justification?: {
     reviewedAt?: string | null;
     reviewedByUserId?: string | null;
+    reviewedByUserName?: string | null;
     reviewNote?: string | null;
     status: AtlasOccurrenceJustificationStatus;
     submittedAt?: string | null;
     submittedByUserId?: string | null;
+    submittedByUserName?: string | null;
     text?: string | null;
   };
   observation?: string | null;

@@ -1,14 +1,12 @@
 "use client";
 
 import {
-  addAtlasOccurrenceEvidences,
   createAtlasFpeEntry as createAtlasFpeEntryRequest,
   createAtlasOccurrence as createAtlasOccurrenceRequest,
   loadAtlasSnapshot,
   reviewAtlasOccurrenceJustification,
   submitAtlasOccurrenceJustification,
   uploadAtlasEvidenceFile,
-  type AddAtlasOccurrenceEvidencesClientInput,
   type AtlasEvidenceClientInput,
   type CreateAtlasFpeEntryClientInput,
   type CreateAtlasOccurrenceClientInput,
@@ -50,7 +48,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Paperclip,
-  PiggyBank,
   Plus,
   RefreshCcw,
   Search,
@@ -76,11 +73,7 @@ import { Tooltip } from "@repo/uix";
 
 type AtlasLoadState = "idle" | "loading" | "ready" | "error";
 type AtlasMutationState = "idle" | "saving";
-type AtlasSection =
-  | "fpe"
-  | "relatorios"
-  | "ocorrencias"
-  | "colaboradores";
+type AtlasSection = "colaboradores" | "desempenho" | "fpe";
 
 type AtlasMenuItem = {
   adminOnly?: boolean;
@@ -102,7 +95,6 @@ type AtlasFilterState = {
 
 type AtlasDialogState =
   | { mode: "create" }
-  | { mode: "evidences"; occurrence: AtlasOccurrence }
   | { mode: "fpe-create" }
   | { mode: "justify"; occurrence: AtlasOccurrence }
   | { mode: "review"; occurrence: AtlasOccurrence }
@@ -171,21 +163,15 @@ const initialFilters: AtlasFilterState = {
 const atlasNavigationItems = [
   {
     adminOnly: false,
-    icon: BarChart3,
-    id: "relatorios",
-    label: "Dashboard",
-  },
-  {
-    adminOnly: false,
-    icon: PiggyBank,
+    icon: WalletCards,
     id: "fpe",
     label: "FPE",
   },
   {
     adminOnly: false,
-    icon: ClipboardList,
-    id: "ocorrencias",
-    label: "Lancamentos",
+    icon: BarChart3,
+    id: "desempenho",
+    label: "Desempenho",
   },
   {
     adminOnly: true,
@@ -198,7 +184,7 @@ const atlasNavigationItems = [
 export function AtlasPage() {
   const { authState, hubUser, profileStatus } = useAuth();
   const [activeSection, setActiveSection] =
-    useState<AtlasSection>("relatorios");
+    useState<AtlasSection>("desempenho");
   const [snapshot, setSnapshot] = useState<AtlasSnapshot | null>(null);
   const [status, setStatus] = useState<AtlasLoadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -281,14 +267,6 @@ export function AtlasPage() {
     [accessToken, runAtlasMutation],
   );
 
-  const handleAddEvidences = useCallback(
-    (input: AddAtlasOccurrenceEvidencesClientInput) =>
-      runAtlasMutation(() =>
-        addAtlasOccurrenceEvidences(input, accessToken),
-      ),
-    [accessToken, runAtlasMutation],
-  );
-
   const handleSubmitJustification = useCallback(
     (input: SubmitAtlasJustificationClientInput) =>
       runAtlasMutation(() =>
@@ -315,7 +293,7 @@ export function AtlasPage() {
 
   useEffect(() => {
     if (!isAdmin && isAdminSection(activeSection)) {
-      setActiveSection("relatorios");
+      setActiveSection("desempenho");
     }
   }, [activeSection, isAdmin]);
 
@@ -352,15 +330,14 @@ export function AtlasPage() {
             />
           ) : null}
 
-          {activeSection === "relatorios" ? (
-            <ReportsSection
+          {activeSection === "desempenho" ? (
+            <PerformanceSection
+              canOpenOccurrences={canOpenOccurrences}
               canReviewJustifications={canReviewJustifications}
               filters={filters}
               isBlocked={isBlocked}
               onChangeFilters={setFilters}
-              onOpenEvidence={(occurrence) =>
-                setDialog({ mode: "evidences", occurrence })
-              }
+              onOpenCreate={() => setDialog({ mode: "create" })}
               onOpenJustification={(occurrence) =>
                 setDialog({ mode: "justify", occurrence })
               }
@@ -378,29 +355,6 @@ export function AtlasPage() {
               canManageFpe={canManageFpe}
               isBlocked={isBlocked}
               onOpenCreate={() => setDialog({ mode: "fpe-create" })}
-              snapshot={atlasData}
-              viewModel={viewModel}
-            />
-          ) : null}
-
-          {activeSection === "ocorrencias" ? (
-            <OccurrencesSection
-              canOpenOccurrences={canOpenOccurrences}
-              canReviewJustifications={canReviewJustifications}
-              filters={filters}
-              isBlocked={isBlocked}
-              onChangeFilters={setFilters}
-              onOpenCreate={() => setDialog({ mode: "create" })}
-              onOpenEvidence={(occurrence) =>
-                setDialog({ mode: "evidences", occurrence })
-              }
-              onOpenJustification={(occurrence) =>
-                setDialog({ mode: "justify", occurrence })
-              }
-              onOpenReview={(occurrence) =>
-                setDialog({ mode: "review", occurrence })
-              }
-              onResetFilters={() => setFilters(initialFilters)}
               snapshot={atlasData}
               viewModel={viewModel}
             />
@@ -436,19 +390,6 @@ export function AtlasPage() {
           }}
           onSubmit={handleCreateFpeEntry}
           snapshot={atlasData}
-          viewModel={viewModel}
-        />
-      ) : null}
-      {dialog?.mode === "evidences" ? (
-        <EvidenceDialog
-          error={mutationError}
-          isSaving={mutationStatus === "saving"}
-          occurrence={dialog.occurrence}
-          onClose={() => {
-            setDialog(null);
-            setMutationError(null);
-          }}
-          onSubmit={handleAddEvidences}
           viewModel={viewModel}
         />
       ) : null}
@@ -727,12 +668,100 @@ function BlockedNotice({
   );
 }
 
+function PerformanceSection({
+  canOpenOccurrences,
+  canReviewJustifications,
+  filters,
+  isBlocked,
+  onChangeFilters,
+  onOpenCreate,
+  onOpenJustification,
+  onOpenReview,
+  onResetFilters,
+  snapshot,
+  viewModel,
+}: {
+  canOpenOccurrences: boolean;
+  canReviewJustifications: boolean;
+  filters: AtlasFilterState;
+  isBlocked: boolean;
+  onChangeFilters: (filters: AtlasFilterState) => void;
+  onOpenCreate: () => void;
+  onOpenJustification: (occurrence: AtlasOccurrence) => void;
+  onOpenReview: (occurrence: AtlasOccurrence) => void;
+  onResetFilters: () => void;
+  snapshot: AtlasSnapshot;
+  viewModel: AtlasViewModel;
+}) {
+  const [activeTab, setActiveTab] = useState<"dashboard" | "lancamentos">(
+    "dashboard",
+  );
+
+  return (
+    <div className="grid gap-4">
+      <div className="inline-flex w-fit items-center gap-1 rounded-lg border border-[#d9e0e7] bg-white p-1 shadow-sm">
+        <button
+          className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30 ${
+            activeTab === "dashboard"
+              ? "bg-[#101820] text-white shadow-sm"
+              : "text-[#526078] hover:bg-[#f4f7fa] hover:text-[#101820]"
+          }`}
+          onClick={() => setActiveTab("dashboard")}
+          type="button"
+        >
+          <BarChart3 aria-hidden="true" size={15} />
+          Dashboard
+        </button>
+        <button
+          className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30 ${
+            activeTab === "lancamentos"
+              ? "bg-[#101820] text-white shadow-sm"
+              : "text-[#526078] hover:bg-[#f4f7fa] hover:text-[#101820]"
+          }`}
+          onClick={() => setActiveTab("lancamentos")}
+          type="button"
+        >
+          <ClipboardList aria-hidden="true" size={15} />
+          Lancamentos
+        </button>
+      </div>
+
+      {activeTab === "dashboard" ? (
+        <ReportsSection
+          canReviewJustifications={canReviewJustifications}
+          filters={filters}
+          isBlocked={isBlocked}
+          onChangeFilters={onChangeFilters}
+          onOpenJustification={onOpenJustification}
+          onOpenReview={onOpenReview}
+          onResetFilters={onResetFilters}
+          snapshot={snapshot}
+          viewModel={viewModel}
+        />
+      ) : (
+        <OccurrencesSection
+          canOpenOccurrences={canOpenOccurrences}
+          canReviewJustifications={canReviewJustifications}
+          filters={filters}
+          isBlocked={isBlocked}
+          onChangeFilters={onChangeFilters}
+          onOpenCreate={onOpenCreate}
+          onOpenJustification={onOpenJustification}
+          onOpenReview={onOpenReview}
+          onResetFilters={onResetFilters}
+          snapshot={snapshot}
+          viewModel={viewModel}
+        />
+      )}
+    </div>
+  );
+}
+
 function ReportsSection({
   canReviewJustifications,
   filters,
   isBlocked,
   onChangeFilters,
-  onOpenEvidence,
   onOpenJustification,
   onOpenReview,
   onResetFilters,
@@ -743,7 +772,6 @@ function ReportsSection({
   filters: AtlasFilterState;
   isBlocked: boolean;
   onChangeFilters: (filters: AtlasFilterState) => void;
-  onOpenEvidence: (occurrence: AtlasOccurrence) => void;
   onOpenJustification: (occurrence: AtlasOccurrence) => void;
   onOpenReview: (occurrence: AtlasOccurrence) => void;
   onResetFilters: () => void;
@@ -817,7 +845,6 @@ function ReportsSection({
         canReviewJustifications={canReviewJustifications}
         isBlocked={isBlocked}
         mode="analytics"
-        onOpenEvidence={onOpenEvidence}
         onOpenJustification={onOpenJustification}
         onOpenReview={onOpenReview}
         occurrences={viewModel.filteredOccurrences}
@@ -858,7 +885,7 @@ function FpeSection({
             onClick={() => setActiveTab("caixinha")}
             type="button"
           >
-            <PiggyBank aria-hidden="true" size={15} />
+            <Gauge aria-hidden="true" size={15} />
             Caixinha
           </button>
           <button
@@ -922,8 +949,8 @@ function FpeDashboard({ viewModel }: { viewModel: AtlasFpeViewModel }) {
     <div className="grid gap-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(0,1.5fr)]">
         <Surface
-          icon={PiggyBank}
-          title="Caixinha FPE"
+          icon={Gauge}
+          title="Reserva FPE"
           toolbar={
             <StatusBadge tone={viewModel.totalEntriesImpact >= 0 ? "online" : "warning"}>
               {viewModel.totalEntriesImpact >= 0 ? "crescendo" : "reduzindo"}
@@ -1083,35 +1110,61 @@ function FpeJar({
 }) {
   const fillPercent = Math.round(clamp(percent, 0, 1) * 100);
   const isAboveBase = balance >= baseAmount;
+  const baseDelta = balance - baseAmount;
+  const gaugeAngle = Math.round(clamp(percent, 0, 1) * 360);
+  const markerPosition = `${fillPercent}%`;
+  const markerLabelPosition =
+    fillPercent <= 8
+      ? "1.9rem"
+      : fillPercent >= 92
+        ? "calc(100% - 1.9rem)"
+        : markerPosition;
   const health =
     fillPercent >= 80 ? "green" : fillPercent >= 50 ? "yellow" : "red";
   const healthLabel =
     health === "green" ? "saudavel" : health === "yellow" ? "atencao" : "critico";
-  const healthClasses = {
+  const healthConfig = {
     green: {
-      bar: "bg-emerald-500",
       badge: "online",
+      fill: "#10b981",
+      glow: "shadow-[0_1rem_2rem_rgba(16,185,129,0.18)]",
+      soft: "border-emerald-100 bg-emerald-50 text-emerald-700",
       text: "text-emerald-700",
     },
     red: {
-      bar: "bg-red-500",
       badge: "blocked",
+      fill: "#ef4444",
+      glow: "shadow-[0_1rem_2rem_rgba(239,68,68,0.16)]",
+      soft: "border-red-100 bg-red-50 text-red-700",
       text: "text-red-700",
     },
     yellow: {
-      bar: "bg-amber-400",
       badge: "warning",
+      fill: "#f59e0b",
+      glow: "shadow-[0_1rem_2rem_rgba(245,158,11,0.18)]",
+      soft: "border-amber-100 bg-amber-50 text-amber-700",
       text: "text-amber-700",
     },
-  }[health];
-  const coinMotionClass =
-    trend === "down"
-      ? "fpe-meter-coin--falling"
-      : trend === "up"
-        ? "fpe-meter-coin--rising"
-        : "fpe-meter-coin--steady";
+  } satisfies Record<
+    "green" | "red" | "yellow",
+    {
+      badge: "blocked" | "online" | "warning";
+      fill: string;
+      glow: string;
+      soft: string;
+      text: string;
+    }
+  >;
+  const healthClasses = healthConfig[health];
   const trendLabel =
-    trend === "down" ? "descendo" : trend === "up" ? "subindo" : "estavel";
+    trend === "down"
+      ? "saldo em reducao"
+      : trend === "up"
+        ? "saldo em crescimento"
+        : "saldo estavel";
+  const trendIcon =
+    trend === "down" ? TrendingDown : trend === "up" ? TrendingUp : Gauge;
+  const TrendIcon = trendIcon;
 
   return (
     <div className="grid gap-4">
@@ -1119,7 +1172,7 @@ function FpeJar({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="m-0 text-xs font-bold uppercase text-[#697386]">
-              reserva FPE
+              reserva do ciclo
             </p>
             <p className="m-0 mt-1 text-3xl font-semibold text-[#101820]">
               {formatCurrency(balance)}
@@ -1128,52 +1181,101 @@ function FpeJar({
               base anual {formatCurrency(baseAmount)}
             </p>
           </div>
-          <StatusBadge tone={healthClasses.badge as "blocked" | "online" | "warning"}>
-            {healthLabel}
-          </StatusBadge>
+          <StatusBadge tone={healthClasses.badge}>{healthLabel}</StatusBadge>
         </div>
 
-        <div className="mt-5 rounded-lg border border-[#d9e0e7] bg-white p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="m-0 text-xs font-bold uppercase text-[#697386]">
-                saude do fundo
-              </p>
-              <p className={`m-0 mt-1 text-2xl font-semibold ${healthClasses.text}`}>
-                {formatPercent(percent)}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#697386]">
-              <span className="grid size-7 place-items-center rounded-full border border-[#d9e0e7] bg-[#f8fafc]">
-                <CircleDollarSign
-                  aria-hidden="true"
-                  className="size-4 stroke-[1.8] text-[#A07C3B]"
-                />
-              </span>
-              moedas {trendLabel}
+        <div className="mt-5 grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)]">
+          <div className="rounded-lg border border-[#d9e0e7] bg-white p-4">
+            <div
+              className={`relative mx-auto grid size-48 place-items-center rounded-full ${healthClasses.glow}`}
+              style={{
+                background: `conic-gradient(${healthClasses.fill} 0deg ${gaugeAngle}deg, #e7edf3 ${gaugeAngle}deg 360deg)`,
+              }}
+            >
+              <div className="absolute inset-3 rounded-full bg-white shadow-inner" />
+              <div className="relative z-10 text-center">
+                <p className={`m-0 text-4xl font-semibold ${healthClasses.text}`}>
+                  {formatPercent(percent)}
+                </p>
+                <p className="m-0 mt-1 text-[0.68rem] font-bold uppercase tracking-normal text-[#697386]">
+                  saude FPE
+                </p>
+              </div>
+              <span className="absolute bottom-8 left-1/2 z-10 h-2 w-14 -translate-x-1/2 rounded-full bg-[#101820]" />
             </div>
           </div>
 
-          <div className="relative mt-6 h-16">
-            <div className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-full bg-gradient-to-r from-red-100 via-amber-100 to-emerald-100 ring-1 ring-[#d9e0e7]" />
-            <div
-              className={`absolute left-0 top-1/2 h-4 -translate-y-1/2 rounded-full ${healthClasses.bar} transition-all duration-700 ease-out`}
-              style={{ width: `${fillPercent}%` }}
-            />
-            <div
-              className="absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${fillPercent}%` }}
-            >
-              <span className={`fpe-meter-coin ${coinMotionClass}`} />
+          <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-[#d9e0e7] bg-white px-3 py-3">
+                <p className="m-0 text-[0.68rem] font-bold uppercase text-[#697386]">
+                  base anual
+                </p>
+                <p className="m-0 mt-1 text-sm font-semibold text-[#101820]">
+                  {formatCurrency(baseAmount)}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-3 ${healthClasses.soft}`}>
+                <p className="m-0 text-[0.68rem] font-bold uppercase">
+                  saldo x base
+                </p>
+                <p className="m-0 mt-1 text-sm font-semibold">
+                  {formatSignedCurrency(baseDelta)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-[#d9e0e7] bg-white px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <TrendIcon
+                    aria-hidden="true"
+                    className={`size-4 stroke-[1.8] ${healthClasses.text}`}
+                  />
+                  <div className="min-w-0">
+                    <p className="m-0 text-[0.68rem] font-bold uppercase text-[#697386]">
+                      tendencia
+                    </p>
+                    <p className="m-0 mt-0.5 truncate text-sm font-semibold text-[#101820]">
+                      {trendLabel}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="absolute left-1/2 top-10 h-4 border-l border-[#8b96a8]/45" />
-            <div className="absolute left-[80%] top-10 h-4 border-l border-[#8b96a8]/45" />
-            <span className="absolute left-1/2 top-14 -translate-x-1/2 text-[0.68rem] font-bold uppercase text-[#697386]">
-              50%
-            </span>
-            <span className="absolute left-[80%] top-14 -translate-x-1/2 text-[0.68rem] font-bold uppercase text-[#697386]">
-              80%
-            </span>
+
+            <div className="rounded-lg border border-[#d9e0e7] bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="m-0 text-xs font-bold uppercase text-[#697386]">
+                  regua de saude
+                </p>
+                <p className={`m-0 text-xs font-bold uppercase ${healthClasses.text}`}>
+                  marcador em {formatPercent(percent)}
+                </p>
+              </div>
+              <div className="relative mt-4 h-14">
+                <div className="absolute inset-x-0 top-4 h-3 overflow-hidden rounded-full ring-1 ring-[#d9e0e7]">
+                  <div className="grid h-full grid-cols-[50fr_30fr_20fr]">
+                    <span className="bg-red-100" />
+                    <span className="bg-amber-100" />
+                    <span className="bg-emerald-100" />
+                  </div>
+                </div>
+                <div
+                  className="absolute top-1 z-10 h-9 w-1 -translate-x-1/2 rounded-full bg-[#101820] shadow-sm"
+                  style={{ left: markerPosition }}
+                />
+                <div
+                  className="absolute top-0 z-20 -translate-x-1/2 rounded-md border border-[#101820]/10 bg-white px-2 py-0.5 text-[0.68rem] font-bold uppercase text-[#101820] shadow-sm"
+                  style={{ left: markerLabelPosition }}
+                >
+                  atual
+                </div>
+                <span className="absolute left-1/2 top-9 -translate-x-1/2 text-[0.68rem] font-bold uppercase text-[#697386]">
+                  50%
+                </span>
+                <span className="absolute left-[80%] top-9 -translate-x-1/2 text-[0.68rem] font-bold uppercase text-[#697386]">
+                  80%
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1183,7 +1285,7 @@ function FpeJar({
               abaixo de 50%
             </p>
             <p className="m-0 mt-1 text-xs font-semibold text-red-700">
-              vermelho
+              zona critica
             </p>
           </div>
           <div className="rounded-md border border-amber-100 bg-amber-50 px-3 py-2">
@@ -1191,7 +1293,7 @@ function FpeJar({
               50% a 80%
             </p>
             <p className="m-0 mt-1 text-xs font-semibold text-amber-700">
-              amarelo
+              atencao
             </p>
           </div>
           <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2">
@@ -1199,7 +1301,7 @@ function FpeJar({
               acima de 80%
             </p>
             <p className="m-0 mt-1 text-xs font-semibold text-emerald-700">
-              verde
+              saudavel
             </p>
           </div>
         </div>
@@ -1211,79 +1313,32 @@ function FpeJar({
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-[#edf0f3]">
           <div
-            className={`h-full rounded-full ${healthClasses.bar} transition-all duration-700`}
-            style={{ width: `${fillPercent}%` }}
+            className="atlas-fpe-reserve-pulse h-full rounded-full transition-all duration-700"
+            style={{
+              backgroundColor: healthClasses.fill,
+              width: markerPosition,
+            }}
           />
         </div>
       </div>
       <style>{`
-        @keyframes atlas-fpe-coin-rise {
-          0%,
-          100% {
-            transform: translateY(0) rotate(-8deg);
+        @media (prefers-reduced-motion: no-preference) {
+          .atlas-fpe-reserve-pulse {
+            animation: atlas-fpe-reserve-pulse 3.2s ease-in-out infinite;
+            transform-origin: left center;
           }
-          50% {
-            transform: translateY(-12px) rotate(8deg);
+
+          @keyframes atlas-fpe-reserve-pulse {
+            0%,
+            100% {
+              opacity: 0.78;
+              transform: scaleX(0.94);
+            }
+            50% {
+              opacity: 1;
+              transform: scaleX(1);
+            }
           }
-        }
-
-        @keyframes atlas-fpe-coin-fall {
-          0%,
-          100% {
-            transform: translateY(-2px) rotate(6deg);
-          }
-          50% {
-            transform: translateY(12px) rotate(-8deg);
-          }
-        }
-
-        @keyframes atlas-fpe-coin-steady {
-          0%,
-          100% {
-            transform: translateY(0) scale(1);
-          }
-          50% {
-            transform: translateY(-4px) scale(1.03);
-          }
-        }
-
-        .fpe-meter-coin {
-          display: block;
-          height: 2.25rem;
-          position: relative;
-          width: 2.25rem;
-          border-radius: 9999px;
-          border: 1px solid rgb(160 124 59 / 0.38);
-          background:
-            radial-gradient(circle at 35% 28%, #fff8df 0 12%, transparent 13%),
-            linear-gradient(135deg, #f4d990 0%, #c79742 55%, #9f7834 100%);
-          box-shadow:
-            inset 0 0 0 0.23rem rgb(255 255 255 / 0.22),
-            0 0.35rem 0.7rem rgb(16 24 32 / 0.12);
-          animation: atlas-fpe-coin-steady 3.6s ease-in-out infinite;
-        }
-
-        .fpe-meter-coin::after {
-          position: absolute;
-          display: block;
-          inset: 0.32rem;
-          border-radius: 9999px;
-          border: 1px solid rgb(255 255 255 / 0.45);
-          content: "";
-        }
-
-        .fpe-meter-coin--rising {
-          animation-name: atlas-fpe-coin-rise;
-          animation-duration: 2.8s;
-        }
-
-        .fpe-meter-coin--falling {
-          animation-name: atlas-fpe-coin-fall;
-          animation-duration: 2.8s;
-        }
-
-        .fpe-meter-coin--steady {
-          animation-name: atlas-fpe-coin-steady;
         }
       `}</style>
     </div>
@@ -1433,7 +1488,6 @@ function OccurrencesSection({
   isBlocked,
   onChangeFilters,
   onOpenCreate,
-  onOpenEvidence,
   onOpenJustification,
   onOpenReview,
   onResetFilters,
@@ -1446,7 +1500,6 @@ function OccurrencesSection({
   isBlocked: boolean;
   onChangeFilters: (filters: AtlasFilterState) => void;
   onOpenCreate: () => void;
-  onOpenEvidence: (occurrence: AtlasOccurrence) => void;
   onOpenJustification: (occurrence: AtlasOccurrence) => void;
   onOpenReview: (occurrence: AtlasOccurrence) => void;
   onResetFilters: () => void;
@@ -1469,7 +1522,6 @@ function OccurrencesSection({
         isBlocked={isBlocked}
         mode="operations"
         onOpenCreate={onOpenCreate}
-        onOpenEvidence={onOpenEvidence}
         onOpenJustification={onOpenJustification}
         onOpenReview={onOpenReview}
         occurrences={viewModel.filteredOccurrences}
@@ -1669,7 +1721,6 @@ function OccurrencesTable({
   isBlocked,
   mode,
   onOpenCreate,
-  onOpenEvidence,
   onOpenJustification,
   onOpenReview,
   occurrences,
@@ -1680,7 +1731,6 @@ function OccurrencesTable({
   isBlocked: boolean;
   mode: "analytics" | "operations";
   onOpenCreate?: () => void;
-  onOpenEvidence: (occurrence: AtlasOccurrence) => void;
   onOpenJustification: (occurrence: AtlasOccurrence) => void;
   onOpenReview: (occurrence: AtlasOccurrence) => void;
   occurrences: AtlasOccurrence[];
@@ -1787,7 +1837,6 @@ function OccurrencesTable({
                       <OccurrenceActions
                         canReviewJustifications={canReviewJustifications}
                         occurrence={occurrence}
-                        onOpenEvidence={onOpenEvidence}
                         onOpenJustification={onOpenJustification}
                         onOpenReview={onOpenReview}
                       />
@@ -1875,13 +1924,88 @@ function JustificationSummary({
     pending: "Pendente",
     rejected: "Nao aceita",
   }[status];
+  const submittedAudit = formatAuditActionLabel(
+    "Justificado por",
+    occurrence.justification?.submittedByUserName,
+    occurrence.justification?.submittedByUserId,
+    occurrence.justification?.submittedAt,
+  );
+  const reviewAudit =
+    status === "accepted" || status === "rejected"
+      ? formatAuditActionLabel(
+          status === "accepted" ? "Aprovado por" : "Revisado por",
+          occurrence.justification?.reviewedByUserName,
+          occurrence.justification?.reviewedByUserId,
+          occurrence.justification?.reviewedAt,
+        )
+      : null;
 
   return (
-    <div className="grid max-w-[20rem] gap-1">
+    <div className="grid max-w-[22rem] gap-1">
       <StatusBadge tone={tone}>{label}</StatusBadge>
       {occurrence.justification?.text ? (
         <span className="truncate text-xs font-medium text-[#697386]">
           {occurrence.justification.text}
+        </span>
+      ) : null}
+      {submittedAudit ? (
+        <span className="truncate text-[0.6875rem] font-semibold text-[#8b96a8]">
+          {submittedAudit}
+        </span>
+      ) : null}
+      {reviewAudit ? (
+        <span className="truncate text-[0.6875rem] font-semibold text-[#8b96a8]">
+          {reviewAudit}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function JustificationAuditPanel({
+  occurrence,
+}: {
+  occurrence: AtlasOccurrence;
+}) {
+  const status = occurrence.justification?.status ?? "none";
+  const submittedAudit = formatAuditActionLabel(
+    "Justificado por",
+    occurrence.justification?.submittedByUserName,
+    occurrence.justification?.submittedByUserId,
+    occurrence.justification?.submittedAt,
+  );
+  const reviewAudit =
+    status === "accepted" || status === "rejected"
+      ? formatAuditActionLabel(
+          status === "accepted" ? "Aprovado por" : "Revisado por",
+          occurrence.justification?.reviewedByUserName,
+          occurrence.justification?.reviewedByUserId,
+          occurrence.justification?.reviewedAt,
+        )
+      : null;
+
+  if (!submittedAudit && !reviewAudit) {
+    return null;
+  }
+
+  return (
+    <div className="grid gap-2 rounded-md border border-[#edf0f3] bg-white px-3 py-2 text-xs font-semibold text-[#526078]">
+      {submittedAudit ? (
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <MessageSquareText
+            aria-hidden="true"
+            className="size-3.5 shrink-0 text-[#A07C3B]"
+          />
+          <span className="min-w-0 truncate">{submittedAudit}</span>
+        </span>
+      ) : null}
+      {reviewAudit ? (
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <ShieldCheck
+            aria-hidden="true"
+            className="size-3.5 shrink-0 text-[#A07C3B]"
+          />
+          <span className="min-w-0 truncate">{reviewAudit}</span>
         </span>
       ) : null}
     </div>
@@ -1891,13 +2015,11 @@ function JustificationSummary({
 function OccurrenceActions({
   canReviewJustifications,
   occurrence,
-  onOpenEvidence,
   onOpenJustification,
   onOpenReview,
 }: {
   canReviewJustifications: boolean;
   occurrence: AtlasOccurrence;
-  onOpenEvidence: (occurrence: AtlasOccurrence) => void;
   onOpenJustification: (occurrence: AtlasOccurrence) => void;
   onOpenReview: (occurrence: AtlasOccurrence) => void;
 }) {
@@ -1908,15 +2030,7 @@ function OccurrenceActions({
     canReviewJustifications && justificationStatus === "pending";
 
   return (
-    <div className="flex min-w-[12rem] flex-wrap items-center gap-2">
-      <button
-        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#243044] outline-none transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
-        onClick={() => onOpenEvidence(occurrence)}
-        type="button"
-      >
-        <Paperclip aria-hidden="true" size={14} />
-        Evidencias
-      </button>
+    <div className="flex min-w-[8rem] flex-wrap items-center gap-2">
       {canJustify ? (
         <button
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#243044] outline-none transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
@@ -1937,6 +2051,7 @@ function OccurrenceActions({
           Revisar
         </button>
       ) : null}
+      {!canJustify && !canReview ? <StatusBadge tone="neutral">-</StatusBadge> : null}
     </div>
   );
 }
@@ -2309,7 +2424,7 @@ function CreateFpeEntryDialog({
         </button>
       }
       error={error}
-      icon={PiggyBank}
+      icon={WalletCards}
       onClose={onClose}
       title="Novo lancamento FPE"
     >
@@ -2424,118 +2539,6 @@ type EvidenceDraft = {
   uploadError?: string | null;
   url: string;
 };
-
-function EvidenceDialog({
-  error,
-  isSaving,
-  occurrence,
-  onClose,
-  onSubmit,
-  viewModel,
-}: {
-  error: string | null;
-  isSaving: boolean;
-  occurrence: AtlasOccurrence;
-  onClose: () => void;
-  onSubmit: (input: AddAtlasOccurrenceEvidencesClientInput) => Promise<boolean>;
-  viewModel: AtlasViewModel;
-}) {
-  const [evidenceDrafts, setEvidenceDrafts] = useState<EvidenceDraft[]>([
-    createEvidenceDraft(),
-  ]);
-  const collaborator = viewModel.collaboratorsById.get(occurrence.collaboratorId);
-  const type = viewModel.typeById.get(occurrence.typeId);
-  const evidences = normalizeEvidenceDrafts(evidenceDrafts);
-  const isUploadingEvidence = hasEvidenceUploadInProgress(evidenceDrafts);
-
-  async function handleSubmit() {
-    if (evidences.length === 0) {
-      return;
-    }
-
-    const saved = await onSubmit({
-      evidences,
-      occurrenceId: occurrence.id,
-    });
-
-    if (saved) {
-      onClose();
-    }
-  }
-
-  return (
-    <AtlasDialogShell
-      action={
-        <button
-          className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={isSaving || isUploadingEvidence || evidences.length === 0}
-          onClick={() => void handleSubmit()}
-          type="button"
-        >
-          <Paperclip aria-hidden="true" size={15} />
-          Adicionar
-        </button>
-      }
-      error={error}
-      icon={Paperclip}
-      onClose={onClose}
-      title="Evidencias da ocorrencia"
-    >
-      <div className="grid gap-2 rounded-md border border-[#edf0f3] bg-[#f8fafc] p-3 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge tone="neutral">#{occurrence.code ?? "-"}</StatusBadge>
-          <StatusBadge tone={occurrence.hasEvidence ? "online" : "neutral"}>
-            {formatNumber(occurrence.evidences.length)} evidencias
-          </StatusBadge>
-        </div>
-        <p className="m-0 font-semibold text-[#101820]">
-          {collaborator?.name ?? "Colaborador nao mapeado"}
-        </p>
-        <p className="m-0 text-[#526078]">
-          {type?.name ?? "Ocorrencia nao mapeada"} em {formatDate(occurrence.date)}
-        </p>
-      </div>
-
-      {occurrence.evidences.length > 0 ? (
-        <div className="grid gap-2">
-          <p className="m-0 text-xs font-semibold uppercase text-[#697386]">
-            Evidencias atuais
-          </p>
-          <div className="grid gap-2">
-            {occurrence.evidences.map((evidence) => (
-              <a
-                className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-[#d9e0e7] bg-white px-3 py-2 text-sm font-semibold text-[#243044] outline-none transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5 focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
-                href={evidence.url}
-                key={evidence.id}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <ExternalLink
-                    aria-hidden="true"
-                    className="size-4 shrink-0 stroke-[1.8] text-[#A07C3B]"
-                  />
-                  <span className="truncate">
-                    {evidence.name?.trim() || evidence.url}
-                  </span>
-                </span>
-                <StatusBadge tone="neutral">
-                  {formatNumber(evidence.position)}
-                </StatusBadge>
-              </a>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <EvidenceDraftList
-        disabled={isSaving}
-        drafts={evidenceDrafts}
-        onChange={setEvidenceDrafts}
-      />
-    </AtlasDialogShell>
-  );
-}
 
 function EvidenceDraftList({
   disabled,
@@ -2852,6 +2855,7 @@ function JustificationDialog({
           <p className="m-0 text-[#243044]">{occurrence.observation}</p>
         ) : null}
       </div>
+      <JustificationAuditPanel occurrence={occurrence} />
       {mode === "justify" ? (
         <TextArea
           disabled={isSaving}
@@ -3513,7 +3517,49 @@ function formatDateTime(value?: string | null) {
     hour: "2-digit",
     minute: "2-digit",
     month: "2-digit",
+    year: "2-digit",
   }).format(date);
+}
+
+function formatAuditActionLabel(
+  prefix: string,
+  userName?: string | null,
+  userId?: string | null,
+  timestamp?: string | null,
+) {
+  const actor = formatAuditActor(userName, userId);
+  const formattedTimestamp = timestamp ? formatDateTime(timestamp) : null;
+  const hasValidTimestamp = Boolean(
+    formattedTimestamp && formattedTimestamp !== "-",
+  );
+
+  if (!actor && !hasValidTimestamp) {
+    return null;
+  }
+
+  if (actor && hasValidTimestamp) {
+    return `${prefix} ${actor} em ${formattedTimestamp}`;
+  }
+
+  if (actor) {
+    return `${prefix} ${actor}`;
+  }
+
+  return `${prefix} em ${formattedTimestamp}`;
+}
+
+function formatAuditActor(userName?: string | null, userId?: string | null) {
+  const normalizedName = userName?.trim();
+
+  if (normalizedName) {
+    return normalizedName;
+  }
+
+  if (userId) {
+    return `Usuario ${userId.slice(0, 8)}`;
+  }
+
+  return null;
 }
 
 function formatNumber(value: number) {

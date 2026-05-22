@@ -268,6 +268,16 @@ Observacao operacional:
 - a revisao de lideranca usa o perfil Hub (`leader` ou `admin`), nao o perfil
   legado do Atlas.
 
+Atualizacao operacional de auditoria em 2026-05-22:
+
+- o schema `0027_atlas_occurrence_justifications.sql` ja registra usuario Hub,
+  data e hora de envio da justificativa;
+- o mesmo schema registra usuario Hub, data e hora da revisao/aprovacao;
+- o snapshot Hub do Atlas passa a resolver esses IDs em `hub_users` para exibir
+  nome do usuario na tabela de lancamentos e no modal de revisao;
+- quando o nome do usuario nao estiver disponivel, a tela usa marcador tecnico
+  curto do ID para manter rastreabilidade sem bloquear a operacao.
+
 ## Fluxo V1 de evidencias multiplas
 
 Regra operacional definida em 2026-05-21:

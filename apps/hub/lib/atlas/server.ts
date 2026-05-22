@@ -180,6 +180,11 @@ type HubAtlasFpeEntryRow = {
   occurrence_type_legacy_id?: string | null;
 };
 
+type HubAtlasUserRow = {
+  display_name?: string | null;
+  id: string;
+};
+
 type AtlasDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
@@ -291,6 +296,12 @@ type HubAtlasDatabase = {
         Insert: never;
         Relationships: [];
         Row: HubAtlasRoleRow;
+        Update: never;
+      };
+      hub_users: {
+        Insert: never;
+        Relationships: [];
+        Row: HubAtlasUserRow;
         Update: never;
       };
     };
@@ -654,9 +665,14 @@ async function loadHubAtlasSnapshot(
     hubClient,
     occurrencesResult.data ?? [],
   );
+  const hubUsersById = await loadHubUsersById(
+    hubClient,
+    collectAtlasOccurrenceAuditUserIds(occurrencesResult.data ?? []),
+  );
   const occurrences = mapHubOccurrences(
     occurrencesResult.data ?? [],
     occurrenceEvidenceRows,
+    hubUsersById,
   );
   const fpeResult = await loadHubFpeEntries(hubClient);
   const userProfiles = userProfilesResult.error
@@ -747,6 +763,35 @@ async function loadHubOccurrenceEvidenceRows(
   }
 
   return data ?? [];
+}
+
+async function loadHubUsersById(
+  hubClient: SupabaseClient<HubAtlasDatabase>,
+  userIds: string[],
+): Promise<Map<string, HubAtlasUserRow>> {
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+
+  if (uniqueUserIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await hubClient
+    .from("hub_users")
+    .select("id,display_name")
+    .in("id", uniqueUserIds);
+
+  if (error) {
+    return new Map();
+  }
+
+  return new Map((data ?? []).map((user) => [user.id, user]));
+}
+
+function collectAtlasOccurrenceAuditUserIds(rows: HubAtlasOccurrenceRow[]) {
+  return rows.flatMap((row) => [
+    row.justification_reviewed_by_user_id ?? "",
+    row.justification_submitted_by_user_id ?? "",
+  ]);
 }
 
 async function loadHubFpeEntries(
@@ -893,6 +938,7 @@ function getOccurrenceEvidences(
 function mapHubOccurrences(
   rows: HubAtlasOccurrenceRow[],
   evidenceRows: HubAtlasOccurrenceEvidenceRow[],
+  hubUsersById: Map<string, HubAtlasUserRow>,
 ): AtlasOccurrence[] {
   const evidenceRowsByOccurrence = groupEvidenceRowsByOccurrence(evidenceRows);
 
@@ -924,10 +970,18 @@ function mapHubOccurrences(
       justification: {
         reviewedAt: row.justification_reviewed_at ?? null,
         reviewedByUserId: row.justification_reviewed_by_user_id ?? null,
+        reviewedByUserName: getHubUserDisplayName(
+          hubUsersById,
+          row.justification_reviewed_by_user_id,
+        ),
         reviewNote: row.justification_review_note ?? null,
         status: normalizeJustificationStatus(row.justification_status),
         submittedAt: row.justification_submitted_at ?? null,
         submittedByUserId: row.justification_submitted_by_user_id ?? null,
+        submittedByUserName: getHubUserDisplayName(
+          hubUsersById,
+          row.justification_submitted_by_user_id,
+        ),
         text: row.justification_text ?? null,
       },
       observation: row.observation ?? null,
@@ -935,6 +989,17 @@ function mapHubOccurrences(
       typeId: row.occurrence_type_legacy_id,
     };
   });
+}
+
+function getHubUserDisplayName(
+  hubUsersById: Map<string, HubAtlasUserRow>,
+  userId?: string | null,
+) {
+  if (!userId) {
+    return null;
+  }
+
+  return hubUsersById.get(userId)?.display_name?.trim() || null;
 }
 
 function mapHubFpeEntries(
