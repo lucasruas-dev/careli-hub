@@ -1194,3 +1194,95 @@ Atualizacao de producao:
   - nao houve novo artefato porque redeploy seria redundante e poderia mascarar a rastreabilidade do pacote atual;
   - validacao autenticada visual do Atlas em producao segue recomendada para Lucas.
 - Status final: `EM PRODUCAO`.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Asana Performance em producao`.
+- Identificador Hefesto: `HEFESTO-PROD-20260522-1719-ZEUS-ASANA-PERFORMANCE`.
+- Squad/agente responsavel: `Zeus Core`, com publicacao direta autorizada por Lucas.
+- Data e hora local: `2026-05-22 17:19:08 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou configurar a integracao Asana, melhorar velocidade de carregamento e subir em producao antes de seguir para o padrao visual de frontend.
+- Escopo publicado:
+  - rota `GET /api/hub/asana/performance` com cache curto em memoria por periodo/configuracao/usuarios;
+  - carregamento de colaboradores em lotes controlados de 4 para reduzir latencia sem abrir paralelismo ilimitado contra a API Asana;
+  - envs `ASANA_*` existentes em Preview promovidas para tambem valerem em Production sem leitura, copia ou exposicao dos valores sensiveis.
+- Commit publicado:
+  - `f21dc0d perf(zeus): cache asana performance reads`.
+- Pacote limpo publicado:
+  - `.codex-deploy/asana-prod-f21dc0d`.
+- Deployment:
+  - anterior: `dpl_AXsmmLA9xveG2vyTzSMtKEnnGrP8`;
+  - novo: `dpl_77iPfbbj1e8ohnc5tHm6obmxeMRt`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-b7hpr87me-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/app/api/hub/asana/performance/route.ts`.
+- Arquivos/modulos excluidos:
+  - Iris, Hades, Hermes, Atlas, Chronos, Apolo, Setup, login, migrations, banco, Supabase mutavel, alteracoes locais paralelas e arquivos de frontend ainda pendentes.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `git diff --cached --check`: OK antes do commit;
+  - `npx.cmd vercel env ls production`: confirmou `ASANA_ACCESS_TOKEN`, `ASANA_WORKSPACE_MODE`, `ASANA_WORKSPACE_GID`, `ASANA_TASK_WINDOW_DAYS` e `ASANA_TASK_LIMIT_PER_USER` em `Preview, Production`, sem exibir valores;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs fora de `turbo.json`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/asana/performance` sem sessao: `401 Unauthorized` esperado;
+  - logs Vercel de erro em `c2x.app.br` apos deploy: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada do painel `Asana / Performance dos colaboradores` depende de Lucas acessar a Home em sessao real;
+  - se o token Asana nao tiver acesso aos workspaces esperados, a rota retornara erro operacional da API Asana, nao erro de env ausente;
+  - `npm audit` remoto segue apontando vulnerabilidades conhecidas sem bloqueio de build.
+- Rollback: promover novamente `dpl_AXsmmLA9xveG2vyTzSMtKEnnGrP8` se houver regressao critica em Home, Asana, Panteon principal ou OPS.
+- Proxima acao: Lucas validar o painel Asana autenticado em producao; Zeus seguir depois para a documentacao do padrao visual de frontend.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Asana por prazo previsto em producao`.
+- Identificador Hefesto: `HEFESTO-PROD-20260522-1804-ZEUS-ASANA-DUE-DATES`.
+- Squad/agente responsavel: `Zeus Core`, com publicacao direta autorizada por Lucas.
+- Data e hora local: `2026-05-22 18:04:20 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas aprovou subir em producao o ajuste que muda a leitura do painel Asana para tarefas programadas pelo prazo previsto.
+- Escopo publicado:
+  - painel Home/Asana passa a usar `due_on`/`due_at` como base do periodo;
+  - periodo `Mes` passa a considerar o mes completo;
+  - indicadores reorganizados para `programadas`, `a vencer`, `vencidas`, `no prazo` e `fora prazo`;
+  - busca server-side usa Search API do Asana por prazo, mantendo fallback operacional limitado quando search nao estiver disponivel.
+- Commit publicado:
+  - `ccb87c7 fix(zeus): align asana metrics with due dates`.
+- Pacote limpo publicado:
+  - `.codex-deploy/asana-due-prod-ccb87c7-zip/workspace`.
+- Deployment:
+  - anterior: `dpl_77iPfbbj1e8ohnc5tHm6obmxeMRt`;
+  - novo: `dpl_66CR8Tw74aXkkfNZHNfT2GQy1dK7`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-yqxw6j6k8-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/app/api/hub/asana/performance/route.ts`;
+  - `apps/hub/lib/asana-performance.ts`;
+  - `apps/hub/app/page.tsx`.
+- Arquivos/modulos excluidos:
+  - Iris, Hades, Hermes, Atlas, Chronos, Apolo, Setup, login, migrations, banco, Supabase mutavel, envs, secrets e alteracoes locais paralelas nao commitadas.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `git diff --cached --check`: OK antes do commit;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs fora de `turbo.json`;
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/asana/performance` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel inspect careli-hub-hub-i2bs-yqxw6j6k8-lucasruas-devs-projects.vercel.app`: `Ready`, aliases `c2x.app.br` e `ops.c2x.app.br`;
+  - logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br` apos deploy: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada do painel Asana depende de Lucas acessar a Home em sessao real;
+  - fallback `tasks_list_fallback` continua limitado pela janela operacional quando o Search API do Asana nao estiver disponivel;
+  - `npm audit` remoto segue apontando vulnerabilidades conhecidas sem bloqueio de build.
+- Rollback: promover novamente `dpl_77iPfbbj1e8ohnc5tHm6obmxeMRt` se houver regressao critica em Home, Asana, Panteon principal ou OPS.
+- Proxima acao: Hefesto pode identificar este recorte pelo identificador `HEFESTO-PROD-20260522-1804-ZEUS-ASANA-DUE-DATES`; Lucas validar a Home autenticada para confirmar os numeros reais do Asana.
