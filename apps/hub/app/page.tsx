@@ -36,7 +36,6 @@ import {
   KeyRound,
   ListChecks,
   MessageSquareText,
-  Percent,
   RefreshCw,
   Target,
   TimerReset,
@@ -272,19 +271,23 @@ export default function HomePage() {
                 />
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   <DayMetric label="reunioes agora" value={meetingCount} />
-                  <DayMetric label="criadas no periodo" value={taskCount} />
+                  <DayMetric label="programadas" value={taskCount} />
                   <DayMetric
-                    label="AT"
-                    value={asanaSnapshot?.totals.overdue ?? 0}
+                    label="a vencer"
+                    value={asanaSnapshot?.totals.dueSoon ?? 0}
                   />
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-4 grid grid-cols-3 gap-3">
                   <DayMetric
-                    label="CP"
+                    label="vencidas"
+                    value={asanaSnapshot?.totals.overdue ?? 0}
+                  />
+                  <DayMetric
+                    label="no prazo"
                     value={asanaSnapshot?.totals.completedOnTime ?? 0}
                   />
                   <DayMetric
-                    label="CA"
+                    label="fora prazo"
                     value={asanaSnapshot?.totals.completedLate ?? 0}
                   />
                 </div>
@@ -429,7 +432,7 @@ function AsanaPerformancePanel({
               ? `${snapshot.source.workspaces.length} espacos`
               : "todos espacos"}
           </Badge>
-          <Badge variant="neutral">criadas no periodo</Badge>
+          <Badge variant="neutral">prazo no periodo</Badge>
           <Badge variant="neutral">responsavel</Badge>
           {snapshot?.source.limitReached ? (
             <Badge variant="warning">limite atingido</Badge>
@@ -465,31 +468,31 @@ function AsanaPerformancePanel({
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
             <AsanaKpi
               icon={<Target size={16} />}
-              label="criadas"
+              label="programadas"
               value={totals?.total ?? 0}
             />
             <AsanaKpi
+              icon={<CalendarCheck2 size={16} />}
+              label="a vencer"
+              value={totals?.dueSoon ?? 0}
+            />
+            <AsanaKpi
               icon={<AlertTriangle size={16} />}
-              label="AT"
+              label="vencidas"
               tone="danger"
               value={totals?.overdue ?? 0}
             />
             <AsanaKpi
               icon={<CheckCircle2 size={16} />}
-              label="CP"
+              label="no prazo"
               tone="success"
               value={totals?.completedOnTime ?? 0}
             />
             <AsanaKpi
               icon={<Clock3 size={16} />}
-              label="CA"
+              label="fora prazo"
               tone="danger"
               value={totals?.completedLate ?? 0}
-            />
-            <AsanaKpi
-              icon={<Percent size={16} />}
-              label="CP / total"
-              value={formatPercent(totals?.onTimeRate)}
             />
           </div>
           <div className="mt-4 grid gap-2">
@@ -668,9 +671,10 @@ function AsanaCollaboratorRow({
   const onTimeRate = collaborator.onTimeRate ?? 0;
   const lateRate = collaborator.lateRate ?? 0;
   const overdueRate = collaborator.overdueRate ?? 0;
+  const dueSoonRate = collaborator.dueSoonRate ?? 0;
 
   return (
-    <article className="grid grid-cols-2 items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 2xl:grid-cols-[minmax(12rem,1.15fr)_repeat(5,minmax(4.5rem,0.55fr))_minmax(9rem,0.8fr)]">
+    <article className="grid grid-cols-2 items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 2xl:grid-cols-[minmax(12rem,1.15fr)_repeat(6,minmax(4.2rem,0.5fr))_minmax(12rem,0.9fr)]">
       <div className="min-w-0">
         <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
           {collaborator.name}
@@ -686,27 +690,29 @@ function AsanaCollaboratorRow({
           </span>
         ) : null}
       </div>
-      <CompactMetric label="criadas" value={collaborator.total} />
+      <CompactMetric label="programadas" value={collaborator.total} />
+      <CompactMetric label="a vencer" value={collaborator.dueSoon} />
       <CompactMetric
-        label="AT"
+        label="vencidas"
         tone={collaborator.overdue > 0 ? "danger" : "neutral"}
         value={collaborator.overdue}
       />
-      <CompactMetric label="CP" value={collaborator.completedOnTime} />
+      <CompactMetric label="no prazo" value={collaborator.completedOnTime} />
       <CompactMetric
-        label="CA"
+        label="fora prazo"
         tone={collaborator.completedLate > 0 ? "danger" : "neutral"}
         value={collaborator.completedLate}
       />
       <CompactMetric
-        label="media"
+        label="atraso medio"
         value={formatDelayDays(collaborator.averageDelayDays)}
       />
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-2 text-xs font-semibold text-[#485466]">
-          <span>{formatPercent(collaborator.onTimeRate)} CP</span>
-          <span>{formatPercent(collaborator.lateRate)} CA</span>
-          <span>{formatPercent(collaborator.overdueRate)} AT</span>
+          <span>{formatPercent(collaborator.onTimeRate)} no prazo</span>
+          <span>{formatPercent(collaborator.lateRate)} fora</span>
+          <span>{formatPercent(collaborator.overdueRate)} venc.</span>
+          <span>{formatPercent(collaborator.dueSoonRate)} a vencer</span>
         </div>
         <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-[#eef1f4]">
           <span
@@ -720,6 +726,10 @@ function AsanaCollaboratorRow({
           <span
             className="bg-amber-500"
             style={{ width: `${overdueRate}%` }}
+          />
+          <span
+            className="bg-sky-500"
+            style={{ width: `${dueSoonRate}%` }}
           />
         </div>
       </div>
@@ -1007,18 +1017,21 @@ function createAsanaPeriod(
     const day = now.getDay();
     const mondayOffset = day === 0 ? 6 : day - 1;
     start.setDate(now.getDate() - mondayOffset);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
 
     return {
-      endDate: formatDateInput(now),
+      endDate: formatDateInput(end),
       preset,
       startDate: formatDateInput(start),
     };
   }
 
   start.setDate(1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   return {
-    endDate: formatDateInput(now),
+    endDate: formatDateInput(end),
     preset: "month",
     startDate: formatDateInput(start),
   };

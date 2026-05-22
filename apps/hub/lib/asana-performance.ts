@@ -3,7 +3,7 @@
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 export type AsanaPerformanceStatus = "configured" | "error" | "missing_config";
-export type AsanaTaskQueryMode = "created_at_search" | "tasks_list_fallback";
+export type AsanaTaskQueryMode = "due_date_search" | "tasks_list_fallback";
 
 export type AsanaPerformanceTotals = {
   averageDelayDays: number;
@@ -14,6 +14,8 @@ export type AsanaPerformanceTotals = {
   completedWithoutDue: number;
   collaboratorsMatched: number;
   collaboratorsTotal: number;
+  dueSoon: number;
+  dueSoonRate: number;
   lateRate: number | null;
   onTimeRate: number | null;
   open: number;
@@ -33,6 +35,8 @@ export type AsanaCollaboratorPerformance = {
   completedOnTime: number;
   completedRate: number;
   completedWithoutDue: number;
+  dueSoon: number;
+  dueSoonRate: number;
   email: string;
   hubUserId: string;
   lateRate: number | null;
@@ -63,7 +67,7 @@ export type AsanaTeamPerformanceSnapshot = {
       preset: "custom" | "month" | "today" | "week";
       startDate: string;
     };
-    periodBasis: "created_at";
+    periodBasis: "due_date";
     queryModes: AsanaTaskQueryMode[];
     taskOwnerBasis: "assignee";
     taskLimitPerUser: number;
