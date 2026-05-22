@@ -1802,6 +1802,32 @@ Atualizacao do recorte preparado:
 
 Atualizacao do recorte preparado:
 
+- Assunto: `[Atlas] Upload simples de evidencias`.
+- Data e hora local: `2026-05-21 22:47:36 -03:00`.
+- Escopo adicional:
+  - botao `Selecionar arquivo` nas novas evidencias;
+  - upload server-side para bucket `atlas-evidences`;
+  - preenchimento automatico da URL da evidencia apos upload;
+  - bloqueio do botao de salvar enquanto o upload esta em andamento;
+  - rota `POST /api/atlas/evidences/upload`.
+- Arquivos incluidos:
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `apps/hub/lib/atlas/client.ts`;
+  - `apps/hub/app/api/atlas/evidences/upload/route.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Validacoes executadas:
+  - `npx.cmd eslint modules/atlas/AtlasPage.tsx lib/atlas/client.ts app/api/atlas/evidences/upload/route.ts --max-warnings 0`: OK, com warning conhecido do Node sobre `type: module`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `POST http://localhost:3001/api/atlas/evidences/upload` sem sessao: `401 Unauthorized` esperado.
+- Riscos conhecidos:
+  - primeiro uso pode criar bucket real `atlas-evidences`;
+  - validacao de upload autenticado depende de teste com sessao real.
+- Status: `BLOQUEADO`.
+
+Atualizacao do recorte preparado:
+
 - Assunto: `[Atlas] Medidor FPE por faixa`.
 - Data e hora local: `2026-05-21 17:25:26 -03:00`.
 - Escopo adicional:

@@ -7,6 +7,7 @@ import {
   loadAtlasSnapshot,
   reviewAtlasOccurrenceJustification,
   submitAtlasOccurrenceJustification,
+  uploadAtlasEvidenceFile,
   type AddAtlasOccurrenceEvidencesClientInput,
   type AtlasEvidenceClientInput,
   type CreateAtlasFpeEntryClientInput,
@@ -2142,6 +2143,7 @@ function CreateOccurrenceDialog({
   ]);
   const canSubmit = Boolean(collaboratorId && typeId && occurrenceDate);
   const evidences = normalizeEvidenceDrafts(evidenceDrafts);
+  const isUploadingEvidence = hasEvidenceUploadInProgress(evidenceDrafts);
 
   async function handleSubmit() {
     if (!canSubmit) {
@@ -2166,7 +2168,7 @@ function CreateOccurrenceDialog({
       action={
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={!canSubmit || isSaving}
+          disabled={!canSubmit || isSaving || isUploadingEvidence}
           onClick={() => void handleSubmit()}
           type="button"
         >
@@ -2269,6 +2271,7 @@ function CreateFpeEntryDialog({
       collaborator?.departmentId,
   );
   const evidences = normalizeEvidenceDrafts(evidenceDrafts);
+  const isUploadingEvidence = hasEvidenceUploadInProgress(evidenceDrafts);
   const globalShare = parsedAmount * snapshot.fpe.config.globalShareRate;
   const departmentShare = parsedAmount * snapshot.fpe.config.departmentShareRate;
 
@@ -2297,7 +2300,7 @@ function CreateFpeEntryDialog({
       action={
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={!canSubmit || isSaving}
+          disabled={!canSubmit || isSaving || isUploadingEvidence}
           onClick={() => void handleSubmit()}
           type="button"
         >
@@ -2413,9 +2416,12 @@ function CreateFpeEntryDialog({
 }
 
 type EvidenceDraft = {
+  fileName?: string;
   id: string;
   name: string;
+  status?: "error" | "idle" | "uploaded" | "uploading";
   type: string;
+  uploadError?: string | null;
   url: string;
 };
 
@@ -2440,6 +2446,7 @@ function EvidenceDialog({
   const collaborator = viewModel.collaboratorsById.get(occurrence.collaboratorId);
   const type = viewModel.typeById.get(occurrence.typeId);
   const evidences = normalizeEvidenceDrafts(evidenceDrafts);
+  const isUploadingEvidence = hasEvidenceUploadInProgress(evidenceDrafts);
 
   async function handleSubmit() {
     if (evidences.length === 0) {
@@ -2461,7 +2468,7 @@ function EvidenceDialog({
       action={
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#8f6f35] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40 disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={isSaving || evidences.length === 0}
+          disabled={isSaving || isUploadingEvidence || evidences.length === 0}
           onClick={() => void handleSubmit()}
           type="button"
         >
@@ -2541,7 +2548,7 @@ function EvidenceDraftList({
 }) {
   function updateDraft(
     id: string,
-    field: keyof Omit<EvidenceDraft, "id">,
+    field: "name" | "type" | "url",
     value: string,
   ) {
     onChange(
@@ -2554,6 +2561,62 @@ function EvidenceDraftList({
           : draft,
       ),
     );
+  }
+
+  async function uploadDraftFile(id: string, file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    onChange(
+      drafts.map((draft) =>
+        draft.id === id
+          ? {
+              ...draft,
+              fileName: file.name,
+              status: "uploading",
+              uploadError: null,
+            }
+          : draft,
+      ),
+    );
+
+    try {
+      const uploadedFile = await uploadAtlasEvidenceFile({ file });
+
+      onChange(
+        drafts.map((draft) =>
+          draft.id === id
+            ? {
+                ...draft,
+                fileName: uploadedFile.name ?? file.name,
+                name: draft.name.trim() || uploadedFile.name || file.name,
+                status: "uploaded",
+                type:
+                  draft.type.trim() ||
+                  getReadableEvidenceFileType(uploadedFile.type),
+                uploadError: null,
+                url: uploadedFile.url,
+              }
+            : draft,
+        ),
+      );
+    } catch (error) {
+      onChange(
+        drafts.map((draft) =>
+          draft.id === id
+            ? {
+                ...draft,
+                status: "error",
+                uploadError:
+                  error instanceof Error
+                    ? error.message
+                    : "Nao foi possivel anexar o arquivo.",
+              }
+            : draft,
+        ),
+      );
+    }
   }
 
   function removeDraft(id: string) {
@@ -2581,16 +2644,62 @@ function EvidenceDraftList({
       <div className="grid gap-2">
         {drafts.map((draft, index) => (
           <div
-            className="grid gap-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-3 lg:grid-cols-[minmax(14rem,1fr)_minmax(10rem,0.7fr)_minmax(8rem,0.5fr)_2rem]"
+            className="grid gap-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-3 lg:grid-cols-[minmax(14rem,0.95fr)_minmax(12rem,0.9fr)_minmax(8rem,0.5fr)_2rem]"
             key={draft.id}
           >
-            <Field
-              disabled={disabled}
-              label={`Link ${index + 1}`}
-              onChange={(value) => updateDraft(draft.id, "url", value)}
-              placeholder="https://..."
-              value={draft.url}
-            />
+            <div className="grid gap-1.5 text-xs font-semibold uppercase text-[#697386]">
+              Arquivo {index + 1}
+              <input
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                className="sr-only"
+                disabled={disabled || draft.status === "uploading"}
+                id={`atlas-evidence-file-${draft.id}`}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+
+                  void uploadDraftFile(draft.id, file);
+                  event.currentTarget.value = "";
+                }}
+                type="file"
+              />
+              <label
+                aria-disabled={disabled || draft.status === "uploading"}
+                className={`inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#A07C3B]/25 bg-white px-3 text-sm font-semibold normal-case text-[#243044] outline-none transition hover:border-[#A07C3B]/45 hover:bg-[#A07C3B]/5 ${
+                  disabled || draft.status === "uploading"
+                    ? "pointer-events-none cursor-not-allowed opacity-60"
+                    : ""
+                }`}
+                htmlFor={`atlas-evidence-file-${draft.id}`}
+              >
+                <Paperclip aria-hidden="true" size={15} />
+                {draft.status === "uploading"
+                  ? "Enviando..."
+                  : draft.fileName
+                    ? "Trocar arquivo"
+                    : "Selecionar arquivo"}
+              </label>
+              <div className="flex min-h-6 flex-wrap items-center gap-2 normal-case">
+                {draft.status === "uploaded" ? (
+                  <StatusBadge tone="online">anexado</StatusBadge>
+                ) : draft.status === "error" ? (
+                  <StatusBadge tone="blocked">erro</StatusBadge>
+                ) : (
+                  <span className="text-xs font-medium text-[#697386]">
+                    clique para buscar no computador
+                  </span>
+                )}
+                {draft.fileName ? (
+                  <span className="max-w-[14rem] truncate text-xs font-medium text-[#526078]">
+                    {draft.fileName}
+                  </span>
+                ) : null}
+                {draft.uploadError ? (
+                  <span className="text-xs font-semibold text-red-700">
+                    {draft.uploadError}
+                  </span>
+                ) : null}
+              </div>
+            </div>
             <Field
               disabled={disabled}
               label="Nome"
@@ -3278,6 +3387,7 @@ function createEvidenceDraft(): EvidenceDraft {
   return {
     id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
     name: "",
+    status: "idle",
     type: "",
     url: "",
   };
@@ -3293,6 +3403,38 @@ function normalizeEvidenceDrafts(
       url: draft.url.trim(),
     }))
     .filter((draft) => draft.url.length > 0);
+}
+
+function hasEvidenceUploadInProgress(drafts: EvidenceDraft[]) {
+  return drafts.some((draft) => draft.status === "uploading");
+}
+
+function getReadableEvidenceFileType(type: string | null | undefined) {
+  if (!type) {
+    return "arquivo";
+  }
+
+  if (type.startsWith("image/")) {
+    return "imagem";
+  }
+
+  if (type === "application/pdf") {
+    return "pdf";
+  }
+
+  if (type.includes("spreadsheet") || type.includes("excel")) {
+    return "planilha";
+  }
+
+  if (type.includes("word") || type.includes("msword")) {
+    return "documento";
+  }
+
+  if (type.startsWith("text/")) {
+    return "texto";
+  }
+
+  return "arquivo";
 }
 
 function parseMoneyInput(value: string) {

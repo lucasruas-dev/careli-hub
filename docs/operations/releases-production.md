@@ -969,3 +969,28 @@ Registro de producao:
   - publicacao Production deve ser feita por Hefesto, ou por Zeus apenas com autorizacao explicita do Lucas para este recorte minimo.
 - Rollback: reverter apenas a linha de `hiddenProductionModuleIds` caso a Iris precise voltar a ficar oculta em producao.
 - Proxima acao: Hefesto publicar o recorte minimo ou Lucas autorizar Zeus a publicar direto.
+
+Atualizacao de producao:
+
+- Data e hora local: `2026-05-21 22:52:10 -03:00`.
+- Autorizacao: Lucas autorizou Zeus a publicar diretamente o recorte minimo e registrar que a Iris nao deve voltar ao bloqueio hardcoded.
+- Status final: `EM PRODUCAO`.
+- Commit publicado: `ccf14cc fix(panteon): show iris in production sidebar`.
+- Pacote limpo usado: `.codex-deploy/iris-sidebar-prod-20260521-2240`.
+- Deployment anterior: `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL`.
+- Novo deployment Production: `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi`.
+- URL tecnica: `https://careli-hub-hub-i2bs-96z1we7vd-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacoes pos-deploy:
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/iris`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/api/iris/tickets` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel inspect https://c2x.app.br`: `Ready`, `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: `Ready`, `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi`;
+  - logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Regra permanente:
+  - Iris e modulo ativo no sidebar principal do Panteon em producao.
+  - Nao reintroduzir bloqueio hardcoded para `iris` em `hiddenProductionModuleIds` ou lista equivalente sem autorizacao explicita do Lucas, motivo operacional registrado e preferencia por registry/permissao.
+- Rollback: promover novamente `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL` se houver regressao critica no shell principal.

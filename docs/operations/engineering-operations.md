@@ -11200,6 +11200,45 @@ Riscos conhecidos:
 Proximo passo:
 - Lucas validar se o medidor por faixa atende melhor a intencao visual do FPE.
 
+## 2026-05-21 22:47:36 -03:00 - Atlas Core - Upload simples de evidencias
+
+Assunto: [Atlas] Upload simples de evidencias
+
+Status: BLOQUEADO
+
+Motivo:
+- Lucas informou que a equipe nao esta conseguindo anexar arquivos no Atlas pelo modelo de link manual.
+- Lucas solicitou um fluxo mais simples: clicar, buscar o arquivo no computador e anexar.
+
+Arquivos/modulos afetados:
+- `apps/hub/modules/atlas/AtlasPage.tsx`
+- `apps/hub/lib/atlas/client.ts`
+- `apps/hub/app/api/atlas/evidences/upload/route.ts`
+- `docs/operations/engineering-operations.md`
+- `docs/operations/releases-homologation.md`
+
+Como foi feito:
+- O componente de novas evidencias passou a ter botao `Selecionar arquivo`.
+- Ao escolher arquivo local, o Atlas faz upload server-side e preenche a evidencia automaticamente com URL publica controlada.
+- O mesmo fluxo foi aplicado a abertura de ocorrencia, inclusao posterior de evidencias e lancamentos FPE.
+- O envio bloqueia o botao de salvar enquanto o upload esta em andamento.
+- A rota `POST /api/atlas/evidences/upload` valida sessao Atlas, tamanho maximo de 15 MB e tipos comuns de evidencia.
+- O storage alvo preparado e `atlas-evidences`, criado automaticamente se ausente quando o fluxo rodar em ambiente com credenciais server-side.
+
+Validacoes executadas:
+- `npx.cmd eslint modules/atlas/AtlasPage.tsx lib/atlas/client.ts app/api/atlas/evidences/upload/route.ts --max-warnings 0`: OK, com warning conhecido do Node sobre `type: module`.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT.
+- `POST http://localhost:3001/api/atlas/evidences/upload` sem sessao: `401 Unauthorized` esperado.
+
+Riscos conhecidos:
+- O primeiro uso em homologacao/producao pode criar o bucket `atlas-evidences`; por envolver storage real, publicacao segue dependente de autorizacao.
+- Upload autenticado real ainda precisa ser validado por Lucas com sessao do Hub.
+- Evidencias ficam com URL publica no bucket, alinhado ao comportamento atual de URL em `atlas_occurrence_evidences`.
+
+Proximo passo:
+- Publicar em homologacao apos autorizacao e testar anexando PNG/PDF real pela tela de ocorrencia Atlas.
+
 ## 2026-05-21 17:07:13 -03:00 - Hermes Core - Correcao do botao finalizar na gravacao de evidencia
 
 Assunto: [Hermes] Correcao gravacao de evidencia
@@ -11480,3 +11519,91 @@ Riscos conhecidos:
 
 Proximo passo:
 - Hefesto publicar recorte minimo `apps/hub/layouts/hub-shell.tsx` em producao, ou Lucas autorizar explicitamente Zeus a publicar direto.
+
+## 2026-05-21 22:45:45 -03:00 - Hades Core - Iris liberada no sidebar Hades
+
+Assunto: [Hades] Iris visivel no sidebar interno
+
+Status: VALIDADO LOCAL
+
+Motivo:
+- Lucas autorizou liberar a tela Iris no sidebar interno do Hades.
+- A Iris nao precisa mais ficar oculta dentro do modulo Hades.
+
+Arquivos/modulos afetados:
+- `apps/hub/components/guardian/layout/Sidebar.tsx`
+- `docs/operations/engineering-operations.md`
+
+Arquivos/modulos excluidos:
+- Producao, Vercel, Supabase, banco, migrations, envs, secrets, Atlas, Apolo, Hermes, Zeus, Chronos e Setup.
+
+Como foi feito:
+- A entrada `Iris` do menu interno do Hades passou de `released: false` para `released: true`.
+- Removi o badge fixo `3` da entrada para nao exibir contador estatico ou possivelmente interpretado como dado real.
+- O link existente foi preservado em `/iris`, mantendo a Iris como modulo real e evitando duplicar tela dentro de Hades.
+
+Logica:
+- O Hades passa a expor a Iris no seu sidebar como atalho operacional autorizado.
+- A comunicacao externa continua pertencendo a Iris; Hades apenas facilita o acesso pelo fluxo de cobranca.
+- Sem alteracao de regra financeira, protocolo, API, dados reais, banco ou integracao Meta.
+
+Validacoes executadas:
+- `npx.cmd eslint components/guardian/layout/Sidebar.tsx --max-warnings 0`: OK, com warning conhecido do Node/ESLint sobre `type: module`.
+- `git diff --check -- apps/hub/components/guardian/layout/Sidebar.tsx docs/operations/engineering-operations.md`: OK, apenas aviso CRLF do Git no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido do Node/ESLint sobre `type: module`.
+- `npm.cmd run build --workspace @repo/hub`: bloqueado no root porque o dev server `localhost:3001` ja estava ativo e o Next impediu build simultaneo.
+- Pacote limpo `.codex-deploy/hades-sidebar-iris-local-20260521-2245`: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de Turbopack/NFT e workspace root.
+- `GET http://localhost:3001/hades`: `200 OK`.
+- `GET http://localhost:3001/iris`: `200 OK`.
+
+Riscos conhecidos:
+- A mudanca so aparece nos ambientes publicados apos novo deploy/autorizacao de release.
+- A worktree permanece mista com recortes de outras squads; qualquer commit/deploy precisa isolar este arquivo.
+
+Proximo passo:
+- Validar localmente e, se Lucas quiser publicar, preparar recorte limpo Hades para homologacao/producao conforme fluxo vigente.
+
+## 2026-05-21 22:52:10 -03:00 - Zeus Core - Iris no sidebar em producao
+
+Assunto: [Zeus] Iris publicada no sidebar principal
+
+Status: EM PRODUCAO
+
+Motivo:
+- Lucas autorizou Zeus a publicar diretamente o hotfix minimo que remove o bloqueio da Iris no sidebar principal.
+- Lucas tambem solicitou registrar que o bloqueio nao deve voltar.
+
+Como foi feito:
+- Commit publicado: `ccf14cc fix(panteon): show iris in production sidebar`.
+- O deploy foi feito por pacote limpo em `.codex-deploy/iris-sidebar-prod-20260521-2240`, gerado a partir do commit `ccf14cc`, para nao misturar alteracoes locais paralelas de Atlas/Hades.
+- O bloqueio hardcoded de Iris em producao foi removido de `hiddenProductionModuleIds`.
+- A regra anti-bloqueio foi registrada em `docs/operations/README.md`: Iris e modulo ativo no sidebar principal e nao deve voltar para bloqueio hardcoded sem autorizacao explicita do Lucas.
+
+Deployment:
+- Deployment anterior: `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL`.
+- Novo deployment Production: `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi`.
+- URL tecnica: `https://careli-hub-hub-i2bs-96z1we7vd-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados no novo deployment: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+
+Validacoes executadas:
+- Antes do deploy: `GET https://c2x.app.br/iris`: `200 OK`.
+- Antes do deploy: `GET https://ops.c2x.app.br/zeus`: `200 OK`.
+- `npx.cmd vercel inspect https://c2x.app.br`: antes em `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL`.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: antes em `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL`.
+- Build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs Postgres/Supabase fora de `turbo.json`.
+- Depois do deploy: `npx.cmd vercel inspect https://c2x.app.br`: `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi`, `Ready`.
+- Depois do deploy: `npx.cmd vercel inspect https://ops.c2x.app.br`: `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi`, `Ready`.
+- Depois do deploy: `GET https://c2x.app.br/`: `200 OK`.
+- Depois do deploy: `GET https://c2x.app.br/login`: `200 OK`.
+- Depois do deploy: `GET https://c2x.app.br/iris`: `200 OK`.
+- Depois do deploy: `GET https://ops.c2x.app.br/zeus`: `200 OK`.
+- Depois do deploy: `GET https://c2x.app.br/api/iris/tickets` sem sessao: `401 Unauthorized` esperado.
+- Logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br` nos ultimos 10 minutos: sem logs encontrados.
+
+Riscos conhecidos:
+- Validacao visual autenticada do sidebar depende do Lucas atualizar a sessao no navegador e conferir a Iris no menu.
+- Alteracoes locais paralelas de Atlas/Hades continuam fora deste deploy e nao foram revertidas.
+
+Rollback:
+- Se houver regressao critica no shell principal, promover novamente `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL`.

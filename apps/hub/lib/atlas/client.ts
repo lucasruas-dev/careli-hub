@@ -21,6 +21,17 @@ export type AtlasEvidenceClientInput = {
   url: string;
 };
 
+export type AtlasEvidenceUploadClientInput = {
+  file: File;
+  occurrenceId?: string | null;
+};
+
+export type AtlasEvidenceUploadClientResult = AtlasEvidenceClientInput & {
+  bucket: string;
+  path: string;
+  size: number;
+};
+
 export type AddAtlasOccurrenceEvidencesClientInput = {
   evidences: AtlasEvidenceClientInput[];
   occurrenceId: string;
@@ -147,6 +158,38 @@ export async function addAtlasOccurrenceEvidences(
     },
     accessToken,
   );
+}
+
+export async function uploadAtlasEvidenceFile(
+  input: AtlasEvidenceUploadClientInput,
+  accessToken?: string | null,
+) {
+  const token = await getAtlasAccessToken(accessToken);
+  const formData = new FormData();
+
+  formData.append("file", input.file);
+
+  if (input.occurrenceId) {
+    formData.append("occurrenceId", input.occurrenceId);
+  }
+
+  const response = await fetch("/api/atlas/evidences/upload", {
+    body: formData,
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | AtlasMutationResponse<AtlasEvidenceUploadClientResult>
+    | null;
+
+  if (!response.ok || !payload?.data) {
+    throw new Error(payload?.error ?? "Nao foi possivel anexar o arquivo.");
+  }
+
+  return payload.data;
 }
 
 export async function submitAtlasOccurrenceJustification(
