@@ -271,7 +271,7 @@ export default function HomePage() {
                 />
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   <DayMetric label="reunioes agora" value={meetingCount} />
-                  <DayMetric label="programadas" value={taskCount} />
+                  <DayMetric label="com entrega" value={taskCount} />
                   <DayMetric
                     label="a vencer"
                     value={asanaSnapshot?.totals.dueSoon ?? 0}
@@ -432,7 +432,7 @@ function AsanaPerformancePanel({
               ? `${snapshot.source.workspaces.length} espacos`
               : "todos espacos"}
           </Badge>
-          <Badge variant="neutral">prazo no periodo</Badge>
+          <Badge variant="neutral">data de entrega no periodo</Badge>
           <Badge variant="neutral">responsavel</Badge>
           {snapshot?.source.limitReached ? (
             <Badge variant="warning">limite atingido</Badge>
@@ -468,7 +468,7 @@ function AsanaPerformancePanel({
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
             <AsanaKpi
               icon={<Target size={16} />}
-              label="programadas"
+              label="com entrega"
               value={totals?.total ?? 0}
             />
             <AsanaKpi
@@ -690,7 +690,7 @@ function AsanaCollaboratorRow({
           </span>
         ) : null}
       </div>
-      <CompactMetric label="programadas" value={collaborator.total} />
+      <CompactMetric label="com entrega" value={collaborator.total} />
       <CompactMetric label="a vencer" value={collaborator.dueSoon} />
       <CompactMetric
         label="vencidas"
