@@ -994,3 +994,42 @@ Atualizacao de producao:
   - Iris e modulo ativo no sidebar principal do Panteon em producao.
   - Nao reintroduzir bloqueio hardcoded para `iris` em `hiddenProductionModuleIds` ou lista equivalente sem autorizacao explicita do Lucas, motivo operacional registrado e preferencia por registry/permissao.
 - Rollback: promover novamente `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL` se houver regressao critica no shell principal.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Producao apontamentos Atlas Zeus Hades`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-21 23:01:52 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas solicitou subir em producao os apontamentos de Atlas, Zeus e Hades.
+- Escopo publicado:
+  - Atlas: upload simples de evidencias por arquivo, rota protegida `POST /api/atlas/evidences/upload` e bloqueio de salvar enquanto upload esta em andamento;
+  - Hades: Iris liberada no sidebar interno do modulo, sem badge estatico;
+  - Zeus: hotfix do sidebar principal confirmado como ja publicado em `ccf14cc`.
+- Commit publicado nesta rodada:
+  - `0587a33 feat(atlas): add evidence upload flow`.
+- Deployment:
+  - anterior: `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi`;
+  - novo: `dpl_6VjEuPoDNKZfnFT7npNamjYS3jGD`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-itgii6kom-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacoes:
+  - `git diff --check`: OK;
+  - eslint focado Atlas/Hades: OK;
+  - `check-types:hub`: OK;
+  - `lint:hub`: OK;
+  - `build --workspace @repo/hub`: OK;
+  - build remoto Vercel: `READY`;
+  - smokes locais `/atlas`, `/hades` e `/zeus`: `200 OK`.
+- Healthchecks:
+  - `/`, `/login`, `/atlas`, `/hades`, `/hades/cobranca`: `200 OK`;
+  - `ops.c2x.app.br/zeus`: `200 OK`;
+  - `/api/hades/db/health` e `/api/guardian/db/health`: `200 OK`;
+  - `/api/atlas/evidences/upload`, `/api/atlas/snapshot`, `/api/zeus/release-registers` e `/api/operations/monitoring` sem sessao: `401 Unauthorized` esperado;
+  - logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Riscos:
+  - upload autenticado real de Atlas ainda precisa de teste do Lucas com sessao e arquivo real;
+  - primeiro uso do Atlas pode depender de storage server-side operacional para criar/usar `atlas-evidences`; se falhar, tratar como recorte Zeus/DataOps sem alterar env ativa automaticamente.
+- Rollback: promover novamente `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi` se houver regressao critica.
+- Proxima acao: Lucas validar Atlas e Hades autenticados em producao.

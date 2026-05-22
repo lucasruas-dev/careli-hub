@@ -11607,3 +11607,82 @@ Riscos conhecidos:
 
 Rollback:
 - Se houver regressao critica no shell principal, promover novamente `dpl_58FDoGYXNsd4dNgASad6V6QBzBgL`.
+
+## 2026-05-21 23:01:52 -03:00 - Hefesto - Producao Atlas, Zeus e Hades
+
+Assunto: [Hefesto] Producao apontamentos Atlas Zeus Hades
+
+- Nome da squad/agente: `Hefesto`.
+- Tipo da alteracao: `RELEASE`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas solicitou publicar em producao os apontamentos de Atlas, Zeus e Hades.
+- Motivo da mudanca: concluir a rodada de apontamentos pendentes apos Zeus ja ter publicado o hotfix do sidebar principal, publicando tambem o ajuste Hades do sidebar interno e o recorte Atlas de upload simples de evidencias.
+- Arquivos/modulos afetados:
+  - `apps/hub/app/api/atlas/evidences/upload/route.ts`;
+  - `apps/hub/lib/atlas/client.ts`;
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `apps/hub/components/guardian/layout/Sidebar.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`;
+  - `docs/operations/releases-production.md`.
+- Como foi feito:
+  - confirmei que o apontamento Zeus do sidebar principal ja estava publicado em producao no commit `ccf14cc`;
+  - commitei Atlas e Hades em `0587a33 feat(atlas): add evidence upload flow`;
+  - publiquei novo deploy Production pelo projeto Vercel oficial;
+  - confirmei os aliases compartilhados `https://c2x.app.br` e `https://ops.c2x.app.br` no novo deployment;
+  - rodei healthchecks publicos e checks de APIs protegidas sem sessao.
+- Logica utilizada:
+  - Hades recebeu apenas o atalho Iris liberado no sidebar interno, sem regra financeira, banco, Meta ou C2X;
+  - Atlas recebeu upload server-side de evidencias para simplificar anexo por arquivo, mantendo a API protegida por sessao Atlas;
+  - Zeus foi tratado como recorte ja publicado e confirmado em producao;
+  - nao houve alteracao de env ativa, secret, dominio, alias manual, migration ou schema nesta rodada.
+- Commit publicado:
+  - `0587a33 feat(atlas): add evidence upload flow`.
+- Deployment Production:
+  - Anterior: `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi`.
+  - Novo: `dpl_6VjEuPoDNKZfnFT7npNamjYS3jGD`.
+  - URL tecnica: `https://careli-hub-hub-i2bs-itgii6kom-lucasruas-devs-projects.vercel.app`.
+  - Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacao executada:
+  - `git diff --check`: OK.
+  - `npx.cmd eslint components/guardian/layout/Sidebar.tsx modules/atlas/AtlasPage.tsx lib/atlas/client.ts app/api/atlas/evidences/upload/route.ts --max-warnings 0`: OK.
+  - `npm.cmd run check-types:hub`: OK.
+  - `npm.cmd run lint:hub`: OK.
+  - `npm.cmd --workspace @repo/hub run check-types`: OK.
+  - `npm.cmd --workspace @repo/hub run lint`: OK.
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+  - Smoke local `GET http://localhost:3001/atlas`: `200 OK`.
+  - Smoke local `GET http://localhost:3001/hades`: `200 OK`.
+  - Smoke local `GET http://localhost:3001/zeus`: `200 OK`.
+  - Smoke local `POST http://localhost:3001/api/atlas/evidences/upload` sem sessao: `401 Unauthorized` esperado.
+  - Build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs Postgres/Supabase fora de `turbo.json`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200 OK`.
+  - `GET https://c2x.app.br/login`: `200 OK`.
+  - `GET https://c2x.app.br/atlas`: `200 OK`.
+  - `GET https://c2x.app.br/hades`: `200 OK`.
+  - `GET https://c2x.app.br/hades/cobranca`: `200 OK`.
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`.
+  - `GET https://c2x.app.br/api/hades/db/health`: `200 OK`.
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200 OK`.
+  - `POST https://c2x.app.br/api/atlas/evidences/upload` sem sessao: `401 Unauthorized` esperado.
+  - `GET https://c2x.app.br/api/atlas/snapshot` sem sessao: `401 Unauthorized` esperado.
+  - `GET https://c2x.app.br/api/zeus/release-registers` sem sessao: `401 Unauthorized` esperado.
+  - `GET https://c2x.app.br/api/operations/monitoring` sem sessao: `401 Unauthorized` esperado.
+  - Logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br` nos ultimos 10 minutos: sem logs encontrados.
+- Riscos conhecidos:
+  - Upload autenticado real de Atlas ainda depende de Lucas testar com sessao real e arquivo PNG/PDF.
+  - O primeiro uso do upload Atlas pode depender de storage server-side ja operacional para criar ou usar o bucket `atlas-evidences`; se retornar `503`, tratar como recorte separado de governanca DataOps/Zeus sem alterar env ativa automaticamente.
+  - Validacao visual autenticada do sidebar interno Hades depende de Lucas recarregar a sessao.
+- Pendencias:
+  - Lucas validar Atlas com upload real de evidencia.
+  - Lucas validar Hades com Iris visivel no sidebar interno.
+  - Se upload Atlas falhar por chave server-side/storage, acionar Zeus/DataOps com recorte especifico e autorizado.
+- Rollback definido: promover novamente `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi` se houver regressao critica em Atlas, Hades, Zeus/OPS, login, healthchecks Hades/Guardian ou APIs protegidas.
+- Proxima squad recomendada: Lucas para validacao autenticada operacional; Zeus/DataOps apenas se houver falha real de storage/chave server-side no upload Atlas.
+
+Conclusao:
+- Atlas, Zeus e Hades ficaram publicados em producao no novo deployment `dpl_6VjEuPoDNKZfnFT7npNamjYS3jGD`.
+- O ambiente respondeu aos healthchecks principais e as APIs protegidas continuaram bloqueando acesso anonimo.
+- Status operacional consolidado: `EM PRODUCAO`.
