@@ -1033,3 +1033,164 @@ Registro de producao:
   - primeiro uso do Atlas pode depender de storage server-side operacional para criar/usar `atlas-evidences`; se falhar, tratar como recorte Zeus/DataOps sem alterar env ativa automaticamente.
 - Rollback: promover novamente `dpl_HpDnppW4ujcDPGmHAUpPAENdjDFi` se houver regressao critica.
 - Proxima acao: Lucas validar Atlas e Hades autenticados em producao.
+
+Registro de producao:
+
+- Assunto: `[Atlas] Desempenho, auditoria de justificativas e FPE`.
+- Squad/agente responsavel: `Hefesto`.
+- Data e hora local: `2026-05-22 10:51:59 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas informou que testou a melhoria Atlas em homologacao e aprovou a promocao para producao.
+- Origem/homologacao de referencia:
+  - registro de homologacao `[Atlas] Desempenho, auditoria de justificativas e FPE`;
+  - homologacao anterior do recorte: `dpl_AtMuQH2iQEhfaEYDy8wLPrqx1e6k`;
+  - homologacao reconciliada automaticamente apos push do commit: `dpl_FJvNefXg6ZsH7QiaasAA5SWAPKDy`, alias `https://homo.c2x.app.br`.
+- Escopo publicado:
+  - sidebar interno do Atlas com `FPE`, `Desempenho` e `Colaboradores`;
+  - secao `Desempenho` com abas internas `Dashboard` e `Lancamentos`;
+  - abertura padrao do Atlas em `Desempenho`;
+  - snapshot Atlas resolvendo usuarios Hub para exibir quem justificou/revisou;
+  - tabela e modal exibindo usuario, dia e hora de justificativa e revisao/aprovacao;
+  - preservacao de Reserva FPE e evidencias sem duplicidade ja homologadas.
+- Commit publicado:
+  - `9c9fe11 feat(atlas): promote desempenho audit improvements`.
+- Pacote limpo publicado:
+  - `.codex-deploy/atlas-prod-20260522-104358-9c9fe11/workspace`.
+- Deployment:
+  - anterior: `dpl_6VjEuPoDNKZfnFT7npNamjYS3jGD`;
+  - novo: `dpl_GugePcGNamUG6u3amNmaaa1qqeMh`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-buq03na7w-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/modules/atlas/AtlasPage.tsx`;
+  - `apps/hub/lib/atlas/server.ts`;
+  - `apps/hub/lib/atlas/types.ts`;
+  - `docs/modules/atlas-operational-map.md`.
+- Arquivos/modulos excluidos:
+  - Login, Iris, Hades, Hermes, Zeus/HelpDesk, Apolo, Chronos, Setup, migrations, scripts, envs, secrets, banco, Supabase mutavel e alteracoes locais paralelas.
+- Validacoes executadas:
+  - worktree principal: `git diff --check -- apps/hub/modules/atlas/AtlasPage.tsx apps/hub/lib/atlas/server.ts apps/hub/lib/atlas/types.ts docs/modules/atlas-operational-map.md`: OK, apenas avisos CRLF do Windows;
+  - worktree principal: `npx.cmd eslint modules/atlas/AtlasPage.tsx lib/atlas/server.ts lib/atlas/types.ts --max-warnings 0`: OK, com warning conhecido do Node/ESLint sobre `type: module`;
+  - pacote limpo: `npx.cmd eslint modules/atlas/AtlasPage.tsx lib/atlas/server.ts lib/atlas/types.ts --max-warnings 0`: OK;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo: `npm.cmd run lint:hub`: OK;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `git diff --cached --check`: OK;
+  - scan focado nos quatro arquivos nao encontrou valores sensiveis reais; apenas nomes de env em documento operacional;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs fora de `turbo.json`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/atlas`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://ops.c2x.app.br/atlas`: `200 OK`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200 OK`;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200 OK`;
+  - `GET https://c2x.app.br/api/atlas/snapshot` sem sessao: `401 Unauthorized` esperado;
+  - `POST https://c2x.app.br/api/atlas/evidences/upload` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://ops.c2x.app.br/api/operations/monitoring` sem sessao: `401 Unauthorized` esperado;
+  - `POST https://ops.c2x.app.br/api/squadops/copilot` sem sessao e payload valido: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/atlas`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/atlas/snapshot` sem sessao: `401 Unauthorized` esperado;
+  - logs Vercel de erro em `c2x.app.br`, `ops.c2x.app.br` e `homo.c2x.app.br`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao visual autenticada em producao continua recomendada para Lucas confirmar `FPE`, `Desempenho`, abas internas e trilha de auditoria com dados reais;
+  - o smoke do copilot com payload vazio retorna `400` por validacao de request antes do auth; com payload minimo valido retorna `401` esperado;
+  - branch local contem commits/alteracoes de outros recortes nao publicados por este deploy e nao incluidos no pacote Atlas.
+- Rollback: promover novamente `dpl_6VjEuPoDNKZfnFT7npNamjYS3jGD` se houver regressao critica no Atlas, login, Zeus/OPS ou aliases compartilhados.
+- Proxima acao: Lucas validar Atlas autenticado em producao; Hefesto manter monitoramento e preservar recortes paralelos separados.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk evidencias e Hermes historico de chamadas`.
+- Identificador Hefesto: `HEFESTO-PROD-20260522-1110-ZEUS-HELPDESK-HERMES`.
+- Protocolo estruturado Operations Center: `AT-7348`.
+- Squad/agente responsavel: `Zeus Core`, com promocao direta autorizada por Lucas.
+- Data e hora local: `2026-05-22 11:10:04 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas solicitou subir em producao e deixar registro para o Hefesto identificar.
+- Escopo publicado:
+  - HelpDesk Zeus com anexos/evidencias alinhados entre abertura pela Athena, painel do solicitante e board operacional;
+  - aceite de arquivos genericos alem de print, audio e video no fluxo de evidencia;
+  - limite de evidencias sincronizado para 4 anexos;
+  - mensagens sem anexo ajustadas para orientar arquivo/print/audio/video;
+  - evidencias abrindo/baixando no painel do solicitante e no board Zeus;
+  - estabilidade de tipos no historico de chamadas Hermes para liberar `check-types`, `lint` e `build`.
+- Commits publicados:
+  - `191ee9e fix(zeus): align helpdesk evidence attachments`;
+  - `5553171 fix(hermes): stabilize call history validation`.
+- Pacote limpo publicado:
+  - `.codex-deploy/prod-zeus-helpdesk-hermes-20260522-110455/workspace`.
+- Deployment:
+  - anterior: `dpl_GugePcGNamUG6u3amNmaaa1qqeMh`;
+  - novo: `dpl_AXsmmLA9xveG2vyTzSMtKEnnGrP8`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-bv1fvqdtu-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/app/api/hub/it-tickets/evidence-analysis/route.ts`;
+  - `apps/hub/components/hub-support/hub-ticket-open-form.tsx`;
+  - `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`;
+  - `apps/hub/lib/hub-it-tickets/server.ts`;
+  - `apps/hub/modules/squadops/HubItTicketsBoard.tsx`;
+  - `apps/hub/lib/pulsex/types.ts`;
+  - `apps/hub/providers/pulsex-call-provider.tsx`;
+  - `apps/hub/components/pulsex/conversation-header.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos:
+  - Login, Iris, Atlas, Hades, Chronos, Apolo, Setup, migrations, scripts, envs, secrets, banco, Supabase mutavel e alteracoes locais paralelas nao commitadas.
+- Validacoes executadas:
+  - `git diff --check HEAD~2..HEAD`: OK;
+  - validacao local previa: `npm.cmd run check-types:hub`: OK;
+  - validacao local previa: `npm.cmd run lint:hub`: OK, com warning conhecido do Node sobre `type: module`;
+  - validacao local previa: `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs fora de `turbo.json`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/hermes`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/it-tickets` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://ops.c2x.app.br/api/operations/monitoring` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200 OK`;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200 OK`;
+  - logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada final de upload/anexo ainda deve ser feita por Lucas com usuario real e arquivo real;
+  - `npm audit` remoto segue apontando 3 vulnerabilidades conhecidas do pacote, sem bloqueio de build;
+  - worktree local permanece com alteracoes paralelas nao publicadas e nao incluidas neste pacote.
+- Rollback: promover novamente `dpl_GugePcGNamUG6u3amNmaaa1qqeMh` se houver regressao critica em Zeus/HelpDesk, Hermes ou aliases compartilhados.
+- Proxima acao: Hefesto pode identificar o pacote pelo identificador `HEFESTO-PROD-20260522-1110-ZEUS-HELPDESK-HERMES`; Lucas validar anexos reais no HelpDesk e fluxo Hermes autenticado.
+
+Atualizacao de producao:
+
+- Assunto: `[Atlas] Confirmacao do ultimo recorte homologado em producao`.
+- Data e hora local: `2026-05-22 11:17:44 -03:00`.
+- Solicitacao: Lucas aprovou novamente o ultimo registro Atlas em homologacao e pediu promocao para producao.
+- Decisao Hefesto: `SEM REDEPLOY`; o recorte Atlas homologado ja estava em producao.
+- Evidencia:
+  - ultimo registro Atlas homologado: `[Atlas] Desempenho, auditoria de justificativas e FPE`;
+  - commit promovido do Atlas: `9c9fe11 feat(atlas): promote desempenho audit improvements`;
+  - deploy dedicado Atlas anterior: `dpl_GugePcGNamUG6u3amNmaaa1qqeMh`;
+  - deploy atual de producao: `dpl_AXsmmLA9xveG2vyTzSMtKEnnGrP8`, construido apos `9c9fe11` e contendo o recorte Atlas;
+  - aliases confirmados em `Ready`: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Healthchecks de confirmacao:
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/atlas`: `200 OK`;
+  - `GET https://ops.c2x.app.br/atlas`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/api/hades/db/health`: `200 OK`;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200 OK`;
+  - `GET https://c2x.app.br/api/atlas/snapshot` sem sessao: `401 Unauthorized` esperado;
+  - `POST https://c2x.app.br/api/atlas/evidences/upload` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/atlas`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/atlas/snapshot` sem sessao: `401 Unauthorized` esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - nao houve novo artefato porque redeploy seria redundante e poderia mascarar a rastreabilidade do pacote atual;
+  - validacao autenticada visual do Atlas em producao segue recomendada para Lucas.
+- Status final: `EM PRODUCAO`.
