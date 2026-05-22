@@ -1,6 +1,8 @@
 "use client";
 
 import type {
+  HermesCallHistoryEntry,
+  HermesCallHistoryStatus,
   HermesCallParticipant,
   HermesCallRealtimeSignal,
   HermesCallRealtimeSignalInput,
@@ -39,15 +41,18 @@ import { IncomingCallBanner } from "@/components/pulsex/incoming-call-banner";
 import type { HermesCallSoundOption } from "@/components/pulsex/conversation-header";
 
 type HermesCallContextValue = {
+  callHistory: readonly HermesCallHistoryEntry[];
   callSoundId: HermesCallSoundId;
   callSoundOptions: readonly HermesCallSoundOption[];
   endActiveCall: () => void;
+  markCallHistoryRead: (channelId?: string) => void;
   previewCallSound: (soundId: string) => void;
   setCallSoundId: (soundId: string) => void;
   startCall: (input: {
     session: HermesCallSession;
     targetUserIds: readonly HermesPresenceUser["id"][];
   }) => void;
+  unreadCallCount: number;
 };
 
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
@@ -56,8 +61,10 @@ type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 const PULSEX_CALL_SIGNAL_EVENT = "call-signal";
 const PULSEX_CALL_SIGNAL_TOPIC = "pulsex:calls";
 const PULSEX_ACTIVE_CALL_STORAGE_KEY = "careli:pulsex:active-call";
+const PULSEX_CALL_HISTORY_STORAGE_KEY = "careli:pulsex:call-history";
 const PULSEX_CALL_SOUND_STORAGE_KEY = "careli:pulsex:call-sound";
 const PULSEX_ACTIVE_CALL_STORAGE_TTL_MS = 1000 * 60 * 60 * 4;
+const PULSEX_CALL_HISTORY_LIMIT = 80;
 const PULSEX_CALL_DISABLED_HOSTS = new Set([
   "ops.c2x.app.br",
   "ops.c2x.careli",
@@ -101,7 +108,13 @@ function ActiveHermesCallProvider({
   const [incomingCall, setIncomingCall] = useState<HermesCallSession | null>(
     null,
   );
+  const [callHistory, setCallHistory] = useState<HermesCallHistoryEntry[]>([]);
   const [isCallPanelOpen, setIsCallPanelOpen] = useState(true);
+  const [callHistoryStorageUserId, setCallHistoryStorageUserId] = useState<
+    HermesPresenceUser["id"] | null
+  >(null);
+  const [isCallHistoryStorageReady, setIsCallHistoryStorageReady] =
+    useState(false);
   const [isCallRealtimeReady, setIsCallRealtimeReady] = useState(false);
   const [restoredCallId, setRestoredCallId] = useState<string | null>(null);
   const [callSoundId, setInternalCallSoundId] = useState<HermesCallSoundId>(
@@ -139,6 +152,36 @@ function ActiveHermesCallProvider({
     setCallSignals([]);
     clearStoredHermesActiveCall();
   }, [hubUser, profileStatus]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setCallHistory([]);
+      setCallHistoryStorageUserId(null);
+      setIsCallHistoryStorageReady(false);
+      return;
+    }
+
+    setCallHistory(readStoredHermesCallHistory(currentUserId));
+    setCallHistoryStorageUserId(currentUserId);
+    setIsCallHistoryStorageReady(true);
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (
+      !currentUserId ||
+      !isCallHistoryStorageReady ||
+      callHistoryStorageUserId !== currentUserId
+    ) {
+      return;
+    }
+
+    writeStoredHermesCallHistory(currentUserId, callHistory);
+  }, [
+    callHistory,
+    callHistoryStorageUserId,
+    currentUserId,
+    isCallHistoryStorageReady,
+  ]);
 
   useEffect(() => {
     if (!currentUserId || activeCallRef.current || profileStatus === "loading") {
@@ -229,6 +272,30 @@ function ActiveHermesCallProvider({
     [currentUserId],
   );
 
+  const recordCallHistory = useCallback(
+    (
+      session: HermesCallSession,
+      status: HermesCallHistoryStatus,
+      options: { unread?: boolean } = {},
+    ) => {
+      if (!currentUserId) {
+        return;
+      }
+
+      const entry = createHermesCallHistoryEntry({
+        currentUserId,
+        session,
+        status,
+        unread: options.unread ?? false,
+      });
+
+      setCallHistory((currentHistory) =>
+        upsertHermesCallHistoryEntry(currentHistory, entry),
+      );
+    },
+    [currentUserId],
+  );
+
   const handleIncomingCallSignal = useCallback(
     (signal: HermesCallRealtimeSignal) => {
       appendCallSignal(signal);
@@ -241,6 +308,9 @@ function ActiveHermesCallProvider({
           return;
         }
 
+        recordCallHistory(signal.session, "ringing", {
+          unread: true,
+        });
         setIncomingCall(signal.session);
         showBrowserHermesNotification({
           body: `${getCallCallerLabel(signal.session)} chamou em ${signal.session.title}.`,
@@ -251,6 +321,14 @@ function ActiveHermesCallProvider({
 
       if (signal.kind === "join" && signal.participant) {
         const participant = signal.participant;
+        const currentCall = activeCallRef.current;
+
+        if (
+          currentCall?.id === signal.callId &&
+          currentCall.initiatedByUserId === currentUserId
+        ) {
+          recordCallHistory(currentCall, "answered");
+        }
 
         setActiveCall((currentCall) =>
           currentCall?.id === signal.callId
@@ -261,6 +339,18 @@ function ActiveHermesCallProvider({
       }
 
       if (signal.kind === "decline" || signal.kind === "leave") {
+        const currentCall = activeCallRef.current;
+
+        if (
+          currentCall?.id === signal.callId &&
+          currentCall.initiatedByUserId === currentUserId
+        ) {
+          recordCallHistory(
+            currentCall,
+            signal.kind === "decline" ? "declined" : "ended",
+          );
+        }
+
         setActiveCall((currentCall) =>
           currentCall?.id === signal.callId
             ? updateCallParticipantStatus(
@@ -290,6 +380,19 @@ function ActiveHermesCallProvider({
       }
 
       if (signal.kind === "end") {
+        const pendingIncomingCall = incomingCallRef.current;
+        const currentCall = activeCallRef.current;
+
+        if (pendingIncomingCall?.id === signal.callId) {
+          recordCallHistory(pendingIncomingCall, "missed", {
+            unread: true,
+          });
+        }
+
+        if (currentCall?.id === signal.callId) {
+          recordCallHistory(currentCall, "ended");
+        }
+
         setIncomingCall((currentCall) =>
           currentCall?.id === signal.callId ? null : currentCall,
         );
@@ -298,7 +401,7 @@ function ActiveHermesCallProvider({
         );
       }
     },
-    [appendCallSignal],
+    [appendCallSignal, currentUserId, recordCallHistory],
   );
 
   useEffect(() => {
@@ -412,6 +515,7 @@ function ActiveHermesCallProvider({
       setActiveCall(session);
       setIncomingCall(null);
       setIsCallPanelOpen(true);
+      recordCallHistory(session, "ringing");
       sendCallSignal({
         callId: session.id,
         channelId: session.channelId,
@@ -420,7 +524,7 @@ function ActiveHermesCallProvider({
         targetUserIds,
       });
     },
-    [sendCallSignal],
+    [recordCallHistory, sendCallSignal],
   );
 
   const acceptIncomingCall = useCallback(() => {
@@ -445,6 +549,7 @@ function ActiveHermesCallProvider({
     setActiveCall(acceptedCall);
     setIsCallPanelOpen(true);
     setIncomingCall(null);
+    recordCallHistory(acceptedCall, "answered");
     sendCallSignal({
       callId: incomingCall.id,
       channelId: incomingCall.channelId,
@@ -456,7 +561,7 @@ function ActiveHermesCallProvider({
           }
         : undefined,
     });
-  }, [currentUserId, incomingCall, sendCallSignal]);
+  }, [currentUserId, incomingCall, recordCallHistory, sendCallSignal]);
 
   const declineIncomingCall = useCallback(() => {
     if (!incomingCall) {
@@ -468,8 +573,9 @@ function ActiveHermesCallProvider({
       channelId: incomingCall.channelId,
       kind: "decline",
     });
+    recordCallHistory(incomingCall, "declined");
     setIncomingCall(null);
-  }, [incomingCall, sendCallSignal]);
+  }, [incomingCall, recordCallHistory, sendCallSignal]);
 
   useEffect(() => {
     if (
@@ -510,6 +616,7 @@ function ActiveHermesCallProvider({
     const call = activeCallRef.current;
 
     if (call) {
+      recordCallHistory(call, "ended");
       sendCallSignal({
         callId: call.id,
         channelId: call.channelId,
@@ -519,7 +626,26 @@ function ActiveHermesCallProvider({
 
     setActiveCall(null);
     setIsCallPanelOpen(true);
-  }, [currentUserId, sendCallSignal]);
+  }, [currentUserId, recordCallHistory, sendCallSignal]);
+
+  const markCallHistoryRead = useCallback((channelId?: string) => {
+    setCallHistory((currentHistory) => {
+      let hasChanges = false;
+      const nextHistory = currentHistory.map((entry) => {
+        if (!entry.isUnread || (channelId && entry.channelId !== channelId)) {
+          return entry;
+        }
+
+        hasChanges = true;
+        return {
+          ...entry,
+          isUnread: false,
+        };
+      });
+
+      return hasChanges ? nextHistory : currentHistory;
+    });
+  }, []);
 
   const setCallSoundId = useCallback((soundId: string) => {
     if (!isHermesCallSoundId(soundId)) {
@@ -536,15 +662,20 @@ function ActiveHermesCallProvider({
     }
   }, []);
 
+  const unreadCallCount = callHistory.filter((entry) => entry.isUnread).length;
+
   return (
     <HermesCallContext.Provider
       value={{
+        callHistory,
         callSoundId,
         callSoundOptions: pulsexCallSoundOptions,
         endActiveCall,
+        markCallHistoryRead,
         previewCallSound,
         setCallSoundId,
         startCall,
+        unreadCallCount,
       }}
     >
       {children}
@@ -601,12 +732,15 @@ function ActiveHermesCallProvider({
 }
 
 const disabledHermesCallContextValue = {
+  callHistory: [],
   callSoundId: pulsexCallSoundOptions[0].id,
   callSoundOptions: pulsexCallSoundOptions,
   endActiveCall: noopHermesCallAction,
+  markCallHistoryRead: noopHermesCallAction,
   previewCallSound: noopHermesCallAction,
   setCallSoundId: noopHermesCallAction,
   startCall: noopHermesCallAction,
+  unreadCallCount: 0,
 } satisfies HermesCallContextValue;
 
 function noopHermesCallAction() {
@@ -654,6 +788,14 @@ const hermesCallSignalKinds = new Set<HermesCallSignalKind>([
   "screen-share-stop",
 ]);
 
+const hermesCallHistoryStatuses = new Set<HermesCallHistoryStatus>([
+  "answered",
+  "declined",
+  "ended",
+  "missed",
+  "ringing",
+]);
+
 function createHermesCallSignalId(kind: HermesCallSignalKind) {
   return `call-signal-${kind}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
@@ -666,6 +808,126 @@ function getCallCallerLabel(session: HermesCallSession) {
       (participant) => participant.userId === session.initiatedByUserId,
     )?.label ?? "Alguem"
   );
+}
+
+function createHermesCallHistoryEntry({
+  currentUserId,
+  session,
+  status,
+  unread,
+}: {
+  currentUserId: HermesPresenceUser["id"];
+  session: HermesCallSession;
+  status: HermesCallHistoryStatus;
+  unread: boolean;
+}): HermesCallHistoryEntry {
+  const direction =
+    session.initiatedByUserId === currentUserId ? "outgoing" : "incoming";
+  const caller = getHermesCallInitiator(session);
+  const firstOtherParticipant = session.participants.find(
+    (participant) => participant.userId !== currentUserId,
+  );
+  const participantNames = Array.from(
+    new Set(
+      session.participants
+        .map((participant) => participant.label)
+        .filter((label) => label.trim().length > 0),
+    ),
+  );
+  const startedAt = normalizeHermesCallDate(
+    session.startedAt,
+    new Date().toISOString(),
+  ) ?? new Date().toISOString();
+  const endedAt = normalizeHermesCallDate(session.endedAt, undefined);
+
+  return {
+    callId: session.id,
+    callerAvatarUrl:
+      direction === "incoming" ? caller?.avatarUrl : firstOtherParticipant?.avatarUrl,
+    callerName:
+      direction === "incoming"
+        ? (caller?.label ?? session.title)
+        : (firstOtherParticipant?.label ?? session.title),
+    callerUserId:
+      direction === "incoming" ? caller?.userId : firstOtherParticipant?.userId,
+    channelId: session.channelId,
+    channelName: session.title,
+    direction,
+    durationLabel: session.durationLabel,
+    endedAt:
+      endedAt ??
+      (status === "ended" || status === "declined" || status === "missed"
+        ? new Date().toISOString()
+        : undefined),
+    id: `call-history-${session.id}`,
+    isUnread: unread,
+    participantNames,
+    startedAt,
+    status,
+    type: session.type,
+  };
+}
+
+function getHermesCallInitiator(session: HermesCallSession) {
+  return (
+    session.participants.find(
+      (participant) => participant.userId === session.initiatedByUserId,
+    ) ?? session.participants[0]
+  );
+}
+
+function upsertHermesCallHistoryEntry(
+  history: readonly HermesCallHistoryEntry[],
+  entry: HermesCallHistoryEntry,
+): HermesCallHistoryEntry[] {
+  const existingEntry = history.find((item) => item.callId === entry.callId);
+  const mergedEntry = existingEntry
+    ? {
+        ...existingEntry,
+        ...entry,
+        isUnread: entry.isUnread,
+        startedAt: existingEntry.startedAt || entry.startedAt,
+      }
+    : entry;
+
+  return [
+    mergedEntry,
+    ...history.filter((item) => item.callId !== entry.callId),
+  ]
+    .sort(compareHermesCallHistoryEntries)
+    .slice(0, PULSEX_CALL_HISTORY_LIMIT);
+}
+
+function compareHermesCallHistoryEntries(
+  firstEntry: HermesCallHistoryEntry,
+  secondEntry: HermesCallHistoryEntry,
+) {
+  return (
+    getHermesCallHistoryTime(secondEntry) - getHermesCallHistoryTime(firstEntry)
+  );
+}
+
+function getHermesCallHistoryTime(entry: HermesCallHistoryEntry) {
+  const time = Date.parse(entry.startedAt);
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function normalizeHermesCallDate(
+  value: string | undefined,
+  fallback: string | undefined,
+) {
+  if (!value) {
+    return fallback;
+  }
+
+  const time = Date.parse(value);
+
+  if (Number.isNaN(time)) {
+    return fallback;
+  }
+
+  return new Date(time).toISOString();
 }
 
 function getCallParticipantForUser(
@@ -884,6 +1146,49 @@ function clearStoredHermesActiveCall() {
   }
 }
 
+function readStoredHermesCallHistory(currentUserId: HermesPresenceUser["id"]) {
+  try {
+    const storedValue = window.localStorage.getItem(
+      getHermesCallHistoryStorageKey(currentUserId),
+    );
+
+    if (!storedValue) {
+      return [];
+    }
+
+    const parsedValue = JSON.parse(storedValue);
+
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return parsedValue
+      .filter(isStoredHermesCallHistoryEntry)
+      .sort(compareHermesCallHistoryEntries)
+      .slice(0, PULSEX_CALL_HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredHermesCallHistory(
+  currentUserId: HermesPresenceUser["id"],
+  history: readonly HermesCallHistoryEntry[],
+) {
+  try {
+    window.localStorage.setItem(
+      getHermesCallHistoryStorageKey(currentUserId),
+      JSON.stringify(history.slice(0, PULSEX_CALL_HISTORY_LIMIT)),
+    );
+  } catch {
+    // Local history is a convenience layer; calls must keep working without it.
+  }
+}
+
+function getHermesCallHistoryStorageKey(currentUserId: HermesPresenceUser["id"]) {
+  return `${PULSEX_CALL_HISTORY_STORAGE_KEY}:${currentUserId}`;
+}
+
 function isStoredHermesCallSession(
   value: unknown,
 ): value is HermesCallSession {
@@ -900,5 +1205,29 @@ function isStoredHermesCallSession(
     typeof maybeSession.status === "string" &&
     typeof maybeSession.title === "string" &&
     (maybeSession.type === "audio" || maybeSession.type === "video")
+  );
+}
+
+function isStoredHermesCallHistoryEntry(
+  value: unknown,
+): value is HermesCallHistoryEntry {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const maybeEntry = value as Partial<HermesCallHistoryEntry>;
+
+  return (
+    typeof maybeEntry.callId === "string" &&
+    typeof maybeEntry.callerName === "string" &&
+    typeof maybeEntry.channelId === "string" &&
+    typeof maybeEntry.channelName === "string" &&
+    (maybeEntry.direction === "incoming" ||
+      maybeEntry.direction === "outgoing") &&
+    typeof maybeEntry.id === "string" &&
+    typeof maybeEntry.startedAt === "string" &&
+    typeof maybeEntry.status === "string" &&
+    hermesCallHistoryStatuses.has(maybeEntry.status as HermesCallHistoryStatus) &&
+    (maybeEntry.type === "audio" || maybeEntry.type === "video")
   );
 }

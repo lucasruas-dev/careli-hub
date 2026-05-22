@@ -157,6 +157,15 @@ export type HermesCallStatus =
   | "missed"
   | "ringing";
 
+export type HermesCallHistoryDirection = "incoming" | "outgoing";
+
+export type HermesCallHistoryStatus =
+  | "answered"
+  | "declined"
+  | "ended"
+  | "missed"
+  | "ringing";
+
 export type HermesCallParticipantStatus =
   | "invited"
   | "joined"
@@ -187,6 +196,24 @@ export type HermesCallSession = {
   startedAt?: string;
   status: HermesCallStatus;
   title: string;
+  type: HermesCallType;
+};
+
+export type HermesCallHistoryEntry = {
+  callId: HermesCallSession["id"];
+  callerAvatarUrl?: string;
+  callerName: string;
+  callerUserId?: HermesPresenceUser["id"];
+  channelId: HermesChannel["id"];
+  channelName: string;
+  direction: HermesCallHistoryDirection;
+  durationLabel?: string;
+  endedAt?: string;
+  id: string;
+  isUnread?: boolean;
+  participantNames: readonly string[];
+  startedAt: string;
+  status: HermesCallHistoryStatus;
   type: HermesCallType;
 };
 

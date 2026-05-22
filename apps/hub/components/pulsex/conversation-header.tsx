@@ -2,13 +2,18 @@
 
 import type {
   HermesChannel,
+  HermesCallHistoryEntry,
   HermesCallType,
   HermesPresenceUser,
 } from "@/lib/pulsex";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import {
+  History,
   MoreHorizontal,
   Phone,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOutgoing,
   Search,
   Star,
   Users,
@@ -27,29 +32,39 @@ export type HermesCallSoundOption = {
 };
 
 type ConversationHeaderProps = {
+  callHistory: readonly HermesCallHistoryEntry[];
   callSoundOptions: readonly HermesCallSoundOption[];
   channel: HermesChannel;
   isFavorite?: boolean;
   onChangeCallSound: (soundId: string) => void;
+  onMarkCallHistoryRead: (channelId?: string) => void;
   onPreviewCallSound: (soundId: string) => void;
+  onReturnCall: (entry: HermesCallHistoryEntry) => void;
   onStartCall: (type: HermesCallType) => void;
   onToggleFavorite?: () => void;
   presenceUsers: readonly HermesPresenceUser[];
   selectedCallSoundId: string;
+  unreadCallCount: number;
 };
 
 export function ConversationHeader({
+  callHistory,
   callSoundOptions,
   channel,
   isFavorite = false,
   onChangeCallSound,
+  onMarkCallHistoryRead,
   onPreviewCallSound,
+  onReturnCall,
   onStartCall,
   onToggleFavorite,
   presenceUsers,
   selectedCallSoundId,
+  unreadCallCount,
 }: ConversationHeaderProps) {
+  const [isCallHistoryOpen, setIsCallHistoryOpen] = useState(false);
   const [isSoundMenuOpen, setIsSoundMenuOpen] = useState(false);
+  const callHistoryMenuRef = useRef<HTMLDivElement>(null);
   const soundMenuRef = useRef<HTMLDivElement>(null);
   const onlineCount = presenceUsers.filter(
     (user) => user.status === "online",
@@ -70,6 +85,11 @@ export function ConversationHeader({
     enabled: isSoundMenuOpen,
     onDismiss: () => setIsSoundMenuOpen(false),
     ref: soundMenuRef,
+  });
+  useOutsideDismiss({
+    enabled: isCallHistoryOpen,
+    onDismiss: () => setIsCallHistoryOpen(false),
+    ref: callHistoryMenuRef,
   });
 
   return (
@@ -120,6 +140,32 @@ export function ConversationHeader({
           onClick={onToggleFavorite}
         />
         <HeaderAction ariaLabel="Buscar" icon={<Search size={17} />} />
+        <div className="relative" ref={callHistoryMenuRef}>
+          <HeaderAction
+            active={isCallHistoryOpen}
+            ariaLabel="Historico de chamadas"
+            badgeCount={unreadCallCount}
+            icon={<History size={17} />}
+            onClick={() => {
+              const nextOpenState = !isCallHistoryOpen;
+
+              setIsCallHistoryOpen(nextOpenState);
+
+              if (nextOpenState) {
+                onMarkCallHistoryRead();
+              }
+            }}
+          />
+          {isCallHistoryOpen ? (
+            <CallHistoryMenu
+              entries={callHistory}
+              onReturnCall={(entry) => {
+                onReturnCall(entry);
+                setIsCallHistoryOpen(false);
+              }}
+            />
+          ) : null}
+        </div>
         <div className="relative" ref={soundMenuRef}>
           <HeaderAction
             ariaLabel="Som de chamada"
@@ -187,6 +233,102 @@ function ChannelAvatar({ channel }: { channel: HermesChannel }) {
   );
 }
 
+function CallHistoryMenu({
+  entries,
+  onReturnCall,
+}: {
+  entries: readonly HermesCallHistoryEntry[];
+  onReturnCall: (entry: HermesCallHistoryEntry) => void;
+}) {
+  const visibleEntries = entries.slice(0, 10);
+
+  return (
+    <div className="absolute right-0 top-10 z-[90] w-[23rem] overflow-hidden rounded-xl border border-[#d9e0ea] bg-white text-[#101820] shadow-[0_22px_60px_rgba(16,24,32,0.22)]">
+      <div className="border-b border-[#edf1f6] px-4 py-3">
+        <p className="m-0 text-sm font-semibold">Chamadas</p>
+        <p className="m-0 mt-0.5 text-xs text-[#667085]">
+          {entries.length > 0
+            ? `${entries.length} registro${entries.length === 1 ? "" : "s"} recentes`
+            : "Nenhuma chamada registrada"}
+        </p>
+      </div>
+      {visibleEntries.length > 0 ? (
+        <div className="max-h-[24rem] overflow-y-auto p-2">
+          {visibleEntries.map((entry) => (
+            <CallHistoryMenuItem
+              entry={entry}
+              key={entry.id}
+              onReturnCall={onReturnCall}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="px-4 py-8 text-center">
+          <p className="m-0 text-sm font-semibold text-[#344054]">
+            Sem chamadas ainda
+          </p>
+          <p className="m-0 mt-1 text-xs leading-5 text-[#667085]">
+            Chamadas recebidas, perdidas e realizadas aparecerao aqui.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CallHistoryMenuItem({
+  entry,
+  onReturnCall,
+}: {
+  entry: HermesCallHistoryEntry;
+  onReturnCall: (entry: HermesCallHistoryEntry) => void;
+}) {
+  const copy = getCallHistoryCopy(entry);
+
+  return (
+    <button
+      className="grid w-full grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-2 py-2 text-left outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      onClick={() => onReturnCall(entry)}
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        className={`relative grid h-10 w-10 place-items-center overflow-hidden rounded-full ${copy.avatarClass}`}
+        style={
+          entry.callerAvatarUrl
+            ? {
+                backgroundImage: `url(${entry.callerAvatarUrl})`,
+                backgroundPosition: "center",
+                backgroundSize: "cover",
+              }
+            : undefined
+        }
+      >
+        {entry.callerAvatarUrl ? null : copy.icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-[#101820]">
+          {entry.callerName}
+        </span>
+        <span className={`mt-0.5 block truncate text-xs ${copy.textClass}`}>
+          {copy.title}
+        </span>
+        <span className="mt-0.5 block truncate text-[0.68rem] text-[#667085]">
+          {entry.channelName}
+        </span>
+      </span>
+      <span className="text-right">
+        <span className="block text-xs font-bold text-[#101820]">
+          {formatCallHistoryTime(entry.startedAt)}
+        </span>
+        <span className="mt-1 inline-flex rounded-full border border-[#d9e0ea] px-2 py-0.5 text-[0.62rem] font-semibold text-[#667085]">
+          Retornar
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function CallSoundMenu({
   onChange,
   onPreview,
@@ -233,6 +375,57 @@ function CallSoundMenu({
       </div>
     </div>
   );
+}
+
+function getCallHistoryCopy(entry: HermesCallHistoryEntry) {
+  const kindLabel = entry.type === "video" ? "video" : "voz";
+
+  if (entry.status === "missed") {
+    return {
+      avatarClass: "bg-[#fff1f2] text-rose-600",
+      icon: <PhoneMissed aria-hidden="true" size={17} />,
+      textClass: "font-semibold text-rose-600",
+      title: `Ligacao de ${kindLabel} perdida`,
+    };
+  }
+
+  if (entry.status === "declined") {
+    return {
+      avatarClass: "bg-[#fff7ed] text-orange-600",
+      icon: <PhoneMissed aria-hidden="true" size={17} />,
+      textClass: "font-semibold text-orange-600",
+      title: `Ligacao de ${kindLabel} nao atendida`,
+    };
+  }
+
+  if (entry.direction === "outgoing") {
+    return {
+      avatarClass: "bg-[#f2f4f7] text-[#344054]",
+      icon: <PhoneOutgoing aria-hidden="true" size={17} />,
+      textClass: "text-[#667085]",
+      title: `Ligacao de ${kindLabel} realizada`,
+    };
+  }
+
+  return {
+    avatarClass: "bg-[#ecfdf3] text-emerald-700",
+    icon: <PhoneIncoming aria-hidden="true" size={17} />,
+    textClass: "text-[#667085]",
+    title: `Ligacao de ${kindLabel} recebida`,
+  };
+}
+
+function formatCallHistoryTime(value: string) {
+  const time = Date.parse(value);
+
+  if (Number.isNaN(time)) {
+    return "--:--";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(time));
 }
 
 function getChannelPresenceStatus(
@@ -324,11 +517,13 @@ function getPresenceLabel(status: HermesPresenceUser["status"]) {
 function HeaderAction({
   active = false,
   ariaLabel,
+  badgeCount = 0,
   icon,
   onClick,
 }: {
   active?: boolean;
   ariaLabel: string;
+  badgeCount?: number;
   icon: ReactNode;
   onClick?: () => void;
 }) {
@@ -336,11 +531,16 @@ function HeaderAction({
     <button
       aria-label={ariaLabel}
       aria-pressed={active || undefined}
-      className="grid h-8 w-8 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[var(--uix-surface-muted)] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-[#f7f3eb] aria-pressed:text-[#A07C3B]"
+      className="relative grid h-8 w-8 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[var(--uix-surface-muted)] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-[#f7f3eb] aria-pressed:text-[#A07C3B]"
       onClick={onClick}
       type="button"
     >
       {icon}
+      {badgeCount > 0 ? (
+        <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-600 px-1 text-[0.6rem] font-bold leading-none text-white">
+          {badgeCount > 9 ? "9+" : badgeCount}
+        </span>
+      ) : null}
     </button>
   );
 }

@@ -38,6 +38,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useHermesCall } from "@/providers/pulsex-call-provider";
 import { Bell, Download, X } from "lucide-react";
 import type {
+  HermesCallHistoryEntry,
   HermesCallSession,
   HermesCallType,
   HermesChannel,
@@ -129,11 +130,14 @@ type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 export function HermesWorkspace() {
   const { hubUser, profileStatus } = useAuth();
   const {
+    callHistory,
     callSoundId,
     callSoundOptions,
+    markCallHistoryRead,
     previewCallSound,
     setCallSoundId,
     startCall,
+    unreadCallCount,
   } = useHermesCall();
   const currentUserId = hubUser?.id ?? "ana";
   const [activeChannelId, setActiveChannelId] = useState<HermesChannel["id"]>(
@@ -252,6 +256,10 @@ export function HermesWorkspace() {
 
     return [...channelUsers, ...messageAuthorUsers];
   }, [activeChannel.id, channelMessages, presenceUsers]);
+  const activeChannelCallEvents = useMemo(
+    () => callHistory.filter((entry) => entry.channelId === activeChannel.id),
+    [activeChannel.id, callHistory],
+  );
 
   function handleCloseAthenaAgent() {
     if (isAthenaTicketRecordingActive) {
@@ -860,12 +868,20 @@ export function HermesWorkspace() {
     setAthenaFocusedMessageId(null);
   }
 
-  function handleStartCall(type: HermesCallType) {
+  function startHermesCallForChannel(
+    channel: HermesChannel,
+    type: HermesCallType,
+  ) {
+    if (channel.id === emptyHermesChannel.id) {
+      return;
+    }
+
+    const participants = getPresenceUsersForChannel(channel, presenceUsers);
     const session = createLocalCallSession({
-      channel: activeChannel,
+      channel,
       currentUserId,
       fallbackUsers: presenceUsers,
-      participants: channelPresenceUsers,
+      participants,
       type,
     });
     const targetUserIds = session.participants
@@ -876,6 +892,23 @@ export function HermesWorkspace() {
       );
 
     startCall({ session, targetUserIds });
+  }
+
+  function handleStartCall(type: HermesCallType) {
+    startHermesCallForChannel(activeChannel, type);
+  }
+
+  function handleReturnCallFromHistory(entry: HermesCallHistoryEntry) {
+    const targetChannel =
+      channels.find((channel) => channel.id === entry.channelId) ??
+      activeChannel;
+
+    if (targetChannel.id !== activeChannel.id) {
+      handleSelectChannel(targetChannel.id);
+    }
+
+    markCallHistoryRead(entry.channelId);
+    startHermesCallForChannel(targetChannel, entry.type);
   }
 
   async function handleSendMessage(input?: {
@@ -1354,18 +1387,23 @@ export function HermesWorkspace() {
       <div className="min-h-0 min-w-0 p-3 pl-0">
         <main className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-[#d9e0ea] bg-[#f3f6fa] shadow-[0_14px_36px_rgba(16,24,32,0.08)]">
           <ConversationHeader
+            callHistory={callHistory}
             callSoundOptions={callSoundOptions}
             channel={activeChannel}
             isFavorite={favoriteChannelIdsSet.has(activeChannel.id)}
             onChangeCallSound={setCallSoundId}
+            onMarkCallHistoryRead={markCallHistoryRead}
             onPreviewCallSound={previewCallSound}
+            onReturnCall={handleReturnCallFromHistory}
             onStartCall={handleStartCall}
             onToggleFavorite={handleToggleFavoriteChannel}
             presenceUsers={channelPresenceUsers}
             selectedCallSoundId={callSoundId}
+            unreadCallCount={unreadCallCount}
           />
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
             <MessageList
+              callEvents={activeChannelCallEvents}
               currentUserId={currentUserId}
               filter={activeMessageFilter}
               messages={filteredChannelMessages}
@@ -1373,6 +1411,7 @@ export function HermesWorkspace() {
               onEditMessage={handleEditMessage}
               onOpenThread={handleOpenThread}
               onPreviewAttachment={handlePreviewAttachment}
+              onReturnCall={handleReturnCallFromHistory}
               onToggleReaction={handleToggleReaction}
               onToggleTag={handleToggleMessageTag}
               reactionOptions={hermesReactionOptions}
@@ -1978,6 +2017,17 @@ function createPresenceUserFromMessage(
   };
 }
 
+function getPresenceUsersForChannel(
+  channel: HermesChannel,
+  users: readonly HermesPresenceUser[],
+) {
+  return users.filter(
+    (user) =>
+      (user.channelIds as readonly string[]).includes(channel.id) ||
+      Boolean(channel.memberUserIds?.includes(user.id)),
+  );
+}
+
 function withUserChannelAccess(
   users: readonly HermesPresenceUser[],
   channels: readonly HermesChannel[],
@@ -2082,7 +2132,7 @@ function createLocalCallSession({
       status: user.id === currentUserId ? "joined" : "invited",
       userId: user.id,
     })),
-    startedAt: "agora",
+    startedAt: new Date().toISOString(),
     status: "active",
     title: channel.name,
     type,
