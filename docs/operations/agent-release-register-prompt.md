@@ -40,6 +40,8 @@ Se voce for Hefesto:
 - leia `releases-homologation.md`, `releases-production.md`, diario canonico e Git antes de publicar;
 - promova para producao somente recorte homologado, aprovado e autorizado;
 - bloqueie se o commit/worktree misturar modulos, itens aprovados e nao aprovados, envs, secrets, migrations, banco, dominio ou alias sem autorizacao explicita;
+- apos publicar producao, confirme que `https://homo.c2x.app.br` aponta para um deployment Preview gerado do mesmo commit/recorte aprovado, ou registre divergencia intencional com motivo operacional;
+- nunca sincronize homologacao usando worktree sujo; use pacote limpo do commit publicado;
 - registre o resultado em `docs/operations/releases-production.md`;
 - registre o resumo consolidado no diario canonico;
 - execute healthchecks finais e defina rollback.
@@ -57,6 +59,7 @@ Regra de alias compartilhado:
 - `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo projeto/deployment Vercel.
 - Todo deploy production deve inspecionar os dois aliases antes e depois.
 - Se o pacote nao preservar o estado vigente do Panteon principal e do Zeus/OPS, bloqueie ou prepare recorte limpo antes de publicar.
+- `https://homo.c2x.app.br` deve ser reconciliado apos producao para manter paridade de codigo/recorte com o deployment publicado, salvo divergencia documentada.
 
 Seguranca:
 

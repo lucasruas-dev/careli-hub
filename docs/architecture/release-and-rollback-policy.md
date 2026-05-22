@@ -36,6 +36,7 @@ Antes de publicar:
 - `Hefesto` recebe o handoff por modulo e promove producao somente do que estiver homologado, validado e autorizado.
 - Antes de promover producao, `Hefesto` deve consultar `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, o diario canonico e o Git/worktree.
 - Se um commit ou pacote misturar modulos ou itens aprovados e reprovados, `Hefesto` deve bloquear ou exigir novo recorte limpo antes da producao.
+- Apos uma promocao para producao, `Hefesto` deve reconciliar `https://homo.c2x.app.br` para um deployment Preview gerado do mesmo commit/recorte publicado. Se homologacao precisar divergir de producao, a divergencia deve ser intencional, justificada e registrada.
 
 ## Registro minimo de deploy
 
@@ -48,6 +49,7 @@ Todo deploy critico deve registrar:
 - deployment anterior;
 - alias ou dominio afetado;
 - impacto sobre aliases compartilhados, incluindo `c2x.app.br` e `ops.c2x.app.br` quando estiverem no mesmo deployment;
+- deployment/alias de homologacao reconciliado com o commit publicado, ou justificativa para divergencia;
 - comandos executados;
 - healthchecks;
 - logs recentes;
