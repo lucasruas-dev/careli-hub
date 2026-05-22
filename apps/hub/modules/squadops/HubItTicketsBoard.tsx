@@ -22,6 +22,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
+  FileText,
   History,
   ImageIcon,
   Inbox,
@@ -1608,7 +1610,7 @@ function AttachmentsPanel({
           </div>
         ) : (
           <p className="m-0 mt-3 text-sm text-slate-500">
-            Nenhum print ou gravacao anexado.
+            Nenhum print, gravacao ou arquivo anexado.
           </p>
         )}
       </Surface>
@@ -1680,6 +1682,7 @@ function AttachmentCard({
     (attachment.type === "image" ||
       attachment.type === "video" ||
       attachment.type === "audio");
+  const canOpenFile = Boolean(attachment.dataUrl) && attachment.type === "file";
 
   return (
     <div className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left transition hover:border-[#A07C3B]/30">
@@ -1728,6 +1731,8 @@ function AttachmentCard({
         <div className="grid h-36 place-items-center bg-slate-100 text-slate-400">
           {attachment.type === "image" ? (
             <ImageIcon className="size-7" />
+          ) : attachment.type === "file" ? (
+            <FileText className="size-7" />
           ) : (
             <Paperclip className="size-7" />
           )}
@@ -1752,6 +1757,20 @@ function AttachmentCard({
             >
               <Maximize2 className="size-4" />
             </button>
+          </Tooltip>
+        ) : null}
+        {canOpenFile ? (
+          <Tooltip content="Abrir arquivo" placement="left">
+            <a
+              aria-label="Abrir arquivo anexado"
+              className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
+              download={attachment.fileName}
+              href={attachment.dataUrl ?? undefined}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <ExternalLink className="size-4" />
+            </a>
           </Tooltip>
         ) : null}
       </div>

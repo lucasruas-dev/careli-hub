@@ -1133,7 +1133,7 @@ function AttachmentsPreview({
         </div>
       ) : (
         <p className="m-0 mt-3 text-sm text-slate-500">
-          Nenhum print, video ou audio anexado.
+          Nenhum print, video, audio ou arquivo anexado.
         </p>
       )}
     </div>
@@ -1190,6 +1190,17 @@ function AttachmentPreview({
         <p className="m-0 mt-1 text-xs text-slate-500">
           {attachment.type} / {formatBytes(attachment.sizeBytes)}
         </p>
+        {attachment.type === "file" && attachment.dataUrl ? (
+          <a
+            className="mt-2 inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-[#7A5E2C] transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5"
+            download={attachment.fileName}
+            href={attachment.dataUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Abrir arquivo
+          </a>
+        ) : null}
       </div>
     </div>
   );

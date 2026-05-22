@@ -63,7 +63,7 @@ type HubTicketOpenFormProps = {
 };
 
 const maxAttachmentBytes = 6_000_000;
-const maxAttachmentCount = 3;
+const maxAttachmentCount = 4;
 
 export function HubTicketOpenForm({
   compactRecordingMode = false,
@@ -347,6 +347,10 @@ export function HubTicketOpenForm({
   }
 
   async function captureScreenFrame() {
+    if (!ensureAttachmentSlot()) {
+      return;
+    }
+
     setError(null);
     clearRecordingError();
 
@@ -377,12 +381,19 @@ export function HubTicketOpenForm({
       stream.getTracks().forEach((track) => track.stop());
 
       const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+      const sizeBytes = dataUrlToBytes(dataUrl);
+
+      if (sizeBytes > maxAttachmentBytes) {
+        setError("Print acima de 6 MB. Anexe uma imagem menor.");
+        return;
+      }
+
       addAttachment({
         capturedAt: new Date().toISOString(),
         dataUrl,
         fileName: `print-${formatAttachmentStamp()}.jpg`,
         mimeType: "image/jpeg",
-        sizeBytes: dataUrlToBytes(dataUrl),
+        sizeBytes,
         type: "image",
       });
     } catch {
@@ -393,6 +404,10 @@ export function HubTicketOpenForm({
   async function toggleScreenRecording() {
     if (recordingKind === "screen") {
       stopActiveRecording();
+      return;
+    }
+
+    if (!ensureAttachmentSlot()) {
       return;
     }
 
@@ -407,6 +422,10 @@ export function HubTicketOpenForm({
       return;
     }
 
+    if (!ensureAttachmentSlot()) {
+      return;
+    }
+
     setError(null);
     clearRecordingError();
     await startAudioRecording();
@@ -414,12 +433,34 @@ export function HubTicketOpenForm({
 
   async function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
+    const availableSlots = Math.max(
+      0,
+      maxAttachmentCount - attachments.length - pendingAttachmentCount,
+    );
 
-    for (const file of files.slice(0, maxAttachmentCount)) {
+    if (files.length === 0) {
+      return;
+    }
+
+    if (availableSlots === 0) {
+      setError(`Limite de ${maxAttachmentCount} evidencias por HelpDesk.`);
+      event.target.value = "";
+      return;
+    }
+
+    const reachedLimit = files.length > availableSlots;
+
+    for (const file of files.slice(0, availableSlots)) {
       await addBlobAttachment(file, {
         fileName: file.name,
         type: getAttachmentTypeFromMime(file.type),
       });
+    }
+
+    if (reachedLimit) {
+      setError(
+        `Limite de ${maxAttachmentCount} evidencias. ${availableSlots} arquivo(s) foram anexados.`,
+      );
     }
 
     event.target.value = "";
@@ -432,6 +473,10 @@ export function HubTicketOpenForm({
       type: HubItTicketAttachmentInput["type"];
     },
   ) {
+    if (!ensureAttachmentSlot()) {
+      return;
+    }
+
     if (blob.size > maxAttachmentBytes) {
       setError("Anexo acima de 6 MB. Envie uma evidencia menor.");
       return;
@@ -457,6 +502,15 @@ export function HubTicketOpenForm({
     setAttachments((currentAttachments) =>
       [attachment, ...currentAttachments].slice(0, maxAttachmentCount),
     );
+  }
+
+  function ensureAttachmentSlot() {
+    if (attachments.length + pendingAttachmentCount >= maxAttachmentCount) {
+      setError(`Limite de ${maxAttachmentCount} evidencias por HelpDesk.`);
+      return false;
+    }
+
+    return true;
   }
 
   function removeAttachment(fileName: string) {
@@ -694,7 +748,7 @@ export function HubTicketOpenForm({
             onClick={() => fileInputRef.current?.click()}
           />
           <input
-            accept="audio/*,image/*,video/webm,video/mp4"
+            accept="audio/*,image/*,video/*,.csv,.doc,.docx,.pdf,.ppt,.pptx,.txt,.xls,.xlsx"
             className="hidden"
             multiple
             onChange={(event) => void handleFileInputChange(event)}
@@ -845,7 +899,7 @@ function EvidencePreviewList({
   if (attachments.length === 0) {
     return (
       <p className="m-0 mt-3 text-xs text-slate-500">
-        Athena le print, audio e quadros do video quando houver anexo.
+        Athena le prints, audio e quadros do video, e registra arquivos anexados.
       </p>
     );
   }
@@ -1033,7 +1087,7 @@ function buildUserDescription(
 
 function buildEvidenceSummary(attachments: HubItTicketAttachmentInput[]) {
   if (attachments.length === 0) {
-    return "- Sem print, video ou audio anexado.";
+    return "- Sem print, video, audio ou arquivo anexado.";
   }
 
   return attachments

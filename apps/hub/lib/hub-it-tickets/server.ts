@@ -197,7 +197,7 @@ type HubItTicketsLocalStore = {
 };
 
 const maxTextLength = 5_000;
-const maxAttachmentCount = 3;
+const maxAttachmentCount = 4;
 const maxAttachmentBytes = 6_000_000;
 const localStorePath = path.join(
   process.cwd(),

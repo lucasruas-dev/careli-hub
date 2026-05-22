@@ -27,6 +27,7 @@ const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const OPENAI_TIMEOUT_MS = 45_000;
 const MAX_IMAGE_EVIDENCES = 6;
 const MAX_AUDIO_EVIDENCES = 2;
+const MAX_EVIDENCE_ATTACHMENTS = 4;
 const PANTEON_BUSINESS_RULES = [
   "Iris e o canal oficial de comunicacao externa. Demandas que exigem retorno ao cliente devem gerar ou referenciar um protocolo AT.",
   "Zeus centraliza HelpDesk, operacao, dados, infra e suporte interno. Demandas tecnicas abertas pela Athena usam protocolo TI e precisam preservar evidencias, historico e devolutivas.",
@@ -136,7 +137,7 @@ function normalizeEvidenceAttachments(
     return [];
   }
 
-  return attachments.slice(0, 3).flatMap((attachment) => {
+  return attachments.slice(0, MAX_EVIDENCE_ATTACHMENTS).flatMap((attachment) => {
     if (!attachment || typeof attachment !== "object") {
       return [];
     }
@@ -420,7 +421,7 @@ function collectVisualEvidenceDataUrls(attachments: HubItTicketAttachmentInput[]
 
 function buildEvidenceInsights(attachments: HubItTicketAttachmentInput[]) {
   if (attachments.length === 0) {
-    return ["Sem print, video ou audio anexado."];
+    return ["Sem print, video, audio ou arquivo anexado."];
   }
 
   return attachments.map((attachment, index) => {
