@@ -110,9 +110,19 @@ const ASANA_DOCS_URL =
 const DEFAULT_WINDOW_DAYS = 90;
 const DEFAULT_TASK_LIMIT_PER_USER = 5_000;
 const MAX_TASK_LIMIT_PER_USER = 10_000;
+const ASANA_COLLABORATOR_CONCURRENCY = 4;
+const ASANA_SNAPSHOT_CACHE_TTL_MS = 120_000;
 const MS_PER_DAY = 86_400_000;
 const TASK_OPT_FIELDS =
   "gid,name,completed,completed_at,due_on,due_at,created_at,modified_at,permalink_url";
+
+type AsanaTeamPerformanceSnapshot = ReturnType<typeof buildSnapshot>;
+type CachedAsanaSnapshot = {
+  data: AsanaTeamPerformanceSnapshot;
+  expiresAt: number;
+};
+
+const asanaSnapshotCache = new Map<string, CachedAsanaSnapshot>();
 
 export async function GET(request: NextRequest) {
   const context = await createAuthorizedContext(request);
@@ -180,6 +190,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const cacheKey = buildAsanaSnapshotCacheKey({
+      configuredWorkspaceGids,
+      hubUsers,
+      period: analysisPeriod,
+      taskLimitPerUser,
+      windowDays,
+      workspaceMode,
+    });
+    const cachedSnapshot = getCachedAsanaSnapshot(cacheKey);
+
+    if (cachedSnapshot) {
+      return NextResponse.json({ data: cachedSnapshot });
+    }
+
     const workspaces = await resolveAsanaWorkspaces({
       configuredWorkspaceGids,
       token,
@@ -192,19 +216,20 @@ export async function GET(request: NextRequest) {
       period: analysisPeriod,
       workspaces,
     });
-
-    return NextResponse.json({
-      data: buildSnapshot({
-        collaborators,
-        missingEnv,
-        status: "configured",
-        period: analysisPeriod,
-        taskLimitPerUser,
-        windowDays,
-        workspaceMode,
-        workspaces,
-      }),
+    const snapshot = buildSnapshot({
+      collaborators,
+      missingEnv,
+      status: "configured",
+      period: analysisPeriod,
+      taskLimitPerUser,
+      windowDays,
+      workspaceMode,
+      workspaces,
     });
+
+    setCachedAsanaSnapshot(cacheKey, snapshot);
+
+    return NextResponse.json({ data: snapshot });
   } catch (error) {
     return NextResponse.json({
       data: buildSnapshot({
@@ -310,68 +335,28 @@ async function loadCollaboratorPerformance({
 }) {
   const collaborators: AsanaCollaboratorPerformance[] = [];
 
-  for (const user of hubUsers) {
-    const matchedUsers: AsanaUser[] = [];
-    const matchedWorkspaceNames: string[] = [];
-    const tasksByWorkspace = new Map<string, AsanaTask>();
-    const taskQueryModes = new Set<AsanaTaskQueryMode>();
-    let limitReached = false;
-    let remainingLimit = taskLimitPerUser;
-
-    for (const workspace of workspaces) {
-      if (remainingLimit <= 0) {
-        break;
-      }
-
-      const asanaUser = await fetchAsanaUserByEmail({
-        email: user.email,
-        token,
-        workspaceGid: workspace.gid,
-      });
-
-      if (!asanaUser) {
-        continue;
-      }
-
-      matchedUsers.push(asanaUser);
-      matchedWorkspaceNames.push(workspace.name ?? workspace.gid);
-
-      const workspaceTaskResult = await fetchAsanaTasksForUser({
-        limit: remainingLimit,
-        period,
-        token,
-        userGid: asanaUser.gid,
-        workspaceGid: workspace.gid,
-      });
-
-      taskQueryModes.add(workspaceTaskResult.queryMode);
-      limitReached ||= workspaceTaskResult.limitReached;
-
-      for (const task of workspaceTaskResult.tasks) {
-        tasksByWorkspace.set(`${workspace.gid}:${task.gid}`, task);
-      }
-
-      remainingLimit = Math.max(0, taskLimitPerUser - tasksByWorkspace.size);
-    }
-
-    if (matchedUsers.length === 0) {
-      collaborators.push(buildUnmatchedCollaborator(user));
-      continue;
-    }
-
-    collaborators.push(
-      buildCollaboratorPerformance({
-        asanaUsers: matchedUsers,
-        limitReached,
-        taskQueryModes: [...taskQueryModes],
-        tasks: filterTasksCreatedInPeriod(
-          [...tasksByWorkspace.values()],
-          period,
-        ),
-        user,
-        workspaceNames: matchedWorkspaceNames,
-      }),
+  for (
+    let startIndex = 0;
+    startIndex < hubUsers.length;
+    startIndex += ASANA_COLLABORATOR_CONCURRENCY
+  ) {
+    const batch = hubUsers.slice(
+      startIndex,
+      startIndex + ASANA_COLLABORATOR_CONCURRENCY,
     );
+    const batchCollaborators = await Promise.all(
+      batch.map((user) =>
+        loadSingleCollaboratorPerformance({
+          period,
+          taskLimitPerUser,
+          token,
+          user,
+          workspaces,
+        }),
+      ),
+    );
+
+    collaborators.push(...batchCollaborators);
   }
 
   return collaborators.sort((left, right) => {
@@ -384,6 +369,76 @@ async function loadCollaboratorPerformance({
     }
 
     return right.total - left.total;
+  });
+}
+
+async function loadSingleCollaboratorPerformance({
+  period,
+  taskLimitPerUser,
+  token,
+  user,
+  workspaces,
+}: {
+  period: AsanaAnalysisPeriod;
+  taskLimitPerUser: number;
+  token: string;
+  user: HubUserRow;
+  workspaces: AsanaWorkspace[];
+}) {
+  const matchedUsers: AsanaUser[] = [];
+  const matchedWorkspaceNames: string[] = [];
+  const tasksByWorkspace = new Map<string, AsanaTask>();
+  const taskQueryModes = new Set<AsanaTaskQueryMode>();
+  let limitReached = false;
+  let remainingLimit = taskLimitPerUser;
+
+  for (const workspace of workspaces) {
+    if (remainingLimit <= 0) {
+      break;
+    }
+
+    const asanaUser = await fetchAsanaUserByEmail({
+      email: user.email,
+      token,
+      workspaceGid: workspace.gid,
+    });
+
+    if (!asanaUser) {
+      continue;
+    }
+
+    matchedUsers.push(asanaUser);
+    matchedWorkspaceNames.push(workspace.name ?? workspace.gid);
+
+    const workspaceTaskResult = await fetchAsanaTasksForUser({
+      limit: remainingLimit,
+      period,
+      token,
+      userGid: asanaUser.gid,
+      workspaceGid: workspace.gid,
+    });
+
+    taskQueryModes.add(workspaceTaskResult.queryMode);
+    limitReached ||= workspaceTaskResult.limitReached;
+
+    for (const task of workspaceTaskResult.tasks) {
+      tasksByWorkspace.set(`${workspace.gid}:${task.gid}`, task);
+    }
+
+    remainingLimit = Math.max(0, taskLimitPerUser - tasksByWorkspace.size);
+  }
+
+  if (matchedUsers.length === 0) {
+    return buildUnmatchedCollaborator(user);
+  }
+
+  return buildCollaboratorPerformance({
+    asanaUsers: matchedUsers,
+    limitReached,
+    taskQueryModes: [...taskQueryModes],
+    tasks: filterTasksCreatedInPeriod([...tasksByWorkspace.values()], period),
+    user,
+    workspaceNames: matchedWorkspaceNames,
   });
 }
 
@@ -810,6 +865,61 @@ function isTaskCreatedInPeriod(task: AsanaTask, period: AsanaAnalysisPeriod) {
   const createdTime = task.created_at ? Date.parse(task.created_at) : Number.NaN;
 
   return Number.isFinite(createdTime) && isInPeriod(createdTime, period);
+}
+
+function buildAsanaSnapshotCacheKey({
+  configuredWorkspaceGids,
+  hubUsers,
+  period,
+  taskLimitPerUser,
+  windowDays,
+  workspaceMode,
+}: {
+  configuredWorkspaceGids: string[];
+  hubUsers: HubUserRow[];
+  period: AsanaAnalysisPeriod;
+  taskLimitPerUser: number;
+  windowDays: number;
+  workspaceMode: "all" | "filtered";
+}) {
+  return JSON.stringify({
+    configuredWorkspaceGids,
+    period: {
+      endDate: period.endDate,
+      preset: period.preset,
+      startDate: period.startDate,
+    },
+    taskLimitPerUser,
+    users: hubUsers.map((user) => `${user.id}:${user.email}`),
+    windowDays,
+    workspaceMode,
+  });
+}
+
+function getCachedAsanaSnapshot(cacheKey: string) {
+  const cachedSnapshot = asanaSnapshotCache.get(cacheKey);
+
+  if (!cachedSnapshot) {
+    return null;
+  }
+
+  if (cachedSnapshot.expiresAt <= Date.now()) {
+    asanaSnapshotCache.delete(cacheKey);
+
+    return null;
+  }
+
+  return cachedSnapshot.data;
+}
+
+function setCachedAsanaSnapshot(
+  cacheKey: string,
+  data: AsanaTeamPerformanceSnapshot,
+) {
+  asanaSnapshotCache.set(cacheKey, {
+    data,
+    expiresAt: Date.now() + ASANA_SNAPSHOT_CACHE_TTL_MS,
+  });
 }
 
 function buildSnapshot({
