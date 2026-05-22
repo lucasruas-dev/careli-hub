@@ -11438,3 +11438,45 @@ Conclusao:
 - O pacote pendente foi consolidado, versionado, migrado e publicado em producao sem alterar envs ativas.
 - O ambiente esta online e os healthchecks publicos/protegidos passaram.
 - Status operacional consolidado: `EM PRODUCAO`, com atencao apenas para validacao autenticada e governanca futura da service-role.
+
+## 2026-05-21 22:40:13 -03:00 - Zeus Core - Iris visivel no sidebar principal
+
+Assunto: [Zeus] Iris habilitada no sidebar do Panteon
+
+Status: PRONTO PARA PRODUCAO
+
+Motivo:
+- Lucas informou que Hefesto publicou em producao os commits pendentes, mas a Iris nao apareceu no sidebar principal do Hub/Panteon.
+- O healthcheck de producao do Hefesto ja havia confirmado `GET https://c2x.app.br/iris`: `200`, indicando que a rota existe e o problema estava na visibilidade do shell.
+
+Causa encontrada:
+- `packages/shared/src/modules/registry.ts` ja registra `iris` como modulo ativo.
+- `apps/hub/layouts/hub-shell.tsx` continha `hiddenProductionModuleIds = new Set(["iris"])`, bloqueando a exibicao da Iris apenas em producao.
+
+Como foi feito:
+- Removi o bloqueio de producao mantendo a estrutura atual do shell.
+- A Iris continua respeitando o registry, o status ativo, os modulos liberados e as permissoes `iris:view`.
+- Registrei regra operacional em `docs/operations/README.md`: a Iris e modulo ativo e nao deve voltar a bloqueio hardcoded como `hiddenProductionModuleIds` sem autorizacao explicita do Lucas.
+- Nao houve alteracao em banco, Supabase, envs, Vercel, alias, migrations ou outros modulos.
+
+Arquivos/modulos afetados:
+- `apps/hub/layouts/hub-shell.tsx`
+- `docs/operations/README.md`
+- `docs/operations/engineering-operations.md`
+- `docs/operations/releases-production.md`
+
+Arquivos/modulos excluidos:
+- Iris runtime, Hades, Hermes, Atlas, Apolo, Chronos, Setup, Zeus, Supabase, banco, migrations, Vercel, dominio, aliases e envs.
+
+Validacoes executadas:
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido do Node/ESLint sobre `type: module`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- `git diff --check -- apps/hub/layouts/hub-shell.tsx`: OK, apenas aviso CRLF do Git no Windows.
+
+Riscos conhecidos:
+- A correcao so aparecera em `https://c2x.app.br` depois de deploy Production.
+- Como se trata de producao e o fluxo vigente coloca Hefesto como gatekeeper, a publicacao permanece pendente de promocao/autorizacao de Hefesto ou autorizacao explicita do Lucas para Zeus publicar este recorte minimo.
+
+Proximo passo:
+- Hefesto publicar recorte minimo `apps/hub/layouts/hub-shell.tsx` em producao, ou Lucas autorizar explicitamente Zeus a publicar direto.

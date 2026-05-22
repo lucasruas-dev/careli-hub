@@ -112,7 +112,7 @@ const minimumReleasedModuleIds = [
   "hermes",
   "setup",
 ] as const;
-const hiddenProductionModuleIds = new Set(["iris"]);
+const hiddenProductionModuleIds = new Set<string>();
 
 export function HubShell({
   children,

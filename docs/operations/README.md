@@ -55,6 +55,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - Todos os sidebars, tanto o global quanto sidebars internos de modulo, devem seguir o layout, cor, estados e comportamento do sidebar principal do Panteon. A base visual canonica e grafite `#101820`, com accent Careli `#A07C3B`, header compacto sem subtitulo operacional redundante, icone ativo com fundo preto, leitura recolhida/expandida consistente e interacoes identicas quando a funcao for a mesma. O topo deve sempre trazer icone preto do modulo, nome do modulo, botao para abrir o sidebar/launcher do Panteon e botao de recolher/expandir, separado da navegacao por divisor discreto.
 - O perfil do usuario logado deve aparecer no topbar/header da tela, no canto superior direito, seguindo o padrao do Panteon principal: status, avatar, nome e saida. Nao mover esse bloco para o sidebar; sidebars continuam sendo apenas navegacao e contexto do modulo.
 - Qualquer excecao visual de sidebar ou de estrutura da Home precisa ter motivo operacional claro, validacao visual e registro no diario canonico.
+- A Iris e modulo ativo e liberado no sidebar principal do Panteon em producao. Nao reintroduzir bloqueio hardcoded para `iris` em listas como `hiddenProductionModuleIds`; qualquer retirada da Iris do sidebar precisa de autorizacao explicita do Lucas, motivo operacional registrado e deve preferir registry/permissao em vez de bloqueio fixo no shell.
 
 ## Scripts para agentes
 

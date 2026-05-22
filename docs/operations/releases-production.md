@@ -936,3 +936,36 @@ Registro de producao:
   - Validacao autenticada visual/funcional ainda depende de Lucas.
 - Rollback: promover novamente `dpl_EbeEXXYKKSu9KYZQfK5t9uRBCo8F` se houver regressao critica.
 - Proxima acao: Lucas validar modulos autenticados; Hefesto monitorar producao; Zeus/DataOps avaliar service-role JWT apenas se necessario.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Iris habilitada no sidebar do Panteon`.
+- Squad/agente responsavel: `Zeus Core`.
+- Data e hora local: `2026-05-21 22:40:13 -03:00`.
+- Ambiente: `producao`.
+- Status: `PRONTO PARA PRODUCAO`.
+- Origem: Lucas informou que, apos a consolidacao de Hefesto em producao, a rota Iris respondia mas o modulo nao aparecia no sidebar principal.
+- Escopo preparado:
+  - remover o bloqueio local de visibilidade que escondia `iris` em producao;
+  - registrar regra permanente para nao reintroduzir bloqueio hardcoded da Iris no sidebar sem autorizacao explicita do Lucas;
+  - manter registry, permissoes e regras de acesso atuais;
+  - nao alterar banco, Supabase, envs, Vercel, alias, dominio ou migrations.
+- Causa tecnica:
+  - `apps/hub/layouts/hub-shell.tsx` continha `hiddenProductionModuleIds = new Set(["iris"])`.
+- Arquivos incluidos:
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `docs/operations/README.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-production.md`.
+- Arquivos/modulos excluidos:
+  - Iris runtime, Hades, Hermes, Atlas, Apolo, Chronos, Setup, Zeus, Supabase, banco, migrations, Vercel, dominio, aliases e envs.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido do Node/ESLint sobre `type: module`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/layouts/hub-shell.tsx`: OK, apenas aviso CRLF do Git no Windows.
+- Riscos:
+  - a alteracao ainda nao esta publicada em producao neste registro;
+  - publicacao Production deve ser feita por Hefesto, ou por Zeus apenas com autorizacao explicita do Lucas para este recorte minimo.
+- Rollback: reverter apenas a linha de `hiddenProductionModuleIds` caso a Iris precise voltar a ficar oculta em producao.
+- Proxima acao: Hefesto publicar o recorte minimo ou Lucas autorizar Zeus a publicar direto.
