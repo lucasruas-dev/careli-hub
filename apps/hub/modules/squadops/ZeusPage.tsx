@@ -130,6 +130,14 @@ type AgentCommunicationItem = {
   toAgent: string;
 };
 
+type AgentEngineeringSignal = {
+  chatSaturationCount: number;
+  cleanCutCount: number;
+  mixedPackageCount: number;
+  sensitiveBlockCount: number;
+  worktreeCount: number;
+};
+
 type MonitoringIntervalMs = 0 | 10_000 | 30_000 | 60_000;
 
 type WatcherApiResponse = {
@@ -5805,6 +5813,8 @@ function AgentCommandCenterView({
   const activeAgents = new Set(
     items.flatMap((item) => [item.fromAgent, item.toAgent]),
   ).size;
+  const engineeringSignal = buildAgentEngineeringSignal(items);
+  const sensitiveBlockedCount = engineeringSignal.sensitiveBlockCount;
 
   return (
     <section className="grid min-w-0 gap-5">
@@ -5847,6 +5857,8 @@ function AgentCommandCenterView({
           />
         </div>
       </Surface>
+
+      <AgentEngineeringGovernancePanel signal={engineeringSignal} />
 
       <section className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.34fr)]">
         <Surface
@@ -5898,6 +5910,15 @@ function AgentCommandCenterView({
                           <Badge variant={agentPriorityVariant(item.priority)}>
                             {item.kind}
                           </Badge>
+                          {getAgentEngineeringCue(item) ? (
+                            <Badge
+                              variant={agentEngineeringCueVariant(
+                                getAgentEngineeringCue(item)!,
+                              )}
+                            >
+                              {getAgentEngineeringCue(item)}
+                            </Badge>
+                          ) : null}
                           <span className="text-xs font-semibold text-slate-500">
                             {item.fromAgent} → {item.toAgent}
                           </span>
@@ -5907,6 +5928,9 @@ function AgentCommandCenterView({
                         </p>
                         <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
                           {item.summary}
+                        </p>
+                        <p className="m-0 mt-2 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
+                          Decisao: {getAgentDecisionExpected(item)}
                         </p>
                         <p className="m-0 mt-2 text-xs font-semibold text-slate-400">
                           {item.record.module} /{" "}
@@ -5971,11 +5995,112 @@ function AgentCommandCenterView({
                 label="Producao"
                 value="preservada, sem deploy nesta etapa"
               />
+              <DetailField
+                label="Operacoes sensiveis"
+                value={`${sensitiveBlockedCount} sinal(is) mantendo BLOQUEADO`}
+              />
             </div>
           </Surface>
         </div>
       </section>
     </section>
+  );
+}
+
+function AgentEngineeringGovernancePanel({
+  signal,
+}: {
+  signal: AgentEngineeringSignal;
+}) {
+  const steps = [
+    {
+      label: "Worktree por agente",
+      status: "padrao vigente",
+      text: "careli-hub-worktrees/<agente> com branch codex/*.",
+    },
+    {
+      label: "Recorte limpo",
+      status: "gate de release",
+      text: "Pacote misto vira SEPARAR ou BLOQUEADO.",
+    },
+    {
+      label: "Checkpoint",
+      status: "continuidade",
+      text: "CHAT SATURANDO registra estado antes de trocar fio.",
+    },
+    {
+      label: "Handoff",
+      status: "producao protegida",
+      text: "Agente homologa; Hefesto promove somente aprovado.",
+    },
+  ];
+
+  return (
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
+        <PanelTitle
+          eyebrow="ENGENHARIA OPERACIONAL"
+          icon={<ServerCog size={18} />}
+          title="Worktrees, recortes e gates"
+        />
+        <Badge variant="neutral">modelo piloto Zeus</Badge>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-5">
+        <FocusMetric
+          detail="Registros citam worktree, branch ou codex/*."
+          icon={<GitCommitHorizontal className="size-4" />}
+          label="Worktrees"
+          value={signal.worktreeCount}
+        />
+        <FocusMetric
+          detail="Recortes limpos ou pacotes isolados citados."
+          icon={<ClipboardCheck className="size-4" />}
+          label="Recorte limpo"
+          value={signal.cleanCutCount}
+        />
+        <FocusMetric
+          detail="Pacotes mistos que exigem separacao."
+          icon={<Layers3 className="size-4" />}
+          label="Separar"
+          value={signal.mixedPackageCount}
+        />
+        <FocusMetric
+          detail="Checkpoints de continuidade registrados."
+          icon={<MessageSquareText className="size-4" />}
+          label="Chat saturando"
+          value={signal.chatSaturationCount}
+        />
+        <FocusMetric
+          detail="Ambiente, banco, secret ou producao protegidos."
+          icon={<ShieldAlert className="size-4" />}
+          label="Bloqueado"
+          value={signal.sensitiveBlockCount}
+        />
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-4">
+        {steps.map((step) => (
+          <div
+            className="min-w-0 rounded-xl border border-slate-200/70 bg-slate-50/60 p-4"
+            key={step.label}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="m-0 text-sm font-semibold text-slate-950">
+                {step.label}
+              </p>
+              <Badge variant="info">{step.status}</Badge>
+            </div>
+            <p className="m-0 mt-2 text-xs leading-5 text-slate-600">
+              {step.text}
+            </p>
+          </div>
+        ))}
+      </div>
+    </Surface>
   );
 }
 
@@ -8322,6 +8447,62 @@ function buildAgentCommunicationItems(records: EngineeringOperationRecord[]) {
     .sort(compareAgentCommunicationItems);
 }
 
+function buildAgentEngineeringSignal(
+  items: AgentCommunicationItem[],
+): AgentEngineeringSignal {
+  return items.reduce<AgentEngineeringSignal>(
+    (signal, item) => {
+      const searchable = getAgentSearchableContent(item.record);
+
+      if (
+        searchable.includes("worktree") ||
+        searchable.includes("codex/") ||
+        searchable.includes("branch")
+      ) {
+        signal.worktreeCount += 1;
+      }
+
+      if (
+        searchable.includes("recorte limpo") ||
+        searchable.includes("pacote limpo") ||
+        searchable.includes("worktree limpo") ||
+        searchable.includes("worktree limpa")
+      ) {
+        signal.cleanCutCount += 1;
+      }
+
+      if (
+        searchable.includes("worktree mist") ||
+        searchable.includes("pacote mist") ||
+        searchable.includes("recortes mist") ||
+        searchable.includes("separar")
+      ) {
+        signal.mixedPackageCount += 1;
+      }
+
+      if (searchable.includes("chat saturando")) {
+        signal.chatSaturationCount += 1;
+      }
+
+      if (
+        searchable.includes("bloqueado") &&
+        hasSensitiveEngineeringTerm(searchable)
+      ) {
+        signal.sensitiveBlockCount += 1;
+      }
+
+      return signal;
+    },
+    {
+      chatSaturationCount: 0,
+      cleanCutCount: 0,
+      mixedPackageCount: 0,
+      sensitiveBlockCount: 0,
+      worktreeCount: 0,
+    },
+  );
+}
+
 function buildAgentCommunicationLanes(items: AgentCommunicationItem[]) {
   const lanes = new Map<string, AgentCommunicationItem[]>();
 
@@ -8400,6 +8581,113 @@ function inferTargetAgent(record: EngineeringOperationRecord) {
   }
 
   return null;
+}
+
+function getAgentSearchableContent(record: EngineeringOperationRecord) {
+  return normalizeSearchText(
+    `${record.status} ${record.type} ${record.changeCategory} ${record.subject} ${record.module} ${record.squad} ${record.nextSquad} ${record.risks} ${record.rawContent}`,
+  );
+}
+
+function getAgentEngineeringCue(item: AgentCommunicationItem) {
+  const searchable = getAgentSearchableContent(item.record);
+
+  if (searchable.includes("chat saturando")) {
+    return "CHAT SATURANDO";
+  }
+
+  if (
+    searchable.includes("bloqueado") &&
+    hasSensitiveEngineeringTerm(searchable)
+  ) {
+    return "BLOQUEADO";
+  }
+
+  if (
+    searchable.includes("worktree mist") ||
+    searchable.includes("pacote mist") ||
+    searchable.includes("recortes mist") ||
+    searchable.includes("separar")
+  ) {
+    return "SEPARAR";
+  }
+
+  if (
+    searchable.includes("recorte limpo") ||
+    searchable.includes("pacote limpo") ||
+    searchable.includes("worktree limpo") ||
+    searchable.includes("worktree limpa")
+  ) {
+    return "RECORTE LIMPO";
+  }
+
+  if (
+    searchable.includes("worktree") ||
+    searchable.includes("codex/") ||
+    searchable.includes("branch")
+  ) {
+    return "WORKTREE";
+  }
+
+  return null;
+}
+
+function getAgentDecisionExpected(item: AgentCommunicationItem) {
+  const cue = getAgentEngineeringCue(item);
+
+  if (cue === "BLOQUEADO") {
+    return "manter bloqueado ate autorizacao explicita do Lucas";
+  }
+
+  if (cue === "SEPARAR") {
+    return "separar recorte limpo antes de homologacao ou producao";
+  }
+
+  if (cue === "CHAT SATURANDO") {
+    return "abrir checkpoint e retomar pelo repositorio";
+  }
+
+  if (item.toAgent === "Hefesto") {
+    return "avaliar somente pacote homologado e validado";
+  }
+
+  if (item.kind === "bloqueio") {
+    return "diagnosticar causa e indicar destravamento seguro";
+  }
+
+  return "revisar registro original e confirmar proximo responsavel";
+}
+
+function hasSensitiveEngineeringTerm(searchable: string) {
+  return [
+    "alias",
+    "banco",
+    "database",
+    "deploy",
+    "dominio",
+    "env",
+    "migration",
+    "producao",
+    "secret",
+    "supabase",
+    "vercel",
+  ].some((term) => searchable.includes(term));
+}
+
+function agentEngineeringCueVariant(cue: string): BadgeVariant {
+  if (cue === "BLOQUEADO" || cue === "SEPARAR") {
+    return "warning";
+  }
+
+  if (cue === "RECORTE LIMPO") {
+    return "success";
+  }
+
+  if (cue === "CHAT SATURANDO") {
+    return "info";
+  }
+
+  return "neutral";
 }
 
 function inferSourceAgent(record: EngineeringOperationRecord) {

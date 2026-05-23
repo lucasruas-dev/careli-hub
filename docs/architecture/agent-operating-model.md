@@ -41,6 +41,7 @@ Antes de agir, o agente deve:
 - Conferir as politicas em `docs/architecture/*` quando a demanda tocar seguranca, ambiente, secrets, release, rollback ou incidente.
 - Ler `docs/architecture/api-connection-governance.md` quando a demanda tocar API externa, webhook, conector, token, bearer, banco, Supabase, Meta, Asaas, D4Sign, OpenAI, Asana, Atlas, Hermes TURN ou sync operacional.
 - Conferir Git/worktree e separar escopo de produto, infraestrutura, dados e release.
+- Seguir `docs/operations/panteon-worktree-operating-model.md` quando a tarefa exigir worktree separado, recorte limpo, handoff, homologacao ou continuidade entre agentes.
 
 Em demandas de infraestrutura, tambem deve ler `package.json`, `turbo.json`, scripts operacionais em `scripts/` e configuracao Vercel do projeto antes de propor ou executar acao.
 

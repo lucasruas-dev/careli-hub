@@ -178,6 +178,8 @@ Regra: a troca de chat nao e falha. E uma manobra operacional para preservar vel
 
 Nao aplicar sem autorizacao explicita do Lucas.
 
+Desenho detalhado para revisao: `docs/operations/panteon-agent-messaging-v1-design.md`.
+
 Tabelas futuras:
 
 ```text

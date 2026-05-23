@@ -21,12 +21,26 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `docs/operations/releases-production.md`: indice operacional dos recortes publicados/bloqueados em producao.
 - `docs/operations/agent-release-register-prompt.md`: prompt oficial para orientar agentes no registro por ambiente.
 - `docs/operations/panteon-agent-communication-protocol.md`: protocolo oficial de comunicacao entre agentes, agente master Zeus, handoffs, bloqueios e roadmap das tabelas `hub_agent_*`.
+- `docs/operations/panteon-agent-messaging-v1-design.md`: desenho tecnico revisavel da V1 `hub_agent_*`, incluindo modelo de dados, API proposta, seguranca, RLS futura e gates antes de migration.
+- `docs/operations/panteon-engineering-evolution-roadmap.md`: roadmap de evolucao da engenharia por fases, com gates para Zeus, Hefesto, worktrees, V1 `hub_agent_*` e squads.
+- `docs/operations/panteon-agent-worktree-startup-template.md`: template de abertura de novo chat/agente em worktree separado, com leitura obrigatoria, primeira acao, bloqueios e retorno esperado.
+- `docs/operations/panteon-agent-scaffolds.md`: scaffolds operacionais por agente, com worktree, branch, escopo, bloqueios, prompt e ordem recomendada de criacao.
+- `docs/operations/panteon-worktree-operating-model.md`: modelo operacional de worktrees separados por agente, branches `codex/*`, checkpoints, validacoes e bloqueios de pacote misto.
+- `docs/operations/panteon-validation-checklists.md`: checklists de validacao por tipo de recorte, cobrindo docs, frontend, API, banco, Supabase, Vercel, homologacao, producao e incidentes.
+- `docs/operations/panteon-git-hooks.md`: padrao local de hooks Git do Panteon, com `pre-commit`, `commit-msg`, `pre-push`, instalador e limites de seguranca.
 - `docs/operations/zeus-core-v2-startup.md`: prompt de continuidade para abrir novo chat Zeus quando houver `CHAT SATURANDO`.
 - `docs/operations/squadops-center-process.md`: processo oficial do Zeus / Operations Center, protocolos `AT/CB/TI/OP/AL/DP`, homologacao, producao e operacao dedicada em `ops.c2x.app.br`.
 - `docs/operations/hub-rescueops.md`: protocolo historico de resposta critica, agora absorvido operacionalmente por `Zeus`, para recuperacao operacional, incidentes, rollback, healthchecks e bloqueios sensiveis.
 - `docs/operations/agent-handoff-scripts.md`: scripts de encaminhamento para acionar agentes sem misturar recortes.
+- `scripts/panteon-validate-worktree.ps1`: script local de validacao de worktree, com junction opcional para dependencias compartilhadas do repositorio principal.
+- `scripts/panteon-new-worktree.ps1`: script local em modo preview para sugerir criacao segura de worktree e branch por agente, sem executar por padrao.
+- `scripts/panteon-scaffold-agents.ps1`: script local para listar scaffolds padrao de agentes, worktrees, branches, escopos e comandos de criacao individual.
+- `scripts/panteon-install-hooks.ps1`: script local para instalar hooks Git do Panteon no diretorio real de hooks do repositorio, com preview e backup.
+- `scripts/panteon-hook-runner.ps1`: runner PowerShell chamado pelos hooks versionados em `.githooks/`.
 - `docs/operations/guardian-deploy-blocker-review-2026-05-18.md`: parecer Hades em arquivo de nome legado sobre criticidade real e prompts curtos para remover bloqueios.
 - `docs/codex/engineering-operations.md`: ponte de compatibilidade para o caminho historico; nao recebe novas entradas.
+- `docs/architecture/panteon-architecture-map.md`: mapa executivo da arquitetura Panteon, com camadas, worktrees, agentes, fluxo de release, ambientes e governanca.
+- `docs/architecture/panteon-architecture-board.svg`: board visual executivo do mapa Panteon para apresentacao e revisao.
 - `docs/architecture/agent-operating-model.md`: comportamento esperado dos agentes e papel de guardiao da arquitetura operacional.
 - `docs/architecture/security-governance.md`: regras gerais de seguranca, autorizacao humana, operacoes sensiveis e safe mode.
 - `docs/architecture/environment-governance.md`: ambientes, env registry e bloqueio padrao para envs.

@@ -1,0 +1,269 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Panteon - Arquitetura operacional e engenharia</title>
+  <desc id="desc">Mapa executivo da arquitetura Panteon com modulos, camadas tecnicas, agentes, worktrees, ambientes e fluxo de release.</desc>
+  <defs>
+    <linearGradient id="pageBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#071015"/>
+      <stop offset="55%" stop-color="#101820"/>
+      <stop offset="100%" stop-color="#071015"/>
+    </linearGradient>
+    <linearGradient id="accentFill" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#A07C3B" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#A07C3B" stop-opacity="0.05"/>
+    </linearGradient>
+    <filter id="panelShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <marker id="arrow" markerHeight="10" markerWidth="10" orient="auto" refX="8" refY="3">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#9AA8B7"/>
+    </marker>
+    <style>
+      .bg { fill: url(#pageBg); }
+      .panel { fill: rgba(12, 21, 28, 0.92); stroke: rgba(154, 168, 183, 0.28); stroke-width: 1.2; filter: url(#panelShadow); }
+      .panel-soft { fill: rgba(16, 24, 32, 0.82); stroke: rgba(154, 168, 183, 0.22); stroke-width: 1; }
+      .panel-gold { fill: rgba(160, 124, 59, 0.13); stroke: rgba(160, 124, 59, 0.7); stroke-width: 1.2; }
+      .panel-blue { fill: rgba(35, 101, 161, 0.15); stroke: rgba(80, 159, 227, 0.55); stroke-width: 1; }
+      .panel-green { fill: rgba(41, 154, 95, 0.12); stroke: rgba(73, 196, 125, 0.5); stroke-width: 1; }
+      .panel-red { fill: rgba(201, 70, 57, 0.13); stroke: rgba(235, 97, 82, 0.55); stroke-width: 1; }
+      .panel-purple { fill: rgba(119, 81, 180, 0.13); stroke: rgba(158, 123, 230, 0.5); stroke-width: 1; }
+      .header { fill: url(#accentFill); stroke: rgba(160, 124, 59, 0.65); stroke-width: 1; }
+      .title { fill: #F4F7FA; font: 700 34px Arial, sans-serif; letter-spacing: 1px; }
+      .subtitle { fill: #C9D3DF; font: 400 18px Arial, sans-serif; }
+      .eyebrow { fill: #A07C3B; font: 700 12px Arial, sans-serif; letter-spacing: 1.8px; text-transform: uppercase; }
+      .section-title { fill: #EAF0F6; font: 700 18px Arial, sans-serif; }
+      .card-title { fill: #F4F7FA; font: 700 15px Arial, sans-serif; }
+      .muted { fill: #9AA8B7; font: 400 12px Arial, sans-serif; }
+      .body { fill: #D7E0EA; font: 400 13px Arial, sans-serif; }
+      .body-strong { fill: #F4F7FA; font: 700 13px Arial, sans-serif; }
+      .tiny { fill: #9AA8B7; font: 400 10.5px Arial, sans-serif; }
+      .metric { fill: #F4F7FA; font: 700 24px Arial, sans-serif; }
+      .badge { fill: rgba(160, 124, 59, 0.16); stroke: rgba(160, 124, 59, 0.55); stroke-width: 1; }
+      .badge-text { fill: #E7C982; font: 700 11px Arial, sans-serif; letter-spacing: 0.8px; }
+      .line { stroke: #9AA8B7; stroke-width: 1.4; fill: none; marker-end: url(#arrow); opacity: 0.82; }
+      .line-gold { stroke: #A07C3B; stroke-width: 1.7; fill: none; marker-end: url(#arrow); opacity: 0.92; }
+      .divider { stroke: rgba(154, 168, 183, 0.18); stroke-width: 1; }
+      .dot { fill: #A07C3B; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="1000"/>
+  <rect x="36" y="32" width="1528" height="936" rx="22" fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.08)"/>
+
+  <g transform="translate(66 58)">
+    <circle cx="34" cy="34" r="28" fill="#101820" stroke="#A07C3B" stroke-width="3"/>
+    <text x="34" y="44" text-anchor="middle" class="metric" fill="#A07C3B">P</text>
+    <text x="80" y="28" class="title">PANTEON - ARQUITETURA OPERACIONAL E ENGENHARIA</text>
+    <text x="82" y="58" class="subtitle">Plataforma modular Careli - multiagente, rastreavel, segura e orientada a producao</text>
+  </g>
+
+  <g transform="translate(1268 58)">
+    <rect class="badge" width="236" height="34" rx="17"/>
+    <text x="18" y="22" class="badge-text">STATUS: PILOTO ZEUS</text>
+    <text x="18" y="54" class="muted">Versao: 2026-05-22</text>
+  </g>
+
+  <g transform="translate(66 120)">
+    <rect class="panel" width="270" height="600" rx="10"/>
+    <rect class="header" x="0" y="0" width="270" height="46" rx="10"/>
+    <text x="22" y="29" class="eyebrow">Modulos do Panteon</text>
+
+    <g transform="translate(22 70)">
+      <text class="section-title">Experiencia</text>
+      <line class="divider" x1="0" x2="226" y1="18" y2="18"/>
+      <text y="48" class="body-strong">Home Panteon</text>
+      <text y="70" class="body">Shell, sidebar, topbar e identidade</text>
+      <text y="100" class="body-strong">Modulo Zeus</text>
+      <text y="122" class="body">Operations Center e comando dos agentes</text>
+    </g>
+
+    <g transform="translate(22 230)">
+      <text class="section-title">Frentes operacionais</text>
+      <line class="divider" x1="0" x2="226" y1="18" y2="18"/>
+      <text y="48" class="body">Hades - cobranca, C2X, contratos</text>
+      <text y="78" class="body">Iris - atendimento e WhatsApp</text>
+      <text y="108" class="body">Hermes - comunicacao interna</text>
+      <text y="138" class="body">Atlas - desempenho e dados</text>
+      <text y="168" class="body">Chronos - rotinas e tempo</text>
+      <text y="198" class="body">Apolo - cadastro mestre</text>
+      <text y="228" class="body">Setup - configuracoes centrais</text>
+    </g>
+
+    <g transform="translate(22 510)">
+      <text class="section-title">Principios</text>
+      <line class="divider" x1="0" x2="226" y1="18" y2="18"/>
+      <text y="46" class="body">Modular, rastreavel, seguro</text>
+      <text y="70" class="body">Recortes isolados por agente</text>
+    </g>
+  </g>
+
+  <g transform="translate(360 120)">
+    <rect class="panel" width="700" height="355" rx="10"/>
+    <rect class="header" x="0" y="0" width="700" height="44" rx="10"/>
+    <text x="24" y="28" class="eyebrow">Arquitetura tecnica</text>
+
+    <g transform="translate(24 72)">
+      <rect class="panel-blue" width="190" height="220" rx="10"/>
+      <text x="18" y="30" class="card-title">Frontend</text>
+      <text x="18" y="64" class="body">Next.js App Router</text>
+      <text x="18" y="90" class="body">TypeScript</text>
+      <text x="18" y="116" class="body">Tailwind + UIX</text>
+      <text x="18" y="142" class="body">Supabase client</text>
+      <text x="18" y="168" class="body">PWA e responsivo</text>
+    </g>
+
+    <g transform="translate(250 72)">
+      <rect class="panel-green" width="220" height="220" rx="10"/>
+      <text x="18" y="30" class="card-title">Supabase Hub</text>
+      <text x="18" y="64" class="body">Auth e usuarios</text>
+      <text x="18" y="90" class="body">Postgres e RLS</text>
+      <text x="18" y="116" class="body">Realtime</text>
+      <text x="18" y="142" class="body">Storage</text>
+      <text x="18" y="168" class="body">Tabelas hub_* e modulos</text>
+    </g>
+
+    <g transform="translate(508 72)">
+      <rect class="panel-purple" width="168" height="220" rx="10"/>
+      <text x="18" y="30" class="card-title">Integracoes</text>
+      <text x="18" y="64" class="body">C2X legado</text>
+      <text x="18" y="90" class="body">Meta WhatsApp</text>
+      <text x="18" y="116" class="body">Asaas e D4Sign</text>
+      <text x="18" y="142" class="body">Asana e OpenAI</text>
+      <text x="18" y="168" class="body">APIs server-side</text>
+    </g>
+
+    <line class="line" x1="214" y1="182" x2="246" y2="182"/>
+    <line class="line" x1="470" y1="182" x2="504" y2="182"/>
+
+    <g transform="translate(24 314)">
+      <rect class="panel-soft" width="652" height="1" rx="0"/>
+      <text x="0" y="28" class="tiny">Regra: secrets e chaves privilegiadas ficam server-side; nenhuma env sensivel deve aparecer em chat, log, print ou commit.</text>
+    </g>
+  </g>
+
+  <g transform="translate(1084 120)">
+    <rect class="panel" width="420" height="520" rx="10"/>
+    <rect class="header" x="0" y="0" width="420" height="44" rx="10"/>
+    <text x="24" y="28" class="eyebrow">Engenharia multiagente</text>
+
+    <g transform="translate(42 70)">
+      <rect class="panel-gold" width="336" height="82" rx="10"/>
+      <text x="168" y="30" text-anchor="middle" class="card-title">ZEUS</text>
+      <text x="168" y="54" text-anchor="middle" class="body">Agente master, guardiao operacional</text>
+    </g>
+
+    <line class="line-gold" x1="210" y1="154" x2="210" y2="198"/>
+
+    <g transform="translate(24 198)">
+      <rect class="panel-purple" width="110" height="120" rx="10"/>
+      <text x="55" y="28" text-anchor="middle" class="card-title">Agentes</text>
+      <text x="55" y="56" text-anchor="middle" class="tiny">Hades, Iris,</text>
+      <text x="55" y="76" text-anchor="middle" class="tiny">Hermes, Atlas,</text>
+      <text x="55" y="96" text-anchor="middle" class="tiny">Chronos, Setup</text>
+    </g>
+
+    <g transform="translate(154 198)">
+      <rect class="panel-blue" width="112" height="120" rx="10"/>
+      <text x="56" y="28" text-anchor="middle" class="card-title">Protocolos</text>
+      <text x="56" y="56" text-anchor="middle" class="tiny">AT, CB, TI,</text>
+      <text x="56" y="76" text-anchor="middle" class="tiny">OP, AL, DP,</text>
+      <text x="56" y="96" text-anchor="middle" class="tiny">LO, AG futuro</text>
+    </g>
+
+    <g transform="translate(286 198)">
+      <rect class="panel-red" width="110" height="120" rx="10"/>
+      <text x="55" y="28" text-anchor="middle" class="card-title">Hefesto</text>
+      <text x="55" y="56" text-anchor="middle" class="tiny">Producao,</text>
+      <text x="55" y="76" text-anchor="middle" class="tiny">healthchecks,</text>
+      <text x="55" y="96" text-anchor="middle" class="tiny">rollback</text>
+    </g>
+
+    <g transform="translate(36 350)">
+      <rect class="panel-gold" width="348" height="66" rx="10"/>
+      <text x="174" y="26" text-anchor="middle" class="card-title">Comunicacao estruturada</text>
+      <text x="174" y="48" text-anchor="middle" class="body">Origem, destino, prioridade, status, decisao e evidencias</text>
+    </g>
+
+    <g transform="translate(36 438)">
+      <rect class="panel-red" width="348" height="52" rx="10"/>
+      <text x="174" y="22" text-anchor="middle" class="card-title">Bloqueio sensivel</text>
+      <text x="174" y="40" text-anchor="middle" class="tiny">Banco, env, secret, Vercel, alias, migration e producao</text>
+    </g>
+  </g>
+
+  <g transform="translate(360 500)">
+    <rect class="panel" width="700" height="220" rx="10"/>
+    <rect class="header" x="0" y="0" width="700" height="44" rx="10"/>
+    <text x="24" y="28" class="eyebrow">Topologia de engenharia</text>
+
+    <g transform="translate(26 75)">
+      <rect class="panel-soft" width="112" height="86" rx="10"/>
+      <text x="56" y="32" text-anchor="middle" class="card-title">Repo</text>
+      <text x="56" y="58" text-anchor="middle" class="tiny">careli-hub</text>
+    </g>
+    <line class="line" x1="142" y1="118" x2="178" y2="118"/>
+    <g transform="translate(184 75)">
+      <rect class="panel-blue" width="112" height="86" rx="10"/>
+      <text x="56" y="32" text-anchor="middle" class="card-title">Worktree</text>
+      <text x="56" y="58" text-anchor="middle" class="tiny">por agente</text>
+    </g>
+    <line class="line" x1="300" y1="118" x2="336" y2="118"/>
+    <g transform="translate(342 75)">
+      <rect class="panel-gold" width="112" height="86" rx="10"/>
+      <text x="56" y="32" text-anchor="middle" class="card-title">Branch</text>
+      <text x="56" y="58" text-anchor="middle" class="tiny">codex/*</text>
+    </g>
+    <line class="line" x1="458" y1="118" x2="494" y2="118"/>
+    <g transform="translate(500 75)">
+      <rect class="panel-green" width="150" height="86" rx="10"/>
+      <text x="75" y="32" text-anchor="middle" class="card-title">Registro</text>
+      <text x="75" y="58" text-anchor="middle" class="tiny">diario e Operations</text>
+    </g>
+
+    <text x="26" y="192" class="tiny">Regra: pacote misto bloqueia release; cada recorte precisa dono, status, validacao, risco e proximo passo.</text>
+  </g>
+
+  <g transform="translate(66 745)">
+    <rect class="panel-blue" width="262" height="132" rx="10"/>
+    <text x="20" y="34" class="section-title">Stack principal</text>
+    <text x="20" y="66" class="body">Next.js, TypeScript, Tailwind</text>
+    <text x="20" y="92" class="body">Supabase, Vercel, OpenAI</text>
+    <text x="20" y="118" class="body">C2X legado e APIs externas</text>
+  </g>
+
+  <g transform="translate(350 745)">
+    <rect class="panel-green" width="262" height="132" rx="10"/>
+    <text x="20" y="34" class="section-title">Ambientes</text>
+    <text x="20" y="66" class="body">Local para validacao inicial</text>
+    <text x="20" y="92" class="body">Homologacao por recorte</text>
+    <text x="20" y="118" class="body">Producao protegida</text>
+  </g>
+
+  <g transform="translate(634 745)">
+    <rect class="panel-gold" width="262" height="132" rx="10"/>
+    <text x="20" y="34" class="section-title">Governanca</text>
+    <text x="20" y="66" class="body">Diario vivo e release registers</text>
+    <text x="20" y="92" class="body">Protocolos e handoffs</text>
+    <text x="20" y="118" class="body">Sem valores sensiveis</text>
+  </g>
+
+  <g transform="translate(918 745)">
+    <rect class="panel-purple" width="262" height="132" rx="10"/>
+    <text x="20" y="34" class="section-title">Proximos passos</text>
+    <text x="20" y="66" class="body">Guia de worktrees</text>
+    <text x="20" y="92" class="body">V0 Agentes mais clara</text>
+    <text x="20" y="118" class="body">V1 hub_agent_* autorizada</text>
+  </g>
+
+  <g transform="translate(1202 745)">
+    <rect class="panel-red" width="302" height="132" rx="10"/>
+    <text x="20" y="34" class="section-title">Nunca automatico</text>
+    <text x="20" y="66" class="body">Deploy, banco, migration, env</text>
+    <text x="20" y="92" class="body">Secret, Supabase, Vercel, alias</text>
+    <text x="20" y="118" class="body">Producao sem autorizacao explicita</text>
+  </g>
+
+  <g transform="translate(66 908)">
+    <rect class="panel-soft" width="1438" height="38" rx="10"/>
+    <text x="24" y="25" class="muted">Fonte oficial: docs/operations/engineering-operations.md  |  Mapa: docs/architecture/panteon-architecture-map.md  |  Board: docs/architecture/panteon-architecture-board.svg</text>
+  </g>
+</svg>

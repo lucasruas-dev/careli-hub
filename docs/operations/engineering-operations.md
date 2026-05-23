@@ -12737,3 +12737,406 @@ Conclusao:
 - A frente do agente master foi iniciada e validada localmente sem tocar producao.
 - O impacto pratico e que Zeus comeca a organizar pontas soltas entre agentes dentro do Operations Center, usando dados reais, e todos os agentes passam a ter criterio para trocar de chat sem perder continuidade.
 - A proxima acao e abrir o novo chat Zeus Core v2 se Lucas quiser aliviar este fio; a camada de banco `hub_agent_*` so deve avancar com autorizacao explicita.
+
+## 2026-05-22 22:24:00 -03:00 - Zeus - Mapa executivo da arquitetura Panteon
+
+Assunto: [Zeus] Mapa executivo da arquitetura Panteon
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `DOCUMENTACAO / ARQUITETURA / GOVERNANCA / WORKTREES`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem env, sem secret, sem Vercel e sem producao.
+- Status: `DOCUMENTADO LOCAL`.
+- Motivo da mudanca: Lucas pediu um mapa profissional e executivo da nova estrutura de engenharia do Panteon antes de continuar a evolucao da frente Zeus.
+- Arquivos afetados:
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/architecture/panteon-architecture-board.svg`;
+  - `docs/operations/README.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado mapa executivo com visao de alto nivel, camadas, worktrees por agente, fluxo operacional, papeis, ambientes, fontes oficiais e principios de engenharia;
+  - incluido diagrama Mermaid para representar experiencia, orquestracao, engenharia, runtime/dados e governanca;
+  - criado board visual executivo em SVG, versionado e editavel, para apresentacao e exportacao posterior;
+  - adicionado link do novo mapa no README operacional para facilitar descoberta pelos proximos agentes.
+- Logica utilizada:
+  - o documento consolida o acordo de que o repositorio e a fonte oficial, worktrees isolados reduzem mistura de recortes, Zeus coordena a operacao, Hefesto protege producao e agentes de modulo seguem donos dos seus escopos;
+  - a V1 `hub_agent_*` segue apenas proposta bloqueada, sem migration ou escrita real.
+- Validacao executada:
+  - `git diff --check -- docs/architecture/panteon-architecture-map.md docs/architecture/panteon-architecture-board.svg docs/operations/README.md docs/operations/engineering-operations.md`: OK, apenas avisos conhecidos de LF/CRLF no Windows;
+  - parse XML local de `docs/architecture/panteon-architecture-board.svg`: OK, raiz `svg`.
+  - render local do SVG via `sharp`: OK, preview PNG gerado em memoria para conferencia visual.
+- Pendencias ou riscos conhecidos:
+  - o mapa e uma referencia executiva e nao substitui os contratos especificos de seguranca, ambiente, API, release e rollback;
+  - nao houve validacao visual/render dos diagramas Mermaid fora do Markdown; o board SVG foi validado como XML bem formado e renderizado em preview local.
+- Proxima squad recomendada:
+  - `Zeus` para manter o mapa sincronizado quando a arquitetura operacional evoluir;
+  - `Lucas` para revisar se a representacao executiva reflete o acordo de engenharia.
+
+Conclusao:
+- O Panteon ganhou um mapa executivo da arquitetura operacional e de engenharia.
+- O impacto pratico e dar uma referencia unica para orientar worktrees separados, agentes, handoffs, ambientes e release protegido.
+- Nao precisa de acao sensivel agora; o proximo passo e revisar o documento e depois continuar a evolucao local da V0 do Zeus.
+
+## 2026-05-22 22:32:00 -03:00 - Zeus - Modelo operacional de worktrees por agente
+
+Assunto: [Zeus] Modelo operacional de worktrees por agente
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `DOCUMENTACAO / ENGENHARIA / WORKTREES / GOVERNANCA`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem env, sem secret, sem Vercel e sem producao.
+- Status: `DOCUMENTADO LOCAL`.
+- Motivo da mudanca: Lucas autorizou continuar a reestruturacao da engenharia do projeto depois do mapa executivo, com foco no modelo de worktrees separados, organizacao por agente e reducao de pacotes mistos.
+- Arquivos afetados:
+  - `docs/operations/panteon-worktree-operating-model.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/agent-operating-model.md`;
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado procedimento oficial para topologia `careli-hub-worktrees/<agente>`, branches `codex/<agente>/<tema>-<yyyymmdd>`, primeira acao com `git status --short --branch`, matriz de decisao, ciclos de agente de modulo, Zeus e Hefesto, checklist de edicao, checklist de handoff e politica de bloqueio;
+  - o README operacional e o modelo de agentes passaram a apontar para o novo procedimento;
+  - o mapa executivo passou a listar o documento como fonte oficial de verdade.
+- Logica utilizada:
+  - consolidar em um documento unico regras que estavam espalhadas no diario e nas politicas: worktree misto nao e release, recorte limpo e obrigatorio para deploy, Zeus coordena trafego, Hefesto publica producao e agentes de modulo trabalham isolados;
+  - manter comandos como templates documentais, sem executar criacao de novos worktrees nesta etapa.
+- Validacao executada:
+  - `git diff --check -- docs/operations/panteon-worktree-operating-model.md docs/operations/README.md docs/architecture/agent-operating-model.md docs/architecture/panteon-architecture-map.md docs/operations/engineering-operations.md docs/architecture/panteon-architecture-board.svg`: OK, apenas avisos conhecidos de LF/CRLF no Windows;
+  - `rg` confirmou referencias ao novo procedimento no README operacional, modelo de agentes, mapa executivo e diario.
+- Pendencias ou riscos conhecidos:
+  - o procedimento ainda nao cria automacao de scaffold de worktree;
+  - nomes finais de worktrees por agente devem ser revisados conforme Lucas priorizar cada frente.
+- Proxima squad recomendada:
+  - `Zeus` para usar este modelo como base da aba `Agentes` e dos proximos checkpoints;
+  - agentes de modulo para adotar o padrao nos proximos recortes.
+
+Conclusao:
+- A engenharia do Panteon ganhou um procedimento operacional para worktrees separados por agente.
+- O impacto pratico e reduzir mistura de escopo, facilitar validacao e preparar handoffs mais limpos para Hefesto.
+- Nao precisa de acao sensivel agora; o proximo passo e aplicar esse modelo no piloto Zeus e depois nos modulos priorizados por Lucas.
+
+## 2026-05-22 22:45:00 -03:00 - Zeus - Roadmap e painel de engenharia operacional
+
+Assunto: [Zeus] Roadmap e painel de engenharia operacional
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `DOCUMENTACAO / UX OPERACIONAL / ZEUS / ENGENHARIA`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem env, sem secret, sem Vercel e sem producao.
+- Status: `VALIDADO LOCAL COM BLOQUEIO DE TOOLING DO WORKTREE`.
+- Motivo da mudanca: Lucas autorizou seguir com todas as etapas de evolucao da reestruturacao de engenharia do Panteon apos o mapa executivo e o modelo de worktrees.
+- Arquivos afetados:
+  - `apps/hub/modules/squadops/ZeusPage.tsx`;
+  - `docs/operations/panteon-engineering-evolution-roadmap.md`;
+  - `docs/operations/panteon-agent-worktree-startup-template.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado roadmap de evolucao por fases para arquitetura executiva, worktrees, startup de agentes, Zeus painel de comando, V1 `hub_agent_*`, scaffold, release registers e expansao para squads;
+  - criado template de startup para novo chat/agente em worktree separado, com leitura obrigatoria, primeira acao, bloqueios e retorno esperado;
+  - evoluida a aba `Agentes` do Zeus com painel de governanca de engenharia, mostrando sinais derivados dos registros reais: worktrees, recorte limpo, pacote a separar, `CHAT SATURANDO` e operacoes sensiveis bloqueadas;
+  - cada item da fila operacional passou a exibir uma decisao esperada inferida, como manter bloqueado, separar recorte limpo, abrir checkpoint ou encaminhar pacote homologado para Hefesto.
+- Logica utilizada:
+  - a V0 continua derivando informacao do diario estruturado e dos registros reais do Operations Center;
+  - nao foi criada tabela nova, API mutavel, migration, escrita em banco ou qualquer operacao de ambiente;
+  - os sinais de engenharia usam texto/status existentes para dar visibilidade executiva sem alterar fonte de dados.
+- Validacao executada:
+  - `git diff --check -- apps/hub/modules/squadops/ZeusPage.tsx docs/operations/panteon-engineering-evolution-roadmap.md docs/operations/panteon-agent-worktree-startup-template.md docs/operations/README.md docs/architecture/panteon-architecture-map.md`: OK, apenas avisos conhecidos de LF/CRLF no Windows;
+  - `node` + TypeScript `transpileModule` sobre `apps/hub/modules/squadops/ZeusPage.tsx`: OK, sintaxe TSX validada;
+  - scan local confirmou marcadores `AgentEngineeringGovernancePanel`, `buildAgentEngineeringSignal`, `getAgentDecisionExpected` e `agentEngineeringCueVariant`.
+- Validacoes bloqueadas:
+  - `npm.cmd run check-types:hub` inicialmente falhou porque `turbo` nao esta disponivel no `PATH` deste worktree; ao usar o `node_modules/.bin` do repositorio principal, o comando passou a executar, mas falhou por resolucao estrutural do worktree sem `node_modules` local/extends completos, gerando erros amplos de `Promise`, `jsx` e modulos ausentes antes de isolar o recorte;
+  - `npx.cmd eslint apps/hub/modules/squadops/ZeusPage.tsx --max-warnings 0` tentou acessar cache/rede e caiu em `EACCES`; usando o ESLint do repositorio principal, o config do worktree nao conseguiu resolver `@repo/eslint-config` por falta de `node_modules` local;
+  - nao rodei build porque o mesmo bloqueio de dependencias/config do worktree afetaria a validacao global.
+- Pendencias ou riscos conhecidos:
+  - para validacao completa, este worktree precisa de dependencias locais ou de um fluxo padronizado que aponte corretamente para o `node_modules` compartilhado sem quebrar resolucao de config;
+  - a aba `Agentes` ainda nao cria mensagens reais nem threads vivas; V1 `hub_agent_*` permanece bloqueada ate autorizacao explicita do Lucas.
+- Proxima squad recomendada:
+  - `Zeus` para revisar visualmente a aba `Agentes` com servidor local quando o tooling do worktree estiver pronto;
+  - `Lucas` para priorizar quais agentes receberao worktree dedicado primeiro;
+  - `Hefesto` apenas quando houver recorte homologado e autorizado para producao.
+
+Conclusao:
+- A evolucao de engenharia avancou do mapa e procedimento para roadmap, template de startup e visibilidade operacional dentro do Zeus.
+- O impacto pratico e que o Operations Center passa a mostrar nao so comunicacoes entre agentes, mas tambem os sinais de governanca que evitam pacote misto e protegem producao.
+- Nao precisa de acao sensivel agora; a proxima etapa tecnica e resolver o padrao de dependencias/tooling dos worktrees ou validar visualmente a aba `Agentes` em ambiente local preparado.
+
+## 2026-05-22 22:54:00 -03:00 - Zeus - Tooling de validacao para worktrees
+
+Assunto: [Zeus] Tooling de validacao para worktrees
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / TOOLING / WORKTREES / VALIDACAO`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem env, sem secret, sem Vercel e sem producao.
+- Status: `VALIDADO LOCAL`.
+- Motivo da mudanca: apos a evolucao da aba `Agentes`, a validacao completa estava bloqueada porque o worktree separado nao tinha `node_modules` local e os comandos `turbo`, `eslint` e `tsc` nao resolviam as configs `@repo/*`.
+- Arquivos afetados:
+  - `scripts/panteon-validate-worktree.ps1`;
+  - `docs/operations/panteon-worktree-operating-model.md`;
+  - `docs/operations/panteon-engineering-evolution-roadmap.md`;
+  - `docs/operations/README.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado script local `scripts/panteon-validate-worktree.ps1` para validar worktrees separados;
+  - o script resolve o root Git do worktree, localiza o repositorio principal `careli-hub`, cria junction local `node_modules` apenas quando `-PrepareSharedNodeModules` e informado, roda `git status --short --branch`, `git diff --check`, `check-types:hub`, `lint:hub` e build do Hub;
+  - o build padrao do script ficou `next build --webpack`, pois o Turbopack gera panic quando `node_modules` e junction apontando para fora da raiz do worktree;
+  - o script passou a falhar corretamente se um comando nativo retornar exit code diferente de zero.
+- Logica utilizada:
+  - o fluxo nao instala pacotes, nao acessa rede e nao toca recursos sensiveis;
+  - o junction fica local e ignorado pelo Git por `node_modules`;
+  - o modo `-BuildMode default` permanece disponivel para diagnostico, mas worktrees com junction devem usar `-BuildMode webpack`.
+- Validacao executada:
+  - `powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs`: OK;
+  - `powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules -SkipBuild`: OK, com `check-types:hub` e `lint:hub` passando;
+  - `powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules`: OK, com `git diff --check`, `check-types:hub`, `lint:hub` e `next build --webpack` passando;
+  - o build listou `/zeus` como rota dinamica disponivel no pacote Hub.
+  - servidor local `next dev --webpack --port 3031`: OK, rota `/zeus` respondeu HTTP 200 e redirecionou para `/login` no navegador interno sem sessao autenticada, comportamento esperado para rota protegida;
+  - dev server 3031 encerrado apos a validacao; artefato gerado em `apps/hub/next-env.d.ts` foi restaurado para nao entrar no recorte.
+- Pendencias ou riscos conhecidos:
+  - Turbopack default continua inadequado para worktree com `node_modules` em junction fora da raiz; usar `next build --webpack` como validacao de worktree;
+  - `turbo` ainda registra warning `IO error: Acesso negado. (os error 5)` no cache compartilhado, sem bloquear os checks;
+  - warning conhecido do ESLint sobre `MODULE_TYPELESS_PACKAGE_JSON` permanece, sem erro de lint.
+  - validacao visual autenticada da aba `Agentes` ainda depende de sessao adm real do Lucas ou cenario local autenticado.
+- Proxima squad recomendada:
+  - `Zeus` para usar este script como gate padrao dos proximos recortes em worktree;
+  - agentes de modulo para adotar `panteon-validate-worktree.ps1` antes de handoff.
+
+Conclusao:
+- O gargalo de validacao dos worktrees foi destravado com um script local, controlado e versionado.
+- O impacto pratico e que worktrees separados agora conseguem validar `check-types`, `lint` e build sem instalar dependencias nem misturar recortes no root principal.
+- Nao precisa de acao sensivel agora; o proximo passo e usar o fluxo para validar evolucoes visuais/funcionais do Zeus e replicar o padrao para outros agentes.
+
+## 2026-05-23 07:26:34 -03:00 - Zeus - Desenho V1 de mensagens entre agentes
+
+Assunto: [Zeus] Desenho V1 de mensagens entre agentes
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / ARQUITETURA / COMUNICACAO ENTRE AGENTES`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem Vercel e sem producao.
+- Status: `DOCUMENTADO LOCAL / MIGRATION BLOQUEADA`.
+- Motivo da mudanca: apos formalizar worktrees, roadmap e painel de engenharia do Zeus, o proximo passo seguro era detalhar a V1 de comunicacao entre agentes sem tocar banco real.
+- Arquivos afetados:
+  - `docs/operations/panteon-agent-messaging-v1-design.md`;
+  - `docs/operations/panteon-agent-communication-protocol.md`;
+  - `docs/operations/panteon-engineering-evolution-roadmap.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado desenho tecnico revisavel da V1 `hub_agent_*`;
+  - documentado modelo conceitual para `hub_agent_threads`, `hub_agent_messages`, `hub_agent_message_links` e `hub_agent_message_events`;
+  - registrada API futura `POST /api/zeus/agent-messages` apenas como proposta;
+  - definidos status, tipos de mensagem, regras de seguranca, RLS futura, ordem segura de implementacao e criterios de aceite;
+  - README, protocolo, roadmap e mapa executivo passaram a apontar para o novo desenho.
+- Logica utilizada:
+  - a V0 continua sendo a fonte operacional ativa da aba `Agentes`;
+  - a V1 agora tem contrato tecnico revisavel, mas nenhuma tabela, migration, endpoint, escrita real ou deploy foi criado;
+  - qualquer item envolvendo banco, Supabase, Vercel, env, secret, dominio, alias, migration, rollback ou producao permanece `BLOQUEADO` ate autorizacao explicita do Lucas.
+- Validacao executada:
+  - `git diff --check -- docs/operations/panteon-agent-messaging-v1-design.md docs/operations/panteon-agent-communication-protocol.md docs/operations/panteon-engineering-evolution-roadmap.md docs/operations/README.md docs/architecture/panteon-architecture-map.md docs/operations/engineering-operations.md`: OK, apenas avisos conhecidos de LF/CRLF no Windows;
+  - `powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs`: OK;
+  - `rg` confirmou referencias ao novo design no protocolo de comunicacao, README operacional, roadmap, mapa executivo e diario canonico.
+- Pendencias ou riscos conhecidos:
+  - migration real, API mutavel e integracao da aba `Agentes` com threads `AG-*` seguem bloqueadas;
+  - proxima evolucao deve gerar migration em arquivo somente depois de revisao e autorizacao especifica.
+- Proxima squad recomendada:
+  - `Lucas` para revisar o desenho V1 e decidir se autoriza apenas a criacao de migration em arquivo;
+  - `Zeus` para manter o fallback V0 ativo ate a V1 ser homologada;
+  - `Hefesto` somente quando existir recorte homologado e autorizado para producao.
+
+Conclusao:
+- A comunicacao entre agentes ganhou um desenho V1 profissional e rastreavel, sem alterar banco nem ambiente.
+- O impacto pratico e que o Panteon agora tem um contrato claro para sair de mensagens soltas e chegar a threads `AG-*` auditaveis.
+- Nao precisa de acao sensivel agora; o proximo passo e revisar o desenho e, se Lucas autorizar explicitamente, criar uma migration apenas em arquivo para avaliacao.
+
+## 2026-05-23 07:31:58 -03:00 - Zeus - Checklists de validacao por recorte
+
+Assunto: [Zeus] Checklists de validacao por recorte
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / VALIDACAO / WORKTREES / HANDOFF`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem Vercel e sem producao.
+- Status: `DOCUMENTADO LOCAL`.
+- Motivo da mudanca: apos criar o modelo de worktrees e o tooling de validacao, faltava transformar os gates em checklists por tipo de recorte para guiar agentes de modulo, Zeus e Hefesto.
+- Arquivos afetados:
+  - `docs/operations/panteon-validation-checklists.md`;
+  - `docs/operations/panteon-worktree-operating-model.md`;
+  - `docs/operations/panteon-engineering-evolution-roadmap.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado documento oficial de checklists para recortes documentais, frontend, API/server-side, banco/migration, Supabase/Auth/storage, Vercel/deploy, homologacao, producao, incidente e rollback;
+  - definido comando base para recortes comuns e para worktrees separados;
+  - reforcado que qualquer operacao sensivel inicia `BLOQUEADO` ate autorizacao explicita do Lucas;
+  - roadmap passou a registrar a fase de gates de validacao como `DOCUMENTADO LOCAL`;
+  - README, mapa executivo e modelo de worktrees passaram a apontar para os checklists.
+- Logica utilizada:
+  - validacao deve ser proporcional ao risco e ao tipo de recorte;
+  - documentacao nao exige build quando nenhum codigo foi alterado no passo;
+  - frontend exige design guidelines e validacao visual quando aplicavel;
+  - banco, Supabase, Vercel, env, secret, dominio, alias, deploy, rollback e producao continuam protegidos por bloqueio inicial.
+- Validacao executada:
+  - `git diff --check -- docs/operations/panteon-validation-checklists.md docs/operations/panteon-worktree-operating-model.md docs/operations/panteon-engineering-evolution-roadmap.md docs/operations/README.md docs/architecture/panteon-architecture-map.md docs/operations/engineering-operations.md`: OK, apenas avisos conhecidos de LF/CRLF no Windows;
+  - `powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs`: OK;
+  - `rg` confirmou referencias aos checklists no README, mapa executivo, roadmap, modelo de worktrees e diario canonico.
+- Pendencias ou riscos conhecidos:
+  - os checklists ainda nao criam automacao; eles padronizam decisao humana e handoff;
+  - proxima evolucao segura pode ser um script de scaffold de worktree que sugira comandos e bloqueie caminhos existentes.
+- Proxima squad recomendada:
+  - `Zeus` para validar e depois evoluir o scaffold seguro de worktree;
+  - agentes de modulo para usar os checklists antes de handoff;
+  - `Hefesto` para usar os gates de producao quando houver recorte homologado.
+
+Conclusao:
+- O Panteon agora tem checklists formais para decidir o que validar em cada tipo de recorte.
+- O impacto pratico e menos improviso: cada agente consegue provar o que fez, bloquear o que for sensivel e encaminhar o pacote certo.
+- Nao precisa de acao sensivel agora; o proximo passo local e validar o pacote documental e, depois, preparar o scaffold seguro de criacao de worktree.
+
+## 2026-05-23 07:34:28 -03:00 - Zeus - Scaffold seguro de worktree
+
+Assunto: [Zeus] Scaffold seguro de worktree
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / TOOLING / WORKTREES`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem Vercel e sem producao.
+- Status: `SCRIPT PREVIEW LOCAL`.
+- Motivo da mudanca: apos padronizar modelo, validacao e checklists, faltava um comando assistido para reduzir erro humano na criacao de worktrees e branches por agente.
+- Arquivos afetados:
+  - `scripts/panteon-new-worktree.ps1`;
+  - `docs/operations/panteon-worktree-operating-model.md`;
+  - `docs/operations/panteon-engineering-evolution-roadmap.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado script `panteon-new-worktree.ps1` com parametros `-Agent`, `-Theme`, `-Date`, `-WorktreesRoot`, `-SourceRepoPath`, `-ExistingBranch`, `-Apply` e `-Yes`;
+  - por padrao o script roda em preview, imprime caminho alvo, branch e comando planejado, mas nao cria worktree nem branch;
+  - o script normaliza agente/tema em slug, valida data `yyyymmdd`, bloqueia caminho alvo existente e garante que o alvo fique dentro de `WorktreesRoot`;
+  - docs operacionais passaram a orientar o uso do preview antes do comando manual.
+- Logica utilizada:
+  - scaffold reduz erro de nomeacao sem automatizar acao sensivel;
+  - criacao real exige `-Apply` e confirmacao humana, salvo uso explicito de `-Yes`;
+  - o script nao toca Vercel, Supabase, banco, env, secret, dominio, alias, deploy, rollback ou producao.
+- Validacao executada:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent piloto -Theme engenharia-validacao`: OK, preview gerado sem criar worktree;
+  - `Test-Path C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\piloto`: `False`, confirmando que o preview nao escreveu no filesystem;
+  - `git diff --check`: OK, apenas avisos conhecidos de LF/CRLF no Windows;
+  - `powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs`: OK.
+- Pendencias ou riscos conhecidos:
+  - o script ainda nao foi usado com `-Apply`;
+  - se Lucas quiser criacao real de novos worktrees, o comando deve ser revisado antes e executado conscientemente;
+  - proxima evolucao pode integrar o template de startup com o scaffold.
+- Proxima squad recomendada:
+  - `Zeus` para validar pacote completo e registrar continuidade;
+  - agentes de modulo para usar o preview quando forem receber worktree proprio.
+
+Conclusao:
+- O Panteon agora tem um scaffold seguro para preparar worktrees por agente sem criar nada por acidente.
+- O impacto pratico e menos risco de branch mal nomeada, caminho errado ou worktree misto.
+- Nao precisa de acao sensivel agora; o proximo passo e validar o pacote completo e decidir quais agentes recebem worktrees dedicados primeiro.
+
+## 2026-05-23 07:50:15 -03:00 - Zeus - Hooks Git locais do Panteon
+
+Assunto: [Zeus] Hooks Git locais do Panteon
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / HOOKS / VALIDACAO LOCAL`.
+- Ambiente: `worktree Zeus local` e hooks locais do Git em `careli-hub/.git/hooks`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem Vercel e sem producao.
+- Status: `CONFIGURADO LOCAL`.
+- Motivo da mudanca: Lucas perguntou se o Panteon deveria usar hooks; foi decidido iniciar por hooks Git locais, reversiveis e sem automacao remota, para proteger commit e push antes de evoluir qualquer webhook externo.
+- Arquivos afetados:
+  - `.gitattributes`;
+  - `.githooks/pre-commit`;
+  - `.githooks/commit-msg`;
+  - `.githooks/pre-push`;
+  - `scripts/panteon-hook-runner.ps1`;
+  - `scripts/panteon-install-hooks.ps1`;
+  - `docs/operations/panteon-git-hooks.md`;
+  - `docs/operations/panteon-validation-checklists.md`;
+  - `docs/operations/panteon-engineering-evolution-roadmap.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criados templates versionados em `.githooks/`;
+  - criado runner PowerShell para `pre-commit`, `commit-msg` e `pre-push`;
+  - criado instalador local com modo preview, backup de hook existente e instalacao explicita via `-Apply`;
+  - adicionada regra em `.gitattributes` para preservar `.githooks/*` com LF;
+  - hooks instalados no caminho real `careli-hub/.git/hooks`, que e comum aos worktrees deste repositorio.
+- Logica utilizada:
+  - `pre-commit` roda `git diff --cached --check`, bloqueia paths sensiveis staged e padroes de segredo em linhas adicionadas;
+  - `commit-msg` exige conventional commit e bloqueia possivel segredo no texto da mensagem;
+  - `pre-push` escolhe gate rapido: `Scope docs` para docs e `Scope hub -PrepareSharedNodeModules -SkipBuild` quando houver codigo Hub/pacotes;
+  - o build completo segue como gate de handoff/homologacao quando o recorte exigir, nao como custo obrigatorio de todo push.
+- Validacao executada:
+  - sintaxe de `scripts/panteon-hook-runner.ps1`: OK;
+  - sintaxe de `scripts/panteon-install-hooks.ps1`: OK;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-hook-runner.ps1 -Hook pre-commit`: OK, sem arquivos staged;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-hook-runner.ps1 -Hook commit-msg -CommitMsgFile <temp>` com `feat(zeus): configure local git hooks`: OK;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-hook-runner.ps1 -Hook pre-push -DryRun`: OK, indicou gate `Scope hub -PrepareSharedNodeModules -SkipBuild`;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-install-hooks.ps1`: OK em preview;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-install-hooks.ps1 -Apply -Yes`: OK apos permissao elevada para escrever em `.git/hooks`;
+  - verificacao dos arquivos `pre-commit`, `commit-msg` e `pre-push` em `careli-hub/.git/hooks`: OK;
+  - novo preview do instalador confirmou `already installed` para os tres hooks.
+- Pendencias ou riscos conhecidos:
+  - hooks locais nao substituem validacao completa de handoff, homologacao ou producao;
+  - `pre-push` usa gate rapido e pula build por padrao; build completo continua sendo executado via `panteon-validate-worktree.ps1` quando o recorte exigir;
+  - qualquer webhook externo, hook remoto, deploy hook, Vercel hook, Supabase hook ou automacao de producao continua `BLOQUEADO` ate autorizacao explicita do Lucas.
+- Proxima squad recomendada:
+  - `Zeus` para manter hooks e checklists alinhados;
+  - agentes de modulo para operar commits/pushes com os hooks locais ativos;
+  - `Hefesto` para continuar responsavel por gates de producao e rollback quando houver recorte homologado.
+
+Conclusao:
+- Os hooks locais do Panteon foram configurados e instalados no repositorio.
+- O impacto pratico e que commits e pushes agora recebem guardrails locais contra diff quebrado, mensagem fora de padrao, possivel segredo acidental e push sem validacao minima.
+- Nao precisa de acao sensivel agora; webhooks externos e qualquer automacao de deploy permanecem bloqueados ate autorizacao especifica.
+
+## 2026-05-23 07:53:45 -03:00 - Zeus - Scaffolds operacionais de agentes
+
+Assunto: [Zeus] Scaffolds operacionais de agentes
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / SCAFFOLD / WORKTREES / AGENTES`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem Vercel e sem producao.
+- Status: `SCAFFOLD OPERACIONAL / PREVIEW SEGURO`.
+- Motivo da mudanca: Lucas pediu para criar os scaffolds depois da configuracao dos hooks; a decisao foi criar um pacote padrao por agente para worktree, branch, escopo, bloqueios, startup e comando individual de criacao.
+- Arquivos afetados:
+  - `scripts/panteon-scaffold-agents.ps1`;
+  - `docs/operations/panteon-agent-scaffolds.md`;
+  - `docs/operations/panteon-worktree-operating-model.md`;
+  - `docs/operations/panteon-engineering-evolution-roadmap.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado script `panteon-scaffold-agents.ps1` para listar scaffolds padrao dos agentes `zeus`, `hefesto`, `iris`, `hades`, `ares`, `hermes`, `atlas`, `chronos`, `setup` e `apolo`;
+  - criado documento `panteon-agent-scaffolds.md` com matriz por agente, worktree, branch base, escopo, bloqueios, prompt de startup, ordem recomendada e gates;
+  - modelo de worktrees, roadmap, README e mapa executivo passaram a apontar para os scaffolds.
+- Logica utilizada:
+  - scaffolds rodam em preview e nao criam worktree, branch, deploy ou recurso externo;
+  - criacao real de um worktree continua individual via `panteon-new-worktree.ps1 -Apply`, depois de revisao humana;
+  - cada agente nasce com bloqueios explicitos para operacoes sensiveis.
+- Validacao executada:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -Command "[void][scriptblock]::Create((Get-Content -Raw 'scripts/panteon-scaffold-agents.ps1')); Write-Output 'scaffold syntax ok'"`: OK;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-scaffold-agents.ps1 -Theme worktree-pilot`: OK, listou todos os scaffolds e nao criou worktree;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent iris -Theme worktree-pilot`: OK em preview;
+  - `Test-Path C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\iris`: `False`, confirmando que o preview nao criou worktree;
+  - `git diff --check`: OK, apenas avisos conhecidos de LF/CRLF no Windows;
+  - `powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs`: OK.
+- Complemento apos revisao do Lucas:
+  - Lucas sinalizou que faltava `Ares`;
+  - `Ares` foi incluido no scaffold como agente de financeiro tatico, disputas, acordos, escalonamentos e demandas financeiras que podem acionar Iris;
+  - ordem recomendada passou a considerar `Ares` depois de `Hades` e antes de `Hermes`.
+- Pendencias ou riscos conhecidos:
+  - nenhum worktree novo foi criado nesta etapa;
+  - para criar worktree real de agente, revisar o comando de preview e rodar individualmente com `-Apply`;
+  - producao, deploy, env, secret, banco, Supabase, Vercel e migrations seguem bloqueados.
+- Proxima squad recomendada:
+  - `Lucas` para escolher quais worktrees devem ser criados primeiro;
+  - `Zeus` para executar apenas os scaffolds individuais aprovados;
+  - `Hefesto` como primeiro candidato recomendado se a prioridade for preparar esteira de producao sem publicar nada.
+
+Conclusao:
+- Os scaffolds operacionais dos agentes foram criados em modo seguro e versionado.
+- O impacto pratico e que cada agente agora tem um pacote de nascimento: worktree, branch, escopo, bloqueios, prompt e gates.
+- Nao precisa de acao sensivel agora; o proximo passo e escolher quais agentes devem ter worktree real criado primeiro.
