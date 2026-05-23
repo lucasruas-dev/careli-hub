@@ -13140,3 +13140,55 @@ Conclusao:
 - Os scaffolds operacionais dos agentes foram criados em modo seguro e versionado.
 - O impacto pratico e que cada agente agora tem um pacote de nascimento: worktree, branch, escopo, bloqueios, prompt e gates.
 - Nao precisa de acao sensivel agora; o proximo passo e escolher quais agentes devem ter worktree real criado primeiro.
+
+## 2026-05-23 08:01:23 -03:00 - Zeus - Criacao dos worktrees dos agentes
+
+Assunto: [Zeus] Criacao dos worktrees dos agentes
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / WORKTREES / SCAFFOLD REAL`.
+- Ambiente: `worktrees locais`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem Vercel e sem producao.
+- Status: `WORKTREES CRIADOS LOCALMENTE`.
+- Motivo da mudanca: Lucas autorizou criar os scaffolds na ordem recomendada; antes da criacao real, foi fechado o commit base `426b832 feat(zeus): configure engineering scaffolds` para que os novos worktrees nascessem com a nova estrutura de engenharia.
+- Ordem executada:
+  1. `Hefesto`;
+  2. `Iris`;
+  3. `Hades`;
+  4. `Ares`;
+  5. `Hermes`;
+  6. `Atlas`;
+  7. `Chronos`;
+  8. `Setup`;
+  9. `Apolo`.
+- Worktrees criados:
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hefesto` em `codex/hefesto/worktree-pilot-20260523`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\iris` em `codex/iris/worktree-pilot-20260523`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hades` em `codex/hades/worktree-pilot-20260523`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\ares` em `codex/ares/worktree-pilot-20260523`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hermes` em `codex/hermes/worktree-pilot-20260523`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\atlas` em `codex/atlas/worktree-pilot-20260523`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\chronos` em `codex/chronos/worktree-pilot-20260523`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\setup` em `codex/setup/worktree-pilot-20260523`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\apolo` em `codex/apolo/worktree-pilot-20260523`.
+- Como foi feito:
+  - executado `panteon-new-worktree.ps1` com `-Apply -Yes` para cada agente, na ordem acima;
+  - a criacao exigiu permissao elevada local porque `git worktree add` escreve em `.git/worktrees` e em `careli-hub-worktrees`;
+  - nenhum worktree foi criado dentro do repositorio principal;
+  - o worktree Zeus existente permaneceu como piloto.
+- Validacao executada:
+  - antes do commit base: `powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules`: OK, com `check-types:hub`, `lint:hub` e build webpack passando;
+  - hooks locais no commit `426b832`: `pre-commit` OK e `commit-msg` OK;
+  - `git -C <worktree> status --short --branch` para todos os agentes: OK, branches corretas e limpas;
+  - `git -C <worktree> rev-parse --short HEAD` para todos os agentes: `426b832`.
+- Pendencias ou riscos conhecidos:
+  - os worktrees foram criados localmente; nenhum push remoto foi feito;
+  - cada agente ainda precisa iniciar pelo protocolo de startup, lendo os documentos obrigatorios e confirmando escopo;
+  - deploy, homologacao, producao, banco, Supabase, Vercel, env, secret, migration, alias, dominio e rollback seguem bloqueados ate autorizacao explicita.
+- Proxima squad recomendada:
+  - `Hefesto` para preparar roteiro de producao/rollback sem publicar nada;
+  - `Iris`, `Hades`, `Ares`, `Hermes`, `Atlas`, `Chronos`, `Setup` e `Apolo` conforme Lucas priorizar os recortes.
+
+Conclusao:
+- A malha de worktrees por agente foi criada localmente a partir de um commit base validado.
+- O impacto pratico e que o Panteon agora tem ambientes de trabalho separados para os agentes principais, reduzindo pacote misto e facilitando handoff limpo.
+- Nao precisa de acao sensivel agora; o proximo passo e iniciar o agente prioritario pelo template de startup, com Hefesto recomendado primeiro.

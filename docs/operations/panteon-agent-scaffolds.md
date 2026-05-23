@@ -115,6 +115,23 @@ Bloqueios:
 - Homologacao: exige autorizacao do Lucas por modulo.
 - Producao: exige Hefesto e autorizacao explicita.
 
+## Worktrees criados
+
+Criados localmente em `2026-05-23`, a partir do commit base
+`426b832 feat(zeus): configure engineering scaffolds`:
+
+| Agente | Worktree | Branch | Head inicial |
+| --- | --- | --- | --- |
+| `hefesto` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hefesto` | `codex/hefesto/worktree-pilot-20260523` | `426b832` |
+| `iris` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\iris` | `codex/iris/worktree-pilot-20260523` | `426b832` |
+| `hades` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hades` | `codex/hades/worktree-pilot-20260523` | `426b832` |
+| `ares` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\ares` | `codex/ares/worktree-pilot-20260523` | `426b832` |
+| `hermes` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hermes` | `codex/hermes/worktree-pilot-20260523` | `426b832` |
+| `atlas` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\atlas` | `codex/atlas/worktree-pilot-20260523` | `426b832` |
+| `chronos` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\chronos` | `codex/chronos/worktree-pilot-20260523` | `426b832` |
+| `setup` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\setup` | `codex/setup/worktree-pilot-20260523` | `426b832` |
+| `apolo` | `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\apolo` | `codex/apolo/worktree-pilot-20260523` | `426b832` |
+
 ## Conclusao
 
 Scaffolds tornam a expansao do Panteon repetivel: cada agente nasce com nome,
