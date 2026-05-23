@@ -31,9 +31,14 @@ autorizacao explicita do Lucas.
 Para qualquer recorte:
 
 ```powershell
+pwsh --version
 git status --short --branch
 git diff --check
 ```
+
+Em Windows, PowerShell 7 (`pwsh`) e o terminal operacional padrao. Use
+`powershell.exe` apenas como fallback quando `pwsh` nao iniciar na sessao atual
+e mantenha `npm.cmd`/`npx.cmd` para Node.
 
 Quando hooks locais estiverem instalados, `pre-commit`, `commit-msg` e
 `pre-push` executam parte desses gates automaticamente. Eles complementam, mas
@@ -43,13 +48,13 @@ producao.
 Para recorte Hub em worktree separado:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules
 ```
 
 Para recorte apenas documental:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs
 ```
 
 ## Recorte documental

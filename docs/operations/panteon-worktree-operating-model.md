@@ -44,6 +44,19 @@ Regras:
 - O worktree principal pode continuar existindo como area de referencia, mas
   nao deve ser usado para deploy amplo se estiver misto.
 
+## Terminal operacional
+
+Em Windows, agentes do Panteon devem usar PowerShell 7 (`pwsh`) como terminal
+operacional padrao.
+
+Regras:
+
+- confirmar disponibilidade com `pwsh --version`;
+- executar scripts `.ps1` com `pwsh -NoProfile -ExecutionPolicy Bypass -File`;
+- usar `npm.cmd` e `npx.cmd` para comandos Node;
+- usar Windows PowerShell 5.1 (`powershell.exe`) apenas como fallback quando
+  `pwsh` nao estiver disponivel ou nao conseguir iniciar na sessao atual.
+
 ## Nome de branch
 
 Padrao:
@@ -75,7 +88,7 @@ Regras:
 Antes de executar manualmente, o agente pode gerar um preview seguro:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent <agente> -Theme <tema>
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent <agente> -Theme <tema>
 ```
 
 O preview nao cria branch nem worktree. Para executar de fato, o operador deve
@@ -84,7 +97,7 @@ revisar o caminho e rodar explicitamente com `-Apply`.
 Para listar scaffolds padrao de todos os agentes:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/panteon-scaffold-agents.ps1 -Theme worktree-pilot
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-scaffold-agents.ps1 -Theme worktree-pilot
 ```
 
 Modelo para branch nova:
@@ -259,7 +272,7 @@ correto.
 O fluxo padrao para validar um worktree e:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules
 ```
 
 O script:

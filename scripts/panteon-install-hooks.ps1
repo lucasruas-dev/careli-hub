@@ -126,4 +126,4 @@ foreach ($hook in $Hooks) {
 
 Write-Host "Hooks Panteon instalados."
 Write-Host "Para testar:"
-Write-Host "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-hook-runner.ps1 -Hook pre-commit"
+Write-Host "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-hook-runner.ps1 -Hook pre-commit"

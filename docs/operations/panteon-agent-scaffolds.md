@@ -25,19 +25,19 @@ Cada agente recebe:
 Para listar os scaffolds sem criar worktrees:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/panteon-scaffold-agents.ps1 -Theme worktree-pilot
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-scaffold-agents.ps1 -Theme worktree-pilot
 ```
 
 Para preparar um agente especifico sem criar:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent iris -Theme worktree-pilot
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent iris -Theme worktree-pilot
 ```
 
 Para criar de fato um worktree individual, depois de revisar:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent iris -Theme worktree-pilot -Apply
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent iris -Theme worktree-pilot -Apply
 ```
 
 ## Scaffolds padrao
@@ -79,6 +79,7 @@ Contexto:
 - Worktree: C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\<agente>
 - Branch: codex/<agente>/<tema>-<yyyymmdd>
 - Escopo: <escopo do scaffold>
+- Terminal operacional: PowerShell 7 (`pwsh`); Windows PowerShell 5.1 apenas como fallback.
 - Fora de escopo: modulos de outras squads e operacoes sensiveis sem autorizacao.
 
 Primeira acao:

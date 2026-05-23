@@ -188,7 +188,7 @@ foreach ($agent in $agentList) {
   }
 
   Write-Host "Preview command:"
-  Write-Host "powershell -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent $agentSlug -Theme $themeSlug -Date $Date"
+  Write-Host "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-new-worktree.ps1 -Agent $agentSlug -Theme $themeSlug -Date $Date"
   Write-Host ""
 }
 

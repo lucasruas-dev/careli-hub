@@ -46,6 +46,24 @@ function Get-RepoRoot {
   return (Resolve-Path ([string] $result.Output)).Path
 }
 
+function Get-PanteonPowerShellCommand {
+  $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+
+  if ($pwsh) {
+    try {
+      & $pwsh.Source -NoLogo -NoProfile -Command "exit 0" *> $null
+
+      if ($LASTEXITCODE -eq 0) {
+        return $pwsh.Source
+      }
+    } catch {
+      # Some hosted Windows sessions can resolve pwsh.exe but fail to launch it.
+    }
+  }
+
+  return "powershell"
+}
+
 function Get-StagedFiles {
   $result = Invoke-Git -Arguments @("diff", "--cached", "--name-only", "--diff-filter=ACMRT")
   return @($result.Output | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -194,18 +212,19 @@ function Invoke-PrePush {
   }
 
   $scope = if ($hasHubCode) { "hub" } else { "docs" }
-  $args = @("-ExecutionPolicy", "Bypass", "-File", $validator, "-Scope", $scope)
+  $shell = Get-PanteonPowerShellCommand
+  $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $validator, "-Scope", $scope)
 
   if ($scope -eq "hub") {
     $args += @("-PrepareSharedNodeModules", "-SkipBuild")
   }
 
   if ($DryRun) {
-    Write-Host "Dry run: powershell $($args -join ' ')"
+    Write-Host "Dry run: $shell $($args -join ' ')"
     return
   }
 
-  & powershell @args
+  & $shell @args
 
   if ($LASTEXITCODE -ne 0) {
     throw "Validacao pre-push falhou com exit code $LASTEXITCODE."

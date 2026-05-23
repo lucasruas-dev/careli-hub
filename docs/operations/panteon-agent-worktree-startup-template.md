@@ -42,6 +42,7 @@ Contexto:
 - Worktree alvo: <caminho absoluto>
 - Branch alvo: codex/<agente>/<tema>-<yyyymmdd>
 - Modulo/recorte: <modulo e tema>
+- Terminal operacional: PowerShell 7 (`pwsh`); Windows PowerShell 5.1 apenas como fallback.
 - Fora de escopo: <modulos, ambientes e operacoes fora do recorte>
 
 Primeira acao:

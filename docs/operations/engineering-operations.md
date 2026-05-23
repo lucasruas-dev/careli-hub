@@ -13192,3 +13192,64 @@ Conclusao:
 - A malha de worktrees por agente foi criada localmente a partir de um commit base validado.
 - O impacto pratico e que o Panteon agora tem ambientes de trabalho separados para os agentes principais, reduzindo pacote misto e facilitando handoff limpo.
 - Nao precisa de acao sensivel agora; o proximo passo e iniciar o agente prioritario pelo template de startup, com Hefesto recomendado primeiro.
+
+## 2026-05-23 11:40:54 -03:00 - Zeus - Padrao PowerShell 7
+
+Assunto: [Zeus] PowerShell 7 como terminal operacional
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / PADRAO OPERACIONAL / TERMINAL`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem Vercel e sem producao.
+- Status: `PADRAO REGISTRADO LOCALMENTE`.
+- Motivo da mudanca: Lucas instalou e confirmou `PowerShell 7.6.2` via `pwsh`; em seguida pediu para deixar registrado que a engenharia do Panteon deve usar a versao 7.
+- Arquivos afetados:
+  - `AGENTS.md`;
+  - `docs/operations/README.md`;
+  - `docs/operations/panteon-terminal-standard.md`;
+  - `docs/operations/panteon-worktree-operating-model.md`;
+  - `docs/operations/panteon-agent-worktree-startup-template.md`;
+  - `docs/operations/panteon-agent-scaffolds.md`;
+  - `docs/operations/panteon-validation-checklists.md`;
+  - `docs/operations/panteon-git-hooks.md`;
+  - `.githooks/pre-commit`;
+  - `.githooks/commit-msg`;
+  - `.githooks/pre-push`;
+  - `scripts/panteon-hook-runner.ps1`;
+  - `scripts/panteon-install-hooks.ps1`;
+  - `scripts/panteon-scaffold-agents.ps1`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado o documento operacional `panteon-terminal-standard.md`;
+  - registrado PowerShell 7 (`pwsh`) como terminal padrao dos agentes;
+  - mantido Windows PowerShell 5.1 (`powershell.exe`) apenas como fallback;
+  - atualizados exemplos de validacao, scaffold, hooks e worktree para `pwsh -NoProfile -ExecutionPolicy Bypass -File`;
+  - preservada a regra de usar `npm.cmd` e `npx.cmd` para Node no Windows;
+  - ajustado o runner de hooks para tentar `pwsh` antes de `powershell`.
+  - ajustados os templates versionados de hook para confirmar que `pwsh` realmente inicia antes de usa-lo.
+- Logica utilizada:
+  - o padrao reduz divergencia entre agentes e evita depender do Windows PowerShell legado;
+  - fallback explicito preserva compatibilidade caso algum ambiente ainda nao tenha `pwsh`;
+  - a mudanca e local/documental/tooling e nao altera produto, banco, env, deploy ou producao.
+- Validacao executada:
+  - `pwsh --version` foi confirmado visualmente pelo Lucas no terminal local como `PowerShell 7.6.2`;
+  - no ambiente de execucao do Codex, `pwsh.exe` resolveu no PATH, mas falhou ao iniciar por sessao de logon; por isso o runner foi ajustado para testar a inicializacao real antes de escolher o shell;
+  - `git diff --check`: OK, apenas avisos conhecidos de LF/CRLF no Windows;
+  - sintaxe de `scripts/panteon-hook-runner.ps1`, `scripts/panteon-install-hooks.ps1` e `scripts/panteon-scaffold-agents.ps1`: OK;
+  - `scripts/panteon-install-hooks.ps1 -Apply -Yes`: OK apos permissao local para atualizar `.git/hooks`, com backup dos hooks anteriores;
+  - hook instalado `pre-commit`: confirmado com teste de inicializacao real de `pwsh` antes de fallback;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-hook-runner.ps1 -Hook pre-commit`: OK, sem arquivos staged;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-hook-runner.ps1 -Hook commit-msg -CommitMsgFile <temp>` com `docs(zeus): register powershell 7 standard`: OK;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-hook-runner.ps1 -Hook pre-push -DryRun`: OK, usando fallback para `powershell`;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-scaffold-agents.ps1 -Theme worktree-pilot`: OK, previews passaram a exibir comandos `pwsh`;
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs`: OK.
+- Pendencias ou riscos conhecidos:
+  - comandos historicos antigos no diario permanecem como evidencia do passado e nao foram reescritos;
+  - scripts legados de deploy/homologacao podem conter chamadas antigas a `powershell` e devem ser modernizados apenas em recorte proprio, se necessario;
+  - nenhuma operacao sensivel foi executada.
+- Proxima squad recomendada:
+  - agentes de modulo para iniciar novos chats/worktrees usando `pwsh`.
+
+Conclusao:
+- O Panteon passa a registrar PowerShell 7 como terminal operacional padrao.
+- O impacto pratico e que novos agentes e scripts de engenharia devem usar `pwsh` por padrao, mantendo `powershell.exe` somente como fallback.
+- Nao precisa de acao sensivel agora; o proximo passo e validar o recorte documental/tooling e seguir usando `pwsh` nas novas sessoes.

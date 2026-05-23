@@ -39,7 +39,9 @@ Instalador:
 scripts/panteon-install-hooks.ps1
 ```
 
-Os templates chamam o runner PowerShell. O instalador copia os templates para o
+Os templates chamam o runner PowerShell usando `pwsh` primeiro e
+`powershell.exe` apenas como fallback. Antes de usar `pwsh`, o template testa se
+ele realmente inicia na sessao atual. O instalador copia os templates para o
 diretorio real de hooks resolvido por:
 
 ```powershell
@@ -54,19 +56,19 @@ para os worktrees do mesmo repositorio.
 Preview sem escrita:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-install-hooks.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-install-hooks.ps1
 ```
 
 Instalar:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-install-hooks.ps1 -Apply
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-install-hooks.ps1 -Apply
 ```
 
 Instalacao assistida sem prompt interativo:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-install-hooks.ps1 -Apply -Yes
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-install-hooks.ps1 -Apply -Yes
 ```
 
 Se ja existir hook com o mesmo nome, o instalador cria backup com sufixo

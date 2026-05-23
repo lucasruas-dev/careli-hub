@@ -27,6 +27,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `docs/operations/panteon-agent-scaffolds.md`: scaffolds operacionais por agente, com worktree, branch, escopo, bloqueios, prompt e ordem recomendada de criacao.
 - `docs/operations/panteon-worktree-operating-model.md`: modelo operacional de worktrees separados por agente, branches `codex/*`, checkpoints, validacoes e bloqueios de pacote misto.
 - `docs/operations/panteon-validation-checklists.md`: checklists de validacao por tipo de recorte, cobrindo docs, frontend, API, banco, Supabase, Vercel, homologacao, producao e incidentes.
+- `docs/operations/panteon-terminal-standard.md`: padrao de terminal operacional em Windows, com PowerShell 7 (`pwsh`) como runtime principal e `powershell.exe` apenas como fallback.
 - `docs/operations/panteon-git-hooks.md`: padrao local de hooks Git do Panteon, com `pre-commit`, `commit-msg`, `pre-push`, instalador e limites de seguranca.
 - `docs/operations/zeus-core-v2-startup.md`: prompt de continuidade para abrir novo chat Zeus quando houver `CHAT SATURANDO`.
 - `docs/operations/squadops-center-process.md`: processo oficial do Zeus / Operations Center, protocolos `AT/CB/TI/OP/AL/DP`, homologacao, producao e operacao dedicada em `ops.c2x.app.br`.
@@ -61,6 +62,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - Nao registre valores de secrets, tokens, senhas, service role, `POSTGRES_URL` ou chaves externas.
 - Toda operacao sensivel comeca `BLOQUEADO` ate autorizacao expressa do Lucas.
 - Homologacao e o caminho padrao antes de producao quando houver risco operacional.
+- Em Windows, use PowerShell 7 (`pwsh`) como terminal operacional padrao. Use Windows PowerShell 5.1 (`powershell.exe`) apenas como fallback quando `pwsh` nao estiver disponivel ou nao iniciar na sessao atual, e continue usando `npm.cmd`/`npx.cmd` para comandos Node.
 - Cada agente de modulo publica o proprio recorte em homologacao quando Lucas autorizar, registra modulo, pacote, atividades, commit/deploy, validacoes, riscos e status. `Hefesto` recebe esses handoffs homologados e promove producao por modulo, sem assumir homologacao de todos os recortes.
 - Comunicacao entre agentes deve seguir `docs/operations/panteon-agent-communication-protocol.md`: origem, destino, modulo, protocolo, tipo, prioridade, status, decisao esperada e evidencias. Zeus atua como agente master organizando o trafego; Hefesto recebe producao; Iris centraliza comunicacao externa.
 - Todo agente deve acionar `CHAT SATURANDO` quando o chat ficar pesado, houver compactacoes sucessivas ou risco de perda de contexto. O checkpoint deve registrar estado, worktree/branch, arquivos, validacoes, riscos e proximo passo no diario canonico, alem de preparar um resumo curto para abertura de novo chat.
