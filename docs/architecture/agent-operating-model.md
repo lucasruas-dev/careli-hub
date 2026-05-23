@@ -92,6 +92,52 @@ Quando Lucas solicitar scripts, prompts ou encaminhamentos para agentes/squads:
 - `Zeus` valida schema, migrations, RLS, grants e banco real em modo bloqueado ate autorizacao; investiga bugs, logs, gargalos e regressao; protege ambientes, secrets, Vercel, Supabase runtime, dominios, healthchecks e estabilidade.
 - `Zeus` centraliza resposta critica ponta a ponta, registra protocolo operacional quando aplicavel e encaminha a squad responsavel apos estabilizar ou bloquear o risco.
 
+## Comunicacao entre agentes
+
+Agentes nao devem depender de conversa livre, memoria de chat ou recados soltos. Toda comunicacao entre agentes deve ser estruturada conforme `docs/operations/panteon-agent-communication-protocol.md`.
+
+Campos minimos:
+
+- agente origem;
+- agente destino;
+- modulo afetado;
+- tipo;
+- prioridade;
+- status;
+- protocolo relacionado;
+- resumo;
+- decisao esperada;
+- evidencias.
+
+Regras:
+
+- `Zeus` atua como agente master e organiza o trafego operacional.
+- `Hefesto` recebe comunicacoes de producao somente quando o recorte estiver homologado, validado e autorizado.
+- `Iris` centraliza comunicacao externa e protocolos `AT`.
+- Bloqueios de banco, Supabase, Vercel, env, secret, dominio, alias, producao ou incidente tecnico apontam para `Zeus` e ficam `BLOQUEADO` ate autorizacao explicita do Lucas.
+- O protocolo futuro `AG` identifica comunicacao entre agentes e pode apontar para `AT`, `CB`, `TI`, `OP`, `AL`, `DP` ou `LO`, sem substituir o protocolo original.
+
+## Checkpoint de continuidade e chat saturado
+
+Todo agente deve avisar Lucas quando o chat atual estiver ficando pesado ou dependente de compactacoes sucessivas. O status operacional para esse caso e `CHAT SATURANDO`.
+
+O agente deve acionar checkpoint quando:
+
+- houver compactacao de contexto;
+- o trabalho ficar lento por historico excessivo;
+- existir risco de misturar frentes, modulos, deploys ou decisoes;
+- o agente depender de memoria de chat para lembrar estado operacional;
+- o proximo passo precisar ser retomado por outro agente ou novo chat.
+
+Ao acionar checkpoint, o agente deve:
+
+- registrar estado, branch/worktree, arquivos, validacoes, riscos e proximo passo no diario canonico;
+- criar ou atualizar script de retomada em `docs/operations/` quando necessario;
+- entregar a Lucas um resumo curto para abrir o proximo chat;
+- bloquear operacoes sensiveis ate o novo chat reler os documentos obrigatorios e confirmar o escopo.
+
+Trocar de chat no momento certo e parte do fluxo de qualidade, nao excecao.
+
 ## Regra de resposta
 
 Toda devolutiva operacional deve comecar com `Assunto:` e terminar com status claro, riscos, pendencias e proxima squad recomendada quando aplicavel.

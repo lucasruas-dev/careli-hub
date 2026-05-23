@@ -98,6 +98,7 @@ type OperationsFilters = {
 
 type ZeusView =
   | "overview"
+  | "agents"
   | "monitoring"
   | "itTickets"
   | "deploys"
@@ -117,6 +118,16 @@ type PoAiChatMessage = {
   createdAt: string;
   id: string;
   role: "assistant" | "user";
+};
+
+type AgentCommunicationItem = {
+  fromAgent: string;
+  id: string;
+  kind: string;
+  priority: "alta" | "media" | "normal";
+  record: EngineeringOperationRecord;
+  summary: string;
+  toAgent: string;
 };
 
 type MonitoringIntervalMs = 0 | 10_000 | 30_000 | 60_000;
@@ -775,6 +786,7 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
 const zeusViews = [
   { id: "itTickets", label: "HelpDesk" },
   { id: "overview", label: "Visão geral" },
+  { id: "agents", label: "Agentes" },
   { id: "monitoring", label: "Database Monitoring" },
   { id: "deploys", label: "Deploys" },
   { id: "timeline", label: "Timeline" },
@@ -1358,7 +1370,13 @@ export function ZeusPage({
     records.filter((record) => record.isRelease);
   const releaseRegisterRecords = releaseRegisters?.records ?? [];
   const deployRecords =
-    releaseRegisterRecords.length > 0 ? releaseRegisterRecords : allReleaseRecords;
+    releaseRegisterRecords.length > 0
+      ? releaseRegisterRecords
+      : allReleaseRecords;
+  const agentCommunicationItems = useMemo(
+    () => buildAgentCommunicationItems(records),
+    [records],
+  );
   const deployFilterOptions =
     releaseRegisterRecords.length > 0
       ? releaseRegisters?.filters
@@ -2009,6 +2027,7 @@ export function ZeusPage({
         <ZeusViewTabs
           activeView={activeView}
           actionCount={actionCount}
+          agentCount={agentCommunicationItems.length}
           deployCount={deployRecords.length}
           filteredCount={filteredRecords.length}
           itTicketAttentionCount={itTicketAttentionCount}
@@ -2067,6 +2086,14 @@ export function ZeusPage({
               />
             </section>
           </>
+        ) : null}
+
+        {activeView === "agents" ? (
+          <AgentCommandCenterView
+            items={agentCommunicationItems}
+            onSelectRecord={setSelectedRecord}
+            records={records}
+          />
         ) : null}
 
         {activeView === "monitoring" ? (
@@ -5679,6 +5706,7 @@ function getMonitoringSourceOrder(sourceId: string) {
 function ZeusViewTabs({
   activeView,
   actionCount,
+  agentCount,
   deployCount,
   filteredCount,
   itTicketAttentionCount,
@@ -5689,6 +5717,7 @@ function ZeusViewTabs({
 }: {
   activeView: ZeusView;
   actionCount: number;
+  agentCount: number;
   deployCount: number;
   filteredCount: number;
   itTicketAttentionCount: number;
@@ -5698,6 +5727,7 @@ function ZeusViewTabs({
   routineCount: number;
 }) {
   const counters = {
+    agents: agentCount,
     audits: routineCount,
     deploys: deployCount,
     itTickets: itTicketCount,
@@ -5755,6 +5785,197 @@ function ZeusViewTabs({
         );
       })}
     </nav>
+  );
+}
+
+function AgentCommandCenterView({
+  items,
+  onSelectRecord,
+  records,
+}: {
+  items: AgentCommunicationItem[];
+  onSelectRecord: (record: EngineeringOperationRecord) => void;
+  records: EngineeringOperationRecord[];
+}) {
+  const lanes = buildAgentCommunicationLanes(items);
+  const blockedCount = items.filter((item) => item.kind === "bloqueio").length;
+  const productionHandoffs = items.filter(
+    (item) => item.toAgent === "Hefesto",
+  ).length;
+  const activeAgents = new Set(
+    items.flatMap((item) => [item.fromAgent, item.toAgent]),
+  ).size;
+
+  return (
+    <section className="grid min-w-0 gap-5">
+      <Surface
+        bordered
+        className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      >
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
+          <PanelTitle
+            eyebrow="AGENTE MASTER"
+            icon={<Bot size={18} />}
+            title="Comando dos agentes"
+          />
+          <Badge variant="info">fonte real do Operations Center</Badge>
+        </div>
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <FocusMetric
+            detail="Sinais vivos derivados do diario estruturado."
+            icon={<MessageSquareText className="size-4" />}
+            label="Comunicações"
+            value={items.length}
+          />
+          <FocusMetric
+            detail="Itens que pedem decisao, desbloqueio ou correcao."
+            icon={<ShieldAlert className="size-4" />}
+            label="Bloqueios"
+            value={blockedCount}
+          />
+          <FocusMetric
+            detail="Handoffs e releases que apontam para promocao."
+            icon={<Rocket className="size-4" />}
+            label="Para Hefesto"
+            value={productionHandoffs}
+          />
+          <FocusMetric
+            detail="Agentes citados como origem ou destino."
+            icon={<Layers3 className="size-4" />}
+            label="Agentes ativos"
+            value={activeAgents}
+          />
+        </div>
+      </Surface>
+
+      <section className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.34fr)]">
+        <Surface
+          bordered
+          className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        >
+          <PanelTitle
+            eyebrow={`${lanes.length} agentes com fila`}
+            icon={<Send size={18} />}
+            title="Fila operacional por agente"
+          />
+          <div className="mt-4 grid max-h-[64vh] min-w-0 gap-3 overflow-y-auto overscroll-contain pr-1">
+            {lanes.length > 0 ? (
+              lanes.map((lane) => (
+                <div
+                  className="rounded-2xl border border-slate-200/70 bg-slate-50/40 p-3"
+                  key={lane.agent}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+                        destino
+                      </p>
+                      <h3 className="m-0 mt-1 text-sm font-semibold text-slate-950">
+                        {lane.agent}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="neutral">{lane.items.length} itens</Badge>
+                      {lane.blockedCount > 0 ? (
+                        <Badge variant="warning">
+                          {lane.blockedCount} bloqueio(s)
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {lane.items.slice(0, 5).map((item) => (
+                      <button
+                        className="w-full min-w-0 rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                        key={item.id}
+                        onClick={() => onSelectRecord(item.record)}
+                        type="button"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 font-mono text-[0.68rem] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                            {item.record.protocol}
+                          </span>
+                          <Badge variant={agentPriorityVariant(item.priority)}>
+                            {item.kind}
+                          </Badge>
+                          <span className="text-xs font-semibold text-slate-500">
+                            {item.fromAgent} → {item.toAgent}
+                          </span>
+                        </div>
+                        <p className="m-0 mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
+                          {item.record.subject}
+                        </p>
+                        <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+                          {item.summary}
+                        </p>
+                        <p className="m-0 mt-2 text-xs font-semibold text-slate-400">
+                          {item.record.module} /{" "}
+                          {formatOperationDateTime(item.record.localDateTime)}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyState message="Sem comunicação estruturada encontrada nos registros atuais." />
+            )}
+          </div>
+        </Surface>
+
+        <div className="grid content-start gap-5">
+          <Surface
+            bordered
+            className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          >
+            <PanelTitle
+              eyebrow="PROTOCOLO"
+              icon={<ClipboardCheck size={18} />}
+              title="Regras da comunicação"
+            />
+            <div className="mt-4 grid gap-2 text-sm leading-6 text-slate-600">
+              <p className="m-0">
+                Toda mensagem precisa declarar origem, destino, modulo,
+                protocolo, status, prioridade e decisao esperada.
+              </p>
+              <p className="m-0">
+                Handoff para producao aponta para Hefesto. Bloqueio de ambiente,
+                banco, API, env ou incidente aponta para Zeus.
+              </p>
+              <p className="m-0">
+                A proxima fase cria a tabela viva de mensagens, sem depender do
+                diario como unica fonte.
+              </p>
+            </div>
+          </Surface>
+
+          <Surface
+            bordered
+            className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          >
+            <PanelTitle
+              eyebrow={`${records.length} registros lidos`}
+              icon={<Database size={18} />}
+              title="Estado da V0"
+            />
+            <div className="mt-4 grid gap-3">
+              <DetailField
+                label="Fonte"
+                value="hub_engineering_operation_records / diario estruturado"
+              />
+              <DetailField
+                label="Banco novo"
+                value="bloqueado ate migration autorizada"
+              />
+              <DetailField
+                label="Producao"
+                value="preservada, sem deploy nesta etapa"
+              />
+            </div>
+          </Surface>
+        </div>
+      </section>
+    </section>
   );
 }
 
@@ -8076,6 +8297,241 @@ function getKnownRecordValue(values: string[]) {
       (value) => value.trim() && value.trim() !== UNKNOWN_OPERATION_VALUE,
     ) ?? "Nao informado."
   );
+}
+
+function buildAgentCommunicationItems(records: EngineeringOperationRecord[]) {
+  return records
+    .map((record): AgentCommunicationItem | null => {
+      const toAgent = inferTargetAgent(record);
+
+      if (!toAgent) {
+        return null;
+      }
+
+      return {
+        fromAgent: inferSourceAgent(record),
+        id: record.id,
+        kind: inferAgentCommunicationKind(record, toAgent),
+        priority: inferAgentCommunicationPriority(record),
+        record,
+        summary: getRecordCardSummary(record),
+        toAgent,
+      };
+    })
+    .filter((item): item is AgentCommunicationItem => Boolean(item))
+    .sort(compareAgentCommunicationItems);
+}
+
+function buildAgentCommunicationLanes(items: AgentCommunicationItem[]) {
+  const lanes = new Map<string, AgentCommunicationItem[]>();
+
+  for (const item of items) {
+    const laneItems = lanes.get(item.toAgent) ?? [];
+
+    laneItems.push(item);
+    lanes.set(item.toAgent, laneItems);
+  }
+
+  return Array.from(lanes.entries())
+    .map(([agent, laneItems]) => ({
+      agent,
+      blockedCount: laneItems.filter((item) => item.kind === "bloqueio")
+        .length,
+      items: laneItems,
+    }))
+    .sort((current, next) => next.items.length - current.items.length);
+}
+
+function compareAgentCommunicationItems(
+  current: AgentCommunicationItem,
+  next: AgentCommunicationItem,
+) {
+  const priorityDelta =
+    agentPriorityWeight(next.priority) - agentPriorityWeight(current.priority);
+
+  if (priorityDelta !== 0) {
+    return priorityDelta;
+  }
+
+  return compareOperationRecordsDesc(current.record, next.record);
+}
+
+function agentPriorityWeight(priority: AgentCommunicationItem["priority"]) {
+  if (priority === "alta") {
+    return 3;
+  }
+
+  if (priority === "media") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function inferTargetAgent(record: EngineeringOperationRecord) {
+  if (isKnownOperationValue(record.nextSquad)) {
+    return normalizeAgentName(record.nextSquad);
+  }
+
+  const searchable = normalizeSearchText(
+    `${record.status} ${record.type} ${record.changeCategory} ${record.subject} ${record.rawContent}`,
+  );
+
+  if (
+    searchable.includes("aguardando releaseops") ||
+    searchable.includes("pronto para producao") ||
+    searchable.includes("aguardando producao") ||
+    searchable.includes("hefesto")
+  ) {
+    return "Hefesto";
+  }
+
+  if (
+    searchable.includes("bloqueado") ||
+    searchable.includes("necessita correcao") ||
+    searchable.includes("operacional com atencao") ||
+    searchable.includes("incidente") ||
+    searchable.includes("infra") ||
+    searchable.includes("supabase") ||
+    searchable.includes("vercel") ||
+    searchable.includes("banco")
+  ) {
+    return "Zeus";
+  }
+
+  return null;
+}
+
+function inferSourceAgent(record: EngineeringOperationRecord) {
+  const squad = isKnownOperationValue(record.squad)
+    ? record.squad
+    : record.module;
+
+  return normalizeAgentName(squad);
+}
+
+function inferAgentCommunicationKind(
+  record: EngineeringOperationRecord,
+  toAgent: string,
+) {
+  const searchable = normalizeSearchText(
+    `${record.status} ${record.type} ${record.changeCategory} ${record.subject} ${record.rawContent}`,
+  );
+
+  if (
+    searchable.includes("bloqueado") ||
+    searchable.includes("necessita correcao") ||
+    searchable.includes("incidente")
+  ) {
+    return "bloqueio";
+  }
+
+  if (toAgent === "Hefesto" || record.isRelease) {
+    return "handoff";
+  }
+
+  if (searchable.includes("auditoria") || searchable.includes("healthcheck")) {
+    return "auditoria";
+  }
+
+  return "acionamento";
+}
+
+function inferAgentCommunicationPriority(record: EngineeringOperationRecord) {
+  const searchable = normalizeSearchText(
+    `${record.status} ${record.risks} ${record.rawContent}`,
+  );
+
+  if (
+    record.isCritical ||
+    searchable.includes("bloqueado") ||
+    searchable.includes("necessita correcao") ||
+    searchable.includes("incidente") ||
+    searchable.includes("critico")
+  ) {
+    return "alta";
+  }
+
+  if (
+    record.isRelease ||
+    searchable.includes("aguardando") ||
+    searchable.includes("risco")
+  ) {
+    return "media";
+  }
+
+  return "normal";
+}
+
+function normalizeAgentName(value: string) {
+  const normalized = normalizeSearchText(value);
+
+  if (normalized.includes("releaseops") || normalized.includes("hefesto")) {
+    return "Hefesto";
+  }
+
+  if (
+    normalized.includes("supportops") ||
+    normalized.includes("dataops") ||
+    normalized.includes("infraops") ||
+    normalized.includes("squadops") ||
+    normalized.includes("hubops") ||
+    normalized.includes("zeus")
+  ) {
+    return "Zeus";
+  }
+
+  if (normalized.includes("caredesk") || normalized.includes("iris")) {
+    return "Iris";
+  }
+
+  if (normalized.includes("pulsex") || normalized.includes("hermes")) {
+    return "Hermes";
+  }
+
+  if (normalized.includes("guardian") || normalized.includes("hades")) {
+    return "Hades";
+  }
+
+  if (normalized.includes("apolo")) {
+    return "Apolo";
+  }
+
+  if (normalized.includes("ares")) {
+    return "Ares";
+  }
+
+  if (normalized.includes("atlas")) {
+    return "Atlas";
+  }
+
+  if (normalized.includes("chronos")) {
+    return "Chronos";
+  }
+
+  if (normalized.includes("athena")) {
+    return "Athena";
+  }
+
+  if (normalized.includes("setup")) {
+    return "Setup";
+  }
+
+  return value.trim() || "Zeus";
+}
+
+function agentPriorityVariant(
+  priority: AgentCommunicationItem["priority"],
+): BadgeVariant {
+  if (priority === "alta") {
+    return "warning";
+  }
+
+  if (priority === "media") {
+    return "info";
+  }
+
+  return "neutral";
 }
 
 function buildProtocolModuleGroups(records: EngineeringOperationRecord[]) {

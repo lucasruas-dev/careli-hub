@@ -12682,3 +12682,58 @@ Conclusao:
 - O estudo inicial do banco C2X Legado foi concluido sem escrita e sem exposicao sensivel.
 - O impacto pratico e que Athena passa a ter uma referencia rastreavel para apoiar dashboards, Apolo, Hades, Iris e investigacoes futuras sobre o legado.
 - O proximo passo e Lucas indicar o primeiro dashboard ou pergunta de negocio para transformar esse mapa em consultas operacionais.
+
+## 2026-05-22 19:30:00 -03:00 - Zeus - Agente master e comunicacao entre agentes
+
+Assunto: [Zeus] Agente master e comunicacao entre agentes
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `GOVERNANCA / ZEUS / AGENTES / OPERATIONS CENTER`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem env, sem secret, sem Vercel e sem producao.
+- Status: `VALIDADO LOCAL`.
+- Autorizacao: Lucas autorizou Zeus a organizar a nova frente para comunicacao entre agentes e reforcou que o unico bloqueio absoluto e nao perder o que ja esta em producao.
+- Decisao:
+  - Zeus passa a ser tratado como agente master operacional;
+  - comunicacao entre agentes nao sera conversa livre, mas mensagem estruturada com origem, destino, modulo, tipo, prioridade, status, protocolo relacionado, decisao esperada e evidencias;
+  - todo agente deve acionar `CHAT SATURANDO` quando houver compactacao de contexto, lentidao, risco de perda de contexto ou excesso de frentes no mesmo chat;
+  - o checkpoint de continuidade deve registrar estado, branch/worktree, arquivos, validacoes, riscos e proximo passo antes de abrir novo chat;
+  - a V0 usa dados reais ja existentes do Operations Center, sem criar tabela nova;
+  - a V1 fica proposta para tabelas `hub_agent_*` e depende de autorizacao explicita antes de qualquer migration ou escrita real.
+- Implementacao V0:
+  - adicionada aba `Agentes` na tela Zeus;
+  - a aba deriva handoffs, bloqueios e acionamentos dos registros reais carregados pelo Operations Center;
+  - os itens sao agrupados por agente destino e abrem o registro operacional original;
+  - destaque inicial para comunicacoes, bloqueios, handoffs para Hefesto e agentes ativos.
+- Arquivos alterados:
+  - `apps/hub/modules/squadops/ZeusPage.tsx`;
+  - `docs/operations/panteon-agent-communication-protocol.md`;
+  - `docs/operations/zeus-core-v2-startup.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/agent-operating-model.md`;
+  - `docs/operations/engineering-operations.md`.
+- Regras registradas:
+  - `Zeus` organiza o trafego operacional;
+  - `Hefesto` recebe producao;
+  - `Iris` centraliza comunicacao externa;
+  - bloqueios de banco, Supabase, Vercel, env, secret, dominio, alias, producao ou incidente apontam para Zeus;
+  - protocolo futuro `AG` pode apontar para `AT`, `CB`, `TI`, `OP`, `AL`, `DP` ou `LO`, sem substituir o protocolo original.
+  - `CHAT SATURANDO` vira regra de continuidade para todos os agentes, com prompt de retomada quando necessario.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `git diff --check`: OK, apenas avisos CRLF do Windows;
+  - `npm.cmd exec --workspace @repo/hub -- next build --webpack`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: bloqueado no worktree por erro interno do Turbopack contra junction local de `node_modules` apontando para fora da raiz; nao indicou erro do recorte e foi coberto por build Webpack no mesmo codigo.
+- Riscos conhecidos:
+  - a V0 ainda nao cria mensagens vivas nem threads entre agentes;
+  - a comunicacao e derivada dos registros atuais, portanto depende de diario/Operations Center bem preenchidos;
+  - a validacao padrao com Turbopack requer dependencias nativas dentro do worktree ou pacote limpo sem junction;
+  - qualquer schema `hub_agent_*` exige autorizacao explicita do Lucas antes de aplicar migration.
+- Proximo passo:
+  - se Lucas abrir novo chat, iniciar pelo prompt `docs/operations/zeus-core-v2-startup.md`;
+  - depois, se Lucas aprovar, preparar migration e API da V1 em homologacao, nunca direto em producao.
+
+Conclusao:
+- A frente do agente master foi iniciada e validada localmente sem tocar producao.
+- O impacto pratico e que Zeus comeca a organizar pontas soltas entre agentes dentro do Operations Center, usando dados reais, e todos os agentes passam a ter criterio para trocar de chat sem perder continuidade.
+- A proxima acao e abrir o novo chat Zeus Core v2 se Lucas quiser aliviar este fio; a camada de banco `hub_agent_*` so deve avancar com autorizacao explicita.
