@@ -13253,3 +13253,53 @@ Conclusao:
 - O Panteon passa a registrar PowerShell 7 como terminal operacional padrao.
 - O impacto pratico e que novos agentes e scripts de engenharia devem usar `pwsh` por padrao, mantendo `powershell.exe` somente como fallback.
 - Nao precisa de acao sensivel agora; o proximo passo e validar o recorte documental/tooling e seguir usando `pwsh` nas novas sessoes.
+
+## 2026-05-23 23:36:32 -03:00 - Zeus - Cockpit da nova engenharia
+
+Assunto: [Zeus] Cockpit da nova engenharia operacional
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `ENGENHARIA / OPERATIONS CENTER / WORKTREES / RELEASE REGISTERS`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem Vercel e sem producao.
+- Status: `MONTADO LOCALMENTE / VALIDADO LOCAL`.
+- Motivo da mudanca: Lucas autorizou continuar todas as etapas de evolucao da engenharia; o objetivo desta etapa foi transformar o modelo documentado de worktrees, agentes, gates e release registers em leitura executiva dentro do Zeus.
+- Arquivos afetados:
+  - `apps/hub/modules/squadops/ZeusPage.tsx`;
+  - `docs/operations/panteon-engineering-rollout-plan.md`;
+  - `docs/operations/panteon-engineering-evolution-roadmap.md`;
+  - `docs/operations/README.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - aba `Agentes` do Zeus passou a consolidar diario estruturado e release registers para sinais de comunicacao entre agentes;
+  - criada matriz operacional dos agentes com worktree, branch padrao, papel, gate e proxima prova;
+  - adicionado gate executivo de release registers na aba `Agentes`, separando homologacao, producao, pronto para producao e bloqueios;
+  - formulario operacional do Zeus passou a listar Ares, Atlas, Chronos, Setup e Apolo como opcoes formais de modulo/squad;
+  - criado plano executivo `panteon-engineering-rollout-plan.md` com estado atual, matriz, fluxo, gates e proximas etapas;
+  - roadmap passou a registrar as fases 3, 9 e 10 como montadas localmente no piloto.
+- Logica utilizada:
+  - Zeus mostra o mapa operacional, mas nao automatiza producao;
+  - Hefesto continua sendo o unico gate de producao;
+  - V1 `hub_agent_*` fica visivel como desenho pronto, porem migration, banco real e API mutavel seguem bloqueados;
+  - release register complementa o diario, sem substituir as politicas de homologacao/producao.
+- Validacao executada:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com aviso existente de `MODULE_TYPELESS_PACKAGE_JSON` no `eslint.config.js`;
+  - `npm.cmd run build --workspace @repo/hub`: BLOQUEADO pelo panic conhecido do Turbopack em worktree com junction de `node_modules`;
+  - `npm.cmd run build --workspace @repo/hub -- --webpack`: OK;
+  - dev server local `npm.cmd run dev --workspace @repo/hub`: OK em `http://localhost:3001`;
+  - smoke HTTP `http://localhost:3001/zeus`: `200 OK`;
+  - smoke visual no navegador integrado: redirecionou para `/login` por falta de sessao autenticada, sem erros de console; validacao visual autenticada da aba `Agentes` permanece pendente;
+  - `git diff --check`: OK, apenas avisos esperados de LF/CRLF no Windows.
+- Pendencias ou riscos conhecidos:
+  - validacao autenticada da aba `Agentes` precisa ser feita em sessao logada;
+  - a V1 `hub_agent_*` continua bloqueada ate autorizacao explicita de migration/API/banco;
+  - nenhuma operacao de Vercel, Supabase, banco, env, secret, dominio, alias, migration, rollback ou producao foi executada.
+- Proxima squad recomendada:
+  - `Zeus` para validar visualmente a aba `Agentes` em sessao autenticada;
+  - `Hefesto` para receber apenas recortes homologados e prontos para producao;
+  - agentes de modulo para iniciar ciclos reais no proprio worktree usando o template oficial.
+
+Conclusao:
+- A nova engenharia do Panteon agora esta montada como cockpit operacional no Zeus, nao apenas como documento.
+- O impacto pratico e que Lucas passa a enxergar agentes, worktrees, gates, release registers, bloqueios e handoffs no mesmo painel.
+- Nao precisa de acao sensivel agora; o proximo passo e validar a aba `Agentes` autenticada e iniciar o primeiro ciclo real de agente por demanda.

@@ -20,14 +20,14 @@ protegida por Hefesto.
 | 0 | Registrar arquitetura executiva | Mapa Markdown e board visual SVG | `DOCUMENTADO LOCAL` |
 | 1 | Formalizar worktrees separados | Modelo operacional de worktrees por agente | `DOCUMENTADO LOCAL` |
 | 2 | Padronizar retomada de agentes | Template de startup e checklist por worktree | `EM EXECUCAO LOCAL` |
-| 3 | Tornar Zeus o painel de comando | Aba `Agentes` com governanca de engenharia visivel | `EM EXECUCAO LOCAL` |
+| 3 | Tornar Zeus o painel de comando | Aba `Agentes` com governanca de engenharia visivel | `MONTADO LOCAL` |
 | 4 | Padronizar tooling de worktree | Script local de validacao com dependencias compartilhadas | `EM EXECUCAO LOCAL` |
 | 5 | Preparar V1 de comunicacao | Desenho revisavel de tabelas `hub_agent_*` e API | `DESENHO LOCAL / MIGRATION BLOQUEADA` |
 | 6 | Padronizar gates de validacao | Checklists por tipo de recorte | `DOCUMENTADO LOCAL` |
 | 7 | Automatizar criacao de recortes | Scaffolds por agente e script seguro de worktree/branch | `SCAFFOLD OPERACIONAL` |
 | 8 | Configurar hooks locais | `pre-commit`, `commit-msg` e `pre-push` | `CONFIGURADO LOCAL` |
-| 9 | Integrar release registers | Homologacao/producao por modulo com status reconciliado | `PLANEJADO` |
-| 10 | Expandir para agentes de modulo | Iris, Hades, Ares, Hermes, Atlas, Chronos, Apolo e Setup adotam o modelo | `PLANEJADO` |
+| 9 | Integrar release registers | Homologacao/producao por modulo com status reconciliado | `INTEGRADO AO ZEUS LOCAL` |
+| 10 | Expandir para agentes de modulo | Iris, Hades, Ares, Hermes, Atlas, Chronos, Apolo e Setup adotam o modelo | `WORKTREES CRIADOS LOCALMENTE` |
 
 ## Fase 0 - Arquitetura executiva
 
@@ -80,6 +80,9 @@ Entrega esperada:
   - recortes limpos ou pacotes mistos;
   - `CHAT SATURANDO`;
   - operacoes sensiveis bloqueadas.
+- Matriz operacional de agentes, worktrees e branches.
+- Gate executivo de release registers, separando homologacao, producao,
+  pronto para producao e bloqueios.
 
 Criterio de aceite:
 
@@ -195,6 +198,13 @@ Entrega futura:
   - Git/worktree;
   - registros estruturados do Operations Center.
 
+Entrega local ja montada:
+
+- aba `Agentes` do Zeus le os registros de homologacao/producao quando
+  disponiveis;
+- a aba diferencia fallback do diario e indices por ambiente;
+- a promocao continua sob Hefesto e nao e automatizada.
+
 Criterio:
 
 - Produção nunca depende de recado solto.
@@ -245,4 +255,5 @@ Este roadmap permite evoluir a engenharia do Panteon em etapas, com velocidade
 e protecao operacional.
 
 O foco imediato e concluir o piloto Zeus local: documentos, templates e tela
-`Agentes` com leitura executiva de worktrees, bloqueios e handoffs.
+`Agentes` com leitura executiva de worktrees, bloqueios, release registers e
+handoffs.

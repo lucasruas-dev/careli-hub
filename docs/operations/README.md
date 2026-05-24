@@ -23,6 +23,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `docs/operations/panteon-agent-communication-protocol.md`: protocolo oficial de comunicacao entre agentes, agente master Zeus, handoffs, bloqueios e roadmap das tabelas `hub_agent_*`.
 - `docs/operations/panteon-agent-messaging-v1-design.md`: desenho tecnico revisavel da V1 `hub_agent_*`, incluindo modelo de dados, API proposta, seguranca, RLS futura e gates antes de migration.
 - `docs/operations/panteon-engineering-evolution-roadmap.md`: roadmap de evolucao da engenharia por fases, com gates para Zeus, Hefesto, worktrees, V1 `hub_agent_*` e squads.
+- `docs/operations/panteon-engineering-rollout-plan.md`: plano executivo do rollout da nova engenharia, com estado atual, matriz de agentes, fluxo operacional e proximos gates.
 - `docs/operations/panteon-agent-worktree-startup-template.md`: template de abertura de novo chat/agente em worktree separado, com leitura obrigatoria, primeira acao, bloqueios e retorno esperado.
 - `docs/operations/panteon-agent-scaffolds.md`: scaffolds operacionais por agente, com worktree, branch, escopo, bloqueios, prompt e ordem recomendada de criacao.
 - `docs/operations/panteon-worktree-operating-model.md`: modelo operacional de worktrees separados por agente, branches `codex/*`, checkpoints, validacoes e bloqueios de pacote misto.

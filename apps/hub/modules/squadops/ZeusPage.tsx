@@ -138,6 +138,24 @@ type AgentEngineeringSignal = {
   worktreeCount: number;
 };
 
+type AgentReleaseSignal = {
+  blockedCount: number;
+  homologationCount: number;
+  productionCount: number;
+  readyForProductionCount: number;
+  totalCount: number;
+};
+
+type PanteonAgentRegistryItem = {
+  agent: string;
+  branchPattern: string;
+  gate: string;
+  nextProof: string;
+  role: string;
+  status: "ativo" | "preparado" | "protegido";
+  worktree: string;
+};
+
 type MonitoringIntervalMs = 0 | 10_000 | 30_000 | 60_000;
 
 type WatcherApiResponse = {
@@ -393,11 +411,109 @@ const initialOperationRecordForm: OperationRecordFormState = {
   validation: "",
 };
 
+const panteonAgentRegistry: PanteonAgentRegistryItem[] = [
+  {
+    agent: "Zeus",
+    branchPattern: "codex/zeus/*",
+    gate: "Diario canonico, Operations Center e governanca",
+    nextProof: "Cockpit executivo da engenharia e V1 bloqueada visivel",
+    role: "Agente master operacional e guardiao da arquitetura",
+    status: "ativo",
+    worktree: "careli-hub-worktrees/zeus",
+  },
+  {
+    agent: "Hefesto",
+    branchPattern: "codex/hefesto/*",
+    gate: "Release register, healthchecks e rollback",
+    nextProof: "Promover somente recortes PRONTO PARA PRODUCAO",
+    role: "Producao, rollback e rastreabilidade final",
+    status: "protegido",
+    worktree: "careli-hub-worktrees/hefesto",
+  },
+  {
+    agent: "Iris",
+    branchPattern: "codex/iris/*",
+    gate: "Validacao funcional e handoff por modulo",
+    nextProof: "Registrar recortes de atendimento e comunicacao",
+    role: "Atendimento, filas, comunicacao externa e templates",
+    status: "preparado",
+    worktree: "careli-hub-worktrees/iris",
+  },
+  {
+    agent: "Hades",
+    branchPattern: "codex/hades/*",
+    gate: "Regra de negocio C2X preservada",
+    nextProof: "Isolar cobrancas, acordos e pagamentos",
+    role: "Cobrancas, inadimplencia e operacao financeira central",
+    status: "preparado",
+    worktree: "careli-hub-worktrees/hades",
+  },
+  {
+    agent: "Ares",
+    branchPattern: "codex/ares/*",
+    gate: "Recorte financeiro tatico sem misturar Hades",
+    nextProof: "Separar disputas, acordos e escalonamentos",
+    role: "Financeiro tatico, acordos e escalonamentos",
+    status: "preparado",
+    worktree: "careli-hub-worktrees/ares",
+  },
+  {
+    agent: "Hermes",
+    branchPattern: "codex/hermes/*",
+    gate: "UX de comunicacao e suporte validada",
+    nextProof: "Registrar comunicacao interna e anexos",
+    role: "Comunicacao interna, suporte e evidencias",
+    status: "preparado",
+    worktree: "careli-hub-worktrees/hermes",
+  },
+  {
+    agent: "Atlas",
+    branchPattern: "codex/atlas/*",
+    gate: "Metricas e desempenho com dado real",
+    nextProof: "Handoffs com indicadores e auditoria",
+    role: "Performance, indicadores e auditoria operacional",
+    status: "preparado",
+    worktree: "careli-hub-worktrees/atlas",
+  },
+  {
+    agent: "Chronos",
+    branchPattern: "codex/chronos/*",
+    gate: "Rotinas e eventos sem alterar producao",
+    nextProof: "Sincronizar agendas, vencimentos e automacoes",
+    role: "Agenda, rotinas, prazos e execucao temporal",
+    status: "preparado",
+    worktree: "careli-hub-worktrees/chronos",
+  },
+  {
+    agent: "Setup",
+    branchPattern: "codex/setup/*",
+    gate: "Configuracao sem expor env ou segredo",
+    nextProof: "Centralizar parametros seguros de operacao",
+    role: "Configuracoes operacionais, usuarios e permissoes",
+    status: "preparado",
+    worktree: "careli-hub-worktrees/setup",
+  },
+  {
+    agent: "Apolo",
+    branchPattern: "codex/apolo/*",
+    gate: "CRM conectado ao legado C2X",
+    nextProof: "Preservar carteira, pessoas e historico real",
+    role: "CRM, carteira, oportunidades e relacionamento",
+    status: "preparado",
+    worktree: "careli-hub-worktrees/apolo",
+  },
+];
+
 const operationModuleOptions = [
   "Zeus",
   "Hades",
   "Iris",
   "Hermes",
+  "Ares",
+  "Atlas",
+  "Chronos",
+  "Setup",
+  "Apolo",
   "Panteon Core",
   "Panteon UIX",
   "Hefesto",
@@ -408,6 +524,11 @@ const operationSquadOptions = [
   "Hades Core",
   "Iris Core",
   "Hermes Core",
+  "Ares Core",
+  "Atlas Core",
+  "Chronos Core",
+  "Setup Core",
+  "Apolo Core",
   "Zeus",
   "Hefesto",
 ] as const;
@@ -1382,8 +1503,11 @@ export function ZeusPage({
       ? releaseRegisterRecords
       : allReleaseRecords;
   const agentCommunicationItems = useMemo(
-    () => buildAgentCommunicationItems(records),
-    [records],
+    () =>
+      buildAgentCommunicationItems(
+        mergeEngineeringOperationRecords(records, deployRecords),
+      ),
+    [deployRecords, records],
   );
   const deployFilterOptions =
     releaseRegisterRecords.length > 0
@@ -2100,6 +2224,8 @@ export function ZeusPage({
           <AgentCommandCenterView
             items={agentCommunicationItems}
             onSelectRecord={setSelectedRecord}
+            releaseRecords={deployRecords}
+            releaseRegisters={releaseRegisters}
             records={records}
           />
         ) : null}
@@ -5799,10 +5925,14 @@ function ZeusViewTabs({
 function AgentCommandCenterView({
   items,
   onSelectRecord,
+  releaseRecords,
+  releaseRegisters,
   records,
 }: {
   items: AgentCommunicationItem[];
   onSelectRecord: (record: EngineeringOperationRecord) => void;
+  releaseRecords: EngineeringOperationRecord[];
+  releaseRegisters: ReleaseRegistersApiResponse | null;
   records: EngineeringOperationRecord[];
 }) {
   const lanes = buildAgentCommunicationLanes(items);
@@ -5814,6 +5944,7 @@ function AgentCommandCenterView({
     items.flatMap((item) => [item.fromAgent, item.toAgent]),
   ).size;
   const engineeringSignal = buildAgentEngineeringSignal(items);
+  const releaseSignal = buildAgentReleaseSignal(releaseRecords);
   const sensitiveBlockedCount = engineeringSignal.sensitiveBlockCount;
 
   return (
@@ -5830,7 +5961,7 @@ function AgentCommandCenterView({
           />
           <Badge variant="info">fonte real do Operations Center</Badge>
         </div>
-        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-5">
           <FocusMetric
             detail="Sinais vivos derivados do diario estruturado."
             icon={<MessageSquareText className="size-4" />}
@@ -5850,6 +5981,12 @@ function AgentCommandCenterView({
             value={productionHandoffs}
           />
           <FocusMetric
+            detail="Pacotes lidos nos indices de homologacao e producao."
+            icon={<ClipboardCheck className="size-4" />}
+            label="Release registers"
+            value={releaseSignal.totalCount}
+          />
+          <FocusMetric
             detail="Agentes citados como origem ou destino."
             icon={<Layers3 className="size-4" />}
             label="Agentes ativos"
@@ -5859,6 +5996,11 @@ function AgentCommandCenterView({
       </Surface>
 
       <AgentEngineeringGovernancePanel signal={engineeringSignal} />
+
+      <AgentOperationalMatrixPanel
+        items={items}
+        releaseRecords={releaseRecords}
+      />
 
       <section className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.34fr)]">
         <Surface
@@ -5948,6 +6090,11 @@ function AgentCommandCenterView({
         </Surface>
 
         <div className="grid content-start gap-5">
+          <AgentReleaseRegisterGatePanel
+            releaseRegisters={releaseRegisters}
+            signal={releaseSignal}
+          />
+
           <Surface
             bordered
             className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
@@ -5985,7 +6132,7 @@ function AgentCommandCenterView({
             <div className="mt-4 grid gap-3">
               <DetailField
                 label="Fonte"
-                value="hub_engineering_operation_records / diario estruturado"
+                value="hub_engineering_operation_records / diario / release registers"
               />
               <DetailField
                 label="Banco novo"
@@ -6004,6 +6151,175 @@ function AgentCommandCenterView({
         </div>
       </section>
     </section>
+  );
+}
+
+function AgentOperationalMatrixPanel({
+  items,
+  releaseRecords,
+}: {
+  items: AgentCommunicationItem[];
+  releaseRecords: EngineeringOperationRecord[];
+}) {
+  const matrix = panteonAgentRegistry.map((agent) => {
+    const queueItems = items.filter((item) =>
+      isSameAgentRegistryName(agent.agent, item.fromAgent, item.toAgent),
+    );
+    const releaseCount = releaseRecords.filter((record) =>
+      recordMatchesAgent(record, agent.agent),
+    ).length;
+
+    return {
+      ...agent,
+      blockedCount: queueItems.filter((item) => item.kind === "bloqueio")
+        .length,
+      queueCount: queueItems.length,
+      releaseCount,
+    };
+  });
+  const activeCount = matrix.filter(
+    (agent) => agent.queueCount > 0 || agent.releaseCount > 0,
+  ).length;
+
+  return (
+    <Surface
+      bordered
+      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
+        <PanelTitle
+          eyebrow={`${panteonAgentRegistry.length} agentes mapeados`}
+          icon={<LayoutGrid size={18} />}
+          title="Matriz operacional dos worktrees"
+        />
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge variant="success">{activeCount} com sinal real</Badge>
+          <Badge variant="neutral">branches codex/*</Badge>
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-5">
+        {matrix.map((agent) => (
+          <article
+            className="min-w-0 rounded-xl border border-slate-200/70 bg-slate-50/50 p-4"
+            key={agent.agent}
+          >
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="m-0 text-sm font-semibold text-slate-950">
+                  {agent.agent}
+                </p>
+                <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                  {agent.role}
+                </p>
+              </div>
+              <Badge variant={agentRegistryStatusVariant(agent.status)}>
+                {agentRegistryStatusLabel(agent.status)}
+              </Badge>
+            </div>
+
+            <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-500">
+              <span className="truncate rounded-lg bg-white px-2.5 py-1.5 ring-1 ring-slate-200/70">
+                {agent.worktree}
+              </span>
+              <span className="truncate rounded-lg bg-white px-2.5 py-1.5 font-mono text-[0.68rem] ring-1 ring-slate-200/70">
+                {agent.branchPattern}
+              </span>
+            </div>
+
+            <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-slate-600">
+              Gate: {agent.gate}
+            </p>
+            <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-slate-600">
+              Prova: {agent.nextProof}
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge variant={agent.queueCount > 0 ? "info" : "neutral"}>
+                fila {agent.queueCount}
+              </Badge>
+              <Badge variant={agent.releaseCount > 0 ? "success" : "neutral"}>
+                release {agent.releaseCount}
+              </Badge>
+              {agent.blockedCount > 0 ? (
+                <Badge variant="warning">bloqueio {agent.blockedCount}</Badge>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </div>
+    </Surface>
+  );
+}
+
+function AgentReleaseRegisterGatePanel({
+  releaseRegisters,
+  signal,
+}: {
+  releaseRegisters: ReleaseRegistersApiResponse | null;
+  signal: AgentReleaseSignal;
+}) {
+  const homologationCount =
+    releaseRegisters?.sources.find(
+      (source) => source.environment === "homologacao",
+    )?.recordsCount ?? signal.homologationCount;
+  const productionCount =
+    releaseRegisters?.sources.find((source) => source.environment === "producao")
+      ?.recordsCount ?? signal.productionCount;
+  const usingReleaseRegisters = Boolean(
+    releaseRegisters && releaseRegisters.records.length > 0,
+  );
+
+  return (
+    <Surface
+      bordered
+      className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PanelTitle
+          eyebrow="GATE HEFESTO"
+          icon={<Rocket size={18} />}
+          title="Release registers"
+        />
+        <Badge variant={usingReleaseRegisters ? "success" : "warning"}>
+          {usingReleaseRegisters ? "indices ativos" : "fallback diario"}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <HomologationMetric
+          label="Homologacao"
+          value={String(homologationCount)}
+        />
+        <HomologationMetric label="Producao" value={String(productionCount)} />
+        <HomologationMetric
+          label="Pronto prod."
+          value={String(signal.readyForProductionCount)}
+        />
+        <HomologationMetric
+          label="Bloqueado"
+          value={String(signal.blockedCount)}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <DetailField
+          label="Fonte"
+          value={
+            releaseRegisters?.sourcePath ??
+            "docs/operations/engineering-operations.md"
+          }
+        />
+        <DetailField
+          label="Regra"
+          value="agente homologa; Hefesto promove somente recorte aprovado"
+        />
+        <DetailField
+          label="V1 hub_agent_*"
+          value="design pronto; migration e API mutavel seguem bloqueadas"
+        />
+      </div>
+    </Surface>
   );
 }
 
@@ -8424,6 +8740,69 @@ function getKnownRecordValue(values: string[]) {
   );
 }
 
+function mergeEngineeringOperationRecords(
+  ...recordGroups: EngineeringOperationRecord[][]
+) {
+  const recordsById = new Map<string, EngineeringOperationRecord>();
+
+  for (const recordGroup of recordGroups) {
+    for (const record of recordGroup) {
+      if (!recordsById.has(record.id)) {
+        recordsById.set(record.id, record);
+      }
+    }
+  }
+
+  return Array.from(recordsById.values()).sort(compareOperationRecordsDesc);
+}
+
+function buildAgentReleaseSignal(
+  records: EngineeringOperationRecord[],
+): AgentReleaseSignal {
+  return records.reduce<AgentReleaseSignal>(
+    (signal, record) => {
+      const searchable = getAgentSearchableContent(record);
+
+      signal.totalCount += 1;
+
+      if (
+        searchable.includes("homologacao") ||
+        searchable.includes("homologation")
+      ) {
+        signal.homologationCount += 1;
+      }
+
+      if (
+        searchable.includes("em producao") ||
+        searchable.includes("producao")
+      ) {
+        signal.productionCount += 1;
+      }
+
+      if (
+        searchable.includes("pronto para producao") ||
+        searchable.includes("homologado") ||
+        searchable.includes("aguardando producao")
+      ) {
+        signal.readyForProductionCount += 1;
+      }
+
+      if (searchable.includes("bloqueado")) {
+        signal.blockedCount += 1;
+      }
+
+      return signal;
+    },
+    {
+      blockedCount: 0,
+      homologationCount: 0,
+      productionCount: 0,
+      readyForProductionCount: 0,
+      totalCount: 0,
+    },
+  );
+}
+
 function buildAgentCommunicationItems(records: EngineeringOperationRecord[]) {
   return records
     .map((record): AgentCommunicationItem | null => {
@@ -8613,6 +8992,21 @@ function getAgentEngineeringCue(item: AgentCommunicationItem) {
   }
 
   if (
+    searchable.includes("pronto para producao") ||
+    searchable.includes("aguardando producao") ||
+    searchable.includes("homologado")
+  ) {
+    return "PRONTO PRODUCAO";
+  }
+
+  if (
+    searchable.includes("em homologacao") ||
+    searchable.includes("homologacao")
+  ) {
+    return "HOMOLOGACAO";
+  }
+
+  if (
     searchable.includes("recorte limpo") ||
     searchable.includes("pacote limpo") ||
     searchable.includes("worktree limpo") ||
@@ -8645,6 +9039,14 @@ function getAgentDecisionExpected(item: AgentCommunicationItem) {
 
   if (cue === "CHAT SATURANDO") {
     return "abrir checkpoint e retomar pelo repositorio";
+  }
+
+  if (cue === "PRONTO PRODUCAO") {
+    return "Hefesto avalia somente o pacote homologado e validado";
+  }
+
+  if (cue === "HOMOLOGACAO") {
+    return "validar o recorte por modulo antes de pedir producao";
   }
 
   if (item.toAgent === "Hefesto") {
@@ -8683,8 +9085,12 @@ function agentEngineeringCueVariant(cue: string): BadgeVariant {
     return "success";
   }
 
-  if (cue === "CHAT SATURANDO") {
+  if (cue === "CHAT SATURANDO" || cue === "HOMOLOGACAO") {
     return "info";
+  }
+
+  if (cue === "PRONTO PRODUCAO") {
+    return "success";
   }
 
   return "neutral";
@@ -8806,6 +9212,65 @@ function normalizeAgentName(value: string) {
   }
 
   return value.trim() || "Zeus";
+}
+
+function isSameAgentRegistryName(
+  expectedAgent: string,
+  ...candidateAgents: string[]
+) {
+  return candidateAgents.some(
+    (candidateAgent) =>
+      normalizeAgentName(candidateAgent) === normalizeAgentName(expectedAgent),
+  );
+}
+
+function recordMatchesAgent(
+  record: EngineeringOperationRecord,
+  agentName: string,
+) {
+  const normalizedAgent = normalizeAgentName(agentName);
+
+  if (
+    [record.module, record.squad, record.nextSquad].some(
+      (value) =>
+        isKnownOperationValue(value) &&
+        normalizeAgentName(value) === normalizedAgent,
+    )
+  ) {
+    return true;
+  }
+
+  return getAgentSearchableContent(record).includes(
+    normalizeSearchText(agentName),
+  );
+}
+
+function agentRegistryStatusVariant(
+  status: PanteonAgentRegistryItem["status"],
+): BadgeVariant {
+  if (status === "ativo") {
+    return "success";
+  }
+
+  if (status === "protegido") {
+    return "warning";
+  }
+
+  return "info";
+}
+
+function agentRegistryStatusLabel(
+  status: PanteonAgentRegistryItem["status"],
+) {
+  if (status === "ativo") {
+    return "ativo";
+  }
+
+  if (status === "protegido") {
+    return "protegido";
+  }
+
+  return "preparado";
 }
 
 function agentPriorityVariant(
