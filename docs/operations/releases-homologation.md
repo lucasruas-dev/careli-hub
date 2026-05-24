@@ -2017,3 +2017,37 @@ Registro de homologacao:
 - Pendencias: Lucas validar `/hades/cobranca` autenticado em homologacao.
 - Status: `EM HOMOLOGACAO`.
 - Proxima acao: se Lucas aprovar, Hefesto prepara promocao de producao em recorte limpo somente para Hades/Iris.
+
+Registro de homologacao:
+
+- Assunto: `[Zeus] Espelho homologacao do cockpit em producao`.
+- Modulo/agente: `Zeus Core`.
+- Data e hora local: `2026-05-24 01:23:12 -03:00`.
+- Ambiente: `homologacao`, Vercel Preview em `https://homo.c2x.app.br`.
+- Origem: politica de paridade homologacao/producao apos deploy production autorizado por Lucas.
+- Escopo publicado:
+  - mesmo recorte Zeus publicado em producao no commit `0ca491a`;
+  - cockpit da nova engenharia, risk register e auditoria operacional;
+  - sem env, secret, migration aplicada, banco mutavel ou alteracao de schema.
+- Protocolos/atividades relacionados: `HEFESTO-PROD-20260524-0103-ZEUS-ENGINEERING-COCKPIT`, `OR-008`.
+- Commit de homologacao: `0ca491a docs(zeus): add operational risk register`.
+- Deployment/alias de homologacao: Preview `dpl_9Z1Asbn4dTWBfkDRZj3Nz5E1T7wU`; URL tecnica `https://careli-hub-hub-i2bs-i4k1do7ki-lucasruas-devs-projects.vercel.app`; alias `https://homo.c2x.app.br`.
+- Arquivos incluidos:
+  - `apps/hub/modules/squadops/ZeusPage.tsx`;
+  - `docs/operations/panteon-operational-risk-register.md`;
+  - `scripts/panteon-operational-audit.ps1`;
+  - docs/scripts do pacote Zeus de engenharia operacional.
+- Arquivos/modulos excluidos:
+  - Iris, Hades, Hermes, Atlas, Chronos, Apolo, Setup, banco, Supabase mutavel, migrations aplicadas, envs, secrets e recortes locais sujos do repositorio principal.
+- Validacoes executadas:
+  - `npx.cmd vercel deploy --yes`: OK, `READY`;
+  - `npx.cmd vercel alias set ... homo.c2x.app.br`: OK;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, `dpl_9Z1Asbn4dTWBfkDRZj3Nz5E1T7wU`;
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/zeus/release-registers` sem sessao: `401 Unauthorized` esperado.
+- Riscos conhecidos:
+  - validacao visual autenticada da aba `Agentes` segue recomendada;
+  - este Preview foi criado para paridade com producao, nao para validar env nova ou migration.
+- Status: `HOMOLOGADO`.
+- Proxima acao: manter `homo.c2x.app.br` como espelho do recorte production ate nova homologacao autorizada.

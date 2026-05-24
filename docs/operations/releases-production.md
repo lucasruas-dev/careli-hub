@@ -1330,3 +1330,75 @@ Registro de producao:
   - a regra numerica continua sendo a do deploy anterior: base por `due_on`/`due_at`.
 - Rollback: promover novamente `dpl_66CR8Tw74aXkkfNZHNfT2GQy1dK7` se houver regressao visual critica na Home/Asana.
 - Proxima acao: Lucas validar a Home autenticada; Hefesto pode identificar este recorte pelo identificador `HEFESTO-PROD-20260522-1825-ZEUS-ASANA-DUE-LABELS`.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Cockpit da nova engenharia e risk register em producao`.
+- Identificador Hefesto: `HEFESTO-PROD-20260524-0103-ZEUS-ENGINEERING-COCKPIT`.
+- Squad/agente responsavel: `Zeus Core`, com publicacao direta autorizada por Lucas.
+- Data e hora local: `2026-05-24 01:23:12 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou publicar o recorte Zeus em producao apos a criacao do risk register e da auditoria operacional.
+- Escopo publicado:
+  - cockpit Zeus da nova engenharia operacional;
+  - aba `Agentes` com matriz de worktrees, gates, release registers e handoffs;
+  - registro operacional de riscos `OR-001` a `OR-008`;
+  - auditoria read-only `panteon-operational-audit.ps1`;
+  - nota de supersessao do bloqueio historico Chronos `0019`;
+  - documentacao de worktrees, hooks, terminal, scaffolds, validacoes e protocolo de comunicacao entre agentes.
+- Commit publicado:
+  - `0ca491a docs(zeus): add operational risk register`.
+- Deployment:
+  - anterior: `dpl_3EpJcaxKw1xExNwbZ2sP3C87ZFqn`;
+  - novo: `dpl_6HqPqvmLjdrkVyx4qFZoqhmrqtVE`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-e7s45zcvg-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Homologacao reconciliada:
+  - Preview espelho: `dpl_9Z1Asbn4dTWBfkDRZj3Nz5E1T7wU`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-i4k1do7ki-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/modules/squadops/ZeusPage.tsx`;
+  - `.githooks/`;
+  - `scripts/panteon-hook-runner.ps1`;
+  - `scripts/panteon-install-hooks.ps1`;
+  - `scripts/panteon-new-worktree.ps1`;
+  - `scripts/panteon-scaffold-agents.ps1`;
+  - `scripts/panteon-validate-worktree.ps1`;
+  - `scripts/panteon-operational-audit.ps1`;
+  - `docs/architecture/panteon-architecture-map.md`;
+  - `docs/architecture/panteon-architecture-board.svg`;
+  - `docs/operations/panteon-*`;
+  - `docs/operations/zeus-core-v2-startup.md`;
+  - `docs/operations/panteon-operational-risk-register.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`;
+  - `docs/operations/releases-production.md`.
+- Arquivos/modulos excluidos:
+  - Iris, Hades, Hermes, Atlas, Chronos, Apolo, Setup, banco, Supabase mutavel, migrations aplicadas, envs, secrets, alteracao de chaves e recortes locais sujos do repositorio principal.
+- Validacoes executadas:
+  - `git status --short --branch`: worktree Zeus limpo antes do deploy;
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.ps1`: OK, com alerta esperado para duplicidade historica `0003`;
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules`: OK;
+  - `check-types:hub`: OK;
+  - `lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - build local Webpack: OK;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs fora de `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: `Ready`, `dpl_6HqPqvmLjdrkVyx4qFZoqhmrqtVE`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: `Ready`, `dpl_6HqPqvmLjdrkVyx4qFZoqhmrqtVE`;
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://c2x.app.br/api/guardian/db/health`: `200 OK`, `status=connected`;
+  - `npx.cmd vercel logs ... --since 15m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao visual autenticada da aba `Agentes` segue recomendada para Lucas;
+  - `OR-003` permanece `BLOQUEADO` ate autorizacao de migration/alteracao real da geracao `AT -> OP`;
+  - duplicidade historica `0003` continua controlada por auditoria, sem renomear historico;
+  - warnings de `npm audit`, Turbopack/NFT e envs fora de `turbo.json` nao bloquearam a publicacao.
+- Rollback: promover novamente `dpl_3EpJcaxKw1xExNwbZ2sP3C87ZFqn` se houver regressao critica no Panteon principal, OPS/Zeus, login ou rotas protegidas.
+- Proxima acao: Lucas validar a aba `Agentes` autenticada em `https://ops.c2x.app.br/zeus`; Zeus seguir quebrando os itens `OR-*` em recortes pequenos.
