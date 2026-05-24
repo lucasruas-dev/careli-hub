@@ -13303,3 +13303,55 @@ Conclusao:
 - A nova engenharia do Panteon agora esta montada como cockpit operacional no Zeus, nao apenas como documento.
 - O impacto pratico e que Lucas passa a enxergar agentes, worktrees, gates, release registers, bloqueios e handoffs no mesmo painel.
 - Nao precisa de acao sensivel agora; o proximo passo e validar a aba `Agentes` autenticada e iniciar o primeiro ciclo real de agente por demanda.
+
+## 2026-05-23 23:55:50 -03:00 - Zeus - Deploy Preview do cockpit
+
+Assunto: [Zeus] Deploy Preview do cockpit da nova engenharia
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `HOMOLOGACAO / VERCEL PREVIEW / OPERATIONS CENTER`.
+- Ambiente: `Vercel Preview`; sem producao, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem alias de homologacao alterado e sem dominio alterado.
+- Status: `EM HOMOLOGACAO`.
+- Motivo da mudanca: Lucas autorizou executar deploy do recorte Zeus que monta o cockpit da nova engenharia operacional.
+- Arquivos afetados:
+  - `docs/operations/releases-homologation.md`;
+  - `docs/operations/engineering-operations.md`;
+  - recorte publicado a partir do commit `3b7dd69 feat(zeus): mount engineering command cockpit`.
+- Como foi feito:
+  - confirmado worktree limpo em `codex/zeus/worktree-pilot-20260522`;
+  - criado link local Vercel gitignored em `.vercel/project.json` a partir do projeto ja configurado no repositorio principal;
+  - executado `npx.cmd vercel deploy --yes` sem `--prod`;
+  - nenhum alias customizado foi alterado nesta etapa.
+- Deployment:
+  - id: `dpl_Eo9T5EGrMgFDt8PowduAyvf3yQ3i`;
+  - URL Preview: `https://careli-hub-hub-i2bs-k1by1sny1-lucasruas-devs-projects.vercel.app`;
+  - target: `preview`;
+  - status Vercel: `Ready`.
+- Logica utilizada:
+  - como Lucas autorizou "deploy" sem mencionar producao, a acao ficou restrita a Preview/homologacao tecnica;
+  - producao permanece sob gate do Hefesto;
+  - alteracao de alias `homo.c2x.app.br` nao foi executada por exigir autorizacao especifica de alias/dominio.
+- Validacao executada:
+  - validacoes locais previas ja registradas: `check-types:hub`, `lint:hub` e build Webpack OK;
+  - build remoto Vercel executou `npx turbo build --filter=@repo/hub` e concluiu com `6 successful`;
+  - `npx.cmd vercel inspect careli-hub-hub-i2bs-k1by1sny1-lucasruas-devs-projects.vercel.app`: `target preview`, `status Ready`;
+  - `GET /`: `200 OK`;
+  - `GET /login`: `200 OK`;
+  - `GET /zeus`: `200 OK`;
+  - `GET /api/zeus/release-registers`: `401` esperado sem credencial/sessao administrativa;
+  - smoke visual no navegador integrado: `/zeus` redirecionou para `/login` sem erros de console.
+- Pendencias ou riscos conhecidos:
+  - validacao visual autenticada da aba `Agentes` permanece pendente;
+  - build remoto exibiu warning de trace NFT em `engineering-operations-source.ts`;
+  - Turbo avisou que envs `HOMOLOG_POSTGRES_URL` e `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` existem no projeto Vercel mas nao estao listadas em `turbo.json`; nao foram impressos valores e nenhuma env foi alterada;
+  - `npm install` remoto informou vulnerabilidades via `npm audit`; nao bloqueou o deploy, mas deve entrar em auditoria tecnica futura;
+  - Preview nao foi associado ao alias `homo.c2x.app.br`.
+- Proxima squad recomendada:
+  - `Lucas` para validar o Preview em sessao autenticada;
+  - `Zeus` para ajustar se houver bloqueio visual/funcional na aba `Agentes`;
+  - `Hefesto` somente se Lucas pedir producao depois da homologacao aprovada.
+
+Conclusao:
+- O cockpit Zeus da nova engenharia foi publicado em Vercel Preview e esta em homologacao tecnica.
+- O impacto pratico e que o recorte ja pode ser acessado em ambiente remoto para validacao, sem tocar producao ou alias.
+- A acao agora e Lucas validar a rota autenticada; se quiser apontar `homo.c2x.app.br` para este Preview, precisa autorizar explicitamente a alteracao de alias.

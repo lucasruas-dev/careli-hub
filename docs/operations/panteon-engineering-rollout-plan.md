@@ -30,7 +30,7 @@ Evoluir o Panteon para uma engenharia modular com:
 | Hooks Git locais | `CONFIGURADO LOCAL` | `.githooks/` e instalador local |
 | Validacao de worktree | `CONFIGURADO LOCAL` | `scripts/panteon-validate-worktree.ps1` |
 | Scaffolds | `CONFIGURADO LOCAL` | `panteon-scaffold-agents.ps1` e `panteon-new-worktree.ps1` |
-| Zeus command center | `MONTADO LOCAL` | aba `Agentes` com matriz, gates e registers |
+| Zeus command center | `EM HOMOLOGACAO TECNICA` | aba `Agentes` publicada em Vercel Preview |
 | Release registers | `INTEGRADO AO ZEUS` | leitura de homologacao/producao no cockpit |
 | V1 `hub_agent_*` | `DESENHO PRONTO / BLOQUEADO` | migration, banco e API mutavel dependem de autorizacao |
 
@@ -76,7 +76,7 @@ Evoluir o Panteon para uma engenharia modular com:
 
 | Ordem | Entrega | Status |
 | --- | --- | --- |
-| 1 | Validar cockpit Zeus local com check-types/lint/build | `AGUARDANDO VALIDACAO` |
+| 1 | Validar cockpit Zeus local com check-types/lint/build e publicar Preview | `CONCLUIDO` |
 | 2 | Abrir primeiro ciclo real por agente prioritario | `PENDENTE` |
 | 3 | Criar registros de handoff reais conforme demanda Lucas | `PENDENTE` |
 | 4 | Revisar desenho V1 `hub_agent_*` antes de migration | `BLOQUEADO` |

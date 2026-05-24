@@ -20,7 +20,7 @@ protegida por Hefesto.
 | 0 | Registrar arquitetura executiva | Mapa Markdown e board visual SVG | `DOCUMENTADO LOCAL` |
 | 1 | Formalizar worktrees separados | Modelo operacional de worktrees por agente | `DOCUMENTADO LOCAL` |
 | 2 | Padronizar retomada de agentes | Template de startup e checklist por worktree | `EM EXECUCAO LOCAL` |
-| 3 | Tornar Zeus o painel de comando | Aba `Agentes` com governanca de engenharia visivel | `MONTADO LOCAL` |
+| 3 | Tornar Zeus o painel de comando | Aba `Agentes` com governanca de engenharia visivel | `EM HOMOLOGACAO TECNICA` |
 | 4 | Padronizar tooling de worktree | Script local de validacao com dependencias compartilhadas | `EM EXECUCAO LOCAL` |
 | 5 | Preparar V1 de comunicacao | Desenho revisavel de tabelas `hub_agent_*` e API | `DESENHO LOCAL / MIGRATION BLOQUEADA` |
 | 6 | Padronizar gates de validacao | Checklists por tipo de recorte | `DOCUMENTADO LOCAL` |

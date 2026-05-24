@@ -82,6 +82,36 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de homologacao:
 
+- Assunto: `[Zeus] Cockpit da nova engenharia operacional`.
+- Modulo/agente: `Zeus Core`.
+- Data e hora local: `2026-05-23 23:55:50 -03:00`.
+- Ambiente: `homologacao tecnica / Vercel Preview`.
+- Origem: pedido do Lucas para executar deploy do recorte Zeus montado no commit `3b7dd69`.
+- Escopo do recorte:
+  - publicar o cockpit Zeus da nova engenharia em Preview Vercel;
+  - disponibilizar a aba `Agentes` com matriz de worktrees, gates, handoffs e release registers;
+  - preservar producao e nao alterar alias de homologacao nesta etapa.
+- Protocolos/atividades relacionados: `DP-ZEUS-20260523-2355`.
+- Commit de homologacao: `3b7dd69 feat(zeus): mount engineering command cockpit`.
+- Deployment/alias de homologacao: `dpl_Eo9T5EGrMgFDt8PowduAyvf3yQ3i` / `https://careli-hub-hub-i2bs-k1by1sny1-lucasruas-devs-projects.vercel.app`.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/ZeusPage.tsx`, `docs/operations/panteon-engineering-rollout-plan.md`, `docs/operations/panteon-engineering-evolution-roadmap.md`, `docs/operations/README.md`, `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`.
+- Validacoes executadas:
+  - antes do deploy: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub` e `npm.cmd run build --workspace @repo/hub -- --webpack` passaram;
+  - deploy Vercel Preview retornou `READY`;
+  - `npx.cmd vercel inspect careli-hub-hub-i2bs-k1by1sny1-lucasruas-devs-projects.vercel.app` confirmou target `preview` e status `Ready`;
+  - smoke visual no navegador integrado abriu o Preview e redirecionou `/zeus` para `/login` sem erros de console.
+- Healthchecks de homologacao:
+  - `GET /`: `200 OK`;
+  - `GET /login`: `200 OK`;
+  - `GET /zeus`: `200 OK` com redirecionamento visual para login quando sem sessao;
+  - `GET /api/zeus/release-registers`: `401` esperado sem credencial/sessao administrativa.
+- Riscos conhecidos: validacao visual autenticada da aba `Agentes` ainda pendente; Vercel build exibiu warning de trace NFT em `engineering-operations-source.ts` e aviso Turbo sobre envs `HOMOLOG_*` fora de `turbo.json`, sem bloquear o build; o Preview nao foi associado ao alias `homo.c2x.app.br`.
+- Pendencias: Lucas validar o Preview em sessao autenticada; se quiser publicar no alias `homo.c2x.app.br`, autorizar explicitamente alteracao de alias; se aprovado, sinalizar para Hefesto apenas como recorte Zeus.
+- Status: `EM HOMOLOGACAO`.
+- Proxima acao: Zeus acompanhar validacao autenticada; Hefesto nao deve promover producao sem homologacao aprovada e pedido explicito.
+
+Registro de homologacao:
+
 - Assunto: `[Iris] Homologacao restaurada apos deploy sem env Meta`.
 - Modulo/agente: `Iris Core / Hefesto assistido`.
 - Data e hora local: `2026-05-20 20:37:13 -03:00`.
