@@ -51,6 +51,17 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.
 
 O modo `-Strict` deve falhar apenas para alertas nao controlados. Itens `CONTROLLED` aparecem no relatorio, mas nao travam a rotina.
 
+Checks opcionais do mesmo auditor:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.ps1 -CheckWatcher
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.ps1 -CheckVercelAliases
+```
+
+Esses checks continuam read-only. O primeiro le logs locais do watcher; o segundo usa `vercel inspect` para relatar aliases e deployments.
+
+Observacao: `-CheckVercelAliases` confirma deployment, target e status dos aliases. Ele nao substitui o registro de release para provar paridade de commit entre producao e homologacao.
+
 ## Bloqueios
 
 Continuam bloqueados ate autorizacao explicita:

@@ -1,6 +1,8 @@
 param(
   [string]$RepoRoot,
-  [switch]$Strict
+  [switch]$Strict,
+  [switch]$CheckWatcher,
+  [switch]$CheckVercelAliases
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,6 +72,122 @@ function Test-KnownDuplicateMigrationGroup {
   return $true
 }
 
+function Get-InspectValue {
+  param(
+    [string]$Text,
+    [string]$Name
+  )
+
+  $match = [regex]::Match($Text, "(?m)^\s*$([regex]::Escape($Name))\s+(.+?)\s*$")
+
+  if (-not $match.Success) {
+    return "-"
+  }
+
+  return $match.Groups[1].Value.Trim()
+}
+
+function Invoke-WatcherStatusCheck {
+  param([string]$RootPath)
+
+  $watcherLogPath = Join-Path $RootPath ".codex-logs/squadops-sync-watch.log"
+
+  if (-not (Test-Path -LiteralPath $watcherLogPath)) {
+    Write-Check -Name "watcher sync" -Status "WARN" -Detail "log ausente em .codex-logs/squadops-sync-watch.log"
+    return 1
+  }
+
+  $lastSyncLine = Get-Content -LiteralPath $watcherLogPath -Tail 120 |
+    Where-Object { $_ -match "sync ok" } |
+    Select-Object -Last 1
+
+  if (-not $lastSyncLine) {
+    Write-Check -Name "watcher sync" -Status "WARN" -Detail "nenhum sync ok encontrado no log recente"
+    return 1
+  }
+
+  if ($lastSyncLine -notmatch "^\[(?<timestamp>[^\]]+)\]") {
+    Write-Check -Name "watcher sync" -Status "WARN" -Detail "ultimo sync sem timestamp parseavel"
+    return 1
+  }
+
+  try {
+    $timestamp = [DateTimeOffset]::Parse($Matches.timestamp)
+    $ageMinutes = [math]::Round(([DateTimeOffset]::UtcNow - $timestamp.ToUniversalTime()).TotalMinutes, 1)
+
+    if ($ageMinutes -gt 1440) {
+      Write-Check -Name "watcher sync" -Status "WARN" -Detail "ultimo sync ok ha $ageMinutes min"
+      return 1
+    }
+
+    Write-Check -Name "watcher sync" -Status "OK" -Detail "ultimo sync ok ha $ageMinutes min"
+    return 0
+  } catch {
+    Write-Check -Name "watcher sync" -Status "WARN" -Detail "timestamp invalido no ultimo sync"
+    return 1
+  }
+}
+
+function Invoke-VercelAliasCheck {
+  $aliases = @(
+    "https://c2x.app.br",
+    "https://ops.c2x.app.br",
+    "https://homo.c2x.app.br"
+  )
+  $summaries = @()
+  $localWarningCount = 0
+
+  foreach ($alias in $aliases) {
+    try {
+      $output = & npx.cmd vercel inspect $alias 2>&1
+      $exitCode = $LASTEXITCODE
+      $text = $output -join "`n"
+
+      if ($exitCode -ne 0) {
+        Write-Check -Name "vercel alias $alias" -Status "WARN" -Detail "inspect falhou com exit code $exitCode"
+        $localWarningCount++
+        continue
+      }
+
+      $summary = [pscustomobject]@{
+        Alias = $alias
+        Id = Get-InspectValue -Text $text -Name "id"
+        Target = Get-InspectValue -Text $text -Name "target"
+        Status = Get-InspectValue -Text $text -Name "status"
+        Url = Get-InspectValue -Text $text -Name "url"
+      }
+      $summaries += $summary
+
+      Write-Check -Name "vercel alias $alias" -Status "OK" -Detail "$($summary.Id) | target=$($summary.Target) | status=$($summary.Status)"
+    } catch {
+      Write-Check -Name "vercel alias $alias" -Status "WARN" -Detail "inspect indisponivel: $($_.Exception.Message)"
+      $localWarningCount++
+    }
+  }
+
+  $c2x = $summaries | Where-Object { $_.Alias -eq "https://c2x.app.br" } | Select-Object -First 1
+  $ops = $summaries | Where-Object { $_.Alias -eq "https://ops.c2x.app.br" } | Select-Object -First 1
+  $homo = $summaries | Where-Object { $_.Alias -eq "https://homo.c2x.app.br" } | Select-Object -First 1
+
+  if ($c2x -and $ops) {
+    if ($c2x.Id -eq $ops.Id) {
+      Write-Check -Name "production alias pair" -Status "OK" -Detail "c2x e ops compartilham $($c2x.Id)"
+    } else {
+      Write-Check -Name "production alias pair" -Status "WARN" -Detail "c2x=$($c2x.Id), ops=$($ops.Id)"
+      $localWarningCount++
+    }
+  }
+
+  if ($homo -and $homo.Target -notmatch "preview") {
+    Write-Check -Name "homolog alias" -Status "WARN" -Detail "homo target inesperado: $($homo.Target)"
+    $localWarningCount++
+  } elseif ($homo) {
+    Write-Check -Name "homolog alias" -Status "OK" -Detail "homo em target preview"
+  }
+
+  return $localWarningCount
+}
+
 $repo = Resolve-RepoRoot -ProvidedPath $RepoRoot
 $warningCount = 0
 $controlledIssueCount = 0
@@ -83,6 +201,8 @@ $knownDuplicateMigrationPrefixes = @{
 Write-Host "Panteon operational audit"
 Write-Host "Repo: $repo"
 Write-Host "Mode: $(if ($Strict) { 'strict' } else { 'read-only' })"
+Write-Host "Watcher check: $(if ($CheckWatcher) { 'on' } else { 'off' })"
+Write-Host "Vercel alias check: $(if ($CheckVercelAliases) { 'on' } else { 'off' })"
 Write-Host ""
 
 Push-Location $repo
@@ -168,6 +288,14 @@ try {
       $matches = Select-String -LiteralPath $releaseFile -Pattern "PRONTO PARA PRODUCAO|BLOQUEADO|EM HOMOLOGACAO|EM PRODUCAO|OPERACIONAL COM ATENCAO|PENDENTE" -AllMatches
       Write-Check -Name $releaseFile -Status "OK" -Detail "$($matches.Count) sinais operacionais encontrados"
     }
+  }
+
+  if ($CheckWatcher) {
+    $warningCount += Invoke-WatcherStatusCheck -RootPath $repo
+  }
+
+  if ($CheckVercelAliases) {
+    $warningCount += Invoke-VercelAliasCheck
   }
 
   Write-Host ""

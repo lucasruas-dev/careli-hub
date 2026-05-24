@@ -13506,3 +13506,42 @@ Conclusao:
 - O gargalo das migrations `0003` deixou de travar auditoria estrita e virou risco controlado rastreavel.
 - O impacto pratico e que a engenharia ganha um gate mais inteligente: ele bloqueia problema novo, mas nao bloqueia historico ja governado.
 - Nao precisa de acao sensivel agora; o proximo passo e atacar `OR-005` e `OR-006` com observabilidade/automacao read-only antes de qualquer banco real.
+
+## 2026-05-24 02:21:45 -03:00 - Zeus - Observabilidade read-only de watcher e aliases
+
+Assunto: [Zeus] Auditoria opcional de watcher e aliases
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `GOVERNANCA / OBSERVABILIDADE / AUDITORIA READ-ONLY`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase mutavel, sem banco mutavel, sem migration aplicada, sem env, sem secret, sem alias alterado, sem dominio, sem rollback e sem producao.
+- Status: `VALIDADO LOCAL / MONITORADO`.
+- Motivo da mudanca: Lucas pediu seguir removendo gargalos da arquitetura. Os riscos `OR-005` e `OR-006` ainda dependiam de disciplina operacional manual para watcher local e paridade de aliases.
+- Arquivos afetados:
+  - `scripts/panteon-operational-audit.ps1`;
+  - `docs/operations/panteon-operational-risk-register.md`;
+  - `docs/operations/panteon-migration-governance.md`;
+  - `docs/operations/README.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - auditor ganhou `-CheckWatcher` para ler o log local `.codex-logs/squadops-sync-watch.log` e informar se existe `sync ok` recente;
+  - auditor ganhou `-CheckVercelAliases` para inspecionar `c2x.app.br`, `ops.c2x.app.br` e `homo.c2x.app.br` via `vercel inspect`, sem alterar alias;
+  - `OR-005` passou a registrar que watcher parado/log ausente agora e detectavel;
+  - `OR-006` permanece `MONITORADO`, porque o check confirma alias/target/status, mas paridade de commit ainda depende de registro de release ou inspeção detalhada.
+- Validacao executada:
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.ps1 -Strict`: OK, com `0003` como `CONTROLLED` e nenhum alerta nao controlado;
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.ps1 -CheckWatcher`: retornou `WARN` esperado porque nao ha log `.codex-logs/squadops-sync-watch.log` neste worktree;
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.ps1 -CheckVercelAliases`: OK; `c2x.app.br` e `ops.c2x.app.br` compartilham `dpl_6HqPqvmLjdrkVyx4qFZoqhmrqtVE`, `homo.c2x.app.br` esta em Preview `Ready`;
+  - `git diff --check`: OK.
+- Pendencias ou riscos conhecidos:
+  - watcher local precisa estar rodando no ambiente correto para gerar log e sync vivo;
+  - check de aliases nao altera nada e nao prova sozinho paridade de commit;
+  - nenhuma reconciliacao de Operations Center remoto foi executada por falta de sessao/bearer administrativo no terminal.
+- Proxima squad recomendada:
+  - `Zeus` para transformar `-CheckWatcher` em indicador visual no cockpit;
+  - `Hefesto` para continuar usando check de aliases antes/depois de producao;
+  - `Lucas` para manter o watcher local ativo quando quiser sync automatico do diario para o Operations Center.
+
+Conclusao:
+- O watcher e os aliases deixaram de ser dependencia invisivel: agora ha checks read-only para expor o estado.
+- O impacto pratico e menor chance de divergencia silenciosa entre diario, Operations Center e ambientes.
+- Nao precisa de acao sensivel agora; o proximo passo e levar o status de watcher para a UI do Zeus em recorte proprio.

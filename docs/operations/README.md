@@ -40,7 +40,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `scripts/panteon-validate-worktree.ps1`: script local de validacao de worktree, com junction opcional para dependencias compartilhadas do repositorio principal.
 - `scripts/panteon-new-worktree.ps1`: script local em modo preview para sugerir criacao segura de worktree e branch por agente, sem executar por padrao.
 - `scripts/panteon-scaffold-agents.ps1`: script local para listar scaffolds padrao de agentes, worktrees, branches, escopos e comandos de criacao individual.
-- `scripts/panteon-operational-audit.ps1`: auditoria read-only de governanca operacional, docs obrigatorios, duplicidade de migrations, worktrees e sinais de release.
+- `scripts/panteon-operational-audit.ps1`: auditoria read-only de governanca operacional, docs obrigatorios, duplicidade de migrations, worktrees, sinais de release e checks opcionais de watcher/aliases Vercel.
 - `scripts/panteon-install-hooks.ps1`: script local para instalar hooks Git do Panteon no diretorio real de hooks do repositorio, com preview e backup.
 - `scripts/panteon-hook-runner.ps1`: runner PowerShell chamado pelos hooks versionados em `.githooks/`.
 - `docs/operations/guardian-deploy-blocker-review-2026-05-18.md`: parecer Hades em arquivo de nome legado sobre criticidade real e prompts curtos para remover bloqueios.
