@@ -13355,3 +13355,42 @@ Conclusao:
 - O cockpit Zeus da nova engenharia foi publicado em Vercel Preview e esta em homologacao tecnica.
 - O impacto pratico e que o recorte ja pode ser acessado em ambiente remoto para validacao, sem tocar producao ou alias.
 - A acao agora e Lucas validar a rota autenticada; se quiser apontar `homo.c2x.app.br` para este Preview, precisa autorizar explicitamente a alteracao de alias.
+
+## 2026-05-24 00:13:06 -03:00 - Zeus - Registro de riscos operacionais
+
+Assunto: [Zeus] Registro de riscos e auditoria operacional
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `GOVERNANCA / RISK REGISTER / AUDITORIA READ-ONLY`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase, sem banco mutavel, sem migration aplicada, sem API mutavel, sem env, sem secret, sem alias, sem dominio, sem rollback e sem producao.
+- Status: `MONTADO LOCALMENTE / VALIDADO COMO AUDITORIA`.
+- Motivo da mudanca: Lucas pediu para resolver as pontas soltas levantadas na analise externa e deixar a arquitetura mais limpa, funcional e sem gargalos. A decisao Zeus foi transformar os riscos em backlog operacional rastreavel antes de qualquer execucao sensivel.
+- Arquivos afetados:
+  - `docs/operations/panteon-operational-risk-register.md`;
+  - `scripts/panteon-operational-audit.ps1`;
+  - `docs/operations/README.md`;
+  - `docs/operations/guardian-deploy-blocker-review-2026-05-18.md`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criado registro oficial `OR-001` a `OR-008` para Chronos `0019`, migrations `0003`, regra `AT -> OP`, discovery Ares, watcher local, paridade homologacao/producao, Apolo como cadastro mestre e gate final do cockpit Zeus;
+  - adicionada nota no parecer antigo de 2026-05-18 para evitar leitura desatualizada do bloqueio Chronos;
+  - criado script `panteon-operational-audit.ps1`, somente leitura, para checar documentos obrigatorios, worktrees, sinais de release e duplicidade de prefixos de migration;
+  - README operacional passou a listar o risk register e a auditoria;
+  - nenhuma correcao sensivel foi aplicada diretamente: `AT -> OP`, RLS live, envs, aliases, migrations reais e producao seguem sob gate explicito.
+- Validacao executada:
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.ps1`: OK como auditoria read-only, com `1` alerta esperado para duplicidade historica `0003`;
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs`: OK;
+  - `git diff --check`: OK, apenas avisos esperados de LF/CRLF no Windows.
+- Pendencias ou riscos conhecidos:
+  - `OR-003` continua `BLOQUEADO` ate Lucas autorizar migration/alteracao real de protocolo no banco;
+  - `OR-008` indica que promocao do cockpit Zeus para producao ainda depende de decisao sobre validacao autenticada ou aceite explicito de risco;
+  - a auditoria identifica a duplicidade `0003` para impedir que o tema suma de vista, sem renomear historico.
+- Proxima squad recomendada:
+  - `Zeus` para manter o risk register vivo e transformar itens em recortes pequenos;
+  - `Hefesto` para qualquer promocao de producao;
+  - `DataOps/Zeus` apenas com autorizacao explicita quando houver migration, RLS, banco ou env.
+
+Conclusao:
+- As pontas soltas agora estao organizadas como riscos operacionais com dono, status e proxima acao segura.
+- O impacto pratico e menos dependencia de memoria de chat e menos chance de gargalo silencioso antes de release.
+- Nao precisa de acao sensivel imediata; o proximo passo e decidir o gate de producao do recorte Zeus e, em seguida, atacar cada `OR-*` em pacote proprio.

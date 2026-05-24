@@ -24,6 +24,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `docs/operations/panteon-agent-messaging-v1-design.md`: desenho tecnico revisavel da V1 `hub_agent_*`, incluindo modelo de dados, API proposta, seguranca, RLS futura e gates antes de migration.
 - `docs/operations/panteon-engineering-evolution-roadmap.md`: roadmap de evolucao da engenharia por fases, com gates para Zeus, Hefesto, worktrees, V1 `hub_agent_*` e squads.
 - `docs/operations/panteon-engineering-rollout-plan.md`: plano executivo do rollout da nova engenharia, com estado atual, matriz de agentes, fluxo operacional e proximos gates.
+- `docs/operations/panteon-operational-risk-register.md`: registro executivo das pontas soltas, gargalos, donos, bloqueios e proximas acoes seguras da arquitetura operacional.
 - `docs/operations/panteon-agent-worktree-startup-template.md`: template de abertura de novo chat/agente em worktree separado, com leitura obrigatoria, primeira acao, bloqueios e retorno esperado.
 - `docs/operations/panteon-agent-scaffolds.md`: scaffolds operacionais por agente, com worktree, branch, escopo, bloqueios, prompt e ordem recomendada de criacao.
 - `docs/operations/panteon-worktree-operating-model.md`: modelo operacional de worktrees separados por agente, branches `codex/*`, checkpoints, validacoes e bloqueios de pacote misto.
@@ -37,6 +38,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `scripts/panteon-validate-worktree.ps1`: script local de validacao de worktree, com junction opcional para dependencias compartilhadas do repositorio principal.
 - `scripts/panteon-new-worktree.ps1`: script local em modo preview para sugerir criacao segura de worktree e branch por agente, sem executar por padrao.
 - `scripts/panteon-scaffold-agents.ps1`: script local para listar scaffolds padrao de agentes, worktrees, branches, escopos e comandos de criacao individual.
+- `scripts/panteon-operational-audit.ps1`: auditoria read-only de governanca operacional, docs obrigatorios, duplicidade de migrations, worktrees e sinais de release.
 - `scripts/panteon-install-hooks.ps1`: script local para instalar hooks Git do Panteon no diretorio real de hooks do repositorio, com preview e backup.
 - `scripts/panteon-hook-runner.ps1`: runner PowerShell chamado pelos hooks versionados em `.githooks/`.
 - `docs/operations/guardian-deploy-blocker-review-2026-05-18.md`: parecer Hades em arquivo de nome legado sobre criticidade real e prompts curtos para remover bloqueios.

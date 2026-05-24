@@ -1,5 +1,11 @@
 # Parecer Guardian - deploy completo bloqueado em 2026-05-18
 
+## Nota Zeus - 2026-05-24
+
+Este arquivo permanece como evidencia historica do bloqueio identificado em 2026-05-18. O status operacional corrente deve ser conferido no diario canonico `docs/operations/engineering-operations.md`, nos registros de homologacao/producao e no Operations Center antes de qualquer decisao de release.
+
+Em 2026-05-24, a leitura Zeus classificou o item Chronos `0019` como risco historico supersedido para fins de diagnostico atual: o diario mais recente registra aplicacao/validacao de `0019_chronos_core.sql` em homologacao/producao com atencao, mantendo como pendencias o smoke autenticado e a reconciliacao operacional pertinente. Nao usar este parecer antigo isoladamente para bloquear ou liberar deploy.
+
 ## Decisao Guardian
 
 Mantenho o deploy completo `BLOQUEADO`.
