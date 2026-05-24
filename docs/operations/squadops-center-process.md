@@ -89,6 +89,8 @@ Iris e o canal externo oficial do Panteon. Toda comunicacao externa deve passar 
 
 Os numeros devem ser sequenciais por prefixo, gerados pelo banco central, nunca por memoria local do navegador.
 
+Plano tecnico bloqueado: `docs/operations/panteon-protocol-migration-plan.md` define fases, inventario, criterios de aceite e rollback para a migracao `AT -> OP`. Esse plano nao autoriza apply real; qualquer migration ou reconciliacao de dados continua `BLOQUEADO` ate autorizacao explicita do Lucas.
+
 ## Campo obrigatorio para agentes
 
 Todo agente que registrar uma atividade precisa declarar:

@@ -13465,3 +13465,44 @@ Conclusao:
 - O cockpit Zeus e o registro de riscos da nova engenharia estao em producao e homologacao foi reconciliada para o mesmo recorte.
 - O impacto pratico e que a nova arquitetura operacional saiu do plano/documento e passou a estar disponivel no ambiente real do Panteon.
 - Nao ha acao emergencial pendente agora; o proximo passo e validar a aba `Agentes` autenticada e atacar os riscos `OR-*` por recortes isolados.
+
+## 2026-05-24 02:13:32 -03:00 - Zeus - Governanca de migrations e protocolos
+
+Assunto: [Zeus] Governanca de migrations e plano AT para OP
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `GOVERNANCA / MIGRATIONS / PROTOCOLOS / AUDITORIA`.
+- Ambiente: `worktree Zeus local`; sem deploy, sem Supabase mutavel, sem banco mutavel, sem migration aplicada, sem env, sem secret, sem alias, sem dominio, sem rollback e sem producao.
+- Status: `VALIDADO LOCAL / CONTROLADO`.
+- Motivo da mudanca: Lucas autorizou seguir resolvendo as pontas soltas da arquitetura. O objetivo foi remover gargalo artificial no auditor e deixar o caminho `AT -> OP` pronto como plano, sem tocar banco real.
+- Arquivos afetados:
+  - `docs/operations/panteon-migration-governance.md`;
+  - `docs/operations/panteon-protocol-migration-plan.md`;
+  - `docs/operations/panteon-operational-risk-register.md`;
+  - `docs/operations/squadops-center-process.md`;
+  - `docs/operations/README.md`;
+  - `scripts/panteon-operational-audit.ps1`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - criada governanca oficial de migrations com duplicidade historica `0003` classificada como `CONTROLADO`;
+  - auditor `panteon-operational-audit.ps1` passou a diferenciar `CONTROLLED` de `WARN`;
+  - modo `-Strict` agora falha apenas para alertas nao controlados, evitando bloqueio falso por risco ja reconhecido;
+  - criado plano `panteon-protocol-migration-plan.md` para migracao futura `AT -> OP`, com fases de inventario read-only, desenho, homologacao, producao, criterios de aceite e rollback conceitual;
+  - `squadops-center-process.md`, README e risk register passaram a apontar para os novos documentos.
+- Validacao executada:
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-operational-audit.ps1 -Strict`: OK, com `0003` como `CONTROLLED` e nenhum alerta nao controlado;
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/panteon-validate-worktree.ps1 -Scope docs`: OK;
+  - `git diff --check`: OK, apenas avisos esperados de LF/CRLF no Windows.
+- Pendencias ou riscos conhecidos:
+  - `AT -> OP` continua `BLOQUEADO` para execucao real ate autorizacao explicita do Lucas por envolver migration/banco;
+  - nao houve migration draft nem apply real nesta etapa;
+  - o proximo prefixo sugerido para migration nova e `0030`, mas deve ser reconfirmado antes de qualquer recorte de banco.
+- Proxima squad recomendada:
+  - `Zeus/DataOps` para inventario read-only de protocolos quando Lucas autorizar;
+  - `Hefesto` apenas se algum recorte futuro homologado precisar de producao;
+  - agentes de modulo para seguir usando auditoria e governanca antes de criar migrations.
+
+Conclusao:
+- O gargalo das migrations `0003` deixou de travar auditoria estrita e virou risco controlado rastreavel.
+- O impacto pratico e que a engenharia ganha um gate mais inteligente: ele bloqueia problema novo, mas nao bloqueia historico ja governado.
+- Nao precisa de acao sensivel agora; o proximo passo e atacar `OR-005` e `OR-006` com observabilidade/automacao read-only antes de qualquer banco real.

@@ -25,6 +25,8 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `docs/operations/panteon-engineering-evolution-roadmap.md`: roadmap de evolucao da engenharia por fases, com gates para Zeus, Hefesto, worktrees, V1 `hub_agent_*` e squads.
 - `docs/operations/panteon-engineering-rollout-plan.md`: plano executivo do rollout da nova engenharia, com estado atual, matriz de agentes, fluxo operacional e proximos gates.
 - `docs/operations/panteon-operational-risk-register.md`: registro executivo das pontas soltas, gargalos, donos, bloqueios e proximas acoes seguras da arquitetura operacional.
+- `docs/operations/panteon-migration-governance.md`: governanca de migrations, duplicidade historica `0003`, numeracao futura e criterio de auditoria.
+- `docs/operations/panteon-protocol-migration-plan.md`: plano bloqueado e faseado para migrar a geracao real de atividades Zeus de `AT-*` para `OP-*`.
 - `docs/operations/panteon-agent-worktree-startup-template.md`: template de abertura de novo chat/agente em worktree separado, com leitura obrigatoria, primeira acao, bloqueios e retorno esperado.
 - `docs/operations/panteon-agent-scaffolds.md`: scaffolds operacionais por agente, com worktree, branch, escopo, bloqueios, prompt e ordem recomendada de criacao.
 - `docs/operations/panteon-worktree-operating-model.md`: modelo operacional de worktrees separados por agente, branches `codex/*`, checkpoints, validacoes e bloqueios de pacote misto.

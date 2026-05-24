@@ -44,8 +44,41 @@ function Test-RequiredFile {
   return $true
 }
 
+function Test-KnownDuplicateMigrationGroup {
+  param(
+    [string]$Prefix,
+    [string[]]$Names
+  )
+
+  if (-not $knownDuplicateMigrationPrefixes.ContainsKey($Prefix)) {
+    return $false
+  }
+
+  $expected = @($knownDuplicateMigrationPrefixes[$Prefix] | Sort-Object)
+  $actual = @($Names | Sort-Object)
+
+  if ($expected.Count -ne $actual.Count) {
+    return $false
+  }
+
+  for ($index = 0; $index -lt $expected.Count; $index++) {
+    if ($expected[$index] -ne $actual[$index]) {
+      return $false
+    }
+  }
+
+  return $true
+}
+
 $repo = Resolve-RepoRoot -ProvidedPath $RepoRoot
 $warningCount = 0
+$controlledIssueCount = 0
+$knownDuplicateMigrationPrefixes = @{
+  "0003" = @(
+    "0003_setup_beta_policies.sql",
+    "0003_setup_operational_access.sql"
+  )
+}
 
 Write-Host "Panteon operational audit"
 Write-Host "Repo: $repo"
@@ -63,6 +96,8 @@ try {
     "docs/operations/releases-homologation.md",
     "docs/operations/releases-production.md",
     "docs/operations/panteon-operational-risk-register.md",
+    "docs/operations/panteon-migration-governance.md",
+    "docs/operations/panteon-protocol-migration-plan.md",
     "docs/operations/panteon-worktree-operating-model.md",
     "docs/operations/panteon-validation-checklists.md",
     "docs/operations/squadops-center-process.md",
@@ -99,9 +134,16 @@ try {
 
     if ($groups) {
       foreach ($group in $groups) {
-        $names = ($group.Group | Select-Object -ExpandProperty Name) -join ", "
-        Write-Check -Name "migration prefix $($group.Name)" -Status "WARN" -Detail "duplicado: $names"
-        $warningCount++
+        $groupNames = @($group.Group | Select-Object -ExpandProperty Name)
+        $names = $groupNames -join ", "
+
+        if (Test-KnownDuplicateMigrationGroup -Prefix $group.Name -Names $groupNames) {
+          Write-Check -Name "migration prefix $($group.Name)" -Status "CONTROLLED" -Detail "duplicidade historica reconhecida: $names"
+          $controlledIssueCount++
+        } else {
+          Write-Check -Name "migration prefix $($group.Name)" -Status "WARN" -Detail "duplicado: $names"
+          $warningCount++
+        }
       }
     } else {
       Write-Check -Name "migration prefixes" -Status "OK" -Detail "sem duplicidade numerica"
@@ -130,9 +172,9 @@ try {
 
   Write-Host ""
   if ($warningCount -gt 0) {
-    Write-Check -Name "summary" -Status "WARN" -Detail "$warningCount alerta(s) encontrado(s)"
+    Write-Check -Name "summary" -Status "WARN" -Detail "$warningCount alerta(s), $controlledIssueCount controlado(s)"
   } else {
-    Write-Check -Name "summary" -Status "OK" -Detail "nenhum alerta encontrado"
+    Write-Check -Name "summary" -Status "OK" -Detail "nenhum alerta nao controlado; $controlledIssueCount controlado(s)"
   }
 
   if ($Strict -and $warningCount -gt 0) {
