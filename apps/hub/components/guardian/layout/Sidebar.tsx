@@ -46,14 +46,14 @@ const menuItems = [
     label: "Inteligência",
     icon: Bot,
     href: "/hades/inteligencia",
-    released: false,
+    released: true,
   },
   {
     id: "monitoramento",
     label: "Monitoramento",
     icon: LineChart,
     href: "/hades/monitoramento",
-    released: false,
+    released: true,
   },
   {
     id: "relatorios",

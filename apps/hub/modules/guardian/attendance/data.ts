@@ -590,74 +590,81 @@ function buildOperationalTimeline(
 }
 
 function workflowStageForClient(client: HadesMockClient): QueueClient["workflow"]["stage"] {
-  if (client.status === "Regularizado") return "Pago";
-  if (client.status === "A vencer") return "Novo atraso";
-  if (client.status === "Proposta enviada") return "Aguardando pagamento";
-  if (client.status === "Aguardando retorno") return "Sem retorno";
-  if (client.status === "Contato programado") return "Primeiro contato";
-  if (client.status === "Em negociação") {
-    return client.parcelasVencidas >= 3 ? "Promessa realizada" : "Em negociação";
-  }
+  if (client.atrasoDias >= 91) return "Jurídico";
+  if (client.status === "Regularizado") return "Acordo";
+  if (client.status === "A vencer") return "A acionar";
+  if (client.status === "Proposta enviada") return "Promessa de pagamento";
+  if (client.status === "Aguardando retorno") return "Contato";
+  if (client.status === "Contato programado") return "Contato";
+  if (client.status === "Em negociação") return "Negociação";
   if (client.status === "Escalado") {
-    if (client.atrasoDias >= 80) return "Jurídico";
-    if (client.atrasoDias >= 70) return "Crítico";
-    return "Quebra de promessa";
+    return "Quebra";
   }
 
-  return "Novo atraso";
+  return client.atrasoDias >= 3 ? "Contato" : "A acionar";
 }
 
 function previousWorkflowStage(stage: QueueClient["workflow"]["stage"]): QueueClient["workflow"]["history"][number]["from"] {
-  const map: Record<QueueClient["workflow"]["stage"], QueueClient["workflow"]["history"][number]["from"]> = {
+  const map: Partial<Record<QueueClient["workflow"]["stage"], QueueClient["workflow"]["history"][number]["from"]>> = {
+    "A acionar": "Entrada",
+    Contato: "A acionar",
+    Negociação: "Contato",
+    "Promessa de pagamento": "Negociação",
+    Acordo: "Negociação",
+    Quebra: "Promessa de pagamento",
+    Jurídico: "Quebra",
     "Novo atraso": "Entrada",
-    "Primeiro contato": "Novo atraso",
-    "Sem retorno": "Primeiro contato",
-    "Em negociação": "Primeiro contato",
-    "Promessa realizada": "Em negociação",
-    "Aguardando pagamento": "Promessa realizada",
-    Pago: "Aguardando pagamento",
-    "Quebra de promessa": "Aguardando pagamento",
-    "Crítico": "Quebra de promessa",
-    "Jurídico": "Crítico",
+    "Primeiro contato": "A acionar",
+    "Sem retorno": "Contato",
+    "Em negociação": "Contato",
+    "Promessa realizada": "Negociação",
+    "Aguardando pagamento": "Promessa de pagamento",
+    Pago: "Acordo",
+    "Quebra de promessa": "Promessa de pagamento",
+    Crítico: "Quebra",
     "Distrato/Evasão": "Jurídico",
   };
 
-  return map[stage];
+  return map[stage] ?? "Entrada";
 }
 
 function workflowNextAction(stage: QueueClient["workflow"]["stage"]) {
-  const map: Record<QueueClient["workflow"]["stage"], string> = {
-    "Novo atraso": "Validar atraso e iniciar régua de primeiro contato",
-    "Primeiro contato": "Registrar retorno e confirmar canal preferencial",
+  const map: Partial<Record<QueueClient["workflow"]["stage"], string>> = {
+    "A acionar": "Entrar na cadência ativa e registrar primeira tentativa",
+    Contato: "Manter cliente na régua diária até obter retorno",
+    Negociação: "Conduzir proposta e registrar contraproposta do cliente",
+    "Promessa de pagamento": "Acompanhar data prometida; pausar fila diária enquanto ativa",
+    Acordo: "Formalizar acordo e acompanhar vínculo operacional",
+    Quebra: "Retomar cadência diária e recalibrar proposta",
+    Jurídico: "Validar documentação e encaminhamento jurídico",
+    "Novo atraso": "Entrar na cadência ativa e registrar primeira tentativa",
+    "Primeiro contato": "Manter cliente na régua diária até obter retorno",
     "Sem retorno": "Reforçar acionamento multicanal e janela de ligação",
-    "Em negociação": "Formalizar condição de regularização",
-    "Promessa realizada": "Monitorar data prometida e consultar boleto C2X quando necessário",
+    "Em negociação": "Conduzir proposta e registrar contraproposta do cliente",
+    "Promessa realizada": "Acompanhar data prometida; pausar fila diária enquanto ativa",
     "Aguardando pagamento": "Acompanhar compensação e enviar lembrete objetivo",
-    Pago: "Baixar pendência e manter relacionamento preventivo",
-    "Quebra de promessa": "Recalibrar proposta e reclassificar risco",
-    "Crítico": "Acionamento humano prioritário com alternativa flexível",
-    "Jurídico": "Validar documentação e manter trilha amigável quando possível",
+    Pago: "Registrar regularização e remover da inadimplência ativa",
+    "Quebra de promessa": "Retomar cadência diária e recalibrar proposta",
+    Crítico: "Acionamento humano prioritário com alternativa flexível",
     "Distrato/Evasão": "Registrar risco de evasão e acionar governança comercial",
   };
 
-  return map[stage];
+  return map[stage] ?? "Registrar retorno e manter cadência operacional";
 }
 
 function workflowReason(stage: QueueClient["workflow"]["stage"], client: HadesMockClient) {
   const base = `${client.parcelasVencidas} parcela(s), ${client.atrasoDias} dias de atraso e score ${client.scoreRisco}/100.`;
 
-  if (stage === "Pago") return "Pagamento identificado e cliente removido da fila ativa de recuperação.";
-  if (stage === "Jurídico") return `Escalonamento preventivo por severidade operacional: ${base}`;
+  if (stage === "Acordo" || stage === "Pago") return "Acordo/regularização registrado; cliente deixa a fila diária enquanto estiver ativo.";
+  if (stage === "Jurídico") return `Escalonamento por severidade operacional: ${base}`;
   if (stage === "Crítico") return `Risco elevado pela combinação de atraso e recorrência: ${base}`;
-  if (stage === "Quebra de promessa") return "Promessa anterior não compensada dentro da janela operacional.";
-  if (stage === "Aguardando pagamento") return "Proposta enviada e cliente aguardando envio do boleto C2X ou compensação do pagamento.";
-  if (stage === "Promessa realizada") return "Cliente sinalizou data e condição de pagamento após negociação.";
-  if (stage === "Sem retorno") return "Sem resposta após tentativa ativa de contato multicanal.";
-  if (stage === "Primeiro contato") return "Cliente entrou na primeira onda de acionamento humano.";
-  if (stage === "Em negociação") return "Interação ativa com avaliação de condição de pagamento.";
+  if (stage === "Quebra" || stage === "Quebra de promessa") return "Promessa ou acordo não cumprido; cliente retorna para a cadência diária.";
+  if (stage === "Promessa de pagamento" || stage === "Promessa realizada" || stage === "Aguardando pagamento") return "Cliente sinalizou data ou condição de pagamento após negociação.";
+  if (stage === "Negociação" || stage === "Em negociação") return "Cliente respondeu e ainda não existe proposta fechada.";
+  if (stage === "Contato" || stage === "Primeiro contato" || stage === "Sem retorno") return "Contato ativo registrado ou pendente de retorno do cliente.";
   if (stage === "Distrato/Evasão") return "Sinal de evasão registrado para governança comercial.";
 
-  return "Novo atraso identificado pela régua operacional.";
+  return "Cliente elegível para acionamento pela régua operacional.";
 }
 
 function agreementStatusForClient(client: HadesMockClient): QueueClient["agreement"]["status"] {

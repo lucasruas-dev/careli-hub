@@ -11,7 +11,12 @@ import type { AttendancePriority, QueueClient, WorkflowStage } from "@/modules/g
 
 type QueuePanelProps = {
   clients: QueueClient[];
+  contactedTodayClientIds: Set<string>;
+  dailyCount: number;
   enterprises: string[];
+  generalCount: number;
+  mode: "daily" | "general";
+  profileLabel: string;
   summaryClients: QueueClient[];
   priorities: Array<AttendancePriority | "Todos">;
   search: string;
@@ -20,6 +25,7 @@ type QueuePanelProps = {
   selectedPriority: AttendancePriority | "Todos";
   selectedStage: WorkflowStage | "Todas";
   onEnterpriseChange: (enterprise: string) => void;
+  onModeChange: (mode: "daily" | "general") => void;
   onPriorityChange: (priority: AttendancePriority | "Todos") => void;
   onOpenWhatsApp: (clientId: string) => void;
   onSearchChange: (search: string) => void;
@@ -29,7 +35,12 @@ type QueuePanelProps = {
 
 export function QueuePanel({
   clients,
+  contactedTodayClientIds,
+  dailyCount,
   enterprises,
+  generalCount,
+  mode,
+  profileLabel,
   summaryClients,
   priorities,
   search,
@@ -38,6 +49,7 @@ export function QueuePanel({
   selectedPriority,
   selectedStage,
   onEnterpriseChange,
+  onModeChange,
   onPriorityChange,
   onOpenWhatsApp,
   onSearchChange,
@@ -86,8 +98,42 @@ export function QueuePanel({
         <div className="shrink-0 border-b border-slate-100 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h1 className="text-base font-semibold text-slate-950">Fila operacional</h1>
+              <h1 className="text-base font-semibold text-slate-950">
+                {mode === "daily" ? "Fila diária" : "Fila geral"}
+              </h1>
+              <p className="mt-1 text-xs font-medium text-slate-500">{profileLabel}</p>
             </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 rounded-xl border border-slate-200/70 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={() => onModeChange("daily")}
+              className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
+                mode === "daily"
+                  ? "bg-[#101820] text-white shadow-[0_1px_2px_rgba(15,23,42,0.18)]"
+                  : "text-slate-600 hover:bg-white"
+              }`}
+            >
+              Fila diária
+              <span className="ml-1 rounded-full bg-white/15 px-1.5 py-0.5 text-[10px]">
+                {dailyCount}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onModeChange("general")}
+              className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
+                mode === "general"
+                  ? "bg-[#101820] text-white shadow-[0_1px_2px_rgba(15,23,42,0.18)]"
+                  : "text-slate-600 hover:bg-white"
+              }`}
+            >
+              Fila geral
+              <span className="ml-1 rounded-full bg-white/15 px-1.5 py-0.5 text-[10px]">
+                {generalCount}
+              </span>
+            </button>
           </div>
 
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2 text-slate-500">
@@ -112,6 +158,11 @@ export function QueuePanel({
               <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${filtersOpen ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
             <span className="text-xs font-medium text-slate-500">{clients.length} na fila</span>
+            {mode === "daily" ? (
+              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                {contactedTodayClientIds.size} com contato hoje
+              </span>
+            ) : null}
             {activeFilters.map((filter) => (
               <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
                 <button
@@ -271,11 +322,13 @@ export function QueuePanel({
         </div>
 
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-          {clients.map((client) => (
-            <ClientQueueCard
-              key={client.id}
-              client={client}
-              selected={client.id === selectedClientId}
+            {clients.map((client) => (
+              <ClientQueueCard
+                key={client.id}
+                client={client}
+                contactedToday={contactedTodayClientIds.has(client.id)}
+                mode={mode}
+                selected={client.id === selectedClientId}
               onOpenWhatsApp={() => onOpenWhatsApp(client.id)}
               onSelect={() => onSelectClient(client.id)}
             />

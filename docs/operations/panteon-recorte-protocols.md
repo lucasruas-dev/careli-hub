@@ -256,3 +256,67 @@ O manifesto de homologacao deve incluir:
 - Rollback registrado:
   - dpl_DNv3wQr8m4yBH87hDcmDFD36wbXW como rollback funcional com OpenAI runtime manual;
   - dpl_4h6qtecE1Jova1Mez5bGhSkdyW8b como snapshot imediatamente anterior.
+
+### IRIS-20260526-005-NOME-WHATSAPP-CONTATO
+
+- Modulo/agente dono: `Iris Core`.
+- Objetivo do recorte: priorizar nome do cadastro Apolo quando houver CRM 360 registrado e, sem cadastro Apolo, usar nome/identificacao do WhatsApp em vez de `Sem cadastro` como label principal.
+- Worktree/branch de origem: root misto em `homolog` somente como fonte dos arquivos declarados; pacote final montado por Zeus sobre `origin/homolog`.
+- Arquivos incluidos no pacote de homologacao:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`.
+- Arquivos excluidos: envs, secrets, banco, migrations, Meta/WABA/phone number, dominios e producao.
+- Validacoes: aplicadas no pacote combinado `ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO`.
+- Status: `EM_HOMOLOGACAO`.
+- Decisao de Lucas: autorizado subir junto com os cortes Hades e Apolo em 2026-05-26.
+
+### APOLO-20260526-004-CRM360-C2X-REFRESH
+
+- Modulo/agente dono: `Apolo Core`.
+- Objetivo do recorte: atualizar C2X ao entrar no Apolo, priorizar registros com carteira/parcelas e restringir filtro de empreendimentos apenas em producao, mantendo homologacao/local com todos os empreendimentos validos por `e.id`.
+- Worktree/branch de origem: root misto em `homolog` somente como fonte dos arquivos declarados; pacote final montado por Zeus sobre `origin/homolog`.
+- Arquivos incluidos no pacote de homologacao:
+  - `apps/hub/lib/apolo/server.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`.
+- Arquivos excluidos: Hades/Iris fora do pacote combinado, envs, secrets, migrations, Supabase SQL, banco, dominios, aliases e producao.
+- Validacoes: aplicadas no pacote combinado `ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO`.
+- Status: `EM_HOMOLOGACAO`.
+- Decisao de Lucas: autorizado subir junto com os cortes Iris e Hades em 2026-05-26.
+
+### HADES-20260526-006-FILA-DIARIA-MONITORAMENTO-IRIS
+
+- Modulo/agente dono: `Hades Core`.
+- Objetivo do recorte: publicar fila diaria/geral por perfil operacional, estagios de cobranca simplificados, marcador de contato do dia, monitoramento Hades/Iris e abertura do chat Iris no board embutido.
+- Worktree/branch de origem: root misto em `homolog` somente como fonte dos arquivos declarados; pacote final montado por Zeus sobre `origin/homolog`.
+- Arquivos incluidos no pacote de homologacao:
+  - `apps/hub/app/api/auth/profile/route.ts`;
+  - `apps/hub/providers/auth-provider.tsx`;
+  - `packages/auth/src/helpers.ts`;
+  - `packages/auth/src/types.ts`;
+  - `apps/hub/components/guardian/layout/Sidebar.tsx`;
+  - `apps/hub/lib/guardian/read-model.ts`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/ClientQueueCard.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/QueuePanel.tsx`;
+  - `apps/hub/modules/guardian/attendance/data.ts`;
+  - `apps/hub/modules/guardian/attendance/types.ts`;
+  - `apps/hub/modules/guardian/attendance/workflow.ts`;
+  - `apps/hub/modules/guardian/monitoring/MonitoringPage.tsx`.
+- Arquivos excluidos: envs, secrets, migrations, banco remoto, dominio, alias de producao e producao.
+- Validacoes: aplicadas no pacote combinado `ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO`.
+- Status: `EM_HOMOLOGACAO`.
+- Decisao de Lucas: autorizado subir junto com os cortes Iris e Apolo em 2026-05-26.
+
+### ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO
+
+- Modulo/agente dono: `Zeus Operations`.
+- Objetivo do recorte: compor pacote limpo de homologacao preservando o deployment vigente `dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4` e adicionando somente os cortes Iris, Hades e Apolo autorizados por Lucas.
+- Recortes incluidos:
+  - `IRIS-20260526-005-NOME-WHATSAPP-CONTATO`;
+  - `HADES-20260526-006-FILA-DIARIA-MONITORAMENTO-IRIS`;
+  - `APOLO-20260526-004-CRM360-C2X-REFRESH`.
+- Base limpa: `origin/homolog` em `00ea84e`.
+- Worktree limpo: `.codex-deploy/z26-007-iris-hades-apolo-homo-20260526-1712/w`.
+- Rollback imediato esperado: `dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4`.
+- Status: `EM_HOMOLOGACAO`.
+- Deploy/alias: pendente neste registro; preencher apos Git deploy e Safety Gate pre-alias.

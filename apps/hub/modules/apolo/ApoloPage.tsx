@@ -68,6 +68,7 @@ type ApoloTab =
   | "auditoria";
 
 type ApoloProfileFilter = ApoloProfile | "all";
+type ApoloSyncState = "idle" | "running" | "done" | "blocked" | "error";
 
 type ApoloTabItem = {
   icon: LucideIcon;
@@ -369,6 +370,56 @@ export function ApoloPage() {
   const [profileFilter, setProfileFilter] = useState<ApoloProfileFilter>("all");
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [syncState, setSyncState] = useState<ApoloSyncState>("idle");
+  const [syncVersion, setSyncVersion] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    async function refreshApoloFromC2x() {
+      try {
+        const accessToken = await getApoloAccessToken(false);
+
+        if (!accessToken) {
+          return;
+        }
+
+        if (active) {
+          setSyncState("running");
+        }
+
+        const response = await fetch("/api/apolo/sync/c2x", {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          method: "POST",
+        });
+
+        if (!active) {
+          return;
+        }
+
+        if (response.ok) {
+          setSyncState("done");
+          setSyncVersion((current) => current + 1);
+          return;
+        }
+
+        setSyncState(response.status === 401 || response.status === 403 ? "blocked" : "error");
+      } catch {
+        if (active) {
+          setSyncState("error");
+        }
+      }
+    }
+
+    void refreshApoloFromC2x();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -438,7 +489,7 @@ export function ApoloPage() {
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [profileFilter, query]);
+  }, [profileFilter, query, syncVersion]);
 
   const entities = useMemo(() => dashboard?.entities ?? [], [dashboard]);
   const filteredEntities = useMemo(
@@ -489,6 +540,7 @@ export function ApoloPage() {
         <ApoloHeader
           dashboard={dashboard}
           screen={activeScreen}
+          syncState={syncState}
           onChangeScreen={setActiveScreen}
           onOpenCreate={() => setCreateModalOpen(true)}
         />
@@ -546,11 +598,13 @@ export function ApoloPage() {
 function ApoloHeader({
   dashboard,
   screen,
+  syncState,
   onChangeScreen,
   onOpenCreate,
 }: {
   dashboard: ApoloDashboardData | null;
   screen: ApoloScreen;
+  syncState: ApoloSyncState;
   onChangeScreen: (screen: ApoloScreen) => void;
   onOpenCreate: () => void;
 }) {
@@ -584,7 +638,12 @@ function ApoloHeader({
             );
           })}
         </nav>
-        {dashboard?.meta.status === "sync_pending" ? (
+        {syncState === "running" ? (
+          <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-800">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            Atualizando C2X
+          </span>
+        ) : dashboard?.meta.status === "sync_pending" || syncState === "error" ? (
           <span className="inline-flex h-9 items-center rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-800">
             Atualizacao pendente
           </span>

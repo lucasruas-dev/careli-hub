@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import type { OperationalProfileRole } from "@repo/shared";
 
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
@@ -10,12 +11,14 @@ type HubProfileRow = {
   display_name: string;
   email: string;
   id: string;
+  operational_profile?: OperationalProfileRole | null;
   role: HubUserRole;
   status: "active" | "archived" | "disabled";
 };
 
 const hubUserRoles = ["admin", "leader", "operator", "viewer"] as const;
 const hubUserStatuses = ["active", "archived", "disabled"] as const;
+const operationalProfileRoles = ["op1", "op2", "op3", "ldr", "cdr", "adm"] as const;
 
 export async function GET(request: NextRequest) {
   const { anonKey, url: supabaseUrl } = getServerSupabaseConfig();
@@ -71,7 +74,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data, error } = await supabase
       .from("hub_users")
-      .select("id,email,display_name,avatar_url,role,status")
+      .select("id,email,display_name,avatar_url,role,status,operational_profile")
       .eq("id", authData.user.id)
       .maybeSingle<HubProfileRow>();
 
@@ -95,7 +98,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!isHubUserRole(data.role) || !isHubUserStatus(data.status)) {
+    if (
+      !isHubUserRole(data.role) ||
+      !isHubUserStatus(data.status) ||
+      (data.operational_profile &&
+        !isOperationalProfileRole(data.operational_profile))
+    ) {
       return NextResponse.json(
         { error: "Perfil operacional invalido." },
         { status: 403 },
@@ -142,6 +150,12 @@ function isHubUserStatus(
   value: string,
 ): value is HubProfileRow["status"] {
   return hubUserStatuses.some((status) => status === value);
+}
+
+function isOperationalProfileRole(
+  value: string,
+): value is OperationalProfileRole {
+  return operationalProfileRoles.some((profile) => profile === value);
 }
 
 function logProfileApi(event: string, detail?: unknown) {

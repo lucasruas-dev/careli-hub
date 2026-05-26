@@ -499,14 +499,17 @@ async function findOrCreateContact({
       providerContactId: waId,
       source: "meta_whatsapp",
     };
+    const shouldRefreshDisplayName = shouldRefreshWhatsAppDisplayName(
+      existingContact.display_name,
+      displayName,
+    );
 
     const { data, error } = await client
       .from("caredesk_contacts")
       .update({
-        display_name:
-          existingContact.display_name === "Contato WhatsApp"
-            ? displayName
-            : existingContact.display_name,
+        display_name: shouldRefreshDisplayName
+          ? displayName
+          : existingContact.display_name,
         metadata,
         phone: existingContact.phone ?? waId,
         whatsapp_phone: existingContact.whatsapp_phone ?? waId,
@@ -1755,6 +1758,39 @@ function normalizeDisplayName(name: string | null, waId: string) {
   const normalized = name?.trim();
 
   return normalized || `WhatsApp ${waId.slice(-4)}`;
+}
+
+function shouldRefreshWhatsAppDisplayName(
+  currentName: string | null | undefined,
+  incomingName: string,
+) {
+  const current = normalizeDisplayNameToken(currentName);
+  const incoming = normalizeDisplayNameToken(incomingName);
+
+  if (!incoming || isGenericWhatsAppDisplayNameToken(incoming)) {
+    return false;
+  }
+
+  if (!current) {
+    return true;
+  }
+
+  return isGenericWhatsAppDisplayNameToken(current);
+}
+
+function normalizeDisplayNameToken(value: string | null | undefined) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function isGenericWhatsAppDisplayNameToken(value: string) {
+  const normalized = value.toLowerCase();
+
+  return (
+    normalized === "contato whatsapp" ||
+    normalized === "cliente sem cadastro" ||
+    normalized === "sem cadastro" ||
+    /^whatsapp\s+\d{4,}$/.test(normalized)
+  );
 }
 
 function buildCustomerServiceWindowMetadata(

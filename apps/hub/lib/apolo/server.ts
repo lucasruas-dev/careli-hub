@@ -329,11 +329,12 @@ const C2X_ENTERPRISE_DISPLAY_EXPRESSION = `
     else trim(coalesce(nullif(e.divulgation_name, ''), nullif(e.name, ''), concat('Empreendimento ', e.id)))
   end
 `;
-const C2X_VALID_ENTERPRISE_WHERE = `
+const C2X_PRODUCTION_ENTERPRISE_WHERE = `
   e.id is not null
-  and upper(trim(coalesce(e.code, ''))) in (
-    'REP', 'EDL', 'LOU', 'LOS', 'PDV', 'PVS', 'RDP', 'RPS', 'RPC',
-    'LBR', 'LBP', 'LBF', 'MDS', 'MLN', 'VDO', 'VAL', 'VDP'
+  and upper(trim(coalesce(e.code, ''))) not in ('SDT', 'TSC')
+  and not (
+    upper(trim(coalesce(e.name, ''))) like 'LAGOA BONITA%'
+    and upper(trim(coalesce(e.code, ''))) not in ('LBR', 'LBP', 'LBF')
   )
 `;
 
@@ -370,6 +371,30 @@ export async function loadApoloDashboard(
 
 function shouldAllowLiveC2xFallback() {
   return process.env.NODE_ENV === "development";
+}
+
+function shouldRestrictApoloEnterprises() {
+  const appEnvironment = process.env.NEXT_PUBLIC_CARELI_APP_ENV?.toLowerCase() ?? "";
+  const vercelEnvironment = process.env.VERCEL_ENV?.toLowerCase() ?? "";
+  const appUrl = (
+    process.env.NEXT_PUBLIC_CARELI_APP_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    ""
+  ).toLowerCase();
+
+  return (
+    vercelEnvironment === "production" ||
+    appEnvironment.includes("prod") ||
+    (appUrl.includes("c2x.app.br") &&
+      !appUrl.includes("homo.c2x.app.br") &&
+      !appUrl.includes("homolog.c2x.app.br"))
+  );
+}
+
+function c2xValidEnterpriseWhere() {
+  return shouldRestrictApoloEnterprises()
+    ? C2X_PRODUCTION_ENTERPRISE_WHERE
+    : "e.id is not null";
 }
 
 export async function syncApoloFromC2x(): Promise<SyncResult> {
@@ -535,8 +560,9 @@ async function loadApoloTablesDashboard(
     profileSummaries,
     pendingReviewCount,
     linkedUsersCount,
-    buyerUsersCount,
-    portfolioUnitsCount,
+    storedBuyerUsersCount,
+    storedPortfolioUnitsCount,
+    liveCrmCounts,
   ] = await Promise.all([
     fetchRows<ApoloProfileRow>(adminClient, "apolo_entity_profiles", "entity_id,profile", entityIds),
     fetchRows<ApoloContactRow>(
@@ -604,6 +630,7 @@ async function loadApoloTablesDashboard(
     countVerifiedApoloRelationships(adminClient),
     countApoloBuyerEntities(adminClient),
     countApoloBuyerCommercialLinks(adminClient),
+    fetchLiveC2xCrmAggregate(),
   ]);
 
   const hasStalePortfolio = hasStaleCommercialPortfolio(commercialLinks);
@@ -611,6 +638,20 @@ async function loadApoloTablesDashboard(
     await fetchC2xDocumentLabelsByEntity(sourceLinks);
   const c2xPortfolioByEntity =
     await fetchC2xPortfolioByEntity(sourceLinks);
+  const liveUsuarioTotal = toNumber(liveCrmCounts?.usuario_total);
+  const liveBuyerUsersCount = liveCrmCounts
+    ? toNumber(liveCrmCounts.buyer_users_total)
+    : null;
+  const livePortfolioUnitsCount = liveCrmCounts
+    ? toNumber(liveCrmCounts.portfolio_units_total)
+    : null;
+  const livePortfolioPaymentsCount = liveCrmCounts
+    ? toNumber(liveCrmCounts.portfolio_payments_total)
+    : null;
+  const buyerUsersCount =
+    liveBuyerUsersCount ?? storedBuyerUsersCount;
+  const portfolioUnitsCount =
+    livePortfolioUnitsCount ?? storedPortfolioUnitsCount;
 
   const profilesByEntity = groupRowsBy(profiles, "entity_id");
   const entities = entityRows.map((row) =>
@@ -628,13 +669,17 @@ async function loadApoloTablesDashboard(
       timelineEvents: groupRowsBy(timelineEvents, "entity_id").get(row.id) ?? [],
     }, documentLabelsByEntity.get(row.id), c2xPortfolioByEntity.get(row.id)),
   );
+  const orderedEntities = sortApoloEntitiesByOperationalPriority(entities);
 
   const prospectCount = profileSummaries.find((summary) => summary.profile === "prospect")?.count ?? 0;
+  const nonBuyerUsersCount = liveUsuarioTotal
+    ? Math.max(liveUsuarioTotal - buyerUsersCount, 0)
+    : prospectCount;
 
   return {
     data: {
       buyerUsersCount,
-      entities,
+      entities: orderedEntities,
       linkedUsersCount,
       meta: {
         generatedAt: new Date().toISOString(),
@@ -644,9 +689,9 @@ async function loadApoloTablesDashboard(
         source: "apolo",
         status: "ready",
       },
-      nonBuyerUsersCount: prospectCount,
+      nonBuyerUsersCount,
       pendingReviewCount,
-      portfolioPaymentsCount: 0,
+      portfolioPaymentsCount: livePortfolioPaymentsCount ?? 0,
       portfolioUnitsCount,
       profileSummaries,
       totalCount: entityResult.totalCount,
@@ -697,8 +742,21 @@ function hasCommercialRowPortfolioEvidence(row: ApoloCommercialLinkRow) {
   }
 
   const metadata = metadataRecord(row.metadata);
+  const hasInstallmentMetadata = Boolean(
+    mapMetadataInstallments(metadata.installments)?.length,
+  );
 
-  return Boolean(mapMetadataInstallments(metadata.installments)?.length);
+  if (hasInstallmentMetadata) {
+    return true;
+  }
+
+  return Boolean(
+    metadataString(metadata, "acquisitionRequestId") ||
+      metadataString(metadata, "unitId") ||
+      metadataString(metadata, "unitCode") ||
+      metadataString(metadata, "tableValue") ||
+      (metadataString(metadata, "block") && metadataString(metadata, "lot")),
+  );
 }
 
 function isBuyerCommercialRole(role: string | null | undefined) {
@@ -865,7 +923,7 @@ async function fetchC2xPortfolioByEntity(
         left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
         left join enterprises e on e.id = eu.enterprise_id
         where participants.user_id in (?)
-          and ${C2X_VALID_ENTERPRISE_WHERE}
+          and ${c2xValidEnterpriseWhere()}
           and ar.id is not null
           and (p.id is not null or ${C2X_PORTFOLIO_STAGE_WHERE})
         group by
@@ -1513,6 +1571,47 @@ function sortEntityRows(rows: ApoloEntityRow[]) {
   );
 }
 
+function sortApoloEntitiesByOperationalPriority(entities: ApoloEntity[]) {
+  return [...entities].sort((a, b) => {
+    const priorityDifference =
+      apoloEntityOperationalPriority(b) - apoloEntityOperationalPriority(a);
+
+    if (priorityDifference !== 0) {
+      return priorityDifference;
+    }
+
+    return a.displayName.localeCompare(b.displayName, "pt-BR", {
+      sensitivity: "base",
+    });
+  });
+}
+
+function apoloEntityOperationalPriority(entity: ApoloEntity) {
+  let score = 0;
+
+  if (hasCommercialLinksWithIssuedInstallments(entity.commercialLinks)) {
+    score += 500;
+  }
+
+  if (entity.profiles.includes("usuario")) {
+    score += 200;
+  }
+
+  if (entity.financial?.overdueInstallments && entity.financial.overdueInstallments > 0) {
+    score += 100;
+  }
+
+  if (entity.status === "active") {
+    score += 10;
+  }
+
+  if (entity.profiles.includes("prospect")) {
+    score -= 50;
+  }
+
+  return score;
+}
+
 async function fetchRows<T>(
   adminClient: ApoloSupabaseClient,
   table: string,
@@ -1641,13 +1740,48 @@ async function countApoloBuyerEntities(adminClient: ApoloSupabaseClient) {
 }
 
 async function countApoloBuyerCommercialLinks(adminClient: ApoloSupabaseClient) {
-  const result = await fetchBuyerEntityIds(adminClient);
+  let count = 0;
+  const pageSize = 1000;
 
-  if (result.error) {
-    return 0;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await adminClient
+      .from("apolo_commercial_links")
+      .select("entity_id,enterprise_name,unit_label,relationship_role,stage_label,reference_label,metadata")
+      .in("relationship_role", ["Usuario", "Usuario comprador"])
+      .range(from, from + pageSize - 1)
+      .returns<ApoloCommercialLinkRow[]>();
+
+    if (error) {
+      return 0;
+    }
+
+    count += (data ?? []).filter(hasCommercialRowPortfolioEvidence).length;
+
+    if (!data || data.length < pageSize) {
+      break;
+    }
   }
 
-  return result.ids.length;
+  return count;
+}
+
+async function fetchLiveC2xCrmAggregate() {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  try {
+    const [rows] = await poolResult.pool.query<C2xCrmAggregateRow[]>(
+      c2xCrmAggregateQuery(),
+    );
+
+    return rows[0] ?? null;
+  } catch (error) {
+    console.error("[apolo] C2X aggregate refresh failed", sanitizeHadesDbError(error));
+    return null;
+  }
 }
 
 async function loadLiveC2xDashboard(
@@ -1805,7 +1939,7 @@ function c2xCrmAggregateQuery() {
           and pmt.payment_status_id in (5, 6, 7)
           and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0)
         )
-          and ${C2X_VALID_ENTERPRISE_WHERE}
+          and ${c2xValidEnterpriseWhere()}
         then participants.user_id
         else null
       end) as buyer_users_total,
@@ -1815,7 +1949,7 @@ function c2xCrmAggregateQuery() {
           and pmt.payment_status_id in (5, 6, 7)
           and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0)
         )
-          and ${C2X_VALID_ENTERPRISE_WHERE}
+          and ${c2xValidEnterpriseWhere()}
         then ar.enterprise_unity_id
         else null
       end) as portfolio_units_total,
@@ -1823,6 +1957,7 @@ function c2xCrmAggregateQuery() {
         when pmt.id is not null
           and pmt.payment_status_id in (5, 6, 7)
           and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0)
+          and ${c2xValidEnterpriseWhere()}
         then pmt.id
         else null
       end) as portfolio_payments_total
@@ -1927,7 +2062,7 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
             and pmt.payment_status_id in (5, 6, 7)
             and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0)
           )
-            and ${C2X_VALID_ENTERPRISE_WHERE}
+            and ${c2xValidEnterpriseWhere()}
           then eu.id
           else null
         end) as unit_count,

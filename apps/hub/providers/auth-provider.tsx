@@ -24,8 +24,11 @@ import {
 import { markHubPresence } from "@/lib/hub-presence";
 import {
   getPermissionsForRole,
+  getVisibilityScopeForProfile,
+  mapLegacyRoleToOperationalProfile,
   type HubUserContext,
   type HubUserRole,
+  type OperationalProfileRole,
 } from "@repo/shared";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { AlertTriangle } from "lucide-react";
@@ -54,6 +57,7 @@ type HubProfileRow = {
   display_name: string;
   email: string;
   id: string;
+  operational_profile?: OperationalProfileRole | null;
   role: HubUserRole;
   status: "active" | "archived" | "disabled";
 };
@@ -889,7 +893,7 @@ async function loadHubProfileInBackground({
     const { data, error } = await withMeasuredTimeout(
       client
         .from("hub_users")
-        .select("id,email,display_name,avatar_url,role,status")
+        .select("id,email,display_name,avatar_url,role,status,operational_profile")
         .eq("id", session.user.id)
         .maybeSingle<HubProfileRow>(),
       "Tempo excedido ao carregar o perfil operacional do Panteon.",
@@ -1050,6 +1054,7 @@ function createPartialAuthSession(session: Session): AuthSession {
         session.user.email?.split("@")[0],
       id: session.user.id,
       permissions: getPermissionsForRole(fallbackRole),
+      operationalProfile: buildOperationalProfile(fallbackRole),
       role: fallbackRole,
       status: "active",
       workspaceId: "careli",
@@ -1068,6 +1073,10 @@ function createAuthSessionFromProfile(
       email: profile.email,
       fullName: profile.display_name,
       id: profile.id,
+      operationalProfile: buildOperationalProfile(
+        profile.role,
+        profile.operational_profile,
+      ),
       permissions: getPermissionsForRole(profile.role),
       role: profile.role,
       status: profile.status,
@@ -1092,11 +1101,28 @@ function createAuthSessionFromRecoveredProfile(
       email: profile.email,
       fullName: profile.display_name,
       id: profile.id,
+      operationalProfile: buildOperationalProfile(
+        profile.role,
+        profile.operational_profile,
+      ),
       permissions: getPermissionsForRole(profile.role),
       role: profile.role,
       status: profile.status,
       workspaceId: "careli",
     },
+  };
+}
+
+function buildOperationalProfile(
+  role: HubUserRole,
+  profileRole?: OperationalProfileRole | null,
+) {
+  const resolvedProfileRole =
+    profileRole ?? mapLegacyRoleToOperationalProfile(role);
+
+  return {
+    profileRole: resolvedProfileRole,
+    visibilityScope: getVisibilityScopeForProfile(resolvedProfileRole),
   };
 }
 

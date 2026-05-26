@@ -1,6 +1,7 @@
 import type {
   HubPermission,
   HubUserRole,
+  OperationalUserProfile,
   PermissionScope,
 } from "@repo/shared";
 
@@ -9,6 +10,7 @@ export type AuthUser = {
   email?: string;
   fullName?: string;
   id: string;
+  operationalProfile?: OperationalUserProfile;
   permissions: readonly HubPermission[];
   role: HubUserRole;
   status?: "active" | "archived" | "disabled";

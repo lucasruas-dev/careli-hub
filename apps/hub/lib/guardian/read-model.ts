@@ -282,7 +282,7 @@ function mapAttendanceQueueRow(
     100,
   );
   const priority = mapHadesPriority(row.priority);
-  const workflowStage = mapWorkflowStage(row.workflow_status);
+  const workflowStage = mapWorkflowStage(row.workflow_status, overdueDays);
   const nextAction = nextActionForStage(workflowStage, priority);
   const rowId = String(row.client_c2x_id ?? row.id);
   const metadata = options.compact ? null : (row.metadata ?? null);
@@ -559,24 +559,39 @@ function mapHadesPriority(value: string | null): AttendancePriority {
   return "Baixa";
 }
 
-function mapWorkflowStage(value: string | null): WorkflowStage {
-  const stages: WorkflowStage[] = [
-    "Novo atraso",
-    "Primeiro contato",
-    "Sem retorno",
-    "Em negociação",
-    "Promessa realizada",
-    "Aguardando pagamento",
-    "Pago",
-    "Quebra de promessa",
-    "Crítico",
-    "Jurídico",
-    "Distrato/Evasão",
-  ];
+function mapWorkflowStage(value: string | null, overdueDays = 0): WorkflowStage {
+  if (overdueDays >= 91) {
+    return "Jurídico";
+  }
 
-  return stages.includes(value as WorkflowStage)
-    ? (value as WorkflowStage)
-    : "Primeiro contato";
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+  const map: Record<string, WorkflowStage> = {
+    "": overdueDays >= 3 ? "Contato" : "A acionar",
+    "a acionar": "A acionar",
+    acordo: "Acordo",
+    "aguardando pagamento": "Promessa de pagamento",
+    contato: "Contato",
+    critico: "Quebra",
+    "distrato/evasao": "Jurídico",
+    "em negociacao": "Negociação",
+    juridico: "Jurídico",
+    negociacao: "Negociação",
+    "novo atraso": overdueDays >= 3 ? "Contato" : "A acionar",
+    pago: "Acordo",
+    "primeiro contato": "Contato",
+    "promessa de pagamento": "Promessa de pagamento",
+    "promessa realizada": "Promessa de pagamento",
+    quebra: "Quebra",
+    "quebra de promessa": "Quebra",
+    "sem retorno": "Contato",
+  };
+
+  return map[normalized] ?? (overdueDays >= 3 ? "Contato" : "A acionar");
 }
 
 function nextActionForStage(
@@ -584,11 +599,19 @@ function nextActionForStage(
   priority: AttendancePriority,
 ) {
   if (stage === "Jurídico") {
-    return "Validar documentação e manter trilha amigável.";
+    return "Validar documentação e encaminhamento jurídico.";
   }
 
-  if (stage === "Crítico" || priority === "Crítica") {
+  if (stage === "Quebra" || stage === "Crítico" || priority === "Crítica") {
     return "Priorizar contato humano e revisar alternativa de acordo.";
+  }
+
+  if (stage === "Promessa de pagamento" || stage === "Acordo") {
+    return "Acompanhar compromisso ativo antes de retomar acionamento.";
+  }
+
+  if (stage === "Negociação") {
+    return "Conduzir proposta e registrar contraproposta do cliente.";
   }
 
   if (priority === "Alta") {

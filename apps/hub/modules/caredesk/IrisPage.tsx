@@ -1141,8 +1141,12 @@ export function IrisPage({
     [irisData, onlineOperators],
   );
 
-  function openAttendance(ticketId?: string) {
-    const targetId = ticketId ?? selectedTicket?.id;
+  function openAttendance(ticketId?: string | { id?: string }) {
+    const targetId =
+      typeof ticketId === "string"
+        ? ticketId
+        : ticketId?.id ?? selectedTicket?.id;
+
     if (!targetId) {
       return;
     }
@@ -1340,12 +1344,25 @@ export function IrisPage({
             <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
               {loadError}
             </div>
+          ) : activeView === "atendimento" ? (
+            <AttendanceView
+              ticket={selectedTicket}
+              tickets={irisData.tickets}
+              selectedTicketId={selectedTicket?.id ?? selectedTicketId}
+              onSelectTicket={setSelectedTicketId}
+              onClose={() => setActiveView("gestao")}
+              onOpenHistoryForTicket={openHistoryForTicket}
+              onMessageCreated={handleLocalMessage}
+              onMessageUpdated={handleMessageUpdated}
+              onTicketClosed={handleTicketClosed}
+              onTicketContextUpdated={handleTicketContextUpdated}
+            />
           ) : (
             <ManagementView
               data={irisData}
               loading={loading}
               snapshot={snapshot}
-              onOpenAttendance={setSelectedTicketId}
+              onOpenAttendance={openAttendance}
               onSelectTicket={setSelectedTicketId}
               onStartAttendance={(queueLabel) => {
                 setStartAttendanceQueueLabel(
@@ -3124,7 +3141,11 @@ function IrisTicketRow({
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={() => onOpenAttendance(ticket.id)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelectTicket(ticket.id);
+            onOpenAttendance(ticket.id);
+          }}
           title="Abrir atendimento"
           aria-label="Abrir atendimento do ticket"
           className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
@@ -10233,7 +10254,8 @@ async function enrichTicketsWithCrm360(data: IrisData): Promise<IrisData> {
       },
       method: "POST",
       signal: controller.signal,
-    }).finally(() => window.clearTimeout(timeoutId));
+    });
+    window.clearTimeout(timeoutId);
 
     if (!response.ok) {
       return data;
@@ -10274,7 +10296,7 @@ async function withIrisTimeout<T>(
   timeoutMs: number,
   label: string,
 ): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let timeoutId: ReturnType<typeof window.setTimeout> | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = window.setTimeout(() => {
       reject(new Error(`${label} excedeu ${Math.round(timeoutMs / 1000)}s.`));
@@ -10315,16 +10337,13 @@ function crm360ContextLabel(registration?: IrisCrm360Registration | null) {
 
 function ticketContactLabel(ticket: IrisTicket) {
   const registration = ticket.crm360Registration;
+  const contactLabel = resolveWhatsAppContactLabel(ticket);
 
   if (registration?.status === "registered" && registration.label) {
     return formatIrisDisplayName(registration.label);
   }
 
-  if (registration?.status === "missing") {
-    return "Sem cadastro";
-  }
-
-  return formatIrisDisplayName(stripWhatsAppContactPrefix(ticket.contactLabel));
+  return contactLabel;
 }
 
 function ticketCrmSubtitle(ticket: IrisTicket) {
@@ -10348,6 +10367,43 @@ function ticketCrmSubtitle(ticket: IrisTicket) {
 
 function stripWhatsAppContactPrefix(value: string) {
   return value.replace(/^WhatsApp\s*-\s*/i, "").trim() || value;
+}
+
+function resolveWhatsAppContactLabel(ticket: IrisTicket) {
+  const contactLabel = formatIrisDisplayName(
+    stripWhatsAppContactPrefix(ticket.contactLabel),
+  );
+
+  if (!isGenericTicketContactLabel(contactLabel)) {
+    return contactLabel;
+  }
+
+  const formattedPhone =
+    typeof ticket.contactPhone === "string" && ticket.contactPhone.trim()
+      ? formatPhoneForDisplay(ticket.contactPhone)
+      : null;
+
+  if (formattedPhone && formattedPhone !== "-") {
+    return `WhatsApp ${formattedPhone}`;
+  }
+
+  return "Sem contato";
+}
+
+function isGenericTicketContactLabel(value: string) {
+  const normalized = value.toLowerCase().trim();
+
+  if (!normalized) {
+    return true;
+  }
+
+  return (
+    normalized === "sem cadastro" ||
+    normalized === "cliente sem cadastro" ||
+    normalized === "sem contato" ||
+    normalized === "contato whatsapp" ||
+    /^whatsapp\s+\d{4,}$/.test(normalized)
+  );
 }
 
 function formatIrisDisplayName(value: string) {

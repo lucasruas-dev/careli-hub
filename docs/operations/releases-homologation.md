@@ -4664,3 +4664,14 @@ Registro de homologacao:
 - Preservacao: snapshot Git homolog preserva recortes Ares, Hades, Iris/Athena/Caca e Apolo ja publicados em homo; sem env, secrets, banco, migrations executadas, producao ou dominios de producao.
 - Validacoes: diff-check, check-types:hub, lint:hub, build hub, Safety Gate PASS, healthchecks /, /login, /iris 200, APIs protegidas 401 esperado, logs sem erro.
 - Risco: validacao autenticada real e confirmacao da Caca com OpenAI ainda dependem do teste do Lucas.
+
+## 2026-05-26 17:28:02 -03:00 - ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO
+
+- Assunto: [Zeus] Pacote limpo Iris, Hades e Apolo para homo.
+- Protocolos incluidos: IRIS-20260526-005-NOME-WHATSAPP-CONTATO, HADES-20260526-006-FILA-DIARIA-MONITORAMENTO-IRIS, APOLO-20260526-004-CRM360-C2X-REFRESH.
+- Ambiente alvo: https://homo.c2x.app.br.
+- Status: EM_HOMOLOGACAO.
+- Base preservada: origin/homolog 00ea84e e deployment dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4.
+- Deploy final: pendente; registrar apos Git deploy, Safety Gate pre-alias e healthchecks.
+- Validacoes pre-deploy: build @repo/auth OK; git diff --check OK; check-types:hub OK; lint:hub OK; build @repo/hub OK.
+- Exclusoes: sem envs, secrets, banco, migrations, service role, dominios, aliases de producao ou producao.

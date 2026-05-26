@@ -19452,3 +19452,40 @@ Conclusao:
 - A homologacao foi reconciliada para a branch real `homolog`, reduzindo o risco de perder recortes em deploys manuais.
 - O hotfix impede spinner infinito da fila Iris sem mexer em env, banco ou producao.
 - Proximo passo: Lucas validar a Iris autenticada em homo e, se testar Caca, confirmar se a resposta vem de OpenAI no metadata do novo ticket.
+
+## 2026-05-26 17:28:02 -03:00 - Zeus Operations - Pacote Iris Hades Apolo para homologacao
+
+Assunto: [Zeus] Pacote limpo Iris, Hades e Apolo para homo
+
+- Nome da squad/agente: Zeus Operations.
+- Protocolo combinado: ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO.
+- Protocolos incluidos:
+  - IRIS-20260526-005-NOME-WHATSAPP-CONTATO;
+  - HADES-20260526-006-FILA-DIARIA-MONITORAMENTO-IRIS;
+  - APOLO-20260526-004-CRM360-C2X-REFRESH.
+- Ambiente alvo: https://homo.c2x.app.br.
+- Status: EM_HOMOLOGACAO.
+- Base preservada:
+  - origin/homolog em 00ea84e;
+  - deployment vigente antes do pacote: dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4.
+- Escopo tecnico:
+  - Iris: nome principal por Apolo quando registrado e WhatsApp quando sem cadastro, alem de refresh do display_name generico em inbound;
+  - Hades: fila diaria/geral por perfil operacional, etapas de cobranca, monitoramento real Hades/Iris e abertura de chat Iris no board embutido;
+  - Apolo: refresh C2X ao entrar no modulo, agregados vivos e regra de empreendimento restrita a producao.
+- Arquivos aplicados: ver protocolo combinado em docs/operations/panteon-recorte-protocols.md.
+- Exclusoes confirmadas:
+  - sem envs, secrets, banco, migrations, service role, dominios, aliases de producao ou producao;
+  - sem publicar root misto; root foi usado apenas como fonte dos arquivos declarados.
+- Validacoes executadas antes do commit:
+  - npm.cmd run build --workspace @repo/auth: OK;
+  - git diff --check: OK, apenas avisos CRLF conhecidos do Windows;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run build --workspace @repo/hub: OK, com warning conhecido Turbopack/NFT em next.config.ts.
+- Proxima acao:
+  - commitar/push em homolog, aguardar deployment Preview Git, rodar Safety Gate pre-alias, apontar homo e registrar deployment final.
+
+Conclusao:
+- O pacote preserva a homologacao vigente e adiciona os tres cortes autorizados de forma controlada.
+- O impacto pratico e liberar a validacao conjunta da identificacao Iris, da cadencia Hades e da atualizacao viva Apolo.
+- A acao sensivel continua limitada a homologacao; producao permanece fora deste recorte.

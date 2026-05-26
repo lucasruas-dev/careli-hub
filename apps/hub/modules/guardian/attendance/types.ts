@@ -2,6 +2,13 @@
 // @ts-nocheck
 export type AttendancePriority = "Crítica" | "Alta" | "Média" | "Baixa";
 export type WorkflowStage =
+  | "A acionar"
+  | "Contato"
+  | "Negociação"
+  | "Promessa de pagamento"
+  | "Acordo"
+  | "Quebra"
+  | "Jurídico"
   | "Novo atraso"
   | "Primeiro contato"
   | "Sem retorno"
@@ -11,7 +18,6 @@ export type WorkflowStage =
   | "Pago"
   | "Quebra de promessa"
   | "Crítico"
-  | "Jurídico"
   | "Distrato/Evasão";
 
 export type AgreementStatus =

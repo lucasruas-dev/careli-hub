@@ -1,5 +1,7 @@
 import {
   getPermissionsForRole,
+  getVisibilityScopeForProfile,
+  mapLegacyRoleToOperationalProfile,
   type HubUserContext,
   type HubUserRole,
 } from "@repo/shared";
@@ -105,6 +107,13 @@ export function mapAuthUserToHubUserContext(user: AuthUser): HubUserContext {
     avatarUrl: user.avatarUrl,
     id: user.id,
     name: getUserDisplayName(user),
+    operationalProfile:
+      user.operationalProfile ?? {
+        profileRole: mapLegacyRoleToOperationalProfile(user.role),
+        visibilityScope: getVisibilityScopeForProfile(
+          mapLegacyRoleToOperationalProfile(user.role),
+        ),
+      },
     permissions: user.permissions,
     role: user.role,
     workspaceId: user.workspaceId,
