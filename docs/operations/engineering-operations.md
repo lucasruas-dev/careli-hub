@@ -19489,3 +19489,41 @@ Conclusao:
 - O pacote preserva a homologacao vigente e adiciona os tres cortes autorizados de forma controlada.
 - O impacto pratico e liberar a validacao conjunta da identificacao Iris, da cadencia Hades e da atualizacao viva Apolo.
 - A acao sensivel continua limitada a homologacao; producao permanece fora deste recorte.
+
+## 2026-05-26 17:37:35 -03:00 - Zeus Operations - Fechamento homologacao Iris Hades Apolo
+
+Assunto: [Zeus] Fechamento homo Iris Hades Apolo
+
+- Protocolo combinado: ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO.
+- Status: EM_HOMOLOGACAO.
+- Commit de codigo publicado em homolog: 8515dfa.
+- Deployment Git de codigo: dpl_Au23VZiY2jwM623mukfHtZmLguwJ.
+- Preview tecnico: https://careli-hub-hub-i2bs-3fu3ygpv0-lucasruas-devs-projects.vercel.app.
+- Alias confirmado: https://homo.c2x.app.br.
+- Rollback imediato: dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4.
+- Observacao operacional:
+  - a integracao Git da branch homolog moveu automaticamente o alias homo para o novo deployment; Zeus nao executou ercel alias set manual neste pacote;
+  - este fechamento documental pode gerar novo deployment docs-only da mesma branch, sem mudanca de codigo funcional.
+- Safety Gate:
+  - pre-push PASS contra dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4;
+  - pos-deploy PASS contra dpl_Au23VZiY2jwM623mukfHtZmLguwJ.
+- Healthchecks executados:
+  - GET /: 200;
+  - GET /login: 200;
+  - GET /iris: 200;
+  - GET /hades/cobranca: 200;
+  - GET /hades/monitoramento: 200;
+  - GET /apolo: 200;
+  - GET /api/iris/tickets sem sessao: 401 esperado;
+  - GET /api/iris/meta/templates sem sessao: 401 esperado;
+  - GET /api/apolo/relationships sem sessao: 401 esperado;
+  - GET /api/hades/attendance/queue sem sessao: 200 esperado para compatibilidade operacional da fila bruta;
+  - 
+px.cmd vercel logs https://homo.c2x.app.br --since 10m --level error: sem logs encontrados.
+- Proxima acao:
+  - Lucas validar autenticado os tres fluxos em homo: Iris nome por Apolo/WhatsApp, Hades fila diaria/monitoramento e Apolo refresh C2X/empreendimentos de homologacao.
+
+Conclusao:
+- Os cortes Iris, Hades e Apolo foram publicados em homologacao sem tocar envs, secrets, banco, migrations, dominios de producao ou producao.
+- O impacto pratico e liberar o teste conjunto da operacao de cobranca com CRM 360 atualizado e board Iris preservado.
+- Producao continua fora deste recorte ate validacao explicita do Lucas.

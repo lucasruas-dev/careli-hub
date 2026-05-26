@@ -320,3 +320,12 @@ O manifesto de homologacao deve incluir:
 - Rollback imediato esperado: `dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4`.
 - Status: `EM_HOMOLOGACAO`.
 - Deploy/alias: pendente neste registro; preencher apos Git deploy e Safety Gate pre-alias.
+
+#### Fechamento operacional ZEUS-20260526-007
+
+- Commit de codigo publicado: 8515dfa.
+- Deployment Git de codigo: dpl_Au23VZiY2jwM623mukfHtZmLguwJ.
+- Alias confirmado: https://homo.c2x.app.br.
+- Rollback imediato: dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4.
+- Safety Gate: PASS pre-push e pos-deploy.
+- Status dos recortes: EM_HOMOLOGACAO aguardando validacao autenticada do Lucas.

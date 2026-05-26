@@ -4675,3 +4675,15 @@ Registro de homologacao:
 - Deploy final: pendente; registrar apos Git deploy, Safety Gate pre-alias e healthchecks.
 - Validacoes pre-deploy: build @repo/auth OK; git diff --check OK; check-types:hub OK; lint:hub OK; build @repo/hub OK.
 - Exclusoes: sem envs, secrets, banco, migrations, service role, dominios, aliases de producao ou producao.
+
+### Fechamento - ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO - 2026-05-26 17:37:35 -03:00
+
+- Status: EM_HOMOLOGACAO.
+- Commit de codigo: 8515dfa.
+- Deployment Git de codigo: dpl_Au23VZiY2jwM623mukfHtZmLguwJ.
+- Preview tecnico: https://careli-hub-hub-i2bs-3fu3ygpv0-lucasruas-devs-projects.vercel.app.
+- Alias: https://homo.c2x.app.br.
+- Rollback: dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4.
+- Safety Gate: pre-push PASS e pos-deploy PASS.
+- Healthchecks: /, /login, /iris, /hades/cobranca, /hades/monitoramento e /apolo retornaram 200; APIs protegidas Iris/Apolo retornaram 401 sem sessao; logs de erro Vercel sem ocorrencias.
+- Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional; confirmar sempre pelo inspect atual de homo.
