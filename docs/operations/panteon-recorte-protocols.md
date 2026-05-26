@@ -220,7 +220,7 @@ O manifesto de homologacao deve incluir:
 
 - Modulo: Iris.
 - Agente responsavel: Zeus.
-- Status: PRONTO_PARA_HOMO.
+- Status: EM_HOMOLOGACAO.
 - Origem: diagnostico emergencial em `homo.c2x.app.br/iris` com tela presa em `Carregando fila`.
 - Objetivo: impedir spinner infinito quando a carga da fila Iris ou o enriquecimento CRM 360/Apolo demorar.
 - Arquivos do recorte:
@@ -239,3 +239,20 @@ O manifesto de homologacao deve incluir:
   - Safety Gate pre-deploy/pre-alias;
   - healthcheck `/iris` e logs Vercel.
 - Rollback esperado: deployment vigente antes do hotfix.
+- Publicacao Git homolog:
+  - commit: be271a7;
+  - deployment: dpl_9rhHPwQLGS5QWgnnvAfHFWj7onJF;
+  - Preview: https://careli-hub-hub-i2bs-ouo2ugrpu-lucasruas-devs-projects.vercel.app;
+  - branch alias: https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app.
+- Validacoes executadas:
+  - `git diff --check`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - Safety Gate pre-push/pre-alias: PASS;
+  - healthchecks `/`, `/login`, `/iris`: 200;
+  - APIs protegidas sem sessao: 401 esperado;
+  - logs Vercel de erro: sem ocorrencias.
+- Rollback registrado:
+  - dpl_DNv3wQr8m4yBH87hDcmDFD36wbXW como rollback funcional com OpenAI runtime manual;
+  - dpl_4h6qtecE1Jova1Mez5bGhSkdyW8b como snapshot imediatamente anterior.

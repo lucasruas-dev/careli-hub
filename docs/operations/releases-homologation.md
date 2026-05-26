@@ -4647,3 +4647,20 @@ Registro de homologacao:
 - Runtime preservado: OPENAI_API_KEY, HUB_AI_MODEL e HUB_IRIS_ATTENDANT_MODEL declarados no deployment sem valores registrados.
 - Validacoes: git diff --check do recorte OK; check-types:hub OK; lint:hub OK; build --workspace @repo/hub OK; Safety Gate pre-deploy/pre-alias PASS; Preview READY; alias OK; healthchecks /, /login e /iris OK; /api/iris/attendant GET 405 esperado; /api/iris/meta/templates sem sessao 401 esperado; logs Vercel sem erro.
 - Riscos: validacao real depende de novo teste autenticado/WhatsApp; V9 nao cria job assincrono, apenas bloqueia promessa de retorno sem acao; governanca permanente de env Preview segue recomendada.
+
+## 2026-05-26 16:45:00 -03:00 - Iris/Zeus timeout da fila e reconciliação Git homolog
+
+- Assunto: [Iris] Homologação preservada com branch Git e timeout da fila.
+- Protocolo: IRIS-20260526-005-QUEUE-LOAD-TIMEOUT-HOMO.
+- Ambiente: https://homo.c2x.app.br.
+- Status: EM_HOMOLOGACAO.
+- Commit homolog: be271a7.
+- Deployment:
+  - dpl_9rhHPwQLGS5QWgnnvAfHFWj7onJF;
+  - Preview: https://careli-hub-hub-i2bs-ouo2ugrpu-lucasruas-devs-projects.vercel.app;
+  - Branch alias: https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_DNv3wQr8m4yBH87hDcmDFD36wbXW ou dpl_4h6qtecE1Jova1Mez5bGhSkdyW8b conforme objetivo de rollback.
+- Escopo: timeout de carga da fila Iris e timeout do enriquecimento CRM 360/Apolo para impedir tela presa em `Carregando fila`.
+- Preservacao: snapshot Git homolog preserva recortes Ares, Hades, Iris/Athena/Caca e Apolo ja publicados em homo; sem env, secrets, banco, migrations executadas, producao ou dominios de producao.
+- Validacoes: diff-check, check-types:hub, lint:hub, build hub, Safety Gate PASS, healthchecks /, /login, /iris 200, APIs protegidas 401 esperado, logs sem erro.
+- Risco: validacao autenticada real e confirmacao da Caca com OpenAI ainda dependem do teste do Lucas.
