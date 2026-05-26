@@ -4687,3 +4687,18 @@ Registro de homologacao:
 - Safety Gate: pre-push PASS e pos-deploy PASS.
 - Healthchecks: /, /login, /iris, /hades/cobranca, /hades/monitoramento e /apolo retornaram 200; APIs protegidas Iris/Apolo retornaram 401 sem sessao; logs de erro Vercel sem ocorrencias.
 - Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional; confirmar sempre pelo inspect atual de homo.
+
+## 2026-05-26 19:57:08 -03:00 - Iris inbound coalescencia
+
+- Assunto: [Iris] Homologacao inbound sem ticket duplicado.
+- Protocolo: IRIS-20260526-006-INBOUND-COALESCE-TICKETS.
+- Ambiente: https://homo.c2x.app.br.
+- Status: EM_HOMOLOGACAO.
+- Deployment: dpl_AMdEEH48FnurCX6e9YcDQpVXVQjv.
+- Preview: https://careli-hub-hub-i2bs-16qzrnca1-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_9HAjWo5eeBo6VUUn2njxvpgzWYdS.
+- Pacote limpo auditavel: .codex-deploy/z26-008-iris-inbound-coalesce-homo-20260526/package.
+- Escopo: processor inbound Meta/WhatsApp com contato deterministico, retry curto de reuso de ticket e coalescencia automatica de tickets concorrentes com evento ticket_merge.
+- Itens excluidos: envs, secrets, WABA, phone number, banco remoto, migrations executadas, producao, dominios e aliases de producao.
+- Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build --workspace @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /login e /iris 200; /api/iris/tickets 401 esperado sem sessao; logs Vercel sem erro.
+- Riscos: validacao real depende de teste autenticado/WhatsApp com mensagens sequenciais; tickets duplicados antigos nao sao mesclados retroativamente.

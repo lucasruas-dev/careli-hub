@@ -334,7 +334,7 @@ O manifesto de homologacao deve incluir:
 
 - Modulo: Iris.
 - Agente responsavel: Iris Core.
-- Status: PRONTO_PARA_HOMO.
+- Status: EM_HOMOLOGACAO.
 - Origem: Lucas reportou que o mesmo cliente WhatsApp estava abrindo mais de um protocolo em poucos segundos, quebrando o fluxo de continuidade no board.
 - Objetivo: evitar duplicacao de tickets no inbound Meta quando houver concorrencia de eventos e contatos duplicados para o mesmo numero.
 - Arquivos do recorte:
@@ -358,3 +358,8 @@ O manifesto de homologacao deve incluir:
   - consolidacao fecha o ticket duplicado automaticamente; historico fica rastreavel, mas pode exigir alinhamento visual no filtro de encerradas se o time quiser ocultar esse tipo de merge;
   - validacao funcional autenticada em `homo.c2x.app.br/iris` segue pendente com Lucas para confirmar o fim da quebra em conversa real.
 - Rollback esperado: remover recorte do processor e restaurar comportamento anterior pelo deployment/base vigente antes deste protocolo.
+- Deployment publicado em homologacao: dpl_AMdEEH48FnurCX6e9YcDQpVXVQjv.
+- Preview: https://careli-hub-hub-i2bs-16qzrnca1-lucasruas-devs-projects.vercel.app.
+- Pacote limpo auditavel: .codex-deploy/z26-008-iris-inbound-coalesce-homo-20260526/package.
+- Manifestos Safety Gate: .codex-deploy/z26-008-iris-inbound-coalesce-homo-20260526/homologation-safety-gate.clean.json e .codex-deploy/z26-008-iris-inbound-coalesce-homo-20260526/homologation-safety-gate.post.json.
+- Rollback imediato: dpl_9HAjWo5eeBo6VUUn2njxvpgzWYdS.
