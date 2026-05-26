@@ -19518,8 +19518,7 @@ Assunto: [Zeus] Fechamento homo Iris Hades Apolo
   - GET /api/iris/meta/templates sem sessao: 401 esperado;
   - GET /api/apolo/relationships sem sessao: 401 esperado;
   - GET /api/hades/attendance/queue sem sessao: 200 esperado para compatibilidade operacional da fila bruta;
-  - 
-px.cmd vercel logs https://homo.c2x.app.br --since 10m --level error: sem logs encontrados.
+  - npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error: sem logs encontrados.
 - Proxima acao:
   - Lucas validar autenticado os tres fluxos em homo: Iris nome por Apolo/WhatsApp, Hades fila diaria/monitoramento e Apolo refresh C2X/empreendimentos de homologacao.
 
