@@ -74,6 +74,7 @@ function matchesSearch(
 function normalizeProfile(value: string | null): ApoloProfile | null {
   const allowed = new Set([
     "usuario",
+    "prospect",
     "incorporador",
     "imobiliaria",
     "corretor",

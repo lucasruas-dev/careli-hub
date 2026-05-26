@@ -1,5 +1,7 @@
-import { createModulePage } from "@/lib/module-page";
+import { redirect } from "next/navigation";
 
-export default function FinanceiroPage() {
-  return createModulePage("financeiro");
+export const dynamic = "force-dynamic";
+
+export default function FinanceiroModulePage() {
+  redirect("/ares");
 }

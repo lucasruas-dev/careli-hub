@@ -12682,3 +12682,6719 @@ Conclusao:
 - O estudo inicial do banco C2X Legado foi concluido sem escrita e sem exposicao sensivel.
 - O impacto pratico e que Athena passa a ter uma referencia rastreavel para apoiar dashboards, Apolo, Hades, Iris e investigacoes futuras sobre o legado.
 - O proximo passo e Lucas indicar o primeiro dashboard ou pergunta de negocio para transformar esse mapa em consultas operacionais.
+
+## 2026-05-22 11:51:56 -03:00 - Athena - Export compradores C2X
+
+Assunto: [C2X Legado] Comparativo compradores por aquisicao e pagamentos
+
+- Nome da squad/agente: `Athena / C2X Legado`.
+- Tipo da alteracao: `DATA EXPORT / BANCO READ-ONLY / XLSX`.
+- Ambiente: `legado C2X` e repositorio `careli-hub`.
+- Status: `XLSX GERADO`.
+- Autorizacao: Lucas solicitou comparar compradores de unidades entre `acquisition_requests` e `payments` antes do XLSX.
+- Arquivo gerado:
+  - `outputs/c2x-legado/compradores-unidades-c2x-legado-2026-05-22.xlsx`.
+- Arquivos de referencia alterados:
+  - `docs/modules/c2x-legacy-reference.md`;
+  - `docs/operations/engineering-operations.md`.
+- Regra aplicada:
+  - comprador operacional confirmado por pagamento ativo em `payments`;
+  - pagamento ativo considerado quando `payment_status_id in (5, 6, 7)` e `payment_to_delete` nulo ou desligado;
+  - participantes extraidos de `acquisition_requests.client_id`, `client_2_id`, `client_3_id`, `client_4_id` e `client_5_id`;
+  - unidade por `enterprise_unities.name`;
+  - empreendimento por `enterprises.code` e `enterprises.divulgation_name/name`;
+  - CPF/CNPJ selecionado por `users.person_type_id`, usando `cpf` para pessoa fisica e `cnpj` para pessoa juridica.
+- Resultado do comparativo:
+  - 1.776 aquisicoes faturadas/finalizadas;
+  - 944 aquisicoes faturadas/finalizadas com pagamento ativo;
+  - 832 aquisicoes faturadas/finalizadas sem pagamento ativo;
+  - 994 aquisicoes com pagamento ativo total;
+  - 50 aquisicoes com pagamento ativo fora de faturada/finalizada, todas em status `Cancelado`;
+  - 1.016 linhas de compradores participantes com pagamento ativo no XLSX.
+- Abas do XLSX:
+  - `Resumo`;
+  - `Compradores`;
+  - `AR sem pagamento ativo`;
+  - `Pagamentos fora status`.
+- Validacoes executadas:
+  - consultas MySQL read-only: OK;
+  - exportacao XLSX: OK;
+  - importacao do XLSX gerado: OK;
+  - scan de erros de formula no XLSX: OK, sem ocorrencias;
+  - renderizacao das abas principais pelo artifact-tool: OK.
+- Riscos conhecidos:
+  - o arquivo contem CPF/CNPJ na aba `Compradores` e deve ser tratado como dado sensivel interno;
+  - os 50 casos com pagamento ativo e aquisicao `Cancelado` precisam de decisao de negocio antes de dashboards finais classificarem como comprador regular ou divergencia de legado;
+  - as 832 aquisicoes faturadas/finalizadas sem pagamento ativo indicam que `acquisition_requests` isolada nao e suficiente como prova financeira.
+- Pendencias:
+  - Lucas validar se dashboards devem incluir, excluir ou destacar os 50 casos `Cancelado` com pagamento ativo.
+
+Conclusao:
+- O XLSX foi gerado com base no cruzamento mais confiavel para compra financeira: `payments` ativo + participantes da aquisicao.
+- O impacto pratico e que o dashboard de compradores deve nascer de `payments`, mas mostrar o status da aquisicao para nao esconder divergencias do legado.
+- O proximo passo e Lucas avaliar os 50 casos cancelados com pagamento ativo e indicar o primeiro dashboard a montar.
+
+## 2026-05-22 11:54:15 -03:00 - Athena - Contexto fluxo C2X
+
+Assunto: [C2X Legado] Regra real de proposta, pagamento e distrato
+
+- Nome da squad/agente: `Athena / C2X Legado`.
+- Tipo da alteracao: `CONTEXTO OPERACIONAL / REGRA DE NEGOCIO / DOCUMENTACAO`.
+- Ambiente: `legado C2X` e repositorio `careli-hub`.
+- Status: `REGRA OPERACIONAL REGISTRADA`.
+- Origem da regra: Lucas explicou o fluxo real do C2X apos o primeiro comparativo entre `acquisition_requests` e `payments`.
+- Arquivos alterados:
+  - `docs/modules/c2x-legacy-reference.md`;
+  - `docs/operations/engineering-operations.md`.
+- Contexto registrado:
+  - `acquisition_requests` e a tabela que organiza o ciclo da proposta, nao a verdade unica de compra final;
+  - uma mesma unidade pode ter varias propostas em momentos diferentes;
+  - proposta pode ser cancelada e a unidade voltar a ficar disponivel;
+  - depois de contrato assinado e faturado, parcelas sao geradas em `payments`;
+  - se houver cancelamento/distrato durante o periodo de pagamento, o que foi pago permanece como historico financeiro;
+  - uma unidade pode ser vendida novamente e ter pagamentos vinculados a mais de um cliente ao longo do tempo;
+  - registros em `payments` com aquisicao `Cancelado` nao devem ser tratados automaticamente como erro;
+  - `acquisition_request_historics` deve entrar nas proximas analises para entender mudancas de etapa, cancelamentos e reprocessamentos.
+- Impacto na leitura de dados:
+  - dashboards de comprador devem diferenciar comprador financeiro, comprador atual/ativo e historico comercial da unidade;
+  - analise de funil/proposta deve partir de `acquisition_requests` com apoio de `acquisition_request_historics`;
+  - analise financeira deve partir de `payments` e preservar o vinculo com proposta, unidade, empreendimento e cliente;
+  - analise da unidade deve permitir multiplos clientes historicos.
+- Validacoes executadas:
+  - registro documental: OK;
+  - nenhuma consulta adicional ao banco;
+  - nenhuma escrita no C2X, Supabase, env, Vercel, migration ou producao.
+- Pendencias:
+  - na proxima exportacao/dashboard, incluir leitura de `acquisition_request_historics` para classificar tentativa, venda, cancelamento, distrato e revenda.
+
+Conclusao:
+- O contexto real do fluxo C2X foi incorporado a referencia operacional.
+- O impacto pratico e evitar conclusoes erradas sobre compradores, cancelamentos e pagamentos historicos.
+- O proximo passo e usar `acquisition_request_historics` no proximo comparativo antes de fechar qualquer metrica de comprador atual.
+
+## 2026-05-22 12:13:51 -03:00 - Athena - Export comprador atual por ultima requisicao
+
+Assunto: [C2X Legado] Comprador atual por ultima requisicao da unidade
+
+- Nome da squad/agente: `Athena / C2X Legado`.
+- Tipo da alteracao: `DATA EXPORT / BANCO READ-ONLY / XLSX / REGRA DE NEGOCIO`.
+- Ambiente: `legado C2X` e repositorio `careli-hub`.
+- Status: `XLSX GERADO`.
+- Autorizacao: Lucas solicitou novo XLSX usando `acquisition_requests` e validando se o status `Faturado` ou `Finalizado` e a ultima requisicao da unidade.
+- Arquivo gerado:
+  - `outputs/c2x-legado/compradores-atuais-por-ultima-requisicao-c2x-2026-05-22.xlsx`.
+- Arquivos de referencia alterados:
+  - `docs/modules/c2x-legacy-reference.md`;
+  - `docs/operations/engineering-operations.md`.
+- Regra aplicada:
+  - agrupar requisicoes por `enterprise_unity_id`;
+  - ordenar por `acquisition_requests.created_at` e `id`;
+  - considerar somente a ultima requisicao da unidade;
+  - incluir compradores quando a ultima requisicao estiver em `Faturado` ou `Finalizado`;
+  - excluir como comprador atual quando a ultima requisicao estiver em `Cancelado`, `Reservado`, `Em assinatura`, `Contrato gerado` ou `Proposta realizada`;
+  - preservar requisicoes anteriores canceladas como historico da unidade;
+  - incluir participantes `client_id`, `client_2_id`, `client_3_id`, `client_4_id` e `client_5_id`;
+  - incluir `acquisition_request_historics` para auditoria de etapas.
+- Resultado:
+  - 2.414 unidades com alguma requisicao;
+  - 1.776 unidades com ultima requisicao em `Faturado`;
+  - 638 unidades sem comprador atual pela regra;
+  - 1.817 linhas de compradores atuais, considerando participantes adicionais;
+  - 699 unidades com comprador atual tiveram cancelamentos historicos anteriores;
+  - resumo do ultimo status por unidade: `Faturado` 1.776, `Em assinatura` 409, `Cancelado` 161, `Reservado` 59, `Contrato gerado` 6, `Proposta realizada` 3.
+- Abas do XLSX:
+  - `Resumo`;
+  - `Compradores atuais`;
+  - `Auditoria unidades`;
+  - `Historico requisicoes`;
+  - `Historico etapas`.
+- Validacoes executadas:
+  - consultas MySQL read-only: OK;
+  - exportacao XLSX: OK;
+  - renderizacao das 5 abas principais: OK;
+  - importacao do XLSX gerado: OK;
+  - scan de erros de formula no XLSX importado: OK, sem ocorrencias;
+  - nenhuma escrita no C2X, Supabase, env, Vercel, migration ou producao.
+- Riscos conhecidos:
+  - o arquivo contem CPF/CNPJ na aba `Compradores atuais` e deve ser tratado como dado sensivel interno;
+  - a regra V1 usa `created_at`/`id` para definir a ultima requisicao; se o legado tiver caso raro de reprocessamento com data antiga e update posterior, esse caso deve ser auditado individualmente;
+  - comprador atual definitivo ainda pode exigir regra complementar de contrato/distrato quando Lucas pedir precisao juridica.
+- Pendencias:
+  - Lucas validar se a regra V1 atende ao conceito operacional de comprador atual para dashboards.
+
+Conclusao:
+- O XLSX de comprador atual por ultima requisicao da unidade foi gerado.
+- O impacto pratico e que agora a planilha evita contar comprador antigo quando houve cancelamento e nova proposta posterior.
+- O proximo passo e Lucas validar a planilha e confirmar se essa regra vira base do dashboard de compradores atuais.
+
+## 2026-05-22 12:22:37 -03:00 - Athena - Comparativo Legado x CX
+
+Assunto: [C2X Legado] Compradores atuais ausentes na CX
+
+- Nome da squad/agente: `Athena / C2X Legado`.
+- Tipo da alteracao: `DATA EXPORT / BANCO READ-ONLY / CSV+XLSX / COMPARACAO`.
+- Ambiente: `legado C2X`, planilha CX local e repositorio `careli-hub`.
+- Status: `XLSX GERADO`.
+- Autorizacao: Lucas solicitou comparar compradores atuais do Legado com base exportada da CX para encontrar quem nao esta cadastrado na plataforma de atendimento.
+- Fonte CX recebida:
+  - `C:\Users\lucas\Downloads\consumers-2026-05-22T15_09_20.329Z.csv`.
+- Arquivo gerado:
+  - `outputs/c2x-legado/comparativo-compradores-legado-vs-cx-2026-05-22.xlsx`.
+- Arquivos de referencia alterados:
+  - `docs/modules/c2x-legacy-reference.md`;
+  - `docs/operations/engineering-operations.md`.
+- Regra aplicada:
+  - base Legado: compradores atuais pela regra da ultima `acquisition_requests` da unidade em `Faturado` ou `Finalizado`;
+  - base CX: CSV com nome, CPF/CNPJ, CPF, telefone e WhatsApp;
+  - normalizacao de CPF/CNPJ por digitos, aceitando 11 ou 14 digitos;
+  - normalizacao de telefone com digitos, variacao com/sem codigo `55` e ajuste comum do nono digito;
+  - comparacao sempre primeiro por CPF/CNPJ;
+  - somente compradores sem match por documento foram comparados por telefone/WhatsApp;
+  - saldo final sem documento e sem telefone correspondente foi marcado como `NAO_ENCONTRADO_CX`.
+- Resultado:
+  - 1.459 compradores unicos no Legado;
+  - 1.817 linhas comprador x unidade no Legado;
+  - 2.403 registros analisados na base CX;
+  - 1.987 registros CX com CPF/CNPJ valido;
+  - 2.286 registros CX com telefone/WhatsApp valido;
+  - 1.319 compradores encontrados por CPF/CNPJ;
+  - 38 compradores encontrados por telefone/WhatsApp;
+  - 102 compradores nao encontrados na CX.
+- Abas do XLSX:
+  - `Resumo`;
+  - `Nao encontrados CX`;
+  - `Compradores unicos`;
+  - `Detalhe por unidade`;
+  - `Base CX analisada`.
+- Validacoes executadas:
+  - leitura de `AGENTS.md`, `README` operacional e diario canonico: OK;
+  - leitura estrutural do CSV sem imprimir registros pessoais: OK;
+  - consultas MySQL read-only: OK;
+  - exportacao XLSX: OK;
+  - importacao do XLSX gerado: OK;
+  - scan de erros de formula no XLSX: OK, sem ocorrencias;
+  - renderizacao das abas principais: OK;
+  - nenhuma escrita no C2X, Supabase, env, Vercel, migration ou producao.
+- Riscos conhecidos:
+  - o arquivo contem CPF/CNPJ e telefone e deve ser tratado como dado sensivel interno;
+  - match por telefone pode encontrar clientes sem documento na CX, mas ainda merece revisao humana quando houver telefone compartilhado;
+  - telefones sem DDD ou incompletos nao foram usados como match forte.
+- Pendencias:
+  - Lucas revisar os 102 registros na aba `Nao encontrados CX` e decidir importacao/cadastro na plataforma de atendimento.
+
+Conclusao:
+- O comparativo Legado x CX foi gerado com validacao por CPF/CNPJ primeiro e telefone/WhatsApp apenas para o saldo.
+- O impacto pratico e que existem 102 compradores atuais do Legado sem correspondencia encontrada na CX pelo criterio definido.
+- O proximo passo e Lucas revisar essa aba e decidir o processo de cadastro/correcao na plataforma de atendimento.
+
+## 2026-05-22 12:13:26 -03:00 - Iris Core - Diretriz de estabilizacao operacional
+
+Assunto: [Iris] Operacao tranquila e sem surpresa
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `DECISAO OPERACIONAL / ESTABILIZACAO`.
+- Ambiente: `desenvolvimento local`; sem deploy, sem homologacao, sem producao, sem banco mutavel, sem migration, sem env, sem secret e sem operacao real na Meta.
+- Status: `DIRETRIZ REGISTRADA / AGUARDANDO RECORTE TECNICO`.
+- Origem da decisao: Lucas orientou que a prioridade agora e trabalhar para que a Iris nao tenha problemas e sustente uma operacao tranquila.
+- Escopo operacional definido:
+  - priorizar estabilidade, rastreabilidade e previsibilidade antes de ampliar fluxos sensiveis;
+  - manter recortes Iris isolados de Hades, Hermes, Zeus, Atlas, Chronos, Apolo e Setup global;
+  - tratar Meta, WABA, templates, webhooks, envs, Vercel, Supabase, banco e deploys como operacoes bloqueadas ate autorizacao explicita;
+  - preservar dados reais quando o fluxo funcional ja existir e evitar mocks em comportamento operacional;
+  - validar mudancas Iris com typecheck, lint, build, diff check e validacao visual/autenticada quando aplicavel.
+- Frentes de estabilizacao recomendadas:
+  - confiabilidade Meta/WhatsApp: preflight visual de template, telefone de envio, status de aprovacao e falhas de envio sem expor secrets;
+  - atendimento: envio por Enter, envio por botao, auto-scroll, status de entrega/leitura, operador por nome de exibicao e responsavel atualizado por interacao;
+  - board/inbox: status oficiais, Apolo verde/vermelho, TPR/TDR/TMA, origem ativo/passivo, assunto, fila e textos longos sem quebrar layout;
+  - setup operacional: filas, assuntos, templates e regras de roteamento com UX executiva e sem telas cortadas;
+  - observabilidade: erros controlados, mensagens claras ao operador, estado de retry e trilha de decisao para suporte.
+- Validacoes executadas:
+  - leitura de `AGENTS.md`: OK;
+  - leitura de `docs/operations/README.md`: OK;
+  - leitura do diario canonico `docs/operations/engineering-operations.md`: OK;
+  - `git status --short`: OK, worktree possui alteracoes locais mistas e qualquer recorte Iris deve ser isolado.
+- Pendencias:
+  - definir o primeiro recorte tecnico de estabilizacao Iris;
+  - antes de homologar, separar pacote limpo e registrar arquivos incluidos/excluidos;
+  - qualquer acao externa em Meta, env, Vercel, Supabase, banco ou dominio depende de autorizacao explicita do Lucas.
+
+Conclusao:
+- A diretriz operacional da Iris agora esta registrada: estabilidade e previsibilidade passam a orientar os proximos recortes.
+- O impacto pratico e que a Iris deve evoluir com guardrails, validacao e isolamento de escopo, reduzindo risco para a operacao real.
+- O proximo passo recomendado e atacar um recorte de confiabilidade por vez, comecando por fluxo Meta/template ou por board/atendimento conforme prioridade do Lucas.
+
+## 2026-05-22 12:20:08 -03:00 - Operacoes - Homologacao por recorte isolado de modulo
+
+Assunto: [Operacoes] Homologacao somente por recorte isolado
+
+- Nome da squad/agente: `Operacoes / Zeus / Hefesto`.
+- Tipo da alteracao: `DECISAO OPERACIONAL / GOVERNANCA DE RELEASE`.
+- Ambiente: `documentacao operacional`; sem deploy, sem homologacao executada, sem producao, sem banco mutavel, sem migration, sem env, sem secret e sem alteracao externa.
+- Status: `REGRA PERMANENTE REGISTRADA`.
+- Origem da decisao: Lucas confirmou que todos os agentes de modulos devem subir em homologacao somente recortes isolados referentes ao proprio modulo para manter a operacao organizada.
+- Regra permanente:
+  - agente de modulo publica em homologacao apenas o proprio recorte, quando Lucas autorizar;
+  - recorte isolado inclui somente arquivos, regras, documentacao e validacoes diretamente ligados ao modulo dono;
+  - se o worktree, commit ou pacote misturar outro modulo, demanda incompleta, item nao validado, env, secret, migration, banco, dominio ou alias, o agente deve bloquear a homologacao ou montar pacote limpo antes de publicar;
+  - `Hefesto` segue responsavel pela promocao para producao a partir de recortes homologados, validados e autorizados.
+- Arquivos atualizados:
+  - `AGENTS.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/agent-operating-model.md`;
+  - `docs/architecture/release-and-rollback-policy.md`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - leitura de `AGENTS.md`: OK;
+  - leitura de `docs/operations/README.md`: OK;
+  - leitura do diario canonico `docs/operations/engineering-operations.md`: OK;
+  - leitura das politicas de arquitetura aplicaveis a agentes, ambientes, seguranca, conexoes, producao, release/rollback e secrets: OK;
+  - `git status --short`: OK, worktree segue com alteracoes locais mistas que nao foram revertidas.
+- Pendencias:
+  - em cada futura homologacao, o agente executor deve listar arquivos incluidos e excluidos antes de publicar;
+  - se houver mistura de escopo, separar pacote limpo ou manter bloqueado.
+
+Conclusao:
+- A regra ficou oficial: homologacao por agente de modulo so deve acontecer com recorte isolado do proprio modulo.
+- O impacto pratico e reduzir carona de mudancas incompletas, facilitar rollback e deixar claro quem e responsavel por cada entrega.
+- O proximo passo e aplicar essa regra ja no proximo pacote Iris, Hermes, Hades, Zeus, Atlas, Chronos ou Apolo que Lucas autorizar para homologacao.
+
+## 2026-05-22 13:02:31 -03:00 - Zeus - Diagnostico de saude Supabase
+
+Assunto: [Zeus] Saude dos bancos Supabase e capacidade do Plano Pro
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `AUDITORIA READ-ONLY / DIAGNOSTICO DE INFRA`.
+- Ambiente: `Supabase producao e homologacao`; sem alteracao de dados, sem migration, sem env, sem secret, sem deploy e sem operacao destrutiva.
+- Status: `DIAGNOSTICO REGISTRADO / SEM GARGALO CRITICO IDENTIFICADO`.
+- Origem: Lucas solicitou estudo de saude dos bancos, comparando uso do Plano Pro, capacidade, conexoes e sinais de lentidao.
+- Evidencias de quota pelo painel Supabase:
+  - saida/egress em 33,891 GB de 250 GB, cerca de 14%;
+  - conexoes simultaneas em tempo real em 17 de 500, cerca de 3%;
+  - mensagens em tempo real em 3.716 de 5.000.000, abaixo de 1%;
+  - usuarios ativos mensais em 18 de 100.000, abaixo de 1%;
+  - armazenamento, saida em cache, transformacoes de imagem e funcoes de borda sem pressao de quota.
+- Leitura real em producao:
+  - tamanho do banco em torno de 87 MB;
+  - cache hit em 99,9985%;
+  - conexoes Postgres em 21 de 60 no snapshot, com 3 ativas e nenhuma `idle in transaction`;
+  - deadlocks e conflitos em 0;
+  - estatisticas acumuladas desde 2026-05-07 18:19 UTC;
+  - uso temporario acumulado em 12 GB, ponto para monitorar por historico e nao por alerta imediato.
+- Leitura real em homologacao:
+  - tamanho do banco em torno de 51 MB;
+  - cache hit em 99,9986%;
+  - conexoes Postgres em 23 de 60 no snapshot, com 2 ativas e nenhuma `idle in transaction`;
+  - deadlocks e conflitos em 0;
+  - uso temporario acumulado em 249 MB desde 2026-05-07 18:19 UTC.
+- Pontos de atencao identificados:
+  - o painel mostra conexoes de Realtime, mas o limite operacional do Postgres observado foi `max_connections=60`; a operacao esta segura no snapshot, mas deve ser monitorada se APIs ou dev local ficarem lentos;
+  - `hub_activity_events` apareceu em producao com leitura sequencial relevante e deve ser revisada em recorte tecnico antes de escalar volume;
+  - `hub_it_ticket_attachments` ocupa cerca de 7 MB com poucos registros, indicando que anexos/evidencias podem pressionar o banco se crescerem sem estrategia de Storage;
+  - Supabase Advisors apontaram avisos de RLS/performance (`auth_rls_initplan` e `multiple_permissive_policies`) em producao e homologacao; nao e incidente, mas deve virar recorte de saneamento de politicas em homologacao.
+- Recomendacao:
+  - manter Plano Pro atual; nao ha evidencia de gargalo de quota, capacidade ou necessidade de upgrade imediato;
+  - priorizar melhoria de queries, RLS, pooling/conexoes e armazenamento de anexos antes de pensar em plano maior;
+  - criar monitoramento Zeus para conexoes Postgres, cache hit, temp bytes, egress, top tables, sequential scan e advisors.
+
+Conclusao:
+- O Plano Pro atende o Panteon com folga neste momento.
+- O impacto pratico e que a lentidao percebida tende a estar mais ligada a fluxo de API/query/front/conexoes do que a limite contratado do Supabase.
+- Nao ha acao emergencial agora; Zeus deve abrir recortes tecnicos para saneamento de RLS, analise de `hub_activity_events`, estrategia de anexos e monitoramento continuo.
+
+## 2026-05-22 13:14:19 -03:00 - Iris Core - Templates Meta com midia
+
+Assunto: [Iris] Templates Meta com imagem e video
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `MELHORIA FUNCIONAL / SETUP IRIS / META WHATSAPP`.
+- Ambiente: `desenvolvimento local`; sem deploy, sem homologacao, sem producao, sem migration, sem banco mutavel, sem env, sem secret e sem exposicao de tokens.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO EM BUILD / AGUARDANDO HOMOLOGACAO AUTORIZADA`.
+- Origem da demanda: Lucas solicitou que a gestao de templates Meta permita criar mensagens com imagens e videos.
+- Comportamento implementado:
+  - aba `Templates` da Iris passa a permitir escolher o tipo de header do template: sem midia, imagem, video ou documento;
+  - operador envia uma midia de exemplo para a Meta antes de criar o template real quando houver header de midia;
+  - criacao do template Meta inclui componente `HEADER` com `format` `IMAGE`, `VIDEO` ou `DOCUMENT` e `example.header_handle`;
+  - cadastro local do template guarda metadados de header de midia em `caredesk_templates.metadata`, sem migration;
+  - fluxo de novo atendimento passa a enviar componente de header com midia quando o template aprovado tiver URL publica ou media id configurado;
+  - se template com midia nao tiver URL publica ou media id para envio, a Iris bloqueia o inicio do atendimento com mensagem operacional clara.
+- Arquivos incluidos no recorte Iris:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/media/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos do recorte:
+  - Hades, Hermes/PulseX, Zeus, Atlas, Chronos, Apolo, Setup global fora da aba Iris, migrations, envs, secrets, Vercel, Supabase mutavel, banco e producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/iris/meta-whatsapp.ts apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/meta/templates/media/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK, apenas aviso CRLF do Windows;
+  - `npm.cmd run check-types:hub`: falhou inicialmente por narrowing TypeScript no guard de upload e passou apos correcao;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com aviso preexistente de `MODULE_TYPELESS_PACKAGE_JSON` no `eslint.config.js`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com aviso preexistente de NFT trace envolvendo `apps/hub/next.config.ts` e `lib/squadops/engineering-operations-source.ts`;
+  - `Invoke-WebRequest http://localhost:3001/iris`: OK, HTTP 200 em servidor local ja ativo.
+- Riscos conhecidos:
+  - a midia de exemplo usada para aprovacao do template nao substitui a midia real do envio; para disparar o atendimento ativo, o template com midia precisa de URL publica HTTPS ou media id valido;
+  - nao foi feito upload real para a Meta nesta validacao para nao operar API externa com token/env sem necessidade;
+  - validacao visual autenticada completa da tela ficou limitada ao smoke HTTP local nesta rodada.
+- Pendencias:
+  - Lucas testar no navegador autenticado a tela `Iris > Setup > Templates` com imagem/video real;
+  - quando Lucas autorizar, publicar somente este recorte Iris em homologacao;
+  - definir estrategia definitiva para hospedagem/Storage das midias de envio, caso a operacao nao queira depender de URL publica manual.
+
+Conclusao:
+- A Iris agora esta preparada para criar templates Meta com header de imagem, video ou documento e para enviar esses templates no inicio de atendimento ativo quando a midia de envio estiver configurada.
+- O impacto pratico e que a operacao pode evoluir de templates apenas texto/botoes para mensagens visuais aprovadas pela Meta, mantendo bloqueio claro quando faltar midia real para envio.
+- Nao ha acao externa obrigatoria agora; Lucas deve testar a experiencia local/autenticada e autorizar homologacao do recorte Iris quando estiver satisfeito.
+
+## 2026-05-22 14:01:55 -03:00 - Zeus Core - Diagnostico de saude Vercel
+
+Assunto: [Zeus] Diagnostico read-only de saude Vercel
+
+- Nome da squad/agente: `Zeus Core`.
+- Tipo da acao: `AUDITORIA OPERACIONAL / VERCEL / READ-ONLY`.
+- Ambiente: Vercel projeto `careli-hub-hub-i2bs`; leitura de producao, OPS e homologacao; sem deploy, sem redeploy, sem rollback, sem alias, sem env, sem secret e sem alteracao de dominio.
+- Origem da demanda: Lucas pediu uma rotina semanal de saude Vercel e solicitou executar uma leitura imediata.
+- Projeto identificado:
+  - projeto Vercel `careli-hub-hub-i2bs`;
+  - framework `Next.js`;
+  - build command `npx turbo build --filter=@repo/hub`;
+  - output directory `apps/hub/.next`;
+  - runtime observado `nodejs24.x`, regiao `iad1`, memoria por funcao `2048 MB` e timeout `300s`.
+- Deployments e aliases:
+  - `https://c2x.app.br` e `https://ops.c2x.app.br` apontam para o mesmo deployment production `dpl_AXsmmLA9xveG2vyTzSMtKEnnGrP8`, estado `READY`;
+  - `https://homo.c2x.app.br` aponta para o deployment preview `dpl_7EqSSeXvWqSdVkTVtbGDZ8TMKVKV`, estado `READY`;
+  - os 20 deployments recentes listados estavam em estado `READY`;
+  - tempo recente de build/ready ficou em torno de 41s a 42s nos deployments inspecionados.
+- Smoke HTTP publico:
+  - `https://c2x.app.br/`: HTTP 200 em 1092ms;
+  - `https://c2x.app.br/login`: HTTP 200 em 382ms;
+  - `https://c2x.app.br/api/pwa/manifest`: HTTP 200 em 186ms;
+  - `https://ops.c2x.app.br/zeus`: HTTP 200 em 514ms;
+  - `https://ops.c2x.app.br/api/pwa/manifest`: HTTP 200 em 183ms;
+  - `https://homo.c2x.app.br/login`: HTTP 200 em 1336ms;
+  - `https://homo.c2x.app.br/api/pwa/manifest`: HTTP 200 em 406ms.
+- Logs, erros e alertas:
+  - nenhum log de erro retornado pela CLI Vercel em producao na ultima 1h;
+  - nenhum log de erro retornado pela CLI Vercel em preview na ultima 1h;
+  - nenhum HTTP 500 retornado na busca de producao das ultimas 6h;
+  - `vercel alerts` retornou `groups: []`, sem grupos de alerta ativos no recorte.
+- Metricas das ultimas 6h:
+  - invocacoes por status: 17.348 HTTP 200, 128 HTTP 401, 1 HTTP 400 e 0 HTTP 5xx;
+  - maior duracao media por rota: `/api/hub/asana/performance` com 5890ms e TTFB medio 6438ms;
+  - segundo ponto de latencia: `/api/hades/overview` com 5147ms e TTFB medio 5325ms;
+  - Zeus estruturado: `/api/zeus/operations/structured` com 576ms de duracao media e 760ms de TTFB medio;
+  - Hermes mensagens: `/api/hermes/messages` com 331ms de duracao media e 340ms de TTFB medio;
+  - HelpDesk/TI: `/api/hub/it-tickets` com 118ms de duracao media e 139ms de TTFB medio;
+  - memoria media por rota ficou baixa frente ao limite de 2048 MB, variando aproximadamente de 285 MB a 351 MB.
+- Uso/custo Vercel no periodo lido:
+  - custo efetivo aproximado: USD 5,15;
+  - custo faturado aproximado: USD 0,00 no snapshot;
+  - maiores linhas variaveis: Fast Origin Transfer em cerca de USD 1,66, Pro em cerca de USD 1,29, Observability Events em cerca de USD 0,88 e Function Invocations em cerca de USD 0,60;
+  - nao ha pressao de custo ou quota identificada neste snapshot.
+- Pontos de atencao:
+  - o deployment production mais recente veio com metadado `gitDirty=1`; nao e incidente de runtime, mas reduz rastreabilidade e deve ser evitado em publicacoes Hefesto;
+  - como `c2x.app.br` e `ops.c2x.app.br` compartilham deployment, toda promocao production precisa preservar o Panteon principal e o OPS no mesmo pacote;
+  - as rotas `/api/hub/asana/performance` e `/api/hades/overview` concentram a latencia observada e devem ser analisadas como query/API upstream antes de considerar aumento de plano;
+  - o primeiro hit publico ficou acima de 1s em `c2x.app.br/` e `homo.c2x.app.br/login`; monitorar recorrencia antes de tratar como incidente.
+- Recomendacao:
+  - manter plano/estrutura Vercel atual; nao ha sinal de gargalo de plataforma, erro 5xx ou pressao de memoria;
+  - criar rotina semanal de saude Vercel com foco em 5xx, logs de erro, build failures, latencia por rota, memoria, custo, Fast Origin Transfer e metadado de deployment sujo;
+  - abrir recorte tecnico separado para investigar `/api/hub/asana/performance` e `/api/hades/overview`.
+- Validacoes executadas:
+  - `npx.cmd vercel project inspect --yes`: OK;
+  - `npx.cmd vercel ls careli-hub-hub-i2bs --format=json`: OK;
+  - `npx.cmd vercel inspect c2x.app.br --format=json`: OK;
+  - `npx.cmd vercel inspect ops.c2x.app.br --format=json`: OK;
+  - `npx.cmd vercel inspect homo.c2x.app.br --format=json`: OK;
+  - `npx.cmd vercel logs --environment production --level error --since 1h --limit 20 --json`: OK, sem linhas de erro retornadas;
+  - `npx.cmd vercel logs --environment preview --level error --since 1h --limit 20 --json`: OK, sem linhas de erro retornadas;
+  - `npx.cmd vercel logs --environment production --status-code 500 --since 6h --limit 20 --json`: OK, sem HTTP 500 retornado;
+  - `npx.cmd vercel alerts --format json --limit 20`: OK, sem alertas ativos;
+  - `npx.cmd vercel usage --format json`: OK;
+  - `npx.cmd vercel metrics vercel.function_invocation.count --group-by http_status --since 6h --format json`: OK;
+  - `npx.cmd vercel metrics vercel.function_invocation.function_duration_ms -a avg --group-by route --since 6h --format json --limit 10`: OK;
+  - `npx.cmd vercel metrics vercel.function_invocation.ttfb_ms -a avg --group-by route --since 6h --format json --limit 10`: OK;
+  - `npx.cmd vercel metrics vercel.function_invocation.peak_memory_mb -a avg --group-by route --since 6h --format json --limit 10`: OK;
+  - smoke HTTP publico dos tres aliases principais: OK.
+- Status: `OPERACIONAL COM ATENCAO`.
+
+Conclusao:
+- A Vercel esta operacional e com folga de memoria/custo neste snapshot; nao ha 5xx, alertas ativos ou falha de deployment recente.
+- O impacto pratico e que a lentidao percebida tende a estar em rotas especificas de API/query/upstream, nao em limite geral da Vercel.
+- Nao precisa acao emergencial agora; Zeus deve monitorar semanalmente, e os proximos recortes tecnicos recomendados sao `/api/hub/asana/performance`, `/api/hades/overview` e disciplina de deploy limpo via Hefesto.
+
+## 2026-05-22 15:08:09 -03:00 - Zeus Core - Asana performance e env production
+
+Assunto: [Zeus] Correcao local da rota Asana e bloqueio de env Production
+
+- Nome da squad/agente: `Zeus Core`.
+- Tipo da alteracao: `CORRECAO LOCAL / PERFORMANCE / DIAGNOSTICO VERCEL`.
+- Ambiente: `desenvolvimento local`; leitura read-only de envs Vercel por nome; sem deploy, sem redeploy, sem alias, sem leitura de valores sensiveis, sem alteracao de env e sem producao mutavel.
+- Origem da demanda: Lucas apontou que o painel `Asana / Performance dos colaboradores` estava ruim, lento e exibindo erro de configuracao.
+- Diagnostico:
+  - `npx.cmd vercel env ls production` confirmou que Production nao possui `ASANA_ACCESS_TOKEN`, `ASANA_WORKSPACE_MODE`, `ASANA_WORKSPACE_GID`, `ASANA_TASK_WINDOW_DAYS` nem `ASANA_TASK_LIMIT_PER_USER`;
+  - `npx.cmd vercel env ls preview` confirmou que Preview possui as envs `ASANA_*` cadastradas;
+  - a tela em Production cai corretamente no fallback `Configurar Asana server-side` porque a rota nao encontra `ASANA_ACCESS_TOKEN` no servidor;
+  - a correcao real dos dados Asana em Production depende de copiar/criar envs `ASANA_*` no ambiente Production da Vercel, operacao sensivel que permanece `BLOQUEADO` ate autorizacao explicita do Lucas.
+- Correcao local aplicada:
+  - rota `apps/hub/app/api/hub/asana/performance/route.ts` passou a usar cache curto em memoria por periodo/configuracao/usuarios, reduzindo chamadas repetidas dentro da mesma janela operacional;
+  - processamento de colaboradores passou a ocorrer em lotes controlados de 4, reduzindo latencia sem abrir paralelismo sem limite contra a API Asana;
+  - dados de erro ou configuracao ausente nao sao cacheados como sucesso, evitando mascarar correcao de env futura.
+- Arquivos alterados neste recorte:
+  - `apps/hub/app/api/hub/asana/performance/route.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos do recorte:
+  - Hades, Hermes, Iris, Atlas, Chronos, Apolo, Setup, envs reais, Vercel mutavel, Supabase, banco, migrations, alias e production deploy.
+- Validacoes executadas:
+  - `npx.cmd vercel env ls production`: OK, leitura apenas de nomes/tipos; sem valores sensiveis;
+  - `npx.cmd vercel env ls preview`: OK, leitura apenas de nomes/tipos; sem valores sensiveis;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning preexistente de `MODULE_TYPELESS_PACKAGE_JSON` no `eslint.config.js`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning preexistente de NFT trace envolvendo `apps/hub/next.config.ts` e `lib/squadops/engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/app/api/hub/asana/performance/route.ts docs/operations/engineering-operations.md`: OK, apenas aviso CRLF do Windows;
+  - smoke local `http://localhost:3001/api/hub/asana/performance`: nao executado porque nao havia servidor local ativo em `localhost:3001` no momento da checagem.
+- Riscos conhecidos:
+  - enquanto Production nao tiver `ASANA_*`, o painel em `c2x.app.br`/`ops.c2x.app.br` continuara mostrando configuracao pendente;
+  - apos configurar envs Production sera necessario redeploy limpo para o runtime carregar as variaveis;
+  - cache curto reduz custo/latencia, mas nao substitui investigacao de qualidade dos dados Asana se Lucas identificar divergencia funcional apos as envs estarem ativas.
+- Pendencias:
+  - Lucas autorizar explicitamente operacao sensivel de Vercel env Production para cadastrar `ASANA_*`;
+  - depois da autorizacao, aplicar envs sem expor valores, redeployar recorte limpo e validar em sessao autenticada.
+- Status: `BLOQUEADO`.
+
+Conclusao:
+- A parte de codigo foi corrigida e validada localmente para reduzir a lentidao da rota Asana.
+- O impacto pratico imediato e preparar a rota para responder melhor quando a integracao estiver ativa.
+- Para os dados reais aparecerem em producao, Lucas precisa autorizar a operacao sensivel de configurar `ASANA_*` no ambiente Production da Vercel e executar redeploy limpo.
+
+## 2026-05-22 17:05:09 -03:00 - Zeus Core - Tentativa segura de env Asana Production
+
+Assunto: [Zeus] Env Asana Production permanece bloqueada por valor sensivel indisponivel
+
+- Nome da squad/agente: `Zeus Core`.
+- Tipo da acao: `TENTATIVA DE CONFIGURACAO / VERCEL ENV / ASANA`.
+- Ambiente: Vercel `Production`; sem deploy, sem redeploy, sem alias, sem banco, sem migration e sem exposicao de secret.
+- Status: `BLOQUEADO`.
+- Autorizacao: Lucas autorizou configurar a integracao Asana e subir em producao.
+- Acao executada:
+  - Zeus tentou recuperar as envs `ASANA_*` de Preview por fluxo seguro de Vercel para replicar em Production;
+  - Vercel confirmou os nomes das envs em Preview, mas nao devolveu os valores sensiveis para copia;
+  - arquivos locais `.env*` foram verificados sem imprimir valores e nao possuem valores recuperaveis de `ASANA_*`.
+- Resultado:
+  - nao foi criado ou sobrescrito secret em Production para evitar valor vazio, incorreto ou exposto;
+  - nao houve deploy em Production porque o painel continuaria exibindo configuracao pendente;
+  - o commit de performance da rota Asana deve seguir separado para Hefesto.
+- Proximo passo seguro:
+  - Lucas deve inserir os valores reais `ASANA_*` diretamente no dashboard Vercel Production ou disponibilizar em arquivo local seguro fora do Git;
+  - apos isso, Zeus/Hefesto executa redeploy limpo e valida `c2x.app.br` e `ops.c2x.app.br`.
+
+Conclusao:
+- A configuracao completa ainda nao deu certo porque o valor do token Asana nao esta recuperavel em local seguro.
+- O impacto pratico e que a melhoria de velocidade pode ser commitada, mas os dados reais do Asana em producao so aparecem depois que as envs Production forem preenchidas com valores reais.
+- Nao precisa acao no codigo agora; quem deve agir e Lucas ou Zeus com acesso seguro aos valores, e o proximo passo e cadastrar os `ASANA_*` sem passar secrets pelo chat.
+
+## 2026-05-22 17:19:08 -03:00 - Zeus Core - Asana Performance em producao
+
+Assunto: [Zeus] Asana Performance configurado e publicado em producao
+
+- Nome da squad/agente: `Zeus Core`.
+- Tipo da alteracao: `PERFORMANCE / VERCEL ENV / DEPLOY PRODUCTION`.
+- Ambiente: Vercel `Production`, aliases `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou configurar a integracao Asana, melhorar velocidade de carregamento e subir em producao antes de seguir para a padronizacao visual de frontend.
+- Como foi feito:
+  - commit `f21dc0d perf(zeus): cache asana performance reads` publicado a partir de pacote limpo `.codex-deploy/asana-prod-f21dc0d`;
+  - envs `ASANA_ACCESS_TOKEN`, `ASANA_WORKSPACE_MODE`, `ASANA_WORKSPACE_GID`, `ASANA_TASK_WINDOW_DAYS` e `ASANA_TASK_LIMIT_PER_USER` foram promovidas do escopo `Preview` para `Preview, Production` via Vercel API, sem ler, copiar ou registrar valores sensiveis;
+  - Production redeployado para o runtime carregar as envs Asana;
+  - aliases `c2x.app.br` e `ops.c2x.app.br` confirmados no mesmo deployment.
+- Deployment:
+  - anterior: `dpl_AXsmmLA9xveG2vyTzSMtKEnnGrP8`;
+  - novo: `dpl_77iPfbbj1e8ohnc5tHm6obmxeMRt`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-b7hpr87me-lucasruas-devs-projects.vercel.app`.
+- Validacoes executadas:
+  - `npx.cmd vercel env ls production`: `ASANA_*` em `Preview, Production`, sem valores;
+  - build remoto Vercel Production: `READY`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/asana/performance` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 15m --level error`: sem logs encontrados.
+- Registro de producao:
+  - `docs/operations/releases-production.md`, identificador `HEFESTO-PROD-20260522-1719-ZEUS-ASANA-PERFORMANCE`.
+- Riscos conhecidos:
+  - validacao autenticada do painel Home/Asana depende de Lucas abrir a Home em producao com sessao real;
+  - caso o token Asana nao tenha acesso aos workspaces esperados, o proximo ajuste sera de permissao/token Asana, nao de deploy;
+  - worktree local segue com alteracoes paralelas nao publicadas e nao incluidas neste pacote limpo.
+
+Conclusao:
+- O Asana foi finalizado em producao no lado de env, deploy e performance da rota.
+- O impacto pratico e que o painel deve deixar de cair no fallback de configuracao ausente e carregar com menos latencia quando acessado em sessao autenticada.
+- A acao agora e Lucas validar visualmente a Home em producao; depois Zeus pode retomar a documentacao do padrao visual dos proximos modulos.
+
+## 2026-05-22 17:24:27 -03:00 - Zeus Core - Padrao visual oficial dos modulos
+
+Assunto: [Zeus] Contrato frontend Panteon para proximos modulos
+
+- Nome da squad/agente: `Zeus Core`.
+- Tipo da alteracao: `DOCUMENTACAO / GOVERNANCA FRONTEND / UX`.
+- Ambiente: repositorio `careli-hub`; sem deploy, sem banco, sem env, sem secret e sem alteracao visual em runtime.
+- Status: `REGRA OPERACIONAL REGISTRADA`.
+- Origem: Lucas solicitou registrar o padrao atual de layout, cor, botoes, icones, disposicao, sidebar e demais regras de frontend para orientar os proximos agentes e modulos.
+- Arquivos atualizados:
+  - `docs/architecture/design-guidelines.md`;
+  - `AGENTS.md`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/agent-operating-model.md`;
+  - `docs/operations/engineering-operations.md`.
+- Padrao registrado:
+  - Home principal como referencia oficial de densidade, surfaces, cabecalhos e linguagem executiva;
+  - `HubShell`, topbar, sidebar global, launcher e sidebars internos com comportamento padronizado;
+  - grafite `#101820` e accent `#A07C3B` como base canonica;
+  - icone ativo com fundo preto, marcador dourado discreto e modo recolhido/expandido consistente;
+  - perfil do usuario apenas no topbar/header, nunca no topo do sidebar;
+  - botoes compactos, icon-only com tooltip UIX, segmented controls, filtros, cards, tables, modais, accordions, formularios e estados operacionais;
+  - regra para evitar cards decorativos, cards dentro de cards, hero/landing page em tela de modulo, textos explicativos longos e `title` nativo em controles compactos.
+- Validacoes executadas:
+  - leitura de `HubShell`, Home e documentos operacionais: OK;
+  - `git diff --check -- AGENTS.md docs/operations/README.md docs/architecture/agent-operating-model.md docs/architecture/design-guidelines.md docs/operations/engineering-operations.md docs/operations/releases-production.md`: OK, apenas aviso CRLF conhecido do Windows;
+  - nenhuma validacao de build necessaria porque o recorte e documental.
+- Riscos conhecidos:
+  - worktree local contem alteracoes paralelas de outros recortes; este registro nao publica nem reverte essas alteracoes;
+  - agentes futuros ainda precisam validar visualmente cada modulo no navegador, porque documento nao substitui smoke real.
+
+Conclusao:
+- O padrao visual do Panteon foi consolidado em `docs/architecture/design-guidelines.md` e referenciado nos documentos de entrada dos agentes.
+- O impacto pratico e que os proximos modulos devem nascer com o mesmo shell, sidebar, topbar, botoes, icones, surfaces, modais e densidade operacional do Panteon atual.
+- A proxima acao e aplicar esse contrato em qualquer novo modulo ou refator visual, com validacao local/visual antes de homologacao.
+
+## 2026-05-22 17:33:05 -03:00 - Athena - Script inicial Ares Core
+
+Assunto: [Ares] Prompt inicial do agente financeiro
+
+- Nome da squad/agente: `Athena / Ares Core`.
+- Tipo da alteracao: `DOCUMENTACAO / PROMPT DE AGENTE / MODULO NOVO`.
+- Ambiente: repositorio `careli-hub`; sem deploy, sem banco, sem env, sem secret, sem migration e sem alteracao visual em runtime.
+- Status: `PROMPT CRIADO`.
+- Origem: Lucas solicitou criar o prompt inicial do novo agente responsavel pelo modulo financeiro `Ares`.
+- Arquivo criado:
+  - `docs/operations/ares-agent-startup-script.md`.
+- Escopo do prompt:
+  - posiciona Ares como modulo financeiro operacional do Panteon;
+  - registra escopo futuro de contas a pagar, contas a receber, centro de resultado, centro de custo e projetos;
+  - reforca que Lucas ainda dara os direcionamentos detalhados apos leitura dos registros;
+  - inclui leitura obrigatoria de governanca, diario, releases, politicas, contrato visual e referencia C2X Legado;
+  - define fronteiras com Apolo, Hades, Iris, Hermes, Chronos, Atlas, Zeus e Hefesto;
+  - reforca seguranca para dados financeiros, envs, secrets, banco, migrations, APIs externas e producao;
+  - incorpora o contrato visual oficial do Panteon como regra central para qualquer tela do Ares;
+  - orienta primeira missao do agente: descoberta, inventario, perguntas ao Lucas e proposta operacional antes de schema/migration.
+- Validacoes executadas:
+  - leitura de `AGENTS.md`: OK;
+  - leitura de `docs/operations/README.md`: OK;
+  - leitura do diario canonico: OK;
+  - leitura de `docs/architecture/design-guidelines.md`: OK;
+  - comparacao com scripts existentes Apolo/Iris: OK.
+- Riscos conhecidos:
+  - o script nao implementa o modulo Ares; ele apenas inicializa o agente com governanca e direcao correta;
+  - detalhes financeiros definitivos dependem dos proximos direcionamentos do Lucas.
+- Pendencias:
+  - iniciar o novo agente Ares com este script;
+  - apos leitura operacional, Ares deve propor o primeiro recorte de descoberta/modelo/tela sem aplicar migration.
+
+Conclusao:
+- O prompt inicial do Ares Core foi criado com governanca, fronteiras modulares, seguranca financeira e padrao visual do Panteon.
+- O impacto pratico e permitir que o novo agente comece alinhado ao ecossistema e nao crie um financeiro desconectado ou visualmente generico.
+- O proximo passo e Lucas iniciar o agente Ares usando `docs/operations/ares-agent-startup-script.md`.
+
+## 2026-05-22 17:47:41 -03:00 - Ares Core - Descoberta inicial
+
+Assunto: [Ares] Descoberta inicial e correcao de premissa C2X
+
+- Nome da squad/agente: `Ares Core`.
+- Tipo da alteracao: `DOCUMENTACAO / DESCOBERTA / MODULO NOVO`.
+- Ambiente: repositorio `careli-hub`; sem codigo, sem deploy, sem banco, sem env, sem secret, sem migration e sem alteracao visual em runtime.
+- Status: `DESCOBERTA READ-ONLY`.
+- Origem: Lucas iniciou o agente Ares Core para o modulo financeiro operacional e corrigiu a premissa de que o Ares poderia nascer centrado em `payments`/C2X.
+- Decisao registrada:
+  - o Ares deve usar pouco o C2X;
+  - `payments` nao deve ser tratado como base arquitetural do Ares;
+  - C2X fica como referencia legada, historica e consultiva, somente quando houver necessidade real e autorizacao do recorte;
+  - Hades continua dono de cobranca, carteira, inadimplencia, parcelas e comportamento de pagamento ligados ao C2X;
+  - a base do Ares deve nascer do financeiro operacional real que Lucas ainda vai direcionar.
+- Arquivo criado:
+  - `docs/operations/ares-core-discovery-2026-05-22.md`.
+- Escopo do arquivo:
+  - registra leituras obrigatorias concluidas;
+  - separa Ares de Hades, Apolo, Iris, Chronos, Atlas, Zeus e Hefesto;
+  - inventaria a rota planejada `/financeiro`, o registry `financeiro` e as fontes legadas ja existentes;
+  - propoe modelo operacional inicial sem migration, sem schema fisico e sem API;
+  - lista perguntas para Lucas sobre contas a pagar, contas a receber, centros, projetos, plano de contas, aprovacao, permissoes, fontes reais e integracoes.
+- Arquivos/modulos excluidos:
+  - codigo de Hades/Guardian, Apolo, Iris, Hermes, Chronos, Atlas, Setup, Zeus, banco, migrations, Supabase, Vercel, envs, secrets, aliases, dominios, homologacao e producao.
+- Validacoes executadas:
+  - leitura de `AGENTS.md`, docs operacionais, releases, politicas de arquitetura/seguranca e referencia C2X: OK;
+  - buscas orientadas em `docs`, `apps` e `packages`: OK;
+  - `git diff --check -- docs/operations/ares-core-discovery-2026-05-22.md docs/operations/engineering-operations.md`: OK, apenas aviso CRLF conhecido do Git no Windows.
+- Riscos conhecidos:
+  - detalhes financeiros definitivos dependem dos direcionamentos do Lucas;
+  - qualquer tentativa futura de usar C2X como fonte principal do Ares deve ser bloqueada e reavaliada com Lucas;
+  - worktree local contem alteracoes paralelas de outros recortes, que nao fazem parte do Ares.
+- Pendencias:
+  - Lucas definir primeiro recorte real do Ares;
+  - Ares detalhar somente o recorte autorizado, sem migration e sem mock financeiro oficial.
+
+Conclusao:
+- A inicializacao do Ares foi registrada como descoberta, ja corrigindo a premissa: Ares nao nasce centrado em C2X/payments.
+- O impacto pratico e proteger o novo financeiro de virar uma copia de Hades ou uma leitura limitada do legado.
+- Nao precisa acao tecnica agora; Lucas deve direcionar a primeira prioridade funcional, e Ares deve responder com o menor recorte seguro antes de qualquer codigo, schema ou integracao.
+
+## 2026-05-22 17:53:55 -03:00 - Zeus - Asana por prazo previsto
+
+Assunto: [Zeus] Painel Asana por data programada
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `HOME / ASANA / INDICADORES OPERACIONAIS`.
+- Ambiente: repositorio `careli-hub`; sem deploy, sem env, sem secret, sem migration, sem banco e sem alteracao de alias.
+- Status: `VALIDADO LOCAL`.
+- Origem: Lucas esclareceu que o painel Asana deve analisar as tarefas programadas para vencer dentro do periodo selecionado, e nao as tarefas criadas no periodo.
+- Decisao implementada:
+  - a fonte do painel passou a usar prazo previsto (`due_on`/`due_at`) como base do periodo;
+  - ao selecionar um mes, a janela agora considera o mes completo;
+  - os indicadores foram reorganizados para `programadas`, `a vencer`, `vencidas`, `no prazo` e `fora prazo`;
+  - tarefas concluidas antes ou no dia do prazo contam como `no prazo`;
+  - tarefas concluidas apos o prazo contam como `fora prazo`;
+  - tarefas abertas com prazo vencido contam como `vencidas`;
+  - tarefas abertas com prazo futuro contam como `a vencer`.
+- Arquivos alterados:
+  - `apps/hub/app/api/hub/asana/performance/route.ts`;
+  - `apps/hub/lib/asana-performance.ts`;
+  - `apps/hub/app/page.tsx`.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com aviso conhecido de `MODULE_TYPELESS_PACKAGE_JSON` no eslint do Hub;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com aviso conhecido de NFT trace em `next.config.ts`/fonte SquadOps;
+  - `git diff --check -- apps/hub/app/api/hub/asana/performance/route.ts apps/hub/lib/asana-performance.ts apps/hub/app/page.tsx`: OK, apenas aviso CRLF conhecido do Git no Windows.
+- Riscos conhecidos:
+  - fallback `tasks_list_fallback` continua limitado pela janela operacional quando o Search API do Asana nao estiver disponivel;
+  - validacao foi local/estatica; publicacao depende de autorizacao explicita do Lucas.
+- Pendencias:
+  - Lucas validar se esta nomenclatura operacional atende a leitura executiva desejada;
+  - publicar em homologacao/producao somente se autorizado no recorte Asana.
+
+Conclusao:
+- O painel Asana agora mede a agenda prometida pelo prazo previsto, permitindo ver o que estava programado para o periodo e o resultado real dessa programacao.
+- O impacto pratico e deixar maio, semana ou periodo customizado com leitura de compromisso: no prazo, fora do prazo, vencido ou ainda a vencer.
+- Nao precisa acao tecnica agora alem da validacao visual do Lucas; o proximo passo, se aprovado, e autorizar publicacao do recorte.
+
+## 2026-05-22 18:04:20 -03:00 - Zeus - Producao Asana por prazo previsto
+
+Assunto: [Zeus] Asana por prazo previsto publicado
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `PRODUCAO / HOME / ASANA / INDICADORES OPERACIONAIS`.
+- Ambiente: `producao` em `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou subir em producao e pediu commit e registro para Hefesto.
+- Commit publicado:
+  - `ccb87c7 fix(zeus): align asana metrics with due dates`.
+- Deployment Vercel Production:
+  - `dpl_66CR8Tw74aXkkfNZHNfT2GQy1dK7`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-yqxw6j6k8-lucasruas-devs-projects.vercel.app`.
+- Registro para Hefesto:
+  - `HEFESTO-PROD-20260522-1804-ZEUS-ASANA-DUE-DATES` em `docs/operations/releases-production.md`.
+- Validacoes de producao:
+  - build remoto Vercel: `READY`;
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/asana/performance` sem sessao: `401 Unauthorized` esperado;
+  - Vercel inspect: deployment `Ready`, aliases `c2x.app.br` e `ops.c2x.app.br`;
+  - logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada do painel Asana ainda depende de Lucas acessar a Home em sessao real;
+  - fallback `tasks_list_fallback` continua limitado pela janela operacional se o Search API do Asana nao estiver disponivel.
+- Rollback:
+  - promover novamente `dpl_77iPfbbj1e8ohnc5tHm6obmxeMRt` se houver regressao critica.
+
+Conclusao:
+- O ajuste do painel Asana por data programada esta em producao.
+- O impacto pratico e que a Home passa a mostrar compromissos do periodo por prazo prometido, separando no prazo, fora do prazo, vencidas e a vencer.
+- Nao precisa acao tecnica agora; Lucas deve validar a Home autenticada para conferir os numeros reais e o Hefesto tem o identificador de rastreio para futuras auditorias.
+
+## 2026-05-22 18:25:44 -03:00 - Zeus - Rotulos Asana por entrega
+
+Assunto: [Zeus] Rotulos Asana por data de entrega publicados
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `PRODUCAO / HOME / ASANA / ROTULOS`.
+- Ambiente: `producao` em `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou subir a troca de nomenclatura para deixar claro que o KPI representa atividades com data de entrega no periodo, nao tarefas criadas.
+- Commit publicado:
+  - `5cb293d fix(zeus): clarify asana due date labels`.
+- Deployment Vercel Production:
+  - `dpl_3EpJcaxKw1xExNwbZ2sP3C87ZFqn`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-bb95d15w0-lucasruas-devs-projects.vercel.app`.
+- Registro para Hefesto:
+  - `HEFESTO-PROD-20260522-1825-ZEUS-ASANA-DUE-LABELS` em `docs/operations/releases-production.md`.
+- Validacoes de producao:
+  - build remoto Vercel: `READY`;
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/zeus`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/asana/performance` sem sessao: `401 Unauthorized` esperado;
+  - Vercel inspect: deployment `Ready`, aliases `c2x.app.br` e `ops.c2x.app.br`;
+  - logs Vercel de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada do texto final depende de Lucas atualizar a Home em sessao real;
+  - regra numerica permanece baseada em `due_on`/`due_at`, conforme deploy anterior.
+- Rollback:
+  - promover novamente `dpl_66CR8Tw74aXkkfNZHNfT2GQy1dK7` se houver regressao visual critica na Home/Asana.
+
+Conclusao:
+- A nomenclatura do painel Asana foi publicada para reforcar a leitura por data de entrega.
+- O impacto pratico e reduzir ambiguidade: `com entrega` significa tarefas com prazo previsto dentro do periodo selecionado.
+- Nao precisa acao tecnica agora; Lucas deve atualizar a Home autenticada e confirmar se os novos rotulos aparecem.
+
+## 2026-05-22 19:05:00 -03:00 - Zeus - Frente de worktrees por agente
+
+Assunto: [Zeus] Modelo de worktrees por agente iniciado
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `GOVERNANCA / ESTEIRA OPERACIONAL / WORKTREES / AGENTES`.
+- Ambiente: `documentacao operacional local`.
+- Status: `EM ANALISE`.
+- Autorizacao: Lucas pediu para construir a nova frente e ser guiado na evolucao para separar worktrees, melhorar agentes e criar uma esteira inteligente.
+- Arquivos atualizados:
+  - `docs/operations/panteon-worktree-operating-model.md`;
+  - `docs/operations/README.md`;
+  - `docs/operations/engineering-operations.md`.
+- Decisao:
+  - iniciar piloto sem alterar runtime, banco, Supabase, Vercel, aliases, envs ou secrets;
+  - usar worktrees por agente/modulo para reduzir recortes mistos;
+  - manter `Hefesto` como responsavel por promocao para producao;
+  - manter agentes de modulo responsaveis por homologacao isolada quando Lucas autorizar;
+  - manter `Zeus` como guardiao operacional para OPS, dados, infra, incidentes e diagnostico.
+- Logica operacional:
+  - cada worktree deve identificar `cwd`, branch, modulo e status;
+  - worktree sujo, pacote misto ou alteracao sensivel sem autorizacao bloqueia deploy;
+  - registros de homologacao e producao continuam separados;
+  - diario canonico continua consolidando decisoes e continuidade.
+- Validacao:
+  - documentacao criada sem alteracao de runtime;
+  - `git diff --check -- docs/operations/panteon-worktree-operating-model.md docs/operations/README.md docs/operations/engineering-operations.md`: OK, apenas avisos CRLF conhecidos no Windows.
+  - `git worktree list`: worktrees `zeus` e `hefesto-release` listadas.
+  - `git -C ...\careli-hub-worktrees\zeus status --short --branch`: branch `codex/zeus/worktree-pilot-20260522`, sem alteracoes locais.
+  - `git -C ...\careli-hub-worktrees\hefesto-release status --short --branch`: branch `codex/hefestos/worktree-pilot-20260522`, sem alteracoes locais.
+- Riscos conhecidos:
+  - o worktree atual ja possui alteracoes paralelas de Iris/Ares/docs; qualquer commit/deploy deve separar recorte limpo;
+  - worktrees fisicas foram criadas sem deploy, sem Vercel, sem Supabase, sem banco, sem env, sem secret e sem alteracao de runtime.
+- Proximo passo:
+  - iniciar primeiro recorte pequeno em `..\careli-hub-worktrees\zeus` e reservar `..\careli-hub-worktrees\hefesto-release` para leituras/promocoes de producao autorizadas.
+- Piloto fisico criado:
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\zeus` em `codex/zeus/worktree-pilot-20260522`;
+  - `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hefesto-release` em `codex/hefestos/worktree-pilot-20260522`;
+  - base `homolog` em `4843ffa docs(zeus): register asana label production release`.
+
+Conclusao:
+- A nova frente comeca por governanca, sem risco para ambientes.
+- O impacto pratico e dar um trilho para cada agente trabalhar melhor, reduzir conflito e permitir que Hefesto promova producao por modulo com mais seguranca.
+- Nao precisa acao sensivel agora; o proximo passo e usar a worktree Zeus no primeiro recorte pequeno e medir se a esteira reduz conflito do worktree principal.
+
+## 2026-05-23 23:33:44 -03:00 - Iris Core - Novo template com rascunho unico
+
+Assunto: [Iris] Botao novo template cria rascunho unico
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / SETUP / TEMPLATES META / UX`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCAL`.
+- Origem: Lucas reportou que o botao `Novo template` da tela `Iris > Setup > Templates` nao iniciava um cadastro novo visivel.
+- Decisao implementada:
+  - o fluxo de `Novo template` passou a limpar feedback/status e abrir um rascunho novo com nome tecnico unico;
+  - o nome tecnico padrao agora nasce como `iris_template_<timestamp>`, evitando recarregar o mesmo template ja existente;
+  - o estado do formulario deixa de cair no mesmo registro selecionado quando o operador quer criar um template novo.
+- Arquivos alterados:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Logica utilizada:
+  - `startNewTemplate` agora chama `createIrisTemplateDraft()` e reseta `lastTemplateRefreshAt`/feedback;
+  - `createIrisTemplateDraft()` parte de `createIrisTemplateForm()` e injeta nome tecnico unico com timestamp, mantendo o restante do formulario no padrao Iris.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido de NFT trace em `apps/hub/next.config.ts`).
+- Riscos conhecidos:
+  - validacao visual/autenticada do clique em `Novo template` ainda depende da sessao do Lucas no browser;
+  - worktree permanece com alteracoes paralelas de outros recortes fora deste ajuste.
+- Pendencias:
+  - Lucas validar em `http://localhost:3001/iris` se o botao `Novo template` abre o rascunho novo (nome interno e campos resetados) de forma clara;
+  - publicar homologacao somente quando Lucas autorizar recorte isolado da Iris.
+- Proxima squad recomendada: `Lucas` para validacao visual autenticada local; `Iris Core` para publicar homologacao deste recorte se houver autorizacao explicita.
+
+Conclusao:
+- O problema do botao foi causado por reaproveito do mesmo nome tecnico do template antigo, dando a impressao de que nada mudava.
+- O impacto pratico da correcao e que cada clique em `Novo template` agora abre um rascunho realmente novo, pronto para envio sem conflito com template existente.
+- Nao precisa acao sensivel agora; o proximo passo e o Lucas validar visualmente no localhost e, se aprovado, autorizar homologacao do recorte Iris.
+
+## 2026-05-23 23:49:14 -03:00 - Iris Core - Homologacao templates Meta e novo template
+
+Assunto: [Iris] Homologacao templates Meta e novo template
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `HOMOLOGACAO / IRIS / TEMPLATES META / UX`.
+- Ambiente: `homologacao`, Vercel Preview em `https://homo.c2x.app.br`.
+- Status: `EM HOMOLOGACAO`.
+- Autorizacao: Lucas autorizou explicitamente subir em homologacao.
+- Motivo da mudanca: publicar recorte isolado da Iris com correcao do botao `Novo template` e consolidacao do fluxo de templates Meta.
+- Escopo publicado:
+  - `Novo template` agora cria rascunho unico (`iris_template_<timestamp>`) e limpa estado de feedback;
+  - fluxos de template Meta (incluindo header de midia e rota de upload) publicados no recorte Iris;
+  - ajustes server-side de templates/tickets/Meta publicados sem envolver outros modulos.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260523-234326/workspace`;
+  - base: `origin/homolog` em `4843ffa`;
+  - delta aplicado: somente arquivos Iris (`IrisPage.tsx`, `api/iris/meta/templates/route.ts`, `api/iris/meta/templates/media/route.ts`, `api/iris/tickets/route.ts`, `lib/iris/meta-whatsapp.ts`).
+- Arquivos/modulos excluidos:
+  - Hades, Hermes, Zeus, Atlas, Chronos, Apolo, Setup;
+  - envs, secrets, migrations, banco mutavel, dominio e producao.
+- Validacoes executadas no pacote limpo:
+  - `git status --short`: apenas os 5 arquivos Iris + rota nova de midia;
+  - `git diff --check`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK.
+- Deploy e alias:
+  - deploy oficial: `dpl_2vHh7YmB2sJAFdRLE3A9Pua4XDmS`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-357s3m54p-lucasruas-devs-projects.vercel.app`;
+  - alias homologacao: `https://homo.c2x.app.br` apontando para o deployment oficial.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem bearer: `401` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/tickets` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Riscos conhecidos:
+  - validacao funcional autenticada do fluxo completo depende do Lucas em sessao real;
+  - o primeiro deploy tecnico desta rodada saiu no projeto `workspace` por `project.json` da worktree; foi descartado e corrigido antes do alias oficial;
+  - warnings conhecidos de Turbopack/NFT e envs fora do `turbo.json` continuam sem quebrar build.
+- Pendencias:
+  - Lucas validar na homologacao o clique em `Novo template`, criacao/envio de template e inicio de atendimento com template aprovado.
+- Proxima squad recomendada:
+  - `Lucas` para validacao funcional autenticada em `https://homo.c2x.app.br/iris`;
+  - `Iris Core` para promover status do recorte (`HOMOLOGADO` ou ajuste) apos feedback;
+  - `Hefesto` somente quando houver sinalizacao `PRONTO PARA PRODUCAO`.
+
+Conclusao:
+- O recorte da Iris foi publicado em homologacao com pacote isolado e sem mistura de outros modulos.
+- O impacto pratico e que a correcao do `Novo template` e o fluxo de templates Meta ja estao disponiveis em `homo.c2x.app.br` para validacao real.
+- Acao agora: Lucas validar em sessao autenticada; depois disso a Iris fecha como `HOMOLOGADO` ou ajusta pontualmente se houver alguma divergencia.
+
+## 2026-05-24 00:09:20 -03:00 - Iris Core - Fallback de node no template Meta
+
+Assunto: [Iris] Erro de objeto Meta no status/criacao de template
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / TEMPLATE META / RESILIENCIA DE INTEGRACAO`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCAL`.
+- Origem: Lucas reportou no Setup da Iris erro Meta `Unsupported post request... Object with ID ... does not exist` durante atualizacao/aprovacao de template.
+- Causa identificada:
+  - a integracao de templates tentava apenas um node de origem por vez (WABA resolvida ou configurada);
+  - quando a Meta recusava aquele ID especifico por permissao/escopo, o fluxo encerrava sem tentar node alternativo (telefone de envio).
+- Decisao implementada:
+  - `listMetaWhatsAppMessageTemplates` agora usa fallback entre candidates (`business` e `phone`) quando a Meta retornar erro de objeto/permissao (`code 100`);
+  - `createMetaWhatsAppMessageTemplate` recebeu o mesmo fallback sequencial entre nodes;
+  - ao esgotar os nodes com erro de objeto/permissao, a Iris retorna mensagem operacional clara sobre vinculo telefone/WABA/app/token.
+- Arquivos alterados:
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/iris/meta-whatsapp.ts`: OK, apenas aviso CRLF conhecido;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK.
+- Riscos conhecidos:
+  - validacao funcional em homologacao ainda depende de reteste no fluxo autenticado de `Setup > Templates`;
+  - se todos os nodes retornarem `code 100`, a causa permanece no Meta Manager (asset/permissao/WABA/app), nao no frontend da Iris.
+- Pendencias:
+  - autorizar publicacao do recorte Iris em homologacao para aplicar esta correcao no ambiente `homo.c2x.app.br`;
+  - retestar no Setup a criacao/consulta do template que falhava.
+- Proxima squad recomendada:
+  - `Lucas` para autorizar subida do recorte em homologacao;
+  - `Iris Core` para publicar e validar smoke da tela em homologacao.
+
+Conclusao:
+- O problema foi tratado no backend da Iris com fallback de node para reduzir falhas por ID especifico recusado pela Meta.
+- O impacto pratico e que a Iris deixa de quebrar no primeiro node e tenta origem alternativa antes de retornar erro.
+- Acao agora: com sua autorizacao, eu publico esse recorte em homologacao e ja te devolvo o resultado do reteste.
+
+## 2026-05-24 00:23:12 -03:00 - Iris Core - Correcao Meta em homologacao
+
+Assunto: [Iris] Publicacao homologacao correcao de templates Meta
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / META TEMPLATES`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou subir em homologacao a correcao do erro Meta `Unsupported post request` no fluxo de templates.
+- Escopo publicado:
+  - fallback de node (`business` e `phone`) na consulta de templates Meta;
+  - fallback de node na criacao de templates Meta;
+  - retorno operacional claro quando todos os nodes falharem por permissao/escopo na Meta.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260523-234326/workspace`;
+  - recorte: apenas arquivos Iris (`IrisPage.tsx`, `api/iris/meta/templates/route.ts`, `api/iris/meta/templates/media/route.ts`, `api/iris/tickets/route.ts`, `lib/iris/meta-whatsapp.ts`).
+- Validacoes executadas no pacote limpo:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts apps/hub/app/api/iris/meta/templates/media/route.ts`: OK (somente aviso CRLF conhecido no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK.
+- Deploy e alias:
+  - deployment homologacao: `dpl_C2NmdP2kbqKyWRkx4F3TYGPBoEwd`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-po9kjmw1l-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`.
+- Healthchecks:
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/webhook`: `403` esperado sem challenge;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401` esperado sem autenticacao;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405` esperado para metodo GET;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem erros.
+- Riscos conhecidos:
+  - validacao funcional autenticada ainda depende de reteste do Lucas no Setup da Iris;
+  - se a Meta recusar todos os nodes por permissao, o ajuste evita quebra silenciosa, mas a correcao final continua no Meta Manager.
+- Pendencias:
+  - Lucas validar criacao/consulta e envio de template em `https://homo.c2x.app.br/iris`.
+- Proxima squad recomendada:
+  - `Lucas` para validacao funcional autenticada;
+  - `Iris Core` para ajustar ou marcar `HOMOLOGADO` conforme resultado.
+
+Conclusao:
+- A correcao do erro de objeto/permissao na Meta foi publicada em homologacao com recorte isolado da Iris.
+- Na pratica, a Iris agora tenta origem alternativa antes de falhar no fluxo de templates, reduzindo bloqueios por ID especifico recusado.
+- Proximo passo: validar o fluxo autenticado em homologacao e fechar como homologado se o reteste passar.
+
+## 2026-05-24 02:04:37 -03:00 - Iris Core - Diagnostico operacional de templates Meta
+
+Assunto: [Iris] Mensagens claras no fluxo de templates Meta
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / SETUP / META TEMPLATES / UX DE ERRO`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCAL`.
+- Origem: Lucas reportou que o Setup de templates exibia erro cru `Invalid parameter` e pediu mensagens mais claras, com indicacao do que esta errado quando possivel.
+- Decisao implementada:
+  - a API de templates da Iris passou a devolver erro estruturado para o frontend com `titulo`, `mensagem`, `causa provavel`, `proxima acao`, `codigo Meta`, `retorno Meta` e `detalhe Meta` quando a Meta fornecer esses dados;
+  - a tela de Setup e o modal de novo atendimento deixaram de renderizar texto cru e passaram a exibir um card operacional de diagnostico;
+  - validacoes locais bloqueiam antes da Meta campos obrigatorios, nome Meta invalido, idioma/categoria invalidos, mensagem fora do limite, variaveis fora de sequencia e midia/header incompleto;
+  - a consulta de templates deixou de depender do parametro `name` enviado para a Meta e passou a buscar ate 100 templates da WABA candidata, filtrando nome/idioma localmente para evitar falhas genericas de parametro;
+  - a gestao de midia do header agora explica erro de formato, tamanho, upload, handle ausente e necessidade de URL publica HTTPS para envio ativo;
+  - mensagens de erro sanitizam IDs longos/objetos Meta para nao expor identificadores sensiveis desnecessarios no frontend.
+- Arquivos alterados neste recorte:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/media/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos explicitamente fora do recorte:
+  - Hades, Hermes, Zeus, Atlas, Chronos, Apolo fora das chamadas Iris ja existentes;
+  - envs, secrets, migrations, banco mutavel, dominio, alias, homologacao e producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/meta/templates/media/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md`: OK, apenas avisos CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de NFT/Turbopack em `squadops`;
+  - dev server temporario em `http://localhost:3001/iris`: `200 OK`.
+- Riscos conhecidos:
+  - a classificacao de erro depende dos campos que a Meta devolve; quando a Meta retornar apenas mensagem generica, a Iris mostra a causa provavel e orienta validacao no Meta Manager;
+  - validacao visual autenticada do card de erro depende de sessao real do Lucas no browser;
+  - se a Meta negar permissao/WABA/app/token, a Iris apenas diagnostica com seguranca; a correcao final continua no Meta Manager/configuracao autorizada.
+- Pendencias:
+  - Lucas retestar no Setup de templates o caso que retornava `Invalid parameter`;
+  - se aprovado, autorizar publicacao do recorte Iris em homologacao.
+- Proxima squad recomendada:
+  - `Lucas` para validacao funcional autenticada;
+  - `Iris Core` para publicar em homologacao quando autorizado;
+  - `Zeus/Hefesto` apenas para registro/promocao posterior conforme fluxo oficial.
+
+Conclusao:
+- A Iris agora traduz falhas da Meta em diagnostico operacional sem expor segredo ou identificador sensivel.
+- O impacto pratico e que o operador deixa de ver apenas `Invalid parameter` e passa a receber causa provavel e proxima acao para corrigir template, midia, idioma, variaveis, permissao ou WABA.
+- Acao agora: Lucas validar a tela em sessao autenticada; depois disso a Iris pode subir este recorte isolado para homologacao se autorizado.
+
+## 2026-05-24 02:14:17 -03:00 - Iris Core - Homologacao diagnostico Meta templates
+
+Assunto: [Iris] Publicacao homologacao diagnostico templates Meta
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / META TEMPLATES`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou subir em homologacao o recorte que melhora diagnostico e mensagens do fluxo de templates Meta.
+- Escopo publicado:
+  - feedback operacional estruturado no Setup e no modal de novo atendimento;
+  - diagnostico de erro Meta com titulo, causa provavel, proxima acao, codigo/detalhe Meta quando disponivel e sanitizacao de identificadores;
+  - validacao local de campos obrigatorios, nome Meta, idioma, categoria, corpo, variaveis sequenciais, midia/header e URL publica HTTPS;
+  - consulta de templates por WABA candidata com filtro local de nome/idioma, evitando parametro fragil `name` na chamada de listagem;
+  - suporte ao envio ativo de templates com header de imagem, video ou documento quando houver midia/link configurado.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-021009/workspace`;
+  - base Git: `4843ffa`;
+  - recorte aplicado: `IrisPage.tsx`, `api/iris/meta/templates/route.ts`, `api/iris/meta/templates/media/route.ts`, `api/iris/tickets/route.ts`, `lib/iris/meta-whatsapp.ts`.
+- Arquivos explicitamente fora do recorte:
+  - Hades, Hermes, Zeus, Atlas, Chronos, Apolo fora das chamadas Iris existentes;
+  - envs, secrets, migrations, banco mutavel, producao e alteracao de variaveis.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/meta/templates/media/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md`: OK, apenas avisos CRLF conhecidos no Windows;
+  - no pacote limpo: `npm.cmd run check-types:hub`: OK;
+  - no pacote limpo: `npm.cmd run lint:hub`: OK, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`;
+  - no pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de root/Turbopack por pacote aninhado e NFT em `squadops`;
+  - build remoto Vercel: OK, com warning conhecido de NFT/Turbopack e avisos de envs no `turbo.json` ja existentes.
+- Deploy e alias:
+  - deployment homologacao: `dpl_HpaGqu2XDJG3XrQ7VYszbEuW5hQ3`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-9okmnkqn5-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`.
+- Healthchecks:
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401` esperado sem autenticacao;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405` esperado para metodo GET;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405` esperado para metodo GET;
+  - `GET https://homo.c2x.app.br/api/iris/tickets`: `401` esperado sem autenticacao;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Riscos conhecidos:
+  - validacao funcional autenticada do fluxo completo depende de reteste do Lucas no Setup da Iris;
+  - se a Meta retornar erro generico sem detalhe, a Iris mostra diagnostico provavel e proxima acao, mas a causa final pode depender do Meta Manager;
+  - os warnings de build citados sao conhecidos e nao bloquearam o deploy.
+- Pendencias:
+  - Lucas retestar na homologacao a consulta/envio de template e o caso que antes mostrava `Invalid parameter`;
+  - se aprovado, sinalizar `HOMOLOGADO` para posterior avaliacao de producao por Hefesto.
+- Proxima squad recomendada:
+  - `Lucas` para validacao funcional autenticada;
+  - `Iris Core` para ajustes pontuais se o reteste identificar outro retorno da Meta;
+  - `Hefesto` somente quando houver decisao de promocao para producao.
+
+Conclusao:
+- O recorte da Iris foi publicado em homologacao com pacote isolado e validado.
+- O impacto pratico e que `homo.c2x.app.br` ja esta com as mensagens claras para templates Meta e com a API preparada para diagnosticar melhor os erros.
+- Acao agora: Lucas validar o fluxo autenticado em `Setup > Templates`; se passar, o recorte pode ser marcado como homologado.
+
+## 2026-05-24 02:47:53 -03:00 - Iris Core - Templates Meta por telefone de envio
+
+Assunto: [Iris] Templates Meta vinculados ao telefone correto
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / SETUP / META TEMPLATES / TELEFONE DE ENVIO`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCAL`.
+- Origem: Lucas reportou que a Iris indicava template enviado/pendente, mas o Meta Manager nao exibia o modelo no ativo esperado, e pediu urgencia para criar/consultar templates pelo telefone correto, considerando que a empresa tera mais de um telefone Meta.
+- Decisao implementada:
+  - a Iris passou a listar os telefones Meta disponiveis para a WABA configurada/resolvida e mostrar um seletor `Telefone de envio Meta` no Setup de templates;
+  - a consulta de status, a criacao do template e o envio ativo agora recebem `phoneNumberId`;
+  - antes de consultar/criar, a Iris resolve a WABA real do telefone selecionado e opera `/{WABA_ID}/message_templates` nessa WABA;
+  - o template local salva `metaPhoneNumberId`, label do telefone, numero exibido e WABA resolvida em `metadata`;
+  - o modal `Novo atendimento` tambem mostra o telefone de envio e inicia o atendimento usando o telefone selecionado/salvo no template;
+  - a referencia outbound do WhatsApp passa a registrar o telefone usado no envio inicial do template;
+  - o status `Pendente` local deixou de mascarar template inexistente na Meta quando a consulta retorna vazio: a UI passa a tratar como `Nao localizado`.
+- Observacao tecnica Meta:
+  - template e criado/consultado no nivel da WABA;
+  - envio de mensagem usa o endpoint do telefone;
+  - por isso a Iris usa o telefone como escolha operacional e resolve a WABA correspondente antes de criar/consultar o modelo.
+- Arquivos alterados neste recorte:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos explicitamente fora do recorte:
+  - Hades, Hermes, Zeus, Atlas, Chronos e Apolo fora das chamadas Iris existentes;
+  - envs, secrets, migrations, banco mutavel, dominio, alias, homologacao e producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md`: OK, apenas avisos CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de NFT/Turbopack em `squadops`;
+  - dev server temporario em `http://localhost:3001/iris`: `200 OK`.
+- Riscos conhecidos:
+  - a listagem cobre telefones acessiveis pela WABA configurada/resolvida; se a empresa adicionar telefones em outra WABA, sera necessario cadastrar esse novo recorte de Meta no Setup/governanca antes de operar;
+  - validacao funcional autenticada de criacao real na Meta depende de reteste do Lucas no browser logado;
+  - nenhuma env, token ou segredo foi exposto ou alterado neste recorte.
+- Pendencias:
+  - Lucas retestar em `Setup > Templates` selecionando o telefone de envio antes de `Enviar para Meta`;
+  - se aprovado, autorizar publicacao do recorte Iris em homologacao.
+- Proxima squad recomendada:
+  - `Lucas` para validacao funcional autenticada;
+  - `Iris Core` para publicar em homologacao quando autorizado;
+  - `Hefesto` somente para promocao futura a producao apos homologacao.
+
+Conclusao:
+- A Iris agora trata telefone de envio como parte obrigatoria da gestao de template Meta.
+- O impacto pratico e que template, status e envio ativo deixam de depender de uma WABA implicita e passam a seguir o telefone selecionado na tela.
+- Acao agora: Lucas validar a criacao real em homologacao/local; se passar, este recorte pode subir isolado para homologacao.
+
+## 2026-05-24 03:12:37 -03:00 - Iris Core - Homologacao templates por telefone
+
+Assunto: [Iris] Publicacao homologacao templates por telefone
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / META TEMPLATES / TELEFONE`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou revisar rotas, conferir comunicacao com Meta e subir em homologacao o recorte que vincula template ao telefone de envio.
+- Revisao de rotas:
+  - `GET/POST /api/iris/meta/templates`: consulta/lista telefones Meta, resolve WABA pelo telefone selecionado e cria/consulta template nessa WABA;
+  - `POST /api/iris/meta/templates/media`: preservado para upload de amostra de header de imagem, video ou documento;
+  - `POST /api/iris/tickets`: envia contato ativo usando o telefone salvo no template ou o telefone escolhido no modal;
+  - `GET /api/iris/meta/status`: mantido protegido para diagnostico administrativo;
+  - rotas continuam exigindo bearer/sessao administrativa onde aplicavel.
+- Evidencia de comunicacao Meta:
+  - `npx.cmd vercel env ls`: variaveis Meta aparecem configuradas como `Encrypted` em `Preview`;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 4h`: rota autenticada `GET /api/iris/meta/templates` respondeu `200` repetidamente antes do novo deploy, indicando que a chamada protegida chegou ao backend e retornou com sucesso no fluxo de templates;
+  - smoke local direto com `.env.local` nao foi usado como prova porque os valores Meta locais estao vazios; nenhum valor sensivel foi impresso e arquivos temporarios de env foram removidos.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-030811/workspace`;
+  - base Git: `4843ffa`;
+  - recorte aplicado: `IrisPage.tsx`, `api/iris/meta/templates/route.ts`, `api/iris/meta/templates/media/route.ts`, `api/iris/tickets/route.ts`, `lib/iris/meta-whatsapp.ts`, `docs/operations/engineering-operations.md`.
+- Arquivos explicitamente fora do recorte:
+  - Hades, Hermes, Zeus, Atlas, Chronos e Apolo fora das chamadas Iris existentes;
+  - envs, secrets, migrations, banco mutavel e producao.
+- Validacoes executadas antes do deploy:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md`: OK, apenas avisos CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de NFT/Turbopack em `squadops`;
+  - dev server temporario em `http://localhost:3001/iris`: `200 OK`.
+- Deploy e alias:
+  - deployment homologacao: `dpl_8UhGpRBKNCRTGFGqiiiL3G9zLSQK`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-qowohsdij-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`.
+- Healthchecks:
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem autenticacao;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/tickets`: `401 Unauthorized` esperado sem autenticacao;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao final de criacao real de template pelo telefone selecionado depende de sessao autenticada do Lucas na UI;
+  - `vercel env pull` nao foi mantido em disco; arquivos temporarios foram removidos;
+  - warnings de build conhecidos de Turbopack/NFT e envs fora do `turbo.json` permanecem sem falhar build.
+- Pendencias:
+  - Lucas retestar `Setup > Templates`: selecionar telefone, enviar template para Meta e confirmar no Meta Manager do telefone/WABA;
+  - se aprovado, marcar este recorte como `HOMOLOGADO`.
+- Proxima squad recomendada:
+  - `Lucas` para validacao funcional autenticada;
+  - `Iris Core` para ajuste fino se a Meta retornar outro diagnostico;
+  - `Hefesto` somente para producao apos homologacao.
+
+Conclusao:
+- O recorte Iris foi publicado em homologacao com telefone de envio obrigatorio para templates Meta.
+- O impacto pratico e que `homo.c2x.app.br` ja deve criar, consultar e enviar templates conforme o telefone selecionado.
+- Acao agora: Lucas validar o fluxo autenticado; se passar, a Iris registra `HOMOLOGADO`.
+
+## 2026-05-24 03:39:20 -03:00 - Iris Core - Correcao rota Meta templates
+
+Assunto: [Iris] Homologacao rota Meta templates corrigida
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / META TEMPLATES / FALLBACK TELEFONE`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: apos o deploy `dpl_ATFugaW3aRBVzZY35ha1CmM7nEJQ`, os logs autenticados do Setup mostraram `GET /api/iris/meta/templates` retornando `400`; Lucas havia autorizado revisar rotas, confirmar comunicacao Meta e subir em homologacao.
+- Causa tratada:
+  - a Iris exigia conseguir resolver a WABA pelo endpoint do telefone antes de consultar/criar template;
+  - quando a Meta nao permitia ler o detalhe do telefone/WABA pelo app/token, a rota quebrava antes de usar a WABA configurada;
+  - o ajuste agora mantem o telefone configurado como opcao operacional e usa a WABA configurada como fallback quando a resolucao por telefone nao estiver disponivel.
+- Escopo do recorte:
+  - fallback `Telefone Meta configurado` na listagem de telefones quando a Meta nao devolver detalhes do numero;
+  - consulta/criacao de template usando WABA do telefone quando resolvida, ou WABA configurada como fallback;
+  - preservacao do seletor de telefone no Setup e no inicio de atendimento;
+  - nenhum token, secret, env, migration, banco mutavel ou producao alterado.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-033530/workspace`;
+  - base Git: `4843ffa`;
+  - recorte aplicado: `IrisPage.tsx`, `api/iris/meta/templates/route.ts`, `api/iris/meta/templates/media/route.ts`, `api/iris/tickets/route.ts`, `lib/iris/meta-whatsapp.ts`, `docs/operations/engineering-operations.md`, `docs/operations/releases-homologation.md`.
+- Deploy e alias:
+  - deployment corrigido: `dpl_4d3ZTPA8jTkjzbjN6B4LLExNL4Ef`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-cynd2ari2-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: deployment anterior `dpl_8UhGpRBKNCRTGFGqiiiL3G9zLSQK`.
+- Validacoes locais executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/meta/templates/media/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md docs/operations/releases-homologation.md`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em `squadops`.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem bearer;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/tickets`: `401 Unauthorized` esperado sem autenticacao.
+- Evidencia de comunicacao Meta em homologacao:
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 5m`: chamada autenticada `GET /api/iris/meta/templates` retornou `200` apos o deploy corrigido;
+  - `POST /api/iris/apolo/phone-match` retornou `200` no mesmo ciclo autenticado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 5m --level error`: sem logs encontrados;
+  - `vercel env pull` temporario nao exibiu valores e os arquivos temporarios foram removidos.
+- Riscos conhecidos:
+  - se o telefone pertencer a outra WABA que o app/token nao consegue acessar, a Iris usa a WABA configurada como fallback e sinaliza a necessidade de governanca Meta;
+  - confirmacao final de criacao real do template no Meta Manager ainda depende de acao autenticada do Lucas na UI;
+  - warnings remotos conhecidos de `npm audit`, Turbopack/NFT e envs fora do `turbo.json` permaneceram sem bloquear build/deploy.
+- Pendencias:
+  - Lucas retestar `Setup > Templates`, escolher/criar template e confirmar se aparece no Meta Manager correto;
+  - se aprovado, Iris Core registra `HOMOLOGADO`; producao continua fora do escopo ate pedido futuro ao Hefesto.
+
+Conclusao:
+- A rota que estava voltando `400` em homologacao foi corrigida e substituida por deployment novo.
+- O impacto pratico e que o Setup da Iris volta a consultar templates em ciclo autenticado sem quebrar a tela, usando fallback governado quando a Meta nao revela o vinculo telefone/WABA.
+- Acao agora: Lucas retestar a criacao real do template; se aparecer no Meta Manager correto, este recorte fica pronto para homologacao funcional.
+
+## 2026-05-24 08:04:23 -03:00 - Iris Core - Novo atendimento com template por fila e assunto
+
+Assunto: [Iris] Template de contato ativo por fila e assunto
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / BOARD / NOVO ATENDIMENTO / META TEMPLATES`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCAL`.
+- Origem: Lucas pediu que a tela de `Novo atendimento` deixe o operador escolher qual template enviar, partindo da fila atual do board, filtrando depois por assunto e exibindo somente templates aprovados daquela combinacao.
+- Decisao implementada:
+  - o botao de novo atendimento repassa a fila filtrada no board quando houver uma fila ativa diferente de `Todos`;
+  - o modal agora abre com selecao encadeada `Fila` -> `Assunto` -> `Template aprovado`;
+  - os templates do contato ativo sao filtrados por `queueLabel`, `subjectLabel`, canal WhatsApp, status ativo e status Meta `APPROVED`;
+  - o preview, botoes quick reply, status Meta e telefone de envio passam a refletir o template escolhido;
+  - quando o template ja possui telefone Meta salvo, o modal bloqueia a troca desse telefone para evitar envio em WABA divergente;
+  - o `POST /api/iris/tickets` passa a receber `queueId`, `profileId`, `templateId`, `subject` e metadados operacionais do template escolhido.
+- Arquivos alterados neste recorte:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos explicitamente fora do recorte:
+  - Hades, Hermes, Zeus, Atlas, Chronos, Apolo fora das chamadas Iris existentes;
+  - envs, secrets, migrations, banco mutavel, dominio, alias, homologacao e producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md`: OK, apenas avisos CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em `squadops`;
+  - dev server temporario em `http://localhost:3001/iris`: `200 OK`.
+- Riscos conhecidos:
+  - validacao visual autenticada do modal aberto e do envio real ainda depende de sessao do Lucas;
+  - se um template aprovado nao tiver `queueLabel`, `subjectLabel` ou `metaPhoneNumberId` consistente, ele nao aparecera na combinacao esperada ou pedira ajuste no Setup;
+  - nenhuma env, token, secret, migration, banco mutavel ou deploy foi alterado.
+- Pendencias:
+  - Lucas validar no navegador autenticado se a fila atual, o assunto e o template aprovado aparecem na ordem correta;
+  - se aprovado, Lucas pode autorizar a publicacao isolada da Iris em homologacao.
+
+Conclusao:
+- A tela de novo atendimento deixou de depender de um template fixo e passou a escolher o modelo real por fila, assunto e template aprovado.
+- O impacto pratico e reduzir erro de envio ativo pela Meta, principalmente quando a Careli operar mais de um telefone/WABA.
+- Acao agora: validar funcionalmente o modal autenticado; homologacao continua pendente de autorizacao explicita do Lucas para este novo recorte.
+
+## 2026-05-24 08:27:43 -03:00 - Iris Core - Homologacao novo atendimento com template filtrado
+
+Assunto: [Iris] Homologacao template por fila e assunto
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / HOMOLOGACAO / NOVO ATENDIMENTO / META TEMPLATES`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou subir em homologacao o recorte que permite escolher, no modal de `Novo atendimento`, a fila, o assunto e o template aprovado que sera enviado ao cliente.
+- Decisao publicada:
+  - o modal de contato ativo passa a herdar a fila atual do board quando houver filtro operacional selecionado;
+  - o operador seleciona `Fila`, depois `Assunto`, depois `Template aprovado`;
+  - os templates disponiveis sao filtrados por fila, assunto, canal WhatsApp, template ativo e status Meta `APPROVED`;
+  - o telefone de envio fica travado quando o template ja tem telefone Meta salvo, evitando envio em telefone/WABA divergente;
+  - a criacao do ticket envia `queueId`, `profileId`, `templateId`, `subject` e metadados operacionais do template selecionado.
+- Arquivos incluidos no pacote de homologacao:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/media/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos explicitamente excluidos:
+  - `AGENTS.md`;
+  - `apps/hub/app/login/page.tsx`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `docs/architecture/*`;
+  - `docs/operations/README.md`;
+  - documentos Ares/legado em andamento;
+  - Hades, Hermes, Zeus, Atlas, Chronos e Apolo fora das chamadas Iris existentes.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-082006/workspace`;
+  - base Git: `4843ffa`;
+  - deploy por pacote isolado, sem commit local.
+- Deploy e alias:
+  - deployment oficial: `dpl_5a4iM7YDMtZdqEg5ghtYZNviMxQQ`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-1o02r5ayk-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: deployment anterior `dpl_4d3ZTPA8jTkjzbjN6B4LLExNL4Ef`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md docs/operations/releases-homologation.md`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK no pacote limpo;
+  - `npm.cmd run lint:hub`: OK no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no pacote limpo, com warning conhecido NFT/Turbopack em `squadops`;
+  - build remoto Vercel: OK.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem bearer;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/tickets`: `401 Unauthorized` esperado sem sessao;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao funcional autenticada do modal e do envio real depende do Lucas;
+  - o template so aparecera no modal de novo atendimento se estiver ativo, aprovado pela Meta e vinculado a mesma fila/assunto selecionados;
+  - warnings conhecidos de `npm audit`, Turbopack/NFT, envs fora do `turbo.json` e `MODULE_TYPELESS_PACKAGE_JSON` permanecem sem bloqueio de build.
+- Pendencias:
+  - Lucas testar em homologacao o fluxo `Board > Novo atendimento > Fila > Assunto > Template aprovado > Iniciar atendimento`;
+  - se o teste autenticado confirmar envio real pelo telefone correto, Iris Core pode registrar `HOMOLOGADO`;
+  - producao segue bloqueada ate pedido futuro ao Hefesto.
+
+Conclusao:
+- A homologacao foi atualizada com o recorte isolado da Iris para contato ativo por fila, assunto e template aprovado.
+- O impacto pratico e reduzir erro operacional no envio ativo, principalmente quando a Careli operar varios templates e telefones Meta.
+- Acao agora: Lucas valida o modal em `https://homo.c2x.app.br/iris`; se aprovar, a proxima etapa e registrar homologacao funcional ou abrir ajuste pontual.
+
+## 2026-05-24 08:46:31 -03:00 - Iris Core - Telefone real obrigatorio em templates Meta
+
+Assunto: [Iris] Telefone real no template e atendimento
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / META TEMPLATES / TELEFONE DE ENVIO / WABA`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCAL`.
+- Origem: Lucas identificou no modal de `Novo atendimento` o label generico `Telefone Meta configurado` e questionou se a Iris estava enviando pelo telefone correto; tambem reforcou que o telefone deve ser escolhido ja na criacao do template.
+- Decisao implementada:
+  - a criacao de template nao usa mais fallback implicito do telefone configurado no ambiente; o telefone precisa vir selecionado pela tela;
+  - a Iris passa a validar se a WABA pertence ao telefone selecionado antes de consultar ou criar template;
+  - se a Meta nao retornar o numero real do telefone, a tela mostra `Telefone sem numero`/acao orientada e bloqueia criacao/envio para evitar WABA incerta;
+  - o modal de `Novo atendimento` exibe o telefone salvo no template aprovado e bloqueia inicio se o template nao tiver numero real ou se estiver em WABA diferente;
+  - mensagens de erro foram ajustadas para explicar `telefone divergente`, `telefone sem numero` e `template em outra WABA`.
+- Resposta operacional sobre o estado anterior:
+  - antes desta correcao, a Iris enviava pelo `phoneNumberId` salvo no template ou recebido no modal;
+  - quando esse telefone aparecia como `Telefone Meta configurado`, a Meta nao tinha devolvido o numero real para a Iris, entao nao havia evidencia visual suficiente para afirmar no operador que era o telefone correto;
+  - por isso o comportamento foi endurecido: sem numero real retornado pela Meta, a Iris bloqueia em vez de seguir por fallback.
+- Arquivos alterados neste recorte:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos explicitamente fora do recorte:
+  - Hades, Hermes, Zeus, Atlas, Chronos e Apolo fora das chamadas Iris existentes;
+  - envs, secrets, migrations, banco mutavel, dominio, alias, producao e novo deploy de homologacao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/lib/iris/meta-whatsapp.ts apps/hub/app/api/iris/tickets/route.ts`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em `squadops`.
+- Riscos conhecidos:
+  - a validacao funcional autenticada da lista real de telefones depende da Meta devolver `display_phone_number` para o app/token da Iris;
+  - se o app/token nao tiver acesso ao telefone/WABA correto, a tela vai bloquear e pedir ajuste no Meta Manager em vez de criar template na WABA errada;
+  - esta correcao ainda nao foi publicada em homologacao nesta entrada.
+- Pendencias:
+  - Lucas autorizar nova publicacao isolada da Iris em homologacao para levar esta correcao;
+  - depois do deploy, testar `Setup > Templates` selecionando telefone com numero real e, em seguida, `Board > Novo atendimento`.
+
+Conclusao:
+- A Iris deixou de aceitar telefone implicito/generico no fluxo de template e atendimento ativo.
+- O impacto pratico e impedir que um template aprovado em uma WABA seja usado por outro telefone.
+- Acao agora: com autorizacao do Lucas, publicar este recorte em homologacao e validar a lista real de telefones.
+
+## 2026-05-24 08:57:53 -03:00 - Iris Core - Homologacao telefone real obrigatorio
+
+Assunto: [Iris] Homologacao telefone real templates Meta
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / HOMOLOGACAO / META TEMPLATES / TELEFONE DE ENVIO`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou subir em homologacao a correcao que obriga telefone real no template Meta e bloqueia atendimento ativo quando a Meta nao confirma o numero/WABA do telefone selecionado.
+- Decisao publicada:
+  - criacao de template exige telefone selecionado pela tela, sem fallback implicito de env;
+  - a Iris valida a WABA do telefone selecionado antes de consultar/criar template;
+  - telefone sem numero real retornado pela Meta fica bloqueado para criacao e envio;
+  - novo atendimento exibe o telefone salvo no template aprovado e bloqueia se houver WABA divergente;
+  - mensagens de erro explicam telefone divergente, telefone sem numero e template em outra WABA.
+- Arquivos incluidos no pacote:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/media/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos explicitamente excluidos:
+  - `AGENTS.md`;
+  - `apps/hub/app/login/page.tsx`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `docs/architecture/*`;
+  - `docs/operations/README.md`;
+  - documentos Ares/legado em andamento;
+  - Hades, Hermes, Zeus, Atlas, Chronos e Apolo fora das chamadas Iris existentes.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-085347/workspace`;
+  - base Git: `4843ffa`;
+  - deploy por pacote isolado, sem commit local.
+- Deploy e alias:
+  - deployment oficial: `dpl_6phcbgHC1XQV6nTogXaD2o3j2v2f`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-fn49a2qjw-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: deployment anterior `dpl_5a4iM7YDMtZdqEg5ghtYZNviMxQQ`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md docs/operations/releases-homologation.md`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK no pacote limpo;
+  - `npm.cmd run lint:hub`: OK no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no pacote limpo, com warning conhecido NFT/Turbopack em `squadops`;
+  - build remoto Vercel: OK.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem bearer;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/tickets`: `401 Unauthorized` esperado sem sessao;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - se o app/token da Iris nao tiver acesso ao telefone/WABA correto, a tela vai bloquear e pedir ajuste no Meta Manager;
+  - confirmacao funcional de lista real de telefones, criacao de template e inicio de atendimento depende de teste autenticado do Lucas;
+  - warnings conhecidos de `npm audit`, Turbopack/NFT, envs fora do `turbo.json` e `MODULE_TYPELESS_PACKAGE_JSON` nao bloquearam build/deploy.
+- Pendencias:
+  - Lucas testar em homologacao `Setup > Templates` selecionando telefone com numero real;
+  - depois testar `Board > Novo atendimento` confirmando que o telefone exibido e o mesmo salvo no template aprovado;
+  - se aprovado, Iris Core registra `HOMOLOGADO`; producao segue bloqueada ate handoff futuro para Hefesto.
+
+Conclusao:
+- A correcao de telefone real obrigatorio esta publicada em homologacao.
+- O impacto pratico e impedir que a Iris crie/consulte/envie template em WABA diferente do telefone escolhido.
+- Acao agora: Lucas validar no navegador autenticado; se o telefone correto aparecer com numero, o fluxo pode ser retestado com seguranca.
+
+## 2026-05-24 09:24:06 -03:00 - Iris Core - Lista de telefones desacoplada da consulta de template
+
+Assunto: [Iris] Select de telefones Meta sem bloqueio por template
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / META TEMPLATES / TELEFONE DE ENVIO / SETUP`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCAL`.
+- Origem: Lucas reportou que, em homologacao, o campo `Telefone de envio` abria somente com `Selecione o telefone`, sem trazer telefone para escolher.
+- Diagnostico:
+  - logs de homologacao mostraram `GET /api/iris/meta/templates` retornando `400` durante o carregamento do Setup;
+  - a mesma rota estava responsavel por carregar telefones e consultar templates;
+  - quando a consulta do template/WABA falhava, a resposta inteira falhava antes de devolver `phoneNumbers`, deixando o select vazio.
+- Decisao implementada:
+  - a rota `GET /api/iris/meta/templates` agora tenta listar telefones primeiro;
+  - se a consulta do template falhar depois disso, a rota retorna `200` com `phoneNumbers`, `selectedPhoneNumberId`, feedback de erro classificado e `templates: []`;
+  - a UI passa a exibir o feedback classificado quando a consulta do template falha, sem perder a lista de telefones;
+  - o bloqueio de envio/criacao continua no ponto correto: se o telefone escolhido nao tiver numero real ou WABA confirmada, a Iris impede criar/enviar.
+- Arquivos alterados neste recorte:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos explicitamente fora do recorte:
+  - Hades, Hermes, Zeus, Atlas, Chronos e Apolo fora das chamadas Iris existentes;
+  - envs, secrets, migrations, banco mutavel, dominio, alias, producao e novo deploy de homologacao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/app/api/iris/meta/templates/route.ts apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em `squadops`.
+- Riscos conhecidos:
+  - se a propria listagem de telefones falhar por falta de acesso do app/token ao ativo Meta, o select ainda nao tera telefone real para exibir;
+  - esta correcao ainda nao foi publicada em homologacao nesta entrada;
+  - novo deploy de homologacao depende de autorizacao explicita do Lucas.
+- Pendencias:
+  - Lucas autorizar nova publicacao isolada da Iris em homologacao;
+  - apos deploy, conferir se `Setup > Templates > Telefone de envio` lista o numero real e se a consulta de template mostra erro sem apagar a lista.
+
+Conclusao:
+- A causa do select vazio foi a falha da consulta de template bloqueando tambem o retorno de telefones.
+- O impacto pratico da correcao e que a UI deve conseguir mostrar os telefones mesmo quando a Meta recusar a consulta do template.
+- Acao agora: publicar este recorte em homologacao mediante autorizacao do Lucas.
+
+## 2026-05-24 09:31:37 -03:00 - Iris Core - Homologacao lista de telefones desacoplada
+
+Assunto: [Iris] Homologacao select de telefones Meta
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / HOMOLOGACAO / META TEMPLATES / TELEFONE DE ENVIO`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou corrigir e subir em homologacao o ajuste para o campo `Telefone de envio`, que estava abrindo sem opcoes porque a consulta de template retornava `400`.
+- Decisao publicada:
+  - `GET /api/iris/meta/templates` carrega telefones antes de consultar templates;
+  - se a consulta de template falhar por WABA/permissao/parametro, a rota devolve `200` com `phoneNumbers`, `selectedPhoneNumberId`, `templates: []` e feedback de erro classificado;
+  - a UI exibe o feedback de erro sem apagar a lista de telefones;
+  - o bloqueio de criacao/envio continua ativo quando o telefone selecionado nao tiver numero real ou WABA confirmada.
+- Arquivos incluidos no pacote:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/media/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos explicitamente excluidos:
+  - `AGENTS.md`;
+  - `apps/hub/app/login/page.tsx`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `docs/architecture/*`;
+  - `docs/operations/README.md`;
+  - documentos Ares/legado em andamento;
+  - Hades, Hermes, Zeus, Atlas, Chronos e Apolo fora das chamadas Iris existentes.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-092606/workspace`;
+  - base Git: `4843ffa`;
+  - deploy por pacote isolado, sem commit local.
+- Deploy e alias:
+  - deployment oficial: `dpl_CDUxG6e7S3Qqmv9S3o4sp386aysT`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-typv7ojk4-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: deployment anterior `dpl_6phcbgHC1XQV6nTogXaD2o3j2v2f`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md docs/operations/releases-homologation.md`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK no pacote limpo;
+  - `npm.cmd run lint:hub`: OK no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no pacote limpo, com warning conhecido NFT/Turbopack em `squadops`;
+  - build remoto Vercel: OK.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem bearer;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/tickets`: `401 Unauthorized` esperado sem sessao;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - se a propria listagem de telefones falhar por acesso Meta, o select ainda ficara sem numero real e a mensagem deve orientar ajuste de app/token/ativo;
+  - validacao funcional autenticada da lista real de telefones depende do Lucas retestar a tela;
+  - warnings conhecidos de `npm audit`, Turbopack/NFT, envs fora do `turbo.json` e `MODULE_TYPELESS_PACKAGE_JSON` nao bloquearam build/deploy.
+- Pendencias:
+  - Lucas retestar em homologacao `Setup > Templates > Telefone de envio`;
+  - confirmar se a lista mostra o telefone real e se eventuais erros de template aparecem sem apagar o select;
+  - se aprovado, Iris Core registra `HOMOLOGADO`; producao segue bloqueada ate handoff futuro para Hefesto.
+
+Conclusao:
+- A correcao para o select de telefones esta publicada em homologacao.
+- O impacto pratico e que falha na consulta de template nao deve mais esvaziar a lista de telefones.
+- Acao agora: Lucas validar em `https://homo.c2x.app.br/iris`; se o telefone real aparecer, seguir com o teste de criacao/envio do template.
+
+## 2026-05-24 09:50:32 -03:00 - Iris Core - Fallback de numero real Meta por telefone configurado
+
+Assunto: [Iris] Telefone real Meta por ID cadastrado
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / META TEMPLATES / TELEFONE DE ENVIO`.
+- Ambiente: `local`, pendente publicacao em homologacao.
+- Status: `VALIDADO LOCALMENTE`.
+- Origem: Lucas reportou que o Setup ainda mostrava `Telefone sem numero (ID final 6689)` e pediu validar se o numero cadastrado deveria ser `553190728420`.
+- Diagnostico:
+  - o `env pull`/`env run` de preview nao expôs valores sensiveis da Vercel, entao a Iris nao deve depender de leitura externa desses secrets para diagnostico manual;
+  - a rota ja recebia o ID do telefone Meta, mas quando a listagem da WABA vinha sem `display_phone_number`, a UI mantinha o telefone como sem numero;
+  - a regra correta e enriquecer cada telefone sem numero consultando o detalhe do proprio telefone por ID antes de bloquear criacao/envio.
+- Decisao implementada:
+  - `listMetaWhatsAppPhoneNumbers` passa a consultar o detalhe do telefone por ID quando a listagem vier sem numero real;
+  - se o telefone configurado estiver presente apenas por ID, a Iris tenta preencher `displayPhoneNumber` pelo detalhe do telefone;
+  - foi adicionada leitura opcional de `META_WHATSAPP_PHONE_DISPLAY_NUMBER` ou `META_WHATSAPP_PHONE_NUMBER` como fallback cadastral, sem tornar a variavel obrigatoria;
+  - o bloqueio continua ativo se Meta/configuracao ainda nao fornecer nenhum numero real.
+- Arquivos alterados:
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/iris/meta-whatsapp.ts apps/hub/app/api/iris/meta/templates/route.ts apps/hub/modules/caredesk/IrisPage.tsx docs/operations/engineering-operations.md docs/operations/releases-homologation.md`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em `squadops`.
+- Riscos conhecidos:
+  - nao foi possivel confirmar pelo CLI o valor real de env sensivel de preview, apenas que as chaves existem como `Encrypted`;
+  - se a Meta tambem omitir o `display_phone_number` no detalhe do telefone e nao houver fallback cadastral opcional, a Iris continuara bloqueando criacao/envio para evitar WABA errada.
+- Proxima acao:
+  - publicar recorte em homologacao por pacote limpo isolado;
+  - Lucas retestar se o select mostra o telefone real esperado no Setup de Templates.
+
+Conclusao:
+- A Iris agora busca o numero real no detalhe do telefone cadastrado antes de chamar o telefone de `sem numero`.
+- O impacto pratico e reduzir falso bloqueio quando a listagem da WABA vem incompleta.
+- Acao agora: publicar homologacao e validar visualmente se o telefone aparece como numero real.
+
+## 2026-05-24 09:57:07 -03:00 - Iris Core - Homologacao fallback telefone Meta
+
+Assunto: [Iris] Homologacao telefone real Meta por ID
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / HOMOLOGACAO / META TEMPLATES / TELEFONE DE ENVIO`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas pediu corrigir o estado `Telefone sem numero (ID final 6689)` e validar o telefone esperado `553190728420` sem expor secrets.
+- Decisao publicada:
+  - a Iris tenta enriquecer telefones sem `display_phone_number` consultando o detalhe do telefone por ID;
+  - a Iris aceita fallback opcional de numero cadastral via `META_WHATSAPP_PHONE_DISPLAY_NUMBER` ou `META_WHATSAPP_PHONE_NUMBER`, sem tornar essas variaveis obrigatorias;
+  - criacao/envio continuam bloqueados se a Meta/configuracao nao fornecer numero real.
+- Validacao de numero:
+  - `npx.cmd vercel env ls` confirmou chaves Meta em preview como `Encrypted`;
+  - `vercel env pull`/`vercel env run` nao expuseram os valores sensiveis, entao nao foi possivel confirmar pela CLI se o valor real cadastrado e `553190728420`;
+  - o teste conclusivo agora deve ser autenticado na tela `Setup > Templates`, verificando se o select mostra o numero real esperado.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-0950-phone-fallback/workspace`;
+  - base Git: `4843ffa`;
+  - deploy por pacote isolado, sem commit local.
+- Deploy e alias:
+  - deployment oficial: `dpl_EpzwhVkcbX88URizMYV6hN2ZTEzE`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-4o6o2osnj-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: deployment anterior `dpl_CDUxG6e7S3Qqmv9S3o4sp386aysT`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts docs/operations/engineering-operations.md docs/operations/releases-homologation.md`: OK no pacote limpo;
+  - `npm.cmd run check-types:hub`: OK no pacote limpo;
+  - `npm.cmd run lint:hub`: OK no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no pacote limpo, com warnings conhecidos de root/NFT por pacote dentro de `.codex-deploy`;
+  - build remoto Vercel: OK.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem bearer;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405 Method Not Allowed` esperado para GET;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Pendencias:
+  - Lucas retestar o select `Telefone de envio` em homologacao;
+  - se o numero ainda nao aparecer, configurar explicitamente o numero cadastral opcional em homologacao mediante autorizacao do Lucas para operacao de env.
+
+Conclusao:
+- A homologacao esta publicada com fallback de busca por ID do telefone Meta.
+- O impacto pratico e que a Iris deve tentar recuperar o numero real antes de bloquear o template como `sem numero`.
+- Acao agora: Lucas validar visualmente se o select mostra o telefone esperado; producao segue bloqueada ate handoff futuro para Hefesto.
+
+## 2026-05-24 15:02:02 -03:00 - Iris Core - Homologacao numero exibivel Meta
+
+Assunto: [Iris] Homologacao fallback cadastral telefone Meta
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / HOMOLOGACAO / META TEMPLATES / ENV CONTROLADA`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas pediu finalizar a correcao do telefone sem numero e subir em homologacao.
+- Decisao publicada:
+  - criada em Preview, somente para a branch `homolog`, a variavel opcional `META_WHATSAPP_PHONE_DISPLAY_NUMBER`;
+  - a variavel usa o numero cadastral informado pelo Lucas para o telefone de envio da Iris;
+  - nao foram alterados token, WABA, app, phone number ID, service role, dominio de producao ou secrets fora desse fallback cadastral;
+  - redeploy de homologacao executado para carregar a env opcional.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-0950-phone-fallback/workspace`;
+  - base Git: `4843ffa`.
+- Deploy e alias:
+  - deployment oficial: `dpl_FBzEnPYDZYGCWUDgnCm5oJpn7Luw`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-i40t2tng8-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: deployment anterior `dpl_EpzwhVkcbX88URizMYV6hN2ZTEzE`.
+- Validacoes executadas:
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem bearer;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - build remoto Vercel: OK, com warnings conhecidos de audit/envs fora do `turbo.json`/NFT.
+- Riscos conhecidos:
+  - a UI autenticada ainda precisa ser retestada pelo Lucas para confirmar que o select mostra o numero real;
+  - a variavel opcional nao substitui a validacao de WABA/phone ID, apenas fornece numero exibivel quando a Meta omite `display_phone_number`.
+- Pendencias:
+  - Lucas retestar `Setup > Templates > Telefone de envio` em `https://homo.c2x.app.br/iris`;
+  - se aparecer o numero real, seguir com criacao/envio do template.
+
+Conclusao:
+- A correção foi finalizada com fallback cadastral controlado em homologacao.
+- O impacto pratico e que o select deve deixar de aparecer como `Telefone sem numero` quando a Meta omitir o display.
+- Acao agora: Lucas validar a tela autenticada; producao segue bloqueada ate handoff futuro para Hefesto.
+
+## 2026-05-24 15:34:47 -03:00 - Zeus - Diagnostico Iris templates Meta sem display phone
+
+Assunto: [Iris] Templates Meta sem bloqueio por numero exibivel
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `IRIS / META WHATSAPP / TEMPLATE CREATION / DIAGNOSTICO E CORRECAO UI`.
+- Ambiente: `local`, pendente validacao e publicacao em homologacao pela Iris Core/Hefesto conforme recorte.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO HOMOLOGACAO`.
+- Origem: Lucas reportou que a Iris nao conseguia criar templates de mensagem em homologacao. A tela mostrava `Telefone sem numero (ID final 6689)` e bloqueava `Enviar para Meta`, mesmo com WABA/telefone configurados na Meta.
+- Diagnostico:
+  - a documentacao/colecao oficial Meta confirma que criacao e listagem de templates usam o node da WABA em `/{WABA-ID}/message_templates`;
+  - o telefone operacional e necessario para resolver a WABA correta e para envio ativo em `/{PHONE_NUMBER_ID}/messages`;
+  - `display_phone_number` e dado exibivel, nao requisito tecnico para criar template quando o servidor possui `PHONE_NUMBER_ID` e consegue validar a WABA;
+  - o servidor da Iris ja usa `createMetaWhatsAppMessageTemplate` contra a WABA resolvida e mantem validacao server-side de WABA/phone ID;
+  - o bloqueio atual estava na UI: `templatePhoneUnresolved` impedia o clique antes de chamar a rota, quando faltava apenas `displayPhoneNumber`.
+- Decisao implementada:
+  - transformar falta de `displayPhoneNumber` em alerta nao bloqueante;
+  - liberar `Enviar para Meta` quando houver assunto, telefone selecionado e midia obrigatoria, mantendo bloqueios de telefone ausente, WABA divergente, template sem aprovacao e falha Meta;
+  - liberar o inicio de atendimento quando houver template aprovado e telefone selecionado, deixando a validacao final para a rota server-side e para a Meta;
+  - registrar no documento interno da integracao que templates sao WABA-level e que display phone ausente nao deve bloquear criacao por si so.
+- Arquivos alterados:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/modules/caredesk-meta-whatsapp-setup.md`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - nenhuma alteracao em token, app, WABA, phone number ID, env, secret, Supabase, banco, dominio, alias, Vercel ou producao;
+  - nenhum disparo real WhatsApp;
+  - nenhuma chamada Meta com credencial foi executada nesta entrada.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx docs/modules/caredesk-meta-whatsapp-setup.md docs/operations/engineering-operations.md`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em `squadops`.
+- Validacoes pendentes:
+  - validacao autenticada em homologacao depois de publicacao do recorte.
+- Riscos conhecidos:
+  - se o token/app nao tiver permissao `whatsapp_business_management` sobre a WABA/telefone, a Meta continuara recusando a criacao;
+  - se o telefone estiver pendente/nao registrado no Meta Manager, o template pode ser criado na WABA, mas o envio ativo ainda pode falhar ate regularizar o telefone;
+  - producao segue bloqueada ate homologacao e autorizacao.
+
+Conclusao:
+- A causa mais provavel era bloqueio de UI por ausencia de numero exibivel, nao necessariamente erro de payload Meta.
+- O impacto pratico da correcao e permitir que a Iris tente criar o template pela WABA validada no servidor.
+- Acao agora: validar localmente, publicar homologacao isolada se Lucas autorizar e retestar `Enviar para Meta`.
+
+## 2026-05-24 19:16:03 -03:00 - Zeus - Homologacao Iris templates Meta sem display phone
+
+Assunto: [Iris] Homologacao templates Meta sem bloqueio por numero exibivel
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / HOMOLOGACAO / META WHATSAPP / TEMPLATE CREATION`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou subir a correcao que remove o bloqueio de UI quando a Meta nao retorna `display_phone_number`.
+- Decisao publicada:
+  - falta de numero exibivel virou alerta nao bloqueante;
+  - `Enviar para Meta` pode chamar a rota quando ha assunto, telefone selecionado e midia obrigatoria, com validacao final server-side de WABA/phone ID;
+  - inicio de atendimento deixa de depender do numero exibivel quando ha template aprovado e telefone selecionado;
+  - nenhuma env, secret, WABA, phone number ID, Supabase, banco, dominio de producao ou disparo real WhatsApp foi alterado neste recorte.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-1545-display-phone/workspace`;
+  - base operacional: pacote limpo Iris anterior `.codex-deploy/iris-homolog-20260524-0950-phone-fallback/workspace`;
+  - deploy por pacote isolado, sem commit local.
+- Deploy e alias:
+  - deployment oficial: `dpl_87zbRdurpAa467bDZYWyZdLk6enM`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-kgrrn5pyu-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_FBzEnPYDZYGCWUDgnCm5oJpn7Luw`.
+- Validacoes executadas:
+  - `package.json` recursivo do pacote limpo: OK;
+  - `npm.cmd run check-types:hub`: OK no pacote limpo;
+  - `npm.cmd run lint:hub`: OK no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no pacote limpo, com warning conhecido NFT/Turbopack em `squadops`;
+  - build remoto Vercel: OK;
+  - `GET https://homo.c2x.app.br/`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem sessao;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405 Method Not Allowed` esperado para GET;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao funcional autenticada ainda depende do Lucas retestar `Enviar para Meta`;
+  - se o app/token Meta nao tiver permissao sobre a WABA correta, a Meta ainda pode recusar a criacao;
+  - se o telefone estiver pendente/nao registrado no Meta Manager, criacao de template e envio ativo ainda podem depender de regularizacao no Manager.
+- Proxima acao:
+  - Lucas testar a criacao do template em `https://homo.c2x.app.br/iris`;
+  - se a Meta retornar erro real, capturar codigo/mensagem para tratar configuracao/permissao Meta;
+  - producao segue bloqueada ate homologacao funcional e handoff para Hefesto.
+
+Conclusao:
+- A correcao esta publicada em homologacao.
+- O impacto pratico e que a Iris nao deve mais bloquear a tentativa de criar template apenas porque a Meta omitiu o numero exibivel.
+- Acao agora: Lucas testar `Enviar para Meta`; se passar, o recorte pode ser marcado como homologado e encaminhado futuramente ao Hefesto para producao.
+
+## 2026-05-24 20:13:39 -03:00 - Iris Core - Handoff para novo agente Meta WhatsApp
+
+Assunto: [Iris] Handoff novo agente Meta WhatsApp
+
+- Nome da squad/agente: `Iris Core / Zeus`.
+- Tipo da alteracao: `IRIS / HANDOFF / META WHATSAPP / TEMPLATE E JANELA 24H`.
+- Ambiente: `documental`, sem alteracao de runtime.
+- Status: `HANDOFF ATUALIZADO`.
+- Origem: Lucas informou que o chat estava saturado, pediu executar o processo de novo agente e pediu para nao continuar a configuracao por tentativa.
+- Decisao registrada:
+  - atualizar `docs/operations/iris-agent-startup-script.md` como script oficial para o proximo agente Iris;
+  - orientar o novo agente a revisar primeiro a documentacao oficial da Meta sobre Cloud API, templates, WABA/telefone e janela de atendimento de 24 horas;
+  - registrar que a correcao futura deve fechar a trava operacional real: template inicia contato ativo, resposta inbound do cliente abre/reinicia janela de 24h e envio livre fica bloqueado fora dessa janela;
+  - manter bloqueadas operacoes com env, secrets, WABA, phone number ID, Supabase, banco, Vercel, dominio, alias, producao ou deploy ate autorizacao explicita do Lucas.
+- Arquivos alterados:
+  - `docs/operations/iris-agent-startup-script.md`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos do escopo:
+  - codigo runtime da Iris;
+  - Hades, Hermes, Zeus UI, Atlas, Chronos, Apolo e Setup fora do handoff;
+  - Vercel, Supabase, banco real, migrations, envs, secrets, tokens, dominio, alias e producao.
+- Validacao executada:
+  - leitura do padrao operacional em `docs/operations/README.md` e `docs/architecture/agent-operating-model.md`;
+  - comparacao com scripts existentes de inicializacao de agentes;
+  - `git status --short` confirmou worktree misto, exigindo recorte documental isolado.
+- Riscos conhecidos:
+  - a etapa funcional da Iris Meta WhatsApp ainda nao foi corrigida neste pacote;
+  - o proximo agente deve auditar documentacao Meta e codigo antes de qualquer nova alteracao;
+  - validacao autenticada e homologacao futura dependem de novo recorte Iris.
+- Pendencias:
+  - iniciar novo agente Iris com `docs/operations/iris-agent-startup-script.md`;
+  - revisar oficialmente Meta WhatsApp Cloud API, templates e janela de atendimento;
+  - auditar rotas `meta/templates`, `meta/messages`, `meta/events`, `tickets`, `meta-whatsapp` e `meta-inbound-processor`;
+  - implementar trava server-side e UX da janela de 24h em recorte isolado.
+
+Conclusao:
+- O handoff do novo agente Iris foi atualizado.
+- O impacto pratico e tirar o proximo ciclo do modo tentativa e colocar a correcao sobre o processo oficial da Meta.
+- Acao agora: Lucas pode iniciar um novo chat/agente usando `docs/operations/iris-agent-startup-script.md`.
+
+## 2026-05-24 20:29:13 -03:00 - Zeus - Iris Meta WhatsApp templates e janela 24h
+
+Assunto: [Iris] Trava operacional Meta para template e janela de 24h
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / META WHATSAPP / TEMPLATE FLOW / CUSTOMER SERVICE WINDOW`.
+- Ambiente: `codigo local`, sem deploy nesta entrada.
+- Status: `VALIDADO LOCALMENTE`.
+- Origem: Lucas informou que a homologacao anterior nao resolveu o fluxo e pediu revisao do material Meta, projetos GitHub e codigo Iris antes de continuar tentando.
+- Fontes revisadas:
+  - documentacao Meta/espelho sobre mensagens, templates e janela de atendimento;
+  - referencia GitHub `gokapso/whatsapp-cloud-inbox`, que usa inbox com templates e enforcement de janela de 24h;
+  - rotas Iris `meta/templates`, `meta/messages`, `tickets`, webhook inbound e UI `IrisPage.tsx`.
+- Decisao tecnica:
+  - template aprovado inicia contato ativo fora da janela;
+  - resposta inbound do cliente abre ou renova a janela de 24h;
+  - mensagem livre e audio ficam bloqueados fora da janela;
+  - a trava deve existir no servidor e na UI, pois bloqueio apenas visual nao e suficiente.
+- Implementacao:
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`: inbound passa a gravar `lastCustomerMessageAt`, `customerServiceWindowOpenedAt`, `customerServiceWindowExpiresAt` e `activeContactConsent`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`: envio livre valida a ultima mensagem inbound do ticket e retorna `409` quando a janela nao esta aberta;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`: atendimento exibe estado da janela WhatsApp, desabilita texto/audio fora da janela e mantem edicao local permitida;
+  - `docs/modules/caredesk-meta-whatsapp-setup.md`: documentado o fluxo canonico template -> resposta do cliente -> janela 24h -> mensagem livre.
+- Fora do escopo:
+  - nenhuma alteracao em env, secret, token, app Meta, WABA, phone number ID, Supabase, banco, migration, dominio, alias, Vercel ou producao;
+  - nenhum disparo real WhatsApp foi executado;
+  - nenhuma automacao Athena, disparo em massa ou resposta automatica foi liberada.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps;
+  - `git diff --check`: OK, apenas avisos CRLF conhecidos.
+- Riscos conhecidos:
+  - a criacao real do template ainda depende de permissao Meta `whatsapp_business_management`, WABA correta e telefone registrado;
+  - a validacao autenticada do fluxo precisa ser repetida em homologacao depois de publicacao do recorte;
+  - o worktree raiz segue misto com outras alteracoes anteriores, portanto publicacao deve usar pacote limpo Iris.
+- Proxima acao:
+  - se Lucas autorizar, publicar recorte Iris limpo em homologacao;
+  - retestar: criar/consultar template, iniciar contato ativo por template, aguardar resposta do cliente e validar composer liberado dentro da janela.
+
+Conclusao:
+- A causa estrutural encontrada foi ausencia de trava server-side/UI para janela WhatsApp de 24h.
+- O impacto pratico e alinhar o Iris ao fluxo oficial: template primeiro, cliente responde, chat livre liberado por 24h.
+- Acao agora: publicar homologacao isolada somente com autorizacao do Lucas e testar autenticado no modulo Iris.
+
+## 2026-05-24 20:39:22 -03:00 - Zeus - Homologacao Iris janela WhatsApp 24h
+
+Assunto: [Iris] Homologacao da trava Meta de janela 24h
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / HOMOLOGACAO / META WHATSAPP / CUSTOMER SERVICE WINDOW`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou publicar o recorte da Iris em homologacao.
+- Decisao publicada:
+  - preservar o pacote Iris anterior com criacao de templates, WABA/telefone e upload de midia;
+  - adicionar a trava server-side e visual da janela de 24h;
+  - manter producao bloqueada ate validacao funcional autenticada e handoff futuro para Hefesto.
+- Pacote limpo:
+  - pasta: `.codex-deploy/iris-homolog-20260524-2035-window/workspace`;
+  - base operacional: `.codex-deploy/iris-homolog-20260524-1545-display-phone/workspace`.
+- Deploy e alias:
+  - deployment oficial: `dpl_CA59gwkdvr25aArKQTvPmS8h933M`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-r0urjdi0p-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_87zbRdurpAa467bDZYWyZdLk6enM`.
+- Validacoes executadas:
+  - `npx.cmd turbo run check-types --filter=@repo/hub... --force`: OK no pacote limpo;
+  - `npx.cmd turbo run lint --filter=@repo/hub... --force`: OK no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no pacote limpo, com warnings conhecidos de root/NFT por pacote dentro de `.codex-deploy`;
+  - build remoto Vercel: OK;
+  - `GET https://homo.c2x.app.br/`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem sessao;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405 Method Not Allowed` esperado para GET;
+  - `GET https://homo.c2x.app.br/api/iris/meta/messages`: `405 Method Not Allowed` esperado para GET;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Arquivos preservados fora do pacote:
+  - alteracoes em AGENTS, login, PulseX, docs de arquitetura, Ares/legado e demais modulos seguem fora deste deploy.
+- Riscos conhecidos:
+  - validacao autenticada ainda depende do Lucas testar a criacao/consulta de template e o ciclo de resposta do cliente;
+  - permissao Meta/WABA/telefone continuam sendo dependencia externa para criacao real do template;
+  - producao segue bloqueada.
+- Proxima acao:
+  - Lucas testar `Setup > Templates > Enviar para Meta`;
+  - iniciar atendimento por template aprovado;
+  - responder como cliente e validar liberacao do composer por 24h;
+  - validar que conversa sem inbound recente fica bloqueada para mensagem livre.
+
+Conclusao:
+- A correcao da janela WhatsApp 24h esta publicada em homologacao.
+- O impacto pratico e impedir envio livre irregular e alinhar a Iris ao fluxo Meta esperado.
+- Acao agora: teste autenticado em `https://homo.c2x.app.br/iris`; se homologar, Hefesto pode preparar futura promocao controlada para producao.
+
+## 2026-05-24 20:51:43 -03:00 - Zeus - Iris WABA Meta aplicada em homologacao
+
+Assunto: [Iris] WABA e telefone Meta no deployment de homologacao
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / HOMOLOGACAO / META WHATSAPP / ENV DE DEPLOYMENT`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas enviou os identificadores Meta pela tela oficial e autorizou incluir.
+- Decisao executada:
+  - aplicar WABA, phone number ID e numero exibivel como envs do deployment de homologacao;
+  - nao alterar token, app secret, access token, banco, migration, producao nem dominio de producao;
+  - redeployar o mesmo pacote Iris para resolver o bloqueio `IRIS_TEMPLATE_PHONE_WABA_MISSING`.
+- Identificadores registrados apenas por sufixo:
+  - WABA/WhatsApp Business Account: final `7478`;
+  - Phone Number ID: final `6689`;
+  - Numero exibivel: final `8420`.
+- Deployment e alias:
+  - deployment oficial: `dpl_3kHHS4ofmrwuEoZKSVkNzxEZmJv3`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-cmybvj3mb-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_CA59gwkdvr25aArKQTvPmS8h933M`.
+- Validacoes executadas:
+  - build remoto Vercel: OK;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401 Unauthorized` esperado sem sessao;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 5m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - configuracao foi aplicada no deployment para destravar homologacao; proxima automacao de deploy deve persistir env Preview corretamente ou repetir env explicita;
+  - proximo erro, se ocorrer, deve ser da Graph API Meta e nao mais da validacao interna de WABA ausente.
+- Proxima acao:
+  - Lucas retestar `Consultar` e `Enviar para Meta` no template.
+
+Conclusao:
+- O erro `IRIS_TEMPLATE_PHONE_WABA_MISSING` foi tratado com os identificadores Meta corretos no deployment de homologacao.
+- O impacto pratico e permitir que a Iris confirme a WABA do telefone selecionado antes de criar template.
+- Acao agora: retestar o template em `https://homo.c2x.app.br/iris`.
+
+## 2026-05-24 20:59:37 -03:00 - Zeus - Handoff Iris ticket close e templates
+
+Assunto: [Iris] Handoff para encerramento de tickets e exclusao de templates
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / HANDOFF / PROMPT OPERACIONAL`.
+- Ambiente: `documental`, sem alteracao de runtime.
+- Status: `PROMPT CRIADO`.
+- Origem: Lucas confirmou que a criacao de template Meta passou e informou que o chat Iris saturou.
+- Pedido do Lucas:
+  - proximo recorte 1: criar botao para encerramento de ticket, removendo da lista ativa/board e preservando historico;
+  - proximo recorte 2: criar botao para excluir templates.
+- Decisao registrada:
+  - criar prompt de continuidade dedicado em `docs/operations/iris-continuity-ticket-close-template-delete-2026-05-24.md`;
+  - orientar o proximo agente a nao mexer no fluxo Meta/WABA/env/deploy ja homologado;
+  - tratar encerramento de ticket como soft close com status/timestamps existentes e historico preservado;
+  - tratar exclusao de template inicialmente como remocao/arquivamento local seguro, sem apagar template na Meta/WABA sem autorizacao explicita.
+- Arquivos alterados:
+  - `docs/operations/iris-continuity-ticket-close-template-delete-2026-05-24.md`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - codigo runtime da Iris;
+  - Vercel, Supabase, banco, envs, secrets, Meta Graph API, dominio, alias, homologacao e producao;
+  - outros modulos Panteon.
+- Validacao executada:
+  - leitura de `docs/operations/README.md`;
+  - leitura de `docs/architecture/design-guidelines.md`;
+  - leitura do prompt Iris existente `docs/operations/iris-agent-startup-script.md`;
+  - leitura das ultimas entradas do diario canonico.
+- Proxima acao:
+  - novo agente Iris iniciar pelo prompt criado e implementar os dois recortes em pacote isolado.
+
+Conclusao:
+- O prompt de continuidade da Iris foi criado.
+- O impacto pratico e permitir que um novo chat/agente continue sem depender do historico saturado.
+- Acao agora: abrir novo agente Iris com `docs/operations/iris-continuity-ticket-close-template-delete-2026-05-24.md`.
+
+## 2026-05-24 21:55:33 -03:00 - Zeus - Iris janela 24h e phoneNumberId por ticket
+
+Assunto: [Iris] Trava server-side de reacao e roteamento por telefone do ticket
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / META WHATSAPP / REGRA OPERACIONAL / BACKEND + UI`.
+- Ambiente: `local`, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO EM BUILD / AGUARDANDO HOMOLOGACAO AUTORIZADA`.
+- Origem: continuidade do handoff para parar tentativa pontual e fechar o fluxo oficial Meta com trava operacional real.
+- Decisao aplicada:
+  - manter a validação de janela 24h no backend para envio livre de texto/audio;
+  - adicionar a mesma trava de janela no backend para envio de reacao (`PATCH /api/iris/meta/messages`), bloqueando quando a janela estiver fechada;
+  - resolver o `PHONE_NUMBER_ID` por ticket (`metadata.metaPhoneNumberId` e fallback de `source_context.phoneNumberId`) para envio livre e reacao;
+  - persistir em `caredesk_whatsapp_message_refs.phone_number_id` o telefone efetivamente resolvido no ticket, evitando depender apenas do env padrao;
+  - reforcar na UI do atendimento que reacao tambem respeita a janela, com feedback operacional quando bloqueado.
+- Arquivos alterados no recorte:
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`.
+- Fora do escopo:
+  - sem alteracao de env, token, secret, WABA, Supabase, banco, migration, dominio, alias, homologacao ou producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/meta/messages/route.ts apps/hub/app/api/iris/meta/events/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/modules/caredesk-meta-whatsapp-setup.md docs/operations/engineering-operations.md`: OK (somente avisos CRLF no worktree Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de NFT/Turbopack em rota SquadOps (`apps/hub/app/api/squadops/operations/structured/route.ts`);
+  - validacao autenticada local em `http://localhost:3001/iris`: pendente (nao executada neste ciclo).
+- Risco conhecido:
+  - sem validacao autenticada, ainda falta confirmar UX final do bloqueio de reacao em conversa real.
+
+Conclusao:
+- A Iris passa a aplicar a regra de 24h tambem para reacoes no backend e usa o telefone do proprio ticket no envio livre.
+- O impacto pratico e reduzir divergencia entre template/telefone/WABA e evitar envio fora da politica da Meta por brecha de endpoint.
+- Acao agora: executar smoke autenticado local da Iris e, se Lucas autorizar, preparar pacote limpo para homologacao do recorte.
+
+## 2026-05-24 22:10:56 -03:00 - Zeus - Iris template aprovado nao selecionavel
+
+Assunto: [Iris] Sincronismo de aprovacao Meta para contato ativo
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / META WHATSAPP / CORRECAO FUNCIONAL`.
+- Ambiente: `local`, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO EM BUILD / AGUARDANDO HOMOLOGACAO AUTORIZADA`.
+- Origem: Lucas mostrou que o template `iris6` ja estava `Ativo` na Meta, mas na Iris seguia como `Pendente` e nao aparecia no seletor de `Novo atendimento`.
+- Diagnostico:
+  - a Iris filtrava o modal de contato ativo apenas por templates locais com `status=active` e `metadata.metaStatus=APPROVED`;
+  - a consulta `GET /api/iris/meta/templates` retornava o status real da Meta, mas nao promovia o cadastro local em `caredesk_templates`;
+  - quando a Meta aprovava fora do ciclo de criacao, a Iris ficava presa no status local antigo e escondia o template aprovado.
+- Decisao aplicada:
+  - a rota `GET /api/iris/meta/templates` agora sincroniza o template local encontrado pelo nome Meta/idioma, preservando fila, assunto, mensagem, variaveis e metadados locais;
+  - status Meta `APPROVED` passa a promover o template local para `active`; `REJECTED`, `PAUSED` e `DISABLED` ficam como `paused`; os demais seguem `planned`;
+  - o modal `Novo atendimento` passou a listar templates WhatsApp locais candidatos mesmo quando ainda estao pendentes localmente, mas so libera `Iniciar atendimento` depois da consulta server-side confirmar `APPROVED` na Meta;
+  - quando a sincronizacao local ocorre, a tela solicita refresh dos dados da Iris para refletir o novo status no Setup e no modal.
+- Arquivos alterados no recorte:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, token, secret, WABA, Meta app, Supabase migration, banco estrutural, dominio, alias, homologacao ou producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/app/api/iris/meta/templates/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK (somente avisos CRLF no worktree Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de NFT/Turbopack em rota SquadOps (`apps/hub/app/api/squadops/operations/structured/route.ts`).
+- Risco conhecido:
+  - a confirmacao visual autenticada no ambiente de homologacao depende de deploy autorizado e teste do Lucas em `https://homo.c2x.app.br/iris`.
+
+Conclusao:
+- A falha era sincronismo local, nao aprovacao da Meta.
+- O impacto pratico e que templates aprovados na Meta deixam de ficar escondidos no fluxo de contato ativo da Iris.
+- Acao agora: publicar o recorte em homologacao quando Lucas autorizar e retestar o `iris6` no modal `Novo atendimento`.
+
+## 2026-05-24 22:33:00 -03:00 - Apolo - Perfil Prospect no CRM 360
+
+Assunto: [Apolo] Separacao entre Usuario e Prospect
+
+- Nome da squad/agente: `Apolo Core`.
+- Tipo da alteracao: `APOLO / CRM 360 / PERFIS / C2X READ MODEL`.
+- Ambiente: `local`, sem deploy.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO HOMOLOGACAO AUTORIZADA`.
+- Origem: Lucas definiu que `Usuario` deve representar somente quem comprou uma ou mais unidades, enquanto cadastros sem compra devem aparecer como `Prospect`; o conceito visual de `Usuario comprador` deixa de ser usado.
+- Decisao aplicada:
+  - `Usuario` agora e derivado de pagamento real materializado pelo caminho `payments -> acquisition_requests -> enterprise_unities`;
+  - `Prospect` representa `profile_id=2` do C2X sem pagamento valido vinculado;
+  - a leitura das tabelas Apolo normaliza perfis antigos em tempo de exibicao, mantendo compatibilidade com registros materializados como `usuario` antes da criacao do perfil `prospect`;
+  - links comerciais novos do Apolo passam a usar `Usuario` para carteira com pagamento e `Prospect` para jornada/cadastro sem compra, preservando compatibilidade de leitura com `Usuario comprador` antigo;
+  - filtros, busca, cards do Dashboard/CRM 360 e labels da tela foram ajustados para `Usuario` e `Prospect`.
+- Arquivos alterados:
+  - `apps/hub/lib/apolo/types.ts`;
+  - `apps/hub/lib/apolo/catalog.ts`;
+  - `apps/hub/lib/apolo/server.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `apps/hub/app/api/apolo/search/route.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Fora do escopo:
+  - sem migration real, Supabase SQL, env, secret, banco, deploy, dominio, alias, producao ou alteracao em Hades/Iris/Hermes/Chronos/Atlas/Setup;
+  - nenhuma alteracao destrutiva em tabelas Apolo ou C2X.
+- Validacoes executadas:
+  - leitura de `AGENTS.md`;
+  - leitura de `docs/operations/README.md`;
+  - leitura de `docs/operations/engineering-operations.md`;
+  - leitura de `docs/architecture/design-guidelines.md`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps;
+  - `git diff --check -- apps/hub/lib/apolo/types.ts apps/hub/lib/apolo/catalog.ts apps/hub/lib/apolo/server.ts apps/hub/modules/apolo/ApoloPage.tsx apps/hub/app/api/apolo/search/route.ts docs/operations/engineering-operations.md docs/operations/releases-homologation.md`: OK, apenas avisos CRLF conhecidos do Windows;
+  - `GET http://localhost:3001/apolo`: `200 OK`;
+  - `GET http://localhost:3001/api/apolo/relationships?limit=1`: `401` esperado sem sessao.
+- Riscos conhecidos:
+  - a constraint historica de `apolo_entity_profiles.profile` em `packages/database/migrations/0026_apolo_core.sql` ainda nao contempla `prospect`; como migration real esta bloqueada, o recorte faz a normalizacao em leitura e busca, sem exigir alteracao imediata no banco;
+  - futura materializacao persistida de `prospect` em `apolo_entity_profiles` exige SQL/alteracao autorizada pelo Lucas.
+- Proxima acao:
+  - Lucas validar a separacao `Usuario`/`Prospect` na tela Apolo;
+  - depois, se Lucas autorizar, preparar migration segura ou SQL controlado para incluir `prospect` no constraint do Apolo.
+
+Conclusao:
+- O Apolo passou a tratar `Usuario` como comprador real e `Prospect` como cadastro sem compra.
+- O impacto pratico e separar a fila comercial sem depender de tag antiga `Usuario comprador`.
+- Acao agora: Lucas validar a UX no Apolo; migration real para persistir `prospect` continua bloqueada ate autorizacao expressa.
+
+## 2026-05-24 22:22:25 -03:00 - Zeus - Iris template sync publicado em homologacao
+
+Assunto: [Iris] Template aprovado disponivel para novo atendimento
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / META WHATSAPP`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Origem: Lucas autorizou subir em homologacao o ajuste que sincroniza templates aprovados na Meta para aparecerem no fluxo `Novo atendimento`.
+- Recorte publicado:
+  - APIs Iris Meta/templates/tickets e mensagens;
+  - libs Iris Meta WhatsApp e inbound processor;
+  - tela `IrisPage.tsx`;
+  - rota `GET/POST /api/iris/meta/templates` com sincronismo local de status Meta;
+  - modal `Novo atendimento` com consulta server-side antes de liberar o envio.
+- Worktree de release:
+  - pacote limpo montado em `origin/homolog` a partir de `origin/homolog`;
+  - incluidos apenas arquivos runtime da Iris;
+  - arquivos fora de Iris, login, PulseX, Hades, Hermes, Zeus, Atlas, Chronos, Apolo e docs de arquitetura ficaram fora do deploy.
+- Deployment/alias de homologacao:
+  - deployment oficial: `dpl_4ZKvpcS9Z3pd1VjJhCUwoyPHBf56`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-cam282fuc-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_3kHHS4ofmrwuEoZKSVkNzxEZmJv3`.
+- Validacoes executadas:
+  - `git diff --check`: OK no pacote limpo Iris;
+  - `npm.cmd run check-types:hub`: OK no pacote limpo;
+  - `npm.cmd run lint:hub`: OK no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no pacote limpo, com warnings conhecidos de root/NFT;
+  - build remoto Vercel: OK, com warning conhecido NFT/Turbopack em rota SquadOps e aviso de envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect`: deployment `Ready`, target `preview`.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates`: `401` esperado sem sessao;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `405` esperado para GET;
+  - `npx.cmd vercel logs ... --since 10m`: apenas chamadas esperadas `200/401/405`, sem erro runtime.
+- Pendencias ou riscos conhecidos:
+  - a validacao funcional autenticada precisa ser feita por Lucas no modal `Novo atendimento`, selecionando fila `Cobranca`, assunto `Enviar boleto C2X` e template `iris6`;
+  - sem alteracao de env, token, secret, WABA, banco, migration, dominio de producao ou producao.
+- Proxima acao:
+  - Lucas retestar `https://homo.c2x.app.br/iris`; ao abrir `Novo atendimento`, o template aprovado deve aparecer e liberar o botao depois da consulta Meta confirmar `APPROVED`.
+
+Conclusao:
+- O recorte Iris foi publicado em homologacao com alias atualizado para `homo.c2x.app.br`.
+- O impacto pratico e destravar o uso de template aprovado na Meta para iniciar conversa ativa pela Iris.
+- Acao agora: Lucas validar o `iris6` no fluxo real de `Novo atendimento`.
+
+## 2026-05-24 22:24:18 -03:00 - Iris Core - Encerramento de chat, exclusao de templates e biblioteca base
+
+Assunto: [Iris] Encerrar chat, excluir template e biblioteca de modelos
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / OPERACAO MODULO / BACKEND + UI`.
+- Ambiente: `local`, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO PARCIALMENTE / BUILD GLOBAL BLOQUEADO POR ERRO PREEXISTENTE`.
+- Origem: Lucas pediu priorizar operacao do modulo, sem continuar neste ciclo o recorte de janela 24h e templates ativos.
+- Decisao aplicada:
+  - adicionar fechamento operacional do chat/protocolo com `PATCH /api/iris/tickets` (`action: close`) e persistencia de `closed_at`, `status=closed` e metadados de encerramento;
+  - adicionar exclusao local segura de templates com `PATCH /api/iris/meta/templates` (`action: archive_local`), sem apagar template na Meta e com bloqueio quando houver ticket aberto vinculado;
+  - conectar na UI do atendimento botao `Encerrar chat`, encerrando o protocolo diretamente pelo operador;
+  - conectar na UI de Setup > Templates botao `Excluir template`, removendo da biblioteca Iris com feedback operacional;
+  - incluir em Setup > Templates uma biblioteca base de modelos para pre-preenchimento do formulario antes da criacao/envio na Meta.
+- Arquivos alterados no recorte:
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, Supabase, banco, migration, dominio, alias, homologacao ou producao;
+  - sem alteracao de outros modulos fora da Iris.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts docs/operations/engineering-operations.md`: OK (somente aviso CRLF no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: FALHOU por erro preexistente fora do recorte Iris em `apps/hub/lib/apolo/server.ts:1170` (`fetchDerivedProfileEntityIds` nao encontrado).
+- Riscos conhecidos:
+  - validacao autenticada em `http://localhost:3001/iris` ainda pendente neste ciclo;
+  - exclusao atual de template e local (Iris) por seguranca operacional; remocao oficial na Meta segue fora do recorte sem autorizacao explicita.
+- Proxima acao:
+  - validar fluxo autenticado local da Iris: encerrar chat, excluir template local e aplicar modelo base;
+  - tratar separadamente o bloqueio de build global em Apolo para liberar esteira completa do workspace.
+
+Conclusao:
+- A operacao da Iris agora tem botao real para encerrar chat/protocolo, botao para excluir template da biblioteca local e campo de biblioteca base para acelerar novos templates.
+- O impacto pratico e reduzir atrito do operador no fechamento de atendimento e na manutencao do Setup.
+- Acao agora: Lucas validar o fluxo funcional autenticado da Iris; se aprovado, preparar pacote limpo para homologacao quando houver autorizacao.
+
+## 2026-05-24 22:30:39 -03:00 - Iris Core - Agente de primeiro atendimento e boletos
+
+Assunto: [Iris] Contrato operacional do agente de atendimento com fluxo de boleto
+
+- Nome da squad/agente: `Athena / Iris Core`.
+- Tipo da alteracao: `DECISAO / IRIS / AI ATENDIMENTO / BOLETO`.
+- Ambiente: `documental`, sem deploy.
+- Status: `DESENHO OPERACIONAL / PRONTO PARA IMPLEMENTACAO CONTROLADA / INTEGRACOES SENSIVEIS BLOQUEADAS`.
+- Origem: Lucas pediu preparar o agente que fara primeiro atendimento na Iris, extremamente inteligente, educado e prestativo, com foco principal em entrega de boletos; quando nao resolver, deve transferir para atendimento humano.
+- Decisao registrada:
+  - criar contrato operacional do agente customer-facing da Iris em `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - definir fluxo prioritario de boleto com identificacao por canal, autenticacao por fragmento de CPF/CNPJ, consulta Apolo/C2X/Hades, listagem de boletos vencidos/a vencer e entrega apenas por fonte oficial;
+  - definir handoff humano obrigatorio para falha de autenticacao, conflitos cadastrais, reemissao nao aprovada, renegociacao, distrato, contestacao, contrato sensivel, erro de ferramenta ou baixa confianca;
+  - definir ferramentas server-side esperadas para contexto Iris, busca Apolo, verificacao de documento, listagem Hades/C2X, asset oficial de boleto, envio Iris, handoff humano e contexto D4Sign futuro;
+  - registrar que OpenAI deve operar somente server-side, com modelo configuravel por env e sem expor `OPENAI_API_KEY`, payload financeiro bruto, SQL livre ou secrets ao modelo/cliente.
+- Direcao OpenAI:
+  - documentacao oficial consultada em 2026-05-24 indicou `gpt-5.5` como ponto de partida para raciocinio complexo e trabalho profissional;
+  - Responses API e Agents SDK foram considerados caminhos oficiais para fluxo agentico com ferramentas, estado, handoff e guardrails;
+  - antes de producao, o modelo efetivo deve ser revalidado na documentacao oficial e registrado sem expor chave.
+- Fora do escopo:
+  - sem alteracao de codigo runtime;
+  - sem chamada real a OpenAI, Asaas, D4Sign, Meta, Supabase, banco, env, secret, migration, dominio, alias, homologacao ou producao;
+  - sem envio real automatico de boleto neste pacote documental.
+- Arquivos alterados:
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Riscos conhecidos:
+  - envio automatico de boleto e acao financeira sao sensiveis e precisam de ferramenta server-side oficial, homologacao e autorizacao explicita antes de liberar cliente final;
+  - Apolo ainda esta em transicao; ate virar fonte definitiva, o fluxo precisa tratar Apolo como identidade preferida e C2X/Hades como fonte financeira consultiva;
+  - D4Sign deve permanecer read-only e server-side, sem persistir link bruto/expiravel como solucao final.
+- Proxima acao:
+  - Iris Core implementar primeiro recorte read-only: detectar pedido de boleto, localizar cliente, autenticar por fragmento, listar boletos elegiveis e realizar handoff humano seguro;
+  - somente depois homologar entrega direta de boleto oficial existente para cliente autenticado.
+
+Conclusao:
+- O contrato do agente de atendimento da Iris foi preparado sem tocar em segredo, banco, provider ou deploy.
+- O impacto pratico e deixar a frente de boletos pronta para implementacao governada, com autenticacao e handoff humano claros.
+- Acao agora: Lucas pode abrir o agente/recorte Iris usando o contrato criado; qualquer integracao real com OpenAI, Asaas, D4Sign, Meta ou banco segue `BLOQUEADO` ate autorizacao explicita.
+
+## 2026-05-24 22:33:54 -03:00 - Iris Core - Ajuste iconografia e exclusao visual de templates
+
+Assunto: [Iris] Icone com tooltip e remocao imediata de template arquivado
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / UX OPERACIONAL / AJUSTE INCREMENTAL`.
+- Ambiente: `local`, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO PARCIALMENTE`.
+- Origem: Lucas validou o encerramento de chat e pediu reduzir botoes para icone+tooltip; reportou tambem que a exclusao de template executava, mas o item permanecia no painel.
+- Decisao aplicada:
+  - botao de encerramento de chat no atendimento convertido para icone-only com tooltip operacional;
+  - botao de exclusao de template no Setup convertido para icone-only com tooltip operacional;
+  - carga local de templates no `loadIrisData` passou a filtrar status `archived`, removendo do painel itens ja arquivados na exclusao local.
+- Arquivo alterado no recorte:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx`: OK (aviso conhecido CRLF);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: FALHOU por bloqueio externo de filesystem em `apps/hub/next-env.d.ts` (`UNKNOWN: unknown error, open ...next-env.d.ts`) apos compilacao inicial.
+- Risco conhecido:
+  - validacao visual autenticada do fluxo de exclusao no browser ainda depende de reteste manual do Lucas.
+
+Conclusao:
+- Os dois botoes operacionais agora seguem o padrao icon-only com tooltip, sem texto visivel.
+- O template excluido localmente deixa de reaparecer no painel porque status `archived` foi retirado da lista carregada da Iris.
+- Acao agora: Lucas retestar exclusao no Setup para confirmar remocao imediata no painel.
+
+## 2026-05-24 22:44:57 -03:00 - Iris Core - Correcao definitiva da exclusao de template no Setup
+
+Assunto: [Iris] Exclusao de template por selecao real e Novo template icon-only
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / CORRECAO FUNCIONAL / UX OPERACIONAL`.
+- Ambiente: `local`, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO EM BUILD`.
+- Origem: Lucas reportou que o clique em excluir nao executava acao no painel de templates e pediu `Novo template` apenas com icone + tooltip.
+- Causa raiz identificada:
+  - a exclusao dependia de `localTemplate` resolvido por nome/meta-name do formulario, o que podia divergir do card realmente selecionado na lista;
+  - quando havia divergencia, o clique ficava sem alvo operacional claro no fluxo de exclusao.
+- Decisao aplicada:
+  - introduzir selecao explicita por `template.id` no painel (`selectedTemplateId`);
+  - derivar o alvo de exclusao por selecao real da lista (`selectedLibraryTemplate`) antes de chamar `PATCH /api/iris/meta/templates`;
+  - manter fallback por nome apenas quando nao houver selecao explicita;
+  - exibir feedback operacional no proprio bloco da biblioteca para tornar falha/sucesso visivel sem depender do card de status lateral;
+  - converter `Novo template` para botao icon-only com tooltip.
+- Arquivo alterado no recorte:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx`: OK (aviso conhecido CRLF);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de NFT/Turbopack em `squadops`.
+- Risco conhecido:
+  - validacao funcional autenticada final da exclusao no fluxo real depende do reteste do Lucas na tela `Setup > Templates`.
+
+Conclusao:
+- A exclusao passou a usar o template realmente selecionado na biblioteca, eliminando dependencia fragil de nome/meta-name.
+- O botao `Novo template` agora segue o padrao icon-only com tooltip solicitado.
+- Acao agora: Lucas retestar o clique de exclusao na lista e confirmar que o item sai do painel apos confirmar.
+
+## 2026-05-25 00:10:31 -03:00 - Apolo Core - Carteira C2X por pagamentos
+
+Assunto: [Apolo] Carteira 360 por payments, unidades, parcelas e contratos
+
+- Nome da squad/agente: `Apolo Core`.
+- Tipo da alteracao: `APOLO / CRM 360 / BACKEND / DADOS REAIS C2X`.
+- Ambiente: `local`, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO EM TYPECHECK, LINT, BUILD E SMOKE HTTP`.
+- Origem: Lucas apontou que entidade classificada como compradora estava abrindo a aba Carteira sem unidade/parcela, embora a regra correta do legado seja cruzar `payments -> acquisition_requests -> enterprise_unities -> enterprises` como o Hades faz para inadimplentes.
+- Decisao aplicada:
+  - a hidratacao da Carteira do Apolo passou a partir de `payments`, igual ao caminho operacional do Hades, antes de chegar em proposta, unidade, empreendimento, imobiliaria/corretor, contrato e parcelas;
+  - a consulta passou a usar `IN (?)` com arrays do `mysql2`, seguindo o padrao usado no Hades, e filtro explicito de empreendimentos reais do legado;
+  - o fallback `live-c2x` do Apolo agora hidrata as entidades visiveis com `fetchC2xPortfolioByEntity` antes de renderizar a tela, evitando comprador reconhecido com Carteira vazia quando o read model do Apolo ainda estiver em transicao;
+  - os perfis comerciais seguem a regra nova: `Usuario` quando houver carteira materializada por pagamento e `Prospect` quando houver usuario sem compra confirmada;
+  - erros de hidratacao da carteira deixam de ser completamente silenciosos e passam por `sanitizeHadesDbError`, sem expor documento, token ou segredo.
+- Arquivos alterados no recorte:
+  - `apps/hub/lib/apolo/server.ts`;
+  - alteracoes Apolo ja presentes no pacote em `apps/hub/modules/apolo/ApoloPage.tsx`, `apps/hub/lib/apolo/types.ts`, `apps/hub/lib/apolo/catalog.ts` e `apps/hub/app/api/apolo/search/route.ts` seguem compondo a separacao `Usuario`/`Prospect`.
+- Fora do escopo:
+  - sem alteracao de Hades, Iris, Hermes, Chronos, Atlas, Zeus ou Setup;
+  - sem migration, seed, escrita no banco real, alteracao de env, secret, Supabase, Vercel, dominio, alias, homologacao ou producao;
+  - sem mascaramento novo ou exposicao de CPF/CNPJ completo em log ou resposta.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps;
+  - smoke local `GET http://localhost:3001/apolo`: `200 OK`;
+  - smoke local `GET http://localhost:3001/api/apolo/search?limit=1`: `200 OK`.
+- Riscos conhecidos:
+  - a tela em homologacao so refletira esta correcao apos Lucas autorizar deploy do recorte Apolo;
+  - compradores cuja proposta exista no C2X mas nao tenha linha valida em `payments` nao devem ser tratados como `Usuario` pela regra atual; devem cair como `Prospect` ate a fonte financeira confirmar compra;
+  - validacao autenticada visual em navegador nao foi executada neste ciclo automatizado.
+- Proxima acao:
+  - Lucas autorizar ou pedir pacote limpo de homologacao do Apolo para validar a Carteira com compradores adimplentes e inadimplentes no ambiente `homo.c2x.app.br`.
+
+Conclusao:
+- O Apolo agora segue o desenho de carteira do Hades para ler unidades, parcelas, boletos e contratos pela cadeia financeira real do C2X.
+- O impacto pratico e reduzir o caso de comprador aparecer sem dados de unidade/parcela na aba Carteira.
+- Acao agora: validar localmente ou autorizar homologacao do recorte Apolo antes de qualquer promocao.
+
+## 2026-05-24 23:34:41 -03:00 - Iris Core - Agente IA de atendimento e boletos em homologacao
+
+Assunto: [Iris] Agente IA de primeiro atendimento e boletos publicado em homologacao
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / ATENDIMENTO IA / BOLETOS / HOMOLOGACAO`.
+- Ambiente: `homologacao`, Vercel Preview em `https://homo.c2x.app.br`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas autorizou implementar o agente de atendimento da Iris e publicar em homologacao apos validacao.
+- Decisao aplicada:
+  - criar rota server-side `POST /api/iris/attendant` com autorizacao Iris por bearer;
+  - usar OpenAI server-side quando `OPENAI_API_KEY` estiver disponivel, com fallback deterministico seguro;
+  - adicionar env opcional `HUB_IRIS_ATTENDANT_MODEL` somente como nome declarado no `turbo.json`, sem configurar valor ou secret;
+  - autenticar pedidos de boleto por 4 digitos de CPF/CNPJ antes de consultar parcelas;
+  - consultar Hades/C2X por cliente legado quando houver id C2X conhecido no contato/ticket;
+  - preparar link de boleto oficial ja existente via `prepareBoletoResendAction`, sem disparo automatico pelo Asaas;
+  - exibir card operacional do agente dentro do painel de atendimento Iris e aplicar a resposta sugerida no rascunho do operador.
+- Arquivos alterados no recorte:
+  - `apps/hub/app/api/iris/attendant/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `turbo.json`;
+  - `docs/operations/releases-homologation.md`;
+  - `docs/operations/engineering-operations.md`.
+- Deployment/alias de homologacao:
+  - deployment oficial: `dpl_CMMKUXcc2YVDK5AbNLyNz5LTsdZo`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-i2ailoml2-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_4ZKvpcS9Z3pd1VjJhCUwoyPHBf56`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/app/api/iris/attendant/route.ts apps/hub/modules/caredesk/IrisPage.tsx turbo.json`: OK, apenas avisos CRLF conhecidos;
+  - `npm.cmd run check-types --workspace apps/hub`: OK;
+  - `npm.cmd run lint --workspace apps/hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace apps/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps;
+  - `GET http://localhost:3001/iris`: `200 OK`;
+  - `POST http://localhost:3001/api/iris/attendant` sem bearer: `401` esperado;
+  - build remoto Vercel: OK;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `POST https://homo.c2x.app.br/api/iris/attendant` sem sessao: `401` esperado;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br --format=json`: `READY`, target `preview`;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao visual/autenticada do card da Cacá depende de Lucas testar em ticket real no Iris;
+  - contatos sem documento ou sem id C2X conhecido seguem para handoff humano, sem listar boletos;
+  - o recorte nao libera bot publico autonomo nem envio automatico fora da janela Meta;
+  - nenhuma env, secret, WABA, banco, migration, producao ou dominio de producao foi alterado.
+- Proxima acao:
+  - Lucas testar `https://homo.c2x.app.br/iris` em atendimento real com pedido de boleto;
+  - se homologado, Iris Core pode preparar proximo recorte para automacao controlada de atendimento cliente final.
+
+Conclusao:
+- A Cacá agora tem uma primeira frente operacional para organizar atendimento, autenticar pedido de boleto e sugerir resposta segura ao operador.
+- O impacto pratico e reduzir friccao na dor principal de boleto sem abrir risco financeiro: boleto so aparece apos autenticacao minima e com fonte Hades/C2X.
+- Acao agora: Lucas testa em homologacao; Iris Core ajusta o fluxo se a operacao pedir automacao mais direta ou melhor leitura de vinculo C2X.
+
+## 2026-05-24 23:39:14 -03:00 - Iris Core - Identidade Cacá x Athena
+
+Assunto: [Iris] Cacá como agente de atendimento e Athena como agente de bordo
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `DECISAO OPERACIONAL / IDENTIDADE IA / ATENDIMENTO`.
+- Ambiente: `homologacao`, Vercel Preview em `https://homo.c2x.app.br`.
+- Status: `EM HOMOLOGACAO`.
+- Origem: Lucas esclareceu que o agente construido para a Iris deve ser a `Cacá`, exclusiva para atendimento ao cliente, enquanto `Athena` fica como agente de bordo/apoio do operador.
+- Decisao aplicada:
+  - `Cacá` passa a ser a identidade do agente de atendimento da Iris, inclusive no fluxo de boletos;
+  - `Athena` permanece como agente interno/de bordo para operador, tickets TI, apoio operacional e leitura tecnica;
+  - a Cacá nao deve ser descrita como copiloto do operador; ela deve atender clientes, com handoff humano quando necessario.
+- Impacto operacional:
+  - textos visiveis e instrucao server-side do endpoint `POST /api/iris/attendant` devem usar `Cacá`;
+  - proximos recortes da Iris devem evoluir da assistencia ao operador para atendimento automatico controlado da Cacá no inbound Meta;
+  - qualquer automacao direta precisa manter autenticacao, janela Meta, rastreabilidade e handoff humano.
+- Deployment/alias de homologacao:
+  - deployment oficial: `dpl_6pKGuGEJtcpibh2nVWm5svqSa8qz`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-2gayyqm27-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_CMMKUXcc2YVDK5AbNLyNz5LTsdZo`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace apps/hub`: OK;
+  - `npm.cmd run lint --workspace apps/hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace apps/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps;
+  - build remoto Vercel: OK;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `POST https://homo.c2x.app.br/api/iris/attendant` sem sessao: `401` esperado;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br --format=json`: `READY`, target `preview`;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+
+Conclusao:
+- A identidade oficial fica separada: Athena apoia a operacao; Cacá atende o cliente na Iris.
+- O impacto pratico e evitar misturar agente interno com agente de atendimento externo.
+- Proximo passo: Lucas validar a nomenclatura em homologacao e, depois, desenhar a etapa em que a Cacá responde automaticamente mensagens inbound.
+
+## 2026-05-24 22:54:42 -03:00 - Iris Core - Reconciliacao de template ativo Meta
+
+Assunto: [Iris] iris6 ativo na Meta reconhecido como aprovado
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / META WHATSAPP / TEMPLATE STATUS SYNC`.
+- Ambiente: `local`, sem deploy nesta entrada.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO EM BUILD / AGUARDANDO HOMOLOGACAO`.
+- Origem: Lucas ativou os webhooks recomendados no app Meta e reportou que o template `iris6` continuava pendente na Iris mesmo aparecendo como `Ativo - Qualidade pendente` no Meta Manager.
+- Causa raiz tratada:
+  - a consulta de templates da Graph API fazia leitura de uma pagina unica e nao usava o filtro local de nome/idioma dentro do helper;
+  - a Iris reconhecia como aprovado apenas `APPROVED`, mas a Meta/Manager pode representar template sendable como `ACTIVE` ou variações `ACTIVE_*`, como `Ativo - Qualidade pendente`.
+- Decisao aplicada:
+  - `listMetaWhatsAppMessageTemplates` passou a aceitar `name` e `language`, percorrer paginacao da WABA e filtrar templates por nome/idioma sem registrar token ou payload sensivel;
+  - `GET /api/iris/meta/templates` passa `language` ao helper e segue sincronizando o template local quando a Meta retorna o registro;
+  - o status local de template agora trata `APPROVED`, `ACTIVE` e variações `ACTIVE_*`/`APPROVED_*` como `active`;
+  - a UI da Iris tambem considera esses estados como aprovados no Setup e no modal `Novo atendimento`, mantendo `REJECTED`, `PAUSED`, `DISABLED` e variações como indisponiveis.
+- Arquivos alterados no recorte:
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `turbo.json` (nome de env Iris ja usado pela rota de atendimento, sem valor sensivel);
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number id, Supabase schema, migration, dominio, alias, producao ou webhook config;
+  - sem apagar template na Meta.
+- Validacoes executadas:
+  - leitura de `AGENTS.md`, `docs/operations/README.md`, diario canonico, governanca de APIs, seguranca, ambientes, release/rollback, incidente, secrets e contrato visual;
+  - `git diff --check -- apps/hub/lib/iris/meta-whatsapp.ts apps/hub/app/api/iris/meta/templates/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK (avisos CRLF conhecidos);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps.
+- Risco conhecido:
+  - precisa publicar recorte limpo em homologacao e retestar autenticado em `https://homo.c2x.app.br/iris` para confirmar que `iris6` aparece como aprovado e libera `Iniciar atendimento`.
+
+Conclusao:
+- A Iris agora entende o estado ativo da Meta como template aprovado/sendable.
+- O impacto pratico esperado e o `iris6` sair de pendente na Iris apos consulta e ficar disponivel no fluxo real de `Novo atendimento`.
+- Acao agora: publicar o recorte em homologacao quando autorizado e Lucas retestar o template `iris6`.
+
+## 2026-05-24 23:42:58 -03:00 - Zeus - Iris template ativo publicado em homologacao
+
+Assunto: [Iris] iris6 ativo Meta em homologacao
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / META WHATSAPP`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO TESTE OPERACIONAL DO LUCAS`.
+- Origem: Lucas informou que ativou os webhooks recomendados na Meta e pediu corrigir o `iris6` para testar em homologacao.
+- Recorte publicado:
+  - consulta paginada e filtrada de templates Meta por nome/idioma;
+  - reconhecimento de `APPROVED`, `ACTIVE` e variações `ACTIVE_*` como template local `active`;
+  - UI da Iris considerando estados ativos da Meta como aprovados no Setup e no modal `Novo atendimento`;
+  - preservacao do runtime Iris ja homologado para Cacá, templates, mensagens e tickets.
+- Worktree de release:
+  - pacote limpo em `careli-hub-worktrees/iris6-homolog-20260524-2255`, a partir de `origin/homolog`;
+  - worktree principal estava misto e nao foi usado diretamente para deploy;
+  - incluida apenas a declaracao de nome `HUB_IRIS_ATTENDANT_MODEL` em `turbo.json`, sem valor sensivel, porque a rota Iris ja usa essa env e o lint bloqueava sem registry.
+- Deployment/alias de homologacao:
+  - deployment oficial: `dpl_CyC2tCRMdcbLdoZVbyZfYVoybgic`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-ek5a7potj-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_CMMKUXcc2YVDK5AbNLyNz5LTsdZo`.
+- Validacoes executadas:
+  - `git diff --check`: OK no pacote limpo Iris (avisos CRLF conhecidos);
+  - `npm.cmd run check-types:hub`: OK no worktree principal e no pacote limpo;
+  - `npm.cmd run lint:hub`: OK no worktree principal e no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no worktree principal, com warning conhecido NFT/Turbopack;
+  - build local no pacote limpo: bloqueado apenas pela junction temporaria `node_modules` fora do root do Turbopack; build remoto Vercel executou em ambiente limpo e passou;
+  - build remoto Vercel: OK, com warning conhecido NFT/Turbopack e avisos existentes de envs `HOMOLOG_*` fora do `turbo.json`.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401` esperado;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: deployment `Ready`, target `preview`, apontando para `dpl_CyC2tCRMdcbLdoZVbyZfYVoybgic`;
+  - logs recentes: chamadas esperadas `200/401`, sem erro runtime.
+- Riscos conhecidos:
+  - confirmacao final depende de Lucas testar autenticado se `iris6` muda para aprovado/ativo e libera `Iniciar atendimento`;
+  - nenhuma env, secret, token, WABA, phone number id, banco, migration, dominio de producao ou producao foi alterado.
+- Proxima acao:
+  - Lucas abrir `https://homo.c2x.app.br/iris`, ir em Setup/Templates ou `Novo atendimento`, consultar `iris6` e confirmar se aparece como aprovado e selecionavel.
+
+Conclusao:
+- A correcao do `iris6` foi publicada em homologacao com recorte Iris isolado.
+- O impacto pratico esperado e a Iris parar de tratar o template ativo da Meta como pendente.
+- Acao agora: Lucas retestar o fluxo autenticado; se ainda aparecer pendente, o proximo passo e investigar o payload autenticado da rota `GET /api/iris/meta/templates` sem expor token ou dados sensiveis.
+
+## 2026-05-24 22:56:45 -03:00 - Iris Core - Correcao backend da exclusao de template
+
+Assunto: [Iris] Exclusao local de template sem falha no PATCH
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IRIS / HOTFIX BACKEND / TEMPLATE SETUP`.
+- Ambiente: `local`, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO EM BUILD`.
+- Origem: Lucas reportou erro ao clicar em excluir template no Setup (`Falha ao remover template`) mesmo com os ajustes de selecao e iconografia ja aplicados.
+- Causa raiz confirmada:
+  - o filtro de ticket vinculado no `PATCH /api/iris/meta/templates` usava status invalido `canceled` (sem `l`), fora do enum real `caredesk_ticket_status`;
+  - a falha do Supabase/PostgREST caia no `catch` como objeto e retornava mensagem generica, ocultando a causa operacional.
+- Decisao aplicada:
+  - ajustar o filtro de tickets vinculados para buscar somente status realmente abertos (`new`, `open`, `waiting_customer`, `waiting_operator`, `pending`);
+  - manter bloqueio `409` quando existir ticket aberto vinculado ao template;
+  - melhorar leitura de erro no `catch` do PATCH para converter erros de objeto em mensagem segura, evitando retorno generico sem contexto.
+- Arquivo alterado no recorte:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`.
+- Fora do escopo:
+  - sem alteracao de env, token, secret, WABA, phone number id, Supabase schema, migration, dominio, alias, homologacao ou producao;
+  - sem remocao de template na Meta (segue apenas arquivamento local na Iris).
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/meta/messages/route.ts apps/hub/app/api/iris/meta/events/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-whatsapp.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/modules/caredesk-meta-whatsapp-setup.md docs/operations/engineering-operations.md`: OK (somente avisos CRLF conhecidos no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de NFT/Turbopack em `squadops`.
+- Risco conhecido:
+  - validacao funcional autenticada final da exclusao continua dependente do reteste do Lucas em `http://localhost:3001/iris`.
+
+Conclusao:
+- A falha de exclusao nao estava mais na UI e sim no filtro backend com status invalido.
+- O impacto pratico e que o clique em excluir volta a arquivar o template localmente no Setup, mantendo bloqueio apenas quando houver ticket aberto vinculado.
+- Acao agora: Lucas retestar a exclusao no painel; se houver ticket vinculado aberto, a Iris deve retornar alerta de bloqueio com protocolo, nao erro generico.
+
+## 2026-05-24 23:48:27 -03:00 - Iris Core - Deploy de homologacao das melhorias operacionais
+
+Assunto: [Iris] Homologacao do encerramento de chat e exclusao de template
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / OPERACAO MODULO`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO VALIDACAO FUNCIONAL DO LUCAS`.
+- Origem: Lucas autorizou publicar em homologacao as melhorias operacionais ja implementadas na Iris.
+- Recorte publicado:
+  - encerramento operacional de chat/protocolo pelo operador no fluxo de atendimento;
+  - botoes de Setup em icon-only com tooltip (`Excluir template` e `Novo template`);
+  - correcao backend da exclusao local de template no `PATCH /api/iris/meta/templates`, removendo filtro de status invalido e preservando bloqueio `409` para ticket aberto vinculado;
+  - preservacao do fluxo atual de envio/recebimento Meta no modulo.
+- Isolamento de pacote:
+  - worktree principal estava misto com alteracoes de outros modulos e nao foi usado para deploy direto;
+  - pacote limpo criado em `.codex-deploy/iris-homolog-20260524-233952-ops-fixes/workspace`, baseado no `HEAD` de `homolog` com overlay somente do recorte Iris.
+- Deployment/alias de homologacao:
+  - deployment oficial: `dpl_D4tSoPt57jN5uHRusQ799NBFWsY8`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-nqqk1c98u-lucasruas-devs-projects.vercel.app`;
+  - alias homologacao: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_CyC2tCRMdcbLdoZVbyZfYVoybgic`.
+- Arquivos incluidos no pacote:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`.
+- Arquivos explicitamente fora do deploy:
+  - `apps/hub/app/api/apolo/*`, `apps/hub/lib/apolo/*`, `apps/hub/modules/apolo/*`;
+  - `apps/hub/components/pulsex/*`, `apps/hub/app/login/page.tsx`;
+  - documentos/arquitetura fora do registro operacional desta rodada;
+  - qualquer env, secret, migration, banco, dominio/alias de producao e recortes fora da Iris.
+- Validacoes executadas:
+  - pacote limpo: `npm.cmd run check-types:hub` OK;
+  - pacote limpo: `npm.cmd run lint:hub` OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub` OK (warnings conhecidos de lockfile/NFT no Turbopack);
+  - deploy: `npx.cmd vercel deploy --yes` OK;
+  - alias: `npx.cmd vercel alias set dpl_D4tSoPt57jN5uHRusQ799NBFWsY8 homo.c2x.app.br` OK;
+  - inspeção: `npx.cmd vercel inspect https://homo.c2x.app.br` confirmou `Ready` no deployment `dpl_D4tSoPt57jN5uHRusQ799NBFWsY8`.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/messages` sem sessao: `401` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/webhook` sem challenge: `403` esperado.
+- Riscos conhecidos:
+  - falta teste funcional autenticado final de exclusao e encerramento com ticket real na interface da Iris;
+  - ambiente de homologacao pode receber novos previews; se o alias for reapontado por outro recorte, deve ser reconciliado novamente para este deployment.
+- Proxima acao:
+  - Lucas validar no `https://homo.c2x.app.br/iris` os fluxos de `Encerrar chat` e `Excluir template`;
+  - se aprovado, registrar status `PRONTO PARA PRODUCAO` para handoff ao Hefesto.
+
+Conclusao:
+- As melhorias operacionais pedidas para a Iris foram publicadas em homologacao com recorte isolado e sem mistura de outros modulos.
+- O impacto pratico e disponibilizar no ambiente homologado o encerramento de protocolo e a exclusao de template com backend corrigido.
+- Acao agora: Lucas executar o teste autenticado fim a fim; sem essa validacao, o recorte permanece em `EM HOMOLOGACAO`.
+
+## 2026-05-24 23:59:44 -03:00 - Zeus - Diagnostico telefone Meta exibivel na Iris
+
+Assunto: [Iris] Telefone de envio voltou para fallback por ID
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / META WHATSAPP / TELEFONE DE ENVIO / DIAGNOSTICO`.
+- Ambiente: `local`, sem deploy nesta entrada.
+- Status: `AJUSTE LOCAL / AGUARDANDO VALIDACAO E HOMOLOGACAO`.
+- Origem: Lucas reportou que o telefone real que aparecia no select de `Telefone de envio` sumiu em homologacao, voltando a exibir `Telefone sem numero (ID final 6689)` e tambem o telefone de teste da Meta.
+- Diagnostico:
+  - o telefone operacional nao foi trocado nesta analise;
+  - a env opcional `META_WHATSAPP_PHONE_DISPLAY_NUMBER` existe em Vercel Preview para a branch `homolog`, com valor criptografado e sem exposicao;
+  - o `turbo.json` atual nao registrava `META_WHATSAPP_PHONE_DISPLAY_NUMBER` nem `META_WHATSAPP_PHONE_NUMBER` no `globalEnv`, o que pode impedir o fallback cadastral de chegar ao build/runtime em deploys limpos;
+  - o ultimo deploy de homologacao da Iris foi feito por pacote limpo apos a correcao anterior e pode ter reapontado o alias sem preservar o caminho do fallback exibivel.
+- Decisao implementada localmente:
+  - adicionar `META_WHATSAPP_PHONE_DISPLAY_NUMBER` e `META_WHATSAPP_PHONE_NUMBER` ao `globalEnv` do `turbo.json`;
+  - registrar essas envs opcionais na lista tecnica de nomes Meta da Iris, sem torna-las obrigatorias;
+  - quando a Meta omitir `display_phone_number`, o telefone configurado passa a aparecer como `Telefone configurado da Iris (ID final ...)`, evitando a mensagem operacional confusa `Telefone sem numero`.
+- Arquivos alterados:
+  - `turbo.json`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - nenhuma alteracao de valor de env, token, WABA, phone number ID, webhook, Supabase, banco, migration, dominio, alias, producao ou disparo WhatsApp;
+  - nenhum valor sensivel foi registrado.
+- Validacao executada ate aqui:
+  - `npx.cmd vercel env ls preview` usado somente para auditar nomes e presenca criptografada de envs, sem exibir valores.
+- Proxima acao:
+  - validar `check-types`, `lint` e build do recorte;
+  - se Lucas autorizar, publicar novo pacote limpo em homologacao garantindo que o deploy use o fallback de telefone exibivel.
+
+Conclusao:
+- O erro voltou por falha de propagacao/registro do fallback exibivel, nao por troca confirmada do telefone operacional.
+- O impacto pratico e que a Iris pode continuar operando com o ID certo, mas a tela perde o numero legivel e assusta o operador.
+- Acao agora: validar o ajuste e publicar em homologacao somente com autorizacao explicita do Lucas.
+
+## 2026-05-25 00:15:17 -03:00 - Zeus - Homologacao telefone Meta exibivel Iris
+
+Assunto: [Iris] Telefone de envio exibivel em homologacao
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / META WHATSAPP / TELEFONE DE ENVIO`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO VALIDACAO FUNCIONAL DO LUCAS`.
+- Origem: Lucas autorizou subir em homologacao a correcao que evita regressao do telefone real no select de `Telefone de envio`.
+- Protecao contra sobrescrita:
+  - o worktree principal estava misto e nao foi usado para deploy direto;
+  - pacote limpo criado em `.codex-deploy/iris-homolog-20260525-000730-phone-display/workspace`;
+  - base Git: `4843ffa8e367453f4304c279c92e7660027f3709`;
+  - overlay limitado aos arquivos Iris ja publicados no ultimo recorte operacional e ao `turbo.json`;
+  - rotas locais ainda nao presentes no deployment atual (`/api/iris/attendant` e `/api/iris/meta/templates/media`) ficaram fora do pacote e continuaram retornando `404`, evitando publicar itens nao homologados por acidente.
+- Recorte publicado:
+  - `META_WHATSAPP_PHONE_DISPLAY_NUMBER` e `META_WHATSAPP_PHONE_NUMBER` registrados no `globalEnv` do `turbo.json`;
+  - nomes opcionais de fallback adicionados ao registry tecnico Meta da Iris;
+  - fallback visual do telefone configurado ajustado para `Telefone configurado da Iris (ID final ...)` quando a Meta omitir `display_phone_number`;
+  - preservadas as melhorias Iris homologadas em `IrisPage`, templates, tickets, mensagens e inbound processor.
+- Deployment/alias de homologacao:
+  - deployment anterior/rollback imediato: `dpl_D4tSoPt57jN5uHRusQ799NBFWsY8`;
+  - deployment novo: `dpl_FUnxWTZd3YZUf76M8hWkJofDDUGN`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-4zx58fui6-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`.
+- Arquivos incluidos no pacote:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `turbo.json`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de valor de env, token, WABA, phone number ID, webhook, Supabase, banco, migration, dominio de producao, producao ou disparo WhatsApp;
+  - sem incluir recortes locais de Apolo, Pulsex, Login, arquitetura ou rotas Iris nao homologadas.
+- Validacoes executadas:
+  - pacote limpo confirmou `apps/hub/app/api/iris/attendant` e `apps/hub/app/api/iris/meta/templates/media` ausentes antes do deploy;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo: `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile/NFT/Turbopack;
+  - build remoto Vercel: OK, com warnings conhecidos de `HOMOLOG_*` fora do `turbo.json` e audit existente;
+  - deploy preview: `npx.cmd vercel deploy --yes`: OK;
+  - alias homologacao: `npx.cmd vercel alias set dpl_FUnxWTZd3YZUf76M8hWkJofDDUGN homo.c2x.app.br`: OK;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_FUnxWTZd3YZUf76M8hWkJofDDUGN`.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/attendant`: `404` esperado neste recorte;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates/media`: `404` esperado neste recorte;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada do select de telefone ainda depende do Lucas abrir `Setup > Templates` em homologacao;
+  - o fallback exibivel depende da env opcional ja existente no Preview `homolog`; valores nao foram exibidos nem alterados.
+- Proxima acao:
+  - Lucas retestar `https://homo.c2x.app.br/iris` e confirmar se o telefone real volta a aparecer no select de `Telefone de envio`;
+  - se aprovado, marcar recorte Iris como homologado para posterior handoff do Hefesto.
+
+Conclusao:
+- A correcao do telefone exibivel foi publicada em homologacao com pacote limpo e protecao contra sobrescrita das melhorias recentes da Iris.
+- O impacto pratico esperado e a Iris voltar a mostrar o telefone configurado corretamente, sem parecer que o numero foi trocado.
+- Acao agora: Lucas validar a tela autenticada; producao segue fora do escopo.
+
+## 2026-05-25 00:34:09 -03:00 - Apolo Core - Correcao do filtro Prospect no CRM 360
+
+Assunto: [Apolo] Filtro Prospect no CRM 360
+
+- Nome da squad/agente: `Apolo Core`.
+- Tipo da alteracao: `APOLO / HOTFIX UX-DADOS / CRM 360`.
+- Ambiente: `local`, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE / AGUARDANDO RETESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas reportou que, ao filtrar por `Prospect`, a fila do CRM 360 ficava vazia e o detalhe continuava exibindo o relacionamento anterior.
+- Causa raiz confirmada:
+  - a rota principal `GET /api/apolo/relationships` ainda nao aceitava `prospect` na normalizacao server-side do perfil, apesar do tipo/catalogo do Apolo ja reconhecerem esse perfil;
+  - a UI mantinha fallback para `entities[0]` quando a lista filtrada ficava vazia, deixando o painel de detalhe preso em um registro que nao pertencia ao filtro ativo.
+- Decisao aplicada:
+  - incluir `prospect` no allowlist server-side da rota de relacionamentos;
+  - impedir fallback para o primeiro registro bruto quando houver busca ou filtro ativo, deixando a selecao seguir apenas os resultados filtrados.
+- Arquivos alterados no recorte:
+  - `apps/hub/app/api/apolo/relationships/route.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`.
+- Fora do escopo:
+  - sem alteracao de Hades, Iris, Hermes, Chronos, Atlas, Setup ou Zeus;
+  - sem migration, env, secret, token, banco, Supabase schema, dominio, alias, deploy de homologacao ou producao.
+- Validacoes executadas:
+  - `npx.cmd eslint app/api/apolo/relationships/route.ts modules/apolo/ApoloPage.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `GET http://localhost:3001/apolo`: `200 OK`;
+  - `GET http://localhost:3001/api/apolo/search?profile=prospect&limit=20`: `200`, respondeu pela fonte `live-c2x` com status `sync_pending` no ambiente shell;
+  - `npm.cmd run check-types:hub`: BLOQUEADO por erro preexistente fora do Apolo em `apps/hub/lib/iris/meta-inbound-processor.ts` (`maybeSendCacaAutoReply` nao definido);
+  - `npm.cmd run lint:hub`: BLOQUEADO por warnings preexistentes fora do Apolo em `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `npm.cmd run build --workspace @repo/hub`: BLOQUEADO pelo mesmo erro TypeScript da Iris.
+- Riscos conhecidos:
+  - a validacao funcional completa do filtro `Prospect` depende de reteste autenticado no navegador do Lucas, porque `GET /api/apolo/relationships` exige bearer de sessao;
+  - o worktree segue misto com alteracoes de outros modulos/recortes e nao deve ser usado para deploy direto sem pacote limpo.
+- Proxima acao:
+  - Lucas atualizar `http://localhost:3001/apolo`, filtrar `Prospect` e confirmar se a fila passa a listar prospects e se o detalhe acompanha o primeiro resultado filtrado ou fica limpo quando nao houver resultado.
+
+Conclusao:
+- O erro do filtro Prospect estava na rota de dados do CRM 360 e no fallback visual do detalhe, nao na intencao de UX.
+- O impacto pratico e que o filtro deixa de consultar um lote errado e a tela para de mostrar dossie fora do filtro ativo.
+- Acao agora: Lucas retestar autenticado; producao e homologacao continuam fora do escopo desta entrada.
+
+## 2026-05-25 00:41:27 -03:00 - Iris Core - Cacá inbound automático em homologação
+
+Assunto: [Iris] Cacá responde inbound WhatsApp em homologação
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / CACA / META WHATSAPP INBOUND`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO TESTE REAL DO LUCAS PELO WHATSAPP`.
+- Origem: Lucas autorizou liberar a Cacá para responder automaticamente mensagens recebidas na Iris, mantendo Athena como agente de bordo/operador e Cacá como agente exclusiva de atendimento ao cliente.
+- Decisao operacional:
+  - Cacá passa a atuar no webhook inbound da Meta depois que a Iris grava contato, ticket e mensagem do cliente;
+  - a automacao nao responde tickets fechados, tickets ja atribuídos a operador humano ou tickets que ja exigiram handoff;
+  - para boleto, Cacá pede somente os 4 ultimos digitos do CPF/CNPJ, valida de forma deterministica, consulta Hades/C2X pelo vinculo do contato e lista boletos elegiveis antes de entregar link oficial;
+  - quando faltar documento, vinculo C2X, consulta financeira ou houver midia nao analisavel, Cacá responde com handoff humano e marca o ticket como `waiting_operator`;
+  - respostas automaticas sao persistidas em `caredesk_messages`, referenciadas em `caredesk_whatsapp_message_refs`, registradas em `caredesk_ticket_events` e controladas via metadata `cacaAutomation`.
+- Recorte publicado:
+  - acoplamento da Cacá ao processamento inbound em `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - preservacao dos ajustes Iris ja homologados em mensagens, tickets, templates, telefone Meta e UI;
+  - inclusao da rota `apps/hub/app/api/iris/attendant/route.ts` no pacote de homologacao para manter o endpoint autenticado da Cacá disponivel na Iris.
+- Pacote limpo:
+  - `.codex-deploy/iris-homolog-20260525-004300-caca-auto/workspace`;
+  - base Git: `4843ffa8e367453f4304c279c92e7660027f3709`;
+  - Safety Gate: `PASS`, alias esperado `dpl_FUnxWTZd3YZUf76M8hWkJofDDUGN`.
+- Deployment/alias de homologacao:
+  - deployment anterior/rollback imediato: `dpl_FUnxWTZd3YZUf76M8hWkJofDDUGN`;
+  - deployment novo: `dpl_HSHQtFa1xyMuegUe3vSBbKVoLAsE`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-f6bcskjnx-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`.
+- Arquivos incluidos no pacote:
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/app/api/iris/attendant/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `turbo.json`.
+- Fora do escopo:
+  - sem alterar valores de env, secret, token, WABA, phone number ID, webhook config, Supabase schema, migration, banco, dominio de producao ou producao;
+  - sem recortes Apolo, Hermes, Login, Atlas, Chronos, Hades fora do que a Iris ja consome server-side para boleto.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps/Zeus;
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-004300-caca-auto/manifest.json`: PASS;
+  - build remoto Vercel: OK, com warnings conhecidos de `HOMOLOG_*` fora do `turbo.json`;
+  - deploy preview: `npx.cmd vercel deploy --yes --target preview`: OK;
+  - alias homologacao: `npx.cmd vercel alias set dpl_HSHQtFa1xyMuegUe3vSBbKVoLAsE homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/webhook` sem challenge: `403` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/webhook` sem assinatura: `401` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/attendant` sem sessao: `401` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/messages` sem sessao: `401` esperado;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: deployment `dpl_HSHQtFa1xyMuegUe3vSBbKVoLAsE`, `Ready`, target `preview`;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - o teste real de resposta pelo WhatsApp depende do payload assinado da Meta e nao foi simulado localmente para evitar disparo real artificial;
+  - entrega de boleto depende de contato com documento e vinculo C2X/Hades disponiveis; caso contrario, a Cacá faz handoff humano;
+  - producao segue fora do escopo; promocao futura deve ser feita pelo Hefesto com recorte aprovado.
+- Proxima acao:
+  - Lucas enviar mensagem real para o numero da Iris em homologacao e validar se a Cacá responde automaticamente;
+  - testar pelo menos: saudacao geral, pedido de boleto, informacao dos 4 ultimos digitos e escolha de parcela quando houver boleto elegivel.
+
+Conclusao:
+- A Cacá foi liberada em homologacao para responder automaticamente inbound da Iris, sem assumir papel de Athena.
+- O impacto pratico e que mensagens reais recebidas pela Meta passam a gerar atendimento inicial automatico, com guardrails para boleto e handoff humano.
+- Acao agora: Lucas testar pelo WhatsApp em homologacao; se aprovado, o recorte fica pronto para handoff futuro ao Hefesto.
+
+## 2026-05-25 00:28:56 -03:00 - Zeus - Homologation Safety Gate
+
+Assunto: [Zeus] Safety Gate de homologacao para preservar recortes ativos
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `GOVERNANCA / HOMOLOGACAO / WORKTREES / SAFETY GATE`.
+- Ambiente: `documentacao + script local`, sem deploy nesta entrada.
+- Status: `ATIVO / OBRIGATORIO PARA PROXIMOS DEPLOYS DE HOMOLOGACAO`.
+- Origem: Lucas questionou como evitar que correcoes de Zeus ou de outros agentes sobrescrevam melhorias ja publicadas em homologacao, principalmente com agentes atuando em worktrees separados e o worktree principal ainda misto.
+- Decisao:
+  - formalizar `https://homo.c2x.app.br` como alias compartilhado que exige preflight antes de qualquer Preview ou reapontamento;
+  - exigir manifesto de homologacao com deployment esperado, pacote limpo, inclusoes, exclusoes, validacoes, rollback e aprovacao;
+  - bloquear publicacao quando o deployment atual do alias divergir da base esperada ou quando o pacote carregar recorte misto.
+- Artefatos criados/atualizados:
+  - `docs/operations/homologation-safety-gate.md`;
+  - `scripts/homologation-safety-gate.mjs`;
+  - `docs/operations/README.md`;
+  - `docs/architecture/release-and-rollback-policy.md`;
+  - `AGENTS.md`.
+- Como funciona:
+  - o agente inspeciona `homo.c2x.app.br` e registra `expectedDeploymentId`;
+  - monta pacote limpo com overlay do modulo autorizado;
+  - roda `node scripts/homologation-safety-gate.mjs --manifest <manifesto>`;
+  - o script valida package path, arquivos incluidos, caminhos excluidos, envs reais no pacote, rollback declarado e divergencia de deployment atual;
+  - se o alias mudou entre preflight e publicacao, o status vira `BLOQUEADO` ate reconciliacao com Lucas/Zeus.
+- Validacoes executadas:
+  - `node --check scripts/homologation-safety-gate.mjs`: OK;
+  - `node scripts/homologation-safety-gate.mjs --init`: OK;
+  - teste read-only com manifesto temporario e pacote Iris recente usando `--skip-alias-check`: `PASS` com avisos esperados;
+  - teste read-only com `--current-deployment dpl_FUnxWTZd3YZUf76M8hWkJofDDUGN`: `PASS`;
+  - teste negativo com deployment divergente: `BLOQUEADO`, confirmando a trava.
+- Fora do escopo:
+  - nenhum deploy, alias, Vercel env, Supabase, banco, migration, secret, dominio, producao ou webhook foi alterado;
+  - nao houve mudanca funcional nos modulos Iris, Apolo, Hades, Hermes, Atlas, Chronos ou Setup.
+- Riscos conhecidos:
+  - o gate depende de o agente montar o manifesto corretamente;
+  - a verificacao por Vercel `inspect` exige ambiente logado no CLI quando nao for usado `--current-deployment`;
+  - registros estruturados do Operations Center continuam pendentes de autorizacao especifica para escrita Supabase.
+- Proxima acao:
+  - exigir o gate nos proximos deploys de homologacao;
+  - opcionalmente criar manifestos por agente/modulo dentro de cada pacote `.codex-deploy`;
+  - evoluir o Operations Center para exibir o estado do gate por recorte.
+
+Conclusao:
+- O Panteon agora tem uma trava operacional para homologacao que reduz o risco de um agente sobrescrever trabalho de outro.
+- O impacto pratico e transformar a checagem que Zeus vinha fazendo manualmente em processo repetivel, com bloqueio claro antes de alias/deploy.
+- Acao agora: todo agente deve rodar o Safety Gate antes de publicar ou reapontar homologacao; Zeus audita divergencias e Lucas decide conflitos.
+
+## 2026-05-25 00:45:41 -03:00 - Zeus - Iris importacao de template Meta aprovado
+
+Assunto: [Iris] Template aprovado na Meta com biblioteca local vazia
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `IRIS / META WHATSAPP / CORRECAO FUNCIONAL`.
+- Ambiente: `local`, sem deploy nesta entrada.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO / AGUARDANDO AUTORIZACAO PARA HOMOLOGACAO`.
+- Origem: Lucas reportou que o comportamento continuava igual em `https://homo.c2x.app.br/iris`: biblioteca local de templates zerada, contadores em `0`, e o template aprovado na Meta nao aparecia para iniciar atendimento.
+- Diagnostico:
+  - a correcao anterior sincronizava status quando ja existia um cadastro local em `caredesk_templates`;
+  - quando o template local era removido/arquivado ou a biblioteca local ficava vazia, a consulta `GET /api/iris/meta/templates` conseguia consultar a Meta, mas nao recriava o registro local necessario para o Setup e para o modal `Novo atendimento`;
+  - o modal de contato ativo lista somente templates locais aprovados, entao template aprovado na Meta continuava invisivel se a Iris nao tivesse registro local ativo.
+- Decisao aplicada:
+  - a tela de Setup passa a enviar para a consulta Meta o contexto do formulario: nome interno, fila, assunto, corpo e botoes;
+  - a rota `GET /api/iris/meta/templates` agora, quando encontra template na Meta e nao encontra registro local, importa/reativa o template em `caredesk_templates` com status local derivado do status Meta;
+  - a importacao so acontece quando ha fila e assunto, evitando criar template solto sem contexto operacional;
+  - quando a importacao ocorre, o front recebe `localTemplateSync.imported` e dispara refresh da biblioteca Iris, fazendo o template voltar para a lista e para o fluxo de `Novo atendimento`.
+- Arquivos alterados:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de valor de env, token, WABA, phone number ID, webhook, Supabase migration, banco estrutural, dominio, alias, homologacao ou producao;
+  - sem mudanca em Hades, Hermes, Apolo, Atlas, Chronos ou Setup global.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/app/api/iris/meta/templates/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK, com avisos CRLF conhecidos do Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de NFT/Turbopack em rota SquadOps.
+- Risco conhecido:
+  - ainda falta publicar o recorte em homologacao com pacote limpo e retestar autenticado no Setup da Iris;
+  - o numero exibivel do telefone segue dependente de a Meta/env retornar `display_phone_number`; quando nao retorna, a Iris continua usando o ID do telefone correto para resolver a WABA.
+- Proxima acao:
+  - se Lucas autorizar, preparar pacote limpo Iris, rodar Homologation Safety Gate e publicar em homologacao;
+  - depois do deploy, Lucas deve clicar `Consultar` no template aprovado com fila/assunto selecionados para a Iris recriar a biblioteca local.
+
+Conclusao:
+- A falha atual e diferente da primeira: agora o problema e biblioteca local vazia, nao apenas status local pendente.
+- O impacto pratico da correcao e permitir que a Iris importe de volta um template aprovado na Meta e o torne selecionavel para iniciar conversa.
+- Acao agora: aguardar autorizacao explicita para homologacao; sem deploy, `homo.c2x.app.br` continuara exibindo o comportamento antigo.
+
+## 2026-05-25 01:04:02 -03:00 - Iris Core - Cacá agent runtime V2
+
+Assunto: [Iris] Cacá evoluida de automacao para agente operacional
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / IRIS / CACA / AGENT RUNTIME`.
+- Ambiente: `local`, sem deploy nesta entrada.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO AUTORIZACAO PARA HOMOLOGACAO`.
+- Origem: Lucas perguntou se a Cacá que respondeu na Iris era bot ou agente e pediu para transformar em agente completo.
+- Decisao aplicada:
+  - criar runtime server-side dedicado em `apps/hub/lib/iris/caca-agent.ts`;
+  - retirar do processador inbound da Meta o bloco de inteligencia antigo da Cacá;
+  - manter `apps/hub/lib/iris/meta-inbound-processor.ts` como orquestrador de canal: recebe webhook, persiste mensagem, chama o agente, envia WhatsApp e atualiza ticket/timeline;
+  - registrar em metadata/timeline `agentVersion`, `source`, `model`, `toolsUsed` e `trace` sanitizado do turno;
+  - preservar guardrails de boleto: sem CPF/CNPJ completo, autenticacao por 4 digitos, consulta deterministica, entrega apenas de link oficial quando ferramenta Hades/C2X retornar asset seguro e handoff quando faltar seguranca.
+- Ferramentas logicas do runtime:
+  - `iris_get_ticket_context`;
+  - `caca_classify_intent`;
+  - `iris_read_customer_media` com bloqueio/handoff ate ferramenta homologada;
+  - `apolo_verify_document_fragment`;
+  - `apolo_lookup_customer`;
+  - `hades_list_customer_billing_items`;
+  - `hades_get_boleto_delivery_asset`;
+  - `openai_responses_compose`;
+  - `iris_handoff_to_human`.
+- Arquivos alterados:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, Supabase schema, migration, banco, dominio, alias, homologacao ou producao;
+  - sem mudanca em Hades, Hermes, Apolo, Atlas, Chronos, Setup ou Zeus fora das integracoes Iris ja consumidas server-side.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/iris/caca-agent.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/operations/iris-ai-attendant-agent-operating-contract.md docs/operations/engineering-operations.md`: OK, com aviso CRLF conhecido do Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps/Zeus;
+  - `GET http://localhost:3001/iris`: `200 OK`.
+- Riscos conhecidos:
+  - leitura automatica de imagem, audio, video e documento inbound ainda nao esta homologada; nesses casos, o agente faz handoff humano;
+  - chamada OpenAI segue condicionada a env server-side existente; sem chave, o runtime usa resposta operacional deterministica;
+  - ainda falta teste real via WhatsApp/Meta para validar o turno completo com payload assinado;
+  - homologacao nao foi publicada neste recorte porque Lucas ainda nao pediu deploy desta evolucao.
+- Proxima acao:
+  - se Lucas autorizar homologacao, montar pacote limpo Iris, rodar Safety Gate e publicar apenas este recorte.
+
+Conclusao:
+- A Cacá deixou de ser um bloco acoplado ao webhook e passou a ter um runtime de agente rastreavel.
+- O impacto pratico e mais controle operacional: cada resposta mostra qual ferramenta foi usada, qual origem gerou a resposta e quando houve handoff.
+- Acao agora: Lucas pode autorizar homologacao quando quiser validar essa versao contra WhatsApp real; ate la, o recorte fica local.
+
+## 2026-05-25 01:42:44 -03:00 - Iris Core - Cacá agent runtime V2 em homologacao
+
+Assunto: [Iris] Cacá Agent Runtime V2 publicado em homologacao
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / CACA / AGENT RUNTIME`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO TESTE REAL DO LUCAS PELO WHATSAPP`.
+- Origem: Lucas autorizou subir em homologacao a evolucao que transforma a Cacá em agente operacional completo.
+- Recorte publicado:
+  - `apps/hub/lib/iris/caca-agent.ts` com runtime server-side dedicado;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts` chamando o runtime e mantendo orquestracao de canal;
+  - metadata/timeline do ticket com `agentVersion`, `source`, `model`, `toolsUsed` e `trace` sanitizado;
+  - guardrails de boleto preservados: 4 digitos de CPF/CNPJ, consulta Hades/C2X, link oficial e handoff quando faltar seguranca;
+  - midias inbound continuam em handoff humano ate ferramenta homologada de leitura multimodal.
+- Pacote limpo:
+  - `.codex-deploy/iris-homolog-20260525-013244-caca-agent-v2/workspace`;
+  - base/rollback imediato: `dpl_4tUmp8WAZkM5HqdGrBFz64GqGweZ`;
+  - Safety Gate antes do deploy: `PASS`;
+  - Safety Gate antes do alias: `PASS`.
+- Deployment/alias de homologacao:
+  - deployment novo: `dpl_AJ9AkBdRkspHgVtcSSS3Qm3XjwgP`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-hk4qblcx0-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_4tUmp8WAZkM5HqdGrBFz64GqGweZ`.
+- Arquivos incluidos no recorte:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, Supabase schema, migration, banco, dominio de producao ou producao;
+  - sem incluir recortes locais de Apolo, Login, Hermes, Hades, Atlas, Chronos, Setup, Zeus ou rotas de midia nao homologadas.
+- Validacoes executadas:
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-013244-caca-agent-v2/homologation-safety-gate.json`: `PASS`;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo: `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de workspace root/NFT;
+  - deploy preview: `npx.cmd vercel deploy --yes --target preview`: OK;
+  - Safety Gate pre-alias: `PASS`;
+  - alias homologacao: `npx.cmd vercel alias set dpl_AJ9AkBdRkspHgVtcSSS3Qm3XjwgP homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_AJ9AkBdRkspHgVtcSSS3Qm3XjwgP`;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/webhook` sem challenge: `403` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/webhook` sem assinatura: `401` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/attendant` sem sessao: `401` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - teste real depende de mensagem assinada pela Meta; nao foi simulado disparo inbound real para evitar acao artificial com WhatsApp;
+  - leitura automatica de imagem, audio, video e documento inbound ainda nao esta homologada; nesses casos, a Cacá faz handoff humano;
+  - chamada OpenAI segue condicionada a env server-side existente; sem chave, o runtime usa resposta operacional deterministica;
+  - producao segue fora do escopo e promocao futura deve passar por Hefesto.
+- Proxima acao:
+  - Lucas testar mensagem real no WhatsApp da Iris em homologacao;
+  - validar pelo menos: saudacao geral, pedido de boleto, informacao dos 4 ultimos digitos, escolha de parcela e handoff em midia.
+
+Conclusao:
+- A Cacá V2 foi publicada em homologacao com pacote limpo e rastreabilidade.
+- O impacto pratico e que o atendimento inbound da Iris agora passa por um runtime de agente com ferramentas, estado e trace operacional.
+- Acao agora: Lucas testar no WhatsApp; se aprovado, o recorte pode seguir futuramente para Hefesto avaliar producao.
+
+## 2026-05-25 01:15:00 -03:00 - Zeus - Iris importacao de template Meta em homologacao
+
+Assunto: [Iris] Template aprovado na Meta importado para biblioteca local em homologacao
+
+- Nome da squad/agente: `Zeus / Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / META WHATSAPP / TEMPLATE`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO TESTE FUNCIONAL AUTENTICADO DO LUCAS`.
+- Origem: Lucas autorizou publicar o ajuste que corrige o caso em que um template aprovado na Meta existe, mas nao aparece na Iris porque a biblioteca local `caredesk_templates` esta vazia ou o registro local foi removido/arquivado.
+- Diagnostico operacional:
+  - o deployment anterior ja consultava a Meta e sincronizava status quando havia registro local;
+  - quando nao havia registro local, a Iris continuava sem template selecionavel no Setup e no modal `Novo atendimento`;
+  - o fluxo de contato ativo depende de template local aprovado, entao a aprovacao na Meta sozinha nao bastava para liberar o atendimento.
+- Recorte publicado:
+  - `GET /api/iris/meta/templates` passa a receber contexto do formulario Iris: nome interno, fila, assunto, corpo e botoes;
+  - quando a Meta retorna o template e a Iris nao encontra registro local, a rota importa/reativa o cadastro em `caredesk_templates`;
+  - a importacao so ocorre quando ha fila e assunto, evitando template solto sem contexto operacional;
+  - o front da Iris reconhece `localTemplateSync.imported` e atualiza a biblioteca apos a consulta.
+- Protecao contra sobrescrita:
+  - pacote limpo criado em `.codex-deploy/iris-homolog-20260525-005806-template-import/workspace`;
+  - base do pacote: deployment ativo anterior `dpl_HSHQtFa1xyMuegUe3vSBbKVoLAsE`;
+  - Homologation Safety Gate executado antes do deploy e antes do alias: `PASS`;
+  - a rota `apps/hub/app/api/iris/attendant/route.ts` ja publicada pela Iris foi preservada;
+  - a rota local `apps/hub/app/api/iris/meta/templates/media` continuou fora do pacote;
+  - a implementacao local posterior `Cacá agent runtime V2` nao foi incluida neste deploy.
+- Deployment/alias de homologacao:
+  - deployment anterior/rollback imediato: `dpl_HSHQtFa1xyMuegUe3vSBbKVoLAsE`;
+  - deployment novo: `dpl_4tUmp8WAZkM5HqdGrBFz64GqGweZ`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-mqgjsmlms-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`.
+- Arquivos incluidos no recorte:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, Supabase schema, migration, banco, dominio de producao ou producao;
+  - sem incluir recortes locais de Apolo, Pulsex, Login, arquitetura ou `Cacá agent runtime V2`.
+- Validacoes executadas:
+  - comparacao do delta contra o pacote ativo anterior: rota de templates com `202` insercoes e front Iris com `11` insercoes, ambos dentro do recorte esperado;
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-005806-template-import/homologation-safety-gate.json`: `PASS`;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo: `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack;
+  - build remoto Vercel: OK, com warnings conhecidos de audit e `HOMOLOG_*` fora do `turbo.json`;
+  - deploy preview: `npx.cmd vercel deploy --yes --target preview`: OK;
+  - alias homologacao: `npx.cmd vercel alias set dpl_4tUmp8WAZkM5HqdGrBFz64GqGweZ homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_4tUmp8WAZkM5HqdGrBFz64GqGweZ`;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/attendant` sem sessao: `401` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/webhook` sem challenge: `403` esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - a validacao final depende de sessao autenticada do Lucas, porque a importacao local acontece quando o operador consulta o template com fila e assunto selecionados;
+  - se a Meta retornar status ativo, mas a Iris nao receber fila/assunto, a importacao continua bloqueada por seguranca operacional.
+- Proxima acao:
+  - Lucas abrir `https://homo.c2x.app.br/iris`, ir em `Setup > Templates`, selecionar telefone/fila/assunto e clicar `Consultar` no template aprovado;
+  - depois validar se o template aparece na biblioteca e no modal `Novo atendimento`.
+
+Conclusao:
+- O ajuste que faltava foi publicado em homologacao sem sobrescrever a melhoria da Cacá ja ativa.
+- O impacto pratico esperado e a Iris conseguir recriar o registro local a partir do template aprovado na Meta, tornando-o selecionavel para iniciar conversa.
+- Acao agora: Lucas testar autenticado; se funcionar, o recorte fica pronto para handoff futuro ao Hefesto.
+
+## 2026-05-25 01:43:57 -03:00 - Apolo - Carteira real para usuarios adimplentes
+
+Assunto: [Apolo] Carteira real dos usuarios adimplentes
+
+- Nome da squad/agente: `Apolo Core`.
+- Tipo da alteracao: `UX / CRM 360 / CARTEIRA C2X`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO TESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas apontou que usuarios adimplentes estavam aparecendo como carteira, mas a aba `Carteira` ficava sem unidade, parcelas e acao de boleto; tambem pediu trocar o botao textual de boleto por icone verde/vermelho no padrao Hades.
+- Diagnostico operacional:
+  - a hidratacao de carteira do Apolo dependia de linhas de `payments`, o que deixava aquisicoes faturadas/adimplentes sem unidade no detalhe 360 quando a parcela nao entrava no recorte retornado;
+  - links comerciais antigos sem metadata real podiam marcar cadastro como `Usuario`/adimplente mesmo sem evidencia de unidade, aquisicao ou parcela;
+  - a lista de parcelas usava botao textual `Abrir boleto`, divergindo do padrao compacto do Hades.
+- Ajuste aplicado:
+  - `fetchC2xPortfolioByEntity` passou a partir de `acquisition_requests -> enterprise_unities -> enterprises` e anexar `payments` quando existirem, mantendo o recorte de empreendimentos validos do Hades;
+  - compras em etapas operacionais de carteira (`Faturado`/assinatura/finalizacao) passam a hidratar unidade real mesmo sem parcela vencida;
+  - `Usuario` agora exige evidencia real de carteira (`acquisitionRequestId`, unidade, quadra/lote/area/valor ou parcelas); sem essa evidencia, o perfil operacional cai para `Prospect`;
+  - o icone de boleto ficou compacto: verde quando ha URL de boleto/fatura e vermelho quando a parcela nao possui boleto disponivel.
+- Arquivos alterados:
+  - `apps/hub/lib/apolo/server.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem migration, deploy, alteracao de Supabase, alteracao de C2X, env, secret, dominio, alias ou producao;
+  - sem alterar Hades, Iris, Hermes, Chronos, Atlas, Zeus ou Setup.
+- Validacoes executadas:
+  - consulta read-only no C2X confirmou que cadastro sem aquisicao nao gera carteira e que compra faturada em empreendimento valido retorna unidade real pelo novo caminho;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps/Zeus;
+  - `git diff --check -- apps/hub/lib/apolo/server.ts apps/hub/modules/apolo/ApoloPage.tsx`: OK;
+  - smoke no navegador in-app em `http://localhost:3001/apolo`: bloqueado por sessao ausente e redirecionamento para `/login`; sem logs de erro do Apolo capturados.
+- Riscos conhecidos:
+  - validacao visual completa da carteira depende de sessao autenticada do Lucas;
+  - linhas antigas ja sincronizadas sem metadata real continuam dependentes de hidratacao live C2X em runtime ou de nova sincronizacao autorizada para materializar a carteira em `apolo_commercial_links.metadata`.
+- Proxima acao:
+  - Lucas testar autenticado a aba `Carteira` em usuario adimplente e inadimplente; se aprovado, preparar homologacao isolada do recorte Apolo quando autorizado.
+
+Conclusao:
+- O Apolo deixou de depender apenas de inadimplencia/parcela vencida para mostrar carteira e passou a enxergar a compra pela aquisicao/unidade real.
+- O impacto pratico e que adimplente com unidade deve abrir a mesma estrutura de carteira, e cadastros sem compra deixam de parecer comprador por tag antiga.
+- Acao agora: Lucas validar na sessao logada; nenhum deploy ou sync sensivel foi executado.
+
+## 2026-05-25 01:59:17 -03:00 - Iris Core - Caca Agent Runtime V3 autonomo local
+
+Assunto: [Iris] Caca Agent Runtime V3 com atendimento autonomo local
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `IMPLEMENTACAO LOCAL / IRIS / CACA / AGENT RUNTIME`.
+- Ambiente: `local`, sem deploy nesta entrada.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO AUTORIZACAO PARA HOMOLOGACAO`.
+- Origem: Lucas testou a Caca V2 em homologacao e apontou que o atendimento estava ruim, repetitivo e com cara de bot fechado; pediu um agente livre, inteligente e autonomo.
+- Diagnostico operacional:
+  - a V2 tinha runtime dedicado, mas o fallback deterministico repetia a mesma apresentacao quando OpenAI nao retornava resposta;
+  - mensagens vagas como `Boa noite`, `Por favor` e `Ok` nao eram conduzidas com naturalidade;
+  - pedido de boleto sem CPF/CNPJ completo no contato fazia handoff cedo demais, mesmo antes de coletar dados minimos do cliente.
+- Ajuste aplicado:
+  - runtime evoluido para `iris-caca-agent-v3`;
+  - modo conversacional primeiro para atendimento geral, com prompt OpenAI mais autonomo e fallback contextual;
+  - fallback deterministico agora trata saudacao, agradecimento, mensagem curta/vaga e assunto geral sem repetir texto fixo;
+  - fluxo de boleto sem documento completo passa a pedir 4 ultimos digitos do CPF/CNPJ e nome completo do titular antes de handoff;
+  - estado do agente registra `awaitingCustomerIdentity`, `identityAttempts` e `lastFallbackKind` para evitar loop cego;
+  - guardrails financeiros preservados: boleto so e entregue por ferramenta oficial apos autenticacao e vinculo seguro.
+- Arquivos alterados:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, webhook Meta, Supabase schema, migration, banco, dominio, alias, homologacao ou producao;
+  - sem mexer em Hades, Hermes, Apolo, Atlas, Chronos, Setup ou Zeus.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/iris/caca-agent.ts docs/operations/iris-ai-attendant-agent-operating-contract.md docs/operations/engineering-operations.md`: OK, com aviso CRLF conhecido do Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps/Zeus.
+- Riscos conhecidos:
+  - resposta realmente livre depende de `OPENAI_API_KEY` e modelo server-side disponiveis em homologacao;
+  - sem OpenAI, o fallback agora melhora a conversa, mas segue deterministico;
+  - leitura multimodal inbound ainda continua fora deste recorte.
+- Proxima acao:
+  - se Lucas autorizar, publicar recorte limpo Iris em homologacao com Safety Gate.
+
+Conclusao:
+- A Caca foi reposicionada localmente para se comportar como agente de atendimento, nao como roteiro fixo.
+- O impacto esperado e reduzir repeticao, melhorar respostas a mensagens vagas e evitar handoff precoce em boleto.
+- Acao agora: Lucas autorizar ou nao a publicacao em homologacao; homologacao continua bloqueada ate autorizacao explicita.
+
+## 2026-05-25 01:54:08 -03:00 - Iris Core - Historico de tickets encerrados e atalho por cliente
+
+Assunto: [Iris] Tela de Historico e relogio por cliente no atendimento
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `MELHORIA FUNCIONAL / IRIS / BOARD E HISTORICO`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO TESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas pediu que chats encerrados sumam do Board, que exista uma tela dedicada de Historico e que o icone de relogio no contexto do atendimento abra os tickets do cliente.
+- Ajuste aplicado:
+  - nova view `Historico` no menu da Iris;
+  - Board agora lista apenas tickets abertos (encerrados saem da fila principal);
+  - nova tela de Historico com busca por cliente/protocolo/assunto e filtro por fila;
+  - atalho do relogio no contexto do ticket abre Historico filtrado para o cliente atual;
+  - quando aberto pelo relogio, Historico mostra todos os tickets do cliente (abertos e encerrados), mantendo o modo geral focado em encerrados.
+- Arquivos alterados:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, Supabase, migration, banco, dominio, alias, homologacao ou producao;
+  - sem mudanca em Hades, Hermes, Zeus, Atlas, Chronos, Setup ou Apolo.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx`: OK (apenas aviso CRLF conhecido no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido NFT/Turbopack em rota SquadOps/Zeus).
+- Riscos conhecidos:
+  - validacao funcional autenticada em `http://localhost:3001/iris` ainda depende de sessao real do Lucas para confirmar o fluxo completo de fechamento -> sumir do Board -> abrir Historico pelo relogio;
+  - worktree permanece com outros recortes paralelos fora do escopo Iris.
+- Proxima acao:
+  - Lucas validar autenticado no Iris os fluxos de fechamento de ticket e abertura de Historico via relogio;
+  - apos validacao funcional, decidir se segue para pacote limpo de homologacao.
+
+## 2026-05-25 02:11:53 -03:00 - Iris Core - Filtro de data/hora no Historico
+
+Assunto: [Iris] Historico com inicio/encerramento e filtro por periodo
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `MELHORIA FUNCIONAL / IRIS / HISTORICO`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO TESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas pediu exibir inicio e encerramento com data/hora no Historico e adicionar filtro por data.
+- Ajuste aplicado:
+  - adicionados filtros `Inicio` e `Encerramento` com `datetime-local` na tela de Historico;
+  - o filtro considera inicio do ticket por `openedAt` e encerramento por `closedAt`/`resolvedAt` (fallback em `lastMessageAt`);
+  - cada item da lista no Historico agora exibe `Inicio` e `Encerramento` no resumo do ticket;
+  - a exibicao foi aplicada apenas no Historico, sem alterar a densidade visual do Board.
+- Arquivos alterados:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, Supabase, migration, banco, dominio, alias, homologacao ou producao;
+  - sem mudanca em Hades, Hermes, Zeus, Atlas, Chronos, Setup ou Apolo.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx`: OK (apenas aviso CRLF conhecido no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido NFT/Turbopack em rota SquadOps/Zeus);
+  - `curl.exe -I http://localhost:3001/iris`: `200 OK`.
+- Riscos conhecidos:
+  - validacao funcional autenticada em `http://localhost:3001/iris` ainda depende de sessao real do Lucas para confirmar o uso do filtro por periodo com dados reais;
+  - worktree permanece com recortes paralelos fora do escopo Iris.
+- Proxima acao:
+  - Lucas validar autenticado o filtro por periodo e a leitura de `Inicio/Encerramento` nos tickets de Historico;
+  - apos validacao funcional, decidir se segue para pacote limpo de homologacao.
+
+Conclusao:
+- O Historico da Iris ficou preparado localmente para separar atendimento aberto de ticket encerrado.
+- O impacto pratico e liberar o Board para operacao ativa sem perder consulta historica por cliente.
+- Acao agora: validar autenticado antes de homologar o recorte.
+
+## 2026-05-25 02:09:21 -03:00 - Zeus - Reescrita do sync de templates Meta Iris
+
+Assunto: [Iris] Template aprovado na Meta reimportavel mesmo com biblioteca local vazia
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / IRIS / META WHATSAPP TEMPLATES`.
+- Ambiente: `local`, sem deploy nesta entrada.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO AUTORIZACAO PARA HOMOLOGACAO`.
+- Origem: Lucas reportou que o numero real ja havia aparecido antes e que o template `iris6` foi criado/aprovado na Meta, mas a tela da Iris voltou a ficar com biblioteca local zerada e sem template selecionavel para iniciar conversa.
+- Diagnostico operacional:
+  - o fluxo aprovado da Meta funciona por WABA/telefone e template ativo, mas a Iris ainda dependia do cache local `caredesk_templates` para o Setup e para o modal `Novo atendimento`;
+  - quando o registro local era removido/arquivado ou sobrescrito por outro recorte, a Meta continuava tendo o template ativo, mas a Iris ficava sem opcao local para selecionar;
+  - a abertura de atendimento ainda validava template sendable apenas como `APPROVED`, deixando estados Meta `ACTIVE` e variacoes `ACTIVE_*` vulneraveis a bloqueio;
+  - o telefone exibivel segue dependente de `display_phone_number` retornado pela Meta ou fallback server-side configurado, mas o ID correto do telefone continua sendo preservado para resolver a WABA.
+- Ajuste aplicado:
+  - `GET /api/iris/meta/templates` agora aceita `syncApproved=true` para sincronizar todos os templates aprovados/ativos retornados pela Meta para o telefone e idioma selecionados;
+  - a sincronizacao reativa ou importa o template local com fila/assunto escolhidos pelo operador, mantendo a Meta como fonte de verdade e o banco local como cache operacional;
+  - o Setup ganhou a acao `Sincronizar Meta`, pensada para o caso de biblioteca local vazia;
+  - a rota de abertura de ticket passa a aceitar `APPROVED`, `ACTIVE` e variacoes `APPROVED_*`/`ACTIVE_*` como sendable antes de enviar o template;
+  - mantido o bloqueio para importar template sem assunto/fila, evitando registro solto sem contexto operacional.
+- Referencias operacionais consideradas:
+  - documentacao local `docs/modules/caredesk-meta-whatsapp-setup.md`;
+  - registros de homologacao do `iris6` em `docs/operations/releases-homologation.md`;
+  - referencias oficiais Meta ja registradas no projeto para templates, envio e janela de 24h.
+- Arquivos alterados:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, Supabase schema, migration, banco, dominio, alias, homologacao ou producao;
+  - sem reverter recortes locais da Iris Core, incluindo Caca, Historico, fechamento de ticket e exclusao de template.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK, com aviso CRLF conhecido no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: OK;
+  - `npm.cmd run lint --workspace @repo/hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em rota SquadOps/Zeus.
+- Riscos conhecidos:
+  - validacao funcional depende de sessao autenticada do Lucas e retorno real da Meta para confirmar que `iris6` e outros templates ativos sao reimportados no ambiente;
+  - se a Meta continuar omitindo `display_phone_number`, a Iris mostra fallback operacional do telefone configurado, mas o envio segue pelo phone number ID correto;
+  - homologacao continua bloqueada ate autorizacao explicita do Lucas e Safety Gate de recorte limpo.
+- Proxima acao:
+  - Lucas selecionar assunto/fila e telefone na tela `Setup > Templates`, clicar `Sincronizar Meta` e validar se `iris6` volta para a biblioteca local;
+  - se aprovado, autorizar publicacao em homologacao com pacote limpo preservando os recortes Iris ja homologados.
+
+Conclusao:
+- A causa raiz era a Iris tratar o banco local como fonte final de templates, enquanto a Meta ja tinha o template ativo.
+- O impacto pratico e que um template aprovado na Meta pode voltar a aparecer na Iris mesmo apos cache local vazio ou sobrescrito.
+- Acao agora: testar autenticado e, se aprovado, autorizar a homologacao do recorte limpo.
+
+## 2026-05-25 02:14:48 -03:00 - Iris Core - Caca Agent Runtime V3 em homologacao
+
+Assunto: [Iris] Caca Agent Runtime V3 autonomo publicado em homologacao
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / IRIS / CACA / AGENT RUNTIME`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO TESTE REAL DO LUCAS PELO WHATSAPP`.
+- Origem: Lucas autorizou homologar a correcao da Caca apos testar a V2 e apontar atendimento repetitivo, pouco autonomo e com handoff precoce.
+- Recorte publicado:
+  - runtime atualizado para `iris-caca-agent-v3`;
+  - atendimento geral em modo conversacional primeiro, com prompt OpenAI mais autonomo;
+  - fallback deterministico contextual para saudacao, agradecimento, mensagem curta/vaga e assunto geral;
+  - eliminada a repeticao do texto fixo de apresentacao quando OpenAI nao retorna resposta;
+  - fluxo de boleto sem CPF/CNPJ completo passa a pedir 4 ultimos digitos e nome completo do titular antes de handoff;
+  - estado do agente passa a registrar `awaitingCustomerIdentity`, `identityAttempts` e `lastFallbackKind`;
+  - guardrails financeiros preservados: boleto so e entregue por ferramenta oficial apos autenticacao e vinculo seguro.
+- Pacote limpo:
+  - `.codex-deploy/iris-homolog-20260525-020918-caca-agent-v3/workspace`;
+  - base/rollback imediato: `dpl_AJ9AkBdRkspHgVtcSSS3Qm3XjwgP`;
+  - Safety Gate antes do deploy: `PASS`;
+  - Safety Gate antes do alias: `PASS`.
+- Deployment/alias de homologacao:
+  - deployment novo: `dpl_42m7WV7egsaEWQCXasWYPfaM3bCx`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-gp9mc0vo4-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_AJ9AkBdRkspHgVtcSSS3Qm3XjwgP`.
+- Arquivos incluidos no recorte:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, Supabase schema, migration, banco, dominio de producao ou producao;
+  - sem incluir recortes locais de Apolo, Login, Hermes, Hades, Atlas, Chronos, Setup, Zeus ou rotas de midia nao homologadas;
+  - sem promover para producao.
+- Validacoes executadas:
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-020918-caca-agent-v3/homologation-safety-gate.json`: `PASS` antes do deploy;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK, com aviso de turbo global por pacote sem `node_modules`;
+  - pacote limpo: `npm.cmd run lint:hub`: OK, com warnings conhecidos `MODULE_TYPELESS_PACKAGE_JSON` e turbo global;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de workspace root/NFT/Turbopack;
+  - deploy preview: `npx.cmd vercel deploy --yes --target preview`: OK;
+  - Safety Gate pre-alias: `PASS`;
+  - alias homologacao: `npx.cmd vercel alias set dpl_42m7WV7egsaEWQCXasWYPfaM3bCx homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_42m7WV7egsaEWQCXasWYPfaM3bCx`;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/webhook` sem challenge: `403` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/webhook` sem assinatura: `401` esperado;
+  - `POST https://homo.c2x.app.br/api/iris/attendant` sem sessao: `401` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - teste real depende de mensagem assinada pela Meta; nao foi simulado disparo inbound artificial;
+  - resposta livre depende de OpenAI server-side disponivel; sem OpenAI, o fallback contextual melhorado assume;
+  - leitura automatica de imagem, audio, video e documento inbound continua fora deste recorte;
+  - producao segue fora do escopo e promocao futura deve passar por Hefesto.
+- Proxima acao:
+  - Lucas testar mensagem real no WhatsApp da Iris em homologacao;
+  - validar pelo menos: saudacao, mensagem vaga como `por favor`, pedido de boleto sem documento completo e pedido de boleto autenticado.
+
+Conclusao:
+- A Caca V3 foi publicada em homologacao com pacote limpo e rastreabilidade.
+- O impacto pratico esperado e uma Caca menos robotica, com fallback natural e sem handoff imediato quando ainda e possivel coletar dados minimos.
+- Acao agora: Lucas testar o fluxo real no WhatsApp; se aprovado, o recorte pode seguir futuramente para Hefesto avaliar producao.
+
+## 2026-05-25 02:23:30 -03:00 - Iris Core - Atalhos de contexto com dados Apolo e carteira por regra de usuario
+
+Assunto: [Iris] Atalhos do atendimento ligados ao Apolo e carteira condicional
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `MELHORIA FUNCIONAL / IRIS / CONTEXTO DE ATENDIMENTO`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO TESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas pediu que os tres primeiros icones do bloco de contexto no atendimento Iris passem a carregar dados reais do Apolo: dados cadastrais do cliente, agenda/registros do relacionamento e carteira, com bloqueio da carteira quando o cliente nao se encaixar no perfil `usuario` pelas regras do Apolo.
+- Ajuste aplicado:
+  - primeiro icone (`FileText`) abre painel `Dados do cliente` com carga real do Apolo;
+  - segundo icone (`CalendarClock`) abre painel `Agenda do cliente`, consolidando timeline, sinais de atendimento e eventos de pagamento;
+  - terceiro icone (`ClipboardList`) abre painel `Carteira do cliente` com resumo financeiro/unidades e fica desabilitado quando a regra de `usuario` nao e atendida;
+  - quarto icone (`Clock3`) manteve o comportamento de abrir o Historico de tickets do cliente;
+  - consulta do contexto ligada ao endpoint existente `GET /api/apolo/relationships` com token da sessao Iris, selecao por `entityId`/telefone e fallback por nome;
+  - adicionado refresh manual no painel para recarregar o contexto Apolo sem sair do atendimento.
+- Arquivos alterados:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, Supabase, migration, banco, dominio, alias, homologacao ou producao;
+  - sem mudanca em Hades, Hermes, Zeus, Atlas, Chronos, Setup ou Apolo fora do consumo do endpoint ja existente.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx`: OK (apenas aviso CRLF conhecido no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido NFT/Turbopack em rota SquadOps/Zeus);
+  - `curl.exe -I http://localhost:3001/iris`: `200 OK`.
+- Riscos conhecidos:
+  - a validacao final da regra de carteira depende de sessao real com clientes que tenham e nao tenham perfil `usuario` no Apolo;
+- agenda consolidada usa os eventos hoje disponiveis no Apolo (timeline/sinais/pagamentos); modulo dedicado de tarefas/reunioes fica para recorte futuro.
+- Proxima acao:
+  - Lucas validar autenticado no Iris os tres atalhos no contexto do atendimento e confirmar habilitacao/desabilitacao da carteira conforme perfil;
+  - apos validacao funcional, decidir se segue para pacote limpo de homologacao.
+
+## 2026-05-25 02:33:08 -03:00 - Apolo Core - Carteira bloqueada sem parcelas emitidas
+
+Assunto: [Apolo] Status comercial antes de abrir Carteira
+
+- Nome da squad/agente: `Apolo Core`.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / CRM 360 / C2X READ-ONLY`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO TESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas apontou que uma unidade em `Em assinatura` ja aparecia no Apolo, mas a aba Carteira nao tinha parcelas. A regra corrigida e que proposta/contrato sem parcela emitida deve aparecer como status comercial, mas nao abrir Carteira operacional.
+- Referencias revisadas:
+  - `docs/modules/c2x-legacy-reference.md`;
+  - registro Athena `2026-05-22 11:54:15 -03:00 - C2X Legado - Regra real de proposta, pagamento e distrato`;
+  - mapa Hades/C2X de `acquisition_request_stages`, `payments` e `enterprise_unities`.
+- Ajuste aplicado:
+  - `Usuario com carteira` e `Unidades em carteira` passam a exigir parcelas emitidas em `payments` com status 5, 6 ou 7 e pagamento ativo;
+  - `acquisition_requests` continua alimentando a leitura comercial da unidade e do status (`Reservado`, `Analise de credito`, `Contrato gerado`, `Faturado`, `Em assinatura`, `Finalizado`, `Proposta realizada`);
+  - entidades sem parcelas emitidas deixam de ser classificadas como carteira aberta e caem como `Prospect` quando forem usuarios C2X sem compra financeira;
+  - aba `Carteira` e aba `Financeiro` ficam desabilitadas quando nao houver parcelas emitidas;
+  - o resumo mostra aviso objetivo, por exemplo `Contrato em assinatura`, informando que Carteira e Financeiro ficam bloqueados ate as parcelas serem emitidas;
+  - a Carteira lista somente unidades com parcelas reais emitidas, evitando cronograma ou boleto inventado.
+- Evidencia C2X read-only:
+  - aquisicao de referencia `4139`: status `Em assinatura`, `0` parcelas ativas em `payments`;
+  - nenhuma escrita no C2X, Supabase, banco, env, secret, Vercel, dominio, alias, homologacao ou producao.
+- Arquivos alterados:
+  - `apps/hub/lib/apolo/server.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alterar Hades, Iris, Hermes, Atlas, Chronos, Zeus, Setup ou rotas financeiras existentes;
+  - sem migration, deploy, sync real, escrita no legado, secrets, envs ou producao.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em SquadOps/Zeus;
+  - `git diff --check -- apps/hub/lib/apolo/server.ts apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md`: OK, apenas avisos CRLF do Windows;
+  - `GET http://localhost:3001/apolo`: `200 OK`.
+- Riscos conhecidos:
+  - validacao visual autenticada depende da sessao do Lucas para confirmar tooltip/bloqueio na tela real;
+  - contratos faturados sem linha em `payments` tambem ficarao com Carteira bloqueada ate a fonte financeira emitir parcelas, conforme regra solicitada.
+- Proxima acao:
+  - Lucas validar no Apolo uma unidade `Em assinatura` e uma unidade com parcelas emitidas para confirmar a diferenca visual;
+  - se aprovado, preparar recorte limpo futuro para homologacao quando Lucas autorizar.
+
+Conclusao:
+- O Apolo agora separa status comercial de carteira financeira.
+- O impacto pratico e evitar abrir Carteira vazia quando a proposta/contrato ainda nao gerou parcelas.
+- Acao agora: Lucas testar o caso em assinatura e um usuario com parcelas reais; Apolo Core segue responsavel por ajustes finos desse recorte.
+
+## 2026-05-25 02:55:37 -03:00 - Zeus - Iris templates Meta telefone/WABA em homologacao
+
+Assunto: [Iris] Templates Meta com telefone enriquecido por webhook
+
+- Nome da squad/agente: `Zeus` atuando em recorte Iris autorizado por Lucas.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / IRIS / META WHATSAPP TEMPLATES / HOMOLOGACAO`.
+- Ambiente: `homologacao`.
+- Origem: Lucas reportou que a tela de templates continuava mostrando `Telefone configurado da Iris (ID final 6689)` e alerta de numero exibivel ausente, apesar de WABA e Phone Number ID estarem configurados.
+- Diagnostico:
+  - `META_WHATSAPP_BUSINESS_ACCOUNT_ID`, `META_WHATSAPP_PHONE_NUMBER_ID`, token e demais envs Meta existem em `Preview` geral;
+  - `META_WHATSAPP_PHONE_DISPLAY_NUMBER` apareceu como `Preview (homolog)`, branch-specific, portanto pode nao ser aplicado a deployments por pacote limpo via Vercel CLI;
+  - logs recentes mostraram `GET /api/iris/meta/templates` com `200` e nenhum `POST /api/iris/meta/templates` apos o deploy anterior, indicando que ainda nao havia falha nova de criacao na Meta;
+  - o bloqueio percebido era a ausencia do numero exibivel no seletor, nao erro confirmado de `Enviar para Meta`.
+- Ajuste aplicado:
+  - `GET/POST /api/iris/meta/templates` agora enriquecem a lista de telefones Meta consultando `caredesk_meta_webhook_events` quando a Meta/API/env nao retornarem `display_phone_number`;
+  - a associacao usa `phone_number_id` do webhook oficial e normaliza o `display_phone_number` para label operacional;
+  - a criacao e consulta de templates continuam usando Phone Number ID e WABA server-side, sem hardcode de numero, token ou WABA no codigo.
+- Protecao contra sobrescrita:
+  - pacote limpo `.codex-deploy/iris-homolog-20260525-0220-template-sync/workspace`;
+  - Homologation Safety Gate `PASS` antes do deploy inicial, antes do primeiro alias, antes do segundo Preview e antes do alias final;
+  - base preservada: recortes Iris vigentes de Caca/attendant e sync de templates aprovados.
+- Deployment/alias de homologacao:
+  - deployment final: `dpl_EQWz6B1ShHWTQj1ERiZsZzNue9BN`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-629wdyw7t-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_5TktJ8VkzPKBSfmdoXesz2Fk2SvE`.
+- Arquivos alterados:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `.codex-deploy/iris-homolog-20260525-0220-template-sync/homologation-safety-gate.json`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Validacoes executadas no pacote limpo:
+  - `git diff --check -- apps/hub/app/api/iris/meta/templates/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK;
+  - `npm.cmd run check-types --workspace @repo/hub`: OK;
+  - `npm.cmd run lint --workspace @repo/hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de workspace root/NFT/Turbopack;
+  - `npx.cmd vercel deploy --yes`: OK para `dpl_EQWz6B1ShHWTQj1ERiZsZzNue9BN`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-629wdyw7t-lucasruas-devs-projects.vercel.app homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_EQWz6B1ShHWTQj1ERiZsZzNue9BN`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m`: sem erro, com `GET /api/iris/meta/templates` autenticado retornando `200`.
+- Fora do escopo:
+  - nenhuma env, secret, token, WABA, dominio de producao, migration ou banco foi alterado;
+  - producao fora do escopo.
+- Registro estruturado Operations Center:
+  - `PENDENTE`: a API oficial `POST /api/zeus/operations/structured` exige sessao/ambiente operacional ativo; Zeus nao puxou secrets nem gravou direto no banco para evitar exposicao/atalho sensivel neste recorte.
+- Riscos conhecidos:
+  - a confirmacao final exige Lucas recarregar a tela autenticada e clicar `Consultar`/`Enviar para Meta`;
+  - se nao houver webhook recente com `display_phone_number`, o sistema continua criando por Phone Number ID/WABA, mas o label pode seguir sem numero exibivel ate a Meta ou webhook fornecer esse campo.
+- Proxima acao:
+  - Lucas recarregar `https://homo.c2x.app.br/iris`, ir em `Setup > Templates`, selecionar `Enviar boleto C2X | Cobranca`, confirmar o telefone e clicar `Consultar`; se o numero aparecer, testar `Enviar para Meta`.
+
+Conclusao:
+- A causa mais provavel era env de numero exibivel presa ao escopo branch-specific, enquanto o pacote limpo de homologacao usa Preview sem branch Git.
+- O impacto pratico e que a Iris agora tambem consegue recuperar o numero pelo historico real de webhooks da Meta, reduzindo dependencia de env branch-specific.
+- Acao agora: Lucas deve recarregar a tela e testar `Consultar`/`Enviar para Meta`; Zeus fica responsavel por acompanhar logs se a Meta retornar erro novo no POST.
+
+## 2026-05-25 03:00:41 -03:00 - Apolo Core - Filtro Usuario apos hidratacao C2X
+
+Assunto: [Apolo] CRM 360 volta a listar usuarios com carteira
+
+- Nome da squad/agente: `Apolo Core`.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / CRM 360 / FILTRO USUARIO`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCALMENTE / AGUARDANDO TESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas reportou que o filtro `Usuario` mostrava contador de usuarios com carteira, mas a fila do CRM 360 retornava `Nenhum relacionamento encontrado`.
+- Diagnostico:
+  - a regra nova do Apolo classifica `Usuario` apenas quando existe carteira financeira com parcelas emitidas;
+  - o pre-filtro do dashboard estava montando entidades provisórias antes de hidratar os pagamentos/unidades reais do C2X;
+  - por isso, usuarios com `payment_count` eram rebaixados para `Prospect` na leitura provisoria e removidos antes da etapa que carregava as parcelas reais.
+- Ajuste aplicado:
+  - a query live do C2X agora recebe o perfil solicitado e prioriza `Usuario` por `payment_count > 0` e `Prospect` por ausencia de pagamento;
+  - o pre-filtro do servidor passou a usar `payment_count` apenas como evidencia inicial para selecionar candidatos;
+  - a classificacao definitiva continua acontecendo apos a hidratacao real por `payments -> acquisition_requests -> enterprise_unities`;
+  - demais perfis do C2X tambem passam a usar recorte SQL por perfil quando o filtro for aplicado, evitando que o limite inicial carregue apenas usuarios.
+- Arquivos alterados:
+  - `apps/hub/lib/apolo/server.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - sem alteracao de Hades, Iris, Hermes, Atlas, Chronos, Zeus, Setup ou rotas financeiras existentes;
+  - sem migration, deploy, escrita no C2X, Supabase, env, secrets, dominio, alias, homologacao ou producao.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido NFT/Turbopack em SquadOps/Zeus;
+  - `GET http://localhost:3001/apolo`: `200 OK`.
+- Riscos conhecidos:
+  - validacao visual autenticada da fila filtrada depende da sessao do Lucas no navegador;
+  - a API `GET /api/apolo/relationships` segue exigindo bearer token, entao smoke direto sem sessao retorna bloqueio esperado.
+- Proxima acao:
+  - Lucas recarregar `/apolo`, manter filtro `Usuario` e confirmar que a fila volta a listar usuarios com carteira;
+  - se ainda houver cache local momentaneo, aguardar ate 30 segundos ou recarregar a pagina.
+
+Conclusao:
+- O problema era ordem de processamento: o filtro rodava antes da carteira real ser carregada.
+- O impacto pratico e que o contador e a fila voltam a falar a mesma lingua operacional.
+- Acao agora: validar autenticado no navegador; Apolo Core segue no recorte de carteira/parcelas sem deploy ate autorizacao.
+
+## 2026-05-25 03:20:56 -03:00 - Apolo Core - CRM 360 em homologacao
+
+Assunto: [Apolo] CRM 360 Usuario/Prospect e carteira por parcelas publicado em homologacao
+
+- Nome da squad/agente: `Apolo Core`.
+- Tipo da alteracao: `RELEASE HOMOLOG / APOLO / CRM 360 / C2X READ-ONLY`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO TESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas autorizou subir em homologacao o recorte Apolo apos a correcao do filtro `Usuario` que deixava a fila vazia.
+- Recorte publicado:
+  - filtro `Usuario` passa a usar pre-selecao por `payment_count > 0` e classificacao definitiva apos hidratacao real de carteira;
+  - `Prospect` passa a representar usuarios C2X sem compra financeira;
+  - Carteira e Financeiro ficam bloqueados quando nao houver parcelas emitidas em `payments`;
+  - unidade/status comercial seguem visiveis quando houver reserva/proposta/contrato, mas sem abrir Carteira vazia;
+  - leitura do C2X permanece server-side/read-only, sem sync, migration ou escrita no legado.
+- Protecao contra sobrescrita:
+  - pacote limpo `.codex-deploy/apolo-homolog-20260525-030923/workspace`;
+  - base/rollback imediato: `dpl_EQWz6B1ShHWTQj1ERiZsZzNue9BN`;
+  - Homologation Safety Gate: `PASS` antes do deploy e `PASS` antes do alias;
+  - pacote montado sobre o deployment vigente de Iris/Zeus em homologacao, preservando o recorte anterior.
+- Deployment/alias de homologacao:
+  - deployment novo: `dpl_8JFeP6J5XPCsWStxSsj1uH54hanH`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-3kbb6lvzg-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_EQWz6B1ShHWTQj1ERiZsZzNue9BN`.
+- Arquivos incluidos no recorte:
+  - `apps/hub/app/api/apolo/relationships/route.ts`;
+  - `apps/hub/app/api/apolo/search/route.ts`;
+  - `apps/hub/lib/apolo/catalog.ts`;
+  - `apps/hub/lib/apolo/server.ts`;
+  - `apps/hub/lib/apolo/types.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/modules/c2x-legacy-reference.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Fora do escopo:
+  - sem alteracao de Hades, Iris, Hermes, Atlas, Chronos, Zeus, Setup, env, secret, Supabase, banco, migration, escrita C2X, dominio de producao ou producao;
+  - sem rotacionar chave, alterar provider externo ou aplicar sync real.
+- Validacoes executadas:
+  - Safety Gate pre-deploy: `PASS`;
+  - pacote limpo: `git diff --check -- apps/hub/app/api/apolo/relationships/route.ts apps/hub/app/api/apolo/search/route.ts apps/hub/lib/apolo/catalog.ts apps/hub/lib/apolo/server.ts apps/hub/lib/apolo/types.ts apps/hub/modules/apolo/ApoloPage.tsx docs/modules/c2x-legacy-reference.md docs/operations/engineering-operations.md docs/operations/releases-homologation.md`: OK, apenas avisos CRLF conhecidos no Windows;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK, com aviso conhecido de turbo global no pacote sem `node_modules`;
+  - pacote limpo: `npm.cmd run lint:hub`: OK, com warnings conhecidos `MODULE_TYPELESS_PACKAGE_JSON` e turbo global;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de workspace root/NFT/Turbopack;
+  - deploy preview: `npx.cmd vercel deploy --yes --target preview`: OK;
+  - Safety Gate pre-alias: `PASS`;
+  - alias homologacao: `npx.cmd vercel alias set https://careli-hub-hub-i2bs-3kbb6lvzg-lucasruas-devs-projects.vercel.app homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_8JFeP6J5XPCsWStxSsj1uH54hanH`;
+  - `GET https://homo.c2x.app.br/apolo`: `200 OK`;
+  - `GET https://homo.c2x.app.br/login`: `200 OK`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/apolo/relationships?profile=usuario` sem sessao: `401 Unauthorized` esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Registro estruturado Operations Center:
+  - `PENDENTE`: endpoint oficial exige sessao/ambiente ativo; Apolo Core nao puxou secrets nem gravou direto no banco para evitar atalho sensivel.
+- Riscos conhecidos:
+  - teste funcional final depende de sessao real do Lucas para conferir filtro `Usuario`, `Prospect`, carteira com parcelas e contrato sem parcelas;
+  - Vercel build reportou `npm audit` com vulnerabilidades herdadas do pacote, sem alteracao de dependencia neste recorte;
+  - producao segue fora do escopo e promocao futura deve passar por Hefesto.
+- Proxima acao:
+  - Lucas testar autenticado `https://homo.c2x.app.br/apolo`, principalmente: filtro `Usuario`, filtro `Prospect`, usuario comprador adimplente/inadimplente, contrato em assinatura/sem parcelas e carteira com parcelas reais.
+
+Conclusao:
+- O Apolo CRM 360 foi publicado em homologacao por pacote limpo, preservando o estado vigente da Iris/Zeus.
+- O impacto pratico e permitir teste real do CRM com leitura C2X, separacao Usuario/Prospect e carteira somente quando houver parcelas emitidas.
+- Acao agora: Lucas validar no navegador autenticado; se aprovado, o recorte fica pronto para handoff futuro ao Hefesto avaliar producao.
+
+## 2026-05-25 03:32:00 -03:00 - Zeus - Iris templates feedback em homologacao
+
+Assunto: [Iris] Feedback visivel no envio de template Meta
+
+- Nome da squad/agente: `Zeus` atuando em recorte Iris autorizado por Lucas.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / IRIS / META WHATSAPP TEMPLATES / HOMOLOGACAO`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO TESTE AUTENTICADO DO LUCAS`.
+- Origem: Lucas clicou em `Enviar para Meta` no template `iris7` e reportou que nada acontecia na tela.
+- Diagnostico:
+  - logs de homologacao mostraram que o clique chegou ao backend: `POST /api/iris/meta/templates` retornou `400` quatro vezes entre `03:03` e `03:04`;
+  - a falha nao era botao morto: a tela nao exibia o feedback no bloco onde Lucas estava trabalhando;
+  - durante a publicacao, o Safety Gate bloqueou o primeiro pacote porque o alias `homo.c2x.app.br` havia mudado de `dpl_EQWz6B1ShHWTQj1ERiZsZzNue9BN` para `dpl_8JFeP6J5XPCsWStxSsj1uH54hanH` com o recorte Apolo; o pacote Iris foi remontado sobre a base atual para evitar sobrescrita.
+- Ajuste aplicado:
+  - `Enviar para Meta` passa a mostrar feedback imediato `Envio em andamento`;
+  - o componente `IrisTemplateFeedbackBox` agora tambem aparece dentro do card `Status Meta`, perto do telefone, status e avisos;
+  - a rota `POST /api/iris/meta/templates` registra falhas com log sanitizado contendo apenas status, titulo e codigo Meta, sem token, bearer, payload bruto ou segredo.
+- Protecao contra sobrescrita:
+  - pacote limpo `.codex-deploy/iris-homolog-20260525-0320-template-feedback-current/workspace`;
+  - base/rollback imediato: `dpl_8JFeP6J5XPCsWStxSsj1uH54hanH`;
+  - Homologation Safety Gate: `PASS` antes do deploy e `PASS` antes do alias;
+  - pacote montado sobre o deployment vigente do Apolo em homologacao, preservando o recorte publicado as `03:20`.
+- Deployment/alias de homologacao:
+  - deployment novo: `dpl_GkwPbWbUJi7HGrKJrqkRUk3RapJe`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-ewy19d6kk-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_8JFeP6J5XPCsWStxSsj1uH54hanH`.
+- Arquivos incluidos no recorte:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Validacoes executadas:
+  - Safety Gate pre-deploy: `PASS`;
+  - pacote limpo: `git diff --check -- apps/hub/app/api/iris/meta/templates/route.ts apps/hub/modules/caredesk/IrisPage.tsx`: OK;
+  - pacote limpo: `npm.cmd run check-types --workspace @repo/hub`: OK;
+  - pacote limpo: `npm.cmd run lint --workspace @repo/hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de workspace root/NFT/Turbopack;
+  - deploy preview: `npx.cmd vercel deploy --yes --target preview`: OK;
+  - Safety Gate pre-alias: `PASS`;
+  - alias homologacao: `npx.cmd vercel alias set https://careli-hub-hub-i2bs-ewy19d6kk-lucasruas-devs-projects.vercel.app homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_GkwPbWbUJi7HGrKJrqkRUk3RapJe`;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 3m --level error`: sem logs encontrados.
+- Alerta operacional para agentes paralelos:
+  - qualquer pacote Iris/Apolo/Hefesto que declarar base `dpl_8JFeP6J5XPCsWStxSsj1uH54hanH` apos este registro esta usando base antiga e pode sobrescrever o feedback publicado;
+  - o proximo pacote deve declarar `expectedDeploymentId` igual a `dpl_GkwPbWbUJi7HGrKJrqkRUk3RapJe` ou remontar pacote limpo sobre esse deployment.
+- Registro estruturado Operations Center:
+  - `PENDENTE`: endpoint oficial exige sessao/ambiente ativo; Zeus nao puxou secrets nem gravou direto no banco neste recorte.
+- Riscos conhecidos:
+  - teste final depende de Lucas clicar `Enviar para Meta` autenticado para ver o retorno real da Meta no card `Status Meta`;
+  - a correcao melhora visibilidade/diagnostico; se a Meta seguir retornando `400`, o proximo passo sera ler o retorno sanitizado exibido na tela e ajustar o payload especifico.
+- Proxima acao:
+  - Lucas recarregar `https://homo.c2x.app.br/iris`, repetir o envio do template `iris7` ou novo template e conferir o feedback no card `Status Meta`;
+  - outros agentes devem bloquear alias se o Safety Gate detectar base diferente de `dpl_GkwPbWbUJi7HGrKJrqkRUk3RapJe`.
+
+Conclusao:
+- O clique funcionava, mas a falha ficava sem retorno visivel no ponto de decisao do operador.
+- O impacto pratico e que Lucas agora deve ver imediatamente se a Iris esta enviando, se a Meta recusou e qual a proxima acao.
+- Acao agora: testar autenticado; se outro agente publicar, precisa usar `dpl_GkwPbWbUJi7HGrKJrqkRUk3RapJe` como base atual para nao sobrescrever.
+
+## 2026-05-25 03:47:02 -03:00 - Zeus - Prompt de continuidade Iris Meta
+
+Assunto: [Zeus] Continuidade para novo agente resolver Iris Meta templates
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `GOVERNANCA OPERACIONAL / PROMPT DE CONTINUIDADE / IRIS META WHATSAPP`.
+- Ambiente: `operacional`.
+- Status: `PROMPT CRIADO / AGUARDANDO NOVO CHAT ZEUS`.
+- Origem: Lucas decidiu pausar os agentes porque o chat atual estava saturado e o envio de template Meta voltou a falhar com `IRIS_TEMPLATE_PHONE_WABA_MISSING`, mesmo com telefone operacional visivel na tela da Iris.
+- Artefato criado:
+  - `docs/operations/zeus-continuity-iris-meta-template-production-2026-05-25.md`.
+- Conteudo do prompt:
+  - leitura obrigatoria de governanca, diario, Safety Gate, modelo de worktrees, Iris e politicas de Meta/API;
+  - orientacao para pesquisar documentacao oficial Meta sobre Cloud API, message templates, WABA, Phone Number ID, webhooks, status e janela de 24 horas;
+  - orientacao para pesquisar projetos GitHub bem-sucedidos de integracao Meta/WhatsApp Cloud API e comparar com a Iris;
+  - lista de arquivos Iris/Athena a auditar;
+  - hipotese tecnica para `IRIS_TEMPLATE_PHONE_WABA_MISSING`;
+  - direcao de solucao para resolver telefone/WABA, status de template, envio ativo e janela WhatsApp de 24 horas;
+  - regras de worktree, Safety Gate, commits, homologacao, producao e prevencao de sobrescrita multiagentes.
+- Fora do escopo:
+  - nenhuma alteracao de codigo funcional;
+  - nenhum deploy, alias, producao, env, secret, token, banco, migration ou Vercel;
+  - nenhuma exposicao de valor sensivel.
+- Validacao executada:
+  - `git status --short --branch`: worktree principal segue misto, portanto o prompt orienta o proximo Zeus a nao publicar do root;
+  - leitura do diario, Safety Gate, modelo de worktrees e startup script Iris;
+  - artefato criado em `docs/operations/`.
+- Riscos conhecidos:
+  - o proximo agente precisa inspecionar o deployment atual de `https://homo.c2x.app.br`; o prompt nao assume que `dpl_GkwPbWbUJi7HGrKJrqkRUk3RapJe` continua vigente;
+  - producao deve permanecer bloqueada ate homologacao validada e recorte limpo;
+  - o erro de template nao deve ser tratado como problema visual, mas como contrato Meta/WABA/Phone Number ID.
+- Proxima acao:
+  - Lucas abrir novo chat, colar o prompt criado e pedir ao novo Zeus para iniciar pela auditoria Meta + GitHub + codigo Iris.
+
+Conclusao:
+- Foi criada uma continuidade operacional completa para o novo Zeus assumir a demanda sem depender deste chat saturado.
+- O impacto pratico e reduzir risco de nova sobrescrita e forcar a solucao definitiva da integracao de templates Meta.
+- Acao agora: iniciar novo chat com o prompt e manter producao bloqueada ate homologacao validada.
+Registro de diario:
+
+- Assunto: `[Iris] Popup de contexto com dados do cliente, nota e agenda mensal`.
+- Nome da squad/agente: `Iris Core`.
+- Data e hora local: `2026-05-25 03:40:00 -03:00`.
+- Tipo da alteracao: `MELHORIA FUNCIONAL / UX OPERACIONAL / CONTEXTO DE ATENDIMENTO`.
+- Motivo da mudanca: Lucas pediu evolucao operacional no atendimento da Iris para abrir popup no primeiro icone com dados do cliente e nota do operador, abrir popup no segundo icone com agenda mensal e criacao de atividade, e manter os outros dois icones em modo `em breve`.
+- Arquivos/modulos afetados: `apps/hub/modules/caredesk/IrisPage.tsx`, `apps/hub/app/api/iris/tickets/route.ts` e este diario canonico.
+- Como foi feito: a lateral de contexto deixou de depender do painel inline antigo e passou a abrir popups dedicados. O popup `Dados do cliente` consome dados do Apolo e permite salvar nota interna no metadata do ticket. O popup `Agenda mensal` mostra calendario mensal, linha do tempo combinando eventos Apolo + eventos do proprio ticket e formulario para agendar nova atividade com data/hora e observacao.
+- Logica utilizada: foi criada/fechada a acao server-side `PATCH /api/iris/tickets` com `action=context_update` para persistir `operatorContextNote` e `contextAgendaEvents` em `caredesk_tickets.metadata`, com normalizacao de payload no backend. O frontend salva e reidrata esses campos sem encerrar o protocolo nem depender de UI-only state.
+- Validacao executada:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/tickets/route.ts docs/operations/engineering-operations.md` sem erro de whitespace (apenas avisos CRLF conhecidos no Windows);
+  - `npm.cmd run check-types:hub` OK;
+  - `npm.cmd run lint:hub` OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub` OK (warning conhecido de Turbopack/NFT);
+  - `curl.exe -I http://localhost:3001/iris` retornando `200 OK`.
+- Pendencias ou riscos conhecidos: validacao funcional autenticada do fluxo completo (abrir popup, salvar nota, criar atividade, recarregar ticket e confirmar persistencia visual) ainda depende de teste do Lucas no navegador local.
+- Status operacional: `VALIDADO LOCAL / AGUARDANDO VALIDACAO OPERACIONAL DO LUCAS`.
+- Proxima squad recomendada: `Lucas` para smoke funcional na tela `/iris`; `Iris Core` ajusta fino se houver divergencia de UX/operacao.
+
+## 2026-05-25 08:08:11 -03:00 - Zeus - Auditoria semanal read-only da saude dos bancos
+
+Assunto: [Zeus] Auditoria semanal read-only dos bancos Supabase
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `AUDITORIA`.
+- Ambiente: `operacional`.
+- Status: `BLOQUEADO`.
+- Origem: rotina semanal para auditar, em modo read-only, a saude dos bancos Supabase de producao e homologacao do Panteon.
+- O que foi auditado:
+  - leitura obrigatoria de `AGENTS.md`, `docs/operations/README.md`, `docs/operations/engineering-operations.md` e politicas de ambiente, API, producao, release/rollback e secrets;
+  - identificacao local de dois projetos Supabase distintos a partir de envs reais, sem expor valores;
+  - revisao dos artefatos internos `db-health-readonly.sql` e `db-health-quick.sql`, que cobrem tamanho do banco, cache hit, conexoes, deadlocks, conflitos, temp files/bytes, top tables, seq scan, dead tuples e indices sem uso;
+  - tentativa de coleta no ambiente com `HOMOLOG_POSTGRES_URL` disponivel.
+- Resultado:
+  - a coleta profunda ficou bloqueada no banco com Postgres disponivel porque a conexao read-only para `:5432` retornou `EACCES` no ambiente atual;
+  - a coleta via HTTPS/Supabase REST/Auth tambem falhou com `fetch failed`, indicando bloqueio de saida de rede do runner atual;
+  - o segundo projeto Supabase identificado localmente nao tem `POSTGRES_URL` disponivel no env encontrado, entao nao ha como extrair os indicadores profundos pedidos para esse banco a partir deste workspace.
+- Impacto pratico:
+  - sem saida de rede e sem `POSTGRES_URL` do segundo projeto, Zeus nao conseguiu confirmar metricas agregadas de producao/homologacao nem comparar contra limites do plano/thresholds operacionais;
+  - nao houve alteracao em banco, schema, dados, env, deploy, alias, migration ou secrets.
+- Proxima acao:
+  - executar a mesma auditoria em runner com saida HTTPS/Postgres liberada para os projetos autorizados;
+  - disponibilizar credencial read-only/Postgres do segundo projeto, ou outro caminho autorizado de consulta agregada, se Lucas quiser cobrir os dois bancos na mesma rotina.
+
+Conclusao:
+- A auditoria foi preparada corretamente e os SQLs read-only internos ja cobrem os indicadores pedidos, mas a coleta real ficou bloqueada por restricao de rede do ambiente atual e pela ausencia de `POSTGRES_URL` no segundo projeto localizado.
+- O impacto pratico e que nao existe, nesta execucao, evidencia numerica suficiente para declarar a saude semanal dos dois bancos.
+- Acao agora: rodar esta automacao em ambiente com saida de rede liberada e credenciais read-only completas; quem deve agir e o proprio Zeus/runner da automacao ou Lucas, caso precise liberar o caminho autorizado do segundo banco.
+## 2026-05-25 08:46:29 -03:00 - Iris Core - Validacao real de entrega de boleto pela Caca
+
+Assunto: [Iris] Caca entregou boleto real em homologacao
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `VALIDACAO OPERACIONAL / IRIS / CACA / BOLETO`.
+- Ambiente: `homologacao`.
+- Status: `VALIDADO PELO LUCAS / FLUXO CRITICO FUNCIONANDO`.
+- Origem: Lucas testou a Caca no atendimento Iris via WhatsApp em `https://homo.c2x.app.br/iris` e confirmou que conseguiu receber o boleto.
+- Evidencia operacional informada pelo Lucas:
+  - a Caca conduziu a validacao do proponente;
+  - localizou cadastro por CPF/CNPJ;
+  - confirmou o nome do titular;
+  - listou boletos disponiveis;
+  - recebeu a escolha da parcela;
+  - retornou link oficial de boleto ao cliente;
+  - respondeu agradecimento de forma cordial.
+- Impacto pratico:
+  - o fluxo prioritario de segunda via de boleto saiu do estado apenas conversacional e passou a demonstrar entrega real ponta a ponta em homologacao;
+  - o atendimento automatico ja consegue resolver um caso real sem handoff humano quando ha validacao suficiente.
+- Pontos de melhoria observados:
+  - seguir refinando a linguagem para ficar menos robotica e sem uso de `por favor`;
+  - simplificar mensagens tecnicas para o cliente final quando possivel;
+  - revisar a exibicao da lista de boletos para incluir unidade/empreendimento quando a fonte retornar esses dados;
+  - manter o handoff humano quando telefone, CPF/CNPJ ou dado cadastral nao forem suficientes.
+- Fora do escopo deste registro:
+  - sem novo deploy;
+  - sem alterar env, secret, token, webhook, banco, migration, dominio de producao ou producao;
+  - sem promover para producao.
+- Proxima acao:
+  - Lucas continuar testando variacoes reais: saudacao livre, pedido de boleto com telefone comprador, pedido com telefone nao comprador, CPF/CNPJ invalido, nome divergente, boleto inexistente e pedido de humano.
+
+Conclusao:
+- A validacao real confirma que a Caca ja conseguiu entregar boleto no fluxo Iris em homologacao.
+- O impacto pratico e reduzir atrito operacional na maior dor atual da Iris: segunda via de boleto.
+- Acao agora: continuar testes orientados por variacoes reais antes de qualquer promocao futura para producao por Hefesto.
+
+## 2026-05-25 11:27:38 -03:00 - Iris Core - Calibragem de mensagens da Caca para boleto
+
+Assunto: [Iris] Mensagens da Caca sem nomes internos e com selecao multi-boleto
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `AJUSTE LOCAL / LINGUAGEM CUSTOMER-FACING / BOLETO / WHATSAPP`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCALMENTE / HOMOLOGACAO PAUSADA PELO LUCAS`.
+- Origem: Lucas validou que a Caca conseguiu entregar boleto em homologacao, mas pediu refinamento das mensagens para cliente final.
+- Mudancas realizadas:
+  - mensagens customer-facing deixam de citar nomes internos como `Apolo`, `Iris` ou `Hades` e passam a usar `nosso sistema`, `cadastro` ou `atendimento`;
+  - termo informal de localizacao removido da fala externa da Caca;
+  - instrucoes importantes do WhatsApp passam a usar negrito com `*...*`, incluindo `CPF ou CNPJ completo`, `nome completo do titular`, `cadastro confirmado`, `numero correspondente` e conferencia antes do pagamento;
+  - lista de boletos orienta o cliente a responder com o numero correspondente;
+  - selecao de boleto passa a aceitar multiplos numeros na mesma resposta, por exemplo `1 e 3`, e tambem `todos/todas` quando o cliente quiser a lista disponivel;
+  - apos enviar boleto, se ainda houver opcoes restantes, a Caca mantem o estado para permitir novo envio sem repetir autenticacao.
+- Arquivos alterados:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - `npx.cmd eslint lib/iris/caca-agent.ts lib/iris/meta-inbound-processor.ts --max-warnings 0` OK, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub` OK;
+  - `npm.cmd run build --workspace @repo/hub` OK, com warning conhecido de Turbopack/NFT em `engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/lib/iris/caca-agent.ts docs/operations/iris-ai-attendant-agent-operating-contract.md docs/operations/engineering-operations.md` OK, com aviso CRLF conhecido no Windows.
+- Fora do escopo:
+  - sem deploy;
+  - sem alias, homologacao, producao, env, secret, provider, webhook Meta, banco ou migration;
+  - sem alteracao em Hades, Apolo, Hermes, Atlas, Chronos ou Setup.
+- Riscos conhecidos:
+  - a mudanca precisa de novo teste real do Lucas na Iris para validar a forma como o WhatsApp renderiza negrito e a selecao de multiplos boletos no canal Meta;
+  - homologacao continua parada ate nova autorizacao explicita do Lucas.
+- Proxima acao:
+  - se Lucas aprovar o texto local, preparar recorte limpo Iris e rodar Safety Gate antes de qualquer nova publicacao em `https://homo.c2x.app.br`.
+
+Conclusao:
+- A Caca fica mais clara para o cliente final, sem expor nomes internos do Panteon e com comando numerico objetivo para boleto.
+- O impacto pratico e reduzir duvida no WhatsApp e permitir que o cliente peça mais de um boleto no mesmo atendimento.
+- Acao agora: Lucas pode validar localmente/homologacao quando autorizar nova publicacao; Iris Core so publica apos novo Safety Gate e autorizacao explicita.
+
+## 2026-05-25 11:17:01 -03:00 - Iris Core - Reuso de protocolo inbound e bloqueio da Caca no ativo
+
+Assunto: [Iris] Resposta inbound volta para o protocolo ativo correto
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `HOTFIX / REGRAS OPERACIONAIS / INBOUND WHATSAPP`.
+- Ambiente: `local`.
+- Status: `VALIDADO LOCAL / AGUARDANDO VALIDACAO FUNCIONAL DO LUCAS`.
+- Origem: Lucas reportou que, apos enviar template para iniciar atendimento ativo, a resposta da cliente abriu um novo chat/protocolo e a Caca respondeu no atendimento ativo, o que esta fora da regra operacional.
+- Ajuste aplicado:
+  - `apps/hub/lib/iris/meta-inbound-processor.ts` agora tenta reaproveitar ticket aberto por identidade WhatsApp (inclusive variacoes de telefone) quando o `contact_id` inicial nao encontra ticket aberto;
+  - o seletor de ticket inbound foi ajustado para priorizar o protocolo ativo aguardando resposta (`awaiting_customer_reply`) e evitar abertura paralela indevida;
+  - a regra server-side da Caca passou a bloquear automacao quando o ticket pertence a contato ativo (`contactOrigin=active`, template inicial, protocolo de atendimento ativo ou estado equivalente), mantendo Caca somente no passivo;
+  - o fluxo de inbound continua atualizando metadados de janela e status do ticket reutilizado.
+- Arquivos afetados:
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Fora de escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, banco, migration, dominio, alias, homologacao ou producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/iris/meta-inbound-processor.ts`: OK (apenas aviso CRLF conhecido no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido Turbopack/NFT em `next.config.ts`).
+- Riscos conhecidos:
+  - a confirmacao final depende de teste funcional autenticado com mensagem real inbound no fluxo de contato ativo em homologacao/local;
+  - se houver historico legado com multiplos tickets abertos para o mesmo telefone, a nova priorizacao reduz erro, mas ainda depende da qualidade dos metadados existentes.
+- Proxima acao:
+  - Lucas repetir o teste: iniciar atendimento ativo por template, aguardar resposta da cliente e confirmar que a mensagem cai no mesmo protocolo;
+  - Lucas validar que a Caca nao envia resposta em atendimento ativo e segue ativa apenas no passivo.
+
+Conclusao:
+- A causa raiz era o inbound depender demais do `contact_id` direto, sem fallback robusto por identidade WhatsApp, combinado com ausencia de trava explicita da Caca para contato ativo.
+- O impacto pratico e que a resposta do cliente tende a voltar para o protocolo iniciado pelo operador, enquanto a Caca fica restrita ao atendimento passivo.
+- Acao agora: validar funcionalmente no fluxo real com a Nivea e confirmar que nao surge novo protocolo paralelo.
+
+## 2026-05-25 11:35:25 -03:00 - Iris Core - Homologacao do recorte inbound protocolo ativo
+
+Assunto: [Iris] Deploy em homologacao da correcao de protocolo ativo e Caca passiva
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE / HOMOLOGACAO / HOTFIX IRIS`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO VALIDACAO FUNCIONAL AUTENTICADA DO LUCAS`.
+- Origem: Lucas autorizou subir para homologacao a correcao que evita abertura de novo protocolo no inbound do contato ativo e impede atuacao da Caca no ativo.
+- Escopo do recorte publicado:
+  - reuso de ticket por identidade WhatsApp no inbound, com priorizacao de protocolo ativo;
+  - bloqueio server-side da Caca em ticket de contato ativo;
+  - preservacao do runtime Iris vigente em homologacao para evitar regressao de recortes anteriores.
+- Protecao contra sobrescrita:
+  - pacote limpo `.codex-deploy/iris-homolog-20260525-1120-inbound-active-fix/workspace`;
+  - base/rollback imediato: `dpl_3k7PGdrLhLjNqwEAUdmHPZABJTKX`;
+  - Homologation Safety Gate pre-deploy: `PASS`;
+  - Homologation Safety Gate pre-alias: `PASS` (com aviso nao bloqueante de `.vercel` tecnico no pacote).
+- Deployment/alias de homologacao:
+  - deployment novo: `dpl_A6XymnEiHgkFhQy2mHHt1QJuuXku`;
+  - URL tecnica: `https://workspace-a2vqyyetk-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_3k7PGdrLhLjNqwEAUdmHPZABJTKX`.
+- Arquivos/modulos incluidos no pacote:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `apps/hub/app/api/iris/attendant/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/media/route.ts`;
+  - `turbo.json`.
+- Validacoes executadas no pacote limpo:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON` no pacote);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido de Turbopack/NFT);
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-1120-inbound-active-fix/homologation-safety-gate.json`: `PASS` antes do deploy;
+  - `npx.cmd vercel deploy --yes --target preview`: OK;
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-1120-inbound-active-fix/homologation-safety-gate.json`: `PASS` antes do alias;
+  - `npx.cmd vercel alias set https://workspace-a2vqyyetk-lucasruas-devs-projects.vercel.app homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_A6XymnEiHgkFhQy2mHHt1QJuuXku`;
+  - `curl.exe -s -o NUL -w "%{http_code}" https://homo.c2x.app.br/iris`: `401` sem sessao (ambiente protegido);
+  - `curl.exe -s -o NUL -w "%{http_code}" https://homo.c2x.app.br/login`: `401` sem sessao (ambiente protegido);
+  - `curl.exe -s -o NUL -w "%{http_code}" https://homo.c2x.app.br/api/iris/meta/templates`: `401` esperado sem sessao;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Fora de escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, banco, migration, dominio, alias de producao ou producao.
+- Riscos conhecidos:
+  - validacao funcional final depende de sessao autenticada do Lucas com teste real de resposta inbound no mesmo protocolo iniciado;
+  - se houver inconsistencias de contatos legados no banco, o fallback por identidade WhatsApp pode exigir ajuste fino adicional.
+- Proxima acao:
+  - Lucas executar teste autenticado com a Nivea: iniciar ativo por template, aguardar resposta e confirmar que entra no mesmo protocolo;
+  - Lucas confirmar que a Caca nao responde em ticket ativo e permanece atuando apenas no passivo.
+
+Conclusao:
+- A release de homologacao foi publicada com Safety Gate e recorte controlado, sem tocar envs/secrets/producao.
+- O impacto pratico e reduzir abertura indevida de novos protocolos no inbound de contato ativo e manter a Caca fora do fluxo ativo.
+- Acao agora: validar em sessao autenticada no fluxo real para fechar o hotfix operacional da Iris.
+
+## 2026-05-25 11:49:59 -03:00 - Iris Core - Homologacao da calibragem de mensagens da Caca
+
+Assunto: [Iris] Homologacao das mensagens da Caca para boleto
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE / HOMOLOGACAO / UX CONVERSACIONAL IRIS`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO VALIDACAO FUNCIONAL DO LUCAS`.
+- Origem: Lucas aprovou publicar a calibragem das mensagens da Caca apos o fluxo de boleto ter sido validado funcionalmente em homologacao.
+- Escopo do recorte publicado:
+  - mensagens externas deixam de citar nomes internos como Apolo, Iris e Hades, usando `nosso sistema`, `cadastro` e `atendimento`;
+  - termo `pista` removido das respostas ao cliente final;
+  - instrucoes importantes de boleto reforcadas com negrito em formato compativel com WhatsApp;
+  - lista de boletos orienta o cliente a responder com o numero correspondente;
+  - fluxo aceita selecao de mais de um boleto, como `1 e 3`, `1, 2` ou `todos`, mantendo o atendimento aberto quando houver parcelas restantes;
+  - contrato operacional da Caca registrado para orientar futuras evolucoes da Iris.
+- Protecao contra sobrescrita:
+  - pacote limpo `.codex-deploy/iris-homolog-20260525-1138-caca-messages/workspace`;
+  - base/rollback imediato: `dpl_A6XymnEiHgkFhQy2mHHt1QJuuXku`;
+  - Homologation Safety Gate pre-deploy: `PASS`;
+  - Homologation Safety Gate pre-alias: `PASS`.
+- Deployment/alias de homologacao:
+  - deployment novo: `dpl_9sYn6MLXyr7j1JJz2oD8cfNMvU6t`;
+  - URL tecnica: `https://workspace-idqegfydy-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_A6XymnEiHgkFhQy2mHHt1QJuuXku`.
+- Arquivos/modulos incluidos no pacote:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`.
+- Validacoes executadas no pacote limpo:
+  - `npx.cmd eslint lib/iris/caca-agent.ts lib/iris/meta-inbound-processor.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido de Turbopack/NFT por pacote dentro de `.codex-deploy`;
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-1138-caca-messages/homologation-safety-gate.json`: `PASS` antes do deploy;
+  - `npx.cmd vercel deploy --yes --target preview`: OK;
+  - `npx.cmd vercel inspect https://workspace-idqegfydy-lucasruas-devs-projects.vercel.app`: `Ready`, deployment `dpl_9sYn6MLXyr7j1JJz2oD8cfNMvU6t`;
+  - Safety Gate pre-alias: `PASS`;
+  - `npx.cmd vercel alias set https://workspace-idqegfydy-lucasruas-devs-projects.vercel.app homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_9sYn6MLXyr7j1JJz2oD8cfNMvU6t`;
+  - `curl.exe -s -o NUL -w "%{http_code}" https://homo.c2x.app.br/iris`: `401` sem sessao, esperado para ambiente protegido;
+  - `curl.exe -s -o NUL -w "%{http_code}" https://homo.c2x.app.br/login`: `401` sem sessao, esperado para ambiente protegido;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m`: sem logs encontrados.
+- Fora de escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, banco, migration, dominio, alias de producao ou producao.
+- Riscos conhecidos:
+  - validacao final depende de teste real autenticado do Lucas no canal WhatsApp para confirmar o texto renderizado, negrito e selecao de multiplos boletos;
+  - ambiente protegido retorna `401` sem sessao, entao healthcheck HTTP nao substitui validacao funcional autenticada.
+- Proxima acao:
+  - Lucas validar em homologacao a solicitacao de boleto, escolha por numero e escolha multipla;
+  - se aprovado, Iris Core pode sinalizar recorte como homologado para fila de producao do Hefesto.
+
+Conclusao:
+- A Caca ficou mais clara para cliente final, sem expor nomenclatura interna do Panteon.
+- O impacto pratico e melhorar entendimento do cliente no pedido de boleto e permitir envio de mais de uma parcela no mesmo atendimento.
+- Acao agora: Lucas validar o fluxo real em homologacao; producao permanece fora do escopo e depende de autorizacao posterior.
+
+## 2026-05-25 12:06:15 -03:00 - Iris Core - Janela WhatsApp por contato apos encerramento
+
+Assunto: [Iris] Janela 24h por contato em novo protocolo
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `CORRECAO OPERACIONAL / WHATSAPP`.
+- Ambiente: `local`.
+- Status: `IMPLEMENTADO E VALIDADO LOCALMENTE`.
+- Decisao aplicada:
+  - `POST /api/iris/meta/messages` passou a validar janela de 24h por `contact_id`, reaproveitando inbound do cliente em qualquer ticket do contato (inclusive tickets encerrados), com fallback por `ticket_id` para legado.
+  - `POST /api/iris/tickets` agora tenta abrir atendimento ativo sem template quando a janela do contato ja esta aberta; quando a janela estiver fechada, exige template aprovado e envio normal.
+  - O novo ticket recebe metadata de janela (`lastCustomerMessageAt`, `customerServiceWindowOpenedAt`, `customerServiceWindowExpiresAt`) para liberar o composer imediatamente quando a janela estiver valida.
+  - `IrisPage.tsx` foi ajustada para iniciar contato ativo com tentativa sem template e fallback para template apenas quando a API indicar janela fechada.
+- Arquivos afetados:
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/modules/caredesk-meta-whatsapp-setup.md`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/messages/route.ts apps/hub/app/api/iris/tickets/route.ts docs/modules/caredesk-meta-whatsapp-setup.md docs/operations/engineering-operations.md`: OK (apenas aviso CRLF conhecido no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido Turbopack/NFT em `next.config.ts`).
+- Fora de escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, banco, migration, dominio, alias, homologacao ou producao.
+- Riscos conhecidos:
+  - contatos legados sem `sender_contact_id` dependem do fallback por `ticket_id` e da consistencia historica do relacionamento contato-ticket;
+  - validacao funcional final ainda depende de teste autenticado do Lucas no fluxo real do WhatsApp.
+- Proxima acao:
+  - Lucas validar no Iris: contato ativo com ticket anterior encerrado e janela aberta deve permitir chat livre sem novo template;
+  - Lucas validar cenario de janela fechada para confirmar fallback com envio de template aprovado.
+
+Conclusao:
+- A causa do bloqueio era o controle de janela restrito ao ticket atual, mesmo quando o cliente ja tinha respondido recentemente em outro protocolo.
+- O impacto pratico da correcao e permitir reabertura operacional por contato dentro das 24h sem novo template, mantendo bloqueio server-side quando a janela estiver fechada.
+- Acao agora: executar teste funcional autenticado no fluxo real; homologacao/deploy permanecem `BLOQUEADO` ate autorizacao explicita do Lucas.
+
+## 2026-05-25 12:16:56 -03:00 - Iris Core - Homologacao da janela por contato apos ticket encerrado
+
+Assunto: [Iris] Homologacao da janela 24h por contato
+
+- Nome da squad/agente: `Iris Core`.
+- Tipo da alteracao: `RELEASE / HOMOLOGACAO / CORRECAO OPERACIONAL WHATSAPP`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO / AGUARDANDO VALIDACAO FUNCIONAL AUTENTICADA DO LUCAS`.
+- Origem: Lucas autorizou publicar o recorte para reutilizar janela de 24h por contato mesmo quando o ticket anterior estiver encerrado.
+- Escopo do recorte publicado:
+  - `POST /api/iris/meta/messages` valida janela por contato (com fallback legado), nao apenas por ticket;
+  - `POST /api/iris/tickets` tenta abertura sem template quando a janela do contato estiver aberta e exige template apenas quando janela fechada;
+  - `IrisPage.tsx` com tentativa sem template e fallback para template quando a API sinaliza janela fechada.
+- Protecao contra sobrescrita:
+  - pacote limpo `.codex-deploy/iris-homolog-20260525-121308-window-contact/workspace`;
+  - base/rollback imediato: `dpl_9sYn6MLXyr7j1JJz2oD8cfNMvU6t`;
+  - Homologation Safety Gate pre-deploy: `PASS`;
+  - Homologation Safety Gate pre-alias: `PASS`.
+- Deployment/alias de homologacao:
+  - deployment novo: `dpl_BthyutcZkVxbvxMTgLSi2ya8wS6t`;
+  - URL tecnica: `https://workspace-il2xguavg-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://homo.c2x.app.br`;
+  - rollback imediato: `dpl_9sYn6MLXyr7j1JJz2oD8cfNMvU6t`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/messages/route.ts apps/hub/app/api/iris/tickets/route.ts docs/modules/caredesk-meta-whatsapp-setup.md docs/operations/engineering-operations.md`: OK (apenas aviso CRLF conhecido no Windows);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido Turbopack/NFT);
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-121308-window-contact/homologation-safety-gate.json`: `PASS` pre-deploy;
+  - `npx.cmd vercel deploy --yes --target preview`: OK;
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-homolog-20260525-121308-window-contact/homologation-safety-gate.json`: `PASS` pre-alias;
+  - `npx.cmd vercel alias set https://workspace-il2xguavg-lucasruas-devs-projects.vercel.app homo.c2x.app.br`: OK.
+- Healthchecks de homologacao:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `Ready`, target `preview`, deployment `dpl_BthyutcZkVxbvxMTgLSi2ya8wS6t`;
+  - `curl.exe -s -o NUL -w "%{http_code}" https://homo.c2x.app.br/iris`: `401` sem sessao (esperado em ambiente protegido);
+  - `curl.exe -s -o NUL -w "%{http_code}" https://homo.c2x.app.br/login`: `401` sem sessao (esperado em ambiente protegido);
+  - `curl.exe -s -o NUL -w "%{http_code}" https://homo.c2x.app.br/api/iris/meta/messages`: `401` sem sessao (esperado em rota protegida);
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Fora de escopo:
+  - sem alteracao de env, secret, token, WABA, phone number ID, webhook Meta, banco, migration, dominio, alias de producao ou producao.
+- Riscos conhecidos:
+  - validacao funcional final depende de teste autenticado no fluxo real do WhatsApp com ticket encerrado e contato dentro da janela;
+  - contatos legados com vinculos incompletos podem depender do fallback por ticket para determinar a janela.
+- Proxima acao:
+  - Lucas validar em `https://homo.c2x.app.br/iris` o cenario: ticket encerrado + cliente respondeu recentemente + chat livre sem novo template;
+  - Lucas validar cenario de janela fechada para confirmar bloqueio e orientacao de template aprovado.
+
+Conclusao:
+- A homologacao foi publicada com Safety Gate em duas etapas e recorte isolado da Iris.
+- O impacto pratico e que o operador pode retomar conversa dentro das 24h por contato mesmo com protocolo anterior encerrado, sem custo adicional de novo template.
+- Acao agora: validacao funcional autenticada do Lucas; producao segue fora do escopo ate nova autorizacao.
+
+## 2026-05-25 12:31:45 -03:00 - Ares Core - Base Supabase homologacao
+
+Assunto: [Ares] Base financeira operacional no Supabase homologacao
+
+- Nome da squad/agente: `Ares Core`.
+- Tipo da alteracao: `MIGRATION / SUPABASE HOMOLOGACAO / BASE FINANCEIRA OPERACIONAL`.
+- Ambiente: `homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas autorizou criar as tabelas do Ares no Supabase.
+  - A aplicacao foi feita no alvo de homologacao usando a variavel local `HOMOLOG_POSTGRES_URL`, sem expor valores de env, tokens, service role, connection string ou payload sensivel.
+- Escopo aplicado:
+  - criada a migration `packages/database/migrations/0030_ares_core.sql`;
+  - criadas 8 tabelas `ares_*` no schema `public`;
+  - RLS habilitado em todas as tabelas;
+  - grants minimos para `authenticated` e `service_role`: `select`, `insert`, `update`, `delete`;
+  - sem grants para `anon`;
+  - policies de leitura e gestao baseadas em usuario ativo em `hub_users`, role `admin`/`leader` ou permissoes `financeiro:view`/`financeiro:manage`.
+- Tabelas criadas:
+  - `ares_financial_dimensions`: dimensoes operacionais para centro de custo, centro de resultado, projeto, categoria e departamento;
+  - `ares_bank_accounts`: contas correntes operacionais, sem credenciais bancarias;
+  - `ares_financial_entries`: lancamentos de contas a pagar, contas a receber, extrato e ajustes controlados;
+  - `ares_entry_events`: trilha de auditoria dos lancamentos;
+  - `ares_bank_statement_imports`: importacoes de extrato, inicialmente `OFX`/manual/API sem integracao bancaria ativa;
+  - `ares_bank_statement_lines`: linhas de extrato para conciliacao;
+  - `ares_payment_batches`: simulacoes, aprovacoes e lotes de pagamento;
+  - `ares_payment_batch_items`: itens dos lotes/simulacoes.
+- Decisoes preservadas:
+  - `payments`/C2X nao foi usado como base arquitetural do Ares;
+  - Hades continua dono de cobranca, carteira, inadimplencia e comportamento de pagamento C2X;
+  - Apolo segue como fonte mestre futura de pessoas/empresas; Ares manteve `apolo_entity_id` como vinculo conceitual sem obrigar integracao nesta etapa;
+  - sem plano de contas definitivo, regra fiscal/contabil definitiva, boleto, PIX, ERP, integracao bancaria automatica ou conciliacao automatica.
+- Arquivos afetados:
+  - `packages/database/migrations/0030_ares_core.sql`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Validacoes executadas:
+  - checagem pre-aplicacao em homologacao: `hub_users`, `hub_permissions` e `set_hub_updated_at` presentes; tabelas `ares_*` ausentes antes da migration;
+  - aplicacao da migration `0030_ares_core.sql` em homologacao: OK;
+  - reaplicacao idempotente com ajuste de grants minimos: OK;
+  - validacao pos-aplicacao: 8 tabelas `ares_*` criadas;
+  - validacao pos-aplicacao: RLS habilitado nas 8 tabelas;
+  - validacao pos-aplicacao: 2 policies por tabela;
+  - validacao pos-aplicacao: `authenticated` e `service_role` com `select/insert/update/delete`;
+  - validacao pos-aplicacao: sem grant listado para `anon`.
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido Turbopack/NFT em `next.config.ts`).
+- Fora de escopo:
+  - sem seed de dados financeiros reais;
+  - sem importacao de C2X;
+  - sem escrita em Hades, Apolo, Iris, Chronos, Atlas ou Zeus;
+  - sem alteracao de env, secret, token, service role, dominio, alias, Vercel, producao ou release de frontend.
+- Riscos conhecidos:
+  - a modelagem ainda e base operacional inicial e precisa ser confrontada com o processo real de financeiro da Careli antes de virar fluxo definitivo;
+  - permissao por perfil ainda precisa de validacao funcional com usuario autenticado;
+  - a futura UI do Ares deve respeitar o mapa financeiro enviado por Lucas e nao assumir dados reais ate existir fonte autorizada.
+- Proxima acao:
+  - definir com Lucas o primeiro fluxo funcional em cima das tabelas: contas a pagar, contas a receber, conciliacao, faturamento ou relatorios.
+
+Conclusao:
+- A base fisica inicial do Ares foi criada no Supabase de homologacao com RLS e grants minimos.
+- O impacto pratico e que o Ares agora tem fundacao propria para comecar o modulo financeiro operacional sem depender do C2X como base.
+- Acao agora: Lucas escolher o primeiro fluxo funcional; producao segue fora de escopo ate nova autorizacao explicita.
+
+## 2026-05-25 12:55:32 -03:00 - Ares Core - Primeira tela operacional Hub
+
+Assunto: [Ares] Tela operacional, API snapshot e registry Hub
+
+- Nome da squad/agente: `Ares Core`.
+- Tipo da alteracao: `FRONTEND / API READ-ONLY / SUPABASE HOMOLOGACAO / REGISTRY HUB`.
+- Ambiente: `desenvolvimento local` e `Supabase homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas autorizou seguir com a montagem do Ares e reforcou que o modulo deve seguir os padroes do Hub.
+  - Lucas tambem corrigiu a diretriz de fonte: Ares usara pouco C2X e nao deve nascer da tabela `payments`.
+- Escopo aplicado:
+  - `/financeiro` deixou de ser placeholder e passou a abrir a primeira tela operacional do `Ares`;
+  - criada API read-only `GET /api/ares/snapshot` usando sessao Hub, permissao `financeiro:view` e leitura RLS das tabelas `ares_*`;
+  - criada camada `apps/hub/lib/ares/*` com tipos, client e server para snapshot financeiro;
+  - criada `apps/hub/modules/ares/AresPage.tsx` com sidebar padrao Panteon, topbar com usuario no header, filtros compactos, indicadores reais e tabelas/listas em estado vazio quando nao houver dado oficial;
+  - ativado `financeiro` como modulo `Ares` no registry compartilhado e no fallback minimo do HubShell;
+  - atualizada `0030_ares_core.sql` para registrar `Ares` em `hub_modules`, permissao `financeiro:view/manage` e acesso em `hub_department_modules`;
+  - ajustadas policies de gestao RLS para nao conceder escrita automaticamente a `leader`: escrita fica restrita a `admin` ou permissao explicita `financeiro:manage`.
+- Arquivos incluidos:
+  - `apps/hub/app/api/ares/snapshot/route.ts`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`.
+- Arquivos alterados:
+  - `apps/hub/app/financeiro/page.tsx`;
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `packages/shared/src/modules/registry.ts`;
+  - `packages/database/migrations/0030_ares_core.sql`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - nenhum arquivo funcional excluido;
+  - script temporario `.codex-tmp/ares-apply-homolog.cjs` criado apenas para aplicacao/validacao e removido no mesmo recorte.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON` do `eslint.config.js`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - Supabase homologacao: reaplicacao idempotente da migration `0030_ares_core.sql`: OK;
+  - Supabase homologacao: `hub_modules.financeiro` registrado como `Ares`, status `active`, base `/financeiro`: OK;
+  - Supabase homologacao: 5 departamentos ativos com modulo `financeiro` habilitado: OK;
+  - Supabase homologacao: 8 tabelas `ares_*` com RLS habilitado e 2 policies por tabela: OK;
+  - Supabase homologacao: grants `anon` nas tabelas `ares_*`: `0`;
+  - Supabase homologacao: policies de gestao contendo `leader`: `0`;
+  - smoke local no dev server existente: `GET http://localhost:3001/financeiro` retornou `200`;
+  - smoke local sem sessao: `GET http://localhost:3001/api/ares/snapshot` retornou `401` com `Sessao do Hub ausente`, esperado para rota protegida.
+- Fora de escopo:
+  - sem seed de dados financeiros reais;
+  - sem API de escrita, formulario de criacao, importacao OFX real, boleto, PIX, ERP, banco externo ou conciliacao automatica;
+  - sem importacao C2X e sem leitura de `payments` como base do Ares;
+  - sem alteracao funcional em Hades, Apolo, Iris, Chronos, Atlas, Zeus ou Hefesto;
+  - sem deploy Vercel, alias, dominio ou producao.
+- Riscos conhecidos:
+  - a tela local mostra indicadores reais vazios enquanto nao houver lancamentos oficiais nas tabelas `ares_*`;
+  - validacao visual autenticada completa ainda depende de Lucas abrir `/financeiro` logado no Hub;
+  - frontend/API ainda nao foram publicados em homologacao Vercel porque Lucas autorizou Supabase/tabelas, mas nao autorizou deploy/alias;
+  - futuros fluxos de escrita precisam de decisao de recorte para contas a pagar, contas a receber, conciliacao, faturamento, aprovacao e permissoes por perfil.
+- Proxima acao:
+  - Lucas validar localmente `http://localhost:3001/financeiro`;
+  - quando Lucas autorizar, Ares pode publicar somente este recorte de frontend/API em homologacao pelo fluxo oficial.
+
+Conclusao:
+- O Ares saiu do placeholder e ganhou a primeira experiencia operacional no padrao Hub, lendo a base real `ares_*` por API protegida e RLS.
+- O impacto pratico e que o modulo ja pode ser aberto como ferramenta de trabalho inicial, sem mock financeiro e sem dependência estrutural do C2X.
+- Nao precisa de acao imediata em producao; o proximo passo e Lucas validar a tela local e autorizar ou nao o deploy de homologacao do frontend.
+
+## 2026-05-25 13:28:59 -03:00 - Ares Core - Rota /ares e lancamento manual
+
+Assunto: [Ares] Rota oficial e criacao de lancamento
+
+- Nome da squad/agente: `Ares Core`.
+- Tipo da alteracao: `FRONTEND / API WRITE-CONTROLLED / SUPABASE HOMOLOGACAO / REGISTRY HUB`.
+- Ambiente: `desenvolvimento local` e `Supabase homologacao`.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas corrigiu a rota do modulo: a URL operacional deve ser `/ares`, nao `/financeiro`.
+  - Lucas reforcou que o Ares precisa permitir realizar um lancamento e que os campos descritos na lista do financeiro devem existir como obrigatorios no formulario inicial.
+- Escopo aplicado:
+  - criada rota `apps/hub/app/ares/page.tsx` como entrada operacional do Ares;
+  - `apps/hub/app/financeiro/page.tsx` virou redirect para `/ares`, mantendo ponte temporaria para atalhos legados;
+  - registry compartilhado aponta o modulo tecnico `financeiro` para `basePath: /ares`, com label `Ares`;
+  - Supabase homologacao atualizado para `hub_modules.financeiro.base_path = /ares`;
+  - criada API autenticada `POST /api/ares/entries` para lancamento manual controlado por permissao `financeiro:manage`;
+  - tela Ares ganhou acao compacta `Novo lancamento` e formulario com campos obrigatorios: tipo, aprovacao, prioridade, parte, vencimento, previsao, valor, documento, cliente/fornecedor, conta, categoria, forma, centro de custo, centro de resultado, projeto, responsavel, descricao, origem e proxima acao;
+  - worklist passou a exibir responsavel, centro, projeto, valor, prioridade e proxima acao;
+  - migration `0030_ares_core.sql` adicionou snapshots de lancamento, prioridade, proxima acao e trigger `create_ares_financial_entry_event` para trilha `ares_entry_events` ao criar lancamento;
+  - leitura e escrita seguem por RLS: leitura para `financeiro:view/manage`, escrita para `admin` ou permissao explicita `financeiro:manage`.
+- Arquivos incluidos:
+  - `apps/hub/app/ares/page.tsx`;
+  - `apps/hub/app/api/ares/entries/route.ts`.
+- Arquivos alterados:
+  - `apps/hub/app/financeiro/page.tsx`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `packages/shared/src/modules/registry.ts`;
+  - `packages/database/migrations/0030_ares_core.sql`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - nenhum arquivo funcional excluido;
+  - scripts temporarios `.codex-tmp/ares-apply-homolog.cjs`, `.codex-tmp/list-env-keys.cjs` e `.codex-tmp/ares-smoke.cjs` foram criados apenas para aplicacao/validacao e removidos no mesmo recorte.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON` do `eslint.config.js`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - Supabase homologacao: migration `0030_ares_core.sql` reaplicada com sucesso via `HOMOLOG_POSTGRES_URL`;
+  - Supabase homologacao: `hub_modules.financeiro` validado como `Ares`, status `active`, base `/ares`;
+  - Supabase homologacao: 8 tabelas `ares_*` com RLS habilitado;
+  - Supabase homologacao: grants `anon` nas tabelas `ares_*`: `0`;
+  - Supabase homologacao: grants publicos na funcao `create_ares_entry_created_event`: `0`;
+  - Supabase homologacao: trigger `create_ares_financial_entry_event`: `1`;
+  - Supabase homologacao: 9 colunas obrigatorias de lancamento presentes em `ares_financial_entries`;
+  - smoke local no dev server existente: `GET http://localhost:3001/ares`: `200`;
+  - smoke local no dev server existente: `GET http://localhost:3001/financeiro`: `200` apos redirect;
+  - smoke local sem sessao: `GET http://localhost:3001/api/ares/snapshot`: `401`, esperado;
+  - smoke local sem sessao: `POST http://localhost:3001/api/ares/entries`: `401`, esperado;
+  - scan `rg -n "title="` no recorte Ares: sem ocorrencias.
+- Fora de escopo:
+  - sem lancamento fake ou seed financeiro;
+  - sem importacao C2X como base do Ares;
+  - sem integracao bancaria, boleto, PIX, ERP, fiscal, OFX real ou conciliacao automatica;
+  - sem alteracao funcional em Hades, Apolo, Iris, Chronos, Atlas, Zeus ou Hefesto;
+  - sem deploy Vercel, alias, dominio ou producao.
+- Riscos conhecidos:
+  - validacao autenticada de criacao real depende de usuario logado com `financeiro:manage`;
+  - frontend/API ainda nao foram publicados em homologacao Vercel porque nao houve autorizacao de deploy/alias neste recorte;
+  - `/financeiro` permanece como ponte temporaria e deve ser removido apenas quando Lucas autorizar a limpeza legada.
+- Proxima acao:
+  - Lucas validar localmente `http://localhost:3001/ares` e, se desejar, fazer um lancamento real com usuario autorizado;
+  - se Lucas autorizar deploy, Ares deve rodar Safety Gate e publicar somente este recorte em homologacao.
+
+Conclusao:
+- Ares agora tem URL operacional correta em `/ares` e primeira acao funcional de lancamento manual.
+- O impacto pratico e que o modulo deixa de ser apenas leitura inicial e passa a aceitar registro financeiro controlado, com campos obrigatorios, RLS e trilha de criacao.
+- Nao ha acao em producao agora; Lucas deve validar o fluxo local e decidir se autoriza deploy de homologacao do frontend/API.
+
+## 2026-05-25 15:12:52 -03:00 - Ares Core - Lancamento em popup
+
+Assunto: [Ares] Popup de lancamento e cards no topo
+
+- Nome da squad/agente: `Ares Core`.
+- Tipo da alteracao: `FRONTEND / UX / RECORTE ARES`.
+- Ambiente: `desenvolvimento local`.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas validou visualmente a tela `/ares` e pediu que o formulario de lancamento deixasse de ocupar a pagina.
+  - Diretriz de Lucas: lancamento deve abrir em popup e os cards devem permanecer no topo.
+- Escopo aplicado:
+  - `Novo lancamento` agora abre modal/popup central com backdrop;
+  - o formulario ganhou rolagem interna no modal para nao empurrar a mesa financeira;
+  - os botoes `Cancelar` e `Realizar lancamento` permanecem no rodape do popup;
+  - os cards de indicadores voltaram a ficar imediatamente abaixo do cabecalho/filtros da tela;
+  - API, schema, RLS e migration nao foram alterados neste ajuste.
+- Arquivos alterados:
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - nenhum.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - smoke local: `GET http://localhost:3001/ares`: `200`;
+  - scan `rg -n "title="` no recorte Ares: sem ocorrencias;
+  - `git diff --check` no recorte visual Ares e registros: OK.
+- Fora de escopo:
+  - sem mudanca de banco, migration, RLS ou permissao;
+  - sem deploy Vercel, alias, dominio ou producao.
+- Riscos conhecidos:
+  - validacao visual autenticada completa ainda depende de Lucas conferir o popup no navegador logado;
+  - nao foi criado lancamento real de teste para evitar dado financeiro artificial.
+- Proxima acao:
+  - Lucas recarregar `http://localhost:3001/ares`, clicar em `Novo lancamento` e validar o popup.
+
+Conclusao:
+- O formulario de lancamento saiu do fluxo inline e virou popup, preservando os cards no topo da experiencia Ares.
+- O impacto pratico e que a tela volta a abrir como mesa financeira, com indicadores visiveis e lancamento como acao contextual.
+- Nao ha acao em producao agora; se Lucas aprovar visualmente, o recorte fica pronto para eventual deploy de homologacao pelo fluxo oficial.
+
+## 2026-05-25 15:19:01 -03:00 - Zeus - Padrao Preview antes de Homo
+
+Assunto: [Zeus] Preview Vercel antes de alias compartilhado
+
+- Nome da squad/agente: Zeus.
+- Tipo da alteracao: GOVERNANCA / HOMOLOGACAO / SAFETY GATE / MULTIAGENTES.
+- Ambiente: processo operacional; sem deploy.
+- Status: PADRAO OPERACIONAL REGISTRADO.
+- Origem:
+  - Lucas questionou se Preview era `localhost` e pediu registrar o processo para os demais agentes.
+  - Incidente anterior mostrou que `homo.c2x.app.br` pode ser quebrado quando um agente aponta o alias para deployment/projeto errado, como `workspace-*`.
+- Decisao operacional:
+  - `localhost` e somente validacao local do agente;
+  - `Preview Vercel` e deployment publico/imutavel candidato, com URL tecnica, deployment id, projeto Vercel e status `Ready`;
+  - `https://homo.c2x.app.br` e alias compartilhado de homologacao e deve ser movimentado por Zeus apos Safety Gate;
+  - `https://c2x.app.br` e `https://ops.c2x.app.br` continuam sob fluxo Hefesto/producao;
+  - agentes de modulo nao devem executar `vercel alias set ... homo.c2x.app.br` como rotina;
+  - agentes de modulo entregam Preview, manifesto, expectedDeploymentId atual de homo, rollback, inclusoes, exclusoes e validacoes;
+  - Zeus coordena fila de homologacao, Safety Gate pre/post alias e reconciliacao se homo mudar;
+  - deployment/URL `workspace-*`, projeto Vercel errado, build vazio/incompativel ou divergencia do alias esperado bloqueiam homologacao.
+- Arquivos atualizados:
+  - AGENTS.md;
+  - docs/operations/README.md;
+  - docs/operations/homologation-safety-gate.md;
+  - docs/operations/panteon-worktree-operating-model.md;
+  - docs/architecture/agent-operating-model.md;
+  - docs/architecture/release-and-rollback-policy.md;
+  - scripts/homologation-safety-gate.mjs.
+- Implementacao de trava:
+  - o Safety Gate passou a aceitar `targetPreviewUrl`/`targetDeploymentUrl` ou `--target-url`;
+  - o manifesto pode declarar `expectedProjectName`, com padrao `careli-hub-hub-i2bs`;
+  - o gate inspeciona Preview alvo e alias, bloqueando identidade `workspace-*`, projeto Vercel diferente e Preview nao `Ready` quando informado.
+- Fora de escopo:
+  - sem deploy;
+  - sem alias;
+  - sem envs, secrets, banco, migrations ou producao;
+  - sem alterar recortes funcionais de Iris/Ares/Apolo/Hermes/Hades.
+- Proxima acao:
+  - novos agentes devem seguir o padrao `localhost -> Preview Vercel -> Zeus/homo -> Hefesto/producao` e registrar manifestos com Preview alvo.
+
+Conclusao:
+- A regra virou padrao operacional documentado e parcialmente executavel pelo Safety Gate.
+- O impacto pratico e reduzir muito o risco de um agente sobrescrever homologacao com deployment antigo, pacote vazio ou projeto errado.
+- Acao agora: usar esse fluxo nos proximos handoffs e bloquear qualquer tentativa de mover `homo` fora de Zeus sem autorizacao explicita do Lucas.
+
+## 2026-05-25 15:35:27 -03:00 - Ares Core - Sidebar Hub, fornecedor Apolo e Preview
+
+Assunto: [Ares] Sidebar Hub, fornecedor Apolo e Preview
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: FRONTEND / API CLIENT / HUB SIDEBAR / PREVIEW.
+- Ambiente: desenvolvimento local + Vercel Preview.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas pediu incluir o modulo Ares no sidebar/launcher do Hub;
+  - Lucas definiu que fornecedor deve ser pesquisado no Apolo CRM durante o lancamento;
+  - Lucas autorizou subir o recorte em Preview.
+- Escopo aplicado:
+  - registro compartilhado do modulo `financeiro` passou a exibir `Ares`, ativo e com base `/ares`;
+  - `/financeiro` permanece como ponte legada temporaria para `/ares`;
+  - Hub Shell passou a liberar modulos tambem pela matriz de visibilidade por perfil quando a sessao do usuario esta coerente;
+  - popup `Novo lancamento` ganhou busca de cadastro no Apolo para cliente/fornecedor/parceiro;
+  - quando a parte e `Fornecedor`, a busca chama o endpoint protegido `/api/apolo/relationships` com `profile=fornecedor`;
+  - selecao do cadastro preenche o nome do lancamento e persiste `apolo_entity_id` somente quando o identificador retornado e UUID valido;
+  - escrita financeira segue por `POST /api/ares/entries`, com sessao Hub, permissao `financeiro:manage` e RLS.
+- Arquivos incluidos no pacote limpo de Preview:
+  - `apps/hub/app/ares/page.tsx`;
+  - `apps/hub/app/financeiro/page.tsx`;
+  - `apps/hub/app/api/ares/snapshot/route.ts`;
+  - `apps/hub/app/api/ares/entries/route.ts`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `packages/shared/src/modules/registry.ts`;
+  - `packages/database/migrations/0030_ares_core.sql`.
+- Arquivos excluidos do pacote limpo:
+  - alteracoes pendentes de Apolo, Iris, docs de governanca, scripts de safety gate e demais arquivos fora do recorte Ares;
+  - nenhum env, secret, alias, dominio, producao ou item sensivel.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - smoke local: `GET http://localhost:3001/ares`: `200`;
+  - smoke local: `GET http://localhost:3001/api/ares/snapshot` sem sessao: `401`, esperado;
+  - smoke local: `GET http://localhost:3001/api/apolo/relationships?limit=1&q=teste&profile=fornecedor` sem sessao: `401`, esperado;
+  - scan `rg -n "title="` no recorte Ares: sem ocorrencias;
+  - `git diff --check` no recorte Ares: OK, apenas avisos CRLF conhecidos;
+  - build remoto Vercel Preview: OK, com o mesmo warning Turbopack/NFT e aviso Turborepo de envs `HOMOLOG_*` ausentes do `turbo.json`;
+  - smoke Preview: `GET /ares`: `200`;
+  - smoke Preview: `GET /financeiro`: `200` com sinais da tela Ares no HTML;
+  - smoke Preview: `GET /api/ares/snapshot` sem sessao: `401`, esperado;
+  - smoke Preview: `GET /api/apolo/relationships?limit=1&q=teste&profile=fornecedor` sem sessao: `401`, esperado.
+- Preview publicado:
+  - URL: `https://careli-hub-hub-i2bs-f5prt8ieh-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_2vsa8qkW2E8PbjMJHsoT5up1NkdT`;
+  - inspector: `https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/2vsa8qkW2E8PbjMJHsoT5up1NkdT`;
+  - projeto Vercel: `careli-hub-hub-i2bs`;
+  - alias `homo.c2x.app.br`: nao movimentado;
+  - producao: nao executada.
+- Fora de escopo:
+  - sem nova migration, RLS ou alteracao Supabase neste recorte;
+  - sem lancamento fake ou seed financeiro;
+  - sem integracao bancaria, ERP, boleto, PIX, fiscal, conciliacao automatica, dominio, alias ou producao.
+- Riscos conhecidos:
+  - validacao autenticada de busca real no Apolo e criacao real de lancamento depende de Lucas acessar o Preview logado;
+  - se o Apolo retornar origem legado sem UUID, o Ares usa o nome selecionado no lancamento, mas nao grava `apolo_entity_id`;
+  - worktree local segue misto por alteracoes de outros recortes; o Preview foi gerado a partir de pacote limpo isolado.
+- Proxima acao:
+  - Lucas validar no Preview o sidebar do Hub, abertura de `/ares`, popup `Novo lancamento` e busca de fornecedor no Apolo com usuario logado.
+
+Conclusao:
+- O Ares entrou no fluxo visual do Hub como modulo operacional acessivel pelo sidebar/launcher e agora busca fornecedor no Apolo durante o lancamento.
+- O impacto pratico e reduzir digitacao manual e preparar o vinculo financeiro com o CRM sem duplicar cadastro.
+- Nao ha acao em producao agora; Lucas deve validar o Preview e, se aprovar, Zeus pode avaliar alias de homologacao pelo Safety Gate e Hefesto segue responsavel por producao quando autorizado.
+
+## 2026-05-25 15:42:49 -03:00 - Ares Core - Estrutura renomeada para Setup
+
+Assunto: [Ares] Estrutura renomeada para Setup
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: FRONTEND / UX COPY.
+- Ambiente: desenvolvimento local.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas pediu trocar o nome `Estrutura` para `Setup` no Ares.
+- Escopo aplicado:
+  - menu interno do Ares passou a exibir `Setup`;
+  - titulo da secao passou a exibir `Setup financeiro`;
+  - card/resumo relacionado passou a exibir `Setup`;
+  - status auxiliar `Estrutura inicial` passou a `Setup inicial`;
+  - chave tecnica interna `estrutura` foi preservada para evitar mudanca desnecessaria de estado/fluxo.
+- Arquivos alterados:
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - nenhum.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - smoke local: `GET http://localhost:3001/ares`: `200`;
+  - `git diff --check` em `apps/hub/modules/ares/AresPage.tsx`: OK.
+- Deploy/alias:
+  - nao executado;
+  - Preview anterior nao foi substituido;
+  - sem alias, sem dominio e sem producao.
+- Riscos conhecidos:
+  - validacao visual final depende de recarregar a tela logada para conferir o novo rotulo no sidebar interno.
+- Proxima acao:
+  - Lucas validar localmente que o item do Ares aparece como `Setup` no menu lateral interno.
+
+Conclusao:
+- O texto visivel `Estrutura` foi trocado para `Setup` no Ares sem alterar o comportamento tecnico da secao.
+- O impacto pratico e alinhar a nomenclatura da tela com o padrao que Lucas quer usar para configuracoes internas do modulo.
+- Nao ha acao de deploy agora; se Lucas quiser refletir no Preview publico, o Ares pode subir um novo Preview limpo depois.
+
+## 2026-05-25 15:56:09 -03:00 - Iris Core - Caca com empatia e sem fallback de menu
+
+Assunto: [Iris] Caca menos robotica no atendimento passivo
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: UX CONVERSACIONAL / AGENTE IRIS.
+- Ambiente: desenvolvimento local.
+- Status: `VALIDADO LOCAL / AGUARDANDO VALIDACAO FUNCIONAL DO LUCAS`.
+- Origem:
+  - Lucas validou em homologacao que a Caca ainda parecia um bot, repetia a mesma pergunta e nao acolhia quando a cliente dizia que ela nao entendeu.
+  - Diretriz de Lucas: a Caca deve agir como agente inteligente, empatico e resolutivo, nao como menu automatico.
+- Escopo aplicado:
+  - versao operacional da Caca atualizada para `iris-caca-agent-v5`;
+  - fallback deterministico deixou de repetir lista fixa de assuntos;
+  - mensagens sociais, como `oie` e `como voce esta`, passaram a receber resposta natural;
+  - `suporte` passou a pedir o problema/tela/erro em vez de repetir categorias;
+  - frustracao, `nao entendeu`, pedido de humano ou abandono da conversa passam a gerar resposta empatica e handoff humano;
+  - perguntas sobre historico financeiro, saldo ou quanto ja pagou deixam de virar menu e recebem orientacao segura para atendimento humano;
+  - prompt OpenAI reforcado para evitar repeticao, menus genericos e respostas frias;
+  - contrato operacional da Iris registrou a regra de conversa empatica e nao repetitiva.
+- Arquivos alterados:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Fora de escopo:
+  - sem alteracao de env, secret, token, modelo configurado, webhook Meta, banco, migration, alias de homologacao ou producao;
+  - sem alterar Hades, Apolo, Ares, Hermes, Atlas, Chronos ou Setup.
+- Validacoes executadas:
+  - `npx.cmd eslint lib/iris/caca-agent.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - simulacao local com `npx.cmd tsx` para `Oie`, `Suporte`, `Vou nao entendeu???`, `Quanto ja paguei` e `Boleto`: OK.
+- Riscos conhecidos:
+  - quando OpenAI estiver indisponivel, a Caca continua usando fallback deterministico, agora calibrado para ser menos robotico;
+  - validacao final depende de novo teste real no WhatsApp/homologacao para conferir tom, handoff e continuidade de protocolo.
+- Proxima acao:
+  - rodar validacoes locais e, se Lucas aprovar, preparar Preview limpo para Zeus/homologacao conforme processo novo.
+
+Conclusao:
+- A Caca passa a tratar sinais humanos antes de seguir fluxo de boleto ou menu generico.
+- O impacto pratico e reduzir a sensacao de bot e proteger o cliente frustrado com encaminhamento humano quando necessario.
+- Nao ha acao de homologacao ou producao neste registro; a publicacao depende de novo recorte limpo e autorizacao.
+
+## 2026-05-25 15:52:28 -03:00 - Ares Core - Visao Kanban e Lista
+
+Assunto: [Ares] Visao Kanban e Lista
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: FRONTEND / UX OPERACIONAL.
+- Ambiente: desenvolvimento local.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas pediu que o Ares trouxesse visoes por Kanban e por lista, conforme o mapa mental financeiro.
+- Escopo aplicado:
+  - bloco operacional de movimentos ganhou alternancia compacta `Kanban` / `Lista`;
+  - `Kanban` passou a ser a visao inicial do bloco operacional;
+  - `Lista` preserva a leitura tabular densa anterior com status, vencimento, responsavel, titulo, centro, projeto, valor, prioridade e proxima acao;
+  - Kanban agrupa lancamentos reais por etapa operacional: `Aguardando aprovacao`, `A vencer`, `Vencidos / bloqueados` e `Liquidados / conciliados`;
+  - cada coluna mostra quantidade e soma de valores;
+  - cada card de Kanban mostra status, prioridade, titulo, parte, vencimento, valor, responsavel, centro, projeto, tipo e proxima acao;
+  - estados vazios continuam sem mock financeiro e indicam leitura das tabelas reais Ares.
+- Arquivos alterados:
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - nenhum.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - smoke local: `GET http://localhost:3001/ares`: `200`;
+  - scan `rg -n "title="` no recorte Ares: sem ocorrencias;
+  - `git diff --check` em `apps/hub/modules/ares/AresPage.tsx`: OK.
+- Deploy/alias:
+  - nao executado;
+  - Preview anterior nao foi substituido;
+  - sem alias, sem dominio, sem banco, sem migration e sem producao.
+- Riscos conhecidos:
+  - validacao visual autenticada no navegador logado ainda depende de Lucas conferir a alternancia e o comportamento com lancamentos reais;
+  - nomes das colunas Kanban podem ser ajustados se Lucas quiser seguir outra nomenclatura final do mapa mental.
+- Proxima acao:
+  - Lucas validar localmente a alternancia `Kanban` / `Lista` em `/ares` e confirmar se os nomes das colunas representam o fluxo desejado.
+
+Conclusao:
+- A mesa operacional do Ares agora tem duas formas de leitura: Kanban para fluxo de trabalho e Lista para conferencia densa.
+- O impacto pratico e permitir acompanhar pendencias financeiras por etapa sem perder a visao tabular completa.
+- Nao ha acao de deploy agora; se Lucas aprovar visualmente, o Ares pode publicar novo Preview limpo com esse recorte.
+
+## 2026-05-25 16:00:42 -03:00 - Ares Core - Ares visivel no sidebar principal
+
+Assunto: [Ares] Ares visivel no sidebar principal
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: FRONTEND / HUB SHELL / SIDEBAR.
+- Ambiente: desenvolvimento local; validacao em pacote limpo.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas mostrou que o launcher/sidebar principal do Panteon no Preview ainda listava Apolo, Atlas, Chronos, Hades, Hermes, Iris e Setup, mas nao exibia Ares.
+- Diagnostico:
+  - o modulo tecnico `financeiro` ja esta registrado como `Ares`, ativo e com base `/ares`;
+  - o `HubShell` ainda podia ocultar o item quando a sessao/permissao do usuario nao trazia a permissao nova `financeiro:view`;
+  - isso afetava a navegacao do shell, nao a autorizacao server-side das APIs financeiras.
+- Escopo aplicado:
+  - `canOpenShellModule` agora tambem permite abrir modulos presentes em `minimumReleasedModuleIds` quando ha usuario Hub autenticado;
+  - `financeiro` permanece na lista minima liberada e continua renderizando como `Ares` pelo registry compartilhado;
+  - autorizacao de dados financeiros nao foi ampliada: `/api/ares/*` segue protegida por sessao, permissao/RLS e regras server-side.
+- Arquivos alterados:
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - nenhum.
+- Validacoes executadas:
+  - worktree principal: `npm.cmd run check-types:hub` BLOQUEADO por erro preexistente fora do recorte em `apps/hub/lib/iris/caca-agent.ts(183,9)`;
+  - pacote limpo isolado em `.codex-deploy/ares-sidebar-validate-20260525-155734/workspace`: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo isolado: `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo isolado: `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT e aviso de workspace root por estar dentro de `.codex-deploy`;
+  - smoke local no worktree principal: `GET http://localhost:3001/ares`: `200`;
+  - `git diff --check` em `apps/hub/layouts/hub-shell.tsx`: OK, apenas aviso CRLF conhecido.
+- Deploy/alias:
+  - nao executado;
+  - Preview anterior nao foi substituido;
+  - sem alias, sem dominio, sem banco, sem migration e sem producao.
+- Riscos conhecidos:
+  - o ajuste ainda nao aparece na URL de Preview mostrada por Lucas ate um novo Preview limpo ser publicado;
+  - `check-types:hub` no worktree principal segue bloqueado por recorte Iris nao relacionado.
+- Proxima acao:
+  - se Lucas autorizar novo Preview, Ares deve publicar pacote limpo com este ajuste de sidebar junto dos recortes locais pendentes do modulo.
+
+Conclusao:
+- O Ares foi corrigido no Hub Shell para aparecer no sidebar/launcher principal mesmo quando a permissao nova ainda nao esta refletida na sessao do usuario.
+- O impacto pratico e que o modulo passa a ficar navegavel no Panteon como os demais modulos ativos.
+- Nao houve deploy agora; para refletir na URL do screenshot e necessario publicar novo Preview limpo do recorte Ares.
+
+## 2026-05-25 16:16:39 -03:00 - Iris Core - Preview da Caca empatica
+
+Assunto: [Iris] Preview limpo da Caca menos robotica
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: PREVIEW VERCEL / UX CONVERSACIONAL / AGENTE IRIS.
+- Ambiente: Preview Vercel candidato para homologacao.
+- Status: `PRONTO PARA HOMO / AGUARDANDO ZEUS`.
+- Origem:
+  - Lucas autorizou publicar o recorte que torna a Caca mais empatica, menos repetitiva e menos parecida com bot.
+- Escopo publicado:
+  - `iris-caca-agent-v5`;
+  - fallback deterministico mais humano, sem lista fixa repetida;
+  - suporte passa a perguntar o problema real;
+  - frustracao, abandono da conversa ou pedido de humano geram resposta empatica e handoff;
+  - perguntas sobre historico financeiro/saldo recebem resposta segura com oferta de atendimento humano;
+  - prompt OpenAI ajustado para nao repetir menus e nao soar frio;
+  - contrato operacional atualizado com regra de conversa empatica;
+  - `turbo.json` incluido no recorte apenas para declarar envs usadas pela Iris/Caca.
+- Pacote limpo:
+  - caminho: `.codex-deploy/iris-preview-20260525-1605-caca-empathy/workspace`;
+  - manifesto: `.codex-deploy/iris-preview-20260525-1605-caca-empathy/homologation-safety-gate.json`;
+  - base esperada de `homo.c2x.app.br`: `dpl_DuXCzikUakwvSASU9UNZ3yz3DoXp`;
+  - rollback/homo atual: `dpl_DuXCzikUakwvSASU9UNZ3yz3DoXp`.
+- Preview publicado:
+  - URL: `https://careli-hub-hub-i2bs-2cljcm8aa-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_BCNCkDC8E2gNjiknULYM47ohdgNu`;
+  - inspector: `https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/BCNCkDC8E2gNjiknULYM47ohdgNu`;
+  - projeto Vercel: `careli-hub-hub-i2bs`;
+  - alias `https://homo.c2x.app.br`: nao movimentado por Iris Core.
+- Arquivos incluidos:
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/app/api/iris/attendant/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/media/route.ts`;
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `turbo.json`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - recortes Ares, Apolo e demais modulos;
+  - envs, secrets, `.git`, `.next`, `.turbo`, `node_modules`, migrations, dominio, alias e producao.
+- Validacoes executadas:
+  - Safety Gate pre-preview: `PASS`;
+  - pacote limpo: `npx.cmd eslint lib/iris/caca-agent.ts lib/iris/meta-inbound-processor.ts --max-warnings 0`: OK;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo: `npm.cmd run lint:hub`: OK;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK;
+  - deploy Preview: `npx.cmd vercel deploy --yes --target preview`: OK;
+  - `npx.cmd vercel inspect <preview>`: `Ready`, deployment `dpl_BCNCkDC8E2gNjiknULYM47ohdgNu`, projeto `careli-hub-hub-i2bs`;
+  - Safety Gate com Preview alvo: `PASS`;
+  - `GET /iris` no Preview: `200`;
+  - `GET /login` no Preview: `200`;
+  - `GET /api/iris/meta/templates` sem sessao no Preview: `401`, esperado;
+  - logs de erro do Preview nos ultimos 10 minutos: sem logs encontrados.
+- Warnings conhecidos:
+  - build local e remoto mantiveram warning Turbopack/NFT em `engineering-operations-source.ts`;
+  - Vercel build avisou que envs `HOMOLOG_*` estao presentes no projeto, mas nao declaradas no `turbo.json` para alguns pacotes; nao bloqueou o recorte Iris.
+- Fora de escopo:
+  - sem alteracao de env, secret, token, Meta, OpenAI, banco, migration, dominio, alias de homologacao ou producao.
+- Riscos conhecidos:
+  - validacao funcional final depende de teste real do Lucas no WhatsApp/Preview ou apos Zeus mover `homo`;
+  - o Preview nao altera o alias compartilhado, entao a URL `homo.c2x.app.br` continua na base anterior ate acao de Zeus.
+- Proxima acao:
+  - Lucas testar o Preview diretamente ou acionar Zeus para Safety Gate final e movimentacao de `homo`;
+  - se aprovado em homo, Iris Core sinaliza recorte para Hefesto quando houver autorizacao de producao.
+
+Conclusao:
+- O recorte da Caca empatica esta publicado em Preview limpo, no projeto correto, validado tecnicamente e sem tocar producao.
+- O impacto pratico e permitir testar a Caca com comportamento mais humano antes de alterar a homologacao compartilhada.
+- Acao agora: Zeus deve decidir, com autorizacao do Lucas, se move `homo.c2x.app.br` para o deployment `dpl_BCNCkDC8E2gNjiknULYM47ohdgNu`.
+
+## 2026-05-25 16:06:12 -03:00 - Ares Core - Preview Ares atualizado
+
+Assunto: [Ares] Preview atualizado com sidebar, Kanban e Lista
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: PREVIEW / FRONTEND / HUB SHELL.
+- Ambiente: Vercel Preview.
+- Status: `EM HOMOLOGACAO`.
+- Origem:
+  - Lucas autorizou subir em Preview o recorte Ares depois do ajuste para o modulo aparecer no sidebar principal.
+- Escopo publicado:
+  - sidebar/launcher principal do Panteon passa a exibir `Ares`;
+  - rota oficial `/ares` preservada;
+  - `/financeiro` permanece como ponte temporaria para `/ares`;
+  - popup `Novo lancamento` preservado;
+  - busca de fornecedor pelo Apolo preservada;
+  - menu interno com `Setup` preservado;
+  - mesa operacional com alternancia `Kanban` / `Lista` preservada.
+- Pacote limpo:
+  - criado em `.codex-deploy/ares-preview-20260525-160347/workspace`;
+  - base `git archive HEAD`;
+  - overlay apenas de arquivos Ares/HubShell/registry/migration Ares;
+  - excluidos recortes pendentes de Iris, Apolo, login, PulseX, docs de governanca, scripts e itens fora do Ares.
+- Arquivos incluidos no pacote:
+  - `apps/hub/app/ares/page.tsx`;
+  - `apps/hub/app/financeiro/page.tsx`;
+  - `apps/hub/app/api/ares/snapshot/route.ts`;
+  - `apps/hub/app/api/ares/entries/route.ts`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `packages/shared/src/modules/registry.ts`;
+  - `packages/database/migrations/0030_ares_core.sql`.
+- Validacoes executadas:
+  - worktree principal: `npm.cmd run check-types:hub` segue BLOQUEADO por erro fora do recorte em `apps/hub/lib/iris/caca-agent.ts(183,9)`;
+  - pacote limpo isolado `.codex-deploy/ares-sidebar-validate-20260525-155734/workspace`: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo isolado: `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo isolado: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de workspace root/Turbopack em pacote `.codex-deploy`;
+  - `git diff --check` no recorte Ares/registros: OK, apenas avisos CRLF conhecidos;
+  - deploy remoto Vercel: OK;
+  - `npx vercel inspect`: projeto `careli-hub-hub-i2bs`, target `preview`, status `Ready`;
+  - smoke Preview: `GET /ares`: `200`;
+  - smoke Preview: `GET /financeiro`: `200` com sinal de `Ares` no HTML;
+  - smoke Preview: `GET /api/ares/snapshot` sem sessao: `401`, esperado;
+  - smoke Preview: `GET /api/apolo/relationships?limit=1&q=teste&profile=fornecedor` sem sessao: `401`, esperado.
+- Preview publicado:
+  - URL: `https://careli-hub-hub-i2bs-x39so4nrj-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_45SX5V7YrYFa3RD8C8HSB5SRpqQ7`;
+  - inspector: `https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/45SX5V7YrYFa3RD8C8HSB5SRpqQ7`;
+  - deployment anterior substituido apenas como Preview candidato: `dpl_2vsa8qkW2E8PbjMJHsoT5up1NkdT`;
+  - alias `homo.c2x.app.br`: nao movimentado;
+  - producao: nao executada.
+- Fora de escopo:
+  - sem banco, migration nova, RLS, env, secret, dominio, alias ou producao;
+  - sem mexer em Iris/Apolo fora da consulta ja usada pelo Ares;
+  - sem seed ou dado financeiro artificial.
+- Riscos conhecidos:
+  - validacao visual autenticada do sidebar, Kanban/Lista e busca real no Apolo depende de Lucas acessar o Preview logado;
+  - o worktree principal continua misto e com blocker Iris nao relacionado.
+- Proxima acao:
+  - Lucas validar no Preview se o sidebar principal agora mostra `Ares`, abrir `/ares`, alternar `Kanban` / `Lista` e testar a busca de fornecedor no popup.
+
+Conclusao:
+- O Preview do Ares foi atualizado com o sidebar principal corrigido e os ajustes operacionais recentes.
+- O impacto pratico e permitir validar publicamente o modulo Ares no Panteon sem mover homologacao compartilhada nem producao.
+- Nao ha acao de producao agora; qualquer alias de homologacao deve seguir Zeus/Safety Gate e producao segue com Hefesto quando Lucas autorizar.
+
+## 2026-05-25 16:18:32 -03:00 - Hades Core - Iris no Hades com fila Cobranca compartilhada
+
+Assunto: [Hades] Iris embarcada filtrada por Cobranca
+
+- Nome da squad/agente: Hades Core.
+- Tipo da alteracao: IMPLEMENTACAO / INTEGRACAO HADES-IRIS / FRONTEND-DADOS.
+- Ambiente: local.
+- Status: `PRONTO PARA HOMO`.
+- Motivo da mudanca:
+  - Lucas solicitou verificar se a tela Iris dentro do Hades filtrava o canal/fila de cobranca e definiu que tudo de cobranca deve ficar visivel para todos os operadores, vinculando o operador apenas conforme ele assume/atende a carteira.
+- Arquivos alterados:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - removi o uso de `operatorScoped` na Iris embarcada dentro de Hades;
+  - adicionei `queueSlugFilter` no `IrisPage`;
+  - apliquei `queueSlugFilter="cobranca"` na chamada do Hades;
+  - ajustei `loadIrisData` para buscar as filas reais do Iris, resolver o slug/nome `cobranca` e filtrar os tickets por `queue_id` antes do `limit`;
+  - preservei o comportamento existente que vincula o ticket ao operador logado quando ha abertura/envio/assuncao do atendimento.
+- Logica utilizada:
+  - a visao Hades/Iris precisa ser compartilhada por fila de cobranca, nao por carteira ja atribuida ao operador;
+  - o vinculo individual acontece depois, no fluxo real do Iris, quando o operador abre ou movimenta o atendimento;
+  - o filtro foi feito no carregamento dos tickets para evitar que o `limit` traga tickets de outras filas e esconda atendimentos de cobranca.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/modules/guardian/attendance/AttendancePage.tsx`: OK, com avisos CRLF conhecidos;
+  - `npx.cmd eslint modules/caredesk/IrisPage.tsx modules/guardian/attendance/AttendancePage.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - smoke local `GET http://localhost:3001/hades/cobranca`: `200 OK`.
+- Fora de escopo:
+  - sem alteracao de env, secret, token, Meta, banco, migration, dominio, alias, Preview, homologacao ou producao;
+  - sem alterar regras de abertura/envio de ticket Iris alem do filtro de leitura da tela embarcada.
+- Riscos conhecidos:
+  - validacao visual autenticada ainda depende de Lucas abrir Hades > Cobranca > Iris com usuario real e confirmar que a lista mostra somente a fila Cobranca;
+  - o worktree segue misto com recortes pendentes de outros modulos, entao commit/deploy devem ser tratados em pacote limpo se Lucas autorizar.
+- Proxima acao:
+  - Lucas validar a tela autenticada localmente;
+  - se aprovado, preparar recorte limpo para Preview/homologacao via fluxo Zeus/Safety Gate.
+
+Conclusao:
+- A tela Iris embarcada no Hades deixou de filtrar por operador logado e passou a carregar a fila Cobranca como visao compartilhada.
+- O impacto pratico e que todos os operadores veem a operacao de cobranca; o atendimento passa a se vincular ao operador quando ele efetivamente atua.
+- Nao houve deploy nem commit nesta etapa; o proximo passo e validacao autenticada do Lucas e, se aprovado, pacote limpo para homologacao.
+
+## 2026-05-26 09:30:08 -03:00 - Hades Core - Board Iris sem chrome interno
+
+Assunto: [Hades] Board Iris embarcado sem sidebar Iris
+
+- ProtocolId: `HADES-20260526-001`.
+- Nome da squad/agente: Hades Core.
+- Tipo da alteracao: CORRECAO / UX / INTEGRACAO HADES-IRIS.
+- Ambiente: local.
+- Status: `AGUARDANDO_TESTE_LUCAS`.
+- Motivo da mudanca:
+  - Lucas apontou que, ao clicar em Iris dentro do Hades, a experiencia nao deve abrir o modulo Iris nem trazer o sidebar/topbar interno da Iris. A tela deve continuar no contexto do Hades e renderizar somente o board da Iris.
+- Arquivos alterados:
+  - `apps/hub/components/guardian/layout/Sidebar.tsx`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/hades/desk/page.tsx`;
+  - `apps/hub/app/guardian/desk/page.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Como foi feito:
+  - alterei o item `Iris` do sidebar interno do Hades para apontar para `/hades/cobranca?view=iris`, mantendo o usuario dentro do Hades;
+  - ajustei `AttendancePage` para interpretar `view=iris`, `section=iris`, `desk` ou `board` como a secao interna `desk`;
+  - atualizei as rotas legadas `/hades/desk` e `/guardian/desk` para redirecionarem ao board Iris dentro do Hades;
+  - criei uma branch de renderizacao no `IrisPage` para o modo `embedded + boardOnly`, renderizando diretamente `ManagementView` sem sidebar, sem topbar e sem chrome interno do modulo Iris.
+- Logica utilizada:
+  - o Hades deve consumir o board operacional da Iris como uma tela embarcada, sem alterar o contexto do modulo;
+  - o modulo Iris segue existindo como modulo independente em `/iris`, mas o atalho do Hades passa a ser uma visao interna;
+  - a responsabilidade de dados/tickets continua na Iris; a responsabilidade de contexto de cobranca permanece no Hades.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/components/guardian/layout/Sidebar.tsx apps/hub/modules/guardian/attendance/AttendancePage.tsx apps/hub/app/hades/desk/page.tsx apps/hub/app/guardian/desk/page.tsx`: OK, com avisos CRLF conhecidos;
+  - `npx.cmd eslint modules/caredesk/IrisPage.tsx components/guardian/layout/Sidebar.tsx modules/guardian/attendance/AttendancePage.tsx app/hades/desk/page.tsx app/guardian/desk/page.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - smoke local `GET http://localhost:3001/hades/cobranca?view=iris`: `200 OK`;
+  - smoke local `GET http://localhost:3001/hades/desk`: `200 OK`.
+- Validacoes bloqueadas:
+  - `npm.cmd run check-types:hub`: BLOQUEADO por erro externo ao recorte em `apps/hub/lib/hub-it-tickets/server.ts`, onde `normalizedInput.attachments` esta possivelmente `undefined`;
+  - `npm.cmd run build --workspace @repo/hub`: BLOQUEADO pelo mesmo erro de typecheck externo em `apps/hub/lib/hub-it-tickets/server.ts`;
+  - o build tambem manteve warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Fora de escopo:
+  - sem env, secret, token, banco, migration, Meta, C2X writeback, dominio, alias, Preview, homologacao ou producao;
+  - sem alterar regras de abertura/envio de tickets Iris ou protocolos `AT/CB`.
+- Riscos conhecidos:
+  - validacao visual autenticada ainda depende de Lucas abrir Hades > Iris e confirmar que apenas o board aparece, sem sidebar interno da Iris;
+  - o worktree segue misto com recortes de outros modulos, entao qualquer Preview/Homo exige pacote limpo e aprovacao por protocolo.
+- Proxima acao:
+  - Lucas validar localmente `Hades > Iris`;
+  - se aprovado, Zeus deve publicar apenas mediante protocolo `HADES-20260526-001`, pacote limpo, Safety Gate e sem misturar recortes externos.
+
+Conclusao:
+- O Hades agora abre a Iris como board embarcado, sem abrir o modulo Iris e sem carregar o sidebar/topbar interno da Iris.
+- O impacto pratico e manter o operador dentro do fluxo de cobranca, usando apenas a tela de board da Iris como apoio operacional.
+- Ainda nao ha deploy; antes de publicar, e necessario corrigir ou isolar o blocker externo de typecheck em `hub-it-tickets/server.ts`.
+
+## 2026-05-25 16:33:09 -03:00 - Iris Core - Board Caca x Operadores e transferencia auditavel
+
+Assunto: [Iris] Visao separada Caca e transferencia para fila de atendimento
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: IMPLEMENTACAO / BOARD OPERACIONAL / HANDOFF CACA.
+- Ambiente: local.
+- Status: `PRONTO PARA HOMO`.
+- Motivo da mudanca:
+  - Lucas solicitou visao separada no board para acompanhar o que esta com a Caca versus o que deve seguir com operadores, com registro auditavel do ato de transferencia no chat e nos logs.
+- Arquivos alterados:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `docs/operations/engineering-operations.md`.
+- O que foi implementado:
+  - board da Inbox com recorte operacional por `Todos`, `Caca` e `Operadores`, mantendo filtros de fila/status/prioridade e contadores por visao;
+  - classificacao operacional baseada no estado real do ticket (`metadata`, `source_context`, status e automacao da Caca), evitando misturar ativo humano com passivo da Caca;
+  - no inbound com Caca, quando houver handoff humano:
+    - ticket passa a registrar dono operacional (`handlingOwner`), motivo e contexto de handoff;
+    - ticket e movido para estado de operador (`waiting_operator`);
+    - transferencia e registrada em `caredesk_ticket_events` com `event_type: ticket_transfer`;
+    - transferencia tambem entra na conversa em `caredesk_messages` como mensagem interna de sistema.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/operations/engineering-operations.md`: OK (apenas avisos CRLF conhecidos);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning Turbopack/NFT ja conhecido em `engineering-operations-source.ts`).
+- Fora de escopo:
+  - sem deploy/homologacao nesta etapa;
+  - sem alteracao de env, secrets, tokens, banco, migration, dominio, alias ou producao.
+- Riscos conhecidos:
+  - validacao funcional visual autenticada no fluxo real da Caca e da fila de operadores ainda depende de teste manual no `http://localhost:3001/iris` ou homologacao autorizada.
+- Proxima acao:
+  - Lucas validar o board nas visoes `Caca` e `Operadores`;
+  - validar um caso real de handoff da Caca e confirmar rastreabilidade no chat e no log.
+
+Conclusao:
+- A Iris agora separa no board o trabalho da Caca e o trabalho humano, com transicao explicita entre eles.
+- O impacto pratico e reduzir perda de contexto na passagem Caca -> operador e garantir trilha auditavel da transferencia.
+- Nao ha acao de infraestrutura agora; o proximo passo e validacao funcional do Lucas e, com autorizacao, homologacao desse recorte.
+
+## 2026-05-25 18:16:25 -03:00 - Iris Core - Correcao de classificacao Caca no Board
+
+Assunto: [Iris] Ajuste de visao Caca x Operadores no board
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: CORRECAO / BOARD OPERACIONAL.
+- Ambiente: local.
+- Status: `PRONTO PARA RETESTE`.
+- Problema reportado:
+  - ticket em atendimento da Caca aparecendo na visao de operadores.
+- Causa identificada:
+  - a regra de classificacao marcava como operador qualquer ticket com `assignedToLabel` diferente de `Sem responsavel`, o que incluiu indevidamente `Caca`.
+- Correcao aplicada:
+  - ajuste em `isTicketMarkedForOperator` no `IrisPage` para nao classificar `Caca` como operador.
+- Arquivo alterado:
+  - `apps/hub/modules/caredesk/IrisPage.tsx`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx`: OK (warning CRLF conhecido);
+  - `npx.cmd eslint modules/caredesk/IrisPage.tsx --max-warnings 0` (em `apps/hub`): OK.
+- Observacoes de workspace:
+  - `lint` e `check-types` globais do `@repo/hub` seguem bloqueados por erros/warnings preexistentes no recorte `Ares`, fora desta correcao.
+
+Conclusao:
+- O board passa a tratar corretamente tickets da Caca na visao `Caca`, sem contaminar a visao `Operadores`.
+- Impacto pratico: leitura operacional coerente para triagem e handoff humano.
+- Proximo passo: Lucas retestar no `homo.c2x.app.br/iris` e confirmar os contadores/linhas nas abas `Caca` e `Operadores`.
+
+## 2026-05-25 16:58:00 -03:00 - Zeus Operations - Homologacao combinada Iris Ares Hades
+
+Assunto: [Zeus] Homologacao protocolo ZEUS-20260525-001-IRIS-ARES-HADES
+
+- Nome da squad/agente: Zeus Operations.
+- Tipo da alteracao: HOMOLOGACAO / PACOTE LIMPO / SAFETY GATE.
+- Ambiente: `https://homo.c2x.app.br`.
+- Protocolo: `ZEUS-20260525-001-IRIS-ARES-HADES`.
+- Status: `EM HOMOLOGACAO`.
+- Motivo da mudanca:
+  - Lucas aprovou subir em homologacao o pacote combinado com recortes Iris, Ares, Hades e o novo Board Caca + transferencia auditavel.
+  - O objetivo foi publicar em `homo` sem perder a correcao de templates Meta e sem sobrescrever o pacote Iris que ja estava validado.
+- Base/rollback antes do alias:
+  - `https://homo.c2x.app.br` apontava para `dpl_DuXCzikUakwvSASU9UNZ3yz3DoXp`.
+- Deployment publicado:
+  - URL Preview: `https://careli-hub-hub-i2bs-1r6w3xhdu-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_9XyPbge4qSA1UUznNFsYrxQKMFUa`;
+  - alias atualizado: `https://homo.c2x.app.br`.
+- Pacote limpo:
+  - `.codex-deploy/iris-ares-hades-board-homolog-20260525-164010/workspace`;
+  - manifesto: `.codex-deploy/iris-ares-hades-board-homolog-20260525-164010/homologation-safety-gate.json`;
+  - base: pacote limpo Iris/Ares anterior com overlay controlado dos recortes Hades e Iris Board Caca.
+- Arquivos incluidos no pacote:
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/app/ares/page.tsx`;
+  - `apps/hub/app/financeiro/page.tsx`;
+  - `apps/hub/app/api/ares/snapshot/route.ts`;
+  - `apps/hub/app/api/ares/entries/route.ts`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `packages/shared/src/modules/registry.ts`.
+- Arquivos/itens excluidos:
+  - envs, secrets, tokens, banco, migration real, dominio de producao, alias de producao e producao;
+  - `packages/database/migrations/0030_ares_core.sql` ficou fora do pacote de deploy de homologacao;
+  - worktree root misto nao foi usado como origem direta do deploy.
+- Validacoes executadas antes do alias:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de workspace root/Turbopack/NFT em pacote `.codex-deploy`;
+  - `node scripts/homologation-safety-gate.mjs --manifest .codex-deploy/iris-ares-hades-board-homolog-20260525-164010/homologation-safety-gate.json`: PASS;
+  - `npx.cmd vercel inspect` do Preview: `Ready`, projeto `careli-hub-hub-i2bs`, deployment `dpl_9XyPbge4qSA1UUznNFsYrxQKMFUa`.
+- Alias:
+  - comando executado: `npx.cmd vercel alias set https://careli-hub-hub-i2bs-1r6w3xhdu-lucasruas-devs-projects.vercel.app homo.c2x.app.br`;
+  - resultado: sucesso.
+- Validacoes executadas depois do alias:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `dpl_9XyPbge4qSA1UUznNFsYrxQKMFUa`, `Ready`;
+  - Safety Gate pos-alias com `--expected-deployment dpl_9XyPbge4qSA1UUznNFsYrxQKMFUa`: PASS;
+  - `GET https://homo.c2x.app.br/`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/hades/cobranca`: `200`;
+  - `GET https://homo.c2x.app.br/ares`: `200`;
+  - `GET https://homo.c2x.app.br/financeiro`: `200`;
+  - `GET https://homo.c2x.app.br/api/ares/snapshot` sem sessao: `401`, esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401`, esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/messages` sem sessao: `401`, esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada real ainda depende do Lucas testar no navegador logado;
+  - o root continua misto, portanto commit/producao devem ser feitos por recorte/protocolo e nao pelo estado bruto do workspace;
+  - producao segue bloqueada ate Lucas validar homologacao e Hefesto/Zeus promoverem apenas recortes homologados.
+- Proxima acao:
+  - Lucas testar em homologacao: templates Meta/Iris, Board Caca/Operadores, Hades > Cobranca com Iris filtrada e Ares no sidebar/fluxo financeiro.
+  - Se aprovado, preparar promocao para producao por protocolo, com Safety Gate e rollback explicito.
+
+Conclusao:
+- A homologacao combinada foi publicada com Safety Gate antes e depois do alias.
+- O impacto pratico e que `homo.c2x.app.br` agora contem o pacote Iris + Ares + Hades solicitado, preservando a correcao de templates Meta e incluindo o Board Caca auditavel.
+- Nao houve alteracao de env, segredo, banco, migration, dominio/alias de producao ou producao; a proxima acao e o teste autenticado do Lucas em homologacao.
+
+## 2026-05-25 17:05:00 -03:00 - Zeus Operations - Homologacao Athena Caca sobre pacote combinado
+
+Assunto: [Zeus] Homologacao protocolo ZEUS-20260525-002-IRIS-ATHENA-CACA
+
+- Nome da squad/agente: Zeus Operations.
+- Tipo da alteracao: HOMOLOGACAO / PACOTE LIMPO / SAFETY GATE.
+- Ambiente: `https://homo.c2x.app.br`.
+- Protocolo: `ZEUS-20260525-002-IRIS-ATHENA-CACA`.
+- Status: `EM HOMOLOGACAO`.
+- Motivo da mudanca:
+  - Lucas solicitou subir tambem o Preview Athena/Caca para homologacao.
+  - O Preview original da Caca empatica (`dpl_BCNCkDC8E2gNjiknULYM47ohdgNu`) tinha sido montado sobre a base antiga `dpl_DuXCzikUakwvSASU9UNZ3yz3DoXp`.
+  - Para nao sobrescrever o pacote Iris + Ares + Hades ja publicado, Zeus recompôs um novo pacote limpo usando o `homo` vigente `dpl_9XyPbge4qSA1UUznNFsYrxQKMFUa` como base e aplicou apenas o recorte Athena/Caca.
+- Base/rollback antes do alias:
+  - `https://homo.c2x.app.br` apontava para `dpl_9XyPbge4qSA1UUznNFsYrxQKMFUa`.
+- Deployment publicado:
+  - URL Preview: `https://careli-hub-hub-i2bs-mq3321qk0-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_54CLDbBFbQwe7QNFyCrSGjhx1MwW`;
+  - alias atualizado: `https://homo.c2x.app.br`.
+- Pacote limpo:
+  - `.codex-deploy/iris-athena-caca-homolog-20260525-1700/workspace`;
+  - manifesto: `.codex-deploy/iris-athena-caca-homolog-20260525-1700/homologation-safety-gate.json`.
+- Arquivos do recorte Athena/Caca aplicados sobre a base:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `apps/hub/app/api/iris/attendant/route.ts`;
+  - `turbo.json`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`.
+- Arquivos preservados da base combinada:
+  - Iris Meta templates/mensagens/tickets;
+  - Iris Board Caca x Operadores e transferencia auditavel;
+  - Hades com Iris embarcada na fila Cobranca;
+  - Ares no sidebar/launcher, `/ares`, `/financeiro`, APIs e UI base.
+- Arquivos/itens excluidos:
+  - envs, secrets, tokens, banco, migration real, dominio de producao, alias de producao e producao;
+  - `packages/database/migrations/0030_ares_core.sql`;
+  - worktree root misto nao foi usado como origem direta do deploy.
+- Validacoes executadas antes do alias:
+  - pacote limpo: `npx.cmd eslint lib/iris/caca-agent.ts app/api/iris/attendant/route.ts --max-warnings 0`: OK;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo: `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - Safety Gate pre-deploy/pre-alias: PASS com esperado `dpl_9XyPbge4qSA1UUznNFsYrxQKMFUa`;
+  - `npx.cmd vercel inspect` do Preview novo: `Ready`, projeto `careli-hub-hub-i2bs`, deployment `dpl_54CLDbBFbQwe7QNFyCrSGjhx1MwW`.
+- Alias:
+  - comando executado: `npx.cmd vercel alias set https://careli-hub-hub-i2bs-mq3321qk0-lucasruas-devs-projects.vercel.app homo.c2x.app.br`;
+  - resultado: sucesso.
+- Validacoes executadas depois do alias:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `dpl_54CLDbBFbQwe7QNFyCrSGjhx1MwW`, `Ready`;
+  - Safety Gate pos-alias com `--expected-deployment dpl_54CLDbBFbQwe7QNFyCrSGjhx1MwW`: PASS;
+  - `GET https://homo.c2x.app.br/`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/hades/cobranca`: `200`;
+  - `GET https://homo.c2x.app.br/ares`: `200`;
+  - `GET https://homo.c2x.app.br/financeiro`: `200`;
+  - `GET https://homo.c2x.app.br/api/ares/snapshot` sem sessao: `401`, esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401`, esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/messages` sem sessao: `401`, esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Warnings conhecidos:
+  - build remoto informou vulnerabilidades npm audit do projeto e warning Turbopack/NFT ja conhecido; nenhum bloqueou o deploy;
+  - Vercel/Turbo alertou que `HOMOLOG_POSTGRES_URL` e `HOMOLOG_SUPABASE_SERVICE_ROLE_KEY` existem no projeto mas nao estao declaradas para alguns pacotes no `turbo.json`; nenhum valor foi exposto ou alterado.
+- Riscos conhecidos:
+  - validacao autenticada real da Caca/Athena ainda depende de teste do Lucas no fluxo Iris;
+  - producao segue bloqueada ate validacao e promocao por protocolo.
+- Proxima acao:
+  - Lucas testar em homologacao a Caca empatica/Athena dentro da Iris, sem perder os fluxos de Meta templates, Board Caca/Operadores, Hades Cobranca e Ares.
+
+Conclusao:
+- O Preview Athena/Caca foi incorporado em homologacao sem apontar diretamente para a base antiga.
+- O impacto pratico e que `homo.c2x.app.br` agora preserva Iris + Ares + Hades e adiciona o comportamento mais humano da Caca/Athena.
+- Nao houve alteracao de env, segredo, banco, migration, dominio/alias de producao ou producao; a proxima acao e teste autenticado do Lucas.
+
+## 2026-05-25 18:11:55 -03:00 - Apolo Core - Popup de cadastro por perfil
+
+Assunto: [Apolo] Novo cadastro por perfil no CRM 360
+
+- Nome da squad/agente: Apolo Core.
+- Tipo da alteracao: IMPLEMENTACAO / FRONTEND / CADASTRO CRM.
+- Ambiente: local.
+- Protocolo: `APOLO-20260525-001-NOVO-CADASTRO-PERFIL`.
+- Status: `PRONTO PARA VALIDACAO LOCAL`.
+- Motivo da mudanca:
+  - Lucas solicitou configurar lancamentos novos no Apolo com formulario de preenchimento por perfil em uma tela popup de cadastro.
+- Arquivos alterados:
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- O que foi implementado:
+  - botao `Novo` do Apolo habilitado no header operacional;
+  - popup/modal de novo cadastro do CRM 360 com fechamento por clique fora, botao fechar e tecla `Escape`;
+  - selecao de perfil dentro do formulario para `Prospect`, `Incorporador`, `Imobiliaria`, `Corretor`, `Parceiro`, `Fornecedor` e `Colaborador`;
+  - perfil `Usuario` removido da criacao manual: ele deve nascer da leitura C2X/carteira real, enquanto novos contatos manuais entram como `Prospect`;
+  - formulario adaptativo por pessoa fisica/juridica e por perfil, cobrindo identidade, documentos, contatos, endereco, vinculo comercial, carteira/unidade quando aplicavel, representante/conjuge e observacoes;
+  - checklist lateral de rascunho para identidade, contato, vinculo e revisao;
+  - corpo do formulario com rolagem propria para evitar corte em telas menores;
+  - fluxo de `Preparar cadastro` sem gravacao real, mantendo escrita no Apolo, sync e envio ao C2X bloqueados ate API de escrita autorizada.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md`: OK, com avisos CRLF conhecidos;
+  - smoke local `GET http://localhost:3001/apolo`: `200 OK`.
+- Fora de escopo:
+  - sem banco, migration, env, secret, storage, upload real, Supabase, C2X writeback, Preview, homologacao, alias ou producao;
+  - sem alterar Hades, Iris, Hermes, Chronos, Atlas, Zeus ou Setup.
+- Riscos conhecidos:
+  - o popup ainda prepara rascunho em UI; persistencia real depende de endpoint de escrita, auditoria e autorizacao explicita do Lucas;
+  - validacao visual autenticada do popup ainda depende de Lucas abrir o Apolo logado e clicar em `Novo`.
+- Proxima acao:
+  - validar localmente o popup no Apolo e, se aprovado, desenhar a API de criacao com trilha de auditoria e autorizacao server-side.
+
+Conclusao:
+- O Apolo ganhou a primeira tela de cadastro novo por perfil, sem tocar banco nem legado.
+- O impacto pratico e permitir validar UX, campos e fluxo de revisao antes de ligar a persistencia real.
+- Nao ha acao de infraestrutura agora; o proximo passo e validar a tela localmente e depois decidir o recorte de API de escrita.
+
+## 2026-05-25 18:12:00 -03:00 - Zeus Operations - Correcao de escopo META_WHATSAPP em homologacao
+
+Assunto: [Iris] Homologacao protocolo ZEUS-20260525-003-IRIS-META-ENV-SCOPE
+
+- Nome da squad/agente: Zeus Operations.
+- Tipo da alteracao: HOMOLOGACAO / ENV SCOPE / SAFETY GATE.
+- Ambiente: `https://homo.c2x.app.br`.
+- Protocolo: `ZEUS-20260525-003-IRIS-META-ENV-SCOPE`.
+- Status: `EM HOMOLOGACAO`.
+- Motivo da mudanca:
+  - Lucas reportou no Novo Atendimento da Iris a falha `A Iris nao conseguiu confirmar a WABA do telefone selecionado`.
+  - A tela mostrava template aprovado e telefone de envio, mas o backend retornava configuracao Meta WhatsApp incompleta ao validar WABA/telefone antes do envio.
+- Causa identificada:
+  - Parte das variaveis `META_WHATSAPP_*` estava restrita ao escopo `Preview (homolog)`.
+  - Os pacotes limpos publicados via Vercel CLI em homologacao sao Preview deployments e podem nao receber variaveis limitadas somente ao branch scope.
+  - Com isso, o runtime novo podia iniciar sem o conjunto completo de `phone_number_id`, `waba_id`/Business Account ID e display phone, quebrando a confirmacao de WABA.
+- Correcao aplicada:
+  - As variaveis criptografadas `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_BUSINESS_ACCOUNT_ID` e `META_WHATSAPP_PHONE_DISPLAY_NUMBER` tiveram apenas o metadata de target ajustado para incluir `Preview` geral.
+  - Nenhum valor sensivel foi exibido, copiado para o chat, escrito em arquivo ou alterado manualmente.
+  - `META_WHATSAPP_ACCESS_TOKEN` e `META_WHATSAPP_GRAPH_VERSION` ja estavam disponiveis em `Preview`.
+- Base/rollback antes do alias:
+  - `https://homo.c2x.app.br` apontava para `dpl_54CLDbBFbQwe7QNFyCrSGjhx1MwW`.
+  - Observacao: rollback para esse deployment restaura o pacote anterior, mas pode reintroduzir a configuracao Meta incompleta; se rollback for necessario, validar a Iris novamente.
+- Deployment publicado:
+  - URL Preview: `https://careli-hub-hub-i2bs-vxwjwvjbo-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_866UgQroZWS9BpNHqsJfd7EQDjeA`;
+  - alias atualizado: `https://homo.c2x.app.br`.
+- Pacote:
+  - pacote reaproveitado: `.codex-deploy/iris-athena-caca-homolog-20260525-1700/workspace`;
+  - manifesto: `.codex-deploy/iris-meta-env-scope-homolog-20260525-1755/homologation-safety-gate.json`.
+- Arquivos/itens excluidos:
+  - sem alteracao de codigo adicional;
+  - sem secrets em arquivo;
+  - sem banco, migration real, dominio/alias de producao ou producao.
+- Validacoes executadas antes do alias:
+  - `npx.cmd vercel env list preview`: confirmou `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_BUSINESS_ACCOUNT_ID` e `META_WHATSAPP_PHONE_DISPLAY_NUMBER` como `Production, Preview`;
+  - Safety Gate pre-deploy/pre-alias: PASS com esperado `dpl_54CLDbBFbQwe7QNFyCrSGjhx1MwW`;
+  - `npx.cmd vercel deploy --yes --target preview --force`: OK;
+  - `npx.cmd vercel inspect` do Preview novo: `Ready`, projeto `careli-hub-hub-i2bs`, deployment `dpl_866UgQroZWS9BpNHqsJfd7EQDjeA`.
+- Alias:
+  - comando executado: `npx.cmd vercel alias set https://careli-hub-hub-i2bs-vxwjwvjbo-lucasruas-devs-projects.vercel.app homo.c2x.app.br`;
+  - resultado: sucesso.
+- Validacoes executadas depois do alias:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `dpl_866UgQroZWS9BpNHqsJfd7EQDjeA`, `Ready`;
+  - Safety Gate pos-alias com `--expected-deployment dpl_866UgQroZWS9BpNHqsJfd7EQDjeA`: PASS;
+  - `GET https://homo.c2x.app.br/`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/hades/cobranca`: `200`;
+  - `GET https://homo.c2x.app.br/ares`: `200`;
+  - `GET https://homo.c2x.app.br/financeiro`: `200`;
+  - `GET https://homo.c2x.app.br/api/ares/snapshot` sem sessao: `401`, esperado;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401`, esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Warnings conhecidos:
+  - o build remoto manteve warnings conhecidos de audit/Turbopack/turbo env; nenhum valor sensivel foi exposto e nenhum warning bloqueou o deploy.
+- Riscos conhecidos:
+  - a validacao final depende de Lucas testar autenticado o Novo Atendimento e a confirmacao WABA/template no fluxo real;
+  - producao permanece bloqueada ate validacao explicita por protocolo.
+- Proxima acao:
+  - Lucas retestar em homologacao a abertura de Novo Atendimento com template aprovado `Testelris1` e telefone `+55 31 9072-8420`.
+
+Conclusao:
+- A falha voltou porque o pacote novo de homologacao ficou sem parte do escopo runtime das variaveis `META_WHATSAPP_*`, nao porque o template ou a WABA foram apagados na Meta.
+- O impacto pratico e que `homo.c2x.app.br` agora foi reconstruido com o conjunto Meta WhatsApp disponivel para Preview geral e deve conseguir confirmar a WABA do telefone selecionado.
+- Nao houve exposicao de token, troca de valor sensivel, banco, migration ou producao; a acao agora e Lucas validar o fluxo autenticado na Iris.
+
+## 2026-05-25 18:26:01 -03:00 - Ares Core - Setup de dimensoes financeiras
+
+Assunto: [Ares] Setup de projetos centros categorias e departamentos
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: BANCO HOMOLOGACAO / FRONTEND LOCAL / API ARES.
+- Ambiente: Supabase homologacao e validacao local do Hub.
+- Protocolo: `ARES-20260525-001-DIMENSOES-LANCAMENTO`.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Motivo da mudanca:
+  - Lucas solicitou criar/configurar Projetos, Centro de resultado, Centro de custo, Categoria e Departamento para testes de lancamento no Ares.
+  - Ares manteve a tabela unica `public.ares_financial_dimensions` com `dimension_kind` para nao criar plano de contas definitivo nem regra contabil/fiscal.
+- Banco aplicado em homologacao:
+  - migration local criada: `packages/database/migrations/0031_ares_dimensions_setup.sql`;
+  - aplicada em Supabase homologacao via `HOMOLOG_POSTGRES_URL`, sem expor valor da connection string;
+  - `public.ares_financial_entries` agora tem `department_name_snapshot`;
+  - indices conferidos: `ares_financial_entries_cost_center_idx`, `ares_financial_entries_result_center_idx`, `ares_financial_entries_department_idx`;
+  - colunas conferidas: `department_id`, `department_name_snapshot`;
+  - `public.ares_financial_dimensions` conferida com colunas base `dimension_kind`, `name`, `code`, `status`.
+- Comportamento implementado:
+  - novo endpoint protegido `POST /api/ares/dimensions` para cadastrar setup financeiro com RLS e permissao `financeiro:manage`;
+  - Setup do Ares permite cadastrar Centro de custo, Centro de resultado, Projeto, Categoria e Departamento;
+  - popup de lancamento passa a exigir Departamento;
+  - lancamento resolve/cria as dimensoes informadas e grava os vinculos `category_id`, `cost_center_id`, `result_center_id`, `project_id`, `department_id` com snapshots operacionais;
+  - lista e Kanban exibem Departamento no lancamento.
+- Arquivos incluidos no recorte:
+  - `apps/hub/app/api/ares/dimensions/route.ts`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `packages/database/migrations/0031_ares_dimensions_setup.sql`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - Hades, Iris, Hermes, Chronos, Atlas, Apolo e Zeus fora das consultas ja existentes;
+  - envs, secrets, tokens, service role exposto, dominio, alias, producao e integracao bancaria.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - schema Supabase homologacao verificado via consulta sem exibir secrets: OK;
+  - `GET http://localhost:3001/ares`: 200;
+  - `POST http://localhost:3001/api/ares/dimensions` sem sessao: 401 esperado;
+  - `git diff --check`/whitespace do recorte Ares: sem erro de whitespace, com aviso Git local de CRLF.
+- Riscos conhecidos:
+  - codigo ainda nao foi publicado em novo Preview neste recorte; para Lucas testar a UI em URL publica, precisa autorizar Preview Ares.
+  - escrita real depende de usuario autenticado com `financeiro:manage`.
+  - nomes digitados no lancamento podem criar dimensoes novas; revisar cadastros de teste antes de promover comportamento para producao.
+- Proxima acao:
+  - Lucas testar localmente ou autorizar Preview Ares para validar cadastro de setup e lancamento com Departamento.
+
+Conclusao:
+- As tabelas Ares de homologacao foram preparadas para receber Projetos, Centro de resultado, Centro de custo, Categoria e Departamento.
+- O impacto pratico e que o Ares ja consegue cadastrar essas dimensoes no Setup e usa-las nos testes de lancamento.
+- Nao houve producao, alias, dominio, segredo ou integracao bancaria; o proximo passo e validar com usuario autenticado e, se Lucas quiser, publicar um Preview isolado do recorte Ares.
+
+## 2026-05-25 18:59:00 -03:00 - Zeus Operations - Homologacao Athena Caca v6
+
+Assunto: [Athena] Homologacao protocolo ZEUS-20260525-005-ATHENA-CACA-V6
+
+- Nome da squad/agente: Zeus Operations.
+- Tipo da alteracao: HOMOLOGACAO / PACOTE LIMPO / SAFETY GATE.
+- Ambiente: `https://homo.c2x.app.br`.
+- Protocolo: `ZEUS-20260525-005-ATHENA-CACA-V6`.
+- Status: `EM HOMOLOGACAO`.
+- Motivo da mudanca:
+  - Lucas solicitou subir em homologacao a ultima atualizacao da Athena/Caca.
+  - O recorte melhora a resposta autonoma da Caca em agradecimentos, encerramentos do cliente e mudancas de assunto durante fluxo de boleto.
+- Base/rollback antes do alias:
+  - `https://homo.c2x.app.br` apontava para `dpl_866UgQroZWS9BpNHqsJfd7EQDjeA`.
+  - Esse deployment preservava a correcao de escopo `META_WHATSAPP_*` em Preview geral.
+- Deployment publicado:
+  - URL Preview: `https://careli-hub-hub-i2bs-bpi0lcqt4-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_5oaYyNNmg27YXdZYEFP2QujoRbvf`;
+  - alias atualizado: `https://homo.c2x.app.br`.
+- Pacote limpo:
+  - `.codex-deploy/z005/w`;
+  - manifesto: `.codex-deploy/z005/homologation-safety-gate.json`.
+- Arquivos incluidos:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `apps/hub/app/api/iris/attendant/route.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `turbo.json`.
+- Arquivos/itens excluidos:
+  - Ares dimensions, `apps/hub/app/api/ares/dimensions`, migrations `0030`, `0031` e `0032`;
+  - Apolo, Hades, Hermes, Atlas, Chronos, Setup e demais recortes fora da Athena;
+  - envs, secrets, tokens, banco, migration real, dominio/alias de producao e producao.
+- Comportamento publicado:
+  - `CACA_AGENT_VERSION` atualizado para `iris-caca-agent-v6`;
+  - respostas deterministicas para agradecimento apos boleto e encerramento do cliente sem insistencia;
+  - fallback autonomo quando o cliente muda de assunto em fluxo pendente;
+  - uso especifico de `HUB_IRIS_ATTENDANT_MODEL` para a Athena, sem cair automaticamente no `HUB_AI_MODEL` generico;
+  - request ao modelo com `reasoning.effort` e `text.verbosity` baixos para reduzir respostas longas/repetitivas;
+  - prompt reforcado para responder como atendente humana, evitar menus/frases padrao e respeitar encerramento.
+- Validacoes executadas antes do alias:
+  - `npx.cmd eslint lib/iris/caca-agent.ts app/api/iris/attendant/route.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - Safety Gate pre-deploy/pre-alias: PASS com esperado `dpl_866UgQroZWS9BpNHqsJfd7EQDjeA`;
+  - `npx.cmd vercel deploy --yes --target preview --force`: OK;
+  - `npx.cmd vercel inspect` do Preview novo: `Ready`, projeto `careli-hub-hub-i2bs`, deployment `dpl_5oaYyNNmg27YXdZYEFP2QujoRbvf`.
+- Alias:
+  - comando executado: `npx.cmd vercel alias set https://careli-hub-hub-i2bs-bpi0lcqt4-lucasruas-devs-projects.vercel.app homo.c2x.app.br`;
+  - resultado: sucesso.
+- Validacoes executadas depois do alias:
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: `dpl_5oaYyNNmg27YXdZYEFP2QujoRbvf`, `Ready`;
+  - Safety Gate pos-alias com `--expected-deployment dpl_5oaYyNNmg27YXdZYEFP2QujoRbvf`: PASS;
+  - `GET https://homo.c2x.app.br/`: `200`;
+  - `GET https://homo.c2x.app.br/login`: `200`;
+  - `GET https://homo.c2x.app.br/iris`: `200`;
+  - `GET https://homo.c2x.app.br/hades/cobranca`: `200`;
+  - `GET https://homo.c2x.app.br/ares`: `200`;
+  - `GET https://homo.c2x.app.br/financeiro`: `200`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401`, esperado;
+  - `POST https://homo.c2x.app.br/api/iris/attendant` sem sessao: `401`, esperado;
+  - `POST https://homo.c2x.app.br/api/iris/meta/messages` sem sessao: `401`, esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Warnings conhecidos:
+  - o build remoto e local mantem warning conhecido de NFT/Turbopack e audit npm; nenhum bloqueou o deploy.
+- Riscos conhecidos:
+  - validacao autenticada da conversa real Athena/Caca segue com Lucas;
+  - Ares dimensions/migrations ficaram fora deste pacote por escopo e continuam exigindo recorte proprio.
+- Proxima acao:
+  - Lucas testar em homologacao conversa com a Caca/Athena, especialmente agradecimento apos boleto, "nao precisa mais" e mudanca de assunto durante fluxo pendente.
+
+Conclusao:
+- A ultima atualizacao da Athena/Caca foi publicada em homologacao sem misturar Ares, Apolo ou migrations paralelas.
+- O impacto pratico e uma Caca menos robotica, mais respeitosa quando o cliente encerra e menos insistente em fluxos pendentes.
+- Nao houve producao, banco, migration real, segredo ou alias de producao; a acao agora e teste autenticado do Lucas em `https://homo.c2x.app.br/iris`.
+
+## 2026-05-25 18:48:18 -03:00 - Ares Core - Setup em abas e codigos automaticos
+
+Assunto: [Ares] Setup financeiro com abas por tipo
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: FRONTEND / API ARES / BANCO HOMOLOGACAO.
+- Ambiente: Supabase homologacao e validacao local do Hub.
+- Protocolo: `ARES-20260525-002-SETUP-ABAS-CODIGOS`.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Motivo da mudanca:
+  - Lucas nao aprovou a composicao anterior do Setup financeiro com cards por tipo.
+  - Lucas solicitou abas separando Projeto, Centro de resultado, Centro de custo, Categoria e Departamento, com cadastro no topo e lista de cadastrados abaixo.
+  - Lucas solicitou codigo sequencial automatico.
+- Comportamento implementado:
+  - Setup do Ares agora usa abas por tipo de dimensao financeira;
+  - cada aba mostra o formulario de cadastro do tipo selecionado e, abaixo, tabela com `Codigo`, `Nome` e `Status`;
+  - o campo de codigo saiu do formulario;
+  - `POST /api/ares/dimensions` gera codigo sequencial quando cria nova dimensao;
+  - dimensoes criadas automaticamente durante lancamento tambem passam a receber codigo sequencial.
+- Banco aplicado em homologacao:
+  - migration local criada: `packages/database/migrations/0032_ares_dimension_codes.sql`;
+  - aplicada em Supabase homologacao via `HOMOLOG_POSTGRES_URL`, sem expor valor da connection string;
+  - backfill conferido: `missingCodes=0`, `numericCodeRows=5`, `maxCode=5`.
+- Arquivos incluidos no recorte:
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `packages/database/migrations/0032_ares_dimension_codes.sql`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - Hades, Iris, Hermes, Chronos, Atlas, Apolo e Zeus;
+  - envs, secrets, tokens, dominio, alias, producao, integracao bancaria e regra contabil/fiscal.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - schema/dados Supabase homologacao verificados via consulta sem exibir dados sensiveis: OK;
+  - `GET http://localhost:3001/ares`: 200;
+  - `POST http://localhost:3001/api/ares/dimensions` sem sessao: 401 esperado;
+  - `git diff --check` do recorte Ares: sem erro de whitespace, com aviso Git local de CRLF.
+- Riscos conhecidos:
+  - codigo sequencial e gerado no backend da aplicacao para o recorte de teste; se houver criacoes concorrentes simultaneas no futuro, pode exigir sequencia/transacao no banco antes de producao critica.
+  - codigo ainda nao foi publicado em novo Preview neste recorte; para Lucas testar a UI em URL publica, precisa autorizar Preview Ares.
+  - escrita real depende de usuario autenticado com `financeiro:manage`.
+- Proxima acao:
+  - Lucas validar a nova tela localmente ou autorizar Preview Ares do recorte `ARES-20260525-002-SETUP-ABAS-CODIGOS`.
+
+Conclusao:
+- O Setup financeiro do Ares foi reorganizado em abas por tipo, com cadastro em cima e lista abaixo.
+- O impacto pratico e que os testes de Projeto, Centro de resultado, Centro de custo, Categoria e Departamento ficam mais claros e com codigo sequencial automatico.
+- Nao houve producao, alias, dominio, segredo ou integracao bancaria; o proximo passo e validacao visual/autenticada pelo Lucas.
+
+## 2026-05-25 18:23:38 -03:00 - Apolo Core - Ajuste UX do popup de cadastro
+
+Assunto: [Apolo] Cadastro novo com perfil em campo e sem Usuario manual
+
+- Nome da squad/agente: Apolo Core.
+- Tipo da alteracao: AJUSTE UX / FRONTEND / CADASTRO CRM.
+- Ambiente: local.
+- Protocolo: `APOLO-20260525-001-NOVO-CADASTRO-PERFIL`.
+- Status: `PRONTO PARA VALIDACAO LOCAL`.
+- Motivo da mudanca:
+  - Lucas avaliou o popup inicial e solicitou retirar a lista lateral de perfis, selecionar perfil dentro do formulario, remover `Usuario` da criacao manual e garantir barra de rolagem no formulario.
+- Arquivos alterados:
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- O que foi ajustado:
+  - a lista lateral de perfis foi removida;
+  - o campo `Perfil` passou a ficar dentro de `Dados principais`;
+  - `Usuario` saiu das opcoes de cadastro manual, pois esse perfil vem da leitura C2X/carteira real;
+  - novos contatos de venda entram como `Prospect`, que pode virar `Usuario` quando houver compra/carteira real;
+  - o corpo do formulario ganhou rolagem propria para nao cortar campos em telas menores.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md`: OK, com avisos CRLF conhecidos;
+  - smoke local `GET http://localhost:3001/apolo`: `200 OK`.
+- Fora de escopo:
+  - sem banco, migration, API de escrita, C2X writeback, Supabase, env, secret, Preview, homologacao, alias ou producao.
+- Riscos conhecidos:
+  - popup ainda prepara rascunho em UI; persistencia real precisa de recorte posterior com autorizacao de escrita e auditoria.
+- Proxima acao:
+  - Lucas validar visualmente o modal e aprovar o desenho antes de ligarmos a criacao real no Apolo.
+
+Conclusao:
+- O cadastro novo do Apolo ficou mais simples e mais alinhado a regra real: Usuario nao nasce manualmente.
+- O impacto pratico e reduzir ruido no popup e preparar a transicao correta Prospect -> Usuario via carteira/compra real.
+- Nao ha acao de infraestrutura agora; o proximo passo e validacao visual autenticada do Lucas.
+
+## 2026-05-25 18:36:38 -03:00 - Apolo Core - Intake documental do cadastro
+
+Assunto: [Apolo] Documentos e socios no popup de cadastro
+
+- Nome da squad/agente: Apolo Core.
+- Tipo da alteracao: AJUSTE UX / FRONTEND / CADASTRO DOCUMENTAL.
+- Ambiente: local.
+- Protocolo: `APOLO-20260525-001-NOVO-CADASTRO-PERFIL`.
+- Status: `PRONTO PARA VALIDACAO LOCAL`.
+- Motivo da mudanca:
+  - Lucas solicitou preparar o cadastro do Apolo para entrada de documentos que serao lidos por API futura, separando exigencias de pessoa fisica e pessoa juridica, e permitindo incluir socios no cadastro completo da PJ.
+- Arquivos alterados:
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- O que foi implementado:
+  - area de `Documentos` dentro do popup de novo cadastro;
+  - para pessoa fisica: Documento de identificacao, Comprovante de endereco, Comprovante de status civil e Comprovante de renda;
+  - o documento de status civil muda para `Certidao de casamento` quando estado civil indica casado/uniao e para `Certidao de nascimento` quando indica solteiro;
+  - para pessoa juridica: Documentos dos socios, Contrato social atualizado, Comprovante de endereco e Comprovante de renda;
+  - inputs de arquivo aceitando PDF, imagens e documentos comuns, mantendo apenas nomes dos arquivos no rascunho;
+  - checklist do rascunho agora mostra quantidade de documentos selecionados;
+  - secao de `Socios` para PJ com adicionar/remover socio e campos de cadastro completo: nome, CPF, participacao, e-mail, telefone, nascimento, estado civil, funcao e endereco.
+- Fora de escopo:
+  - sem upload real, storage, OCR, API externa, token, MOSTQI, webhook, banco, migration, Supabase, C2X writeback, Preview, homologacao, alias ou producao.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md`: OK, com avisos CRLF conhecidos;
+  - smoke local `GET http://localhost:3001/apolo`: `200 OK`.
+- Riscos conhecidos:
+  - os arquivos ainda nao sao persistidos; ao fechar o popup, a selecao local do navegador se perde;
+  - a leitura automatica e o preenchimento assistido dependem de recorte posterior com API server-side, storage autorizado, evidencias e auditoria.
+- Proxima acao:
+  - Lucas validar visualmente os campos documentais e a secao de socios;
+  - depois, desenhar a API de upload/leitura com provider autorizado e trilha auditavel.
+
+Conclusao:
+- O popup do Apolo agora esta pronto para receber os documentos esperados por perfil de pessoa e registrar socios de pessoa juridica.
+- O impacto pratico e preparar a UX para leitura automatica sem antecipar integracao externa ou armazenamento sensivel.
+- Nao ha acao de infraestrutura agora; o proximo passo e validacao visual e depois o recorte tecnico da API documental.
+
+## 2026-05-25 18:32:36 -03:00 - Iris Core - Caca humanizada e encerramento de boleto
+
+Assunto: [Iris] Caca V6 com comportamento humano pos-boleto
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: IMPLEMENTACAO / ATENDIMENTO IA / CUSTOMER-FACING.
+- Ambiente: local.
+- Protocolo: `IRIS-20260525-001`.
+- Status: `VALIDADO_LOCAL / AGUARDANDO HOMOLOGACAO POR ZEUS`.
+- Motivo da mudanca:
+  - Lucas validou no WhatsApp que a Caca ainda parecia bot, repetindo o prompt de escolha de boleto mesmo depois de `muito obrigado` e `nao precisa mais`.
+  - Lucas autorizou revisar a configuracao OpenAI e liberar a Caca para operar como agente mais humano, preservando as regras seguras de boleto.
+- Arquivos alterados:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- O que foi implementado:
+  - `CACA_AGENT_VERSION` atualizado para `iris-caca-agent-v6`;
+  - agradecimentos como `obrigado`, `muito obrigado`, `valeu` e variacoes encerram o fluxo de boleto pendente sem repetir menu;
+  - encerramentos como `nao precisa mais`, `ja recebi` e `pode encerrar` limpam `awaitingBoletoSelection`, `boletoOptions` e `originalIntent`;
+  - mudanca de assunto durante selecao de boleto deixa de repetir o prompt e passa a responder pelo novo contexto quando nao houver tentativa real de selecao;
+  - tentativa invalida de selecao, como numero fora da lista, continua pedindo o `numero correspondente`;
+  - chamada OpenAI da Caca passa a usar `gpt-5.5` como default dedicado da Iris, sem herdar automaticamente `HUB_AI_MODEL`;
+  - Responses API configurada com `reasoning.effort` baixo e `text.verbosity` baixo para conversa curta, humana e adequada ao WhatsApp.
+- Arquivos excluidos:
+  - sem alteracao de env, secret, Meta webhook, banco, migration, dominio, alias, producao, Hades, Ares, Apolo, Hermes, Atlas, Chronos ou Setup.
+- Validacoes executadas:
+  - `npx.cmd eslint lib/iris/caca-agent.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - simulacao `runCacaAgentTurn` com estado `awaitingBoletoSelection` e mensagens `muito obrigado caca`, `nao precisa mais`, `quanto ja paguei`, `suporte` e `9`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Preview/Homologacao:
+  - nenhum Preview ou alias de homologacao foi movimentado neste recorte local;
+  - para testar no WhatsApp real em `homo.c2x.app.br`, Zeus deve publicar o protocolo `IRIS-20260525-001` ou reconciliar o recorte com a homologacao vigente.
+- Riscos conhecidos:
+  - se `HUB_IRIS_ATTENDANT_MODEL` estiver configurado em algum ambiente, ele continua tendo prioridade sobre o default `gpt-5.5`;
+  - teste real de WhatsApp depende de homologacao/Meta apontando para o runtime atualizado;
+  - a Caca fica mais humana na conversa, mas boleto, contrato e dados financeiros continuam dependendo das ferramentas server-side seguras.
+- Proxima acao:
+  - Lucas aprovar o protocolo `IRIS-20260525-001` para Zeus publicar em homologacao, caso queira retestar pelo WhatsApp real.
+
+Conclusao:
+- A causa do comportamento robotico nesta rodada era estado pendente de selecao de boleto, que forçava repeticao do prompt mesmo quando o cliente encerrava a conversa.
+- O impacto pratico e que a Caca agora respeita agradecimento, encerramento e mudanca de assunto sem insistir no boleto.
+- Nao ha acao de infraestrutura executada agora; o proximo passo e publicar o protocolo em homologacao por Zeus para teste real via WhatsApp.
+
+## 2026-05-25 18:51:06 -03:00 - Apolo Core - Conjuge por estado civil
+
+Assunto: [Apolo] Conjuge condicional no cadastro por perfil
+
+- Nome da squad/agente: Apolo Core.
+- Tipo da alteracao: AJUSTE UX / FRONTEND / CADASTRO CRM.
+- Ambiente: local.
+- Protocolo: `APOLO-20260525-001-NOVO-CADASTRO-PERFIL`.
+- Status: `PRONTO PARA VALIDACAO LOCAL`.
+- Motivo da mudanca:
+  - Lucas solicitou que, ao selecionar `Casado(a)` ou `Uniao estavel`, o formulario abra a coleta dos dados do conjuge, e que a nomenclatura visivel use `Estado civil` em vez de `status civil`.
+- Arquivos alterados:
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- O que foi ajustado:
+  - o popup de novo cadastro agora abre uma secao propria `Dados do conjuge` para pessoa fisica com estado civil `Casado(a)` ou `Uniao estavel`;
+  - a secao coleta nome completo, CPF, telefone, e-mail, nascimento, profissao e endereco do conjuge;
+  - o checklist passa a exigir nome e CPF do conjuge nesses estados civis antes de preparar o rascunho;
+  - textos visiveis do fluxo foram normalizados para `Estado civil`;
+  - o comprovante documental generico passou a ser `Comprovante de estado civil`.
+- Fora de escopo:
+  - sem banco, migration, API de escrita, upload real, storage, provider documental, C2X writeback, Supabase, env, secret, Preview, homologacao, alias ou producao.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx docs/operations/engineering-operations.md`: OK, com avisos CRLF conhecidos;
+  - smoke local `GET http://localhost:3001/apolo`: `200 OK`.
+- Riscos conhecidos:
+  - os dados do conjuge ainda sao apenas rascunho em UI; persistencia real depende de recorte posterior com API de escrita, auditoria e autorizacao do Lucas.
+- Proxima acao:
+- Lucas validar visualmente o comportamento do modal.
+
+Conclusao:
+- O cadastro do Apolo passa a respeitar melhor a regra civil da pessoa fisica sem poluir o formulario quando nao se aplica.
+- O impacto pratico e que cadastros de casados ou uniao estavel ja nascem com o bloco correto para revisar o conjuge.
+- Nao ha acao de infraestrutura agora; o proximo passo e Lucas validar visualmente o modal.
+
+## 2026-05-25 19:14:50 -03:00 - Apolo Core - Seletores reais no prospect
+
+Assunto: [Apolo] Origem do prospect com base de imobiliarias e empreendimentos
+
+- Nome da squad/agente: Apolo Core.
+- Tipo da alteracao: AJUSTE UX / FRONTEND / LEITURA CRM.
+- Ambiente: local.
+- Protocolo: `APOLO-20260525-001-NOVO-CADASTRO-PERFIL`.
+- Status: `VALIDADO_LOCAL_PARCIAL / BLOQUEIO_GLOBAL_IRIS`.
+- Motivo da mudanca:
+  - Lucas indicou que, no cadastro do prospect, o vinculo com imobiliaria deve ser selecionado a partir da base de imobiliarias, e o empreendimento tambem deve ser selecionado da base real. Corretor fica para recorte futuro.
+- Arquivos alterados:
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `apps/hub/app/api/apolo/relationships/route.ts`;
+  - `docs/operations/engineering-operations.md`.
+- O que foi ajustado:
+  - `Imobiliaria ou responsavel` deixou de ser texto livre e virou seletor `Imobiliaria`;
+  - o seletor usa entidades reais com perfil `imobiliaria` carregadas pela leitura autenticada do Apolo;
+  - `Empreendimento` deixou de ser texto livre e virou seletor alimentado pelos empreendimentos encontrados nos vinculos comerciais reais;
+  - o campo `Corretor` foi removido do cadastro de prospect neste recorte;
+  - a API autenticada de relacionamentos do Apolo passou a aceitar leitura limitada a ate 500 itens para alimentar seletores internos sem criar nova integracao.
+- Fora de escopo:
+  - sem banco, migration, API de escrita, criacao real de relacionamento, corretor como origem comercial, upload real, Supabase write, env, secret, Preview, homologacao, alias ou producao.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: BLOQUEADO por erros fora do recorte em `apps/hub/lib/iris/meta-inbound-processor.ts` (`findTicketByReplyContextMessageId` ausente e `replyContextMessageId` obrigatorio em mocks);
+  - `npm.cmd run lint:hub`: BLOQUEADO por warnings fora do recorte em `apps/hub/lib/iris/meta-inbound-processor.ts` (`REOPENABLE_TICKET_STATUSES` e `INBOUND_TICKET_SELECT` nao usados, com `--max-warnings 0`);
+  - `npx.cmd eslint modules/apolo/ApoloPage.tsx app/api/apolo/relationships/route.ts --max-warnings 0` a partir de `apps/hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: BLOQUEADO por erro fora do recorte em `apps/hub/lib/iris/meta-inbound-processor.ts` (`dateValue` ausente); compilacao Turbopack chegou a compilar JS e manteve warning conhecido NFT em `engineering-operations-source.ts`;
+  - `git diff --check -- apps/hub/modules/apolo/ApoloPage.tsx apps/hub/app/api/apolo/relationships/route.ts docs/operations/engineering-operations.md`: OK, com avisos CRLF conhecidos;
+  - smoke local `GET http://localhost:3001/apolo`: `200 OK`.
+- Riscos conhecidos:
+- os seletores ainda dependem da base carregada pelo read model do Apolo; persistencia real do prospect e amarracao por id ficam para recorte posterior de escrita auditada;
+- validacao global do Hub esta bloqueada por Iris, fora do recorte Apolo.
+- Proxima acao:
+- Lucas validar visualmente o modal;
+- Iris corrigir os bloqueios de tipo/lint antes de considerar o build global verde.
+
+Conclusao:
+- O popup do Apolo deixa de aceitar origem comercial solta para prospect e passa a guiar o cadastro pela base real disponivel.
+- O impacto pratico e reduzir divergencia cadastral antes mesmo da gravacao final.
+- Nao ha acao de infraestrutura agora; o proximo passo e Lucas validar visualmente o modal e a Iris liberar o build global.
+
+## 2026-05-25 18:48:18 -03:00 - Ares Core - Fechamento Setup em abas
+
+Assunto: [Ares] Fechamento do setup em abas
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: FECHAMENTO / FRONTEND / API ARES / BANCO HOMOLOGACAO.
+- Protocolo: `ARES-20260525-002-SETUP-ABAS-CODIGOS`.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Registro complementar:
+  - O detalhe completo do recorte foi registrado anteriormente neste diario com o mesmo protocolo.
+  - Este fechamento preserva a ordem de leitura do diario apos entradas simultaneas de outras squads.
+- Resultado:
+  - Setup financeiro do Ares reorganizado em abas por tipo;
+  - cada aba tem cadastro no topo e lista de cadastrados abaixo;
+  - codigo saiu do formulario e passou a ser gerado automaticamente no backend;
+  - backfill de codigos em homologacao conferido com `missingCodes=0`;
+  - nenhum segredo, dominio, alias, producao, integracao bancaria ou regra contabil/fiscal foi alterado.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `GET http://localhost:3001/ares`: 200;
+  - `POST http://localhost:3001/api/ares/dimensions` sem sessao: 401 esperado.
+
+Conclusao:
+- O recorte Ares de Setup em abas esta fechado localmente e com Supabase homologacao preparado.
+- O impacto pratico e que Lucas pode testar os cadastros financeiros por tipo com codigo sequencial automatico.
+- O proximo passo e validacao visual/autenticada ou autorizacao para Preview isolado do Ares.
+
+## 2026-05-25 19:17:17 -03:00 - Ares Core - Lancamento vinculado ao Setup hierarquico
+
+Assunto: [Ares] Lancamento usando dimensoes do Setup
+
+- Nome da squad/agente: Ares Core.
+- Tipo da alteracao: FRONTEND / API ARES / VALIDACAO LOCAL.
+- Ambiente: local, com leitura/escrita protegida em Supabase via RLS.
+- Protocolo: `ARES-20260525-003-LANCAMENTO-DIMENSOES-SETUP`.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Motivo da mudanca:
+  - Lucas definiu que Departamento, Categoria, Centro de resultado, Centro de custo e Projeto nao podem ser texto livre no lancamento.
+  - Lucas definiu a hierarquia operacional: Departamento > Centros de custo/resultado > Categoria > Projeto.
+- Comportamento implementado:
+  - cadastro do Setup passa a gravar `parent_id` para criar a hierarquia entre dimensoes;
+  - lista do Setup permite ajustar o vinculo de registros existentes sem recriar tudo;
+  - no lancamento, Departamento, Centro de custo, Centro de resultado, Categoria e Projeto viraram seletores alimentados pelo Setup;
+  - Centro de custo e Centro de resultado filtram pelo Departamento selecionado;
+  - Categoria filtra pelos Centros selecionados;
+  - Projeto filtra pela Categoria selecionada;
+  - API de lancamento valida IDs ativos do Setup e rejeita dimensoes fora da hierarquia.
+- Arquivos incluidos no recorte:
+  - `apps/hub/app/api/ares/dimensions/route.ts`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - Hades, Iris, Apolo, Hermes, Chronos, Atlas e Zeus;
+  - envs, secrets, tokens, dominio, alias, producao, integracao bancaria, plano de contas e regra contabil/fiscal.
+- Validacoes executadas:
+  - `npm.cmd run check-types:hub`: OK;
+  - ESLint escopado Ares (`npx.cmd eslint app/api/ares/dimensions/route.ts lib/ares/client.ts lib/ares/server.ts lib/ares/types.ts modules/ares/AresPage.tsx --max-warnings 0`): OK;
+  - `GET http://localhost:3001/ares`: 200;
+  - `POST http://localhost:3001/api/ares/entries` sem sessao: 401 esperado;
+  - `PATCH http://localhost:3001/api/ares/dimensions` sem sessao: 401 esperado;
+  - consulta agregada em Supabase homologacao confirmou `parent_id` disponivel e registros existentes ainda sem vinculo (`dimensions=5`, `linked=0`), por isso a UI agora permite vincular pela lista.
+- Validacoes bloqueadas fora do recorte:
+  - `npm.cmd run lint:hub`: bloqueado por warning em `apps/hub/lib/iris/meta-inbound-processor.ts` (`REOPENABLE_TICKET_STATUSES` nao usado), fora do Ares;
+  - `npm.cmd run build --workspace @repo/hub`: bloqueado por erro em `apps/hub/lib/iris/meta-inbound-processor.ts` (`findTicketByReplyContextMessageId` nao encontrado), fora do Ares.
+- Riscos conhecidos:
+  - registros antigos precisam ser vinculados no Setup antes de aparecerem corretamente no fluxo encadeado do lancamento;
+  - Categoria aceita vinculo com Centro de custo ou Centro de resultado; se Lucas quiser uma regra mais estrita para apenas um dos dois, precisa nova decisao;
+  - Preview ainda nao foi publicado para este recorte.
+- Proxima acao:
+  - Lucas vincular os 5 cadastros existentes no Setup ou criar novos cadastros ja relacionados;
+  - depois testar o popup de lancamento com a cadeia Departamento > Centros > Categoria > Projeto.
+
+Conclusao:
+- O lancamento do Ares deixou de aceitar dimensoes financeiras livres e agora consome o cadastro hierarquico do Setup.
+- O impacto pratico e que os testes passam a respeitar a estrutura financeira informada pelo Lucas.
+- Nao houve producao, alias, dominio, segredo, integracao bancaria ou regra contabil/fiscal; o proximo passo e validar os vinculos no Setup e depois testar um lancamento autenticado.
+
+## 2026-05-25 19:14:07 -03:00 - Apolo Core - Homologacao cadastro por perfil
+
+Assunto: [Apolo] Homologacao do recorte de hoje
+
+- Nome da squad/agente: Zeus coordenando publicacao do recorte Apolo Core.
+- Tipo da alteracao: HOMOLOGACAO / FRONTEND / API APOLO / CADASTRO CRM.
+- Ambiente: `https://homo.c2x.app.br`.
+- Protocolo: `APOLO-20260525-001-NOVO-CADASTRO-PERFIL`.
+- Status: `EM HOMOLOGACAO`.
+- Deployment publicado:
+  - `dpl_EzLzxXcGgqGN3ww5JBWgGfyKTUhd`;
+  - URL Preview: `https://careli-hub-hub-i2bs-pifmamnkd-lucasruas-devs-projects.vercel.app`.
+- Rollback imediato:
+  - `dpl_5oaYyNNmg27YXdZYEFP2QujoRbvf`.
+- Base preservada:
+  - homologacao vigente Athena/Caca v6 em `dpl_5oaYyNNmg27YXdZYEFP2QujoRbvf`.
+- Pacote limpo:
+  - `.codex-deploy/z006/w`;
+  - manifesto `.codex-deploy/z006/homologation-safety-gate.json`.
+- Arquivos incluidos no recorte:
+  - `apps/hub/app/api/apolo/relationships/route.ts`;
+  - `apps/hub/app/api/apolo/search/route.ts`;
+  - `apps/hub/lib/apolo/catalog.ts`;
+  - `apps/hub/lib/apolo/server.ts`;
+  - `apps/hub/lib/apolo/types.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`.
+- Itens excluidos:
+  - envs, secrets, tokens, banco, migration real, storage, upload real, C2X writeback, dominio/alias de producao e producao;
+  - Ares dimensions e migrations `0030`, `0031` e `0032`;
+  - recortes paralelos de Iris/Ares/Hades/Athena fora da base ja homologada.
+- Escopo publicado:
+  - popup de novo cadastro por perfil no Apolo;
+  - perfil como tipo de cadastro operacional em vez de campo manual de usuario;
+  - catalogo documental por perfil;
+  - bloco de conjuge condicional por estado civil;
+  - ajustes de busca/relacionamentos para apoiar fornecedores, clientes, colaboradores e participantes do cadastro.
+- Validacoes executadas:
+  - `npx.cmd eslint modules/apolo/ApoloPage.tsx lib/apolo/server.ts lib/apolo/catalog.ts lib/apolo/types.ts app/api/apolo/relationships/route.ts app/api/apolo/search/route.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - Safety Gate pre-deploy: PASS com base `dpl_5oaYyNNmg27YXdZYEFP2QujoRbvf`;
+  - deploy Preview Vercel: OK, `dpl_EzLzxXcGgqGN3ww5JBWgGfyKTUhd`;
+  - Safety Gate pre-alias: PASS;
+  - alias para `homo.c2x.app.br`: OK;
+  - Safety Gate pos-alias: PASS com esperado `dpl_EzLzxXcGgqGN3ww5JBWgGfyKTUhd`;
+  - healthchecks `/`, `/login`, `/apolo`, `/iris`, `/hades/cobranca`, `/ares`, `/financeiro`: `200`;
+  - APIs protegidas `/api/apolo/relationships`, `/api/iris/meta/templates` e `POST /api/iris/meta/messages`: `401` sem sessao, esperado;
+  - `/api/apolo/search` sem sessao: `200`, comportamento observado do endpoint de busca;
+  - logs Vercel `--since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada e visual do fluxo Apolo segue com Lucas;
+  - o popup prepara rascunho operacional; persistencia final, upload real, storage e writeback C2X continuam fora deste recorte;
+  - producao nao foi tocada e permanece bloqueada ate aprovacao explicita por protocolo.
+
+Conclusao:
+- O Apolo de hoje foi publicado em homologacao preservando a base Athena/Caca v6 e sem puxar recortes paralelos nao aprovados.
+- O impacto pratico e que Lucas pode validar em `homo.c2x.app.br/apolo` o novo cadastro por perfil, documentos e conjuge condicional.
+- Nao ha acao em producao agora; o proximo passo e a validacao autenticada do Lucas em homologacao.
+
+## 2026-05-25 19:22:58 -03:00 - Iris Core - Correcao de protocolo duplicado na resposta ao template
+
+Assunto: [Iris] Reuso do mesmo protocolo apos resposta ao template
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: CORRECAO / META INBOUND / JANELA 24H.
+- Ambiente: local.
+- Status: `PRONTO PARA RETESTE`.
+- Problema reportado:
+  - quando o cliente respondia ao template de contato ativo, a Iris abria novo chat/ticket em vez de continuar no protocolo iniciado;
+  - com isso, o ticket do template seguia travado como se ainda aguardasse resposta.
+- Causa identificada:
+  - o inbound priorizava apenas tickets abertos por contato/WA e ignorava o contexto da mensagem respondida (`context.id` da Meta);
+  - quando nao encontrava ticket aberto adequado, criava novo ticket;
+  - em casos de protocolo encerrado antes da resposta, nao havia reabertura controlada do ticket ativo aguardando reply.
+- Correcao aplicada:
+  - inbound passou a buscar primeiro o ticket da mensagem original respondida via `external_message_id` (contexto Meta);
+  - fallback de selecao de ticket foi ajustado para reaproveitar ticket de contato ativo com prioridade correta;
+  - quando a resposta chega para protocolo ativo elegivel encerrado (`closed/resolved`), o ticket e reaberto e segue no mesmo protocolo;
+  - no toque inbound, metadata de janela de atendimento e consentimento sao atualizados no ticket reaproveitado, liberando conversa livre por 24h no mesmo chat.
+- Arquivo alterado:
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/iris/meta-inbound-processor.ts`: OK (warning CRLF conhecido);
+  - `npx.cmd eslint lib/iris/meta-inbound-processor.ts --max-warnings 0` (em `apps/hub`): OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning Turbopack/NFT conhecido).
+- Fora de escopo:
+  - sem alteracao de env, secrets, tokens, banco, migration, dominio, alias ou producao.
+- Proxima acao:
+  - Lucas retestar em homologacao o fluxo:
+    1) iniciar contato ativo com template;
+    2) responder pelo WhatsApp;
+    3) confirmar que a resposta entra no mesmo protocolo;
+    4) confirmar que o chat livre libera no proprio ticket por 24h.
+
+Conclusao:
+- A Iris agora ancora a resposta do cliente no mesmo ticket/protocolo do template usando o contexto da propria mensagem Meta.
+- O impacto pratico e evitar abertura indevida de chat novo e liberar corretamente a janela operacional de 24h no ticket certo.
+- Nao houve homologacao/publicacao nesta etapa; aguarda reteste funcional do Lucas.
+
+## 2026-05-25 19:30:07 -03:00 - Apolo Core - Cadastro em abas no popup CRM 360
+
+Assunto: [Apolo] Cadastro e documentos separados por abas
+
+- Nome da squad/agente: Apolo Core.
+- Tipo da alteracao: UX / CRM 360 / NOVO CADASTRO POR PERFIL.
+- Ambiente: local.
+- Status: `VALIDADO_LOCAL`.
+- Motivo:
+  - Lucas pediu para separar a parte de documentos do cadastro em abas no popup de novo cadastro;
+  - a decisao aceita foi manter o cadastro mais limpo e deixar documentos como etapa propria, preparando o futuro fluxo de leitura automatica sem misturar upload com campos cadastrais.
+- O que foi ajustado:
+  - popup de novo cadastro ganhou abas internas `Cadastro`, `Documentos` e `Revisao`;
+  - `Cadastro` concentra perfil, tipo de pessoa, identidade, contato, origem comercial, conjuge e socios;
+  - `Documentos` concentra o intake documental por pessoa fisica ou juridica;
+  - `Revisao` concentra nome da mae, CPF do responsavel e observacoes internas;
+  - checklist lateral segue fixa, incluindo contagem de documentos selecionados e pendencias por perfil.
+- Arquivos alterados:
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - banco, migration, Supabase, storage, upload real, leitura MOSTQI, C2X writeback, envs, secrets, tokens, dominio, alias, deploy, producao e modulos fora do Apolo.
+- Validacoes executadas:
+  - `npx.cmd eslint modules/apolo/ApoloPage.tsx app/api/apolo/relationships/route.ts --max-warnings 0` em `apps/hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT vindo de `apps/hub/next.config.ts` e rota `squadops`;
+  - `GET http://localhost:3001/apolo`: `200 OK`.
+- Riscos conhecidos:
+  - validacao visual autenticada depende do navegador/sessao do Lucas;
+  - o popup ainda prepara rascunho operacional; persistencia final, upload real, storage e integracao de leitura documental seguem fora deste recorte.
+
+Conclusao:
+- A separacao por abas melhora a leitura do formulario e cria uma base mais organizada para documentos, socios, conjuge e revisao humana.
+- O impacto pratico e que o novo cadastro do Apolo fica menos pesado e mais preparado para evoluir para API de documentos sem reabrir a UX inteira.
+- Nao precisa de acao de infraestrutura agora; o proximo passo e Lucas validar o comportamento visual do popup no fluxo autenticado.
+
+## 2026-05-26 09:51:13 -03:00 - Iris/Hades Core - Variavel de parcela e protocolo no template de abertura
+
+Assunto: [Iris] Template de cobranca com parcela e protocolo
+
+- Nome da squad/agente: Iris Core em integracao com fluxo Hades cobranca.
+- Tipo da alteracao: FRONTEND + BACKEND / CONTATO ATIVO / TEMPLATE META.
+- Ambiente: local.
+- Status: `PRONTO PARA RETESTE`.
+- Motivo da mudanca:
+  - Lucas solicitou que, no formulario de abertura de cobranca, a selecao de parcelas vencidas seja aproveitada no template de inicio;
+  - Lucas solicitou que o protocolo tambem seja enviado na mensagem de abertura.
+- O que foi implementado:
+  - o modal de abertura (`Hades > Cobranca > Abertura Iris`) passou a enviar `relatedInstallmentLabels` junto com as parcelas selecionadas;
+  - a API `POST /api/iris/tickets` passou a montar parametros de template dinamicos com:
+    - `{{1}}`: nome do cliente;
+    - `{{2}}`: resumo das parcelas selecionadas;
+    - `{{3}}`: protocolo de referencia da cobranca/atendimento;
+  - o preview local da mensagem agora substitui placeholders de forma generica conforme a quantidade de variaveis do template;
+  - metadados/contexto do ticket passaram a registrar `templateInstallmentSummary` e `templateProtocolReference` para rastreabilidade.
+- Arquivos alterados no recorte:
+  - `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx apps/hub/app/api/iris/tickets/route.ts docs/operations/engineering-operations.md`: OK (warnings CRLF conhecidos);
+  - `npm.cmd run check-types:hub`: BLOQUEADO fora do recorte por erro em `apps/hub/modules/ares/AresPage.tsx` (`accessToken` em props nao reconhecida);
+  - `npm.cmd run lint:hub`: BLOQUEADO fora do recorte por warning em `apps/hub/modules/ares/AresPage.tsx` (`updateAresFinancialBase` nao utilizado, com `--max-warnings 0`);
+  - `npx.cmd eslint modules/guardian/attendance/components/WhatsAppConversationPanel.tsx app/api/iris/tickets/route.ts --max-warnings 0` (em `apps/hub`): OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning Turbopack/NFT conhecido em `squadops`).
+- Riscos conhecidos:
+  - quando o template Meta tiver apenas `{{1}}`, os novos dados ficam registrados no ticket, mas nao aparecem no texto enviado (comportamento esperado);
+  - como o protocolo precisa ir na mensagem de abertura, a API determina o protocolo antes do envio do template; em erro de envio pode haver salto de numeracao de protocolo, sem impacto funcional no atendimento.
+- Proxima acao:
+  - Lucas validar no fluxo autenticado:
+    1) selecionar parcelas vencidas;
+    2) abrir atendimento via template;
+    3) confirmar chegada de parcela/protocolo no corpo da mensagem quando o template usar `{{2}}` e `{{3}}`.
+
+Conclusao:
+- O contato ativo de cobranca agora consegue levar contexto operacional real de parcelas e protocolo ja na primeira mensagem ao cliente.
+- O impacto pratico e reduzir retrabalho do operador e aumentar rastreabilidade do que esta sendo cobrado em cada atendimento.
+- Nao ha acao de infraestrutura agora; o proximo passo e reteste funcional do Lucas no fluxo real de cobranca.
+
+## 2026-05-25 19:39:36 -03:00 - Iris Core - Janela 24h por cliente entre tickets
+
+Assunto: [Iris] Janela de 24h por cliente
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: CORRECAO / WHATSAPP WINDOW / BACKEND + UI.
+- Ambiente: local.
+- Status: `PRONTO PARA RETESTE`.
+- Motivo da mudanca:
+  - Lucas reforcou que a janela de 24h nao pode ficar presa a um unico ticket, porque o mesmo cliente pode ter multiplos tickets durante a mesma janela.
+- Ajuste aplicado:
+  - `POST /api/iris/meta/messages` consolidou a validacao de janela por identidade do cliente (conjunto de `contact_id` por ticket + telefone de destino), e nao apenas por um ticket isolado;
+  - `POST /api/iris/tickets` passou a consultar janela por identidade do cliente (telefone/contatos equivalentes) ao iniciar contato ativo;
+  - `IrisPage` passou a calcular estado da janela olhando tickets relacionados do mesmo cliente, sem travar no `contactId` unico;
+  - correcao adicional na UI removeu o curto-circuito por `contactId` exato para nao ignorar tickets do mesmo telefone com IDs de contato diferentes.
+- Arquivos alterados no recorte:
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/app/api/iris/meta/messages/route.ts apps/hub/app/api/iris/tickets/route.ts apps/hub/lib/iris/meta-inbound-processor.ts docs/operations/engineering-operations.md`: OK (warnings CRLF conhecidos);
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK (warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`);
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido Turbopack/NFT em rota SquadOps).
+- Riscos conhecidos:
+  - se existir cadastro de contato sem telefone consistente, o backend ainda depende do que estiver persistido em `contact_id`/`phone`/`whatsapp_phone` para encontrar equivalencias.
+- Proxima acao:
+  - Lucas retestar no fluxo real: cliente com mais de um ticket dentro de 24h, validando liberacao de mensagem livre em qualquer ticket desse cliente.
+
+Conclusao:
+- A regra operacional da Iris passa a respeitar a janela de 24h por cliente, e nao por ticket isolado.
+- O impacto pratico e evitar bloqueio indevido de conversa livre quando o cliente ja respondeu recentemente em outro protocolo.
+- Nao ha acao de infraestrutura agora; o proximo passo e o reteste funcional do Lucas no fluxo autenticado.
+
+## 2026-05-25 19:52:49 -03:00 - Zeus Operations - Homologacao consolidada Iris Apolo Ares
+
+Assunto: [Zeus] Homologacao dos recortes pendentes Iris, Apolo e Ares
+
+- Nome da squad/agente: Zeus coordenando publicacao consolidada.
+- Tipo da alteracao: HOMOLOGACAO / PACOTE LIMPO / IRIS / APOLO / ARES.
+- Ambiente: `https://homo.c2x.app.br`.
+- Protocolo: `ZEUS-20260525-006-IRIS-APOLO-ARES-PENDENTES`.
+- Status: `EM HOMOLOGACAO`.
+- Deployment publicado:
+  - `dpl_7oWCuwm6gnC5KdrwWPtk4iQgQx9f`;
+  - URL Preview: `https://careli-hub-hub-i2bs-4zm66a0kn-lucasruas-devs-projects.vercel.app`.
+- Rollback imediato:
+  - `dpl_EzLzxXcGgqGN3ww5JBWgGfyKTUhd`.
+- Base preservada:
+  - homologacao vigente Apolo cadastro por perfil em `dpl_EzLzxXcGgqGN3ww5JBWgGfyKTUhd`.
+- Pacote limpo:
+  - `.codex-deploy/z007/w`;
+  - manifesto `.codex-deploy/z007/homologation-safety-gate.json`.
+- Recortes publicados:
+  - Iris: reuso do mesmo protocolo apos resposta ao template, correcao de janela 24h por cliente e ajustes relacionados de UI/backend;
+  - Apolo: popup de cadastro CRM 360 separado em abas `Cadastro`, `Documentos` e `Revisao`;
+  - Ares: Setup hierarquico de dimensoes e lancamento consumindo Departamento, Centros, Categoria e Projeto do Setup.
+- Arquivos incluidos:
+  - `apps/hub/app/api/apolo/relationships/route.ts`;
+  - `apps/hub/app/api/apolo/sync/c2x/route.ts`;
+  - `apps/hub/modules/apolo/ApoloPage.tsx`;
+  - `apps/hub/app/api/iris/apolo/phone-match/route.ts`;
+  - `apps/hub/app/api/iris/apolo/search/route.ts`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/meta/status/route.ts`;
+  - `apps/hub/app/api/iris/meta/webhook/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `apps/hub/lib/iris/meta-server.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/app/api/ares/dimensions/route.ts`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`;
+  - `docs/operations/panteon-recorte-protocols.md`.
+- Itens excluidos:
+  - envs, secrets, tokens, banco, migrations, service role, storage, dominio/alias de producao e producao;
+  - migrations `packages/database/migrations/*`, incluindo `0030`, `0031` e `0032`;
+  - recortes paralelos de Hades, Hermes, Atlas, Chronos, Setup, Financeiro e Login fora da base ja homologada.
+- Validacoes executadas:
+  - ESLint direcionado Iris/Apolo/Ares: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - Safety Gate pre-deploy: PASS com base `dpl_EzLzxXcGgqGN3ww5JBWgGfyKTUhd`;
+  - deploy Preview Vercel: OK, `dpl_7oWCuwm6gnC5KdrwWPtk4iQgQx9f`;
+  - Safety Gate pre-alias: PASS;
+  - alias para `homo.c2x.app.br`: OK;
+  - Safety Gate pos-alias: PASS com esperado `dpl_7oWCuwm6gnC5KdrwWPtk4iQgQx9f`;
+  - healthchecks `/`, `/login`, `/iris`, `/apolo`, `/ares`, `/hades/cobranca`, `/financeiro`: `200`;
+  - `/api/ares/dimensions` via GET: `405`, esperado para rota sem metodo GET;
+  - APIs protegidas `POST /api/ares/dimensions`, `POST /api/ares/entries`, `/api/apolo/relationships`, `/api/iris/meta/templates`, `POST /api/iris/meta/messages` e `/api/iris/meta/status`: `401` sem sessao, esperado;
+  - `/api/apolo/search` sem sessao: `200`, comportamento observado do endpoint de busca;
+  - logs Vercel `--since 10m --level error`: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada real segue com Lucas para Iris, Apolo e Ares;
+  - o Ares depende dos registros existentes serem vinculados no Setup para a cadeia hierarquica aparecer corretamente;
+  - Iris depende de teste real WhatsApp/Meta para confirmar reuso de protocolo e janela 24h por cliente;
+  - Apolo segue sem persistencia final, upload real, storage e writeback C2X neste recorte;
+  - producao nao foi tocada e permanece bloqueada ate aprovacao explicita por protocolo.
+- Proxima acao:
+  - Lucas testar em `homo.c2x.app.br` os fluxos Iris, Apolo e Ares publicados neste pacote.
+
+Conclusao:
+- Os recortes pendentes de Iris, Apolo e Ares foram consolidados em homologacao sem publicar do root misto e sem trazer migrations/envs/producao.
+- O impacto pratico e que `homo.c2x.app.br` agora contem a janela Iris por cliente, o Apolo em abas e o Ares com dimensoes hierarquicas.
+- Nao ha acao em producao agora; o proximo passo e o reteste autenticado do Lucas em homologacao.
+
+## 2026-05-26 09:24:16 -03:00 - Iris Core - Caca V7 com contexto rico controlado
+
+Assunto: [Iris] Caca super agente com contexto server-side
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: IA ATENDIMENTO / CONTEXTO RICO / BACKEND.
+- Ambiente: local.
+- Protocolo: `IRIS-20260526-001-CACA-V7-CONTEXTO-CONTROLADO`.
+- Status: `VALIDADO_LOCAL_COM_BLOQUEIO_EXTERNO`.
+- Motivo da mudanca:
+  - Lucas solicitou evoluir a Caca para um super agente com historico, dados do banco, contexto de contratos D4Sign e maior autonomia conversacional, sem parecer bot de menu.
+- Ajuste aplicado:
+  - `CACA_AGENT_VERSION` atualizado para `iris-caca-agent-v7`;
+  - `reasoning.effort` default da Caca elevado para `medium`, mantendo `text.verbosity` baixo para WhatsApp objetivo;
+  - respostas abertas via OpenAI passam a receber pacote de contexto autorizado: historico recente do ticket, memoria curta de tickets anteriores do mesmo contato, resumo seguro de cadastro, resumo financeiro agregado e metadados de contratos/unidades;
+  - documentos longos, links e identificadores sensiveis sao sanitizados antes de entrar no prompt;
+  - D4Sign entra como metadado seguro de disponibilidade/status; leitura integral de contrato permanece dependente de ferramenta server-side dedicada para extracao e sanitizacao;
+  - encerramentos gerais como `nao precisa mais` agora sao respeitados mesmo fora do fluxo de selecao de boleto.
+- Arquivos alterados no recorte:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - `npx.cmd eslint lib/iris/caca-agent.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - simulacoes locais da Caca sem `OPENAI_API_KEY`: OK para `nao precisa mais`, `voce nao entendeu` e `contrato`;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: BLOQUEADO por erros preexistentes fora do recorte em `apps/hub/modules/squadops/HubItTicketsBoard.tsx`;
+  - `npm.cmd run build --workspace @repo/hub`: BLOQUEADO pelo mesmo erro de typecheck em SquadOps, apos compilacao inicial Next OK e warning conhecido Turbopack/NFT.
+- Bloqueio externo observado:
+  - `HubItTicketsBoard.tsx` referencia `isTicketInActiveQueue` e `isTicketInHistory` inexistentes e passa prop `view` para `EmptyQueue`, que nao aceita esse parametro.
+- Riscos conhecidos:
+  - A Caca ainda nao le o texto integral de PDFs/contratos D4Sign; ela usa apenas metadados seguros ate existir ferramenta de leitura/extracao homologada;
+  - validacao real com OpenAI, WhatsApp/Meta e dados autenticados depende de reteste do Lucas ou publicacao controlada posterior;
+  - typecheck/build globais dependem de correcao SquadOps fora deste recorte Iris.
+- Itens excluidos:
+  - envs, secrets, tokens, migrations, banco, D4Sign real, alias, homologacao e producao.
+- Proxima acao:
+  - corrigir ou isolar o bloqueio SquadOps para liberar `check-types:hub` e `build` globais; depois, Lucas pode autorizar Preview/Homologacao do protocolo Iris V7.
+
+Conclusao:
+- A Caca passa a ter contexto operacional muito mais rico sem receber acesso livre ao banco nem dados sensiveis crus.
+- O impacto pratico e reduzir repeticao, melhorar memoria da conversa e permitir respostas mais inteligentes sobre cadastro, contratos e financeiro dentro de limites seguros.
+- Nao ha acao de infraestrutura agora; o proximo passo e liberar o bloqueio externo de SquadOps ou autorizar um pacote limpo isolado para validacao/homologacao da Iris V7.
+
+## 2026-05-26 09:30:25 -03:00 - Zeus Operations - HelpDesk fila ativa historico e evidencias
+
+Assunto: [Zeus] HelpDesk fila ativa, historico e evidencias na devolutiva
+
+- Nome da squad/agente: Zeus.
+- Tipo da alteracao: UI/UX OPERACIONAL / HELPDESK / FILA / HISTORICO / ANEXOS.
+- Ambiente: local, sem deploy.
+- Status: `IMPLEMENTADO LOCALMENTE`.
+- Escopo:
+  - a fila ativa do HelpDesk passa a exibir apenas tickets que ainda dependem de acao do Zeus;
+  - tickets `aguardando_cliente`, `resolvido` e `fechado` saem da fila ativa e entram na aba `Historico`;
+  - `aguardando_cliente`, `resolvido` e `fechado` passam a usar tom verde/sucesso, porque a acao do Zeus ja foi feita;
+  - alerta vermelho de prazo fica restrito a tickets ainda em fila ativa, ou seja, tickets sob responsabilidade operacional do Zeus;
+  - a devolutiva do Zeus passa a aceitar arquivo, print, audio e gravacao de tela como evidencias anexadas ao ticket.
+- Arquivos alterados:
+  - `apps/hub/modules/squadops/HubItTicketsBoard.tsx`;
+  - `apps/hub/lib/hub-it-tickets/server.ts`;
+  - `docs/operations/engineering-operations.md`.
+- Itens sensiveis:
+  - nao houve env, secret, token, banco, migration, dominio, alias, homologacao ou producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/squadops/HubItTicketsBoard.tsx apps/hub/lib/hub-it-tickets/server.ts`: OK;
+  - `npx.cmd eslint modules/squadops/HubItTicketsBoard.tsx lib/hub-it-tickets/server.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: BLOQUEADO por erros preexistentes/fora do recorte em `apps/hub/lib/ares/server.ts` e `apps/hub/modules/ares/AresPage.tsx`; apos ajuste, nao restaram erros apontados nos arquivos HelpDesk alterados;
+  - `npm.cmd run lint:hub`: BLOQUEADO por warnings fora do recorte em `apps/hub/lib/ares/server.ts`.
+- Riscos conhecidos:
+  - captura de tela, audio e gravacao dependem das permissoes do navegador;
+  - limite operacional mantido em 4 evidencias e 6 MB por evidencia;
+  - validacao visual/autenticada da tela `ops.c2x.app.br/zeus` ainda depende do Lucas ou de uma publicacao posterior em homologacao.
+- Proxima acao:
+  - validar localmente ou publicar este recorte em homologacao quando o Lucas autorizar o pacote Zeus/HelpDesk.
+
+Conclusao:
+- A tela de tickets ficou separada entre fila ativa e historico, reduzindo a confusao operacional.
+- O impacto pratico e que tickets finalizados ou aguardando cliente deixam de parecer atraso do Zeus, enquanto tickets sob responsabilidade do Zeus continuam com sinalizacao de prazo.
+- Nao ha acao de infraestrutura agora; o proximo passo e validar o fluxo visual/autenticado e depois decidir se este recorte entra em homologacao.
+## 2026-05-26 09:46:43 -03:00 - Ares Core - Bases financeiras multiempresa
+
+Assunto: [Ares] Empresa ativa no lançamento
+
+- Nome da squad/agente: `Ares Core`.
+- Protocolo: `ARES-20260526-001-BASES-FINANCEIRAS`.
+- Ambiente: local + Supabase homologacao.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Origem:
+  - Lucas explicou que o financeiro da Careli tambem opera gestao financeira para outras empresas usando a mesma metodologia;
+  - Lucas aprovou a proposta de uma camada de empresa/base financeira e direcionou que o lancamento tenha campo `Empresa`, ja preenchido com a empresa ativa/logada no Ares.
+- Escopo executado:
+  - criada migration `0033_ares_financial_bases.sql` com `ares_financial_bases` e `ares_financial_base_users`;
+  - adicionada `financial_base_id` nas principais tabelas Ares de setup, lancamentos, contas, extratos e lotes;
+  - criada base inicial `Careli` em homologacao e backfill das dimensoes existentes para essa base;
+  - snapshot Ares passou a carregar empresas disponiveis por RLS e filtrar lancamentos, dimensoes, contas e leituras pela empresa ativa;
+  - lancamento passou a exigir `financialBaseId`, mostrar campo `Empresa` no popup e vir preenchido pela empresa selecionada no topo;
+  - Setup ganhou aba `Empresas` para cadastrar base financeira com cor de destaque e usuarios vinculados;
+  - Setup de departamentos, centros, categorias e projetos passou a gravar a empresa ativa junto da dimensao;
+  - Admin e coordenador (`admin`/`leader`) enxergam todas as bases e gerenciam Setup; operadores podem acessar/trabalhar nas bases onde houver vinculo ativo.
+- Arquivos incluidos:
+  - `apps/hub/app/api/ares/financial-bases/route.ts`;
+  - `apps/hub/app/api/ares/snapshot/route.ts`;
+  - `apps/hub/lib/ares/client.ts`;
+  - `apps/hub/lib/ares/server.ts`;
+  - `apps/hub/lib/ares/types.ts`;
+  - `apps/hub/modules/ares/AresPage.tsx`;
+  - `packages/database/migrations/0033_ares_financial_bases.sql`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - Apolo, Hades, Iris, Chronos, Atlas, Zeus, Hefesto e demais modulos fora do recorte Ares;
+  - envs, secrets, tokens, dominio, alias, producao e integracao bancaria/fiscal.
+- Validacoes:
+  - Supabase homologacao migration `0033`: OK, resultado agregado `{bases:1, entries_linked:0, dimensions_linked:5}`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, apenas warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, apenas warning conhecido de NFT em `engineering-operations-source.ts`;
+  - smoke local `GET /ares`: `200`;
+  - smoke local sem sessao: `/api/ares/snapshot`, `POST /api/ares/entries`, `POST /api/ares/dimensions` e `POST /api/ares/financial-bases`: `401`, esperado;
+  - scan `rg -n "title="` no recorte Ares: sem ocorrencias;
+  - `git diff --check` no recorte Ares/diario: OK, apenas aviso CRLF conhecido no diario.
+- Riscos conhecidos:
+  - a base inicial homologada e `Careli`; novas empresas e vinculos de usuarios dependem de cadastro real no Setup;
+  - nao houve validacao visual autenticada completa por browser automatizado nesta rodada, apenas smoke local HTTP;
+  - relacao do fornecedor com empresa no Apolo permanece como proximo recorte do Apolo, sem alteracao neste pacote;
+  - producao nao foi tocada.
+- Pendencias:
+  - Lucas validar a UX autenticada do seletor de empresa e do popup de lancamento;
+  - quando Lucas autorizar, publicar Preview limpo do recorte Ares ou encaminhar protocolo para Zeus/Hefesto conforme fluxo.
+- Conclusao:
+  - O Ares passa a operar com contexto multiempresa: antes de trabalhar a mesa financeira, existe uma empresa/base financeira ativa, e todo lancamento nasce amarrado a ela. Isso reduz risco de mistura de dados e prepara a futura integracao com fornecedores do Apolo por empresa.
+
+## 2026-05-26 09:50:59 -03:00 - Zeus Operations - Homologacao Iris Caca V7
+
+Assunto: [Iris] Homologacao Caca V7 com contexto controlado
+
+- Nome da squad/agente: Zeus coordenando homologacao do recorte Athena/Iris.
+- Protocolo: `IRIS-20260526-001-CACA-V7-CONTEXTO-CONTROLADO`.
+- Ambiente: `https://homo.c2x.app.br`.
+- Status: `EM HOMOLOGACAO`.
+- Deployment publicado:
+  - `dpl_BCYfcjZeQh3UJi9hmum1QC26cyr9`;
+  - Preview: `https://careli-hub-hub-i2bs-66e5j8uwv-lucasruas-devs-projects.vercel.app`.
+- Rollback imediato:
+  - `dpl_7oWCuwm6gnC5KdrwWPtk4iQgQx9f`.
+- Base preservada:
+  - homologacao vigente consolidada Iris/Apolo/Ares em `dpl_7oWCuwm6gnC5KdrwWPtk4iQgQx9f`.
+- Pacote limpo:
+  - `.codex-deploy/iris-caca-v7-homolog-20260526-093848/workspace`;
+  - manifesto `.codex-deploy/iris-caca-v7-homolog-20260526-093848/homologation-safety-gate.json`.
+- Liberacao executada:
+  - o bloqueio reportado pela Athena foi tratado por isolamento em pacote limpo baseado no deployment atual de homologacao;
+  - o pacote validado nao trouxe os erros do root misto/Ares e nao exigiu publicar a nova tela HelpDesk junto da Caca.
+- Arquivos incluidos:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - envs, secrets, tokens, banco, migrations, service role, dominio/alias de producao e producao;
+  - root misto, recortes Ares em andamento, nova tela HelpDesk/Zeus e demais modulos fora da base homologada.
+- Validacoes executadas:
+  - `npx.cmd eslint lib/iris/caca-agent.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK no pacote limpo;
+  - `npm.cmd run lint:hub`: OK no pacote limpo, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK no pacote limpo, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - Safety Gate pre-deploy: PASS, esperado `dpl_7oWCuwm6gnC5KdrwWPtk4iQgQx9f`;
+  - deploy Preview Vercel: OK, `dpl_BCYfcjZeQh3UJi9hmum1QC26cyr9`;
+  - Preview `/iris`: `200`;
+  - Preview `/login`: `200`;
+  - Safety Gate pre-alias: PASS;
+  - alias `homo.c2x.app.br`: OK para `dpl_BCYfcjZeQh3UJi9hmum1QC26cyr9`;
+  - pos-alias `npx.cmd vercel inspect https://homo.c2x.app.br`: Ready em `dpl_BCYfcjZeQh3UJi9hmum1QC26cyr9`;
+  - pos-alias `/iris`: `200`;
+  - pos-alias `/login`: `200`;
+  - pos-alias `POST /api/iris/attendant` sem sessao: `401`, esperado;
+  - pos-alias `GET /api/iris/attendant`: `405`, esperado para metodo nao suportado;
+  - logs Vercel `--since 10m --level error`: sem logs encontrados;
+  - Safety Gate pos-alias: PASS.
+- Riscos conhecidos:
+  - validacao funcional real da Caca V7 depende de conversa autenticada/WhatsApp em homologacao;
+  - Caca V7 ainda nao le contrato D4Sign integral; usa somente metadados seguros ate existir extracao/sanitizacao server-side dedicada;
+  - build remoto Vercel avisou sobre variaveis `HOMOLOG_*` fora do `turbo.json` e `npm audit`, sem falha de build e sem exposicao de valores;
+  - producao nao foi tocada.
+- Proxima acao:
+  - Lucas testar a Caca em homologacao com conversas reais e validar se o contexto rico ficou natural, sem expor dados sensiveis nem inventar leitura de contrato.
+
+Conclusao:
+- A Caca V7 foi homologada em pacote limpo, preservando a base atual de homologacao e sem publicar o root misto.
+- O impacto pratico e que a agente da Iris passa a responder com contexto recente, memoria segura, dados agregados e metadados controlados, mantendo limites de seguranca para D4Sign e dados sensiveis.
+- Nao ha acao em producao agora; o proximo passo e a validacao funcional do Lucas em `https://homo.c2x.app.br`.
+
+## 2026-05-26 09:52:34 -03:00 - Hades Core - Abertura Iris com assunto e parcelas vencidas
+
+Assunto: [Hades] Formulario Iris com assuntos de cobranca
+
+- Nome da squad/agente: `Hades Core`.
+- Protocolo: `HADES-20260526-002-ABERTURA-IRIS-ASSUNTOS-PARCELAS`.
+- Ambiente: desenvolvimento local.
+- Status: `PRONTO PARA HOMO`.
+- Origem:
+  - Lucas solicitou que o formulario de abertura Iris no Hades deixe de usar a nomenclatura `Perfil` e passe a operar como `Assunto`;
+  - o assunto deve herdar da Iris os assuntos da fila `Cobranca`;
+  - a selecao de parcelas deve mostrar somente parcelas vencidas, pois esse e o gatilho operacional do atendimento de cobranca.
+- Escopo executado:
+  - formulario `Abertura Iris` passou a exibir `Assunto` no lugar de `Perfil` nos campos, checklist, contexto do atendimento e mensagens operacionais;
+  - o assunto selecionado continua vindo da estrutura real da Iris em `caredesk_ticket_profiles`, filtrado pela fila selecionada e com a fila `Cobranca` preselecionada pelo fluxo existente;
+  - o ticket criado pela Iris passa a receber o assunto real selecionado como `subject`, em vez de prefixar o assunto com `Cobranca Hades`;
+  - o seletor de parcelas relacionadas passou a listar apenas parcelas vencidas ou efetivamente atrasadas, excluindo parcelas liquidadas, pagas e futuras;
+  - quando nao houver parcela vencida na unidade selecionada, o formulario informa que nenhuma parcela vencida foi encontrada para aquela unidade;
+  - metadados do ticket preservam os identificadores das parcelas e tambem labels legiveis das parcelas selecionadas para rastreabilidade no atendimento Iris/Hades.
+- Arquivos alterados:
+  - `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - rotas/API Iris, board Iris, sidebar Hades, dashboard Hades, C2X sync, envs, secrets, migrations, banco, dominio, alias, homologacao e producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`: OK, apenas aviso CRLF conhecido;
+  - `npx.cmd eslint modules/guardian/attendance/components/WhatsAppConversationPanel.tsx --max-warnings 0`: OK, apenas warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run lint:hub`: OK, apenas warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: primeira tentativa bloqueada por processo Next build paralelo; apos encerramento do processo, rerun OK, apenas warning conhecido Turbopack/NFT em `engineering-operations-source.ts`;
+  - smoke local `GET http://localhost:3001/hades/cobranca`: `200 OK`;
+  - browser local em `http://localhost:3001/hades/cobranca`: redirecionou para `/login` por ausencia de sessao autenticada no browser de validacao; popup autenticado nao foi exercitado nessa checagem.
+- Riscos conhecidos:
+  - validacao visual autenticada do popup ainda depende do Lucas abrir um cliente real no Hades e conferir a lista de assuntos/parcelas no fluxo completo;
+  - o browser local sem sessao exibiu console errors no contexto de login/dev server, fora do popup Hades; precisa ser reavaliado em sessao autenticada caso persista para Lucas;
+  - o filtro usa dados carregados do C2X no cliente selecionado; se a fila ainda nao tiver carregado detalhes do cliente, o formulario continua aguardando parcelas reais;
+  - producao, homologacao e aliases nao foram tocados neste recorte.
+- Pendencias:
+  - Lucas validar localmente se todos os assuntos de cobranca aparecem conforme o Setup da Iris;
+  - Lucas validar um cliente com parcelas futuras e vencidas para confirmar que somente as vencidas aparecem no seletor.
+- Proxima acao:
+  - se Lucas aprovar o teste local, publicar Preview/Homo pelo protocolo `HADES-20260526-002-ABERTURA-IRIS-ASSUNTOS-PARCELAS`.
+
+Conclusao:
+- O formulario de abertura Iris dentro do Hades agora fala a mesma linguagem operacional da Iris: `Fila` e `Assunto`.
+- O impacto pratico e reduzir erro de abertura de cobranca, evitando que o operador selecione parcela futura em um atendimento cujo gatilho deve ser inadimplencia vencida.
+- Nao ha acao de infraestrutura agora; o proximo passo e Lucas validar o popup em um cliente real no localhost.
+
+## 2026-05-26 10:01:53 -03:00 - Iris Core - Saudacao da Caca no fuso Careli
+
+Assunto: [Iris] Correcao de saudacao por fuso horario
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: CORRECAO / IA ATENDIMENTO / FUSO HORARIO.
+- Ambiente: local.
+- Protocolo: `IRIS-20260526-002-CACA-FUSO-SAUDACAO`.
+- Status: `PRONTO PARA HOMO`.
+- Motivo da mudanca:
+  - Lucas validou em homologacao que a Caca respondeu `Boa tarde` durante a manha no Brasil.
+- Diagnostico:
+  - o alias `https://homo.c2x.app.br` esta apontando para o deployment V7 `dpl_BCYfcjZeQh3UJi9hmum1QC26cyr9`;
+  - o problema observado nao era ausencia da V7, mas calculo de saudacao usando fuso do runtime/servidor em vez do fuso operacional da Careli;
+  - 09:55 em `America/Sao_Paulo` pode ser interpretado como 12:55 em UTC, gerando `Boa tarde`.
+- Ajuste aplicado:
+  - `greetingForNow` passou a calcular a hora via `Intl.DateTimeFormat` com `timeZone: America/Sao_Paulo`;
+  - fallback preservado para `Date.getHours()` apenas se a leitura de hora formatada falhar.
+- Arquivos alterados no recorte:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - `npx.cmd eslint lib/iris/caca-agent.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - simulacao local sem OpenAI para `Oi` em `2026-05-26T12:55:00.000Z`: retornou `Bom dia`;
+  - simulacao local sem OpenAI para `Oi` em `2026-05-26T17:10:00.000Z`: retornou `Boa tarde`;
+  - simulacao local sem OpenAI para `Oi` em `2026-05-26T22:10:00.000Z`: retornou `Boa noite`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Arquivos excluidos:
+  - envs, secrets, tokens, banco, migrations, service role, webhook Meta, alias, homologacao e producao.
+- Riscos conhecidos:
+  - a correcao ainda nao esta publicada em homologacao; para refletir em `homo.c2x.app.br`, precisa Preview/Homo pelo protocolo acima.
+- Proxima acao:
+  - Lucas autorizar publicacao em homologacao do protocolo `IRIS-20260526-002-CACA-FUSO-SAUDACAO`.
+
+Conclusao:
+- A causa foi fuso horario do runtime, nao falta da Caca V7 em homologacao.
+- O impacto pratico e que a Caca passa a cumprimentar pelo horario operacional da Careli, mesmo se o servidor rodar em UTC.
+- Nao ha acao em producao agora; o proximo passo e publicar o recorte em homologacao quando Lucas autorizar.
+
+## 2026-05-26 10:35:13 -03:00 - Iris Core - Caca V8 agent-first contextual
+
+Assunto: [Iris] Caca V8 agent-first com fallback contextual
+
+- Nome da squad/agente: Iris Core.
+- Tipo da alteracao: IA ATENDIMENTO / COMPORTAMENTO / CONTEXTO.
+- Ambiente: local.
+- Protocolo: `IRIS-20260526-003-CACA-V8-AGENT-FIRST`.
+- Status: `PRONTO PARA HOMO`.
+- Motivo da mudanca:
+  - Lucas validou a V7 em homologacao e apontou que, apesar do contexto rico, a Caca ainda parecia bot quando caia em respostas genericas como `vou tentar de outro jeito`.
+- Ajuste aplicado:
+  - `CACA_AGENT_VERSION` atualizado para `iris-caca-agent-v8`;
+  - atendimento geral passou a ser `agent-first`: carrega contexto rico e tenta OpenAI antes de qualquer fallback deterministico social/generico;
+  - fallback deterministico passou a usar o contexto rico quando a OpenAI nao responder;
+  - perguntas sobre atendimento anterior/historico passam a responder com protocolo/status/ultima mensagem sanitizada de tickets anteriores quando disponivel;
+  - perguntas sobre contrato usam metadados seguros de contrato/unidade sem afirmar leitura integral do documento D4Sign;
+  - perguntas financeiras usam apenas totais agregados de parcelas e mantem detalhes/valores sob validacao humana ou ferramenta oficial;
+  - saudacao com fuso `America/Sao_Paulo` foi preservada e a saudacao operacional atual agora entra no prompt OpenAI.
+- Arquivos alterados no recorte:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes executadas:
+  - simulacao local sem OpenAI com memoria de ticket anterior para `vc sabe o que conversamos no ultimo atendimento?`: retornou protocolo anterior e ultima mensagem sanitizada;
+  - simulacao local sem OpenAI para `Historico do meu atendimento`: retornou protocolo anterior e ultima mensagem sanitizada;
+  - simulacao local sem OpenAI para `como vc esta?`: respondeu de forma social e contextual;
+  - simulacao local sem OpenAI para `contrato`: respondeu com fallback de contrato sem inventar leitura de PDF;
+  - simulacao local sem OpenAI para `quanto ja paguei`: respondeu com fallback financeiro seguro;
+  - simulacao local da saudacao em `09:55`, `14:10` e `19:10` no fuso Sao Paulo: OK (`Bom dia`, `Boa tarde`, `Boa noite`);
+  - `npx.cmd eslint lib/iris/caca-agent.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: primeira execucao falhou por chamada antiga do fallback sem contexto; apos correcao, OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: primeira execucao falhou pelo mesmo typecheck do fallback; apos correcao, OK, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Itens excluidos:
+  - envs, secrets, tokens, banco, migrations, service role, webhook Meta, alias, homologacao e producao.
+- Riscos conhecidos:
+  - validacao real do comportamento agent-first depende de OpenAI configurada em homologacao e teste WhatsApp real;
+  - se a OpenAI estiver indisponivel, a V8 ainda responde por fallback contextual, mas sem a fluidez plena do modelo;
+  - a Caca ainda nao le integralmente PDFs/contratos D4Sign; usa metadados seguros ate existir ferramenta dedicada de extracao/sanitizacao.
+- Proxima acao:
+  - Lucas pode subir em homologacao pelo protocolo `IRIS-20260526-003-CACA-V8-AGENT-FIRST`, preferencialmente em pacote limpo preservando a base atual de `homo.c2x.app.br`.
+
+Conclusao:
+- A V8 muda a prioridade operacional: primeiro agente com contexto, depois fallback seguro.
+- O impacto pratico e reduzir respostas com cara de bot quando o cliente pergunta sobre historico, suporte, contrato ou financeiro.
+- Nao ha acao em producao agora; o proximo passo e publicar em homologacao quando autorizado.
+
+## 2026-05-26 09:59:04 -03:00 - Hades Core - Preview da mensagem na abertura Iris
+
+Assunto: [Iris] Preview do template na abertura
+
+- Nome da squad/agente: `Hades Core`.
+- Protocolo: `HADES-20260526-003-ABERTURA-IRIS-PREVIEW-MENSAGEM`.
+- Ambiente: desenvolvimento local.
+- Status: `PRONTO PARA RETESTE`.
+- Origem:
+  - Lucas solicitou preview do texto que sera enviado ao cliente ja no modal de abertura do ticket Iris.
+- Escopo executado:
+  - modal `Abertura Iris` passou a exibir um bloco `Preview da mensagem` com renderizacao do corpo do template selecionado;
+  - preview aplica as variaveis operacionais do fluxo:
+    - `{{1}}` nome do cliente;
+    - `{{2}}` resumo das parcelas selecionadas;
+    - `{{3}}` protocolo de referencia para cobranca;
+  - quando nao houver corpo no template, o modal informa que o template esta sem corpo configurado para preview;
+  - protocolo de referencia tambem aparece abaixo do preview para o operador confirmar antes de abrir.
+- Arquivos alterados:
+  - `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - API Iris, banco, migrations, envs, secrets, dominio, alias, homologacao e producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`: OK, apenas aviso CRLF conhecido;
+  - `npx.cmd eslint modules/guardian/attendance/components/WhatsAppConversationPanel.tsx --max-warnings 0`: OK, apenas warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, apenas warning conhecido Turbopack/NFT em `engineering-operations-source.ts`.
+- Riscos conhecidos:
+  - o preview mostra a mensagem prevista com os dados atuais do formulario; alteracoes posteriores de parcelas/template mudam o preview em tempo real, e a referencia de protocolo segue estimativa operacional quando o protocolo final sera gerado na abertura.
+- Pendencias:
+  - Lucas validar visualmente no fluxo autenticado de cobranca se o preview ficou claro para operacao.
+
+Conclusao:
+- O operador agora enxerga a mensagem antes do disparo, reduzindo risco de envio com contexto errado.
+- O impacto pratico e mais controle na abertura do ticket ativo e melhor previsibilidade do texto enviado ao cliente.
+- Nao ha acao de infraestrutura agora; proximo passo e validacao funcional do Lucas no modal de abertura.
+
+## 2026-05-26 10:17:10 -03:00 - Zeus Operations - Homologacao Ares bases financeiras
+
+Assunto: [Ares] Homologacao bases financeiras multiempresa
+
+- Nome da squad/agente: Zeus coordenando homologacao do recorte Ares.
+- Protocolo: ARES-20260526-001-BASES-FINANCEIRAS.
+- Ambiente: https://homo.c2x.app.br.
+- Status: EM HOMOLOGACAO.
+- Deployment publicado:
+  - dpl_AqqeSA2T1u7B37rZsf4LDrCWxSDj;
+  - Preview: https://careli-hub-hub-i2bs-cr3w4qvfj-lucasruas-devs-projects.vercel.app.
+- Rollback imediato:
+  - dpl_BCYfcjZeQh3UJi9hmum1QC26cyr9.
+- Base preservada:
+  - Iris/Caca V7 homologada em dpl_BCYfcjZeQh3UJi9hmum1QC26cyr9.
+- Pacote limpo:
+  - .codex-deploy/ares-financial-bases-homolog-20260526-100211/workspace;
+  - manifesto .codex-deploy/ares-financial-bases-homolog-20260526-100211/homologation-safety-gate.json.
+- Observacao de origem:
+  - o worktree oficial careli-hub-worktrees/ares estava limpo, mas sem os arquivos do recorte financeiro novo;
+  - o corte estava no root misto como arquivos Ares ainda nao versionados;
+  - Zeus nao publicou do root: montou pacote limpo a partir do homo vigente e aplicou overlay restrito aos arquivos Ares.
+- Arquivos incluidos:
+  - apps/hub/app/api/ares/financial-bases/route.ts;
+  - apps/hub/app/api/ares/snapshot/route.ts;
+  - apps/hub/lib/ares/client.ts;
+  - apps/hub/lib/ares/server.ts;
+  - apps/hub/lib/ares/types.ts;
+  - apps/hub/modules/ares/AresPage.tsx;
+  - docs/operations/engineering-operations.md;
+  - docs/operations/releases-homologation.md;
+  - docs/operations/panteon-recorte-protocols.md.
+- Arquivos excluidos:
+  - envs, secrets, tokens, service role, producao, dominio, alias de producao, node_modules, artefatos de build e migrations;
+  - packages/database/migrations/0033_ares_financial_bases.sql nao foi enviado no pacote Vercel.
+- Banco/migration:
+  - Zeus nao executou DDL nesta homologacao;
+  - a migration 0033_ares_financial_bases.sql permanece registrada como aplicada em Supabase homologacao pelo Ares, com base inicial Careli.
+- Validacoes executadas no pacote limpo:
+  - npx.cmd eslint app/api/ares/financial-bases/route.ts app/api/ares/snapshot/route.ts lib/ares/client.ts lib/ares/server.ts lib/ares/types.ts modules/ares/AresPage.tsx --max-warnings 0: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run build --workspace @repo/hub: OK, com warning conhecido Turbopack/NFT em engineering-operations-source.ts;
+  - Safety Gate pre-deploy: PASS com base dpl_BCYfcjZeQh3UJi9hmum1QC26cyr9;
+  - deploy Preview Vercel: OK, dpl_AqqeSA2T1u7B37rZsf4LDrCWxSDj;
+  - Preview inspecionado: Ready, projeto careli-hub-hub-i2bs;
+  - Safety Gate pre-alias: PASS;
+  - alias homo.c2x.app.br: OK para dpl_AqqeSA2T1u7B37rZsf4LDrCWxSDj;
+  - Safety Gate pos-alias: PASS.
+- Healthchecks pos-alias:
+  - GET /ares: 200;
+  - GET /iris: 200;
+  - GET /login: 200;
+  - GET /api/ares/snapshot sem sessao: 401, esperado;
+  - GET /api/ares/financial-bases: 405, esperado por metodo nao suportado;
+  - POST /api/ares/financial-bases sem sessao: 401, esperado;
+  - GET /api/iris/meta/templates sem sessao: 401, esperado;
+  - GET /api/iris/attendant: 405, esperado para metodo nao suportado;
+  - npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao autenticada visual da aba Empresas, seletor de empresa ativa e popup de lancamento segue com Lucas;
+  - novas empresas e vinculos de usuarios dependem de cadastro real no Setup do Ares;
+  - relacao fornecedor/empresa no Apolo permanece fora deste recorte;
+  - producao nao foi tocada.
+- Proxima acao:
+  - Lucas validar em homologacao o fluxo Ares multiempresa e confirmar se o protocolo pode virar HOMOLOGADO ou PRONTO PARA PRODUCAO depois.
+
+Conclusao:
+- O recorte Ares foi para homologacao sem sobrescrever a Iris/Caca V7 e sem publicar o root misto.
+- O impacto pratico e que o Ares passa a testar em homo.c2x.app.br a empresa/base financeira ativa, mantendo os dados financeiros separados por contexto.
+- Nao ha acao em producao agora; o proximo passo e a validacao autenticada do Lucas.
+
+## 2026-05-26 10:49:00 -03:00 - Zeus Operations - HelpDesk fila ativa historico e evidencias em producao
+
+Assunto: [Zeus] HelpDesk fila ativa historico e evidencias em producao
+
+- Nome da squad/agente: Zeus Operations.
+- Protocolo: ZEUS-20260526-HELPDESK-FILA-HISTORICO-EVIDENCIAS-PROD.
+- Ambiente: producao, aliases https://ops.c2x.app.br e https://c2x.app.br.
+- Status: EM PRODUCAO.
+- Autorizacao: Lucas perguntou se a melhoria Zeus de hoje ja estava em producao e autorizou subir caso nao estivesse.
+- Base de producao preservada:
+  - deployment anterior: dpl_4feJYS8Wtgejf6kT7snxbLLARops;
+  - base de codigo: codex/zeus/iris-meta-template-final-20260525, commit db68454;
+  - escopo preservado do production anterior: Apolo perfil/carteira, Login sem e-mail pre-preenchido, Hermes/PulseX links clicaveis e Iris em standby server-side para producao.
+- Deployment publicado:
+  - novo: dpl_69GhASBvtfMagPehERvLMBcneKcT;
+  - URL tecnica: https://careli-hub-hub-i2bs-lpt8nlu5z-lucasruas-devs-projects.vercel.app;
+  - aliases confirmados: https://ops.c2x.app.br e https://c2x.app.br.
+- Rollback imediato:
+  - promover novamente dpl_4feJYS8Wtgejf6kT7snxbLLARops se houver regressao critica no OPS/Zeus ou no Panteon principal.
+- Pacote limpo:
+  - .codex-deploy/zeus-helpdesk-prod-20260526-103538/workspace;
+  - manifesto .codex-deploy/zeus-helpdesk-prod-20260526-103538/production-manifest.json.
+- Escopo publicado:
+  - lista do HelpDesk separada entre fila ativa e historico;
+  - tickets finalizados, resolvidos ou aguardando cliente saem da fila ativa e deixam de sinalizar atraso vermelho operacional;
+  - historico fica disponivel para consulta de tickets concluidos/aguardando cliente;
+  - devolutiva tecnica passa a aceitar anexos/evidencias no fluxo do HelpDesk, incluindo arquivos, prints/imagens e midias gravadas quando suportado pelo navegador.
+- Arquivos incluidos:
+  - apps/hub/modules/squadops/HubItTicketsBoard.tsx;
+  - apps/hub/lib/hub-it-tickets/server.ts;
+  - docs/operations/engineering-operations.md;
+  - docs/operations/releases-production.md.
+- Arquivos excluidos:
+  - root misto de homolog;
+  - envs, secrets, tokens, service role, banco, migrations, dominio novo, alias de homologacao, node_modules, .next e .turbo;
+  - recortes recentes de Iris/Ares/Athena/Apollo que estavam apenas em homologacao.
+- Validacoes executadas no pacote limpo:
+  - varredura de env sensivel: OK, sem .env ou .env.local no pacote; apenas arquivos .env.example versionados;
+  - git diff --check do recorte contra a base production: OK, com avisos CRLF conhecidos no Windows;
+  - npx.cmd eslint modules/squadops/HubItTicketsBoard.tsx lib/hub-it-tickets/server.ts --max-warnings 0: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run build --workspace @repo/hub: OK, com warnings conhecidos de Turbo global, root inference e Turbopack/NFT.
+- Build remoto Vercel Production:
+  - READY;
+  - warnings conhecidos: npm audit com vulnerabilidades herdadas, engines Node, Turbopack/NFT e envs Postgres antigas fora do turbo.json.
+- Healthchecks pos-deploy:
+  - npx.cmd vercel inspect https://ops.c2x.app.br: Ready, deployment dpl_69GhASBvtfMagPehERvLMBcneKcT;
+  - npx.cmd vercel inspect https://c2x.app.br: Ready, deployment dpl_69GhASBvtfMagPehERvLMBcneKcT;
+  - GET https://ops.c2x.app.br/: 307 esperado para Zeus;
+  - GET https://ops.c2x.app.br/zeus: 200;
+  - GET https://ops.c2x.app.br/login: 200;
+  - GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all sem sessao: 401 esperado;
+  - GET https://c2x.app.br/: 200;
+  - GET https://c2x.app.br/login: 200;
+  - GET https://c2x.app.br/apolo: 200;
+  - GET https://c2x.app.br/hermes: 200;
+  - GET https://c2x.app.br/iris: 200;
+  - GET https://c2x.app.br/api/iris/meta/templates sem sessao: 401 esperado;
+  - GET https://c2x.app.br/api/hermes/messages sem sessao: 401 esperado;
+  - npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error: sem logs encontrados;
+  - npx.cmd vercel logs https://c2x.app.br --since 10m --level error: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao visual autenticada do Lucas ainda e necessaria para confirmar a experiencia real da fila/historico e anexos no OPS;
+  - https://ops.c2x.app.br e https://c2x.app.br compartilham o mesmo deployment Vercel, entao o recorte Zeus tambem atualizou o alias principal;
+  - captura de audio/video depende das permissoes e capacidades do navegador do operador.
+- Proxima acao:
+  - Lucas validar em https://ops.c2x.app.br/zeus a aba HelpDesk com tickets reais e testar anexo/print/gravação em uma devolutiva.
+
+Conclusao:
+- A melhoria Zeus/HelpDesk de hoje nao estava em producao; foi publicada agora por pacote limpo, preservando o deployment production anterior como base e sem usar o root misto.
+- O impacto pratico e reduzir confusao na fila ativa, manter finalizados no historico e permitir devolutivas com evidencias mais ricas.
+- Nao houve alteracao de env, secret, banco ou migration; se houver regressao, o rollback imediato e dpl_4feJYS8Wtgejf6kT7snxbLLARops.
+
+## 2026-05-26 12:52:00 -03:00 - Zeus Operations - Homologacao Hades/Athena com OpenAI Preview
+
+Assunto: [Zeus] Homologacao Hades/Athena com OpenAI Preview
+
+- Nome da squad/agente: Zeus Operations.
+- Protocolo: ZEUS-20260526-003-HADES-ATHENA-ENV-HOMO.
+- Ambiente: homologacao, alias https://homo.c2x.app.br.
+- Status: EM HOMOLOGACAO.
+- Autorizacao: Lucas autorizou subir a alteracao Hades/Athena e explicitamente autorizou configurar as envs OpenAI no ambiente Preview, sem exposicao de valores.
+- Base preservada:
+  - deployment vigente antes do alias: dpl_DGqpRzTVWzXX3oV2EWu1NWUtpocB;
+  - escopo da base: pacote composto Ares/Iris/Hades/Athena ja publicado em homologacao.
+- Deployment publicado:
+  - novo: dpl_JAkrCtb8Yem8RrQqwYYKhYssWh7q;
+  - Preview: https://careli-hub-hub-i2bs-a9mmdi8cr-lucasruas-devs-projects.vercel.app;
+  - alias confirmado: https://homo.c2x.app.br.
+- Rollback imediato:
+  - apontar novamente homo.c2x.app.br para dpl_DGqpRzTVWzXX3oV2EWu1NWUtpocB se houver regressao critica.
+- Pacote limpo:
+  - .codex-deploy/z26-003-hades-athena-env-20260526-123526/w;
+  - manifesto .codex-deploy/z26-003-hades-athena-env-20260526-123526/homologation-safety-gate.json.
+- Escopo publicado:
+  - Hades: protocolo HADES-20260526-004-IRIS-BOARD-SEM-C2X preservado/aplicado para abrir o board Iris em hades/cobranca?view=iris sem depender de cliente C2X selecionado;
+  - Hades: regra de exclusao de empreendimentos ficou restrita a producao explicita; Preview/homologacao/local usam todos os empreendimentos com e.id valido;
+  - Athena/Iris: envs OpenAI cadastradas em Preview (homolog) para o novo deployment usar a Caca com OpenAI em vez de apenas fallback deterministico.
+- Arquivos incluidos:
+  - apps/hub/modules/guardian/attendance/AttendancePage.tsx;
+  - apps/hub/lib/guardian/runtime-environment.ts;
+  - apps/hub/lib/guardian/overview.ts;
+  - apps/hub/lib/guardian/attendance.ts.
+- Env sensivel alterada:
+  - nomes cadastrados em Preview (homolog): OPENAI_API_KEY, HUB_AI_MODEL, HUB_IRIS_ATTENDANT_MODEL;
+  - nenhum valor foi impresso, registrado ou commitado.
+- Itens excluidos:
+  - producao, banco, migrations, service role, dominios de producao, aliases de producao, alteracao de WABA/Meta, root misto fora do recorte e valores sensiveis.
+- Validacoes executadas:
+  - npx.cmd vercel env ls: confirmou OPENAI_API_KEY, HUB_AI_MODEL e HUB_IRIS_ATTENDANT_MODEL em Preview (homolog), sem valores;
+  - git diff --check do recorte Hades: OK;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run build --workspace @repo/hub: OK, com warnings conhecidos Turbopack/NFT e lockfile;
+  - Safety Gate pre-deploy: PASS;
+  - Safety Gate pre-alias: PASS;
+  - npx.cmd vercel deploy --yes --target preview: READY;
+  - npx.cmd vercel alias set Preview homo.c2x.app.br: OK;
+  - npx.cmd vercel inspect https://homo.c2x.app.br: Ready em dpl_JAkrCtb8Yem8RrQqwYYKhYssWh7q;
+  - GET https://homo.c2x.app.br/: 200;
+  - GET https://homo.c2x.app.br/login: 200;
+  - GET https://homo.c2x.app.br/iris: 200;
+  - GET https://homo.c2x.app.br/hades/cobranca?view=iris: 200;
+  - GET https://homo.c2x.app.br/api/iris/meta/templates sem sessao: 401 esperado;
+  - GET https://homo.c2x.app.br/api/ares/snapshot sem sessao: 401 esperado;
+  - npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error: sem logs encontrados.
+- Riscos conhecidos:
+  - confirmacao de que a Caca esta usando OpenAI depende de teste autenticado real e/ou inspeção sanitizada de metadata/timeline apos nova resposta;
+  - envs foram escopadas ao Preview da branch homolog para evitar vazamento amplo;
+  - producao nao foi tocada.
+- Proxima acao:
+  - Lucas testar em homologacao a Caca/Athena em ticket novo e a tela Hades com todos empreendimentos; se a Caca ainda cair em fallback, verificar metadata sanitizada de lastSource sem expor conteudo sensivel.
+
+Conclusao:
+- A homologacao agora preserva o pacote composto vigente, adiciona o ajuste Hades pendente e habilita OpenAI da Athena/Caca no ambiente Preview de homologacao.
+- O impacto pratico e que Hades pode testar todos os empreendimentos em homo, enquanto producao continua com a regra de exclusao; a Caca deixa de depender somente de fallback quando o runtime de homo responde.
+- Nao ha acao em producao agora; o proximo passo e validacao autenticada do Lucas.
+
+## 2026-05-26 13:56:00 -03:00 - Zeus Operations - Correcao OpenAI runtime da Caca em homologacao
+
+Assunto: [Iris] Correcao OpenAI runtime da Caca em homologacao
+
+- Nome da squad/agente: Zeus Operations.
+- Protocolo: ZEUS-20260526-004-IRIS-OPENAI-RUNTIME-HOMO.
+- Ambiente: homologacao, alias https://homo.c2x.app.br.
+- Status: EM HOMOLOGACAO.
+- Motivo:
+  - Lucas reportou que o ticket AT-000023 ainda registrou respostas da Caca como fallback deterministic;
+  - metadata do ticket indicou OPENAI_API_KEY indisponivel no runtime, apesar das envs constarem em Preview (homolog).
+- Diagnostico:
+  - o deployment anterior de homo era dpl_JAkrCtb8Yem8RrQqwYYKhYssWh7q;
+  - o alias tecnico do deployment manual aparecia como lucasruas-dev, enquanto as envs OpenAI haviam sido cadastradas em Preview (homolog);
+  - tentativa de cadastrar Preview (lucasruas-dev) falhou porque esse nome nao e branch Git real conectada;
+  - o problema foi escopo de env/deploy manual, nao codigo da Caca.
+- Correcao aplicada:
+  - gerado novo Preview a partir do pacote limpo vigente injetando runtime envs no proprio deployment: OPENAI_API_KEY, HUB_AI_MODEL e HUB_IRIS_ATTENDANT_MODEL;
+  - nenhum valor sensivel foi impresso, registrado ou commitado;
+  - homo.c2x.app.br foi apontado para o novo Preview apos Safety Gate.
+- Deployment publicado:
+  - novo: dpl_HZ255rc1erkhv1ct6ZPJQ6qik6TE;
+  - Preview: https://careli-hub-hub-i2bs-b0myvx9wb-lucasruas-devs-projects.vercel.app;
+  - alias confirmado: https://homo.c2x.app.br.
+- Rollback imediato:
+  - dpl_JAkrCtb8Yem8RrQqwYYKhYssWh7q.
+- Pacote limpo:
+  - .codex-deploy/z26-004-iris-openai-runtime-20260526-133506/w;
+  - manifesto .codex-deploy/z26-004-iris-openai-runtime-20260526-133506/homologation-safety-gate.json.
+- Validacoes executadas:
+  - Safety Gate pre-deploy: PASS;
+  - npx.cmd vercel deploy --yes --target preview --force com runtime envs: READY;
+  - Safety Gate pre-alias: PASS;
+  - npx.cmd vercel alias set Preview homo.c2x.app.br: OK;
+  - npx.cmd vercel inspect https://homo.c2x.app.br: Ready em dpl_HZ255rc1erkhv1ct6ZPJQ6qik6TE;
+  - GET https://homo.c2x.app.br/: 200;
+  - GET https://homo.c2x.app.br/login: 200;
+  - GET https://homo.c2x.app.br/iris: 200;
+  - GET https://homo.c2x.app.br/hades/cobranca?view=iris: 200;
+  - GET https://homo.c2x.app.br/api/iris/meta/templates sem sessao: 401 esperado;
+  - npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error: sem logs encontrados.
+- Decisao de processo:
+  - nao e necessario criar outro repositorio Git para homologacao;
+  - o recomendado e manter uma branch real homolog conectada ao Vercel e publicar homo a partir dela, ou configurar envs Preview gerais/sem branch pelo dashboard/API para deploys manuais;
+  - enquanto o CLI exigir branch para env Preview, deploy manual de homo que dependa de OpenAI deve declarar runtime envs no proprio deployment ou ser feito pela branch/escopo correto.
+- Riscos conhecidos:
+  - runtime env injetada resolve este deployment, mas nao substitui governanca permanente de env Preview;
+  - confirmacao funcional final depende de novo teste autenticado e metadata do proximo ticket mostrar lastSource=openai.
+- Proxima acao:
+  - Lucas criar/testar novo atendimento/ticket na Iris em homologacao;
+  - se a proxima resposta ainda aparecer deterministic, consultar metadata sanitizada do ticket novo e logs sem expor conteudo sensivel.
+
+Conclusao:
+- O fallback do AT-000023 foi causado por runtime sem OPENAI_API_KEY, nao por falta de prompt ou modelo.
+- O homo agora aponta para um deployment novo com as envs OpenAI injetadas no runtime.
+- Nao precisa criar novo Git/repo para homologacao; precisamos padronizar branch homolog real ou env Preview geral para evitar esse desencontro.
+
+## 2026-05-26 15:25:40 -03:00 - Iris/Athena - Homologacao Caca V9 financeiro controlado
+
+Assunto: [Iris] Homologacao Caca V9 financeiro controlado
+
+- Nome da squad/agente: Zeus coordenando recorte Athena/Iris.
+- Protocolo: IRIS-20260526-004-CACA-V9-FINANCEIRO-CONTROLADO.
+- Ambiente: https://homo.c2x.app.br.
+- Status: EM HOMOLOGACAO.
+- Base substituida:
+  - dpl_HZ255rc1erkhv1ct6ZPJQ6qik6TE.
+- Deployment publicado:
+  - dpl_DNv3wQr8m4yBH87hDcmDFD36wbXW.
+  - Preview: https://careli-hub-hub-i2bs-gyb6m2m21-lucasruas-devs-projects.vercel.app.
+  - Alias confirmado: https://homo.c2x.app.br.
+- Rollback imediato:
+  - dpl_HZ255rc1erkhv1ct6ZPJQ6qik6TE.
+- Pacote limpo:
+  - .codex-deploy/z26-005-iris-caca-v9-homo-20260526-150449/w.
+  - Manifesto: .codex-deploy/z26-005-iris-caca-v9-homo-20260526-150449/homologation-safety-gate.json.
+- Escopo publicado:
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/panteon-recorte-protocols.md`.
+- Comportamento esperado:
+  - Caca passa a usar `iris-caca-agent-v9`;
+  - perguntas sobre pendencia financeira, debito, parcelas em aberto, atraso ou inadimplencia entram no fluxo financeiro controlado;
+  - prompt OpenAI reforcado para nao prometer retorno futuro, consulta em andamento ou `te retorno` sem acao server-side real no turno.
+- Itens preservados/excluidos:
+  - preservado o runtime OpenAI do deployment anterior, com OPENAI_API_KEY, HUB_AI_MODEL e HUB_IRIS_ATTENDANT_MODEL declarados no deployment sem expor valores;
+  - sem producao, banco, migrations, service role, WABA/Meta, dominios de producao, aliases de producao ou root misto fora do protocolo.
+- Validacoes executadas:
+  - Safety Gate pre-deploy: PASS;
+  - `git diff --check` do recorte: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - Safety Gate pre-alias: PASS;
+  - `npx.cmd vercel deploy --yes --target preview --force` com runtime envs: READY;
+  - `npx.cmd vercel alias set Preview homo.c2x.app.br`: OK;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: Ready em dpl_DNv3wQr8m4yBH87hDcmDFD36wbXW;
+  - GET https://homo.c2x.app.br/: 200;
+  - GET https://homo.c2x.app.br/login: 200;
+  - GET https://homo.c2x.app.br/iris: 200;
+  - GET https://homo.c2x.app.br/api/iris/attendant: 405 esperado para metodo GET;
+  - GET https://homo.c2x.app.br/api/iris/meta/templates sem sessao: 401 esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Avisos nao bloqueantes:
+  - Vercel build registrou vulnerabilidades npm em dependencias, sem falha de build;
+  - Turbopack/NFT warning em `next.config.ts` ja conhecido;
+  - Turbo avisou envs fora do `turbo.json`, sem falha do deployment.
+- Riscos conhecidos:
+  - validacao funcional real depende de novo teste autenticado/WhatsApp ou novo ticket;
+  - a V9 nao cria job assincrono de retorno; ela impede a promessa de retorno sem acao real;
+  - governanca permanente de env Preview ainda deve ser padronizada para nao depender de injecao manual em cada deployment.
+- Proxima acao:
+  - Lucas testar em homologacao nova mensagem/ticket com pergunta financeira e confirmar metadata/experiencia sem promessa de retorno fantasma.
+
+Conclusao:
+- O corte Athena/Caca V9 esta em homologacao sobre a base que ja tinha OpenAI funcionando.
+- O impacto pratico e reduzir resposta livre insegura quando o cliente perguntar sobre pendencia financeira.
+- Nao houve alteracao de producao nem de segredo registrado; o rollback imediato e dpl_HZ255rc1erkhv1ct6ZPJQ6qik6TE.

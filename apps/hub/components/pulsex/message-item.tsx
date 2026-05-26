@@ -1155,10 +1155,13 @@ function renderMessageTextInline({
   textStart: number;
 }) {
   if (ranges.length === 0) {
-    return text;
+    return renderTextWithLinks({
+      keyPrefix,
+      text,
+    });
   }
 
-  const fragments = [];
+  const fragments: ReactNode[] = [];
   let cursor = 0;
 
   ranges.forEach((range, index) => {
@@ -1171,9 +1174,10 @@ function renderMessageTextInline({
 
     if (start > cursor) {
       fragments.push(
-        <span key={`${keyPrefix}-text-${index}-${cursor}`}>
-          {text.slice(cursor, start)}
-        </span>,
+        ...renderTextWithLinks({
+          keyPrefix: `${keyPrefix}-text-${index}-${cursor}`,
+          text: text.slice(cursor, start),
+        }),
       );
     }
 
@@ -1196,13 +1200,109 @@ function renderMessageTextInline({
 
   if (cursor < text.length) {
     fragments.push(
-      <span key={`${keyPrefix}-text-tail-${cursor}`}>
+      ...renderTextWithLinks({
+        keyPrefix: `${keyPrefix}-text-tail-${cursor}`,
+        text: text.slice(cursor),
+      }),
+    );
+  }
+
+  return fragments;
+}
+
+function renderTextWithLinks({
+  keyPrefix,
+  text,
+}: {
+  keyPrefix: string;
+  text: string;
+}) {
+  const fragments: ReactNode[] = [];
+  const urlPattern = /\bhttps?:\/\/[^\s<>"']+/gi;
+  let cursor = 0;
+
+  for (const match of text.matchAll(urlPattern)) {
+    const rawUrl = match[0];
+    const start = match.index ?? 0;
+
+    if (start > cursor) {
+      fragments.push(
+        <span key={`${keyPrefix}-plain-${cursor}`}>
+          {text.slice(cursor, start)}
+        </span>,
+      );
+    }
+
+    const { href, label, suffix } = normalizeMessageUrl(rawUrl);
+
+    if (!href) {
+      fragments.push(
+        <span key={`${keyPrefix}-invalid-url-${start}`}>{rawUrl}</span>,
+      );
+    } else {
+      fragments.push(
+        <a
+          className="font-semibold text-sky-700 underline underline-offset-2 transition hover:text-sky-900 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          href={href}
+          key={`${keyPrefix}-url-${start}`}
+          onClick={(event) => event.stopPropagation()}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          {label}
+        </a>,
+      );
+      if (suffix) {
+        fragments.push(
+          <span key={`${keyPrefix}-url-suffix-${start}`}>{suffix}</span>,
+        );
+      }
+    }
+
+    cursor = start + rawUrl.length;
+  }
+
+  if (cursor < text.length) {
+    fragments.push(
+      <span key={`${keyPrefix}-plain-tail-${cursor}`}>
         {text.slice(cursor)}
       </span>,
     );
   }
 
-  return fragments;
+  if (fragments.length > 0) {
+    return fragments;
+  }
+
+  return text
+    ? [<span key={`${keyPrefix}-plain-full`}>{text}</span>]
+    : [];
+}
+
+function normalizeMessageUrl(rawUrl: string) {
+  let label = rawUrl;
+  let suffix = "";
+
+  while (/[),.;:!?]$/.test(label)) {
+    suffix = `${label.slice(-1)}${suffix}`;
+    label = label.slice(0, -1);
+  }
+
+  try {
+    const url = new URL(label);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return { href: "", label: rawUrl, suffix: "" };
+    }
+
+    return {
+      href: url.href,
+      label,
+      suffix,
+    };
+  } catch {
+    return { href: "", label: rawUrl, suffix: "" };
+  }
 }
 
 function getBulletLineParts(line: string) {

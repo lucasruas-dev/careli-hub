@@ -20,6 +20,7 @@ import {
   Edit3,
   FileText,
   Headphones,
+  ImageIcon,
   Inbox,
   LayoutDashboard,
   LayoutGrid,
@@ -35,6 +36,7 @@ import {
   PanelLeftOpen,
   Play,
   Plus,
+  RefreshCw,
   Reply,
   Route,
   Save,
@@ -45,8 +47,12 @@ import {
   SlidersHorizontal,
   Smile,
   Sparkles,
+  Smartphone,
   TicketCheck,
+  Trash2,
+  Upload,
   UsersRound,
+  Video,
   Workflow,
   Wifi,
   X,
@@ -70,10 +76,12 @@ type IrisPageProps = {
   initialTickets?: IrisTicket[];
   loadFromSupabase?: boolean;
   operatorScoped?: boolean;
+  queueSlugFilter?: string | null;
 };
 
 type IrisView =
   | "gestao"
+  | "historico"
   | "atendimento"
   | "disparos"
   | "setup"
@@ -148,6 +156,7 @@ type IrisTicket = {
   id: string;
   lastMessageAt?: string | null;
   lastMessagePreview: string;
+  metadata?: Record<string, unknown> | null;
   messages: IrisMessage[];
   openedAt: string;
   priority: IrisPriority;
@@ -158,10 +167,18 @@ type IrisTicket = {
   resolutionDueAt?: string | null;
   resolvedAt?: string | null;
   closedAt?: string | null;
+  sourceContext?: Record<string, unknown> | null;
   sourceLabel: string;
   status: IrisStatus;
   subject: string;
   unread: boolean;
+};
+
+type IrisHistoryFocus = {
+  contactId?: string | null;
+  contactLabel?: string | null;
+  contactPhone?: string | null;
+  requestedAt: number;
 };
 
 type IrisCrm360Registration = {
@@ -174,6 +191,147 @@ type IrisCrm360Registration = {
   profiles?: string[];
   relationLabel?: string | null;
   status: "registered" | "missing" | "unknown";
+};
+
+type IrisApoloContextContact = {
+  label?: string | null;
+  primary?: boolean;
+  status?: string | null;
+  type?: string | null;
+  value?: string | null;
+};
+
+type IrisApoloContextInstallment = {
+  dueDate?: string | null;
+  id?: string;
+  number?: string;
+  paidAt?: string | null;
+  reference?: string | null;
+  status?: string | null;
+  value?: string | null;
+};
+
+type IrisApoloContextCommercialLink = {
+  enterprise?: string | null;
+  installments?: IrisApoloContextInstallment[];
+  referenceLabel?: string | null;
+  role?: string | null;
+  stage?: string | null;
+  tableValue?: string | null;
+  unit?: string | null;
+  unitCode?: string | null;
+};
+
+type IrisApoloContextTimelineEvent = {
+  date?: string | null;
+  description?: string | null;
+  status?: "ok" | "attention" | "blocked" | string;
+  title?: string | null;
+};
+
+type IrisApoloContextServiceSignal = {
+  channel?: string | null;
+  lastEvent?: string | null;
+  protocol?: string | null;
+  status?: string | null;
+};
+
+type IrisApoloContextFinancial = {
+  overdueAmount?: string | null;
+  overdueInstallments?: number | null;
+  paidAmount?: string | null;
+  paymentBehavior?: string | null;
+  risk?: string | null;
+  totalPortfolio?: string | null;
+};
+
+type IrisApoloContextEntity = {
+  commercialLinks?: IrisApoloContextCommercialLink[];
+  contacts?: IrisApoloContextContact[];
+  displayName?: string | null;
+  documentMasked?: string | null;
+  financial?: IrisApoloContextFinancial | null;
+  id: string;
+  kind?: string | null;
+  locationLabel?: string | null;
+  nextAction?: string | null;
+  profiles?: string[];
+  serviceSignals?: IrisApoloContextServiceSignal[];
+  status?: string | null;
+  timeline?: IrisApoloContextTimelineEvent[];
+};
+
+type IrisContextModalMode = "client" | "agenda" | null;
+
+type IrisTicketContextNote = {
+  text: string;
+  updatedAt?: string | null;
+  updatedByUserId?: string | null;
+};
+
+type IrisTicketContextAgendaEvent = {
+  createdAt?: string | null;
+  createdByLabel?: string | null;
+  id: string;
+  kind?: string | null;
+  notes?: string | null;
+  scheduledAt: string;
+  status?: string | null;
+  title: string;
+};
+
+type IrisAgendaTimelineEntry = {
+  createdAt?: string | null;
+  createdByLabel?: string | null;
+  dateLabel: string;
+  dateValue: number;
+  description: string;
+  id: string;
+  kindLabel: string;
+  scheduledAt?: string | null;
+  source: "apolo" | "ticket";
+  title: string;
+  tone: "danger" | "gold" | "success";
+};
+
+type IrisAttendantBillingItem = {
+  acquisitionRequestId: string;
+  dueDate: string;
+  id: string;
+  number: string;
+  overdueDays: number;
+  reference: string;
+  status: "Vencida" | "A vencer" | "Liquidada";
+  unitCode?: string;
+  unitLabel?: string;
+  value: string;
+};
+
+type IrisAttendantResponse = {
+  authentication?: {
+    label?: string;
+    status?: string;
+  };
+  billingItems?: IrisAttendantBillingItem[];
+  boleto?: {
+    boletoUrl?: string;
+    message?: string;
+    paymentId?: string;
+  } | null;
+  customer?: {
+    c2xClientKnown?: boolean;
+    documentMasked?: string | null;
+    label?: string | null;
+    phoneMasked?: string | null;
+  };
+  handoff?: {
+    reason?: string | null;
+    required?: boolean;
+  };
+  model?: string | null;
+  nextStep?: string;
+  replyText?: string;
+  source?: "openai" | "fallback";
 };
 
 type IrisQueueConfig = {
@@ -276,9 +434,46 @@ type IrisMetaEventsResponse = {
 
 type IrisMetaTemplatesResponse = {
   error?: string;
+  errorAction?: string | null;
+  errorCause?: string | null;
+  errorTitle?: string | null;
   ignoredTemplateCount?: number;
+  localTemplateSync?: {
+    error?: string | null;
+    id?: string | null;
+    imported?: boolean;
+    localStatus?: string | null;
+    matched?: boolean;
+    metaStatus?: string | null;
+    ok?: boolean;
+  } | null;
+  localTemplateSyncSummary?: {
+    failed?: number;
+    imported?: number;
+    matched?: number;
+    total?: number;
+    updated?: number;
+  } | null;
+  metaCode?: string | null;
+  metaDetail?: string | null;
   phoneNumberLink?: IrisMetaPhoneNumberLink | null;
+  phoneNumbers?: IrisMetaPhoneNumberOption[];
+  providerMessage?: string | null;
+  selectedPhoneNumberId?: string | null;
   templates?: IrisMetaTemplateOption[];
+};
+
+type IrisTemplateFeedbackTone = "error" | "neutral" | "success" | "warning";
+
+type IrisTemplateFeedback = {
+  action?: string | null;
+  cause?: string | null;
+  message: string;
+  metaCode?: string | null;
+  metaDetail?: string | null;
+  providerMessage?: string | null;
+  title?: string | null;
+  tone?: IrisTemplateFeedbackTone;
 };
 
 type IrisMetaTemplateOption = {
@@ -287,6 +482,18 @@ type IrisMetaTemplateOption = {
   language?: string | null;
   name?: string | null;
   status?: string | null;
+};
+
+type IrisMetaPhoneNumberOption = {
+  codeVerificationStatus?: string | null;
+  displayPhoneNumber?: string | null;
+  id: string;
+  isDefault?: boolean;
+  label?: string | null;
+  nameStatus?: string | null;
+  qualityRating?: string | null;
+  verifiedName?: string | null;
+  whatsappBusinessAccountId?: string | null;
 };
 
 type IrisMetaPhoneNumberLink = {
@@ -301,6 +508,53 @@ type IrisMetaPhoneNumberLink = {
     | "unavailable"
     | string;
 };
+
+function readIrisTemplateSyncNotificationId(
+  sync?: IrisMetaTemplatesResponse["localTemplateSync"],
+) {
+  if (!sync?.ok || (!sync.matched && !sync.imported)) {
+    return null;
+  }
+
+  return [
+    sync.id ?? "template",
+    sync.imported ? "imported" : "matched",
+    sync.metaStatus ?? "unknown",
+    sync.localStatus ?? "unknown",
+  ].join(":");
+}
+
+function buildIrisHistoryFocus(ticket: IrisTicket): IrisHistoryFocus {
+  return {
+    contactId: ticket.contactId ?? null,
+    contactLabel: ticket.contactLabel ?? null,
+    contactPhone: ticket.contactPhone ?? null,
+    requestedAt: Date.now(),
+  };
+}
+
+function ticketMatchesHistoryFocus(
+  ticket: IrisTicket,
+  focus: IrisHistoryFocus | null,
+) {
+  if (!focus) {
+    return true;
+  }
+
+  if (focus.contactId && ticket.contactId) {
+    return focus.contactId === ticket.contactId;
+  }
+
+  if (focus.contactPhone && ticket.contactPhone) {
+    return focus.contactPhone === ticket.contactPhone;
+  }
+
+  if (focus.contactLabel) {
+    return focus.contactLabel === ticket.contactLabel;
+  }
+
+  return false;
+}
 
 type IrisApoloClientOption = {
   documentMasked?: string | null;
@@ -324,6 +578,8 @@ const emptyIrisData: IrisData = {
 const emptyIrisTickets: IrisTicket[] = [];
 const IRIS_REFRESH_INTERVAL_MS =
   process.env.NODE_ENV === "development" ? 120_000 : 12_000;
+const IRIS_QUEUE_LOAD_TIMEOUT_MS = 15_000;
+const IRIS_CRM360_ENRICH_TIMEOUT_MS = 4_000;
 
 const navigationItems: Array<{
   id: IrisView;
@@ -331,6 +587,7 @@ const navigationItems: Array<{
   icon: typeof LayoutDashboard;
 }> = [
   { id: "gestao", label: "Board", icon: LayoutDashboard },
+  { id: "historico", label: "Historico", icon: Clock3 },
   { id: "disparos", label: "Disparos", icon: Megaphone },
   { id: "setup", label: "Setup", icon: Settings2 },
   { id: "relatorios", label: "Relatorios", icon: BarChart3 },
@@ -474,6 +731,100 @@ const IRIS_TEMPLATE_STATUS_FILTERS = [
   { id: "REJECTED", label: "Rejeitados" },
   { id: "NONE", label: "Nao criados" },
 ];
+const IRIS_TEMPLATE_HEADER_OPTIONS = [
+  {
+    accept: "",
+    description: "Template somente texto e botoes.",
+    id: "NONE",
+    label: "Sem midia",
+  },
+  {
+    accept: "image/jpeg,image/jpg,image/png",
+    description: "JPG ou PNG ate 5 MB.",
+    id: "IMAGE",
+    label: "Imagem",
+  },
+  {
+    accept: "video/mp4,video/3gpp",
+    description: "MP4 ou 3GPP ate 16 MB.",
+    id: "VIDEO",
+    label: "Video",
+  },
+  {
+    accept: "application/pdf",
+    description: "PDF ate 100 MB.",
+    id: "DOCUMENT",
+    label: "Documento",
+  },
+];
+const IRIS_META_TEMPLATE_LIBRARY_PRESETS = [
+  {
+    bodyText:
+      "Ola {{1}}, seu atendimento Careli foi iniciado com sucesso. Nosso time segue disponivel para te apoiar.",
+    buttonsText: "Entendi, Falar com operador",
+    category: "UTILITY",
+    description:
+      "Modelo base para abertura de atendimento e continuidade da conversa.",
+    id: "atendimento_iniciado",
+    title: "Atendimento iniciado",
+    variableKeys: ["primeiro_nome"],
+  },
+  {
+    bodyText:
+      "Ola {{1}}, confirmamos o protocolo {{2}} no Iris. Se precisar, responda esta mensagem para seguirmos.",
+    buttonsText: "Tudo certo, Preciso de ajuda",
+    category: "UTILITY",
+    description:
+      "Confirma o protocolo operacional para manter rastreabilidade do atendimento.",
+    id: "confirmacao_protocolo",
+    title: "Confirmacao de protocolo",
+    variableKeys: ["primeiro_nome", "protocolo"],
+  },
+  {
+    bodyText:
+      "Ola {{1}}, seu atendimento sera conduzido por {{2}}. Se desejar, responda por aqui para continuarmos.",
+    buttonsText: "Pode continuar, Trocar de assunto",
+    category: "UTILITY",
+    description:
+      "Comunica quem assumiu o atendimento antes da conversa livre.",
+    id: "handoff_operador",
+    title: "Handoff para operador",
+    variableKeys: ["primeiro_nome", "operador"],
+  },
+  {
+    bodyText:
+      "Ola {{1}}, identificamos uma atualizacao no seu cadastro relacionado a {{2}}.",
+    buttonsText: "Ver detalhes, Atualizar agora",
+    category: "MARKETING",
+    description:
+      "Modelo de reengajamento para orientar proxima acao do cliente.",
+    id: "reengajamento_cadastro",
+    title: "Reengajamento de cadastro",
+    variableKeys: ["primeiro_nome", "empreendimento"],
+  },
+  {
+    bodyText:
+      "Ola {{1}}, o valor {{2}} esta previsto para {{3}}. Se precisar, posso te enviar o link oficial.",
+    buttonsText: "Enviar link, Falar com time",
+    category: "UTILITY",
+    description:
+      "Comunicacao de vencimento com linguagem operacional e opcao de suporte.",
+    id: "lembrete_vencimento",
+    title: "Lembrete de vencimento",
+    variableKeys: ["primeiro_nome", "valor", "vencimento"],
+  },
+  {
+    bodyText:
+      "Codigo de confirmacao Careli: {{1}}. Use este codigo para validar seu acesso de forma segura.",
+    buttonsText: "",
+    category: "AUTHENTICATION",
+    description:
+      "Base para mensagens de autenticacao quando o fluxo exigir validacao.",
+    id: "codigo_autenticacao",
+    title: "Codigo de autenticacao",
+    variableKeys: ["protocolo"],
+  },
+];
 
 export function IrisPage({
   boardOnly = false,
@@ -481,9 +832,11 @@ export function IrisPage({
   initialTickets = emptyIrisTickets,
   loadFromSupabase = true,
   operatorScoped = false,
+  queueSlugFilter = null,
 }: IrisPageProps) {
   const { hubUser } = useAuth();
   const operatorUserId = operatorScoped ? hubUser?.id ?? null : null;
+  const scopedQueueSlug = normalizeOptionalIrisQueueSlug(queueSlugFilter);
   const [irisData, setIrisData] = useState<IrisData>({
     ...emptyIrisData,
     tickets: initialTickets,
@@ -492,6 +845,9 @@ export function IrisPage({
     initialTickets[0]?.id ?? "",
   );
   const [activeView, setActiveView] = useState<IrisView>("gestao");
+  const [historyFocus, setHistoryFocus] = useState<IrisHistoryFocus | null>(
+    null,
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(loadFromSupabase);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -500,6 +856,8 @@ export function IrisPage({
   );
   const [onlineOperators, setOnlineOperators] = useState(0);
   const [startAttendanceOpen, setStartAttendanceOpen] = useState(false);
+  const [startAttendanceQueueLabel, setStartAttendanceQueueLabel] =
+    useState<string | null>(null);
   const knownMessageIdsRef = useRef<Set<string>>(
     collectIrisMessageIds({ ...emptyIrisData, tickets: initialTickets }),
   );
@@ -541,7 +899,11 @@ export function IrisPage({
 
       try {
         const nextData = await enrichIrisDataWithCrm360(
-          await loadIrisData({ operatorUserId }),
+          await withIrisTimeout(
+            loadIrisData({ operatorUserId, queueSlugFilter: scopedQueueSlug }),
+            IRIS_QUEUE_LOAD_TIMEOUT_MS,
+            "fila da Iris",
+          ),
         );
         let latestInbound: { message: IrisMessage; ticket: IrisTicket } | null =
           null;
@@ -583,7 +945,13 @@ export function IrisPage({
         refreshInFlightRef.current = false;
       }
     },
-    [enrichIrisDataWithCrm360, loadFromSupabase, operatorScoped, operatorUserId],
+    [
+      enrichIrisDataWithCrm360,
+      loadFromSupabase,
+      operatorScoped,
+      operatorUserId,
+      scopedQueueSlug,
+    ],
   );
 
   useEffect(() => {
@@ -614,7 +982,11 @@ export function IrisPage({
 
       try {
         const nextData = await enrichIrisDataWithCrm360(
-          await loadIrisData({ operatorUserId }),
+          await withIrisTimeout(
+            loadIrisData({ operatorUserId, queueSlugFilter: scopedQueueSlug }),
+            IRIS_QUEUE_LOAD_TIMEOUT_MS,
+            "fila da Iris",
+          ),
         );
 
         if (!active) {
@@ -644,7 +1016,14 @@ export function IrisPage({
     return () => {
       active = false;
     };
-  }, [enrichIrisDataWithCrm360, initialTickets, loadFromSupabase, operatorScoped, operatorUserId]);
+  }, [
+    enrichIrisDataWithCrm360,
+    initialTickets,
+    loadFromSupabase,
+    operatorScoped,
+    operatorUserId,
+    scopedQueueSlug,
+  ]);
 
   useEffect(() => {
     if (!loadFromSupabase) {
@@ -771,6 +1150,11 @@ export function IrisPage({
     setActiveView("atendimento");
   }
 
+  function openHistoryForTicket(ticket: IrisTicket) {
+    setHistoryFocus(buildIrisHistoryFocus(ticket));
+    setActiveView("historico");
+  }
+
   function handleLocalMessage(ticketId: string, message: IrisMessage) {
     knownMessageIdsRef.current.add(message.id);
     setIrisData((current) => ({
@@ -837,6 +1221,67 @@ export function IrisPage({
     }));
   }
 
+  function handleTicketClosed({
+    closedAt,
+    metadata,
+    resolvedAt,
+    status,
+    ticketId,
+  }: {
+    closedAt?: string | null;
+    metadata?: Record<string, unknown> | null;
+    resolvedAt?: string | null;
+    status?: string | null;
+    ticketId: string;
+  }) {
+    setIrisData((current) => ({
+      ...current,
+      tickets: current.tickets.map((ticket) => {
+        if (ticket.id !== ticketId) {
+          return ticket;
+        }
+
+        const nextMetadata =
+          metadata && typeof metadata === "object" && !Array.isArray(metadata)
+            ? metadata
+            : ticket.metadata ?? null;
+
+        return {
+          ...ticket,
+          closedAt: closedAt ?? ticket.closedAt ?? new Date().toISOString(),
+          metadata: nextMetadata,
+          resolvedAt: resolvedAt ?? ticket.resolvedAt ?? null,
+          status: status ? normalizeStatus(status) : "closed",
+        };
+      }),
+    }));
+  }
+
+  function handleTicketContextUpdated({
+    metadata,
+    ticketId,
+  }: {
+    metadata?: Record<string, unknown> | null;
+    ticketId: string;
+  }) {
+    setIrisData((current) => ({
+      ...current,
+      tickets: current.tickets.map((ticket) => {
+        if (ticket.id !== ticketId) {
+          return ticket;
+        }
+
+        return {
+          ...ticket,
+          metadata:
+            metadata && typeof metadata === "object" && !Array.isArray(metadata)
+              ? metadata
+              : ticket.metadata ?? null,
+        };
+      }),
+    }));
+  }
+
   function handleOpenModuleLauncher() {
     window.dispatchEvent(new Event("careli:toggle-module-launcher"));
   }
@@ -844,13 +1289,16 @@ export function IrisPage({
   const visibleNavigationItems = boardOnly
     ? navigationItems.filter((item) => item.id === "gestao")
     : navigationItems;
+  const embeddedBoardOnly = embedded && boardOnly;
 
   return (
     <div
       onClick={registerIrisNotificationPermissionIntent}
       className={[
         "h-full min-h-0 overflow-hidden bg-[#f3f6fa] text-[#101820]",
-        embedded ? "rounded-2xl border border-[#dbe3ef]" : "",
+        embedded && !embeddedBoardOnly
+          ? "rounded-2xl border border-[#dbe3ef]"
+          : "",
       ].join(" ")}
     >
       {inboundNotice ? (
@@ -866,9 +1314,18 @@ export function IrisPage({
       ) : null}
       {startAttendanceOpen ? (
         <IrisStartAttendanceModal
-          onClose={() => setStartAttendanceOpen(false)}
+          data={irisData}
+          initialQueueLabel={startAttendanceQueueLabel}
+          onClose={() => {
+            setStartAttendanceOpen(false);
+            setStartAttendanceQueueLabel(null);
+          }}
+          onTemplatesSynced={() => {
+            void refreshIrisData({ notifyNewInbound: false });
+          }}
           onTicketCreated={(ticketId) => {
             setStartAttendanceOpen(false);
+            setStartAttendanceQueueLabel(null);
             void refreshIrisData({ notifyNewInbound: false });
             if (ticketId) {
               setSelectedTicketId(ticketId);
@@ -877,6 +1334,29 @@ export function IrisPage({
           }}
         />
       ) : null}
+      {embeddedBoardOnly ? (
+        <section className="h-[min(820px,calc(100vh-9rem))] min-h-[560px] overflow-hidden rounded-2xl border border-[#dbe3ef] bg-[#f3f6fa] p-3">
+          {loadError ? (
+            <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
+              {loadError}
+            </div>
+          ) : (
+            <ManagementView
+              data={irisData}
+              loading={loading}
+              snapshot={snapshot}
+              onOpenAttendance={setSelectedTicketId}
+              onSelectTicket={setSelectedTicketId}
+              onStartAttendance={(queueLabel) => {
+                setStartAttendanceQueueLabel(
+                  queueLabel && queueLabel !== "Todos" ? queueLabel : null,
+                );
+                setStartAttendanceOpen(true);
+              }}
+            />
+          )}
+        </section>
+      ) : (
       <div
         className={[
           "grid h-full min-h-0 transition-[grid-template-columns] duration-200",
@@ -967,7 +1447,12 @@ export function IrisPage({
                 icon={item.icon}
                 label={item.label}
                 collapsed={sidebarCollapsed}
-                onClick={() => setActiveView(item.id)}
+                onClick={() => {
+                  if (item.id === "historico") {
+                    setHistoryFocus(null);
+                  }
+                  setActiveView(item.id);
+                }}
               />
             ))}
           </nav>
@@ -990,7 +1475,23 @@ export function IrisPage({
                 snapshot={snapshot}
                 onOpenAttendance={openAttendance}
                 onSelectTicket={setSelectedTicketId}
-                onStartAttendance={() => setStartAttendanceOpen(true)}
+                onStartAttendance={(queueLabel) => {
+                  setStartAttendanceQueueLabel(
+                    queueLabel && queueLabel !== "Todos" ? queueLabel : null,
+                  );
+                  setStartAttendanceOpen(true);
+                }}
+              />
+            ) : activeView === "historico" ? (
+              <HistoryView
+                focus={historyFocus}
+                tickets={irisData.tickets}
+                onClearFocus={() => setHistoryFocus(null)}
+                onOpenAttendance={(ticketId) => {
+                  setSelectedTicketId(ticketId);
+                  setActiveView("atendimento");
+                }}
+                onSelectTicket={setSelectedTicketId}
               />
             ) : activeView === "atendimento" ? (
               <AttendanceView
@@ -999,8 +1500,11 @@ export function IrisPage({
                 selectedTicketId={selectedTicket?.id ?? selectedTicketId}
                 onSelectTicket={setSelectedTicketId}
                 onClose={() => setActiveView("gestao")}
+                onOpenHistoryForTicket={openHistoryForTicket}
                 onMessageCreated={handleLocalMessage}
                 onMessageUpdated={handleMessageUpdated}
+                onTicketClosed={handleTicketClosed}
+                onTicketContextUpdated={handleTicketContextUpdated}
               />
             ) : activeView === "disparos" ? (
               <BroadcastView data={irisData} snapshot={snapshot} />
@@ -1010,6 +1514,9 @@ export function IrisPage({
                 snapshot={snapshot}
                 onQueuesChanged={handleQueuesChanged}
                 onProfilesChanged={handleProfilesChanged}
+                onTemplatesSynced={() => {
+                  void refreshIrisData({ notifyNewInbound: false });
+                }}
               />
             ) : (
               <ReportsView data={irisData} snapshot={snapshot} />
@@ -1017,6 +1524,7 @@ export function IrisPage({
           </section>
         </main>
       </div>
+      )}
     </div>
   );
 }
@@ -1052,8 +1560,13 @@ function ManagementView({
   snapshot: ReturnType<typeof buildIrisSnapshot>;
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
-  onStartAttendance: () => void;
+  onStartAttendance: (queueLabel?: string) => void;
 }) {
+  const openTickets = useMemo(
+    () => data.tickets.filter((ticket) => !isClosedTicket(ticket)),
+    [data.tickets],
+  );
+
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1089,7 +1602,7 @@ function ManagementView({
             <IrisLoading />
           ) : (
             <IrisTicketQueue
-              tickets={data.tickets}
+              tickets={openTickets}
               onOpenAttendance={onOpenAttendance}
               onSelectTicket={onSelectTicket}
               onStartAttendance={onStartAttendance}
@@ -1120,6 +1633,244 @@ function ManagementView({
   );
 }
 
+function HistoryView({
+  focus,
+  onClearFocus,
+  onOpenAttendance,
+  onSelectTicket,
+  tickets,
+}: {
+  focus: IrisHistoryFocus | null;
+  onClearFocus: () => void;
+  onOpenAttendance: (ticketId: string) => void;
+  onSelectTicket: (ticketId: string) => void;
+  tickets: IrisTicket[];
+}) {
+  const [queue, setQueue] = useState("Todas as filas");
+  const [search, setSearch] = useState("");
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const closedTickets = useMemo(
+    () => tickets.filter((ticket) => isClosedTicket(ticket)),
+    [tickets],
+  );
+  const focusTickets = useMemo(() => {
+    if (!focus) {
+      return emptyIrisTickets;
+    }
+
+    return tickets.filter((ticket) => ticketMatchesHistoryFocus(ticket, focus));
+  }, [focus, tickets]);
+  const sourceTickets = focus ? focusTickets : closedTickets;
+  const focusedContactClosedCount = useMemo(
+    () => focusTickets.filter((ticket) => isClosedTicket(ticket)).length,
+    [focusTickets],
+  );
+  const queues = useMemo(
+    () => ["Todas as filas", ...unique(sourceTickets.map((ticket) => ticket.queueLabel))],
+    [sourceTickets],
+  );
+
+  useEffect(() => {
+    if (!focus) {
+      return;
+    }
+
+    setQueue("Todas as filas");
+    setSearch(focus.contactLabel ?? focus.contactPhone ?? "");
+  }, [focus?.requestedAt]);
+
+  const filteredTickets = useMemo(() => {
+    const normalized = search.trim().toLowerCase();
+    const rawPeriodStartValue = periodStart
+      ? new Date(periodStart).getTime()
+      : null;
+    const rawPeriodEndValue = periodEnd ? new Date(periodEnd).getTime() : null;
+    const periodStartValue =
+      rawPeriodStartValue !== null && Number.isFinite(rawPeriodStartValue)
+        ? rawPeriodStartValue
+        : null;
+    const periodEndValue =
+      rawPeriodEndValue !== null && Number.isFinite(rawPeriodEndValue)
+        ? rawPeriodEndValue
+        : null;
+
+    return sourceTickets
+      .filter((ticket) => {
+        const displayLabel = ticketContactLabel(ticket).toLowerCase();
+        const crmSubtitle = ticketCrmSubtitle(ticket).toLowerCase();
+        const ticketStartAt = dateValue(ticket.openedAt);
+        const ticketEndAt = dateValue(
+          ticket.closedAt ??
+            ticket.resolvedAt ??
+            ticket.lastMessageAt ??
+            ticket.openedAt,
+        );
+        const matchesSearch =
+          normalized.length === 0 ||
+          displayLabel.includes(normalized) ||
+          crmSubtitle.includes(normalized) ||
+          ticket.protocol.toLowerCase().includes(normalized) ||
+          ticket.contactLabel.toLowerCase().includes(normalized) ||
+          ticket.subject.toLowerCase().includes(normalized);
+        const matchesPeriodStart =
+          periodStartValue === null || ticketStartAt >= periodStartValue;
+        const matchesPeriodEnd =
+          periodEndValue === null || ticketEndAt <= periodEndValue;
+
+        return (
+          matchesSearch &&
+          matchesPeriodStart &&
+          matchesPeriodEnd &&
+          (queue === "Todas as filas" || ticket.queueLabel === queue)
+        );
+      })
+      .sort(
+        (first, second) =>
+          dateValue(
+            second.closedAt ??
+              second.resolvedAt ??
+              second.lastMessageAt ??
+              second.openedAt,
+          ) -
+          dateValue(
+            first.closedAt ??
+              first.resolvedAt ??
+              first.lastMessageAt ??
+              first.openedAt,
+          ),
+      );
+  }, [periodEnd, periodStart, queue, search, sourceTickets]);
+
+  const focusedContactLabel =
+    focus?.contactLabel ?? focus?.contactPhone ?? null;
+  const headerDescription = focus
+    ? "Tickets do cliente em andamento e encerrados no Iris."
+    : "Tickets encerrados saem do Board e ficam consultaveis aqui.";
+  const headerBadgeLabel = focus
+    ? `${formatCount(sourceTickets.length)} tickets do cliente`
+    : `${formatCount(closedTickets.length)} encerrados`;
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="shrink-0 border-b border-slate-100 px-4 py-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-slate-950">
+              Historico de atendimentos
+            </h2>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              {headerDescription}
+            </p>
+          </div>
+          <span className="inline-flex h-8 items-center rounded-full border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 text-xs font-semibold text-[#7A5E2C]">
+            {headerBadgeLabel}
+          </span>
+        </div>
+        {focusedContactLabel ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/8 px-3 py-2">
+            <Clock3 className="size-4 text-[#7A5E2C]" aria-hidden="true" />
+            <p className="text-xs font-semibold text-[#7A5E2C]">
+              Filtrando historico de {focusedContactLabel}. Encerrados:{" "}
+              {formatCount(focusedContactClosedCount)}.
+            </p>
+            <button
+              type="button"
+              onClick={onClearFocus}
+              className="ml-auto inline-flex h-7 items-center rounded-md border border-[#A07C3B]/30 bg-white px-2.5 text-[11px] font-semibold text-[#7A5E2C] transition-colors hover:bg-[#fff8ec]"
+            >
+              Ver todos
+            </button>
+          </div>
+        ) : null}
+      </header>
+
+      <div className="grid min-h-0 flex-1 gap-3 p-3">
+        <div className="grid gap-2 rounded-xl border border-slate-200/70 bg-slate-50/60 p-2 lg:grid-cols-[minmax(0,1fr)_180px_190px_190px]">
+          <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-500">
+            <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar cliente, protocolo ou assunto..."
+              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+            />
+          </label>
+          <FilterSelect
+            label="Fila"
+            value={queue}
+            options={queues}
+            onChange={setQueue}
+          />
+          <label className="grid h-10 items-center rounded-lg border border-slate-200/70 bg-white px-3">
+            <span className="sr-only">Inicio no periodo</span>
+            <input
+              type="datetime-local"
+              value={periodStart}
+              onChange={(event) => setPeriodStart(event.target.value)}
+              className="w-full bg-transparent text-xs font-medium text-slate-700 outline-none"
+              aria-label="Inicio no periodo"
+            />
+          </label>
+          <label className="grid h-10 items-center rounded-lg border border-slate-200/70 bg-white px-3">
+            <span className="sr-only">Encerramento no periodo</span>
+            <input
+              type="datetime-local"
+              value={periodEnd}
+              onChange={(event) => setPeriodEnd(event.target.value)}
+              className="w-full bg-transparent text-xs font-medium text-slate-700 outline-none"
+              aria-label="Encerramento no periodo"
+            />
+          </label>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200/70">
+          <div className="hidden min-w-0 grid-cols-[repeat(10,minmax(0,1fr))_40px] gap-2 border-b border-slate-100 bg-slate-50/80 px-3 py-2 text-xs font-semibold uppercase tracking-normal text-slate-400 xl:grid">
+            <span>Ticket</span>
+            <span>Fila</span>
+            <span>Canal</span>
+            <span>Status</span>
+            <span>SLA</span>
+            <span>Origem</span>
+            <span>Perfil</span>
+            <span>Assunto</span>
+            <span>TDR</span>
+            <span>Responsavel</span>
+            <span className="text-right">Chat</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+            {filteredTickets.length > 0 ? (
+              filteredTickets.map((ticket) => (
+                <IrisTicketRow
+                  key={ticket.id}
+                  ticket={ticket}
+                  onOpenAttendance={onOpenAttendance}
+                  onSelectTicket={onSelectTicket}
+                  showTimeline
+                />
+              ))
+            ) : (
+              <EmptyState
+                icon={Clock3}
+                title={
+                  focus
+                    ? "Nenhum ticket do cliente encontrado"
+                    : "Nenhum ticket encerrado encontrado"
+                }
+                description={
+                  focus
+                    ? "Ajuste o filtro para localizar os tickets do cliente selecionado."
+                    : "Ajuste o filtro ou use outro termo para localizar historicos do cliente."
+                }
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function IrisTicketQueue({
   onOpenAttendance,
   onSelectTicket,
@@ -1128,32 +1879,59 @@ function IrisTicketQueue({
 }: {
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
-  onStartAttendance: () => void;
+  onStartAttendance: (queueLabel?: string) => void;
   tickets: IrisTicket[];
 }) {
+  const [ownerView, setOwnerView] = useState<
+    "Todos" | "Cacá" | "Operadores"
+  >("Todos");
   const [queue, setQueue] = useState("Todos");
   const [status, setStatus] = useState("Todos");
   const [priority, setPriority] = useState("Todas");
   const [search, setSearch] = useState("");
+  const ownerScopedTickets = useMemo(
+    () => filterTicketsByBoardOwner(tickets, ownerView),
+    [ownerView, tickets],
+  );
+  const ownerCounters = useMemo(
+    () => ({
+      "Cacá": filterTicketsByBoardOwner(tickets, "Cacá").length,
+      Operadores: filterTicketsByBoardOwner(tickets, "Operadores").length,
+      Todos: filterTicketsByBoardOwner(tickets, "Todos").length,
+    }),
+    [tickets],
+  );
 
   const queues = useMemo(
-    () => ["Todos", ...unique(tickets.map((ticket) => ticket.queueLabel))],
-    [tickets],
+    () => ["Todos", ...unique(ownerScopedTickets.map((ticket) => ticket.queueLabel))],
+    [ownerScopedTickets],
   );
   const statuses = useMemo(
     () => [
       "Todos",
       ...unique(
-        tickets.map((ticket) => statusLabel[effectiveIrisStatus(ticket)]),
+        ownerScopedTickets.map((ticket) => statusLabel[effectiveIrisStatus(ticket)]),
       ),
     ],
-    [tickets],
+    [ownerScopedTickets],
   );
+
+  useEffect(() => {
+    if (!queues.includes(queue)) {
+      setQueue("Todos");
+    }
+  }, [queue, queues]);
+
+  useEffect(() => {
+    if (!statuses.includes(status)) {
+      setStatus("Todos");
+    }
+  }, [status, statuses]);
 
   const filteredTickets = useMemo(() => {
     const normalized = search.trim().toLowerCase();
 
-    return tickets
+    return ownerScopedTickets
       .filter((ticket) => {
         const displayLabel = ticketContactLabel(ticket).toLowerCase();
         const crmSubtitle = ticketCrmSubtitle(ticket).toLowerCase();
@@ -1174,7 +1952,7 @@ function IrisTicketQueue({
         );
       })
       .sort(sortIrisTickets);
-  }, [priority, queue, search, status, tickets]);
+  }, [ownerScopedTickets, priority, queue, search, status]);
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -1193,7 +1971,7 @@ function IrisTicketQueue({
                 type="button"
                 aria-label="Novo atendimento"
                 title="Novo atendimento"
-                onClick={onStartAttendance}
+                onClick={() => onStartAttendance(queue)}
                 className="inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white shadow-sm transition-colors hover:bg-[#1f2c3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
               >
                 <Plus className="size-4" aria-hidden="true" />
@@ -1239,6 +2017,37 @@ function IrisTicketQueue({
               value={`${tickets.filter(isWaitingForIris).length}`}
               tone={tickets.some(isWaitingForIris) ? "danger" : "gold"}
             />
+          </div>
+          <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-1.5">
+            {(["Todos", "Cacá", "Operadores"] as const).map((option) => {
+              const active = ownerView === option;
+
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setOwnerView(option)}
+                  className={[
+                    "inline-flex h-9 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition-colors",
+                    active
+                      ? "bg-[#101820] text-white shadow-sm"
+                      : "bg-white text-slate-600 ring-1 ring-slate-200 hover:text-[#7A5E2C]",
+                  ].join(" ")}
+                >
+                  <span>{option}</span>
+                  <span
+                    className={[
+                      "inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                      active
+                        ? "bg-white/20 text-white"
+                        : "bg-[#A07C3B]/10 text-[#7A5E2C]",
+                    ].join(" ")}
+                  >
+                    {ownerCounters[option]}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </header>
@@ -1304,8 +2113,20 @@ function IrisTicketQueue({
               ) : (
                 <EmptyState
                   icon={Inbox}
-                  title="Nenhum ticket na fila"
-                  description="Quando uma mensagem de cliente chegar ou um operador iniciar um contato, o ticket deve nascer no Iris."
+                  title={
+                    ownerView === "Cacá"
+                      ? "Nenhum ticket em atendimento da Cacá"
+                      : ownerView === "Operadores"
+                        ? "Nenhum ticket na visão dos operadores"
+                        : "Nenhum ticket na fila"
+                  }
+                  description={
+                    ownerView === "Cacá"
+                      ? "Quando a Cacá estiver conduzindo atendimento passivo, os tickets aparecerao aqui."
+                      : ownerView === "Operadores"
+                        ? "Quando houver handoff da Cacá ou atendimento humano em andamento, os tickets aparecerao aqui."
+                        : "Quando uma mensagem de cliente chegar ou um operador iniciar um contato, o ticket deve nascer no Iris."
+                  }
                 />
               )}
             </div>
@@ -1317,54 +2138,256 @@ function IrisTicketQueue({
 }
 
 function IrisStartAttendanceModal({
+  data,
+  initialQueueLabel,
   onClose,
   onTicketCreated,
+  onTemplatesSynced,
 }: {
+  data: IrisData;
+  initialQueueLabel?: string | null;
   onClose: () => void;
   onTicketCreated: (ticketId?: string) => void;
+  onTemplatesSynced?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<IrisApoloClientOption[]>([]);
   const [selectedClient, setSelectedClient] =
     useState<IrisApoloClientOption | null>(null);
   const [searching, setSearching] = useState(false);
+  const activeQueues = useMemo(
+    () =>
+      data.queues
+        .filter((queue) => queue.status === "active")
+        .sort(sortIrisQueues),
+    [data.queues],
+  );
+  const [selectedQueueId, setSelectedQueueId] = useState(() =>
+    defaultIrisQueueId(data.queues, initialQueueLabel),
+  );
+  const selectedQueue =
+    activeQueues.find((queue) => queue.id === selectedQueueId) ??
+    activeQueues[0] ??
+    null;
+  const subjectOptions = useMemo(
+    () =>
+      data.profiles
+        .filter(
+          (profile) =>
+            profile.status === "active" &&
+            (!selectedQueue || profile.queueId === selectedQueue.id),
+        )
+        .sort(sortIrisProfiles),
+    [data.profiles, selectedQueue],
+  );
+  const [selectedProfileId, setSelectedProfileId] = useState("");
+  const selectedProfile =
+    subjectOptions.find((profile) => profile.id === selectedProfileId) ??
+    subjectOptions[0] ??
+    null;
+  const activeContactTemplates = useMemo(
+    () =>
+      data.templates
+        .filter(
+          (template) =>
+            template.channelKind === "whatsapp" &&
+            Boolean(readTemplateMetaName(template)) &&
+            template.status !== "paused" &&
+            !isMetaTemplateUnavailableStatus(readTemplateMetaStatus(template)),
+        )
+        .sort(sortIrisTemplatesForSetup),
+    [data.templates],
+  );
+  const templateOptions = useMemo(() => {
+    const queueLabel = normalizeIrisSelectionLabel(selectedQueue?.name);
+    const subjectLabel = normalizeIrisSelectionLabel(selectedProfile?.name);
+
+    return activeContactTemplates.filter((template) => {
+      return (
+        normalizeIrisSelectionLabel(readTemplateQueueLabel(template)) ===
+          queueLabel &&
+        normalizeIrisSelectionLabel(readTemplateSubjectLabel(template)) ===
+          subjectLabel
+      );
+    });
+  }, [activeContactTemplates, selectedProfile, selectedQueue]);
+  const [selectedLocalTemplateId, setSelectedLocalTemplateId] = useState("");
+  const selectedLocalTemplate =
+    templateOptions.find((template) => template.id === selectedLocalTemplateId) ??
+    templateOptions[0] ??
+    null;
   const [templateStatus, setTemplateStatus] = useState<string | null>(null);
   const [templateMeta, setTemplateMeta] =
     useState<IrisMetaTemplateOption | null>(null);
   const [templatePhoneLink, setTemplatePhoneLink] =
     useState<IrisMetaPhoneNumberLink | null>(null);
-  const [templateFeedback, setTemplateFeedback] = useState("");
+  const [templatePhoneNumbers, setTemplatePhoneNumbers] = useState<
+    IrisMetaPhoneNumberOption[]
+  >([]);
+  const templateSyncNotifiedRef = useRef(new Set<string>());
+  const [selectedTemplatePhoneNumberId, setSelectedTemplatePhoneNumberId] =
+    useState("");
+  const [templateFeedback, setTemplateFeedback] =
+    useState<IrisTemplateFeedback | string>("");
   const [error, setError] = useState("");
-  const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [startingTicket, setStartingTicket] = useState(false);
+  const selectedLocalTemplatePhoneNumberId = readTemplateMetadataString(
+    selectedLocalTemplate,
+    "metaPhoneNumberId",
+  );
 
   const firstName = selectedClient?.firstName ?? IRIS_OPT_IN_TEMPLATE.exampleName;
-  const preview = renderIrisOptInTemplate(firstName);
-  const templateApproved = templateStatus === "APPROVED";
-  const startTemplateName = templateMeta?.name ?? IRIS_OPT_IN_TEMPLATE.name;
+  const preview = selectedLocalTemplate
+    ? renderSelectedIrisTemplatePreview(selectedLocalTemplate, firstName)
+    : "";
+  const templateButtons = selectedLocalTemplate
+    ? readTemplateButtons(selectedLocalTemplate)
+    : [];
+  const templateApproved = isMetaTemplateApprovedStatus(templateStatus);
+  const startTemplateName =
+    templateMeta?.name ??
+    readTemplateMetaName(selectedLocalTemplate) ??
+    selectedLocalTemplate?.slug.replace(/-/g, "_") ??
+    IRIS_OPT_IN_TEMPLATE.name;
   const startTemplateLanguage =
-    templateMeta?.language ?? IRIS_OPT_IN_TEMPLATE.language;
+    templateMeta?.language ??
+    readTemplateMetadataString(selectedLocalTemplate, "metaLanguage") ??
+    IRIS_OPT_IN_TEMPLATE.language;
+  const selectedTemplatePhoneNumber = findMetaPhoneNumberOption(
+    templatePhoneNumbers,
+    selectedTemplatePhoneNumberId,
+  );
+  const selectedTemplatePhoneLabel = formatSelectedTemplatePhoneForDisplay({
+    phoneNumber: selectedTemplatePhoneNumber,
+    template: selectedLocalTemplate,
+    phoneNumberId: selectedTemplatePhoneNumberId,
+  });
+  const selectedTemplatePhoneDisplayNumber =
+    selectedTemplatePhoneNumber?.displayPhoneNumber ??
+    readTemplateMetadataString(selectedLocalTemplate, "metaPhoneDisplayNumber");
+  const templatePhoneDisplayMissing = Boolean(
+    selectedTemplatePhoneNumberId && !selectedTemplatePhoneDisplayNumber,
+  );
+  const selectedTemplatePhoneNumberIsListed = templatePhoneNumbers.some(
+    (phoneNumber) => phoneNumber.id === selectedTemplatePhoneNumberId,
+  );
   const templatePhoneMismatch =
     templatePhoneLink?.checkStatus === "checked" &&
-    templatePhoneLink.linked === false &&
-    templatePhoneLink.templateBusinessAccountSource !== "phone";
-  const templateCanStart = templateApproved && !templatePhoneMismatch;
+    templatePhoneLink.linked === false;
+  const templateReadyToSend =
+    Boolean(selectedLocalTemplate) &&
+    templateApproved &&
+    Boolean(selectedTemplatePhoneNumberId) &&
+    !templatePhoneMismatch;
+  const templateCanStart =
+    Boolean(selectedQueue) && Boolean(selectedProfile);
+
+  useEffect(() => {
+    if (!activeQueues.length) {
+      setSelectedQueueId("");
+      return;
+    }
+
+    if (
+      !selectedQueueId ||
+      !activeQueues.some((queue) => queue.id === selectedQueueId)
+    ) {
+      setSelectedQueueId(defaultIrisQueueId(activeQueues, initialQueueLabel));
+    }
+  }, [activeQueues, initialQueueLabel, selectedQueueId]);
+
+  useEffect(() => {
+    if (!subjectOptions.length) {
+      setSelectedProfileId("");
+      return;
+    }
+
+    if (
+      !selectedProfileId ||
+      !subjectOptions.some((profile) => profile.id === selectedProfileId)
+    ) {
+      setSelectedProfileId(subjectOptions[0].id);
+    }
+  }, [selectedProfileId, subjectOptions]);
+
+  useEffect(() => {
+    if (!templateOptions.length) {
+      setSelectedLocalTemplateId("");
+      return;
+    }
+
+    if (
+      !selectedLocalTemplateId ||
+      !templateOptions.some((template) => template.id === selectedLocalTemplateId)
+    ) {
+      setSelectedLocalTemplateId(templateOptions[0].id);
+    }
+  }, [selectedLocalTemplateId, templateOptions]);
+
+  useEffect(() => {
+    const templatePhoneNumberId = readTemplateMetadataString(
+      selectedLocalTemplate,
+      "metaPhoneNumberId",
+    );
+
+    setSelectedTemplatePhoneNumberId(templatePhoneNumberId ?? "");
+  }, [selectedLocalTemplate]);
 
   useEffect(() => {
     let active = true;
 
     async function loadTemplateStatus() {
+      const templateName = readTemplateMetaName(selectedLocalTemplate);
+      const templateLanguage = readTemplateMetadataString(
+        selectedLocalTemplate,
+        "metaLanguage",
+      );
+      const effectivePhoneNumberId =
+        selectedLocalTemplatePhoneNumberId ?? selectedTemplatePhoneNumberId;
+
+      if (!selectedLocalTemplate || !templateName) {
+        setTemplateStatus(null);
+        setTemplateMeta(null);
+        setTemplatePhoneLink(null);
+        setTemplatePhoneNumbers([]);
+        setSelectedTemplatePhoneNumberId("");
+        setTemplateFeedback(
+          createIrisTemplateFeedback({
+            message:
+              selectedProfile && selectedQueue
+                ? "Nenhum template aprovado localizado para esta fila e assunto."
+                : "Escolha fila e assunto para localizar templates aprovados.",
+            title: "Template obrigatorio",
+            tone: "warning",
+          }),
+        );
+        return;
+      }
+
+      setTemplateStatus(readTemplateMetaStatus(selectedLocalTemplate));
+      setTemplateMeta({
+        language: templateLanguage ?? IRIS_OPT_IN_TEMPLATE.language,
+        name: templateName,
+        status: readTemplateMetaStatus(selectedLocalTemplate),
+      });
+
       try {
         const accessToken = await getIrisAccessToken();
-        const response = await fetch(
-          `/api/iris/meta/templates?name=${encodeURIComponent(IRIS_OPT_IN_TEMPLATE.name)}&language=${encodeURIComponent(IRIS_OPT_IN_TEMPLATE.language)}`,
-          {
-            cache: "no-store",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
+        const params = new URLSearchParams({
+          language: templateLanguage ?? IRIS_OPT_IN_TEMPLATE.language,
+          name: templateName,
+        });
+
+        if (effectivePhoneNumberId) {
+          params.set("phoneNumberId", effectivePhoneNumberId);
+        }
+
+        const response = await fetch(`/api/iris/meta/templates?${params.toString()}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
           },
-        );
+        });
         const payload = (await response.json().catch(
           () => null,
         )) as IrisMetaTemplatesResponse | null;
@@ -1375,33 +2398,86 @@ function IrisStartAttendanceModal({
 
         if (!response.ok) {
           setTemplateFeedback(
-            payload?.error ??
+            createIrisTemplateFeedbackFromPayload(
+              payload,
               "Nao foi possivel consultar o template Meta neste ambiente.",
+            ),
           );
           return;
         }
 
+        const templateSyncId = readIrisTemplateSyncNotificationId(
+          payload?.localTemplateSync,
+        );
+        if (
+          templateSyncId &&
+          !templateSyncNotifiedRef.current.has(templateSyncId)
+        ) {
+          templateSyncNotifiedRef.current.add(templateSyncId);
+          onTemplatesSynced?.();
+        }
+
         const template = payload?.templates?.[0];
-        setTemplateStatus(template?.status ?? null);
-        setTemplateMeta(template ?? null);
+        const phoneNumbers = Array.isArray(payload?.phoneNumbers)
+          ? payload.phoneNumbers
+          : [];
+        const selectedPhoneNumberId =
+          payload?.selectedPhoneNumberId ??
+          effectivePhoneNumberId ??
+          phoneNumbers.find((phoneNumber) => phoneNumber.isDefault)?.id ??
+          phoneNumbers[0]?.id ??
+          "";
+        setTemplatePhoneNumbers(phoneNumbers);
+        setSelectedTemplatePhoneNumberId((current) =>
+          current || selectedPhoneNumberId,
+        );
+        setTemplateStatus(template?.status ?? "NOT_FOUND");
+        setTemplateMeta(
+          template ?? {
+            language: templateLanguage ?? IRIS_OPT_IN_TEMPLATE.language,
+            name: templateName,
+            status: "NOT_FOUND",
+          },
+        );
         setTemplatePhoneLink(payload?.phoneNumberLink ?? null);
+        const phoneMismatch =
+          payload?.phoneNumberLink?.checkStatus === "checked" &&
+          payload.phoneNumberLink.linked === false;
         setTemplateFeedback(
-          joinFeedback(
-            payload?.ignoredTemplateCount
-              ? "Template aprovado em outra WABA ignorado para este telefone de envio."
-              : null,
-            template
-              ? `Template Meta ${templateStatusLabel(template.status)}.`
-              : "Template pt_BR ainda nao encontrado na Meta.",
-            phoneNumberLinkFeedback(payload?.phoneNumberLink),
-          ),
+          phoneMismatch
+            ? createIrisTemplateFeedback({
+                action:
+                  "Crie ou selecione um template aprovado para o telefone de envio escolhido.",
+                cause:
+                  "Existe template aprovado com esse nome em outra WABA, mas ele nao pertence ao telefone selecionado.",
+                message:
+                  "O template aprovado nao esta vinculado ao telefone de envio deste atendimento.",
+                title: "Telefone divergente",
+                tone: "error",
+              })
+            : createIrisTemplateFeedback({
+                action: phoneNumberLinkFeedback(payload?.phoneNumberLink),
+                cause: payload?.ignoredTemplateCount
+                  ? "Existe template com esse nome em outra WABA, mas ele nao pertence ao telefone de envio selecionado."
+                  : undefined,
+                message: template
+                  ? `Template Meta ${templateStatusLabel(template.status)}.`
+                  : "Template nao encontrado na Meta para este telefone, nome e idioma.",
+                title: template ? "Consulta concluida" : "Template nao localizado",
+                tone: template ? "success" : "warning",
+              }),
         );
       } catch (templateError) {
         if (active) {
           setTemplateFeedback(
-            templateError instanceof Error
-              ? templateError.message
-              : "Nao foi possivel consultar o template Meta.",
+            createIrisTemplateFeedback({
+              message:
+                templateError instanceof Error
+                  ? templateError.message
+                  : "Nao foi possivel consultar o template Meta.",
+              title: "Falha ao consultar a Meta",
+              tone: "error",
+            }),
           );
         }
       }
@@ -1412,7 +2488,14 @@ function IrisStartAttendanceModal({
     return () => {
       active = false;
     };
-  }, []);
+  }, [
+    selectedLocalTemplate,
+    selectedLocalTemplatePhoneNumberId,
+    selectedProfile,
+    selectedQueue,
+    selectedTemplatePhoneNumberId,
+    onTemplatesSynced,
+  ]);
 
   useEffect(() => {
     const normalized = query.trim();
@@ -1471,66 +2554,6 @@ function IrisStartAttendanceModal({
     };
   }, [query]);
 
-  async function createTemplate() {
-    setCreatingTemplate(true);
-    setTemplateFeedback("");
-    setError("");
-
-    try {
-      const accessToken = await getIrisAccessToken();
-      const response = await fetch("/api/iris/meta/templates", {
-        body: JSON.stringify({
-          bodyText: IRIS_OPT_IN_TEMPLATE.bodyText,
-          buttons: IRIS_OPT_IN_TEMPLATE.buttons,
-          category: IRIS_OPT_IN_TEMPLATE.category,
-          exampleName: IRIS_OPT_IN_TEMPLATE.exampleName,
-          language: IRIS_OPT_IN_TEMPLATE.language,
-          name: IRIS_OPT_IN_TEMPLATE.name,
-          variables: IRIS_OPT_IN_TEMPLATE.variables,
-        }),
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-      const payload = (await response.json().catch(
-        () => null,
-      )) as IrisMetaTemplatesResponse & {
-        created?: boolean;
-        template?: IrisMetaTemplateOption;
-      };
-
-      if (!response.ok) {
-        throw new Error(
-          payload?.error ?? "Nao foi possivel criar o template real na Meta.",
-        );
-      }
-
-      const status = payload?.template?.status ?? null;
-      setTemplateStatus(status);
-      setTemplateMeta(payload?.template ?? null);
-      setTemplatePhoneLink(payload?.phoneNumberLink ?? null);
-      setTemplateFeedback(
-        joinFeedback(
-          payload?.created
-            ? `Template real criado na Meta como ${templateStatusLabel(status)}.`
-            : `Template real ja existia na Meta como ${templateStatusLabel(status)}.`,
-          phoneNumberLinkFeedback(payload?.phoneNumberLink),
-        ),
-      );
-    } catch (templateError) {
-      setTemplateFeedback(
-        templateError instanceof Error
-          ? templateError.message
-          : "Nao foi possivel criar o template real na Meta.",
-      );
-    } finally {
-      setCreatingTemplate(false);
-    }
-  }
-
   async function startTicket() {
     if (!selectedClient || !templateCanStart) {
       return;
@@ -1541,33 +2564,79 @@ function IrisStartAttendanceModal({
 
     try {
       const accessToken = await getIrisAccessToken();
-      const response = await fetch("/api/iris/tickets", {
-        body: JSON.stringify({
-          apoloEntityId: selectedClient.id,
-          apoloProfileLabel: selectedClient.profileLabel,
-          contactName: selectedClient.label,
-          firstName: selectedClient.firstName,
-          phone: selectedClient.phone,
-          sendTemplate: true,
-          templateLanguage: startTemplateLanguage,
-          templateName: startTemplateName,
-        }),
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+      const requestPayload = {
+        apoloEntityId: selectedClient.id,
+        apoloProfileLabel: selectedClient.profileLabel,
+        contactName: selectedClient.label,
+        firstName: selectedClient.firstName,
+        metadata: {
+          activeContactTemplateId: selectedLocalTemplate?.id,
+          activeContactTemplateName: selectedLocalTemplate?.name,
+          activeContactTemplateQueue: selectedQueue?.name,
+          activeContactTemplateSubject: selectedProfile?.name,
         },
-        method: "POST",
-      });
-      const payload = await response.json().catch(() => null);
+        phone: selectedClient.phone,
+        phoneNumberId: selectedTemplatePhoneNumberId,
+        profileId: selectedProfile?.id,
+        queueId: selectedQueue?.id,
+        subject: selectedProfile?.name,
+        templateId: selectedLocalTemplate?.id,
+        templateLanguage: startTemplateLanguage,
+        templateName: startTemplateName,
+      };
 
-      if (!response.ok) {
+      const attemptStartTicket = async (sendTemplate: boolean) => {
+        const response = await fetch("/api/iris/tickets", {
+          body: JSON.stringify({
+            ...requestPayload,
+            sendTemplate,
+          }),
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        });
+        const payload = await response.json().catch(() => null);
+
+        return { payload, response };
+      };
+
+      const windowAttempt = await attemptStartTicket(false);
+
+      if (windowAttempt.response.ok) {
+        onTicketCreated(windowAttempt.payload?.ticket?.id);
+        return;
+      }
+
+      const windowError =
+        windowAttempt.payload?.error ?? "Nao foi possivel iniciar o atendimento.";
+      const requiresTemplate =
+        windowAttempt.response.status === 409 &&
+        typeof windowError === "string" &&
+        windowError.toLowerCase().includes("janela de 24h fechada");
+
+      if (!requiresTemplate) {
+        throw new Error(windowError);
+      }
+
+      if (!templateReadyToSend) {
         throw new Error(
-          payload?.error ?? "Nao foi possivel iniciar o atendimento.",
+          "Janela de 24h fechada. Selecione template aprovado e telefone de envio para iniciar o contato ativo.",
         );
       }
 
-      onTicketCreated(payload?.ticket?.id);
+      const templateAttempt = await attemptStartTicket(true);
+
+      if (!templateAttempt.response.ok) {
+        throw new Error(
+          templateAttempt.payload?.error ??
+            "Nao foi possivel iniciar o atendimento.",
+        );
+      }
+
+      onTicketCreated(templateAttempt.payload?.ticket?.id);
     } catch (ticketError) {
       setError(
         ticketError instanceof Error
@@ -1597,7 +2666,7 @@ function IrisStartAttendanceModal({
               Novo atendimento
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Buscar cliente no CRM 360, escolher o template aprovado e aguardar aceite.
+              Buscar cliente no CRM 360 e iniciar o atendimento. Se a janela de 24h estiver aberta, a Iris reaproveita a conversa sem novo template.
             </p>
           </div>
           <button
@@ -1689,8 +2758,13 @@ function IrisStartAttendanceModal({
                     Template Meta
                   </p>
                   <h3 className="mt-1 text-sm font-semibold text-slate-950">
-                    {IRIS_OPT_IN_TEMPLATE.title}
+                    {selectedLocalTemplate?.name ?? "Escolha um template"}
                   </h3>
+                  <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
+                    {[selectedQueue?.name, selectedProfile?.name]
+                      .filter(Boolean)
+                      .join(" / ") || "Fila e assunto"}
+                  </p>
                 </div>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(templateStatus)}`}
@@ -1699,41 +2773,149 @@ function IrisStartAttendanceModal({
                 </span>
               </div>
 
-              <div className="mt-4 rounded-xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
-                <p className="text-sm font-medium leading-6 text-slate-800">
-                  {preview}
-                </p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {IRIS_OPT_IN_TEMPLATE.buttons.map((button) => (
-                    <span
-                      key={button}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-100 bg-white text-sm font-semibold text-emerald-700"
-                    >
-                      {button}
-                    </span>
-                  ))}
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                    Fila
+                  </span>
+                  <select
+                    value={selectedQueue?.id ?? ""}
+                    onChange={(event) => {
+                      setSelectedQueueId(event.target.value);
+                      setSelectedProfileId("");
+                      setSelectedLocalTemplateId("");
+                    }}
+                    className="mt-2 h-10 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/60"
+                  >
+                    <option value="">Selecione a fila</option>
+                    {activeQueues.map((queue) => (
+                      <option key={queue.id} value={queue.id}>
+                        {queue.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                    Assunto
+                  </span>
+                  <select
+                    value={selectedProfile?.id ?? ""}
+                    onChange={(event) => {
+                      setSelectedProfileId(event.target.value);
+                      setSelectedLocalTemplateId("");
+                    }}
+                    disabled={!selectedQueue || !subjectOptions.length}
+                    className="mt-2 h-10 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/60 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    <option value="">Selecione o assunto</option>
+                    {subjectOptions.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                    Template aprovado
+                  </span>
+                  <select
+                    value={selectedLocalTemplate?.id ?? ""}
+                    onChange={(event) =>
+                      setSelectedLocalTemplateId(event.target.value)
+                    }
+                    disabled={!selectedProfile || !templateOptions.length}
+                    className="mt-2 h-10 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/60 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    <option value="">Selecione o template</option>
+                    {templateOptions.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 truncate text-xs font-medium text-slate-500">
+                    {templateOptions.length
+                      ? `${templateOptions.length} template(s) aprovado(s) para esta combinacao.`
+                      : "Nenhum template aprovado para esta fila e assunto."}
+                  </p>
+                </label>
+              </div>
+
+              <label className="mt-4 block">
+                <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                  Telefone de envio
+                </span>
+                <div className="mt-2 flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3">
+                  <Smartphone className="size-4 shrink-0 text-[#A07C3B]" aria-hidden="true" />
+                  <select
+                    value={selectedTemplatePhoneNumberId}
+                    onChange={(event) =>
+                      setSelectedTemplatePhoneNumberId(event.target.value)
+                    }
+                    disabled={
+                      !selectedLocalTemplate ||
+                      Boolean(selectedLocalTemplatePhoneNumberId)
+                    }
+                    className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:text-slate-500"
+                  >
+                    <option value="">Selecione o telefone</option>
+                    {selectedTemplatePhoneNumberId &&
+                    !selectedTemplatePhoneNumberIsListed ? (
+                      <option value={selectedTemplatePhoneNumberId}>
+                        {selectedTemplatePhoneLabel}
+                      </option>
+                    ) : null}
+                    {templatePhoneNumbers.map((phoneNumber) => (
+                      <option key={phoneNumber.id} value={phoneNumber.id}>
+                        {formatMetaPhoneNumberOption(phoneNumber)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                <p className="mt-1 truncate text-xs font-medium text-slate-500">
+                  {selectedLocalTemplatePhoneNumberId
+                    ? `${selectedTemplatePhoneLabel} esta salvo no template aprovado.`
+                    : selectedTemplatePhoneNumber
+                    ? `${formatMetaPhoneNumberOption(selectedTemplatePhoneNumber)} define a WABA do template.`
+                    : "A Iris consulta e cria o template na WABA do telefone selecionado."}
+                </p>
+              </label>
+
+              <div className="mt-4 rounded-xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
+                {selectedLocalTemplate ? (
+                  <>
+                    <p className="text-sm font-medium leading-6 text-slate-800">
+                      {preview}
+                    </p>
+                    {templateButtons.length ? (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {templateButtons.map((button) => (
+                          <span
+                            key={button}
+                            className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-100 bg-white text-sm font-semibold text-emerald-700"
+                          >
+                            {button}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-sm font-medium leading-6 text-slate-500">
+                    Escolha fila e assunto para carregar os templates aprovados.
+                  </p>
+                )}
               </div>
 
               <p className="mt-3 text-xs leading-5 text-slate-500">
-                No contato ativo, a Iris envia somente o template aprovado e o chat livre fica condicionado ao aceite do cliente.
+                No contato ativo, a Iris envia template aprovado apenas quando a janela de 24h estiver fechada.
               </p>
 
-              <button
-                type="button"
-                onClick={createTemplate}
-                disabled={creatingTemplate}
-                className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <CheckCircle2 className="size-4" aria-hidden="true" />
-                {creatingTemplate ? "Criando na Meta..." : "Criar template real"}
-              </button>
-
-              {templateFeedback ? (
-                <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
-                  {templateFeedback}
-                </p>
-              ) : null}
+              <IrisTemplateFeedbackBox feedback={templateFeedback} />
             </div>
 
             <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
@@ -1745,7 +2927,9 @@ function IrisStartAttendanceModal({
                 <ReadonlyMini label="Telefone" value={selectedClient ? formatPhoneForDisplay(selectedClient.phone) : "-"} />
                 <ReadonlyMini label="Origem" value="Ativo" />
                 <ReadonlyMini label="Status inicial" value="Espera" />
-                <ReadonlyMini label="Perfil" value="Primeiro contato" />
+                <ReadonlyMini label="Fila" value={selectedQueue?.name ?? "-"} />
+                <ReadonlyMini label="Assunto" value={selectedProfile?.name ?? "-"} />
+                <ReadonlyMini label="Template" value={selectedLocalTemplate?.name ?? "-"} />
               </div>
             </div>
           </aside>
@@ -1759,12 +2943,26 @@ function IrisStartAttendanceModal({
           ) : null}
           {templatePhoneMismatch ? (
             <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
-              O telefone de envio Meta nao pertence a WABA onde o template foi aprovado. Ajuste a configuracao Meta de homologacao ou crie o template na WABA do telefone de envio.
+              O template aprovado nao pertence ao telefone de envio selecionado. Crie ou selecione um template aprovado para este telefone.
             </p>
           ) : null}
-          {!templateApproved ? (
+          {templatePhoneDisplayMissing ? (
             <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
-              O template precisa estar aprovado pela Meta antes de iniciar contato ativo real.
+              A Meta ainda nao retornou o numero exibivel deste telefone. A Iris vai usar o ID do telefone selecionado e a validacao server-side da WABA.
+            </p>
+          ) : null}
+          {!selectedLocalTemplate ? (
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+              Se a janela de 24h estiver fechada, selecione um template aprovado para iniciar o contato ativo.
+            </p>
+          ) : !templateApproved ? (
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+              Se a janela de 24h estiver fechada, o template precisa estar aprovado pela Meta antes de iniciar contato ativo real.
+            </p>
+          ) : null}
+          {selectedLocalTemplate && !selectedTemplatePhoneNumberId ? (
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+              Se a janela de 24h estiver fechada, selecione o telefone de envio. Esse telefone define onde o template existe na Meta.
             </p>
           ) : null}
           <button
@@ -1798,14 +2996,20 @@ function ReadonlyMini({ label, value }: { label: string; value: string }) {
 function IrisTicketRow({
   onOpenAttendance,
   onSelectTicket,
+  showTimeline = false,
   ticket,
 }: {
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
+  showTimeline?: boolean;
   ticket: IrisTicket;
 }) {
   const effectiveStatus = effectiveIrisStatus(ticket);
   const origin = ticketOrigin(ticket);
+  const timelineStartedAt = formatDateTime(ticket.openedAt);
+  const timelineClosedAt = formatDateTime(
+    ticket.closedAt ?? ticket.resolvedAt ?? ticket.lastMessageAt,
+  );
 
   return (
     <article
@@ -1839,6 +3043,11 @@ function IrisTicketRow({
             <p className="mt-0.5 truncate text-xs text-slate-500">
               {ticketCrmSubtitle(ticket)}
             </p>
+            {showTimeline ? (
+              <p className="mt-1 truncate text-[11px] font-medium text-slate-500">
+                Inicio: {timelineStartedAt} | Encerramento: {timelineClosedAt}
+              </p>
+            ) : null}
           </div>
         </div>
       </button>
@@ -1929,16 +3138,31 @@ function IrisTicketRow({
 
 function AttendanceView({
   onClose,
+  onOpenHistoryForTicket,
   onMessageCreated,
   onMessageUpdated,
+  onTicketClosed,
+  onTicketContextUpdated,
   onSelectTicket,
   selectedTicketId,
   ticket,
   tickets,
 }: {
   onClose: () => void;
+  onOpenHistoryForTicket: (ticket: IrisTicket) => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
   onMessageUpdated: (ticketId: string, message: IrisMessage) => void;
+  onTicketClosed: (input: {
+    closedAt?: string | null;
+    metadata?: Record<string, unknown> | null;
+    resolvedAt?: string | null;
+    status?: string | null;
+    ticketId: string;
+  }) => void;
+  onTicketContextUpdated: (input: {
+    metadata?: Record<string, unknown> | null;
+    ticketId: string;
+  }) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
   ticket: IrisTicket | null;
@@ -1962,24 +3186,42 @@ function AttendanceView({
       selectedTicketId={selectedTicketId}
       onSelectTicket={onSelectTicket}
       onClose={onClose}
+      onOpenHistoryForTicket={onOpenHistoryForTicket}
       onMessageCreated={onMessageCreated}
       onMessageUpdated={onMessageUpdated}
+      onTicketClosed={onTicketClosed}
+      onTicketContextUpdated={onTicketContextUpdated}
     />
   );
 }
 
 function IrisConversationPanel({
   onClose,
+  onOpenHistoryForTicket,
   onMessageCreated,
   onMessageUpdated,
+  onTicketClosed,
+  onTicketContextUpdated,
   onSelectTicket,
   selectedTicketId,
   ticket,
   tickets,
 }: {
   onClose: () => void;
+  onOpenHistoryForTicket: (ticket: IrisTicket) => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
   onMessageUpdated: (ticketId: string, message: IrisMessage) => void;
+  onTicketClosed: (input: {
+    closedAt?: string | null;
+    metadata?: Record<string, unknown> | null;
+    resolvedAt?: string | null;
+    status?: string | null;
+    ticketId: string;
+  }) => void;
+  onTicketContextUpdated: (input: {
+    metadata?: Record<string, unknown> | null;
+    ticketId: string;
+  }) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
   ticket: IrisTicket;
@@ -1993,11 +3235,22 @@ function IrisConversationPanel({
   const [replyToMessage, setReplyToMessage] =
     useState<IrisReplyPreview | null>(null);
   const [sending, setSending] = useState(false);
+  const [closingTicket, setClosingTicket] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [search, setSearch] = useState("");
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] =
     useState(false);
+  const [attendantOpen, setAttendantOpen] = useState(false);
+  const [attendantPrompt, setAttendantPrompt] = useState("");
+  const [attendantDocumentFragment, setAttendantDocumentFragment] =
+    useState("");
+  const [attendantDocumentPosition, setAttendantDocumentPosition] =
+    useState<"last4" | "first4">("last4");
+  const [attendantLoading, setAttendantLoading] = useState(false);
+  const [attendantResult, setAttendantResult] =
+    useState<IrisAttendantResponse | null>(null);
+  const [attendantFeedback, setAttendantFeedback] = useState("");
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStartedAtRef = useRef<number | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -2008,6 +3261,26 @@ function IrisConversationPanel({
   const { hubUser } = useAuth();
   const operatorLabel = formatIrisOperatorLabel(hubUser?.name);
   const operatorAvatarUrl = hubUser?.avatarUrl ?? null;
+  const [contextModalMode, setContextModalMode] =
+    useState<IrisContextModalMode>(null);
+  const [apoloContextEntity, setApoloContextEntity] =
+    useState<IrisApoloContextEntity | null>(null);
+  const [apoloContextError, setApoloContextError] = useState<string | null>(null);
+  const [apoloContextLoading, setApoloContextLoading] = useState(false);
+  const [apoloContextUpdatedAt, setApoloContextUpdatedAt] = useState<string | null>(
+    null,
+  );
+  const [contextNoteDraft, setContextNoteDraft] = useState("");
+  const [contextAgendaEvents, setContextAgendaEvents] = useState<
+    IrisTicketContextAgendaEvent[]
+  >([]);
+  const [contextAgendaTitleDraft, setContextAgendaTitleDraft] = useState("");
+  const [contextAgendaDateDraft, setContextAgendaDateDraft] = useState("");
+  const [contextAgendaNotesDraft, setContextAgendaNotesDraft] = useState("");
+  const [contextAgendaMonthCursor, setContextAgendaMonthCursor] = useState(
+    startOfMonthIso(),
+  );
+  const [contextSaving, setContextSaving] = useState(false);
 
   const conversations = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -2067,9 +3340,206 @@ function IrisConversationPanel({
     ticket.id,
     tickets,
   ]);
+  const ticketContextNote = useMemo(
+    () => readIrisTicketContextNote(ticket.metadata),
+    [ticket.metadata],
+  );
+  const ticketContextAgendaEvents = useMemo(
+    () => readIrisTicketContextAgendaEvents(ticket.metadata),
+    [ticket.metadata],
+  );
+  const hasUserPortfolio = hasIrisApoloUserPortfolio(apoloContextEntity);
+  const fallbackUserProfile = hasIrisRegisteredUserProfile(
+    ticket.crm360Registration,
+  );
+  const portfolioShortcutEnabled = hasUserPortfolio || fallbackUserProfile;
+  const agendaTimeline = useMemo(
+    () =>
+      buildIrisMergedAgendaEntries({
+        entity: apoloContextEntity,
+        events: contextAgendaEvents,
+      }),
+    [apoloContextEntity, contextAgendaEvents],
+  );
+  const agendaCalendar = useMemo(
+    () => buildIrisAgendaCalendar(contextAgendaMonthCursor, agendaTimeline),
+    [contextAgendaMonthCursor, agendaTimeline],
+  );
+  const contextShortcuts = [
+    {
+      active: contextModalMode === "client",
+      disabled: false,
+      icon: FileText,
+      id: "client" as const,
+      label: "Dados do cliente e nota",
+      onClick: () => {
+        openContextModal("client");
+      },
+    },
+    {
+      active: contextModalMode === "agenda",
+      disabled: false,
+      icon: CalendarClock,
+      id: "agenda" as const,
+      label: "Agenda mensal e tarefas",
+      onClick: () => {
+        openContextModal("agenda");
+      },
+    },
+    {
+      active: false,
+      disabled: true,
+      icon: ClipboardList,
+      id: "portfolio" as const,
+      label: portfolioShortcutEnabled
+        ? "Carteira em breve"
+        : "Carteira indisponivel para este cliente",
+      onClick: () => {},
+    },
+    {
+      active: false,
+      disabled: true,
+      icon: Clock3,
+      id: "history" as const,
+      label: "Historico em breve",
+      onClick: () => {},
+    },
+  ];
+
+  const loadApoloContext = useCallback(async () => {
+    const phoneDigits = normalizeIrisPhoneDigits(ticket.contactPhone);
+    const queryCandidates = [
+      phoneDigits.length >= 8 ? phoneDigits : "",
+      ticketContactLabel(ticket),
+    ].filter((value, index, values) => {
+      const normalized = value.trim();
+
+      return (
+        normalized.length >= 3 &&
+        values.findIndex((item) => item.trim() === normalized) === index
+      );
+    });
+
+    if (!queryCandidates.length) {
+      setApoloContextEntity(null);
+      setApoloContextError("Telefone ou nome insuficiente para consultar o Apolo.");
+      setApoloContextLoading(false);
+      return;
+    }
+
+    setApoloContextLoading(true);
+    setApoloContextError(null);
+    setApoloContextUpdatedAt(null);
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      let resolvedEntity: IrisApoloContextEntity | null = null;
+      let lastResponseError: string | null = null;
+
+      for (const candidate of queryCandidates) {
+        const response = await fetch(
+          `/api/apolo/relationships?q=${encodeURIComponent(candidate)}&limit=20`,
+          {
+            cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | {
+              data?: {
+                entities?: IrisApoloContextEntity[];
+              };
+              error?: string;
+            }
+          | null;
+
+        if (!response.ok) {
+          lastResponseError =
+            payload?.error ?? "Nao foi possivel consultar o Apolo.";
+          continue;
+        }
+
+        const entities = Array.isArray(payload?.data?.entities)
+          ? payload?.data?.entities
+          : [];
+
+        if (!entities.length) {
+          continue;
+        }
+
+        resolvedEntity = pickIrisApoloEntityForTicket(entities, ticket);
+
+        if (resolvedEntity) {
+          break;
+        }
+      }
+
+      if (!resolvedEntity) {
+        setApoloContextEntity(null);
+        setApoloContextError(
+          lastResponseError ??
+            "Cliente nao localizado no Apolo para este atendimento.",
+        );
+        return;
+      }
+
+      setApoloContextEntity(resolvedEntity);
+      setApoloContextUpdatedAt(new Date().toISOString());
+    } catch (contextError) {
+      setApoloContextEntity(null);
+      setApoloContextError(
+        contextError instanceof Error
+          ? contextError.message
+          : "Nao foi possivel carregar os dados do Apolo.",
+      );
+    } finally {
+      setApoloContextLoading(false);
+    }
+  }, [
+    ticket.contactPhone,
+    ticket.crm360Registration?.entityId,
+    ticket.contactLabel,
+    ticket.contactId,
+    ticket.id,
+  ]);
+
+  useEffect(() => {
+    void loadApoloContext();
+  }, [loadApoloContext]);
+
+  useEffect(() => {
+    setContextNoteDraft(ticketContextNote?.text ?? "");
+    setContextAgendaEvents(ticketContextAgendaEvents);
+    setContextAgendaTitleDraft("");
+    setContextAgendaDateDraft("");
+    setContextAgendaNotesDraft("");
+    setContextAgendaMonthCursor(
+      startOfMonthIso(
+        ticketContextAgendaEvents[0]?.scheduledAt ?? new Date().toISOString(),
+      ),
+    );
+    setContextModalMode(null);
+  }, [ticket.id]);
+
+  const latestCustomerMessage = useMemo(() => {
+    for (let index = ticket.messages.length - 1; index >= 0; index -= 1) {
+      const message = ticket.messages[index];
+
+      if (message.direction === "inbound" && message.body.trim()) {
+        return message.body.trim();
+      }
+    }
+
+    return ticket.lastMessagePreview === "Sem mensagens registradas"
+      ? ""
+      : ticket.lastMessagePreview;
+  }, [ticket.lastMessagePreview, ticket.messages]);
 
   const ticketChecklist = buildTicketChecklist(ticket);
   const ticketClosed = isClosedTicket(ticket);
+  const customerServiceWindow = getIrisCustomerServiceWindow(ticket, tickets);
   const ticketStatus = effectiveIrisStatus(ticket);
   const ticketIncomplete =
     !ticketClosed &&
@@ -2078,10 +3548,16 @@ function IrisConversationPanel({
       ticketStatus === "waiting_operator" ||
       ticketChecklist.some((item) => !item.ok));
   const operationReady = !ticketClosed;
-  const blockedTooltip = ticketClosed ? "Ticket encerrado" : "Enviar mensagem";
   const editingMessage = editingMessageId
     ? ticket.messages.find((message) => message.id === editingMessageId) ?? null
     : null;
+  const canSendFreeForm = operationReady && customerServiceWindow.open;
+  const composerReady = editingMessage ? operationReady : canSendFreeForm;
+  const blockedTooltip = ticketClosed
+    ? "Ticket encerrado"
+    : customerServiceWindow.open
+      ? "Enviar mensagem"
+      : "Janela WhatsApp fechada";
   const latestMessage = ticket.messages[ticket.messages.length - 1] ?? null;
   const latestMessageSignature = latestMessage
     ? [
@@ -2101,7 +3577,14 @@ function IrisConversationPanel({
   });
 
   useEffect(() => {
-    if (!operationReady || sending || !ticket.contactPhone) {
+    setAttendantResult(null);
+    setAttendantFeedback("");
+    setAttendantDocumentFragment("");
+    setAttendantPrompt(latestCustomerMessage);
+  }, [latestCustomerMessage, ticket.id]);
+
+  useEffect(() => {
+    if (!canSendFreeForm || sending || !ticket.contactPhone) {
       return;
     }
 
@@ -2118,7 +3601,7 @@ function IrisConversationPanel({
 
     void sendExistingLocalMessage(pendingLocalMessage);
   }, [
-    operationReady,
+    canSendFreeForm,
     sending,
     ticket.channelId,
     ticket.contactId,
@@ -2144,6 +3627,294 @@ function IrisConversationPanel({
     return () => window.cancelAnimationFrame(frame);
   }, [latestMessageSignature, ticket.id, ticket.messages.length]);
 
+  async function runIrisAttendant(selectedPaymentId?: string) {
+    if (attendantLoading || ticketClosed) {
+      return;
+    }
+
+    setAttendantLoading(true);
+    setAttendantFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/attendant", {
+        body: JSON.stringify({
+          action: selectedPaymentId ? "select_boleto" : "analyze",
+          documentFragment: attendantDocumentFragment,
+          documentFragmentPosition: attendantDocumentPosition,
+          message: attendantPrompt || latestCustomerMessage,
+          selectedPaymentId,
+          ticketId: ticket.id,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | (IrisAttendantResponse & { error?: string })
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Nao foi possivel acionar a Cacá.");
+      }
+
+      setAttendantResult(payload);
+    } catch (error) {
+      setAttendantFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel acionar a Cacá agora.",
+      );
+    } finally {
+      setAttendantLoading(false);
+    }
+  }
+
+  function useAttendantReplyAsDraft() {
+    const replyText = attendantResult?.replyText?.trim();
+
+    if (!replyText) {
+      return;
+    }
+
+    setDraft(replyText);
+    setEditingMessageId(null);
+    setReplyToMessage(null);
+    setEmojiPickerOpen(false);
+    setFeedback("Resposta da Cacá aplicada ao rascunho.");
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  async function closeTicket() {
+    if (ticketClosed || closingTicket) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Encerrar o chat e finalizar o protocolo ${ticket.protocol}?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setClosingTicket(true);
+    setFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/tickets", {
+        body: JSON.stringify({
+          action: "close",
+          closeReason: "Encerrado manualmente no atendimento Iris.",
+          ticketId: ticket.id,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            alreadyClosed?: boolean;
+            error?: string;
+            ticket?: {
+              closedAt?: string | null;
+              metadata?: Record<string, unknown> | null;
+              resolvedAt?: string | null;
+              status?: string | null;
+            } | null;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Nao foi possivel encerrar o chat.");
+      }
+
+      const closedTicket = payload?.ticket;
+      const metadata =
+        closedTicket?.metadata &&
+        typeof closedTicket.metadata === "object" &&
+        !Array.isArray(closedTicket.metadata)
+          ? closedTicket.metadata
+          : null;
+
+      onTicketClosed({
+        closedAt:
+          typeof closedTicket?.closedAt === "string"
+            ? closedTicket.closedAt
+            : new Date().toISOString(),
+        metadata,
+        resolvedAt:
+          typeof closedTicket?.resolvedAt === "string"
+            ? closedTicket.resolvedAt
+            : ticket.resolvedAt ?? null,
+        status:
+          typeof closedTicket?.status === "string"
+            ? closedTicket.status
+            : "closed",
+        ticketId: ticket.id,
+      });
+
+      setDraft("");
+      setEditingMessageId(null);
+      setEmojiPickerOpen(false);
+      setReplyToMessage(null);
+      setFeedback(
+        payload?.alreadyClosed
+          ? "Protocolo ja estava encerrado."
+          : `Chat encerrado. Protocolo ${ticket.protocol} finalizado.`,
+      );
+    } catch (error) {
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel encerrar o chat agora.",
+      );
+    } finally {
+      setClosingTicket(false);
+    }
+  }
+
+  function openContextModal(mode: Exclude<IrisContextModalMode, null>) {
+    setContextModalMode(mode);
+
+    if (mode === "agenda" && !contextAgendaDateDraft) {
+      setContextAgendaDateDraft(toDateTimeLocalInput(new Date().toISOString()));
+    }
+
+    void loadApoloContext();
+  }
+
+  async function persistTicketContextUpdate(input: {
+    contextAgendaEvents?: IrisTicketContextAgendaEvent[];
+    contextNote?: string;
+    successMessage: string;
+  }) {
+    if (contextSaving) {
+      return false;
+    }
+
+    setContextSaving(true);
+    setFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/tickets", {
+        body: JSON.stringify({
+          action: "context_update",
+          contextAgendaEvents: input.contextAgendaEvents,
+          contextNote: input.contextNote,
+          ticketId: ticket.id,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            ticket?: {
+              metadata?: Record<string, unknown> | null;
+            } | null;
+          }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel atualizar o contexto do ticket.",
+        );
+      }
+
+      const metadata =
+        payload?.ticket?.metadata &&
+        typeof payload.ticket.metadata === "object" &&
+        !Array.isArray(payload.ticket.metadata)
+          ? payload.ticket.metadata
+          : null;
+
+      onTicketContextUpdated({
+        metadata,
+        ticketId: ticket.id,
+      });
+
+      if (metadata) {
+        setContextNoteDraft(readIrisTicketContextNote(metadata)?.text ?? "");
+        setContextAgendaEvents(readIrisTicketContextAgendaEvents(metadata));
+      }
+
+      setFeedback(input.successMessage);
+      return true;
+    } catch (error) {
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel atualizar o contexto agora.",
+      );
+      return false;
+    } finally {
+      setContextSaving(false);
+    }
+  }
+
+  async function saveContextNote() {
+    await persistTicketContextUpdate({
+      contextNote: contextNoteDraft,
+      successMessage: "Nota do cliente salva no ticket.",
+    });
+  }
+
+  async function createContextAgendaEvent() {
+    const title = contextAgendaTitleDraft.trim();
+    const scheduledAt = normalizeDateTimeInputToIso(contextAgendaDateDraft);
+
+    if (!title) {
+      setFeedback("Informe o titulo da atividade para agendar.");
+      return;
+    }
+
+    if (!scheduledAt) {
+      setFeedback("Informe data e hora validas para a agenda.");
+      return;
+    }
+
+    const nextEvents = sortIrisTicketContextAgendaEvents([
+      ...contextAgendaEvents,
+      {
+        createdAt: new Date().toISOString(),
+        createdByLabel: operatorLabel,
+        id: `ctx-event-${Date.now()}`,
+        kind: "tarefa",
+        notes: contextAgendaNotesDraft.trim() || null,
+        scheduledAt,
+        status: "planned",
+        title,
+      },
+    ]);
+    const saved = await persistTicketContextUpdate({
+      contextAgendaEvents: nextEvents,
+      successMessage: "Atividade registrada na agenda do cliente.",
+    });
+
+    if (!saved) {
+      return;
+    }
+
+    setContextAgendaEvents(nextEvents);
+    setContextAgendaTitleDraft("");
+    setContextAgendaDateDraft("");
+    setContextAgendaNotesDraft("");
+    setContextAgendaMonthCursor(startOfMonthIso(scheduledAt));
+  }
+
   async function sendMessage() {
     const body = draft.trim();
 
@@ -2153,6 +3924,11 @@ function IrisConversationPanel({
 
     if (editingMessageId) {
       await saveEditedMessage(body);
+      return;
+    }
+
+    if (!canSendFreeForm) {
+      setFeedback(customerServiceWindow.label);
       return;
     }
 
@@ -2363,6 +4139,11 @@ function IrisConversationPanel({
       return;
     }
 
+    if (!canSendFreeForm) {
+      setFeedback(customerServiceWindow.label);
+      return;
+    }
+
     setFeedback("");
 
     try {
@@ -2461,7 +4242,7 @@ function IrisConversationPanel({
 
     event.preventDefault();
 
-    if (!draft.trim() || sending || !operationReady || recordingAudio) {
+    if (!draft.trim() || sending || !composerReady || recordingAudio) {
       return;
     }
 
@@ -2469,12 +4250,17 @@ function IrisConversationPanel({
   }
 
   async function toggleAudioRecording() {
-    if (sending || !operationReady) {
+    if (sending) {
       return;
     }
 
     if (recordingAudio) {
       mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    if (!canSendFreeForm) {
+      setFeedback(customerServiceWindow.label);
       return;
     }
 
@@ -2529,7 +4315,12 @@ function IrisConversationPanel({
   }
 
   async function sendAudioMessage(audioBlob: Blob, durationMs: number | null) {
-    if (sending || !operationReady) {
+    if (sending) {
+      return;
+    }
+
+    if (!canSendFreeForm) {
+      setFeedback(customerServiceWindow.label);
       return;
     }
 
@@ -2776,6 +4567,59 @@ function IrisConversationPanel({
                   <option>{ticket.profileLabel}</option>
                 </select>
               </label>
+              <Tooltip
+                content={
+                  attendantOpen
+                    ? "Ocultar Cacá"
+                    : "Acionar Cacá"
+                }
+                placement="bottom"
+              >
+                <button
+                  type="button"
+                  onClick={() => setAttendantOpen((current) => !current)}
+                  disabled={ticketClosed}
+                  aria-label={
+                    attendantOpen
+                      ? "Ocultar Cacá"
+                      : "Acionar Cacá"
+                  }
+                  className={[
+                    "inline-flex size-9 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400",
+                    attendantOpen
+                      ? "border-[#A07C3B]/40 bg-[#101820] text-white hover:bg-[#17212b]"
+                      : "border-[#A07C3B]/20 bg-[#fbf6ec] text-[#7A5E2C] hover:border-[#A07C3B]/35 hover:bg-[#f4ebdc]",
+                  ].join(" ")}
+                >
+                  <Bot className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <Tooltip
+                content={
+                  ticketClosed
+                    ? "Chat encerrado"
+                    : closingTicket
+                      ? "Encerrando chat..."
+                      : "Encerrar chat"
+                }
+                placement="bottom"
+              >
+                <button
+                  type="button"
+                  onClick={() => void closeTicket()}
+                  disabled={ticketClosed || closingTicket}
+                  aria-label={
+                    ticketClosed
+                      ? "Chat encerrado"
+                      : closingTicket
+                        ? "Encerrando chat"
+                        : "Encerrar chat"
+                  }
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200/70 bg-rose-50/70 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <CircleStop className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
               <div className="flex w-fit items-center gap-1 rounded-lg border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                 <Tooltip content="Voltar para o board" placement="bottom">
                   <button
@@ -2814,6 +4658,25 @@ function IrisConversationPanel({
           <div className="mx-4 mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
             {feedback}
           </div>
+        ) : null}
+
+        {attendantOpen ? (
+          <IrisAttendantPanel
+            disabled={ticketClosed}
+            documentFragment={attendantDocumentFragment}
+            documentPosition={attendantDocumentPosition}
+            feedback={attendantFeedback}
+            loading={attendantLoading}
+            onAnalyze={() => void runIrisAttendant()}
+            onClose={() => setAttendantOpen(false)}
+            onDocumentFragmentChange={setAttendantDocumentFragment}
+            onDocumentPositionChange={setAttendantDocumentPosition}
+            onPromptChange={setAttendantPrompt}
+            onSelectBillingItem={(item) => void runIrisAttendant(item.id)}
+            onUseReply={useAttendantReplyAsDraft}
+            prompt={attendantPrompt}
+            result={attendantResult}
+          />
         ) : null}
 
         <div
@@ -2881,6 +4744,36 @@ function IrisConversationPanel({
             </div>
           ) : null}
 
+          {!ticketClosed ? (
+            <div
+              className={[
+                "mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2",
+                customerServiceWindow.open
+                  ? "border-emerald-100 bg-emerald-50"
+                  : "border-amber-200 bg-amber-50",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "flex min-w-0 items-center gap-2 text-xs font-semibold",
+                  customerServiceWindow.open
+                    ? "text-emerald-700"
+                    : "text-amber-800",
+                ].join(" ")}
+              >
+                {customerServiceWindow.open ? (
+                  <Clock3 className="size-3.5 shrink-0" aria-hidden="true" />
+                ) : (
+                  <LockKeyhole
+                    className="size-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
+                <span className="min-w-0">{customerServiceWindow.label}</span>
+              </div>
+            </div>
+          ) : null}
+
           <div className="mb-2 flex items-center justify-between gap-2">
             <OperationalToolbar disabled={!operationReady} />
             {operationReady ? (
@@ -2912,7 +4805,7 @@ function IrisConversationPanel({
           ) : null}
 
           <div ref={emojiPickerRef} className="relative">
-            {emojiPickerOpen && operationReady ? (
+            {emojiPickerOpen && composerReady ? (
               <div className="absolute bottom-full left-0 z-20 mb-2 grid w-56 grid-cols-6 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
                 {IRIS_EMOJI_OPTIONS.map((emoji) => (
                   <button
@@ -2931,11 +4824,11 @@ function IrisConversationPanel({
             <div
               className={[
                 "flex items-end gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity",
-                operationReady ? "opacity-100" : "opacity-55",
+                composerReady ? "opacity-100" : "opacity-55",
               ].join(" ")}
             >
               <ComposerIconButton
-                disabled={!operationReady}
+                disabled={!composerReady}
                 label="Emoji"
                 onClick={() => setEmojiPickerOpen((current) => !current)}
               >
@@ -2954,17 +4847,19 @@ function IrisConversationPanel({
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={handleComposerKeyDown}
                 placeholder={
-                  operationReady
+                  composerReady
                     ? editingMessage
                       ? "Editar mensagem no Iris..."
                       : "Escrever mensagem WhatsApp..."
-                    : "Ticket encerrado"
+                    : ticketClosed
+                      ? "Ticket encerrado"
+                      : "Aguardando janela WhatsApp"
                 }
-                disabled={!operationReady}
+                disabled={!composerReady}
                 className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
               />
               <ComposerIconButton
-                disabled={!operationReady || sending}
+                disabled={!canSendFreeForm || sending}
                 label={recordingAudio ? "Parar e enviar audio" : "Enviar audio"}
                 onClick={toggleAudioRecording}
               >
@@ -2979,7 +4874,7 @@ function IrisConversationPanel({
               </ComposerIconButton>
               <Tooltip
                 content={
-                  operationReady
+                  composerReady
                     ? editingMessage
                       ? "Salvar edicao"
                       : "Enviar mensagem"
@@ -2990,12 +4885,12 @@ function IrisConversationPanel({
                 <button
                   type="button"
                   disabled={
-                    sending || !draft.trim() || !operationReady || recordingAudio
+                    sending || !draft.trim() || !composerReady || recordingAudio
                   }
                   onClick={sendMessage}
                   className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
                   aria-label={
-                    operationReady
+                    composerReady
                       ? editingMessage
                         ? "Salvar edicao"
                         : "Enviar mensagem"
@@ -3033,27 +4928,47 @@ function IrisConversationPanel({
             />
           </div>
           <div className="mt-3 grid grid-cols-4 gap-1 rounded-lg bg-slate-100/70 p-1">
-            {[FileText, CalendarClock, ClipboardList, Clock3].map(
-              (Icon, index) => (
-                <Tooltip
-                  content="Atalho de contexto"
-                  key={index}
-                  placement="bottom"
+            {contextShortcuts.map((shortcut, index) => (
+              <Tooltip
+                content={shortcut.label}
+                key={index}
+                placement="bottom"
+              >
+                <button
+                  type="button"
+                  onClick={shortcut.onClick}
+                  disabled={Boolean(shortcut.disabled)}
+                  className={[
+                    "flex size-8 items-center justify-center rounded-md transition-colors",
+                    shortcut.disabled
+                      ? "cursor-not-allowed text-slate-300"
+                      : shortcut.active
+                        ? "bg-white text-[#7A5E2C]"
+                        : "text-slate-500 hover:bg-white hover:text-[#7A5E2C]",
+                  ].join(" ")}
+                  aria-label={shortcut.label}
                 >
-                  <button
-                    type="button"
-                    className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-[#7A5E2C]"
-                    aria-label="Atalho de contexto"
-                  >
-                    <Icon className="size-4" aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              ),
-            )}
+                  <shortcut.icon className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            ))}
           </div>
         </div>
 
         <div className="min-h-0 space-y-2 overflow-y-auto p-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+          <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-2.5">
+            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+              Nota do operador
+            </p>
+            <p className="mt-1 text-sm font-medium text-slate-700 [overflow-wrap:anywhere]">
+              {ticketContextNote?.text?.trim() || "Sem nota registrada para este cliente."}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              {ticketContextNote?.updatedAt
+                ? `Atualizada em ${formatDateTime(ticketContextNote.updatedAt)}`
+                : "Use o primeiro icone para registrar observacoes do atendimento."}
+            </p>
+          </div>
           <ContextItem label="Cliente" value={ticketContactLabel(ticket)} />
           <ContextItem label="CRM 360" value={crm360ContextLabel(ticket.crm360Registration)} />
           <ContextItem label="Telefone" value={ticket.contactPhone ?? "-"} />
@@ -3082,6 +4997,10 @@ function IrisConversationPanel({
             label="Canal"
             value={formatIrisChannelLabel(ticket.channelLabel)}
           />
+          <ContextItem
+            label="Janela WhatsApp"
+            value={customerServiceWindow.contextLabel}
+          />
 
           <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
             <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
@@ -3096,7 +5015,521 @@ function IrisConversationPanel({
           </div>
         </div>
       </aside>
+
+      {contextModalMode ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[2px]">
+          <button
+            type="button"
+            aria-label="Fechar popup de contexto"
+            onClick={() => setContextModalMode(null)}
+            className="absolute inset-0 cursor-default"
+          />
+          <section className="relative z-10 flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_90px_rgba(15,23,42,0.24)]">
+            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                  Contexto do cliente
+                </p>
+                <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                  {contextModalMode === "client"
+                    ? "Dados do cliente e nota interna"
+                    : "Agenda mensal e atividades"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {contextModalMode === "client"
+                    ? "Dados vindos do Apolo e anotacoes do operador para continuidade do atendimento."
+                    : "Visual mensal da agenda com criacao de tarefas do cliente."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setContextModalMode(null)}
+                aria-label="Fechar popup"
+                className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </header>
+
+            {contextModalMode === "client" ? (
+              <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_340px] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                <div className="space-y-2">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                      Dados Apolo
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void loadApoloContext();
+                      }}
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
+                    >
+                      <RefreshCw
+                        className={`size-3 ${apoloContextLoading ? "animate-spin" : ""}`}
+                        aria-hidden="true"
+                      />
+                      Atualizar
+                    </button>
+                  </div>
+
+                  {apoloContextLoading ? (
+                    <p className="rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+                      Carregando dados do Apolo...
+                    </p>
+                  ) : null}
+
+                  {!apoloContextLoading && apoloContextError ? (
+                    <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                      {apoloContextError}
+                    </p>
+                  ) : null}
+
+                  {!apoloContextLoading && !apoloContextError && !apoloContextEntity ? (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                      Cliente ainda nao localizado no Apolo para este contato.
+                    </p>
+                  ) : null}
+
+                  {!apoloContextLoading && !apoloContextError && apoloContextEntity ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <ContextItem
+                        label="Nome"
+                        value={apoloContextEntity.displayName?.trim() || "Sem nome"}
+                      />
+                      <ContextItem
+                        label="Documento"
+                        value={apoloContextEntity.documentMasked?.trim() || "-"}
+                      />
+                      <ContextItem
+                        label="Perfis"
+                        value={formatIrisApoloProfiles(apoloContextEntity.profiles)}
+                      />
+                      <ContextItem
+                        label="Localidade"
+                        value={apoloContextEntity.locationLabel?.trim() || "-"}
+                      />
+                      <ContextItem
+                        label="Status"
+                        value={apoloContextEntity.status?.trim() || "-"}
+                      />
+                      <ContextItem
+                        label="Proxima acao"
+                        value={apoloContextEntity.nextAction?.trim() || "-"}
+                      />
+                    </div>
+                  ) : null}
+
+                  {apoloContextUpdatedAt ? (
+                    <p className="text-[11px] font-medium text-slate-400">
+                      Atualizado em {formatDateTime(apoloContextUpdatedAt)}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-[#A07C3B]/15 bg-[#fbf6ec] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                    Nota interna
+                  </p>
+                  <textarea
+                    value={contextNoteDraft}
+                    onChange={(event) => setContextNoteDraft(event.target.value)}
+                    rows={10}
+                    placeholder="Registre observacoes importantes para os proximos atendimentos..."
+                    className="w-full resize-none rounded-lg border border-[#eadcc2] bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/45"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void saveContextNote();
+                    }}
+                    disabled={contextSaving}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#17212b] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    <Save className="size-3.5" aria-hidden="true" />
+                    {contextSaving ? "Salvando..." : "Salvar nota"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_360px] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setContextAgendaMonthCursor(
+                          shiftMonthIso(contextAgendaMonthCursor, -1),
+                        )
+                      }
+                      className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
+                      aria-label="Mes anterior"
+                    >
+                      <ChevronRight className="size-4 rotate-180" aria-hidden="true" />
+                    </button>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {agendaCalendar.monthLabel}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setContextAgendaMonthCursor(
+                          shiftMonthIso(contextAgendaMonthCursor, 1),
+                        )
+                      }
+                      className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
+                      aria-label="Proximo mes"
+                    >
+                      <ChevronRight className="size-4" aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1">
+                    {agendaCalendar.weekdayLabels.map((label) => (
+                      <span
+                        key={label}
+                        className="px-1 py-1 text-center text-[11px] font-semibold text-slate-500"
+                      >
+                        {label}
+                      </span>
+                    ))}
+                    {agendaCalendar.weeks.flatMap((week) =>
+                      week.map((day) => (
+                        <div
+                          key={day.id}
+                          className={[
+                            "min-h-16 rounded-md border px-1.5 py-1",
+                            day.inCurrentMonth
+                              ? "border-slate-200/70 bg-white"
+                              : "border-slate-100 bg-slate-50 text-slate-400",
+                          ].join(" ")}
+                        >
+                          <p
+                            className={[
+                              "text-[11px] font-semibold",
+                              day.isToday ? "text-[#7A5E2C]" : "text-slate-600",
+                            ].join(" ")}
+                          >
+                            {day.dayNumber}
+                          </p>
+                          {day.eventsCount > 0 ? (
+                            <p className="mt-1 rounded-full bg-[#A07C3B]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#7A5E2C]">
+                              {day.eventsCount} item{day.eventsCount > 1 ? "s" : ""}
+                            </p>
+                          ) : null}
+                        </div>
+                      )),
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-[#A07C3B]/15 bg-[#fbf6ec] p-3">
+                    <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                      Nova atividade
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      <input
+                        value={contextAgendaTitleDraft}
+                        onChange={(event) =>
+                          setContextAgendaTitleDraft(event.target.value)
+                        }
+                        placeholder="Ex.: Encaminhar boleto"
+                        className="h-10 w-full rounded-lg border border-[#eadcc2] bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/45"
+                      />
+                      <input
+                        type="datetime-local"
+                        value={contextAgendaDateDraft}
+                        onChange={(event) =>
+                          setContextAgendaDateDraft(event.target.value)
+                        }
+                        className="h-10 w-full rounded-lg border border-[#eadcc2] bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/45"
+                      />
+                      <textarea
+                        rows={3}
+                        value={contextAgendaNotesDraft}
+                        onChange={(event) =>
+                          setContextAgendaNotesDraft(event.target.value)
+                        }
+                        placeholder="Detalhes opcionais da atividade..."
+                        className="w-full resize-none rounded-lg border border-[#eadcc2] bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/45"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void createContextAgendaEvent();
+                      }}
+                      disabled={contextSaving}
+                      className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#17212b] disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <CalendarClock className="size-3.5" aria-hidden="true" />
+                      {contextSaving ? "Salvando..." : "Agendar atividade"}
+                    </button>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200/70 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                      Linha do tempo
+                    </p>
+                    <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                      {agendaTimeline.length ? (
+                        agendaTimeline.slice(0, 14).map((item) => (
+                          <article
+                            key={item.id}
+                            className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2"
+                          >
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="text-xs font-semibold text-slate-900">
+                                {item.title}
+                              </p>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                {item.kindLabel}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-[11px] text-slate-600">
+                              {item.description}
+                            </p>
+                            <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                              {item.dateLabel}
+                            </p>
+                          </article>
+                        ))
+                      ) : (
+                        <p className="rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+                          Sem atividades registradas. A agenda esta pronta para novos agendamentos.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function IrisAttendantPanel({
+  disabled,
+  documentFragment,
+  documentPosition,
+  feedback,
+  loading,
+  onAnalyze,
+  onClose,
+  onDocumentFragmentChange,
+  onDocumentPositionChange,
+  onPromptChange,
+  onSelectBillingItem,
+  onUseReply,
+  prompt,
+  result,
+}: {
+  disabled: boolean;
+  documentFragment: string;
+  documentPosition: "last4" | "first4";
+  feedback: string;
+  loading: boolean;
+  onAnalyze: () => void;
+  onClose: () => void;
+  onDocumentFragmentChange: (value: string) => void;
+  onDocumentPositionChange: (value: "last4" | "first4") => void;
+  onPromptChange: (value: string) => void;
+  onSelectBillingItem: (item: IrisAttendantBillingItem) => void;
+  onUseReply: () => void;
+  prompt: string;
+  result: IrisAttendantResponse | null;
+}) {
+  const billingItems = result?.billingItems ?? [];
+  const replyText = result?.replyText?.trim() ?? "";
+  const hasBoletoOptions =
+    result?.nextStep === "choose_boleto" && billingItems.length > 0;
+
+  return (
+    <div className="shrink-0 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+      <div className="rounded-xl border border-[#A07C3B]/20 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#101820] text-white">
+              <Bot className="size-4" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                Cacá
+              </p>
+              <h3 className="truncate text-sm font-semibold text-slate-950">
+                Atendimento ao cliente e boletos
+              </h3>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#7A5E2C]"
+            aria-label="Fechar Cacá"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="mt-3 grid gap-2 xl:grid-cols-[1fr_210px_auto]">
+          <label className="min-w-0 rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2">
+            <span className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+              Mensagem do cliente
+            </span>
+            <textarea
+              value={prompt}
+              onChange={(event) => onPromptChange(event.target.value)}
+              disabled={disabled || loading}
+              rows={2}
+              placeholder="Use a ultima mensagem recebida ou descreva a solicitacao."
+              className="mt-1 min-h-12 w-full resize-none bg-transparent text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400"
+            />
+          </label>
+
+          <div className="rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2">
+            <span className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+              CPF/CNPJ
+            </span>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                value={documentFragment}
+                onChange={(event) =>
+                  onDocumentFragmentChange(
+                    event.target.value.replace(/\D/g, "").slice(0, 4),
+                  )
+                }
+                disabled={disabled || loading}
+                inputMode="numeric"
+                placeholder="4 digitos"
+                className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-900 outline-none transition-colors focus:border-[#A07C3B]/45 disabled:cursor-not-allowed disabled:text-slate-400"
+              />
+              <div className="grid w-[82px] grid-cols-2 rounded-md bg-white p-0.5 ring-1 ring-slate-200">
+                {[
+                  { label: "Fim", value: "last4" as const },
+                  { label: "Ini", value: "first4" as const },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => onDocumentPositionChange(option.value)}
+                    disabled={disabled || loading}
+                    className={[
+                      "h-8 rounded text-[11px] font-semibold transition-colors disabled:cursor-not-allowed",
+                      documentPosition === option.value
+                        ? "bg-[#101820] text-white"
+                        : "text-slate-500 hover:bg-slate-100",
+                    ].join(" ")}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onAnalyze}
+            disabled={disabled || loading}
+            className="inline-flex h-full min-h-14 items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <Sparkles className="size-4" aria-hidden="true" />
+            {loading ? "Analisando" : "Analisar"}
+          </button>
+        </div>
+
+        {feedback ? (
+          <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            {feedback}
+          </div>
+        ) : null}
+
+        {result ? (
+          <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
+            <div className="min-w-0 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
+                  <CheckCircle2 className="size-3 text-emerald-600" aria-hidden="true" />
+                  {result.authentication?.label ?? "Analise pronta"}
+                </span>
+                {result.handoff?.required ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                    <ShieldAlert className="size-3" aria-hidden="true" />
+                    Atendimento humano
+                  </span>
+                ) : null}
+                {result.source ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf6ec] px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                    {result.source === "openai" ? "OpenAI" : "Regra segura"}
+                  </span>
+                ) : null}
+              </div>
+
+              {replyText ? (
+                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+                    Resposta sugerida
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
+                    {replyText}
+                  </p>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={onUseReply}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#17212b]"
+                    >
+                      <Send className="size-3.5" aria-hidden="true" />
+                      Usar no rascunho
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="min-w-0 rounded-lg border border-slate-200/70 bg-white p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+                Boletos
+              </p>
+              {hasBoletoOptions ? (
+                <div className="mt-2 space-y-2">
+                  {billingItems.slice(0, 6).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onSelectBillingItem(item)}
+                      disabled={loading}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/30 hover:bg-[#fbf6ec] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <span className="block text-xs font-semibold text-slate-950">
+                        {item.number} - {item.reference}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] font-medium text-slate-500">
+                        {item.value} - {item.status}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-xs font-semibold text-slate-400">
+                  Nenhum boleto selecionavel nesta analise.
+                </div>
+              )}
+              {result.handoff?.reason ? (
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                  <LockKeyhole className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  <span>{result.handoff.reason}</span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -3638,11 +6071,13 @@ function SetupView({
   data,
   onQueuesChanged,
   onProfilesChanged,
+  onTemplatesSynced,
   snapshot,
 }: {
   data: IrisData;
   onQueuesChanged: (queues: IrisQueueConfig[]) => void;
   onProfilesChanged: (profiles: IrisTicketProfileConfig[]) => void;
+  onTemplatesSynced: () => void;
   snapshot: ReturnType<typeof buildIrisSnapshot>;
 }) {
   const firstQueueId = data.queues[0]?.id ?? "";
@@ -3872,7 +6307,7 @@ function SetupView({
 
   if (setupTab === "templates") {
     return (
-      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid h-full min-h-0 gap-4 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
         <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-white p-4">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -3892,52 +6327,16 @@ function SetupView({
           <IrisTemplateSetupPanel
             profiles={data.profiles}
             queues={data.queues}
+            onTemplatesSynced={onTemplatesSynced}
             templates={data.templates}
           />
         </section>
-
-        <aside className="space-y-4">
-          <SetupSection
-            icon={MessageSquareText}
-            title="Templates"
-            items={
-              data.templates.length
-                ? data.templates
-                    .slice(0, 6)
-                    .map((template) => [
-                      template.name,
-                      templateStatusLabel(readTemplateMetaStatus(template)),
-                    ])
-                : [["Nenhum template", "Criar no Setup"]]
-            }
-          />
-          <SetupSection
-            icon={LockKeyhole}
-            title="Meta"
-            items={[
-              ["Canal", "WhatsApp"],
-              ["Aprovacao", "Meta"],
-              ["Botao", "Quick reply"],
-              ["Envio ativo", "Template aprovado"],
-            ]}
-          />
-          <SetupSection
-            icon={DatabaseZap}
-            title="CRM 360"
-            items={[
-              ["Cliente", "Nome e telefone"],
-              ["Contrato", "Empreendimento/unidade"],
-              ["Atendimento", "Protocolo Iris"],
-              ["Restritas", "Financeiro/link"],
-            ]}
-          />
-        </aside>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid h-full min-h-0 gap-4 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
       <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-white p-4">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -3999,8 +6398,8 @@ function SetupView({
           />
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[310px_minmax(0,1fr)_380px]">
-          <div className="min-w-0 space-y-3">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_360px] 2xl:grid-cols-[320px_minmax(0,1fr)_390px]">
+          <div className="min-w-0 space-y-3 xl:max-h-[calc(100vh-300px)] xl:overflow-y-auto xl:pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
             <div className="rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -4251,7 +6650,7 @@ function SetupView({
             </form>
           </div>
 
-          <div className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+          <div className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3 xl:max-h-[calc(100vh-300px)] xl:overflow-hidden">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
@@ -4293,7 +6692,7 @@ function SetupView({
               />
             </div>
 
-            <div className="mt-3 max-h-[680px] overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+            <div className="mt-3 max-h-[calc(100vh-430px)] overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
               <div className="space-y-2">
                 {visibleProfiles.length > 0 ? (
                   visibleProfiles.map((profile) => (
@@ -4348,7 +6747,7 @@ function SetupView({
 
           <form
             onSubmit={saveProfile}
-            className="rounded-2xl border border-[#dbe3ef] bg-white p-3"
+            className="rounded-2xl border border-[#dbe3ef] bg-white p-3 xl:max-h-[calc(100vh-300px)] xl:overflow-y-auto xl:pr-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
           >
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
@@ -4524,81 +6923,6 @@ function SetupView({
         </div>
       </section>
 
-      <aside className="space-y-4">
-        <SetupSection
-          icon={Workflow}
-          title="Filas"
-          items={
-            data.queues.length
-              ? data.queues.map((queue) => [
-                  queue.name,
-                  `${priorityLabel[queue.defaultPriority]} | ${queue.slaFirstResponseMinutes} min`,
-                ])
-              : [["Nenhuma fila", "Configurar setup"]]
-          }
-        />
-        <SetupSection
-          icon={Route}
-          title="Assuntos"
-          items={[
-            ["Ativos", `${formatCount(activeProfiles)} assuntos`],
-            ["Categorias", `${formatCount(categories.length)} categorias`],
-            ["Roteamento", "Fila + prioridade + SLA"],
-            ["Metricas", "Assunto obrigatorio"],
-          ]}
-        />
-        <SetupSection
-          icon={MessageSquareText}
-          title="Templates"
-          items={
-            data.templates.length
-              ? data.templates
-                  .slice(0, 5)
-                  .map((template) => [
-                    template.name,
-                    `${template.category} | ${template.channelKind}`,
-                  ])
-              : [["Nenhum template", "Configurar setup"]]
-          }
-        />
-        <SetupSection
-          icon={Clock3}
-          title="SLA"
-          items={[
-            ["Primeira resposta", snapshot.firstResponseLabel],
-            ["Critico", `${formatCount(snapshot.slaCritical)} tickets`],
-            ["Sem resposta", `${formatCount(snapshot.unanswered)} tickets`],
-            [
-              "Aguardando operador",
-              `${formatCount(snapshot.waitingOperator)} tickets`,
-            ],
-          ]}
-        />
-        <SetupSection
-          icon={Network}
-          title="Canais"
-          items={
-            data.channels.length
-              ? data.channels.map((channel) => [channel.name, channel.kind])
-              : [
-                  ["WhatsApp", "Preparado"],
-                  ["E-mail", "Preparado"],
-                  ["Web chat", "Preparado"],
-                  ["Telefonia", "Preparado"],
-                ]
-          }
-        />
-        <SetupSection
-          icon={DatabaseZap}
-          title="Dados"
-          items={[
-            ["Iris", "Tickets e auditoria"],
-            ["Contatos", `${formatCount(snapshot.contacts)} registrados`],
-            ["Mensagens", `${formatCount(snapshot.messages)} registradas`],
-            ["Disparos", `${formatCount(data.broadcasts.length)} campanhas`],
-          ]}
-        />
-      </aside>
     </div>
   );
 }
@@ -4643,10 +6967,12 @@ function IrisSetupTabs({
 }
 
 function IrisTemplateSetupPanel({
+  onTemplatesSynced,
   profiles,
   queues,
   templates,
 }: {
+  onTemplatesSynced: () => void;
   profiles: IrisTicketProfileConfig[];
   queues: IrisQueueConfig[];
   templates: IrisTemplate[];
@@ -4655,45 +6981,87 @@ function IrisTemplateSetupPanel({
     createIrisTemplateForm(),
   );
   const [checkingTemplate, setCheckingTemplate] = useState(false);
+  const [syncingMetaTemplates, setSyncingMetaTemplates] = useState(false);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
   const [autoRefreshStatus, setAutoRefreshStatus] = useState(true);
   const [lastTemplateRefreshAt, setLastTemplateRefreshAt] = useState("");
   const [metaStatus, setMetaStatus] = useState<string | null>(null);
   const [queueFilter, setQueueFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [templateSearch, setTemplateSearch] = useState("");
-  const [templateFeedback, setTemplateFeedback] = useState("");
+  const [templateFeedback, setTemplateFeedback] =
+    useState<IrisTemplateFeedback | string>("");
+  const [removingTemplateId, setRemovingTemplateId] = useState<string | null>(
+    null,
+  );
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    null,
+  );
+  const [templatePhoneNumbers, setTemplatePhoneNumbers] = useState<
+    IrisMetaPhoneNumberOption[]
+  >([]);
+  const templateMediaInputRef = useRef<HTMLInputElement | null>(null);
+  const templateSyncNotifiedRef = useRef(new Set<string>());
   const localTemplate = useMemo(
     () => findIrisTemplateByMetaName(templates, templateForm.name),
     [templateForm.name, templates],
   );
+  const selectedLibraryTemplate = useMemo(() => {
+    if (selectedTemplateId) {
+      return templates.find((template) => template.id === selectedTemplateId) ?? null;
+    }
+
+    return localTemplate ?? null;
+  }, [localTemplate, selectedTemplateId, templates]);
   const displayedStatus =
-    metaStatus ?? readTemplateMetaStatus(localTemplate) ?? null;
+    metaStatus ?? readTemplateMetaStatus(selectedLibraryTemplate) ?? null;
   const buttons = parseTemplateButtons(templateForm.buttonsText);
   const preview = renderMetaTemplatePreview(
     templateForm.bodyText,
     templateForm.variables,
   );
+  const subjectProfileOptions = useMemo(
+    () => [...profiles].sort(sortIrisProfiles),
+    [profiles],
+  );
+  const selectedSubjectProfileId = useMemo(() => {
+    const exactMatch = subjectProfileOptions.find(
+      (profile) =>
+        profile.name === templateForm.subjectLabel &&
+        profile.queueLabel === templateForm.queueLabel,
+    );
+    const subjectMatch = subjectProfileOptions.find(
+      (profile) => profile.name === templateForm.subjectLabel,
+    );
+
+    return exactMatch?.id ?? subjectMatch?.id ?? (templateForm.subjectLabel ? "__current" : "");
+  }, [subjectProfileOptions, templateForm.queueLabel, templateForm.subjectLabel]);
+  const templateSubjectMissing =
+    !templateForm.subjectLabel.trim() || !templateForm.queueLabel.trim();
+  const templatePhoneMissing = !templateForm.phoneNumberId.trim();
+  const selectedTemplatePhoneNumber = findMetaPhoneNumberOption(
+    templatePhoneNumbers,
+    templateForm.phoneNumberId,
+  );
+  const templatePhoneDisplayMissing = Boolean(
+    templateForm.phoneNumberId.trim() &&
+      !selectedTemplatePhoneNumber?.displayPhoneNumber,
+  );
+  const selectedHeaderOption =
+    IRIS_TEMPLATE_HEADER_OPTIONS.find(
+      (option) => option.id === templateForm.headerFormat,
+    ) ?? IRIS_TEMPLATE_HEADER_OPTIONS[0];
+  const templateMediaMissing =
+    templateForm.headerFormat !== "NONE" && !templateForm.headerHandle.trim();
   const queueOptions = useMemo(
     () =>
       unique([
-        "Atendimento",
         ...queues.map((queue) => queue.name),
         ...templates.map(readTemplateQueueLabel),
         templateForm.queueLabel,
       ].filter(Boolean)).slice(0, 12),
     [queues, templateForm.queueLabel, templates],
-  );
-  const subjectOptions = useMemo(
-    () =>
-      unique([
-        "Opt-in ativo",
-        ...profiles.map((profile) => profile.name),
-        ...profiles.map((profile) => profile.category),
-        ...templates.map(readTemplateSubjectLabel),
-        templateForm.subjectLabel,
-      ].filter(Boolean)).slice(0, 16),
-    [profiles, templateForm.subjectLabel, templates],
   );
   const templateStats = useMemo(
     () => ({
@@ -4739,8 +7107,17 @@ function IrisTemplateSetupPanel({
   }, [queueFilter, statusFilter, templateSearch, templates]);
 
   useEffect(() => {
-    setMetaStatus(readTemplateMetaStatus(localTemplate));
-  }, [localTemplate]);
+    if (
+      selectedTemplateId &&
+      !templates.some((template) => template.id === selectedTemplateId)
+    ) {
+      setSelectedTemplateId(null);
+    }
+  }, [selectedTemplateId, templates]);
+
+  useEffect(() => {
+    setMetaStatus(readTemplateMetaStatus(selectedLibraryTemplate));
+  }, [selectedLibraryTemplate]);
 
   useEffect(() => {
     if (!autoRefreshStatus || !templateForm.name.trim()) {
@@ -4752,7 +7129,16 @@ function IrisTemplateSetupPanel({
     }, IRIS_TEMPLATE_AUTO_REFRESH_MS);
 
     return () => window.clearInterval(timer);
-  }, [autoRefreshStatus, templateForm.language, templateForm.name]);
+  }, [
+    autoRefreshStatus,
+    templateForm.language,
+    templateForm.name,
+    templateForm.phoneNumberId,
+  ]);
+
+  useEffect(() => {
+    void checkTemplateStatus({ silent: true });
+  }, []);
 
   function updateTemplateForm(field: string, value: string) {
     setTemplateFeedback("");
@@ -4763,15 +7149,106 @@ function IrisTemplateSetupPanel({
   }
 
   function startNewTemplate() {
+    setSelectedTemplateId(null);
     setMetaStatus(null);
+    setLastTemplateRefreshAt("");
     setTemplateFeedback("");
-    setTemplateForm(createIrisTemplateForm());
+    setTemplateForm({
+      ...createIrisTemplateDraft(),
+      phoneNumberId:
+        selectedTemplatePhoneNumber?.id ??
+        templatePhoneNumbers.find((phoneNumber) => phoneNumber.isDefault)?.id ??
+        templatePhoneNumbers[0]?.id ??
+        "",
+    });
+  }
+
+  function applyTemplateLibraryPreset(
+    preset: (typeof IRIS_META_TEMPLATE_LIBRARY_PRESETS)[number],
+  ) {
+    setSelectedTemplateId(null);
+    setMetaStatus(null);
+    setLastTemplateRefreshAt("");
+    setTemplateFeedback("");
+    setTemplateForm((current) => {
+      const suffix = new Date()
+        .toISOString()
+        .replace(/\D/g, "")
+        .slice(8, 14);
+      const name = `${preset.id}_${suffix}`
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, "_");
+      const variables = buildTemplateVariablesFromPreset(
+        preset.variableKeys,
+      );
+      const phoneNumberId =
+        current.phoneNumberId ||
+        selectedTemplatePhoneNumber?.id ||
+        templatePhoneNumbers.find((phoneNumber) => phoneNumber.isDefault)?.id ||
+        templatePhoneNumbers[0]?.id ||
+        "";
+
+      return {
+        ...current,
+        bodyText: preset.bodyText,
+        buttonsText: preset.buttonsText,
+        category: preset.category,
+        displayName: preset.title,
+        headerFileName: "",
+        headerFormat: "NONE",
+        headerHandle: "",
+        headerMimeType: "",
+        headerSendLink: "",
+        name,
+        phoneNumberId,
+        variables,
+      };
+    });
+    setTemplateFeedback(
+      createIrisTemplateFeedback({
+        action:
+          "Revise assunto, fila e telefone de envio antes de consultar ou enviar para a Meta.",
+        message: `${preset.title} aplicado no formulario.`,
+        title: "Modelo carregado",
+        tone: "success",
+      }),
+    );
+  }
+
+  function selectTemplateSubject(profileId: string) {
+    if (profileId === "__current") {
+      return;
+    }
+
+    const profile = subjectProfileOptions.find(
+      (option) => option.id === profileId,
+    );
+
+    setTemplateFeedback("");
+    setTemplateForm((current) => ({
+      ...current,
+      queueLabel: profile?.queueLabel ?? "",
+      subjectLabel: profile?.name ?? "",
+    }));
   }
 
   function loadTemplateIntoForm(template: IrisTemplate) {
+    setSelectedTemplateId(template.id);
     setMetaStatus(readTemplateMetaStatus(template));
     setTemplateFeedback("");
-    setTemplateForm(irisTemplateToForm(template));
+    setTemplateForm((current) => {
+      const loaded = irisTemplateToForm(template);
+
+      return {
+        ...loaded,
+        phoneNumberId:
+          loaded.phoneNumberId ||
+          current.phoneNumberId ||
+          templatePhoneNumbers.find((phoneNumber) => phoneNumber.isDefault)?.id ||
+          templatePhoneNumbers[0]?.id ||
+          "",
+      };
+    });
   }
 
   function addTemplateVariable(variable: (typeof IRIS_META_TEMPLATE_VARIABLES)[number]) {
@@ -4790,6 +7267,103 @@ function IrisTemplateSetupPanel({
     });
   }
 
+  function updateTemplateHeaderFormat(format: string) {
+    setTemplateFeedback("");
+    setTemplateForm((current) => ({
+      ...current,
+      headerFileName: format === "NONE" ? "" : current.headerFileName,
+      headerFormat: format,
+      headerHandle: format === "NONE" ? "" : current.headerHandle,
+      headerMimeType: format === "NONE" ? "" : current.headerMimeType,
+      headerSendLink: format === "NONE" ? "" : current.headerSendLink,
+    }));
+  }
+
+  function clearTemplateHeaderMedia() {
+    setTemplateFeedback("");
+    setTemplateForm((current) => ({
+      ...current,
+      headerFileName: "",
+      headerHandle: "",
+      headerMimeType: "",
+    }));
+    if (templateMediaInputRef.current) {
+      templateMediaInputRef.current.value = "";
+    }
+  }
+
+  async function handleTemplateMediaFileChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file || templateForm.headerFormat === "NONE") {
+      return;
+    }
+
+    setUploadingTemplateMedia(true);
+    setTemplateFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const formData = new FormData();
+      formData.append("format", templateForm.headerFormat);
+      formData.append("file", file);
+
+      const response = await fetch("/api/iris/meta/templates/media", {
+        body: formData,
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        method: "POST",
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setTemplateFeedback(
+          createIrisTemplateFeedbackFromPayload(
+            payload,
+            "Nao foi possivel enviar a midia para a Meta.",
+          ),
+        );
+        return;
+      }
+
+      setTemplateForm((current) => ({
+        ...current,
+        headerFileName: payload?.media?.fileName ?? file.name,
+        headerFormat: payload?.media?.format ?? current.headerFormat,
+        headerHandle: payload?.media?.handle ?? "",
+        headerMimeType: payload?.media?.mimeType ?? file.type,
+      }));
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action: "Agora envie o template para aprovacao da Meta.",
+          message: "Midia de exemplo enviada para a Meta.",
+          title: "Amostra recebida",
+          tone: "success",
+        }),
+      );
+    } catch (error) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          message:
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel enviar a midia para a Meta.",
+          title: "Falha no upload da midia",
+          tone: "error",
+        }),
+      );
+    } finally {
+      setUploadingTemplateMedia(false);
+      if (templateMediaInputRef.current) {
+        templateMediaInputRef.current.value = "";
+      }
+    }
+  }
+
   async function checkTemplateStatus(options?: { silent?: boolean }) {
     const silent = Boolean(options?.silent);
 
@@ -4800,8 +7374,25 @@ function IrisTemplateSetupPanel({
 
     try {
       const accessToken = await getIrisAccessToken();
+      const params = new URLSearchParams({
+        bodyText: templateForm.bodyText,
+        displayName: templateForm.displayName,
+        language: templateForm.language,
+        name: templateForm.name,
+        queueLabel: templateForm.queueLabel,
+        subjectLabel: templateForm.subjectLabel,
+      });
+
+      if (buttons.length) {
+        params.set("buttons", buttons.join(","));
+      }
+
+      if (templateForm.phoneNumberId.trim()) {
+        params.set("phoneNumberId", templateForm.phoneNumberId.trim());
+      }
+
       const response = await fetch(
-        `/api/iris/meta/templates?name=${encodeURIComponent(templateForm.name)}&language=${encodeURIComponent(templateForm.language)}`,
+        `/api/iris/meta/templates?${params.toString()}`,
         {
           cache: "no-store",
           headers: {
@@ -4812,13 +7403,51 @@ function IrisTemplateSetupPanel({
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(
-          payload?.error ?? "Nao foi possivel consultar o template na Meta.",
-        );
+        if (!silent) {
+          setTemplateFeedback(
+            createIrisTemplateFeedbackFromPayload(
+              payload,
+              "Nao foi possivel consultar o template na Meta.",
+            ),
+          );
+        }
+        return;
+      }
+
+      const templateSyncId = readIrisTemplateSyncNotificationId(
+        payload?.localTemplateSync,
+      );
+      if (
+        templateSyncId &&
+        !templateSyncNotifiedRef.current.has(templateSyncId)
+      ) {
+        templateSyncNotifiedRef.current.add(templateSyncId);
+        onTemplatesSynced();
       }
 
       const template = payload?.templates?.[0];
-      const status = template?.status ?? null;
+      const phoneNumbers = Array.isArray(payload?.phoneNumbers)
+        ? payload.phoneNumbers
+        : [];
+      const selectedPhoneNumberId =
+        payload?.selectedPhoneNumberId ??
+        phoneNumbers.find((phoneNumber) => phoneNumber.isDefault)?.id ??
+        phoneNumbers[0]?.id ??
+        "";
+      if (phoneNumbers.length) {
+        setTemplatePhoneNumbers(phoneNumbers);
+      }
+      if (!templateForm.phoneNumberId.trim() && selectedPhoneNumberId) {
+        setTemplateForm((current) =>
+          current.phoneNumberId
+            ? current
+            : {
+                ...current,
+                phoneNumberId: selectedPhoneNumberId,
+              },
+        );
+      }
+      const status = template?.status ?? "NOT_FOUND";
       setMetaStatus(status);
       setLastTemplateRefreshAt(
         new Date().toLocaleTimeString("pt-BR", {
@@ -4827,18 +7456,55 @@ function IrisTemplateSetupPanel({
         }),
       );
       if (!silent) {
+        if (payload?.error && !template) {
+          setTemplateFeedback(
+            createIrisTemplateFeedbackFromPayload(
+              payload,
+              "Nao foi possivel consultar o template na Meta.",
+            ),
+          );
+          return;
+        }
+
+        const phoneMismatch =
+          payload?.phoneNumberLink?.checkStatus === "checked" &&
+          payload.phoneNumberLink.linked === false;
         setTemplateFeedback(
-          template
-            ? `Status Meta: ${templateStatusLabel(status)}.`
-            : "Template ainda nao encontrado na Meta.",
+          phoneMismatch
+            ? createIrisTemplateFeedback({
+                action:
+                  "Crie um novo template para o telefone selecionado ou selecione o telefone correto antes de consultar.",
+                cause:
+                  "Existe template com esse nome em outra WABA, mas ele nao pertence ao telefone de envio selecionado.",
+                message:
+                  "O template encontrado na Meta nao pertence ao telefone escolhido na Iris.",
+                title: "Telefone divergente",
+                tone: "error",
+              })
+            : createIrisTemplateFeedback({
+                action: phoneNumberLinkFeedback(payload?.phoneNumberLink),
+                cause: payload?.ignoredTemplateCount
+                  ? "Existe template com esse nome em outra WABA, mas ele nao pertence ao telefone de envio selecionado."
+                  : undefined,
+                message: template
+                  ? `Status Meta: ${templateStatusLabel(status)}.`
+                  : "Template ainda nao encontrado na Meta para este nome e idioma.",
+                title: template ? "Consulta concluida" : "Template nao localizado",
+                tone: template ? "success" : "warning",
+              }),
         );
       }
     } catch (error) {
       if (!silent) {
         setTemplateFeedback(
-          error instanceof Error
-            ? error.message
-            : "Nao foi possivel consultar o template na Meta.",
+          createIrisTemplateFeedback({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Nao foi possivel consultar o template na Meta.",
+            title: "Falha ao consultar a Meta",
+            tone: "error",
+          }),
         );
       }
     } finally {
@@ -4848,9 +7514,197 @@ function IrisTemplateSetupPanel({
     }
   }
 
-  async function createTemplate() {
-    setCreatingTemplate(true);
+  async function syncApprovedMetaTemplates() {
+    if (templateSubjectMissing) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action:
+            "Escolha um assunto cadastrado para a Iris vincular fila e contexto antes de importar templates da Meta.",
+          message: "Sincronizacao bloqueada por falta de assunto.",
+          title: "Assunto obrigatorio",
+          tone: "warning",
+        }),
+      );
+      return;
+    }
+
+    if (templatePhoneMissing) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action:
+            "Escolha o telefone de envio. A sincronizacao usa a WABA vinculada a esse telefone.",
+          message: "Sincronizacao bloqueada por falta de telefone.",
+          title: "Telefone obrigatorio",
+          tone: "warning",
+        }),
+      );
+      return;
+    }
+
+    setSyncingMetaTemplates(true);
     setTemplateFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const params = new URLSearchParams({
+        language: templateForm.language,
+        phoneNumberId: templateForm.phoneNumberId.trim(),
+        queueLabel: templateForm.queueLabel,
+        subjectLabel: templateForm.subjectLabel,
+        syncApproved: "true",
+      });
+
+      const response = await fetch(
+        `/api/iris/meta/templates?${params.toString()}`,
+        {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | IrisMetaTemplatesResponse
+        | null;
+
+      if (!response.ok || payload?.error) {
+        setTemplateFeedback(
+          createIrisTemplateFeedbackFromPayload(
+            payload,
+            "Nao foi possivel sincronizar templates aprovados da Meta.",
+          ),
+        );
+        return;
+      }
+
+      const phoneNumbers = Array.isArray(payload?.phoneNumbers)
+        ? payload.phoneNumbers
+        : [];
+      if (phoneNumbers.length) {
+        setTemplatePhoneNumbers(phoneNumbers);
+      }
+
+      const selectedPhoneNumberId =
+        payload?.selectedPhoneNumberId ??
+        phoneNumbers.find((phoneNumber) => phoneNumber.isDefault)?.id ??
+        phoneNumbers[0]?.id ??
+        "";
+      if (!templateForm.phoneNumberId.trim() && selectedPhoneNumberId) {
+        setTemplateForm((current) =>
+          current.phoneNumberId
+            ? current
+            : {
+                ...current,
+                phoneNumberId: selectedPhoneNumberId,
+              },
+        );
+      }
+
+      const summary = payload?.localTemplateSyncSummary;
+      const total = summary?.total ?? 0;
+      const imported = summary?.imported ?? 0;
+      const updated = summary?.updated ?? 0;
+      const matched = summary?.matched ?? 0;
+      const failed = summary?.failed ?? 0;
+
+      setLastTemplateRefreshAt(
+        new Date().toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
+
+      if (total > 0 && failed === 0) {
+        onTemplatesSynced();
+        setTemplateFeedback(
+          createIrisTemplateFeedback({
+            action:
+              "Abra o modal Novo atendimento novamente ou escolha o template na biblioteca atualizada.",
+            cause:
+              matched > 0
+                ? "A Meta retornou templates ativos e a Iris reativou/atualizou o cache local."
+                : undefined,
+            message: `${total} template(s) aprovado(s) sincronizado(s): ${imported} importado(s), ${updated} atualizado(s).`,
+            title: "Templates sincronizados",
+            tone: "success",
+          }),
+        );
+        return;
+      }
+
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action:
+            "Confirme no Meta Manager se o template esta ativo para este telefone, idioma e WABA. Se estiver, consulte pelo nome Meta exato.",
+          message:
+            "Nenhum template aprovado foi retornado pela Meta para este telefone e idioma.",
+          title: "Nada para sincronizar",
+          tone: "warning",
+        }),
+      );
+    } catch (error) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          message:
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel sincronizar templates aprovados da Meta.",
+          title: "Falha ao sincronizar Meta",
+          tone: "error",
+        }),
+      );
+    } finally {
+      setSyncingMetaTemplates(false);
+    }
+  }
+
+  async function createTemplate() {
+    if (templateSubjectMissing) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action: "Selecione um assunto cadastrado na lista. A fila sera vinculada automaticamente pelo cadastro do assunto.",
+          message: "Template sem assunto vinculado.",
+          title: "Assunto obrigatorio",
+          tone: "warning",
+        }),
+      );
+      return;
+    }
+
+    if (templatePhoneMissing) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action: "Escolha o telefone que vai enviar esse template. A Iris criara e consultara a WABA vinculada a esse telefone.",
+          message: "Template sem telefone de envio vinculado.",
+          title: "Telefone de envio obrigatorio",
+          tone: "warning",
+        }),
+      );
+      return;
+    }
+
+    if (templateMediaMissing) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action: "Clique em Enviar exemplo na midia do header antes de enviar o template para aprovacao.",
+          message: "Template com midia precisa de uma amostra aprovada pela Meta.",
+          title: "Midia de exemplo pendente",
+          tone: "warning",
+        }),
+      );
+      return;
+    }
+
+    setCreatingTemplate(true);
+    setTemplateFeedback(
+      createIrisTemplateFeedback({
+        action:
+          "Aguarde o retorno da Meta. Se houver bloqueio, a Iris vai mostrar o motivo neste painel.",
+        message: "Enviando o template para aprovacao da Meta.",
+        title: "Envio em andamento",
+        tone: "neutral",
+      }),
+    );
 
     try {
       const accessToken = await getIrisAccessToken();
@@ -4860,8 +7714,14 @@ function IrisTemplateSetupPanel({
           buttons,
           category: templateForm.category,
           displayName: templateForm.displayName,
+          headerFileName: templateForm.headerFileName,
+          headerFormat: templateForm.headerFormat,
+          headerHandle: templateForm.headerHandle,
+          headerMimeType: templateForm.headerMimeType,
+          headerSendLink: templateForm.headerSendLink,
           language: templateForm.language,
           name: templateForm.name,
+          phoneNumberId: templateForm.phoneNumberId,
           queueLabel: templateForm.queueLabel,
           subjectLabel: templateForm.subjectLabel,
           variables: templateForm.variables,
@@ -4876,12 +7736,22 @@ function IrisTemplateSetupPanel({
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(
-          payload?.error ?? "Nao foi possivel criar o template real na Meta.",
+        setTemplateFeedback(
+          createIrisTemplateFeedbackFromPayload(
+            payload,
+            "Nao foi possivel criar o template real na Meta.",
+          ),
         );
+        return;
       }
 
       const status = payload?.template?.status ?? null;
+      if (Array.isArray(payload?.phoneNumbers)) {
+        setTemplatePhoneNumbers(payload.phoneNumbers);
+      }
+      if (payload?.selectedPhoneNumberId) {
+        updateTemplateForm("phoneNumberId", payload.selectedPhoneNumberId);
+      }
       setMetaStatus(status);
       setLastTemplateRefreshAt(
         new Date().toLocaleTimeString("pt-BR", {
@@ -4890,18 +7760,145 @@ function IrisTemplateSetupPanel({
         }),
       );
       setTemplateFeedback(
-        payload?.created
-          ? `Template enviado para a Meta como ${templateStatusLabel(status)}.`
-          : `Template ja existia na Meta como ${templateStatusLabel(status)}.`,
+        createIrisTemplateFeedback({
+          action:
+            status === "PENDING"
+              ? "Aguarde a aprovacao ou mantenha a atualizacao automatica ligada para acompanhar."
+              : undefined,
+          message: payload?.created
+            ? `Template enviado para a Meta como ${templateStatusLabel(status)}.`
+            : `Template ja existia na Meta como ${templateStatusLabel(status)}.`,
+          title: payload?.created ? "Template enviado" : "Template ja existe",
+          tone: status === "REJECTED" ? "warning" : "success",
+        }),
       );
     } catch (error) {
       setTemplateFeedback(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel criar o template real na Meta.",
+        createIrisTemplateFeedback({
+          message:
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel criar o template real na Meta.",
+          title: "Falha ao enviar para a Meta",
+          tone: "error",
+        }),
       );
     } finally {
       setCreatingTemplate(false);
+    }
+  }
+
+  async function removeTemplateFromLibrary(templateToRemove?: IrisTemplate | null) {
+    const targetTemplate =
+      templateToRemove ?? selectedLibraryTemplate ?? localTemplate;
+
+    if (!targetTemplate) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action: "Selecione um template da biblioteca antes de excluir.",
+          message: "Nenhum template selecionado para exclusao.",
+          title: "Selecao obrigatoria",
+          tone: "warning",
+        }),
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Excluir o template ${targetTemplate.name} da biblioteca Iris?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setRemovingTemplateId(targetTemplate.id);
+    setTemplateFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/templates", {
+        body: JSON.stringify({
+          action: "archive_local",
+          removeReason: "Removido manualmente no Setup da Iris.",
+          templateId: targetTemplate.id,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            alreadyArchived?: boolean;
+            error?: string;
+            linkedTicket?: {
+              id?: string | null;
+              protocol?: string | null;
+              status?: string | null;
+            } | null;
+          }
+        | null;
+
+      if (!response.ok) {
+        const linkedProtocol =
+          typeof payload?.linkedTicket?.protocol === "string"
+            ? payload.linkedTicket.protocol
+            : null;
+        const message = linkedProtocol
+          ? `${payload?.error ?? "Nao foi possivel remover o template."} Protocolo: ${linkedProtocol}.`
+          : payload?.error ?? "Nao foi possivel remover o template.";
+
+        setTemplateFeedback(
+          createIrisTemplateFeedback({
+            action:
+              response.status === 409
+                ? "Encerre o atendimento vinculado e tente novamente."
+                : "Tente novamente em instantes.",
+            message,
+            title:
+              response.status === 409
+                ? "Template vinculado a ticket aberto"
+                : "Falha ao remover template",
+            tone: response.status === 409 ? "warning" : "error",
+          }),
+        );
+        return;
+      }
+
+      onTemplatesSynced();
+
+      if (selectedLibraryTemplate?.id === targetTemplate.id) {
+        setSelectedTemplateId(null);
+        startNewTemplate();
+      }
+
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          action:
+            "Esta acao arquiva apenas na Iris. O template permanece na Meta ate remocao oficial la.",
+          message: payload?.alreadyArchived
+            ? "Template ja estava arquivado na biblioteca Iris."
+            : "Template removido da biblioteca Iris.",
+          title: "Biblioteca atualizada",
+          tone: "success",
+        }),
+      );
+    } catch (error) {
+      setTemplateFeedback(
+        createIrisTemplateFeedback({
+          message:
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel remover o template da biblioteca.",
+          title: "Falha ao remover template",
+          tone: "error",
+        }),
+      );
+    } finally {
+      setRemovingTemplateId(null);
     }
   }
 
@@ -4933,7 +7930,7 @@ function IrisTemplateSetupPanel({
         />
       </div>
 
-      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_430px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)]">
         <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -4944,14 +7941,38 @@ function IrisTemplateSetupPanel({
                 Fila, assunto e status Meta em uma visao unica.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={startNewTemplate}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937]"
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Novo template
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Tooltip
+                content={
+                  !selectedLibraryTemplate
+                    ? "Selecione um template da lista para excluir"
+                    : removingTemplateId
+                      ? "Excluindo template..."
+                      : "Excluir template da biblioteca Iris"
+                }
+                placement="bottom"
+              >
+                <button
+                  type="button"
+                  onClick={() => void removeTemplateFromLibrary()}
+                  disabled={!selectedLibraryTemplate || Boolean(removingTemplateId)}
+                  aria-label="Excluir template da biblioteca Iris"
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Novo template" placement="bottom">
+                <button
+                  type="button"
+                  onClick={startNewTemplate}
+                  aria-label="Novo template"
+                  className="inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white transition-colors hover:bg-[#1f2937]"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
           </div>
 
           <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_190px]">
@@ -5003,11 +8024,15 @@ function IrisTemplateSetupPanel({
             })}
           </div>
 
-          <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+          <IrisTemplateFeedbackBox feedback={templateFeedback} />
+
+          <div className="mt-3 max-h-[calc(100vh-360px)] space-y-2 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
             {filteredTemplates.length ? (
               filteredTemplates.map((template) => {
                 const status = readTemplateMetaStatus(template);
-                const selected = localTemplate?.id === template.id;
+                const headerFormat = readTemplateHeaderFormat(template);
+                const phoneLabel = readTemplatePhoneLabel(template);
+                const selected = selectedLibraryTemplate?.id === template.id;
 
                 return (
                   <button
@@ -5030,6 +8055,16 @@ function IrisTemplateSetupPanel({
                           <span className="shrink-0 rounded-full bg-[#f4f6fa] px-2 py-0.5 text-[10px] font-semibold text-[#63708a]">
                             {readTemplateQueueLabel(template)}
                           </span>
+                          {headerFormat ? (
+                            <span className="shrink-0 rounded-full bg-[#eef6ff] px-2 py-0.5 text-[10px] font-semibold text-[#1769aa]">
+                              {templateHeaderFormatLabel(headerFormat)}
+                            </span>
+                          ) : null}
+                          {phoneLabel ? (
+                            <span className="max-w-[220px] shrink-0 truncate rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                              {phoneLabel}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="mt-1 truncate text-xs font-semibold text-[#63708a]">
                           {readTemplateSubjectLabel(template)}
@@ -5060,9 +8095,47 @@ function IrisTemplateSetupPanel({
           </div>
         </section>
 
-        <aside className="min-w-0 space-y-4">
+        <aside className="min-w-0 space-y-3">
           <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
             <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                  Biblioteca base
+                </p>
+                <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                  Modelos Meta para partir
+                </h4>
+                <p className="mt-1 text-xs font-medium text-[#63708a]">
+                  Selecione um modelo para preencher o formulario e acelerar a criacao.
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 space-y-2">
+              {IRIS_META_TEMPLATE_LIBRARY_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => applyTemplateLibraryPreset(preset)}
+                  className="w-full rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#fff8ec]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-[#101820]">
+                      {preset.title}
+                    </p>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                      {preset.category}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] font-medium leading-5 text-[#63708a]">
+                    {preset.description}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                   Criacao
@@ -5071,43 +8144,121 @@ function IrisTemplateSetupPanel({
                   Template Meta
                 </h4>
               </div>
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(displayedStatus)}`}
-              >
-                {templateStatusLabel(displayedStatus)}
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(displayedStatus)}`}
+                >
+                  {templateStatusLabel(displayedStatus)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => checkTemplateStatus()}
+                  disabled={checkingTemplate}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#dbe3ef] bg-white px-3 text-xs font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 disabled:cursor-not-allowed disabled:bg-slate-100"
+                >
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                  {checkingTemplate ? "Consultando" : "Consultar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={syncApprovedMetaTemplates}
+                  disabled={syncingMetaTemplates}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#fff8ec] px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:border-[#A07C3B]/45 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${syncingMetaTemplates ? "animate-spin" : ""}`}
+                    aria-hidden="true"
+                  />
+                  {syncingMetaTemplates ? "Sincronizando" : "Sincronizar Meta"}
+                </button>
+                <button
+                  type="button"
+                  onClick={createTemplate}
+                  disabled={
+                    creatingTemplate ||
+                    templateSubjectMissing ||
+                    templatePhoneMissing ||
+                    templateMediaMissing ||
+                    uploadingTemplateMedia
+                  }
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  <Send className="h-4 w-4" aria-hidden="true" />
+                  {creatingTemplate ? "Enviando" : "Enviar para Meta"}
+                </button>
+              </div>
             </div>
 
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <SetupField label="Fila">
-                <input
-                  list="iris-template-queues"
-                  value={templateForm.queueLabel}
-                  onChange={(event) =>
-                    updateTemplateForm("queueLabel", event.target.value)
-                  }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
-                />
-                <datalist id="iris-template-queues">
-                  {queueOptions.map((queue) => (
-                    <option key={queue} value={queue} />
-                  ))}
-                </datalist>
-              </SetupField>
+            <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
               <SetupField label="Assunto">
-                <input
-                  list="iris-template-subjects"
-                  value={templateForm.subjectLabel}
-                  onChange={(event) =>
-                    updateTemplateForm("subjectLabel", event.target.value)
-                  }
+                <select
+                  value={selectedSubjectProfileId}
+                  onChange={(event) => selectTemplateSubject(event.target.value)}
                   className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
-                />
-                <datalist id="iris-template-subjects">
-                  {subjectOptions.map((subject) => (
-                    <option key={subject} value={subject} />
+                >
+                  <option value="">Escolha um assunto</option>
+                  {selectedSubjectProfileId === "__current" ? (
+                    <option value="__current">
+                      {templateForm.subjectLabel} |{" "}
+                      {templateForm.queueLabel || "Fila nao localizada"}
+                    </option>
+                  ) : null}
+                  {subjectProfileOptions.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name} | {profile.queueLabel}
+                    </option>
                   ))}
-                </datalist>
+                </select>
+              </SetupField>
+              <SetupField label="Fila vinculada">
+                <div className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-[#dbe3ef] bg-[#fbfcfe] px-3 text-sm font-semibold text-[#34415a]">
+                  <Route className="h-4 w-4 shrink-0 text-[#A07C3B]" aria-hidden="true" />
+                  <span className="truncate">
+                    {templateForm.queueLabel || "Definida pelo assunto"}
+                  </span>
+                </div>
+              </SetupField>
+            </div>
+
+            <div className="mt-3">
+              <SetupField label="Telefone de envio">
+                <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(180px,0.45fr)]">
+                  <div className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-[#dbe3ef] bg-white px-3">
+                    <Smartphone className="h-4 w-4 shrink-0 text-[#A07C3B]" aria-hidden="true" />
+                    <select
+                      value={templateForm.phoneNumberId}
+                      onChange={(event) => {
+                        setMetaStatus(null);
+                        setLastTemplateRefreshAt("");
+                        updateTemplateForm("phoneNumberId", event.target.value);
+                      }}
+                      className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#34415a] outline-none"
+                    >
+                      <option value="">Selecione o telefone</option>
+                      {templatePhoneNumbers.map((phoneNumber) => (
+                        <option key={phoneNumber.id} value={phoneNumber.id}>
+                          {formatMetaPhoneNumberOption(phoneNumber)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex h-10 min-w-0 items-center rounded-lg border border-[#dbe3ef] bg-[#fbfcfe] px-3 text-xs font-semibold text-[#63708a]">
+                    <span className="truncate">
+                      {selectedTemplatePhoneNumber?.displayPhoneNumber
+                        ? selectedTemplatePhoneNumber.isDefault
+                          ? "Telefone padrao da Iris"
+                          : "Telefone selecionado"
+                        : "Define a WABA do template"}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-1 truncate text-xs font-medium text-[#63708a]">
+                  {selectedTemplatePhoneNumber?.displayPhoneNumber
+                    ? `${formatMetaPhoneNumberOption(selectedTemplatePhoneNumber)} sera usado para consultar, criar e enviar este template.`
+                    : templateForm.phoneNumberId
+                      ? "A Meta nao retornou o numero exibivel. A Iris usara o ID do telefone selecionado e validara a WABA no servidor."
+                      : "A Meta aprova templates por WABA; a Iris resolve a WABA a partir do telefone escolhido."}
+                </p>
               </SetupField>
             </div>
 
@@ -5160,6 +8311,118 @@ function IrisTemplateSetupPanel({
                   className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                 />
               </SetupField>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h5 className="text-sm font-semibold text-[#101820]">
+                    Midia do header
+                  </h5>
+                  <p className="mt-1 text-xs font-medium text-[#63708a]">
+                    Use imagem ou video quando a primeira mensagem precisar de contexto visual aprovado pela Meta.
+                  </p>
+                </div>
+                {templateForm.headerHandle ? (
+                  <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                    Exemplo enviado
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                {IRIS_TEMPLATE_HEADER_OPTIONS.map((option) => {
+                  const selected = templateForm.headerFormat === option.id;
+                  const HeaderIcon =
+                    option.id === "IMAGE"
+                      ? ImageIcon
+                      : option.id === "VIDEO"
+                        ? Video
+                        : option.id === "DOCUMENT"
+                          ? FileText
+                          : MessageSquareText;
+
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => updateTemplateHeaderFormat(option.id)}
+                      className={[
+                        "min-w-0 rounded-lg border px-3 py-2 text-left transition-colors",
+                        selected
+                          ? "border-[#A07C3B] bg-[#fff8ec] text-[#101820]"
+                          : "border-[#dbe3ef] bg-white text-[#63708a] hover:border-[#A07C3B]/40 hover:text-[#101820]",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center gap-2">
+                        <HeaderIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        <span className="truncate text-xs font-semibold">
+                          {option.label}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-[11px] font-medium">
+                        {option.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {templateForm.headerFormat !== "NONE" ? (
+                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                  <div className="rounded-lg border border-[#dbe3ef] bg-white p-3">
+                    <input
+                      ref={templateMediaInputRef}
+                      type="file"
+                      accept={selectedHeaderOption.accept}
+                      onChange={handleTemplateMediaFileChange}
+                      className="hidden"
+                    />
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-[#101820]">
+                          {templateForm.headerFileName || "Exemplo para aprovacao"}
+                        </p>
+                        <p className="mt-1 text-[11px] font-medium text-[#63708a]">
+                          A Meta usa este arquivo como amostra do template.
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {templateForm.headerHandle ? (
+                          <button
+                            type="button"
+                            onClick={clearTemplateHeaderMedia}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#dbe3ef] bg-white text-[#63708a] hover:border-rose-200 hover:text-rose-600"
+                            aria-label="Remover midia"
+                          >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => templateMediaInputRef.current?.click()}
+                          disabled={uploadingTemplateMedia}
+                          className="inline-flex h-8 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-slate-300"
+                        >
+                          <Upload className="h-4 w-4" aria-hidden="true" />
+                          {uploadingTemplateMedia ? "Enviando" : "Enviar exemplo"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <SetupField label="URL publica para envio">
+                    <input
+                      value={templateForm.headerSendLink}
+                      onChange={(event) =>
+                        updateTemplateForm("headerSendLink", event.target.value)
+                      }
+                      placeholder="https://..."
+                      className="h-12 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    />
+                  </SetupField>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-3">
@@ -5229,6 +8492,27 @@ function IrisTemplateSetupPanel({
                 {templateForm.queueLabel} / {templateForm.subjectLabel}
               </span>
             </div>
+            {templateForm.headerFormat !== "NONE" ? (
+              <div className="mt-3 flex min-h-24 items-center justify-center rounded-xl border border-dashed border-[#d8c7a7] bg-white px-4 py-3 text-center">
+                <div>
+                  <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[#fbf6ec] text-[#A07C3B]">
+                    {templateForm.headerFormat === "IMAGE" ? (
+                      <ImageIcon className="h-5 w-5" aria-hidden="true" />
+                    ) : templateForm.headerFormat === "VIDEO" ? (
+                      <Video className="h-5 w-5" aria-hidden="true" />
+                    ) : (
+                      <FileText className="h-5 w-5" aria-hidden="true" />
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-[#101820]">
+                    Header {selectedHeaderOption.label}
+                  </p>
+                  <p className="mt-1 max-w-xs truncate text-[11px] font-medium text-[#63708a]">
+                    {templateForm.headerFileName || "Midia de exemplo pendente"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
             <p className="mt-2 break-words text-sm font-medium leading-6 text-[#101820]">
               {preview}
             </p>
@@ -5278,38 +8562,198 @@ function IrisTemplateSetupPanel({
                 Ultima consulta: {lastTemplateRefreshAt}
               </p>
             ) : null}
-
-            <div className="mt-3 grid gap-2">
-              <button
-                type="button"
-                onClick={() => checkTemplateStatus()}
-                disabled={checkingTemplate}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 disabled:cursor-not-allowed disabled:bg-slate-100"
-              >
-                <Search className="h-4 w-4" aria-hidden="true" />
-                {checkingTemplate ? "Consultando..." : "Consultar Meta"}
-              </button>
-              <button
-                type="button"
-                onClick={createTemplate}
-                disabled={creatingTemplate}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                <Send className="h-4 w-4" aria-hidden="true" />
-                {creatingTemplate ? "Enviando..." : "Enviar para Meta"}
-              </button>
-            </div>
-
-            {templateFeedback ? (
-              <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
-                {templateFeedback}
+            {selectedTemplatePhoneNumber ? (
+              <p className="mt-1 truncate text-xs font-semibold text-[#34415a]">
+                Telefone: {formatMetaPhoneNumberOption(selectedTemplatePhoneNumber)}
               </p>
             ) : null}
+
+            <IrisTemplateFeedbackBox feedback={templateFeedback} />
+
+            <div className="mt-3 grid gap-2">
+              {templateSubjectMissing ? (
+                <p className="rounded-lg border border-[#f2dfbf] bg-[#fffbeb] px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+                  Escolha o assunto antes de enviar. A fila sera preenchida pelo cadastro do assunto.
+                </p>
+              ) : null}
+              {templatePhoneMissing ? (
+                <p className="rounded-lg border border-[#f2dfbf] bg-[#fffbeb] px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+                  Escolha o telefone de envio. A Iris cria e consulta o template na WABA desse telefone.
+                </p>
+              ) : null}
+              {templatePhoneDisplayMissing ? (
+                <p className="rounded-lg border border-[#f2dfbf] bg-[#fffbeb] px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+                  A Meta nao retornou o numero exibivel do telefone selecionado. A criacao segue pelo ID do telefone e pela WABA validada no servidor.
+                </p>
+              ) : null}
+              {templateMediaMissing ? (
+                <p className="rounded-lg border border-[#f2dfbf] bg-[#fffbeb] px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+                  Template com midia precisa de uma amostra enviada para aprovacao da Meta.
+                </p>
+              ) : null}
+              {templateForm.headerFormat !== "NONE" &&
+              templateForm.headerHandle &&
+              !templateForm.headerSendLink.trim() ? (
+                <p className="rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
+                  Cadastre uma URL publica para a Iris enviar esta midia no atendimento ativo.
+                </p>
+              ) : null}
+            </div>
+
           </div>
         </aside>
       </div>
     </div>
   );
+}
+
+function IrisTemplateFeedbackBox({ feedback }: { feedback: unknown }) {
+  const normalized = normalizeIrisTemplateFeedback(feedback);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const tone = normalized.tone ?? "neutral";
+  const toneClass =
+    tone === "error"
+      ? "border-rose-200 bg-rose-50 text-rose-900"
+      : tone === "warning"
+        ? "border-[#f2dfbf] bg-[#fffbeb] text-[#7A5E2C]"
+        : tone === "success"
+          ? "border-emerald-100 bg-emerald-50 text-emerald-900"
+          : "border-[#dbe3ef] bg-white text-[#34415a]";
+  const metaLine = [
+    normalized.metaCode ? `Codigo Meta: ${normalized.metaCode}` : null,
+    normalized.providerMessage
+      ? `Retorno Meta: ${normalized.providerMessage}`
+      : null,
+    normalized.metaDetail ? `Detalhe Meta: ${normalized.metaDetail}` : null,
+  ].filter((line): line is string => Boolean(line));
+  const Icon =
+    tone === "error"
+      ? ShieldAlert
+      : tone === "success"
+        ? CheckCircle2
+        : Clock3;
+
+  return (
+    <div className={`mt-3 rounded-lg border px-3 py-2 ${toneClass}`}>
+      <div className="flex items-start gap-2">
+        <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <div className="min-w-0">
+          {normalized.title ? (
+            <p className="text-xs font-semibold">{normalized.title}</p>
+          ) : null}
+          <p className="mt-0.5 text-xs font-medium leading-5">
+            {normalized.message}
+          </p>
+          {normalized.cause ? (
+            <p className="mt-1 text-xs font-medium leading-5 opacity-90">
+              Possivel causa: {normalized.cause}
+            </p>
+          ) : null}
+          {normalized.action ? (
+            <p className="mt-1 text-xs font-semibold leading-5">
+              Proxima acao: {normalized.action}
+            </p>
+          ) : null}
+          {metaLine.length ? (
+            <div className="mt-2 space-y-1 rounded-md bg-white/65 px-2 py-1.5 text-[11px] font-semibold leading-4 opacity-90">
+              {metaLine.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function createIrisTemplateFeedback({
+  action,
+  cause,
+  message,
+  metaCode,
+  metaDetail,
+  providerMessage,
+  title,
+  tone = "neutral",
+}: IrisTemplateFeedback): IrisTemplateFeedback {
+  return {
+    action,
+    cause,
+    message,
+    metaCode,
+    metaDetail,
+    providerMessage,
+    title,
+    tone,
+  };
+}
+
+function createIrisTemplateFeedbackFromPayload(
+  payload: IrisMetaTemplatesResponse | null | undefined,
+  fallbackMessage: string,
+) {
+  return createIrisTemplateFeedback({
+    action: payload?.errorAction,
+    cause: payload?.errorCause,
+    message: payload?.error ?? fallbackMessage,
+    metaCode: payload?.metaCode,
+    metaDetail: payload?.metaDetail,
+    providerMessage: payload?.providerMessage,
+    title: payload?.errorTitle ?? "Falha na Meta",
+    tone: "error",
+  });
+}
+
+function normalizeIrisTemplateFeedback(
+  feedback: unknown,
+): IrisTemplateFeedback | null {
+  if (!feedback) {
+    return null;
+  }
+
+  if (typeof feedback === "string") {
+    const message = feedback.trim();
+
+    return message
+      ? createIrisTemplateFeedback({ message, tone: "neutral" })
+      : null;
+  }
+
+  if (typeof feedback !== "object" || Array.isArray(feedback)) {
+    return null;
+  }
+
+  const record = feedback as Record<string, unknown>;
+  const message = typeof record.message === "string" ? record.message.trim() : "";
+
+  if (!message) {
+    return null;
+  }
+
+  return createIrisTemplateFeedback({
+    action: typeof record.action === "string" ? record.action : null,
+    cause: typeof record.cause === "string" ? record.cause : null,
+    message,
+    metaCode: typeof record.metaCode === "string" ? record.metaCode : null,
+    metaDetail:
+      typeof record.metaDetail === "string" ? record.metaDetail : null,
+    providerMessage:
+      typeof record.providerMessage === "string"
+        ? record.providerMessage
+        : null,
+    title: typeof record.title === "string" ? record.title : null,
+    tone:
+      record.tone === "error" ||
+      record.tone === "success" ||
+      record.tone === "warning"
+        ? record.tone
+        : "neutral",
+  });
 }
 
 function IrisTemplateMetricCard({
@@ -6553,8 +9997,10 @@ function toneText(tone: IrisTone) {
 
 async function loadIrisData({
   operatorUserId,
+  queueSlugFilter,
 }: {
   operatorUserId?: string | null;
+  queueSlugFilter?: string | null;
 } = {}): Promise<IrisData> {
   const supabase = getHubSupabaseClient();
 
@@ -6562,7 +10008,26 @@ async function loadIrisData({
     return emptyIrisData;
   }
 
-  const ticketsQuery = supabase
+  const normalizedQueueSlugFilter =
+    normalizeOptionalIrisQueueSlug(queueSlugFilter);
+  const queuesResult = await supabase
+    .from("caredesk_queues")
+    .select(
+      "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy",
+    )
+    .order("name", { ascending: true });
+
+  if (queuesResult.error) {
+    throw queuesResult.error;
+  }
+
+  const queues = (queuesResult.data ?? []).map(mapQueueRow);
+  const scopedQueueIds = normalizedQueueSlugFilter
+    ? queues
+        .filter((queue) => isSameIrisQueueScope(queue, normalizedQueueSlugFilter))
+        .map((queue) => queue.id)
+    : [];
+  let ticketsQuery = supabase
     .from("caredesk_tickets")
     .select(
       "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at",
@@ -6570,23 +10035,24 @@ async function loadIrisData({
     .order("opened_at", { ascending: false })
     .limit(200);
 
+  if (operatorUserId) {
+    ticketsQuery = ticketsQuery.eq("assigned_to_user_id", operatorUserId);
+  }
+
+  if (normalizedQueueSlugFilter) {
+    ticketsQuery = scopedQueueIds.length
+      ? ticketsQuery.in("queue_id", scopedQueueIds)
+      : ticketsQuery.eq("queue_id", "__iris_queue_scope_not_found__");
+  }
+
   const [
     ticketsResult,
-    queuesResult,
     profilesResult,
     templatesResult,
     channelsResult,
     broadcastsResult,
   ] = await Promise.all([
-    operatorUserId
-      ? ticketsQuery.eq("assigned_to_user_id", operatorUserId)
-      : ticketsQuery,
-    supabase
-      .from("caredesk_queues")
-      .select(
-        "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy",
-      )
-      .order("name", { ascending: true }),
+    ticketsQuery,
     supabase
       .from("caredesk_ticket_profiles")
       .select(
@@ -6611,7 +10077,6 @@ async function loadIrisData({
 
   const failedResult = [
     ticketsResult,
-    queuesResult,
     profilesResult,
     templatesResult,
     channelsResult,
@@ -6665,27 +10130,34 @@ async function loadIrisData({
     throw failedNestedResult.error;
   }
 
-  const queues = (queuesResult.data ?? []).map(mapQueueRow);
   const channels = (channelsResult.data ?? []).map((channel) => ({
     id: channel.id,
     kind: channel.kind,
     name: channel.name,
     status: channel.status,
   }));
-  const templates = (templatesResult.data ?? []).map((template) => ({
-    body: template.body ?? null,
-    category: template.category,
-    channelKind: template.channel_kind,
-    id: template.id,
-    metadata:
-      template.metadata && typeof template.metadata === "object"
-        ? template.metadata
-        : null,
-    name: template.name,
-    slug: template.slug,
-    status: template.status,
-    variables: normalizeTemplateVariablesValue(template.variables),
-  }));
+  const templates = (templatesResult.data ?? [])
+    .map((template) => ({
+      body: template.body ?? null,
+      category: template.category,
+      channelKind: template.channel_kind,
+      id: template.id,
+      metadata:
+        template.metadata && typeof template.metadata === "object"
+          ? template.metadata
+          : null,
+      name: template.name,
+      slug: template.slug,
+      status: template.status,
+      variables: normalizeTemplateVariablesValue(template.variables),
+    }))
+    .filter((template) => {
+      const status = String(template.status ?? "")
+        .trim()
+        .toLocaleLowerCase("pt-BR");
+
+      return status !== "archived";
+    });
   const broadcasts = (broadcastsResult.data ?? []).map((broadcast) => ({
     id: broadcast.id,
     name: broadcast.name,
@@ -6747,6 +10219,12 @@ async function enrichTicketsWithCrm360(data: IrisData): Promise<IrisData> {
 
   try {
     const accessToken = await getIrisAccessToken();
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      IRIS_CRM360_ENRICH_TIMEOUT_MS,
+    );
+
     const response = await fetch("/api/iris/apolo/phone-match", {
       body: JSON.stringify({ phones }),
       headers: {
@@ -6754,7 +10232,8 @@ async function enrichTicketsWithCrm360(data: IrisData): Promise<IrisData> {
         "Content-Type": "application/json",
       },
       method: "POST",
-    });
+      signal: controller.signal,
+    }).finally(() => window.clearTimeout(timeoutId));
 
     if (!response.ok) {
       return data;
@@ -6777,8 +10256,37 @@ async function enrichTicketsWithCrm360(data: IrisData): Promise<IrisData> {
       })),
     };
   } catch (error) {
-    console.error("[iris] nao foi possivel consultar o CRM 360", error);
+    const isAbort =
+      error instanceof DOMException && error.name === "AbortError";
+
+    if (isAbort) {
+      console.warn("[iris] consulta CRM 360 excedeu o tempo limite");
+    } else {
+      console.error("[iris] nao foi possivel consultar o CRM 360", error);
+    }
+
     return data;
+  }
+}
+
+async function withIrisTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(`${label} excedeu ${Math.round(timeoutMs / 1000)}s.`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -7016,17 +10524,97 @@ function renderIrisOptInTemplate(firstName: string) {
   );
 }
 
+function defaultIrisQueueId(
+  queues: IrisQueueConfig[],
+  preferredQueueLabel?: string | null,
+) {
+  const preferredLabel = normalizeIrisSelectionLabel(preferredQueueLabel);
+
+  return (
+    queues.find(
+      (queue) =>
+        queue.status === "active" &&
+        preferredLabel &&
+        normalizeIrisSelectionLabel(queue.name) === preferredLabel,
+    )?.id ??
+    queues.find(
+      (queue) => queue.status === "active" && queue.slug === "atendimento",
+    )?.id ??
+    queues.find((queue) => queue.status === "active")?.id ??
+    ""
+  );
+}
+
+function normalizeIrisSelectionLabel(value?: string | null) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
+}
+
+function renderSelectedIrisTemplatePreview(
+  template: IrisTemplate,
+  firstName: string,
+) {
+  const variables = readTemplateVariables(template).map((variable) => {
+    if (
+      variable.key === "primeiro_nome" ||
+      variable.placeholder === "{{1}}"
+    ) {
+      return {
+        ...variable,
+        example:
+          firstName || variable.example || IRIS_OPT_IN_TEMPLATE.exampleName,
+      };
+    }
+
+    if (variable.key === "nome_cliente") {
+      return {
+        ...variable,
+        example: firstName || variable.example,
+      };
+    }
+
+    return variable;
+  });
+
+  return renderMetaTemplatePreview(
+    template.body ?? IRIS_OPT_IN_TEMPLATE.bodyText,
+    variables.length ? variables : IRIS_OPT_IN_TEMPLATE.variables,
+  );
+}
+
 function createIrisTemplateForm() {
   return {
     bodyText: IRIS_OPT_IN_TEMPLATE.bodyText,
     buttonsText: IRIS_OPT_IN_TEMPLATE.buttons.join(", "),
     category: IRIS_OPT_IN_TEMPLATE.category,
     displayName: IRIS_OPT_IN_TEMPLATE.title,
+    headerFileName: "",
+    headerFormat: "NONE",
+    headerHandle: "",
+    headerMimeType: "",
+    headerSendLink: "",
     language: IRIS_OPT_IN_TEMPLATE.language,
     name: IRIS_OPT_IN_TEMPLATE.name,
-    queueLabel: "Atendimento",
-    subjectLabel: "Opt-in ativo",
+    phoneNumberId: "",
+    queueLabel: "",
+    subjectLabel: "",
     variables: [...IRIS_OPT_IN_TEMPLATE.variables],
+  };
+}
+
+function createIrisTemplateDraft() {
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/\D/g, "")
+    .slice(2, 16);
+
+  return {
+    ...createIrisTemplateForm(),
+    displayName: "Novo template",
+    name: `iris_template_${timestamp}`,
   };
 }
 
@@ -7043,10 +10631,16 @@ function irisTemplateToForm(template: IrisTemplate) {
       readTemplateMetadataString(template, "metaCategory") ??
       IRIS_OPT_IN_TEMPLATE.category,
     displayName: template.name,
+    headerFileName: readTemplateMetadataString(template, "mediaHeaderFileName") ?? "",
+    headerFormat: readTemplateHeaderFormat(template) ?? "NONE",
+    headerHandle: readTemplateMetadataString(template, "mediaHeaderHandle") ?? "",
+    headerMimeType: readTemplateMetadataString(template, "mediaHeaderMimeType") ?? "",
+    headerSendLink: readTemplateMetadataString(template, "mediaHeaderSendLink") ?? "",
     language:
       readTemplateMetadataString(template, "metaLanguage") ??
       IRIS_OPT_IN_TEMPLATE.language,
     name: readTemplateMetaName(template) ?? template.slug.replace(/-/g, "_"),
+    phoneNumberId: readTemplateMetadataString(template, "metaPhoneNumberId") ?? "",
     queueLabel: readTemplateQueueLabel(template),
     subjectLabel: readTemplateSubjectLabel(template),
     variables: variables.length ? variables : [...IRIS_OPT_IN_TEMPLATE.variables],
@@ -7080,6 +10674,16 @@ function readTemplateMetaName(template?: IrisTemplate | null) {
   return readTemplateMetadataString(template, "metaTemplateName");
 }
 
+function readTemplatePhoneLabel(template?: IrisTemplate | null) {
+  const displayNumber = readTemplateMetadataString(
+    template,
+    "metaPhoneDisplayNumber",
+  );
+  const label = readTemplateMetadataString(template, "metaPhoneLabel");
+
+  return displayNumber ?? (isGenericMetaPhoneLabel(label) ? null : label);
+}
+
 function readTemplateQueueLabel(template?: IrisTemplate | null) {
   return (
     readTemplateMetadataString(template, "queueLabel") ??
@@ -7098,11 +10702,109 @@ function readTemplateSubjectLabel(template?: IrisTemplate | null) {
   );
 }
 
+function findMetaPhoneNumberOption(
+  phoneNumbers: IrisMetaPhoneNumberOption[],
+  id?: string | null,
+) {
+  const normalizedId = typeof id === "string" ? id.trim() : "";
+
+  if (normalizedId) {
+    return (
+      phoneNumbers.find((phoneNumber) => phoneNumber.id === normalizedId) ?? null
+    );
+  }
+
+  return null;
+}
+
+function formatMetaPhoneNumberOption(phoneNumber?: IrisMetaPhoneNumberOption | null) {
+  if (!phoneNumber) {
+    return "Telefone nao selecionado";
+  }
+
+  const label = String(phoneNumber.label ?? "").trim();
+  const verifiedName = String(phoneNumber.verifiedName ?? "").trim();
+  const displayPhoneNumber = String(phoneNumber.displayPhoneNumber ?? "").trim();
+  const usableLabel = isGenericMetaPhoneLabel(label) ? "" : label;
+
+  return (
+    [displayPhoneNumber, verifiedName].filter(Boolean).join(" - ") ||
+    usableLabel ||
+    `Telefone sem numero (${formatMetaPhoneIdSuffix(phoneNumber.id)})`
+  );
+}
+
+function formatSelectedTemplatePhoneForDisplay({
+  phoneNumber,
+  phoneNumberId,
+  template,
+}: {
+  phoneNumber?: IrisMetaPhoneNumberOption | null;
+  phoneNumberId?: string | null;
+  template?: IrisTemplate | null;
+}) {
+  return (
+    (phoneNumber ? formatMetaPhoneNumberOption(phoneNumber) : null) ??
+    readTemplatePhoneLabel(template) ??
+    `Telefone sem numero (${formatMetaPhoneIdSuffix(phoneNumberId)})`
+  );
+}
+
+function isGenericMetaPhoneLabel(value?: string | null) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  return (
+    !normalized ||
+    normalized === "telefone meta" ||
+    normalized === "telefone meta configurado" ||
+    normalized.startsWith("telefone nao identificado") ||
+    normalized.startsWith("telefone não identificado")
+  );
+}
+
+function formatMetaPhoneIdSuffix(value?: string | null) {
+  const normalized = String(value ?? "").trim();
+
+  return normalized ? `ID final ${normalized.slice(-4)}` : "ID Meta sem numero";
+}
+
+function readTemplateHeaderFormat(template?: IrisTemplate | null) {
+  const format = readTemplateMetadataString(template, "mediaHeaderFormat");
+
+  return format === "IMAGE" || format === "VIDEO" || format === "DOCUMENT"
+    ? format
+    : null;
+}
+
+function templateHeaderFormatLabel(format?: string | null) {
+  if (format === "IMAGE") {
+    return "Imagem";
+  }
+
+  if (format === "VIDEO") {
+    return "Video";
+  }
+
+  if (format === "DOCUMENT") {
+    return "Documento";
+  }
+
+  return "Sem midia";
+}
+
 function readTemplateStatusGroup(template?: IrisTemplate | null) {
   const status = readTemplateMetaStatus(template);
 
-  if (status === "APPROVED" || status === "PENDING" || status === "REJECTED") {
-    return status;
+  if (isMetaTemplateApprovedStatus(status)) {
+    return "APPROVED";
+  }
+
+  if (isMetaTemplatePendingStatus(status)) {
+    return "PENDING";
+  }
+
+  if (isMetaTemplateUnavailableStatus(status)) {
+    return "REJECTED";
   }
 
   return "NONE";
@@ -7216,6 +10918,25 @@ function mergeTemplateVariable(
   ];
 }
 
+function buildTemplateVariablesFromPreset(keys: string[]) {
+  const uniqueKeys = unique(
+    keys.map((key) => key.trim()).filter((key) => key.length > 0),
+  );
+
+  return uniqueKeys.map((key, index) => {
+    const known = IRIS_META_TEMPLATE_VARIABLES.find(
+      (variable) => variable.key === key,
+    );
+
+    return {
+      example: known?.example ?? key,
+      key,
+      label: known?.label ?? key,
+      placeholder: `{{${index + 1}}}`,
+    };
+  });
+}
+
 function renderMetaTemplatePreview(
   bodyText: string,
   variables: typeof IRIS_OPT_IN_TEMPLATE.variables,
@@ -7247,20 +10968,16 @@ function sortIrisTemplatesForSetup(left: IrisTemplate, right: IrisTemplate) {
   );
 }
 
-function joinFeedback(...messages: Array<string | null | undefined>) {
-  return messages.filter(Boolean).join(" ");
-}
-
 function phoneNumberLinkFeedback(link?: IrisMetaPhoneNumberLink | null) {
   if (!link) {
     return null;
   }
 
-  if (link.checkStatus === "checked" && link.linked === false) {
-    if (link.templateBusinessAccountSource === "phone") {
-      return "Template validado pela WABA real do telefone de envio.";
-    }
+  if (link.checkStatus === "checked" && link.linked === true) {
+    return "Telefone de envio validado na WABA do template.";
+  }
 
+  if (link.checkStatus === "checked" && link.linked === false) {
     return "Crie um novo template para o telefone de envio.";
   }
 
@@ -7276,35 +10993,87 @@ function phoneNumberLinkFeedback(link?: IrisMetaPhoneNumberLink | null) {
 }
 
 function templateStatusLabel(status?: string | null) {
-  if (status === "APPROVED") {
+  if (isMetaTemplateApprovedStatus(status)) {
     return "Aprovado";
   }
 
-  if (status === "PENDING") {
+  if (isMetaTemplatePendingStatus(status)) {
     return "Pendente";
   }
 
-  if (status === "REJECTED") {
+  if (normalizeMetaTemplateStatusKey(status) === "REJECTED") {
     return "Rejeitado";
+  }
+
+  if (isMetaTemplateUnavailableStatus(status)) {
+    return "Indisponivel";
+  }
+
+  if (status === "NOT_FOUND") {
+    return "Nao localizado";
   }
 
   return "Nao criado";
 }
 
 function templateStatusTone(status?: string | null) {
-  if (status === "APPROVED") {
+  if (isMetaTemplateApprovedStatus(status)) {
     return "bg-emerald-50 text-emerald-700 ring-emerald-100";
   }
 
-  if (status === "PENDING") {
+  if (isMetaTemplatePendingStatus(status)) {
     return "bg-amber-50 text-amber-700 ring-amber-100";
   }
 
-  if (status === "REJECTED") {
+  if (isMetaTemplateUnavailableStatus(status)) {
     return "bg-rose-50 text-rose-700 ring-rose-100";
   }
 
+  if (status === "NOT_FOUND") {
+    return "bg-slate-50 text-slate-700 ring-slate-200";
+  }
+
   return "bg-slate-50 text-slate-600 ring-slate-200";
+}
+
+function normalizeMetaTemplateStatusKey(status?: string | null) {
+  return status?.trim().toUpperCase().replace(/[\s-]+/g, "_") ?? null;
+}
+
+function isMetaTemplateApprovedStatus(status?: string | null) {
+  const normalized = normalizeMetaTemplateStatusKey(status);
+
+  return (
+    normalized === "APPROVED" ||
+    normalized === "ACTIVE" ||
+    Boolean(normalized?.startsWith("APPROVED_")) ||
+    Boolean(normalized?.startsWith("ACTIVE_"))
+  );
+}
+
+function isMetaTemplatePendingStatus(status?: string | null) {
+  const normalized = normalizeMetaTemplateStatusKey(status);
+
+  return (
+    normalized === "PENDING" ||
+    normalized === "IN_REVIEW" ||
+    Boolean(normalized?.startsWith("PENDING_"))
+  );
+}
+
+function isMetaTemplateUnavailableStatus(status?: string | null) {
+  const normalized = normalizeMetaTemplateStatusKey(status);
+
+  return (
+    normalized === "DISABLED" ||
+    normalized === "INACTIVE" ||
+    normalized === "PAUSED" ||
+    normalized === "REJECTED" ||
+    Boolean(normalized?.startsWith("DISABLED_")) ||
+    Boolean(normalized?.startsWith("INACTIVE_")) ||
+    Boolean(normalized?.startsWith("PAUSED_")) ||
+    Boolean(normalized?.startsWith("REJECTED_"))
+  );
 }
 
 function formatPhoneForDisplay(value: string) {
@@ -7491,6 +11260,10 @@ function mapTicketRow(input: {
     lastMessagePreview: lastMessage
       ? irisMessagePreview(lastMessage)
       : "Sem mensagens registradas",
+    metadata:
+      input.row.metadata && typeof input.row.metadata === "object"
+        ? input.row.metadata
+        : null,
     messages: input.messages,
     openedAt: input.row.opened_at,
     priority: normalizePriority(input.row.priority),
@@ -7500,6 +11273,10 @@ function mapTicketRow(input: {
     queueSlug: input.queue?.slug ?? null,
     resolutionDueAt: input.row.resolution_due_at,
     resolvedAt: input.row.resolved_at,
+    sourceContext:
+      input.row.source_context && typeof input.row.source_context === "object"
+        ? input.row.source_context
+        : null,
     sourceLabel: sourceModule ? labelForSource(sourceModule) : "Entrada direta",
     status: normalizeStatus(input.row.status),
     subject:
@@ -8019,6 +11796,21 @@ function slugifyIrisQueue(value: string) {
   return slug || "fila-atendimento";
 }
 
+function normalizeOptionalIrisQueueSlug(value?: string | null) {
+  const trimmed = String(value ?? "").trim();
+
+  return trimmed ? slugifyIrisQueue(trimmed) : null;
+}
+
+function isSameIrisQueueScope(
+  queue: IrisQueueConfig,
+  normalizedQueueSlug: string,
+) {
+  return [queue.slug, queue.name]
+    .map((value) => normalizeOptionalIrisQueueSlug(value))
+    .includes(normalizedQueueSlug);
+}
+
 function formatSlaMinutes(minutes: number) {
   if (minutes >= 1440) {
     return `${Math.round(minutes / 1440)}d`;
@@ -8102,6 +11894,132 @@ function ticketOrigin(ticket: IrisTicket): IrisOrigin {
   return "passive";
 }
 
+function filterTicketsByBoardOwner(
+  tickets: IrisTicket[],
+  ownerView: "Todos" | "Cacá" | "Operadores",
+) {
+  return tickets.filter((ticket) => {
+    if (ownerView === "Todos") {
+      return true;
+    }
+
+    if (ownerView === "Cacá") {
+      return isCacaOwnedTicket(ticket);
+    }
+
+    return isOperatorOwnedTicket(ticket);
+  });
+}
+
+function isCacaOwnedTicket(ticket: IrisTicket) {
+  if (isClosedTicket(ticket)) {
+    return false;
+  }
+
+  if (isTicketMarkedForOperator(ticket) || isActiveContactOriginTicket(ticket)) {
+    return false;
+  }
+
+  const assignedToCaca = normalizeIrisOwnerKey(ticket.assignedToLabel) === "caca";
+  const cacaAutomation = readCacaAutomationFromTicket(ticket);
+
+  if (readTicketRecordBoolean(cacaAutomation, "handoffRequired")) {
+    return false;
+  }
+
+  if (assignedToCaca || cacaAutomation) {
+    return true;
+  }
+
+  return effectiveIrisStatus(ticket) === "waiting_customer" && ticketOrigin(ticket) === "passive";
+}
+
+function isOperatorOwnedTicket(ticket: IrisTicket) {
+  if (isClosedTicket(ticket)) {
+    return false;
+  }
+
+  return !isCacaOwnedTicket(ticket);
+}
+
+function isTicketMarkedForOperator(ticket: IrisTicket) {
+  const metadata = ticket.metadata;
+  const handlingOwner = normalizeIrisOwnerKey(
+    readTicketRecordString(metadata, "handlingOwner"),
+  );
+  const status = effectiveIrisStatus(ticket);
+
+  if (handlingOwner === "operator") {
+    return true;
+  }
+
+  if (status === "waiting_operator" || status === "open" || status === "pending") {
+    return true;
+  }
+
+  const cacaAutomation = readCacaAutomationFromTicket(ticket);
+
+  if (readTicketRecordBoolean(cacaAutomation, "handoffRequired")) {
+    return true;
+  }
+
+  const assignedOwner = normalizeIrisOwnerKey(ticket.assignedToLabel);
+
+  return (
+    assignedOwner !== "sem-responsavel" &&
+    assignedOwner !== "caca"
+  );
+}
+
+function isActiveContactOriginTicket(ticket: IrisTicket) {
+  const activeConsent = readTicketRecordString(
+    ticket.metadata,
+    "activeContactConsent",
+  );
+  const sourceContactOrigin = readTicketRecordString(
+    ticket.sourceContext,
+    "contactOrigin",
+  );
+
+  if (sourceContactOrigin === "active") {
+    return true;
+  }
+
+  return activeConsent === "awaiting_customer_reply";
+}
+
+function normalizeIrisOwnerKey(value?: string | null) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
+function readCacaAutomationFromTicket(ticket: IrisTicket) {
+  const metadata = ticket.metadata;
+
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const raw = metadata.cacaAutomation;
+
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+
+  return raw as Record<string, unknown>;
+}
+
+function readTicketRecordBoolean(
+  record: Record<string, unknown> | null | undefined,
+  key: string,
+) {
+  return record?.[key] === true;
+}
+
 function ticketResponseTimeLabel(ticket: IrisTicket) {
   const currentWait = getCurrentCustomerWaitMinutes(ticket);
 
@@ -8142,6 +12060,106 @@ function isCareliMessage(message: IrisMessage) {
 
 function isCustomerMessage(message: IrisMessage) {
   return message.direction === "inbound" || message.senderType === "customer";
+}
+
+function getIrisCustomerServiceWindow(ticket: IrisTicket, tickets: IrisTicket[]) {
+  const relatedTickets = getRelatedTicketsForCustomerServiceWindow(ticket, tickets);
+  const lastCustomerMessageAt = relatedTickets
+    .map((currentTicket) => {
+      const metadataLastMessageAt = readTicketRecordString(
+        currentTicket.metadata,
+        "lastCustomerMessageAt",
+      );
+      const metadataOpenedAt = readTicketRecordString(
+        currentTicket.metadata,
+        "customerServiceWindowOpenedAt",
+      );
+      const inboundMessages = sortedTicketMessages(currentTicket).filter(
+        isCustomerMessage,
+      );
+      const lastInbound = inboundMessages[inboundMessages.length - 1];
+
+      return (
+        metadataLastMessageAt ??
+        metadataOpenedAt ??
+        lastInbound?.sentAt ??
+        lastInbound?.createdAt ??
+        null
+      );
+    })
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
+  const lastCustomerMessageTime = dateValue(lastCustomerMessageAt);
+
+  if (!lastCustomerMessageTime) {
+    return {
+      contextLabel: "Sem resposta do cliente",
+      expiresAt: null,
+      label:
+        "Aguardando resposta do cliente. O WhatsApp libera mensagem livre apenas depois da resposta ao template.",
+      lastCustomerMessageAt: null,
+      open: false,
+      reason: "no_customer_reply" as const,
+    };
+  }
+
+  const expiresAt = new Date(
+    lastCustomerMessageTime + 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const expiresAtTime = dateValue(expiresAt);
+  const open = Boolean(expiresAtTime && Date.now() < expiresAtTime);
+
+  if (open) {
+    return {
+      contextLabel: `Aberta ate ${formatDateTime(expiresAt)}`,
+      expiresAt,
+      label: `Janela WhatsApp aberta ate ${formatDateTime(expiresAt)}.`,
+      lastCustomerMessageAt,
+      open,
+      reason: "open" as const,
+    };
+  }
+
+  return {
+    contextLabel: `Fechada em ${formatDateTime(expiresAt)}`,
+    expiresAt,
+    label:
+      "Janela de 24h fechada. Envie um template aprovado e aguarde nova resposta do cliente.",
+    lastCustomerMessageAt,
+    open,
+    reason: "expired" as const,
+  };
+}
+
+function getRelatedTicketsForCustomerServiceWindow(
+  ticket: IrisTicket,
+  tickets: IrisTicket[],
+) {
+  const ticketPhone = normalizeIrisPhoneDigits(ticket.contactPhone);
+  const ticketId = ticket.contactId?.trim();
+
+  return tickets.filter((candidate) => {
+    if (ticketId && candidate.contactId) {
+      if (candidate.contactId === ticketId) {
+        return true;
+      }
+    }
+
+    if (ticketPhone) {
+      return matchesIrisPhoneDigits(ticketPhone, candidate.contactPhone);
+    }
+
+    return candidate.contactLabel === ticket.contactLabel;
+  });
+}
+
+function readTicketRecordString(
+  record: Record<string, unknown> | null | undefined,
+  key: string,
+) {
+  const value = record?.[key];
+
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function getFirstCareliResponseAt(ticket: IrisTicket) {
@@ -8492,6 +12510,437 @@ function contactInitials(name: string) {
     .slice(0, 2)
     .map((word) => word[0])
     .join("");
+}
+
+function normalizeIrisPhoneDigits(value?: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  return String(value).replace(/\D+/g, "");
+}
+
+function matchesIrisPhoneDigits(expected: string, current?: string | null) {
+  const left = normalizeIrisPhoneDigits(expected);
+  const right = normalizeIrisPhoneDigits(current);
+
+  if (!left || !right) {
+    return false;
+  }
+
+  if (left === right) {
+    return true;
+  }
+
+  const minComparableLength = 10;
+  const rightTail = right.slice(-minComparableLength);
+  const leftTail = left.slice(-minComparableLength);
+
+  return (
+    (right.length >= minComparableLength && left.endsWith(rightTail)) ||
+    (left.length >= minComparableLength && right.endsWith(leftTail))
+  );
+}
+
+function pickIrisApoloEntityForTicket(
+  entities: IrisApoloContextEntity[],
+  ticket: IrisTicket,
+) {
+  if (!entities.length) {
+    return null;
+  }
+
+  const registeredEntityId = ticket.crm360Registration?.entityId?.trim();
+
+  if (registeredEntityId) {
+    const byId = entities.find((entity) => entity.id === registeredEntityId);
+
+    if (byId) {
+      return byId;
+    }
+  }
+
+  const ticketPhone = normalizeIrisPhoneDigits(ticket.contactPhone);
+
+  if (ticketPhone) {
+    const byPhone = entities.find((entity) =>
+      (entity.contacts ?? []).some((contact) =>
+        matchesIrisPhoneDigits(ticketPhone, contact?.value),
+      ),
+    );
+
+    if (byPhone) {
+      return byPhone;
+    }
+  }
+
+  return entities[0] ?? null;
+}
+
+function hasIrisRegisteredUserProfile(
+  registration?: IrisCrm360Registration | null,
+) {
+  if (registration?.status !== "registered") {
+    return false;
+  }
+
+  const labels = [
+    registration.profileLabel ?? "",
+    ...(registration.profiles ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return labels.includes("usuario");
+}
+
+function hasIrisApoloUserPortfolio(entity?: IrisApoloContextEntity | null) {
+  if (!entity) {
+    return false;
+  }
+
+  const hasUserProfile = (entity.profiles ?? []).some(
+    (profile) => profile === "usuario",
+  );
+
+  if (!hasUserProfile) {
+    return false;
+  }
+
+  return (entity.commercialLinks ?? []).some((link) => {
+    const normalizedRole = (link.role ?? "").toLowerCase().trim();
+    const hasEligibleRole =
+      normalizedRole === "usuario" || normalizedRole === "usuario comprador";
+
+    const hasEvidence = Boolean(
+      (link.unitCode ?? "").trim() ||
+        (link.unit ?? "").trim() ||
+        (link.referenceLabel ?? "").trim() ||
+        (link.tableValue ?? "").trim() ||
+        (link.installments?.length ?? 0),
+    );
+
+    return hasEligibleRole && hasEvidence;
+  });
+}
+
+function formatIrisApoloProfiles(profiles?: string[] | null) {
+  if (!profiles?.length) {
+    return "-";
+  }
+
+  return profiles
+    .map((profile) => profile.replace(/_/g, " "))
+    .map((profile) => formatIrisDisplayName(profile))
+    .join(" | ");
+}
+
+function buildIrisApoloAgendaItems(
+  entity?: IrisApoloContextEntity | null,
+): IrisAgendaTimelineEntry[] {
+  if (!entity) {
+    return [];
+  }
+
+  const timelineItems = (entity.timeline ?? []).map((event, index) => ({
+    dateLabel:
+      formatDateTime(event.date) !== "-"
+        ? formatDateTime(event.date)
+        : event.date ?? "Sem data",
+    dateValue: dateValue(event.date),
+    description: event.description ?? "Registro operacional no relacionamento.",
+    id: `timeline-${index}-${event.title ?? "evento"}`,
+    kindLabel: "Timeline",
+    scheduledAt: event.date ?? null,
+    source: "apolo" as const,
+    title: event.title ?? "Evento de relacionamento",
+    tone:
+      event.status === "blocked"
+        ? ("danger" as const)
+        : event.status === "attention"
+          ? ("gold" as const)
+          : ("success" as const),
+  }));
+  const installmentItems = (entity.commercialLinks ?? []).flatMap(
+    (link, linkIndex) =>
+      (link.installments ?? []).map((installment, installmentIndex) => ({
+        dateLabel:
+          formatDateTime(installment.paidAt ?? installment.dueDate) !== "-"
+            ? formatDateTime(installment.paidAt ?? installment.dueDate)
+            : installment.paidAt ?? installment.dueDate ?? "Sem data",
+        dateValue: dateValue(installment.paidAt ?? installment.dueDate),
+        description: `${link.enterprise ?? "Carteira"} · ${installment.value ?? "-"}`,
+        id: `installment-${linkIndex}-${installment.id ?? installmentIndex}`,
+        kindLabel: "Pagamento",
+        scheduledAt: installment.paidAt ?? installment.dueDate ?? null,
+        source: "apolo" as const,
+        title: `${installment.reference ?? "Parcela"} · ${installment.status ?? "Sem status"}`,
+        tone:
+          installment.status === "Vencida"
+            ? ("danger" as const)
+            : installment.status === "A vencer"
+              ? ("gold" as const)
+              : ("success" as const),
+      })),
+  );
+  const serviceItems = (entity.serviceSignals ?? []).map((signal, index) => ({
+    dateLabel:
+      formatDateTime(signal.lastEvent) !== "-"
+        ? formatDateTime(signal.lastEvent)
+        : signal.lastEvent ?? "Sem data",
+    dateValue: dateValue(signal.lastEvent),
+    description: `Protocolo ${signal.protocol ?? "-"} · ${signal.status ?? "-"}`,
+    id: `service-${index}-${signal.protocol ?? "protocolo"}`,
+    kindLabel: "Atendimento",
+    scheduledAt: signal.lastEvent ?? null,
+    source: "apolo" as const,
+    title: signal.channel ?? "Canal de atendimento",
+    tone: "success" as const,
+  }));
+
+  return [...timelineItems, ...installmentItems, ...serviceItems].sort(
+    (first, second) => second.dateValue - first.dateValue,
+  );
+}
+
+function readIrisTicketContextNote(
+  metadata?: Record<string, unknown> | null,
+): IrisTicketContextNote | null {
+  const raw = metadata?.operatorContextNote;
+
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const text = normalizeIrisText(record.text);
+
+  if (!text) {
+    return null;
+  }
+
+  return {
+    text,
+    updatedAt: normalizeIrisText(record.updatedAt),
+    updatedByUserId: normalizeIrisText(record.updatedByUserId),
+  };
+}
+
+function readIrisTicketContextAgendaEvents(
+  metadata?: Record<string, unknown> | null,
+) {
+  const raw = metadata?.contextAgendaEvents;
+
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return sortIrisTicketContextAgendaEvents(
+    raw
+      .map((event, index) => {
+        if (!event || typeof event !== "object" || Array.isArray(event)) {
+          return null;
+        }
+
+        const record = event as Record<string, unknown>;
+        const title = normalizeIrisText(record.title);
+        const scheduledAt = normalizeDateInputToIso(record.scheduledAt);
+
+        if (!title || !scheduledAt) {
+          return null;
+        }
+
+        return {
+          createdAt: normalizeDateInputToIso(record.createdAt),
+          createdByLabel: normalizeIrisText(record.createdByLabel) ?? "Operador Iris",
+          id: normalizeIrisText(record.id) ?? `ctx-event-${index}-${scheduledAt}`,
+          kind: normalizeIrisText(record.kind) ?? "atividade",
+          notes: normalizeIrisText(record.notes),
+          scheduledAt,
+          status: normalizeIrisText(record.status) ?? "planned",
+          title,
+        };
+      })
+      .filter(
+        (
+          event,
+        ): event is IrisTicketContextAgendaEvent => Boolean(event),
+      ),
+  );
+}
+
+function sortIrisTicketContextAgendaEvents(events: IrisTicketContextAgendaEvent[]) {
+  return [...events].sort(
+    (first, second) => dateValue(second.scheduledAt) - dateValue(first.scheduledAt),
+  );
+}
+
+function buildIrisMergedAgendaEntries({
+  entity,
+  events,
+}: {
+  entity?: IrisApoloContextEntity | null;
+  events: IrisTicketContextAgendaEvent[];
+}) {
+  const apoloItems = buildIrisApoloAgendaItems(entity);
+  const ticketItems: IrisAgendaTimelineEntry[] = events.map((event) => ({
+    createdAt: event.createdAt ?? null,
+    createdByLabel: event.createdByLabel ?? null,
+    dateLabel: formatDateTime(event.scheduledAt),
+    dateValue: dateValue(event.scheduledAt),
+    description:
+      event.notes?.trim() ||
+      `Atividade criada pelo operador (${event.createdByLabel ?? "Iris"}).`,
+    id: event.id,
+    kindLabel: formatIrisAgendaKind(event.kind),
+    scheduledAt: event.scheduledAt,
+    source: "ticket",
+    title: event.title,
+    tone: "gold",
+  }));
+
+  return [...ticketItems, ...apoloItems].sort(
+    (first, second) => second.dateValue - first.dateValue,
+  );
+}
+
+function buildIrisAgendaCalendar(
+  monthCursorIso: string,
+  items: IrisAgendaTimelineEntry[],
+) {
+  const monthCursorDate = new Date(monthCursorIso);
+  const monthStart = Number.isNaN(monthCursorDate.getTime())
+    ? new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    : new Date(monthCursorDate.getFullYear(), monthCursorDate.getMonth(), 1);
+  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+  const firstGridDay = new Date(monthStart);
+  firstGridDay.setDate(monthStart.getDate() - monthStart.getDay());
+  const lastGridDay = new Date(monthEnd);
+  lastGridDay.setDate(monthEnd.getDate() + (6 - monthEnd.getDay()));
+  const dayToCount = new Map<string, number>();
+
+  items.forEach((item) => {
+    const date = new Date(item.scheduledAt ?? "");
+
+    if (Number.isNaN(date.getTime())) {
+      return;
+    }
+
+    const key = date.toISOString().slice(0, 10);
+    dayToCount.set(key, (dayToCount.get(key) ?? 0) + 1);
+  });
+
+  const days = [];
+  const cursor = new Date(firstGridDay);
+  const nowKey = new Date().toISOString().slice(0, 10);
+
+  while (cursor <= lastGridDay) {
+    const key = cursor.toISOString().slice(0, 10);
+    const dayNumber = cursor.getDate();
+
+    days.push({
+      dayNumber,
+      eventsCount: dayToCount.get(key) ?? 0,
+      id: `day-${key}`,
+      inCurrentMonth: cursor.getMonth() === monthStart.getMonth(),
+      isToday: key === nowKey,
+      key,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const weeks = [];
+
+  for (let index = 0; index < days.length; index += 7) {
+    weeks.push(days.slice(index, index + 7));
+  }
+
+  return {
+    monthLabel: monthStart.toLocaleDateString("pt-BR", {
+      month: "long",
+      year: "numeric",
+    }),
+    weekdayLabels: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"],
+    weeks,
+  };
+}
+
+function formatIrisAgendaKind(kind?: string | null) {
+  const normalized = normalizeIrisText(kind)?.toLowerCase();
+
+  if (normalized === "tarefa") {
+    return "Tarefa";
+  }
+
+  if (normalized === "reuniao") {
+    return "Reuniao";
+  }
+
+  if (normalized === "entrega") {
+    return "Entrega";
+  }
+
+  return "Agenda";
+}
+
+function startOfMonthIso(value?: string) {
+  const date = value ? new Date(value) : new Date();
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+
+  return new Date(safeDate.getFullYear(), safeDate.getMonth(), 1).toISOString();
+}
+
+function shiftMonthIso(monthCursorIso: string, delta: number) {
+  const current = new Date(monthCursorIso);
+  const safeDate = Number.isNaN(current.getTime()) ? new Date() : current;
+
+  return new Date(
+    safeDate.getFullYear(),
+    safeDate.getMonth() + delta,
+    1,
+  ).toISOString();
+}
+
+function toDateTimeLocalInput(value?: string | null) {
+  const date = value ? new Date(value) : new Date();
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function normalizeDateTimeInputToIso(value?: string | null) {
+  if (!value || !value.trim()) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function normalizeDateInputToIso(value: unknown) {
+  const normalized = normalizeIrisText(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = new Date(normalized);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function normalizeIrisText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 async function getIrisAccessToken() {

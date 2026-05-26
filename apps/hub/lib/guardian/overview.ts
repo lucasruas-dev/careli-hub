@@ -1,6 +1,7 @@
 import type { RowDataPacket } from "mysql2/promise";
 
 import { getHadesDbPool } from "@/lib/guardian/db";
+import { shouldRestrictHadesEnterprises } from "@/lib/guardian/runtime-environment";
 
 export type HadesOverviewSummary = {
   availableUnits: number;
@@ -261,7 +262,7 @@ const enterpriseDisplayExpression = `
     else trim(coalesce(nullif(e.name, ''), nullif(e.divulgation_name, ''), concat('Empreendimento ', e.id)))
   end
 `;
-const validEnterpriseWhere = `
+const productionEnterpriseWhere = `
   e.id is not null
   and upper(trim(coalesce(e.code, ''))) not in ('SDT', 'TSC')
   and not (
@@ -269,6 +270,9 @@ const validEnterpriseWhere = `
     and upper(trim(coalesce(e.code, ''))) not in ('LBR', 'LBP', 'LBF')
   )
 `;
+const validEnterpriseWhere = shouldRestrictHadesEnterprises()
+  ? productionEnterpriseWhere
+  : "e.id is not null";
 
 const overdueAgingLabels = [
   "1 a 15 dias",

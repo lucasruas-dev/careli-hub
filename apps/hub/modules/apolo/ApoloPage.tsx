@@ -50,10 +50,13 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  RotateCcw,
   UsersRound,
+  UserPlus,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 type ApoloTab =
   | "resumo"
@@ -109,6 +112,139 @@ type ApoloFinancialRecord = {
   value: string;
 };
 
+type ApoloCreateProfile = Extract<
+  ApoloProfile,
+  | "prospect"
+  | "incorporador"
+  | "imobiliaria"
+  | "corretor"
+  | "parceiro"
+  | "fornecedor"
+  | "colaborador"
+>;
+
+type ApoloCreateKind = "pf" | "pj";
+
+type ApoloCreateDocumentKey =
+  | "address"
+  | "civil_status"
+  | "corporate_contract"
+  | "identity"
+  | "income"
+  | "partner_documents";
+
+type ApoloCreateDocumentFiles = Record<ApoloCreateDocumentKey, string[]>;
+
+type ApoloCreateModalTab = "cadastro" | "documentos" | "revisao";
+
+type ApoloCreateReferenceOption = {
+  label: string;
+  meta?: string;
+  value: string;
+};
+
+type ApoloCreateReferenceOptions = {
+  agencies: ApoloCreateReferenceOption[];
+  enterprises: ApoloCreateReferenceOption[];
+  loading: boolean;
+};
+
+type ApoloCreatePartner = {
+  address: string;
+  birthDate: string;
+  civilStatus: string;
+  document: string;
+  email: string;
+  name: string;
+  participation: string;
+  phone: string;
+  role: string;
+};
+
+type ApoloCreateDraft = {
+  address: string;
+  birthDate: string;
+  broker: string;
+  city: string;
+  civilStatus: string;
+  commercialResponsible: string;
+  department: string;
+  document: string;
+  email: string;
+  enterprise: string;
+  fantasyName: string;
+  kind: ApoloCreateKind;
+  legalName: string;
+  motherName: string;
+  municipalRegistration: string;
+  name: string;
+  notes: string;
+  occupation: string;
+  phone: string;
+  postalCode: string;
+  profile: ApoloCreateProfile;
+  representativeDocument: string;
+  representativeName: string;
+  rg: string;
+  segment: string;
+  spouseAddress: string;
+  spouseBirthDate: string;
+  spouseDocument: string;
+  spouseEmail: string;
+  spouseName: string;
+  spouseOccupation: string;
+  spousePhone: string;
+  state: string;
+  stateRegistration: string;
+  unitCode: string;
+  unitStatus: string;
+};
+
+type ApoloCreateDraftField = keyof ApoloCreateDraft;
+type ApoloCreatePartnerField = keyof ApoloCreatePartner;
+
+const apoloCreateProfiles = [
+  {
+    description: "Contato sem compra registrada.",
+    id: "prospect",
+    kind: "pf",
+  },
+  {
+    description: "Cliente incorporador ou empresa proprietaria.",
+    id: "incorporador",
+    kind: "pj",
+  },
+  {
+    description: "Imobiliaria parceira vinculada a usuarios.",
+    id: "imobiliaria",
+    kind: "pj",
+  },
+  {
+    description: "Corretor com carteira ou origem comercial.",
+    id: "corretor",
+    kind: "pf",
+  },
+  {
+    description: "Parceiro operacional ou comercial.",
+    id: "parceiro",
+    kind: "pj",
+  },
+  {
+    description: "Fornecedor com dados fiscais e responsavel.",
+    id: "fornecedor",
+    kind: "pj",
+  },
+  {
+    description: "Pessoa interna da operacao Careli.",
+    id: "colaborador",
+    kind: "pf",
+  },
+] as const satisfies readonly {
+  description: string;
+  id: ApoloCreateProfile;
+  kind: ApoloCreateKind;
+}[];
+
 const apoloTabs = [
   { icon: LayoutDashboard, id: "resumo", label: "Resumo" },
   { icon: ContactRound, id: "cadastro", label: "Cadastro" },
@@ -147,6 +283,82 @@ const emptyManualHadesOperations: ManualHadesOperations = {
   events: [],
 };
 
+const createDocumentInitialState: ApoloCreateDocumentFiles = {
+  address: [],
+  civil_status: [],
+  corporate_contract: [],
+  identity: [],
+  income: [],
+  partner_documents: [],
+};
+
+const apoloCreateModalTabs = [
+  { icon: ContactRound, id: "cadastro", label: "Cadastro" },
+  { icon: FileText, id: "documentos", label: "Documentos" },
+  { icon: ClipboardList, id: "revisao", label: "Revisao" },
+] as const satisfies readonly {
+  icon: LucideIcon;
+  id: ApoloCreateModalTab;
+  label: string;
+}[];
+
+const emptyCreateReferenceOptions: ApoloCreateReferenceOptions = {
+  agencies: [],
+  enterprises: [],
+  loading: false,
+};
+
+const emptyCreatePartner: ApoloCreatePartner = {
+  address: "",
+  birthDate: "",
+  civilStatus: "",
+  document: "",
+  email: "",
+  name: "",
+  participation: "",
+  phone: "",
+  role: "",
+};
+
+const createDraftInitialState: ApoloCreateDraft = {
+  address: "",
+  birthDate: "",
+  broker: "",
+  city: "",
+  civilStatus: "",
+  commercialResponsible: "",
+  department: "",
+  document: "",
+  email: "",
+  enterprise: "",
+  fantasyName: "",
+  kind: "pf",
+  legalName: "",
+  motherName: "",
+  municipalRegistration: "",
+  name: "",
+  notes: "",
+  occupation: "",
+  phone: "",
+  postalCode: "",
+  profile: "prospect",
+  representativeDocument: "",
+  representativeName: "",
+  rg: "",
+  segment: "",
+  spouseAddress: "",
+  spouseBirthDate: "",
+  spouseDocument: "",
+  spouseEmail: "",
+  spouseName: "",
+  spouseOccupation: "",
+  spousePhone: "",
+  state: "",
+  stateRegistration: "",
+  unitCode: "",
+  unitStatus: "",
+};
+
 export function ApoloPage() {
   const [activeScreen, setActiveScreen] = useState<ApoloScreen>("crm");
   const [activeTab, setActiveTab] = useState<ApoloTab>("resumo");
@@ -156,6 +368,7 @@ export function ApoloPage() {
   const [query, setQuery] = useState("");
   const [profileFilter, setProfileFilter] = useState<ApoloProfileFilter>("all");
   const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -235,13 +448,14 @@ export function ApoloPage() {
       ),
     [entities, profileFilter, query],
   );
+  const hasActiveEntityFilter = profileFilter !== "all" || query.trim().length > 0;
   const selectedEntity = useMemo(
     () =>
       filteredEntities.find((entity) => entity.id === selectedEntityId) ??
       filteredEntities[0] ??
-      entities[0] ??
+      (hasActiveEntityFilter ? null : entities[0]) ??
       null,
-    [entities, filteredEntities, selectedEntityId],
+    [entities, filteredEntities, hasActiveEntityFilter, selectedEntityId],
   );
 
   useEffect(() => {
@@ -276,6 +490,7 @@ export function ApoloPage() {
           dashboard={dashboard}
           screen={activeScreen}
           onChangeScreen={setActiveScreen}
+          onOpenCreate={() => setCreateModalOpen(true)}
         />
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
@@ -318,6 +533,12 @@ export function ApoloPage() {
           </div>
         ) : null}
       </main>
+      {createModalOpen ? (
+        <NewRelationshipModal
+          dashboard={dashboard}
+          onClose={() => setCreateModalOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -326,10 +547,12 @@ function ApoloHeader({
   dashboard,
   screen,
   onChangeScreen,
+  onOpenCreate,
 }: {
   dashboard: ApoloDashboardData | null;
   screen: ApoloScreen;
   onChangeScreen: (screen: ApoloScreen) => void;
+  onOpenCreate: () => void;
 }) {
   return (
     <header className="shrink-0 rounded-lg border border-slate-200/70 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -369,11 +592,11 @@ function ApoloHeader({
         <HeaderAction icon={MessageCircle} label="Atendimento" tone="emerald" />
         <HeaderAction icon={FileText} label="Documentos" tone="slate" />
         <HeaderAction icon={Sparkles} label="Preenchimento assistido" tone="amber" />
-        <Tooltip content="Criacao de relacionamento sera liberada no fluxo de cadastro assistido.">
+        <Tooltip content="Novo cadastro por perfil">
           <button
             aria-label="Novo relacionamento"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-500 opacity-70"
-            disabled
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-950 px-3 text-sm font-semibold text-white transition-colors hover:bg-[#A07C3B]"
+            onClick={onOpenCreate}
             type="button"
           >
             <Plus className="size-4" aria-hidden="true" />
@@ -413,6 +636,1224 @@ function HeaderAction({
   );
 }
 
+function NewRelationshipModal({
+  dashboard,
+  onClose,
+}: {
+  dashboard: ApoloDashboardData | null;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<ApoloCreateDraft>(createDraftInitialState);
+  const [documentFiles, setDocumentFiles] = useState<ApoloCreateDocumentFiles>(
+    createDocumentInitialState,
+  );
+  const [remoteReferenceOptions, setRemoteReferenceOptions] =
+    useState<ApoloCreateReferenceOptions>(emptyCreateReferenceOptions);
+  const [fileInputResetKey, setFileInputResetKey] = useState(0);
+  const [partners, setPartners] = useState<ApoloCreatePartner[]>([]);
+  const [prepared, setPrepared] = useState(false);
+  const [attemptedPrepare, setAttemptedPrepare] = useState(false);
+  const [activeCreateTab, setActiveCreateTab] =
+    useState<ApoloCreateModalTab>("cadastro");
+  const isCompany = draft.kind === "pj";
+  const dashboardReferenceOptions = useMemo(
+    () => buildCreateReferenceOptions(dashboard?.entities ?? []),
+    [dashboard],
+  );
+  const referenceOptions = useMemo(
+    () => mergeCreateReferenceOptions(dashboardReferenceOptions, remoteReferenceOptions),
+    [dashboardReferenceOptions, remoteReferenceOptions],
+  );
+  const activeProfile = apoloCreateProfiles.find((item) => item.id === draft.profile);
+  const ActiveIcon = getApoloProfileIcon(draft.profile);
+  const missingHints = createDraftMissingHints(draft);
+  const canPrepare = missingHints.length === 0;
+  const shouldShowSpouse = draft.kind === "pf" && shouldCollectSpouse(draft.civilStatus);
+  const selectedDocumentCount = Object.values(documentFiles).reduce(
+    (total, files) => total + files.length,
+    0,
+  );
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCreateReferenceOptions() {
+      setRemoteReferenceOptions((current) => ({ ...current, loading: true }));
+
+      try {
+        const accessToken = await getApoloAccessToken(false);
+
+        if (!accessToken) {
+          if (active) {
+            setRemoteReferenceOptions((current) => ({ ...current, loading: false }));
+          }
+
+          return;
+        }
+
+        const [agencyEntities, enterpriseEntities] = await Promise.all([
+          fetchCreateReferenceEntities(accessToken, "imobiliaria"),
+          fetchCreateReferenceEntities(accessToken),
+        ]);
+
+        if (!active) {
+          return;
+        }
+
+        setRemoteReferenceOptions({
+          ...buildCreateReferenceOptions([...agencyEntities, ...enterpriseEntities]),
+          loading: false,
+        });
+      } catch {
+        if (active) {
+          setRemoteReferenceOptions((current) => ({ ...current, loading: false }));
+        }
+      }
+    }
+
+    void loadCreateReferenceOptions();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function updateDraft(field: ApoloCreateDraftField, value: string) {
+    setPrepared(false);
+    setDraft((current) => ({ ...current, [field]: value }) as ApoloCreateDraft);
+  }
+
+  function updateDocumentFiles(key: ApoloCreateDocumentKey, files: readonly File[]) {
+    setPrepared(false);
+    setDocumentFiles((current) => ({
+      ...current,
+      [key]: files.map((file) => file.name),
+    }));
+  }
+
+  function addPartner() {
+    setPrepared(false);
+    setPartners((current) => [...current, { ...emptyCreatePartner }]);
+  }
+
+  function removePartner(index: number) {
+    setPrepared(false);
+    setPartners((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function updatePartner(index: number, field: ApoloCreatePartnerField, value: string) {
+    setPrepared(false);
+    setPartners((current) =>
+      current.map((partner, itemIndex) =>
+        itemIndex === index ? { ...partner, [field]: value } : partner,
+      ),
+    );
+  }
+
+  function changeProfile(profile: ApoloCreateProfile) {
+    const profileConfig = apoloCreateProfiles.find((item) => item.id === profile);
+
+    setPrepared(false);
+    setAttemptedPrepare(false);
+    setDraft((current) => ({
+      ...current,
+      broker: profile === "prospect" ? "" : current.broker,
+      kind: profileConfig?.kind ?? current.kind,
+      profile,
+    }));
+  }
+
+  function prepareDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAttemptedPrepare(true);
+    setPrepared(canPrepare);
+  }
+
+  function resetDraft() {
+    setDraft(createDraftInitialState);
+    setDocumentFiles(createDocumentInitialState);
+    setFileInputResetKey((current) => current + 1);
+    setPartners([]);
+    setAttemptedPrepare(false);
+    setPrepared(false);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-[2px] sm:p-6"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+      role="presentation"
+    >
+      <section
+        aria-label="Novo cadastro CRM 360"
+        aria-modal="true"
+        className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="shrink-0 border-b border-slate-100 px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                <UserPlus className="size-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
+                  CRM 360
+                </p>
+                <h2 className="m-0 mt-1 text-lg font-semibold text-slate-950">
+                  Novo cadastro por perfil
+                </h2>
+                <p className="m-0 mt-1 text-sm font-medium text-slate-500">
+                  Preenchimento assistido para preparar pessoas, empresas e vinculos antes da gravacao final.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50 px-3 text-xs font-semibold text-slate-600">
+                <ActiveIcon className="size-4 text-[#A07C3B]" aria-hidden="true" />
+                {apoloProfileLabels[draft.profile]}
+              </span>
+              <Tooltip content="Fechar cadastro" placement="bottom">
+                <button
+                  aria-label="Fechar cadastro"
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+                  onClick={onClose}
+                  type="button"
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+        </header>
+        <form className="flex min-h-0 flex-1 flex-col overflow-hidden" onSubmit={prepareDraft}>
+          <CreateModalTabStrip
+            activeTab={activeCreateTab}
+            documentCount={selectedDocumentCount}
+            onChange={setActiveCreateTab}
+          />
+          <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <main className="min-h-0 overflow-y-auto bg-slate-50/40 p-4 [scrollbar-gutter:stable]">
+              <div className="grid gap-4">
+                {activeCreateTab === "cadastro" ? (
+                  <>
+                    <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <PanelTitle eyebrow="Identidade" title="Dados principais" />
+                        <div className="flex w-fit gap-1 rounded-xl border border-slate-200/70 bg-white p-1">
+                          {(["pf", "pj"] as const).map((kind) => (
+                            <button
+                              aria-pressed={draft.kind === kind}
+                              className={`h-8 rounded-lg px-3 text-xs font-semibold transition-colors ${
+                                draft.kind === kind
+                                  ? "bg-slate-950 text-white"
+                                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+                              }`}
+                              key={kind}
+                              onClick={() => updateDraft("kind", kind)}
+                              type="button"
+                            >
+                              {kind === "pf" ? "Pessoa fisica" : "Pessoa juridica"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <CreateProfileSelectField
+                          label="Perfil"
+                          onChange={changeProfile}
+                          value={draft.profile}
+                        />
+                        {isCompany ? (
+                          <>
+                            <CreateTextField
+                              label="Nome fantasia"
+                              onChange={(value) => updateDraft("fantasyName", value)}
+                              placeholder="Nome exibido no CRM"
+                              value={draft.fantasyName}
+                            />
+                            <CreateTextField
+                              label="Razao social"
+                              onChange={(value) => updateDraft("legalName", value)}
+                              placeholder="Razao social completa"
+                              value={draft.legalName}
+                            />
+                            <CreateTextField
+                              label="CNPJ"
+                              onChange={(value) => updateDraft("document", value)}
+                              placeholder="00.000.000/0000-00"
+                              value={draft.document}
+                            />
+                            <CreateTextField
+                              label="Responsavel"
+                              onChange={(value) => updateDraft("representativeName", value)}
+                              placeholder="Representante ou contato principal"
+                              value={draft.representativeName}
+                            />
+                            <CreateTextField
+                              label="Inscricao estadual"
+                              onChange={(value) => updateDraft("stateRegistration", value)}
+                              placeholder="Quando existir"
+                              value={draft.stateRegistration}
+                            />
+                            <CreateTextField
+                              label="Inscricao municipal"
+                              onChange={(value) => updateDraft("municipalRegistration", value)}
+                              placeholder="Quando existir"
+                              value={draft.municipalRegistration}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <CreateTextField
+                              label="Nome completo"
+                              onChange={(value) => updateDraft("name", value)}
+                              placeholder="Nome da pessoa"
+                              value={draft.name}
+                            />
+                            <CreateTextField
+                              label="CPF"
+                              onChange={(value) => updateDraft("document", value)}
+                              placeholder="000.000.000-00"
+                              value={draft.document}
+                            />
+                            <CreateTextField
+                              label="RG"
+                              onChange={(value) => updateDraft("rg", value)}
+                              placeholder="Documento complementar"
+                              value={draft.rg}
+                            />
+                            <CreateTextField
+                              label="Nascimento"
+                              onChange={(value) => updateDraft("birthDate", value)}
+                              placeholder="dd/mm/aaaa"
+                              value={draft.birthDate}
+                            />
+                            <CreateSelectField
+                              label="Estado civil"
+                              onChange={(value) => updateDraft("civilStatus", value)}
+                              options={["", "Solteiro(a)", "Casado(a)", "Uniao estavel", "Divorciado(a)", "Viuvo(a)"]}
+                              value={draft.civilStatus}
+                            />
+                            <CreateTextField
+                              label="Profissao"
+                              onChange={(value) => updateDraft("occupation", value)}
+                              placeholder="Profissao declarada"
+                              value={draft.occupation}
+                            />
+                          </>
+                        )}
+                      </div>
+                    </section>
+                    <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+                      <PanelTitle eyebrow="Contato" title="Canais e endereco" />
+                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <CreateTextField
+                          label="E-mail"
+                          onChange={(value) => updateDraft("email", value)}
+                          placeholder="email@dominio.com"
+                          type="email"
+                          value={draft.email}
+                        />
+                        <CreateTextField
+                          label="Telefone"
+                          onChange={(value) => updateDraft("phone", value)}
+                          placeholder="(00) 00000-0000"
+                          value={draft.phone}
+                        />
+                        <CreateTextField
+                          label="CEP"
+                          onChange={(value) => updateDraft("postalCode", value)}
+                          placeholder="00.000-000"
+                          value={draft.postalCode}
+                        />
+                        <CreateTextField
+                          label="Cidade"
+                          onChange={(value) => updateDraft("city", value)}
+                          placeholder="Cidade"
+                          value={draft.city}
+                        />
+                        <CreateTextField
+                          label="UF"
+                          onChange={(value) => updateDraft("state", value)}
+                          placeholder="MG"
+                          value={draft.state}
+                        />
+                        <CreateTextField
+                          label="Endereco"
+                          onChange={(value) => updateDraft("address", value)}
+                          placeholder="Rua, numero, bairro"
+                          value={draft.address}
+                        />
+                      </div>
+                    </section>
+                    <CreateProfileSpecificFields
+                      draft={draft}
+                      onChange={updateDraft}
+                      referenceOptions={referenceOptions}
+                    />
+                    {shouldShowSpouse ? (
+                      <CreateSpousePanel draft={draft} onChange={updateDraft} />
+                    ) : null}
+                    {isCompany ? (
+                      <CreatePartnersPanel
+                        onAdd={addPartner}
+                        onChange={updatePartner}
+                        onRemove={removePartner}
+                        partners={partners}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+                {activeCreateTab === "documentos" ? (
+                  <CreateDocumentIntakePanel
+                    civilStatus={draft.civilStatus}
+                    fileInputResetKey={fileInputResetKey}
+                    files={documentFiles}
+                    kind={draft.kind}
+                    onChange={updateDocumentFiles}
+                  />
+                ) : null}
+                {activeCreateTab === "revisao" ? (
+                  <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+                    <PanelTitle eyebrow="Revisao humana" title="Documentos e observacoes" />
+                    <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                      <CreateTextField
+                        label="Nome da mae"
+                        onChange={(value) => updateDraft("motherName", value)}
+                        placeholder="Para pessoa fisica, quando existir"
+                        value={draft.motherName}
+                      />
+                      <CreateTextField
+                        label="CPF do responsavel"
+                        onChange={(value) => updateDraft("representativeDocument", value)}
+                        placeholder="Documento do representante"
+                        value={draft.representativeDocument}
+                      />
+                    </div>
+                    <div className="mt-3">
+                      <CreateTextArea
+                        label="Observacoes internas"
+                        onChange={(value) => updateDraft("notes", value)}
+                        placeholder="Pendencias, divergencias de documento, origem comercial ou instrucoes para revisao."
+                        value={draft.notes}
+                      />
+                    </div>
+                  </section>
+                ) : null}
+              </div>
+            </main>
+            <aside className="min-h-0 overflow-y-auto border-t border-slate-100 p-4 lg:border-l lg:border-t-0">
+              <PanelTitle eyebrow="Checklist" title="Rascunho de cadastro" />
+              <div className="mt-4 grid gap-2">
+                <CreateChecklistItem
+                  label="Perfil definido"
+                  ok={Boolean(draft.profile)}
+                  value={apoloProfileLabels[draft.profile]}
+                />
+                <CreateChecklistItem
+                  label="Tipo de pessoa"
+                  ok={Boolean(draft.kind)}
+                  value={isCompany ? "Pessoa juridica" : "Pessoa fisica"}
+                />
+                <CreateChecklistItem
+                  label="Identidade"
+                  ok={hasDraftIdentity(draft)}
+                  value={isCompany ? "Razao social ou fantasia" : "Nome e documento"}
+                />
+                <CreateChecklistItem
+                  label="Contato"
+                  ok={Boolean(draft.email || draft.phone)}
+                  value="E-mail ou telefone"
+                />
+                <CreateChecklistItem
+                  label="Vinculo"
+                  ok={!needsCreateCommercialFields(draft.profile) || Boolean(draft.commercialResponsible || draft.broker)}
+                  value={needsCreateCommercialFields(draft.profile) ? "Origem comercial" : "Nao exigido no rascunho"}
+                />
+                <CreateChecklistItem
+                  label="Documentos"
+                  ok={selectedDocumentCount > 0}
+                  value={`${selectedDocumentCount} arquivo(s) selecionado(s)`}
+                />
+                {shouldShowSpouse ? (
+                  <CreateChecklistItem
+                    label="Conjuge"
+                    ok={Boolean(draft.spouseName.trim() && draft.spouseDocument.trim())}
+                    value="Nome e CPF"
+                  />
+                ) : null}
+                {isCompany ? (
+                  <CreateChecklistItem
+                    label="Socios"
+                    ok={partners.length > 0}
+                    value={`${partners.length} socio(s) no rascunho`}
+                  />
+                ) : null}
+                <CreateChecklistItem
+                  label="Revisao"
+                  ok={prepared}
+                  value={prepared ? "Preparado" : "Pendente"}
+                />
+              </div>
+              <div className="mt-4 rounded-xl border border-amber-200/80 bg-amber-50/70 p-3">
+                <p className="m-0 text-sm font-semibold text-slate-950">
+                  Escrita controlada
+                </p>
+                <p className="m-0 mt-1 text-xs font-medium leading-relaxed text-slate-600">
+                  Este popup prepara o cadastro por perfil. A gravacao real no Apolo, sincronizacao e qualquer envio ao C2X seguem bloqueados ate autorizacao da API de escrita.
+                </p>
+              </div>
+              {attemptedPrepare && !canPrepare ? (
+                <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                  <p className="m-0 text-sm font-semibold text-rose-800">
+                    Complete o rascunho
+                  </p>
+                  <ul className="m-0 mt-2 grid gap-1 pl-4 text-xs font-medium text-rose-700">
+                    {missingHints.map((hint) => (
+                      <li key={hint}>{hint}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {prepared ? (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="m-0 text-sm font-semibold text-emerald-800">
+                    Cadastro pronto para revisao
+                  </p>
+                  <p className="m-0 mt-1 text-xs font-medium text-emerald-700">
+                    O rascunho esta consistente para o proximo recorte de persistencia.
+                  </p>
+                </div>
+              ) : null}
+            </aside>
+          </div>
+          <footer className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="m-0 text-xs font-medium text-slate-500">
+              {activeProfile?.description ?? "Cadastro operacional do Apolo."}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                onClick={resetDraft}
+                type="button"
+              >
+                <RotateCcw className="size-4" aria-hidden="true" />
+                Limpar
+              </button>
+              <button
+                className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                onClick={onClose}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition-colors hover:bg-[#A07C3B]"
+                type="submit"
+              >
+                <ClipboardList className="size-4" aria-hidden="true" />
+                Preparar cadastro
+              </button>
+            </div>
+          </footer>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function CreateModalTabStrip({
+  activeTab,
+  documentCount,
+  onChange,
+}: {
+  activeTab: ApoloCreateModalTab;
+  documentCount: number;
+  onChange: (tab: ApoloCreateModalTab) => void;
+}) {
+  return (
+    <nav
+      aria-label="Etapas do cadastro"
+      className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-100 bg-white px-4 py-2 sm:px-5"
+    >
+      {apoloCreateModalTabs.map((tab) => {
+        const Icon = tab.icon;
+        const active = activeTab === tab.id;
+        const countLabel =
+          tab.id === "documentos" && documentCount > 0 ? `${documentCount}` : null;
+
+        return (
+          <button
+            aria-current={active ? "page" : undefined}
+            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${
+              active
+                ? "bg-slate-950 text-white"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+            }`}
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            type="button"
+          >
+            <Icon
+              className={`size-4 ${active ? "text-[#A07C3B]" : "text-slate-400"}`}
+              aria-hidden="true"
+            />
+            {tab.label}
+            {countLabel ? (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                  active
+                    ? "bg-white/10 text-white"
+                    : "bg-[#A07C3B]/5 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
+                }`}
+              >
+                {countLabel}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function CreateProfileSpecificFields({
+  draft,
+  onChange,
+  referenceOptions,
+}: {
+  draft: ApoloCreateDraft;
+  onChange: (field: ApoloCreateDraftField, value: string) => void;
+  referenceOptions: ApoloCreateReferenceOptions;
+}) {
+  if (draft.profile === "prospect") {
+    return (
+      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+        <PanelTitle eyebrow="Comercial" title="Origem do prospect" />
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <CreateReferenceSelectField
+            emptyLabel="Nenhuma imobiliaria encontrada na base carregada"
+            label="Imobiliaria"
+            onChange={(value) => onChange("commercialResponsible", value)}
+            options={referenceOptions.agencies}
+            placeholder={referenceOptions.loading ? "Carregando imobiliarias..." : "Selecione uma imobiliaria"}
+            value={draft.commercialResponsible}
+          />
+          <CreateReferenceSelectField
+            emptyLabel="Nenhum empreendimento encontrado na base carregada"
+            label="Empreendimento"
+            onChange={(value) => onChange("enterprise", value)}
+            options={referenceOptions.enterprises}
+            placeholder={referenceOptions.loading ? "Carregando empreendimentos..." : "Selecione um empreendimento"}
+            value={draft.enterprise}
+          />
+        </div>
+      </section>
+    );
+  }
+
+  if (draft.profile === "imobiliaria" || draft.profile === "corretor") {
+    return (
+      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+        <PanelTitle eyebrow="Comercial" title="Credenciamento e carteira" />
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <CreateTextField
+            label="CRECI"
+            onChange={(value) => onChange("segment", value)}
+            placeholder="Registro profissional"
+            value={draft.segment}
+          />
+          <CreateTextField
+            label="Responsavel Careli"
+            onChange={(value) => onChange("commercialResponsible", value)}
+            placeholder="Responsavel pelo relacionamento"
+            value={draft.commercialResponsible}
+          />
+          <CreateTextField
+            label="Regiao de atuacao"
+            onChange={(value) => onChange("enterprise", value)}
+            placeholder="Cidade, carteira ou empreendimento"
+            value={draft.enterprise}
+          />
+        </div>
+      </section>
+    );
+  }
+
+  if (draft.profile === "colaborador") {
+    return (
+      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+        <PanelTitle eyebrow="Interno" title="Vinculo operacional" />
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <CreateTextField
+            label="Departamento"
+            onChange={(value) => onChange("department", value)}
+            placeholder="Area interna"
+            value={draft.department}
+          />
+          <CreateTextField
+            label="Cargo"
+            onChange={(value) => onChange("occupation", value)}
+            placeholder="Funcao"
+            value={draft.occupation}
+          />
+          <CreateTextField
+            label="E-mail corporativo"
+            onChange={(value) => onChange("email", value)}
+            placeholder="email@careli.com.br"
+            type="email"
+            value={draft.email}
+          />
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <PanelTitle eyebrow="Comercial" title="Responsavel e segmento" />
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <CreateTextField
+          label="Segmento"
+          onChange={(value) => onChange("segment", value)}
+          placeholder="Atuacao principal"
+          value={draft.segment}
+        />
+        <CreateTextField
+          label="Responsavel"
+          onChange={(value) => onChange("commercialResponsible", value)}
+          placeholder="Responsavel Careli"
+          value={draft.commercialResponsible}
+        />
+        <CreateTextField
+          label="Condicao comercial"
+          onChange={(value) => onChange("enterprise", value)}
+          placeholder="Carteira, contrato ou observacao"
+          value={draft.enterprise}
+        />
+      </div>
+    </section>
+  );
+}
+
+function CreateReferenceSelectField({
+  emptyLabel,
+  label,
+  onChange,
+  options,
+  placeholder,
+  value,
+}: {
+  emptyLabel: string;
+  label: string;
+  onChange: (value: string) => void;
+  options: readonly ApoloCreateReferenceOption[];
+  placeholder: string;
+  value: string;
+}) {
+  const disabled = options.length === 0;
+
+  return (
+    <label className="grid gap-1 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 transition-colors focus-within:border-[#A07C3B]/35 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <select
+        className="min-h-6 bg-transparent text-sm font-semibold text-slate-950 outline-none disabled:text-slate-400"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        <option value="">{disabled ? emptyLabel : placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.meta ? `${option.label} - ${option.meta}` : option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function CreateSpousePanel({
+  draft,
+  onChange,
+}: {
+  draft: ApoloCreateDraft;
+  onChange: (field: ApoloCreateDraftField, value: string) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <PanelTitle eyebrow="Estado civil" title="Dados do conjuge" />
+        <span className="inline-flex w-fit rounded-full bg-[#A07C3B]/5 px-2.5 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          {draft.civilStatus}
+        </span>
+      </div>
+      <p className="m-0 mt-2 text-xs font-medium leading-relaxed text-slate-500">
+        Esta secao abre para Casado(a) ou Uniao estavel e prepara os dados do
+        conjuge para revisao humana antes da gravacao final.
+      </p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <CreateTextField
+          label="Nome completo"
+          onChange={(value) => onChange("spouseName", value)}
+          placeholder="Nome do conjuge"
+          value={draft.spouseName}
+        />
+        <CreateTextField
+          label="CPF"
+          onChange={(value) => onChange("spouseDocument", value)}
+          placeholder="000.000.000-00"
+          value={draft.spouseDocument}
+        />
+        <CreateTextField
+          label="Telefone"
+          onChange={(value) => onChange("spousePhone", value)}
+          placeholder="(00) 00000-0000"
+          value={draft.spousePhone}
+        />
+        <CreateTextField
+          label="E-mail"
+          onChange={(value) => onChange("spouseEmail", value)}
+          placeholder="email@dominio.com"
+          type="email"
+          value={draft.spouseEmail}
+        />
+        <CreateTextField
+          label="Nascimento"
+          onChange={(value) => onChange("spouseBirthDate", value)}
+          placeholder="dd/mm/aaaa"
+          value={draft.spouseBirthDate}
+        />
+        <CreateTextField
+          label="Profissao"
+          onChange={(value) => onChange("spouseOccupation", value)}
+          placeholder="Profissao declarada"
+          value={draft.spouseOccupation}
+        />
+        <CreateTextField
+          label="Endereco"
+          onChange={(value) => onChange("spouseAddress", value)}
+          placeholder="Endereco completo"
+          value={draft.spouseAddress}
+        />
+      </div>
+    </section>
+  );
+}
+
+function CreateDocumentIntakePanel({
+  civilStatus,
+  fileInputResetKey,
+  files,
+  kind,
+  onChange,
+}: {
+  civilStatus: string;
+  fileInputResetKey: number;
+  files: ApoloCreateDocumentFiles;
+  kind: ApoloCreateKind;
+  onChange: (key: ApoloCreateDocumentKey, files: readonly File[]) => void;
+}) {
+  const documentGroups =
+    kind === "pj"
+      ? [
+          {
+            helper: "RG, CPF, CNH ou documentos equivalentes de cada socio.",
+            key: "partner_documents",
+            label: "Documentos dos socios",
+          },
+          {
+            helper: "Contrato social atualizado e alteracoes relevantes.",
+            key: "corporate_contract",
+            label: "Contrato social atualizado",
+          },
+          {
+            helper: "Conta, declaracao ou documento atual do endereco da empresa.",
+            key: "address",
+            label: "Comprovante de endereco",
+          },
+          {
+            helper: "Declaracao, balanco, extrato ou comprovante financeiro aceito.",
+            key: "income",
+            label: "Comprovante de renda",
+          },
+        ]
+      : [
+          {
+            helper: "RG, CNH, CPF ou documento oficial equivalente.",
+            key: "identity",
+            label: "Documento de identificacao",
+          },
+          {
+            helper: "Conta, declaracao ou documento atual do endereco.",
+            key: "address",
+            label: "Comprovante de endereco",
+          },
+          {
+            helper: "Usado para preencher e revisar estado civil.",
+            key: "civil_status",
+            label: civilStatusDocumentLabel(civilStatus),
+          },
+          {
+            helper: "Holerite, declaracao, extrato ou outro comprovante aceito.",
+            key: "income",
+            label: "Comprovante de renda",
+          },
+        ];
+
+  return (
+    <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <PanelTitle eyebrow="Documentos" title="Entrada para leitura automatica" />
+        <span className="inline-flex w-fit rounded-full bg-[#A07C3B]/5 px-2.5 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          API futura
+        </span>
+      </div>
+      <p className="m-0 mt-2 text-xs font-medium leading-relaxed text-slate-500">
+        Os arquivos ficam apenas selecionados no rascunho desta tela. Upload,
+        OCR, classificacao e preenchimento automatico entram no proximo recorte
+        com storage, API server-side e auditoria.
+      </p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {documentGroups.map((document) => (
+          <CreateDocumentUploadSlot
+            fileInputResetKey={fileInputResetKey}
+            files={files[document.key as ApoloCreateDocumentKey]}
+            helper={document.helper}
+            key={document.key}
+            label={document.label}
+            onChange={(nextFiles) =>
+              onChange(document.key as ApoloCreateDocumentKey, nextFiles)
+            }
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CreateDocumentUploadSlot({
+  fileInputResetKey,
+  files,
+  helper,
+  label,
+  onChange,
+}: {
+  fileInputResetKey: number;
+  files: readonly string[];
+  helper: string;
+  label: string;
+  onChange: (files: readonly File[]) => void;
+}) {
+  return (
+    <label className="grid gap-3 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 transition-colors focus-within:border-[#A07C3B]/35 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+      <span className="flex items-start gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#7A5E2C] ring-1 ring-slate-200/70">
+          <FileText className="size-4" aria-hidden="true" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-slate-950">{label}</span>
+          <span className="mt-1 block text-xs font-medium leading-relaxed text-slate-500">
+            {helper}
+          </span>
+        </span>
+      </span>
+      <input
+        accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+        className="block w-full cursor-pointer rounded-lg border border-slate-200/70 bg-white text-xs font-semibold text-slate-600 file:mr-3 file:h-8 file:cursor-pointer file:border-0 file:bg-slate-950 file:px-3 file:text-xs file:font-semibold file:text-white hover:file:bg-[#A07C3B]"
+        key={`${fileInputResetKey}-${label}`}
+        multiple
+        onChange={(event) => onChange(Array.from(event.currentTarget.files ?? []))}
+        type="file"
+      />
+      <span className="flex min-h-7 flex-wrap items-center gap-1.5">
+        {files.length ? (
+          files.map((file) => (
+            <span
+              className="max-w-full truncate rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70"
+              key={file}
+            >
+              {file}
+            </span>
+          ))
+        ) : (
+          <span className="text-xs font-medium text-slate-400">
+            Nenhum arquivo selecionado
+          </span>
+        )}
+      </span>
+    </label>
+  );
+}
+
+function CreatePartnersPanel({
+  onAdd,
+  onChange,
+  onRemove,
+  partners,
+}: {
+  onAdd: () => void;
+  onChange: (index: number, field: ApoloCreatePartnerField, value: string) => void;
+  onRemove: (index: number) => void;
+  partners: readonly ApoloCreatePartner[];
+}) {
+  return (
+    <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <PanelTitle eyebrow="Socios" title="Cadastro completo dos socios" />
+        <button
+          className="inline-flex h-9 w-fit items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+          onClick={onAdd}
+          type="button"
+        >
+          <Plus className="size-4" aria-hidden="true" />
+          Adicionar socio
+        </button>
+      </div>
+      {partners.length ? (
+        <div className="mt-4 grid gap-3">
+          {partners.map((partner, index) => (
+            <div
+              className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3"
+              key={`partner-${index}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="m-0 text-sm font-semibold text-slate-950">
+                  Socio {index + 1}
+                </p>
+                <Tooltip content="Remover socio" placement="bottom">
+                  <button
+                    aria-label={`Remover socio ${index + 1}`}
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-700"
+                    onClick={() => onRemove(index)}
+                    type="button"
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <CreateTextField
+                  label="Nome completo"
+                  onChange={(value) => onChange(index, "name", value)}
+                  placeholder="Nome do socio"
+                  value={partner.name}
+                />
+                <CreateTextField
+                  label="CPF"
+                  onChange={(value) => onChange(index, "document", value)}
+                  placeholder="000.000.000-00"
+                  value={partner.document}
+                />
+                <CreateTextField
+                  label="Participacao"
+                  onChange={(value) => onChange(index, "participation", value)}
+                  placeholder="Percentual ou papel societario"
+                  value={partner.participation}
+                />
+                <CreateTextField
+                  label="E-mail"
+                  onChange={(value) => onChange(index, "email", value)}
+                  placeholder="email@dominio.com"
+                  type="email"
+                  value={partner.email}
+                />
+                <CreateTextField
+                  label="Telefone"
+                  onChange={(value) => onChange(index, "phone", value)}
+                  placeholder="(00) 00000-0000"
+                  value={partner.phone}
+                />
+                <CreateTextField
+                  label="Nascimento"
+                  onChange={(value) => onChange(index, "birthDate", value)}
+                  placeholder="dd/mm/aaaa"
+                  value={partner.birthDate}
+                />
+                <CreateSelectField
+                  label="Estado civil"
+                  onChange={(value) => onChange(index, "civilStatus", value)}
+                  options={["", "Solteiro(a)", "Casado(a)", "Uniao estavel", "Divorciado(a)", "Viuvo(a)"]}
+                  value={partner.civilStatus}
+                />
+                <CreateTextField
+                  label="Funcao"
+                  onChange={(value) => onChange(index, "role", value)}
+                  placeholder="Administrador, socio, representante"
+                  value={partner.role}
+                />
+                <CreateTextField
+                  label="Endereco"
+                  onChange={(value) => onChange(index, "address", value)}
+                  placeholder="Endereco completo"
+                  value={partner.address}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-lg border border-dashed border-slate-200 p-4 text-sm font-semibold text-slate-500">
+          Nenhum socio adicionado ao rascunho.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CreateProfileSelectField({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (profile: ApoloCreateProfile) => void;
+  value: ApoloCreateProfile;
+}) {
+  return (
+    <label className="grid gap-1 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 transition-colors focus-within:border-[#A07C3B]/35 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <select
+        className="min-h-6 bg-transparent text-sm font-semibold text-slate-950 outline-none"
+        onChange={(event) => onChange(event.target.value as ApoloCreateProfile)}
+        value={value}
+      >
+        {apoloCreateProfiles.map((profile) => (
+          <option key={profile.id} value={profile.id}>
+            {apoloProfileLabels[profile.id]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function CreateTextField({
+  label,
+  onChange,
+  placeholder,
+  type = "text",
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: "email" | "text";
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 transition-colors focus-within:border-[#A07C3B]/35 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <input
+        className="min-h-6 bg-transparent text-sm font-semibold text-slate-950 outline-none placeholder:text-slate-400"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        type={type}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function CreateSelectField({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: readonly string[];
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 transition-colors focus-within:border-[#A07C3B]/35 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <select
+        className="min-h-6 bg-transparent text-sm font-semibold text-slate-950 outline-none"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option || "empty"} value={option}>
+            {option || "Selecionar"}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function CreateTextArea({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 transition-colors focus-within:border-[#A07C3B]/35 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <textarea
+        className="min-h-24 resize-y bg-transparent text-sm font-semibold text-slate-950 outline-none placeholder:text-slate-400"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function CreateChecklistItem({
+  label,
+  ok,
+  value,
+}: {
+  label: string;
+  ok: boolean;
+  value: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
+      <div className="min-w-0">
+        <p className="m-0 text-sm font-semibold text-slate-950">{label}</p>
+        <p className="m-0 mt-1 break-words text-xs font-medium text-slate-500">{value}</p>
+      </div>
+      <span
+        className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${
+          ok
+            ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+            : "bg-slate-50 text-slate-500 ring-slate-200/70"
+        }`}
+      >
+        {ok ? "OK" : "Pendente"}
+      </span>
+    </div>
+  );
+}
+
 function DashboardScreen({
   dashboard,
   entities,
@@ -423,8 +1864,8 @@ function DashboardScreen({
   loading: boolean;
 }) {
   const usuarioCount = profileCount(dashboard, "usuario");
+  const prospectCount = profileCount(dashboard, "prospect");
   const linkedUsers = dashboard?.linkedUsersCount ?? 0;
-  const notBuyerUsers = Math.max(usuarioCount - linkedUsers, 0);
   const reviewCount = dashboard?.pendingReviewCount ?? 0;
   const averageScore = entities.length
     ? Math.round(
@@ -445,15 +1886,15 @@ function DashboardScreen({
         />
         <InsightCard
           icon={<CheckCircle2 className="size-4" aria-hidden="true" />}
-          label="Usuarios compradores"
-          value={loading ? "--" : formatCount(linkedUsers)}
-          helper="Com vinculo comercial"
+          label="Usuarios"
+          value={loading ? "--" : formatCount(usuarioCount)}
+          helper="Com unidade e pagamento"
         />
         <InsightCard
           icon={<UsersRound className="size-4" aria-hidden="true" />}
-          label="Usuarios nao compradores"
-          value={loading ? "--" : formatCount(notBuyerUsers)}
-          helper="Sem compra/vinculo confirmado"
+          label="Prospects"
+          value={loading ? "--" : formatCount(prospectCount)}
+          helper="Sem compra confirmada"
         />
         <InsightCard
           icon={<ShieldCheck className="size-4" aria-hidden="true" />}
@@ -474,7 +1915,8 @@ function DashboardScreen({
         <section className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <PanelTitle eyebrow="Proximas acoes" title="Fila de saneamento" />
           <div className="mt-4 grid gap-2">
-            <StatusLine label={`${formatCount(notBuyerUsers)} usuario(s) sem compra confirmada`} status={notBuyerUsers ? "attention" : "verified"} />
+            <StatusLine label={`${formatCount(prospectCount)} prospect(s) sem compra confirmada`} status={prospectCount ? "attention" : "verified"} />
+            <StatusLine label={`${formatCount(linkedUsers)} relacionamento(s) com vinculo comercial`} status={linkedUsers ? "verified" : "pending"} />
             <StatusLine label={`${formatCount(reviewCount)} cadastro(s) pendente(s) de revisao`} status={reviewCount ? "pending" : "verified"} />
             <StatusLine label="Relatorios consolidados em preparacao" status="pending" />
           </div>
@@ -521,9 +1963,9 @@ function ReportsScreen({
         </div>
         <div className="divide-y divide-slate-100">
           {[
-            ["Base por perfil", "Quantidade de usuarios, incorporadores, imobiliarias, corretores e colaboradores."],
+            ["Base por perfil", "Quantidade de usuarios, prospects, incorporadores, imobiliarias, corretores e colaboradores."],
             ["Qualidade cadastral", "Documentos, contatos, enderecos e vinculos pendentes de revisao."],
-            ["Carteira e vinculos", "Usuarios compradores, nao compradores e origem comercial."],
+            ["Carteira e vinculos", "Usuarios, prospects e origem comercial."],
             ["Timeline operacional", "Eventos com protocolo e informativos por relacionamento."],
           ].map(([title, description]) => (
             <div className="grid gap-1 px-5 py-4" key={title}>
@@ -647,10 +2089,13 @@ function CrmCommandCenter({
   selectedEntity: ApoloEntity | null;
 }) {
   const usuarioCount = profileCount(dashboard, "usuario");
-  const pageBuyerCount = entities.filter((entity) => buyerStatusLabel(entity) === "Comprador").length;
+  const prospectCount = profileCount(dashboard, "prospect");
+  const pageBuyerCount = entities.filter(isBuyerEntity).length;
   const buyerCount = dashboard?.buyerUsersCount ?? pageBuyerCount;
-  const nonBuyerCount = dashboard?.nonBuyerUsersCount ?? Math.max(usuarioCount - pageBuyerCount, 0);
-  const portfolioCount = dashboard?.portfolioUnitsCount ?? entities.reduce((total, entity) => total + entity.commercialLinks.length, 0);
+  const nonBuyerCount = dashboard?.nonBuyerUsersCount ?? Math.max(prospectCount, usuarioCount - pageBuyerCount, 0);
+  const portfolioCount =
+    dashboard?.portfolioUnitsCount ??
+    entities.reduce((total, entity) => total + acquiredUnitsCount(entity), 0);
   const paymentCount = dashboard?.portfolioPaymentsCount ?? 0;
   const pendingCount = selectedEntity ? countPendingSignals(selectedEntity) : dashboard?.pendingReviewCount ?? 0;
 
@@ -665,9 +2110,9 @@ function CrmCommandCenter({
         />
         <CrmSignalCard
           icon={CheckCircle2}
-          label="Compradores com carteira"
+          label="Usuarios com carteira"
           value={loading ? "--" : formatCount(buyerCount)}
-          detail={`${formatCount(nonBuyerCount)} usuario(s) sem pagamento`}
+          detail={`${formatCount(nonBuyerCount)} prospect(s) sem compra`}
         />
         <CrmSignalCard
           icon={MapPinned}
@@ -756,7 +2201,7 @@ function EntityColumn({
             className="w-full bg-transparent text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
             disabled={loading || Boolean(error)}
             onChange={(event) => onChangeQuery(event.target.value)}
-            placeholder="Buscar nome, comprador, documento, unidade, e-mail ou responsavel"
+            placeholder="Buscar nome, usuario, prospect, documento, unidade, e-mail ou responsavel"
             type="search"
             value={query}
           />
@@ -857,10 +2302,9 @@ function EntityListItem({
   selected: boolean;
 }) {
   const primaryProfile = primaryBusinessProfile(entity);
-  const buyerLabel = buyerStatusLabel(entity);
   const financialBadge = buyerFinancialBadge(entity);
   const primaryRelationship = displayText(entity.relationships[0]?.label ?? "Vinculo em revisao");
-  const isUsuario = entity.profiles.includes("usuario");
+  const hasCommercialProfile = hasCommercialJourneyProfile(entity);
   const title = displayHeaderName(entity);
 
   return (
@@ -896,19 +2340,8 @@ function EntityListItem({
           <span className="rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
             {kindLabel(entity.kind)}
           </span>
-          {isUsuario ? (
-            <span
-              className={`rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${
-                buyerLabel === "Comprador"
-                  ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-                  : "bg-amber-50 text-amber-800 ring-amber-100"
-              }`}
-            >
-              {buyerLabel}
-            </span>
-          ) : null}
         </div>
-        {isUsuario ? (
+        {hasCommercialProfile ? (
           <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
             <p className="m-0 text-[11px] font-medium text-slate-500">Vinculo</p>
             <p className="m-0 mt-1 truncate text-sm font-semibold text-slate-950">
@@ -1213,7 +2646,7 @@ function HadesUnavailableWorkspace({
               <InfoTile label={isCompanyEntity(entity) ? "Razao social" : "Nome"} value={summaryName(entity)} />
               <InfoTile label={documentLabel(entity)} value={entity.documentMasked} />
               <InfoTile label="Perfil" value={profileLabelList(entity)} />
-              <InfoTile label="Compra" value={buyerStatusLabel(entity)} />
+              <InfoTile label="Perfil comercial" value={buyerStatusLabel(entity)} />
             </div>
             <p className="m-0 mt-4 text-sm font-medium text-slate-500">
               {statusMessage}
@@ -1363,7 +2796,10 @@ function TabStrip({
           const Icon = tab.icon;
           const active = activeTab === tab.id;
           const tabDisabled = disabled || isApoloTabUnavailableForEntity(tab.id, entity);
-          const tooltipContent = tabDisabled && entity ? `${tab.label} indisponivel sem pagamentos` : tab.label;
+          const tooltipContent =
+            tabDisabled && entity
+              ? unavailableTabTooltip(tab.id, entity, tab.label)
+              : tab.label;
 
           return (
             <Tooltip content={tooltipContent} key={tab.id} placement="bottom">
@@ -1444,6 +2880,7 @@ function SummaryPanel({
   const acquiredUnits = acquiredUnitsCount(entity);
   const commercialRelationship = commercialRelationshipLabel(entity);
   const isCompany = isCompanyEntity(entity);
+  const portfolioNotice = portfolioAvailabilityNotice(entity);
 
   return (
     <div className="grid gap-4">
@@ -1473,7 +2910,7 @@ function SummaryPanel({
           <InfoTile label="Telefone" value={primaryPhone?.value ?? "-"} />
           <InfoTile label="Estado civil" value={civilStatusLabel(entity)} />
           <InfoTile label="Unidades adquiridas" value={String(acquiredUnits)} />
-          {entity.profiles.includes("usuario") ? (
+          {hasCommercialJourneyProfile(entity) ? (
             <InfoButtonTile
               disabled={!commercialRelationship}
               label="Vinculo comercial"
@@ -1486,7 +2923,30 @@ function SummaryPanel({
             <InfoTile label="Proxima acao" value={entity.nextAction} />
           )}
         </div>
+        {portfolioNotice ? <PortfolioAvailabilityNotice notice={portfolioNotice} /> : null}
       </section>
+    </div>
+  );
+}
+
+function PortfolioAvailabilityNotice({
+  notice,
+}: {
+  notice: { description: string; title: string };
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-amber-200/80 bg-amber-50/70 p-3">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#7A5E2C] ring-1 ring-amber-200">
+          <ReceiptText className="size-4" aria-hidden="true" />
+        </span>
+        <div>
+          <p className="m-0 text-sm font-semibold text-slate-950">{notice.title}</p>
+          <p className="m-0 mt-1 text-xs font-medium text-slate-600">
+            {notice.description}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1595,7 +3055,17 @@ function PortfolioPanel({ entity }: { entity: ApoloEntity }) {
   const firstUnit = units[0];
 
   if (!firstUnit) {
-    return <EmptyPanel text="Nenhuma carteira disponivel para este relacionamento." />;
+    const notice = portfolioAvailabilityNotice(entity);
+
+    return (
+      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+        {notice ? (
+          <PortfolioAvailabilityNotice notice={notice} />
+        ) : (
+          <EmptyPanel text="Carteira indisponivel sem parcelas emitidas." />
+        )}
+      </section>
+    );
   }
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) ?? firstUnit;
@@ -1841,21 +3311,7 @@ function ApoloInstallmentsPanel({
                         <CompactInfo label="Dias de atraso" value={String(installment.overdueDays)} />
                       </div>
                     </div>
-                    {boletoUrl ? (
-                      <a
-                        className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
-                        href={boletoUrl}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        Abrir boleto
-                        <ExternalLink className="size-3.5" aria-hidden="true" />
-                      </a>
-                    ) : (
-                      <span className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/70 bg-slate-50 px-3 text-sm font-semibold text-slate-400">
-                        Sem boleto
-                      </span>
-                    )}
+                    <BoletoViewIcon href={boletoUrl} />
                   </div>
                 </article>
               );
@@ -1868,6 +3324,35 @@ function ApoloInstallmentsPanel({
         )}
       </div>
     </div>
+  );
+}
+
+function BoletoViewIcon({ href }: { href?: string }) {
+  if (!href) {
+    return (
+      <Tooltip content="Boleto indisponivel" placement="left">
+        <span
+          aria-label="Boleto indisponivel"
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700"
+        >
+          <ReceiptText className="size-4" aria-hidden="true" />
+        </span>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip content="Abrir boleto" placement="left">
+      <a
+        aria-label="Abrir boleto"
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800"
+        href={href}
+        rel="noreferrer"
+        target="_blank"
+      >
+        <ExternalLink className="size-4" aria-hidden="true" />
+      </a>
+    </Tooltip>
   );
 }
 
@@ -2768,7 +4253,15 @@ function isApoloTabUnavailableForEntity(tab: ApoloTab, entity: ApoloEntity | nul
     return false;
   }
 
-  return buyerStatusLabel(entity) !== "Comprador";
+  return !hasIssuedPortfolio(entity);
+}
+
+function unavailableTabTooltip(tab: ApoloTab, entity: ApoloEntity, fallback: string) {
+  if (tab !== "carteira" && tab !== "financeiro") {
+    return fallback;
+  }
+
+  return portfolioAvailabilityNotice(entity)?.description ?? `${fallback} indisponivel sem parcelas emitidas`;
 }
 
 async function getApoloAccessToken(required = true) {
@@ -2790,6 +4283,34 @@ async function getApoloAccessToken(required = true) {
   }
 
   return accessToken;
+}
+
+async function fetchCreateReferenceEntities(
+  accessToken: string,
+  profile?: ApoloProfile,
+) {
+  const params = new URLSearchParams({ limit: "500" });
+
+  if (profile) {
+    params.set("profile", profile);
+  }
+
+  const response = await fetch(`/api/apolo/relationships?${params.toString()}`, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: ApoloDashboardData }
+    | { error?: string }
+    | null;
+
+  if (!response.ok || !payload || !("data" in payload)) {
+    return [];
+  }
+
+  return payload.data?.entities ?? [];
 }
 
 async function loadHadesManualOperations(
@@ -2880,12 +4401,151 @@ function manualHadesError(input: unknown) {
   return typeof error === "string" ? error : null;
 }
 
+function createDraftMissingHints(draft: ApoloCreateDraft) {
+  const hints: string[] = [];
+
+  if (!hasDraftIdentity(draft)) {
+    hints.push(draft.kind === "pj" ? "Informe razao social ou nome fantasia e CNPJ." : "Informe nome e CPF.");
+  }
+
+  if (!draft.email.trim() && !draft.phone.trim()) {
+    hints.push("Informe pelo menos um canal de contato.");
+  }
+
+  if (needsCreateCommercialFields(draft.profile) && !draft.commercialResponsible.trim() && !draft.broker.trim()) {
+    hints.push("Informe o vinculo comercial ou responsavel.");
+  }
+
+  if (draft.kind === "pf" && shouldCollectSpouse(draft.civilStatus) && (!draft.spouseName.trim() || !draft.spouseDocument.trim())) {
+    hints.push("Informe nome e CPF do conjuge.");
+  }
+
+  return hints;
+}
+
+function shouldCollectSpouse(civilStatus: string) {
+  const normalizedStatus = normalizeText(civilStatus);
+
+  return normalizedStatus.includes("casad") || normalizedStatus.includes("uniao");
+}
+
+function civilStatusDocumentLabel(civilStatus: string) {
+  const normalizedStatus = normalizeText(civilStatus);
+
+  if (shouldCollectSpouse(civilStatus)) {
+    return "Certidao de casamento";
+  }
+
+  if (normalizedStatus.includes("solteir")) {
+    return "Certidao de nascimento";
+  }
+
+  return "Comprovante de estado civil";
+}
+
+function hasDraftIdentity(draft: ApoloCreateDraft) {
+  if (draft.kind === "pj") {
+    return Boolean((draft.legalName.trim() || draft.fantasyName.trim()) && draft.document.trim());
+  }
+
+  return Boolean(draft.name.trim() && draft.document.trim());
+}
+
+function needsCreateCommercialFields(profile: ApoloCreateProfile) {
+  return profile === "prospect" || profile === "corretor" || profile === "imobiliaria";
+}
+
+function buildCreateReferenceOptions(
+  entities: readonly ApoloEntity[],
+): ApoloCreateReferenceOptions {
+  return {
+    agencies: buildCreateAgencyOptions(entities),
+    enterprises: buildCreateEnterpriseOptions(entities),
+    loading: false,
+  };
+}
+
+function buildCreateAgencyOptions(entities: readonly ApoloEntity[]) {
+  const agencies = entities
+    .filter((entity) => entity.profiles.includes("imobiliaria"))
+    .map((entity) => {
+      const value = displayText(entity.tradeName || entity.legalName || entity.displayName);
+
+      return {
+        label: value,
+        meta: displayText(entity.locationLabel),
+        value,
+      };
+    })
+    .filter((option) => option.value && option.value !== "-");
+
+  return uniqueCreateReferenceOptions(agencies);
+}
+
+function buildCreateEnterpriseOptions(entities: readonly ApoloEntity[]) {
+  const enterprises = entities.flatMap((entity) =>
+    entity.commercialLinks
+      .map((link) => {
+        const value = displayText(link.enterprise);
+
+        return {
+          label: value,
+          meta: displayText(link.enterpriseCode ?? ""),
+          value,
+        };
+      })
+      .filter(
+        (option) =>
+          option.value &&
+          option.value !== "-" &&
+          !isLegacyCommercialPlaceholder(option.value) &&
+          !normalizeText(option.value).includes("relacionamento"),
+      ),
+  );
+
+  return uniqueCreateReferenceOptions(enterprises);
+}
+
+function uniqueCreateReferenceOptions(
+  options: readonly ApoloCreateReferenceOption[],
+) {
+  const optionByValue = new Map<string, ApoloCreateReferenceOption>();
+
+  for (const option of options) {
+    const key = normalizeText(option.value);
+
+    if (!key || optionByValue.has(key)) {
+      continue;
+    }
+
+    optionByValue.set(key, option);
+  }
+
+  return Array.from(optionByValue.values()).sort((first, second) =>
+    first.label.localeCompare(second.label, "pt-BR"),
+  );
+}
+
+function mergeCreateReferenceOptions(
+  primary: ApoloCreateReferenceOptions,
+  secondary: ApoloCreateReferenceOptions,
+): ApoloCreateReferenceOptions {
+  return {
+    agencies: uniqueCreateReferenceOptions([...primary.agencies, ...secondary.agencies]),
+    enterprises: uniqueCreateReferenceOptions([
+      ...primary.enterprises,
+      ...secondary.enterprises,
+    ]),
+    loading: primary.loading || secondary.loading,
+  };
+}
+
 function matchesApoloFilters(
   entity: ApoloEntity,
   query: string,
   profileFilter: ApoloProfileFilter,
 ) {
-  if (profileFilter !== "all" && !entity.profiles.includes(profileFilter)) {
+  if (!matchesApoloProfileFilter(entity, profileFilter)) {
     return false;
   }
 
@@ -2924,6 +4584,25 @@ function matchesApoloFilters(
   ).includes(normalizedQuery);
 }
 
+function matchesApoloProfileFilter(
+  entity: ApoloEntity,
+  profileFilter: ApoloProfileFilter,
+) {
+  if (profileFilter === "all") {
+    return true;
+  }
+
+  if (profileFilter === "usuario") {
+    return isBuyerEntity(entity);
+  }
+
+  if (profileFilter === "prospect") {
+    return isProspectEntity(entity);
+  }
+
+  return entity.profiles.includes(profileFilter);
+}
+
 function profileCount(
   dashboard: ApoloDashboardData | null,
   profile: ApoloProfile,
@@ -2938,6 +4617,7 @@ function formatCount(value: number) {
 function primaryBusinessProfile(entity: ApoloEntity): ApoloProfile {
   const profilePriority = [
     "usuario",
+    "prospect",
     "incorporador",
     "imobiliaria",
     "corretor",
@@ -2957,33 +4637,55 @@ function primaryBusinessProfile(entity: ApoloEntity): ApoloProfile {
 }
 
 function buyerStatusLabel(entity: ApoloEntity) {
-  if (!entity.profiles.includes("usuario")) {
-    return "Nao aplicavel";
+  if (isBuyerEntity(entity)) {
+    return "Usuario";
   }
 
-  const normalizedLinks = normalizeText(
-    entity.commercialLinks
-      .map((link) => `${link.role} ${link.stage} ${link.referenceLabel}`)
-      .join(" "),
+  if (isProspectEntity(entity)) {
+    return "Prospect";
+  }
+
+  return "Nao aplicavel";
+}
+
+function hasCommercialJourneyProfile(entity: ApoloEntity) {
+  return isBuyerEntity(entity) || isProspectEntity(entity);
+}
+
+function isBuyerEntity(entity: ApoloEntity) {
+  return entity.profiles.includes("usuario") && entity.commercialLinks.some(isBuyerCommercialLink);
+}
+
+function isProspectEntity(entity: ApoloEntity) {
+  return (
+    entity.profiles.includes("prospect") ||
+    (entity.profiles.includes("usuario") && !hasIssuedPortfolio(entity))
   );
+}
 
-  if (normalizedLinks.includes("sem compra")) {
-    return "Nao comprador";
-  }
+function isBuyerCommercialLink(link: ApoloEntity["commercialLinks"][number]) {
+  const normalizedRole = normalizeText(link.role);
 
-  if (entity.commercialLinks.some((link) => normalizeText(link.role) === "usuario comprador")) {
-    return "Comprador";
-  }
+  return (
+    (normalizedRole === "usuario" || normalizedRole === "usuario comprador") &&
+    hasCommercialPortfolioEvidence(link)
+  );
+}
 
-  if (normalizedLinks.includes("jornada comercial") || normalizedLinks.includes("vinculo comercial")) {
-    return "Em jornada";
-  }
+function hasCommercialPortfolioEvidence(link: ApoloEntity["commercialLinks"][number]) {
+  return hasIssuedInstallments(link);
+}
 
-  return "Nao comprador";
+function hasIssuedPortfolio(entity: ApoloEntity) {
+  return entity.commercialLinks.some(hasIssuedInstallments);
+}
+
+function hasIssuedInstallments(link: ApoloEntity["commercialLinks"][number]) {
+  return Boolean(link.installments?.length);
 }
 
 function buyerFinancialBadge(entity: ApoloEntity) {
-  if (buyerStatusLabel(entity) !== "Comprador") {
+  if (!isBuyerEntity(entity)) {
     return null;
   }
 
@@ -2997,6 +4699,46 @@ function buyerFinancialBadge(entity: ApoloEntity) {
   return {
     className: "bg-emerald-50 text-emerald-700 ring-emerald-100",
     label: "Adimplente",
+  };
+}
+
+function portfolioAvailabilityNotice(entity: ApoloEntity) {
+  if (hasIssuedPortfolio(entity)) {
+    return null;
+  }
+
+  const link = entity.commercialLinks.find((item) =>
+    Boolean(
+      item.acquisitionRequestId ||
+        item.unitId ||
+        item.unitCode ||
+        item.stage ||
+        item.enterprise,
+    ),
+  );
+
+  if (!link) {
+    return null;
+  }
+
+  const stage = displayText(link.stage || "Em analise");
+  const normalizedStage = normalizeText(stage);
+  const title = normalizedStage.includes("assinatura")
+    ? "Contrato em assinatura"
+    : normalizedStage.includes("contrato gerado")
+      ? "Contrato gerado"
+      : normalizedStage.includes("proposta")
+        ? "Proposta em andamento"
+        : normalizedStage.includes("reserv")
+          ? "Reserva em andamento"
+          : normalizedStage.includes("faturado") || normalizedStage.includes("finalizado")
+            ? `${stage} sem parcelas emitidas`
+            : `Status comercial: ${stage}`;
+
+  return {
+    description:
+      "Carteira e Financeiro ficam bloqueados ate as parcelas serem emitidas.",
+    title,
   };
 }
 
@@ -3138,15 +4880,15 @@ function primaryPhoneContact(entity: ApoloEntity) {
 }
 
 function acquiredUnitsCount(entity: ApoloEntity) {
-  if (buyerStatusLabel(entity) !== "Comprador") {
+  if (!isBuyerEntity(entity)) {
     return 0;
   }
 
-  return entity.commercialLinks.length;
+  return entity.commercialLinks.filter(isBuyerCommercialLink).length;
 }
 
 function commercialRelationshipLabel(entity: ApoloEntity) {
-  if (!entity.profiles.includes("usuario")) {
+  if (!hasCommercialJourneyProfile(entity)) {
     return "";
   }
 
@@ -3218,7 +4960,7 @@ function fullAddressLabel(address: ApoloEntity["addresses"][number] | undefined)
 }
 
 function relationshipSummary(entity: ApoloEntity) {
-  if (buyerStatusLabel(entity) === "Comprador") {
+  if (isBuyerEntity(entity)) {
     return `${acquiredUnitsCount(entity)} unidade(s) adquirida(s)`;
   }
 
@@ -3227,7 +4969,7 @@ function relationshipSummary(entity: ApoloEntity) {
 
 function contractDocumentItems(entity: ApoloEntity) {
   return entity.commercialLinks
-    .filter((link) => normalizeText(`${link.role} ${link.stage}`).includes("comprador"))
+    .filter(isBuyerCommercialLink)
     .slice(0, 6)
     .map((link, index) => {
       const contractDocumentId = link.contractDocumentId?.trim();
@@ -3248,7 +4990,7 @@ function contractDocumentItems(entity: ApoloEntity) {
 }
 
 function buildPortfolioUnits(entity: ApoloEntity): ApoloPortfolioUnit[] {
-  return entity.commercialLinks.map((link, index) => {
+  return entity.commercialLinks.filter(isBuyerCommercialLink).map((link, index) => {
     const parsedUnit = parsePortfolioUnitLabel(link.unit);
     const legacyReference = isLegacyCommercialPlaceholder(link.referenceLabel);
     const legacyEnterprise = isLegacyCommercialPlaceholder(link.enterprise);

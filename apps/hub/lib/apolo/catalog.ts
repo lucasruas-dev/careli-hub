@@ -8,6 +8,7 @@ import {
   IdCard,
   Landmark,
   LayoutDashboard,
+  SearchCheck,
   ShieldCheck,
   Store,
   UserRoundCog,
@@ -40,11 +41,13 @@ export const apoloProfileLabels = {
   parceiro: "Parceiro",
   pessoa_fisica: "Pessoa fisica",
   pessoa_juridica: "Pessoa juridica",
+  prospect: "Prospect",
   usuario: "Usuario",
 } as const satisfies Record<ApoloProfile, string>;
 
 export const apoloProfileOptions = [
   "usuario",
+  "prospect",
   "incorporador",
   "imobiliaria",
   "corretor",
@@ -58,6 +61,7 @@ export const apoloProfileOptions = [
 
 export const apoloProfileCardOrder = [
   "usuario",
+  "prospect",
   "incorporador",
   "imobiliaria",
   "corretor",
@@ -109,6 +113,7 @@ export function getApoloProfileIcon(profile: ApoloProfile): LucideIcon {
     parceiro: Handshake,
     pessoa_fisica: ContactRound,
     pessoa_juridica: Building2,
+    prospect: SearchCheck,
     usuario: UsersRound,
   } as const satisfies Record<ApoloProfile, LucideIcon>;
 

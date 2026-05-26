@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   MetaWhatsAppSendError,
+  type MetaWhatsAppTemplateHeaderMedia,
+  getMetaWhatsAppOutboundConfig,
   listMetaWhatsAppMessageTemplates,
   sendMetaWhatsAppTemplateMessage,
 } from "@/lib/iris/meta-whatsapp";
@@ -15,6 +17,15 @@ const IRIS_OPT_IN_TEMPLATE = {
   bodyText: "Olá {{1}}, estou testando a Iris, podemos conversar?",
   language: "pt_BR",
   name: "iris_opt_in_teste_v1",
+};
+const CUSTOMER_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_TRANSFER_QUEUE_SLUG = "atendimento";
+const MAX_TRANSFER_HISTORY = 30;
+
+type CustomerServiceWindowState = {
+  expiresAt: string | null;
+  lastCustomerMessageAt: string | null;
+  open: boolean;
 };
 
 export async function GET(request: NextRequest) {
@@ -122,6 +133,7 @@ export async function POST(request: NextRequest) {
     normalizeTemplateName(input?.templateName) ?? IRIS_OPT_IN_TEMPLATE.name;
   const requestedTemplateLanguage =
     normalizeLanguage(input?.templateLanguage) ?? IRIS_OPT_IN_TEMPLATE.language;
+  const requestedPhoneNumberId = normalizeText(input?.phoneNumberId);
   const firstName = normalizeFirstName(input?.firstName ?? contactName);
   const apoloEntityId = normalizeText(input?.apoloEntityId);
   const apoloProfileLabel = normalizeText(input?.apoloProfileLabel);
@@ -144,7 +156,11 @@ export async function POST(request: NextRequest) {
     normalizeAttendanceProtocol(sourceContextInput.attendanceProtocol) ??
     normalizeAttendanceProtocol(metadataInput.linkedAttendanceProtocol) ??
     normalizeAttendanceProtocol(metadataInput.attendanceProtocol);
-  const sendTemplate = input?.sendTemplate !== false;
+  const requestedTemplateSend = input?.sendTemplate !== false;
+  const relatedInstallmentLabels = readRelatedInstallmentLabels({
+    metadataInput,
+    sourceContextInput,
+  });
 
   if (!contactName) {
     return NextResponse.json(
@@ -205,6 +221,16 @@ export async function POST(request: NextRequest) {
       sourceModule === "hades" && linkedAttendanceProtocol
         ? await findTicketByAttendanceProtocol(client, linkedAttendanceProtocol)
         : null;
+    const protocol =
+      linkedAttendanceTicket?.protocol ?? (await nextTicketProtocol(client));
+    const collectionProtocol =
+      sourceModule === "hades"
+        ? collectionProtocolFromAttendanceProtocol(protocol)
+        : null;
+    const templateProtocolReference =
+      sourceModule === "hades"
+        ? collectionProtocol ?? protocol
+        : protocol;
 
     if (sourceModule === "hades" && linkedAttendanceProtocol && !linkedAttendanceTicket) {
       return NextResponse.json(
@@ -213,46 +239,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const localTemplate = sendTemplate
-      ? await getApprovedLocalTemplate(client, {
-          name: requestedTemplateName,
-          templateId,
-        })
-      : null;
-
-    if (sendTemplate && sourceModule === "hades" && !localTemplate) {
-      return NextResponse.json(
-        { error: "Selecione um template Meta aprovado dentro da Iris." },
-        { status: 400 },
-      );
-    }
-
-    const approvedTemplate = sendTemplate
-      ? await resolveApprovedMetaTemplate({
-          language: localTemplate?.language ?? requestedTemplateLanguage,
-          name: localTemplate?.templateName ?? requestedTemplateName,
-        })
-      : null;
-    const templateName = approvedTemplate?.name ?? requestedTemplateName;
-    const templateLanguage =
-      approvedTemplate?.language ?? requestedTemplateLanguage;
-    const templateBody = localTemplate?.body ?? IRIS_OPT_IN_TEMPLATE.bodyText;
-    const templatePreview = renderTemplatePreview(templateBody, firstName);
-    const sent = sendTemplate
-      ? await sendMetaWhatsAppTemplateMessage({
-          bodyParameters: [firstName],
-          language: templateLanguage,
-          name: templateName,
-          to: phone,
-        })
-      : null;
-    const now = new Date();
-    const queueId = profile?.queue_id ?? queue?.id ?? null;
-    const protocol = linkedAttendanceTicket?.protocol ?? await nextTicketProtocol(client);
-    const collectionProtocol =
-      sourceModule === "hades"
-        ? collectionProtocolFromAttendanceProtocol(protocol)
-        : null;
     const contact = await findOrCreateContact({
       apoloEntityId,
       apoloProfileLabel,
@@ -260,6 +246,109 @@ export async function POST(request: NextRequest) {
       contactName,
       phone,
     });
+    const customerServiceWindow = await getContactCustomerServiceWindow(
+      client,
+      contact.id,
+      phone,
+    );
+    const shouldSendTemplate =
+      requestedTemplateSend && !customerServiceWindow.open;
+
+    if (!requestedTemplateSend && !customerServiceWindow.open) {
+      return NextResponse.json(
+        {
+          error:
+            "Janela de 24h fechada. Envie um template aprovado e aguarde a resposta do cliente antes de iniciar conversa livre.",
+        },
+        { status: 409 },
+      );
+    }
+
+    const localTemplate = shouldSendTemplate
+      ? await getApprovedLocalTemplate(client, {
+          name: requestedTemplateName,
+          phoneNumberId: requestedPhoneNumberId,
+          templateId,
+        })
+      : null;
+
+    if (shouldSendTemplate && sourceModule === "hades" && !localTemplate) {
+      return NextResponse.json(
+        { error: "Selecione um template Meta aprovado dentro da Iris." },
+        { status: 400 },
+      );
+    }
+
+    const approvedTemplate = shouldSendTemplate
+      ? await resolveApprovedMetaTemplate({
+          language: localTemplate?.language ?? requestedTemplateLanguage,
+          name: localTemplate?.templateName ?? requestedTemplateName,
+          phoneNumberId: localTemplate?.phoneNumberId ?? requestedPhoneNumberId,
+        })
+      : null;
+    const templateName = shouldSendTemplate
+      ? approvedTemplate?.name ?? requestedTemplateName
+      : null;
+    const templateLanguage = shouldSendTemplate
+      ? approvedTemplate?.language ?? requestedTemplateLanguage
+      : null;
+    const templateBody = shouldSendTemplate
+      ? localTemplate?.body ?? IRIS_OPT_IN_TEMPLATE.bodyText
+      : null;
+    const templateInstallmentSummary =
+      formatTemplateInstallmentSummary(relatedInstallmentLabels);
+    const templateBodyParameters = shouldSendTemplate
+      ? buildTemplateBodyParameters({
+          firstName,
+          installmentsSummary: templateInstallmentSummary,
+          protocolReference: templateProtocolReference,
+          templateBody,
+        })
+      : [];
+    const templatePreview =
+      shouldSendTemplate && templateBody
+        ? renderTemplatePreview(templateBody, templateBodyParameters)
+        : null;
+    const templateHeaderMedia = shouldSendTemplate && localTemplate
+      ? buildTemplateHeaderMedia(localTemplate)
+      : null;
+    const templatePhoneNumberId = shouldSendTemplate
+      ? localTemplate?.phoneNumberId ?? requestedPhoneNumberId ?? null
+      : requestedPhoneNumberId ?? null;
+    const templateSendConfig =
+      shouldSendTemplate && templatePhoneNumberId
+        ? {
+            ...getMetaWhatsAppOutboundConfig(),
+            phoneNumberId: templatePhoneNumberId,
+          }
+        : getMetaWhatsAppOutboundConfig();
+
+    if (
+      shouldSendTemplate &&
+      localTemplate?.mediaHeaderFormat &&
+      !templateHeaderMedia
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Template com midia precisa de URL publica ou media id antes de iniciar o atendimento.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const sent = shouldSendTemplate
+      ? await sendMetaWhatsAppTemplateMessage({
+          bodyParameters: templateBodyParameters,
+          config: templateSendConfig,
+          headerMedia: templateHeaderMedia,
+          language: templateLanguage!,
+          name: templateName!,
+          to: phone,
+        })
+      : null;
+    const now = new Date();
+    const queueId = profile?.queue_id ?? queue?.id ?? null;
     const firstResponseMinutes =
       Number(profile?.sla_first_response_minutes) ||
       Number(queue?.sla_first_response_minutes) ||
@@ -274,6 +363,17 @@ export async function POST(request: NextRequest) {
       (sourceModule === "hades"
         ? `Cobranca Hades - ${profile?.name ?? "Atendimento WhatsApp"}`
         : "Contato ativo - aceite Iris");
+    const activeContactConsent = shouldSendTemplate
+      ? "awaiting_customer_reply"
+      : "customer_replied";
+    const initialStatus = shouldSendTemplate
+      ? "waiting_customer"
+      : "waiting_operator";
+    const metaTemplateStatus = shouldSendTemplate
+      ? "sent"
+      : customerServiceWindow.open
+        ? "window_open_reused"
+        : "not_sent";
     let ticket: { id: string; protocol: string; [key: string]: unknown } | null = null;
 
     if (linkedAttendanceTicket) {
@@ -286,15 +386,32 @@ export async function POST(request: NextRequest) {
           metadata: {
             ...currentMetadata,
             ...metadataInput,
-            activeContactConsent: "awaiting_customer_reply",
+            activeContactConsent,
             attendanceProtocol: protocol,
             collectionProtocol,
-            initialTemplateName: templateName,
-            initialTemplateLanguage: templateLanguage,
-            initialTemplateId: localTemplate?.id ?? null,
+            customerServiceWindowExpiresAt: customerServiceWindow.expiresAt,
+            customerServiceWindowOpenedAt:
+              customerServiceWindow.lastCustomerMessageAt,
+            initialTemplateName: shouldSendTemplate ? templateName : null,
+            initialTemplateLanguage: shouldSendTemplate
+              ? templateLanguage
+              : null,
+            initialTemplateId: shouldSendTemplate
+              ? localTemplate?.id ?? null
+              : null,
+            lastCustomerMessageAt: customerServiceWindow.lastCustomerMessageAt,
             linkedAttendanceProtocol: protocol,
-            metaTemplateStatus: sendTemplate ? "sent" : "not_sent",
+            metaPhoneDisplayNumber: shouldSendTemplate
+              ? localTemplate?.phoneDisplayNumber ?? null
+              : null,
+            metaPhoneLabel: shouldSendTemplate
+              ? localTemplate?.phoneLabel ?? null
+              : null,
+            metaPhoneNumberId: templatePhoneNumberId,
+            metaTemplateStatus,
             sourceModule,
+            templateInstallmentSummary,
+            templateProtocolReference,
           },
           priority: profile?.priority ?? linkedAttendanceTicket.priority ?? queue?.default_priority ?? "medium",
           profile_id: profile?.id ?? linkedAttendanceTicket.profile_id ?? null,
@@ -309,13 +426,21 @@ export async function POST(request: NextRequest) {
             collectionSourceModule: sourceModule,
             contactOrigin: currentSourceContext.contactOrigin ?? "active",
             linkedAttendanceProtocol: protocol,
-            templateBody,
+            relatedInstallmentLabels,
+            relatedInstallments:
+              normalizeStringList(sourceContextInput.relatedInstallments),
+            templateInstallmentSummary,
+            templateBody:
+              templateBody ??
+              normalizeText(currentSourceContext.templateBody) ??
+              null,
+            templateProtocolReference,
           },
           source_entity_id: sourceEntityId ?? linkedAttendanceTicket.source_entity_id ?? null,
           source_entity_type: sourceEntityType ?? linkedAttendanceTicket.source_entity_type ?? null,
           status: isClosedTicketStatus(linkedAttendanceTicket.status)
             ? linkedAttendanceTicket.status
-            : "waiting_customer",
+            : initialStatus,
           subject: ticketSubject ?? linkedAttendanceTicket.subject ?? null,
           updated_at: now.toISOString(),
         })
@@ -339,14 +464,31 @@ export async function POST(request: NextRequest) {
           first_response_due_at: addMinutes(now, firstResponseMinutes),
           metadata: {
             ...metadataInput,
-            activeContactConsent: "awaiting_customer_reply",
+            activeContactConsent,
             attendanceProtocol: protocol,
             collectionProtocol,
-            initialTemplateName: templateName,
-            initialTemplateLanguage: templateLanguage,
-            initialTemplateId: localTemplate?.id ?? null,
-            metaTemplateStatus: sendTemplate ? "sent" : "not_sent",
+            customerServiceWindowExpiresAt: customerServiceWindow.expiresAt,
+            customerServiceWindowOpenedAt:
+              customerServiceWindow.lastCustomerMessageAt,
+            initialTemplateName: shouldSendTemplate ? templateName : null,
+            initialTemplateLanguage: shouldSendTemplate
+              ? templateLanguage
+              : null,
+            initialTemplateId: shouldSendTemplate
+              ? localTemplate?.id ?? null
+              : null,
+            lastCustomerMessageAt: customerServiceWindow.lastCustomerMessageAt,
+            metaPhoneDisplayNumber: shouldSendTemplate
+              ? localTemplate?.phoneDisplayNumber ?? null
+              : null,
+            metaPhoneLabel: shouldSendTemplate
+              ? localTemplate?.phoneLabel ?? null
+              : null,
+            metaPhoneNumberId: templatePhoneNumberId,
+            metaTemplateStatus,
             sourceModule,
+            templateInstallmentSummary,
+            templateProtocolReference,
           },
           opened_at: now.toISOString(),
           priority: profile?.priority ?? queue?.default_priority ?? "medium",
@@ -361,12 +503,17 @@ export async function POST(request: NextRequest) {
             attendanceProtocol: protocol,
             collectionProtocol,
             contactOrigin: "active",
+            relatedInstallmentLabels,
+            relatedInstallments:
+              normalizeStringList(sourceContextInput.relatedInstallments),
+            templateInstallmentSummary,
             templateBody,
+            templateProtocolReference,
           },
           source_entity_id: sourceEntityId,
           source_entity_type: sourceEntityType,
           source_module: sourceModule,
-          status: "waiting_customer",
+          status: initialStatus,
           subject: ticketSubject,
         })
         .select(ticketProjection)
@@ -380,7 +527,7 @@ export async function POST(request: NextRequest) {
     }
     let messageId: string | null = null;
 
-    if (sendTemplate) {
+    if (shouldSendTemplate && templatePreview) {
       const messageResult = await client
         .from("caredesk_messages")
         .insert({
@@ -395,9 +542,15 @@ export async function POST(request: NextRequest) {
             operatorAvatarUrl: operator.avatarUrl,
             operatorLabel: operator.label,
             template: {
-              bodyParameters: [firstName],
+              bodyParameters: templateBodyParameters,
+              headerMediaFormat: localTemplate?.mediaHeaderFormat ?? null,
+              headerMediaFileName: localTemplate?.mediaHeaderFileName ?? null,
+              hasHeaderMedia: Boolean(templateHeaderMedia),
               language: templateLanguage,
               name: templateName,
+              phoneDisplayNumber: localTemplate?.phoneDisplayNumber ?? null,
+              phoneLabel: localTemplate?.phoneLabel ?? null,
+              phoneNumberId: templatePhoneNumberId,
             },
           },
           sender_type: "operator",
@@ -421,7 +574,8 @@ export async function POST(request: NextRequest) {
           direction: "outbound",
           message_id: messageId,
           payload: sent.raw,
-          phone_number_id: process.env.META_WHATSAPP_PHONE_NUMBER_ID ?? null,
+          phone_number_id:
+            templatePhoneNumberId ?? process.env.META_WHATSAPP_PHONE_NUMBER_ID ?? null,
           provider: "meta",
           wa_contact_id: sent.contactWaId,
           wa_message_id: sent.messageId,
@@ -437,8 +591,10 @@ export async function POST(request: NextRequest) {
       {
         messageId,
         collectionProtocol,
+        customerServiceWindow,
         ok: true,
         ticket,
+        templateSent: shouldSendTemplate,
       },
       { headers: { "Cache-Control": "no-store" } },
     );
@@ -457,6 +613,430 @@ export async function POST(request: NextRequest) {
         error: message,
       },
       { status },
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const authorization = await authorizeIrisMetaRequest(request, [
+    "admin",
+    "leader",
+    "operator",
+  ]);
+
+  if (!authorization.ok) {
+    return authorization.response;
+  }
+
+  const input = (await request.json().catch(() => null)) as
+    | Record<string, unknown>
+    | null;
+  const action = normalizeText(input?.action)?.toLowerCase();
+  const ticketId = normalizeUuid(input?.ticketId);
+  const closeReason =
+    normalizeText(input?.closeReason) ??
+    "Encerrado pelo operador no modulo Iris.";
+  const transferReason =
+    normalizeText(input?.transferReason) ??
+    "Transferido para a fila de atendimento pelo operador na Iris.";
+  const targetQueueId = normalizeUuid(input?.targetQueueId);
+  const targetQueueSlug =
+    normalizeQueueSlug(input?.targetQueueSlug) ??
+    DEFAULT_TRANSFER_QUEUE_SLUG;
+
+  if (!ticketId) {
+    return NextResponse.json(
+      { error: "Informe o ticket da operacao Iris." },
+      { status: 400 },
+    );
+  }
+
+  const { client } = authorization;
+
+  try {
+    if (action === "transfer") {
+      const { data: existing, error: existingError } = await client
+        .from("caredesk_tickets")
+        .select("id,protocol,status,queue_id,profile_id,metadata,source_context")
+        .eq("id", ticketId)
+        .maybeSingle<{
+          id: string;
+          metadata?: unknown;
+          profile_id?: string | null;
+          protocol: string | null;
+          queue_id?: string | null;
+          source_context?: unknown;
+          status: string | null;
+        }>();
+
+      if (existingError || !existing) {
+        return NextResponse.json(
+          { error: "Ticket nao encontrado para transferencia." },
+          { status: 404 },
+        );
+      }
+
+      if (isClosedTicketStatus(existing.status)) {
+        return NextResponse.json(
+          { error: "Ticket encerrado nao pode ser transferido." },
+          { status: 409 },
+        );
+      }
+
+      const fromQueueId = normalizeUuid(existing.queue_id);
+      const [
+        sourceQueue,
+        explicitTargetById,
+        explicitTargetBySlug,
+        fallbackQueue,
+        operator,
+      ] = await Promise.all([
+        fromQueueId ? getQueueById(client, fromQueueId) : Promise.resolve(null),
+        targetQueueId ? getQueueById(client, targetQueueId) : Promise.resolve(null),
+        targetQueueSlug
+          ? getQueueBySlug(client, targetQueueSlug)
+          : Promise.resolve(null),
+        getDefaultQueue(client),
+        getOperatorIdentity(client, authorization.user.id),
+      ]);
+      const targetQueue = explicitTargetById ?? explicitTargetBySlug ?? fallbackQueue;
+
+      if (!targetQueue?.id) {
+        return NextResponse.json(
+          { error: "Fila de destino nao foi localizada na Iris." },
+          { status: 503 },
+        );
+      }
+
+      const nowIso = new Date().toISOString();
+      const targetProfile = await getDefaultProfileByQueue(client, targetQueue.id);
+      const currentMetadata = normalizeRecord(existing.metadata);
+      const currentSourceContext = normalizeRecord(existing.source_context);
+      const transferHistory = normalizeTransferHistory(
+        currentMetadata.transferHistory,
+      );
+      const transferEntry = {
+        byUserId: authorization.user.id,
+        fromQueueId: sourceQueue?.id ?? fromQueueId ?? null,
+        fromQueueLabel: sourceQueue?.name ?? sourceQueue?.slug ?? "sem_fila",
+        occurredAt: nowIso,
+        operatorLabel: operator.label,
+        reason: transferReason,
+        toQueueId: targetQueue.id,
+        toQueueLabel: targetQueue.name ?? targetQueue.slug ?? "atendimento",
+      };
+      const nextMetadata = {
+        ...currentMetadata,
+        activeContactConsent: "customer_replied",
+        handoffToOperatorAt: nowIso,
+        handoffToOperatorByUserId: authorization.user.id,
+        handoffToOperatorReason: transferReason,
+        handlingOwner: "operator",
+        lastTransfer: transferEntry,
+        transferHistory: [transferEntry, ...transferHistory].slice(
+          0,
+          MAX_TRANSFER_HISTORY,
+        ),
+      };
+      const nextSourceContext = {
+        ...currentSourceContext,
+        handoffQueueId: targetQueue.id,
+        handoffQueueLabel: targetQueue.name ?? targetQueue.slug ?? null,
+        handoffReason: transferReason,
+      };
+
+      const { data: updated, error: updateError } = await client
+        .from("caredesk_tickets")
+        .update({
+          assigned_to_user_id: null,
+          metadata: nextMetadata,
+          profile_id: targetProfile?.id ?? normalizeUuid(existing.profile_id) ?? null,
+          queue_id: targetQueue.id,
+          source_context: nextSourceContext,
+          status: "waiting_operator",
+          updated_at: nowIso,
+        })
+        .eq("id", ticketId)
+        .select("id,protocol,status,closed_at,resolved_at,queue_id,metadata")
+        .single<{
+          closed_at: string | null;
+          id: string;
+          metadata?: unknown;
+          protocol: string | null;
+          queue_id?: string | null;
+          resolved_at: string | null;
+          status: string | null;
+        }>();
+
+      if (updateError || !updated) {
+        throw updateError ?? new Error("Transferencia do ticket nao foi salva.");
+      }
+
+      const transferMessage = [
+        `Transferencia registrada: ${transferEntry.fromQueueLabel} -> ${transferEntry.toQueueLabel}.`,
+        `Motivo: ${transferReason}.`,
+      ].join(" ");
+      const [timelineInsert, chatInsert] = await Promise.all([
+        client.from("caredesk_ticket_events").insert({
+          actor_type: "user",
+          actor_user_id: authorization.user.id,
+          description: transferReason,
+          event_type: "ticket_transfer",
+          metadata: {
+            fromQueueId: transferEntry.fromQueueId,
+            fromQueueLabel: transferEntry.fromQueueLabel,
+            operatorLabel: operator.label,
+            source: "iris_operator",
+            toQueueId: transferEntry.toQueueId,
+            toQueueLabel: transferEntry.toQueueLabel,
+          },
+          ticket_id: ticketId,
+          title: `Transferido para ${transferEntry.toQueueLabel}`,
+        }),
+        client.from("caredesk_messages").insert({
+          body: transferMessage,
+          delivery_status: "sent",
+          direction: "internal",
+          message_type: "system",
+          provider_payload: {
+            operatorLabel: operator.label,
+            source_module: "iris",
+            transfer: {
+              fromQueueId: transferEntry.fromQueueId,
+              fromQueueLabel: transferEntry.fromQueueLabel,
+              reason: transferReason,
+              toQueueId: transferEntry.toQueueId,
+              toQueueLabel: transferEntry.toQueueLabel,
+            },
+          },
+          sender_type: "system",
+          ticket_id: ticketId,
+        }),
+      ]);
+
+      if (timelineInsert.error) {
+        throw timelineInsert.error;
+      }
+
+      if (chatInsert.error) {
+        throw chatInsert.error;
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          ticket: {
+            closedAt: updated.closed_at,
+            id: updated.id,
+            metadata: normalizeRecord(updated.metadata),
+            protocol: updated.protocol,
+            queueId: normalizeUuid(updated.queue_id) ?? targetQueue.id,
+            resolvedAt: updated.resolved_at,
+            status: normalizeText(updated.status) ?? "waiting_operator",
+          },
+          transfer: {
+            fromQueueId: transferEntry.fromQueueId,
+            fromQueueLabel: transferEntry.fromQueueLabel,
+            toQueueId: transferEntry.toQueueId,
+            toQueueLabel: transferEntry.toQueueLabel,
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (action === "context_update") {
+      const { data: existing, error: existingError } = await client
+        .from("caredesk_tickets")
+        .select("id,protocol,metadata")
+        .eq("id", ticketId)
+        .maybeSingle<{
+          id: string;
+          metadata?: unknown;
+          protocol: string | null;
+        }>();
+
+      if (existingError || !existing) {
+        return NextResponse.json(
+          { error: "Ticket nao encontrado para atualizar contexto." },
+          { status: 404 },
+        );
+      }
+
+      const nowIso = new Date().toISOString();
+      const existingMetadata = normalizeRecord(existing.metadata);
+      const hasContextNote = Object.prototype.hasOwnProperty.call(
+        input ?? {},
+        "contextNote",
+      );
+      const hasContextAgendaEvents = Object.prototype.hasOwnProperty.call(
+        input ?? {},
+        "contextAgendaEvents",
+      );
+      const contextNote = normalizeText(input?.contextNote);
+      const contextAgendaEvents = normalizeTicketContextAgendaEvents(
+        input?.contextAgendaEvents,
+      );
+      const nextMetadata = {
+        ...existingMetadata,
+        contextUpdatedAt: nowIso,
+      } as Record<string, unknown>;
+
+      if (hasContextNote) {
+        nextMetadata.operatorContextNote = contextNote
+          ? {
+              text: contextNote,
+              updatedAt: nowIso,
+              updatedByUserId: authorization.user.id,
+            }
+          : null;
+      }
+
+      if (hasContextAgendaEvents) {
+        nextMetadata.contextAgendaEvents = contextAgendaEvents;
+      }
+
+      const { data: updated, error: updateError } = await client
+        .from("caredesk_tickets")
+        .update({
+          metadata: nextMetadata,
+          updated_at: nowIso,
+        })
+        .eq("id", ticketId)
+        .select("id,protocol,status,closed_at,resolved_at,metadata")
+        .single<{
+          closed_at: string | null;
+          id: string;
+          metadata?: unknown;
+          protocol: string | null;
+          resolved_at: string | null;
+          status: string | null;
+        }>();
+
+      if (updateError || !updated) {
+        throw updateError ?? new Error("Contexto do ticket nao foi atualizado.");
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          ticket: {
+            closedAt: updated.closed_at,
+            id: updated.id,
+            metadata: normalizeRecord(updated.metadata),
+            protocol: updated.protocol,
+            resolvedAt: updated.resolved_at,
+            status: normalizeText(updated.status) ?? "open",
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (action !== "close") {
+      return NextResponse.json(
+        { error: "Acao de ticket nao suportada pela Iris." },
+        { status: 400 },
+      );
+    }
+
+    const { data: existing, error: existingError } = await client
+      .from("caredesk_tickets")
+      .select("id,protocol,status,closed_at,resolved_at,metadata")
+      .eq("id", ticketId)
+      .maybeSingle<{
+        closed_at: string | null;
+        id: string;
+        metadata?: unknown;
+        protocol: string | null;
+        resolved_at: string | null;
+        status: string | null;
+      }>();
+
+    if (existingError || !existing) {
+      return NextResponse.json(
+        { error: "Ticket nao encontrado para encerramento." },
+        { status: 404 },
+      );
+    }
+
+    const nowIso = new Date().toISOString();
+    const effectiveClosedAt = existing.closed_at ?? nowIso;
+    const existingMetadata = normalizeRecord(existing.metadata);
+    const nextMetadata = {
+      ...existingMetadata,
+      closedAt: effectiveClosedAt,
+      closedByUserId: authorization.user.id,
+      closedReason: closeReason,
+      closedSource: "iris_operator",
+      closedTicketProtocol: existing.protocol ?? null,
+    };
+
+    if (isClosedTicketStatus(existing.status)) {
+      return NextResponse.json(
+        {
+          alreadyClosed: true,
+          ok: true,
+          ticket: {
+            closedAt: effectiveClosedAt,
+            id: existing.id,
+            metadata: nextMetadata,
+            protocol: existing.protocol,
+            resolvedAt: existing.resolved_at,
+            status: normalizeText(existing.status) ?? "closed",
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const { data: updated, error: updateError } = await client
+      .from("caredesk_tickets")
+      .update({
+        closed_at: effectiveClosedAt,
+        metadata: nextMetadata,
+        status: "closed",
+        updated_at: nowIso,
+      })
+      .eq("id", ticketId)
+      .select("id,protocol,status,closed_at,resolved_at,metadata")
+      .single<{
+        closed_at: string | null;
+        id: string;
+        metadata?: unknown;
+        protocol: string | null;
+        resolved_at: string | null;
+        status: string | null;
+      }>();
+
+    if (updateError || !updated) {
+      throw updateError ?? new Error("Ticket nao foi encerrado.");
+    }
+
+    return NextResponse.json(
+      {
+        alreadyClosed: false,
+        ok: true,
+        ticket: {
+          closedAt: updated.closed_at,
+          id: updated.id,
+          metadata: normalizeRecord(updated.metadata),
+          protocol: updated.protocol,
+          resolvedAt: updated.resolved_at,
+          status: normalizeText(updated.status) ?? "closed",
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel encerrar o ticket na Iris.",
+      },
+      { status: 500 },
     );
   }
 }
@@ -575,20 +1155,73 @@ function mapLocalTemplateRow(row: Record<string, unknown>) {
     category: normalizeText(row.category),
     id: String(row.id ?? ""),
     language,
+    mediaHeaderFileName: normalizeText(metadata.mediaHeaderFileName),
+    mediaHeaderFormat: normalizeTemplateHeaderFormat(metadata.mediaHeaderFormat),
+    mediaHeaderMediaId: normalizeText(metadata.mediaHeaderMediaId),
+    mediaHeaderSendLink: normalizeText(metadata.mediaHeaderSendLink),
     metaStatus,
     name: normalizeText(row.name) ?? templateName,
+    phoneDisplayNumber: normalizeText(metadata.metaPhoneDisplayNumber),
+    phoneLabel: normalizeText(metadata.metaPhoneLabel),
+    phoneNumberId: normalizeText(metadata.metaPhoneNumberId),
     slug: normalizeText(row.slug),
     templateName,
   };
+}
+
+function buildTemplateHeaderMedia(template: {
+  mediaHeaderFileName?: string | null;
+  mediaHeaderFormat?: string | null;
+  mediaHeaderMediaId?: string | null;
+  mediaHeaderSendLink?: string | null;
+}): MetaWhatsAppTemplateHeaderMedia | null {
+  const type = mapTemplateHeaderMediaType(template.mediaHeaderFormat);
+  const id = normalizeText(template.mediaHeaderMediaId);
+  const link = normalizeText(template.mediaHeaderSendLink);
+
+  if (!type || (!id && !link)) {
+    return null;
+  }
+
+  return {
+    fileName: normalizeText(template.mediaHeaderFileName),
+    id,
+    link,
+    type,
+  };
+}
+
+function mapTemplateHeaderMediaType(value?: string | null) {
+  if (value === "DOCUMENT") {
+    return "document";
+  }
+
+  if (value === "IMAGE") {
+    return "image";
+  }
+
+  if (value === "VIDEO") {
+    return "video";
+  }
+
+  return null;
+}
+
+function normalizeTemplateHeaderFormat(value: unknown) {
+  return value === "DOCUMENT" || value === "IMAGE" || value === "VIDEO"
+    ? value
+    : null;
 }
 
 async function getApprovedLocalTemplate(
   client: SupabaseClient,
   {
     name,
+    phoneNumberId,
     templateId,
   }: {
     name: string;
+    phoneNumberId?: string | null;
     templateId?: string | null;
   },
 ) {
@@ -619,25 +1252,38 @@ async function getApprovedLocalTemplate(
     return null;
   }
 
-  return mapApprovedTemplateRows(data).find(
-    (template) => template.templateName === name || template.slug === name,
-  ) ?? null;
+  const approvedTemplates = mapApprovedTemplateRows(data).filter((template) => {
+    return (
+      !phoneNumberId ||
+      !template.phoneNumberId ||
+      template.phoneNumberId === phoneNumberId
+    );
+  });
+
+  return (
+    approvedTemplates.find(
+      (template) => template.templateName === name || template.slug === name,
+    ) ?? null
+  );
 }
 
 async function resolveApprovedMetaTemplate({
   language,
   name,
+  phoneNumberId,
 }: {
   language: string;
   name: string;
+  phoneNumberId?: string | null;
 }) {
   const templates = await listMetaWhatsAppMessageTemplates({
     limit: 50,
     name,
+    phoneNumberId,
   });
   const exactTemplates = templates.filter((template) => template.name === name);
   const approvedTemplates = exactTemplates.filter(
-    (template) => template.status === "APPROVED",
+    (template) => isMetaTemplateApprovedStatus(template.status),
   );
   const preferred = approvedTemplates.find(
     (template) => template.language === language,
@@ -657,6 +1303,21 @@ async function resolveApprovedMetaTemplate({
     language: preferred.language,
     name: preferred.name,
   };
+}
+
+function isMetaTemplateApprovedStatus(status?: string | null) {
+  const normalized = normalizeMetaTemplateStatusKey(status);
+
+  return (
+    normalized === "APPROVED" ||
+    normalized === "ACTIVE" ||
+    Boolean(normalized?.startsWith("APPROVED_")) ||
+    Boolean(normalized?.startsWith("ACTIVE_"))
+  );
+}
+
+function normalizeMetaTemplateStatusKey(status?: string | null) {
+  return status?.trim().toUpperCase().replace(/[\s-]+/g, "_") ?? null;
 }
 
 function isMetaTemplateTranslationError(error: MetaWhatsAppSendError) {
@@ -691,8 +1352,19 @@ async function getWhatsAppChannel(
 async function getQueueById(client: SupabaseClient, queueId: string) {
   const { data } = await client
     .from("caredesk_queues")
-    .select("id,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
+    .select("id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
     .eq("id", queueId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  return data ?? null;
+}
+
+async function getQueueBySlug(client: SupabaseClient, queueSlug: string) {
+  const { data } = await client
+    .from("caredesk_queues")
+    .select("id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
+    .eq("slug", queueSlug)
     .eq("status", "active")
     .maybeSingle();
 
@@ -702,8 +1374,8 @@ async function getQueueById(client: SupabaseClient, queueId: string) {
 async function getDefaultQueue(client: SupabaseClient) {
   const { data: atendimento } = await client
     .from("caredesk_queues")
-    .select("id,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
-    .eq("slug", "atendimento")
+    .select("id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
+    .eq("slug", DEFAULT_TRANSFER_QUEUE_SLUG)
     .eq("status", "active")
     .maybeSingle();
 
@@ -713,11 +1385,24 @@ async function getDefaultQueue(client: SupabaseClient) {
 
   const { data } = await client
     .from("caredesk_queues")
-    .select("id,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
+    .select("id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
     .eq("status", "active")
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+
+  return data ?? null;
+}
+
+async function getDefaultProfileByQueue(client: SupabaseClient, queueId: string) {
+  const { data } = await client
+    .from("caredesk_ticket_profiles")
+    .select("id")
+    .eq("queue_id", queueId)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle<{ id: string }>();
 
   return data ?? null;
 }
@@ -842,12 +1527,289 @@ async function findOrCreateContact({
   return inserted.data;
 }
 
+async function getContactCustomerServiceWindow(
+  client: SupabaseClient,
+  contactId: string,
+  phone?: string | null,
+): Promise<CustomerServiceWindowState> {
+  const contactIds = await resolveWindowContactIdsByIdentity({
+    client,
+    contactId,
+    phone,
+  });
+  const scopedContactIds = contactIds.length ? contactIds : [contactId];
+  const latestBySenderContact = await client
+    .from("caredesk_messages")
+    .select("created_at,sent_at")
+    .eq("direction", "inbound")
+    .in("sender_contact_id", scopedContactIds)
+    .eq("sender_type", "customer")
+    .order("sent_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ created_at: string | null; sent_at: string | null }>();
+
+  if (latestBySenderContact.error) {
+    throw latestBySenderContact.error;
+  }
+
+  if (latestBySenderContact.data) {
+    return describeCustomerServiceWindow(
+      latestBySenderContact.data.sent_at ??
+        latestBySenderContact.data.created_at ??
+        null,
+    );
+  }
+
+  const { data: ticketRows, error: ticketError } = await client
+    .from("caredesk_tickets")
+    .select("id")
+    .in("contact_id", scopedContactIds)
+    .order("opened_at", { ascending: false })
+    .limit(120);
+
+  if (ticketError) {
+    throw ticketError;
+  }
+
+  const ticketIds = (ticketRows ?? [])
+    .map((row) => normalizeText((row as Record<string, unknown>).id))
+    .filter((id): id is string => Boolean(id));
+
+  if (!ticketIds.length) {
+    return describeCustomerServiceWindow(null);
+  }
+
+  const latestByTicket = await client
+    .from("caredesk_messages")
+    .select("created_at,sent_at")
+    .in("ticket_id", ticketIds)
+    .eq("direction", "inbound")
+    .eq("sender_type", "customer")
+    .order("sent_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ created_at: string | null; sent_at: string | null }>();
+
+  if (latestByTicket.error) {
+    throw latestByTicket.error;
+  }
+
+  return describeCustomerServiceWindow(
+    latestByTicket.data?.sent_at ?? latestByTicket.data?.created_at ?? null,
+  );
+}
+
+async function resolveWindowContactIdsByIdentity({
+  client,
+  contactId,
+  phone,
+}: {
+  client: SupabaseClient;
+  contactId: string;
+  phone?: string | null;
+}) {
+  const ids = new Set<string>([contactId]);
+  const normalizedPhone = normalizeWhatsAppDestination(phone);
+
+  if (!normalizedPhone) {
+    return Array.from(ids);
+  }
+
+  for (const candidate of buildBrazilWhatsAppDestinationCandidates(normalizedPhone)) {
+    const [whatsappRows, phoneRows] = await Promise.all([
+      client
+        .from("caredesk_contacts")
+        .select("id")
+        .eq("whatsapp_phone", candidate)
+        .limit(32),
+      client
+        .from("caredesk_contacts")
+        .select("id")
+        .eq("phone", candidate)
+        .limit(32),
+    ]);
+
+    if (whatsappRows.error) {
+      throw whatsappRows.error;
+    }
+
+    if (phoneRows.error) {
+      throw phoneRows.error;
+    }
+
+    for (const row of [
+      ...(whatsappRows.data ?? []),
+      ...(phoneRows.data ?? []),
+    ] as Array<{ id?: string | null }>) {
+      const normalizedId = normalizeUuid(row.id);
+
+      if (normalizedId) {
+        ids.add(normalizedId);
+      }
+    }
+  }
+
+  return Array.from(ids);
+}
+
+function describeCustomerServiceWindow(
+  lastCustomerMessageAt: string | null,
+): CustomerServiceWindowState {
+  if (!lastCustomerMessageAt) {
+    return {
+      expiresAt: null,
+      lastCustomerMessageAt: null,
+      open: false,
+    };
+  }
+
+  const openedAt = new Date(lastCustomerMessageAt).getTime();
+
+  if (Number.isNaN(openedAt)) {
+    return {
+      expiresAt: null,
+      lastCustomerMessageAt: null,
+      open: false,
+    };
+  }
+
+  const expiresAt = new Date(openedAt + CUSTOMER_SERVICE_WINDOW_MS).toISOString();
+
+  return {
+    expiresAt,
+    lastCustomerMessageAt,
+    open: Date.now() < openedAt + CUSTOMER_SERVICE_WINDOW_MS,
+  };
+}
+
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60000).toISOString();
 }
 
-function renderTemplatePreview(bodyText: string, firstName: string) {
-  return bodyText.replace("{{1}}", firstName);
+function readRelatedInstallmentLabels({
+  metadataInput,
+  sourceContextInput,
+}: {
+  metadataInput: Record<string, unknown>;
+  sourceContextInput: Record<string, unknown>;
+}) {
+  const labels = uniqueStringList([
+    ...normalizeStringList(metadataInput.relatedInstallmentLabels),
+    ...normalizeStringList(sourceContextInput.relatedInstallmentLabels),
+  ]);
+
+  if (labels.length) {
+    return labels;
+  }
+
+  return uniqueStringList([
+    ...normalizeStringList(metadataInput.relatedInstallments),
+    ...normalizeStringList(sourceContextInput.relatedInstallments),
+  ]).map((value) => parseInstallmentLabel(value));
+}
+
+function formatTemplateInstallmentSummary(labels: string[]) {
+  if (!labels.length) {
+    return "Sem parcela informada";
+  }
+
+  const preview = labels.slice(0, 3).join(" | ");
+  const suffix =
+    labels.length > 3 ? ` +${labels.length - 3} parcela(s)` : "";
+
+  return trimTemplateVariable(`${preview}${suffix}`);
+}
+
+function buildTemplateBodyParameters({
+  firstName,
+  installmentsSummary,
+  protocolReference,
+  templateBody,
+}: {
+  firstName: string;
+  installmentsSummary: string;
+  protocolReference: string;
+  templateBody: string | null;
+}) {
+  const expectedCount = countTemplateBodyVariables(templateBody);
+  const baseParameters = [
+    firstName,
+    installmentsSummary,
+    protocolReference,
+  ];
+  const parameters = baseParameters.slice(0, expectedCount);
+
+  while (parameters.length < expectedCount) {
+    parameters.push("-");
+  }
+
+  return parameters.map((value) => trimTemplateVariable(value));
+}
+
+function countTemplateBodyVariables(templateBody: string | null) {
+  if (!templateBody) {
+    return 1;
+  }
+
+  const placeholderIndexes = new Set<number>();
+  const regex = /{{\s*(\d+)\s*}}/g;
+  let match = regex.exec(templateBody);
+
+  while (match) {
+    const index = Number.parseInt(match[1] ?? "", 10);
+
+    if (!Number.isNaN(index) && index > 0) {
+      placeholderIndexes.add(index);
+    }
+
+    match = regex.exec(templateBody);
+  }
+
+  return placeholderIndexes.size || 1;
+}
+
+function renderTemplatePreview(bodyText: string, bodyParameters: string[]) {
+  if (!bodyParameters.length) {
+    return bodyText;
+  }
+
+  return bodyText.replace(/{{\s*(\d+)\s*}}/g, (placeholder, rawIndex) => {
+    const index = Number.parseInt(rawIndex, 10);
+
+    if (Number.isNaN(index) || index <= 0) {
+      return placeholder;
+    }
+
+    return bodyParameters[index - 1] ?? placeholder;
+  });
+}
+
+function parseInstallmentLabel(value: string) {
+  const parts = value
+    .split("|")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const parcel = parts[2] ?? "";
+  const dueDate = parts[3] ?? "";
+  const amount = parts[4] ?? "";
+  const parsed = [parcel, dueDate, amount].filter(Boolean).join(" · ");
+
+  return parsed || value;
+}
+
+function uniqueStringList(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function trimTemplateVariable(value: string) {
+  const normalized = value.trim();
+
+  if (normalized.length <= 320) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 317)}...`;
 }
 
 function collectionProtocolFromAttendanceProtocol(protocol: string) {
@@ -876,6 +1838,24 @@ function normalizeWhatsAppDestination(value: unknown) {
   }
 
   return null;
+}
+
+function buildBrazilWhatsAppDestinationCandidates(to: string) {
+  const candidates = [to];
+  const withoutBrazilianNinthDigit = /^55(\d{2})(\d{8})$/.exec(to);
+  const withBrazilianNinthDigit = /^55(\d{2})9(\d{8})$/.exec(to);
+
+  if (withoutBrazilianNinthDigit) {
+    candidates.push(
+      `55${withoutBrazilianNinthDigit[1]}9${withoutBrazilianNinthDigit[2]}`,
+    );
+  }
+
+  if (withBrazilianNinthDigit) {
+    candidates.push(`55${withBrazilianNinthDigit[1]}${withBrazilianNinthDigit[2]}`);
+  }
+
+  return Array.from(new Set(candidates));
 }
 
 function normalizeTemplateName(value: unknown) {
@@ -961,12 +1941,90 @@ function normalizeText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizeQueueSlug(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  return /^[a-z0-9-]{2,80}$/.test(normalized) ? normalized : null;
+}
+
 function normalizeRecord(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
 
   return value as Record<string, unknown>;
+}
+
+function normalizeStringList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => normalizeText(entry))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+function normalizeTicketContextAgendaEvents(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((event, index) => {
+      const record = normalizeRecord(event);
+      const title = normalizeText(record.title);
+      const scheduledAt = normalizeTicketContextDate(record.scheduledAt);
+
+      if (!title || !scheduledAt) {
+        return null;
+      }
+
+      const createdAt =
+        normalizeTicketContextDate(record.createdAt) ?? new Date().toISOString();
+
+      return {
+        createdAt,
+        createdByLabel: normalizeText(record.createdByLabel) ?? "Operador Iris",
+        id: normalizeText(record.id) ?? `ctx-agenda-${index}-${scheduledAt}`,
+        kind: normalizeText(record.kind) ?? "atividade",
+        notes: normalizeText(record.notes),
+        scheduledAt,
+        status: normalizeText(record.status) ?? "planned",
+        title: title.slice(0, 180),
+      };
+    })
+    .filter(
+      (
+        event,
+      ): event is {
+        createdAt: string;
+        createdByLabel: string;
+        id: string;
+        kind: string;
+        notes: string | null;
+        scheduledAt: string;
+        status: string;
+        title: string;
+      } => Boolean(event),
+    )
+    .slice(0, 200);
+}
+
+function normalizeTicketContextDate(value: unknown) {
+  const text = normalizeText(value);
+
+  if (!text) {
+    return null;
+  }
+
+  const parsed = new Date(text);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 function normalizeSourceModule(value: unknown) {
@@ -977,4 +2035,24 @@ function normalizeSourceModule(value: unknown) {
   }
 
   return "iris";
+}
+
+function normalizeTransferHistory(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => normalizeRecord(entry))
+    .map((entry) => ({
+      byUserId: normalizeUuid(entry.byUserId),
+      fromQueueId: normalizeUuid(entry.fromQueueId),
+      fromQueueLabel: normalizeText(entry.fromQueueLabel),
+      occurredAt: normalizeTicketContextDate(entry.occurredAt),
+      operatorLabel: normalizeText(entry.operatorLabel),
+      reason: normalizeText(entry.reason),
+      toQueueId: normalizeUuid(entry.toQueueId),
+      toQueueLabel: normalizeText(entry.toQueueLabel),
+    }))
+    .filter((entry) => Boolean(entry.occurredAt));
 }

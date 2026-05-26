@@ -1,5 +1,6 @@
 export type ApoloProfile =
   | "usuario"
+  | "prospect"
   | "incorporador"
   | "imobiliaria"
   | "corretor"

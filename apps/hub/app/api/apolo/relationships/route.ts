@@ -70,6 +70,7 @@ export async function GET(request: Request) {
 function normalizeProfile(value: string | null): ApoloProfile | null {
   const allowed = new Set<ApoloProfile>([
     "usuario",
+    "prospect",
     "incorporador",
     "imobiliaria",
     "corretor",
@@ -93,7 +94,7 @@ function parseLimit(value: string | null) {
     return 20;
   }
 
-  return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+  return Math.min(Math.max(Math.trunc(parsed), 1), 500);
 }
 
 function createApoloResponse(

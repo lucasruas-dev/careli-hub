@@ -3,7 +3,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Tooltip } from "@repo/uix";
 import {
   BarChart3,
@@ -21,37 +21,48 @@ import {
 
 const menuItems = [
   {
+    id: "dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
     href: "/hades",
     released: true,
   },
   {
+    id: "cobranca",
     label: "Cobrança",
     icon: WalletCards,
     href: "/hades/cobranca",
     released: true,
   },
   {
+    id: "iris",
     label: "Iris",
     icon: Inbox,
-    href: "/iris",
+    href: "/hades/cobranca?view=iris",
     released: true,
   },
   {
+    id: "inteligencia",
     label: "Inteligência",
     icon: Bot,
     href: "/hades/inteligencia",
     released: false,
   },
   {
+    id: "monitoramento",
     label: "Monitoramento",
     icon: LineChart,
     href: "/hades/monitoramento",
     released: false,
   },
-  { label: "Relatórios", icon: BarChart3, href: "#", released: false },
-  { label: "Setup", icon: Settings, href: "#", released: false },
+  {
+    id: "relatorios",
+    label: "Relatórios",
+    icon: BarChart3,
+    href: "#",
+    released: false,
+  },
+  { id: "setup", label: "Setup", icon: Settings, href: "#", released: false },
 ];
 const visibleMenuItems = menuItems.filter((item) => item.released);
 
@@ -62,6 +73,8 @@ type SidebarProps = {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const hadesView = searchParams.get("view");
 
   function handleOpenModuleLauncher() {
     window.dispatchEvent(new Event("careli:toggle-module-launcher"));
@@ -149,10 +162,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <nav className="flex flex-1 flex-col gap-1 px-2.5 py-3">
         {visibleMenuItems.map((item) => {
           const Icon = item.icon;
+          const isIrisBoard = hadesView === "iris";
           const isActive =
-            item.href === "/hades"
+            item.id === "dashboard"
               ? pathname === "/hades"
-              : item.href !== "#" && pathname.startsWith(item.href);
+              : item.id === "cobranca"
+                ? pathname === "/hades/cobranca" && !isIrisBoard
+                : item.id === "iris"
+                  ? pathname === "/hades/cobranca" && isIrisBoard
+                  : item.href !== "#" && pathname.startsWith(item.href);
 
           const link = (
             <Link

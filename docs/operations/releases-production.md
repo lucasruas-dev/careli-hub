@@ -1330,3 +1330,135 @@ Registro de producao:
   - a regra numerica continua sendo a do deploy anterior: base por `due_on`/`due_at`.
 - Rollback: promover novamente `dpl_66CR8Tw74aXkkfNZHNfT2GQy1dK7` se houver regressao visual critica na Home/Asana.
 - Proxima acao: Lucas validar a Home autenticada; Hefesto pode identificar este recorte pelo identificador `HEFESTO-PROD-20260522-1825-ZEUS-ASANA-DUE-LABELS`.
+
+Registro de producao:
+
+- Assunto: `[Zeus] Iris Meta pronta e bloqueada por env Production`.
+- Identificador Hefesto: `HEFESTO-PROD-BLOCKED-20260525-IRIS-META-ENVS`.
+- Squad/agente responsavel: `Zeus` sobre recorte `Iris Meta WhatsApp / Athena atendente`.
+- Data e hora local: `2026-05-25 11:18:26 -03:00`.
+- Ambiente: `producao`.
+- Status: `BLOQUEADO`.
+- Autorizacao: Lucas informou que os testes em homologacao ficaram OK e pediu commit e producao dos recortes trabalhados.
+- Origem/homologacao de referencia:
+  - `https://homo.c2x.app.br` em `dpl_3k7PGdrLhLjNqwEAUdmHPZABJTKX`;
+  - recorte `[Zeus] Iris Novo Atendimento cache stale removido`;
+  - comunicacao Panteon -> Meta validada pelo Lucas na WABA correta;
+  - Novo Atendimento corrigido para filtrar template com `metaStatus` aprovado real.
+- Bloqueio real antes do deploy:
+  - `npx.cmd vercel env ls production` mostrou ausencia dos envs `META_WHATSAPP_*` em Production;
+  - os envs existem em Preview, mas `vercel env pull --environment=preview --git-branch=homolog` retorna valores sensiveis vazios, portanto nao e possivel copiar token/app secret/verify token por CLI sem fonte segura;
+  - `npx.cmd vercel env run -e preview --git-branch homolog` tambem foi testado e nao disponibilizou esses valores sensiveis no processo local;
+  - promover diretamente o Preview de homologacao para os aliases de producao fica bloqueado porque o deployment carrega contexto de Preview/homologacao.
+- Commit de codigo/registro:
+  - `61f18ea fix(iris): stabilize meta templates and active contact`.
+- Arquivos/modulos prontos para producao apos configurar env:
+  - `apps/hub/lib/iris/meta-whatsapp.ts`;
+  - `apps/hub/app/api/iris/meta/templates/route.ts`;
+  - `apps/hub/app/api/iris/meta/templates/media/route.ts`;
+  - `apps/hub/app/api/iris/meta/messages/route.ts`;
+  - `apps/hub/app/api/iris/tickets/route.ts`;
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `apps/hub/lib/iris/caca-agent.ts`;
+  - `apps/hub/app/api/iris/attendant/route.ts`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/modules/caredesk-meta-whatsapp-setup.md`;
+  - `docs/operations/iris-ai-attendant-agent-operating-contract.md`;
+  - `docs/operations/homologation-safety-gate.md`;
+  - `scripts/homologation-safety-gate.mjs`;
+  - `turbo.json`.
+- Arquivos/modulos excluidos:
+  - root misto de Apolo, login, PulseX, Ares, governanca paralela, migrations, banco mutavel, service role, secrets novos, dominios/aliases e recortes nao presentes no deployment Iris mais recente.
+- Validacoes ja executadas no recorte homologado:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `git diff --check`: OK;
+  - Safety Gate pre-deploy e pre-alias de homologacao: PASS;
+  - `GET https://homo.c2x.app.br/iris`: `200 OK`;
+  - `GET https://homo.c2x.app.br/api/iris/meta/templates` sem sessao: `401 Unauthorized` esperado;
+  - logs de erro em homologacao: sem logs encontrados apos deploy.
+- Riscos conhecidos:
+  - sem `META_WHATSAPP_*` em Production, templates, webhook Meta e envio WhatsApp falhariam em producao mesmo com codigo correto;
+  - e necessario configurar Production com o mesmo par operacional de WABA/Phone Number ID e os segredos Meta correspondentes, sem registrar valores em docs, chat ou commit.
+- Rollback: manter producao atual em `dpl_6HqPqvmLjdrkVyx4qFZoqhmrqtVE` ate os envs Production serem configurados e o deploy limpo passar em healthchecks.
+- Proxima acao: configurar envs Meta em Vercel Production por canal seguro; em seguida Zeus/Hefesto roda validacoes finais, deploy Production e healthchecks de `c2x.app.br` e `ops.c2x.app.br`.
+
+
+Registro de producao:
+
+- Assunto: [Zeus] Apolo, Hermes e login em producao com Iris em standby.
+- Identificador Hefesto: HEFESTO-PROD-20260525-1214-APOLO-HERMES-IRIS-STANDBY.
+- Squad/agente responsavel: Zeus / Hefesto, com publicacao direta autorizada por Lucas.
+- Data e hora local: 2026-05-25 12:14:49 -03:00.
+- Ambiente: producao.
+- Status: EM PRODUCAO / IRIS OPERACIONAL EM STANDBY.
+- Autorizacao: Lucas confirmou que os testes em homologacao estavam OK para os demais pontos dos modulos, mas pediu para nao iniciar atendimentos Iris em producao ainda.
+- Escopo publicado:
+  - Apolo CRM 360: perfil Prospect, classificacao de Usuario por carteira/parcelas reais e bloqueio de carteira/financeiro sem parcelas emitidas;
+  - Hub/Login: tela de login sem e-mail operacional pre-preenchido;
+  - Hermes/PulseX: links HTTP/HTTPS em mensagens passam a renderizar como links clicaveis sem quebrar mencoes/formatacao;
+  - Iris: codigo Meta permanece pronto, mas producao fica em standby server-side para atendimento WhatsApp.
+- Trava Iris em producao:
+  - POST /api/iris/tickets bloqueia inicio de atendimento ativo;
+  - POST /api/iris/meta/messages bloqueia envio livre/operacional;
+  - POST /api/iris/attendant bloqueia acionamento da Caca;
+  - POST /api/iris/meta/webhook responde OK em standby, mas nao persiste/processa eventos enquanto a liberacao operacional nao ocorrer;
+  - a flag IRIS_META_PRODUCTION_STANDBY foi declarada no turbo.json; na ausencia de override, producao fica em standby por VERCEL_ENV=production.
+- Commits publicados:
+  - e9858d9 chore(iris): keep whatsapp production in standby;
+  - 37709ab fix(apolo): promote crm profile and portfolio rules;
+  - 5e40410 fix(hub): polish login and hermes links.
+- Deployment:
+  - anterior/rollback imediato: dpl_HgRaFSDbSWjF31khxDQw4YJHvBWT;
+  - novo: dpl_4feJYS8Wtgejf6kT7snxbLLARops;
+  - URL tecnica: https://careli-hub-hub-i2bs-g3lst3l28-lucasruas-devs-projects.vercel.app;
+  - aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Arquivos/modulos incluidos:
+  - apps/hub/app/api/apolo/relationships/route.ts;
+  - apps/hub/app/api/apolo/search/route.ts;
+  - apps/hub/lib/apolo/catalog.ts;
+  - apps/hub/lib/apolo/server.ts;
+  - apps/hub/lib/apolo/types.ts;
+  - apps/hub/modules/apolo/ApoloPage.tsx;
+  - docs/modules/c2x-legacy-reference.md;
+  - apps/hub/app/login/page.tsx;
+  - apps/hub/components/pulsex/message-item.tsx;
+  - apps/hub/lib/iris/meta-server.ts;
+  - apps/hub/app/api/iris/tickets/route.ts;
+  - apps/hub/app/api/iris/meta/messages/route.ts;
+  - apps/hub/app/api/iris/meta/webhook/route.ts;
+  - apps/hub/app/api/iris/attendant/route.ts;
+  - turbo.json.
+- Arquivos/modulos excluidos:
+  - root misto de homolog;
+  - alteracoes locais Iris/Caca que nao fossem a trava de standby;
+  - envs/secrets novos, migrations, banco, dominio novo, alias de homologacao e alteracoes Supabase mutaveis.
+- Validacoes locais executadas na worktree limpa:
+  - git diff --check: OK, apenas avisos CRLF conhecidos no Windows;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run build --workspace @repo/hub: OK, com warning conhecido Turbopack/NFT.
+- Build remoto Vercel Production:
+  - READY;
+  - warnings conhecidos: npm audit com 3 vulnerabilidades herdadas, Node engines, Turbopack/NFT e envs Postgres antigas fora do turbo.json.
+- Healthchecks de producao:
+  - npx.cmd vercel inspect https://c2x.app.br: Ready, deployment dpl_4feJYS8Wtgejf6kT7snxbLLARops;
+  - npx.cmd vercel inspect https://ops.c2x.app.br: Ready, deployment dpl_4feJYS8Wtgejf6kT7snxbLLARops;
+  - GET https://c2x.app.br/: 200 OK;
+  - GET https://c2x.app.br/login: 200 OK;
+  - GET https://c2x.app.br/apolo: 200 OK;
+  - GET https://c2x.app.br/hermes: 200 OK;
+  - GET https://c2x.app.br/iris: 200 OK;
+  - GET https://ops.c2x.app.br/zeus: 200 OK;
+  - rotas protegidas sem sessao (/api/iris/meta/templates, /api/apolo/relationships?profile=usuario, /api/hermes/messages, /api/operations/monitoring): 401 Unauthorized esperado;
+  - logs Vercel de erro em c2x.app.br e ops.c2x.app.br nos ultimos 10 minutos: sem logs encontrados.
+- Homologacao:
+  - https://homo.c2x.app.br permaneceu intencionalmente no deployment dpl_9sYn6MLXyr7j1JJz2oD8cfNMvU6t, usado por Lucas para testes Iris/Caca;
+  - nao houve reconciliacao do alias de homologacao para este commit porque sobrescreveria a frente de testes ativa do Lucas.
+- Riscos conhecidos:
+  - Iris esta pronta em codigo/env, mas nao deve ser considerada iniciada em producao enquanto a trava de standby estiver ativa;
+  - validacao autenticada final de Apolo/Hermes/Login depende de Lucas acessar com sessao real;
+  - warnings herdados de npm audit e Turbopack/NFT continuam pendentes fora deste recorte.
+- Rollback: promover novamente dpl_HgRaFSDbSWjF31khxDQw4YJHvBWT se houver regressao critica em Apolo, Hermes, login, Panteon principal ou OPS.
+- Proxima acao: Lucas validar Apolo/Hermes/Login em producao; quando quiser iniciar Iris em producao, abrir recorte explicito para remover/alterar o standby e rodar novo deploy/healthcheck.

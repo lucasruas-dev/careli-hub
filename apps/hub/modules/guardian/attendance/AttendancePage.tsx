@@ -62,13 +62,18 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     searchParams.get("clientId") ??
     searchParams.get("client") ??
     searchParams.get("hadesClientId");
+  const routeSection = normalizeAttendanceSection(
+    searchParams.get("view") ?? searchParams.get("section"),
+  );
   const initialClients = clients ?? queueClients;
   const [sourceClients, setSourceClients] = useState(initialClients);
   const [queueTotalCount, setQueueTotalCount] = useState(initialClients.length);
   const [queueLoading, setQueueLoading] = useState(loadFromC2x && initialClients.length === 0);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState(sourceClients[0]?.id ?? "");
-  const [activeSection, setActiveSection] = useState<AttendanceSection>("queue");
+  const [activeSection, setActiveSection] = useState<AttendanceSection>(
+    routeSection ?? "queue",
+  );
   const [search, setSearch] = useState("");
   const [enterprise, setEnterprise] = useState("Todos");
   const [priority, setPriority] = useState<AttendancePriority | "Todos">("Todos");
@@ -93,7 +98,11 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   }, [initialClients]);
 
   useEffect(() => {
-    if (!loadFromC2x) {
+    setActiveSection(routeSection ?? "queue");
+  }, [routeSection]);
+
+  useEffect(() => {
+    if (!loadFromC2x || activeSection === "desk") {
       return;
     }
 
@@ -147,7 +156,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     return () => {
       cancelled = true;
     };
-  }, [loadFromC2x]);
+  }, [activeSection, loadFromC2x]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -354,6 +363,45 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const whatsAppClient = whatsAppClientId
     ? sourceClients.find((client) => client.id === whatsAppClientId) ?? selectedClient
     : selectedClient;
+  const sectionNavigation = (
+    <nav className="flex w-fit gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-label="Modulos de cobranca">
+      {attendanceSections.map((section) => {
+        const Icon = section.icon;
+        const active = activeSection === section.id;
+
+        return (
+          <Tooltip key={section.id} content={section.label} placement="bottom">
+            <button
+              type="button"
+              onClick={() => setActiveSection(section.id)}
+              aria-label={section.label}
+              className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                active
+                  ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/20"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <Icon className="size-4" aria-hidden="true" />
+              {section.badge ? (
+                <span className="absolute -right-1 -top-1 rounded-full bg-[#A07C3B] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {section.badge}
+                </span>
+              ) : null}
+            </button>
+          </Tooltip>
+        );
+      })}
+    </nav>
+  );
+
+  if (activeSection === "desk" && !whatsAppClientId) {
+    return (
+      <div className="space-y-5">
+        {sectionNavigation}
+        <IrisPage embedded boardOnly queueSlugFilter="cobranca" />
+      </div>
+    );
+  }
 
   if (!selectedClient) {
     return (
@@ -517,37 +565,10 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
         />
       ) : (
         <div className="space-y-5">
-          <nav className="flex w-fit gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-label="Módulos de cobrança">
-            {attendanceSections.map((section) => {
-              const Icon = section.icon;
-              const active = activeSection === section.id;
-
-              return (
-                <Tooltip key={section.id} content={section.label} placement="bottom">
-                  <button
-                    type="button"
-                    onClick={() => setActiveSection(section.id)}
-                    aria-label={section.label}
-                    className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                      active
-                        ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/20"
-                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
-                  >
-                    <Icon className="size-4" aria-hidden="true" />
-                    {section.badge ? (
-                      <span className="absolute -right-1 -top-1 rounded-full bg-[#A07C3B] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                        {section.badge}
-                      </span>
-                    ) : null}
-                  </button>
-                </Tooltip>
-              );
-            })}
-          </nav>
+          {sectionNavigation}
 
           {activeSection === "desk" ? (
-            <IrisPage embedded boardOnly operatorScoped />
+            <IrisPage embedded boardOnly queueSlugFilter="cobranca" />
           ) : (
             <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
               <QueuePanel
@@ -616,6 +637,36 @@ function normalizeAttendanceProtocol(value?: string | null) {
   const normalized = String(value ?? "").trim().toUpperCase();
 
   return /^AT-\d{1,12}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeAttendanceSection(value?: string | null): AttendanceSection | null {
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    normalized === "iris" ||
+    normalized === "desk" ||
+    normalized === "board"
+  ) {
+    return "desk";
+  }
+
+  if (normalized === "carteira" || normalized === "portfolio") {
+    return "portfolio";
+  }
+
+  if (
+    normalized === "fila" ||
+    normalized === "queue" ||
+    normalized === "cobranca"
+  ) {
+    return "queue";
+  }
+
+  return null;
 }
 
 async function getHadesAccessToken() {

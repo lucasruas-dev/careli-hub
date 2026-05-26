@@ -272,13 +272,24 @@ export function WhatsAppConversationPanel({
   const archivedTicketCount = Math.max(previousTicketCycles.length - visiblePreviousTicketCycles.length, 0);
   const irisTicketProfiles = irisTicketOptions.profiles;
   const irisWhatsAppChannels = irisTicketOptions.channels;
+  const irisCollectionQueueId = findPreferredQueueId(irisTicketOptions.queues, irisTicketProfiles);
+  const irisCollectionSubjects = irisCollectionQueueId
+    ? irisTicketProfiles.filter((profile) => profile.queueId === irisCollectionQueueId)
+    : irisTicketProfiles;
+  const irisCollectionSubjectOptions = irisCollectionSubjects.length
+    ? irisCollectionSubjects
+    : irisTicketProfiles;
   const operatorLabel = irisTicketOptions.operator.label || client.responsavel;
 
   const ticketClosed = ticket.status === "Encerrado" || ticket.status === "Cancelado";
   const ticketActive = ticket.status !== "Pendente" && !ticketClosed;
   const currentTicketProfile = irisTicketProfiles.find((profile) => profile.id === ticket.profileId);
+  const ticketSubjectProfiles =
+    currentTicketProfile && !irisCollectionSubjectOptions.some((profile) => profile.id === currentTicketProfile.id)
+      ? [currentTicketProfile, ...irisCollectionSubjectOptions]
+      : irisCollectionSubjectOptions;
   const ticketChecklist: TicketChecklistItem[] = [
-    { id: "profile", label: "Perfil", ok: Boolean(ticket.profileId && ticket.profileName) },
+    { id: "profile", label: "Assunto", ok: Boolean(ticket.profileId && ticket.profileName) },
     { id: "unit", label: "Unidade", ok: !requiresIrisUnit(currentTicketProfile) || Boolean(selectedUnitId) },
     {
       id: "installments",
@@ -394,6 +405,11 @@ export function WhatsAppConversationPanel({
     const selectedUnits = selectedUnitIds
       .map((unitId) => client.carteira.unidades.find((item) => item.id === unitId))
       .filter(Boolean);
+    const relatedInstallmentLabels = resolveRelatedInstallmentLabels(
+      client,
+      selectedUnitIds,
+      relatedInstallments,
+    );
     const primaryUnit = selectedUnits[0] ?? selectedUnit;
     const profile = irisTicketProfiles.find((item) => item.id === profileId) ?? irisTicketProfiles[0];
     const channel =
@@ -404,7 +420,7 @@ export function WhatsAppConversationPanel({
       irisTicketOptions.templates[0];
 
     if (!profile) {
-      throw new Error("Selecione um perfil real da Iris para abrir o ticket.");
+      throw new Error("Selecione um assunto real da Iris para abrir o ticket.");
     }
 
     if (!channel?.id) {
@@ -430,6 +446,7 @@ export function WhatsAppConversationPanel({
           attendanceProtocol: existingAttendanceProtocol,
           hadesClientId: client.id,
           linkedAttendanceProtocol: existingAttendanceProtocol,
+          relatedInstallmentLabels,
           relatedInstallments,
           selectedUnitIds,
           unitCodes: selectedUnits.map((unit) => unit?.matricula).filter(Boolean),
@@ -445,6 +462,7 @@ export function WhatsAppConversationPanel({
           enterprise: primaryUnit?.empreendimento ?? client.carteira.empreendimento,
           linkedAttendanceProtocol: existingAttendanceProtocol,
           initialNote: options.initialNote?.trim() || null,
+          relatedInstallmentLabels,
           relatedInstallments,
           selectedUnitIds,
           unitCodes: selectedUnits.map((unit) => unit?.matricula).filter(Boolean),
@@ -453,7 +471,7 @@ export function WhatsAppConversationPanel({
         sourceEntityId: client.c2xAcquisitionRequestId ?? client.id,
         sourceEntityType: "hades-collection-client",
         sourceModule: "hades",
-        subject: `Cobranca Hades - ${profile.name}`,
+        subject: profile.name,
         templateId: template.id,
         templateLanguage: template.language,
         templateName: template.templateName,
@@ -506,8 +524,8 @@ export function WhatsAppConversationPanel({
       type: "Observação operacional",
       title: completingAutoTicket ? "Dados do ticket completados na Iris" : "Ticket WhatsApp iniciado pela Iris",
       description: completingAutoTicket
-        ? `Dados obrigatórios da cobranca ${collectionProtocol} completados pelo operador via Iris. Atendimento raiz: ${attendanceProtocol}. Perfil: ${profile.name}.`
-        : `Cobranca ${collectionProtocol} iniciada pelo Hades via Iris/Meta e vinculada ao atendimento ${attendanceProtocol}. Perfil ${profile.name}, prioridade ${mapIrisPriority(profile.priority)} e SLA ${formatSlaMinutes(profile.slaFirstResponseMinutes)}.`,
+        ? `Dados obrigatórios da cobranca ${collectionProtocol} completados pelo operador via Iris. Atendimento raiz: ${attendanceProtocol}. Assunto: ${profile.name}.`
+        : `Cobranca ${collectionProtocol} iniciada pelo Hades via Iris/Meta e vinculada ao atendimento ${attendanceProtocol}. Assunto: ${profile.name}, prioridade ${mapIrisPriority(profile.priority)} e SLA ${formatSlaMinutes(profile.slaFirstResponseMinutes)}.`,
       occurredAt: openedAt,
       operator: operatorLabel,
       status: "Registrado",
@@ -529,17 +547,17 @@ export function WhatsAppConversationPanel({
       slaHours: Math.max(Math.ceil(profile.slaFirstResponseMinutes / 60), 1),
       relatedInstallments:
         requiresIrisInstallment(profile) && current.relatedInstallments.length === 0
-          ? buildInstallmentOptions(client).slice(0, 1).map((item) => item.value)
+          ? buildInstallmentOptions(client, selectedUnitId ? [selectedUnitId] : []).slice(0, 1).map((item) => item.value)
           : current.relatedInstallments,
     }));
-    setFeedback(`Perfil do ticket alterado para ${profile.name}. Histórico operacional atualizado.`);
+    setFeedback(`Assunto do ticket alterado para ${profile.name}. Histórico operacional atualizado.`);
     onTimelineEvent(client.id, {
       actionType: "ticket",
       id: `${client.id}-whatsapp-ticket-profile-${profile.id}`,
       protocol: ticket.protocol,
       type: "Observação operacional",
-      title: "Perfil do ticket alterado",
-      description: `Perfil do Ticket ${ticket.protocol} alterado para ${profile.name}. Prioridade padrao ${mapIrisPriority(profile.priority)}, SLA ${formatSlaMinutes(profile.slaFirstResponseMinutes)}.`,
+      title: "Assunto do ticket alterado",
+      description: `Assunto do Ticket ${ticket.protocol} alterado para ${profile.name}. Prioridade padrao ${mapIrisPriority(profile.priority)}, SLA ${formatSlaMinutes(profile.slaFirstResponseMinutes)}.`,
       occurredAt: "11/05/2026 12:42",
       operator: operatorLabel,
       status: "Registrado",
@@ -794,13 +812,13 @@ export function WhatsAppConversationPanel({
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center xl:justify-end">
                 {ticketActive ? (
                   <label className="inline-flex h-9 max-w-full items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-2 text-xs font-semibold text-slate-600">
-                    <span className="shrink-0">Perfil</span>
+                    <span className="shrink-0">Assunto</span>
                     <select
                       value={ticket.profileId}
                       onChange={(event) => changeTicketProfile(event.target.value)}
                       className="h-6 max-w-52 bg-transparent text-xs font-semibold text-slate-700 outline-none"
                     >
-                      {irisTicketProfiles.map((profile) => (
+                      {ticketSubjectProfiles.map((profile) => (
                         <option key={profile.id} value={profile.id}>
                           {profile.name}
                         </option>
@@ -1242,6 +1260,29 @@ function TicketSetupModal({
     () => buildInstallmentOptions(client, selectedUnitIds),
     [client, selectedUnitIds],
   );
+  const previewInstallmentLabels = useMemo(
+    () => resolveRelatedInstallmentLabels(client, selectedUnitIds, relatedInstallments),
+    [client, selectedUnitIds, relatedInstallments],
+  );
+  const previewProtocolReference = useMemo(
+    () => resolveTicketTemplateProtocolPreview(linkedAttendanceProtocol),
+    [linkedAttendanceProtocol],
+  );
+  const templateMessagePreview = useMemo(() => {
+    return buildTicketTemplateMessagePreview({
+      body: selectedTemplate?.body ?? null,
+      firstName: firstName(client.nome),
+      installmentsSummary: formatInstallmentSummaryForTemplatePreview(
+        previewInstallmentLabels,
+      ),
+      protocolReference: previewProtocolReference,
+    });
+  }, [
+    client.nome,
+    previewInstallmentLabels,
+    previewProtocolReference,
+    selectedTemplate?.body,
+  ]);
   const templateApproved = Boolean(selectedTemplate?.id && selectedTemplate.metaStatus === "APPROVED");
   const missingProfile = !profileId;
   const missingChannel = !channelId;
@@ -1409,7 +1450,7 @@ function TicketSetupModal({
                 </select>
               </label>
               <label className="block rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2.5">
-                <span className="text-xs font-semibold text-[#7A5E2C]">Perfil</span>
+                <span className="text-xs font-semibold text-[#7A5E2C]">Assunto</span>
                 <select
                   value={profileId}
                   onChange={(event) => setProfileId(event.target.value)}
@@ -1440,7 +1481,22 @@ function TicketSetupModal({
               <p className="mt-2 text-xs font-medium text-slate-500">
                 {selectedTemplate?.templateName ?? "Aguardando template aprovado na Iris."}
               </p>
+              <p className="mt-1 text-[11px] font-medium text-slate-400">
+                Variaveis sugeridas: {"{{1}}"} nome, {"{{2}}"} parcela(s), {"{{3}}"} protocolo.
+              </p>
             </label>
+            <div className="rounded-xl border border-[#A07C3B]/20 bg-[#A07C3B]/5 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-[#7A5E2C]">Preview da mensagem</p>
+                <span className="text-[11px] font-medium text-slate-500">WhatsApp</span>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap rounded-lg border border-[#A07C3B]/20 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+                {templateMessagePreview}
+              </p>
+              <p className="mt-2 text-[11px] font-medium text-slate-500">
+                Protocolo de referencia: {previewProtocolReference}.
+              </p>
+            </div>
 
             {requiresIrisUnit(selectedProfile) ? (
               <div className="rounded-xl border border-slate-200/70 bg-white p-3">
@@ -1467,7 +1523,7 @@ function TicketSetupModal({
                 </div>
               </div>
             ) : (
-              <ReadonlyField label="Unidade relacionada" value="Opcional para este perfil" />
+              <ReadonlyField label="Unidade relacionada" value="Opcional para este assunto" />
             )}
 
             {requiresIrisInstallment(selectedProfile) ? (
@@ -1497,12 +1553,14 @@ function TicketSetupModal({
                   </select>
                 ) : (
                     <p className="text-sm font-medium text-slate-500">
-                      Aguardando parcelas reais do C2X para a unidade selecionada.
+                      {client.c2xInstallmentsLoaded === false
+                        ? "Aguardando parcelas reais do C2X para a unidade selecionada."
+                        : "Nenhuma parcela vencida encontrada para a unidade selecionada."}
                     </p>
                 )}
               </div>
             ) : (
-              <ReadonlyField label="Parcelas relacionadas" value="Nao obrigatorio para este perfil" />
+              <ReadonlyField label="Parcelas relacionadas" value="Nao obrigatorio para este assunto" />
             )}
 
             <label className="block rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
@@ -1570,14 +1628,14 @@ function TicketSetupModal({
                           : missingTemplate
                             ? "Selecione o template Meta aprovado."
                             : missingProfile
-                              ? "Selecione um perfil."
+                              ? "Selecione um assunto."
                               : missingUnit
-                                ? "Selecione uma ou mais unidades para este perfil."
+                                ? "Selecione uma ou mais unidades para este assunto."
                                 : missingInstallment
-                                  ? "Selecione ao menos uma parcela relacionada."
+                                  ? "Selecione ao menos uma parcela vencida relacionada."
                                   : missingPriority
-                                    ? "Defina a prioridade do perfil."
-                                    : "Defina o SLA do perfil."}
+                                    ? "Defina a prioridade do assunto."
+                                    : "Defina o SLA do assunto."}
             </p>
           ) : null}
           <button
@@ -2005,7 +2063,7 @@ function ClientContextPanel({
             <ContextItem label="Workflow" value={client.workflow.stage} />
             <ContextItem label="Operador" value={client.responsavel} />
             <ContextItem label="Protocolo" value={ticket.protocol} />
-            <ContextItem label="Perfil" value={ticket.profileName} />
+            <ContextItem label="Assunto" value={ticket.profileName} />
             <ContextItem label="SLA" value={ticket.slaHours > 0 ? `${ticket.slaHours}h · Atenção` : "Sem SLA"} />
             <ContextItem label="Prioridade" value={ticket.priority} />
             <ContextItem label="Origem" value={ticket.origin} />
@@ -2056,7 +2114,7 @@ function ClientContextPanel({
               </div>
             ) : null}
             {ticketIncomplete ? (
-              <Tooltip content="Completar perfil, unidade e parcelas do ticket autoaberto." placement="top" className="w-full" triggerClassName="w-full">
+              <Tooltip content="Completar assunto, unidade e parcelas vencidas do ticket autoaberto." placement="top" className="w-full" triggerClassName="w-full">
                 <button
                   type="button"
                   onClick={onCompleteTicket}
@@ -2382,7 +2440,7 @@ function mapIrisTicketOptions(payload: any): IrisTicketOptions {
           category: String(profile.category ?? "Atendimento"),
           description: typeof profile.description === "string" ? profile.description : null,
           id: String(profile.id ?? ""),
-          name: String(profile.name ?? "Perfil Iris"),
+          name: String(profile.name ?? "Assunto Iris"),
           priority: normalizeIrisPriority(profile.priority),
           queueId: profile.queue_id ? String(profile.queue_id) : null,
           queueLabel: queue?.name ?? null,
@@ -2561,10 +2619,154 @@ function buildInstallmentOptions(client: QueueClient, selectedUnitIds: string[] 
 
   return (client.c2xInstallments ?? [])
     .filter((installment) => !allowedUnitIds.size || allowedUnitIds.has(installment.unitId))
+    .filter(isOverdueC2xInstallment)
     .map((installment) => ({
-      label: `${installment.unitCode ?? installment.unitLabel ?? "Unidade"} · ${installment.number} · ${installment.dueDate} · ${installment.value}`,
+      label: `${installment.unitCode ?? installment.unitLabel ?? "Unidade"} · ${installment.number} · ${installment.dueDate} · ${installment.value} · ${installment.status}`,
       value: `${installment.id} | ${installment.unitId} | ${installment.number} | ${installment.dueDate} | ${installment.value}`,
     }));
+}
+
+function resolveRelatedInstallmentLabels(
+  client: QueueClient,
+  selectedUnitIds: string[],
+  relatedInstallments: string[],
+) {
+  const optionByValue = new Map(
+    buildInstallmentOptions(client, selectedUnitIds).map((option) => [
+      option.value,
+      option.label,
+    ]),
+  );
+
+  return relatedInstallments
+    .map((installment) => {
+      const mapped = optionByValue.get(installment);
+
+      if (mapped) {
+        return mapped;
+      }
+
+      const parts = installment
+        .split("|")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const number = parts[2] ?? "";
+      const dueDate = parts[3] ?? "";
+      const amount = parts[4] ?? "";
+      const fallback = [number, dueDate, amount]
+        .filter(Boolean)
+        .join(" · ");
+
+      return fallback || installment;
+    })
+    .filter(Boolean);
+}
+
+function resolveTicketTemplateProtocolPreview(
+  linkedAttendanceProtocol?: string | null,
+) {
+  const attendanceProtocol = normalizeAttendanceProtocol(linkedAttendanceProtocol);
+
+  if (!attendanceProtocol) {
+    return "CB gerado na abertura";
+  }
+
+  const match = /^AT-(\d+)$/i.exec(attendanceProtocol.trim());
+
+  if (match?.[1]) {
+    return `CB-${match[1]}`;
+  }
+
+  return attendanceProtocol;
+}
+
+function formatInstallmentSummaryForTemplatePreview(labels: string[]) {
+  if (!labels.length) {
+    return "Sem parcela informada";
+  }
+
+  const preview = labels.slice(0, 3).join(" | ");
+
+  return labels.length > 3
+    ? `${preview} +${labels.length - 3} parcela(s)`
+    : preview;
+}
+
+function buildTicketTemplateMessagePreview({
+  body,
+  firstName,
+  installmentsSummary,
+  protocolReference,
+}: {
+  body: string | null;
+  firstName: string;
+  installmentsSummary: string;
+  protocolReference: string;
+}) {
+  if (!body) {
+    return "Template sem corpo configurado para preview.";
+  }
+
+  const parameters = [firstName, installmentsSummary, protocolReference];
+
+  return body.replace(/{{\s*(\d+)\s*}}/g, (placeholder, rawIndex) => {
+    const index = Number.parseInt(String(rawIndex), 10);
+
+    if (Number.isNaN(index) || index <= 0) {
+      return placeholder;
+    }
+
+    return parameters[index - 1] ?? placeholder;
+  });
+}
+
+function isOverdueC2xInstallment(installment: NonNullable<QueueClient["c2xInstallments"]>[number]) {
+  const status = normalizeOptionText(installment.status);
+
+  if (
+    status.includes("liquidada") ||
+    status.includes("paga") ||
+    status.includes("pago") ||
+    Boolean(installment.paymentDate) ||
+    Boolean(installment.paymentDateInput)
+  ) {
+    return false;
+  }
+
+  if (status.includes("vencida") || Number(installment.overdueDays ?? 0) > 0) {
+    return true;
+  }
+
+  const dueDateValue =
+    parseC2xInstallmentDate(installment.dueDateInput) ??
+    parseC2xInstallmentDate(installment.dueDate);
+
+  if (!dueDateValue) return false;
+
+  return dueDateValue < todayStartValue();
+}
+
+function parseC2xInstallmentDate(value?: string | null) {
+  const raw = String(value ?? "").trim();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (iso) {
+    return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])).getTime();
+  }
+
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+
+  if (br) {
+    return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1])).getTime();
+  }
+
+  return null;
+}
+
+function todayStartValue() {
+  const today = new Date();
+
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
 }
 
 async function getIrisAccessToken() {

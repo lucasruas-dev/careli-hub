@@ -7,7 +7,7 @@ import { useState, type FormEvent } from "react";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
-  const [email, setEmail] = useState("operacao@careli.com.br");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -1,6 +1,7 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
 import { getHadesDbPool, sanitizeHadesDbError } from "@/lib/guardian/db";
+import { shouldRestrictHadesEnterprises } from "@/lib/guardian/runtime-environment";
 import { buildQueueClientsFromSources } from "@/modules/guardian/attendance/data";
 import type {
   HadesAttendanceSourceClient,
@@ -173,13 +174,16 @@ const enterpriseDisplayExpression = `
   end
 `;
 
-const validEnterpriseWhere = `
+const productionEnterpriseWhere = `
   e.id is not null
   and upper(trim(coalesce(e.code, ''))) in (
     'REP', 'EDL', 'LOU', 'LOS', 'PDV', 'PVS', 'RDP', 'RPS', 'RPC',
     'LBR', 'LBP', 'LBF', 'MDS', 'MLN', 'VDO', 'VAL', 'VDP'
   )
 `;
+const validEnterpriseWhere = shouldRestrictHadesEnterprises()
+  ? productionEnterpriseWhere
+  : "e.id is not null";
 
 function guardianDbConfigError(missing: string[]) {
   return Object.assign(

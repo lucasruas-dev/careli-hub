@@ -43,6 +43,7 @@ type ApoloDashboardOptions = {
 
 type C2xUsersQueryOptions = {
   limit?: number | null;
+  profile?: ApoloProfile | null;
 };
 
 type ApoloEntityRow = {
@@ -301,6 +302,8 @@ const LIVE_C2X_DEFAULT_ENTITY_LIMIT = 150;
 const LIVE_C2X_MAX_ENTITY_LIMIT = 500;
 const C2X_ACTIVE_PAYMENT_WHERE =
   "(p.payment_to_delete is null or p.payment_to_delete = 0)";
+const C2X_PORTFOLIO_STAGE_WHERE =
+  "ar.acquisition_request_stage_id in (1, 2, 3, 4, 5, 6, 9)";
 const C2X_OUTSTANDING_PAYMENT_EXPRESSION = `
   coalesce(
     nullif(p.paid_value, 0),
@@ -325,6 +328,13 @@ const C2X_ENTERPRISE_DISPLAY_EXPRESSION = `
     when upper(trim(e.code)) = 'VDP' then 'Vistas da Praia'
     else trim(coalesce(nullif(e.divulgation_name, ''), nullif(e.name, ''), concat('Empreendimento ', e.id)))
   end
+`;
+const C2X_VALID_ENTERPRISE_WHERE = `
+  e.id is not null
+  and upper(trim(coalesce(e.code, ''))) in (
+    'REP', 'EDL', 'LOU', 'LOS', 'PDV', 'PVS', 'RDP', 'RPS', 'RPC',
+    'LBR', 'LBP', 'LBF', 'MDS', 'MLN', 'VDO', 'VAL', 'VDP'
+  )
 `;
 
 export async function loadApoloDashboard(
@@ -619,7 +629,7 @@ async function loadApoloTablesDashboard(
     }, documentLabelsByEntity.get(row.id), c2xPortfolioByEntity.get(row.id)),
   );
 
-  const usuarioCount = profileSummaries.find((summary) => summary.profile === "usuario")?.count ?? 0;
+  const prospectCount = profileSummaries.find((summary) => summary.profile === "prospect")?.count ?? 0;
 
   return {
     data: {
@@ -634,7 +644,7 @@ async function loadApoloTablesDashboard(
         source: "apolo",
         status: "ready",
       },
-      nonBuyerUsersCount: Math.max(usuarioCount - buyerUsersCount, 0),
+      nonBuyerUsersCount: prospectCount,
       pendingReviewCount,
       portfolioPaymentsCount: 0,
       portfolioUnitsCount,
@@ -651,7 +661,7 @@ function isSupabaseSecretKey(value: string) {
 
 function hasStaleCommercialPortfolio(rows: ApoloCommercialLinkRow[]) {
   return rows.some((row) => {
-    if (row.relationship_role !== "Usuario comprador") {
+    if (!isBuyerCommercialRole(row.relationship_role)) {
       return false;
     }
 
@@ -675,6 +685,26 @@ function hasStaleCommercialPortfolio(rows: ApoloCommercialLinkRow[]) {
       legacyText.includes("sem carteira por pagamento")
     );
   });
+}
+
+function hasCommercialPortfolioEvidence(link: ApoloCommercialLink) {
+  return Boolean(link.installments?.length);
+}
+
+function hasCommercialRowPortfolioEvidence(row: ApoloCommercialLinkRow) {
+  if (!isBuyerCommercialRole(row.relationship_role)) {
+    return false;
+  }
+
+  const metadata = metadataRecord(row.metadata);
+
+  return Boolean(mapMetadataInstallments(metadata.installments)?.length);
+}
+
+function isBuyerCommercialRole(role: string | null | undefined) {
+  const normalized = normalizeSearchText(role ?? "");
+
+  return normalized === "usuario" || normalized === "usuario comprador";
 }
 
 async function fetchC2xDocumentLabelsByEntity(
@@ -762,7 +792,6 @@ async function fetchC2xPortfolioByEntity(
   }
 
   try {
-    const userPlaceholders = userIds.map(() => "?").join(",");
     const [portfolioRows] = await poolResult.pool.query<C2xPortfolioRow[]>(
       `
         select
@@ -827,15 +856,18 @@ async function fetchC2xPortfolioByEntity(
           union all select id, client_5_id from acquisition_requests where client_5_id is not null
         ) participants
         inner join acquisition_requests ar on ar.id = participants.request_id
-        inner join payments p on p.acquisition_request_id = ar.id
+        left join payments p on p.acquisition_request_id = ar.id
+          and p.payment_status_id in (5, 6, 7)
+          and ${C2X_ACTIVE_PAYMENT_WHERE}
         left join users client on client.id = participants.user_id
         left join users linked on linked.id = client.vinculed_by_id
         left join acquisition_request_stages ars on ars.id = ar.acquisition_request_stage_id
         left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
         left join enterprises e on e.id = eu.enterprise_id
-        where participants.user_id in (${userPlaceholders})
-          and p.payment_status_id in (5, 6, 7)
-          and ${C2X_ACTIVE_PAYMENT_WHERE}
+        where participants.user_id in (?)
+          and ${C2X_VALID_ENTERPRISE_WHERE}
+          and ar.id is not null
+          and (p.id is not null or ${C2X_PORTFOLIO_STAGE_WHERE})
         group by
           participants.user_id,
           ar.id,
@@ -856,7 +888,7 @@ async function fetchC2xPortfolioByEntity(
           linked.name
         order by ar.updated_at desc, ar.id desc
       `,
-      userIds,
+      [userIds],
     );
 
     const requestIds = uniqueStrings(
@@ -865,7 +897,6 @@ async function fetchC2xPortfolioByEntity(
     const installmentsByRequestId = new Map<string, ApoloInstallment[]>();
 
     if (requestIds.length) {
-      const requestPlaceholders = requestIds.map(() => "?").join(",");
       const [installmentRows] = await poolResult.pool.query<C2xPortfolioInstallmentRow[]>(
         `
           select
@@ -890,12 +921,12 @@ async function fetchC2xPortfolioByEntity(
             p.payment_asaas_invoice_url as invoice_url
           from payments p
           left join parcel_types pt on pt.id = p.parcel_type_id
-          where p.acquisition_request_id in (${requestPlaceholders})
+          where p.acquisition_request_id in (?)
             and p.payment_status_id in (5, 6, 7)
             and ${C2X_ACTIVE_PAYMENT_WHERE}
           order by p.acquisition_request_id asc, p.due_date asc, p.id asc
         `,
-        requestIds,
+        [requestIds],
       );
 
       for (const row of installmentRows) {
@@ -934,7 +965,8 @@ async function fetchC2xPortfolioByEntity(
     }
 
     return portfolioByEntity;
-  } catch {
+  } catch (error) {
+    console.error("[apolo] C2X portfolio hydration failed", sanitizeHadesDbError(error));
     return new Map<string, C2xPortfolioHydration>();
   }
 }
@@ -965,7 +997,7 @@ function mapC2xPortfolioRowToCommercialLink(
       brokerAgency ??
       firstFilled(row.acquisition_request_code) ??
       "Vinculo comercial",
-    role: "Usuario comprador",
+    role: installments.length ? "Usuario" : "Prospect",
     stage: firstFilled(row.stage_name) ?? "Relacionamento ativo",
     tableValue: positiveCurrencyOrEmpty(row.unit_price),
     unit: c2xUnitLabel(block, lot, unitCode),
@@ -1161,7 +1193,7 @@ async function fetchApoloEntityRows(
       ? await fetchSearchEntityIds(adminClient, normalizedQuery)
       : null;
     const profileIds = profile
-      ? await fetchProfileEntityIds(adminClient, profile)
+      ? await fetchDerivedProfileEntityIds(adminClient, profile)
       : null;
 
     if (searchedIds?.error || profileIds?.error) {
@@ -1232,8 +1264,12 @@ async function fetchSearchEntityIds(
   const ids: string[] = [];
   const pageSize = 1000;
 
-  if (shouldSearchBuyers(normalizedQuery)) {
+  if (shouldSearchBuyerUsers(normalizedQuery)) {
     return fetchBuyerEntityIds(adminClient, broadApoloQueryLimit(normalizedQuery));
+  }
+
+  if (shouldSearchProspects(normalizedQuery)) {
+    return fetchProspectEntityIds(adminClient, broadApoloQueryLimit(normalizedQuery));
   }
 
   for (let from = 0; ; from += pageSize) {
@@ -1266,15 +1302,15 @@ async function fetchBuyerEntityIds(
   maxIds?: number,
 ) {
   const ids: string[] = [];
-  const pageSize = maxIds ? Math.min(1000, maxIds) : 1000;
+  const pageSize = 1000;
 
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await adminClient
       .from("apolo_commercial_links")
-      .select("entity_id")
-      .eq("relationship_role", "Usuario comprador")
+      .select("entity_id,enterprise_name,unit_label,relationship_role,stage_label,reference_label,metadata")
+      .in("relationship_role", ["Usuario", "Usuario comprador"])
       .range(from, from + pageSize - 1)
-      .returns<Array<{ entity_id: string }>>();
+      .returns<ApoloCommercialLinkRow[]>();
 
     if (error) {
       return {
@@ -1283,7 +1319,11 @@ async function fetchBuyerEntityIds(
       };
     }
 
-    ids.push(...(data ?? []).map((row) => row.entity_id));
+    ids.push(
+      ...(data ?? [])
+        .filter(hasCommercialRowPortfolioEvidence)
+        .map((row) => row.entity_id),
+    );
 
     if (maxIds && ids.length >= maxIds) {
       break;
@@ -1299,17 +1339,73 @@ async function fetchBuyerEntityIds(
   };
 }
 
-function shouldSearchBuyers(normalizedQuery: string) {
+async function fetchProspectEntityIds(
+  adminClient: ApoloSupabaseClient,
+  maxIds?: number,
+) {
+  const [usuarioLikeResult, buyerResult] = await Promise.all([
+    fetchUsuarioLikeEntityIds(adminClient),
+    fetchBuyerEntityIds(adminClient),
+  ]);
+
+  if (usuarioLikeResult.error || buyerResult.error) {
+    return {
+      error: usuarioLikeResult.error ?? buyerResult.error,
+      ids: [],
+    };
+  }
+
+  const buyerIds = new Set(buyerResult.ids);
+  const ids = usuarioLikeResult.ids.filter((id) => !buyerIds.has(id));
+
+  return {
+    ids: maxIds ? ids.slice(0, maxIds) : ids,
+  };
+}
+
+async function fetchUsuarioLikeEntityIds(adminClient: ApoloSupabaseClient) {
+  const [usuarioResult, prospectResult] = await Promise.all([
+    fetchProfileEntityIds(adminClient, "usuario"),
+    fetchProfileEntityIds(adminClient, "prospect"),
+  ]);
+
+  if (usuarioResult.error || prospectResult.error) {
+    return {
+      error: usuarioResult.error ?? prospectResult.error,
+      ids: [],
+    };
+  }
+
+  return {
+    ids: uniqueStrings([...usuarioResult.ids, ...prospectResult.ids]),
+  };
+}
+
+function shouldSearchBuyerUsers(normalizedQuery: string) {
   return [
     "comprador",
     "compradores",
+    "usuario",
     "usuario comprador",
+    "usuarios",
     "usuarios compradores",
   ].includes(normalizedQuery);
 }
 
+function shouldSearchProspects(normalizedQuery: string) {
+  return [
+    "nao comprador",
+    "nao compradores",
+    "prospect",
+    "prospects",
+    "prospecto",
+    "prospectos",
+    "sem compra",
+  ].includes(normalizedQuery);
+}
+
 function broadApoloQueryLimit(normalizedQuery: string) {
-  if (shouldSearchBuyers(normalizedQuery)) {
+  if (shouldSearchBuyerUsers(normalizedQuery) || shouldSearchProspects(normalizedQuery)) {
     return 120;
   }
 
@@ -1346,6 +1442,21 @@ async function fetchProfileEntityIds(
       };
     }
   }
+}
+
+async function fetchDerivedProfileEntityIds(
+  adminClient: ApoloSupabaseClient,
+  profile: ApoloProfile,
+) {
+  if (profile === "usuario") {
+    return fetchBuyerEntityIds(adminClient);
+  }
+
+  if (profile === "prospect") {
+    return fetchProspectEntityIds(adminClient);
+  }
+
+  return fetchProfileEntityIds(adminClient, profile);
 }
 
 async function fetchEntityRowsByIds(
@@ -1441,12 +1552,38 @@ async function fetchRows<T>(
 async function fetchProfileSummaryCounts(
   adminClient: ApoloSupabaseClient,
 ): Promise<ApoloProfileSummary[]> {
+  const [buyerResult, usuarioLikeResult] = await Promise.all([
+    fetchBuyerEntityIds(adminClient),
+    fetchUsuarioLikeEntityIds(adminClient),
+  ]);
+  const buyerCount = buyerResult.error ? 0 : buyerResult.ids.length;
+  const usuarioLikeCount = usuarioLikeResult.error ? 0 : usuarioLikeResult.ids.length;
+  const prospectCount = Math.max(usuarioLikeCount - buyerCount, 0);
+
   return Promise.all(
-    apoloProfileCardOrder.map(async (profile) => ({
-      count: await countApoloProfileRows(adminClient, profile),
-      label: apoloProfileLabels[profile],
-      profile,
-    })),
+    apoloProfileCardOrder.map(async (profile) => {
+      if (profile === "usuario") {
+        return {
+          count: buyerCount,
+          label: apoloProfileLabels[profile],
+          profile,
+        };
+      }
+
+      if (profile === "prospect") {
+        return {
+          count: prospectCount,
+          label: apoloProfileLabels[profile],
+          profile,
+        };
+      }
+
+      return {
+        count: await countApoloProfileRows(adminClient, profile),
+        label: apoloProfileLabels[profile],
+        profile,
+      };
+    }),
   );
 }
 
@@ -1504,16 +1641,13 @@ async function countApoloBuyerEntities(adminClient: ApoloSupabaseClient) {
 }
 
 async function countApoloBuyerCommercialLinks(adminClient: ApoloSupabaseClient) {
-  const { count, error } = await adminClient
-    .from("apolo_commercial_links")
-    .select("entity_id", { count: "exact", head: true })
-    .eq("relationship_role", "Usuario comprador");
+  const result = await fetchBuyerEntityIds(adminClient);
 
-  if (error) {
+  if (result.error) {
     return 0;
   }
 
-  return count ?? 0;
+  return result.ids.length;
 }
 
 async function loadLiveC2xDashboard(
@@ -1538,7 +1672,10 @@ async function loadLiveC2xDashboard(
       poolResult.pool.query<C2xTableCountsRow[]>(c2xTableCountsQuery()),
       poolResult.pool.query<C2xCrmAggregateRow[]>(c2xCrmAggregateQuery()),
       poolResult.pool.query<C2xUserRow[]>(
-        c2xUsersQuery({ limit: liveUsersLimit }),
+        c2xUsersQuery({
+          limit: liveUsersLimit,
+          profile: options.profile,
+        }),
       ),
     ]);
     const profiles = profileRows[0];
@@ -1546,8 +1683,24 @@ async function loadLiveC2xDashboard(
     const crmCounts = crmRows[0][0];
     const users = userRows[0];
     const limit = normalizedQuery ? undefined : options.limit ?? DEFAULT_CRM_LIMIT;
-    const entities = users
-      .map(mapC2xUserToApoloEntity)
+    const candidateLimit = limit
+      ? Math.min(
+          Math.max(limit * 25, LIVE_C2X_DEFAULT_ENTITY_LIMIT),
+          LIVE_C2X_MAX_ENTITY_LIMIT,
+        )
+      : undefined;
+    const candidateRows = users
+      .filter((row) => matchesLiveC2xCandidateOptions(row, options))
+      .slice(0, candidateLimit);
+    const c2xPortfolioByEntity =
+      await fetchC2xPortfolioByEntity(buildLiveC2xSourceLinks(candidateRows));
+    const entities = candidateRows
+      .map((row) =>
+        mapC2xUserToApoloEntity(
+          row,
+          c2xPortfolioByEntity.get(liveC2xEntityId(row.id)),
+        ),
+      )
       .filter((entity) => matchesDashboardOptions(entity, options))
       .slice(0, limit);
     const linkedUsersCount = sumProfileMetric(profiles, 2, "with_vinculed_by");
@@ -1572,7 +1725,10 @@ async function loadLiveC2xDashboard(
         ),
         portfolioPaymentsCount: toNumber(crmCounts?.portfolio_payments_total),
         portfolioUnitsCount: toNumber(crmCounts?.portfolio_units_total),
-        profileSummaries: buildC2xProfileSummaries(profiles),
+        profileSummaries: buildC2xProfileSummaries(profiles, {
+          buyerUsersCount,
+          prospectUsersCount: Math.max(usuarioTotal - buyerUsersCount, 0),
+        }),
         totalCount: toNumber(tableCounts?.users_total),
       },
       ok: true,
@@ -1584,6 +1740,19 @@ async function loadLiveC2xDashboard(
       reason: "unavailable",
     };
   }
+}
+
+function buildLiveC2xSourceLinks(rows: C2xUserRow[]): ApoloSourceLinkRow[] {
+  return rows.map((row) => ({
+    entity_id: liveC2xEntityId(row.id),
+    source_id: String(row.id),
+    source_system: "c2x",
+    source_table: "users",
+  }));
+}
+
+function liveC2xEntityId(id: number | string) {
+  return `rel-${id}`;
 }
 
 function liveC2xUsersQueryLimit(
@@ -1631,16 +1800,22 @@ function c2xCrmAggregateQuery() {
     select
       (select count(*) from users where profile_id = 2) as usuario_total,
       count(distinct case
-        when pmt.id is not null
+        when (
+          pmt.id is not null
           and pmt.payment_status_id in (5, 6, 7)
           and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0)
+        )
+          and ${C2X_VALID_ENTERPRISE_WHERE}
         then participants.user_id
         else null
       end) as buyer_users_total,
       count(distinct case
-        when pmt.id is not null
+        when (
+          pmt.id is not null
           and pmt.payment_status_id in (5, 6, 7)
           and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0)
+        )
+          and ${C2X_VALID_ENTERPRISE_WHERE}
         then ar.enterprise_unity_id
         else null
       end) as portfolio_units_total,
@@ -1661,11 +1836,15 @@ function c2xCrmAggregateQuery() {
     inner join users u on u.id = participants.user_id and u.profile_id = 2
     left join acquisition_requests ar on ar.id = participants.request_id
     left join payments pmt on pmt.acquisition_request_id = ar.id
+    left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+    left join enterprises e on e.id = eu.enterprise_id
   `;
 }
 
 function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
   const limitClause = c2xUsersLimitClause(options.limit);
+  const profileWhereClause = c2xUsersProfileWhereClause(options.profile);
+  const profileOrderClause = c2xUsersProfileOrderClause(options.profile);
 
   return `
     select
@@ -1742,7 +1921,16 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
         count(distinct ar.id) as request_count,
         count(distinct case when ar.acquisition_request_stage_id = 4 then ar.id else null end) as billed_request_count,
         count(distinct case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then pmt.id else null end) as payment_count,
-        count(distinct case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then eu.id else null end) as unit_count,
+        count(distinct case
+          when (
+            pmt.id is not null
+            and pmt.payment_status_id in (5, 6, 7)
+            and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0)
+          )
+            and ${C2X_VALID_ENTERPRISE_WHERE}
+          then eu.id
+          else null
+        end) as unit_count,
         substring_index(group_concat(coalesce(ars.name, '') order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_stage_name,
         substring_index(group_concat(coalesce(nullif(trim(e.divulgation_name), ''), nullif(trim(e.name), ''), '') order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_enterprise_name,
         substring_index(group_concat(coalesce(nullif(trim(eu.name), ''), concat_ws(' ', nullif(trim(eu.block), ''), nullif(trim(eu.lot), '')), '') order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_unit_label,
@@ -1805,7 +1993,9 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
       left join payments pmt on pmt.acquisition_request_id = ar.id
       group by participants.user_id
     ) portfolio on portfolio.user_id = u.id
+    ${profileWhereClause}
     order by
+      ${profileOrderClause}
       case u.profile_id
         when 2 then 1
         when 3 then 2
@@ -1820,6 +2010,55 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
       u.id desc
     ${limitClause}
   `;
+}
+
+function c2xUsersProfileWhereClause(profile: ApoloProfile | null | undefined) {
+  if (!profile) {
+    return "";
+  }
+
+  if (profile === "usuario" || profile === "prospect") {
+    return "where u.profile_id = 2";
+  }
+
+  if (profile === "colaborador") {
+    return "where u.profile_id in (1, 5)";
+  }
+
+  const profileIdByApoloProfile: Partial<Record<ApoloProfile, number>> = {
+    acesso_incorporador: 4,
+    corretor: 7,
+    imobiliaria: 6,
+    incorporador: 3,
+  };
+  const personTypeByApoloProfile: Partial<Record<ApoloProfile, number>> = {
+    pessoa_fisica: 1,
+    pessoa_juridica: 2,
+  };
+  const profileId = profileIdByApoloProfile[profile];
+  const personTypeId = personTypeByApoloProfile[profile];
+
+  if (profileId) {
+    return `where u.profile_id = ${profileId}`;
+  }
+
+  if (personTypeId) {
+    return `where u.person_type_id = ${personTypeId}`;
+  }
+
+  return "";
+}
+
+function c2xUsersProfileOrderClause(profile: ApoloProfile | null | undefined) {
+  if (profile === "usuario") {
+    return "case when coalesce(portfolio.payment_count, 0) > 0 then 0 else 1 end,";
+  }
+
+  if (profile === "prospect") {
+    return "case when coalesce(portfolio.payment_count, 0) = 0 then 0 else 1 end,";
+  }
+
+  return "";
 }
 
 function c2xUsersLimitClause(value: number | null | undefined) {
@@ -1854,13 +2093,17 @@ function mapApoloEntityRow(
   documentDisplayValue?: string,
   c2xPortfolio?: C2xPortfolioHydration,
 ): ApoloEntity {
-  const profiles = related.profiles
+  const rawProfiles = related.profiles
     .map((profile) => normalizeApoloProfile(profile.profile))
     .filter((profile): profile is ApoloProfile => Boolean(profile));
   const commercialLinks =
     c2xPortfolio?.commercialLinks.length
       ? c2xPortfolio.commercialLinks
       : related.commercialLinks.map(mapApoloCommercialRow);
+  const profiles = normalizeCommerceProfiles(
+    rawProfiles.length ? rawProfiles : profilesFromEntityKind(row.entity_kind),
+    commercialLinks,
+  );
 
   return {
     addresses: related.addresses.map(mapApoloAddressRow),
@@ -1881,7 +2124,7 @@ function mapApoloEntityRow(
     legalName: firstFilled(row.legal_name) ?? undefined,
     locationLabel: locationLabel(row.primary_city, row.primary_state),
     nextAction: row.next_action ?? "Revisar dados cadastrais",
-    profiles: uniqueProfiles(profiles.length ? profiles : profilesFromEntityKind(row.entity_kind)),
+    profiles,
     relationships: related.relationships.map(mapApoloRelationshipRow),
     serviceSignals: related.serviceSignals.map(mapApoloServiceRow),
     status: normalizeEntityStatus(row.status),
@@ -1891,8 +2134,23 @@ function mapApoloEntityRow(
   };
 }
 
-function mapC2xUserToApoloEntity(row: C2xUserRow): ApoloEntity {
-  const profiles = mapC2xProfiles(row.profile_id, row.person_type_id);
+function mapC2xUserToApoloEntity(
+  row: C2xUserRow,
+  c2xPortfolio?: C2xPortfolioHydration,
+): ApoloEntity {
+  const hydratedCommercialLinks = c2xPortfolio?.commercialLinks ?? [];
+  const hasHydratedPortfolio = hydratedCommercialLinks.length > 0;
+  const commercialLinks = hasHydratedPortfolio
+    ? hydratedCommercialLinks
+    : buildC2xCommercialLinks(row);
+  const profiles = normalizeCommerceProfiles(
+    mapC2xProfiles(
+      row.profile_id,
+      row.person_type_id,
+      hasCommercialLinksWithIssuedInstallments(commercialLinks) || hasC2xPortfolioPurchase(row),
+    ),
+    commercialLinks,
+  );
   const document = row.cpf ?? row.cnpj ?? null;
   const documentDisplay = formatDocumentForDisplay(document);
   const contacts = buildMaskedContacts(row);
@@ -1903,14 +2161,14 @@ function mapC2xUserToApoloEntity(row: C2xUserRow): ApoloEntity {
   return {
     addresses: buildC2xAddresses(row),
     audit: buildC2xAudit(row),
-    commercialLinks: buildC2xCommercialLinks(row),
+    commercialLinks,
     confidenceScore: deriveC2xConfidenceScore(row, contacts, relationships, documentDisplay),
     contacts,
     createdAt: formatDateLabel(row.updated_at),
     displayName: row.display_name?.trim() || `Cadastro ${row.id}`,
     documentMasked: documentDisplay,
     documents: buildC2xDocuments(documentDisplay),
-    financial: buildC2xFinancialSnapshot(row),
+    financial: c2xPortfolio?.financial ?? buildC2xFinancialSnapshot(row),
     hadesClientId: `c2x-client-${row.id}`,
     id: `rel-${row.id}`,
     kind,
@@ -1925,6 +2183,16 @@ function mapC2xUserToApoloEntity(row: C2xUserRow): ApoloEntity {
     tradeName: tradeNameFromC2x(row) ?? undefined,
     updatedAt: formatDateLabel(row.updated_at),
   };
+}
+
+function hasC2xPortfolioPurchase(row: C2xUserRow) {
+  return row.profile_id === 2 && toNumber(row.payment_count) > 0;
+}
+
+function hasCommercialLinksWithIssuedInstallments(
+  commercialLinks: ApoloCommercialLink[],
+) {
+  return commercialLinks.some((link) => Boolean(link.installments?.length));
 }
 
 async function startApoloSyncRun(adminClient: ApoloSupabaseClient): Promise<SyncResult> {
@@ -2380,7 +2648,7 @@ function buildAuditRows(user: C2xUserRow, syncedAt: string) {
 }
 
 function buildSearchRow(user: C2xUserRow, syncedAt: string) {
-  const profiles = mapC2xProfiles(user.profile_id, user.person_type_id);
+  const profiles = mapC2xProfiles(user.profile_id, user.person_type_id, hasC2xPortfolioPurchase(user));
   const profileLabels = profiles.map((profile) => apoloProfileLabels[profile]);
   const document = user.cpf ?? user.cnpj ?? null;
   const documentDisplay = formatDocumentForDisplay(document);
@@ -2389,11 +2657,11 @@ function buildSearchRow(user: C2xUserRow, syncedAt: string) {
   const status = deriveC2xEntityStatus(user, documentDisplay, relationships);
   const displayName = user.display_name?.trim() || `Cadastro ${user.id}`;
   const location = normalizeLocationLabel(user.location_label);
-  const buyerSearchLabel = toNumber(user.payment_count) > 0
+  const buyerSearchLabel = hasC2xPortfolioPurchase(user)
     ? toNumber(user.overdue_installments) > 0
-      ? "comprador inadimplente"
-      : "comprador adimplente"
-    : "nao comprador";
+      ? "usuario inadimplente"
+      : "usuario adimplente"
+    : "prospect sem compra";
 
   return {
     display_name: displayName,
@@ -2441,15 +2709,30 @@ function buildSearchRow(user: C2xUserRow, syncedAt: string) {
   };
 }
 
-function buildC2xProfileSummaries(rows: C2xProfileAggregateRow[]): ApoloProfileSummary[] {
+function buildC2xProfileSummaries(
+  rows: C2xProfileAggregateRow[],
+  commerceCounts?: {
+    buyerUsersCount: number;
+    prospectUsersCount: number;
+  },
+): ApoloProfileSummary[] {
   const counts = new Map<ApoloProfile, number>();
 
   for (const row of rows) {
+    if (commerceCounts && row.profile_id === 2) {
+      continue;
+    }
+
     for (const profile of mapC2xProfiles(row.profile_id, null).filter(
       (profile) => !profile.startsWith("pessoa_"),
     )) {
       counts.set(profile, (counts.get(profile) ?? 0) + toNumber(row.total));
     }
+  }
+
+  if (commerceCounts) {
+    counts.set("usuario", commerceCounts.buyerUsersCount);
+    counts.set("prospect", commerceCounts.prospectUsersCount);
   }
 
   return apoloProfileCardOrder.map((profile) => ({
@@ -2462,13 +2745,14 @@ function buildC2xProfileSummaries(rows: C2xProfileAggregateRow[]): ApoloProfileS
 function mapC2xProfiles(
   profileId: number | null,
   personTypeId: number | null,
+  hasPaymentPortfolio?: boolean,
 ): ApoloProfile[] {
   const profiles: ApoloProfile[] = [];
 
   if (profileId === 1 || profileId === 5) {
     profiles.push("colaborador");
   } else if (profileId === 2) {
-    profiles.push("usuario");
+    profiles.push(hasPaymentPortfolio === false ? "prospect" : "usuario");
   } else if (profileId === 3) {
     profiles.push("incorporador");
   } else if (profileId === 4) {
@@ -2500,12 +2784,35 @@ function profilesFromEntityKind(entityKind: string): ApoloProfile[] {
   return ["colaborador"];
 }
 
+function normalizeCommerceProfiles(
+  profiles: ApoloProfile[],
+  commercialLinks: ApoloCommercialLink[],
+) {
+  const unique = uniqueProfiles(profiles);
+  const hasC2xUserProfile = unique.includes("usuario") || unique.includes("prospect");
+
+  if (!hasC2xUserProfile) {
+    return unique;
+  }
+
+  const hasPaymentPortfolio = commercialLinks.some((link) =>
+    isBuyerCommercialRole(link.role) && hasCommercialPortfolioEvidence(link),
+  );
+  const normalizedUserProfile: ApoloProfile = hasPaymentPortfolio ? "usuario" : "prospect";
+
+  return uniqueProfiles([
+    normalizedUserProfile,
+    ...unique.filter((profile) => profile !== "usuario" && profile !== "prospect"),
+  ]);
+}
+
 function normalizeApoloProfile(profile: string): ApoloProfile | null {
   return apoloProfileOptionsSet.has(profile) ? (profile as ApoloProfile) : null;
 }
 
 const apoloProfileOptionsSet = new Set<string>([
   "usuario",
+  "prospect",
   "incorporador",
   "imobiliaria",
   "corretor",
@@ -2690,10 +2997,9 @@ function buildC2xRelationships(row: C2xUserRow): ApoloRelationship[] {
 function buildC2xCommercialLinks(row: C2xUserRow): ApoloCommercialLink[] {
   if (row.profile_id === 2) {
     const requestCount = toNumber(row.request_count);
-    const paymentCount = toNumber(row.payment_count);
     const billedRequestCount = toNumber(row.billed_request_count);
 
-    if (paymentCount > 0) {
+    if (hasC2xPortfolioPurchase(row)) {
       const paidBlock = normalizeC2xBlock(row.latest_paid_unit_block);
       const paidLot = normalizeC2xLot(row.latest_paid_unit_lot);
       const paidUnitCode = firstFilled(row.latest_paid_unit_code) ?? undefined;
@@ -2729,7 +3035,7 @@ function buildC2xCommercialLinks(row: C2xUserRow): ApoloCommercialLink[] {
             firstFilled(row.latest_paid_request_code) ??
             firstFilled(row.latest_request_code) ??
             "Pagamento vinculado",
-          role: "Usuario comprador",
+          role: "Usuario",
           stage,
           tableValue: positiveCurrencyOrEmpty(row.latest_paid_unit_price),
           unit: paidUnitLabel,
@@ -2747,7 +3053,7 @@ function buildC2xCommercialLinks(row: C2xUserRow): ApoloCommercialLink[] {
             firstFilled(row.linked_party_name) ??
             firstFilled(row.latest_request_code) ??
             "Vinculo comercial sem pagamento",
-          role: "Usuario em jornada comercial",
+          role: "Prospect",
           stage: firstFilled(row.latest_stage_name) ?? "Sem pagamento vinculado",
           unit: firstFilled(row.latest_unit_label) ?? "Unidade em qualificacao",
         },
@@ -2758,7 +3064,7 @@ function buildC2xCommercialLinks(row: C2xUserRow): ApoloCommercialLink[] {
       {
         enterprise: "Relacionamento cadastral",
         referenceLabel: row.linked_party_name ? "Vinculo comercial identificado" : "Vinculo pendente",
-        role: "Usuario sem compra",
+        role: "Prospect",
         stage: "Sem compra vinculada",
         unit: row.linked_party_name || "Sem carteira operacional",
       },
@@ -3101,6 +3407,45 @@ function sumProfileMetric(
   metric: "total" | "with_vinculed_by",
 ) {
   return toNumber(rows.find((row) => row.profile_id === profileId)?.[metric]);
+}
+
+function matchesLiveC2xCandidateOptions(
+  row: C2xUserRow,
+  options: ApoloDashboardOptions,
+) {
+  if (
+    options.profile &&
+    !matchesLiveC2xCandidateProfile(row, options.profile)
+  ) {
+    return false;
+  }
+
+  return matchesDashboardOptions(
+    mapC2xUserToApoloEntity(row),
+    {
+      ...options,
+      profile: null,
+    },
+  );
+}
+
+function matchesLiveC2xCandidateProfile(
+  row: C2xUserRow,
+  profile: ApoloProfile,
+) {
+  if (profile === "usuario") {
+    return hasC2xPortfolioPurchase(row);
+  }
+
+  if (profile === "prospect") {
+    return row.profile_id === 2 && !hasC2xPortfolioPurchase(row);
+  }
+
+  return mapC2xProfiles(
+    row.profile_id,
+    row.person_type_id,
+    hasC2xPortfolioPurchase(row),
+  ).includes(profile);
 }
 
 function matchesDashboardOptions(

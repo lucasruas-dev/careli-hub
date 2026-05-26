@@ -1,5 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  CACA_AGENT_VERSION,
+  readCacaAutomationState,
+  runCacaAgentTurn,
+  type CacaAgentTurn,
+} from "@/lib/iris/caca-agent";
+import {
+  getMetaWhatsAppOutboundConfig,
+  type MetaWhatsAppSendMessageResult,
+  sendMetaWhatsAppTextMessage,
+} from "@/lib/iris/meta-whatsapp";
+
 type Json =
   | boolean
   | number
@@ -24,6 +36,9 @@ type IrisMetaWebhookEventRow = {
 };
 
 type IrisContactRow = {
+  c2x_payload?: Record<string, unknown> | null;
+  document?: string | null;
+  email?: string | null;
   id: string;
   display_name: string;
   metadata: Record<string, unknown> | null;
@@ -34,8 +49,10 @@ type IrisContactRow = {
 type IrisQueueRow = {
   default_priority: string | null;
   id: string;
+  name?: string | null;
   sla_first_response_minutes: number | null;
   sla_resolution_minutes: number | null;
+  slug?: string | null;
 };
 
 type IrisTicketProfileRow = {
@@ -46,20 +63,40 @@ type IrisTicketProfileRow = {
 };
 
 type IrisTicketRow = {
+  assigned_to_user_id?: string | null;
+  channel_id?: string | null;
+  closed_at?: string | null;
+  contact_id?: string | null;
   id: string;
-  protocol: string;
+  metadata: Record<string, unknown> | null;
+  opened_at?: string | null;
+  queue_id?: string | null;
+  resolved_at?: string | null;
+  source_context?: Record<string, unknown> | null;
   status: string;
+  updated_at?: string | null;
+  protocol: string;
 };
 
 type InboundMessageDetail = {
   body: string;
+  replyContextMessageId: string | null;
   messageType: string;
 };
 
+type CacaAutoReply = CacaAgentTurn;
+
 const CLOSED_TICKET_STATUSES = new Set(["cancelled", "closed", "resolved"]);
+const REOPENABLE_TICKET_STATUSES = new Set(["closed", "resolved"]);
 const META_PROVIDER = "meta";
 const WHATSAPP_CHANNEL_SLUG = "whatsapp-careli";
 const DEFAULT_QUEUE_SLUG = "atendimento";
+const CACA_OPERATOR_LABEL = "Cacá";
+const CACA_AUTOMATION_METADATA_KEY = "cacaAutomation";
+const CACA_TRANSFER_REASON_FALLBACK =
+  "Cacá encaminhou para atendimento humano por necessidade operacional.";
+const INBOUND_TICKET_SELECT =
+  "id,protocol,status,metadata,source_context,assigned_to_user_id,queue_id,contact_id,channel_id,opened_at,updated_at,closed_at,resolved_at";
 
 export async function processMetaWhatsAppWebhookEvents({
   client,
@@ -69,6 +106,7 @@ export async function processMetaWhatsAppWebhookEvents({
   events: IrisMetaWebhookEventRow[];
 }) {
   const result = {
+    autoRepliesSent: 0,
     failed: 0,
     ignored: 0,
     messagesCreated: 0,
@@ -82,6 +120,7 @@ export async function processMetaWhatsAppWebhookEvents({
       if (event.provider_event_type.startsWith("message:")) {
         const processed = await processInboundMessage({ client, event });
 
+        result.autoRepliesSent += processed.autoReplySent ? 1 : 0;
         result.messagesCreated += processed.messageCreated ? 1 : 0;
         result.ticketsCreated += processed.ticketCreated ? 1 : 0;
         result.ignored += processed.ignored ? 1 : 0;
@@ -130,6 +169,7 @@ async function processInboundMessage({
       "Mensagem inbound sem ID do provedor.",
     );
     return {
+      autoReplySent: false,
       ignored: false,
       messageCreated: false,
       ticketCreated: false,
@@ -149,6 +189,7 @@ async function processInboundMessage({
       "Mensagem Meta ja processada anteriormente.",
     );
     return {
+      autoReplySent: false,
       ignored: true,
       messageCreated: false,
       ticketCreated: false,
@@ -168,14 +209,36 @@ async function processInboundMessage({
     event,
     workspaceId,
   });
-  const existingTicket = await findOpenTicket({
-    channelId: channel?.id ?? null,
-    client,
-    contactId: contact.id,
-  });
+  const contactWaId = normalizeWhatsAppId(
+    contact.whatsapp_phone ?? contact.phone ?? event.contact_wa_id,
+  );
+  const replyContextTicket = messageDetail.replyContextMessageId
+    ? await findTicketByReplyContextMessageId({
+        channelId: channel?.id ?? null,
+        client,
+        replyContextMessageId: messageDetail.replyContextMessageId,
+      })
+    : null;
+  const existingTicket =
+    replyContextTicket ??
+    (await findOpenTicket({
+      channelId: channel?.id ?? null,
+      client,
+      contactId: contact.id,
+    })) ??
+    (contactWaId
+      ? await findOpenTicketByWhatsAppIdentity({
+          channelId: channel?.id ?? null,
+          client,
+          excludedContactId: contact.id,
+          waId: contactWaId,
+        })
+      : null);
   const ticketResult = existingTicket
     ? {
-        ticket: await touchTicketForInbound(client, existingTicket),
+        ticket: await touchTicketForInbound(client, existingTicket, event, {
+          forceReopen: Boolean(replyContextTicket?.id === existingTicket.id),
+        }),
         ticketCreated: false,
       }
     : {
@@ -220,7 +283,17 @@ async function processInboundMessage({
     markWebhookEvent(client, event.id, "processed"),
   ]);
 
+  const autoReplySent = await maybeSendCacaAutoReply({
+    channelId: channel?.id ?? null,
+    client,
+    contact,
+    event,
+    messageDetail,
+    ticket: ticketResult.ticket,
+  });
+
   return {
+    autoReplySent,
     ignored: false,
     messageCreated: true,
     ticketCreated: ticketResult.ticketCreated,
@@ -358,7 +431,7 @@ async function getDefaultQueue(client: IrisMetaProcessorClient) {
   const { data, error } = await client
     .from("caredesk_queues")
     .select(
-      "id,default_priority,sla_first_response_minutes,sla_resolution_minutes",
+      "id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes",
     )
     .eq("slug", DEFAULT_QUEUE_SLUG)
     .maybeSingle<IrisQueueRow>();
@@ -407,7 +480,7 @@ async function findOrCreateContact({
 
   const { data: existingContacts, error: lookupError } = await client
     .from("caredesk_contacts")
-    .select("id,display_name,phone,whatsapp_phone,metadata")
+    .select("id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload")
     .or(`whatsapp_phone.eq.${waId},phone.eq.${waId}`)
     .limit(1);
 
@@ -439,7 +512,7 @@ async function findOrCreateContact({
         whatsapp_phone: existingContact.whatsapp_phone ?? waId,
       })
       .eq("id", existingContact.id)
-      .select("id,display_name,phone,whatsapp_phone,metadata")
+      .select("id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload")
       .single<IrisContactRow>();
 
     if (error) {
@@ -465,7 +538,7 @@ async function findOrCreateContact({
       whatsapp_phone: waId,
       workspace_id: workspaceId,
     })
-    .select("id,display_name,phone,whatsapp_phone,metadata")
+    .select("id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload")
     .single<IrisContactRow>();
 
   if (error) {
@@ -486,7 +559,7 @@ async function findOpenTicket({
 }) {
   let query = client
     .from("caredesk_tickets")
-    .select("id,protocol,status")
+    .select(INBOUND_TICKET_SELECT)
     .eq("contact_id", contactId)
     .order("opened_at", { ascending: false })
     .limit(8);
@@ -501,29 +574,252 @@ async function findOpenTicket({
     throw error;
   }
 
-  return ((data ?? []) as IrisTicketRow[]).find(
+  return pickPreferredTicketForInbound((data ?? []) as IrisTicketRow[]);
+}
+
+async function findOpenTicketByWhatsAppIdentity({
+  channelId,
+  client,
+  excludedContactId,
+  waId,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  excludedContactId: string;
+  waId: string;
+}) {
+  const contactIds = await listContactIdsByWhatsAppIdentity({ client, waId });
+  const eligibleContactIds = contactIds.filter((id) => id !== excludedContactId);
+
+  if (eligibleContactIds.length === 0) {
+    return null;
+  }
+
+  let query = client
+    .from("caredesk_tickets")
+    .select(INBOUND_TICKET_SELECT)
+    .in("contact_id", eligibleContactIds)
+    .order("opened_at", { ascending: false })
+    .limit(16);
+
+  if (channelId) {
+    query = query.eq("channel_id", channelId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return pickPreferredTicketForInbound((data ?? []) as IrisTicketRow[]);
+}
+
+async function listContactIdsByWhatsAppIdentity({
+  client,
+  waId,
+}: {
+  client: IrisMetaProcessorClient;
+  waId: string;
+}) {
+  const contactIds = new Set<string>();
+
+  for (const variant of buildWhatsAppIdVariants(waId)) {
+    const { data, error } = await client
+      .from("caredesk_contacts")
+      .select("id")
+      .or(`whatsapp_phone.eq.${variant},phone.eq.${variant}`)
+      .limit(16);
+
+    if (error) {
+      throw error;
+    }
+
+    for (const row of (data ?? []) as Array<{ id?: string | null }>) {
+      if (typeof row.id === "string" && row.id.trim()) {
+        contactIds.add(row.id);
+      }
+    }
+  }
+
+  return Array.from(contactIds);
+}
+
+function buildWhatsAppIdVariants(waId: string) {
+  const normalized = normalizeWhatsAppId(waId);
+
+  if (!normalized) {
+    return [];
+  }
+
+  const variants = new Set<string>();
+  variants.add(normalized);
+
+  if (normalized.startsWith("55") && normalized.length > 11) {
+    variants.add(normalized.slice(2));
+  } else if (!normalized.startsWith("55")) {
+    variants.add(`55${normalized}`);
+  }
+
+  return Array.from(variants).filter((value) => Boolean(normalizeWhatsAppId(value)));
+}
+
+async function findTicketByReplyContextMessageId({
+  channelId,
+  client,
+  replyContextMessageId,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  replyContextMessageId: string;
+}) {
+  const { data: messages, error: messagesError } = await client
+    .from("caredesk_messages")
+    .select("ticket_id")
+    .eq("external_message_id", replyContextMessageId)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  if (messagesError) {
+    throw messagesError;
+  }
+
+  const ticketIds = (messages ?? [])
+    .map((row) =>
+      readString((row as Record<string, unknown>).ticket_id),
+    )
+    .filter((ticketId): ticketId is string => Boolean(ticketId));
+
+  if (!ticketIds.length) {
+    return null;
+  }
+
+  let query = client
+    .from("caredesk_tickets")
+    .select(INBOUND_TICKET_SELECT)
+    .in("id", ticketIds)
+    .limit(8);
+
+  if (channelId) {
+    query = query.eq("channel_id", channelId);
+  }
+
+  const { data: tickets, error: ticketsError } = await query;
+
+  if (ticketsError) {
+    throw ticketsError;
+  }
+
+  const ticketById = new Map<string, IrisTicketRow>(
+    ((tickets ?? []) as IrisTicketRow[]).map((ticket) => [ticket.id, ticket]),
+  );
+
+  for (const ticketId of ticketIds) {
+    const ticket = ticketById.get(ticketId);
+
+    if (ticket) {
+      return ticket;
+    }
+  }
+
+  return pickPreferredTicketForInbound((tickets ?? []) as IrisTicketRow[]);
+}
+
+function pickPreferredTicketForInbound(tickets: IrisTicketRow[]) {
+  const openTickets = tickets.filter(
     (ticket) => !CLOSED_TICKET_STATUSES.has(ticket.status),
+  );
+
+  if (openTickets.length > 0) {
+    openTickets.sort(
+      (left, right) => ticketReusePriority(left) - ticketReusePriority(right),
+    );
+    return openTickets[0];
+  }
+
+  const reopenableTickets = tickets
+    .filter((ticket) => isReopenableActiveContactTicket(ticket))
+    .sort((left, right) => {
+      return (
+        ticketClosedReusePriority(right) - ticketClosedReusePriority(left)
+      );
+    });
+
+  return reopenableTickets[0];
+}
+
+function ticketReusePriority(ticket: IrisTicketRow) {
+  const metadata = isRecord(ticket.metadata) ? ticket.metadata : null;
+  const activeContactConsent = readString(metadata?.activeContactConsent);
+
+  if (
+    activeContactConsent === "awaiting_customer_reply" &&
+    isActiveContactTicket(ticket)
+  ) {
+    return 0;
+  }
+
+  if (isActiveContactTicket(ticket)) {
+    return 1;
+  }
+
+  if (ticket.status === "waiting_customer") {
+    return 2;
+  }
+
+  return 3;
+}
+
+function isReopenableActiveContactTicket(ticket: IrisTicketRow) {
+  if (!REOPENABLE_TICKET_STATUSES.has(ticket.status)) {
+    return false;
+  }
+
+  const metadata = isRecord(ticket.metadata) ? ticket.metadata : null;
+  const activeContactConsent = readString(metadata?.activeContactConsent);
+
+  return (
+    activeContactConsent === "awaiting_customer_reply" &&
+    isActiveContactTicket(ticket)
+  );
+}
+
+function ticketClosedReusePriority(ticket: IrisTicketRow) {
+  return dateValue(
+    ticket.updated_at ?? ticket.closed_at ?? ticket.resolved_at ?? ticket.opened_at,
   );
 }
 
 async function touchTicketForInbound(
   client: IrisMetaProcessorClient,
   ticket: IrisTicketRow,
+  event: IrisMetaWebhookEventRow,
+  options?: {
+    forceReopen?: boolean;
+  },
 ) {
+  const shouldReopen =
+    REOPENABLE_TICKET_STATUSES.has(ticket.status) &&
+    (options?.forceReopen || isReopenableActiveContactTicket(ticket));
   const nextStatus =
-    ticket.status === "waiting_customer" ? "waiting_operator" : ticket.status;
+    shouldReopen || ticket.status === "waiting_customer"
+      ? "waiting_operator"
+      : ticket.status;
+  const updatePayload: Record<string, unknown> = {
+    metadata: buildCustomerServiceWindowMetadata(ticket.metadata, event),
+    status: nextStatus,
+  };
 
-  if (nextStatus === ticket.status) {
-    return ticket;
+  if (shouldReopen) {
+    updatePayload.closed_at = null;
+    updatePayload.resolved_at = null;
   }
 
   const { data, error } = await client
     .from("caredesk_tickets")
-    .update({
-      status: nextStatus,
-    })
+    .update(updatePayload)
     .eq("id", ticket.id)
-    .select("id,protocol,status")
+    .select(INBOUND_TICKET_SELECT)
     .single<IrisTicketRow>();
 
   if (error) {
@@ -570,7 +866,11 @@ async function createTicketFromInbound({
       contact_id: contact.id,
       first_response_due_at: addMinutes(now, firstResponseMinutes),
       metadata: {
+        activeContactConsent: "customer_replied",
+        customerServiceWindowExpiresAt: addHours(now, 24),
+        customerServiceWindowOpenedAt: now,
         firstMetaWebhookEventId: event.id,
+        lastCustomerMessageAt: now,
         provider: META_PROVIDER,
         providerMessageId: event.provider_message_id,
         source: "meta_whatsapp_inbound",
@@ -597,7 +897,7 @@ async function createTicketFromInbound({
       subject: `WhatsApp - ${contact.display_name}`,
       workspace_id: workspaceId,
     })
-    .select("id,protocol,status")
+    .select(INBOUND_TICKET_SELECT)
     .single<IrisTicketRow>();
 
   if (error) {
@@ -645,6 +945,7 @@ async function insertInboundMessage({
       message_type: messageDetail.messageType,
       provider_payload: {
         provider: META_PROVIDER,
+        replyToExternalMessageId: messageDetail.replyContextMessageId,
         webhookEventId: event.id,
       },
       sender_contact_id: contactId,
@@ -766,6 +1067,7 @@ function extractInboundMessageDetail(
   const message = findMessages(payload).find(
     (candidate) => readString(candidate.id) === messageId,
   );
+  const replyContextMessageId = readString(asRecord(message?.context)?.id);
   const messageType = readString(message?.type) ?? "text";
 
   if (messageType === "text") {
@@ -773,6 +1075,7 @@ function extractInboundMessageDetail(
 
     return {
       body: body || "Mensagem de texto recebida pelo WhatsApp.",
+      replyContextMessageId,
       messageType,
     };
   }
@@ -783,6 +1086,7 @@ function extractInboundMessageDetail(
 
     return {
       body: body || "Resposta de botao recebida pelo WhatsApp.",
+      replyContextMessageId,
       messageType,
     };
   }
@@ -799,6 +1103,7 @@ function extractInboundMessageDetail(
 
     return {
       body: body || "Resposta interativa recebida pelo WhatsApp.",
+      replyContextMessageId,
       messageType,
     };
   }
@@ -810,6 +1115,7 @@ function extractInboundMessageDetail(
 
   return {
     body: caption || `Mensagem ${messageType} recebida pelo WhatsApp.`,
+    replyContextMessageId,
     messageType,
   };
 }
@@ -820,6 +1126,545 @@ function extractStatusDetail(payload: Json, statusId: string) {
   );
 
   return readString(status?.status);
+}
+
+async function maybeSendCacaAutoReply({
+  channelId,
+  client,
+  contact,
+  event,
+  messageDetail,
+  ticket,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  contact: IrisContactRow;
+  event: IrisMetaWebhookEventRow;
+  messageDetail: InboundMessageDetail;
+  ticket: IrisTicketRow;
+}) {
+  const destination = normalizeWhatsAppId(event.contact_wa_id);
+
+  if (!destination || !shouldCacaAutomationRun(ticket)) {
+    return false;
+  }
+
+  const reply = await runCacaAgentTurn({
+    client,
+    contact,
+    messageDetail,
+    ticket,
+  });
+  const queuedMessage = await insertCacaOutboundMessage({
+    body: reply.replyText,
+    channelId,
+    client,
+    contactId: contact.id,
+    event,
+    ticketId: ticket.id,
+  });
+
+  try {
+    const result = await sendMetaWhatsAppTextMessage({
+      body: reply.replyText,
+      config: event.phone_number_id
+        ? {
+            ...getMetaWhatsAppOutboundConfig(),
+            phoneNumberId: event.phone_number_id,
+          }
+        : undefined,
+      contextMessageId: event.provider_message_id,
+      to: destination,
+    });
+    const ticketUpdate = await updateTicketAfterCacaReply({
+      client,
+      reply,
+      ticket,
+    });
+
+    await Promise.all([
+      persistCacaOutboundReference({
+        channelId,
+        client,
+        event,
+        localMessageId: queuedMessage.id,
+        result,
+        to: destination,
+      }),
+      markCacaOutboundMessageSent({
+        client,
+        messageId: queuedMessage.id,
+        result,
+        to: destination,
+      }),
+      insertCacaTimelineEvent({
+        client,
+        event,
+        reply,
+        ticketId: ticket.id,
+      }),
+      insertCacaTransferEventWhenHandoff({
+        client,
+        reason: ticketUpdate.handoffReason,
+        ticketId: ticket.id,
+        toQueueId: ticketUpdate.handoffQueueId,
+        toQueueLabel: ticketUpdate.handoffQueueLabel,
+      }),
+    ]);
+
+    return true;
+  } catch (error) {
+    await Promise.all([
+      markCacaOutboundMessageFailed({
+        client,
+        error,
+        messageId: queuedMessage.id,
+      }),
+      insertCacaAutomationFailureEvent({
+        client,
+        error,
+        ticketId: ticket.id,
+      }),
+    ]);
+
+    return false;
+  }
+}
+
+function shouldCacaAutomationRun(ticket: IrisTicketRow) {
+  if (CLOSED_TICKET_STATUSES.has(ticket.status)) {
+    return false;
+  }
+
+  if (ticket.assigned_to_user_id) {
+    return false;
+  }
+
+  if (isActiveContactTicket(ticket)) {
+    return false;
+  }
+
+  const state = readCacaAutomationState(ticket.metadata);
+
+  return !state.handoffRequired;
+}
+
+function isActiveContactTicket(ticket: IrisTicketRow) {
+  const metadata = isRecord(ticket.metadata) ? ticket.metadata : null;
+  const sourceContext = isRecord(ticket.source_context)
+    ? ticket.source_context
+    : null;
+  const activeContactConsent = readString(metadata?.activeContactConsent);
+  const contactOrigin = readString(sourceContext?.contactOrigin);
+
+  if (activeContactConsent === "awaiting_customer_reply") {
+    return true;
+  }
+
+  if (contactOrigin === "active") {
+    return true;
+  }
+
+  return Boolean(
+    readString(metadata?.initialTemplateId) ||
+      readString(metadata?.initialTemplateName) ||
+      readString(metadata?.attendanceProtocol) ||
+      readString(metadata?.linkedAttendanceProtocol) ||
+      readString(sourceContext?.attendanceProtocol) ||
+      readString(sourceContext?.linkedAttendanceProtocol),
+  );
+}
+
+async function insertCacaOutboundMessage({
+  body,
+  channelId,
+  client,
+  contactId,
+  event,
+  ticketId,
+}: {
+  body: string;
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  contactId: string;
+  event: IrisMetaWebhookEventRow;
+  ticketId: string;
+}) {
+  const { data, error } = await client
+    .from("caredesk_messages")
+    .insert({
+      body,
+      channel_id: channelId,
+      delivery_status: "queued",
+      direction: "outbound",
+      message_type: "text",
+      provider_payload: {
+        automation: "caca",
+        operatorLabel: CACA_OPERATOR_LABEL,
+        provider: META_PROVIDER,
+        replyTo: {
+          externalMessageId: event.provider_message_id,
+          webhookEventId: event.id,
+        },
+        source_module: "iris",
+      },
+      sender_contact_id: contactId,
+      sender_type: "operator",
+      ticket_id: ticketId,
+    })
+    .select("id")
+    .single<{ id: string }>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+async function persistCacaOutboundReference({
+  channelId,
+  client,
+  event,
+  localMessageId,
+  result,
+  to,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  event: IrisMetaWebhookEventRow;
+  localMessageId: string;
+  result: MetaWhatsAppSendMessageResult;
+  to: string;
+}) {
+  if (!result.messageId) {
+    throw new Error("Meta WhatsApp nao retornou ID da mensagem da Cacá.");
+  }
+
+  const { error } = await client.from("caredesk_whatsapp_message_refs").upsert(
+    {
+      channel_id: channelId,
+      delivery_status: "sent",
+      direction: "outbound",
+      message_id: localMessageId,
+      payload: normalizeJsonPayload(result.raw),
+      phone_number_id:
+        event.phone_number_id ?? process.env.META_WHATSAPP_PHONE_NUMBER_ID ?? null,
+      provider: META_PROVIDER,
+      wa_contact_id: result.contactWaId ?? to,
+      wa_message_id: result.messageId,
+      webhook_event_id: event.id,
+    },
+    {
+      onConflict: "provider,wa_message_id",
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function markCacaOutboundMessageSent({
+  client,
+  messageId,
+  result,
+  to,
+}: {
+  client: IrisMetaProcessorClient;
+  messageId: string;
+  result: MetaWhatsAppSendMessageResult;
+  to: string;
+}) {
+  const { error } = await client
+    .from("caredesk_messages")
+    .update({
+      delivery_status: "sent",
+      external_message_id: result.messageId,
+      provider_payload: {
+        automation: "caca",
+        destination: to,
+        meta: normalizeJsonPayload(result.raw),
+        operatorLabel: CACA_OPERATOR_LABEL,
+        provider: META_PROVIDER,
+        source_module: "iris",
+      },
+      sent_at: new Date().toISOString(),
+    })
+    .eq("id", messageId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function markCacaOutboundMessageFailed({
+  client,
+  error,
+  messageId,
+}: {
+  client: IrisMetaProcessorClient;
+  error: unknown;
+  messageId: string;
+}) {
+  await client
+    .from("caredesk_messages")
+    .update({
+      delivery_status: "failed",
+      provider_payload: {
+        automation: "caca",
+        error: errorMessage(error),
+        operatorLabel: CACA_OPERATOR_LABEL,
+        provider: META_PROVIDER,
+        source_module: "iris",
+      },
+    })
+    .eq("id", messageId);
+}
+
+async function updateTicketAfterCacaReply({
+  client,
+  reply,
+  ticket,
+}: {
+  client: IrisMetaProcessorClient;
+  reply: CacaAutoReply;
+  ticket: IrisTicketRow;
+}) {
+  const now = new Date().toISOString();
+  const handoffRequired = reply.handoff.required;
+  const handoffReason = reply.handoff.reason ?? CACA_TRANSFER_REASON_FALLBACK;
+  const defaultQueue = handoffRequired ? await getDefaultQueue(client) : null;
+  const handoffQueueId = defaultQueue?.id ?? ticket.queue_id ?? null;
+  const handoffQueueLabel =
+    defaultQueue?.name ??
+    defaultQueue?.slug ??
+    readString(
+      isRecord(ticket.source_context) ? ticket.source_context.handoffQueueLabel : null,
+    ) ??
+    DEFAULT_QUEUE_SLUG;
+  const previousMetadata = isRecord(ticket.metadata) ? ticket.metadata : {};
+  const sourceContext = isRecord(ticket.source_context) ? ticket.source_context : {};
+  const transferHistory = Array.isArray(previousMetadata.transferHistory)
+    ? previousMetadata.transferHistory.filter(
+        (entry) => entry && typeof entry === "object" && !Array.isArray(entry),
+      )
+    : [];
+  const transferEntry = handoffRequired
+    ? {
+        byUserId: null,
+        fromQueueId: ticket.queue_id ?? null,
+        fromQueueLabel: CACA_OPERATOR_LABEL,
+        occurredAt: now,
+        operatorLabel: CACA_OPERATOR_LABEL,
+        reason: handoffReason,
+        toQueueId: handoffQueueId,
+        toQueueLabel: handoffQueueLabel,
+      }
+    : null;
+  const metadata = {
+    ...previousMetadata,
+    [CACA_AUTOMATION_METADATA_KEY]: {
+      ...reply.nextState,
+      agentVersion: reply.agentVersion ?? CACA_AGENT_VERSION,
+      lastAutoReplyAt: now,
+      lastHandoffReason: handoffReason,
+      lastModel: reply.model ?? null,
+      lastNextStep: reply.nextStep,
+      lastSource: reply.source ?? "deterministic",
+      lastTrace: reply.trace?.slice(-10) ?? [],
+      source: "iris_meta_inbound",
+      toolsUsed: reply.toolsUsed ?? [],
+    },
+    ...(handoffRequired
+      ? {
+          activeContactConsent: "customer_replied",
+          handoffToOperatorAt: now,
+          handoffToOperatorByUserId: null,
+          handoffToOperatorReason: handoffReason,
+          handlingOwner: "operator",
+          lastTransfer: transferEntry,
+          transferHistory: [transferEntry, ...transferHistory].slice(0, 30),
+        }
+      : {
+          handlingOwner: "caca",
+        }),
+  };
+
+  const updatePayload: Record<string, unknown> = {
+    metadata,
+    source_context: handoffRequired
+      ? {
+          ...sourceContext,
+          handoffQueueId,
+          handoffQueueLabel,
+          handoffReason,
+        }
+      : sourceContext,
+    status: handoffRequired ? "waiting_operator" : "waiting_customer",
+  };
+
+  if (handoffRequired && handoffQueueId) {
+    updatePayload.queue_id = handoffQueueId;
+  }
+
+  const { error } = await client
+    .from("caredesk_tickets")
+    .update(updatePayload)
+    .eq("id", ticket.id);
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    handoffQueueId: handoffRequired ? handoffQueueId : null,
+    handoffQueueLabel: handoffRequired ? handoffQueueLabel : null,
+    handoffReason: handoffRequired ? handoffReason : null,
+  };
+}
+
+async function insertCacaTransferEventWhenHandoff({
+  client,
+  reason,
+  ticketId,
+  toQueueId,
+  toQueueLabel,
+}: {
+  client: IrisMetaProcessorClient;
+  reason: string | null;
+  ticketId: string;
+  toQueueId: string | null;
+  toQueueLabel: string | null;
+}) {
+  if (!toQueueLabel) {
+    return;
+  }
+
+  const handoffReason = reason ?? CACA_TRANSFER_REASON_FALLBACK;
+  const transferMessage = [
+    `Transferencia registrada: ${CACA_OPERATOR_LABEL} -> ${toQueueLabel}.`,
+    `Motivo: ${handoffReason}.`,
+  ].join(" ");
+
+  const [timelineInsert, chatInsert] = await Promise.all([
+    client.from("caredesk_ticket_events").insert({
+      actor_type: "system",
+      description: handoffReason,
+      event_type: "ticket_transfer",
+      metadata: {
+        fromQueueId: null,
+        fromQueueLabel: CACA_OPERATOR_LABEL,
+        operatorLabel: CACA_OPERATOR_LABEL,
+        source: "caca_auto_handoff",
+        toQueueId,
+        toQueueLabel,
+      },
+      ticket_id: ticketId,
+      title: `Transferido para ${toQueueLabel}`,
+    }),
+    client.from("caredesk_messages").insert({
+      body: transferMessage,
+      delivery_status: "sent",
+      direction: "internal",
+      message_type: "system",
+      provider_payload: {
+        operatorLabel: CACA_OPERATOR_LABEL,
+        source_module: "iris",
+        transfer: {
+          fromQueueId: null,
+          fromQueueLabel: CACA_OPERATOR_LABEL,
+          reason: handoffReason,
+          toQueueId,
+          toQueueLabel,
+        },
+      },
+      sender_type: "system",
+      ticket_id: ticketId,
+    }),
+  ]);
+
+  if (timelineInsert.error) {
+    throw timelineInsert.error;
+  }
+
+  if (chatInsert.error) {
+    throw chatInsert.error;
+  }
+}
+
+async function insertCacaTimelineEvent({
+  client,
+  event,
+  reply,
+  ticketId,
+}: {
+  client: IrisMetaProcessorClient;
+  event: IrisMetaWebhookEventRow;
+  reply: CacaAutoReply;
+  ticketId: string;
+}) {
+  const { error } = await client.from("caredesk_ticket_events").insert({
+    actor_type: "system",
+    description: truncateText(reply.replyText, 500),
+    event_type: "caca_auto_reply",
+    metadata: {
+      agentVersion: reply.agentVersion ?? CACA_AGENT_VERSION,
+      handoffRequired: reply.handoff.required,
+      model: reply.model ?? null,
+      nextStep: reply.nextStep,
+      provider: META_PROVIDER,
+      source: reply.source ?? "deterministic",
+      toolsUsed: reply.toolsUsed ?? [],
+      trace: reply.trace?.slice(-10) ?? [],
+      webhookEventId: event.id,
+    },
+    ticket_id: ticketId,
+    title: reply.handoff.required
+      ? "Cacá encaminhou para atendimento humano"
+      : "Cacá respondeu automaticamente",
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function insertCacaAutomationFailureEvent({
+  client,
+  error,
+  ticketId,
+}: {
+  client: IrisMetaProcessorClient;
+  error: unknown;
+  ticketId: string;
+}) {
+  await client.from("caredesk_ticket_events").insert({
+    actor_type: "system",
+    description: truncateText(errorMessage(error), 500),
+    event_type: "caca_auto_reply_failed",
+    metadata: {
+      provider: META_PROVIDER,
+      source: "iris_meta_inbound",
+    },
+    ticket_id: ticketId,
+    title: "Cacá nao conseguiu responder automaticamente",
+  });
+}
+
+function normalizeJsonPayload(value: unknown) {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    Array.isArray(value) ||
+    (typeof value === "object" && value !== null)
+  ) {
+    return value;
+  }
+
+  return {};
 }
 
 function findMessages(payload: Json) {
@@ -912,10 +1757,45 @@ function normalizeDisplayName(name: string | null, waId: string) {
   return normalized || `WhatsApp ${waId.slice(-4)}`;
 }
 
+function buildCustomerServiceWindowMetadata(
+  metadata: Record<string, unknown> | null,
+  event: IrisMetaWebhookEventRow,
+) {
+  const receivedAt = event.received_at || new Date().toISOString();
+
+  return {
+    ...(isRecord(metadata) ? metadata : {}),
+    activeContactConsent: "customer_replied",
+    customerServiceWindowExpiresAt: addHours(receivedAt, 24),
+    customerServiceWindowOpenedAt: receivedAt,
+    lastCustomerMessageAt: receivedAt,
+    lastMetaWebhookEventId: event.id,
+    lastProviderMessageId: event.provider_message_id,
+    provider: META_PROVIDER,
+    source: "meta_whatsapp_inbound",
+  };
+}
+
+function addHours(value: string, hours: number) {
+  return new Date(
+    new Date(value).getTime() + Number(hours || 24) * 60 * 60000,
+  ).toISOString();
+}
+
 function addMinutes(value: string, minutes: number) {
   return new Date(
     new Date(value).getTime() + Number(minutes || 60) * 60000,
   ).toISOString();
+}
+
+function dateValue(value?: string | null) {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = new Date(value).getTime();
+
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function truncateText(value: string, maxLength: number) {

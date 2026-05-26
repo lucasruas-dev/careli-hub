@@ -62,6 +62,7 @@ import {
   getHubModuleStatusLabel,
   isHubModuleActive,
   orderedHubModules,
+  roleCanViewModule,
   type HubUserContext,
 } from "@repo/shared";
 import Link from "next/link";
@@ -110,6 +111,7 @@ const minimumReleasedModuleIds = [
   "iris",
   "chronos",
   "hermes",
+  "financeiro",
   "setup",
 ] as const;
 const hiddenProductionModuleIds = new Set<string>();
@@ -1004,6 +1006,19 @@ function canOpenShellModule(
   }
 
   if (hubUser && canAccessModule(hubUser, hubModule)) {
+    return true;
+  }
+
+  if (hubUser && roleCanViewModule(hubUser.role, hubModule)) {
+    return true;
+  }
+
+  if (
+    hubUser &&
+    minimumReleasedModuleIds.includes(
+      moduleId as (typeof minimumReleasedModuleIds)[number],
+    )
+  ) {
     return true;
   }
 
