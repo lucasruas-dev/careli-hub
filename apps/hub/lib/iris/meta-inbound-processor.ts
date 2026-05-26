@@ -37,12 +37,14 @@ type IrisMetaWebhookEventRow = {
 
 type IrisContactRow = {
   c2x_payload?: Record<string, unknown> | null;
+  created_at?: string | null;
   document?: string | null;
   email?: string | null;
   id: string;
   display_name: string;
   metadata: Record<string, unknown> | null;
   phone: string | null;
+  updated_at?: string | null;
   whatsapp_phone: string | null;
 };
 
@@ -97,6 +99,7 @@ const CACA_TRANSFER_REASON_FALLBACK =
   "Cacá encaminhou para atendimento humano por necessidade operacional.";
 const INBOUND_TICKET_SELECT =
   "id,protocol,status,metadata,source_context,assigned_to_user_id,queue_id,contact_id,channel_id,opened_at,updated_at,closed_at,resolved_at";
+const INBOUND_REUSE_RETRY_DELAYS_MS = [120, 260];
 
 export async function processMetaWhatsAppWebhookEvents({
   client,
@@ -202,9 +205,11 @@ async function processInboundMessage({
   );
   const workspaceId = await getDefaultWorkspaceId(client);
   const channel = await getWhatsAppChannel(client);
+  const channelId = channel?.id ?? null;
   const queue = await getDefaultQueue(client);
   const profile = queue ? await getDefaultProfile(client, queue.id) : null;
   const contact = await findOrCreateContact({
+    channelId,
     client,
     event,
     workspaceId,
@@ -214,36 +219,39 @@ async function processInboundMessage({
   );
   const replyContextTicket = messageDetail.replyContextMessageId
     ? await findTicketByReplyContextMessageId({
-        channelId: channel?.id ?? null,
+        channelId,
         client,
         replyContextMessageId: messageDetail.replyContextMessageId,
       })
     : null;
   const existingTicket =
     replyContextTicket ??
-    (await findOpenTicket({
-      channelId: channel?.id ?? null,
+    (await findReusableTicketForInbound({
+      channelId,
       client,
       contactId: contact.id,
-    })) ??
-    (contactWaId
-      ? await findOpenTicketByWhatsAppIdentity({
-          channelId: channel?.id ?? null,
+      waId: contactWaId,
+    }));
+  const delayedReusableTicket =
+    !existingTicket && contactWaId
+      ? await waitForConcurrentTicketReuse({
+          channelId,
           client,
-          excludedContactId: contact.id,
+          contactId: contact.id,
           waId: contactWaId,
         })
-      : null);
-  const ticketResult = existingTicket
+      : null;
+  const reusableTicket = existingTicket ?? delayedReusableTicket;
+  const ticketResult = reusableTicket
     ? {
-        ticket: await touchTicketForInbound(client, existingTicket, event, {
-          forceReopen: Boolean(replyContextTicket?.id === existingTicket.id),
+        ticket: await touchTicketForInbound(client, reusableTicket, event, {
+          forceReopen: Boolean(replyContextTicket?.id === reusableTicket.id),
         }),
         ticketCreated: false,
       }
     : {
         ticket: await createTicketFromInbound({
-          channelId: channel?.id ?? null,
+          channelId,
           client,
           contact,
           event,
@@ -254,18 +262,34 @@ async function processInboundMessage({
         }),
         ticketCreated: true,
       };
+  const ticketAfterCoalesce =
+    ticketResult.ticketCreated && contactWaId
+      ? await coalesceConcurrentTicketAfterCreate({
+          channelId,
+          client,
+          contactId: contact.id,
+          createdTicket: ticketResult.ticket,
+          event,
+          waId: contactWaId,
+        })
+      : {
+          coalesced: false,
+          ticket: ticketResult.ticket,
+        };
+  const activeTicket = ticketAfterCoalesce.ticket;
+  const ticketCreated = ticketResult.ticketCreated && !ticketAfterCoalesce.coalesced;
   const message = await insertInboundMessage({
-    channelId: channel?.id ?? null,
+    channelId,
     client,
     contactId: contact.id,
     event,
     messageDetail,
-    ticketId: ticketResult.ticket.id,
+    ticketId: activeTicket.id,
   });
 
   await Promise.all([
     upsertMessageReference({
-      channelId: channel?.id ?? null,
+      channelId,
       client,
       event,
       messageId: message.id,
@@ -275,8 +299,8 @@ async function processInboundMessage({
       contactId: contact.id,
       event,
       messageDetail,
-      ticketId: ticketResult.ticket.id,
-      title: ticketResult.ticketCreated
+      ticketId: activeTicket.id,
+      title: ticketCreated
         ? "Ticket aberto via WhatsApp"
         : "Mensagem recebida via WhatsApp",
     }),
@@ -284,19 +308,19 @@ async function processInboundMessage({
   ]);
 
   const autoReplySent = await maybeSendCacaAutoReply({
-    channelId: channel?.id ?? null,
+    channelId,
     client,
     contact,
     event,
     messageDetail,
-    ticket: ticketResult.ticket,
+    ticket: activeTicket,
   });
 
   return {
     autoReplySent,
     ignored: false,
     messageCreated: true,
-    ticketCreated: ticketResult.ticketCreated,
+    ticketCreated,
   };
 }
 
@@ -464,10 +488,12 @@ async function getDefaultProfile(
 }
 
 async function findOrCreateContact({
+  channelId,
   client,
   event,
   workspaceId,
 }: {
+  channelId: string | null;
   client: IrisMetaProcessorClient;
   event: IrisMetaWebhookEventRow;
   workspaceId: string | null;
@@ -480,15 +506,23 @@ async function findOrCreateContact({
 
   const { data: existingContacts, error: lookupError } = await client
     .from("caredesk_contacts")
-    .select("id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload")
+    .select(
+      "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload,created_at,updated_at",
+    )
     .or(`whatsapp_phone.eq.${waId},phone.eq.${waId}`)
-    .limit(1);
+    .limit(24);
 
   if (lookupError) {
     throw lookupError;
   }
 
-  const existingContact = existingContacts?.[0] as IrisContactRow | undefined;
+  const existingContact = await pickPreferredContactForInbound({
+    channelId,
+    client,
+    contacts: ((existingContacts ?? []) as IrisContactRow[]).filter(
+      (contact) => typeof contact.id === "string" && contact.id.trim().length > 0,
+    ),
+  });
   const displayName = normalizeDisplayName(event.contact_name, waId);
 
   if (existingContact) {
@@ -515,7 +549,9 @@ async function findOrCreateContact({
         whatsapp_phone: existingContact.whatsapp_phone ?? waId,
       })
       .eq("id", existingContact.id)
-      .select("id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload")
+      .select(
+        "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload,created_at,updated_at",
+      )
       .single<IrisContactRow>();
 
     if (error) {
@@ -541,7 +577,9 @@ async function findOrCreateContact({
       whatsapp_phone: waId,
       workspace_id: workspaceId,
     })
-    .select("id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload")
+    .select(
+      "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload,created_at,updated_at",
+    )
     .single<IrisContactRow>();
 
   if (error) {
@@ -549,6 +587,112 @@ async function findOrCreateContact({
   }
 
   return data;
+}
+
+async function pickPreferredContactForInbound({
+  channelId,
+  client,
+  contacts,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  contacts: IrisContactRow[];
+}) {
+  if (contacts.length <= 1) {
+    return contacts[0];
+  }
+
+  const contactIds = contacts.map((contact) => contact.id);
+  let query = client
+    .from("caredesk_tickets")
+    .select("contact_id,status,opened_at,updated_at")
+    .in("contact_id", contactIds)
+    .order("opened_at", { ascending: false })
+    .limit(120);
+
+  if (channelId) {
+    query = query.eq("channel_id", channelId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as Array<{
+    contact_id?: string | null;
+    opened_at?: string | null;
+    status?: string | null;
+    updated_at?: string | null;
+  }>;
+  const latestOpenByContact = new Map<
+    string,
+    { openedAt: string | null; updatedAt: string | null }
+  >();
+
+  for (const row of rows) {
+    const contactId = readString(row.contact_id);
+
+    if (!contactId || CLOSED_TICKET_STATUSES.has(row.status ?? "")) {
+      continue;
+    }
+
+    const currentValue = latestOpenByContact.get(contactId);
+    const rowUpdatedAt = row.updated_at ?? null;
+    const rowOpenedAt = row.opened_at ?? null;
+    const rowTime = dateValue(rowUpdatedAt ?? rowOpenedAt);
+    const currentTime = currentValue
+      ? dateValue(currentValue.updatedAt ?? currentValue.openedAt)
+      : 0;
+
+    if (!currentValue || rowTime > currentTime) {
+      latestOpenByContact.set(contactId, {
+        openedAt: rowOpenedAt,
+        updatedAt: rowUpdatedAt,
+      });
+    }
+  }
+
+  if (latestOpenByContact.size > 0) {
+    const preferredContactId = [...latestOpenByContact.entries()]
+      .sort((left, right) => {
+        const leftTime = dateValue(
+          left[1].updatedAt ?? left[1].openedAt ?? null,
+        );
+        const rightTime = dateValue(
+          right[1].updatedAt ?? right[1].openedAt ?? null,
+        );
+
+        return rightTime - leftTime;
+      })[0]?.[0];
+
+    const preferredContact = contacts.find(
+      (contact) => contact.id === preferredContactId,
+    );
+
+    if (preferredContact) {
+      return preferredContact;
+    }
+  }
+
+  return [...contacts].sort((left, right) => {
+    const rightTime = dateValue(right.updated_at ?? right.created_at ?? null);
+    const leftTime = dateValue(left.updated_at ?? left.created_at ?? null);
+
+    if (rightTime !== leftTime) {
+      return rightTime - leftTime;
+    }
+
+    const leftCreatedAt = dateValue(left.created_at ?? null);
+    const rightCreatedAt = dateValue(right.created_at ?? null);
+
+    if (leftCreatedAt !== rightCreatedAt) {
+      return leftCreatedAt - rightCreatedAt;
+    }
+
+    return left.id.localeCompare(right.id);
+  })[0];
 }
 
 async function findOpenTicket({
@@ -578,6 +722,110 @@ async function findOpenTicket({
   }
 
   return pickPreferredTicketForInbound((data ?? []) as IrisTicketRow[]);
+}
+
+async function findReusableTicketForInbound({
+  channelId,
+  client,
+  contactId,
+  waId,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  contactId: string;
+  waId: string | null;
+}) {
+  return (
+    (await findOpenTicket({
+      channelId,
+      client,
+      contactId,
+    })) ??
+    (waId
+      ? await findOpenTicketByWhatsAppIdentity({
+          channelId,
+          client,
+          excludedContactId: contactId,
+          waId,
+        })
+      : null)
+  );
+}
+
+async function waitForConcurrentTicketReuse({
+  channelId,
+  client,
+  contactId,
+  waId,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  contactId: string;
+  waId: string;
+}) {
+  for (const delayMs of INBOUND_REUSE_RETRY_DELAYS_MS) {
+    await sleepMs(delayMs);
+    const reusableTicket = await findReusableTicketForInbound({
+      channelId,
+      client,
+      contactId,
+      waId,
+    });
+
+    if (reusableTicket) {
+      return reusableTicket;
+    }
+  }
+
+  return null;
+}
+
+async function coalesceConcurrentTicketAfterCreate({
+  channelId,
+  client,
+  contactId,
+  createdTicket,
+  event,
+  waId,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  contactId: string;
+  createdTicket: IrisTicketRow;
+  event: IrisMetaWebhookEventRow;
+  waId: string;
+}) {
+  const canonicalTicket = await findOldestOpenTicketByWhatsAppIdentity({
+    channelId,
+    client,
+    waId,
+  });
+
+  if (!canonicalTicket || canonicalTicket.id === createdTicket.id) {
+    return {
+      coalesced: false,
+      ticket: createdTicket,
+    };
+  }
+
+  await markTicketAsInboundDuplicate({
+    client,
+    contactId,
+    duplicateTicket: createdTicket,
+    event,
+    stableTicketId: canonicalTicket.id,
+  });
+
+  const refreshedTicket = await touchTicketForInbound(
+    client,
+    canonicalTicket,
+    event,
+  );
+
+  return {
+    coalesced: true,
+    ticket: refreshedTicket,
+  };
 }
 
 async function findOpenTicketByWhatsAppIdentity({
@@ -665,6 +913,117 @@ function buildWhatsAppIdVariants(waId: string) {
   }
 
   return Array.from(variants).filter((value) => Boolean(normalizeWhatsAppId(value)));
+}
+
+async function findOldestOpenTicketByWhatsAppIdentity({
+  channelId,
+  client,
+  waId,
+}: {
+  channelId: string | null;
+  client: IrisMetaProcessorClient;
+  waId: string;
+}) {
+  const contactIds = await listContactIdsByWhatsAppIdentity({ client, waId });
+
+  if (!contactIds.length) {
+    return null;
+  }
+
+  let query = client
+    .from("caredesk_tickets")
+    .select(INBOUND_TICKET_SELECT)
+    .in("contact_id", contactIds)
+    .order("opened_at", { ascending: true })
+    .limit(60);
+
+  if (channelId) {
+    query = query.eq("channel_id", channelId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as IrisTicketRow[]).find(
+    (ticket) => !CLOSED_TICKET_STATUSES.has(ticket.status),
+  );
+}
+
+async function markTicketAsInboundDuplicate({
+  client,
+  contactId,
+  duplicateTicket,
+  event,
+  stableTicketId,
+}: {
+  client: IrisMetaProcessorClient;
+  contactId: string;
+  duplicateTicket: IrisTicketRow;
+  event: IrisMetaWebhookEventRow;
+  stableTicketId: string;
+}) {
+  const mergedAt = event.received_at || new Date().toISOString();
+  const metadata = {
+    ...(isRecord(duplicateTicket.metadata) ? duplicateTicket.metadata : {}),
+    duplicateMergedAt: mergedAt,
+    duplicateMergedBy: "meta_inbound_coalescer",
+    duplicateReason: "concurrent_whatsapp_inbound",
+    duplicateStableTicketId: stableTicketId,
+    duplicateWebhookEventId: event.id,
+  };
+
+  const { error } = await client
+    .from("caredesk_tickets")
+    .update({
+      closed_at: mergedAt,
+      metadata,
+      status: "closed",
+    })
+    .eq("id", duplicateTicket.id);
+
+  if (error) {
+    throw error;
+  }
+
+  const [stableTicketEvent, duplicateTicketEvent] = await Promise.all([
+    client.from("caredesk_ticket_events").insert({
+      actor_type: "system",
+      description:
+        "Inbound consolidado automaticamente para evitar ticket duplicado por concorrencia.",
+      event_type: "ticket_merge",
+      metadata: {
+        source: "meta_inbound_coalescer",
+        stableTicketId,
+        webhookEventId: event.id,
+      },
+      ticket_id: stableTicketId,
+      title: `Ticket ${duplicateTicket.protocol} consolidado automaticamente`,
+    }),
+    client.from("caredesk_ticket_events").insert({
+      actor_type: "system",
+      description: `Consolidado para ${stableTicketId} apos inbound concorrente.`,
+      event_type: "ticket_merge",
+      metadata: {
+        contactId,
+        source: "meta_inbound_coalescer",
+        stableTicketId,
+        webhookEventId: event.id,
+      },
+      ticket_id: duplicateTicket.id,
+      title: `Ticket consolidado em ${stableTicketId}`,
+    }),
+  ]);
+
+  if (stableTicketEvent.error) {
+    throw stableTicketEvent.error;
+  }
+
+  if (duplicateTicketEvent.error) {
+    throw duplicateTicketEvent.error;
+  }
 }
 
 async function findTicketByReplyContextMessageId({
@@ -1816,6 +2175,12 @@ function addHours(value: string, hours: number) {
   return new Date(
     new Date(value).getTime() + Number(hours || 24) * 60 * 60000,
   ).toISOString();
+}
+
+function sleepMs(durationMs: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
 }
 
 function addMinutes(value: string, minutes: number) {

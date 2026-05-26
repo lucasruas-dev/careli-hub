@@ -329,3 +329,32 @@ O manifesto de homologacao deve incluir:
 - Rollback imediato: dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4.
 - Safety Gate: PASS pre-push e pos-deploy.
 - Status dos recortes: EM_HOMOLOGACAO aguardando validacao autenticada do Lucas.
+
+## IRIS-20260526-006-INBOUND-COALESCE-TICKETS
+
+- Modulo: Iris.
+- Agente responsavel: Iris Core.
+- Status: PRONTO_PARA_HOMO.
+- Origem: Lucas reportou que o mesmo cliente WhatsApp estava abrindo mais de um protocolo em poucos segundos, quebrando o fluxo de continuidade no board.
+- Objetivo: evitar duplicacao de tickets no inbound Meta quando houver concorrencia de eventos e contatos duplicados para o mesmo numero.
+- Arquivos do recorte:
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`.
+- Comportamento:
+  - selecao de contato inbound passa a ser deterministica quando existirem contatos duplicados para o mesmo WhatsApp;
+  - reuso de ticket ganhou retry curto para absorver corrida entre webhooks quase simultaneos;
+  - quando dois tickets nascerem em paralelo para o mesmo cliente, o processor consolida automaticamente no ticket estavel e fecha o duplicado com trilha em `ticket_events`;
+  - o ticket consolidado recebe a mensagem inbound e segue o atendimento no mesmo protocolo.
+- Exclusoes:
+  - sem alteracao de env, secret, WABA, token, banco real, migration, dominio, alias ou producao.
+- Validacao executada:
+  - `git diff --check -- apps/hub/lib/iris/meta-inbound-processor.ts`: OK (warning CRLF conhecido no Windows);
+  - `npx.cmd eslint lib/iris/meta-inbound-processor.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK (warning conhecido Turbopack/NFT em `next.config.ts`).
+- Riscos e pendencias:
+  - consolidacao fecha o ticket duplicado automaticamente; historico fica rastreavel, mas pode exigir alinhamento visual no filtro de encerradas se o time quiser ocultar esse tipo de merge;
+  - validacao funcional autenticada em `homo.c2x.app.br/iris` segue pendente com Lucas para confirmar o fim da quebra em conversa real.
+- Rollback esperado: remover recorte do processor e restaurar comportamento anterior pelo deployment/base vigente antes deste protocolo.

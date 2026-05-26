@@ -19526,3 +19526,48 @@ Conclusao:
 - Os cortes Iris, Hades e Apolo foram publicados em homologacao sem tocar envs, secrets, banco, migrations, dominios de producao ou producao.
 - O impacto pratico e liberar o teste conjunto da operacao de cobranca com CRM 360 atualizado e board Iris preservado.
 - Producao continua fora deste recorte ate validacao explicita do Lucas.
+
+## 2026-05-26 18:45:41 -03:00 - Iris Core - Coalescencia inbound para evitar ticket duplicado
+
+Assunto: [Iris] Correcao de quebra de ticket no inbound WhatsApp
+
+- Nome da squad/agente: Iris Core.
+- Protocolo: IRIS-20260526-006-INBOUND-COALESCE-TICKETS.
+- Ambiente: local.
+- Status: PRONTO PARA HOMO.
+- Motivo:
+  - Lucas reportou que mensagens sequenciais do mesmo cliente estavam abrindo protocolos novos no board Iris, quebrando a continuidade do atendimento.
+- Causa raiz confirmada:
+  - concorrencia entre webhooks inbound quase simultaneos;
+  - contatos duplicados para o mesmo `wa_id` sem selecao deterministica;
+  - ausencia de trava de unicidade por telefone aberto no fluxo de aplicacao.
+- Implementacao:
+  - `findOrCreateContact` passou a selecionar contato preferencial de forma deterministica quando houver duplicados para o mesmo WhatsApp, priorizando contato com ticket aberto recente no canal;
+  - novo retry curto de reuso de ticket (`120ms`, `260ms`) antes de abrir ticket novo quando inbound chegar em corrida;
+  - novo coalescedor pos-criacao:
+    - se dois tickets nascerem para o mesmo WhatsApp, o processor preserva o ticket estavel;
+    - fecha o ticket duplicado automaticamente com metadados de consolidacao;
+    - registra trilha em `caredesk_ticket_events` (`ticket_merge`);
+    - grava a mensagem inbound no ticket estavel.
+- Arquivos alterados:
+  - `apps/hub/lib/iris/meta-inbound-processor.ts`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - sem alteracao de env, secrets, token, WABA, Supabase remoto, migrations, dominio, alias ou producao.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/iris/meta-inbound-processor.ts`: OK (warning CRLF conhecido no Windows);
+  - `npx.cmd eslint lib/iris/meta-inbound-processor.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`.
+- Riscos conhecidos:
+  - consolidacao automatica fecha ticket duplicado em corrida e preserva apenas o protocolo estavel; se a operacao quiser ocultar esses itens em encerradas, precisa ajuste visual futuro.
+- Proxima acao:
+  - Lucas validar em homologacao conversa real no mesmo contato (mensagens sequenciais e rapidas);
+  - Zeus pode subir homologacao pelo protocolo `IRIS-20260526-006-INBOUND-COALESCE-TICKETS` com pacote limpo Iris.
+
+Conclusao:
+- A quebra nao era de UI nem de nome de contato; era concorrencia no inbound com reuso fragil de contato/ticket.
+- O processor agora coalesce tickets concorrentes e fixa a mensagem no protocolo estavel, evitando abrir chat paralelo para o mesmo cliente.
+- O recorte esta validado localmente e pronto para handoff do Zeus em homologacao.
