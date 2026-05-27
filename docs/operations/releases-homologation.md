@@ -4730,3 +4730,15 @@ Registro de homologacao:
 - Escopo: controle segmentado de atraso para perfis de lideranca, coordenacao e administracao em Hades Atendimento.
 - Itens excluidos: envs, secrets, banco remoto, migrations, service role, producao e aliases de producao.
 - Deploy final: pendente de validacao, Safety Gate e publicacao Git.
+
+### Fechamento - HADES-20260527-001-FILTRO-ATRASO-LIDERANCA
+
+- Status: EM_HOMOLOGACAO.
+- Deployment de codigo: dpl_8baoM4osAQhGn7W4bhxNqu6FiuBZ.
+- Preview: https://careli-hub-hub-i2bs-az8moo3sa-lucasruas-devs-projects.vercel.app.
+- Rollback anterior ao recorte: dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
+- Pacote limpo auditavel: .codex-deploy/z27-002-hades-delay-filter-homo-20260527/package.
+- Escopo: filtro de atraso por faixa para lideranca/coordenacao/admin em Hades Atendimento.
+- Itens excluidos: envs, secrets, banco remoto, migrations executadas, service role, producao e aliases de producao.
+- Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
+- Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional.

@@ -427,3 +427,13 @@ O manifesto de homologacao deve incluir:
 - Validacoes pre-homo: pendentes neste pacote Zeus.
 - Status: `PRONTO_PARA_HOMO`.
 - Rollback esperado: `dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr`.
+
+#### Fechamento HADES-20260527-001
+
+- Status: EM_HOMOLOGACAO.
+- Deployment publicado em homologacao: dpl_8baoM4osAQhGn7W4bhxNqu6FiuBZ.
+- Preview: https://careli-hub-hub-i2bs-az8moo3sa-lucasruas-devs-projects.vercel.app.
+- Alias: https://homo.c2x.app.br.
+- Rollback anterior ao recorte: dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
+- Safety Gate: PASS pre-push e pos-publicacao.
+- Healthchecks: /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
