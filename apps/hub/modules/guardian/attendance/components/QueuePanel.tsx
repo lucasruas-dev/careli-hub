@@ -9,6 +9,8 @@ import { ClientQueueCard } from "@/modules/guardian/attendance/components/Client
 import { workflowStageDots, workflowStages, workflowStageStyles } from "@/modules/guardian/attendance/workflow";
 import type { AttendancePriority, QueueClient, WorkflowStage } from "@/modules/guardian/attendance/types";
 
+type OverdueRangeFilter = "all" | "1-30" | "31-60" | "60+";
+
 type QueuePanelProps = {
   clients: QueueClient[];
   contactedTodayClientIds: Set<string>;
@@ -16,6 +18,9 @@ type QueuePanelProps = {
   enterprises: string[];
   generalCount: number;
   mode: "daily" | "general";
+  overdueRange: OverdueRangeFilter;
+  overdueRangeCounts: Record<OverdueRangeFilter, number>;
+  overdueRangeEnabled: boolean;
   profileLabel: string;
   summaryClients: QueueClient[];
   priorities: Array<AttendancePriority | "Todos">;
@@ -26,12 +31,30 @@ type QueuePanelProps = {
   selectedStage: WorkflowStage | "Todas";
   onEnterpriseChange: (enterprise: string) => void;
   onModeChange: (mode: "daily" | "general") => void;
+  onOverdueRangeChange: (range: OverdueRangeFilter) => void;
   onPriorityChange: (priority: AttendancePriority | "Todos") => void;
   onOpenWhatsApp: (clientId: string) => void;
   onSearchChange: (search: string) => void;
   onStageChange: (stage: WorkflowStage | "Todas") => void;
   onSelectClient: (id: string) => void;
 };
+
+const overdueRangeLabels: Record<OverdueRangeFilter, string> = {
+  "1-30": "1-30",
+  "31-60": "31-60",
+  "60+": "Acima de 60",
+  all: "Todos",
+};
+
+const overdueRangeOptions: Array<{
+  label: string;
+  value: OverdueRangeFilter;
+}> = [
+  { label: "Todos", value: "all" },
+  { label: "1-30", value: "1-30" },
+  { label: "31-60", value: "31-60" },
+  { label: "60+", value: "60+" },
+];
 
 export function QueuePanel({
   clients,
@@ -40,6 +63,9 @@ export function QueuePanel({
   enterprises,
   generalCount,
   mode,
+  overdueRange,
+  overdueRangeCounts,
+  overdueRangeEnabled,
   profileLabel,
   summaryClients,
   priorities,
@@ -50,6 +76,7 @@ export function QueuePanel({
   selectedStage,
   onEnterpriseChange,
   onModeChange,
+  onOverdueRangeChange,
   onPriorityChange,
   onOpenWhatsApp,
   onSearchChange,
@@ -66,6 +93,7 @@ export function QueuePanel({
   const total = Math.max(summaryClients.length, 1);
   const activeFilters = [
     selectedEnterprise !== "Todos" ? { label: "Empreendimento", value: selectedEnterprise, clear: () => onEnterpriseChange("Todos") } : null,
+    overdueRangeEnabled && overdueRange !== "all" ? { label: "Atraso", value: overdueRangeLabels[overdueRange], clear: () => onOverdueRangeChange("all") } : null,
     selectedPriority !== "Todos" ? { label: "Prioridade", value: selectedPriority, clear: () => onPriorityChange("Todos") } : null,
     selectedStage !== "Todas" ? { label: "Workflow", value: selectedStage, clear: () => onStageChange("Todas") } : null,
   ].filter(Boolean) as Array<{ label: string; value: string; clear: () => void }>;
@@ -135,6 +163,32 @@ export function QueuePanel({
               </span>
             </button>
           </div>
+
+          {overdueRangeEnabled ? (
+            <div className="mt-3 rounded-xl border border-slate-200/70 bg-white p-1">
+              <div className="grid grid-cols-4 gap-1">
+                {overdueRangeOptions.map((item) => (
+                  <Tooltip key={item.value} content={`Atraso: ${item.label}`} placement="top">
+                    <button
+                      type="button"
+                      onClick={() => onOverdueRangeChange(item.value)}
+                      aria-label={`Filtrar atraso ${item.label}`}
+                      className={`min-h-9 rounded-lg px-2 text-xs font-semibold transition-colors ${
+                        overdueRange === item.value
+                          ? "bg-[#101820] text-white shadow-[0_1px_2px_rgba(15,23,42,0.18)]"
+                          : "text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="block truncate">{item.label}</span>
+                      <span className="mt-0.5 block text-[10px] opacity-75">
+                        {overdueRangeCounts[item.value]}
+                      </span>
+                    </button>
+                  </Tooltip>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2 text-slate-500">
             <Search className="size-4 shrink-0" aria-hidden="true" />

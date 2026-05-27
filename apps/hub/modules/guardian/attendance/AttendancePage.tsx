@@ -36,6 +36,7 @@ const priorities: Array<AttendancePriority | "Todos"> = [
 
 type AttendanceSection = "queue" | "desk" | "portfolio";
 type QueueMode = "daily" | "general";
+type OverdueRangeFilter = "all" | "1-30" | "31-60" | "60+";
 type ManualHadesOperations = {
   commitments: QueueClient["commitments"];
   events: OperationalTimelineEvent[];
@@ -87,6 +88,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [priority, setPriority] = useState<AttendancePriority | "Todos">("Todos");
   const [stage, setStage] = useState<WorkflowStage | "Todas">("Todas");
   const [queueMode, setQueueMode] = useState<QueueMode>("daily");
+  const [overdueRange, setOverdueRange] = useState<OverdueRangeFilter>("all");
   const [whatsAppClientId, setWhatsAppClientId] = useState<string | null>(null);
   const [whatsAppAttendanceProtocol, setWhatsAppAttendanceProtocol] = useState<string | null>(null);
   const [timelineEventsByClient, setTimelineEventsByClient] = useState<
@@ -316,18 +318,41 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       ),
     [operationalProfile.profileRole, sourceClients],
   );
+  const leadershipOverdueFilterEnabled = isHadesLeadershipProfile(
+    operationalProfile.profileRole,
+  );
+  const overdueRangeCounts = useMemo(
+    () => buildOverdueRangeCounts(profileScopedClients),
+    [profileScopedClients],
+  );
+  const overdueScopedClients = useMemo(() => {
+    if (!leadershipOverdueFilterEnabled) {
+      return profileScopedClients;
+    }
+
+    return profileScopedClients.filter((client) =>
+      isClientInOverdueRange(client, overdueRange),
+    );
+  }, [leadershipOverdueFilterEnabled, overdueRange, profileScopedClients]);
+
+  useEffect(() => {
+    if (!leadershipOverdueFilterEnabled && overdueRange !== "all") {
+      setOverdueRange("all");
+    }
+  }, [leadershipOverdueFilterEnabled, overdueRange]);
+
   const todayContactClientIds = useMemo(
     () =>
       buildTodayContactClientIds({
         manualOperationsByClient,
-        sourceClients: profileScopedClients,
+        sourceClients: overdueScopedClients,
         timelineEventsByClient,
       }),
-    [manualOperationsByClient, profileScopedClients, timelineEventsByClient],
+    [manualOperationsByClient, overdueScopedClients, timelineEventsByClient],
   );
 
   const enterpriseOptions = useMemo(() => {
-    const enterprises = profileScopedClients
+    const enterprises = overdueScopedClients
       .flatMap((client) => [
         client.carteira.empreendimento,
         ...client.carteira.unidades.map((unit) => unit.empreendimento),
@@ -336,12 +361,12 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       .sort((a, b) => a.localeCompare(b, "pt-BR"));
 
     return ["Todos", ...Array.from(new Set(enterprises))];
-  }, [profileScopedClients]);
+  }, [overdueScopedClients]);
 
   const searchableClients = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return profileScopedClients.filter((client) => {
+    return overdueScopedClients.filter((client) => {
       const matchesSearch =
         normalizedSearch.length === 0 ||
         client.nome.toLowerCase().includes(normalizedSearch) ||
@@ -362,7 +387,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
 
       return matchesSearch && matchesEnterprise && matchesPriority;
     });
-  }, [enterprise, priority, profileScopedClients, search]);
+  }, [enterprise, overdueScopedClients, priority, search]);
 
   const dailyQueueClients = useMemo(() => {
     return searchableClients.filter(isDailyQueueClient);
@@ -392,8 +417,8 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const selectedClient =
     filteredClients.find((client) => client.id === selectedId) ??
     filteredClients[0] ??
-    profileScopedClients.find((client) => client.id === selectedId) ??
-    profileScopedClients[0];
+    overdueScopedClients.find((client) => client.id === selectedId) ??
+    overdueScopedClients[0];
   const selectedManualOperations =
     manualOperationsByClient[selectedClient?.id ?? ""] ?? emptyManualOperations;
   const selectedClientWithManualOperations = selectedClient
@@ -626,6 +651,9 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                 dailyCount={dailyQueueClients.length}
                 generalCount={searchableClients.length}
                 mode={queueMode}
+                overdueRange={overdueRange}
+                overdueRangeCounts={overdueRangeCounts}
+                overdueRangeEnabled={leadershipOverdueFilterEnabled}
                 profileLabel={operationalProfile.label}
                 summaryClients={queueSummaryClients}
                 priorities={priorities}
@@ -637,6 +665,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                 selectedStage={stage}
                 onEnterpriseChange={setEnterprise}
                 onModeChange={setQueueMode}
+                onOverdueRangeChange={setOverdueRange}
                 onPriorityChange={setPriority}
                 onOpenWhatsApp={(clientId) => openWhatsApp(clientId)}
                 onSearchChange={setSearch}
@@ -661,8 +690,8 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       <AiCopilotDrawer
         client={selectedClientWithManualOperations}
         filteredQueueClients={filteredClients}
-        queueClients={profileScopedClients}
-        queueTotalCount={profileScopedClients.length || queueTotalCount}
+        queueClients={overdueScopedClients}
+        queueTotalCount={overdueScopedClients.length || queueTotalCount}
       />
     </>
   );
@@ -752,6 +781,35 @@ function isClientInHadesProfileScope(
   }
 
   return client.atrasoDias >= 61 && client.atrasoDias <= 90;
+}
+
+function isHadesLeadershipProfile(profileRole: OperationalProfileRole) {
+  return profileRole === "adm" || profileRole === "cdr" || profileRole === "ldr";
+}
+
+function isClientInOverdueRange(client: QueueClient, range: OverdueRangeFilter) {
+  if (range === "1-30") {
+    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
+  }
+
+  if (range === "31-60") {
+    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
+  }
+
+  if (range === "60+") {
+    return client.atrasoDias > 60;
+  }
+
+  return true;
+}
+
+function buildOverdueRangeCounts(clients: QueueClient[]) {
+  return {
+    "1-30": clients.filter((client) => isClientInOverdueRange(client, "1-30")).length,
+    "31-60": clients.filter((client) => isClientInOverdueRange(client, "31-60")).length,
+    "60+": clients.filter((client) => isClientInOverdueRange(client, "60+")).length,
+    all: clients.length,
+  } satisfies Record<OverdueRangeFilter, number>;
 }
 
 function isDailyQueueClient(client: QueueClient) {
