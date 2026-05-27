@@ -394,3 +394,13 @@ O manifesto de homologacao deve incluir:
   - `npm.cmd run build --workspace @repo/hub`: OK, com warning Turbopack/NFT conhecido.
 - Status: `PRONTO_PARA_HOMO`.
 - Rollback esperado: `dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL`.
+
+#### Fechamento SETUP-20260527-001
+
+- Status: EM_HOMOLOGACAO.
+- Deployment publicado em homologacao: dpl_8rnAdSpeb8og4oPcdYKWz8GpqA2K.
+- Preview: https://careli-hub-hub-i2bs-97fbmewnk-lucasruas-devs-projects.vercel.app.
+- Alias: https://homo.c2x.app.br.
+- Rollback imediato: dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL.
+- Safety Gate: PASS pre-push e pos-publicacao.
+- Healthchecks: /, /login e /setup 200; /api/setup/users 401 esperado sem sessao; logs Vercel sem erro.

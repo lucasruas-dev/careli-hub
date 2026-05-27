@@ -4702,3 +4702,19 @@ Registro de homologacao:
 - Itens excluidos: envs, secrets, WABA, phone number, banco remoto, migrations executadas, producao, dominios e aliases de producao.
 - Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build --workspace @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /login e /iris 200; /api/iris/tickets 401 esperado sem sessao; logs Vercel sem erro.
 - Riscos: validacao real depende de teste autenticado/WhatsApp com mensagens sequenciais; tickets duplicados antigos nao sao mesclados retroativamente.
+
+## 2026-05-27 08:05:00 -03:00 - Setup/Home departamento e senha de colaboradores
+
+- Assunto: [Setup] Homologacao departamento na presenca e senha temporaria.
+- Protocolo: SETUP-20260527-001-DEPARTAMENTO-SENHA-COLABORADORES.
+- Ambiente: https://homo.c2x.app.br.
+- Status: EM_HOMOLOGACAO.
+- Deployment de codigo: dpl_8rnAdSpeb8og4oPcdYKWz8GpqA2K.
+- Preview: https://careli-hub-hub-i2bs-97fbmewnk-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL.
+- Pacote limpo auditavel: .codex-deploy/z27-001-home-setup-profile-password-homo-20260527/package.
+- Escopo: Home exibe departamento/presenca sem perfil operacional; Setup remove coluna visual de perfil; edicao de usuario permite nova senha temporaria opcional via rota server-side administrativa.
+- Itens excluidos: envs, secrets, banco remoto, migrations executadas, service role, dominio, alias de producao e producao.
+- Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /, /login e /setup 200; /api/setup/users 401 esperado sem sessao; logs Vercel sem erro.
+- Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional; confirmar sempre pelo inspect atual de homo.
+- Riscos: validacao visual autenticada por Lucas ainda pendente; reset de senha depende de sessao admin e chave server-side configurada no ambiente, sem expor valor.

@@ -19652,3 +19652,19 @@ Assunto: [Setup] Departamento na presenca e senha temporaria de colaboradores
 Conclusao:
 - O ajuste e visual/operacional de Home e Setup, sem remover o perfil interno usado para permissao.
 - O reset de senha fica restrito a administradores autenticados e ao server-side, mantendo valor fora de logs e registros.
+
+### Fechamento - SETUP-20260527-001-DEPARTAMENTO-SENHA-COLABORADORES - 2026-05-27 08:05:00 -03:00
+
+- Status: EM_HOMOLOGACAO.
+- Commit de codigo: bd2fa13 fix(setup): show departments and allow collaborator password reset.
+- Commit documental inicial: 5570612 docs(zeus): register setup collaborator homologation protocol.
+- Deployment Git de codigo: dpl_8rnAdSpeb8og4oPcdYKWz8GpqA2K.
+- Preview tecnico: https://careli-hub-hub-i2bs-97fbmewnk-lucasruas-devs-projects.vercel.app.
+- Alias: https://homo.c2x.app.br.
+- Rollback: dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL.
+- Pacote limpo auditavel: .codex-deploy/z27-001-home-setup-profile-password-homo-20260527/package.
+- Manifestos Safety Gate:
+  - .codex-deploy/z27-001-home-setup-profile-password-homo-20260527/homologation-safety-gate.pre.json;
+  - .codex-deploy/z27-001-home-setup-profile-password-homo-20260527/homologation-safety-gate.post-code.json.
+- Healthchecks: /, /login e /setup retornaram 200; /api/setup/users sem sessao retornou 401 esperado; logs Vercel sem erro.
+- Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional; confirmar sempre pelo inspect atual de homo.
