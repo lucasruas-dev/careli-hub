@@ -19622,3 +19622,33 @@ Conclusao:
 - O ultimo recorte da Iris esta em homologacao sem sobrescrever os cortes ja publicados.
 - O impacto pratico e reduzir abertura de protocolos paralelos quando chegam webhooks inbound quase simultaneos do mesmo WhatsApp.
 - Proximo passo: Lucas validar em homo uma conversa real com mensagens sequenciais no mesmo contato e confirmar que o board permanece no mesmo protocolo.
+
+## 2026-05-27 07:55:00 -03:00 - Zeus Operations - Setup/Home departamento e senha
+
+Assunto: [Setup] Departamento na presenca e senha temporaria de colaboradores
+
+- Protocolo: SETUP-20260527-001-DEPARTAMENTO-SENHA-COLABORADORES.
+- Ambiente alvo: https://homo.c2x.app.br.
+- Status inicial: PRONTO_PARA_HOMO.
+- Base preservada: origin/homolog 70396e8 e deployment dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL.
+- Escopo:
+  - Home passa a exibir departamento e presenca, sem rotulo visual de perfil operacional;
+  - Setup remove coluna visual de perfil na lista de usuarios;
+  - Setup permite nova senha temporaria opcional na edicao de colaborador existente;
+  - API administrativa de usuarios atualiza senha no Supabase Auth apenas server-side e sem logar valor.
+- Arquivos incluidos:
+  - apps/hub/app/page.tsx;
+  - apps/hub/app/setup/page.tsx;
+  - apps/hub/app/api/setup/users/route.ts;
+  - apps/hub/lib/setup/data.ts;
+  - apps/hub/lib/setup/types.ts;
+  - docs/operations/engineering-operations.md;
+  - docs/operations/panteon-recorte-protocols.md;
+  - docs/operations/releases-homologation.md.
+- Exclusoes: sem envs, secrets, migrations, banco remoto, service role, dominio, alias de producao ou producao.
+- Validacoes pre-homo: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build @repo/hub OK com warning conhecido Turbopack/NFT.
+- Proximo passo: gerar pacote limpo, rodar Safety Gate e publicar somente em homologacao.
+
+Conclusao:
+- O ajuste e visual/operacional de Home e Setup, sem remover o perfil interno usado para permissao.
+- O reset de senha fica restrito a administradores autenticados e ao server-side, mantendo valor fora de logs e registros.

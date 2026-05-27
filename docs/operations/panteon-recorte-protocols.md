@@ -363,3 +363,34 @@ O manifesto de homologacao deve incluir:
 - Pacote limpo auditavel: .codex-deploy/z26-008-iris-inbound-coalesce-homo-20260526/package.
 - Manifestos Safety Gate: .codex-deploy/z26-008-iris-inbound-coalesce-homo-20260526/homologation-safety-gate.clean.json e .codex-deploy/z26-008-iris-inbound-coalesce-homo-20260526/homologation-safety-gate.post.json.
 - Rollback imediato: dpl_9HAjWo5eeBo6VUUn2njxvpgzWYdS.
+
+## SETUP-20260527-001-DEPARTAMENTO-SENHA-COLABORADORES
+
+- Modulo/agente dono: `Zeus Operations` com recorte Home/Setup.
+- Objetivo do recorte: remover exibicao de perfil operacional na lista de pessoas da Home, mostrar somente departamento com sinal de presenca, remover a coluna visual de perfil no Setup e permitir que administrador defina nova senha temporaria para colaborador existente.
+- Worktree/branch de origem: `.codex-deploy/z27-001-home-setup-profile-password-homo-20260527/w` em `codex/zeus/home-setup-profile-password-homo-20260527`.
+- Base limpa: `origin/homolog` em `70396e8`.
+- Expected deployment atual de homologacao: `dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL`.
+- Arquivos incluidos no pacote de homologacao:
+  - `apps/hub/app/page.tsx`;
+  - `apps/hub/app/setup/page.tsx`;
+  - `apps/hub/app/api/setup/users/route.ts`;
+  - `apps/hub/lib/setup/data.ts`;
+  - `apps/hub/lib/setup/types.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos: envs, secrets, migrations, banco remoto, service role, dominio, alias de producao e producao.
+- Comportamento esperado:
+  - Home mostra `Departamento / presenca` no card de pessoas, sem `Operador`, `Lider`, `Coordenador` ou `Administrador`;
+  - Setup lista usuarios sem coluna de perfil operacional;
+  - perfil operacional continua existindo apenas como controle interno de permissao;
+  - edicao de usuario permite informar nova senha temporaria opcional, com minimo de 8 caracteres, enviada somente para rota server-side administrativa.
+- Validacoes pre-homo:
+  - `git diff --check`: OK;
+  - `npx.cmd eslint app/page.tsx app/setup/page.tsx app/api/setup/users/route.ts lib/setup/data.ts lib/setup/types.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning Turbopack/NFT conhecido.
+- Status: `PRONTO_PARA_HOMO`.
+- Rollback esperado: `dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL`.
