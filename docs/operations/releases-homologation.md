@@ -4718,3 +4718,15 @@ Registro de homologacao:
 - Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /, /login e /setup 200; /api/setup/users 401 esperado sem sessao; logs Vercel sem erro.
 - Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional; confirmar sempre pelo inspect atual de homo.
 - Riscos: validacao visual autenticada por Lucas ainda pendente; reset de senha depende de sessao admin e chave server-side configurada no ambiente, sem expor valor.
+
+## 2026-05-27 09:42:00 -03:00 - Hades filtro de atraso por faixa
+
+- Assunto: [Hades] Homologacao filtro de atraso por faixa para lideranca.
+- Protocolo: HADES-20260527-001-FILTRO-ATRASO-LIDERANCA.
+- Ambiente: https://homo.c2x.app.br.
+- Status: PRONTO_PARA_HOMO.
+- Expected deployment atual: dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
+- Rollback esperado: dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
+- Escopo: controle segmentado de atraso para perfis de lideranca, coordenacao e administracao em Hades Atendimento.
+- Itens excluidos: envs, secrets, banco remoto, migrations, service role, producao e aliases de producao.
+- Deploy final: pendente de validacao, Safety Gate e publicacao Git.

@@ -404,3 +404,26 @@ O manifesto de homologacao deve incluir:
 - Rollback imediato: dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL.
 - Safety Gate: PASS pre-push e pos-publicacao.
 - Healthchecks: /, /login e /setup 200; /api/setup/users 401 esperado sem sessao; logs Vercel sem erro.
+
+## HADES-20260527-001-FILTRO-ATRASO-LIDERANCA
+
+- Modulo/agente dono: Hades.
+- Zeus responsavel por homo: Zeus Operations.
+- Objetivo do recorte: permitir que lideranca, coordenacao e administracao filtrem a fila por faixas de atraso sem alterar a experiencia dos perfis OP1/OP2/OP3.
+- Worktree/branch de homologacao: `.codex-deploy/z27-002-hades-delay-filter-homo-20260527/w` em `codex/zeus/hades-delay-filter-homo-20260527`.
+- Base limpa: `origin/homolog` em `8176f5f`.
+- Expected deployment atual de homologacao: `dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr`.
+- Arquivos incluidos no pacote de homologacao:
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/QueuePanel.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos: envs, secrets, migrations, banco remoto, service role, dominio, alias de producao e producao.
+- Comportamento esperado:
+  - perfis `adm`, `cdr` e `ldr` visualizam filtro compacto de atraso com `Todos`, `1-30`, `31-60` e `60+`;
+  - a faixa selecionada reduz fila diaria, fila geral, busca, empreendimentos, contadores, distribuicao e copilot;
+  - perfis OP nao veem o controle e mantem o escopo operacional original.
+- Validacoes pre-homo: pendentes neste pacote Zeus.
+- Status: `PRONTO_PARA_HOMO`.
+- Rollback esperado: `dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr`.

@@ -19668,3 +19668,30 @@ Conclusao:
   - .codex-deploy/z27-001-home-setup-profile-password-homo-20260527/homologation-safety-gate.post-code.json.
 - Healthchecks: /, /login e /setup retornaram 200; /api/setup/users sem sessao retornou 401 esperado; logs Vercel sem erro.
 - Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional; confirmar sempre pelo inspect atual de homo.
+
+## 2026-05-27 09:42:00 -03:00 - Hades atraso por faixa para lideranca
+
+Assunto: [Hades] Filtro de atraso por faixa para lideranca
+
+- Protocolo: HADES-20260527-001-FILTRO-ATRASO-LIDERANCA.
+- Ambiente alvo: https://homo.c2x.app.br.
+- Status inicial: PRONTO_PARA_HOMO.
+- Base preservada: origin/homolog 8176f5f e deployment dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
+- Escopo:
+  - lideranca, coordenacao e administracao ganham filtro rapido de fila por faixas de atraso;
+  - faixas: Todos, 1-30, 31-60 e 60+;
+  - filtro impacta busca, empreendimentos, fila diaria, fila geral, contadores, distribuicao e contexto do copilot;
+  - perfis operacionais OP1, OP2 e OP3 seguem sem o novo controle visual.
+- Arquivos incluidos:
+  - apps/hub/modules/guardian/attendance/AttendancePage.tsx;
+  - apps/hub/modules/guardian/attendance/components/QueuePanel.tsx;
+  - docs/operations/engineering-operations.md;
+  - docs/operations/panteon-recorte-protocols.md;
+  - docs/operations/releases-homologation.md.
+- Exclusoes: sem envs, secrets, migrations, banco remoto, service role, dominio, alias de producao ou producao.
+- Validacoes planejadas: git diff --check; eslint escopado; check-types:hub; lint:hub; build @repo/hub; Safety Gate pre-push e pos-publicacao; healthchecks em homo.
+- Proximo passo: validar o pacote limpo e publicar apenas em homologacao.
+
+Conclusao:
+- O recorte e funcional e visual dentro do Hades, sem alterar regras de Iris/Meta ou outros modulos.
+- O objetivo pratico e dar a lideranca uma leitura rapida da fila por atraso sem poluir a operacao dos perfis OP.
