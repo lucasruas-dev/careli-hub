@@ -541,7 +541,7 @@ O manifesto de homologacao deve incluir:
   - `npm.cmd run check-types:hub`: OK;
   - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
   - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
-- Status: `PRONTO_PARA_HEFESTO_PRODUCAO`.
+- Status: `EM_PRODUCAO`.
 - Preview Vercel: nao publicado neste passo.
 - Deployment id e URL tecnica: pendentes ate publicacao por Hefesto.
 - Rollback sugerido: promover novamente `dpl_FRyLY4NdSJc556S6qZEuXYjevPow` se ele continuar sendo o deployment saudavel imediatamente anterior ao deploy.
@@ -550,3 +550,13 @@ O manifesto de homologacao deve incluir:
   - estado de leitura usa `localStorage` por usuario/navegador, sem mudanca de banco;
   - commit usou `--no-verify` porque o hook local aponta para `scripts/panteon-hook-runner.ps1`, ausente no snapshot; as validacoes reais foram executadas antes.
 - Decisao de Lucas: pediu preparar as melhorias Hermes para homologar/promover em producao em 2026-05-27.
+
+#### Fechamento HERMES-20260527-001-THREAD-REPLY-NOTIFICATIONS
+
+- Status: EM_PRODUCAO.
+- Deployment publicado em producao: dpl_7YD9jcHxfRy5j4k8ksQxnSX8aeLC.
+- URL tecnica: https://careli-hub-hub-i2bs-hzg6xab9o-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Rollback imediato: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
+- Validacoes finais: diff check, secret scan de codigo, eslint escopado, check-types, lint, build, deploy Vercel Production, inspect dos aliases, healthchecks HTTP e logs recentes sem erro critico.
+- Observacao: validacao funcional de badges/notificacoes de thread depende de sessao real no Hermes/PulseX com mensagens em thread.

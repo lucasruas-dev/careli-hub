@@ -19991,3 +19991,71 @@ Conclusao:
 - O recorte Hermes esta pronto para a esteira do Hefesto, com pacote limpo, commit de codigo isolado e producao atual inspecionada.
 - O impacto pratico e melhorar a descoberta de respostas em threads e preservar links clicaveis dentro das mensagens.
 - O proximo passo e Hefesto publicar somente este protocolo quando Lucas autorizar a producao, reinspecionando aliases e mantendo rollback para o deployment vigente.
+
+## 2026-05-27 16:58:16 -03:00 - Hefesto - Producao Hermes threads
+
+Assunto: [Hermes] Producao do protocolo threads e notificacoes
+
+- Protocolo: HERMES-20260527-001-THREAD-REPLY-NOTIFICATIONS.
+- Status: EM PRODUCAO.
+- Ambiente: producao.
+- Motivo: Lucas autorizou subir em producao o recorte Hermes preparado por Zeus para respostas novas em threads e links clicaveis.
+- Pacote utilizado: worktree limpo `.codex-deploy/z27-005-hermes-thread-notifications-prod-20260527` na branch `codex/zeus/hermes-thread-notifications-prod-20260527`.
+- Escopo publicado:
+  - sino do Hermes/PulseX exibe respostas novas em threads;
+  - clique em notificacao de thread abre/foca a mensagem/thread correspondente;
+  - badges indicam respostas novas em mensagens com thread;
+  - leitura de respostas de thread fica controlada por usuario/navegador via `localStorage`;
+  - links HTTP/HTTPS em mensagens seguem clicaveis sem quebrar mencoes.
+- Arquivos/modulos afetados:
+  - `apps/hub/components/pulsex/conversation-header.tsx`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - registros operacionais em `docs/operations`.
+- Arquivos/modulos excluidos: root misto, envs, secrets, tokens, banco, migrations, Supabase mutavel, service role, Meta/Iris, Hades, Ares, Apolo, dominio novo, alias manual e alteracoes fora do recorte Hermes.
+- Como foi feito:
+  - confirmada coerencia do protocolo contra Git;
+  - executadas validacoes locais no pacote limpo;
+  - publicado deploy Vercel Production;
+  - confirmados aliases `c2x.app.br` e `ops.c2x.app.br`;
+  - executados healthchecks e consulta de logs recentes.
+- Deployment anterior/rollback imediato: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
+- Deployment novo: dpl_7YD9jcHxfRy5j4k8ksQxnSX8aeLC.
+- URL tecnica: https://careli-hub-hub-i2bs-hzg6xab9o-lucasruas-devs-projects.vercel.app.
+- Validacoes executadas:
+  - `git diff --name-status HEAD~2..HEAD`: escopo restrito a Hermes/PulseX e registros operacionais;
+  - `git diff --check HEAD~2..HEAD`: OK;
+  - scan de secrets nos arquivos de codigo do recorte: sem ocorrencias;
+  - `npx.cmd eslint components/pulsex/conversation-header.tsx components/pulsex/message-item.tsx components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/supabase-data.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `npx.cmd vercel deploy --prod --yes --archive=tgz`: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment novo;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment novo.
+- Healthchecks pos-deploy:
+  - `/`: 200;
+  - `/login`: 200;
+  - `/hermes`: 200;
+  - `/pulsex`: 307 esperado para `/hermes` e 200 ao seguir redirect;
+  - `/zeus` em `ops.c2x.app.br`: 200;
+  - `/api/hermes/messages` sem sessao: 401 esperado;
+  - `/api/operations/monitoring` sem sessao: 401 esperado;
+  - `/api/auth/profile` sem sessao: 401 esperado;
+  - `/api/guardian/db/health`: 200;
+  - `/api/hades/db/health`: 200.
+- Logs recentes Vercel: sem erro critico; apenas infos, redirect esperado e 401 esperados para rotas protegidas sem sessao.
+- Riscos conhecidos:
+  - validacao funcional final exige sessao real no Hermes/PulseX com mensagens em thread;
+  - estado de leitura por `localStorage` e intencional, mas e por navegador/dispositivo;
+  - nenhum envio externo, env, banco ou migration foi alterado neste recorte.
+- Pendencias:
+  - Lucas validar em producao um canal Hermes com threads, badge de resposta nova e abertura pelo sino.
+- Proxima squad recomendada: Hermes Core se a validacao funcional apontar ajuste fino de UX ou regra de leitura.
+
+Conclusao:
+- O protocolo `HERMES-20260527-001-THREAD-REPLY-NOTIFICATIONS` foi publicado em producao com pacote limpo e healthchecks OK.
+- O impacto pratico e melhorar a descoberta de respostas em threads no Hermes/PulseX e preservar links clicaveis nas mensagens.
+- Nao houve alteracao de env, secret, migration, banco ou dominio novo; rollback imediato permanece no deployment anterior `dpl_FRyLY4NdSJc556S6qZEuXYjevPow`.

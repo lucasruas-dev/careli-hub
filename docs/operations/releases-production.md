@@ -1613,3 +1613,44 @@ Conclusao:
 - O recorte Hermes esta preparado para producao com pacote limpo e commit isolado.
 - O impacto pratico e melhorar o acompanhamento de respostas em threads e manter links clicaveis em mensagens.
 - Hefesto deve publicar somente mediante autorizacao final de Lucas, preservando rollback para o deployment vigente no momento do deploy.
+
+Atualizacao pos-deploy:
+
+- Assunto: [Hermes] Threads e notificacoes em producao.
+- Protocolo: HERMES-20260527-001-THREAD-REPLY-NOTIFICATIONS.
+- Status final: EM PRODUCAO.
+- Deployment anterior/rollback imediato: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
+- Deployment novo: dpl_7YD9jcHxfRy5j4k8ksQxnSX8aeLC.
+- URL tecnica: https://careli-hub-hub-i2bs-hzg6xab9o-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit de codigo publicado: 18acdbc feat(hermes): surface thread reply notifications.
+- Commit de handoff publicado: 94bc7f9 docs(zeus): prepare hermes production handoff.
+- Validacoes executadas:
+  - `git diff --name-status HEAD~2..HEAD`: escopo restrito a Hermes/PulseX e registros operacionais;
+  - `git diff --check HEAD~2..HEAD`: OK;
+  - scan de secrets nos arquivos de codigo do recorte: sem ocorrencias;
+  - `npx.cmd eslint components/pulsex/conversation-header.tsx components/pulsex/message-item.tsx components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/supabase-data.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT;
+  - `npx.cmd vercel deploy --prod --yes --archive=tgz`: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment novo;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment novo.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200 em 0.910s;
+  - `GET https://c2x.app.br/login`: 200 em 0.697s;
+  - `GET https://c2x.app.br/hermes`: 200 em 0.463s;
+  - `GET https://c2x.app.br/pulsex`: 307 esperado para `/hermes`;
+  - `GET https://c2x.app.br/pulsex` com redirect: 200 em `/hermes`;
+  - `GET https://ops.c2x.app.br/zeus`: 200 em 0.839s;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado em 0.222s;
+  - `GET https://c2x.app.br/api/operations/monitoring` sem sessao: 401 esperado em 0.469s;
+  - `GET https://c2x.app.br/api/auth/profile` sem sessao: 401 esperado em 0.443s;
+  - `GET https://c2x.app.br/api/guardian/db/health`: 200 em 1.194s;
+  - `GET https://c2x.app.br/api/hades/db/health`: 200 em 0.613s.
+- Logs Vercel recentes: sem erro critico; somente infos, 307 esperado e 401 esperados em rotas protegidas sem sessao.
+- Warnings conhecidos: npm audit herdado, engines Node `>=18`, Turbopack/NFT por leitura filesystem no SquadOps e envs Postgres antigas fora do turbo.json em pacotes compartilhados.
+- Riscos remanescentes:
+  - validacao funcional final depende de sessao real no Hermes/PulseX com mensagens em thread;
+  - estado de leitura usa `localStorage` por usuario/navegador/dispositivo;
+  - nao houve alteracao de env, secret, migration, banco, Supabase mutavel ou integracao externa.
