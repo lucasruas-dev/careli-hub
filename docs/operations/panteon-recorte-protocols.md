@@ -496,4 +496,9 @@ O manifesto de homologacao deve incluir:
   - `npm.cmd run check-types:hub`: OK;
   - `npm.cmd run lint:hub`: OK;
   - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de Turbopack/NFT no SquadOps.
-- Status: `PRONTO_PARA_HOMO`.
+- Handoff producao:
+  - Lucas dispensou homologacao deste recorte em 2026-05-27 e pediu preparo para Hefesto subir em producao;
+  - escopo e client-side/PWA, sem env, banco, secrets, rota server-side sensivel, integration externa ou migracao;
+  - producao atual inspecionada em 2026-05-27 15:40:34 -03:00: `c2x.app.br` e `ops.c2x.app.br` apontam para `dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f`;
+  - Hefesto deve reinspecionar producao no momento do deploy, rodar Safety Gate/healthchecks de producao e manter rollback para o deployment anterior saudavel.
+- Status: `PRONTO_PARA_HEFESTO_PRODUCAO`.

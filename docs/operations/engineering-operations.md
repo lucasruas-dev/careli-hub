@@ -19831,3 +19831,42 @@ Conclusao:
 - O Hub ficou preparado para notificacoes nativas no Windows no caminho mais seguro e incremental.
 - O impacto pratico e permitir que Lucas autorize e teste um toast do Panteon parecido com o do Codex, sem mexer em infraestrutura sensivel.
 - A decisao futura e se a etapa seguinte sera apenas homologar este recorte PWA ou desenhar um app desktop companion para independencia total do navegador.
+
+## 2026-05-27 15:40:34 -03:00 - Zeus Operations - Handoff Hefesto producao notificacoes Windows
+
+Assunto: [Hub] Handoff para producao das notificacoes nativas Windows
+
+- Protocolo: HUB-20260527-001-NOTIFICACOES-WINDOWS.
+- Status atualizado: PRONTO_PARA_HEFESTO_PRODUCAO.
+- Autorizacao/decisao: Lucas informou que nao precisa homologar este recorte e pediu preparar para Hefesto subir em producao.
+- Justificativa de dispensa de homologacao:
+  - recorte client-side/PWA, restrito ao topbar do Hub, helper de notificacao nativa e service worker;
+  - sem alteracao de envs, secrets, banco, migrations, Supabase mutavel, Meta, auth, rotas server-side sensiveis, dominio ou alias.
+- Commit candidato:
+  - `de9b601 feat(hub): add windows native notifications`.
+- Branch/worktree:
+  - `codex/zeus/hub-windows-notifications-20260527`;
+  - `.codex-deploy/z27-004-hub-windows-notifications-20260527`.
+- Producao atual inspecionada:
+  - `https://c2x.app.br`: Ready em `dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f`;
+  - `https://ops.c2x.app.br`: Ready em `dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f`;
+  - ambos aliases apontam para `https://careli-hub-hub-i2bs-itaab90ji-lucasruas-devs-projects.vercel.app`.
+- Validacoes ja executadas no recorte:
+  - `git diff --check`: OK;
+  - `npx.cmd eslint layouts/hub-shell.tsx lib/hub/native-notifications.ts --max-warnings 0` em `apps/hub`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de Turbopack/NFT no SquadOps.
+- Instrucoes para Hefesto:
+  - antes de publicar, reinspecionar `c2x.app.br` e `ops.c2x.app.br` para garantir que o rollback/base continua sendo o deployment esperado;
+  - publicar somente este recorte/commit em pacote limpo;
+  - rodar healthchecks minimos: `/`, `/login`, rota principal autenticavel do Hub e rotas protegidas com 401/403 esperado sem sessao;
+  - conferir logs recentes sem erro critico;
+  - registrar deployment novo, deployment anterior e rollback em `docs/operations/releases-production.md`.
+- Rollback inicial sugerido: promover novamente `dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f` caso o deploy das notificacoes cause regressao em shell/topbar/PWA.
+- Observacao: Zeus nao executou deploy de producao neste passo; apenas preparou handoff rastreavel para Hefesto.
+
+Conclusao:
+- O recorte de notificacoes nativas esta liberado para a esteira de producao do Hefesto por decisao do Lucas, sem homologacao previa.
+- O impacto esperado e baixo e visual/operacional: ativar toast Windows do Panteon via PWA.
+- O proximo responsavel e Hefesto, que deve publicar com pacote limpo, registrar producao e manter rollback para `dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f` se ele ainda for o deployment saudavel no momento do deploy.

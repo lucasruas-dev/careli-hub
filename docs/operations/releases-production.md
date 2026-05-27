@@ -1462,3 +1462,56 @@ Registro de producao:
   - warnings herdados de npm audit e Turbopack/NFT continuam pendentes fora deste recorte.
 - Rollback: promover novamente dpl_HgRaFSDbSWjF31khxDQw4YJHvBWT se houver regressao critica em Apolo, Hermes, login, Panteon principal ou OPS.
 - Proxima acao: Lucas validar Apolo/Hermes/Login em producao; quando quiser iniciar Iris em producao, abrir recorte explicito para remover/alterar o standby e rodar novo deploy/healthcheck.
+
+
+Handoff de producao:
+
+- Assunto: [Hub] Notificacoes nativas Windows prontas para Hefesto.
+- Identificador/protocolo: HUB-20260527-001-NOTIFICACOES-WINDOWS.
+- Squad/agente responsavel pelo preparo: Zeus Operations.
+- Responsavel pela publicacao: Hefesto.
+- Data e hora local do handoff: 2026-05-27 15:40:34 -03:00.
+- Ambiente alvo: producao.
+- Status: PRONTO PARA HEFESTO / NAO PUBLICADO.
+- Decisao Lucas: Lucas dispensou homologacao deste recorte e pediu preparar para Hefesto subir em producao.
+- Escopo candidato:
+  - notificacoes nativas do Windows via PWA/Web Notifications;
+  - botao compacto no topbar para ativar/testar notificacoes;
+  - Service Worker foca/abre o Hub ao clicar no toast;
+  - novas notificacoes realtime nao lidas recebidas apos o carregamento podem gerar toast nativo quando a permissao estiver concedida.
+- Commit candidato:
+  - de9b601 feat(hub): add windows native notifications.
+- Branch/worktree:
+  - codex/zeus/hub-windows-notifications-20260527;
+  - .codex-deploy/z27-004-hub-windows-notifications-20260527.
+- Arquivos incluidos:
+  - apps/hub/layouts/hub-shell.tsx;
+  - apps/hub/lib/hub/native-notifications.ts;
+  - apps/hub/public/sw.js;
+  - docs/operations/engineering-operations.md;
+  - docs/operations/panteon-recorte-protocols.md;
+  - docs/operations/releases-production.md.
+- Arquivos/modulos excluidos:
+  - envs, secrets, banco, migrations, Supabase mutavel, Meta, auth server-side, dominio, alias de homologacao, alias de producao e producao neste passo.
+- Producao atual inspecionada antes do handoff:
+  - c2x.app.br: dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f Ready;
+  - ops.c2x.app.br: dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f Ready;
+  - URL tecnica atual: https://careli-hub-hub-i2bs-itaab90ji-lucasruas-devs-projects.vercel.app.
+- Validacoes do recorte:
+  - git diff --check: OK;
+  - npx.cmd eslint layouts/hub-shell.tsx lib/hub/native-notifications.ts --max-warnings 0 em apps/hub: OK;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK;
+  - npm.cmd run build --workspace @repo/hub: OK, com warnings conhecidos de Turbopack/NFT no SquadOps.
+- Regras para Hefesto antes de publicar:
+  - reinspecionar c2x.app.br e ops.c2x.app.br e confirmar deployment anterior saudavel no momento do deploy;
+  - publicar pacote limpo apenas deste recorte/commit;
+  - rodar healthchecks de producao em /, /login, rotas principais e rotas protegidas com 401/403 esperado sem sessao;
+  - verificar logs de erro recentes;
+  - registrar deployment novo, deployment anterior, aliases afetados, comandos, healthchecks e rollback.
+- Rollback inicial sugerido:
+  - promover novamente dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f se ele continuar sendo o deployment saudavel imediatamente anterior ao deploy.
+- Riscos conhecidos:
+  - Web Notifications dependem de permissao do navegador/app instalado e do suporte PWA do Windows;
+  - notificacao totalmente independente do navegador exige recorte futuro com companion desktop ou Web Push server-side;
+  - como Lucas dispensou homologacao, a validacao funcional final do toast deve ocorrer em producao logo apos o deploy.
