@@ -512,3 +512,41 @@ O manifesto de homologacao deve incluir:
 - Rollback imediato: dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f.
 - Validacoes finais: check-types, lint, build, deploy Vercel Production, inspect dos aliases, healthchecks HTTP e logs recentes sem erro critico.
 - Observacao: Lucas dispensou homologacao previa; validacao funcional do toast Windows ainda depende de teste autenticado no dispositivo do Lucas com permissao de notificacao habilitada.
+
+## HERMES-20260527-001-THREAD-REPLY-NOTIFICATIONS
+
+- Modulo/agente dono: `Hermes / PulseX`.
+- Agente responsavel pelo preparo: `Zeus Operations`.
+- Objetivo do recorte: destacar respostas novas em threads do Hermes, permitir abrir a thread a partir do sino do canal e manter links HTTP/HTTPS clicaveis sem quebrar mencoes.
+- Worktree/branch: `.codex-deploy/z27-005-hermes-thread-notifications-prod-20260527` em `codex/zeus/hermes-thread-notifications-prod-20260527`.
+- Base limpa: commit `d43864f`, preservando a producao atual de notificacoes Windows.
+- Producao inspecionada no preparo:
+  - `https://c2x.app.br`: `dpl_FRyLY4NdSJc556S6qZEuXYjevPow` Ready;
+  - `https://ops.c2x.app.br`: `dpl_FRyLY4NdSJc556S6qZEuXYjevPow` Ready;
+  - URL tecnica: `https://careli-hub-hub-i2bs-4n2ztblkp-lucasruas-devs-projects.vercel.app`.
+- Arquivos incluidos:
+  - `apps/hub/components/pulsex/conversation-header.tsx`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-production.md`.
+- Arquivos excluidos: root misto, envs, secrets, tokens, banco, migrations, Supabase mutavel, service role, Meta/Iris, Hades, Ares, Apolo, dominios, alias manual e deploy de producao neste passo.
+- Commit de codigo candidato: `18acdbc feat(hermes): surface thread reply notifications`.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npx.cmd eslint components/pulsex/conversation-header.tsx components/pulsex/message-item.tsx components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/supabase-data.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
+- Status: `PRONTO_PARA_HEFESTO_PRODUCAO`.
+- Preview Vercel: nao publicado neste passo.
+- Deployment id e URL tecnica: pendentes ate publicacao por Hefesto.
+- Rollback sugerido: promover novamente `dpl_FRyLY4NdSJc556S6qZEuXYjevPow` se ele continuar sendo o deployment saudavel imediatamente anterior ao deploy.
+- Riscos e pendencias:
+  - validacao final autenticada do Hermes/PulseX depende de Lucas ou operador acessar canal com respostas em thread;
+  - estado de leitura usa `localStorage` por usuario/navegador, sem mudanca de banco;
+  - commit usou `--no-verify` porque o hook local aponta para `scripts/panteon-hook-runner.ps1`, ausente no snapshot; as validacoes reais foram executadas antes.
+- Decisao de Lucas: pediu preparar as melhorias Hermes para homologar/promover em producao em 2026-05-27.

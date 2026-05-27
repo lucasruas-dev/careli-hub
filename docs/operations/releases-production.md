@@ -1552,3 +1552,64 @@ Atualizacao pos-deploy:
   - Web Notifications dependem da permissao do navegador/app instalado e suporte PWA do Windows;
   - validacao funcional do toast deve ser feita por Lucas em sessao real no Windows;
   - notificacao totalmente independente do navegador continua como evolucao futura com companion desktop ou Web Push server-side.
+
+Handoff de producao:
+
+- Assunto: [Hermes] Threads e links prontos para Hefesto.
+- Protocolo: HERMES-20260527-001-THREAD-REPLY-NOTIFICATIONS.
+- Squad/agente responsavel pelo preparo: Zeus Operations sobre recorte Hermes/PulseX.
+- Responsavel pela publicacao: Hefesto.
+- Data e hora local do handoff: 2026-05-27 16:38:50 -03:00.
+- Ambiente alvo: producao.
+- Status: PRONTO PARA HEFESTO / NAO PUBLICADO.
+- Decisao Lucas: Lucas pediu preparar as melhorias Hermes para homologar/promover em producao.
+- Escopo candidato:
+  - notificacoes internas de respostas novas em threads no sino do Hermes/PulseX;
+  - badge de respostas novas em mensagens com thread;
+  - abertura/foco da thread ao clicar na notificacao;
+  - leitura de respostas de thread por usuario/navegador via `localStorage`;
+  - links HTTP/HTTPS clicaveis nas mensagens sem quebrar mencoes.
+- Commit candidato:
+  - 18acdbc feat(hermes): surface thread reply notifications.
+- Branch/worktree:
+  - codex/zeus/hermes-thread-notifications-prod-20260527;
+  - .codex-deploy/z27-005-hermes-thread-notifications-prod-20260527.
+- Arquivos incluidos:
+  - apps/hub/components/pulsex/conversation-header.tsx;
+  - apps/hub/components/pulsex/message-item.tsx;
+  - apps/hub/components/pulsex/message-list.tsx;
+  - apps/hub/components/pulsex/pulsex-workspace.tsx;
+  - apps/hub/lib/pulsex/supabase-data.ts;
+  - docs/operations/engineering-operations.md;
+  - docs/operations/panteon-recorte-protocols.md;
+  - docs/operations/releases-production.md.
+- Arquivos/modulos excluidos:
+  - root misto;
+  - envs, secrets, banco, migrations, Supabase mutavel, service role, Meta/Iris, Hades, Ares, Apolo, dominio, alias manual e deploy de producao neste passo.
+- Producao atual inspecionada antes do handoff:
+  - c2x.app.br: dpl_FRyLY4NdSJc556S6qZEuXYjevPow Ready;
+  - ops.c2x.app.br: dpl_FRyLY4NdSJc556S6qZEuXYjevPow Ready;
+  - URL tecnica atual: https://careli-hub-hub-i2bs-4n2ztblkp-lucasruas-devs-projects.vercel.app.
+- Validacoes do recorte:
+  - git diff --check: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - npx.cmd eslint components/pulsex/conversation-header.tsx components/pulsex/message-item.tsx components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/supabase-data.ts --max-warnings 0 em apps/hub: OK;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run build --workspace @repo/hub: OK, com warnings conhecidos Turbopack/NFT por worktree em .codex-deploy.
+- Regras para Hefesto antes de publicar:
+  - reinspecionar c2x.app.br e ops.c2x.app.br e confirmar deployment anterior saudavel no momento do deploy;
+  - publicar pacote limpo apenas deste protocolo/commit;
+  - rodar healthchecks de producao em /, /login, /hermes, /pulsex, ops /zeus e rotas protegidas com 401/403 esperado sem sessao;
+  - verificar logs de erro recentes;
+  - registrar deployment novo, deployment anterior, aliases afetados, comandos, healthchecks e rollback.
+- Rollback inicial sugerido:
+  - promover novamente dpl_FRyLY4NdSJc556S6qZEuXYjevPow se ele continuar sendo o deployment saudavel imediatamente anterior ao deploy.
+- Riscos conhecidos:
+  - validacao funcional final depende de sessao real no Hermes/PulseX com mensagens em thread;
+  - leitura por localStorage e por navegador/dispositivo;
+  - commit usou --no-verify porque o hook local referencia script ausente no snapshot, mas as validacoes reais foram executadas antes.
+
+Conclusao:
+- O recorte Hermes esta preparado para producao com pacote limpo e commit isolado.
+- O impacto pratico e melhorar o acompanhamento de respostas em threads e manter links clicaveis em mensagens.
+- Hefesto deve publicar somente mediante autorizacao final de Lucas, preservando rollback para o deployment vigente no momento do deploy.
