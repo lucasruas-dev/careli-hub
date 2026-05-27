@@ -36,6 +36,7 @@ type MessageListProps = {
   onPreviewAttachment?: (
     attachment: NonNullable<HermesMessage["attachment"]>,
   ) => void;
+  getThreadUnreadCount?: (messageId: HermesMessage["id"]) => number;
   reactionOptions?: readonly HermesReactionEmoji[];
   users: readonly HermesPresenceUser[];
 };
@@ -52,6 +53,7 @@ export function MessageList({
   onReturnCall,
   onToggleReaction,
   onToggleTag,
+  getThreadUnreadCount,
   reactionOptions,
   users,
 }: MessageListProps) {
@@ -110,6 +112,7 @@ export function MessageList({
             onToggleReaction={onToggleReaction}
             onToggleTag={onToggleTag}
             reactionOptions={reactionOptions}
+            threadUnreadCount={getThreadUnreadCount?.(item.message.id) ?? 0}
             users={users}
           />
         ) : (

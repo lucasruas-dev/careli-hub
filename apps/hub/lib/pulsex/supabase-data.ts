@@ -970,26 +970,42 @@ function mapUser(row: HubUserRow): HermesPresenceUser {
 
 function mapChannelMessages(rows: readonly HermesMessageRow[]): HermesMessage[] {
   const messages = rows.map(mapMessage);
-  const replyCountByMessageId = new Map<string, number>();
+  const replyActivityByMessageId = new Map<
+    string,
+    { count: number; latestCreatedAt?: string }
+  >();
 
   for (const message of messages) {
     if (!message.threadParentMessageId) {
       continue;
     }
 
-    replyCountByMessageId.set(
+    const currentActivity = replyActivityByMessageId.get(
       message.threadParentMessageId,
-      (replyCountByMessageId.get(message.threadParentMessageId) ?? 0) + 1,
     );
+    const latestCreatedAt = getLatestHermesDateValue(
+      currentActivity?.latestCreatedAt,
+      message.createdAt,
+    );
+
+    replyActivityByMessageId.set(message.threadParentMessageId, {
+      count: (currentActivity?.count ?? 0) + 1,
+      latestCreatedAt,
+    });
   }
 
   return messages
     .filter((message) => !message.threadParentMessageId)
-    .map((message) => ({
-      ...message,
-      threadCount:
-        (message.threadCount ?? 0) + (replyCountByMessageId.get(message.id) ?? 0),
-    }));
+    .map((message) => {
+      const replyActivity = replyActivityByMessageId.get(message.id);
+
+      return {
+        ...message,
+        lastThreadReplyAt:
+          replyActivity?.latestCreatedAt ?? message.lastThreadReplyAt,
+        threadCount: (message.threadCount ?? 0) + (replyActivity?.count ?? 0),
+      };
+    });
 }
 
 function mapMessage(row: HermesMessageRow | null): HermesMessage {
@@ -1059,6 +1075,32 @@ function mapThreadReplyFromMessage(
     tags: message.tags,
     timestamp: message.timestamp,
   };
+}
+
+function getLatestHermesDateValue(
+  currentValue: string | undefined,
+  nextValue: string | undefined,
+) {
+  if (!nextValue) {
+    return currentValue;
+  }
+
+  if (!currentValue) {
+    return nextValue;
+  }
+
+  const currentTime = Date.parse(currentValue);
+  const nextTime = Date.parse(nextValue);
+
+  if (Number.isNaN(currentTime)) {
+    return nextValue;
+  }
+
+  if (Number.isNaN(nextTime)) {
+    return currentValue;
+  }
+
+  return nextTime > currentTime ? nextValue : currentValue;
 }
 
 function getMessageMetadata(value: unknown): Record<string, unknown> {

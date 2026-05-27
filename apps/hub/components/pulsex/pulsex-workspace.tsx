@@ -55,7 +55,10 @@ import type {
 } from "@/lib/pulsex";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AthenaAgentPanel } from "./athena-agent-panel";
-import { ConversationHeader } from "./conversation-header";
+import {
+  ConversationHeader,
+  type HermesThreadNotificationEntry,
+} from "./conversation-header";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { MessageComposer } from "./message-composer";
 import { MessageList } from "./message-list";
@@ -67,6 +70,12 @@ type HermesToastNotification = {
   id: string;
   mentioned: boolean;
   title: string;
+};
+
+type HermesThreadReadReceipt = {
+  lastReplyAt?: string;
+  readAt: string;
+  threadCount: number;
 };
 
 function toggleHermesReactions({
@@ -123,6 +132,7 @@ function toggleHermesReactions({
 const PULSEX_PRESENCE_REFRESH_MS = 5_000;
 const PULSEX_MESSAGE_REFRESH_MS = 4_000;
 const PULSEX_FAVORITE_CHANNELS_STORAGE_KEY = "careli:pulsex:favorite-channels";
+const HERMES_THREAD_READ_STORAGE_PREFIX = "careli:hermes:thread-read-state";
 
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
@@ -181,6 +191,11 @@ export function HermesWorkspace() {
     HermesChannel["id"][]
   >([]);
   const [isFavoriteStorageReady, setIsFavoriteStorageReady] = useState(false);
+  const [threadReadState, setThreadReadState] = useState<
+    Record<string, HermesThreadReadReceipt>
+  >({});
+  const [isThreadReadStorageReady, setIsThreadReadStorageReady] =
+    useState(false);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
   const messageRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
@@ -259,6 +274,106 @@ export function HermesWorkspace() {
   const activeChannelCallEvents = useMemo(
     () => callHistory.filter((entry) => entry.channelId === activeChannel.id),
     [activeChannel.id, callHistory],
+  );
+  const channelsById = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel] as const)),
+    [channels],
+  );
+  const threadUnreadCountByMessageId = useMemo(() => {
+    const unreadCountByMessageId = new Map<HermesMessage["id"], number>();
+
+    for (const message of messages) {
+      const unreadCount = getThreadUnreadCountForMessage(
+        message,
+        threadReadState[message.id],
+      );
+
+      if (unreadCount > 0) {
+        unreadCountByMessageId.set(message.id, unreadCount);
+      }
+    }
+
+    return unreadCountByMessageId;
+  }, [messages, threadReadState]);
+  const unreadThreadReplyCount = useMemo(
+    () =>
+      Array.from(threadUnreadCountByMessageId.values()).reduce(
+        (total, count) => total + count,
+        0,
+      ),
+    [threadUnreadCountByMessageId],
+  );
+  const threadNotifications = useMemo<HermesThreadNotificationEntry[]>(
+    () => {
+      const entries: HermesThreadNotificationEntry[] = [];
+
+      for (const message of messages) {
+        const unreadCount = threadUnreadCountByMessageId.get(message.id) ?? 0;
+
+        if (unreadCount <= 0) {
+          continue;
+        }
+
+        const channel = channelsById.get(message.channelId);
+
+        entries.push({
+          channelName: channel?.name ?? activeChannel.name,
+          id: `thread-notification-${message.id}`,
+          lastReplyLabel: formatThreadNotificationTime(
+            message.lastThreadReplyAt ?? message.createdAt,
+          ),
+          messageId: message.id,
+          parentPreview: getThreadParentPreview(message),
+          replyCount: message.threadCount ?? 0,
+          unreadCount,
+          ...(message.authorName
+            ? { parentAuthorName: message.authorName }
+            : {}),
+        });
+      }
+
+      return entries.sort(
+        (firstEntry, secondEntry) =>
+          getThreadNotificationSortTime(secondEntry, messages) -
+          getThreadNotificationSortTime(firstEntry, messages),
+      );
+    },
+    [activeChannel.name, channelsById, messages, threadUnreadCountByMessageId],
+  );
+  const markThreadRepliesRead = useCallback(
+    (message: HermesMessage, replyCountOverride?: number) => {
+      if (!isThreadReadStorageReady) {
+        return;
+      }
+
+      const threadCount = Math.max(
+        message.threadCount ?? 0,
+        replyCountOverride ?? 0,
+      );
+      const lastReplyAt = message.lastThreadReplyAt;
+      const readAt = new Date().toISOString();
+
+      setThreadReadState((currentState) => {
+        const currentReceipt = currentState[message.id];
+
+        if (
+          currentReceipt?.threadCount === threadCount &&
+          currentReceipt.lastReplyAt === lastReplyAt
+        ) {
+          return currentState;
+        }
+
+        return {
+          ...currentState,
+          [message.id]: {
+            lastReplyAt,
+            readAt,
+            threadCount,
+          },
+        };
+      });
+    },
+    [isThreadReadStorageReady],
   );
 
   function handleCloseAthenaAgent() {
@@ -395,6 +510,66 @@ export function HermesWorkspace() {
       JSON.stringify(favoriteChannelIds),
     );
   }, [favoriteChannelIds, isFavoriteStorageReady]);
+
+  useEffect(() => {
+    setIsThreadReadStorageReady(false);
+
+    try {
+      const storedValue = window.localStorage.getItem(
+        getHermesThreadReadStorageKey(currentUserId),
+      );
+      const parsedValue = storedValue ? JSON.parse(storedValue) : {};
+
+      setThreadReadState(normalizeThreadReadState(parsedValue));
+    } catch {
+      setThreadReadState({});
+    } finally {
+      setIsThreadReadStorageReady(true);
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!isThreadReadStorageReady) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      getHermesThreadReadStorageKey(currentUserId),
+      JSON.stringify(threadReadState),
+    );
+  }, [currentUserId, isThreadReadStorageReady, threadReadState]);
+
+  useEffect(() => {
+    if (!isThreadReadStorageReady || messages.length === 0) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    setThreadReadState((currentState) => {
+      let changed = false;
+      const nextState = { ...currentState };
+
+      for (const message of messages) {
+        if (message.deletedAt || message.threadParentMessageId) {
+          continue;
+        }
+
+        if (nextState[message.id]) {
+          continue;
+        }
+
+        nextState[message.id] = {
+          lastReplyAt: message.lastThreadReplyAt,
+          readAt: now,
+          threadCount: message.threadCount ?? 0,
+        };
+        changed = true;
+      }
+
+      return changed ? nextState : currentState;
+    });
+  }, [isThreadReadStorageReady, messages]);
 
   const refreshPresenceStatuses = useCallback(
     (shouldApply: () => boolean = () => true) => {
@@ -721,6 +896,8 @@ export function HermesWorkspace() {
 
     listHermesThreadReplies({ messageId })
       .then((nextReplies) => {
+        const latestReplyAt = getLatestThreadReplyCreatedAt(nextReplies);
+
         setThreadReplies((currentReplies) => ({
           ...currentReplies,
           [messageId]: nextReplies,
@@ -730,6 +907,7 @@ export function HermesWorkspace() {
             message.id === messageId
               ? {
                   ...message,
+                  lastThreadReplyAt: latestReplyAt ?? message.lastThreadReplyAt,
                   threadCount: nextReplies.length,
                 }
               : message,
@@ -757,6 +935,19 @@ export function HermesWorkspace() {
       window.clearInterval(intervalId);
     };
   }, [activeThreadMessageId, loadThreadReplies]);
+
+  useEffect(() => {
+    if (!activeThreadMessageId || !activeThreadMessage) {
+      return;
+    }
+
+    markThreadRepliesRead(activeThreadMessage, activeThreadReplies.length);
+  }, [
+    activeThreadMessageId,
+    activeThreadMessage,
+    activeThreadReplies.length,
+    markThreadRepliesRead,
+  ]);
 
   function handleSelectChannel(channelId: HermesChannel["id"]) {
     setActiveChannelId(channelId);
@@ -817,10 +1008,16 @@ export function HermesWorkspace() {
   }
 
   function handleOpenThread(messageId: HermesMessage["id"]) {
+    const threadMessage = messages.find((message) => message.id === messageId);
+
     setIsAthenaAgentOpen(false);
     setAthenaFocusedMessageId(null);
     setActiveThreadMessageId(messageId);
     loadThreadReplies(messageId);
+
+    if (threadMessage) {
+      markThreadRepliesRead(threadMessage);
+    }
   }
 
   function handleOpenAthenaAgent() {
@@ -854,6 +1051,7 @@ export function HermesWorkspace() {
       );
       setActiveThreadMessageId(athenaFocusedMessage.id);
       loadThreadReplies(athenaFocusedMessage.id);
+      markThreadRepliesRead(athenaFocusedMessage);
       setIsAthenaAgentOpen(false);
       setAthenaFocusedMessageId(null);
       return;
@@ -928,11 +1126,11 @@ export function HermesWorkspace() {
       return;
     }
 
+    const createdAt = new Date().toISOString();
     const timestamp = new Intl.DateTimeFormat("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
-    }).format(new Date());
-    const createdAt = new Date().toISOString();
+    }).format(new Date(createdAt));
     const clientMessageId = `client-${activeChannel.id}-${Date.now().toString(
       36,
     )}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1274,10 +1472,11 @@ export function HermesWorkspace() {
       return false;
     }
 
+    const createdAt = new Date().toISOString();
     const timestamp = new Intl.DateTimeFormat("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
-    }).format(new Date());
+    }).format(new Date(createdAt));
     const currentPresenceUser = presenceUsers.find(
       (user) => user.id === currentUserId,
     );
@@ -1288,7 +1487,7 @@ export function HermesWorkspace() {
       attachment,
       body: replyBody,
       channelId: activeThreadMessage.channelId,
-      createdAt: new Date().toISOString(),
+      createdAt,
       id: `reply-${activeThreadMessage.id}-${Date.now()}`,
       messageId: activeThreadMessage.id,
       timestamp,
@@ -1307,11 +1506,19 @@ export function HermesWorkspace() {
         message.id === activeThreadMessage.id
           ? {
               ...message,
-              lastThreadReplyAt: timestamp,
+              lastThreadReplyAt: createdAt,
               threadCount: (message.threadCount ?? 0) + 1,
             }
           : message,
       ),
+    );
+    markThreadRepliesRead(
+      {
+        ...activeThreadMessage,
+        lastThreadReplyAt: createdAt,
+        threadCount: (activeThreadMessage.threadCount ?? 0) + 1,
+      },
+      (activeThreadMessage.threadCount ?? 0) + 1,
     );
     setThreadComposerValue("");
 
@@ -1396,10 +1603,13 @@ export function HermesWorkspace() {
             onPreviewCallSound={previewCallSound}
             onReturnCall={handleReturnCallFromHistory}
             onStartCall={handleStartCall}
+            onOpenThreadNotification={handleOpenThread}
             onToggleFavorite={handleToggleFavoriteChannel}
             presenceUsers={channelPresenceUsers}
             selectedCallSoundId={callSoundId}
+            threadNotifications={threadNotifications}
             unreadCallCount={unreadCallCount}
+            unreadThreadReplyCount={unreadThreadReplyCount}
           />
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
             <MessageList
@@ -1414,6 +1624,9 @@ export function HermesWorkspace() {
               onReturnCall={handleReturnCallFromHistory}
               onToggleReaction={handleToggleReaction}
               onToggleTag={handleToggleMessageTag}
+              getThreadUnreadCount={(messageId) =>
+                threadUnreadCountByMessageId.get(messageId) ?? 0
+              }
               reactionOptions={hermesReactionOptions}
               users={presenceUsers}
             />
@@ -2065,6 +2278,131 @@ function isMessageMentioningUser(
     message.authorId !== userId &&
     Boolean(message.mentionUserIds?.includes(userId))
   );
+}
+
+function getHermesThreadReadStorageKey(userId: HermesPresenceUser["id"]) {
+  return `${HERMES_THREAD_READ_STORAGE_PREFIX}:${userId}`;
+}
+
+function normalizeThreadReadState(
+  input: unknown,
+): Record<string, HermesThreadReadReceipt> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+
+  const nextState: Record<string, HermesThreadReadReceipt> = {};
+
+  for (const [messageId, value] of Object.entries(input)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      continue;
+    }
+
+    const record = value as Record<string, unknown>;
+    const threadCount =
+      typeof record.threadCount === "number" &&
+      Number.isFinite(record.threadCount)
+        ? Math.max(0, Math.floor(record.threadCount))
+        : 0;
+
+    nextState[messageId] = {
+      lastReplyAt:
+        typeof record.lastReplyAt === "string"
+          ? record.lastReplyAt
+          : undefined,
+      readAt:
+        typeof record.readAt === "string"
+          ? record.readAt
+          : new Date().toISOString(),
+      threadCount,
+    };
+  }
+
+  return nextState;
+}
+
+function getThreadUnreadCountForMessage(
+  message: HermesMessage,
+  receipt: HermesThreadReadReceipt | undefined,
+) {
+  if (message.deletedAt || message.threadParentMessageId) {
+    return 0;
+  }
+
+  const threadCount = message.threadCount ?? 0;
+
+  if (threadCount <= 0 || !receipt) {
+    return 0;
+  }
+
+  return Math.max(0, threadCount - receipt.threadCount);
+}
+
+function getThreadParentPreview(message: HermesMessage) {
+  const value =
+    message.body.trim() ||
+    message.attachment?.label ||
+    "Mensagem com resposta";
+
+  return value.length > 92 ? `${value.slice(0, 89)}...` : value;
+}
+
+function formatThreadNotificationTime(value: string | undefined) {
+  if (!value) {
+    return "--:--";
+  }
+
+  const time = Date.parse(value);
+
+  if (Number.isNaN(time)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(time));
+}
+
+function getLatestThreadReplyCreatedAt(
+  replies: readonly HermesThreadReply[],
+) {
+  return replies.reduce<string | undefined>((latestValue, reply) => {
+    if (!reply.createdAt) {
+      return latestValue;
+    }
+
+    if (!latestValue) {
+      return reply.createdAt;
+    }
+
+    const latestTime = Date.parse(latestValue);
+    const replyTime = Date.parse(reply.createdAt);
+
+    if (Number.isNaN(latestTime)) {
+      return reply.createdAt;
+    }
+
+    if (Number.isNaN(replyTime)) {
+      return latestValue;
+    }
+
+    return replyTime > latestTime ? reply.createdAt : latestValue;
+  }, undefined);
+}
+
+function getThreadNotificationSortTime(
+  notification: HermesThreadNotificationEntry,
+  messages: readonly HermesMessage[],
+) {
+  const message = messages.find(
+    (currentMessage) => currentMessage.id === notification.messageId,
+  );
+  const time = Date.parse(
+    message?.lastThreadReplyAt ?? message?.createdAt ?? "",
+  );
+
+  return Number.isNaN(time) ? 0 : time;
 }
 
 const emptyHermesChannel = {
