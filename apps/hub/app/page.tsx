@@ -1077,7 +1077,7 @@ function createTeamMembers(snapshot: HubHomeSnapshot | null): HomeTeamMember[] {
         initials: getInitials(user.displayName),
         lastSignal: formatPresenceSignal(presence?.lastSeenAt, status),
         name: user.displayName,
-        scopeLabel: getUserScopeLabel(user),
+        scopeLabel: getUserDepartmentLabel(user),
         status,
       };
     });
@@ -1148,29 +1148,8 @@ function formatPresenceSignal(
   return `${hours}h${(minutes % 60).toString().padStart(2, "0")}`;
 }
 
-function getOperationalRoleLabel(user: HubHomeUser) {
-  const labels: Record<string, string> = {
-    adm: "Administrador",
-    admin: "Administrador",
-    cdr: "Coordenador",
-    ldr: "Lider",
-    leader: "Lider",
-    op1: "Operador",
-    op2: "Operador",
-    op3: "Operador",
-    operator: "Operador",
-    viewer: "Leitura",
-  };
-  const key = user.operationalProfile ?? user.role;
-
-  return labels[key] ?? key;
-}
-
-function getUserScopeLabel(user: HubHomeUser) {
-  const roleLabel = getOperationalRoleLabel(user);
-  const scope = user.sectorName ?? user.departmentName;
-
-  return scope ? `${roleLabel} / ${scope}` : roleLabel;
+function getUserDepartmentLabel(user: HubHomeUser) {
+  return user.departmentName ?? user.sectorName ?? "Sem departamento";
 }
 
 function getInitials(name: string) {

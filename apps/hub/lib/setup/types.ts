@@ -212,6 +212,7 @@ export type LinkUserAssignmentInput = {
   departmentId: string;
   email: string;
   fullName: string;
+  password?: string;
   profile: SetupOperationalProfileRole;
   sectorId: string;
   status: "active" | "disabled";

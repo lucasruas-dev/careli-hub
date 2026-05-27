@@ -21,6 +21,7 @@ type UpdateOperationalUserPayload = {
   departmentId?: unknown;
   email?: unknown;
   fullName?: unknown;
+  password?: unknown;
   profile?: unknown;
   sectorId?: unknown;
   status?: unknown;
@@ -229,23 +230,25 @@ export async function PATCH(request: NextRequest) {
   const { data: targetAuthUser } = await adminClient.auth.admin.getUserById(
     payload.data.userId,
   );
+  const authUserUpdatePayload = {
+    app_metadata: {
+      ...(targetAuthUser.user?.app_metadata ?? {}),
+      role,
+    },
+    email: payload.data.email,
+    email_confirm: true,
+    ...(payload.data.password ? { password: payload.data.password } : {}),
+    user_metadata: {
+      ...(targetAuthUser.user?.user_metadata ?? {}),
+      avatar_url: payload.data.avatarUrl || null,
+      full_name: payload.data.fullName,
+      name: payload.data.fullName,
+      operational_profile: payload.data.profile,
+    },
+  };
   const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(
     payload.data.userId,
-    {
-      app_metadata: {
-        ...(targetAuthUser.user?.app_metadata ?? {}),
-        role,
-      },
-      email: payload.data.email,
-      email_confirm: true,
-      user_metadata: {
-        ...(targetAuthUser.user?.user_metadata ?? {}),
-        avatar_url: payload.data.avatarUrl || null,
-        full_name: payload.data.fullName,
-        name: payload.data.fullName,
-        operational_profile: payload.data.profile,
-      },
-    },
+    authUserUpdatePayload,
   );
 
   if (authUpdateError) {
@@ -857,6 +860,7 @@ function parseAssignmentPayload(payload: unknown):
         departmentId: string;
         email: string;
         fullName: string;
+        password?: string;
         profile: OperationalProfileRole;
         sectorId: string;
         status: SetupUserStatus;
@@ -874,6 +878,7 @@ function parseAssignmentPayload(payload: unknown):
   const departmentId = getString(input.departmentId);
   const email = getString(input.email).toLowerCase();
   const fullName = getString(input.fullName);
+  const password = getString(input.password);
   const profile = getString(input.profile);
   const sectorId = getString(input.sectorId);
   const status = getString(input.status);
@@ -885,6 +890,10 @@ function parseAssignmentPayload(payload: unknown):
 
   if (!email.includes("@")) {
     return { error: "Informe um e-mail valido.", ok: false };
+  }
+
+  if (password && password.length < 8) {
+    return { error: "A nova senha temporaria deve ter pelo menos 8 caracteres.", ok: false };
   }
 
   if (!isOperationalProfile(profile)) {
@@ -901,6 +910,7 @@ function parseAssignmentPayload(payload: unknown):
       departmentId,
       email,
       fullName,
+      password: password || undefined,
       profile,
       sectorId,
       status,

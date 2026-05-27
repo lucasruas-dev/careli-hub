@@ -689,7 +689,6 @@ function SetupTabContent({
           headers={[
             "Nome",
             "Email",
-            "Perfil",
             "Departamento",
             "Setor",
             "Status",
@@ -698,7 +697,6 @@ function SetupTabContent({
           rows={data.users.map((user) => [
             user.displayName,
             user.email,
-            user.operationalProfile,
             user.departmentName ?? "Sem departamento",
             user.sectorName ?? "Sem setor",
             user.status,
@@ -2760,6 +2758,7 @@ function LinkUserAssignmentModal({
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [email, setEmail] = useState(user.email);
   const [fullName, setFullName] = useState(user.displayName);
+  const [password, setPassword] = useState("");
   const [profile, setProfile] = useState<SetupOperationalProfileRole>(
     user.operationalProfile,
   );
@@ -2779,6 +2778,7 @@ function LinkUserAssignmentModal({
       departmentId,
       email,
       fullName,
+      password: password.trim() || undefined,
       profile,
       sectorId,
       status,
@@ -2832,6 +2832,13 @@ function LinkUserAssignmentModal({
             label="E-mail"
             onChange={setEmail}
             value={email}
+          />
+          <TextInput
+            inputType="password"
+            label="Nova senha temporaria"
+            onChange={setPassword}
+            placeholder="Opcional; minimo 8 caracteres"
+            value={password}
           />
           <div className="grid gap-1.5 md:col-span-2">
             <span className="text-xs font-semibold text-[#667085]">
@@ -2920,6 +2927,7 @@ function LinkUserAssignmentModal({
             !email.trim() ||
             !departmentId ||
             !sectorId ||
+            (password.trim().length > 0 && password.trim().length < 8) ||
             isUploadingAvatar ||
             isSaving
           }

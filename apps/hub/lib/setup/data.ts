@@ -956,6 +956,7 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
 
   const sessionResult = await client.auth.getSession();
   const accessToken = sessionResult.data.session?.access_token;
+  const hasPasswordReset = Boolean(input.password?.trim());
 
   if (!sessionResult.error && accessToken) {
     const response = await fetch("/api/setup/users", {
@@ -977,6 +978,14 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
     if (response.status !== 503) {
       throw new Error(payload?.error ?? "Nao foi possivel atualizar usuario.");
     }
+
+    if (hasPasswordReset) {
+      throw new Error(
+        "A redefinicao de senha exige a chave server-side configurada.",
+      );
+    }
+  } else if (hasPasswordReset) {
+    throw new Error("Sessao administrativa indisponivel para redefinir senha.");
   }
 
   const userPayload = {
