@@ -19870,3 +19870,65 @@ Conclusao:
 - O recorte de notificacoes nativas esta liberado para a esteira de producao do Hefesto por decisao do Lucas, sem homologacao previa.
 - O impacto esperado e baixo e visual/operacional: ativar toast Windows do Panteon via PWA.
 - O proximo responsavel e Hefesto, que deve publicar com pacote limpo, registrar producao e manter rollback para `dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f` se ele ainda for o deployment saudavel no momento do deploy.
+
+## 2026-05-27 16:05:00 -03:00 - Hefesto - Producao notificacoes Windows
+
+Assunto: [Hub] Producao do protocolo notificacoes Windows
+
+- Protocolo: HUB-20260527-001-NOTIFICACOES-WINDOWS.
+- Status: EM PRODUCAO.
+- Ambiente: producao.
+- Motivo: Lucas autorizou subir em producao o recorte de notificacoes nativas Windows preparado por Zeus.
+- Pacote utilizado: worktree limpo `.codex-deploy/z27-004-hub-windows-notifications-20260527` na branch `codex/zeus/hub-windows-notifications-20260527`.
+- Escopo publicado:
+  - botao compacto no topbar para ativar/testar notificacoes do Windows;
+  - helper client-side de PWA/Web Notifications;
+  - service worker com foco/abertura do Hub ao clicar no toast;
+  - notificacoes realtime nao lidas passam a poder gerar toast nativo apos permissao do usuario.
+- Arquivos/modulos afetados:
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `apps/hub/lib/hub/native-notifications.ts`;
+  - `apps/hub/public/sw.js`;
+  - registros operacionais em `docs/operations`.
+- Arquivos/modulos excluidos: envs, secrets, banco, migrations, Supabase mutavel, backend push, dominio novo, alias manual e alteracoes fora do recorte.
+- Como foi feito:
+  - confirmada coerencia do protocolo contra Git;
+  - executadas validacoes locais no pacote limpo;
+  - publicado deploy Vercel Production;
+  - confirmados aliases `c2x.app.br` e `ops.c2x.app.br`;
+  - executados healthchecks e consulta de logs recentes.
+- Deployment anterior/rollback imediato: dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f.
+- Deployment novo: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
+- URL tecnica: https://careli-hub-hub-i2bs-4n2ztblkp-lucasruas-devs-projects.vercel.app.
+- Validacoes executadas:
+  - `git diff --check HEAD~2..HEAD`: OK;
+  - `npx.cmd eslint layouts/hub-shell.tsx lib/hub/native-notifications.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `npx.cmd vercel deploy --prod --yes --archive=tgz`: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment novo;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment novo.
+- Healthchecks pos-deploy:
+  - `/`: 200;
+  - `/login`: 200;
+  - `/zeus` em `ops.c2x.app.br`: 200;
+  - `/sw.js`: 200;
+  - `/api/pwa/manifest`: 200;
+  - `/api/hades/db/health`: 200;
+  - `/api/guardian/db/health`: 200;
+  - `/api/operations/monitoring` sem sessao: 401 esperado;
+  - `/api/auth/profile` sem sessao: 401 esperado.
+- Logs recentes Vercel: sem erro critico; apenas infos e 401 esperados para rotas protegidas sem sessao.
+- Riscos conhecidos:
+  - permissao e suporte de Web Notifications dependem do navegador/PWA no Windows;
+  - Lucas precisa validar o toast funcionalmente em sessao real;
+  - notificacao fora do navegador exige recorte futuro com companion desktop ou Web Push server-side.
+- Pendencias:
+  - Lucas validar no Windows o botao de ativar/testar notificacao e o clique no toast.
+- Proxima squad recomendada: Zeus ou Hub UIX apenas se a validacao visual/autenticada indicar ajuste de experiencia.
+
+Conclusao:
+- O protocolo `HUB-20260527-001-NOTIFICACOES-WINDOWS` foi publicado em producao com pacote limpo e healthchecks OK.
+- O impacto pratico e habilitar a camada PWA/Web Notifications do Panteon para toast nativo no Windows.
+- Nao houve alteracao de env, secret, migration, banco ou dominio novo; rollback imediato permanece no deployment anterior `dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f`.

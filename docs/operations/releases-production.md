@@ -1515,3 +1515,40 @@ Handoff de producao:
   - Web Notifications dependem de permissao do navegador/app instalado e do suporte PWA do Windows;
   - notificacao totalmente independente do navegador exige recorte futuro com companion desktop ou Web Push server-side;
   - como Lucas dispensou homologacao, a validacao funcional final do toast deve ocorrer em producao logo apos o deploy.
+
+Atualizacao pos-deploy:
+
+- Assunto: [Hub] Notificacoes nativas Windows.
+- Protocolo: HUB-20260527-001-NOTIFICACOES-WINDOWS.
+- Status final: EM PRODUCAO.
+- Deployment anterior/rollback imediato: dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f.
+- Deployment novo: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
+- URL tecnica: https://careli-hub-hub-i2bs-4n2ztblkp-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit de codigo publicado: de9b601 feat(hub): add windows native notifications.
+- Commit de handoff publicado: f16b4c1 docs(hefesto): prepare hub notifications production handoff.
+- Validacoes executadas:
+  - `git diff --check HEAD~2..HEAD`: OK;
+  - `npx.cmd eslint layouts/hub-shell.tsx lib/hub/native-notifications.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT;
+  - `npx.cmd vercel deploy --prod --yes --archive=tgz`: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment novo;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment novo.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200 em 0.462s;
+  - `GET https://c2x.app.br/login`: 200 em 0.700s;
+  - `GET https://ops.c2x.app.br/zeus`: 200 em 0.873s;
+  - `GET https://c2x.app.br/sw.js`: 200 em 0.280s;
+  - `GET https://c2x.app.br/api/pwa/manifest`: 200 em 0.527s;
+  - `GET https://c2x.app.br/api/hades/db/health`: 200 em 1.326s;
+  - `GET https://c2x.app.br/api/guardian/db/health`: 200 em 1.153s;
+  - `GET https://c2x.app.br/api/operations/monitoring` sem sessao: 401 esperado em 0.475s;
+  - `GET https://c2x.app.br/api/auth/profile` sem sessao: 401 esperado em 0.478s.
+- Logs Vercel recentes: sem erro critico; somente infos e 401 esperados nas rotas protegidas sem sessao.
+- Warnings conhecidos: npm audit herdado, engines Node `>=18`, Turbopack/NFT por leitura filesystem no SquadOps e envs Postgres antigas fora do turbo.json em pacotes compartilhados.
+- Riscos remanescentes:
+  - Web Notifications dependem da permissao do navegador/app instalado e suporte PWA do Windows;
+  - validacao funcional do toast deve ser feita por Lucas em sessao real no Windows;
+  - notificacao totalmente independente do navegador continua como evolucao futura com companion desktop ou Web Push server-side.

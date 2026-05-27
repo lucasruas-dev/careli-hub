@@ -501,4 +501,14 @@ O manifesto de homologacao deve incluir:
   - escopo e client-side/PWA, sem env, banco, secrets, rota server-side sensivel, integration externa ou migracao;
   - producao atual inspecionada em 2026-05-27 15:40:34 -03:00: `c2x.app.br` e `ops.c2x.app.br` apontam para `dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f`;
   - Hefesto deve reinspecionar producao no momento do deploy, rodar Safety Gate/healthchecks de producao e manter rollback para o deployment anterior saudavel.
-- Status: `PRONTO_PARA_HEFESTO_PRODUCAO`.
+- Status: `EM_PRODUCAO`.
+
+#### Fechamento HUB-20260527-001-NOTIFICACOES-WINDOWS
+
+- Status: EM_PRODUCAO.
+- Deployment publicado em producao: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
+- URL tecnica: https://careli-hub-hub-i2bs-4n2ztblkp-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Rollback imediato: dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f.
+- Validacoes finais: check-types, lint, build, deploy Vercel Production, inspect dos aliases, healthchecks HTTP e logs recentes sem erro critico.
+- Observacao: Lucas dispensou homologacao previa; validacao funcional do toast Windows ainda depende de teste autenticado no dispositivo do Lucas com permissao de notificacao habilitada.
