@@ -19795,3 +19795,39 @@ Conclusao:
 - O Hades esta em homologacao com a correcao de feedback para envio WhatsApp via Iris, evitando sucesso falso quando a Meta/Iris bloquear mensagem livre fora da janela.
 - O impacto pratico e preservar a operacao do atendimento: se a Iris bloquear por janela de 24h, o operador ve aviso e a conversa nao ganha bolha local como se tivesse enviado.
 - Proximo passo: Lucas validar em homo um envio livre com janela aberta e outro com janela fechada para confirmar feedback, ausencia de bolha falsa e orientacao de template.
+
+## 2026-05-27 15:32:30 -03:00 - Zeus Operations - Hub notificacoes nativas Windows
+
+Assunto: [Hub] Notificacoes nativas no Windows
+
+- Protocolo: HUB-20260527-001-NOTIFICACOES-WINDOWS.
+- Status: PRONTO_PARA_HOMO.
+- Base limpa: commit 35f05f3, preservando a homologacao Hades dpl_4fZVynECRRuP2a6axWtvAk72KyvW.
+- Worktree/branch: `.codex-deploy/z27-004-hub-windows-notifications-20260527` em `codex/zeus/hub-windows-notifications-20260527`.
+- Escopo:
+  - criado helper client-side central para solicitar permissao, checar suporte e disparar notificacoes nativas via Service Worker quando possivel;
+  - `sw.js` agora trata clique em notificacao, foca janela aberta do Hub ou abre a rota relacionada;
+  - topbar do Hub ganhou botao compacto para ativar/testar notificacoes do Windows sem misturar com o sino interno;
+  - novas notificacoes realtime nao lidas recebidas apos o carregamento podem disparar toast nativo quando a permissao estiver concedida.
+- Arquivos alterados:
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `apps/hub/lib/hub/native-notifications.ts`;
+  - `apps/hub/public/sw.js`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/engineering-operations.md`.
+- Exclusoes: sem envs, secrets, migrations, banco remoto, service role, backend push, dominio, alias de homologacao, alias de producao ou producao.
+- Validacoes executadas:
+  - `git diff --check`: OK;
+  - `npx.cmd eslint layouts/hub-shell.tsx lib/hub/native-notifications.ts --max-warnings 0` em `apps/hub`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de Turbopack/NFT no SquadOps.
+- Limitacao conhecida:
+  - este recorte usa PWA/Web Notifications, entao entrega a experiencia visual de toast do Windows quando o navegador/app instalado permitir;
+  - notificacao 100% independente do Chrome/Edge exige recorte futuro com companion desktop Tauri/Electron e governanca propria.
+- Proximo passo: publicar em Preview/Homo somente se Lucas quiser validar autenticado no ambiente compartilhado.
+
+Conclusao:
+- O Hub ficou preparado para notificacoes nativas no Windows no caminho mais seguro e incremental.
+- O impacto pratico e permitir que Lucas autorize e teste um toast do Panteon parecido com o do Codex, sem mexer em infraestrutura sensivel.
+- A decisao futura e se a etapa seguinte sera apenas homologar este recorte PWA ou desenhar um app desktop companion para independencia total do navegador.

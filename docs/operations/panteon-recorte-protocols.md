@@ -470,3 +470,30 @@ O manifesto de homologacao deve incluir:
 - Safety Gate: PASS pre-deploy e PASS pos-publicacao/reconciliacao.
 - Healthchecks: /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
 - Observacao: alias homo foi associado automaticamente ao Preview valido pela Vercel durante o deploy do projeto oficial; sem `vercel alias set` manual.
+
+## HUB-20260527-001-NOTIFICACOES-WINDOWS
+
+- Modulo/agente dono: Hub / Zeus Operations.
+- Objetivo do recorte: ativar notificacoes nativas do Windows para o Panteon via PWA/Web Notifications, com teste manual no topbar e abertura/foco do Hub ao clicar no toast.
+- Worktree/branch de implementacao: `.codex-deploy/z27-004-hub-windows-notifications-20260527` em `codex/zeus/hub-windows-notifications-20260527`.
+- Base limpa: `35f05f3` preservando a homologacao Hades `dpl_4fZVynECRRuP2a6axWtvAk72KyvW`.
+- Arquivos incluidos no pacote:
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `apps/hub/lib/hub/native-notifications.ts`;
+  - `apps/hub/public/sw.js`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`.
+- Arquivos excluidos: envs, secrets, migrations, banco remoto, service role, Vercel production, dominio, alias de producao, alias de homologacao e backend push.
+- Comportamento esperado:
+  - o topbar exibe um botao compacto para ativar/testar notificacoes do Windows;
+  - quando autorizado, o clique dispara uma notificacao de teste do Panteon no Windows;
+  - novas notificacoes realtime nao lidas recebidas apos o carregamento podem gerar toast nativo;
+  - clicar no toast foca uma janela aberta do Hub ou abre o Panteon na rota do modulo relacionado.
+- Limitacao assumida: este recorte usa PWA/Web Notifications; notificacao 100% independente do navegador exige etapa futura com app desktop companion.
+- Validacoes:
+  - `git diff --check`: OK;
+  - `npx.cmd eslint layouts/hub-shell.tsx lib/hub/native-notifications.ts --max-warnings 0` em `apps/hub`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de Turbopack/NFT no SquadOps.
+- Status: `PRONTO_PARA_HOMO`.

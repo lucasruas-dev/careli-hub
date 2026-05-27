@@ -35,6 +35,7 @@ import {
 } from "@repo/uix";
 import {
   Bell,
+  BellRing,
   BarChart3,
   CalendarClock,
   CalendarDays,
@@ -56,7 +57,15 @@ import {
 import {
   getUnreadNotificationsCount,
   mapConnectionStatusToPulseState,
+  type RealtimeNotification,
 } from "@repo/realtime";
+import {
+  getPanteonNativeNotificationPermission,
+  getPanteonNativeNotificationSupportLabel,
+  requestPanteonNativeNotificationPermission,
+  showPanteonNativeNotification,
+  type PanteonNativeNotificationPermission,
+} from "@/lib/hub/native-notifications";
 import {
   canAccessModule,
   getHubModuleStatusLabel,
@@ -547,6 +556,9 @@ export function HubShell({
                       />
                     ) : null}
                   </div>
+                  <PanteonNativeNotificationButton
+                    notifications={realtimeState.notifications}
+                  />
                   <PanteonInstallButton />
                   <Tooltip content="Ajustes">
                     <IconButton
@@ -741,6 +753,189 @@ export function HubShell({
       <HubSupportDock />
     </AthenaTicketRecordingProvider>
   );
+}
+
+function PanteonNativeNotificationButton({
+  notifications,
+}: {
+  notifications: readonly RealtimeNotification[];
+}) {
+  const [permission, setPermission] =
+    useState<PanteonNativeNotificationPermission>("unsupported");
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const seenNotificationIdsRef = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    setPermission(getPanteonNativeNotificationPermission());
+  }, []);
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setFeedback(null);
+    }, 3500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [feedback]);
+
+  useEffect(() => {
+    if (seenNotificationIdsRef.current === null) {
+      seenNotificationIdsRef.current = new Set(
+        notifications.map((notification) => notification.id),
+      );
+      return;
+    }
+
+    if (permission !== "granted") {
+      return;
+    }
+
+    const seenNotificationIds = seenNotificationIdsRef.current;
+
+    notifications.forEach((notification) => {
+      if (seenNotificationIds.has(notification.id)) {
+        return;
+      }
+
+      seenNotificationIds.add(notification.id);
+
+      if (notification.read) {
+        return;
+      }
+
+      void showPanteonNativeNotification({
+        body: createPanteonNativeNotificationBody(notification),
+        tag: `panteon-${notification.id}`,
+        title: notification.title,
+        url: getPanteonNativeNotificationPath(notification),
+      });
+    });
+  }, [notifications, permission]);
+
+  if (permission === "unsupported") {
+    return null;
+  }
+
+  const tone = getPanteonNativeNotificationTone(permission);
+
+  return (
+    <Tooltip
+      content={feedback ?? getPanteonNativeNotificationSupportLabel(permission)}
+    >
+      <button
+        aria-label="Ativar notificacoes do Windows"
+        className={`relative grid h-8 w-8 place-items-center rounded-md border outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${tone.button}`}
+        onClick={() => {
+          void handlePanteonNativeNotificationClick(
+            permission,
+            setFeedback,
+            setPermission,
+          );
+        }}
+        type="button"
+      >
+        <BellRing aria-hidden="true" size={17} />
+        <span
+          aria-hidden="true"
+          className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-white ${tone.dot}`}
+        />
+      </button>
+    </Tooltip>
+  );
+}
+
+async function handlePanteonNativeNotificationClick(
+  permission: PanteonNativeNotificationPermission,
+  setFeedback: (feedback: string) => void,
+  setPermission: (permission: PanteonNativeNotificationPermission) => void,
+) {
+  const nextPermission =
+    permission === "default"
+      ? await requestPanteonNativeNotificationPermission()
+      : getPanteonNativeNotificationPermission();
+
+  setPermission(nextPermission);
+
+  if (nextPermission === "granted") {
+    await showPanteonNativeNotification({
+      body: "Notificacoes do Hub ativas no Windows.",
+      tag: "panteon-native-test",
+      title: "Panteon",
+      url: "/",
+    });
+    setFeedback("Teste enviado para o Windows.");
+    return;
+  }
+
+  if (nextPermission === "denied") {
+    setFeedback("Permissao bloqueada nas configuracoes do site/app.");
+    return;
+  }
+
+  if (nextPermission === "unsupported") {
+    setFeedback("Notificacoes do Windows indisponiveis neste navegador.");
+    return;
+  }
+
+  setFeedback("Clique para permitir notificacoes do Windows.");
+}
+
+function createPanteonNativeNotificationBody(
+  notification: RealtimeNotification,
+) {
+  const hubModule = notification.moduleId
+    ? orderedHubModules.find(
+        (moduleItem) => moduleItem.id === notification.moduleId,
+      )
+    : null;
+
+  if (hubModule) {
+    return `Abrir ${hubModule.name} no Panteon.`;
+  }
+
+  return "Nova notificacao operacional no Panteon.";
+}
+
+function getPanteonNativeNotificationPath(
+  notification: RealtimeNotification,
+) {
+  const hubModule = notification.moduleId
+    ? orderedHubModules.find(
+        (moduleItem) => moduleItem.id === notification.moduleId,
+      )
+    : null;
+
+  return hubModule?.basePath ?? "/";
+}
+
+function getPanteonNativeNotificationTone(
+  permission: PanteonNativeNotificationPermission,
+) {
+  if (permission === "granted") {
+    return {
+      button:
+        "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+      dot: "bg-emerald-500",
+    };
+  }
+
+  if (permission === "denied") {
+    return {
+      button: "border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
+      dot: "bg-red-500",
+    };
+  }
+
+  return {
+    button:
+      "border-[#d9e0e7] bg-white text-[#526078] hover:bg-[#f8fafc] hover:text-[#101820]",
+    dot: "bg-amber-500",
+  };
 }
 
 type BeforeInstallPromptEvent = Event & {
