@@ -4742,3 +4742,28 @@ Registro de homologacao:
 - Itens excluidos: envs, secrets, banco remoto, migrations executadas, service role, producao e aliases de producao.
 - Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
 - Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional.
+
+## 2026-05-27 11:35:36 -03:00 - Hades feedback janela WhatsApp pela Iris
+
+- Assunto: [Hades] Homologacao feedback de envio WhatsApp pela Iris.
+- Protocolo: HADES-20260527-002-ENVIO-MENSAGEM-IRIS-JANELA-24H.
+- Ambiente: https://homo.c2x.app.br.
+- Status: PRONTO_PARA_HOMO.
+- Expected deployment atual: dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
+- Rollback esperado: dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
+- Escopo: tratamento visual/operacional do retorno da Iris quando mensagem livre WhatsApp e bloqueada por janela de 24h fechada.
+- Itens excluidos: envs, secrets, banco remoto, migrations, service role, producao e aliases de producao.
+- Deploy final: pendente de validacao, Safety Gate e publicacao Git.
+
+### Fechamento - HADES-20260527-002-ENVIO-MENSAGEM-IRIS-JANELA-24H
+
+- Status: EM_HOMOLOGACAO.
+- Deployment publicado em homologacao: dpl_4fZVynECRRuP2a6axWtvAk72KyvW.
+- Preview: https://careli-hub-hub-i2bs-3cv37bjid-lucasruas-devs-projects.vercel.app.
+- Alias: https://homo.c2x.app.br.
+- Rollback imediato: dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
+- Pacote limpo auditavel: .codex-deploy/z27-003-hades-window-feedback-homo-20260527/package.
+- Escopo: feedback e estado local da janela WhatsApp no painel Hades ao enviar mensagem livre pela Iris.
+- Itens excluidos: envs, secrets, banco remoto, migrations executadas, service role, Meta API/WABA, Iris backend, producao e aliases de producao.
+- Validacoes: git diff --check OK; check-types:hub OK; lint:hub OK; build @repo/hub OK; Safety Gate pre-deploy PASS; Safety Gate pos-publicacao/reconciliacao PASS; /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
+- Observacao: o alias homo foi associado automaticamente pela Vercel ao Preview valido do projeto oficial durante o deploy; nao houve `vercel alias set` manual.

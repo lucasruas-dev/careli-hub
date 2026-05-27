@@ -437,3 +437,36 @@ O manifesto de homologacao deve incluir:
 - Rollback anterior ao recorte: dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
 - Safety Gate: PASS pre-push e pos-publicacao.
 - Healthchecks: /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
+
+## HADES-20260527-002-ENVIO-MENSAGEM-IRIS-JANELA-24H
+
+- Modulo/agente dono: Hades Core.
+- Zeus responsavel por homo: Zeus Operations.
+- Objetivo do recorte: mostrar corretamente no Hades quando a Iris/Meta bloquear mensagem livre por janela WhatsApp de 24h fechada, evitando feedback verde falso e registro local de mensagem enviada.
+- Worktree/branch de homologacao: `.codex-deploy/z27-003-hades-window-feedback-homo-20260527/w` em `codex/zeus/hades-window-feedback-homo-20260527`.
+- Base limpa: `origin/homolog` em `986cea8`.
+- Expected deployment atual de homologacao: `dpl_756LUCkuVAp31Gs3Br6bho8ST6oE`.
+- Arquivos incluidos no pacote de homologacao:
+  - `apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos: envs, secrets, tokens, Meta API/WABA, Iris backend, migrations, banco remoto, service role, dominio, alias de producao e producao.
+- Comportamento esperado:
+  - ao receber `customerServiceWindow` da Iris, o Hades atualiza o estado da janela no ticket local;
+  - em resposta 409, a UI mostra aviso `warning`, nao adiciona bolha local e nao registra timeline como enviada;
+  - o composer exibe a janela conhecida e orienta uso de template aprovado quando a janela estiver fechada.
+- Validacoes pre-homo: pendentes neste pacote Zeus.
+- Status: `PRONTO_PARA_HOMO`.
+- Rollback esperado: `dpl_756LUCkuVAp31Gs3Br6bho8ST6oE`.
+
+#### Fechamento HADES-20260527-002
+
+- Status: EM_HOMOLOGACAO.
+- Deployment publicado em homologacao: dpl_4fZVynECRRuP2a6axWtvAk72KyvW.
+- Preview: https://careli-hub-hub-i2bs-3cv37bjid-lucasruas-devs-projects.vercel.app.
+- Alias: https://homo.c2x.app.br.
+- Rollback imediato: dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
+- Safety Gate: PASS pre-deploy e PASS pos-publicacao/reconciliacao.
+- Healthchecks: /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
+- Observacao: alias homo foi associado automaticamente ao Preview valido pela Vercel durante o deploy do projeto oficial; sem `vercel alias set` manual.

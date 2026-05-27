@@ -19731,3 +19731,67 @@ Conclusao:
 - O recorte Hades entrou em homologacao com pacote limpo, Safety Gate e healthchecks.
 - O impacto pratico e dar leitura rapida da carteira por atraso sem mudar as operacoes dos perfis OP.
 - Proximo passo: Lucas validar em homo com perfil de lideranca/coordenacao/admin se os filtros Todos, 1-30, 31-60 e 60+ aparecem e filtram corretamente.
+
+## 2026-05-27 11:35:36 -03:00 - Zeus Operations - Hades feedback janela WhatsApp para homo
+
+Assunto: [Hades] Homologacao feedback de envio WhatsApp pela Iris
+
+- Protocolo: HADES-20260527-002-ENVIO-MENSAGEM-IRIS-JANELA-24H.
+- Ambiente alvo: https://homo.c2x.app.br.
+- Status inicial: PRONTO_PARA_HOMO.
+- Base preservada: origin/homolog 986cea8 e deployment dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
+- Escopo:
+  - Hades passa a guardar o estado `customerServiceWindow` retornado pela Iris no ticket local;
+  - retorno 409 de `/api/iris/meta/messages` passa a ser aviso operacional, sem bolha local de mensagem enviada;
+  - feedback visual do painel passa a distinguir `success`, `warning` e `error`;
+  - composer mostra janela WhatsApp conhecida e muda tooltip/cor quando a janela esta fechada.
+- Arquivos incluidos:
+  - apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx;
+  - docs/operations/engineering-operations.md;
+  - docs/operations/panteon-recorte-protocols.md;
+  - docs/operations/releases-homologation.md.
+- Exclusoes: sem alteracao em Iris backend, Meta API, tokens, envs, banco remoto, migrations, Vercel production, dominios, aliases de producao ou producao.
+- Incidente paralelo Supabase/login:
+  - status publico Supabase: All Systems Operational;
+  - Supabase Auth configurado respondeu 200 em diagnostico seguro sem expor URL/chave;
+  - /login de homo/producao respondeu 200 e Vercel logs de homo nao mostraram erro;
+  - suspeita inicial: falha client-side/local de navegador/sessao/cache, sem evidencia de queda geral do Supabase.
+- Validacoes planejadas: git diff --check; eslint escopado; check-types:hub; lint:hub; build @repo/hub; Safety Gate pre-push/final; healthchecks em homo.
+- Proximo passo: validar pacote limpo e publicar somente em homologacao.
+
+Conclusao:
+- O recorte Hades corrige a percepcao de sucesso falso quando a Iris bloqueia mensagem livre fora da janela Meta de 24h.
+- A publicacao segue isolada em homo e nao altera configuracoes sensiveis.
+
+### Fechamento - HADES-20260527-002-ENVIO-MENSAGEM-IRIS-JANELA-24H - 2026-05-27 12:41:00 -03:00
+
+- Status: EM_HOMOLOGACAO.
+- Deployment publicado em homologacao: dpl_4fZVynECRRuP2a6axWtvAk72KyvW.
+- Preview tecnico valido: https://careli-hub-hub-i2bs-3cv37bjid-lucasruas-devs-projects.vercel.app.
+- Alias: https://homo.c2x.app.br.
+- Rollback imediato: dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
+- Pacote limpo auditavel: .codex-deploy/z27-003-hades-window-feedback-homo-20260527/package.
+- Manifesto Safety Gate: .codex-deploy/z27-003-hades-window-feedback-homo-20260527/homologation-safety-gate.json.
+- Validacoes executadas:
+  - git diff --check: OK;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK;
+  - npm.cmd run build --workspace @repo/hub: OK, com warning conhecido Turbopack/NFT;
+  - Safety Gate pre-deploy: PASS contra dpl_756LUCkuVAp31Gs3Br6bho8ST6oE;
+  - Safety Gate pos-publicacao/reconciliacao: PASS contra dpl_4fZVynECRRuP2a6axWtvAk72KyvW;
+  - GET /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue: 200;
+  - npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error: sem logs encontrados.
+- Observacoes operacionais:
+  - o primeiro deploy do pacote limpo criou por engano um projeto Vercel `package` e foi descartado do fluxo; ele nao recebeu o alias homo nem producao;
+  - apos relincar o pacote ao projeto oficial `careli-hub-hub-i2bs`, a Vercel associou automaticamente `homo.c2x.app.br` ao Preview valido durante o deploy; nao foi executado `vercel alias set` manual;
+  - a reconciliacao pos-publicacao confirmou que o alias atual aponta para o deployment esperado do recorte Hades;
+  - root principal permanece misto e nao foi usado para publicar;
+  - sem alteracao em envs, secrets, banco, migrations, Meta API/WABA, Iris backend, dominio/alias de producao ou producao.
+- Riscos conhecidos:
+  - validacao visual autenticada por Lucas ainda precisa confirmar, no Hades real, o feedback amarelo/vermelho quando a Iris retornar bloqueio da janela de 24h;
+  - o recorte depende do payload `customerServiceWindow` retornado pela Iris para exibir a janela conhecida no Hades.
+
+Conclusao:
+- O Hades esta em homologacao com a correcao de feedback para envio WhatsApp via Iris, evitando sucesso falso quando a Meta/Iris bloquear mensagem livre fora da janela.
+- O impacto pratico e preservar a operacao do atendimento: se a Iris bloquear por janela de 24h, o operador ve aviso e a conversa nao ganha bolha local como se tivesse enviado.
+- Proximo passo: Lucas validar em homo um envio livre com janela aberta e outro com janela fechada para confirmar feedback, ausencia de bolha falsa e orientacao de template.

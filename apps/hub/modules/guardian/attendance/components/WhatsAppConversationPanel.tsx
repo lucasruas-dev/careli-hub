@@ -101,6 +101,15 @@ type IrisTicketOptions = {
   queues: IrisTicketQueueOption[];
   templates: IrisTicketTemplateOption[];
 };
+type FeedbackTone = "error" | "success" | "warning";
+type HadesCustomerServiceWindow = {
+  contextLabel?: string | null;
+  expiresAt?: string | null;
+  label?: string | null;
+  lastCustomerMessageAt?: string | null;
+  open: boolean;
+  reason?: string | null;
+};
 type TicketStatus =
   | "Pendente"
   | "Aguardando operador"
@@ -115,6 +124,7 @@ type TicketStatus =
 type WhatsAppTicket = {
   attendanceProtocol?: string;
   collectionProtocol?: string;
+  customerServiceWindow?: HadesCustomerServiceWindow | null;
   irisMessageId?: string;
   irisTicketId?: string;
   protocol: string;
@@ -242,6 +252,7 @@ export function WhatsAppConversationPanel({
     status: initialOrigin === "Cliente iniciou" ? "Aguardando operador" : "Pendente",
   });
   const [feedback, setFeedback] = useState("");
+  const [feedbackTone, setFeedbackTone] = useState<FeedbackTone>("success");
   const [draft, setDraft] = useState("");
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] = useState(false);
@@ -302,6 +313,17 @@ export function WhatsAppConversationPanel({
   ];
   const operationReady = ticketActive && !ticketIncomplete && ticketChecklist.every((item) => item.ok);
   const blockedTooltip = "Complete o ticket para iniciar o atendimento.";
+  const customerServiceWindow = ticket.customerServiceWindow ?? null;
+  const customerServiceWindowLabel = customerServiceWindow
+    ? hadesCustomerServiceWindowLabel(customerServiceWindow)
+    : null;
+  const customerServiceWindowClosed = Boolean(customerServiceWindow && !customerServiceWindow.open);
+  const sendMessageTooltip = !operationReady
+    ? blockedTooltip
+    : customerServiceWindowClosed
+      ? "Janela WhatsApp fechada. A Iris verificara antes do envio."
+      : "Enviar mensagem";
+  const feedbackClassName = feedbackToneClassName(feedbackTone);
 
   useEffect(() => {
     if (initialOrigin !== "Cliente iniciou" || autoTicketLoggedRef.current) return;
@@ -391,6 +413,11 @@ export function WhatsAppConversationPanel({
       cancelled = true;
     };
   }, [open]);
+
+  function showFeedback(message: string, tone: FeedbackTone = "success") {
+    setFeedbackTone(tone);
+    setFeedback(message);
+  }
 
   if (!open) return null;
 
@@ -501,6 +528,7 @@ export function WhatsAppConversationPanel({
       ...current,
       attendanceProtocol,
       collectionProtocol,
+      customerServiceWindow: mapHadesCustomerServiceWindow(payload.customerServiceWindow),
       irisMessageId: payload.messageId,
       irisTicketId: payload.ticket.id,
       origin: current.origin,
@@ -516,7 +544,7 @@ export function WhatsAppConversationPanel({
     }));
     setTicketSetupOpen(false);
     setTicketIncomplete(false);
-    setFeedback(`Cobranca ${collectionProtocol} vinculada ao atendimento ${attendanceProtocol} na Iris.`);
+    showFeedback(`Cobranca ${collectionProtocol} vinculada ao atendimento ${attendanceProtocol} na Iris.`);
     onTimelineEvent(client.id, {
       actionType: "ticket",
       id: completingAutoTicket ? `${client.id}-whatsapp-ticket-completed` : `${client.id}-whatsapp-ticket-open`,
@@ -550,7 +578,7 @@ export function WhatsAppConversationPanel({
           ? buildInstallmentOptions(client, selectedUnitId ? [selectedUnitId] : []).slice(0, 1).map((item) => item.value)
           : current.relatedInstallments,
     }));
-    setFeedback(`Assunto do ticket alterado para ${profile.name}. Histórico operacional atualizado.`);
+    showFeedback(`Assunto do ticket alterado para ${profile.name}. Historico operacional atualizado.`);
     onTimelineEvent(client.id, {
       actionType: "ticket",
       id: `${client.id}-whatsapp-ticket-profile-${profile.id}`,
@@ -577,7 +605,7 @@ export function WhatsAppConversationPanel({
       status: "Encerrado",
     }));
     setTicketCloseOpen(false);
-    setFeedback(`Ticket ${ticket.protocol} encerrado e registrado no histórico operacional.`);
+    showFeedback(`Ticket ${ticket.protocol} encerrado e registrado no historico operacional.`);
     onTimelineEvent(client.id, {
       actionType: "ticket",
       id: `${client.id}-whatsapp-ticket-closed`,
@@ -598,11 +626,11 @@ export function WhatsAppConversationPanel({
     const body = draft.trim();
     if (kind === "text" && !body) return;
     if (kind !== "text") {
-      setFeedback("Envio de audio e documento deve ser conduzido pela Iris no ticket real.");
+      showFeedback("Envio de audio e documento deve ser conduzido pela Iris no ticket real.", "warning");
       return;
     }
     if (!ticket.irisTicketId) {
-      setFeedback("Abra o ticket pela Iris antes de enviar mensagens externas.");
+      showFeedback("Abra o ticket pela Iris antes de enviar mensagens externas.", "warning");
       return;
     }
 
@@ -624,11 +652,23 @@ export function WhatsAppConversationPanel({
         method: "POST",
       });
       const payload = await response.json().catch(() => null);
+      const nextCustomerServiceWindow = mapHadesCustomerServiceWindow(
+        payload?.customerServiceWindow,
+      );
+
+      if (nextCustomerServiceWindow) {
+        setTicket((current) => ({
+          ...current,
+          customerServiceWindow: nextCustomerServiceWindow,
+        }));
+      }
 
       if (!response.ok) {
-        throw new Error(
+        showFeedback(
           payload?.error ?? "Nao foi possivel enviar a mensagem pela Iris.",
+          response.status === 409 ? "warning" : "error",
         );
+        return;
       }
 
       const message: WhatsAppMessage = {
@@ -658,11 +698,13 @@ export function WhatsAppConversationPanel({
         unitLabel: selectedUnit?.unidadeLote,
         status: "Enviado",
       });
+      showFeedback("Mensagem enviada pelo WhatsApp via Iris.");
     } catch (error) {
-      setFeedback(
+      showFeedback(
         error instanceof Error
           ? error.message
           : "Nao foi possivel enviar a mensagem pela Iris.",
+        "error",
       );
     } finally {
       setSendingMessage(false);
@@ -678,7 +720,7 @@ export function WhatsAppConversationPanel({
     if (mode === "agreement") {
       setTicket((current) => ({ ...current, status: "Convertido em acordo" }));
     }
-    setFeedback(
+    showFeedback(
       mode === "promise"
         ? "Promessa registrada. Timeline atualizada e Workflow sinalizado como Promessa realizada."
         : mode === "agreement"
@@ -844,6 +886,7 @@ export function WhatsAppConversationPanel({
                           priority: "Média",
                           slaHours: 0,
                           relatedInstallments: [],
+                          customerServiceWindow: null,
                           status: "Pendente",
                         });
                         setTicketSetupOpen(true);
@@ -857,7 +900,7 @@ export function WhatsAppConversationPanel({
           </header>
 
           {feedback ? (
-            <div className="mx-4 mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+            <div className={`mx-4 mt-3 rounded-xl border px-3 py-2 text-sm font-medium ${feedbackClassName}`}>
               {feedback}
             </div>
           ) : null}
@@ -941,6 +984,23 @@ export function WhatsAppConversationPanel({
               </div>
             ) : null}
 
+            {operationReady && customerServiceWindowLabel ? (
+              <div
+                className={`mb-2 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${
+                  customerServiceWindow?.open
+                    ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}
+              >
+                {customerServiceWindow?.open ? (
+                  <Clock3 className="size-3.5 shrink-0" aria-hidden="true" />
+                ) : (
+                  <LockKeyhole className="size-3.5 shrink-0" aria-hidden="true" />
+                )}
+                <span className="min-w-0">{customerServiceWindowLabel}</span>
+              </div>
+            ) : null}
+
             <div className="mb-2 flex items-center justify-between gap-2">
               <OperationalToolbar
                 disabled={!operationReady}
@@ -970,13 +1030,17 @@ export function WhatsAppConversationPanel({
               <ComposerIconButton disabled={!operationReady || sendingMessage} label="Enviar áudio" onClick={() => sendMessage("audio")}>
                 <Mic className="size-4" aria-hidden="true" />
               </ComposerIconButton>
-              <Tooltip content={operationReady ? "Enviar mensagem" : blockedTooltip} placement="top">
+              <Tooltip content={sendMessageTooltip} placement="top">
                 <button
                   type="button"
                   disabled={!operationReady || sendingMessage}
                   onClick={() => sendMessage("text")}
-                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
-                  aria-label={operationReady ? "Enviar mensagem" : blockedTooltip}
+                  className={`flex size-10 shrink-0 items-center justify-center rounded-xl text-white transition-colors disabled:cursor-not-allowed disabled:bg-slate-300 ${
+                    customerServiceWindowClosed
+                      ? "bg-amber-600 hover:bg-amber-700"
+                      : "bg-[#A07C3B] hover:bg-[#8E6F35]"
+                  }`}
+                  aria-label={sendMessageTooltip}
                 >
                   <Send className="size-4" aria-hidden="true" />
                 </button>
@@ -2475,6 +2539,43 @@ function mapIrisTicketOptions(payload: any): IrisTicketOptions {
     queues: queues.filter((queue) => queue.id),
     templates: templates.filter((template) => template.id),
   };
+}
+
+function mapHadesCustomerServiceWindow(
+  payload: unknown,
+): HadesCustomerServiceWindow | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const record = payload as Record<string, unknown>;
+  if (typeof record.open !== "boolean") return null;
+
+  return {
+    contextLabel: readHadesOptionalString(record.contextLabel),
+    expiresAt: readHadesOptionalString(record.expiresAt),
+    label: readHadesOptionalString(record.label),
+    lastCustomerMessageAt: readHadesOptionalString(record.lastCustomerMessageAt),
+    open: record.open,
+    reason: readHadesOptionalString(record.reason),
+  };
+}
+
+function readHadesOptionalString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function hadesCustomerServiceWindowLabel(window: HadesCustomerServiceWindow) {
+  if (window.label) return window.label;
+
+  return window.open
+    ? "Janela WhatsApp aberta para mensagem livre."
+    : "Janela de 24h fechada. Envie um template aprovado pela Iris e aguarde resposta do cliente.";
+}
+
+function feedbackToneClassName(tone: FeedbackTone) {
+  if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (tone === "error") return "border-rose-100 bg-rose-50 text-rose-700";
+
+  return "border-emerald-100 bg-emerald-50 text-emerald-700";
 }
 
 function findPreferredQueueId(
