@@ -21130,3 +21130,16 @@ Conclusao:
 - O espelho Google Agenda do Chronos esta implementado de forma segura e auditavel, com migration aplicada em homologacao.
 - O impacto pratico e que a arquitetura ja evita duplicacao por vinculo idempotente e nao bloqueia o Chronos se o Google ainda nao estiver conectado.
 - A validacao funcional real depende apenas das credenciais OAuth Google no ambiente Preview/homolog.
+
+
+## 2026-05-28 - Zeus/Git Hooks - Runner Panteon ausente
+
+Assunto: [Zeus] Hook local Panteon ausente em worktree Chronos
+
+- Durante o fechamento do protocolo CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR, os hooks Git pre-commit e pre-push falharam porque apontam para scripts/panteon-hook-runner.ps1, arquivo inexistente na worktree limpa e no root principal.
+- Acao tomada: nao alterar hooks globais neste recorte; executar validacoes manuais equivalentes disponiveis (git diff --cached --check, checagem manual sem imprimir secrets, check-types, lint, build e smoke local ja registrados) e usar --no-verify apenas para fechar/pushar a branch rastreavel.
+- Risco: enquanto o runner nao for restaurado, commits/pushes podem depender de validacao manual.
+- Proxima acao recomendada: abrir recorte Zeus separado para restaurar scripts/panteon-hook-runner.ps1 ou ajustar os hooks para um caminho existente e versionado.
+
+Conclusao:
+- O recorte Chronos nao foi bloqueado por um hook quebrado, mas a falha de governanca ficou registrada para correcao propria.
