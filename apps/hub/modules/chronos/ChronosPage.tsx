@@ -7,6 +7,7 @@ import {
   draftChronosMinutes,
   loadChronosGoogleCalendarStatus,
   loadChronosSnapshot,
+  startChronosGoogleCalendarConnection,
   syncChronosGoogleCalendar,
   transcribeChronosRecording,
   updateChronosRoom,
@@ -1485,6 +1486,8 @@ function ChronosAgendaScreen({
   const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(
     null,
   );
+  const [googleCalendarConnecting, setGoogleCalendarConnecting] =
+    useState(false);
   const [googleCalendarSyncing, setGoogleCalendarSyncing] = useState(false);
   const sortedMeetings = useMemo(() => sortMeetingsByDate(meetings), [meetings]);
   const calendarViewItems: Array<{ id: ChronosCalendarView; label: string }> = [
@@ -1556,6 +1559,25 @@ function ChronosAgendaScreen({
     }
   }, [refreshGoogleCalendarStatus]);
 
+  const handleGoogleCalendarConnect = useCallback(async () => {
+    setGoogleCalendarConnecting(true);
+    setGoogleCalendarError(null);
+
+    try {
+      const authorizationUrl =
+        await startChronosGoogleCalendarConnection("/chronos");
+
+      window.location.assign(authorizationUrl);
+    } catch (error) {
+      setGoogleCalendarError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel conectar o Google.",
+      );
+      setGoogleCalendarConnecting(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -1591,15 +1613,39 @@ function ChronosAgendaScreen({
       <div className="grid gap-3 border-b border-[#edf0f4] p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="m-0 text-base font-semibold text-[#101820]">Agenda</h2>
-          <button
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-55"
-            disabled={!canManage}
-            onClick={() => openEventDraft(roundDateToNextHour(new Date()))}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={15} />
-            Criar evento
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              aria-label={
+                googleCalendarStatus?.connection.connected
+                  ? "Google conectado"
+                  : "Conectar Google"
+              }
+              className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-55 ${
+                googleCalendarStatus?.connection.connected
+                  ? "border-[#d6eadf] bg-[#f1fbf5] text-[#067647] hover:bg-[#e7f8ef]"
+                  : "border-[#d9e0e7] bg-white text-[#101820] hover:bg-[#f8fafc]"
+              }`}
+              disabled={
+                googleCalendarConnecting ||
+                !googleCalendarStatus?.configured ||
+                !googleCalendarStatus.connection.storageReady
+              }
+              onClick={handleGoogleCalendarConnect}
+              type="button"
+            >
+              <GoogleGlyph connected={googleCalendarStatus?.connection.connected} />
+              {googleCalendarConnecting ? "Abrindo..." : "Google"}
+            </button>
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={!canManage}
+              onClick={() => openEventDraft(roundDateToNextHour(new Date()))}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={15} />
+              Criar evento
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1663,7 +1709,9 @@ function ChronosAgendaScreen({
               Fonte atual
             </p>
             <ChronosGoogleCalendarReadiness
+              connecting={googleCalendarConnecting}
               error={googleCalendarError}
+              onConnect={handleGoogleCalendarConnect}
               onRefresh={refreshGoogleCalendarStatus}
               onSync={handleGoogleCalendarSync}
               status={googleCalendarStatus}
@@ -2195,13 +2243,17 @@ function ChronosCalendarEventPopup({
 }
 
 function ChronosGoogleCalendarReadiness({
+  connecting,
   error,
+  onConnect,
   onRefresh,
   onSync,
   status,
   syncing,
 }: {
+  connecting: boolean;
   error: string | null;
+  onConnect: () => void;
   onRefresh: () => void;
   onSync: () => void;
   status: ChronosGoogleCalendarStatus | null;
@@ -2237,8 +2289,8 @@ function ChronosGoogleCalendarReadiness({
   return (
     <div className="grid gap-2 rounded-md border border-[#edf0f4] bg-white p-3 text-xs leading-5 text-[#667085]">
       <p className="m-0">
-        Eventos sao reunioes formais registradas no Chronos. O espelho Google
-        cria/atualiza eventos dos dois lados com vinculo idempotente por evento.
+        Espelho Google para criar e atualizar eventos dos dois lados com vinculo
+        idempotente por evento.
       </p>
       <div className="flex flex-wrap gap-1">
         <Badge variant={status.configured ? "info" : "warning"}>
@@ -2273,16 +2325,24 @@ function ChronosGoogleCalendarReadiness({
         </div>
       ) : null}
       <div className="flex flex-wrap gap-2">
-        <a
-          className={`inline-flex h-8 items-center justify-center rounded-md px-2 font-bold ${
+        <button
+          aria-label={
+            status.connection.connected ? "Google conectado" : "Conectar Google"
+          }
+          className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${
             status.configured && status.connection.storageReady
               ? "bg-[#101820] text-white"
-              : "pointer-events-none bg-[#edf0f4] text-[#98a2b3]"
+              : "bg-[#edf0f4] text-[#98a2b3]"
           }`}
-          href={`${status.authorizationPath}?returnTo=/chronos`}
+          disabled={
+            connecting || !status.configured || !status.connection.storageReady
+          }
+          onClick={onConnect}
+          type="button"
         >
-          Conectar Google
-        </a>
+          <GoogleGlyph connected={status.connection.connected} />
+          {connecting ? "Abrindo..." : "Google"}
+        </button>
         <button
           className="h-8 rounded-md border border-[#d9e0e7] bg-white px-2 font-bold text-[#101820] disabled:opacity-50"
           disabled={!status.connection.connected || syncing}
@@ -2293,6 +2353,28 @@ function ChronosGoogleCalendarReadiness({
         </button>
       </div>
     </div>
+  );
+}
+
+function GoogleGlyph({ connected }: { connected?: boolean }) {
+  if (connected) {
+    return (
+      <span
+        aria-hidden="true"
+        className="grid h-5 w-5 place-items-center rounded-full bg-white text-[11px] font-black text-[#4285f4] shadow-[inset_0_0_0_1px_rgba(16,24,32,0.1)]"
+      >
+        G
+      </span>
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className="grid h-5 w-5 place-items-center rounded-full border border-current bg-transparent text-[11px] font-black"
+    >
+      G
+    </span>
   );
 }
 
