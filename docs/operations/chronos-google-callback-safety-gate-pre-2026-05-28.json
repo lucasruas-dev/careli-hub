@@ -1,0 +1,30 @@
+{
+  "module": "chronos",
+  "alias": "https://homo.c2x.app.br",
+  "expectedDeploymentId": "dpl_JB1enzzGH2ThDGApoYAkqN5H9Ftk",
+  "packagePath": "C:/Users/lucas/Documents/Careli_C2x/Sistemas/careli-hub-worktrees/deploy-packages/chronos-google-callback-homo-20260528-123554-package",
+  "includedFiles": [
+    "apps/hub/lib/chronos/google-calendar.ts"
+  ],
+  "excludedPaths": [
+    ".git",
+    ".vercel",
+    ".env.local",
+    ".env.production.local",
+    ".env.development.local",
+    "node_modules",
+    ".next",
+    ".turbo",
+    "apps/hub/.env.local"
+  ],
+  "validations": [
+    "git diff --check",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "pacote externo fora do root para evitar heranca .vercel",
+    "pacote contem callbackOrigin e rejeicao a *.supabase.co"
+  ],
+  "rollbackDeploymentId": "dpl_JB1enzzGH2ThDGApoYAkqN5H9Ftk",
+  "approvedBy": "Lucas"
+}

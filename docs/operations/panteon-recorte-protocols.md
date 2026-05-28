@@ -807,3 +807,18 @@ O manifesto de homologacao deve incluir:
 - Exclusoes: sem env, secret, migration, banco, dominio, producao, alias manual ou outros modulos.
 - Validacao: diff-check, check-types, lint, build, Safety Gate pre/post, healthcheck `/chronos` 200, rotas Google protegidas 401 sem sessao e logs sem erro.
 - Pendencia: Lucas testar autenticado o clique `Google` e o consentimento OAuth.
+
+### Atualizacao 2026-05-28 - CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR - Callback no app origin
+
+- Status: EM_HOMOLOGACAO.
+- Ambiente: https://homo.c2x.app.br.
+- Commit: f1790a5.
+- Deployment: dpl_2K2xF2354ktbGQwn1GBuHYGsuzYc.
+- Preview tecnico: https://careli-hub-hub-i2bs-7qxhg419i-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_JB1enzzGH2ThDGApoYAkqN5H9Ftk.
+- Escopo: corrigir o redirect final do OAuth Google para sempre retornar ao origin do app que recebeu o callback, evitando queda no dominio Supabase quando env publica estiver configurada de forma ampla.
+- Arquivo incluido:
+  - `apps/hub/lib/chronos/google-calendar.ts`.
+- Exclusoes: sem env, secret, banco, migration, producao, Google push webhook ou demais modulos.
+- Validacao: diff-check, check-types, lint, build, Safety Gate pre/post, callback Preview 302 para o proprio Preview, callback homo 302 para `https://homo.c2x.app.br/chronos?chronosGoogle=invalid_callback`, `/chronos` 200, status 401 sem sessao e logs sem erro.
+- Pendencia: Lucas repetir o fluxo autenticado pelo botao `Google` em `homo` e confirmar conexao visual.

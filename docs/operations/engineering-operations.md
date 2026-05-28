@@ -21234,3 +21234,51 @@ Conclusao:
 - O problema pratico era duplo: a UI nao deixava clara a acao e o clique anterior dependia de navegar diretamente para uma rota protegida sem bearer.
 - Agora o botao `Google` inicia a autorizacao usando a sessao autenticada e mostra visualmente o estado desconectado/conectado.
 - Proximo passo: Lucas atualizar a tela em `homo`, clicar em `Google` e validar o consentimento OAuth.
+
+## 2026-05-28 - Zeus/Chronos - Callback Google mantido no dominio do app
+
+Assunto: [Chronos] Callback Google corrigido para nao retornar ao Supabase
+
+- Protocolo: CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR.
+- Ambiente: https://homo.c2x.app.br.
+- Commit publicado: f1790a5 `fix(chronos): keep google oauth callback on app origin`.
+- Deployment publicado: dpl_2K2xF2354ktbGQwn1GBuHYGsuzYc.
+- Preview tecnico: https://careli-hub-hub-i2bs-7qxhg419i-lucasruas-devs-projects.vercel.app.
+- Rollback imediato: dpl_JB1enzzGH2ThDGApoYAkqN5H9Ftk.
+- Causa:
+  - Lucas concluiu o consentimento OAuth e recebeu retorno em um dominio Supabase com `{"error":"requested path is invalid"}`;
+  - o callback do Chronos estava montando o redirect final a partir de uma base de app derivada de env publica que podia resolver para `*.supabase.co`;
+  - a autorizacao Google estava chegando ao backend, mas o retorno final saia do dominio Panteon.
+- Implementacao:
+  - `completeChronosGoogleCalendarAuthorization` passou a usar o `origin` real da request de callback como base primaria de retorno;
+  - `GOOGLE_CALENDAR_REDIRECT_URI` agora pode servir como fallback seguro de origem;
+  - bases `*.supabase.co` sao rejeitadas como app base para redirect de tela;
+  - nenhum valor de env, token, client secret ou refresh token foi lido em log, registrado ou alterado.
+- Arquivo alterado:
+  - `apps/hub/lib/chronos/google-calendar.ts`.
+- Publicacao:
+  - pacote limpo externo: `C:/Users/lucas/Documents/Careli_C2x/Sistemas/careli-hub-worktrees/deploy-packages/chronos-google-callback-homo-20260528-123554-package`;
+  - pacote externo confirmado sem `.git` e sem `.vercel`, evitando heranca do root misto;
+  - Safety Gate pre-deploy: PASS contra `dpl_JB1enzzGH2ThDGApoYAkqN5H9Ftk`;
+  - Vercel Preview: READY em `dpl_2K2xF2354ktbGQwn1GBuHYGsuzYc`;
+  - `vercel alias set` executado para `homo.c2x.app.br`;
+  - Safety Gate pos-alias: PASS contra `dpl_2K2xF2354ktbGQwn1GBuHYGsuzYc`.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas warning CRLF conhecido no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT em SquadOps/Operations;
+  - callback sem `code/state` no Preview: 302 para `/chronos?chronosGoogle=invalid_callback` no proprio Preview;
+  - callback sem `code/state` em `homo`: 302 para `https://homo.c2x.app.br/chronos?chronosGoogle=invalid_callback`;
+  - `GET https://homo.c2x.app.br/chronos`: 200;
+  - `GET https://homo.c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - logs de erro Vercel ultimos 10 minutos: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao funcional completa ainda depende de Lucas repetir o fluxo autenticado do botao `Google`;
+  - a agenda usada segue a configuracao atual `primary`, conforme env de homologacao cadastrada por Lucas;
+  - Google push notification/webhook continua fora deste recorte.
+
+Conclusao:
+- O erro `requested path is invalid` aconteceu porque o retorno pos-OAuth saiu do Panteon e caiu no dominio Supabase.
+- O impacto pratico da correcao e manter o usuario dentro de `homo.c2x.app.br` apos consentimento Google, sem alterar secrets nem banco.
+- Proximo passo: Lucas atualizar o Chronos em `homo`, clicar em `Google` novamente e validar se o card muda para conectado.
