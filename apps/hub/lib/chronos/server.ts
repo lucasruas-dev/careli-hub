@@ -42,6 +42,7 @@ import {
   type ChronosTranscriptSegment,
   type ChronosUpdateInput,
 } from "./types";
+import { syncChronosMeetingToGoogleCalendar } from "./google-calendar";
 
 type ChronosUserRow = {
   avatar_url?: string | null;
@@ -813,6 +814,11 @@ export async function createChronosMeeting({
       meetingId: meeting.id,
       title: "Reuniao formal criada",
     });
+    await syncChronosMeetingToGoogleCalendar({
+      meetingId: meeting.id,
+      trigger: "chronos_create",
+      userId: authorization.user.id,
+    }).catch(() => null);
 
     const snapshot = await listChronosSnapshot(authorization);
     const createdMeeting = snapshot.meetings.find(
@@ -1592,6 +1598,11 @@ export async function updateChronosMeeting({
       input: normalizedInput,
       user: authorization.user,
     });
+    await syncChronosMeetingToGoogleCalendar({
+      meetingId: normalizedInput.meetingId,
+      trigger: `chronos_update_${normalizedInput.action}`,
+      userId: authorization.user.id,
+    }).catch(() => null);
 
     const snapshot = await listChronosSnapshot(authorization);
     const meeting = snapshot.meetings.find(

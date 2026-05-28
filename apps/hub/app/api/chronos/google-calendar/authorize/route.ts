@@ -1,6 +1,9 @@
 import { type NextRequest } from "next/server";
 
-import { getChronosGoogleCalendarStatus } from "@/lib/chronos/google-calendar";
+import {
+  getChronosGoogleCalendarStatus,
+  startChronosGoogleCalendarAuthorization,
+} from "@/lib/chronos/google-calendar";
 import { authorizeChronosRequest } from "@/lib/chronos/server";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +16,7 @@ export async function GET(request: NextRequest) {
     return authorization.response;
   }
 
-  const googleCalendar = getChronosGoogleCalendarStatus();
+  const googleCalendar = await getChronosGoogleCalendarStatus();
 
   if (!googleCalendar.configured) {
     return Response.json(
@@ -25,12 +28,21 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return Response.json(
-    {
-      error:
-        "OAuth Google preparado, mas aguardando storage seguro de state/tokens antes de redirecionar.",
-      googleCalendar,
-    },
-    { status: 501 },
-  );
+  if (!googleCalendar.connection.storageReady) {
+    return Response.json(
+      {
+        error:
+          "OAuth Google preparado, mas a migration de storage seguro ainda nao foi aplicada.",
+        googleCalendar,
+      },
+      { status: 503 },
+    );
+  }
+
+  const authorizationUrl = await startChronosGoogleCalendarAuthorization({
+    redirectAfter: request.nextUrl.searchParams.get("returnTo") ?? "/chronos",
+    userId: authorization.user.id,
+  });
+
+  return Response.redirect(authorizationUrl, 302);
 }

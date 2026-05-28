@@ -359,7 +359,7 @@ Smokes seguros:
 
 ### Chronos Google Agenda
 
-Relacao com o Hub: preparar leitura/sincronizacao de compromissos formais do Chronos com Google Agenda, preservando horario, local e convidados cadastrados na origem.
+Relacao com o Hub: espelhar compromissos formais do Chronos com Google Agenda em duas direcoes, preservando horario, local e convidados cadastrados na origem.
 
 Env names:
 
@@ -377,13 +377,22 @@ O que autoriza:
 - `GOOGLE_CALENDAR_SCOPES`: restringe escopos de leitura/escrita, quando configurado.
 - `GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID`: calendario padrao operacional, quando houver.
 
+Rotas oficiais:
+
+- `GET /api/chronos/google-calendar/status`: status protegido, sem valores sensiveis.
+- `GET /api/chronos/google-calendar/authorize`: inicia OAuth Google com `state` server-side e PKCE.
+- `GET /api/chronos/google-calendar/callback`: conclui OAuth e grava refresh token server-only.
+- `POST /api/chronos/google-calendar/sync`: executa `push`, `pull` ou `both` de forma autenticada.
+
 Regras:
 
 - Nenhuma env Google deve ser `NEXT_PUBLIC_*`.
-- OAuth real exige aprovacao explicita do Lucas, consentimento, escopos revisados e storage seguro de state/tokens.
+- OAuth real exige consentimento Google, escopos revisados e storage seguro de state/tokens.
 - Rotas sem configuracao devem falhar fechado e sem imprimir valores.
 - Integracao deve preservar dados do Google conforme origem: titulo, horario, local e convidados.
-- Sincronizacao bidirecional deve entrar em recorte proprio com auditoria e rollback.
+- Sincronizacao bidirecional deve usar vinculo idempotente `meeting_id + calendar_id` e `google_event_id`.
+- O calendario operacional deve ser dedicado ao Chronos quando possivel; se usar `primary`, eventos Google na janela de sync podem ser importados para o Hub.
+- Refresh token, authorization code, bearer e payload bruto de agenda nunca entram em log, chat ou Markdown.
 
 Smokes seguros:
 

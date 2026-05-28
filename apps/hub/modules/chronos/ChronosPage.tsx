@@ -7,6 +7,7 @@ import {
   draftChronosMinutes,
   loadChronosGoogleCalendarStatus,
   loadChronosSnapshot,
+  syncChronosGoogleCalendar,
   transcribeChronosRecording,
   updateChronosRoom,
   updateChronosMeeting,
@@ -1484,6 +1485,7 @@ function ChronosAgendaScreen({
   const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(
     null,
   );
+  const [googleCalendarSyncing, setGoogleCalendarSyncing] = useState(false);
   const sortedMeetings = useMemo(() => sortMeetingsByDate(meetings), [meetings]);
   const calendarViewItems: Array<{ id: ChronosCalendarView; label: string }> = [
     { id: "day", label: "Dia" },
@@ -1519,6 +1521,40 @@ function ChronosAgendaScreen({
 
     setDraftStartsAt(toDateTimeLocalValue(date));
   }
+
+  const refreshGoogleCalendarStatus = useCallback(async () => {
+    try {
+      const status = await loadChronosGoogleCalendarStatus();
+
+      setGoogleCalendarStatus(status);
+      setGoogleCalendarError(null);
+    } catch (error) {
+      setGoogleCalendarStatus(null);
+      setGoogleCalendarError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel verificar o Google Agenda.",
+      );
+    }
+  }, []);
+
+  const handleGoogleCalendarSync = useCallback(async () => {
+    setGoogleCalendarSyncing(true);
+    setGoogleCalendarError(null);
+
+    try {
+      await syncChronosGoogleCalendar("both");
+      await refreshGoogleCalendarStatus();
+    } catch (error) {
+      setGoogleCalendarError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel sincronizar Google Agenda.",
+      );
+    } finally {
+      setGoogleCalendarSyncing(false);
+    }
+  }, [refreshGoogleCalendarStatus]);
 
   useEffect(() => {
     let active = true;
@@ -1628,7 +1664,10 @@ function ChronosAgendaScreen({
             </p>
             <ChronosGoogleCalendarReadiness
               error={googleCalendarError}
+              onRefresh={refreshGoogleCalendarStatus}
+              onSync={handleGoogleCalendarSync}
               status={googleCalendarStatus}
+              syncing={googleCalendarSyncing}
             />
           </div>
         </aside>
@@ -2157,16 +2196,32 @@ function ChronosCalendarEventPopup({
 
 function ChronosGoogleCalendarReadiness({
   error,
+  onRefresh,
+  onSync,
   status,
+  syncing,
 }: {
   error: string | null;
+  onRefresh: () => void;
+  onSync: () => void;
   status: ChronosGoogleCalendarStatus | null;
+  syncing: boolean;
 }) {
   if (error) {
     return (
-      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-        Google Agenda preparado com rota segura, mas o status nao pode ser
-        consultado sem sessao Chronos valida.
+      <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+        <p className="m-0">
+          Google Agenda preparado com rota segura, mas o status nao pode ser
+          consultado agora.
+        </p>
+        <p className="m-0 font-semibold">{error}</p>
+        <button
+          className="h-8 rounded-md border border-amber-200 bg-white px-2 font-bold text-amber-900"
+          onClick={onRefresh}
+          type="button"
+        >
+          Tentar novamente
+        </button>
       </div>
     );
   }
@@ -2182,16 +2237,31 @@ function ChronosGoogleCalendarReadiness({
   return (
     <div className="grid gap-2 rounded-md border border-[#edf0f4] bg-white p-3 text-xs leading-5 text-[#667085]">
       <p className="m-0">
-        Eventos sao reunioes formais registradas no Chronos. A sincronizacao
-        Google esta preparada em rota protegida, mas OAuth real segue bloqueado
-        ate configuracao segura.
+        Eventos sao reunioes formais registradas no Chronos. O espelho Google
+        cria/atualiza eventos dos dois lados com vinculo idempotente por evento.
       </p>
       <div className="flex flex-wrap gap-1">
         <Badge variant={status.configured ? "info" : "warning"}>
           {status.configured ? "envs obrigatorias presentes" : "envs pendentes"}
         </Badge>
+        <Badge variant={status.connection.connected ? "success" : "warning"}>
+          {status.connection.connected ? "conectado" : "nao conectado"}
+        </Badge>
+        <Badge variant={status.connection.storageReady ? "success" : "warning"}>
+          {status.connection.storageReady ? "storage ok" : "migration pendente"}
+        </Badge>
         <Badge variant="neutral">{status.provider}</Badge>
       </div>
+      {status.connection.calendarId ? (
+        <p className="m-0">
+          Calendario: <strong>{status.connection.calendarId}</strong>
+        </p>
+      ) : null}
+      {status.connection.lastSyncedAt ? (
+        <p className="m-0">
+          Ultimo sync: {formatDateTime(status.connection.lastSyncedAt)}
+        </p>
+      ) : null}
       {status.missingEnvNames.length > 0 ? (
         <div>
           <p className="m-0 font-bold uppercase text-[#667085]">
@@ -2202,6 +2272,26 @@ function ChronosGoogleCalendarReadiness({
           </p>
         </div>
       ) : null}
+      <div className="flex flex-wrap gap-2">
+        <a
+          className={`inline-flex h-8 items-center justify-center rounded-md px-2 font-bold ${
+            status.configured && status.connection.storageReady
+              ? "bg-[#101820] text-white"
+              : "pointer-events-none bg-[#edf0f4] text-[#98a2b3]"
+          }`}
+          href={`${status.authorizationPath}?returnTo=/chronos`}
+        >
+          Conectar Google
+        </a>
+        <button
+          className="h-8 rounded-md border border-[#d9e0e7] bg-white px-2 font-bold text-[#101820] disabled:opacity-50"
+          disabled={!status.connection.connected || syncing}
+          onClick={onSync}
+          type="button"
+        >
+          {syncing ? "Sincronizando..." : "Sincronizar"}
+        </button>
+      </div>
     </div>
   );
 }
