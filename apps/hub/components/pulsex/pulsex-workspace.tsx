@@ -80,6 +80,22 @@ type HermesThreadReadReceipt = {
   threadCount: number;
 };
 
+function readHermesWorkspaceStorage(key: string) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeHermesWorkspaceStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Hermes local preferences are optional and must not crash the module.
+  }
+}
+
 function toggleHermesReactions({
   currentUserId,
   emoji,
@@ -489,7 +505,7 @@ export function HermesWorkspace() {
 
   useEffect(() => {
     try {
-      const storedValue = window.localStorage.getItem(
+      const storedValue = readHermesWorkspaceStorage(
         PULSEX_FAVORITE_CHANNELS_STORAGE_KEY,
       );
       const parsedValue = storedValue ? JSON.parse(storedValue) : [];
@@ -513,7 +529,7 @@ export function HermesWorkspace() {
       return;
     }
 
-    window.localStorage.setItem(
+    writeHermesWorkspaceStorage(
       PULSEX_FAVORITE_CHANNELS_STORAGE_KEY,
       JSON.stringify(favoriteChannelIds),
     );
@@ -523,7 +539,7 @@ export function HermesWorkspace() {
     setIsThreadReadStorageReady(false);
 
     try {
-      const storedValue = window.localStorage.getItem(
+      const storedValue = readHermesWorkspaceStorage(
         getHermesThreadReadStorageKey(currentUserId),
       );
       const parsedValue = storedValue ? JSON.parse(storedValue) : {};
@@ -541,7 +557,7 @@ export function HermesWorkspace() {
       return;
     }
 
-    window.localStorage.setItem(
+    writeHermesWorkspaceStorage(
       getHermesThreadReadStorageKey(currentUserId),
       JSON.stringify(threadReadState),
     );

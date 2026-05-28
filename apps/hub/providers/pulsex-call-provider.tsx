@@ -80,6 +80,48 @@ type StoredHermesActiveCall = {
 
 const HermesCallContext = createContext<HermesCallContextValue | null>(null);
 
+function getHermesBrowserStorage(kind: "local" | "session") {
+  try {
+    return kind === "local" ? window.localStorage : window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function readHermesBrowserStorage(kind: "local" | "session", key: string) {
+  try {
+    const storage = getHermesBrowserStorage(kind);
+
+    return storage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeHermesBrowserStorage(
+  kind: "local" | "session",
+  key: string,
+  value: string,
+) {
+  try {
+    const storage = getHermesBrowserStorage(kind);
+
+    storage?.setItem(key, value);
+  } catch {
+    // Browser/PWA storage can be blocked or corrupted; calls must keep working.
+  }
+}
+
+function removeHermesBrowserStorage(kind: "local" | "session", key: string) {
+  try {
+    const storage = getHermesBrowserStorage(kind);
+
+    storage?.removeItem(key);
+  } catch {
+    // Browser/PWA storage can be blocked or corrupted; calls must keep working.
+  }
+}
+
 export function HermesCallProvider({
   children,
 }: Readonly<{
@@ -133,7 +175,8 @@ function ActiveHermesCallProvider({
   }, [incomingCall]);
 
   useEffect(() => {
-    const savedSoundId = window.localStorage.getItem(
+    const savedSoundId = readHermesBrowserStorage(
+      "local",
       PULSEX_CALL_SOUND_STORAGE_KEY,
     );
 
@@ -653,7 +696,11 @@ function ActiveHermesCallProvider({
     }
 
     setInternalCallSoundId(soundId);
-    window.localStorage.setItem(PULSEX_CALL_SOUND_STORAGE_KEY, soundId);
+    writeHermesBrowserStorage(
+      "local",
+      PULSEX_CALL_SOUND_STORAGE_KEY,
+      soundId,
+    );
   }, []);
 
   const previewCallSound = useCallback((soundId: string) => {
@@ -1088,7 +1135,8 @@ function upsertCallParticipant(
 
 function readStoredHermesActiveCall(currentUserId: HermesPresenceUser["id"]) {
   try {
-    const storedValue = window.sessionStorage.getItem(
+    const storedValue = readHermesBrowserStorage(
+      "session",
       PULSEX_ACTIVE_CALL_STORAGE_KEY,
     );
 
@@ -1129,7 +1177,8 @@ function readStoredHermesActiveCall(currentUserId: HermesPresenceUser["id"]) {
 
 function writeStoredHermesActiveCall(activeCall: StoredHermesActiveCall) {
   try {
-    window.sessionStorage.setItem(
+    writeHermesBrowserStorage(
+      "session",
       PULSEX_ACTIVE_CALL_STORAGE_KEY,
       JSON.stringify(activeCall),
     );
@@ -1140,7 +1189,10 @@ function writeStoredHermesActiveCall(activeCall: StoredHermesActiveCall) {
 
 function clearStoredHermesActiveCall() {
   try {
-    window.sessionStorage.removeItem(PULSEX_ACTIVE_CALL_STORAGE_KEY);
+    removeHermesBrowserStorage(
+      "session",
+      PULSEX_ACTIVE_CALL_STORAGE_KEY,
+    );
   } catch {
     // Ignore storage failures.
   }
@@ -1148,7 +1200,8 @@ function clearStoredHermesActiveCall() {
 
 function readStoredHermesCallHistory(currentUserId: HermesPresenceUser["id"]) {
   try {
-    const storedValue = window.localStorage.getItem(
+    const storedValue = readHermesBrowserStorage(
+      "local",
       getHermesCallHistoryStorageKey(currentUserId),
     );
 
@@ -1176,7 +1229,8 @@ function writeStoredHermesCallHistory(
   history: readonly HermesCallHistoryEntry[],
 ) {
   try {
-    window.localStorage.setItem(
+    writeHermesBrowserStorage(
+      "local",
       getHermesCallHistoryStorageKey(currentUserId),
       JSON.stringify(history.slice(0, PULSEX_CALL_HISTORY_LIMIT)),
     );

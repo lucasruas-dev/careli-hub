@@ -124,6 +124,23 @@ const minimumReleasedModuleIds = [
   "setup",
 ] as const;
 const hiddenProductionModuleIds = new Set<string>();
+const HUB_SIDEBAR_STORAGE_KEY = "careli:hub-sidebar";
+
+function readShellBrowserStorage(key: string) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeShellBrowserStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Sidebar state is optional and must not crash the operational shell.
+  }
+}
 
 export function HubShell({
   children,
@@ -341,7 +358,7 @@ export function HubShell({
       return;
     }
 
-    const storedValue = window.localStorage.getItem("careli:hub-sidebar");
+    const storedValue = readShellBrowserStorage(HUB_SIDEBAR_STORAGE_KEY);
 
     if (storedValue === "collapsed") {
       setIsSidebarCollapsed(true);
@@ -364,7 +381,7 @@ export function HubShell({
       }
 
       setIsSidebarCollapsed(false);
-      window.localStorage.setItem("careli:hub-sidebar", "expanded");
+      writeShellBrowserStorage(HUB_SIDEBAR_STORAGE_KEY, "expanded");
     }
 
     window.addEventListener(
@@ -402,8 +419,8 @@ export function HubShell({
     setIsSidebarCollapsed((currentValue) => {
       const nextValue = !currentValue;
 
-      window.localStorage.setItem(
-        "careli:hub-sidebar",
+      writeShellBrowserStorage(
+        HUB_SIDEBAR_STORAGE_KEY,
         nextValue ? "collapsed" : "expanded",
       );
 
