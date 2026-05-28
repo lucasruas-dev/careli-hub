@@ -8,10 +8,12 @@ import {
   listChannelMessages,
   listHermesThreadReplies,
   loadHermesOperationalData,
+  mapHermesMessageRow,
   markHermesChannelRead,
   updateHermesMessageBody,
   updateHermesMessageReaction,
   updateHermesMessageTags,
+  type HermesMessageRow,
 } from "@/lib/pulsex/supabase-data";
 import {
   getHermesShortcutChannels,
@@ -129,8 +131,8 @@ function toggleHermesReactions({
   return nextReactions;
 }
 
-const PULSEX_PRESENCE_REFRESH_MS = 5_000;
-const PULSEX_MESSAGE_REFRESH_MS = 4_000;
+const PULSEX_PRESENCE_REFRESH_MS = 10_000;
+const PULSEX_MESSAGE_REFRESH_MS = 15_000;
 const PULSEX_FAVORITE_CHANNELS_STORAGE_KEY = "careli:pulsex:favorite-channels";
 const HERMES_THREAD_READ_STORAGE_PREFIX = "careli:hermes:thread-read-state";
 
@@ -771,6 +773,81 @@ export function HermesWorkspace() {
     messageRealtimeChannelRef.current = realtimeChannel;
     realtimeChannel
       .on(
+        "postgres_changes",
+        {
+          event: "*",
+          filter: `channel_id=eq.${activeChannel.id}`,
+          schema: "public",
+          table: "pulsex_messages",
+        },
+        (payload: { eventType?: string; new?: unknown }) => {
+          const message = normalizeHermesRealtimeMessage(
+            payload.new,
+            presenceUsers,
+          );
+
+          if (!message || message.channelId !== activeChannel.id) {
+            return;
+          }
+
+          if (message.deletedAt) {
+            setMessages((currentMessages) =>
+              currentMessages.filter(
+                (currentMessage) => currentMessage.id !== message.id,
+              ),
+            );
+            return;
+          }
+
+          if (message.threadParentMessageId) {
+            setMessages((currentMessages) =>
+              currentMessages.map((currentMessage) =>
+                currentMessage.id === message.threadParentMessageId
+                  ? {
+                      ...currentMessage,
+                      lastThreadReplyAt: getLatestHermesDateValue(
+                        currentMessage.lastThreadReplyAt,
+                        message.createdAt,
+                      ),
+                      threadCount: (currentMessage.threadCount ?? 0) + 1,
+                    }
+                  : currentMessage,
+              ),
+            );
+            return;
+          }
+
+          const alreadyKnown = knownMessageIdsRef.current.has(message.id);
+          const [nextDeliveredMessage] = withMessageDeliveryData(
+            [message],
+            channels,
+          );
+
+          if (!nextDeliveredMessage) {
+            return;
+          }
+
+          knownMessageIdsRef.current.add(nextDeliveredMessage.id);
+          loadedChannelIdsRef.current.add(nextDeliveredMessage.channelId);
+          setMessages((currentMessages) =>
+            mergeHermesChannelMessages({
+              channelId: activeChannel.id,
+              currentMessages,
+              nextMessages: [nextDeliveredMessage],
+              replaceChannel: false,
+            }),
+          );
+
+          if (
+            payload.eventType === "INSERT" &&
+            !alreadyKnown &&
+            nextDeliveredMessage.authorId !== currentUserId
+          ) {
+            notifyIncomingMessages([nextDeliveredMessage]);
+          }
+        },
+      )
+      .on(
         "broadcast",
         {
           event: PULSEX_MESSAGE_BROADCAST_EVENT,
@@ -833,6 +910,7 @@ export function HermesWorkspace() {
     currentUserId,
     dataStatus,
     notifyIncomingMessages,
+    presenceUsers,
   ]);
 
   useEffect(() => {
@@ -1218,12 +1296,18 @@ export function HermesWorkspace() {
         console.warn("[pulsex] send message error", error);
       }
       setMessages((currentMessages) =>
-        currentMessages.filter((message) => message.id !== localMessage.id),
+        currentMessages.map((message) =>
+          message.id === localMessage.id
+            ? {
+                ...message,
+                status: "danger",
+              }
+            : message,
+        ),
       );
       setComposerValue(body);
       setComposerMentions(mentions);
       setComposerTags(tags);
-      setDataStatus("fallback");
     }
   }
 
@@ -1936,6 +2020,58 @@ function formatPreviewFileSize(bytes: number) {
   }
 
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function normalizeHermesRealtimeMessage(
+  row: unknown,
+  users: readonly HermesPresenceUser[],
+) {
+  if (!row || typeof row !== "object") {
+    return null;
+  }
+
+  try {
+    const message = mapHermesMessageRow(row as HermesMessageRow);
+    const author = users.find((user) => user.id === message.authorId);
+
+    if (!author) {
+      return message;
+    }
+
+    return {
+      ...message,
+      authorAvatarUrl: message.authorAvatarUrl ?? author.avatarUrl,
+      authorName: message.authorName ?? author.label,
+    } satisfies HermesMessage;
+  } catch {
+    return null;
+  }
+}
+
+function getLatestHermesDateValue(
+  firstDate?: string,
+  secondDate?: string,
+) {
+  if (!firstDate) {
+    return secondDate;
+  }
+
+  if (!secondDate) {
+    return firstDate;
+  }
+
+  const firstTime = Date.parse(firstDate);
+  const secondTime = Date.parse(secondDate);
+
+  if (Number.isNaN(firstTime)) {
+    return secondDate;
+  }
+
+  if (Number.isNaN(secondTime)) {
+    return firstDate;
+  }
+
+  return secondTime > firstTime ? secondDate : firstDate;
 }
 
 async function broadcastHermesMessage(

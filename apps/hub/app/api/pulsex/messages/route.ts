@@ -189,6 +189,7 @@ export async function GET(request: NextRequest) {
   const threadParentMessageId =
     request.nextUrl.searchParams.get("threadParentMessageId")?.trim() ?? "";
   const channelId = request.nextUrl.searchParams.get("channelId")?.trim();
+  const limit = normalizeMessageLimit(request.nextUrl.searchParams.get("limit"));
 
   if (threadParentMessageId) {
     const { data: parentMessage, error: parentError } = await context.adminClient
@@ -216,8 +217,10 @@ export async function GET(request: NextRequest) {
       .from("pulsex_messages")
       .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
       .eq("channel_id", parentMessage.channel_id)
+      .eq("metadata->>threadParentMessageId", threadParentMessageId)
       .is("deleted_at", null)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(limit);
 
     if (error) {
       return NextResponse.json(
@@ -227,11 +230,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      data: (data ?? []).filter(
-        (message) =>
-          getString(getRecord(message.metadata).threadParentMessageId) ===
-          threadParentMessageId,
-      ),
+      data: [...(data ?? [])].reverse(),
     });
   }
 
@@ -250,7 +249,8 @@ export async function GET(request: NextRequest) {
     .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
     .eq("channel_id", channelId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(limit);
 
   if (error) {
     return NextResponse.json(
@@ -259,7 +259,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ data: data ?? [] });
+  return NextResponse.json({ data: [...(data ?? [])].reverse() });
 }
 
 export async function POST(request: NextRequest) {
@@ -566,6 +566,16 @@ function parseMarkReadPayload(payload: unknown):
     },
     ok: true,
   };
+}
+
+function normalizeMessageLimit(value: string | null) {
+  const parsedValue = Number(value);
+
+  if (!Number.isFinite(parsedValue)) {
+    return 350;
+  }
+
+  return Math.max(25, Math.min(500, Math.trunc(parsedValue)));
 }
 
 function parseEditMessagePayload(payload: unknown):
@@ -1119,12 +1129,6 @@ function getString(value: unknown) {
 
 function getUserLabel(user: Pick<HubUserAccessRow, "display_name" | "email" | "id">) {
   return getString(user.display_name) || getString(user.email) || user.id;
-}
-
-function getRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }
 
 function getBearerToken(request: NextRequest) {

@@ -74,7 +74,7 @@ type HermesChannelRow = {
   status: "active" | "archived" | "disabled";
 };
 
-type HermesMessageRow = {
+export type HermesMessageRow = {
   author_user_id?: string | null;
   body: string;
   channel_id: string;
@@ -88,6 +88,9 @@ type HermesMessageRow = {
   id: string;
   metadata?: Record<string, unknown> | null;
 };
+
+const HERMES_OPERATIONAL_MESSAGES_LIMIT = 600;
+const HERMES_CHANNEL_MESSAGES_LIMIT = 350;
 
 type HubUserAssignmentRow = {
   department_id?: string | null;
@@ -176,20 +179,15 @@ export async function loadHermesOperationalData(input: {
     userRole: input.userRole,
   });
   const messages = channels.length
-    ? (
-        await Promise.all(
-          channels.map((channel) =>
-            listChannelMessages(channel.id).catch((error: unknown) => {
-              logHermesDebug("list channel messages error", {
-                channelId: channel.id,
-                error: serializeThrownError(error),
-              });
+    ? await listRecentMessagesForChannels(
+        channels.map((channel) => channel.id),
+      ).catch((error: unknown) => {
+        logHermesDebug("list recent messages error", {
+          error: serializeThrownError(error),
+        });
 
-              return [];
-            }),
-          ),
-        )
-      ).flat()
+        return [];
+      })
     : [];
   const hasRealStructure =
     departments.length > 0 ||
@@ -452,13 +450,45 @@ export async function listChannelMessages(
       .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
       .eq("channel_id", channelId)
       .is("deleted_at", null)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: false })
+      .limit(HERMES_CHANNEL_MESSAGES_LIMIT),
   );
 
   assertQuery("mensagens Hermes", result);
 
   return mapChannelMessages(
-    (result as QueryResult<HermesMessageRow[]>).data ?? [],
+    [...((result as QueryResult<HermesMessageRow[]>).data ?? [])].reverse(),
+  );
+}
+
+async function listRecentMessagesForChannels(
+  channelIds: readonly HermesChannel["id"][],
+): Promise<HermesMessage[]> {
+  const client = getHubSupabaseClient();
+  const realChannelIds = channelIds.filter(
+    (channelId) => !isHermesDirectChannelId(channelId),
+  );
+
+  if (!client || realChannelIds.length === 0) {
+    return [];
+  }
+
+  const result = await runHermesQuery<HermesMessageRow[]>(
+    "list recent channel messages",
+    "pulsex_messages",
+    client
+      .from("pulsex_messages")
+      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+      .in("channel_id", realChannelIds)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(HERMES_OPERATIONAL_MESSAGES_LIMIT),
+  );
+
+  assertQuery("mensagens recentes Hermes", result);
+
+  return mapChannelMessages(
+    [...((result as QueryResult<HermesMessageRow[]>).data ?? [])].reverse(),
   );
 }
 
@@ -516,7 +546,7 @@ export async function createHermesMessage(input: {
 
   assertQuery("enviar mensagem", result);
 
-  return mapMessage((result as QueryResult<HermesMessageRow>).data);
+  return mapHermesMessageRow((result as QueryResult<HermesMessageRow>).data);
 }
 
 export async function listHermesThreadReplies(input: {
@@ -533,7 +563,7 @@ export async function listHermesThreadReplies(input: {
 
   if (!sessionResult.error && accessToken) {
     const response = await fetch(
-      `/api/hermes/messages?threadParentMessageId=${encodeURIComponent(input.messageId)}`,
+      `/api/hermes/messages?threadParentMessageId=${encodeURIComponent(input.messageId)}&limit=250`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -624,7 +654,7 @@ export async function updateHermesMessageTags(input: {
     return null;
   }
 
-  return mapMessage(payload.data);
+  return mapHermesMessageRow(payload.data);
 }
 
 export async function updateHermesMessageReaction(input: {
@@ -664,7 +694,7 @@ export async function updateHermesMessageReaction(input: {
     return null;
   }
 
-  return mapMessage(payload.data);
+  return mapHermesMessageRow(payload.data);
 }
 
 export async function updateHermesMessageBody(input: {
@@ -704,7 +734,7 @@ export async function updateHermesMessageBody(input: {
     return null;
   }
 
-  return mapMessage(payload.data);
+  return mapHermesMessageRow(payload.data);
 }
 
 export async function markHermesChannelRead(input: {
@@ -764,7 +794,7 @@ async function listChannelMessagesViaApi(
   }
 
   const response = await fetch(
-    `/api/hermes/messages?channelId=${encodeURIComponent(channelId)}`,
+    `/api/hermes/messages?channelId=${encodeURIComponent(channelId)}&limit=${HERMES_CHANNEL_MESSAGES_LIMIT}`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -827,7 +857,7 @@ async function createHermesMessageViaApi(
     return null;
   }
 
-  return mapMessage(payload.data);
+  return mapHermesMessageRow(payload.data);
 }
 
 async function listUserAssignments(
@@ -969,7 +999,7 @@ function mapUser(row: HubUserRow): HermesPresenceUser {
 }
 
 function mapChannelMessages(rows: readonly HermesMessageRow[]): HermesMessage[] {
-  const messages = rows.map(mapMessage);
+  const messages = rows.map(mapHermesMessageRow);
   const replyActivityByMessageId = new Map<
     string,
     { count: number; latestCreatedAt?: string }
@@ -1008,7 +1038,7 @@ function mapChannelMessages(rows: readonly HermesMessageRow[]): HermesMessage[] 
     });
 }
 
-function mapMessage(row: HermesMessageRow | null): HermesMessage {
+export function mapHermesMessageRow(row: HermesMessageRow | null): HermesMessage {
   if (!row) {
     throw new Error("Mensagem inexistente.");
   }
@@ -1047,7 +1077,7 @@ function mapMessage(row: HermesMessageRow | null): HermesMessage {
 }
 
 function mapThreadReply(row: HermesMessageRow): HermesThreadReply {
-  const message = mapMessage(row);
+  const message = mapHermesMessageRow(row);
   const parentMessageId = message.threadParentMessageId;
 
   if (!parentMessageId) {
