@@ -5071,3 +5071,13 @@ Conclusao:
 Conclusao:
 - O recorte esta em homologacao para teste autenticado do Lucas.
 - O deploy preservou rollback e nao aplicou operacao sensivel.
+
+## CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR - BLOQUEADO_ENVS_GOOGLE
+
+- Ambiente: preparado para Preview/Homologacao.
+- Status: validado localmente; migration de homologacao aplicada; aguardando envs Google OAuth no Vercel Preview.
+- Deployment: nao publicado neste registro.
+- Inclui: OAuth Google Agenda, callback, sync push/pull/both, UI de status/sync e migration 0035.
+- Exclui: producao, webhook Google push notification, valores de env, segredo OAuth, calendario real sem autorizacao.
+- Validacoes: check-types, lint, build, diff-check e smoke local protegendo rotas sem sessao.
+- Proximo passo: cadastrar GOOGLE_CALENDAR_* no Preview/homolog e gerar Preview/Homo para teste funcional real.

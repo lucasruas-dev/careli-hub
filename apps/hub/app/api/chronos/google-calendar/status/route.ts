@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   return Response.json(
     {
-      googleCalendar: getChronosGoogleCalendarStatus(),
+      googleCalendar: await getChronosGoogleCalendarStatus(),
     },
     {
       headers: {

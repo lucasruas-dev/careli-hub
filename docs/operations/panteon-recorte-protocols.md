@@ -744,3 +744,38 @@ O manifesto de homologacao deve incluir:
 - Manifestos Safety Gate: `homologation-safety-gate.pre.json` e `homologation-safety-gate.post.json`.
 - Observacao: a publicacao incluiu codigo Chronos/Athena, mas nao aplicou `0034`, nao criou bucket `chronos-drive` e nao alterou envs/secrets.
 - Validacao pos-alias: `/`, `/login`, `/chronos`, `/chronos/lideranca` 200; rotas protegidas/invalidas retornaram 401/400 esperados; logs sem erro.
+
+### CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR
+
+- Modulo: Chronos.
+- Owner: Zeus/Chronos.
+- Status: VALIDADO LOCAL / MIGRATION HOMOLOGACAO APLICADA / BLOQUEADO POR ENVS GOOGLE AUSENTES.
+- Recorte:
+  - OAuth Google Agenda com state server-side e PKCE;
+  - conexao server-only com refresh token;
+  - vinculo idempotente Chronos <-> Google;
+  - sync manual push, pull, both;
+  - UI de conectar/sincronizar na Agenda Chronos;
+  - migration 0035_chronos_google_calendar_mirror.sql.
+- Arquivos principais:
+  - apps/hub/lib/chronos/google-calendar.ts;
+  - apps/hub/lib/chronos/server.ts;
+  - apps/hub/lib/chronos/client.ts;
+  - apps/hub/lib/chronos/types.ts;
+  - apps/hub/modules/chronos/ChronosPage.tsx;
+  - apps/hub/app/api/chronos/google-calendar/*;
+  - packages/database/migrations/0035_chronos_google_calendar_mirror.sql;
+  - .env.example, .env.homolog.example, apps/hub/.env.example, turbo.json;
+  - docs/architecture/api-connection-governance.md.
+- Validacoes:
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK;
+  - npm.cmd run build --workspace @repo/hub: OK;
+  - smoke local porta 3011: /chronos 200 e rotas Google protegidas 401 sem sessao.
+- Migration:
+  - aplicada em homologacao via HOMOLOG_POSTGRES_URL sem expor valor.
+- Bloqueio:
+  - Vercel ainda nao possui GOOGLE_CALENDAR_*; precisa cadastrar envs para teste real OAuth/sync.
+- Rollback:
+  - codigo: reverter commit do recorte;
+  - banco: preservar tabelas sem uso ou dropar apenas chronos_google_calendar_* com aprovacao DataOps/Zeus se necessario.

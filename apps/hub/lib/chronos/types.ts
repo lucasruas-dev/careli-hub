@@ -156,15 +156,44 @@ export type ChronosGoogleCalendarEnvRequirement = {
   required: boolean;
 };
 
+export type ChronosGoogleCalendarConnectionStatus = {
+  calendarId?: string;
+  connected: boolean;
+  connectedAt?: string | null;
+  lastError?: string | null;
+  lastSyncedAt?: string | null;
+  storageReady: boolean;
+  syncTokenPresent?: boolean;
+};
+
 export type ChronosGoogleCalendarStatus = {
   authorizationPath: string;
+  callbackPath: string;
   configured: boolean;
+  connection: ChronosGoogleCalendarConnectionStatus;
   missingEnvNames: string[];
   provider: "google-calendar";
   redirectUriEnvName: string;
   requiredEnvNames: string[];
   scopes: string[];
-  status: "blocked" | "ready_to_configure" | "ready_to_authorize";
+  status:
+    | "blocked"
+    | "connected"
+    | "ready_to_authorize"
+    | "ready_to_configure"
+    | "storage_pending";
+  syncPath: string;
+};
+
+export type ChronosGoogleCalendarSyncDirection = "both" | "pull" | "push";
+
+export type ChronosGoogleCalendarSyncResult = {
+  direction: ChronosGoogleCalendarSyncDirection;
+  error?: string;
+  processed: number;
+  skipped: number;
+  status: "failed" | "skipped" | "success";
+  synced: number;
 };
 
 export type ChronosRoom = {

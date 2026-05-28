@@ -3,6 +3,8 @@
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   ChronosCreateMeetingInput,
+  ChronosGoogleCalendarSyncDirection,
+  ChronosGoogleCalendarSyncResult,
   ChronosGoogleCalendarStatus,
   ChronosMeeting,
   ChronosMeetingProfile,
@@ -19,7 +21,7 @@ import type {
 
 type ChronosApiResponse = Partial<ChronosSnapshot> & {
   error?: string;
-  googleCalendar?: ChronosGoogleCalendarStatus;
+  googleCalendar?: ChronosGoogleCalendarStatus | ChronosGoogleCalendarSyncResult;
   meeting?: ChronosMeeting;
   minutes?: string;
   minutesProfile?: ChronosMinutesProfile;
@@ -93,13 +95,46 @@ export async function loadChronosGoogleCalendarStatus(
     | ChronosApiResponse
     | null;
 
-  if (!response.ok || !payload?.googleCalendar) {
+  const googleCalendar = payload?.googleCalendar as
+    | ChronosGoogleCalendarStatus
+    | undefined;
+
+  if (!response.ok || !googleCalendar) {
     throw new Error(
       payload?.error ?? "Nao foi possivel carregar o status do Google Agenda.",
     );
   }
 
-  return payload.googleCalendar;
+  return googleCalendar;
+}
+
+export async function syncChronosGoogleCalendar(
+  direction: ChronosGoogleCalendarSyncDirection = "both",
+) {
+  const token = await getChronosAccessToken();
+  const response = await fetch("/api/chronos/google-calendar/sync", {
+    body: JSON.stringify({ direction }),
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | ChronosApiResponse
+    | null;
+  const result = payload?.googleCalendar as
+    | ChronosGoogleCalendarSyncResult
+    | undefined;
+
+  if (!response.ok || !result) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel sincronizar Google Agenda.",
+    );
+  }
+
+  return result;
 }
 
 export async function createChronosMeeting(input: ChronosCreateMeetingInput) {

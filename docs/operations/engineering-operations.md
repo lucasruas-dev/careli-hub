@@ -21084,3 +21084,49 @@ Conclusao:
 - Chronos/Athena foi publicado em homologacao com pacote limpo e sem tocar banco/env/secret.
 - O impacto pratico e liberar a validacao visual e funcional do novo Chronos com agenda, sala externa, ciclo formal e agente Athena preparado.
 - A proxima acao e Lucas testar em `homo`; DataOps so entra se Lucas autorizar aplicar a migration `0034`/bucket para Drive persistido.
+
+## 2026-05-28 - Zeus/Chronos - Espelho Google Agenda
+
+Assunto: [Chronos] Espelho Google Agenda bidirecional
+
+- Nome da squad/agente: Zeus atuando em Chronos.
+- Ambiente: worktree limpa + banco de homologacao.
+- Protocolo: CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR.
+- Status: VALIDADO LOCAL / MIGRATION HOMOLOGACAO APLICADA / BLOQUEADO POR ENVS GOOGLE AUSENTES.
+- Motivo:
+  - Lucas aprovou implementar o Google Agenda como espelho do Chronos, tanto Hub -> Google quanto Google -> Hub;
+  - Lucas autorizou mexer em env Google e migrations.
+- Implementacao:
+  - OAuth Google Agenda com state server-side e PKCE em rota protegida;
+  - callback OAuth grava refresh token em tabela server-only, sem expor valores;
+  - rota POST /api/chronos/google-calendar/sync executa push, pull ou both;
+  - criacao/atualizacao de reuniao Chronos tenta espelhar no Google sem quebrar o fluxo quando Google ainda nao estiver conectado;
+  - eventos Google sao vinculados por meeting_id + calendar_id e google_event_id para evitar duplicacao;
+  - UI do Chronos mostra status de storage, conexao, calendario e botoes de conectar/sincronizar;
+  - migration 0035_chronos_google_calendar_mirror.sql cria storage server-only para state OAuth, conexao, links e auditoria de sync.
+- Migration real:
+  - aplicada no Postgres de homologacao usando HOMOLOG_POSTGRES_URL, sem imprimir valor;
+  - verificadas as tabelas chronos_google_calendar_connections, chronos_google_calendar_event_links, chronos_google_calendar_oauth_states e chronos_google_calendar_sync_runs.
+- Env/secret:
+  - npx.cmd vercel env ls confirmou que ainda nao ha GOOGLE_CALENDAR_* no projeto Vercel;
+  - nenhum valor foi criado, copiado ou exposto;
+  - pendente cadastrar GOOGLE_CALENDAR_CLIENT_ID, GOOGLE_CALENDAR_CLIENT_SECRET, GOOGLE_CALENDAR_REDIRECT_URI, GOOGLE_CALENDAR_SCOPES e opcionalmente GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID no Preview/homolog.
+- Validacoes executadas:
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run build --workspace @repo/hub: OK, com warnings conhecidos de Turbopack/NFT em SquadOps/Operations;
+  - git diff --check: OK, apenas warnings CRLF conhecidos no Windows;
+  - smoke local em porta 3011: /chronos 200; rotas Google sem sessao retornaram 401 esperado.
+- Riscos conhecidos:
+  - sem env OAuth Google, homologacao mostra preparo, mas nao conecta nem sincroniza de fato;
+  - para evitar importar agenda pessoal indevida, recomenda-se calendario dedicado ao Chronos em GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID;
+  - webhook/push notification Google ainda nao foi ativado; este recorte entrega OAuth, push/pull manual e base idempotente.
+- Proxima acao:
+  - cadastrar as envs Google no Vercel Preview/homolog e redeployar;
+  - conectar conta Google pelo Chronos;
+  - testar criar evento no Hub, aparecer no Google, alterar no Google e sincronizar de volta.
+
+Conclusao:
+- O espelho Google Agenda do Chronos esta implementado de forma segura e auditavel, com migration aplicada em homologacao.
+- O impacto pratico e que a arquitetura ja evita duplicacao por vinculo idempotente e nao bloqueia o Chronos se o Google ainda nao estiver conectado.
+- A validacao funcional real depende apenas das credenciais OAuth Google no ambiente Preview/homolog.
