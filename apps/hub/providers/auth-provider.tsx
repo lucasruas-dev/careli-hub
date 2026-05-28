@@ -1382,8 +1382,10 @@ function isSupabaseAuthNetworkError(error: unknown) {
     message.includes("network request failed") ||
     message.includes("networkerror") ||
     message.includes("nao foi possivel conectar ao supabase") ||
+    message.includes("não foi possível conectar ao supabase") ||
     message.includes("supabase network unavailable") ||
-    message.includes("supabase_network_unavailable")
+    message.includes("supabase_network_unavailable") ||
+    (message.includes("tempo excedido") && message.includes("supabase"))
   ) {
     return true;
   }
