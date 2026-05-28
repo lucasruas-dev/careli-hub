@@ -1753,3 +1753,58 @@ Rollback:
 Observacao de processo:
 - Proibido publicar Vercel de worktree aninhado dentro do repo root quando o root possui `.vercel` e esta misto.
 - Proximos deploys Zeus/Hefesto devem usar worktree externo a `careli-hub` ou pacote limpo com `.vercel/project.json` local explicito.
+
+## 2026-05-28 - HERMES-20260528-003-CLIENT-RUNTIME-RECOVERY
+
+Status: EM PRODUCAO.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Recuperacao de crash client-side em producao`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Data e hora local: `2026-05-28 20:22:49 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: incidente urgente reportado por Lucas em `https://c2x.app.br/hermes`, com autorizacao explicita para hotfix Hermes em producao.
+- Escopo publicado:
+  - blindar acessos de Hermes/PulseX a `localStorage` e `sessionStorage`;
+  - impedir que persistencia local de chamadas, favoritos, leitura de thread ou sidebar derrube a tela;
+  - adicionar boundary de erro especifica do Hermes com limpeza apenas de estado local Hermes/PulseX.
+- Commit publicado: `f9828a2 fix(hermes): recover from client runtime crashes`.
+- Deployment anterior: `dpl_ApFfnT641VgsNJtGy2LQwHVxdQmt`.
+- Deployment novo: `dpl_6DvjP1kyJLZSCx595dkwFRhz1QYG`; URL tecnica `https://careli-hub-hub-i2bs-8ygnopgzh-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_6DvjP1kyJLZSCx595dkwFRhz1QYG`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no mesmo deployment, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/app/hermes/error.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/layouts/hub-shell.tsx`;
+  - `apps/hub/providers/pulsex-call-provider.tsx`.
+- Arquivos/modulos excluidos: Hades, Iris, Chronos, Athena, Apolo, Ares, Atlas, Guardian, CareDesk, migrations, banco, Supabase remoto, envs, secrets, tokens, dominios e alias manual.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run build --workspace @repo/shared --workspace @repo/uix --workspace @repo/realtime --workspace @repo/database --workspace @repo/auth`: OK, para regenerar `dist` local dos pacotes internos no worktree;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - smoke local do build em `http://localhost:3021`: `/hermes`, `/` e `/login` retornaram 200;
+  - `npx.cmd vercel deploy --prod --yes`: READY.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Rollback definido: promover novamente `dpl_ApFfnT641VgsNJtGy2LQwHVxdQmt` se Hermes, Login, Home, Zeus ou rotas protegidas apresentarem regressao critica.
+- Riscos conhecidos:
+  - validacao funcional final depende do Chrome/PWA autenticado do Lucas;
+  - se o PWA/app instalado ainda carregar bundle antigo, fechar e abrir novamente pode ser necessario;
+  - se a boundary aparecer, Lucas deve usar "Limpar estado local" uma vez para remover apenas chaves Hermes/PulseX do dispositivo.
+- Pendencias:
+  - Lucas retestar `https://c2x.app.br/hermes` no Chrome/PWA;
+  - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar a abertura do Hermes; Zeus acompanhar logs e preparar rollback apenas se houver regressao critica.
