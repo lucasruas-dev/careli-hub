@@ -20,6 +20,7 @@ import type {
 } from "./types";
 
 type ChronosApiResponse = Partial<ChronosSnapshot> & {
+  authorizationUrl?: string;
   error?: string;
   googleCalendar?: ChronosGoogleCalendarStatus | ChronosGoogleCalendarSyncResult;
   meeting?: ChronosMeeting;
@@ -106,6 +107,37 @@ export async function loadChronosGoogleCalendarStatus(
   }
 
   return googleCalendar;
+}
+
+export async function startChronosGoogleCalendarConnection(
+  returnTo = "/chronos",
+) {
+  const token = await getChronosAccessToken();
+  const searchParams = new URLSearchParams({
+    response: "json",
+    returnTo,
+  });
+  const response = await fetch(
+    `/api/chronos/google-calendar/authorize?${searchParams.toString()}`,
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | ChronosApiResponse
+    | null;
+
+  if (!response.ok || !payload?.authorizationUrl) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel iniciar a conexao com Google Agenda.",
+    );
+  }
+
+  return payload.authorizationUrl;
 }
 
 export async function syncChronosGoogleCalendar(
