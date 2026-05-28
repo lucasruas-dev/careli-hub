@@ -357,6 +357,41 @@ Smokes seguros:
 - Validar erro de token ausente como configuracao pendente.
 - Logs sem bearer.
 
+### Chronos Google Agenda
+
+Relacao com o Hub: preparar leitura/sincronizacao de compromissos formais do Chronos com Google Agenda, preservando horario, local e convidados cadastrados na origem.
+
+Env names:
+
+- `GOOGLE_CALENDAR_CLIENT_ID`
+- `GOOGLE_CALENDAR_CLIENT_SECRET`
+- `GOOGLE_CALENDAR_REDIRECT_URI`
+- `GOOGLE_CALENDAR_SCOPES`
+- `GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID`
+
+O que autoriza:
+
+- `GOOGLE_CALENDAR_CLIENT_ID`: identifica o app OAuth Google. Nao basta para acessar agenda.
+- `GOOGLE_CALENDAR_CLIENT_SECRET`: autentica o app OAuth server-side. Critica.
+- `GOOGLE_CALENDAR_REDIRECT_URI`: define a URL autorizada para callback OAuth.
+- `GOOGLE_CALENDAR_SCOPES`: restringe escopos de leitura/escrita, quando configurado.
+- `GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID`: calendario padrao operacional, quando houver.
+
+Regras:
+
+- Nenhuma env Google deve ser `NEXT_PUBLIC_*`.
+- OAuth real exige aprovacao explicita do Lucas, consentimento, escopos revisados e storage seguro de state/tokens.
+- Rotas sem configuracao devem falhar fechado e sem imprimir valores.
+- Integracao deve preservar dados do Google conforme origem: titulo, horario, local e convidados.
+- Sincronizacao bidirecional deve entrar em recorte proprio com auditoria e rollback.
+
+Smokes seguros:
+
+- `GET /api/chronos/google-calendar/status` sem sessao deve retornar `401`.
+- `GET /api/chronos/google-calendar/status` com sessao deve listar apenas nomes de envs ausentes/presentes, nunca valores.
+- `GET /api/chronos/google-calendar/authorize` sem env obrigatoria deve retornar erro operacional seguro.
+- Logs sem client secret, bearer, refresh token, authorization code ou payload de agenda sensivel.
+
 ### OpenAI e AI do Panteon
 
 Relacao com o Hub: Athena, PO AI, analise de evidencias, copilots e respostas estruturadas.
@@ -365,12 +400,16 @@ Env names:
 
 - `OPENAI_API_KEY`
 - `HUB_AI_MODEL`
+- `HUB_CHRONOS_MINUTES_MODEL`
+- `HUB_CHRONOS_TRANSCRIPTION_MODEL`
 - `HUB_IT_TICKET_TRANSCRIPTION_MODEL`
 
 O que autoriza:
 
 - `OPENAI_API_KEY`: autoriza chamadas de AI. Critica.
 - `HUB_AI_MODEL`: escolhe modelo padrao.
+- `HUB_CHRONOS_MINUTES_MODEL`: escolhe modelo do agente de rascunho de ata do Chronos, quando configurado.
+- `HUB_CHRONOS_TRANSCRIPTION_MODEL`: escolhe modelo de transcricao do Chronos, quando configurado.
 - `HUB_IT_TICKET_TRANSCRIPTION_MODEL`: escolhe modelo/rota de transcricao de evidencias quando aplicavel.
 
 Regras:

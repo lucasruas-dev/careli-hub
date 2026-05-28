@@ -73,10 +73,104 @@ export type ChronosMinutesStatus = (typeof chronosMinutesStatuses)[number];
 export type ChronosParticipantRole = (typeof chronosParticipantRoles)[number];
 export type ChronosFollowUpStatus = (typeof chronosFollowUpStatuses)[number];
 export type ChronosEventType = (typeof chronosEventTypes)[number];
+export type ChronosMeetingLocationMode = "offline" | "online";
+
+export const chronosMinutesProfiles = [
+  "comunicado",
+  "resultado",
+  "alinhamento",
+] as const;
+
+export type ChronosMinutesProfile = (typeof chronosMinutesProfiles)[number];
+
+export const chronosMinutesProfileLabels = {
+  comunicado: "Comunicado",
+  resultado: "Resultado",
+  alinhamento: "Alinhamento",
+} as const satisfies Record<ChronosMinutesProfile, string>;
+
+export type ChronosMeetingProfile = {
+  createdAt?: string;
+  description: string;
+  id: string;
+  isDefault: boolean;
+  label: string;
+  meetingType: ChronosMeetingType;
+  status: "active" | "archived";
+  updatedAt?: string;
+};
+
+export type ChronosMeetingProfileInput = {
+  description?: string;
+  label: string;
+  meetingType?: ChronosMeetingType;
+};
+
+export type ChronosMeetingProfileDeleteInput = {
+  profileId: string;
+};
+
+export const defaultChronosMeetingProfiles = [
+  {
+    description: "Reunioes de alinhamento interno ou externo com rastreabilidade formal.",
+    id: "alignment",
+    isDefault: true,
+    label: "Alinhamento",
+    meetingType: "alignment",
+    status: "active",
+  },
+  {
+    description: "Apresentacoes de resultado com gravacao, transcricao e ata revisada.",
+    id: "results",
+    isDefault: true,
+    label: "Resultado",
+    meetingType: "results",
+    status: "active",
+  },
+  {
+    description: "Comunicados formais com registro, participantes e memoria executiva.",
+    id: "announcement",
+    isDefault: true,
+    label: "Comunicado",
+    meetingType: "formal",
+    status: "active",
+  },
+] as const satisfies ChronosMeetingProfile[];
+
+export type ChronosApoloInvitee = {
+  displayName: string;
+  email?: string;
+  entityId: string;
+  organization?: string;
+  phone?: string;
+};
+
+export type ChronosGoogleCalendarEnvClassification =
+  | "identifier"
+  | "operational"
+  | "server_secret";
+
+export type ChronosGoogleCalendarEnvRequirement = {
+  classification: ChronosGoogleCalendarEnvClassification;
+  name: string;
+  required: boolean;
+};
+
+export type ChronosGoogleCalendarStatus = {
+  authorizationPath: string;
+  configured: boolean;
+  missingEnvNames: string[];
+  provider: "google-calendar";
+  redirectUriEnvName: string;
+  requiredEnvNames: string[];
+  scopes: string[];
+  status: "blocked" | "ready_to_configure" | "ready_to_authorize";
+};
 
 export type ChronosRoom = {
   capacity: number;
   id: string;
+  metadata: Record<string, unknown>;
   minutesRequired: boolean;
   name: string;
   recordingRequired: boolean;
@@ -107,9 +201,19 @@ export type ChronosTimelineEvent = {
 export type ChronosTranscriptSegment = {
   content: string;
   createdAt: string;
+  endedAt?: string | null;
   id: string;
   source: string;
   speakerLabel?: string | null;
+  startedAt?: string | null;
+};
+
+export type ChronosChatMessage = {
+  content: string;
+  createdAt: string;
+  id: string;
+  participantId?: string | null;
+  senderName: string;
 };
 
 export type ChronosMinutes = {
@@ -133,8 +237,13 @@ export type ChronosFollowUp = {
 };
 
 export type ChronosRecording = {
+  downloadUrl?: string | null;
   durationSeconds?: number | null;
+  fileName?: string | null;
   id: string;
+  mimeType?: string | null;
+  playbackUrl?: string | null;
+  sizeBytes?: number | null;
   startedAt?: string | null;
   status: ChronosCaptureStatus;
   stoppedAt?: string | null;
@@ -143,6 +252,7 @@ export type ChronosRecording = {
 };
 
 export type ChronosMeeting = {
+  chatMessages?: ChronosChatMessage[];
   createdAt: string;
   endsAt?: string | null;
   executiveSummary?: string | null;
@@ -179,6 +289,7 @@ export type ChronosStorageStatus =
 
 export type ChronosSnapshot = {
   meetings: ChronosMeeting[];
+  profiles: ChronosMeetingProfile[];
   rooms: ChronosRoom[];
   storage: {
     message?: string;
@@ -188,7 +299,11 @@ export type ChronosSnapshot = {
 
 export type ChronosCreateMeetingInput = {
   agenda?: string[];
+  apoloInvitees?: ChronosApoloInvitee[];
+  endsAt?: string;
   externalReference?: string;
+  locationAddress?: string;
+  locationMode?: ChronosMeetingLocationMode;
   meetingType: ChronosMeetingType;
   objective?: string;
   participants?: Array<{
@@ -197,9 +312,69 @@ export type ChronosCreateMeetingInput = {
     organization?: string;
     role?: ChronosParticipantRole;
   }>;
+  profileId?: string;
   roomId?: string;
   startsAt?: string;
   title: string;
+};
+
+export type ChronosRoomInput = {
+  backgroundDataUrl?: string;
+  backgroundName?: string;
+  capacity?: number;
+  minutesRequired?: boolean;
+  name: string;
+  recordingRequired?: boolean;
+  roomType?: string;
+  slug?: string;
+  transcriptionRequired?: boolean;
+};
+
+export type ChronosRoomUpdateInput = Partial<ChronosRoomInput> & {
+  roomId: string;
+};
+
+export type ChronosRoomDeleteInput = {
+  roomId: string;
+};
+
+export type ChronosPublicRoom = {
+  backgroundDataUrl?: string;
+  backgroundName?: string;
+  capacity: number;
+  externalPath: string;
+  id: string;
+  minutesRequired: boolean;
+  name: string;
+  recordingRequired: boolean;
+  roomType: string;
+  slug: string;
+  transcriptionRequired: boolean;
+};
+
+export type ChronosPublicParticipantInput = {
+  displayName?: string;
+  organization?: string;
+};
+
+export type ChronosPublicJoinResult = {
+  athenaNotice: string;
+  isHost: boolean;
+  meetingId: string;
+  reservation: {
+    endsAt?: string | null;
+    protocol: string;
+    startsAt?: string | null;
+    title: string;
+  };
+  participant: {
+    displayName: string;
+    id: string;
+    organization?: string;
+    role: ChronosParticipantRole;
+    userId?: string;
+  };
+  room: ChronosPublicRoom;
 };
 
 export type ChronosUpdateInput =
@@ -218,6 +393,7 @@ export type ChronosUpdateInput =
       action: "add_transcript";
       content: string;
       meetingId: string;
+      source?: "athena" | "browser" | "manual" | "openai";
       speakerLabel?: string;
     }
   | {
