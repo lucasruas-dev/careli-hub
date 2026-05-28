@@ -4596,6 +4596,24 @@ Registro de homologacao:
 - Validacoes: lint escopado Ares OK; check-types:hub OK; lint:hub OK; build --workspace @repo/hub OK; Safety Gate pre-deploy/pre-alias/pos-alias PASS; healthchecks /ares, /iris, /login OK; APIs protegidas sem sessao retornaram 401/405 esperados; logs Vercel sem erro.
 - Riscos: validacao autenticada real segue com Lucas; novas bases e vinculos dependem de cadastro real; producao nao foi tocada.
 
+## 2026-05-26 11:11:11 -03:00 - Homologacao composta Ares/Iris/Hades/Athena
+
+- Assunto: [Zeus] Homologacao composta Ares/Iris/Hades/Athena.
+- Protocolo: ZEUS-20260526-002-ARES-IRIS-HADES-ATHENA-HOMO.
+- Ambiente: https://homo.c2x.app.br.
+- Status: EM HOMOLOGACAO.
+- Deployment:
+  - dpl_DGqpRzTVWzXX3oV2EWu1NWUtpocB;
+  - Preview: https://careli-hub-hub-i2bs-4kyzd0d47-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_AqqeSA2T1u7B37rZsf4LDrCWxSDj.
+- Pacote limpo: .codex-deploy/z26-002/w.
+- Manifesto Safety Gate: .codex-deploy/z26-002/homologation-safety-gate.json.
+- Escopo: preserva Ares bases financeiras ja vigente; adiciona Iris/Caca V8 agent-first, fuso da Caca, Hades abertura Iris com assunto/parcelas/preview e API Iris tickets com variaveis de parcela/protocolo.
+- Itens excluidos: envs, secrets, tokens, banco, migrations, producao, dominios, alias de producao, Apolo, PulseX, Financeiro, HelpDesk/Zeus code e root misto fora do protocolo.
+- Validacoes: git diff --check do recorte OK; Safety Gate pre-deploy/pre-alias/pos-alias PASS; check-types:hub OK; lint:hub OK; build --workspace @repo/hub OK no pacote curto; Vercel Preview READY; healthchecks /login, /iris, /hades/cobranca e /ares retornaram 200; APIs protegidas sem sessao retornaram 401 esperado; logs Vercel sem erro.
+- Observacao: build inicial em caminho longo do pacote falhou por limite Windows/Turbopack; pacote foi recomposto em .codex-deploy/z26-002/w e validado com sucesso.
+- Riscos: validacao autenticada real segue com Lucas; producao nao foi tocada.
+
 ## 2026-05-26 12:52:00 -03:00 - Hades/Athena OpenAI Preview e empreendimentos em homo
 
 - Assunto: [Zeus] Homologacao Hades/Athena com OpenAI Preview.
@@ -4648,122 +4666,390 @@ Registro de homologacao:
 - Validacoes: git diff --check do recorte OK; check-types:hub OK; lint:hub OK; build --workspace @repo/hub OK; Safety Gate pre-deploy/pre-alias PASS; Preview READY; alias OK; healthchecks /, /login e /iris OK; /api/iris/attendant GET 405 esperado; /api/iris/meta/templates sem sessao 401 esperado; logs Vercel sem erro.
 - Riscos: validacao real depende de novo teste autenticado/WhatsApp; V9 nao cria job assincrono, apenas bloqueia promessa de retorno sem acao; governanca permanente de env Preview segue recomendada.
 
-## 2026-05-26 16:45:00 -03:00 - Iris/Zeus timeout da fila e reconciliação Git homolog
+## 2026-05-27 09:05:01 -03:00 - Chronos sidebar Agenda Salas Drive local
 
-- Assunto: [Iris] Homologação preservada com branch Git e timeout da fila.
-- Protocolo: IRIS-20260526-005-QUEUE-LOAD-TIMEOUT-HOMO.
-- Ambiente: https://homo.c2x.app.br.
-- Status: EM_HOMOLOGACAO.
-- Commit homolog: be271a7.
-- Deployment:
-  - dpl_9rhHPwQLGS5QWgnnvAfHFWj7onJF;
-  - Preview: https://careli-hub-hub-i2bs-ouo2ugrpu-lucasruas-devs-projects.vercel.app;
-  - Branch alias: https://careli-hub-hub-i2bs-git-homolog-lucasruas-devs-projects.vercel.app.
-- Rollback: dpl_DNv3wQr8m4yBH87hDcmDFD36wbXW ou dpl_4h6qtecE1Jova1Mez5bGhSkdyW8b conforme objetivo de rollback.
-- Escopo: timeout de carga da fila Iris e timeout do enriquecimento CRM 360/Apolo para impedir tela presa em `Carregando fila`.
-- Preservacao: snapshot Git homolog preserva recortes Ares, Hades, Iris/Athena/Caca e Apolo ja publicados em homo; sem env, secrets, banco, migrations executadas, producao ou dominios de producao.
-- Validacoes: diff-check, check-types:hub, lint:hub, build hub, Safety Gate PASS, healthchecks /, /login, /iris 200, APIs protegidas 401 esperado, logs sem erro.
-- Risco: validacao autenticada real e confirmacao da Caca com OpenAI ainda dependem do teste do Lucas.
+- Assunto: [Chronos] Sidebar com Agenda Salas e Drive.
+- Protocolo: CHRONOS-20260527-001-AGENDA-SALAS-DRIVE.
+- Ambiente: local, candidato a Preview/Homo somente com autorizacao do Lucas e pacote limpo Chronos.
+- Status: PRONTO PARA HOMO / AGUARDANDO AUTORIZACAO DO LUCAS.
+- Escopo:
+  - adicionar sidebar interna do Chronos no padrao visual Hades/Panteon;
+  - reduzir a navegacao principal para `Agenda`, `Salas` e `Drive`;
+  - manter `Gravacoes` e `Atas` como abas internas dentro de `Drive`;
+  - deixar `Agenda` como tela inicial de compromissos formais, com modos `Dia`, `Semana`, `Mes`, `Ano` e `Lista`, navegacao por periodo e criacao de evento em popup flutuante pelo horario selecionado;
+  - usar `HubShell chrome="operational"` em `/chronos` para exibir somente a sidebar do Chronos e manter o acesso a outros modulos pelo botao do launcher no topo;
+  - transformar `Salas` em organizacao de salas fixas, agenda por sala, configuracao planejada de setor/host/fundo/link e Olimpo de midia/gravacao para a reuniao selecionada;
+  - transformar `Drive` em acervo formal por sala, com cards de gravacoes e atas mostrando data/hora, participantes, tema, protocolo e status;
+  - adicionar aba `Perfis` em `Salas` com os perfis oficiais `Externa`, `Cliente` e `Resultado` disponiveis no popup de agendamento;
+  - adicionar inicio/fim, modo `Online` com sala Chronos e modo `Presencial` com endereco obrigatorio no popup da Agenda;
+  - buscar convidados exclusivamente no Apolo via `/api/apolo/relationships` autenticado e salvar participantes/metadados `apoloInvitees` com e-mail/telefone reais;
+  - validar no backend horario final posterior ao inicio, endereco obrigatorio quando presencial, `ends_at` e metadados de local/convidados;
+  - manter grade da Agenda em slots de 1 hora, apos Lucas descartar blocos de 30 minutos;
+  - preparar readiness Google Agenda com registry `GOOGLE_CALENDAR_*`, rotas protegidas de status/autorizacao e falha fechada sem OAuth real.
+- Arquivos/modulos afetados:
+  - `apps/hub/app/chronos/page.tsx`;
+  - `apps/hub/app/api/chronos/google-calendar/authorize/route.ts`;
+  - `apps/hub/app/api/chronos/google-calendar/status/route.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/lib/chronos/google-calendar.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/lib/chronos/types.ts`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `docs/architecture/api-connection-governance.md`;
+  - `docs/architecture/environment-governance.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`;
+  - `docs/operations/engineering-operations.md`;
+  - `turbo.json`.
+- Arquivos/modulos excluidos:
+  - Hades, Iris, Hermes, Zeus, Atlas, Apolo, Ares, Setup, migrations, envs, secrets, OAuth Google, Supabase mutavel, banco, storage, Vercel, dominios, aliases e producao.
+- Validacoes:
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx app/chronos/page.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx --max-warnings 0` apos refinamento do popup: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx lib/chronos/server.ts lib/chronos/types.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx lib/chronos/client.ts lib/chronos/google-calendar.ts lib/chronos/types.ts app/api/chronos/google-calendar/status/route.ts app/api/chronos/google-calendar/authorize/route.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - smoke local `GET http://localhost:3001/chronos`: HTTP 200;
+  - smoke seguro `GET http://localhost:3001/api/apolo/relationships?q=teste` sem token: 401 Unauthorized esperado;
+  - smoke seguro `GET http://localhost:3001/api/chronos/google-calendar/status` sem sessao: 401 Unauthorized esperado;
+  - smoke seguro `GET http://localhost:3001/api/chronos/google-calendar/authorize` sem sessao: 401 Unauthorized esperado.
+- Healthchecks de homologacao:
+  - nao executados porque nenhum Preview/Homo foi publicado.
+- Riscos:
+  - conexao real com Google Agenda depende de OAuth, escopos, envs e consentimento em recorte seguro;
+  - Google Agenda permanece `BLOQUEADO` neste recorte por envolver OAuth, env e API externa sensivel;
+  - rotas Google atuais sao readiness/guardrail; nao redirecionam para Google nem persistem tokens;
+  - criacao de perfis customizados alem dos tres oficiais exige persistencia real em recorte backend proprio;
+  - envio efetivo de convites por e-mail ou Iris ainda nao foi implementado; o recorte apenas guarda convidados Apolo em fonte real Chronos;
+  - criacao/configuracao persistida de salas, vinculo a setores, host padrao, fundo e link externo dependem de recorte backend seguro; a tela atual usa salas reais do Chronos e nao grava configuracao inexistente;
+  - link externo de sala ainda depende de rota publica segura e politica de acesso externo;
+  - ata automatica com OpenAI deve continuar exigindo revisao humana antes de envio/formalizacao;
+  - validacao visual autenticada do Lucas ainda e recomendada antes de Preview/Homo; Browser Codex falhou por sandbox do Node REPL e screenshot headless local parou em `Carregando sessao...`;
+  - worktree principal esta misto e nao deve ser usado para deploy sem pacote limpo Chronos.
+- Pendencias:
+  - Lucas aprovar o protocolo `CHRONOS-20260527-001-AGENDA-SALAS-DRIVE` para Preview/Homo, se quiser seguir com publicacao.
 
-## 2026-05-26 17:28:02 -03:00 - ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO
+## 2026-05-27 15:19:21 -03:00 - Chronos salas configuraveis com link curto local
 
-- Assunto: [Zeus] Pacote limpo Iris, Hades e Apolo para homo.
-- Protocolos incluidos: IRIS-20260526-005-NOME-WHATSAPP-CONTATO, HADES-20260526-006-FILA-DIARIA-MONITORAMENTO-IRIS, APOLO-20260526-004-CRM360-C2X-REFRESH.
-- Ambiente alvo: https://homo.c2x.app.br.
-- Status: EM_HOMOLOGACAO.
-- Base preservada: origin/homolog 00ea84e e deployment dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4.
-- Deploy final: pendente; registrar apos Git deploy, Safety Gate pre-alias e healthchecks.
-- Validacoes pre-deploy: build @repo/auth OK; git diff --check OK; check-types:hub OK; lint:hub OK; build @repo/hub OK.
-- Exclusoes: sem envs, secrets, banco, migrations, service role, dominios, aliases de producao ou producao.
+- Assunto: [Chronos] Salas configuraveis com link curto e fundo.
+- Protocolo: CHRONOS-20260527-002-SALAS-CONFIG-LINK-FUNDO.
+- Ambiente: local; nenhum Preview/Homo publicado.
+- Status: PRONTO PARA HOMO / AGUARDANDO AUTORIZACAO DO LUCAS.
+- Escopo:
+  - habilitar criacao de salas Chronos pela tela `Salas`;
+  - habilitar exclusao segura como arquivamento, preservando rastreabilidade;
+  - exibir link externo curto no padrao `/chronos/<slug>`;
+  - permitir upload de fundo da sala em PNG, JPG ou WebP ate 1 MB no cliente;
+  - manter a tela como configuracao, sem implementar lobby externo ou reuniao publica neste recorte.
+- Arquivos incluidos:
+  - `apps/hub/app/api/chronos/rooms/route.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/lib/chronos/types.ts`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - Hades, Iris, Hermes, Zeus, Atlas, Apolo, Ares, Setup, migrations, envs, secrets, Supabase Storage, Google OAuth, Vercel, dominios, aliases e producao.
+- Validacoes:
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx lib/chronos/client.ts lib/chronos/server.ts lib/chronos/types.ts app/api/chronos/rooms/route.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - `git diff --check` do recorte: OK, apenas warnings CRLF conhecidos no Windows;
+  - smoke local `GET http://localhost:3001/chronos`: HTTP 200;
+  - smoke seguro `POST http://localhost:3001/api/chronos/rooms` sem auth: 401 Unauthorized esperado.
+- Riscos:
+  - `/chronos/<slug>` ainda e link configurado/planejado; rota publica segura e solicitacao de entrada externa precisam de recorte proprio;
+  - fundo em metadata por data URL atende V1 curta, mas storage institucional deve usar recorte seguro posterior;
+  - validacao visual autenticada ficou pendente porque a automacao de navegador falhou por sandbox do runtime;
+  - worktree principal esta misto e nao deve ser usado para deploy sem pacote limpo Chronos.
+- Pendencias:
+  - Lucas validar localmente a tela `Chronos > Salas`;
+  - se aprovado, autorizar Preview/Homo pelo protocolo `CHRONOS-20260527-002-SALAS-CONFIG-LINK-FUNDO`.
 
-### Fechamento - ZEUS-20260526-007-IRIS-HADES-APOLO-HOMO - 2026-05-26 17:37:35 -03:00
+## 2026-05-27 15:58:34 -03:00 - Chronos sala externa Hermes Athena local
 
-- Status: EM_HOMOLOGACAO.
-- Commit de codigo: 8515dfa.
-- Deployment Git de codigo: dpl_Au23VZiY2jwM623mukfHtZmLguwJ.
-- Preview tecnico: https://careli-hub-hub-i2bs-3fu3ygpv0-lucasruas-devs-projects.vercel.app.
-- Alias: https://homo.c2x.app.br.
-- Rollback: dpl_6wDr8Fgy8iFZ4jsUd655QxBCVjF4.
-- Safety Gate: pre-push PASS e pos-deploy PASS.
-- Healthchecks: /, /login, /iris, /hades/cobranca, /hades/monitoramento e /apolo retornaram 200; APIs protegidas Iris/Apolo retornaram 401 sem sessao; logs de erro Vercel sem ocorrencias.
-- Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional; confirmar sempre pelo inspect atual de homo.
+- Assunto: [Chronos] Sala externa com video Hermes e Athena.
+- Protocolo: CHRONOS-20260527-003-SALA-EXTERNA-HERMES-ATHENA.
+- Ambiente: local; nenhum Preview/Homo publicado.
+- Status: PRONTO PARA HOMO / AGUARDANDO AUTORIZACAO DO LUCAS.
+- Escopo:
+  - criar rota publica `/chronos/[roomSlug]` para acesso externo a sala Chronos;
+  - abrir pre-entrada fullscreen com fundo da sala, camera/microfone, nome e empresa para convidado externo;
+  - usar login do Hub para colaboradores autenticados;
+  - reaproveitar os componentes visuais de chamada do Hermes para microfone, camera, compartilhamento de tela, picture-in-picture e sair;
+  - adicionar botao de gravacao, aviso Athena e transcricao vinculada ao nome do participante.
+- Arquivos incluidos:
+  - `apps/hub/app/chronos/[roomSlug]/page.tsx`;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/join/route.ts`;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/recording/route.ts`;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/transcript/route.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/lib/chronos/types.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `apps/hub/providers/auth-provider.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - Hades, Iris, Hermes, Zeus, Atlas, Apolo, Ares, Setup, migrations, envs, secrets, Supabase Storage, OpenAI, Google OAuth, Vercel, dominios, aliases e producao.
+- Validacoes:
+  - `npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx lib/chronos/server.ts lib/chronos/types.ts providers/auth-provider.tsx app/chronos/[roomSlug]/page.tsx app/api/chronos/public/rooms/[roomSlug]/join/route.ts app/api/chronos/public/rooms/[roomSlug]/recording/route.ts app/api/chronos/public/rooms/[roomSlug]/transcript/route.ts --max-warnings 0`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - smoke local buildado `GET http://localhost:3002/chronos/sala-cliente`: HTTP 200;
+  - smoke seguro `POST http://localhost:3002/api/chronos/public/rooms/__invalid_smoke__/join`: HTTP 400 esperado.
+- Riscos:
+  - aceite de entrada pelo host ainda nao foi implementado;
+  - gravacao fica local/download + metadata Chronos; Storage/Drive exige recorte seguro posterior;
+  - transcricao usa Web Speech API do navegador e `speaker_label` declarado/logado; diarizacao fiel exige provider server-side;
+  - WebRTC mesh sem TURN/SFU pode variar em redes externas restritas;
+  - validacao visual automatizada ficou bloqueada pelo sandbox do Node REPL (`spawn setup refresh`);
+  - worktree principal esta misto e nao deve ser usado para deploy sem pacote limpo Chronos.
+- Pendencias:
+  - Lucas validar localmente `/chronos/sala-cliente`;
+  - se aprovado, autorizar Preview/Homo pelo protocolo `CHRONOS-20260527-003-SALA-EXTERNA-HERMES-ATHENA`;
+  - abrir recorte seguinte para lobby/admissao pelo host e Storage/Drive de gravacoes.
 
-## 2026-05-26 19:57:08 -03:00 - Iris inbound coalescencia
+## 2026-05-27 16:22:00 -03:00 - Chronos perfis configuraveis local
 
-- Assunto: [Iris] Homologacao inbound sem ticket duplicado.
-- Protocolo: IRIS-20260526-006-INBOUND-COALESCE-TICKETS.
-- Ambiente: https://homo.c2x.app.br.
-- Status: EM_HOMOLOGACAO.
-- Deployment: dpl_AMdEEH48FnurCX6e9YcDQpVXVQjv.
-- Preview: https://careli-hub-hub-i2bs-16qzrnca1-lucasruas-devs-projects.vercel.app.
-- Rollback: dpl_9HAjWo5eeBo6VUUn2njxvpgzWYdS.
-- Pacote limpo auditavel: .codex-deploy/z26-008-iris-inbound-coalesce-homo-20260526/package.
-- Escopo: processor inbound Meta/WhatsApp com contato deterministico, retry curto de reuso de ticket e coalescencia automatica de tickets concorrentes com evento ticket_merge.
-- Itens excluidos: envs, secrets, WABA, phone number, banco remoto, migrations executadas, producao, dominios e aliases de producao.
-- Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build --workspace @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /login e /iris 200; /api/iris/tickets 401 esperado sem sessao; logs Vercel sem erro.
-- Riscos: validacao real depende de teste autenticado/WhatsApp com mensagens sequenciais; tickets duplicados antigos nao sao mesclados retroativamente.
+- Assunto: [Chronos] Perfis configuraveis em Salas.
+- Protocolo: CHRONOS-20260527-004-PERFIS-CONFIGURAVEIS.
+- Ambiente: local; nenhum Preview/Homo publicado.
+- Status: PRONTO PARA HOMO / AGUARDANDO AUTORIZACAO DO LUCAS.
+- Escopo:
+  - habilitar criacao de perfis customizados em `Chronos > Salas > Perfis`;
+  - habilitar exclusao segura de perfis customizados;
+  - proteger perfis oficiais `Externa`, `Cliente` e `Resultado`;
+  - disponibilizar perfis customizados no popup da Agenda e no cadastro de salas;
+  - persistir configuracao sem migration nova, sem env e sem operacao manual em Supabase.
+- Arquivos incluidos:
+  - `apps/hub/app/api/chronos/profiles/route.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/lib/chronos/types.ts`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - Hades, Hermes, Iris, PulseX, Setup, SquadOps, Guardian, CareDesk, Atlas, Apolo, Ares, Zeus, migrations, envs, secrets, Google OAuth, Storage, OpenAI, Vercel, dominios, aliases e producao.
+- Validacoes:
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx lib/chronos/client.ts lib/chronos/server.ts lib/chronos/types.ts app/api/chronos/profiles/route.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - smoke local buildado `POST http://localhost:3012/api/chronos/profiles` sem auth: HTTP 401 Unauthorized esperado;
+  - smoke local buildado `GET http://localhost:3012/chronos`: HTTP 200.
+- Riscos:
+  - perfis customizados usam registro tecnico reservado em `chronos_rooms.metadata`, sem tabela dedicada;
+  - exclusao fica bloqueada quando o perfil estiver vinculado a sala ativa;
+  - validacao visual autenticada do Lucas ainda e necessaria para confirmar o fluxo completo de criar, selecionar e excluir perfil na UI;
+  - worktree principal segue misto e nao deve ser usado para deploy sem pacote limpo Chronos.
+- Pendencias:
+  - Lucas validar localmente `Chronos > Salas > Perfis`;
+  - se aprovado, autorizar Preview/Homo pelo protocolo `CHRONOS-20260527-004-PERFIS-CONFIGURAVEIS`;
+  - DataOps avaliar no futuro se perfis merecem tabela dedicada, sem aplicar migration neste recorte.
 
-## 2026-05-27 08:05:00 -03:00 - Setup/Home departamento e senha de colaboradores
+## 2026-05-27 16:35:19 -03:00 - Chronos fundo de sala ate 5 MB local
 
-- Assunto: [Setup] Homologacao departamento na presenca e senha temporaria.
-- Protocolo: SETUP-20260527-001-DEPARTAMENTO-SENHA-COLABORADORES.
-- Ambiente: https://homo.c2x.app.br.
-- Status: EM_HOMOLOGACAO.
-- Deployment de codigo: dpl_8rnAdSpeb8og4oPcdYKWz8GpqA2K.
-- Preview: https://careli-hub-hub-i2bs-97fbmewnk-lucasruas-devs-projects.vercel.app.
-- Rollback: dpl_AfiCAbVqdwY6x8c6SEYbkTBjordL.
-- Pacote limpo auditavel: .codex-deploy/z27-001-home-setup-profile-password-homo-20260527/package.
-- Escopo: Home exibe departamento/presenca sem perfil operacional; Setup remove coluna visual de perfil; edicao de usuario permite nova senha temporaria opcional via rota server-side administrativa.
-- Itens excluidos: envs, secrets, banco remoto, migrations executadas, service role, dominio, alias de producao e producao.
-- Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /, /login e /setup 200; /api/setup/users 401 esperado sem sessao; logs Vercel sem erro.
-- Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional; confirmar sempre pelo inspect atual de homo.
-- Riscos: validacao visual autenticada por Lucas ainda pendente; reset de senha depende de sessao admin e chave server-side configurada no ambiente, sem expor valor.
+- Assunto: [Chronos] Fundo de sala ate 5 MB.
+- Protocolo: CHRONOS-20260527-005-FUNDO-SALA-5MB.
+- Ambiente: local; nenhum Preview/Homo publicado.
+- Status: VALIDADO LOCAL / AGUARDANDO VALIDACAO VISUAL DO LUCAS.
+- Escopo:
+  - aumentar limite de upload de fundo da sala Chronos de 1 MB para 5 MB;
+  - atualizar mensagem de validacao da UI;
+  - ajustar limite server-side do data URL para acomodar o overhead de base64.
+- Arquivos incluidos:
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - Hades, Hermes, Iris, PulseX, Setup, SquadOps, Guardian, CareDesk, Atlas, Apolo, Ares, Zeus, migrations, envs, secrets, Storage, Supabase manual, Google OAuth, OpenAI, Vercel, dominios, aliases e producao.
+- Validacoes:
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx lib/chronos/server.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - `git diff --check -- apps/hub/modules/chronos/ChronosPage.tsx apps/hub/lib/chronos/server.ts docs/operations/engineering-operations.md docs/operations/panteon-recorte-protocols.md docs/operations/releases-homologation.md`: OK, apenas warnings CRLF conhecidos no Windows.
+- Riscos:
+  - fundo ainda e persistido como data URL em metadata; Storage institucional segue recomendado para acervo maior;
+  - validacao visual autenticada do Lucas ainda e necessaria para testar uma imagem real proxima de 5 MB.
+- Pendencias:
+  - Lucas validar upload real em `Chronos > Salas`;
+  - se aprovado, incluir no proximo pacote Chronos limpo para Preview/Homo.
 
-## 2026-05-27 09:42:00 -03:00 - Hades filtro de atraso por faixa
+## 2026-05-27 16:51:31 -03:00 - Chronos sala externa fullscreen local
 
-- Assunto: [Hades] Homologacao filtro de atraso por faixa para lideranca.
-- Protocolo: HADES-20260527-001-FILTRO-ATRASO-LIDERANCA.
-- Ambiente: https://homo.c2x.app.br.
-- Status: PRONTO_PARA_HOMO.
-- Expected deployment atual: dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
-- Rollback esperado: dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
-- Escopo: controle segmentado de atraso para perfis de lideranca, coordenacao e administracao em Hades Atendimento.
-- Itens excluidos: envs, secrets, banco remoto, migrations, service role, producao e aliases de producao.
-- Deploy final: pendente de validacao, Safety Gate e publicacao Git.
+- Assunto: [Chronos] Sala externa fullscreen com participantes delimitados.
+- Protocolo: CHRONOS-20260527-006-SALA-FULLSCREEN-PARTICIPANTES.
+- Ambiente: local; nenhum Preview/Homo publicado.
+- Status: VALIDADO LOCAL / AGUARDANDO VALIDACAO VISUAL DO LUCAS.
+- Escopo:
+  - usar a tela inteira durante a chamada externa;
+  - ocultar painel lateral de Athena e transcricao ao vivo;
+  - reduzir overlay escuro do fundo da sala;
+  - delimitar cada participante como janela propria;
+  - separar fundo de sala do fundo escolhido pelo participante na pre-entrada.
+- Arquivos incluidos:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - Hades, Hermes, PulseX, Iris, Setup, SquadOps, Guardian, CareDesk, Atlas, Apolo, Ares, Zeus, migrations, envs, secrets, Storage, Supabase manual, Google OAuth, OpenAI, Vercel, dominios, aliases e producao.
+- Validacoes:
+  - `npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - `git diff --check -- apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: OK.
+- Validacao bloqueada:
+  - Browser/Node REPL para screenshot local: bloqueado pelo runtime com `spawn setup refresh`.
+- Riscos:
+  - fundo do participante nao altera mais o fundo da sala; a troca real de fundo por segmentacao de pessoa precisa de recorte futuro de virtual background;
+  - validacao visual autenticada do Lucas ainda e necessaria com camera real;
+  - worktree principal segue misto e nao deve ser usado para deploy sem pacote limpo Chronos.
+- Pendencias:
+  - Lucas validar `/chronos/<slug>` localmente depois do hot reload;
+  - se aprovado, incluir no proximo pacote Chronos limpo para Preview/Homo.
 
-### Fechamento - HADES-20260527-001-FILTRO-ATRASO-LIDERANCA
+## 2026-05-27 17:18:44 -03:00 - Chronos fundo virtual do participante local
 
-- Status: EM_HOMOLOGACAO.
-- Deployment de codigo: dpl_8baoM4osAQhGn7W4bhxNqu6FiuBZ.
-- Preview: https://careli-hub-hub-i2bs-az8moo3sa-lucasruas-devs-projects.vercel.app.
-- Rollback anterior ao recorte: dpl_EQhcAuwZkB7bHzTbf7iXFdMeXZrr.
-- Pacote limpo auditavel: .codex-deploy/z27-002-hades-delay-filter-homo-20260527/package.
-- Escopo: filtro de atraso por faixa para lideranca/coordenacao/admin em Hades Atendimento.
-- Itens excluidos: envs, secrets, banco remoto, migrations executadas, service role, producao e aliases de producao.
-- Validacoes: git diff --check OK; eslint escopado OK; check-types:hub OK; lint:hub OK; build @repo/hub OK; Safety Gate pre-push e pos-publicacao PASS; /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
-- Observacao: commit documental posterior pode gerar deployment docs-only sem mudanca funcional.
+- Assunto: [Chronos] Fundo virtual e desfoque do participante.
+- Protocolo: CHRONOS-20260527-007-FUNDO-VIRTUAL-PARTICIPANTE.
+- Ambiente: local; nenhum Preview/Homo publicado.
+- Status: VALIDADO LOCAL / AGUARDANDO VALIDACAO VISUAL DO LUCAS.
+- Escopo:
+  - transformar `Meu fundo` em efeito real de virtual background no stream da camera;
+  - manter o participante local nitido e substituir o fundo real pelo arquivo selecionado;
+  - adicionar opcoes `Sem efeito`, `Desfoque baixo` e `Desfoque alto` como botoes iconicos no overlay da pre-entrada;
+  - remover o texto `pre-entrada` e o bloco textual `Fundo da camera` do formulario;
+  - ajustar captura/enquadramento para 16:9 ideal e fundo com encaixe integral da imagem;
+  - renderizar preview e tiles Chronos com enquadramento sem corte/zoom do fundo virtual no escopo da sala externa;
+  - enviar o stream processado para preview, WebRTC e gravacao local.
+- Arquivos incluidos:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `apps/hub/package.json`;
+  - `package-lock.json`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - Hades, Hermes, PulseX, Iris, Setup, SquadOps, Guardian, CareDesk, Atlas, Apolo, Ares, Zeus, migrations, envs, secrets, Storage, Supabase manual, Google OAuth, OpenAI, Vercel, dominios, aliases, homologacao e producao.
+- Validacoes:
+  - `npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - `npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0` apos ajuste de icones/enquadramento: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub` apos ajuste de icones/enquadramento: OK;
+  - `npm.cmd run lint:hub` apos ajuste de icones/enquadramento: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub` apos ajuste de icones/enquadramento: OK, com warning conhecido Turbopack/NFT em `next.config.ts`;
+  - `git diff --check` nos arquivos rastreados do recorte: OK, apenas warnings CRLF conhecidos no Windows;
+  - `git diff --check --no-index` em `ChronosExternalRoomPage.tsx`: OK, apenas warning CRLF conhecido no Windows;
+  - correcao local do dev server: processo antigo PID 79524 parado, `.next/dev` e `.next/cache` limpos, `npm.cmd run dev` reiniciado;
+  - smoke local em `http://localhost:3001/chronos/lideranca`: HTTP 200 OK apos limpeza do cache Next e apos ajuste de icones/enquadramento.
+- Riscos:
+  - MediaPipe carrega modelo/WASM por URLs publicas oficiais/CDN no navegador; ReleaseOps pode pedir internalizacao futura dos assets;
+  - qualidade do recorte depende de iluminacao, camera e suporte WebGL/MediaPipe;
+  - `npm install` registrou 3 vulnerabilidades no audit geral (2 moderadas, 1 alta); `npm audit fix` nao foi executado para nao alterar dependencias fora do recorte;
+  - validacao visual autenticada do Lucas ainda e necessaria com camera real.
+- Pendencias:
+  - Lucas validar em `/chronos/<slug>` os modos `Meu fundo`, `Desfoque baixo` e `Desfoque alto`;
+  - se aprovado, incluir no proximo pacote Chronos limpo para Preview/Homo pelo protocolo `CHRONOS-20260527-007-FUNDO-VIRTUAL-PARTICIPANTE`.
 
-## 2026-05-27 11:35:36 -03:00 - Hades feedback janela WhatsApp pela Iris
+## 2026-05-28 01:24:00 -03:00 - Chronos reserva, ciclo formal e Drive preparado
 
-- Assunto: [Hades] Homologacao feedback de envio WhatsApp pela Iris.
-- Protocolo: HADES-20260527-002-ENVIO-MENSAGEM-IRIS-JANELA-24H.
-- Ambiente: https://homo.c2x.app.br.
-- Status: PRONTO_PARA_HOMO.
-- Expected deployment atual: dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
-- Rollback esperado: dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
-- Escopo: tratamento visual/operacional do retorno da Iris quando mensagem livre WhatsApp e bloqueada por janela de 24h fechada.
-- Itens excluidos: envs, secrets, banco remoto, migrations, service role, producao e aliases de producao.
-- Deploy final: pendente de validacao, Safety Gate e publicacao Git.
+Assunto: [Chronos] Reserva de sala e ciclo formal de chamada
 
-### Fechamento - HADES-20260527-002-ENVIO-MENSAGEM-IRIS-JANELA-24H
+- Nome da squad/agente: Chronos Core.
+- Ambiente: local; nenhum Preview/Homo publicado.
+- Protocolo: CHRONOS-20260528-009-RESERVA-CICLO-DRIVE.
+- Status: VALIDADO LOCAL / BLOQUEADO DATAOPS STORAGE.
+- Motivo:
+  - Lucas definiu que a sala Chronos nasce de uma reserva na agenda;
+  - o host que criou a reserva abre e encerra a chamada;
+  - ao encerrar, o periodo vira uma chamada completa, com gravacao, transcricao, ata e historico no Drive;
+  - os perfis oficiais passam a ser somente `Alinhamento`, `Resultado` e `Comunicado`.
+- Arquivos incluidos:
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/chat/route.ts`;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/close/route.ts`;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/recording/upload/route.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/lib/chronos/types.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `packages/database/migrations/0034_chronos_drive_chat_storage.sql`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - Hades, Hermes, PulseX, Iris, Setup, SquadOps, Guardian, CareDesk, Atlas, Apolo, Ares, Zeus, envs, secrets, Vercel, Supabase remoto, Storage remoto, Google OAuth, OpenAI, dominios, aliases, homologacao e producao.
+- Validacoes executadas:
+  - `npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx modules/chronos/ChronosPage.tsx lib/chronos/server.ts lib/chronos/types.ts "app/api/chronos/public/rooms/[roomSlug]/chat/route.ts" "app/api/chronos/public/rooms/[roomSlug]/recording/upload/route.ts" "app/api/chronos/public/rooms/[roomSlug]/close/route.ts" --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em `next.config.ts` ligado a SquadOps/Engineering Operations;
+  - smoke local `GET http://localhost:3001/chronos`: HTTP 200 OK;
+  - smoke local `GET http://localhost:3001/chronos/lideranca`: HTTP 200 OK;
+  - smoke local `POST http://localhost:3001/api/chronos/public/rooms/lideranca/close` sem auth/body valido: HTTP 400 esperado.
+- Validacao bloqueada:
+  - Browser automatizado para screenshot/inspecao visual local: bloqueado pelo runtime com `spawn setup refresh`.
+- Registro atualizado em homologacao:
+  - somente registro de recorte preparado; nenhum alias `homo.c2x.app.br` foi alterado e nenhum Preview Vercel foi criado.
+- Riscos conhecidos:
+  - migration `0034` e bucket `chronos-drive` estao preparados, mas nao aplicados;
+  - Drive persistido/chat/gravacoes dependem de aprovacao DataOps para banco e Storage;
+  - entrada na URL externa sem reserva ativa passa a falhar fechado ao tentar entrar, por desenho;
+  - validacao visual/autenticada do ciclo host-convidado ainda precisa ser feita pelo Lucas.
+- Pendencias:
+  - DataOps avaliar `0034` antes de qualquer Supabase/Storage real;
+  - Lucas validar ciclo local: criar reserva na agenda, entrar como host, gravar, encerrar e conferir Drive;
+  - se aprovado, gerar pacote limpo Chronos para Preview/Homo pelo protocolo `CHRONOS-20260528-009-RESERVA-CICLO-DRIVE`.
 
-- Status: EM_HOMOLOGACAO.
-- Deployment publicado em homologacao: dpl_4fZVynECRRuP2a6axWtvAk72KyvW.
-- Preview: https://careli-hub-hub-i2bs-3cv37bjid-lucasruas-devs-projects.vercel.app.
-- Alias: https://homo.c2x.app.br.
-- Rollback imediato: dpl_756LUCkuVAp31Gs3Br6bho8ST6oE.
-- Pacote limpo auditavel: .codex-deploy/z27-003-hades-window-feedback-homo-20260527/package.
-- Escopo: feedback e estado local da janela WhatsApp no painel Hades ao enviar mensagem livre pela Iris.
-- Itens excluidos: envs, secrets, banco remoto, migrations executadas, service role, Meta API/WABA, Iris backend, producao e aliases de producao.
-- Validacoes: git diff --check OK; check-types:hub OK; lint:hub OK; build @repo/hub OK; Safety Gate pre-deploy PASS; Safety Gate pos-publicacao/reconciliacao PASS; /, /login, /hades/cobranca, /hades/monitoramento e /api/hades/attendance/queue 200; logs Vercel sem erro.
-- Observacao: o alias homo foi associado automaticamente pela Vercel ao Preview valido do projeto oficial durante o deploy; nao houve `vercel alias set` manual.
+Conclusao:
+- O recorte esta preparado localmente, mas nao esta em homologacao publica.
+- O impacto pratico e transformar a sala Chronos em ciclo operacional com abertura e fechamento, parecido com ticket formal.
+- O proximo passo e DataOps revisar banco/Storage antes de qualquer publicacao.
+
+## 2026-05-28 01:43:48 -03:00 - Chronos - preparacao de homologacao
+
+- Assunto: [Chronos] Preparacao para homologacao.
+- Protocolo: CHRONOS-20260528-009-RESERVA-CICLO-DRIVE.
+- Ambiente: local; nenhum Preview/Homo publicado.
+- Status: PREPARADO / BLOQUEADO PARA PUBLICACAO DIRETA.
+- Registro atualizado em homologacao:
+  - criado handoff `docs/operations/chronos-homologation-handoff-2026-05-28.md`;
+  - criado manifesto draft `.codex-deploy/chronos-homolog-20260528-0143/homologation-safety-gate.draft.json`;
+  - criado manifesto draft rastreavel `docs/operations/chronos-homologation-safety-gate-draft-2026-05-28.json`;
+  - registrado que o recorte deve subir por pacote limpo Chronos, nao pelo worktree raiz.
+- Arquivos incluidos para pacote limpo:
+  - arquivos Chronos de pagina, sala externa, API Chronos, libs Chronos, `ChronosPage`, `ChronosExternalRoomPage`, dependencia MediaPipe e migration `0034` preparada;
+  - documentos de governanca Chronos/ambiente/API e registros operacionais.
+- Arquivos excluidos:
+  - Hades, Hermes, PulseX, Iris, Setup, SquadOps, Guardian, CareDesk, Atlas, Apolo, Ares e Zeus;
+  - `apps/hub/layouts/hub-shell.tsx`, `packages/shared/src/modules/registry.ts` e migrations Ares `0030` a `0033`;
+  - envs, secrets, Vercel, Supabase remoto, Storage remoto, Google OAuth real, OpenAI real, dominios, aliases e producao.
+- Validacoes consideradas:
+  - validacoes locais do protocolo `CHRONOS-20260528-009-RESERVA-CICLO-DRIVE` permanecem OK;
+  - preparacao atual confirmou worktree misto, branch local atrasada e mistura no `turbo.json`.
+- Riscos:
+  - publicacao direta pelo root mistura varias squads;
+  - DataOps ainda precisa revisar/aplicar `0034` para Drive/chat/Storage real;
+  - `turbo.json` precisa reconciliar apenas chaves Chronos/Google antes do pacote limpo.
+- Pendencias:
+  - DataOps liberar banco/Storage em homologacao;
+  - Zeus preencher deployment ids e rodar Safety Gate com manifesto final;
+  - Lucas autorizar publicacao de Preview/alias quando o pacote limpo estiver pronto.
+
+Conclusao:
+- Este e um registro de preparacao, nao de homologacao publicada.
+- O pacote Chronos esta pronto para separacao limpa, mas permanece bloqueado para subida direta.

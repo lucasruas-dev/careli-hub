@@ -48,6 +48,7 @@ segredos.
 | `ASAAS_*`, `D4SIGN_*`, `OPENAI_API_KEY`, `GUARDIAN_SYNC_SECRET` | Zeus/Squad responsavel | Integracoes externas. | Critica |
 | `META_WHATSAPP_*` | Iris Core/Zeus | Cloud API da Meta, webhook e envio WhatsApp. | Critica |
 | `ASANA_*` | Zeus/Hefesto | Integracao operacional com Asana. | Alta |
+| `GOOGLE_CALENDAR_*` | Chronos Core/Zeus | Integracao Google Agenda para compromissos formais Chronos. | Critica |
 | `NEXT_PUBLIC_PULSEX_TURN_*` | Hermes Core | Configuracao WebRTC/TURN exposta ao browser. | Alta |
 | `ATLAS_SUPABASE_*`, `SOURCE_SUPABASE_*`, `TARGET_SUPABASE_*` | Atlas Core/Zeus | Fontes Supabase Atlas e rotinas de copia/sync. | Critica |
 | `SQUADOPS_*` | Zeus | Sync e administracao operacional do Operations Center. | Critica |

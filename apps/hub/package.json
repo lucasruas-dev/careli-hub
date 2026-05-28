@@ -10,6 +10,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.35",
     "@repo/auth": "*",
     "@repo/database": "*",
     "@repo/realtime": "*",

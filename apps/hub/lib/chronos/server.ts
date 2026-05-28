@@ -13,20 +13,30 @@ import {
   chronosMeetingTypes,
   chronosMinutesStatuses,
   chronosParticipantRoles,
+  defaultChronosMeetingProfiles,
+  type ChronosApoloInvitee,
   type ChronosCaptureStatus,
+  type ChronosChatMessage,
   type ChronosCreateMeetingInput,
   type ChronosEventType,
   type ChronosFollowUp,
   type ChronosFollowUpStatus,
   type ChronosMeeting,
+  type ChronosMeetingProfile,
   type ChronosMeetingStatus,
   type ChronosMeetingType,
   type ChronosMinutes,
   type ChronosMinutesStatus,
   type ChronosParticipant,
   type ChronosParticipantRole,
+  type ChronosPublicJoinResult,
+  type ChronosPublicParticipantInput,
+  type ChronosPublicRoom,
   type ChronosRecording,
   type ChronosRoom,
+  type ChronosRoomDeleteInput,
+  type ChronosRoomInput,
+  type ChronosRoomUpdateInput,
   type ChronosSnapshot,
   type ChronosTimelineEvent,
   type ChronosTranscriptSegment,
@@ -60,7 +70,9 @@ export class ChronosForbiddenError extends Error {
 
 type ChronosRoomRow = {
   capacity: number;
+  created_by_user_id: string | null;
   id: string;
+  metadata: Record<string, unknown>;
   minutes_required: boolean;
   name: string;
   recording_required: boolean;
@@ -94,12 +106,17 @@ type ChronosMeetingRow = {
 
 type ChronosParticipantRow = {
   attendance_status: string;
+  created_at: string;
   display_name: string;
   email: string | null;
   id: string;
+  joined_at: string | null;
+  left_at: string | null;
   meeting_id: string;
+  metadata: Record<string, unknown>;
   organization: string | null;
   role: ChronosParticipantRole;
+  updated_at: string;
   user_id: string | null;
 };
 
@@ -126,6 +143,16 @@ type ChronosTranscriptSegmentRow = {
   source: string;
   speaker_label: string | null;
   started_at: string | null;
+};
+
+type ChronosChatMessageRow = {
+  content: string;
+  created_at: string;
+  id: string;
+  meeting_id: string;
+  metadata: Record<string, unknown>;
+  participant_id: string | null;
+  sender_name: string;
 };
 
 type ChronosMinutesRow = {
@@ -163,14 +190,18 @@ type ChronosRecordingRow = {
   created_at: string;
   created_by_user_id: string | null;
   duration_seconds: number | null;
+  file_name?: string | null;
   id: string;
   meeting_id: string;
   metadata: Record<string, unknown>;
+  mime_type?: string | null;
+  size_bytes?: number | null;
   started_at: string | null;
   status: ChronosCaptureStatus;
   stopped_at: string | null;
   storage_bucket: string | null;
   storage_path: string | null;
+  uploaded_at?: string | null;
   updated_at: string;
 };
 
@@ -188,6 +219,16 @@ type ChronosDatabase = {
     };
     Functions: Record<string, never>;
     Tables: {
+      chronos_chat_messages: {
+        Insert: Partial<ChronosChatMessageRow> & {
+          content: string;
+          meeting_id: string;
+          sender_name: string;
+        };
+        Relationships: [];
+        Row: ChronosChatMessageRow;
+        Update: never;
+      };
       chronos_followups: {
         Insert: Partial<ChronosFollowUpRow> & {
           meeting_id: string;
@@ -234,10 +275,14 @@ type ChronosDatabase = {
         Update: Partial<ChronosRecordingRow>;
       };
       chronos_rooms: {
-        Insert: never;
+        Insert: Partial<ChronosRoomRow> & {
+          name: string;
+          room_type: string;
+          slug: string;
+        };
         Relationships: [];
         Row: ChronosRoomRow;
-        Update: never;
+        Update: Partial<ChronosRoomRow>;
       };
       chronos_timeline_events: {
         Insert: Partial<ChronosTimelineEventRow> & {
@@ -281,8 +326,53 @@ type ChronosAuthorization =
       response: NextResponse<{ error: string }>;
     };
 
+type NormalizedChronosPublicParticipantInput = {
+  displayName?: string;
+  organization?: string;
+};
+
+type NormalizedChronosPublicRecordingInput = {
+  durationSeconds?: number;
+  meetingId: string;
+  participantId: string;
+  status: Extract<ChronosCaptureStatus, "available" | "recording">;
+};
+
+type NormalizedChronosPublicRecordingUploadInput = {
+  durationSeconds?: number;
+  file: File;
+  fileName: string;
+  meetingId: string;
+  mimeType: string;
+  participantId: string;
+  sizeBytes: number;
+};
+
+type NormalizedChronosPublicChatInput = {
+  clientMessageId?: string;
+  content: string;
+  meetingId: string;
+  participantId: string;
+  senderName: string;
+};
+
+type NormalizedChronosPublicCloseInput = {
+  meetingId: string;
+  participantId: string;
+};
+
+type NormalizedChronosPublicTranscriptInput = {
+  content: string;
+  endedAt?: string;
+  meetingId: string;
+  participantId: string;
+  speakerLabel: string;
+  startedAt?: string;
+};
+
 type ChronosLocalStore = {
   meetings: ChronosMeeting[];
+  profiles?: ChronosMeetingProfile[];
   rooms: ChronosRoom[];
 };
 
@@ -293,16 +383,23 @@ const chronosLocalStorePath = path.join(
   "chronos-meetings.json",
 );
 const chronosLocalFallbackFlag = "CHRONOS_ENABLE_LOCAL_FALLBACK";
+const chronosProfileRegistrySlug = "__chronos-profile-registry";
+const chronosDriveStorageBucket = "chronos-drive";
 const maxTextLength = 8_000;
+const maxRoomBackgroundDataUrlLength = 7_000_000;
+const maxChronosRecordingUploadBytes = 500_000_000;
 
 const defaultChronosRooms: ChronosRoom[] = [
   {
     capacity: 12,
     id: "local-room-executiva",
+    metadata: {
+      externalAccess: { mode: "request_entry", path: "/chronos/sala-executiva" },
+    },
     minutesRequired: true,
     name: "Sala Executiva",
     recordingRequired: true,
-    roomType: "executive",
+    roomType: "alignment",
     slug: "sala-executiva",
     status: "active",
     transcriptionRequired: true,
@@ -310,10 +407,13 @@ const defaultChronosRooms: ChronosRoom[] = [
   {
     capacity: 16,
     id: "local-room-cliente",
+    metadata: {
+      externalAccess: { mode: "request_entry", path: "/chronos/sala-cliente" },
+    },
     minutesRequired: true,
     name: "Sala Cliente",
     recordingRequired: true,
-    roomType: "external",
+    roomType: "alignment",
     slug: "sala-cliente",
     status: "active",
     transcriptionRequired: true,
@@ -321,6 +421,9 @@ const defaultChronosRooms: ChronosRoom[] = [
   {
     capacity: 20,
     id: "local-room-resultado",
+    metadata: {
+      externalAccess: { mode: "request_entry", path: "/chronos/sala-resultado" },
+    },
     minutesRequired: true,
     name: "Sala Resultado",
     recordingRequired: true,
@@ -430,8 +533,10 @@ export async function listChronosSnapshot(
     };
   }
 
+  const client = authorization.client;
+
   try {
-    const roomsResult = await authorization.client
+    const roomsResult = await client
       .from("chronos_rooms")
       .select("*")
       .eq("status", "active")
@@ -441,7 +546,7 @@ export async function listChronosSnapshot(
       throw roomsResult.error;
     }
 
-    const meetingsResult = await authorization.client
+    const meetingsResult = await client
       .from("chronos_meetings")
       .select("*")
       .order("updated_at", { ascending: false })
@@ -464,31 +569,31 @@ export async function listChronosSnapshot(
     ] =
       meetingIds.length > 0
         ? await Promise.all([
-            authorization.client
+            client
               .from("chronos_participants")
               .select("*")
               .in("meeting_id", meetingIds),
-            authorization.client
+            client
               .from("chronos_timeline_events")
               .select("*")
               .in("meeting_id", meetingIds)
               .order("event_at", { ascending: false }),
-            authorization.client
+            client
               .from("chronos_transcript_segments")
               .select("*")
               .in("meeting_id", meetingIds)
               .order("created_at", { ascending: true }),
-            authorization.client
+            client
               .from("chronos_minutes")
               .select("*")
               .in("meeting_id", meetingIds)
               .order("created_at", { ascending: false }),
-            authorization.client
+            client
               .from("chronos_followups")
               .select("*")
               .in("meeting_id", meetingIds)
               .order("created_at", { ascending: false }),
-            authorization.client
+            client
               .from("chronos_recordings")
               .select("*")
               .in("meeting_id", meetingIds)
@@ -517,11 +622,51 @@ export async function listChronosSnapshot(
     }
 
     const rooms = (roomsResult.data ?? []).map(mapRoomRow);
+    const profiles = await readChronosProfilesFromSupabase(client);
     const roomsById = new Map(rooms.map((room) => [room.id, room]));
+    let driveSchemaPending = false;
+    let chatMessages: ChronosChatMessageRow[] = [];
+
+    if (meetingIds.length > 0) {
+      const chatMessagesResult = await client
+        .from("chronos_chat_messages")
+        .select("*")
+        .in("meeting_id", meetingIds)
+        .order("created_at", { ascending: true });
+
+      if (chatMessagesResult.error) {
+        if (isChronosSchemaMissingError(chatMessagesResult.error)) {
+          driveSchemaPending = true;
+        } else {
+          throw chatMessagesResult.error;
+        }
+      } else {
+        chatMessages = chatMessagesResult.data ?? [];
+      }
+    }
+
+    const recordingsByMeetingId = new Map<string, ChronosRecording[]>();
+
+    await Promise.all(
+      meetings.map(async (meeting) => {
+        recordingsByMeetingId.set(
+          meeting.id,
+          await hydrateChronosRecordingUrls(
+            client,
+            groupRows(recordingsResult.data ?? [], meeting.id).map(
+              mapRecordingRow,
+            ),
+          ),
+        );
+      }),
+    );
 
     return {
       meetings: meetings.map((meeting) =>
         mapMeetingRow({
+          chatMessages: groupRows(chatMessages, meeting.id).map(
+            mapChatMessageRow,
+          ),
           followUps: groupRows(followUpsResult.data ?? [], meeting.id).map(
             mapFollowUpRow,
           ),
@@ -533,9 +678,7 @@ export async function listChronosSnapshot(
             participantsResult.data ?? [],
             meeting.id,
           ).map(mapParticipantRow),
-          recordings: groupRows(recordingsResult.data ?? [], meeting.id).map(
-            mapRecordingRow,
-          ),
+          recordings: recordingsByMeetingId.get(meeting.id) ?? [],
           room: meeting.room_id ? roomsById.get(meeting.room_id) ?? null : null,
           timeline: groupRows(timelineResult.data ?? [], meeting.id).map(
             mapTimelineRow,
@@ -545,9 +688,13 @@ export async function listChronosSnapshot(
           ),
         }),
       ),
+      profiles,
       rooms,
       storage: {
-        status: "supabase",
+        message: driveSchemaPending
+          ? "Chronos Drive aguarda migration complementar de chat/storage."
+          : undefined,
+        status: driveSchemaPending ? "migration_pendente" : "supabase",
       },
     };
   } catch (error) {
@@ -596,19 +743,38 @@ export async function createChronosMeeting({
     }
 
     const selectedRoom =
-      (roomsResult.data ?? []).find((room) => room.id === normalizedInput.roomId) ??
-      roomsResult.data?.[0] ??
-      null;
+      normalizedInput.locationMode === "offline"
+        ? null
+        : (roomsResult.data ?? []).find(
+            (room) => room.id === normalizedInput.roomId,
+          ) ??
+          roomsResult.data?.[0] ??
+          null;
+    const selectedProfile = await resolveChronosMeetingProfileForInput({
+      client: authorization.client,
+      input: normalizedInput,
+    });
     const protocol = await generateChronosProtocol(authorization.client);
     const { data: meeting, error } = await authorization.client
       .from("chronos_meetings")
       .insert({
+        ends_at: normalizedInput.endsAt ?? null,
         external_reference: normalizedInput.externalReference ?? null,
         host_name: authorization.user.name,
         host_user_id: authorization.user.id,
-        meeting_type: normalizedInput.meetingType,
+        meeting_type: selectedProfile.meetingType,
         metadata: {
           agenda: normalizedInput.agenda ?? [],
+          apoloInvitees: normalizedInput.apoloInvitees ?? [],
+          location: {
+            address: normalizedInput.locationAddress ?? null,
+            mode: normalizedInput.locationMode ?? "online",
+          },
+          meetingProfile: {
+            id: selectedProfile.id,
+            label: selectedProfile.label,
+            meetingType: selectedProfile.meetingType,
+          },
           source: "chronos-v1",
         },
         objective: normalizedInput.objective ?? null,
@@ -670,6 +836,738 @@ export async function createChronosMeeting({
   }
 }
 
+export async function createChronosRoom({
+  authorization,
+  input,
+}: {
+  authorization: Extract<ChronosAuthorization, { ok: true }>;
+  input: unknown;
+}) {
+  assertCanManageChronos(authorization.user);
+
+  const normalizedInput = normalizeRoomInput(input);
+
+  if (!authorization.client) {
+    return createLocalChronosRoom({
+      input: normalizedInput,
+      user: authorization.user,
+    });
+  }
+
+  const { data: room, error } = await authorization.client
+    .from("chronos_rooms")
+    .insert({
+      capacity: normalizedInput.capacity,
+      created_by_user_id: authorization.user.id,
+      metadata: buildRoomMetadata(normalizedInput),
+      minutes_required: normalizedInput.minutesRequired,
+      name: normalizedInput.name,
+      recording_required: normalizedInput.recordingRequired,
+      room_type: normalizedInput.roomType,
+      slug: normalizedInput.slug,
+      status: "active",
+      transcription_required: normalizedInput.transcriptionRequired,
+    })
+    .select("*")
+    .single<ChronosRoomRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapRoomRow(room);
+}
+
+export async function updateChronosRoom({
+  authorization,
+  input,
+}: {
+  authorization: Extract<ChronosAuthorization, { ok: true }>;
+  input: unknown;
+}) {
+  assertCanManageChronos(authorization.user);
+
+  const normalizedInput = normalizeRoomUpdateInput(input);
+
+  if (!authorization.client) {
+    return updateLocalChronosRoom({ input: normalizedInput });
+  }
+
+  const { data: currentRoom, error: currentRoomError } = await authorization.client
+    .from("chronos_rooms")
+    .select("*")
+    .eq("id", normalizedInput.roomId)
+    .maybeSingle<ChronosRoomRow>();
+
+  if (currentRoomError) {
+    throw currentRoomError;
+  }
+
+  if (!currentRoom) {
+    throw new Error("Sala Chronos nao encontrada.");
+  }
+
+  const nextSlug = normalizedInput.slug ?? currentRoom.slug;
+  const nextMetadata = buildRoomMetadata(
+    {
+      backgroundDataUrl: normalizedInput.backgroundDataUrl,
+      backgroundName: normalizedInput.backgroundName,
+      slug: nextSlug,
+    },
+    currentRoom.metadata,
+  );
+
+  const { data: room, error } = await authorization.client
+    .from("chronos_rooms")
+    .update({
+      capacity: normalizedInput.capacity ?? currentRoom.capacity,
+      metadata: nextMetadata,
+      minutes_required:
+        normalizedInput.minutesRequired ?? currentRoom.minutes_required,
+      name: normalizedInput.name ?? currentRoom.name,
+      recording_required:
+        normalizedInput.recordingRequired ?? currentRoom.recording_required,
+      room_type: normalizedInput.roomType ?? currentRoom.room_type,
+      slug: nextSlug,
+      transcription_required:
+        normalizedInput.transcriptionRequired ??
+        currentRoom.transcription_required,
+    })
+    .eq("id", normalizedInput.roomId)
+    .select("*")
+    .single<ChronosRoomRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapRoomRow(room);
+}
+
+export async function deleteChronosRoom({
+  authorization,
+  input,
+}: {
+  authorization: Extract<ChronosAuthorization, { ok: true }>;
+  input: unknown;
+}) {
+  assertCanManageChronos(authorization.user);
+
+  const normalizedInput = normalizeRoomDeleteInput(input);
+
+  if (!authorization.client) {
+    return deleteLocalChronosRoom({ input: normalizedInput });
+  }
+
+  const { data: room, error } = await authorization.client
+    .from("chronos_rooms")
+    .update({ status: "archived" })
+    .eq("id", normalizedInput.roomId)
+    .select("*")
+    .single<ChronosRoomRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapRoomRow(room);
+}
+
+export async function createChronosProfile({
+  authorization,
+  input,
+}: {
+  authorization: Extract<ChronosAuthorization, { ok: true }>;
+  input: unknown;
+}) {
+  assertCanManageChronos(authorization.user);
+  void input;
+
+  throw new Error(
+    "Os perfis do Chronos sao fixos: Alinhamento, Resultado e Comunicado.",
+  );
+}
+
+export async function deleteChronosProfile({
+  authorization,
+  input,
+}: {
+  authorization: Extract<ChronosAuthorization, { ok: true }>;
+  input: unknown;
+}) {
+  assertCanManageChronos(authorization.user);
+  void input;
+
+  throw new Error(
+    "Os perfis oficiais do Chronos nao podem ser excluidos ou alterados.",
+  );
+}
+
+export async function getChronosPublicRoomBySlug(roomSlug: string) {
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    if (!canUseChronosLocalFallback()) {
+      throw new Error(
+        "Chronos requer Supabase server-side configurado para sala externa.",
+      );
+    }
+
+    const snapshot = await readLocalChronosSnapshot();
+    const room = snapshot.rooms.find(
+      (currentRoom) =>
+        currentRoom.slug === slug && currentRoom.status === "active",
+    );
+
+    return room ? mapPublicRoom(room) : null;
+  }
+
+  const { data: room, error } = await client
+    .from("chronos_rooms")
+    .select("*")
+    .eq("slug", slug)
+    .eq("status", "active")
+    .maybeSingle<ChronosRoomRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return room ? mapPublicRoom(mapRoomRow(room)) : null;
+}
+
+export async function joinChronosPublicRoom({
+  authorizationHeader,
+  input,
+  roomSlug,
+}: {
+  authorizationHeader?: string | null;
+  input: unknown;
+  roomSlug: string;
+}): Promise<ChronosPublicJoinResult> {
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const participantInput = normalizePublicParticipantInput(input);
+  const client = createChronosClient();
+
+  if (!client) {
+    if (!canUseChronosLocalFallback()) {
+      throw new Error(
+        "Chronos requer Supabase server-side configurado para entrada externa.",
+      );
+    }
+
+    return joinLocalChronosPublicRoom({ input: participantInput, roomSlug: slug });
+  }
+
+  const room = await getChronosRoomRowBySlug(client, slug);
+
+  if (!room) {
+    throw new Error("Sala Chronos nao encontrada.");
+  }
+
+  const loggedUser = await resolveOptionalChronosUserFromBearer(
+    client,
+    authorizationHeader,
+  );
+  const participantName =
+    loggedUser?.name ?? participantInput.displayName ?? "";
+
+  if (!participantName) {
+    throw new Error("Informe seu nome para entrar na sala Chronos.");
+  }
+
+  const organization =
+    loggedUser?.operationalProfile ??
+    participantInput.organization ??
+    undefined;
+  const reservationMeeting = await resolveChronosPublicReservationMeeting(
+    client,
+    room,
+  );
+  const isHost = Boolean(
+    loggedUser?.id && loggedUser.id === reservationMeeting.host_user_id,
+  );
+
+  if (reservationMeeting.status === "scheduled" && !isHost) {
+    throw new Error("Aguarde o host abrir a reserva Chronos.");
+  }
+
+  const meeting =
+    reservationMeeting.status === "live"
+      ? reservationMeeting
+      : await openChronosPublicReservation({
+          client,
+          isHost,
+          meeting: reservationMeeting,
+          participantName,
+          room,
+        });
+  const { data: participant, error: participantError } = await client
+    .from("chronos_participants")
+    .insert({
+      attendance_status: "joined",
+      display_name: participantName,
+      email: loggedUser?.email ?? null,
+      joined_at: new Date().toISOString(),
+      meeting_id: meeting.id,
+      metadata: {
+        company: organization ?? null,
+        entryMode: loggedUser ? "hub_login" : "external_guest",
+        source: "chronos-external-room",
+      },
+      organization: organization ?? null,
+      role: isHost ? "host" : loggedUser ? "participant" : "external",
+      user_id: loggedUser?.id ?? null,
+    })
+    .select("*")
+    .single<ChronosParticipantRow>();
+
+  if (participantError) {
+    throw participantError;
+  }
+
+  await insertTimelineEvent(client, {
+    eventType: "joined",
+    meetingId: meeting.id,
+    title: `${participantName} entrou na sala externa`,
+  });
+
+  return {
+    athenaNotice:
+      "Esta reuniao pode ser gravada e transcrita pela assistente Athena.",
+    isHost,
+    meetingId: meeting.id,
+    participant: {
+      displayName: participant.display_name,
+      id: participant.id,
+      organization: participant.organization ?? undefined,
+      role: participant.role,
+      userId: participant.user_id ?? undefined,
+    },
+    reservation: {
+      endsAt: meeting.ends_at,
+      protocol: meeting.protocol,
+      startsAt: meeting.starts_at,
+      title: meeting.title,
+    },
+    room: mapPublicRoom(mapRoomRow(room)),
+  };
+}
+
+export async function closeChronosPublicMeeting({
+  authorizationHeader,
+  input,
+  roomSlug,
+}: {
+  authorizationHeader?: string | null;
+  input: unknown;
+  roomSlug: string;
+}) {
+  const normalizedInput = normalizePublicCloseInput(input);
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    if (!canUseChronosLocalFallback()) {
+      throw new Error(
+        "Chronos requer Supabase server-side configurado para encerrar a chamada.",
+      );
+    }
+
+    return closeLocalChronosPublicMeeting({
+      input: normalizedInput,
+      roomSlug: slug,
+    });
+  }
+
+  const loggedUser = await resolveOptionalChronosUserFromBearer(
+    client,
+    authorizationHeader,
+  );
+
+  if (!loggedUser) {
+    throw new Error("Somente o host autenticado pode encerrar a reserva Chronos.");
+  }
+
+  const { meeting, room } = await getChronosPublicMeetingContext({
+    client,
+    meetingId: normalizedInput.meetingId,
+    roomSlug: slug,
+  });
+  const canClose =
+    meeting.host_user_id === loggedUser.id ||
+    getPermissionsForRole(loggedUser.role).includes("chronos:manage");
+
+  if (!canClose) {
+    throw new ChronosForbiddenError(
+      "Somente o host da reserva pode encerrar a chamada Chronos.",
+    );
+  }
+
+  const now = new Date().toISOString();
+  const metadata = {
+    ...(meeting.metadata ?? {}),
+    closure: {
+      closedAt: now,
+      closedByUserId: loggedUser.id,
+      source: "chronos-external-room",
+    },
+    externalRoom: {
+      ...readRecordMetadata(meeting.metadata?.externalRoom),
+      actualEndedAt: now,
+      roomSlug: room.slug,
+    },
+  };
+  const { error: meetingError } = await client
+    .from("chronos_meetings")
+    .update({
+      metadata,
+      minutes_status: "not_started",
+      status: "closed",
+      transcription_status: room.transcription_required
+        ? "processing"
+        : meeting.transcription_status,
+    })
+    .eq("id", meeting.id);
+
+  if (meetingError) {
+    throw meetingError;
+  }
+
+  const participantResult = await client
+    .from("chronos_participants")
+    .update({
+      attendance_status: "left",
+      left_at: now,
+    })
+    .eq("meeting_id", meeting.id)
+    .is("left_at", null);
+
+  if (participantResult.error) {
+    throw participantResult.error;
+  }
+
+  await insertTimelineEvent(client, {
+    actorUserId: loggedUser.id,
+    eventType: "left",
+    meetingId: meeting.id,
+    title: "Chamada Chronos encerrada pelo host",
+  });
+
+  if (room.transcription_required) {
+    await insertTimelineEvent(client, {
+      actorUserId: loggedUser.id,
+      eventType: "note",
+      meetingId: meeting.id,
+      title: "Athena preparada para processar transcricao e ata",
+    });
+  }
+
+  return {
+    meetingId: meeting.id,
+    ok: true,
+    status: "closed" as const,
+  };
+}
+
+export async function markChronosPublicRecording({
+  input,
+  roomSlug,
+}: {
+  input: unknown;
+  roomSlug: string;
+}) {
+  const normalizedInput = normalizePublicRecordingInput(input);
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    if (!canUseChronosLocalFallback()) {
+      throw new Error(
+        "Chronos requer Supabase server-side configurado para gravacao externa.",
+      );
+    }
+
+    return markLocalChronosPublicRecording({
+      input: normalizedInput,
+      roomSlug: slug,
+    });
+  }
+
+  const { meeting } = await getChronosPublicMeetingContext({
+    client,
+    meetingId: normalizedInput.meetingId,
+    roomSlug: slug,
+  });
+  const now = new Date().toISOString();
+
+  const { error: meetingError } = await client
+    .from("chronos_meetings")
+    .update({
+      recording_status: normalizedInput.status,
+    })
+    .eq("id", meeting.id);
+
+  if (meetingError) {
+    throw meetingError;
+  }
+
+  const { error: recordingError } = await client
+    .from("chronos_recordings")
+    .insert({
+      duration_seconds: normalizedInput.durationSeconds ?? null,
+      meeting_id: meeting.id,
+      metadata: {
+        participantId: normalizedInput.participantId,
+        source: "chronos-external-room",
+      },
+      started_at: normalizedInput.status === "recording" ? now : null,
+      status: normalizedInput.status,
+      stopped_at: normalizedInput.status === "available" ? now : null,
+    });
+
+  if (recordingError) {
+    throw recordingError;
+  }
+
+  await insertTimelineEvent(client, {
+    eventType:
+      normalizedInput.status === "recording"
+        ? "recording_started"
+        : "recording_stopped",
+    meetingId: meeting.id,
+    title:
+      normalizedInput.status === "recording"
+        ? "Gravacao iniciada pela sala externa"
+        : "Gravacao encerrada pela sala externa",
+  });
+
+  return { ok: true, status: normalizedInput.status };
+}
+
+export async function uploadChronosPublicRecording({
+  input,
+  roomSlug,
+}: {
+  input: FormData;
+  roomSlug: string;
+}) {
+  const normalizedInput = normalizePublicRecordingUploadInput(input);
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    if (!canUseChronosLocalFallback()) {
+      throw new Error(
+        "Chronos requer Supabase server-side configurado para armazenar gravacoes.",
+      );
+    }
+
+    return markLocalChronosPublicRecording({
+      input: {
+        durationSeconds: normalizedInput.durationSeconds,
+        meetingId: normalizedInput.meetingId,
+        participantId: normalizedInput.participantId,
+        status: "available",
+      },
+      roomSlug: slug,
+    });
+  }
+
+  const { meeting } = await getChronosPublicMeetingContext({
+    client,
+    meetingId: normalizedInput.meetingId,
+    roomSlug: slug,
+  });
+  const now = new Date().toISOString();
+  const storagePath = buildChronosRecordingStoragePath({
+    fileName: normalizedInput.fileName,
+    meetingId: meeting.id,
+    participantId: normalizedInput.participantId,
+    roomSlug: slug,
+  });
+  const uploadResult = await client.storage
+    .from(chronosDriveStorageBucket)
+    .upload(storagePath, normalizedInput.file, {
+      contentType: normalizedInput.mimeType,
+      upsert: false,
+    });
+
+  if (uploadResult.error) {
+    throw uploadResult.error;
+  }
+
+  const storagePathFromUpload = uploadResult.data?.path ?? storagePath;
+  const meetingResult = await client
+    .from("chronos_meetings")
+    .update({ recording_status: "available" })
+    .eq("id", meeting.id);
+
+  if (meetingResult.error) {
+    throw meetingResult.error;
+  }
+
+  const recordingResult = await client
+    .from("chronos_recordings")
+    .insert({
+      duration_seconds: normalizedInput.durationSeconds ?? null,
+      file_name: normalizedInput.fileName,
+      meeting_id: meeting.id,
+      metadata: {
+        fileName: normalizedInput.fileName,
+        mimeType: normalizedInput.mimeType,
+        participantId: normalizedInput.participantId,
+        sizeBytes: normalizedInput.sizeBytes,
+        source: "chronos-external-room-storage",
+      },
+      mime_type: normalizedInput.mimeType,
+      size_bytes: normalizedInput.sizeBytes,
+      status: "available",
+      stopped_at: now,
+      storage_bucket: chronosDriveStorageBucket,
+      storage_path: storagePathFromUpload,
+      uploaded_at: now,
+    })
+    .select("*")
+    .single<ChronosRecordingRow>();
+
+  if (recordingResult.error) {
+    throw recordingResult.error;
+  }
+
+  await insertTimelineEvent(client, {
+    eventType: "recording_stopped",
+    meetingId: meeting.id,
+    title: "Gravacao salva no Chronos Drive",
+  });
+
+  const [recording] = await hydrateChronosRecordingUrls(client, [
+    mapRecordingRow(recordingResult.data),
+  ]);
+
+  return { ok: true, recording };
+}
+
+export async function addChronosPublicChatMessage({
+  input,
+  roomSlug,
+}: {
+  input: unknown;
+  roomSlug: string;
+}) {
+  const normalizedInput = normalizePublicChatInput(input);
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    if (!canUseChronosLocalFallback()) {
+      throw new Error(
+        "Chronos requer Supabase server-side configurado para salvar chat.",
+      );
+    }
+
+    return addLocalChronosPublicChatMessage({
+      input: normalizedInput,
+      roomSlug: slug,
+    });
+  }
+
+  const { meeting } = await getChronosPublicMeetingContext({
+    client,
+    meetingId: normalizedInput.meetingId,
+    roomSlug: slug,
+  });
+  const { data, error } = await client
+    .from("chronos_chat_messages")
+    .insert({
+      content: normalizedInput.content,
+      meeting_id: meeting.id,
+      metadata: {
+        clientMessageId: normalizedInput.clientMessageId ?? null,
+        source: "chronos-external-room",
+      },
+      participant_id: normalizedInput.participantId,
+      sender_name: normalizedInput.senderName,
+    })
+    .select("*")
+    .single<ChronosChatMessageRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return { message: mapChatMessageRow(data), ok: true };
+}
+
+export async function addChronosPublicTranscript({
+  input,
+  roomSlug,
+}: {
+  input: unknown;
+  roomSlug: string;
+}) {
+  const normalizedInput = normalizePublicTranscriptInput(input);
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    if (!canUseChronosLocalFallback()) {
+      throw new Error(
+        "Chronos requer Supabase server-side configurado para transcricao externa.",
+      );
+    }
+
+    return addLocalChronosPublicTranscript({
+      input: normalizedInput,
+      roomSlug: slug,
+    });
+  }
+
+  const { meeting } = await getChronosPublicMeetingContext({
+    client,
+    meetingId: normalizedInput.meetingId,
+    roomSlug: slug,
+  });
+
+  const { error: transcriptError } = await client
+    .from("chronos_transcript_segments")
+    .insert({
+      content: normalizedInput.content,
+      ended_at: normalizedInput.endedAt ?? null,
+      meeting_id: meeting.id,
+      metadata: {
+        participantId: normalizedInput.participantId,
+        speakerSource: "declared_participant",
+        source: "chronos-athena-browser",
+      },
+      source: "athena-browser",
+      speaker_label: normalizedInput.speakerLabel,
+      started_at: normalizedInput.startedAt ?? null,
+    });
+
+  if (transcriptError) {
+    throw transcriptError;
+  }
+
+  const { error: meetingError } = await client
+    .from("chronos_meetings")
+    .update({ transcription_status: "available" })
+    .eq("id", meeting.id);
+
+  if (meetingError) {
+    throw meetingError;
+  }
+
+  await insertTimelineEvent(client, {
+    eventType: "transcript_added",
+    meetingId: meeting.id,
+    title: `Athena registrou fala de ${normalizedInput.speakerLabel}`,
+  });
+
+  return { ok: true };
+}
+
 export async function updateChronosMeeting({
   authorization,
   input,
@@ -726,6 +1624,7 @@ export function isChronosSchemaMissingError(error: unknown) {
     typeof maybeError?.message === "string" ? maybeError.message : "";
 
   return (
+    maybeError?.code === "42703" ||
     maybeError?.code === "42P01" ||
     maybeError?.code === "PGRST205" ||
     (message.includes("chronos_") &&
@@ -737,6 +1636,262 @@ export function isChronosSchemaMissingError(error: unknown) {
 
 export function isChronosForbiddenError(error: unknown) {
   return error instanceof ChronosForbiddenError;
+}
+
+async function getChronosRoomRowBySlug(client: ChronosClient, roomSlug: string) {
+  const { data: room, error } = await client
+    .from("chronos_rooms")
+    .select("*")
+    .eq("slug", roomSlug)
+    .eq("status", "active")
+    .maybeSingle<ChronosRoomRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return room;
+}
+
+async function resolveOptionalChronosUserFromBearer(
+  client: ChronosClient,
+  authorizationHeader?: string | null,
+) {
+  const accessToken = getBearerTokenFromValue(authorizationHeader);
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const { data: authData, error: authError } =
+    await client.auth.getUser(accessToken);
+
+  if (authError || !authData.user) {
+    return null;
+  }
+
+  const { data: user, error: userError } = await client
+    .from("hub_users")
+    .select("id,email,display_name,role,status,operational_profile")
+    .eq("id", authData.user.id)
+    .maybeSingle<ChronosUserRow>();
+
+  if (userError || !user || user.status !== "active") {
+    return null;
+  }
+
+  return {
+    email: user.email,
+    id: user.id,
+    name: user.display_name,
+    operationalProfile: user.operational_profile,
+    role: user.role,
+  } satisfies AuthorizedChronosUser;
+}
+
+async function readChronosProfilesFromSupabase(
+  client: ChronosClient,
+  options: { includeArchived?: boolean } = {},
+) {
+  const { data: registry, error } = await client
+    .from("chronos_rooms")
+    .select("*")
+    .eq("slug", chronosProfileRegistrySlug)
+    .maybeSingle<ChronosRoomRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  const profiles = normalizeChronosProfileList(
+    Array.isArray(registry?.metadata?.profiles)
+      ? registry.metadata.profiles
+      : [],
+  );
+
+  return options.includeArchived
+    ? profiles
+    : profiles.filter((profile) => profile.status === "active");
+}
+
+async function resolveChronosMeetingProfileForInput({
+  client,
+  input,
+}: {
+  client: ChronosClient;
+  input: ChronosCreateMeetingInput;
+}) {
+  const profiles = await readChronosProfilesFromSupabase(client);
+  const selectedProfile =
+    profiles.find((profile) => profile.id === input.profileId) ??
+    profiles.find((profile) => profile.id === input.meetingType) ??
+    profiles.find((profile) => profile.meetingType === input.meetingType) ??
+    defaultChronosMeetingProfiles[0];
+
+  return selectedProfile;
+}
+
+async function resolveChronosPublicReservationMeeting(
+  client: ChronosClient,
+  room: ChronosRoomRow,
+) {
+  const referenceDate = new Date();
+  const activeMeetingResult = await client
+    .from("chronos_meetings")
+    .select("*")
+    .eq("room_id", room.id)
+    .in("status", ["lobby", "live"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<ChronosMeetingRow>();
+
+  if (activeMeetingResult.error) {
+    throw activeMeetingResult.error;
+  }
+
+  if (activeMeetingResult.data) {
+    return activeMeetingResult.data;
+  }
+
+  const windowEnd = new Date(
+    referenceDate.getTime() + 15 * 60 * 1000,
+  ).toISOString();
+  const scheduledMeetingResult = await client
+    .from("chronos_meetings")
+    .select("*")
+    .eq("room_id", room.id)
+    .in("status", ["scheduled", "lobby"])
+    .lte("starts_at", windowEnd)
+    .order("starts_at", { ascending: true })
+    .limit(10);
+
+  if (scheduledMeetingResult.error) {
+    throw scheduledMeetingResult.error;
+  }
+
+  const meeting = (scheduledMeetingResult.data ?? []).find((candidate) =>
+    isChronosReservationInJoinWindow(candidate, referenceDate),
+  );
+
+  if (!meeting) {
+    throw new Error(
+      "Sala Chronos sem reserva ativa na agenda para este horario.",
+    );
+  }
+
+  return meeting;
+}
+
+async function openChronosPublicReservation({
+  client,
+  isHost,
+  meeting,
+  participantName,
+  room,
+}: {
+  client: ChronosClient;
+  isHost: boolean;
+  meeting: ChronosMeetingRow;
+  participantName: string;
+  room: ChronosRoomRow;
+}) {
+  const now = new Date().toISOString();
+  const metadata = {
+    ...(meeting.metadata ?? {}),
+    athena: {
+      ...readRecordMetadata(meeting.metadata?.athena),
+      assistant: "Athena",
+      transcription: room.transcription_required,
+    },
+    externalRoom: {
+      ...readRecordMetadata(meeting.metadata?.externalRoom),
+      accessMode: "request_entry",
+      actualStartedAt: now,
+      openedBy: isHost ? "host" : "participant",
+      roomSlug: room.slug,
+      source: "chronos-external-room",
+    },
+  };
+  const { data, error } = await client
+    .from("chronos_meetings")
+    .update({
+      metadata,
+      status: "live",
+    })
+    .eq("id", meeting.id)
+    .select("*")
+    .single<ChronosMeetingRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  await insertTimelineEvent(client, {
+    eventType: "joined",
+    meetingId: meeting.id,
+    title: isHost
+      ? "Reserva Chronos aberta pelo host"
+      : `Reserva Chronos aberta por ${participantName}`,
+  });
+
+  return data;
+}
+
+function isChronosReservationInJoinWindow(
+  meeting: ChronosMeetingRow,
+  referenceDate: Date,
+) {
+  if (!meeting.starts_at) {
+    return false;
+  }
+
+  const startsAt = new Date(meeting.starts_at).getTime();
+  const endsAt = meeting.ends_at
+    ? new Date(meeting.ends_at).getTime()
+    : startsAt + 60 * 60 * 1000;
+  const windowStart = startsAt - 15 * 60 * 1000;
+  const now = referenceDate.getTime();
+
+  return now >= windowStart && now <= endsAt;
+}
+
+function readRecordMetadata(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+async function getChronosPublicMeetingContext({
+  client,
+  meetingId,
+  roomSlug,
+}: {
+  client: ChronosClient;
+  meetingId: string;
+  roomSlug: string;
+}) {
+  const room = await getChronosRoomRowBySlug(client, roomSlug);
+
+  if (!room) {
+    throw new Error("Sala Chronos nao encontrada.");
+  }
+
+  const { data: meeting, error } = await client
+    .from("chronos_meetings")
+    .select("*")
+    .eq("id", meetingId)
+    .eq("room_id", room.id)
+    .maybeSingle<ChronosMeetingRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!meeting) {
+    throw new Error("Reuniao Chronos nao encontrada para esta sala.");
+  }
+
+  return { meeting, room };
 }
 
 function createChronosClient() {
@@ -841,11 +1996,12 @@ async function applyChronosUpdate({
   }
 
   if (input.action === "add_transcript") {
+    const source = sanitizeChronosTranscriptSource(input.source);
     const insertResult = await client.from("chronos_transcript_segments").insert({
       content: sanitizeText(input.content, maxTextLength),
       created_by_user_id: user.id,
       meeting_id: input.meetingId,
-      source: "manual",
+      source,
       speaker_label: sanitizeOptionalText(input.speakerLabel, 80),
     });
 
@@ -866,7 +2022,10 @@ async function applyChronosUpdate({
       actorUserId: user.id,
       eventType: "transcript_added",
       meetingId: input.meetingId,
-      title: "Trecho de transcricao registrado",
+      title:
+        source === "openai" || source === "athena"
+          ? "Transcricao Athena registrada"
+          : "Trecho de transcricao registrado",
     });
     return;
   }
@@ -992,7 +2151,7 @@ async function applyChronosUpdate({
 async function insertTimelineEvent(
   client: ChronosClient,
   input: {
-    actorUserId: string;
+    actorUserId?: string | null;
     description?: string;
     eventType: ChronosEventType;
     meetingId: string;
@@ -1000,7 +2159,7 @@ async function insertTimelineEvent(
   },
 ) {
   const { error } = await client.from("chronos_timeline_events").insert({
-    actor_user_id: input.actorUserId,
+    actor_user_id: input.actorUserId ?? null,
     description: input.description ?? null,
     event_type: input.eventType,
     meeting_id: input.meetingId,
@@ -1056,18 +2215,336 @@ function normalizeCreateMeetingInput(input: unknown): ChronosCreateMeetingInput 
   if (!title) {
     throw new Error("Informe o titulo da reuniao.");
   }
+  const startsAt = normalizeOptionalDate(maybeInput.startsAt);
+  const endsAt = normalizeOptionalDate(maybeInput.endsAt);
+
+  if (
+    startsAt &&
+    endsAt &&
+    new Date(endsAt).getTime() <= new Date(startsAt).getTime()
+  ) {
+    throw new Error("Informe um horario final posterior ao inicio.");
+  }
+
+  const locationMode =
+    maybeInput.locationMode === "offline" ? "offline" : "online";
+  const locationAddress =
+    locationMode === "offline"
+      ? sanitizeOptionalText(maybeInput.locationAddress, 240)
+      : undefined;
+
+  if (locationMode === "offline" && !locationAddress) {
+    throw new Error("Informe o endereco da reuniao presencial.");
+  }
 
   return {
     agenda: normalizeStringList(maybeInput.agenda).slice(0, 12),
+    apoloInvitees: normalizeApoloInvitees(maybeInput.apoloInvitees),
+    endsAt,
     externalReference: sanitizeOptionalText(maybeInput.externalReference, 180),
+    locationAddress,
+    locationMode,
     meetingType: isChronosMeetingType(maybeInput.meetingType)
       ? maybeInput.meetingType
-      : "executive",
+      : "alignment",
     objective: sanitizeOptionalText(maybeInput.objective, maxTextLength),
     participants: normalizeCreateParticipants(maybeInput.participants),
+    profileId: sanitizeOptionalText(maybeInput.profileId, 80),
     roomId: sanitizeOptionalText(maybeInput.roomId, 80),
-    startsAt: normalizeOptionalDate(maybeInput.startsAt),
+    startsAt,
     title,
+  };
+}
+
+function normalizeRoomInput(input: unknown): Required<ChronosRoomInput> {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe os dados da sala Chronos.");
+  }
+
+  const maybeInput = input as Partial<ChronosRoomInput>;
+  const name = sanitizeText(maybeInput.name, 120);
+
+  if (!name) {
+    throw new Error("Informe o nome da sala Chronos.");
+  }
+
+  const slug = normalizeRoomSlug(maybeInput.slug, name);
+
+  return {
+    backgroundDataUrl: sanitizeRoomBackgroundDataUrl(
+      maybeInput.backgroundDataUrl,
+    ),
+    backgroundName: sanitizeOptionalText(maybeInput.backgroundName, 120) ?? "",
+    capacity: normalizeRoomCapacity(maybeInput.capacity),
+    minutesRequired: maybeInput.minutesRequired !== false,
+    name,
+    recordingRequired: maybeInput.recordingRequired !== false,
+    roomType: normalizeChronosOfficialProfileId(maybeInput.roomType),
+    slug,
+    transcriptionRequired: maybeInput.transcriptionRequired !== false,
+  };
+}
+
+function normalizeRoomUpdateInput(input: unknown): ChronosRoomUpdateInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe os dados da sala Chronos.");
+  }
+
+  const maybeInput = input as Partial<ChronosRoomUpdateInput>;
+  const roomId = sanitizeText(maybeInput.roomId, 80);
+
+  if (!roomId) {
+    throw new Error("Sala Chronos nao informada.");
+  }
+
+  const name = sanitizeOptionalText(maybeInput.name, 120);
+
+  return {
+    backgroundDataUrl:
+      maybeInput.backgroundDataUrl === undefined
+        ? undefined
+        : sanitizeRoomBackgroundDataUrl(maybeInput.backgroundDataUrl),
+    backgroundName:
+      maybeInput.backgroundName === undefined
+        ? undefined
+        : sanitizeOptionalText(maybeInput.backgroundName, 120),
+    capacity:
+      maybeInput.capacity === undefined
+        ? undefined
+        : normalizeRoomCapacity(maybeInput.capacity),
+    minutesRequired:
+      typeof maybeInput.minutesRequired === "boolean"
+        ? maybeInput.minutesRequired
+        : undefined,
+    name,
+    recordingRequired:
+      typeof maybeInput.recordingRequired === "boolean"
+        ? maybeInput.recordingRequired
+        : undefined,
+    roomId,
+    roomType:
+      maybeInput.roomType === undefined
+        ? undefined
+        : normalizeChronosOfficialProfileId(maybeInput.roomType),
+    slug:
+      maybeInput.slug === undefined && !name
+        ? undefined
+        : normalizeRoomSlug(maybeInput.slug, name ?? "sala-chronos"),
+    transcriptionRequired:
+      typeof maybeInput.transcriptionRequired === "boolean"
+        ? maybeInput.transcriptionRequired
+        : undefined,
+  };
+}
+
+function normalizeRoomDeleteInput(input: unknown): ChronosRoomDeleteInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe a sala Chronos.");
+  }
+
+  const roomId = sanitizeText(
+    (input as Partial<ChronosRoomDeleteInput>).roomId,
+    80,
+  );
+
+  if (!roomId) {
+    throw new Error("Sala Chronos nao informada.");
+  }
+
+  return { roomId };
+}
+
+function normalizeChronosProfileList(
+  value: unknown,
+): ChronosMeetingProfile[] {
+  void value;
+
+  return defaultChronosMeetingProfiles.map((profile) => ({
+    ...profile,
+  }));
+}
+
+function normalizeChronosOfficialProfileId(value: unknown) {
+  const candidate = sanitizeOptionalText(value, 80) ?? "";
+
+  return defaultChronosMeetingProfiles.some((profile) => profile.id === candidate)
+    ? candidate
+    : defaultChronosMeetingProfiles[0].id;
+}
+
+function normalizeChronosRoom(room: ChronosRoom): ChronosRoom {
+  return {
+    ...room,
+    roomType: normalizeChronosOfficialProfileId(room.roomType),
+  };
+}
+
+function normalizePublicParticipantInput(
+  input: unknown,
+): NormalizedChronosPublicParticipantInput {
+  const maybeInput =
+    input && typeof input === "object"
+      ? (input as Partial<ChronosPublicParticipantInput>)
+      : {};
+
+  return {
+    displayName: sanitizeOptionalText(maybeInput.displayName, 100),
+    organization: sanitizeOptionalText(maybeInput.organization, 120),
+  };
+}
+
+function normalizePublicRecordingInput(
+  input: unknown,
+): NormalizedChronosPublicRecordingInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe os dados da gravacao Chronos.");
+  }
+
+  const maybeInput = input as Partial<NormalizedChronosPublicRecordingInput>;
+  const meetingId = sanitizeText(maybeInput.meetingId, 80);
+  const participantId = sanitizeText(maybeInput.participantId, 80);
+  const status = maybeInput.status;
+
+  if (!meetingId || !participantId) {
+    throw new Error("Reuniao ou participante Chronos nao informado.");
+  }
+
+  if (status !== "available" && status !== "recording") {
+    throw new Error("Status de gravacao Chronos invalido.");
+  }
+
+  return {
+    durationSeconds: normalizeOptionalDurationSeconds(
+      maybeInput.durationSeconds,
+    ),
+    meetingId,
+    participantId,
+    status,
+  };
+}
+
+function normalizePublicRecordingUploadInput(
+  input: FormData,
+): NormalizedChronosPublicRecordingUploadInput {
+  const meetingId = sanitizeText(input.get("meetingId"), 80);
+  const participantId = sanitizeText(input.get("participantId"), 80);
+  const durationSeconds = normalizeOptionalDurationSeconds(
+    input.get("durationSeconds"),
+  );
+  const file = input.get("file");
+
+  if (!meetingId || !participantId) {
+    throw new Error("Reuniao ou participante Chronos nao informado.");
+  }
+
+  if (!isChronosUploadFile(file)) {
+    throw new Error("Arquivo de gravacao Chronos nao informado.");
+  }
+
+  if (file.size <= 0 || file.size > maxChronosRecordingUploadBytes) {
+    throw new Error("Arquivo de gravacao Chronos fora do limite permitido.");
+  }
+
+  return {
+    durationSeconds,
+    file,
+    fileName: sanitizeChronosFileName(
+      sanitizeOptionalText(input.get("fileName"), 180) ?? file.name,
+    ),
+    meetingId,
+    mimeType: sanitizeOptionalText(file.type, 120) ?? "video/webm",
+    participantId,
+    sizeBytes: file.size,
+  };
+}
+
+function normalizePublicChatInput(
+  input: unknown,
+): NormalizedChronosPublicChatInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe a mensagem do chat Chronos.");
+  }
+
+  const maybeInput = input as Partial<NormalizedChronosPublicChatInput>;
+  const content = sanitizeText(maybeInput.content, 1800);
+  const meetingId = sanitizeText(maybeInput.meetingId, 80);
+  const participantId = sanitizeText(maybeInput.participantId, 80);
+  const senderName = sanitizeText(maybeInput.senderName, 120);
+
+  if (!meetingId || !participantId) {
+    throw new Error("Reuniao ou participante Chronos nao informado.");
+  }
+
+  if (!senderName) {
+    throw new Error("Identifique o remetente do chat Chronos.");
+  }
+
+  if (!content) {
+    throw new Error("Mensagem de chat Chronos vazia.");
+  }
+
+  return {
+    clientMessageId: sanitizeOptionalText(maybeInput.clientMessageId, 120),
+    content,
+    meetingId,
+    participantId,
+    senderName,
+  };
+}
+
+function normalizePublicCloseInput(
+  input: unknown,
+): NormalizedChronosPublicCloseInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe os dados de encerramento Chronos.");
+  }
+
+  const maybeInput = input as Partial<NormalizedChronosPublicCloseInput>;
+  const meetingId = sanitizeText(maybeInput.meetingId, 80);
+  const participantId = sanitizeText(maybeInput.participantId, 80);
+
+  if (!meetingId || !participantId) {
+    throw new Error("Reuniao ou participante Chronos nao informado.");
+  }
+
+  return {
+    meetingId,
+    participantId,
+  };
+}
+
+function normalizePublicTranscriptInput(
+  input: unknown,
+): NormalizedChronosPublicTranscriptInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe o trecho de transcricao Chronos.");
+  }
+
+  const maybeInput = input as Partial<NormalizedChronosPublicTranscriptInput>;
+  const content = sanitizeText(maybeInput.content, 2200);
+  const meetingId = sanitizeText(maybeInput.meetingId, 80);
+  const participantId = sanitizeText(maybeInput.participantId, 80);
+  const speakerLabel = sanitizeText(maybeInput.speakerLabel, 120);
+
+  if (!meetingId || !participantId) {
+    throw new Error("Reuniao ou participante Chronos nao informado.");
+  }
+
+  if (!speakerLabel) {
+    throw new Error("Identifique o participante da transcricao.");
+  }
+
+  if (!content) {
+    throw new Error("Conteudo de transcricao vazio.");
+  }
+
+  return {
+    content,
+    endedAt: normalizeOptionalDate(maybeInput.endedAt),
+    meetingId,
+    participantId,
+    speakerLabel,
+    startedAt: normalizeOptionalDate(maybeInput.startedAt),
   };
 }
 
@@ -1119,10 +2596,15 @@ function normalizeUpdateInput(input: unknown): ChronosUpdateInput {
   }
 
   if (action === "add_transcript") {
+    const source = sanitizeChronosTranscriptSource(
+      (maybeInput as { source?: unknown }).source,
+    );
+
     return {
       action,
       content: sanitizeText((maybeInput as { content?: unknown }).content, maxTextLength),
       meetingId,
+      source,
       speakerLabel: sanitizeOptionalText(
         (maybeInput as { speakerLabel?: unknown }).speakerLabel,
         80,
@@ -1197,6 +2679,17 @@ function normalizeUpdateInput(input: unknown): ChronosUpdateInput {
   throw new Error("Acao Chronos invalida.");
 }
 
+function sanitizeChronosTranscriptSource(
+  value: unknown,
+): "athena" | "browser" | "manual" | "openai" {
+  return value === "athena" ||
+    value === "browser" ||
+    value === "openai" ||
+    value === "manual"
+    ? value
+    : "manual";
+}
+
 function normalizeParticipantsForInsert({
   input,
   meetingId,
@@ -1269,6 +2762,43 @@ function normalizeCreateParticipants(input: unknown) {
     .slice(0, 30) as NonNullable<ChronosCreateMeetingInput["participants"]>;
 }
 
+function normalizeApoloInvitees(input: unknown): ChronosApoloInvitee[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((invitee) => {
+      if (!invitee || typeof invitee !== "object") {
+        return null;
+      }
+
+      const maybeInvitee = invitee as {
+        displayName?: unknown;
+        email?: unknown;
+        entityId?: unknown;
+        organization?: unknown;
+        phone?: unknown;
+      };
+      const displayName = sanitizeText(maybeInvitee.displayName, 120);
+      const entityId = sanitizeText(maybeInvitee.entityId, 120);
+
+      if (!displayName || !entityId) {
+        return null;
+      }
+
+      return {
+        displayName,
+        email: sanitizeOptionalText(maybeInvitee.email, 160),
+        entityId,
+        organization: sanitizeOptionalText(maybeInvitee.organization, 120),
+        phone: sanitizeOptionalText(maybeInvitee.phone, 40),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 30) as ChronosApoloInvitee[];
+}
+
 async function readLocalChronosSnapshot(): Promise<Omit<ChronosSnapshot, "storage">> {
   try {
     const file = await readFile(chronosLocalStorePath, "utf8");
@@ -1276,12 +2806,16 @@ async function readLocalChronosSnapshot(): Promise<Omit<ChronosSnapshot, "storag
 
     return {
       meetings: Array.isArray(payload.meetings) ? payload.meetings : [],
-      rooms: Array.isArray(payload.rooms) ? payload.rooms : defaultChronosRooms,
+      profiles: normalizeChronosProfileList(payload.profiles),
+      rooms: Array.isArray(payload.rooms)
+        ? payload.rooms.map(normalizeChronosRoom)
+        : defaultChronosRooms.map(normalizeChronosRoom),
     };
   } catch {
     return {
       meetings: [],
-      rooms: defaultChronosRooms,
+      profiles: [...defaultChronosMeetingProfiles],
+      rooms: defaultChronosRooms.map(normalizeChronosRoom),
     };
   }
 }
@@ -1301,20 +2835,47 @@ async function createLocalChronosMeeting({
   const snapshot = await readLocalChronosSnapshot();
   const now = new Date().toISOString();
   const room =
-    snapshot.rooms.find((currentRoom) => currentRoom.id === input.roomId) ??
-    snapshot.rooms[0] ??
-    null;
+    input.locationMode === "offline"
+      ? null
+      : snapshot.rooms.find((currentRoom) => currentRoom.id === input.roomId) ??
+        snapshot.rooms[0] ??
+        null;
+  const selectedProfile =
+    snapshot.profiles.find(
+      (profile) =>
+        profile.status === "active" &&
+        profile.id === (input.profileId ?? input.meetingType),
+    ) ??
+    snapshot.profiles.find(
+      (profile) =>
+        profile.status === "active" && profile.id === input.meetingType,
+    ) ??
+    defaultChronosMeetingProfiles[0];
   const meeting: ChronosMeeting = {
+    chatMessages: [],
     createdAt: now,
-    endsAt: null,
+    endsAt: input.endsAt ?? null,
     executiveSummary: null,
     externalReference: input.externalReference ?? null,
     followUps: [],
     hostName: user.name,
     hostUserId: user.id,
     id: `local-chronos-${Date.now().toString(36)}`,
-    meetingType: input.meetingType,
-    metadata: { agenda: input.agenda ?? [], source: "chronos-v1-local" },
+    meetingType: selectedProfile.meetingType,
+    metadata: {
+      agenda: input.agenda ?? [],
+      apoloInvitees: input.apoloInvitees ?? [],
+      location: {
+        address: input.locationAddress ?? null,
+        mode: input.locationMode ?? "online",
+      },
+      meetingProfile: {
+        id: selectedProfile.id,
+        label: selectedProfile.label,
+        meetingType: selectedProfile.meetingType,
+      },
+      source: "chronos-v1-local",
+    },
     minutes: [],
     minutesStatus: "not_started",
     objective: input.objective ?? null,
@@ -1360,10 +2921,506 @@ async function createLocalChronosMeeting({
 
   await writeLocalChronosStore({
     meetings: [meeting, ...snapshot.meetings],
+    profiles: snapshot.profiles,
     rooms: snapshot.rooms,
   });
 
   return meeting;
+}
+
+async function createLocalChronosRoom({
+  input,
+  user,
+}: {
+  input: Required<ChronosRoomInput>;
+  user: AuthorizedChronosUser;
+}) {
+  const snapshot = await readLocalChronosSnapshot();
+
+  if (snapshot.rooms.some((room) => room.slug === input.slug)) {
+    throw new Error("Ja existe uma sala Chronos com este link.");
+  }
+
+  const room: ChronosRoom = {
+    capacity: input.capacity,
+    id: `local-room-${Date.now().toString(36)}`,
+    metadata: {
+      ...buildRoomMetadata(input),
+      createdByUserId: user.id,
+    },
+    minutesRequired: input.minutesRequired,
+    name: input.name,
+    recordingRequired: input.recordingRequired,
+    roomType: input.roomType,
+    slug: input.slug,
+    status: "active",
+    transcriptionRequired: input.transcriptionRequired,
+  };
+
+  await writeLocalChronosStore({
+    meetings: snapshot.meetings,
+    profiles: snapshot.profiles,
+    rooms: [room, ...snapshot.rooms],
+  });
+
+  return room;
+}
+
+async function updateLocalChronosRoom({
+  input,
+}: {
+  input: ChronosRoomUpdateInput;
+}) {
+  const snapshot = await readLocalChronosSnapshot();
+  let updatedRoom: ChronosRoom | null = null;
+  const rooms = snapshot.rooms.map((room) => {
+    if (room.id !== input.roomId) {
+      return room;
+    }
+
+    const slug = input.slug ?? room.slug;
+    updatedRoom = {
+      ...room,
+      capacity: input.capacity ?? room.capacity,
+      metadata: buildRoomMetadata(
+        {
+          backgroundDataUrl: input.backgroundDataUrl,
+          backgroundName: input.backgroundName,
+          slug,
+        },
+        room.metadata,
+      ),
+      minutesRequired: input.minutesRequired ?? room.minutesRequired,
+      name: input.name ?? room.name,
+      recordingRequired: input.recordingRequired ?? room.recordingRequired,
+      roomType: input.roomType ?? room.roomType,
+      slug,
+      transcriptionRequired:
+        input.transcriptionRequired ?? room.transcriptionRequired,
+    };
+
+    return updatedRoom;
+  });
+
+  if (!updatedRoom) {
+    throw new Error("Sala Chronos nao encontrada.");
+  }
+
+  await writeLocalChronosStore({
+    meetings: snapshot.meetings,
+    profiles: snapshot.profiles,
+    rooms,
+  });
+
+  return updatedRoom;
+}
+
+async function deleteLocalChronosRoom({
+  input,
+}: {
+  input: ChronosRoomDeleteInput;
+}) {
+  const snapshot = await readLocalChronosSnapshot();
+  let archivedRoom: ChronosRoom | null = null;
+  const rooms = snapshot.rooms.map((room) => {
+    if (room.id !== input.roomId) {
+      return room;
+    }
+
+    archivedRoom = {
+      ...room,
+      status: "archived",
+    };
+
+    return archivedRoom;
+  });
+
+  if (!archivedRoom) {
+    throw new Error("Sala Chronos nao encontrada.");
+  }
+
+  await writeLocalChronosStore({
+    meetings: snapshot.meetings,
+    profiles: snapshot.profiles,
+    rooms: rooms.filter((room) => room.status === "active"),
+  });
+
+  return archivedRoom;
+}
+
+async function joinLocalChronosPublicRoom({
+  input,
+  roomSlug,
+}: {
+  input: NormalizedChronosPublicParticipantInput;
+  roomSlug: string;
+}): Promise<ChronosPublicJoinResult> {
+  const snapshot = await readLocalChronosSnapshot();
+  const room = snapshot.rooms.find(
+    (currentRoom) =>
+      currentRoom.slug === roomSlug && currentRoom.status === "active",
+  );
+
+  if (!room) {
+    throw new Error("Sala Chronos nao encontrada.");
+  }
+
+  const participantName = input.displayName ?? "";
+
+  if (!participantName) {
+    throw new Error("Informe seu nome para entrar na sala Chronos.");
+  }
+
+  const now = new Date().toISOString();
+  const existingMeeting = snapshot.meetings.find(
+    (meeting) =>
+      meeting.roomId === room.id &&
+      (meeting.status === "live" || meeting.status === "lobby"),
+  );
+  const participant: ChronosParticipant = {
+    attendanceStatus: "joined",
+    displayName: participantName,
+    email: null,
+    id: `local-public-participant-${Date.now().toString(36)}`,
+    organization: input.organization ?? null,
+    role: "external",
+    userId: null,
+  };
+  const meeting =
+    existingMeeting ??
+    ({
+      chatMessages: [],
+      createdAt: now,
+      endsAt: null,
+      executiveSummary: null,
+      externalReference: `/chronos/${room.slug}`,
+      followUps: [],
+      hostName: null,
+      hostUserId: null,
+      id: `local-public-meeting-${Date.now().toString(36)}`,
+      meetingType: isChronosMeetingType(room.roomType)
+        ? room.roomType
+        : "external",
+      metadata: {
+        athena: {
+          assistant: "Athena",
+          transcription: room.transcriptionRequired,
+        },
+        externalRoom: {
+          accessMode: "request_entry",
+          roomSlug: room.slug,
+          source: "chronos-external-room",
+        },
+      },
+      minutes: [],
+      minutesStatus: "not_started",
+      objective: "Sala externa Chronos para reuniao formal.",
+      participants: [],
+      protocol: await generateChronosProtocol(null),
+      recordingStatus: "not_started",
+      recordings: [],
+      room,
+      roomId: room.id,
+      startsAt: now,
+      status: "live",
+      timeline: [
+        {
+          eventAt: now,
+          eventType: "created",
+          id: `event-${Date.now().toString(36)}`,
+          title: "Sala externa Chronos iniciada",
+        },
+      ],
+      title: `${room.name} - Reuniao externa`,
+      transcriptionStatus: "not_started",
+      transcript: [],
+      updatedAt: now,
+    } satisfies ChronosMeeting);
+  const nextMeeting: ChronosMeeting = {
+    ...meeting,
+    participants: [
+      participant,
+      ...meeting.participants.filter(
+        (currentParticipant) => currentParticipant.id !== participant.id,
+      ),
+    ],
+    timeline: [
+      ...meeting.timeline,
+      {
+        eventAt: now,
+        eventType: "joined",
+        id: `event-${Date.now().toString(36)}-joined`,
+        title: `${participantName} entrou na sala externa`,
+      },
+    ],
+    updatedAt: now,
+  };
+
+  await writeLocalChronosStore({
+    meetings: [
+      nextMeeting,
+      ...snapshot.meetings.filter(
+        (currentMeeting) => currentMeeting.id !== nextMeeting.id,
+      ),
+    ],
+    profiles: snapshot.profiles,
+    rooms: snapshot.rooms,
+  });
+
+  return {
+    athenaNotice:
+      "Esta reuniao pode ser gravada e transcrita pela assistente Athena.",
+    isHost: false,
+    meetingId: nextMeeting.id,
+    participant: {
+      displayName: participant.displayName,
+      id: participant.id,
+      organization: participant.organization ?? undefined,
+      role: participant.role,
+    },
+    reservation: {
+      endsAt: nextMeeting.endsAt,
+      protocol: nextMeeting.protocol,
+      startsAt: nextMeeting.startsAt,
+      title: nextMeeting.title,
+    },
+    room: mapPublicRoom(room),
+  };
+}
+
+async function closeLocalChronosPublicMeeting({
+  input,
+  roomSlug,
+}: {
+  input: NormalizedChronosPublicCloseInput;
+  roomSlug: string;
+}) {
+  const snapshot = await readLocalChronosSnapshot();
+  const room = snapshot.rooms.find((currentRoom) => currentRoom.slug === roomSlug);
+  const now = new Date().toISOString();
+  let foundMeeting = false;
+  const meetings = snapshot.meetings.map((meeting) => {
+    if (meeting.id !== input.meetingId || meeting.roomId !== room?.id) {
+      return meeting;
+    }
+
+    foundMeeting = true;
+
+    return {
+      ...meeting,
+      metadata: {
+        ...(meeting.metadata ?? {}),
+        closure: {
+          closedAt: now,
+          source: "chronos-external-room",
+        },
+      },
+      participants: meeting.participants.map((participant) => ({
+        ...participant,
+        attendanceStatus: "left",
+      })),
+      status: "closed",
+      timeline: [
+        ...meeting.timeline,
+        {
+          eventAt: now,
+          eventType: "left",
+          id: `event-${Date.now().toString(36)}-closed`,
+          title: "Chamada Chronos encerrada pelo host",
+        },
+      ],
+      transcriptionStatus: room?.transcriptionRequired
+        ? "processing"
+        : meeting.transcriptionStatus,
+      updatedAt: now,
+    } satisfies ChronosMeeting;
+  });
+
+  if (!foundMeeting) {
+    throw new Error("Reuniao Chronos nao encontrada para esta sala.");
+  }
+
+  await writeLocalChronosStore({
+    meetings,
+    profiles: snapshot.profiles,
+    rooms: snapshot.rooms,
+  });
+
+  return {
+    meetingId: input.meetingId,
+    ok: true,
+    status: "closed" as const,
+  };
+}
+
+async function markLocalChronosPublicRecording({
+  input,
+  roomSlug,
+}: {
+  input: NormalizedChronosPublicRecordingInput;
+  roomSlug: string;
+}) {
+  const snapshot = await readLocalChronosSnapshot();
+  const room = snapshot.rooms.find((currentRoom) => currentRoom.slug === roomSlug);
+  const now = new Date().toISOString();
+  let foundMeeting = false;
+  const meetings = snapshot.meetings.map((meeting) => {
+    if (meeting.id !== input.meetingId || meeting.roomId !== room?.id) {
+      return meeting;
+    }
+
+    foundMeeting = true;
+
+    return {
+      ...meeting,
+      recordingStatus: input.status,
+      recordings: [
+        {
+          durationSeconds: input.durationSeconds ?? null,
+          id: `local-recording-${Date.now().toString(36)}`,
+          startedAt: input.status === "recording" ? now : null,
+          status: input.status,
+          stoppedAt: input.status === "available" ? now : null,
+          storageBucket: null,
+          storagePath: null,
+        },
+        ...meeting.recordings,
+      ],
+      timeline: [
+        ...meeting.timeline,
+        {
+          eventAt: now,
+          eventType:
+            input.status === "recording"
+              ? "recording_started"
+              : "recording_stopped",
+          id: `event-${Date.now().toString(36)}-recording`,
+          title:
+            input.status === "recording"
+              ? "Gravacao iniciada pela sala externa"
+              : "Gravacao encerrada pela sala externa",
+        },
+      ],
+      updatedAt: now,
+    } satisfies ChronosMeeting;
+  });
+
+  if (!foundMeeting) {
+    throw new Error("Reuniao Chronos nao encontrada para esta sala.");
+  }
+
+  await writeLocalChronosStore({
+    meetings,
+    profiles: snapshot.profiles,
+    rooms: snapshot.rooms,
+  });
+
+  return { ok: true, status: input.status };
+}
+
+async function addLocalChronosPublicChatMessage({
+  input,
+  roomSlug,
+}: {
+  input: NormalizedChronosPublicChatInput;
+  roomSlug: string;
+}) {
+  const snapshot = await readLocalChronosSnapshot();
+  const room = snapshot.rooms.find((currentRoom) => currentRoom.slug === roomSlug);
+  const now = new Date().toISOString();
+  let savedMessage: ChronosChatMessage | null = null;
+  let foundMeeting = false;
+  const meetings = snapshot.meetings.map((meeting) => {
+    if (meeting.id !== input.meetingId || meeting.roomId !== room?.id) {
+      return meeting;
+    }
+
+    foundMeeting = true;
+    savedMessage = {
+      content: input.content,
+      createdAt: now,
+      id: input.clientMessageId ?? `chat-${Date.now().toString(36)}`,
+      participantId: input.participantId,
+      senderName: input.senderName,
+    };
+
+    return {
+      ...meeting,
+      chatMessages: [...(meeting.chatMessages ?? []), savedMessage],
+      updatedAt: now,
+    } satisfies ChronosMeeting;
+  });
+
+  if (!foundMeeting || !savedMessage) {
+    throw new Error("Reuniao Chronos nao encontrada para esta sala.");
+  }
+
+  await writeLocalChronosStore({
+    meetings,
+    profiles: snapshot.profiles,
+    rooms: snapshot.rooms,
+  });
+
+  return { message: savedMessage, ok: true };
+}
+
+async function addLocalChronosPublicTranscript({
+  input,
+  roomSlug,
+}: {
+  input: NormalizedChronosPublicTranscriptInput;
+  roomSlug: string;
+}) {
+  const snapshot = await readLocalChronosSnapshot();
+  const room = snapshot.rooms.find((currentRoom) => currentRoom.slug === roomSlug);
+  const now = new Date().toISOString();
+  let foundMeeting = false;
+  const meetings = snapshot.meetings.map((meeting) => {
+    if (meeting.id !== input.meetingId || meeting.roomId !== room?.id) {
+      return meeting;
+    }
+
+    foundMeeting = true;
+
+    return {
+      ...meeting,
+      timeline: [
+        ...meeting.timeline,
+        {
+          eventAt: now,
+          eventType: "transcript_added",
+          id: `event-${Date.now().toString(36)}-transcript`,
+          title: `Athena registrou fala de ${input.speakerLabel}`,
+        },
+      ],
+      transcriptionStatus: "available",
+      transcript: [
+        ...meeting.transcript,
+        {
+          content: input.content,
+          createdAt: now,
+          endedAt: input.endedAt ?? null,
+          id: `transcript-${Date.now().toString(36)}`,
+          source: "athena-browser",
+          speakerLabel: input.speakerLabel,
+          startedAt: input.startedAt ?? null,
+        },
+      ],
+      updatedAt: now,
+    } satisfies ChronosMeeting;
+  });
+
+  if (!foundMeeting) {
+    throw new Error("Reuniao Chronos nao encontrada para esta sala.");
+  }
+
+  await writeLocalChronosStore({
+    meetings,
+    profiles: snapshot.profiles,
+    rooms: snapshot.rooms,
+  });
+
+  return { ok: true };
 }
 
 async function updateLocalChronosMeeting({
@@ -1425,12 +3482,17 @@ async function updateLocalChronosMeeting({
           content: input.content,
           createdAt: now,
           id: `transcript-${Date.now().toString(36)}`,
-          source: "manual",
+          source: input.source ?? "manual",
           speakerLabel: input.speakerLabel ?? user.name,
         },
       ];
       nextMeeting.timeline = [
-        event("Trecho de transcricao registrado", "transcript_added"),
+        event(
+          input.source === "openai" || input.source === "athena"
+            ? "Transcricao Athena registrada"
+            : "Trecho de transcricao registrado",
+          "transcript_added",
+        ),
         ...meeting.timeline,
       ];
     } else if (input.action === "save_summary") {
@@ -1505,6 +3567,7 @@ async function updateLocalChronosMeeting({
 
   await writeLocalChronosStore({
     meetings,
+    profiles: snapshot.profiles,
     rooms: snapshot.rooms,
   });
 
@@ -1515,17 +3578,47 @@ function mapRoomRow(row: ChronosRoomRow): ChronosRoom {
   return {
     capacity: row.capacity,
     id: row.id,
+    metadata: buildRoomMetadata(
+      {
+        slug: row.slug,
+      },
+      row.metadata ?? {},
+    ),
     minutesRequired: row.minutes_required,
     name: row.name,
     recordingRequired: row.recording_required,
-    roomType: row.room_type,
+    roomType: normalizeChronosOfficialProfileId(row.room_type),
     slug: row.slug,
     status: row.status,
     transcriptionRequired: row.transcription_required,
   };
 }
 
+function mapPublicRoom(room: ChronosRoom): ChronosPublicRoom {
+  const background =
+    room.metadata && typeof room.metadata.background === "object"
+      ? (room.metadata.background as Record<string, unknown>)
+      : null;
+
+  return {
+    backgroundDataUrl:
+      typeof background?.dataUrl === "string" ? background.dataUrl : undefined,
+    backgroundName:
+      typeof background?.name === "string" ? background.name : undefined,
+    capacity: room.capacity,
+    externalPath: `/chronos/${room.slug}`,
+    id: room.id,
+    minutesRequired: room.minutesRequired,
+    name: room.name,
+    recordingRequired: room.recordingRequired,
+    roomType: room.roomType,
+    slug: room.slug,
+    transcriptionRequired: room.transcriptionRequired,
+  };
+}
+
 function mapMeetingRow(input: {
+  chatMessages?: ChronosChatMessage[];
   followUps: ChronosFollowUp[];
   meeting: ChronosMeetingRow;
   minutes: ChronosMinutes[];
@@ -1536,6 +3629,7 @@ function mapMeetingRow(input: {
   transcript: ChronosTranscriptSegment[];
 }): ChronosMeeting {
   return {
+    chatMessages: input.chatMessages ?? [],
     createdAt: input.meeting.created_at,
     endsAt: input.meeting.ends_at,
     executiveSummary: input.meeting.executive_summary,
@@ -1593,9 +3687,21 @@ function mapTranscriptRow(
   return {
     content: row.content,
     createdAt: row.created_at,
+    endedAt: row.ended_at,
     id: row.id,
     source: row.source,
     speakerLabel: row.speaker_label,
+    startedAt: row.started_at,
+  };
+}
+
+function mapChatMessageRow(row: ChronosChatMessageRow): ChronosChatMessage {
+  return {
+    content: row.content,
+    createdAt: row.created_at,
+    id: row.id,
+    participantId: row.participant_id,
+    senderName: row.sender_name,
   };
 }
 
@@ -1624,15 +3730,62 @@ function mapFollowUpRow(row: ChronosFollowUpRow): ChronosFollowUp {
 }
 
 function mapRecordingRow(row: ChronosRecordingRow): ChronosRecording {
+  const metadata = row.metadata ?? {};
+  const fileName =
+    row.file_name ??
+    (typeof metadata.fileName === "string" ? metadata.fileName : null);
+  const mimeType =
+    row.mime_type ??
+    (typeof metadata.mimeType === "string" ? metadata.mimeType : null);
+  const sizeBytes =
+    row.size_bytes ??
+    (typeof metadata.sizeBytes === "number" ? metadata.sizeBytes : null);
+
   return {
+    downloadUrl: null,
     durationSeconds: row.duration_seconds,
+    fileName,
     id: row.id,
+    mimeType,
+    playbackUrl: null,
+    sizeBytes,
     startedAt: row.started_at,
     status: row.status,
     stoppedAt: row.stopped_at,
     storageBucket: row.storage_bucket,
     storagePath: row.storage_path,
   };
+}
+
+async function hydrateChronosRecordingUrls(
+  client: ChronosClient,
+  recordings: ChronosRecording[],
+) {
+  return Promise.all(
+    recordings.map(async (recording) => {
+      if (
+        recording.status !== "available" ||
+        !recording.storageBucket ||
+        !recording.storagePath
+      ) {
+        return recording;
+      }
+
+      const { data, error } = await client.storage
+        .from(recording.storageBucket)
+        .createSignedUrl(recording.storagePath, 60 * 60);
+
+      if (error || !data?.signedUrl) {
+        return recording;
+      }
+
+      return {
+        ...recording,
+        downloadUrl: data.signedUrl,
+        playbackUrl: data.signedUrl,
+      } satisfies ChronosRecording;
+    }),
+  );
 }
 
 function groupRows<Row extends { meeting_id: string }>(
@@ -1667,6 +3820,135 @@ function normalizeStringList(input: unknown) {
   return input
     .map((item) => sanitizeText(item, 240))
     .filter(Boolean);
+}
+
+function normalizeRoomSlug(input: unknown, fallbackName: string) {
+  const raw = sanitizeOptionalText(input, 120) ?? fallbackName;
+  const slug = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+  return slug || "sala-chronos";
+}
+
+function sanitizeChronosFileName(input: unknown) {
+  const raw = sanitizeOptionalText(input, 180) ?? "gravacao-chronos.webm";
+  const sanitized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 180);
+
+  return sanitized || "gravacao-chronos.webm";
+}
+
+function buildChronosRecordingStoragePath({
+  fileName,
+  meetingId,
+  participantId,
+  roomSlug,
+}: {
+  fileName: string;
+  meetingId: string;
+  participantId: string;
+  roomSlug: string;
+}) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+  return [
+    "recordings",
+    normalizeRoomSlug(roomSlug, "sala-chronos"),
+    sanitizeChronosFileName(meetingId),
+    `${timestamp}-${sanitizeChronosFileName(participantId)}-${fileName}`,
+  ].join("/");
+}
+
+function isChronosUploadFile(input: unknown): input is File {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    "arrayBuffer" in input &&
+    "name" in input &&
+    "size" in input &&
+    "type" in input &&
+    typeof (input as { arrayBuffer?: unknown }).arrayBuffer === "function" &&
+    typeof (input as { name?: unknown }).name === "string" &&
+    typeof (input as { size?: unknown }).size === "number" &&
+    typeof (input as { type?: unknown }).type === "string"
+  );
+}
+
+function normalizeRoomCapacity(input: unknown) {
+  const parsed = Number(input ?? 12);
+
+  if (!Number.isFinite(parsed)) {
+    return 12;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+}
+
+function normalizeOptionalDurationSeconds(input: unknown) {
+  if (input === undefined || input === null || input === "") {
+    return undefined;
+  }
+
+  const parsed = Number(input);
+
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), 0), 60 * 60 * 12);
+}
+
+function sanitizeRoomBackgroundDataUrl(input: unknown) {
+  if (typeof input !== "string" || !input.trim()) {
+    return "";
+  }
+
+  const value = input.trim();
+
+  if (
+    !/^data:image\/(png|jpeg|jpg|webp);base64,[a-z0-9+/=]+$/i.test(value) ||
+    value.length > maxRoomBackgroundDataUrlLength
+  ) {
+    throw new Error("Fundo da sala invalido ou acima do limite permitido.");
+  }
+
+  return value;
+}
+
+function buildRoomMetadata(
+  input: {
+    backgroundDataUrl?: string;
+    backgroundName?: string;
+    slug: string;
+  },
+  currentMetadata: Record<string, unknown> = {},
+) {
+  const nextMetadata: Record<string, unknown> = {
+    ...currentMetadata,
+    externalAccess: {
+      mode: "request_entry",
+      path: `/chronos/${input.slug}`,
+    },
+    source: "chronos-room-config",
+  };
+
+  if (input.backgroundDataUrl) {
+    nextMetadata.background = {
+      dataUrl: input.backgroundDataUrl,
+      name: input.backgroundName || "fundo-chronos",
+    };
+  }
+
+  return nextMetadata;
 }
 
 function normalizeOptionalDate(input: unknown) {
@@ -1706,8 +3988,10 @@ function isChronosEventType(value: unknown): value is ChronosEventType {
 }
 
 function getBearerToken(request: NextRequest) {
-  const authorization = request.headers.get("authorization");
+  return getBearerTokenFromValue(request.headers.get("authorization"));
+}
 
+function getBearerTokenFromValue(authorization?: string | null) {
   if (!authorization?.startsWith("Bearer ")) {
     return null;
   }
