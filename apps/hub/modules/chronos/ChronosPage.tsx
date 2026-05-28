@@ -631,7 +631,7 @@ export function ChronosPage() {
             meetings={snapshot.meetings}
             onCreate={handleCreateMeeting}
             onDeleteMeeting={handleDeleteMeeting}
-            onReload={reloadChronos}
+            onRefresh={reloadChronos}
             onSelectMeeting={setSelectedMeetingId}
             profiles={snapshot.profiles}
             rooms={snapshot.rooms}
@@ -1434,7 +1434,7 @@ export function ChronosPrimaryPanel({
         meetings={meetings}
         onCreate={async () => undefined}
         onDeleteMeeting={async () => undefined}
-        onReload={async () => undefined}
+        onRefresh={async () => undefined}
         onSelectMeeting={onSelectMeeting}
         profiles={[...defaultChronosMeetingProfiles]}
         rooms={[]}
@@ -1558,7 +1558,7 @@ function ChronosAgendaScreen({
   meetings,
   onCreate,
   onDeleteMeeting,
-  onReload,
+  onRefresh,
   onSelectMeeting,
   profiles,
   rooms,
@@ -1569,7 +1569,7 @@ function ChronosAgendaScreen({
   meetings: ChronosMeeting[];
   onCreate: (input: ChronosCreateMeetingInput) => Promise<void>;
   onDeleteMeeting: (meetingId: string) => Promise<void>;
-  onReload: () => Promise<void>;
+  onRefresh: () => Promise<void>;
   onSelectMeeting: (meetingId: string) => void;
   profiles: ChronosMeetingProfile[];
   rooms: ChronosRoom[];
@@ -1654,20 +1654,15 @@ function ChronosAgendaScreen({
     setDetailMeetingId(meetingId);
   }
 
-  async function handleGoogleCalendarSync() {
-    if (googleCalendarSyncing) {
-      return;
-    }
-
+  const handleGoogleCalendarSync = useCallback(async () => {
     setGoogleCalendarSyncing(true);
-    setGoogleCalendarSyncError(null);
+    setGoogleCalendarError(null);
 
     try {
-      await syncChronosGoogleCalendar("both");
-      await refreshGoogleCalendarStatus();
-      await onReload();
+      await syncChronosGoogleCalendar("both", { full: true });
+      await Promise.all([refreshGoogleCalendarStatus(), onRefresh()]);
     } catch (error) {
-      setGoogleCalendarSyncError(
+      setGoogleCalendarError(
         error instanceof Error
           ? error.message
           : "Nao foi possivel sincronizar Google Agenda.",
@@ -1675,7 +1670,56 @@ function ChronosAgendaScreen({
     } finally {
       setGoogleCalendarSyncing(false);
     }
-  }
+  }, [onRefresh, refreshGoogleCalendarStatus]);
+
+  const handleGoogleCalendarConnect = useCallback(async () => {
+    setGoogleCalendarConnecting(true);
+    setGoogleCalendarError(null);
+
+    try {
+      const authorizationUrl =
+        await startChronosGoogleCalendarConnection("/chronos");
+
+      window.location.assign(authorizationUrl);
+    } catch (error) {
+      setGoogleCalendarError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel conectar o Google.",
+      );
+      setGoogleCalendarConnecting(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadGoogleCalendarStatus() {
+      try {
+        const status = await loadChronosGoogleCalendarStatus();
+
+        if (active) {
+          setGoogleCalendarStatus(status);
+          setGoogleCalendarError(null);
+        }
+      } catch (error) {
+        if (active) {
+          setGoogleCalendarStatus(null);
+          setGoogleCalendarError(
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel verificar o Google Agenda.",
+          );
+        }
+      }
+    }
+
+    void loadGoogleCalendarStatus();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <Surface bordered className="relative grid min-h-[38rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-[#d9e0e7] bg-white">

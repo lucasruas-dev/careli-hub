@@ -114,10 +114,11 @@ export async function loadChronosGoogleCalendarStatus(
 
 export async function syncChronosGoogleCalendar(
   direction: ChronosGoogleCalendarSyncDirection = "both",
+  options: { full?: boolean } = {},
 ) {
   const token = await getChronosAccessToken();
   const response = await fetch("/api/chronos/google-calendar/sync", {
-    body: JSON.stringify({ direction }),
+    body: JSON.stringify({ direction, full: options.full === true }),
     cache: "no-store",
     headers: {
       Authorization: `Bearer ${token}`,

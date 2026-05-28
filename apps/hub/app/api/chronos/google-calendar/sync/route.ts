@@ -20,10 +20,12 @@ export async function POST(request: NextRequest) {
   try {
     const input = (await request.json().catch(() => null)) as {
       direction?: unknown;
+      full?: unknown;
     } | null;
     const direction = normalizeSyncDirection(input?.direction);
     const result = await syncChronosGoogleCalendar({
       direction,
+      forceFull: input?.full === true,
       userId: authorization.user.id,
     });
 
