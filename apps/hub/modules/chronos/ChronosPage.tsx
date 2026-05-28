@@ -514,6 +514,7 @@ export function ChronosPage() {
             canManage={canManageChronos}
             meetings={snapshot.meetings}
             onCreate={handleCreateMeeting}
+            onRefresh={reloadChronos}
             onSelectMeeting={setSelectedMeetingId}
             profiles={snapshot.profiles}
             rooms={snapshot.rooms}
@@ -1340,6 +1341,7 @@ export function ChronosPrimaryPanel({
         canManage={false}
         meetings={meetings}
         onCreate={async () => undefined}
+        onRefresh={async () => undefined}
         onSelectMeeting={onSelectMeeting}
         profiles={[...defaultChronosMeetingProfiles]}
         rooms={[]}
@@ -1462,6 +1464,7 @@ function ChronosAgendaScreen({
   canManage,
   meetings,
   onCreate,
+  onRefresh,
   onSelectMeeting,
   profiles,
   rooms,
@@ -1471,6 +1474,7 @@ function ChronosAgendaScreen({
   canManage: boolean;
   meetings: ChronosMeeting[];
   onCreate: (input: ChronosCreateMeetingInput) => Promise<void>;
+  onRefresh: () => Promise<void>;
   onSelectMeeting: (meetingId: string) => void;
   profiles: ChronosMeetingProfile[];
   rooms: ChronosRoom[];
@@ -1546,8 +1550,8 @@ function ChronosAgendaScreen({
     setGoogleCalendarError(null);
 
     try {
-      await syncChronosGoogleCalendar("both");
-      await refreshGoogleCalendarStatus();
+      await syncChronosGoogleCalendar("both", { full: true });
+      await Promise.all([refreshGoogleCalendarStatus(), onRefresh()]);
     } catch (error) {
       setGoogleCalendarError(
         error instanceof Error
@@ -1557,7 +1561,7 @@ function ChronosAgendaScreen({
     } finally {
       setGoogleCalendarSyncing(false);
     }
-  }, [refreshGoogleCalendarStatus]);
+  }, [onRefresh, refreshGoogleCalendarStatus]);
 
   const handleGoogleCalendarConnect = useCallback(async () => {
     setGoogleCalendarConnecting(true);

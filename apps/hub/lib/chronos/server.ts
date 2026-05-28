@@ -42,6 +42,7 @@ import {
   type ChronosTranscriptSegment,
   type ChronosUpdateInput,
 } from "./types";
+import { normalizeChronosDateTime } from "./datetime";
 import { syncChronosMeetingToGoogleCalendar } from "./google-calendar";
 
 type ChronosUserRow = {
@@ -3967,9 +3968,9 @@ function normalizeOptionalDate(input: unknown) {
     return undefined;
   }
 
-  const timestamp = Date.parse(input);
+  const normalizedDate = normalizeChronosDateTime(input);
 
-  return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
+  return normalizedDate ?? undefined;
 }
 
 function isChronosMeetingType(value: unknown): value is ChronosMeetingType {
