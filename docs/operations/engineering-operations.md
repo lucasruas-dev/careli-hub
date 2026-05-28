@@ -21143,3 +21143,45 @@ Assunto: [Zeus] Hook local Panteon ausente em worktree Chronos
 
 Conclusao:
 - O recorte Chronos nao foi bloqueado por um hook quebrado, mas a falha de governanca ficou registrada para correcao propria.
+
+
+## 2026-05-28 - Zeus/Chronos - Google Agenda em homologacao
+
+Assunto: [Chronos] Google Agenda espelho publicado em homo
+
+- Protocolo: CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR.
+- Ambiente: https://homo.c2x.app.br.
+- Deployment publicado: dpl_9p1exUTK9MfXpctCjJdUqX74fCXM.
+- Preview tecnico: https://careli-hub-hub-i2bs-4jxsyzgvz-lucasruas-devs-projects.vercel.app.
+- Rollback imediato: dpl_ELMAc8aDDJNFdy61BankVDZSujD2.
+- Env/secret:
+  - Lucas criou OAuth Client Google e autorizou cadastro das envs Google;
+  - Vercel Preview confirmou GOOGLE_CALENDAR_CLIENT_ID, GOOGLE_CALENDAR_CLIENT_SECRET, GOOGLE_CALENDAR_REDIRECT_URI, GOOGLE_CALENDAR_SCOPES e GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID como Encrypted;
+  - nenhum valor sensivel foi registrado no chat, docs ou commits.
+- Banco/migration:
+  - migration 0035_chronos_google_calendar_mirror.sql ja aplicada em homologacao antes do deploy, sem expor HOMOLOG_POSTGRES_URL;
+  - tabelas chronos_google_calendar_* verificadas em homologacao.
+- Publicacao:
+  - pacote limpo: .codex-deploy/chronos-google-homo-20260528-0816-package;
+  - Safety Gate pre-deploy: PASS contra dpl_ELMAc8aDDJNFdy61BankVDZSujD2;
+  - Vercel Preview: READY em dpl_9p1exUTK9MfXpctCjJdUqX74fCXM;
+  - observacao operacional: a Vercel autoassociou o alias homo.c2x.app.br ao novo Preview durante o deploy, antes de alias set manual; nenhum alias set manual foi executado;
+  - Safety Gate pos-alias: PASS contra dpl_9p1exUTK9MfXpctCjJdUqX74fCXM.
+- Validacoes executadas:
+  - git diff --check: OK;
+  - npm.cmd run check-types:hub: OK;
+  - npm.cmd run lint:hub: OK, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON;
+  - npm.cmd run build --workspace @repo/hub: OK, com warnings conhecidos Turbopack/SquadOps;
+  - Vercel build: OK, com warning conhecido de NFT/SquadOps e aviso de envs HOMOLOG_* fora do turbo.json;
+  - healthchecks: /, /login e /chronos retornaram 200;
+  - rotas /api/chronos/google-calendar/status, /authorize e /sync sem sessao retornaram 401 esperado;
+  - logs de erro Vercel ultimos 10 minutos: sem logs encontrados.
+- Riscos conhecidos:
+  - teste funcional OAuth exige sessao autenticada do Lucas em homo;
+  - GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID esta como primary, entao o primeiro teste usa a agenda principal da conta conectada;
+  - webhook/push notification Google ainda nao faz parte deste recorte; sync Google -> Hub e manual pela rota de sincronizacao.
+
+Conclusao:
+- O Chronos Google Agenda esta em homologacao com OAuth e envs configuradas.
+- O impacto pratico e permitir ao Lucas conectar a conta Google e testar espelhamento Hub <-> Google em homo.
+- Proximo passo: Lucas acessar Chronos em homo, clicar em conectar/sincronizar Google Agenda e validar criacao/alteracao de evento.

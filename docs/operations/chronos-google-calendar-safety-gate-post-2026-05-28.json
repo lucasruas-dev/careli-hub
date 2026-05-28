@@ -1,0 +1,49 @@
+{
+  "module": "chronos",
+  "alias": "https://homo.c2x.app.br",
+  "expectedDeploymentId": "dpl_9p1exUTK9MfXpctCjJdUqX74fCXM",
+  "packagePath": "C:/Users/lucas/Documents/Careli_C2x/Sistemas/careli-hub/.codex-deploy/chronos-google-homo-20260528-0816-package",
+  "includedFiles": [
+    "apps/hub/lib/chronos/google-calendar.ts",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/lib/chronos/client.ts",
+    "apps/hub/lib/chronos/types.ts",
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "apps/hub/app/api/chronos/google-calendar/authorize/route.ts",
+    "apps/hub/app/api/chronos/google-calendar/callback/route.ts",
+    "apps/hub/app/api/chronos/google-calendar/status/route.ts",
+    "apps/hub/app/api/chronos/google-calendar/sync/route.ts",
+    "turbo.json",
+    "docs/architecture/api-connection-governance.md",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-protocols.md",
+    "docs/operations/releases-homologation.md"
+  ],
+  "excludedPaths": [
+    ".git",
+    ".vercel",
+    ".env.local",
+    ".env.production.local",
+    ".env.development.local",
+    "node_modules",
+    ".next",
+    ".turbo"
+  ],
+  "validations": [
+    "git diff --check",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "npx.cmd vercel env ls preview confirmou GOOGLE_CALENDAR_* sem valores"
+  ],
+  "authorizedSensitiveChanges": [
+    "Lucas autorizou env Google e migrations neste recorte",
+    "Migration 0035_chronos_google_calendar_mirror.sql aplicada em homologacao sem expor HOMOLOG_POSTGRES_URL",
+    "Env vars GOOGLE_CALENDAR_* cadastradas no Vercel Preview sem valores no chat"
+  ],
+  "rollbackDeploymentId": "dpl_ELMAc8aDDJNFdy61BankVDZSujD2",
+  "approvedBy": "Lucas",
+  "deploymentId": "dpl_9p1exUTK9MfXpctCjJdUqX74fCXM",
+  "previewUrl": "https://careli-hub-hub-i2bs-4jxsyzgvz-lucasruas-devs-projects.vercel.app",
+  "aliasMode": "Vercel auto-associated homo during preview deploy; manual alias set not executed."
+}

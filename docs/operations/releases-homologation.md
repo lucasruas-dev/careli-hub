@@ -5081,3 +5081,15 @@ Conclusao:
 - Exclui: producao, webhook Google push notification, valores de env, segredo OAuth, calendario real sem autorizacao.
 - Validacoes: check-types, lint, build, diff-check e smoke local protegendo rotas sem sessao.
 - Proximo passo: cadastrar GOOGLE_CALENDAR_* no Preview/homolog e gerar Preview/Homo para teste funcional real.
+
+
+## CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR - EM_HOMOLOGACAO
+
+- Ambiente: https://homo.c2x.app.br.
+- Deployment: dpl_9p1exUTK9MfXpctCjJdUqX74fCXM.
+- Preview tecnico: https://careli-hub-hub-i2bs-4jxsyzgvz-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_ELMAc8aDDJNFdy61BankVDZSujD2.
+- Inclui: OAuth Google Agenda, callback, sync push/pull/both, UI de status/sync, envs Google Preview e migration 0035 aplicada em homologacao.
+- Exclui: producao, webhook Google push notification e exposicao de valores sensiveis.
+- Validacoes: diff-check, check-types, lint, build, Safety Gate pre/post, healthchecks e logs de erro.
+- Pendencia: validacao autenticada do Lucas conectando Google e testando espelho Hub <-> Google.

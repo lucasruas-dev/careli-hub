@@ -779,3 +779,15 @@ O manifesto de homologacao deve incluir:
 - Rollback:
   - codigo: reverter commit do recorte;
   - banco: preservar tabelas sem uso ou dropar apenas chronos_google_calendar_* com aprovacao DataOps/Zeus se necessario.
+
+
+### Atualizacao 2026-05-28 - CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR
+
+- Status: EM_HOMOLOGACAO.
+- Deployment: dpl_9p1exUTK9MfXpctCjJdUqX74fCXM.
+- Preview tecnico: https://careli-hub-hub-i2bs-4jxsyzgvz-lucasruas-devs-projects.vercel.app.
+- Alias: https://homo.c2x.app.br.
+- Rollback: dpl_ELMAc8aDDJNFdy61BankVDZSujD2.
+- Safety Gate: pre-deploy PASS e pos-alias PASS.
+- Observacao: Vercel autoassociou o alias homo durante o deploy Preview; alias set manual nao foi executado.
+- Validacao: check-types, lint, build, healthchecks 200 e rotas Google protegidas 401 sem sessao.
