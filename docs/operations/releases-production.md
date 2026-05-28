@@ -1654,3 +1654,62 @@ Atualizacao pos-deploy:
   - validacao funcional final depende de sessao real no Hermes/PulseX com mensagens em thread;
   - estado de leitura usa `localStorage` por usuario/navegador/dispositivo;
   - nao houve alteracao de env, secret, migration, banco, Supabase mutavel ou integracao externa.
+
+## 2026-05-28 - HERMES-20260528-001-REALTIME-MESSAGE-STABILITY
+
+Status: EM PRODUCAO.
+
+Escopo publicado:
+- Hotfix Hermes/PulseX para estabilidade de mensagens em producao.
+- `pulsex_messages` publicada no `supabase_realtime` para `postgres_changes`.
+- Indices criados para mensagens por canal, respostas de thread por metadata e `clientMessageId`.
+- Carga inicial do Hermes consolidada e limitada para reduzir N chamadas por canal.
+- API de mensagens limitada e com filtro de replies no banco.
+- Fallback de polling mantido, mas reduzido para 15s.
+- Mensagem otimista com falha passa a ficar marcada como erro em vez de sumir.
+- Complemento de login: timeout de Supabase no navegador passa a acionar fallback server-side antes de falhar.
+
+Arquivos principais:
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`
+- `apps/hub/lib/pulsex/supabase-data.ts`
+- `apps/hub/app/api/pulsex/messages/route.ts`
+- `apps/hub/providers/auth-provider.tsx`
+- `packages/database/migrations/0037_hermes_realtime_hotfix.sql`
+- `scripts/hermes-apply-realtime-hotfix-schema.mjs`
+
+Banco/Supabase:
+- Migration aplicada em producao com verificacao SQL.
+- Verificado: indices presentes, `pulsex_messages` na publication `supabase_realtime`, `replicaIdentity=full`.
+- Nenhum valor de env/secret foi registrado.
+
+Commits:
+- `ffcdcc8 fix(hermes): stabilize realtime message delivery`
+- `a1b99fc fix(auth): fallback on supabase login timeout`
+
+Deployments:
+- Deployment anterior/rollback completo: `dpl_7YD9jcHxfRy5j4k8ksQxnSX8aeLC`.
+- Deployment intermediario Hermes: `dpl_5Hq71WtoEtwpkegL4dPXQY8NzWKv`.
+- Deployment final: `dpl_5DdmmMKvdW7H8vdcTW4Gm5YZ3bvH`.
+- URL tecnica final: https://careli-hub-hub-i2bs-8jw8ixaj8-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+
+Validacoes:
+- `node scripts/hermes-apply-realtime-hotfix-schema.mjs --env-file=.env.production.local --confirm-production`: OK.
+- `.env.production.local` temporario removido antes do deploy.
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK.
+- `npm.cmd run build --workspace @repo/hub`: OK.
+- `npx.cmd vercel deploy --prod --yes --archive=tgz`: READY.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment final.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment final.
+- `POST /api/auth/session` com token falso: 403 esperado, sem 503.
+- `POST /api/auth/password` com credenciais falsas: 401 esperado, sem 503.
+- `/`, `/login`, `/hermes`, `ops /zeus`, Guardian DB health e Hades DB health: 200.
+- `/api/hermes/messages` sem sessao: 401 esperado.
+- Logs de erro Vercel recentes: sem ocorrencias.
+
+Riscos:
+- Validacao funcional plena depende de teste real com operadores no Hermes.
+- Se o PWA/app instalado estiver com bundle antigo, fechar e abrir o app pode ser necessario para carregar o deployment final.
+- Fallback de polling segue como protecao caso WebSocket/Reatime oscile.

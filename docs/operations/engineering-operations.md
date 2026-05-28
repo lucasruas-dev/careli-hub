@@ -20127,3 +20127,38 @@ Conclusao:
 - O Hermes em producao foi corrigido para usar Realtime duravel da Supabase em `pulsex_messages`, com indices e carga inicial mais leve.
 - O impacto pratico esperado e reduzir drasticamente o delay ao abrir o modulo e ao enviar/receber mensagens, mantendo fallback seguro.
 - Lucas deve validar em producao com dois usuarios: abrir Hermes, trocar mensagens no mesmo canal e confirmar que a mensagem aparece sem aguardar o polling antigo.
+
+Atualizacao pos-incidente de login:
+
+- Horario: 2026-05-28 15:45:00 -03:00.
+- Motivo: apos o primeiro deploy do hotfix, Lucas reportou erro visual no login: "Nao foi possivel conectar ao Supabase agora".
+- Diagnostico:
+  - `/api/auth/session` retornou 503 em sessoes reais logo apos o deploy;
+  - teste controlado com token falso em `/api/auth/session` retornou 403 esperado, provando que envs server-side estavam presentes;
+  - teste controlado com credenciais falsas em `/api/auth/password` retornou 401 esperado, provando que o servidor alcancava o Supabase Auth;
+  - causa provavel no cliente: timeout do Supabase no navegador nao era classificado como erro recuperavel para acionar o fallback server-side.
+- Complemento aplicado:
+  - `apps/hub/providers/auth-provider.tsx` passou a tratar timeout contendo `Supabase` como erro de rede recuperavel;
+  - login agora tenta fallback server-side antes de exibir falha quando a chamada direta do navegador ao Supabase oscilar.
+- Commit complementar: `a1b99fc fix(auth): fallback on supabase login timeout`.
+- Deployment intermediario substituido: `dpl_5Hq71WtoEtwpkegL4dPXQY8NzWKv`.
+- Deployment final em producao: `dpl_5DdmmMKvdW7H8vdcTW4Gm5YZ3bvH`.
+- URL tecnica final: https://careli-hub-hub-i2bs-8jw8ixaj8-lucasruas-devs-projects.vercel.app.
+- Rollback imediato final: `dpl_5Hq71WtoEtwpkegL4dPXQY8NzWKv` para voltar ao Hermes realtime sem complemento de auth, ou `dpl_7YD9jcHxfRy5j4k8ksQxnSX8aeLC` para voltar ao estado anterior completo.
+- Validacoes adicionais:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `npx.cmd vercel deploy --prod --yes --archive=tgz`: READY no deployment final;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment final;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment final;
+  - `POST https://c2x.app.br/api/auth/session` com token falso: 403 esperado, sem 503;
+  - `POST https://c2x.app.br/api/auth/password` com credenciais falsas: 401 esperado, sem 503;
+  - `/`, `/login`, `/hermes`, `ops /zeus`, Guardian DB health e Hades DB health: 200;
+  - `/api/hermes/messages` sem sessao: 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 5m --level error`: sem logs encontrados.
+
+Conclusao:
+- O deployment final manteve o hotfix Hermes e adicionou tolerancia no login para timeout de Supabase no navegador.
+- O impacto pratico e reduzir a chance de o usuario ficar preso na tela de login quando a chamada client-side oscilar, usando o servidor como fallback.
+- Lucas deve tentar entrar novamente; se estiver no PWA/app instalado, fechar e abrir o app ajuda a trocar o bundle antigo pelo deployment final.
