@@ -1713,3 +1713,43 @@ Riscos:
 - Validacao funcional plena depende de teste real com operadores no Hermes.
 - Se o PWA/app instalado estiver com bundle antigo, fechar e abrir o app pode ser necessario para carregar o deployment final.
 - Fallback de polling segue como protecao caso WebSocket/Reatime oscile.
+
+## 2026-05-28 - HERMES-20260528-002-MESSAGE-ROUTE-LATENCY-HOTFIX
+
+Status: EM PRODUCAO.
+
+Resumo:
+- Hotfix de producao para instabilidade de login/mensagens Hermes reportada pelo Lucas.
+- Causa tecnica principal: timeouts/500 em `/api/hermes/messages`, com fallback client-side que podia limpar conversa direta quando a API falhava.
+- Correcao: timeout controlado na rota, fallback server-side sem join pesado, reducao de limites de mensagens e protecao visual contra refresh/fallback transitorio.
+
+Arquivos publicados:
+- `apps/hub/app/api/pulsex/messages/route.ts`
+- `apps/hub/lib/pulsex/supabase-data.ts`
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`
+
+Deployments:
+- Rollback inicial/restaurado: `dpl_5DdmmMKvdW7H8vdcTW4Gm5YZ3bvH`.
+- Deployment misto descartado: `dpl_6g6TcVoKMMtq5eKLPeTj5ek89foU`.
+- Deployment final correto: `dpl_ApFfnT641VgsNJtGy2LQwHVxdQmt`.
+- URL tecnica final: https://careli-hub-hub-i2bs-i4fbj7mb3-lucasruas-devs-projects.vercel.app.
+- Aliases: https://c2x.app.br e https://ops.c2x.app.br.
+
+Validacoes:
+- `git diff --check`: OK.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK.
+- `npm.cmd run build --workspace @repo/hub`: OK.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment final.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment final.
+- `/`, `/login`, `/hermes`, `ops /zeus`, Guardian DB health e Hades DB health: 200.
+- `/api/hermes/messages` e `/api/auth/profile` sem sessao: 401 esperado.
+- Auth server-side com entradas falsas: 403/401 esperado, sem 503.
+- Logs de erro Vercel recentes: sem ocorrencias.
+
+Rollback:
+- Reapontar `c2x.app.br` e `ops.c2x.app.br` para `dpl_5DdmmMKvdW7H8vdcTW4Gm5YZ3bvH`.
+
+Observacao de processo:
+- Proibido publicar Vercel de worktree aninhado dentro do repo root quando o root possui `.vercel` e esta misto.
+- Proximos deploys Zeus/Hefesto devem usar worktree externo a `careli-hub` ou pacote limpo com `.vercel/project.json` local explicito.

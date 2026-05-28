@@ -20162,3 +20162,69 @@ Conclusao:
 - O deployment final manteve o hotfix Hermes e adicionou tolerancia no login para timeout de Supabase no navegador.
 - O impacto pratico e reduzir a chance de o usuario ficar preso na tela de login quando a chamada client-side oscilar, usando o servidor como fallback.
 - Lucas deve tentar entrar novamente; se estiver no PWA/app instalado, fechar e abrir o app ajuda a trocar o bundle antigo pelo deployment final.
+
+## 2026-05-28 - HERMES-20260528-002-MESSAGE-ROUTE-LATENCY-HOTFIX
+
+Status: EM PRODUCAO.
+
+Contexto do incidente:
+- Lucas reportou em producao erro recorrente de login e mensagens Hermes/PulseX ausentes/lentas.
+- Inspecao Vercel indicou `dpl_5DdmmMKvdW7H8vdcTW4Gm5YZ3bvH` como deployment ativo inicial em `c2x.app.br` e `ops.c2x.app.br`.
+- Logs Vercel mostraram timeouts 504 em `GET /api/hermes/messages` e falhas 500 intermitentes na mesma rota.
+- Verificacao direta de Supabase Auth e consultas read-only no banco responderam rapido, indicando que o problema principal estava no comportamento da rota/app sob latencia, nao em queda global do Supabase.
+
+Correcoes aplicadas:
+- `apps/hub/app/api/pulsex/messages/route.ts`:
+  - timeout controlado nas consultas criticas da rota Hermes;
+  - resposta 503 rapida com `Retry-After` em vez de deixar a funcao estourar 504;
+  - fallback server-side para buscar mensagens sem join de `hub_users` quando o select enriquecido falhar;
+  - reducao do limite padrao da API de mensagens de 350/500 para 150/250;
+  - conversa direta agora evita upsert de canal/membros em todo polling quando o canal ja existe;
+  - logs sanitizados de evento/erro, sem tokens, mensagens, e-mails ou payload sensivel.
+- `apps/hub/lib/pulsex/supabase-data.ts`:
+  - reducao de carga inicial de mensagens recentes de 600 para 300;
+  - reducao de carga por canal de 350 para 150;
+  - timeout client-side de 8s para chamadas `/api/hermes/messages`;
+  - conversa direta deixa de retornar lista vazia quando a API falha, evitando apagar mensagens ja carregadas.
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`:
+  - refresh operacional nao rebaixa a tela pronta para loading/fallback em erro transitorio, reduzindo efeito visual de mensagens sumindo.
+
+Ocorrencia operacional durante o deploy:
+- Primeiro deploy do hotfix foi executado de um worktree dentro de `.codex-deploy` sob o repo root.
+- O worktree interno nao tinha `.vercel/project.json`; o Vercel CLI subiu usando o link `.vercel` do root misto.
+- Deployment misto gerado: `dpl_6g6TcVoKMMtq5eKLPeTj5ek89foU`.
+- Acao imediata: rollback manual dos aliases `c2x.app.br` e `ops.c2x.app.br` para `dpl_5DdmmMKvdW7H8vdcTW4Gm5YZ3bvH`.
+- Correcao de processo aplicada no proprio incidente: recriado pacote em worktree externo a `careli-hub`, com `.vercel/project.json` local explicito, e redeploy limpo.
+
+Deploy final correto:
+- Commit de codigo: `29c7e51 fix(hermes): harden message route under latency`.
+- Worktree externo usado: `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\zeus-hermes-prod-hotfix-20260528`.
+- Deployment final: `dpl_ApFfnT641VgsNJtGy2LQwHVxdQmt`.
+- URL tecnica final: https://careli-hub-hub-i2bs-i4fbj7mb3-lucasruas-devs-projects.vercel.app.
+- Rollback imediato: `dpl_5DdmmMKvdW7H8vdcTW4Gm5YZ3bvH`.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por leitura filesystem no SquadOps.
+- `npx.cmd vercel deploy --prod --yes --archive=tgz`: READY no deployment final isolado.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_ApFfnT641VgsNJtGy2LQwHVxdQmt`.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_ApFfnT641VgsNJtGy2LQwHVxdQmt`.
+- `GET /`, `/login`, `/hermes`, `ops /zeus`, Guardian DB health e Hades DB health: 200.
+- `GET /api/hermes/messages` sem sessao: 401 esperado.
+- `GET /api/auth/profile` sem sessao: 401 esperado.
+- `POST /api/auth/session` com token falso: 403 esperado, sem 503.
+- `POST /api/auth/password` com credenciais falsas: 401 esperado, sem 503.
+- `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados.
+
+Riscos e acompanhamento:
+- Validacao funcional final ainda depende de operadores reais no Hermes em producao.
+- O hotfix reduz chance de tela vazia e 504, mas se o Supabase/Auth oscilar externamente, o login pode continuar apresentando erro intermitente; nesses casos, verificar logs da rota e status externo antes de mexer em env.
+- Processo novo: nao publicar Vercel a partir de worktree dentro do repo root. Worktrees de deploy devem ficar fora de `careli-hub` e conter `.vercel/project.json` local explicito.
+
+Conclusao:
+- O problema observado era principalmente saturacao/timeouts da rota de mensagens Hermes sob polling/carga e fallback ruim para conversa direta.
+- O hotfix publicado torna a rota mais resiliente, reduz o volume por requisicao e evita que falha transitoria apague mensagens ja carregadas.
+- O erro operacional de deploy misto foi identificado, revertido imediatamente e documentado; a producao final esta no pacote isolado `dpl_ApFfnT641VgsNJtGy2LQwHVxdQmt`.
