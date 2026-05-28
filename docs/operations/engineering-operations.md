@@ -21185,3 +21185,52 @@ Conclusao:
 - O Chronos Google Agenda esta em homologacao com OAuth e envs configuradas.
 - O impacto pratico e permitir ao Lucas conectar a conta Google e testar espelhamento Hub <-> Google em homo.
 - Proximo passo: Lucas acessar Chronos em homo, clicar em conectar/sincronizar Google Agenda e validar criacao/alteracao de evento.
+
+## 2026-05-28 - Zeus/Chronos - Acao Google acionavel em homologacao
+
+Assunto: [Chronos] Botao Google acionavel e estado visual por conexao
+
+- Protocolo: CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR.
+- Ambiente: https://homo.c2x.app.br.
+- Deployment publicado: dpl_D46dZEibt2sBUWmwnijg4LnojHjr.
+- Preview tecnico: https://careli-hub-hub-i2bs-b95nkl4qb-lucasruas-devs-projects.vercel.app.
+- Rollback imediato: dpl_9p1exUTK9MfXpctCjJdUqX74fCXM.
+- Motivo:
+  - Lucas informou que a tela nao exibia uma acao clara para conectar o Google;
+  - Lucas pediu deixar somente `Google`, com icone preto e branco quando desconectado e colorido quando conectado.
+- Implementacao:
+  - a rota protegida `/api/chronos/google-calendar/authorize` passou a responder JSON com `authorizationUrl` quando chamada com `response=json` ou `Accept: application/json`;
+  - `apps/hub/lib/chronos/client.ts` passou a iniciar a conexao Google com token da sessao, evitando link direto sem Authorization;
+  - a Agenda Chronos passou a exibir botao compacto `Google` no topo e no card de fonte atual;
+  - o icone `G` fica monocromatico enquanto nao conectado e colorido quando `status.connection.connected` estiver verdadeiro;
+  - texto do card foi encurtado para `Espelho Google`, removendo excesso explicativo.
+- Arquivos alterados:
+  - `apps/hub/app/api/chronos/google-calendar/authorize/route.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`.
+- Arquivos excluidos:
+  - sem alteracao em envs, secrets, banco, migration, WABA, OpenAI, Hades, Iris, Hermes, Zeus, Atlas, Apolo, Ares, Setup, dominios, alias manual ou producao.
+- Validacoes executadas:
+  - `git diff --check`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT em SquadOps/Operations;
+  - pacote limpo `.codex-deploy/chronos-google-connect-homo-20260528-112923-package`;
+  - Safety Gate pre-deploy: PASS contra `dpl_9p1exUTK9MfXpctCjJdUqX74fCXM`;
+  - Vercel Preview: READY em `dpl_D46dZEibt2sBUWmwnijg4LnojHjr`;
+  - Safety Gate pos-alias: PASS contra `dpl_D46dZEibt2sBUWmwnijg4LnojHjr`;
+  - `GET /chronos`: 200;
+  - `GET /api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `GET /api/chronos/google-calendar/authorize` sem sessao: 401 esperado;
+  - logs Vercel de erro em `homo` nos ultimos 10 minutos: sem logs encontrados.
+- Observacoes:
+  - o deploy Vercel retornou codigo de processo incomum depois do build, mas a inspecao confirmou deployment `Ready` e alias `homo.c2x.app.br` associado ao novo Preview;
+  - nenhum `vercel alias set` manual foi executado.
+- Riscos conhecidos:
+  - validacao completa do OAuth ainda depende de Lucas testar autenticado em `homo`;
+  - pode ser necessario `Ctrl+F5` caso o navegador mantenha bundle anterior em cache.
+
+Conclusao:
+- O problema pratico era duplo: a UI nao deixava clara a acao e o clique anterior dependia de navegar diretamente para uma rota protegida sem bearer.
+- Agora o botao `Google` inicia a autorizacao usando a sessao autenticada e mostra visualmente o estado desconectado/conectado.
+- Proximo passo: Lucas atualizar a tela em `homo`, clicar em `Google` e validar o consentimento OAuth.

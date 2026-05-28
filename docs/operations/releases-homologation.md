@@ -5093,3 +5093,14 @@ Conclusao:
 - Exclui: producao, webhook Google push notification e exposicao de valores sensiveis.
 - Validacoes: diff-check, check-types, lint, build, Safety Gate pre/post, healthchecks e logs de erro.
 - Pendencia: validacao autenticada do Lucas conectando Google e testando espelho Hub <-> Google.
+
+## CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR - EM_HOMOLOGACAO / AJUSTE ACAO GOOGLE
+
+- Ambiente: https://homo.c2x.app.br.
+- Deployment: dpl_D46dZEibt2sBUWmwnijg4LnojHjr.
+- Preview tecnico: https://careli-hub-hub-i2bs-b95nkl4qb-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_9p1exUTK9MfXpctCjJdUqX74fCXM.
+- Inclui: botao compacto `Google`, icone monocromatico quando desconectado, icone colorido quando conectado, inicio OAuth via chamada autenticada e resposta JSON segura da rota authorize.
+- Exclui: envs, secrets, banco, migration, producao, alias manual e demais modulos.
+- Validacoes: diff-check, check-types, lint, build, Safety Gate pre/post, `GET /chronos` 200, rotas Google protegidas 401 sem sessao e logs sem erro.
+- Pendencia: Lucas testar autenticado o clique no botao `Google` e o fluxo de consentimento OAuth.

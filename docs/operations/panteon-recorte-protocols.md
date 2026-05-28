@@ -791,3 +791,19 @@ O manifesto de homologacao deve incluir:
 - Safety Gate: pre-deploy PASS e pos-alias PASS.
 - Observacao: Vercel autoassociou o alias homo durante o deploy Preview; alias set manual nao foi executado.
 - Validacao: check-types, lint, build, healthchecks 200 e rotas Google protegidas 401 sem sessao.
+
+### Atualizacao 2026-05-28 - CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR - Acao Google
+
+- Status: EM_HOMOLOGACAO.
+- Ambiente: https://homo.c2x.app.br.
+- Deployment: dpl_D46dZEibt2sBUWmwnijg4LnojHjr.
+- Preview tecnico: https://careli-hub-hub-i2bs-b95nkl4qb-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_9p1exUTK9MfXpctCjJdUqX74fCXM.
+- Escopo: corrigir o inicio do OAuth pela UI usando chamada autenticada para `/api/chronos/google-calendar/authorize?response=json`, manter o rotulo curto `Google` e sinalizar estado visual com icone monocromatico quando desconectado e colorido quando conectado.
+- Arquivos incluidos:
+  - `apps/hub/app/api/chronos/google-calendar/authorize/route.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`.
+- Exclusoes: sem env, secret, migration, banco, dominio, producao, alias manual ou outros modulos.
+- Validacao: diff-check, check-types, lint, build, Safety Gate pre/post, healthcheck `/chronos` 200, rotas Google protegidas 401 sem sessao e logs sem erro.
+- Pendencia: Lucas testar autenticado o clique `Google` e o consentimento OAuth.

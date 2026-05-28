@@ -1,0 +1,31 @@
+{
+  "module": "chronos",
+  "alias": "https://homo.c2x.app.br",
+  "expectedDeploymentId": "dpl_D46dZEibt2sBUWmwnijg4LnojHjr",
+  "packagePath": "C:/Users/lucas/Documents/Careli_C2x/Sistemas/careli-hub/.codex-deploy/chronos-google-connect-homo-20260528-112923-package",
+  "includedFiles": [
+    "apps/hub/app/api/chronos/google-calendar/authorize/route.ts",
+    "apps/hub/lib/chronos/client.ts",
+    "apps/hub/modules/chronos/ChronosPage.tsx"
+  ],
+  "excludedPaths": [
+    ".git",
+    ".vercel",
+    ".env.local",
+    ".env.production.local",
+    ".env.development.local",
+    "node_modules",
+    ".next",
+    ".turbo",
+    "apps/hub/.env.local"
+  ],
+  "validations": [
+    "git diff --check",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "npx.cmd vercel inspect https://homo.c2x.app.br"
+  ],
+  "rollbackDeploymentId": "dpl_9p1exUTK9MfXpctCjJdUqX74fCXM",
+  "approvedBy": "Lucas"
+}
