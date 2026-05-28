@@ -732,3 +732,15 @@ O manifesto de homologacao deve incluir:
   - manter Zeus como responsavel por preencher deployment ids, rodar Safety Gate final e mover alias de homologacao.
 - Risco especifico:
   - `turbo.json` mistura envs Chronos/Google e Iris; o pacote limpo deve reconciliar somente as chaves Chronos/Google necessarias ou aguardar recorte separado de Iris.
+
+### Fechamento 2026-05-28 02:36:08 -03:00 - CHRONOS-20260528-009-RESERVA-CICLO-DRIVE
+
+- Status: `EM_HOMOLOGACAO`.
+- Deployment publicado: `dpl_ELMAc8aDDJNFdy61BankVDZSujD2`.
+- Preview tecnico: `https://careli-hub-hub-i2bs-9mluxckd1-lucasruas-devs-projects.vercel.app`.
+- Alias: `https://homo.c2x.app.br`.
+- Rollback imediato: `dpl_4fZVynECRRuP2a6axWtvAk72KyvW`.
+- Pacote limpo: `.codex-deploy/z28-001-chronos-athena-homo-20260528-package`.
+- Manifestos Safety Gate: `homologation-safety-gate.pre.json` e `homologation-safety-gate.post.json`.
+- Observacao: a publicacao incluiu codigo Chronos/Athena, mas nao aplicou `0034`, nao criou bucket `chronos-drive` e nao alterou envs/secrets.
+- Validacao pos-alias: `/`, `/login`, `/chronos`, `/chronos/lideranca` 200; rotas protegidas/invalidas retornaram 401/400 esperados; logs sem erro.

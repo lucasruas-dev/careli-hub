@@ -135,3 +135,8 @@ Preparar o Chronos V1 para validacao em homologacao com:
 ## Status
 
 BLOQUEADO para publicacao direta. Preparacao documental concluida para DataOps/Zeus.
+
+
+## Publicacao Zeus 2026-05-28 02:36:08 -03:00
+
+Status atualizado: EM_HOMOLOGACAO em dpl_ELMAc8aDDJNFdy61BankVDZSujD2. Migration 0034, bucket chronos-drive e envs sensiveis permanecem pendentes de autorizacao especifica.

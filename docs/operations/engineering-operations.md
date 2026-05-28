@@ -21023,3 +21023,64 @@ Conclusao:
 - A preparacao de homologacao foi documentada, mas a publicacao direta esta bloqueada.
 - O impacto pratico e que Zeus/DataOps ja tem o recorte, os arquivos e os bloqueios claros para montar um pacote limpo sem misturar squads.
 - Nao ha acao de producao ou homologacao publica executada neste registro.
+
+## 2026-05-28 02:36:08 -03:00 - Zeus Operations - Homologacao Chronos/Athena
+
+Assunto: [Chronos] Homologacao do ciclo de sala e agente Athena
+
+- Protocolo: `CHRONOS-20260528-009-RESERVA-CICLO-DRIVE`.
+- Recorte relacionado Athena: `CHRONOS-20260527-008-AGENTE-TRANSCRICAO-ATA` incluido dentro do pacote Chronos.
+- Status: `EM_HOMOLOGACAO`.
+- Ambiente: `https://homo.c2x.app.br`.
+- Base preservada antes do alias: `dpl_4fZVynECRRuP2a6axWtvAk72KyvW`.
+- Deployment publicado: `dpl_ELMAc8aDDJNFdy61BankVDZSujD2`.
+- Preview tecnico: `https://careli-hub-hub-i2bs-9mluxckd1-lucasruas-devs-projects.vercel.app`.
+- Worktree/branch: `.codex-deploy/z28-001-chronos-athena-homo-20260528` em `codex/zeus/chronos-athena-homo-20260528`.
+- Pacote limpo: `.codex-deploy/z28-001-chronos-athena-homo-20260528-package`.
+- Manifestos Safety Gate:
+  - `.codex-deploy/z28-001-chronos-athena-homo-20260528/homologation-safety-gate.pre.json`;
+  - `.codex-deploy/z28-001-chronos-athena-homo-20260528/homologation-safety-gate.post.json`.
+- Arquivos principais publicados:
+  - `apps/hub/app/chronos/page.tsx`;
+  - `apps/hub/app/chronos/[roomSlug]/page.tsx`;
+  - `apps/hub/app/api/chronos/**` do recorte de salas, Google Agenda, agente Athena, chat, gravacao, transcript e rooms;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/lib/chronos/google-calendar.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/lib/chronos/types.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `apps/hub/package.json`, `package-lock.json` e `turbo.json` reconciliado apenas com chaves Chronos/Google.
+- Exclusoes sensiveis:
+  - nenhuma env, secret, token, dominio, producao ou banco foi alterado;
+  - `packages/database/migrations/0034_chronos_drive_chat_storage.sql` nao foi aplicado nem incluido no pacote de deploy;
+  - bucket `chronos-drive` nao foi criado neste passo;
+  - Google OAuth real e OpenAI/Athena dependem de envs server-side existentes por ambiente e nao tiveram valores expostos.
+- Validacoes executadas no pacote limpo:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - lint escopado Chronos/Athena: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT;
+  - Safety Gate pre-deploy/pre-alias: PASS contra `dpl_4fZVynECRRuP2a6axWtvAk72KyvW`;
+  - Preview Vercel: READY;
+  - Safety Gate pos-alias: PASS contra `dpl_ELMAc8aDDJNFdy61BankVDZSujD2`.
+- Healthchecks pos-alias:
+  - `GET /`: 200;
+  - `GET /login`: 200;
+  - `GET /chronos`: 200;
+  - `GET /chronos/lideranca`: 200;
+  - `POST /api/chronos/public/rooms/lideranca/close` sem corpo/auth valido: 400 esperado;
+  - `POST /api/chronos/meetings/agent` sem sessao: 401 esperado;
+  - `GET /api/operations/monitoring` sem sessao: 401 esperado;
+  - logs Vercel de erro em `homo` nos ultimos 10 minutos: sem logs encontrados.
+- Riscos conhecidos:
+  - Drive/chat/gravacao persistida dependem de DataOps aplicar `0034` e preparar o bucket `chronos-drive`;
+  - se `OPENAI_API_KEY` ou modelos opcionais nao estiverem disponiveis em Preview, o agente Athena deve falhar fechado em runtime autenticado;
+  - validacao funcional completa depende de Lucas testar reserva ativa, entrada do host, convidado, gravacao, encerramento e Drive.
+- Rollback imediato: reapontar `homo.c2x.app.br` para `dpl_4fZVynECRRuP2a6axWtvAk72KyvW` se houver regressao critica.
+
+Conclusao:
+- Chronos/Athena foi publicado em homologacao com pacote limpo e sem tocar banco/env/secret.
+- O impacto pratico e liberar a validacao visual e funcional do novo Chronos com agenda, sala externa, ciclo formal e agente Athena preparado.
+- A proxima acao e Lucas testar em `homo`; DataOps so entra se Lucas autorizar aplicar a migration `0034`/bucket para Drive persistido.

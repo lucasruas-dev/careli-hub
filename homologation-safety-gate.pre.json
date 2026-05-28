@@ -1,0 +1,61 @@
+{
+  "protocolId": "CHRONOS-20260528-009-RESERVA-CICLO-DRIVE",
+  "module": "chronos-athena",
+  "alias": "https://homo.c2x.app.br",
+  "expectedDeploymentId": "dpl_4fZVynECRRuP2a6axWtvAk72KyvW",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "packagePath": "..\\z28-001-chronos-athena-homo-20260528-package",
+  "includedFiles": [
+    "apps/hub/app/chronos/page.tsx",
+    "apps/hub/app/chronos/[roomSlug]/page.tsx",
+    "apps/hub/app/api/chronos/google-calendar/authorize/route.ts",
+    "apps/hub/app/api/chronos/google-calendar/status/route.ts",
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/app/api/chronos/profiles/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/chat/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/close/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/join/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/recording/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/recording/upload/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/transcript/route.ts",
+    "apps/hub/app/api/chronos/rooms/route.ts",
+    "apps/hub/lib/chronos/client.ts",
+    "apps/hub/lib/chronos/google-calendar.ts",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/lib/chronos/types.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "apps/hub/package.json",
+    "package-lock.json",
+    "turbo.json",
+    "docs/architecture/api-connection-governance.md",
+    "docs/architecture/environment-governance.md",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-homologation.md",
+    "docs/operations/panteon-recorte-protocols.md",
+    "docs/operations/chronos-homologation-safety-gate-draft-2026-05-28.json",
+    "docs/operations/chronos-homologation-handoff-2026-05-28.md"
+  ],
+  "excludedPaths": [
+    ".env.local",
+    ".env.production",
+    ".env.preview",
+    "node_modules",
+    ".next",
+    ".turbo",
+    "packages/database/migrations/0034_chronos_drive_chat_storage.sql"
+  ],
+  "validations": [
+    "git diff --check",
+    "npx.cmd eslint Chronos/Athena scoped files --max-warnings 0",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub"
+  ],
+  "rollbackDeploymentId": "dpl_4fZVynECRRuP2a6axWtvAk72KyvW",
+  "approvedBy": "Lucas",
+  "notes": [
+    "Migration 0034 e bucket chronos-drive nao aplicados neste deploy de codigo.",
+    "Google Agenda e Athena/OpenAI dependem de envs server-side existentes no ambiente."
+  ]
+}
