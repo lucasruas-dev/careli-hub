@@ -21282,3 +21282,67 @@ Conclusao:
 - O erro `requested path is invalid` aconteceu porque o retorno pos-OAuth saiu do Panteon e caiu no dominio Supabase.
 - O impacto pratico da correcao e manter o usuario dentro de `homo.c2x.app.br` apos consentimento Google, sem alterar secrets nem banco.
 - Proximo passo: Lucas atualizar o Chronos em `homo`, clicar em `Google` novamente e validar se o card muda para conectado.
+
+## 2026-05-28 13:57:13 -03:00 - Chronos / Zeus - Fuso Google Agenda corrigido em homologacao
+
+Assunto: [Chronos] Fuso Google Agenda corrigido em homologacao
+
+- Nome da squad/agente: Zeus / Chronos.
+- Ambiente: homologacao.
+- Protocolo: CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR / AJUSTE FUSO E FULL SYNC.
+- Status: EM HOMOLOGACAO.
+- Origem:
+  - Lucas reportou que compromisso marcado para 13:00 aparecia como 10:00 no Chronos/Google, indicando interpretacao incorreta de data local como UTC.
+- Causa tecnica confirmada:
+  - entradas de agenda sem offset explicito, especialmente `datetime-local` do Chronos e payloads Google `dateTime` com `timeZone`, podiam ser normalizadas por `Date.parse`/`new Date` no runtime como UTC;
+  - em `America/Sao_Paulo`, isso deslocava o horario em -3h.
+- Implementacao:
+  - criado normalizador unico de data/hora Chronos em `America/Sao_Paulo`;
+  - criacao/edicao de reuniao Chronos passa a converter hora local para ISO UTC corretamente;
+  - importacao Google passa a respeitar `timeZone` do evento quando a data vier sem offset;
+  - botao `Sincronizar` da Agenda passa a solicitar full sync controlado (`full: true`), ignorando `sync_token` somente nesse acionamento manual para recalcular eventos ja importados;
+  - apos sincronizar, a tela recarrega status Google e snapshot Chronos.
+- Arquivos incluidos:
+  - `apps/hub/app/api/chronos/google-calendar/sync/route.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/lib/chronos/datetime.ts`;
+  - `apps/hub/lib/chronos/google-calendar.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `docs/operations/chronos-google-timezone-safety-gate-pre-2026-05-28.json`;
+  - `docs/operations/chronos-google-timezone-safety-gate-post-2026-05-28.json`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos excluidos:
+  - sem envs, secrets, banco, migration, Supabase remoto, Storage remoto, dominio de producao, producao ou alteracoes em Hades, Hermes, Iris, Apolo, Ares, Atlas, Setup e Zeus fora do registro operacional.
+- Validacoes executadas:
+  - `git diff --check -- apps/hub/lib/chronos/datetime.ts apps/hub/lib/chronos/server.ts apps/hub/lib/chronos/google-calendar.ts apps/hub/lib/chronos/client.ts apps/hub/app/api/chronos/google-calendar/sync/route.ts apps/hub/modules/chronos/ChronosPage.tsx`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de Turbopack/NFT ligados a SquadOps/Engineering Operations;
+  - `node scripts/homologation-safety-gate.mjs --manifest docs/operations/chronos-google-timezone-safety-gate-pre-2026-05-28.json`: PASS;
+  - `npx.cmd vercel deploy --yes --target preview`: OK;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-562ft8ylx-lucasruas-devs-projects.vercel.app homo.c2x.app.br`: OK;
+  - `node scripts/homologation-safety-gate.mjs --manifest docs/operations/chronos-google-timezone-safety-gate-post-2026-05-28.json`: PASS;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: aponta para `dpl_8NJXuWTQXfN6nWZWsFmozNMa6YHZ`;
+  - `GET https://homo.c2x.app.br/chronos`: HTTP 200 OK;
+  - `GET https://homo.c2x.app.br/api/chronos/google-calendar/status` sem sessao: HTTP 401 esperado;
+  - `npx.cmd vercel logs https://homo.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Deployment:
+  - novo deployment homologacao: `dpl_8NJXuWTQXfN6nWZWsFmozNMa6YHZ`;
+  - Preview tecnico: `https://careli-hub-hub-i2bs-562ft8ylx-lucasruas-devs-projects.vercel.app`;
+  - Alias: `https://homo.c2x.app.br`;
+  - Rollback imediato: `dpl_2K2xF2354ktbGQwn1GBuHYGsuzYc`.
+- Riscos conhecidos:
+  - eventos ja criados no Google com horario errado antes da correcao podem precisar de ajuste manual/recriacao, porque nao ha metadado confiavel para inferir que a intencao original era outro horario;
+  - full sync manual corrige/importa novamente quando o Google e a fonte correta, mas nao adivinha horario original se o proprio Google ja recebeu a hora errada;
+  - sincronizacao quase realtime ainda depende de recorte futuro com Google `events.watch`, webhook e renovacao de canal.
+- Proximo passo:
+  - Lucas deve recarregar `https://homo.c2x.app.br/chronos`, clicar em `Sincronizar` e criar um novo evento teste para confirmar que 13:00 permanece 13:00 no Chronos e no Google;
+  - se o evento antigo continuar em 10:00, corrigir o evento antigo manualmente ou autorizar ajuste pontual controlado.
+
+Conclusao:
+- O erro de fuso foi tratado na origem: data local agora e convertida como `America/Sao_Paulo` antes de persistir/enviar para o Google.
+- A homologacao tambem ganhou full sync manual para recalcular eventos do espelho quando necessario.
+- O ambiente `homo` esta publicado e saudavel; a validacao final agora e criar/sincronizar um novo compromisso real no fluxo autenticado.

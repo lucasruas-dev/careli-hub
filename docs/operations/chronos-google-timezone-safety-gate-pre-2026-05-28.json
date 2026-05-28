@@ -1,0 +1,35 @@
+{
+  "module": "chronos",
+  "alias": "https://homo.c2x.app.br",
+  "expectedDeploymentId": "dpl_2K2xF2354ktbGQwn1GBuHYGsuzYc",
+  "packagePath": "C:/Users/lucas/Documents/Careli_C2x/Sistemas/careli-hub-worktrees/deploy-packages/chronos-google-timezone-homo-20260528-134814-package",
+  "includedFiles": [
+    "apps/hub/app/api/chronos/google-calendar/sync/route.ts",
+    "apps/hub/lib/chronos/client.ts",
+    "apps/hub/lib/chronos/datetime.ts",
+    "apps/hub/lib/chronos/google-calendar.ts",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/modules/chronos/ChronosPage.tsx"
+  ],
+  "excludedPaths": [
+    ".git",
+    ".vercel",
+    ".env.local",
+    ".env.production.local",
+    ".env.development.local",
+    "node_modules",
+    ".next",
+    ".turbo",
+    "apps/hub/.env.local"
+  ],
+  "validations": [
+    "git diff --check -- apps/hub/lib/chronos/datetime.ts apps/hub/lib/chronos/server.ts apps/hub/lib/chronos/google-calendar.ts apps/hub/lib/chronos/client.ts apps/hub/app/api/chronos/google-calendar/sync/route.ts apps/hub/modules/chronos/ChronosPage.tsx",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "pacote externo fora do root misto",
+    "sync manual Chronos Google usa full sync para recalcular eventos ja importados"
+  ],
+  "rollbackDeploymentId": "dpl_2K2xF2354ktbGQwn1GBuHYGsuzYc",
+  "approvedBy": "Lucas"
+}

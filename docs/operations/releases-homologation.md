@@ -5116,3 +5116,15 @@ Conclusao:
 - Exclui: envs, secrets, banco, migrations, producao, Google push webhook e demais modulos.
 - Validacoes: diff-check, check-types, lint, build, Safety Gate pre/post, callback Preview 302 para o proprio Preview, callback homo 302 para `https://homo.c2x.app.br/chronos?chronosGoogle=invalid_callback`, `/chronos` 200, rota status 401 sem sessao e logs sem erro.
 - Pendencia: Lucas retestar autenticado o botao `Google` e confirmar estado conectado no card do Chronos.
+
+## CHRONOS-20260528-010-GOOGLE-AGENDA-MIRROR - EM_HOMOLOGACAO / AJUSTE FUSO E FULL SYNC
+
+- Ambiente: https://homo.c2x.app.br.
+- Commit: 9d7f274 `fix(chronos): normalize google calendar timezone`.
+- Deployment: dpl_8NJXuWTQXfN6nWZWsFmozNMa6YHZ.
+- Preview tecnico: https://careli-hub-hub-i2bs-562ft8ylx-lucasruas-devs-projects.vercel.app.
+- Rollback: dpl_2K2xF2354ktbGQwn1GBuHYGsuzYc.
+- Inclui: normalizacao `America/Sao_Paulo` para data local Chronos, respeito ao `timeZone` em eventos Google sem offset, full sync manual ignorando `sync_token` somente quando Lucas aciona `Sincronizar` e refresh do snapshot apos sync.
+- Exclui: envs, secrets, banco, migrations, producao, Google push webhook e demais modulos.
+- Validacoes: diff-check, check-types, lint, build, Safety Gate pre/post, `/chronos` 200, rota status 401 sem sessao e logs sem erro.
+- Pendencia: Lucas criar/sincronizar novo evento real e confirmar que 13:00 permanece 13:00 no Chronos e Google.
