@@ -89,8 +89,9 @@ export type HermesMessageRow = {
   metadata?: Record<string, unknown> | null;
 };
 
-const HERMES_OPERATIONAL_MESSAGES_LIMIT = 600;
-const HERMES_CHANNEL_MESSAGES_LIMIT = 350;
+const HERMES_OPERATIONAL_MESSAGES_LIMIT = 300;
+const HERMES_CHANNEL_MESSAGES_LIMIT = 150;
+const HERMES_API_TIMEOUT_MS = 8_000;
 
 type HubUserAssignmentRow = {
   department_id?: string | null;
@@ -439,7 +440,7 @@ export async function listChannelMessages(
   }
 
   if (isHermesDirectChannelId(channelId)) {
-    return [];
+    throw new Error("Nao foi possivel carregar a conversa direta Hermes.");
   }
 
   const result = await runHermesQuery<HermesMessageRow[]>(
@@ -562,7 +563,7 @@ export async function listHermesThreadReplies(input: {
   const accessToken = sessionResult.data.session?.access_token;
 
   if (!sessionResult.error && accessToken) {
-    const response = await fetch(
+    const response = await fetchHermesApi(
       `/api/hermes/messages?threadParentMessageId=${encodeURIComponent(input.messageId)}&limit=250`,
       {
         headers: {
@@ -570,11 +571,11 @@ export async function listHermesThreadReplies(input: {
         },
       },
     );
-    const payload = (await response.json().catch(() => null)) as
+    const payload = (await response?.json().catch(() => null)) as
       | { data?: HermesMessageRow[]; error?: string }
       | null;
 
-    if (response.ok && payload?.data && payload.data.length > 0) {
+    if (response?.ok && payload?.data && payload.data.length > 0) {
       return payload.data.map(mapThreadReply);
     }
   }
@@ -635,7 +636,7 @@ export async function updateHermesMessageTags(input: {
     return null;
   }
 
-  const response = await fetch("/api/hermes/messages", {
+  const response = await fetchHermesApi("/api/hermes/messages", {
     body: JSON.stringify({
       messageId: input.messageId,
       tags: input.tags,
@@ -646,11 +647,11 @@ export async function updateHermesMessageTags(input: {
     },
     method: "PATCH",
   });
-  const payload = (await response.json().catch(() => null)) as
+  const payload = (await response?.json().catch(() => null)) as
     | { data?: HermesMessageRow; error?: string }
     | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!response?.ok || !payload?.data) {
     return null;
   }
 
@@ -674,7 +675,7 @@ export async function updateHermesMessageReaction(input: {
     return null;
   }
 
-  const response = await fetch("/api/hermes/messages", {
+  const response = await fetchHermesApi("/api/hermes/messages", {
     body: JSON.stringify({
       action: "toggle-reaction",
       emoji: input.emoji,
@@ -686,11 +687,11 @@ export async function updateHermesMessageReaction(input: {
     },
     method: "PATCH",
   });
-  const payload = (await response.json().catch(() => null)) as
+  const payload = (await response?.json().catch(() => null)) as
     | { data?: HermesMessageRow; error?: string }
     | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!response?.ok || !payload?.data) {
     return null;
   }
 
@@ -714,7 +715,7 @@ export async function updateHermesMessageBody(input: {
     return null;
   }
 
-  const response = await fetch("/api/hermes/messages", {
+  const response = await fetchHermesApi("/api/hermes/messages", {
     body: JSON.stringify({
       action: "edit-message",
       body: input.body,
@@ -726,11 +727,11 @@ export async function updateHermesMessageBody(input: {
     },
     method: "PATCH",
   });
-  const payload = (await response.json().catch(() => null)) as
+  const payload = (await response?.json().catch(() => null)) as
     | { data?: HermesMessageRow; error?: string }
     | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!response?.ok || !payload?.data) {
     return null;
   }
 
@@ -753,7 +754,7 @@ export async function markHermesChannelRead(input: {
     return null;
   }
 
-  const response = await fetch("/api/hermes/messages", {
+  const response = await fetchHermesApi("/api/hermes/messages", {
     body: JSON.stringify({
       action: "mark-read",
       channelId: input.channelId,
@@ -764,7 +765,7 @@ export async function markHermesChannelRead(input: {
     },
     method: "PATCH",
   });
-  const payload = (await response.json().catch(() => null)) as
+  const payload = (await response?.json().catch(() => null)) as
     | {
         data?: {
           channelId: string;
@@ -775,11 +776,33 @@ export async function markHermesChannelRead(input: {
       }
     | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!response?.ok || !payload?.data) {
     return null;
   }
 
   return payload.data;
+}
+
+async function fetchHermesApi(input: RequestInfo | URL, init?: RequestInit) {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => {
+    controller.abort();
+  }, HERMES_API_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error: unknown) {
+    logHermesDebug("api fetch error", {
+      error: serializeThrownError(error),
+    });
+
+    return null;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
 }
 
 async function listChannelMessagesViaApi(
@@ -793,7 +816,7 @@ async function listChannelMessagesViaApi(
     return null;
   }
 
-  const response = await fetch(
+  const response = await fetchHermesApi(
     `/api/hermes/messages?channelId=${encodeURIComponent(channelId)}&limit=${HERMES_CHANNEL_MESSAGES_LIMIT}`,
     {
       headers: {
@@ -801,11 +824,11 @@ async function listChannelMessagesViaApi(
       },
     },
   );
-  const payload = (await response.json().catch(() => null)) as
+  const payload = (await response?.json().catch(() => null)) as
     | { data?: HermesMessageRow[]; error?: string }
     | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!response?.ok || !payload?.data) {
     return null;
   }
 
@@ -832,7 +855,7 @@ async function createHermesMessageViaApi(
     return null;
   }
 
-  const response = await fetch("/api/hermes/messages", {
+  const response = await fetchHermesApi("/api/hermes/messages", {
     body: JSON.stringify({
       body: input.body,
       channelId: input.channelId,
@@ -849,11 +872,11 @@ async function createHermesMessageViaApi(
     },
     method: "POST",
   });
-  const payload = (await response.json().catch(() => null)) as
+  const payload = (await response?.json().catch(() => null)) as
     | { data?: HermesMessageRow; error?: string }
     | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!response?.ok || !payload?.data) {
     return null;
   }
 

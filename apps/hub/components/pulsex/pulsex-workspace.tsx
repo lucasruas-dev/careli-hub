@@ -408,13 +408,17 @@ export function HermesWorkspace() {
 
   const loadOperationalData = useCallback(() => {
     if (profileStatus === "loading") {
-      setDataStatus("loading");
+      setDataStatus((currentStatus) =>
+        currentStatus === "ready" ? currentStatus : "loading",
+      );
       return;
     }
 
     let isMounted = true;
 
-    setDataStatus("loading");
+    setDataStatus((currentStatus) =>
+      currentStatus === "ready" ? currentStatus : "loading",
+    );
     loadHermesOperationalData({
       currentUserId,
       userRole: hubUser?.role,
@@ -471,7 +475,9 @@ export function HermesWorkspace() {
           return;
         }
 
-        setDataStatus("fallback");
+        setDataStatus((currentStatus) =>
+          currentStatus === "ready" ? currentStatus : "fallback",
+        );
       });
 
     return () => {

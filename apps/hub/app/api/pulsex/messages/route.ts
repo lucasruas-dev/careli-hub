@@ -171,6 +171,13 @@ type SupabaseAdminClient = ReturnType<
   typeof createClient<HermesMessagesApiDatabase>
 >;
 
+const HERMES_ROUTE_TIMEOUT_MS = 7_000;
+const HERMES_ROUTE_AUTH_TIMEOUT_MS = 5_000;
+const HERMES_MESSAGE_SELECT =
+  "id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)";
+const HERMES_MESSAGE_SELECT_FALLBACK =
+  "id,channel_id,author_user_id,body,metadata,created_at,deleted_at";
+
 type AuthorizedContext =
   | {
       adminClient: SupabaseAdminClient;
@@ -192,18 +199,27 @@ export async function GET(request: NextRequest) {
   const limit = normalizeMessageLimit(request.nextUrl.searchParams.get("limit"));
 
   if (threadParentMessageId) {
-    const { data: parentMessage, error: parentError } = await context.adminClient
-      .from("pulsex_messages")
-      .select("id,channel_id")
-      .eq("id", threadParentMessageId)
-      .is("deleted_at", null)
-      .maybeSingle<{ channel_id: string; id: string }>();
+    const parentResult = await withHermesRouteFallback(
+      "messages.thread.parent",
+      context.adminClient
+        .from("pulsex_messages")
+        .select("id,channel_id")
+        .eq("id", threadParentMessageId)
+        .is("deleted_at", null)
+        .maybeSingle<{ channel_id: string; id: string }>(),
+    );
+
+    if (!parentResult.ok) {
+      return parentResult.response;
+    }
+
+    const { data: parentMessage, error: parentError } = parentResult.result;
 
     if (parentError || !parentMessage) {
       return NextResponse.json({ error: "Mensagem nao encontrada." }, { status: 404 });
     }
 
-    const access = await ensureChannelAccess(
+    const access = await resolveChannelAccess(
       context.adminClient,
       context.user,
       parentMessage.channel_id,
@@ -213,16 +229,21 @@ export async function GET(request: NextRequest) {
       return access.response;
     }
 
-    const { data, error } = await context.adminClient
-      .from("pulsex_messages")
-      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-      .eq("channel_id", parentMessage.channel_id)
-      .eq("metadata->>threadParentMessageId", threadParentMessageId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    const messagesResult = await listThreadMessages({
+      adminClient: context.adminClient,
+      channelId: parentMessage.channel_id,
+      limit,
+      threadParentMessageId,
+    });
+
+    if (!messagesResult.ok) {
+      return messagesResult.response;
+    }
+
+    const { data, error } = messagesResult.result;
 
     if (error) {
+      logHermesRouteWarning("messages.thread.query_failed", error);
       return NextResponse.json(
         { error: "Nao foi possivel carregar respostas." },
         { status: 500 },
@@ -238,21 +259,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Informe o canal." }, { status: 400 });
   }
 
-  const access = await ensureChannelAccess(context.adminClient, context.user, channelId);
+  const access = await resolveChannelAccess(context.adminClient, context.user, channelId);
 
   if (!access.ok) {
     return access.response;
   }
 
-  const { data, error } = await context.adminClient
-    .from("pulsex_messages")
-    .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-    .eq("channel_id", channelId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const messagesResult = await listChannelMessages({
+    adminClient: context.adminClient,
+    channelId,
+    limit,
+  });
+
+  if (!messagesResult.ok) {
+    return messagesResult.response;
+  }
+
+  const { data, error } = messagesResult.result;
 
   if (error) {
+    logHermesRouteWarning("messages.channel.query_failed", error);
     return NextResponse.json(
       { error: "Nao foi possivel carregar mensagens." },
       { status: 500 },
@@ -275,7 +301,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: payload.error }, { status: 400 });
   }
 
-  const access = await ensureChannelAccess(
+  const access = await resolveChannelAccess(
     context.adminClient,
     context.user,
     payload.data.channelId,
@@ -286,42 +312,65 @@ export async function POST(request: NextRequest) {
   }
 
   if (payload.data.threadParentMessageId) {
-    const { data: parentMessage, error: parentError } = await context.adminClient
-      .from("pulsex_messages")
-      .select("id,channel_id")
-      .eq("id", payload.data.threadParentMessageId)
-      .eq("channel_id", payload.data.channelId)
-      .is("deleted_at", null)
-      .maybeSingle<{ channel_id: string; id: string }>();
+    const parentResult = await withHermesRouteFallback<
+      HermesRouteQueryResult<{ channel_id: string; id: string }>
+    >(
+      "messages.post.thread_parent",
+      context.adminClient
+        .from("pulsex_messages")
+        .select("id,channel_id")
+        .eq("id", payload.data.threadParentMessageId)
+        .eq("channel_id", payload.data.channelId)
+        .is("deleted_at", null)
+        .maybeSingle<{ channel_id: string; id: string }>(),
+    );
+
+    if (!parentResult.ok) {
+      return parentResult.response;
+    }
+
+    const { data: parentMessage, error: parentError } = parentResult.result;
 
     if (parentError || !parentMessage) {
       return NextResponse.json({ error: "Mensagem principal invalida." }, { status: 400 });
     }
   }
 
-  const { data, error } = await context.adminClient
-    .from("pulsex_messages")
-    .insert({
-      author_user_id: context.user.id,
-      body: payload.data.body,
-      channel_id: payload.data.channelId,
-      metadata: {
-        ...(payload.data.attachment ? { attachment: payload.data.attachment } : {}),
-        ...(payload.data.clientMessageId
-          ? { clientMessageId: payload.data.clientMessageId }
-          : {}),
-        mentionUserIds: payload.data.mentionUserIds,
-        mentions: payload.data.mentions,
-        tags: payload.data.tags,
-        ...(payload.data.threadParentMessageId
-          ? { threadParentMessageId: payload.data.threadParentMessageId }
-          : {}),
-      },
-    })
-    .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-    .single<HermesMessageRow>();
+  const insertResult = await withHermesRouteFallback<
+    HermesRouteQueryResult<HermesMessageRow>
+  >(
+    "messages.post.insert",
+    context.adminClient
+      .from("pulsex_messages")
+      .insert({
+        author_user_id: context.user.id,
+        body: payload.data.body,
+        channel_id: payload.data.channelId,
+        metadata: {
+          ...(payload.data.attachment ? { attachment: payload.data.attachment } : {}),
+          ...(payload.data.clientMessageId
+            ? { clientMessageId: payload.data.clientMessageId }
+            : {}),
+          mentionUserIds: payload.data.mentionUserIds,
+          mentions: payload.data.mentions,
+          tags: payload.data.tags,
+          ...(payload.data.threadParentMessageId
+            ? { threadParentMessageId: payload.data.threadParentMessageId }
+            : {}),
+        },
+      })
+      .select(HERMES_MESSAGE_SELECT_FALLBACK)
+      .single<HermesMessageRow>(),
+  );
+
+  if (!insertResult.ok) {
+    return insertResult.response;
+  }
+
+  const { data, error } = insertResult.result;
 
   if (error || !data) {
+    logHermesRouteWarning("messages.post.insert_failed", error);
     return NextResponse.json(
       { error: "Nao foi possivel enviar mensagem." },
       { status: 500 },
@@ -342,7 +391,7 @@ export async function PATCH(request: NextRequest) {
   const readPayload = parseMarkReadPayload(rawPayload);
 
   if (readPayload.ok) {
-    const access = await ensureChannelAccess(
+    const access = await resolveChannelAccess(
       context.adminClient,
       context.user,
       readPayload.data.channelId,
@@ -353,14 +402,26 @@ export async function PATCH(request: NextRequest) {
     }
 
     const lastReadAt = new Date().toISOString();
-    const { error } = await context.adminClient
-      .from("pulsex_channel_members")
-      .update({ last_read_at: lastReadAt })
-      .eq("channel_id", readPayload.data.channelId)
-      .eq("user_id", context.user.id)
-      .eq("status", "active");
+    const readResult = await withHermesRouteFallback<
+      HermesRouteQueryResult<null>
+    >(
+      "messages.patch.mark_read",
+      context.adminClient
+        .from("pulsex_channel_members")
+        .update({ last_read_at: lastReadAt })
+        .eq("channel_id", readPayload.data.channelId)
+        .eq("user_id", context.user.id)
+        .eq("status", "active"),
+    );
+
+    if (!readResult.ok) {
+      return readResult.response;
+    }
+
+    const { error } = readResult.result;
 
     if (error) {
+      logHermesRouteWarning("messages.patch.mark_read_failed", error);
       return NextResponse.json(
         { error: "Nao foi possivel marcar o canal como lido." },
         { status: 500 },
@@ -379,17 +440,33 @@ export async function PATCH(request: NextRequest) {
   const editPayload = parseEditMessagePayload(rawPayload);
 
   if (editPayload.ok) {
-    const { data: message, error: messageError } = await context.adminClient
-      .from("pulsex_messages")
-      .select("id,channel_id,author_user_id,metadata")
-      .eq("id", editPayload.data.messageId)
-      .is("deleted_at", null)
-      .maybeSingle<{
+    const messageResult = await withHermesRouteFallback<
+      HermesRouteQueryResult<{
         author_user_id?: string | null;
         channel_id: string;
         id: string;
         metadata?: Record<string, unknown> | null;
-      }>();
+      }>
+    >(
+      "messages.patch.edit.lookup",
+      context.adminClient
+        .from("pulsex_messages")
+        .select("id,channel_id,author_user_id,metadata")
+        .eq("id", editPayload.data.messageId)
+        .is("deleted_at", null)
+        .maybeSingle<{
+          author_user_id?: string | null;
+          channel_id: string;
+          id: string;
+          metadata?: Record<string, unknown> | null;
+        }>(),
+    );
+
+    if (!messageResult.ok) {
+      return messageResult.response;
+    }
+
+    const { data: message, error: messageError } = messageResult.result;
 
     if (messageError || !message) {
       return NextResponse.json({ error: "Mensagem nao encontrada." }, { status: 404 });
@@ -402,7 +479,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const access = await ensureChannelAccess(
+    const access = await resolveChannelAccess(
       context.adminClient,
       context.user,
       message.channel_id,
@@ -412,20 +489,32 @@ export async function PATCH(request: NextRequest) {
       return access.response;
     }
 
-    const { data, error } = await context.adminClient
-      .from("pulsex_messages")
-      .update({
-        body: editPayload.data.body,
-        metadata: {
-          ...(message.metadata ?? {}),
-          editedAt: new Date().toISOString(),
-        },
-      })
-      .eq("id", editPayload.data.messageId)
-      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-      .single<HermesMessageRow>();
+    const editResult = await withHermesRouteFallback<
+      HermesRouteQueryResult<HermesMessageRow>
+    >(
+      "messages.patch.edit.update",
+      context.adminClient
+        .from("pulsex_messages")
+        .update({
+          body: editPayload.data.body,
+          metadata: {
+            ...(message.metadata ?? {}),
+            editedAt: new Date().toISOString(),
+          },
+        })
+        .eq("id", editPayload.data.messageId)
+        .select(HERMES_MESSAGE_SELECT_FALLBACK)
+        .single<HermesMessageRow>(),
+    );
+
+    if (!editResult.ok) {
+      return editResult.response;
+    }
+
+    const { data, error } = editResult.result;
 
     if (error || !data) {
+      logHermesRouteWarning("messages.patch.edit_failed", error);
       return NextResponse.json(
         { error: "Nao foi possivel editar a mensagem." },
         { status: 500 },
@@ -438,22 +527,37 @@ export async function PATCH(request: NextRequest) {
   const reactionPayload = parseToggleReactionPayload(rawPayload);
 
   if (reactionPayload.ok) {
-    const { data: message, error: messageError } = await context.adminClient
-      .from("pulsex_messages")
-      .select("id,channel_id,metadata")
-      .eq("id", reactionPayload.data.messageId)
-      .is("deleted_at", null)
-      .maybeSingle<{
+    const messageResult = await withHermesRouteFallback<
+      HermesRouteQueryResult<{
         channel_id: string;
         id: string;
         metadata?: Record<string, unknown> | null;
-      }>();
+      }>
+    >(
+      "messages.patch.reaction.lookup",
+      context.adminClient
+        .from("pulsex_messages")
+        .select("id,channel_id,metadata")
+        .eq("id", reactionPayload.data.messageId)
+        .is("deleted_at", null)
+        .maybeSingle<{
+          channel_id: string;
+          id: string;
+          metadata?: Record<string, unknown> | null;
+        }>(),
+    );
+
+    if (!messageResult.ok) {
+      return messageResult.response;
+    }
+
+    const { data: message, error: messageError } = messageResult.result;
 
     if (messageError || !message) {
       return NextResponse.json({ error: "Mensagem nao encontrada." }, { status: 404 });
     }
 
-    const access = await ensureChannelAccess(
+    const access = await resolveChannelAccess(
       context.adminClient,
       context.user,
       message.channel_id,
@@ -469,19 +573,31 @@ export async function PATCH(request: NextRequest) {
       emoji: reactionPayload.data.emoji,
       reactions: normalizeHermesReactions(currentMetadata.reactions),
     });
-    const { data, error } = await context.adminClient
-      .from("pulsex_messages")
-      .update({
-        metadata: {
-          ...currentMetadata,
-          reactions,
-        },
-      })
-      .eq("id", reactionPayload.data.messageId)
-      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-      .single<HermesMessageRow>();
+    const reactionResult = await withHermesRouteFallback<
+      HermesRouteQueryResult<HermesMessageRow>
+    >(
+      "messages.patch.reaction.update",
+      context.adminClient
+        .from("pulsex_messages")
+        .update({
+          metadata: {
+            ...currentMetadata,
+            reactions,
+          },
+        })
+        .eq("id", reactionPayload.data.messageId)
+        .select(HERMES_MESSAGE_SELECT_FALLBACK)
+        .single<HermesMessageRow>(),
+    );
+
+    if (!reactionResult.ok) {
+      return reactionResult.response;
+    }
+
+    const { data, error } = reactionResult.result;
 
     if (error || !data) {
+      logHermesRouteWarning("messages.patch.reaction_failed", error);
       return NextResponse.json(
         { error: "Nao foi possivel atualizar reacao da mensagem." },
         { status: 500 },
@@ -497,18 +613,33 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: payload.error }, { status: 400 });
   }
 
-  const { data: message, error: messageError } = await context.adminClient
-    .from("pulsex_messages")
-    .select("id,channel_id,metadata")
-    .eq("id", payload.data.messageId)
-    .is("deleted_at", null)
-    .maybeSingle<{ channel_id: string; id: string; metadata?: Record<string, unknown> | null }>();
+  const messageResult = await withHermesRouteFallback<
+    HermesRouteQueryResult<{
+      channel_id: string;
+      id: string;
+      metadata?: Record<string, unknown> | null;
+    }>
+  >(
+    "messages.patch.tags.lookup",
+    context.adminClient
+      .from("pulsex_messages")
+      .select("id,channel_id,metadata")
+      .eq("id", payload.data.messageId)
+      .is("deleted_at", null)
+      .maybeSingle<{ channel_id: string; id: string; metadata?: Record<string, unknown> | null }>(),
+  );
+
+  if (!messageResult.ok) {
+    return messageResult.response;
+  }
+
+  const { data: message, error: messageError } = messageResult.result;
 
   if (messageError || !message) {
     return NextResponse.json({ error: "Mensagem nao encontrada." }, { status: 404 });
   }
 
-  const access = await ensureChannelAccess(
+  const access = await resolveChannelAccess(
     context.adminClient,
     context.user,
     message.channel_id,
@@ -518,19 +649,31 @@ export async function PATCH(request: NextRequest) {
     return access.response;
   }
 
-  const { data, error } = await context.adminClient
-    .from("pulsex_messages")
-    .update({
-      metadata: {
-        ...(message.metadata ?? {}),
-        tags: payload.data.tags,
-      },
-    })
-    .eq("id", payload.data.messageId)
-    .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-    .single<HermesMessageRow>();
+  const tagsResult = await withHermesRouteFallback<
+    HermesRouteQueryResult<HermesMessageRow>
+  >(
+    "messages.patch.tags.update",
+    context.adminClient
+      .from("pulsex_messages")
+      .update({
+        metadata: {
+          ...(message.metadata ?? {}),
+          tags: payload.data.tags,
+        },
+      })
+      .eq("id", payload.data.messageId)
+      .select(HERMES_MESSAGE_SELECT_FALLBACK)
+      .single<HermesMessageRow>(),
+  );
+
+  if (!tagsResult.ok) {
+    return tagsResult.response;
+  }
+
+  const { data, error } = tagsResult.result;
 
   if (error || !data) {
+    logHermesRouteWarning("messages.patch.tags_failed", error);
     return NextResponse.json(
       { error: "Nao foi possivel atualizar tags da mensagem." },
       { status: 500 },
@@ -538,6 +681,214 @@ export async function PATCH(request: NextRequest) {
   }
 
   return NextResponse.json({ data });
+}
+
+type HermesRouteQueryResult<T> = {
+  data: T | null;
+  error: {
+    code?: string;
+    details?: string;
+    hint?: string;
+    message?: string;
+  } | null;
+};
+
+type HermesRouteAccessResult =
+  | { channel: HermesChannelAccessRow; ok: true }
+  | { ok: false; response: NextResponse };
+
+class HermesRouteTimeoutError extends Error {
+  constructor(readonly operation: string) {
+    super(`Hermes route timeout: ${operation}`);
+    this.name = "HermesRouteTimeoutError";
+  }
+}
+
+async function listChannelMessages(input: {
+  adminClient: SupabaseAdminClient;
+  channelId: string;
+  limit: number;
+}): Promise<
+  | { ok: true; result: HermesRouteQueryResult<HermesMessageRow[]> }
+  | { ok: false; response: NextResponse }
+> {
+  const primaryResult = await withHermesRouteFallback<
+    HermesRouteQueryResult<HermesMessageRow[]>
+  >(
+    "messages.channel.primary",
+    input.adminClient
+      .from("pulsex_messages")
+      .select(HERMES_MESSAGE_SELECT)
+      .eq("channel_id", input.channelId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(input.limit),
+  );
+
+  if (!primaryResult.ok || !primaryResult.result.error) {
+    return primaryResult;
+  }
+
+  logHermesRouteWarning(
+    "messages.channel.primary_failed_using_plain_select",
+    primaryResult.result.error,
+  );
+
+  return withHermesRouteFallback<HermesRouteQueryResult<HermesMessageRow[]>>(
+    "messages.channel.fallback",
+    input.adminClient
+      .from("pulsex_messages")
+      .select(HERMES_MESSAGE_SELECT_FALLBACK)
+      .eq("channel_id", input.channelId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(input.limit),
+  );
+}
+
+async function listThreadMessages(input: {
+  adminClient: SupabaseAdminClient;
+  channelId: string;
+  limit: number;
+  threadParentMessageId: string;
+}): Promise<
+  | { ok: true; result: HermesRouteQueryResult<HermesMessageRow[]> }
+  | { ok: false; response: NextResponse }
+> {
+  const primaryResult = await withHermesRouteFallback<
+    HermesRouteQueryResult<HermesMessageRow[]>
+  >(
+    "messages.thread.primary",
+    input.adminClient
+      .from("pulsex_messages")
+      .select(HERMES_MESSAGE_SELECT)
+      .eq("channel_id", input.channelId)
+      .eq("metadata->>threadParentMessageId", input.threadParentMessageId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(input.limit),
+  );
+
+  if (!primaryResult.ok || !primaryResult.result.error) {
+    return primaryResult;
+  }
+
+  logHermesRouteWarning(
+    "messages.thread.primary_failed_using_plain_select",
+    primaryResult.result.error,
+  );
+
+  return withHermesRouteFallback<HermesRouteQueryResult<HermesMessageRow[]>>(
+    "messages.thread.fallback",
+    input.adminClient
+      .from("pulsex_messages")
+      .select(HERMES_MESSAGE_SELECT_FALLBACK)
+      .eq("channel_id", input.channelId)
+      .eq("metadata->>threadParentMessageId", input.threadParentMessageId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(input.limit),
+  );
+}
+
+async function resolveChannelAccess(
+  adminClient: SupabaseAdminClient,
+  user: HubUserAccessRow,
+  channelId: string,
+): Promise<HermesRouteAccessResult> {
+  try {
+    return await ensureChannelAccess(adminClient, user, channelId);
+  } catch (error: unknown) {
+    logHermesRouteWarning("messages.access_unavailable", error);
+
+    return {
+      ok: false,
+      response: createHermesTemporaryUnavailableResponse(),
+    };
+  }
+}
+
+async function withHermesRouteFallback<T>(
+  operation: string,
+  task: PromiseLike<T>,
+): Promise<{ ok: true; result: T } | { ok: false; response: NextResponse }> {
+  try {
+    return {
+      ok: true,
+      result: await withHermesRouteTimeout(operation, task),
+    };
+  } catch (error: unknown) {
+    logHermesRouteWarning(`${operation}.unavailable`, error);
+
+    return {
+      ok: false,
+      response: createHermesTemporaryUnavailableResponse(),
+    };
+  }
+}
+
+async function withHermesRouteTimeout<T>(
+  operation: string,
+  task: PromiseLike<T>,
+  timeoutMs = HERMES_ROUTE_TIMEOUT_MS,
+) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new HermesRouteTimeoutError(operation));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([Promise.resolve(task), timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+function createHermesTemporaryUnavailableResponse() {
+  return NextResponse.json(
+    {
+      error:
+        "Hermes temporariamente indisponivel. Tente novamente em instantes.",
+    },
+    {
+      headers: {
+        "Retry-After": "5",
+      },
+      status: 503,
+    },
+  );
+}
+
+function logHermesRouteWarning(event: string, error: unknown) {
+  const safeError =
+    error instanceof HermesRouteTimeoutError
+      ? {
+          name: error.name,
+          operation: error.operation,
+        }
+      : normalizeHermesRouteError(error);
+
+  console.warn("[hermes-messages]", event, safeError);
+}
+
+function normalizeHermesRouteError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return {
+      message: String(error ?? "unknown"),
+    };
+  }
+
+  const maybeError = error as Record<string, unknown>;
+
+  return {
+    code: getString(maybeError.code) || undefined,
+    message: getString(maybeError.message).slice(0, 240) || "unknown",
+    name: getString(maybeError.name) || undefined,
+  };
 }
 
 function parseMarkReadPayload(payload: unknown):
@@ -572,10 +923,10 @@ function normalizeMessageLimit(value: string | null) {
   const parsedValue = Number(value);
 
   if (!Number.isFinite(parsedValue)) {
-    return 350;
+    return 150;
   }
 
-  return Math.max(25, Math.min(500, Math.trunc(parsedValue)));
+  return Math.max(25, Math.min(250, Math.trunc(parsedValue)));
 }
 
 function parseEditMessagePayload(payload: unknown):
@@ -682,9 +1033,19 @@ async function createAuthorizedContext(
       },
     },
   );
-  const { data: authData, error: authError } = await adminClient.auth.getUser(
-    accessToken,
+  const authResult = await withHermesRouteFallback(
+    "messages.auth.get_user",
+    adminClient.auth.getUser(accessToken),
   );
+
+  if (!authResult.ok) {
+    return {
+      ok: false,
+      response: authResult.response,
+    };
+  }
+
+  const { data: authData, error: authError } = authResult.result;
 
   if (authError || !authData.user) {
     return {
@@ -696,11 +1057,25 @@ async function createAuthorizedContext(
     };
   }
 
-  const { data: user, error: userError } = await adminClient
-    .from("hub_users")
-    .select("id,role,status")
-    .eq("id", authData.user.id)
-    .maybeSingle<HubUserAccessRow>();
+  const userResult = await withHermesRouteFallback<
+    HermesRouteQueryResult<HubUserAccessRow>
+  >(
+    "messages.auth.hub_user",
+    adminClient
+      .from("hub_users")
+      .select("id,role,status")
+      .eq("id", authData.user.id)
+      .maybeSingle<HubUserAccessRow>(),
+  );
+
+  if (!userResult.ok) {
+    return {
+      ok: false,
+      response: userResult.response,
+    };
+  }
+
+  const { data: user, error: userError } = userResult.result;
 
   if (userError || !user || user.status !== "active") {
     return {
@@ -731,12 +1106,19 @@ async function ensureChannelAccess(
     return ensureDirectChannelAccess(adminClient, user, channelId);
   }
 
-  const { data: channel, error: channelError } = await adminClient
-    .from("pulsex_channels")
-    .select("id,kind,department_id,status")
-    .eq("id", channelId)
-    .eq("status", "active")
-    .maybeSingle<HermesChannelAccessRow>();
+  const {
+    data: channel,
+    error: channelError,
+  } = await withHermesRouteTimeout(
+    "messages.access.channel",
+    adminClient
+      .from("pulsex_channels")
+      .select("id,kind,department_id,status")
+      .eq("id", channelId)
+      .eq("status", "active")
+      .maybeSingle<HermesChannelAccessRow>(),
+    HERMES_ROUTE_AUTH_TIMEOUT_MS,
+  );
 
   if (channelError || !channel) {
     return {
@@ -745,29 +1127,37 @@ async function ensureChannelAccess(
     };
   }
 
-  const { data: channelMember } = await adminClient
-    .from("pulsex_channel_members")
-    .select("channel_id")
-    .eq("channel_id", channel.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle<{ channel_id: string }>();
+  const { data: channelMember } = await withHermesRouteTimeout(
+    "messages.access.member",
+    adminClient
+      .from("pulsex_channel_members")
+      .select("channel_id")
+      .eq("channel_id", channel.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle<{ channel_id: string }>(),
+    HERMES_ROUTE_AUTH_TIMEOUT_MS,
+  );
 
   if (channelMember) {
     return { channel, ok: true };
   }
 
   if (channel.kind === "department" && channel.department_id) {
-    const { data: departmentMember } = await adminClient
-      .from("pulsex_channel_members")
-      .select("channel_id,pulsex_channels!inner(department_id,kind,status)")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .eq("pulsex_channels.department_id", channel.department_id)
-      .eq("pulsex_channels.status", "active")
-      .neq("pulsex_channels.kind", "department")
-      .limit(1)
-      .maybeSingle<{ channel_id: string }>();
+    const { data: departmentMember } = await withHermesRouteTimeout(
+      "messages.access.department_member",
+      adminClient
+        .from("pulsex_channel_members")
+        .select("channel_id,pulsex_channels!inner(department_id,kind,status)")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .eq("pulsex_channels.department_id", channel.department_id)
+        .eq("pulsex_channels.status", "active")
+        .neq("pulsex_channels.kind", "department")
+        .limit(1)
+        .maybeSingle<{ channel_id: string }>(),
+      HERMES_ROUTE_AUTH_TIMEOUT_MS,
+    );
 
     if (departmentMember) {
       return { channel, ok: true };
@@ -804,10 +1194,46 @@ async function ensureDirectChannelAccess(
     };
   }
 
-  const { data: participants, error: participantsError } = await adminClient
-    .from("hub_users")
-    .select("id,display_name,email,status")
-    .in("id", [...parsedChannel.userIds]);
+  const existingChannelResult = await withHermesRouteTimeout(
+    "messages.direct.existing_channel",
+    adminClient
+      .from("pulsex_channels")
+      .select("id,kind,department_id,status")
+      .eq("id", channelId)
+      .eq("status", "active")
+      .maybeSingle<HermesChannelAccessRow>(),
+    HERMES_ROUTE_AUTH_TIMEOUT_MS,
+  );
+  const existingChannel = existingChannelResult.data;
+
+  if (existingChannel) {
+    const existingMembersResult = await withHermesRouteTimeout(
+      "messages.direct.existing_members",
+      adminClient
+        .from("pulsex_channel_members")
+        .select("user_id")
+        .eq("channel_id", channelId)
+        .eq("status", "active")
+        .in("user_id", [...parsedChannel.userIds]),
+      HERMES_ROUTE_AUTH_TIMEOUT_MS,
+    );
+
+    if ((existingMembersResult.data ?? []).length === 2) {
+      return { channel: existingChannel, ok: true };
+    }
+  }
+
+  const {
+    data: participants,
+    error: participantsError,
+  } = await withHermesRouteTimeout(
+    "messages.direct.participants",
+    adminClient
+      .from("hub_users")
+      .select("id,display_name,email,status")
+      .in("id", [...parsedChannel.userIds]),
+    HERMES_ROUTE_AUTH_TIMEOUT_MS,
+  );
 
   if (participantsError || !participants || participants.length !== 2) {
     return {
@@ -838,25 +1264,29 @@ async function ensureDirectChannelAccess(
     .sort((first, second) => first.localeCompare(second, "pt-BR"))
     .join(" / ");
 
-  const { data: channel, error: channelError } = await adminClient
-    .from("pulsex_channels")
-    .upsert(
-      {
-        created_by_user_id: user.id,
-        description: "Conversa direta do Hermes.",
-        id: channelId,
-        kind: "direct",
-        metadata: {
-          source: "hermes_direct",
-          userIds: [...parsedChannel.userIds],
+  const { data: channel, error: channelError } = await withHermesRouteTimeout(
+    "messages.direct.upsert_channel",
+    adminClient
+      .from("pulsex_channels")
+      .upsert(
+        {
+          created_by_user_id: user.id,
+          description: "Conversa direta do Hermes.",
+          id: channelId,
+          kind: "direct",
+          metadata: {
+            source: "hermes_direct",
+            userIds: [...parsedChannel.userIds],
+          },
+          name: channelName || "Conversa direta",
+          status: "active",
         },
-        name: channelName || "Conversa direta",
-        status: "active",
-      },
-      { onConflict: "id" },
-    )
-    .select("id,kind,department_id,status")
-    .single<HermesChannelAccessRow>();
+        { onConflict: "id" },
+      )
+      .select("id,kind,department_id,status")
+      .single<HermesChannelAccessRow>(),
+    HERMES_ROUTE_AUTH_TIMEOUT_MS,
+  );
 
   if (channelError || !channel) {
     return {
@@ -868,17 +1298,21 @@ async function ensureDirectChannelAccess(
     };
   }
 
-  const { error: membersError } = await adminClient
-    .from("pulsex_channel_members")
-    .upsert(
-      parsedChannel.userIds.map((participantUserId) => ({
-        channel_id: channelId,
-        role: participantUserId === user.id ? "owner" : "member",
-        status: "active",
-        user_id: participantUserId,
-      })),
-      { onConflict: "channel_id,user_id" },
-    );
+  const { error: membersError } = await withHermesRouteTimeout(
+    "messages.direct.upsert_members",
+    adminClient
+      .from("pulsex_channel_members")
+      .upsert(
+        parsedChannel.userIds.map((participantUserId) => ({
+          channel_id: channelId,
+          role: participantUserId === user.id ? "owner" : "member",
+          status: "active",
+          user_id: participantUserId,
+        })),
+        { onConflict: "channel_id,user_id" },
+      ),
+    HERMES_ROUTE_AUTH_TIMEOUT_MS,
+  );
 
   if (membersError) {
     return {
