@@ -3,6 +3,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
+import {
+  chronosDefaultTimeZone,
+  normalizeGoogleCalendarDateTime,
+} from "./datetime";
 import type {
   ChronosGoogleCalendarConnectionStatus,
   ChronosGoogleCalendarEnvRequirement,
@@ -48,7 +52,7 @@ const googleOAuthAuthorizeUrl = "https://accounts.google.com/o/oauth2/v2/auth";
 const googleOAuthTokenUrl = "https://oauth2.googleapis.com/token";
 const googleCalendarApiBaseUrl = "https://www.googleapis.com/calendar/v3";
 const googleCalendarProvider = "google-calendar";
-const googleCalendarDefaultTimezone = "America/Sao_Paulo";
+const googleCalendarDefaultTimezone = chronosDefaultTimeZone;
 const googleCalendarStateTtlMinutes = 15;
 const googleCalendarSyncWindowPastDays = 7;
 const googleCalendarSyncWindowFutureDays = 180;
@@ -743,9 +747,11 @@ export async function syncChronosMeetingToGoogleCalendar({
 
 export async function syncChronosGoogleCalendar({
   direction,
+  forceFull = false,
   userId,
 }: {
   direction: ChronosGoogleCalendarSyncDirection;
+  forceFull?: boolean;
   userId?: string | null;
 }): Promise<ChronosGoogleCalendarSyncResult> {
   const client = createChronosGoogleCalendarClient();
@@ -759,10 +765,14 @@ export async function syncChronosGoogleCalendar({
   try {
     const result =
       direction === "pull"
-        ? await pullChronosEventsFromGoogleCalendar(client, userId ?? null)
+        ? await pullChronosEventsFromGoogleCalendar(
+            client,
+            userId ?? null,
+            forceFull,
+          )
         : direction === "push"
           ? await pushChronosMeetingsToGoogleCalendar(client, userId ?? null)
-          : await syncBothDirections(client, userId ?? null);
+          : await syncBothDirections(client, userId ?? null, forceFull);
 
     await finishSyncRun(client, runId, result);
 
@@ -1321,6 +1331,7 @@ async function pushChronosMeetingsToGoogleCalendar(
 async function pullChronosEventsFromGoogleCalendar(
   client: ChronosGoogleCalendarClient,
   userId: string | null,
+  forceFull = false,
 ): Promise<ChronosGoogleCalendarSyncResult> {
   const connectionLookup = await getDefaultGoogleCalendarConnection(client);
 
@@ -1336,6 +1347,7 @@ async function pullChronosEventsFromGoogleCalendar(
   const listResult = await listGoogleCalendarEvents({
     accessToken,
     connection: connectionLookup.connection,
+    forceFull,
   });
   let processed = 0;
   let skipped = 0;
@@ -1424,9 +1436,14 @@ async function pullChronosEventsFromGoogleCalendar(
 async function syncBothDirections(
   client: ChronosGoogleCalendarClient,
   userId: string | null,
+  forceFull = false,
 ): Promise<ChronosGoogleCalendarSyncResult> {
   const push = await pushChronosMeetingsToGoogleCalendar(client, userId);
-  const pull = await pullChronosEventsFromGoogleCalendar(client, userId);
+  const pull = await pullChronosEventsFromGoogleCalendar(
+    client,
+    userId,
+    forceFull,
+  );
 
   return {
     direction: "both",
@@ -1440,9 +1457,11 @@ async function syncBothDirections(
 async function listGoogleCalendarEvents({
   accessToken,
   connection,
+  forceFull = false,
 }: {
   accessToken: string;
   connection: ChronosGoogleCalendarConnectionRow;
+  forceFull?: boolean;
 }) {
   const events: GoogleCalendarEvent[] = [];
   let pageToken: string | undefined;
@@ -1453,7 +1472,7 @@ async function listGoogleCalendarEvents({
     singleEvents: "true",
   });
 
-  if (connection.sync_token) {
+  if (connection.sync_token && !forceFull) {
     baseParams.set("syncToken", connection.sync_token);
   } else {
     baseParams.set(
@@ -1699,19 +1718,7 @@ async function finishSyncRun(
 function normalizeGoogleEventDate(
   value: GoogleCalendarEvent["start"] | GoogleCalendarEvent["end"],
 ) {
-  const raw = value?.dateTime ?? value?.date;
-
-  if (!raw) {
-    return null;
-  }
-
-  const date = new Date(raw);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date.toISOString();
+  return normalizeGoogleCalendarDateTime(value);
 }
 
 function createSkippedSyncResult(
