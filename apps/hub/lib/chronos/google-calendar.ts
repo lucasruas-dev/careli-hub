@@ -453,22 +453,35 @@ export async function completeChronosGoogleCalendarAuthorization(
   requestUrl: string,
 ) {
   const url = new URL(requestUrl);
+  const callbackOrigin = url.origin;
   const code = url.searchParams.get("code")?.trim();
   const state = url.searchParams.get("state")?.trim();
   const deniedError = url.searchParams.get("error")?.trim();
 
   if (deniedError) {
-    return buildChronosGoogleCalendarRedirect("/chronos", "denied");
+    return buildChronosGoogleCalendarRedirect(
+      "/chronos",
+      "denied",
+      callbackOrigin,
+    );
   }
 
   if (!code || !state) {
-    return buildChronosGoogleCalendarRedirect("/chronos", "invalid_callback");
+    return buildChronosGoogleCalendarRedirect(
+      "/chronos",
+      "invalid_callback",
+      callbackOrigin,
+    );
   }
 
   const client = createChronosGoogleCalendarClient();
 
   if (!client) {
-    return buildChronosGoogleCalendarRedirect("/chronos", "storage_missing");
+    return buildChronosGoogleCalendarRedirect(
+      "/chronos",
+      "storage_missing",
+      callbackOrigin,
+    );
   }
 
   const stateResult = await client
@@ -479,14 +492,22 @@ export async function completeChronosGoogleCalendarAuthorization(
     .maybeSingle<ChronosGoogleCalendarOAuthStateRow>();
 
   if (stateResult.error || !stateResult.data) {
-    return buildChronosGoogleCalendarRedirect("/chronos", "invalid_state");
+    return buildChronosGoogleCalendarRedirect(
+      "/chronos",
+      "invalid_state",
+      callbackOrigin,
+    );
   }
 
   const oauthState = stateResult.data;
   const redirectAfter = sanitizeReturnPath(oauthState.redirect_after) ?? "/chronos";
 
   if (new Date(oauthState.expires_at).getTime() < Date.now()) {
-    return buildChronosGoogleCalendarRedirect(redirectAfter, "expired_state");
+    return buildChronosGoogleCalendarRedirect(
+      redirectAfter,
+      "expired_state",
+      callbackOrigin,
+    );
   }
 
   const tokenResponse = await exchangeGoogleAuthorizationCode({
@@ -498,6 +519,7 @@ export async function completeChronosGoogleCalendarAuthorization(
     return buildChronosGoogleCalendarRedirect(
       redirectAfter,
       "missing_refresh_token",
+      callbackOrigin,
     );
   }
 
@@ -536,7 +558,11 @@ export async function completeChronosGoogleCalendarAuthorization(
     });
 
   if (connectionResult.error) {
-    return buildChronosGoogleCalendarRedirect(redirectAfter, "connection_failed");
+    return buildChronosGoogleCalendarRedirect(
+      redirectAfter,
+      "connection_failed",
+      callbackOrigin,
+    );
   }
 
   await client
@@ -544,7 +570,11 @@ export async function completeChronosGoogleCalendarAuthorization(
     .update({ consumed_at: now })
     .eq("id", oauthState.id);
 
-  return buildChronosGoogleCalendarRedirect(redirectAfter, "connected");
+  return buildChronosGoogleCalendarRedirect(
+    redirectAfter,
+    "connected",
+    callbackOrigin,
+  );
 }
 
 export async function syncChronosMeetingToGoogleCalendar({
@@ -1698,20 +1728,69 @@ function createSkippedSyncResult(
   };
 }
 
-function buildChronosGoogleCalendarRedirect(path: string, status: string) {
-  const redirect = new URL(sanitizeReturnPath(path) ?? "/chronos", getAppBaseUrl());
+function buildChronosGoogleCalendarRedirect(
+  path: string,
+  status: string,
+  baseUrl?: string | null,
+) {
+  const redirect = new URL(
+    sanitizeReturnPath(path) ?? "/chronos",
+    getAppBaseUrl(baseUrl),
+  );
   redirect.searchParams.set("chronosGoogle", status);
 
   return redirect.toString();
 }
 
-function getAppBaseUrl() {
-  return ensureUrl(
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-      process.env.NEXT_PUBLIC_CARELI_APP_URL?.trim() ||
-      process.env.VERCEL_URL?.trim() ||
-      "http://localhost:3001",
-  );
+function getAppBaseUrl(preferredBaseUrl?: string | null) {
+  const candidates = [
+    preferredBaseUrl,
+    getOriginFromUrl(process.env.GOOGLE_CALENDAR_REDIRECT_URI?.trim()),
+    process.env.NEXT_PUBLIC_APP_URL?.trim(),
+    process.env.NEXT_PUBLIC_CARELI_APP_URL?.trim(),
+    process.env.VERCEL_URL?.trim(),
+    "http://localhost:3001",
+  ];
+
+  for (const candidate of candidates) {
+    const normalizedUrl = normalizeAppBaseUrl(candidate);
+
+    if (normalizedUrl) {
+      return normalizedUrl;
+    }
+  }
+
+  return "http://localhost:3001";
+}
+
+function normalizeAppBaseUrl(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(ensureUrl(value.trim()));
+
+    if (url.hostname.endsWith(".supabase.co")) {
+      return null;
+    }
+
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function getOriginFromUrl(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(ensureUrl(value)).origin;
+  } catch {
+    return null;
+  }
 }
 
 function ensureUrl(value: string) {
