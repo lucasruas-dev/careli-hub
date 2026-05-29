@@ -67,7 +67,6 @@ export function MessageList({
   const isNearBottomRef = useRef(true);
   const previousChannelIdRef = useRef<string | null>(null);
   const previousLastTimelineItemIdRef = useRef<string | undefined>(undefined);
-  const suppressNextChannelAutoScrollRef = useRef(false);
   const timelineItems = getHermesTimelineItems({
     callEvents: filter === "all" ? callEvents : [],
     messages,
@@ -114,31 +113,15 @@ export function MessageList({
     const timelineChanged = previousLastTimelineItemId !== lastTimelineItemId;
 
     if (channelChanged) {
-      suppressNextChannelAutoScrollRef.current = true;
-      scrollContainerRef.current?.scrollTo({
-        behavior: "auto",
-        top: 0,
-      });
-      isNearBottomRef.current = false;
-    }
-
-    const shouldSuppressChannelRefreshScroll =
-      !channelChanged &&
-      timelineChanged &&
-      suppressNextChannelAutoScrollRef.current &&
-      lastMessageAuthorId !== currentUserId;
-
-    if (shouldSuppressChannelRefreshScroll) {
-      suppressNextChannelAutoScrollRef.current = false;
+      isNearBottomRef.current = true;
     }
 
     const shouldScrollToBottom =
       Boolean(lastTimelineItemId) &&
-      !isInitialRender &&
-      timelineChanged &&
-      !channelChanged &&
-      !shouldSuppressChannelRefreshScroll &&
-      (isNearBottomRef.current || lastMessageAuthorId === currentUserId);
+      (isInitialRender ||
+        channelChanged ||
+        (timelineChanged &&
+          (isNearBottomRef.current || lastMessageAuthorId === currentUserId)));
 
     if (shouldScrollToBottom) {
       bottomRef.current?.scrollIntoView({
@@ -155,7 +138,6 @@ export function MessageList({
     currentUserId,
     lastMessageAuthorId,
     lastTimelineItemId,
-    scrollContainerRef,
   ]);
 
   if (timelineItems.length === 0) {
