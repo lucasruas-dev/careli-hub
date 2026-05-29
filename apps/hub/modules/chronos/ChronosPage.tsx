@@ -1586,10 +1586,15 @@ function ChronosAgendaScreen({
   const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(
     null,
   );
+  const [googleCalendarConnecting, setGoogleCalendarConnecting] =
+    useState(false);
   const [googleCalendarSyncing, setGoogleCalendarSyncing] = useState(false);
-  const [googleCalendarSyncError, setGoogleCalendarSyncError] = useState<
-    string | null
-  >(null);
+  const [googleCalendarAutoSyncing, setGoogleCalendarAutoSyncing] =
+    useState(false);
+  const [googleCalendarAutoSyncedAt, setGoogleCalendarAutoSyncedAt] =
+    useState<string | null>(null);
+  const googleCalendarAutoSyncInFlightRef = useRef(false);
+  const googleCalendarLastAutoSyncAtRef = useRef(0);
   const sortedMeetings = useMemo(() => sortMeetingsByDate(meetings), [meetings]);
   const detailMeeting = detailMeetingId
     ? sortedMeetings.find((meeting) => meeting.id === detailMeetingId) ?? null
@@ -1672,6 +1677,49 @@ function ChronosAgendaScreen({
     }
   }, [onRefresh, refreshGoogleCalendarStatus]);
 
+  const runGoogleCalendarAutoSync = useCallback(
+    async (trigger: "interval" | "visible") => {
+      if (
+        !googleCalendarStatus?.connection.connected ||
+        googleCalendarAutoSyncInFlightRef.current ||
+        googleCalendarSyncing
+      ) {
+        return;
+      }
+
+      const now = Date.now();
+      const minimumGapMs = trigger === "visible" ? 20_000 : 55_000;
+
+      if (now - googleCalendarLastAutoSyncAtRef.current < minimumGapMs) {
+        return;
+      }
+
+      googleCalendarAutoSyncInFlightRef.current = true;
+      googleCalendarLastAutoSyncAtRef.current = now;
+      setGoogleCalendarAutoSyncing(true);
+
+      try {
+        const result = await syncChronosGoogleCalendar("pull");
+
+        if (result.status !== "failed") {
+          setGoogleCalendarAutoSyncedAt(new Date().toISOString());
+          await Promise.all([refreshGoogleCalendarStatus(), onRefresh()]);
+        }
+      } catch {
+        // Auto-sync e silencioso para nao atrapalhar a operacao manual da agenda.
+      } finally {
+        googleCalendarAutoSyncInFlightRef.current = false;
+        setGoogleCalendarAutoSyncing(false);
+      }
+    },
+    [
+      googleCalendarStatus?.connection.connected,
+      googleCalendarSyncing,
+      onRefresh,
+      refreshGoogleCalendarStatus,
+    ],
+  );
+
   const handleGoogleCalendarConnect = useCallback(async () => {
     setGoogleCalendarConnecting(true);
     setGoogleCalendarError(null);
@@ -1720,6 +1768,35 @@ function ChronosAgendaScreen({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!googleCalendarStatus?.connection.connected) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) {
+        void runGoogleCalendarAutoSync("interval");
+      }
+    }, 60_000);
+    const handleFocus = () => {
+      void runGoogleCalendarAutoSync("visible");
+    };
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void runGoogleCalendarAutoSync("visible");
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [googleCalendarStatus?.connection.connected, runGoogleCalendarAutoSync]);
 
   return (
     <Surface bordered className="relative grid min-h-[38rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-[#d9e0e7] bg-white">
@@ -1787,9 +1864,9 @@ function ChronosAgendaScreen({
               </button>
             ))}
           </div>
-          {googleCalendarSyncError || googleCalendarError ? (
+          {googleCalendarError ? (
             <span className="max-w-64 truncate text-xs font-semibold text-amber-700">
-              {googleCalendarSyncError ?? googleCalendarError}
+              {googleCalendarError}
             </span>
           ) : null}
           <button

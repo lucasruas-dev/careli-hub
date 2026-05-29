@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
     } | null;
     const direction = normalizeSyncDirection(input?.direction);
     const result = await syncChronosGoogleCalendar({
+      baseUrl: request.nextUrl.origin,
       direction,
       forceFull: input?.full === true,
       userId: authorization.user.id,

@@ -187,6 +187,13 @@ export type ChronosGoogleCalendarConnectionStatus = {
   connectedAt?: string | null;
   lastError?: string | null;
   lastSyncedAt?: string | null;
+  push?: {
+    active: boolean;
+    expiresAt?: string | null;
+    lastError?: string | null;
+    lastNotificationAt?: string | null;
+    status: "active" | "error" | "expired" | "missing";
+  };
   storageReady: boolean;
   syncTokenPresent?: boolean;
 };
