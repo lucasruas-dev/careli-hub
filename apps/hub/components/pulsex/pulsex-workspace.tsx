@@ -22,7 +22,6 @@ import {
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
   getHermesMessageRealtimeTopic,
-  parseHermesMessageBroadcastPayload,
 } from "@/lib/pulsex/realtime";
 import {
   createHermesDirectChannelId,
@@ -216,7 +215,13 @@ export function HermesWorkspace() {
     useState(false);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
-  const messageRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
+  const messagePostgresRealtimeChannelRef =
+    useRef<HubRealtimeChannel | null>(null);
+  const channelsRef = useRef<readonly HermesChannel[]>([]);
+  const presenceUsersRef = useRef<readonly HermesPresenceUser[]>([]);
+  const notifyIncomingMessagesRef = useRef<
+    (messages: readonly HermesMessage[]) => void
+  >(() => undefined);
   const athenaAgentPanelRef = useRef<HTMLDivElement>(null);
   const threadPanelRef = useRef<HTMLDivElement>(null);
   const [notifications, setNotifications] = useState<HermesToastNotification[]>(
@@ -229,6 +234,14 @@ export function HermesWorkspace() {
     channels.find((channel) => channel.id === activeChannelId) ??
     channels[0] ??
     emptyHermesChannel;
+
+  useEffect(() => {
+    channelsRef.current = channels;
+  }, [channels]);
+
+  useEffect(() => {
+    presenceUsersRef.current = presenceUsers;
+  }, [presenceUsers]);
 
   useOutsideDismiss({
     enabled: isAthenaAgentOpen && !isAthenaTicketRecordingMinimized,
@@ -688,6 +701,10 @@ export function HermesWorkspace() {
     [activeChannel.name, currentUserId],
   );
 
+  useEffect(() => {
+    notifyIncomingMessagesRef.current = notifyIncomingMessages;
+  }, [notifyIncomingMessages]);
+
   const loadActiveChannelMessages = useCallback(
     (shouldApply: () => boolean = () => true) => {
       if (
@@ -787,18 +804,10 @@ export function HermesWorkspace() {
     }
 
     const realtimeChannel = client.channel(
-      getHermesMessageRealtimeTopic(activeChannel.id),
-      {
-        config: {
-          broadcast: {
-            ack: true,
-            self: false,
-          },
-        },
-      },
+      getHermesMessagePostgresRealtimeTopic(activeChannel.id),
     );
 
-    messageRealtimeChannelRef.current = realtimeChannel;
+    messagePostgresRealtimeChannelRef.current = realtimeChannel;
     realtimeChannel
       .on(
         "postgres_changes",
@@ -811,7 +820,7 @@ export function HermesWorkspace() {
         (payload: { eventType?: string; new?: unknown }) => {
           const message = normalizeHermesRealtimeMessage(
             payload.new,
-            presenceUsers,
+            presenceUsersRef.current,
           );
 
           if (!message || message.channelId !== activeChannel.id) {
@@ -848,7 +857,7 @@ export function HermesWorkspace() {
           const alreadyKnown = knownMessageIdsRef.current.has(message.id);
           const [nextDeliveredMessage] = withMessageDeliveryData(
             [message],
-            channels,
+            channelsRef.current,
           );
 
           if (!nextDeliveredMessage) {
@@ -871,49 +880,7 @@ export function HermesWorkspace() {
             !alreadyKnown &&
             nextDeliveredMessage.authorId !== currentUserId
           ) {
-            notifyIncomingMessages([nextDeliveredMessage]);
-          }
-        },
-      )
-      .on(
-        "broadcast",
-        {
-          event: PULSEX_MESSAGE_BROADCAST_EVENT,
-        },
-        (payload: { payload?: unknown }) => {
-          const broadcastMessage = parseHermesMessageBroadcastPayload(
-            payload.payload,
-          );
-
-          if (
-            !broadcastMessage ||
-            broadcastMessage.channelId !== activeChannel.id
-          ) {
-            return;
-          }
-
-          const [nextDeliveredMessage] = withMessageDeliveryData(
-            [broadcastMessage],
-            channels,
-          );
-
-          if (!nextDeliveredMessage) {
-            return;
-          }
-
-          knownMessageIdsRef.current.add(nextDeliveredMessage.id);
-          loadedChannelIdsRef.current.add(nextDeliveredMessage.channelId);
-          setMessages((currentMessages) =>
-            mergeHermesChannelMessages({
-              channelId: activeChannel.id,
-              currentMessages,
-              nextMessages: [nextDeliveredMessage],
-              replaceChannel: false,
-            }),
-          );
-
-          if (nextDeliveredMessage.authorId !== currentUserId) {
-            notifyIncomingMessages([nextDeliveredMessage]);
+            notifyIncomingMessagesRef.current([nextDeliveredMessage]);
           }
         },
       )
@@ -925,20 +892,16 @@ export function HermesWorkspace() {
       });
 
     return () => {
-      if (messageRealtimeChannelRef.current === realtimeChannel) {
-        messageRealtimeChannelRef.current = null;
+      if (messagePostgresRealtimeChannelRef.current === realtimeChannel) {
+        messagePostgresRealtimeChannelRef.current = null;
       }
 
       void client.removeChannel(realtimeChannel);
     };
   }, [
     activeChannel.id,
-    activeChannel.kind,
-    channels,
     currentUserId,
     dataStatus,
-    notifyIncomingMessages,
-    presenceUsers,
   ]);
 
   useEffect(() => {
@@ -1317,7 +1280,7 @@ export function HermesWorkspace() {
       );
       void broadcastHermesMessage(
         savedDeliveredMessage,
-        messageRealtimeChannelRef.current,
+        getHubSupabaseClient(),
       );
     } catch (error) {
       if (isLocalDevelopmentRuntime()) {
@@ -2104,11 +2067,24 @@ function getLatestHermesDateValue(
 
 async function broadcastHermesMessage(
   message: HermesMessage,
-  realtimeChannel: HubRealtimeChannel | null,
+  client: HubSupabaseClient | null,
 ) {
-  if (!realtimeChannel) {
+  if (!client) {
     return;
   }
+
+  const topic = getHermesMessageRealtimeTopic(message.channelId);
+  const existingChannel = findHermesRealtimeChannel(client, topic);
+  const realtimeChannel =
+    existingChannel ??
+    client.channel(topic, {
+      config: {
+        broadcast: {
+          ack: true,
+          self: false,
+        },
+      },
+    });
 
   try {
     await realtimeChannel.send({
@@ -2121,7 +2097,27 @@ async function broadcastHermesMessage(
       error,
       messageId: message.id,
     });
+  } finally {
+    if (!existingChannel) {
+      void client.removeChannel(realtimeChannel);
+    }
   }
+}
+
+function findHermesRealtimeChannel(
+  client: HubSupabaseClient,
+  topic: string,
+) {
+  const realtimeTopic = `realtime:${topic}`;
+
+  return (
+    client
+      .getChannels()
+      .find(
+        (channel) =>
+          (channel as { topic?: string }).topic === realtimeTopic,
+      ) ?? null
+  );
 }
 
 function mergeHermesChannelMessages({
@@ -2567,6 +2563,10 @@ function getThreadNotificationSortTime(
   );
 
   return Number.isNaN(time) ? 0 : time;
+}
+
+function getHermesMessagePostgresRealtimeTopic(channelId: HermesChannel["id"]) {
+  return `${getHermesMessageRealtimeTopic(channelId)}:postgres`;
 }
 
 const emptyHermesChannel = {
