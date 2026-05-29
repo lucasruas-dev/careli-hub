@@ -564,11 +564,12 @@ O manifesto de homologacao deve incluir:
 ## CHRONOS-20260529-001-GOOGLE-PROD-PROMOCAO
 
 - Modulo/agente dono: `Chronos / Hefesto`.
-- Status: `BLOQUEADO`.
+- Status: `EM_PRODUCAO`.
 - Origem: Lucas pediu subir o recorte Chronos Google para producao e autorizou inserir envs Google em Production.
 - Objetivo do recorte: promover para producao o Chronos Google Calendar ja homologado, preservando o hotfix Hermes vigente e mantendo falha fechada quando envs ou schema estiverem ausentes.
 - Worktree/branch:
   - `.codex-deploy/z29-001-chronos-google-prod-20260529`;
+  - `careli-hub-worktrees/chronos-google-prod-final-20260529` para deploy limpo fora de `.codex-deploy`;
   - `codex/hefesto/chronos-google-prod-20260529`.
 - Base de producao: `b67edc9`, deployment vigente `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
 - Arquivos incluidos no candidato:
@@ -592,11 +593,17 @@ O manifesto de homologacao deve incluir:
   - smoke local do build em `http://127.0.0.1:3030`: `/chronos`, `/`, `/login`, `/zeus` 200; rotas Google protegidas sem sessao 401 esperado.
 - Preview/Homo de referencia:
   - Homologacao Chronos Google: `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`.
-- Deployment de producao: `n/a - bloqueado`.
+- Deployment de producao: `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi`, URL tecnica `https://careli-hub-hub-i2bs-bqeioabul-lucasruas-devs-projects.vercel.app`.
 - Riscos e pendencias:
-  - envs Google Production ausentes por nome;
-  - automacao de copia de Preview para Production bloqueada por seguranca;
-  - migrations `0035` e `0036` ainda nao autorizadas para Production;
-  - Google OAuth de producao requer callback `https://c2x.app.br/api/chronos/google-calendar/callback` autorizado no Google Cloud.
-- Rollback sugerido: manter `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih` ate desbloqueio; se deploy futuro falhar, promover novamente esse deployment.
-- Decisao de Lucas: envs Google em Production autorizadas, mas devem ser configuradas por caminho seguro sem expor valores.
+  - envs Google Production foram inseridas por caminho seguro, sem valores em chat/log/docs;
+  - migrations `0035` e `0036` foram autorizadas por Lucas e aplicadas em Production;
+  - schema verificado por metadados: tabelas, colunas `watch_*`, indices, triggers, RLS e grants `service_role`;
+  - deployment transitorio `dpl_cgJqxny9yXWffCRiZj8axyormjn9` foi substituido porque saiu de root misto; o deployment final limpo e `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi`;
+  - validacao autenticada final do OAuth ainda depende do Lucas no Chrome/PWA.
+- Rollback sugerido: promover `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih` se o Chronos Google causar regressao critica; esse rollback remove o recorte Google/Chronos de producao e preserva o hotfix Hermes anterior.
+- Decisao de Lucas: envs Google em Production e migrations `0035`/`0036` autorizadas; producao publicada apos healthchecks.
+
+Atualizacao final:
+- Commit publicado: `03d8157 fix(chronos): clarify google calendar connection state`.
+- Build remoto final confirmou `/api/chronos/google-calendar/webhook` presente e `/api/chronos/invitees` ausente.
+- Healthchecks pos-deploy: `/`, `/login`, `/chronos` e `https://ops.c2x.app.br/zeus` retornaram 200; rotas protegidas sem sessao retornaram 401 esperado; webhook sem headers retornou 400 seguro; logs de erro recentes sem ocorrencias.

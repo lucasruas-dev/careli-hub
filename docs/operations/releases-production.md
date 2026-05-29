@@ -2112,3 +2112,54 @@ Registro de producao:
   - Hefesto reinspecionar envs por nome, validar schema, publicar producao e rodar healthchecks.
 - Status: `BLOQUEADO`.
 - Proxima acao: Lucas configurar envs no dashboard Vercel Production e confirmar no chat; depois Hefesto continua a promocao.
+
+## 2026-05-29 - CHRONOS-20260529-001-GOOGLE-PROD-PROMOCAO-FINAL
+
+Registro de producao:
+
+- Assunto: `[Chronos] Google Calendar em producao com pacote limpo`.
+- Squad/agente responsavel: `Hefesto / Zeus Operations`.
+- Data e hora local: `2026-05-29 07:37:30 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: Chronos Google homologado em `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi` e promocao autorizada por Lucas, incluindo envs Google Production e migrations `0035`/`0036`.
+- Escopo publicado:
+  - preservar hotfix Hermes vigente;
+  - publicar Chronos Agenda/Salas/Drive e sala externa;
+  - publicar Google Calendar OAuth, callback em producao, status de conexao, sync manual, auto-sync, timezone `America/Sao_Paulo` e webhook com fallback;
+  - ajustar a UI para mostrar `Conectar Google` quando desconectado, `Google conectado` em verde quando conectado e `Atualizar` como acao separada de sincronizacao.
+- Commit publicado: `03d8157 fix(chronos): clarify google calendar connection state`.
+- Deployment anterior saudavel: `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- Deployment transitorio substituido: `dpl_cgJqxny9yXWffCRiZj8axyormjn9`, descartado por ter sido gerado a partir de root misto.
+- Deployment novo final: `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi`; URL tecnica `https://careli-hub-hub-i2bs-bqeioabul-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado em `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no mesmo deployment, status `Ready`.
+- Schema/envs:
+  - envs `GOOGLE_CALENDAR_*` confirmadas por nome em Production, sem valores exibidos;
+  - migrations `0035_chronos_google_calendar_mirror.sql` e `0036_chronos_google_calendar_watch.sql` aplicadas em Production com autorizacao explicita do Lucas;
+  - verificacao por metadados confirmou tabelas Google, colunas `watch_*`, indices, triggers, RLS ativo e grants CRUD para `service_role`.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas aviso LF/CRLF conhecido;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps;
+  - build remoto Vercel: READY; rota `/api/chronos/google-calendar/webhook` presente; rota `/api/chronos/invitees` ausente no pacote limpo.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/sync` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/webhook` sem headers Google: 400 seguro;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs de erro;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs de erro.
+- Rollback definido: promover `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih` se houver regressao critica em login, Hermes, Zeus/OPS ou Chronos.
+- Riscos conhecidos:
+  - validacao funcional OAuth/sync conectado depende de sessao autenticada do Lucas no Chrome/PWA;
+  - Google Cloud pode levar alguns minutos para propagar o client/redirect recem-salvo;
+  - registro estruturado remoto no Operations Center ainda nao foi reconciliado nesta etapa.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas atualizar `https://c2x.app.br/chronos`, conferir o botao `Google conectado` em verde ou usar `Conectar Google`, e clicar `Atualizar` para testar sync manual.
