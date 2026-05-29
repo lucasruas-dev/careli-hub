@@ -1910,3 +1910,55 @@ Registro de producao:
   - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Lucas validar se a lista parou de piscar/descer ao alternar canais; Zeus acompanha e investiga query/permissao se ainda houver canal vazio.
+
+## 2026-05-28 - HERMES-20260528-006-MESSAGE-HISTORY-ANCHOR
+
+Status: EM PRODUCAO, aguardando validacao visual do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Primeira mensagem visivel ao abrir canal`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Data e hora local: `2026-05-28 22:55 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: incidente urgente Hermes em producao; Lucas reportou que, apos o ajuste de estabilidade visual, nao estava vendo a primeira mensagem ao clicar no canal.
+- Escopo publicado:
+  - abrir/trocar canal ancorando no topo do historico carregado;
+  - impedir auto-scroll para o fim no primeiro render da lista;
+  - manter auto-scroll para baixo apenas quando chega mensagem nova perto do fim ou quando a mensagem e do proprio usuario.
+- Commit publicado: `6d9ea14 fix(hermes): anchor message history on channel open`.
+- Deployment anterior: `dpl_EHuQwKBYi7FHB2Wv7GJbBJ4kL9dv`.
+- Deployment novo: `dpl_DkhBzjpfQ333zRDpTw9bAVuLATyV`; URL tecnica `https://careli-hub-hub-i2bs-k0w69tde4-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_DkhBzjpfQ333zRDpTw9bAVuLATyV`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no mesmo deployment, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/components/pulsex/message-list.tsx`.
+- Arquivos/modulos excluidos: Hades, Iris, Chronos, Athena, Apolo, Ares, Atlas, Guardian, CareDesk, migrations, banco, Supabase remoto, envs, secrets, tokens, dominios e alias manual.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npx.cmd eslint components/pulsex/message-list.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps;
+  - `npx.cmd vercel deploy --prod --yes`: READY.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 5m`: sem erro critico; chamadas Hermes autenticadas 200 e 401 esperado sem sessao;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 5m`: sem erro critico.
+- Rollback definido: `dpl_EHuQwKBYi7FHB2Wv7GJbBJ4kL9dv` como rollback imediato se o novo deployment causar regressao critica no Hermes, Home, Login ou Zeus.
+- Riscos conhecidos:
+  - esta entrega nao implementa paginacao completa do historico antigo;
+  - se o canal tiver mais mensagens do que o limite carregado atualmente, ver o primeiro registro absoluto exigira recorte posterior de paginacao/carregar anteriores;
+  - validacao visual final depende do Chrome/PWA autenticado do Lucas.
+- Pendencias:
+  - Lucas retestar `https://c2x.app.br/hermes`, clicando em `Lideranca` e outros canais com historico;
+  - se ainda faltar mensagem dentro do lote carregado, investigar query/ordem de `listChannelMessages`;
+  - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar se a primeira mensagem do historico carregado aparece ao abrir/trocar canal.

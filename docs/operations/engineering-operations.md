@@ -20380,3 +20380,49 @@ Conclusao:
 - O refinamento publicado melhora a estabilidade visual enquanto o Hermes sincroniza mensagens e evita auto-scroll agressivo ao trocar de canal.
 - O Hub continua tratando Supabase como fonte de verdade; a memoria local atual e apenas da sessao aberta.
 - Lucas deve atualizar o Hermes e testar cliques entre canais com historico para confirmar se a tela parou de piscar/descer.
+
+## 2026-05-28 - HERMES-20260528-006-MESSAGE-HISTORY-ANCHOR
+
+Status: EM PRODUCAO, aguardando validacao visual do Lucas.
+
+Resumo:
+- Lucas reportou que, apos o ajuste de estabilidade visual, nao estava vendo a primeira mensagem ao abrir/clicar em um canal do Hermes.
+- A causa foi isolada no comportamento de scroll do cliente: o `MessageList` ainda podia forcar o fim da conversa no primeiro render e a troca de canal podia manter uma posicao anterior do container.
+- O ajuste foi mantido no frontend do Hermes, sem alterar backend, Supabase, envs, secrets, banco, migrations, dominios ou outros modulos.
+
+Correcoes aplicadas:
+- `apps/hub/components/pulsex/message-list.tsx`: troca o efeito de scroll para `useLayoutEffect` para ajustar a posicao antes do repaint visual.
+- Ao trocar de canal, o container de mensagens volta para `top: 0`, mostrando o inicio do historico carregado.
+- O primeiro render deixa de forcar auto-scroll para o fim; o auto-scroll para baixo fica restrito a mensagem nova quando o operador ja esta perto do fim ou quando a mensagem nova e do proprio usuario.
+
+Arquivos publicados:
+- `apps/hub/components/pulsex/message-list.tsx`
+
+Deployments:
+- Deployment anterior imediato: `dpl_EHuQwKBYi7FHB2Wv7GJbBJ4kL9dv`.
+- Deployment novo: `dpl_DkhBzjpfQ333zRDpTw9bAVuLATyV`.
+- URL tecnica: https://careli-hub-hub-i2bs-k0w69tde4-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit publicado: `6d9ea14 fix(hermes): anchor message history on channel open`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npx.cmd eslint components/pulsex/message-list.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps.
+- `npx.cmd vercel deploy --prod --yes`: READY.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_DkhBzjpfQ333zRDpTw9bAVuLATyV`.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no mesmo deployment.
+- Healthchecks pos-deploy: `GET /hermes`, `/`, `/login` e `ops /zeus` retornaram 200; `GET /api/hermes/messages` sem sessao retornou 401 esperado.
+- `npx.cmd vercel logs https://c2x.app.br --since 5m` e `npx.cmd vercel logs https://ops.c2x.app.br --since 5m`: sem erro critico; logs mostram chamadas Hermes autenticadas 200 e 401 esperado sem sessao.
+
+Riscos e acompanhamento:
+- Esta entrega nao implementa paginacao completa do historico antigo; o Hermes segue carregando o lote recente configurado.
+- Se Lucas quiser ver o primeiro registro absoluto de canais com mais mensagens do que o limite atual, sera necessario um recorte separado de paginacao/carregar anteriores.
+- Validacao visual real depende do Chrome/PWA autenticado do Lucas, clicando entre canais com historico.
+
+Conclusao:
+- O hotfix corrige a ancoragem visual para mostrar o inicio do historico carregado ao abrir ou alternar canal.
+- O comportamento esperado agora e: abrir canal no topo, manter estabilidade durante sync e descer sozinho apenas quando fizer sentido operacional.
+- Lucas deve atualizar o Hermes e clicar novamente em `Lideranca`/outros canais para confirmar a primeira mensagem visivel.
