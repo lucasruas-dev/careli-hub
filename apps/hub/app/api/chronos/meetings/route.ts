@@ -3,11 +3,13 @@ import { type NextRequest } from "next/server";
 import {
   authorizeChronosRequest,
   createChronosMeeting,
+  deleteChronosMeeting,
   isChronosForbiddenError,
   isChronosSchemaMissingError,
   listChronosSnapshot,
   updateChronosMeeting,
 } from "@/lib/chronos/server";
+import { syncChronosMeetingToGoogleCalendar } from "@/lib/chronos/google-calendar";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -101,6 +103,47 @@ export async function PATCH(request: NextRequest) {
         error: getChronosApiErrorMessage(
           error,
           "Nao foi possivel atualizar a reuniao Chronos.",
+        ),
+      },
+      { status: getChronosApiErrorStatus(error) },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const authorization = await authorizeChronosRequest(request);
+
+  if (!authorization.ok) {
+    return authorization.response;
+  }
+
+  try {
+    const result = await deleteChronosMeeting({
+      authorization,
+      input: await request.json().catch(() => null),
+    });
+
+    try {
+      await syncChronosMeetingToGoogleCalendar({
+        meetingId: result.meetingId,
+        trigger: "chronos_agenda_delete",
+        userId: authorization.user.id,
+      });
+    } catch {
+      // A exclusao no Chronos nao deve ficar presa se o espelho Google falhar.
+    }
+
+    return Response.json(result, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    return Response.json(
+      {
+        error: getChronosApiErrorMessage(
+          error,
+          "Nao foi possivel excluir o evento Chronos.",
         ),
       },
       { status: getChronosApiErrorStatus(error) },

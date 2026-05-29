@@ -110,6 +110,23 @@ export type ChronosMeetingProfileDeleteInput = {
   profileId: string;
 };
 
+export const chronosCalendarEventKinds = [
+  "event",
+  "task",
+  "out_of_office",
+  "appointment",
+] as const;
+
+export type ChronosCalendarEventKind =
+  (typeof chronosCalendarEventKinds)[number];
+
+export const chronosCalendarEventKindLabels = {
+  appointment: "Agendamento",
+  event: "Evento",
+  out_of_office: "Ausente",
+  task: "Tarefa",
+} as const satisfies Record<ChronosCalendarEventKind, string>;
+
 export const defaultChronosMeetingProfiles = [
   {
     description: "Reunioes de alinhamento interno ou externo com rastreabilidade formal.",
@@ -143,6 +160,14 @@ export type ChronosApoloInvitee = {
   entityId: string;
   organization?: string;
   phone?: string;
+};
+
+export type ChronosHubInvitee = {
+  displayName: string;
+  email: string;
+  operationalProfile?: string | null;
+  role?: string | null;
+  userId: string;
 };
 
 export type ChronosGoogleCalendarEnvClassification =
@@ -329,8 +354,10 @@ export type ChronosSnapshot = {
 export type ChronosCreateMeetingInput = {
   agenda?: string[];
   apoloInvitees?: ChronosApoloInvitee[];
+  calendarEventKind?: ChronosCalendarEventKind;
   endsAt?: string;
   externalReference?: string;
+  hubInvitees?: ChronosHubInvitee[];
   locationAddress?: string;
   locationMode?: ChronosMeetingLocationMode;
   meetingType: ChronosMeetingType;
@@ -340,6 +367,7 @@ export type ChronosCreateMeetingInput = {
     email?: string;
     organization?: string;
     role?: ChronosParticipantRole;
+    userId?: string;
   }>;
   profileId?: string;
   roomId?: string;
@@ -365,6 +393,10 @@ export type ChronosRoomUpdateInput = Partial<ChronosRoomInput> & {
 
 export type ChronosRoomDeleteInput = {
   roomId: string;
+};
+
+export type ChronosMeetingDeleteInput = {
+  meetingId: string;
 };
 
 export type ChronosPublicRoom = {

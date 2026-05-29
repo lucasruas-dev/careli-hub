@@ -3,17 +3,19 @@
 import {
   createChronosMeeting,
   createChronosRoom,
+  deleteChronosMeeting,
   deleteChronosRoom,
   draftChronosMinutes,
   loadChronosGoogleCalendarStatus,
   loadChronosSnapshot,
-  startChronosGoogleCalendarConnection,
+  searchChronosInternalInvitees,
   syncChronosGoogleCalendar,
   transcribeChronosRecording,
   updateChronosRoom,
   updateChronosMeeting,
 } from "@/lib/chronos/client";
 import {
+  chronosCalendarEventKindLabels,
   chronosCaptureStatusLabels,
   chronosMeetingStatusLabels,
   chronosMeetingTypeLabels,
@@ -22,8 +24,11 @@ import {
   chronosMinutesStatusLabels,
   defaultChronosMeetingProfiles,
   type ChronosApoloInvitee,
+  type ChronosCalendarEventKind,
+  type ChronosCaptureStatus,
   type ChronosCreateMeetingInput,
   type ChronosGoogleCalendarStatus,
+  type ChronosHubInvitee,
   type ChronosMeeting,
   type ChronosMeetingLocationMode,
   type ChronosMeetingProfile,
@@ -49,6 +54,8 @@ import {
   Clock3,
   Download,
   FileText,
+  Folder,
+  FolderOpen,
   ImagePlus,
   LayoutGrid,
   ListChecks,
@@ -92,12 +99,19 @@ type ChronosView =
   | "drive";
 
 type ChronosDriveView = "recordings" | "minutes";
+type ChronosDriveViewMode = "grid" | "list";
 
 type ChronosAgendaFilter = "all" | "today" | "live" | "review" | "followups";
 
 type ChronosCalendarView = "day" | "week" | "month" | "year" | "list";
-type ChronosRoomsTab = "profiles" | "rooms";
 type ChronosApoloSearchState = "error" | "idle" | "loading" | "ready";
+type ChronosInviteeSource = "external" | "internal";
+type ChronosAgendaInvitee = ChronosApoloInvitee & {
+  operationalProfile?: string | null;
+  role?: string | null;
+  source: ChronosInviteeSource;
+  userId?: string;
+};
 
 type ChronosRoomDraft = {
   backgroundDataUrl: string;
@@ -106,7 +120,6 @@ type ChronosRoomDraft = {
   minutesRequired: boolean;
   name: string;
   recordingRequired: boolean;
-  roomType: string;
   slug: string;
   transcriptionRequired: boolean;
 };
@@ -119,8 +132,42 @@ type LocalRecording = {
   meetingId: string;
   mimeType?: string | null;
   name: string;
+  sizeBytes?: number | null;
+  startedAt?: string | null;
+  status?: ChronosCaptureStatus;
+  stoppedAt?: string | null;
   transcribedAt?: string;
   url: string;
+};
+
+type ChronosDriveRecordingItem = LocalRecording & {
+  meeting: ChronosMeeting;
+  roomLabel: string;
+  sectorLabel: string;
+};
+
+type ChronosDriveRecordingFolder = {
+  id: string;
+  label: string;
+  latestAt?: string | null;
+  meetings: ChronosDriveRecordingMeeting[];
+  roomLabels: string[];
+  subtitle: string;
+  totalRecordings: number;
+  totalMeetings: number;
+};
+
+type ChronosDriveRecordingMeeting = {
+  availableRecordings: number;
+  id: string;
+  latestAt?: string | null;
+  meeting: ChronosMeeting;
+  participantText: string;
+  primaryRecording: ChronosDriveRecordingItem | null;
+  recordings: ChronosDriveRecordingItem[];
+  roomLabel: string;
+  sectorLabel: string;
+  totalDurationSeconds: number;
 };
 
 const chronosRoomBackgroundUploadLimitBytes = 5_000_000;
@@ -170,6 +217,60 @@ const minutesVariant = {
   rejected: "danger",
 } as const satisfies Record<ChronosMinutesStatus, BadgeVariant>;
 
+const chronosMeetingTypeVisuals = {
+  alignment: {
+    accentClass: "border-l-blue-500",
+    chipClass: "border-blue-100 bg-blue-50 text-blue-700",
+    dotClass: "bg-blue-500",
+    label: "Alinhamento",
+    pillClass: "border-blue-200 bg-blue-50 text-blue-700",
+  },
+  client: {
+    accentClass: "border-l-[#A07C3B]",
+    chipClass: "border-[#eadfcb] bg-[#fff8e8] text-[#7a5a1f]",
+    dotClass: "bg-[#A07C3B]",
+    label: "Reuniao",
+    pillClass: "border-[#eadfcb] bg-[#fff8e8] text-[#7a5a1f]",
+  },
+  executive: {
+    accentClass: "border-l-[#101820]",
+    chipClass: "border-[#d9e0e7] bg-[#f8fafc] text-[#101820]",
+    dotClass: "bg-[#101820]",
+    label: "Reuniao",
+    pillClass: "border-[#d9e0e7] bg-[#f8fafc] text-[#101820]",
+  },
+  external: {
+    accentClass: "border-l-[#526078]",
+    chipClass: "border-[#d9e0e7] bg-[#f8fafc] text-[#526078]",
+    dotClass: "bg-[#526078]",
+    label: "Reuniao",
+    pillClass: "border-[#d9e0e7] bg-[#f8fafc] text-[#526078]",
+  },
+  formal: {
+    accentClass: "border-l-amber-500",
+    chipClass: "border-amber-100 bg-amber-50 text-amber-800",
+    dotClass: "bg-amber-500",
+    label: "Comunicado",
+    pillClass: "border-amber-200 bg-amber-50 text-amber-800",
+  },
+  results: {
+    accentClass: "border-l-emerald-500",
+    chipClass: "border-emerald-100 bg-emerald-50 text-emerald-700",
+    dotClass: "bg-emerald-500",
+    label: "Resultado",
+    pillClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+} as const satisfies Record<
+  ChronosMeetingType,
+  {
+    accentClass: string;
+    chipClass: string;
+    dotClass: string;
+    label: string;
+    pillClass: string;
+  }
+>;
+
 export function ChronosPage() {
   const { hubUser } = useAuth();
   const canManageChronos = Boolean(
@@ -190,10 +291,6 @@ export function ChronosPage() {
       snapshot.meetings[0] ??
       null,
     [selectedMeetingId, snapshot.meetings],
-  );
-  const metrics = useMemo(
-    () => buildChronosMetrics(snapshot.meetings),
-    [snapshot.meetings],
   );
 
   const replaceMeeting = useCallback((meeting: ChronosMeeting) => {
@@ -285,6 +382,38 @@ export function ChronosPage() {
         updateError instanceof Error
           ? updateError.message
           : "Nao foi possivel atualizar a reuniao.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteMeeting(meetingId: string) {
+    if (!canManageChronos) {
+      setError("Seu usuario pode visualizar o Chronos, mas nao gerenciar reunioes.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      await deleteChronosMeeting({ meetingId });
+      setSnapshot((currentSnapshot) => ({
+        ...currentSnapshot,
+        meetings: currentSnapshot.meetings.filter(
+          (meeting) => meeting.id !== meetingId,
+        ),
+      }));
+      setSelectedMeetingId((currentId) =>
+        currentId === meetingId ? "" : currentId,
+      );
+      await reloadChronos();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Nao foi possivel excluir o evento.",
       );
     } finally {
       setSaving(false);
@@ -469,20 +598,18 @@ export function ChronosPage() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <Tooltip content="Recarregar Chronos">
-              <button
-                aria-label="Recarregar Chronos"
-                className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                onClick={() => void reloadChronos()}
-                type="button"
-              >
-                {loading ? (
-                  <Loader2 aria-hidden="true" className="animate-spin" size={16} />
-                ) : (
-                  <RefreshCcw aria-hidden="true" size={16} />
-                )}
-              </button>
-            </Tooltip>
+            <button
+              aria-label="Recarregar Chronos"
+              className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={() => void reloadChronos()}
+              type="button"
+            >
+              {loading ? (
+                <Loader2 aria-hidden="true" className="animate-spin" size={16} />
+              ) : (
+                <RefreshCcw aria-hidden="true" size={16} />
+              )}
+            </button>
           </div>
         </div>
 
@@ -498,22 +625,13 @@ export function ChronosPage() {
           </Surface>
         ) : null}
 
-        {activeView !== "agenda" ? (
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <ChronosMetric icon={<CalendarClock size={17} />} label="reunioes" value={metrics.total} />
-            <ChronosMetric icon={<Clock3 size={17} />} label="hoje" value={metrics.today} />
-            <ChronosMetric icon={<Radio size={17} />} label="ao vivo" value={metrics.live} />
-            <ChronosMetric icon={<ClipboardCheck size={17} />} label="revisao" value={metrics.minutesReview} />
-            <ChronosMetric icon={<FileText size={17} />} label="atas pend." value={metrics.minutesPending} />
-            <ChronosMetric icon={<ListChecks size={17} />} label="follow-ups" value={metrics.followUpsOpen} />
-          </section>
-        ) : null}
-
         {activeView === "agenda" ? (
           <ChronosAgendaScreen
             canManage={canManageChronos}
             meetings={snapshot.meetings}
             onCreate={handleCreateMeeting}
+            onDeleteMeeting={handleDeleteMeeting}
+            onReload={reloadChronos}
             onSelectMeeting={setSelectedMeetingId}
             profiles={snapshot.profiles}
             rooms={snapshot.rooms}
@@ -528,7 +646,6 @@ export function ChronosPage() {
             onCreateRoom={handleCreateRoom}
             onDeleteRoom={handleDeleteRoom}
             onUpdateRoom={handleUpdateRoom}
-            profiles={snapshot.profiles}
             rooms={snapshot.rooms}
             saving={saving}
           />
@@ -728,59 +845,31 @@ function ChronosDrivePanel({
 
   return (
     <div className="grid min-h-full grid-rows-[auto_minmax(0,1fr)] gap-3">
-      <Surface bordered className="border-[#d9e0e7] bg-white p-2">
-        <div className="flex gap-1 overflow-x-auto">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeDriveView === tab.id;
+      <div className="flex gap-1 overflow-x-auto border-b border-[#d9e0e7] pb-2">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeDriveView === tab.id;
 
-            return (
-              <button
-                aria-pressed={isActive}
-                className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold transition ${
-                  isActive
-                    ? "bg-[#101820] text-white"
-                    : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
-                }`}
-                key={tab.id}
-                onClick={() => onChangeDriveView(tab.id)}
-                type="button"
-              >
-                <Icon aria-hidden="true" size={15} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </Surface>
+          return (
+            <button
+              aria-pressed={isActive}
+              className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold transition ${
+                isActive
+                  ? "bg-[#101820] text-white"
+                  : "text-[#667085] hover:bg-white hover:text-[#101820]"
+              }`}
+              key={tab.id}
+              onClick={() => onChangeDriveView(tab.id)}
+              type="button"
+            >
+              <Icon aria-hidden="true" size={15} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
       <div className="min-h-0">{children}</div>
     </div>
-  );
-}
-
-function ChronosMetric({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: number;
-}) {
-  return (
-    <Surface bordered className="grid min-h-20 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-[#d9e0e7] bg-white p-3">
-      <span className="grid h-9 w-9 place-items-center rounded-md bg-[#101820] text-white">
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-xl font-semibold text-[#101820]">
-          {value}
-        </span>
-        <span className="block truncate text-xs font-semibold uppercase text-[#667085]">
-          {label}
-        </span>
-      </span>
-    </Surface>
   );
 }
 
@@ -1174,6 +1263,10 @@ function ExecutiveRoomPanel({
         meetingId: meeting.id,
         mimeType: blob.type,
         name: `${meeting.protocol}.webm`,
+        sizeBytes: blob.size,
+        startedAt: new Date(recordingStartedAtRef.current).toISOString(),
+        status: "available",
+        stoppedAt: new Date().toISOString(),
         url,
       });
       void onUpdate({
@@ -1340,6 +1433,8 @@ export function ChronosPrimaryPanel({
         canManage={false}
         meetings={meetings}
         onCreate={async () => undefined}
+        onDeleteMeeting={async () => undefined}
+        onReload={async () => undefined}
         onSelectMeeting={onSelectMeeting}
         profiles={[...defaultChronosMeetingProfiles]}
         rooms={[]}
@@ -1462,6 +1557,8 @@ function ChronosAgendaScreen({
   canManage,
   meetings,
   onCreate,
+  onDeleteMeeting,
+  onReload,
   onSelectMeeting,
   profiles,
   rooms,
@@ -1471,6 +1568,8 @@ function ChronosAgendaScreen({
   canManage: boolean;
   meetings: ChronosMeeting[];
   onCreate: (input: ChronosCreateMeetingInput) => Promise<void>;
+  onDeleteMeeting: (meetingId: string) => Promise<void>;
+  onReload: () => Promise<void>;
   onSelectMeeting: (meetingId: string) => void;
   profiles: ChronosMeetingProfile[];
   rooms: ChronosRoom[];
@@ -1480,16 +1579,21 @@ function ChronosAgendaScreen({
   const [calendarView, setCalendarView] =
     useState<ChronosCalendarView>("week");
   const [cursorDate, setCursorDate] = useState(() => startOfDay(new Date()));
+  const [detailMeetingId, setDetailMeetingId] = useState<string | null>(null);
   const [draftStartsAt, setDraftStartsAt] = useState<string | null>(null);
   const [googleCalendarStatus, setGoogleCalendarStatus] =
     useState<ChronosGoogleCalendarStatus | null>(null);
   const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(
     null,
   );
-  const [googleCalendarConnecting, setGoogleCalendarConnecting] =
-    useState(false);
   const [googleCalendarSyncing, setGoogleCalendarSyncing] = useState(false);
+  const [googleCalendarSyncError, setGoogleCalendarSyncError] = useState<
+    string | null
+  >(null);
   const sortedMeetings = useMemo(() => sortMeetingsByDate(meetings), [meetings]);
+  const detailMeeting = detailMeetingId
+    ? sortedMeetings.find((meeting) => meeting.id === detailMeetingId) ?? null
+    : null;
   const calendarViewItems: Array<{ id: ChronosCalendarView; label: string }> = [
     { id: "day", label: "Dia" },
     { id: "week", label: "Semana" },
@@ -1541,15 +1645,29 @@ function ChronosAgendaScreen({
     }
   }, []);
 
-  const handleGoogleCalendarSync = useCallback(async () => {
+  useEffect(() => {
+    void refreshGoogleCalendarStatus();
+  }, [refreshGoogleCalendarStatus]);
+
+  function openMeetingDetails(meetingId: string) {
+    onSelectMeeting(meetingId);
+    setDetailMeetingId(meetingId);
+  }
+
+  async function handleGoogleCalendarSync() {
+    if (googleCalendarSyncing) {
+      return;
+    }
+
     setGoogleCalendarSyncing(true);
-    setGoogleCalendarError(null);
+    setGoogleCalendarSyncError(null);
 
     try {
       await syncChronosGoogleCalendar("both");
       await refreshGoogleCalendarStatus();
+      await onReload();
     } catch (error) {
-      setGoogleCalendarError(
+      setGoogleCalendarSyncError(
         error instanceof Error
           ? error.message
           : "Nao foi possivel sincronizar Google Agenda.",
@@ -1557,99 +1675,12 @@ function ChronosAgendaScreen({
     } finally {
       setGoogleCalendarSyncing(false);
     }
-  }, [refreshGoogleCalendarStatus]);
-
-  const handleGoogleCalendarConnect = useCallback(async () => {
-    setGoogleCalendarConnecting(true);
-    setGoogleCalendarError(null);
-
-    try {
-      const authorizationUrl =
-        await startChronosGoogleCalendarConnection("/chronos");
-
-      window.location.assign(authorizationUrl);
-    } catch (error) {
-      setGoogleCalendarError(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel conectar o Google.",
-      );
-      setGoogleCalendarConnecting(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadGoogleCalendarStatus() {
-      try {
-        const status = await loadChronosGoogleCalendarStatus();
-
-        if (active) {
-          setGoogleCalendarStatus(status);
-          setGoogleCalendarError(null);
-        }
-      } catch (error) {
-        if (active) {
-          setGoogleCalendarStatus(null);
-          setGoogleCalendarError(
-            error instanceof Error
-              ? error.message
-              : "Nao foi possivel verificar o Google Agenda.",
-          );
-        }
-      }
-    }
-
-    void loadGoogleCalendarStatus();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  }
 
   return (
-    <Surface bordered className="relative grid min-h-[45rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-[#d9e0e7] bg-white">
-      <div className="grid gap-3 border-b border-[#edf0f4] p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="m-0 text-base font-semibold text-[#101820]">Agenda</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              aria-label={
-                googleCalendarStatus?.connection.connected
-                  ? "Google conectado"
-                  : "Conectar Google"
-              }
-              className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-55 ${
-                googleCalendarStatus?.connection.connected
-                  ? "border-[#d6eadf] bg-[#f1fbf5] text-[#067647] hover:bg-[#e7f8ef]"
-                  : "border-[#d9e0e7] bg-white text-[#101820] hover:bg-[#f8fafc]"
-              }`}
-              disabled={
-                googleCalendarConnecting ||
-                !googleCalendarStatus?.configured ||
-                !googleCalendarStatus.connection.storageReady
-              }
-              onClick={handleGoogleCalendarConnect}
-              type="button"
-            >
-              <GoogleGlyph connected={googleCalendarStatus?.connection.connected} />
-              {googleCalendarConnecting ? "Abrindo..." : "Google"}
-            </button>
-            <button
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-55"
-              disabled={!canManage}
-              onClick={() => openEventDraft(roundDateToNextHour(new Date()))}
-              type="button"
-            >
-              <Plus aria-hidden="true" size={15} />
-              Criar evento
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
+    <Surface bordered className="relative grid min-h-[38rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-[#d9e0e7] bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] p-2.5">
+        <div className="flex flex-wrap items-center gap-1.5">
             <button
               className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc]"
               onClick={() => setCursorDate(startOfDay(new Date()))}
@@ -1677,6 +1708,24 @@ function ChronosAgendaScreen({
               {formatCalendarPeriod(cursorDate, calendarView)}
             </span>
           </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="hidden flex-wrap items-center gap-2 text-[11px] font-semibold text-[#667085] xl:flex">
+            {(["alignment", "results", "formal", "executive"] as const).map(
+              (type) => {
+                const visual = chronosMeetingTypeVisuals[type];
+
+                return (
+                  <span className="inline-flex items-center gap-1" key={type}>
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 rounded-full ${visual.dotClass}`}
+                    />
+                    {visual.label}
+                  </span>
+                );
+              },
+            )}
+          </div>
           <div className="flex gap-1 overflow-x-auto rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-1">
             {calendarViewItems.map((item) => (
               <button
@@ -1694,6 +1743,37 @@ function ChronosAgendaScreen({
               </button>
             ))}
           </div>
+          {googleCalendarSyncError || googleCalendarError ? (
+            <span className="max-w-64 truncate text-xs font-semibold text-amber-700">
+              {googleCalendarSyncError ?? googleCalendarError}
+            </span>
+          ) : null}
+          <button
+            aria-label="Sincronizar Google Agenda"
+            className={`grid h-9 w-9 place-items-center rounded-md border text-sm font-black transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+              googleCalendarStatus?.connection.connected
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                : "border-[#d9e0e7] bg-white text-[#526078] hover:bg-[#f8fafc] hover:text-[#101820]"
+            }`}
+            disabled={googleCalendarSyncing}
+            onClick={() => void handleGoogleCalendarSync()}
+            type="button"
+          >
+            {googleCalendarSyncing ? (
+              <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+            ) : (
+              <span aria-hidden="true">G</span>
+            )}
+          </button>
+          <button
+            aria-label="Criar evento"
+            className="grid h-9 w-9 place-items-center rounded-md bg-[#101820] text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={!canManage}
+            onClick={() => openEventDraft(roundDateToNextHour(new Date()))}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+          </button>
         </div>
       </div>
 
@@ -1704,20 +1784,6 @@ function ChronosAgendaScreen({
             meetings={sortedMeetings}
             onSelectDate={(date) => setCursorDate(date)}
           />
-          <div className="mt-4 grid gap-2">
-            <p className="m-0 text-xs font-bold uppercase text-[#667085]">
-              Fonte atual
-            </p>
-            <ChronosGoogleCalendarReadiness
-              connecting={googleCalendarConnecting}
-              error={googleCalendarError}
-              onConnect={handleGoogleCalendarConnect}
-              onRefresh={refreshGoogleCalendarStatus}
-              onSync={handleGoogleCalendarSync}
-              status={googleCalendarStatus}
-              syncing={googleCalendarSyncing}
-            />
-          </div>
         </aside>
 
         <div className="min-h-0 overflow-auto">
@@ -1725,13 +1791,33 @@ function ChronosAgendaScreen({
             cursorDate={cursorDate}
             meetings={sortedMeetings}
             onCreateAt={openEventDraft}
-            onSelectMeeting={onSelectMeeting}
+            onSelectMeeting={openMeetingDetails}
             rooms={rooms}
             selectedMeetingId={selectedMeetingId}
             view={calendarView}
           />
         </div>
       </div>
+
+      {detailMeeting ? (
+        <div className="absolute inset-0 z-40 flex items-start justify-center px-4 pt-24">
+          <button
+            aria-label="Fechar detalhes do evento"
+            className="absolute inset-0 cursor-default bg-transparent"
+            onClick={() => setDetailMeetingId(null)}
+            type="button"
+          />
+          <ChronosCalendarEventDetailsPopup
+            meeting={detailMeeting}
+            onClose={() => setDetailMeetingId(null)}
+            onDelete={async (meetingId) => {
+              await onDeleteMeeting(meetingId);
+              setDetailMeetingId(null);
+            }}
+            saving={saving}
+          />
+        </div>
+      ) : null}
 
       {draftStartsAt ? (
         <div className="absolute inset-0 z-30 flex items-start justify-center px-4 pt-28">
@@ -1755,6 +1841,188 @@ function ChronosAgendaScreen({
         </div>
       ) : null}
     </Surface>
+  );
+}
+
+function ChronosCalendarEventDetailsPopup({
+  meeting,
+  onClose,
+  onDelete,
+  saving,
+}: {
+  meeting: ChronosMeeting;
+  onClose: () => void;
+  onDelete: (meetingId: string) => Promise<void>;
+  saving: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const roomPath = getChronosMeetingRoomPath(meeting);
+  const roomUrl =
+    roomPath && typeof window !== "undefined"
+      ? new URL(roomPath, window.location.origin).toString()
+      : roomPath;
+  const eventKind = getChronosCalendarEventKind(meeting);
+  const meetingProfile = getChronosMeetingProfileLabel(meeting);
+  const participants = meeting.participants.filter(
+    (participant) => participant.role !== "host",
+  );
+
+  async function copyRoomLink() {
+    if (!roomUrl) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(roomUrl);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  async function requestDelete() {
+    if (!window.confirm(`Excluir "${meeting.title}" da agenda Chronos?`)) {
+      return;
+    }
+
+    await onDelete(meeting.id);
+  }
+
+  return (
+    <section
+      aria-label="Detalhes do evento Chronos"
+      className="relative z-10 grid max-h-[calc(100vh-7rem)] w-full max-w-[34rem] gap-4 overflow-auto rounded-lg border border-[#d9e0e7] bg-white p-4 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="neutral">
+              {chronosCalendarEventKindLabels[eventKind]}
+            </Badge>
+            <Badge variant={statusVariant[meeting.status]}>
+              {chronosMeetingStatusLabels[meeting.status]}
+            </Badge>
+          </div>
+          <h2 className="mt-3 truncate text-xl font-semibold text-[#101820]">
+            {meeting.title}
+          </h2>
+          <p className="m-0 mt-1 text-sm font-medium text-[#667085]">
+            {formatDateTime(meeting.startsAt)}
+            {meeting.endsAt ? ` - ${formatDateTime(meeting.endsAt)}` : ""}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            aria-label="Excluir evento"
+            className="grid h-8 w-8 place-items-center rounded-md text-red-600 transition hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-wait disabled:opacity-55"
+            disabled={saving}
+            onClick={() => void requestDelete()}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={16} />
+          </button>
+          <button
+            aria-label="Fechar detalhes"
+            className="grid h-8 w-8 place-items-center rounded-md text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={17} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-2 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 text-sm">
+        <DetailRow label="Tipo" value={meetingProfile} />
+        <DetailRow label="Local" value={getChronosMeetingLocationLabel(meeting)} />
+        <DetailRow label="Host" value={meeting.hostName ?? "Host Chronos"} />
+        <DetailRow label="Protocolo" value={meeting.protocol} />
+      </div>
+
+      {roomUrl ? (
+        <div className="grid gap-2 rounded-md border border-[#d9e0e7] bg-white p-3">
+          <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+            Link da sala
+          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded-md bg-[#f5f7fa] px-2 py-2 text-xs font-semibold text-[#344054]">
+              {roomUrl}
+            </code>
+            <button
+              aria-label="Copiar link da sala"
+              className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={() => void copyRoomLink()}
+              type="button"
+            >
+              <ClipboardCheck aria-hidden="true" size={16} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-[#667085]">
+              {copied ? "Link copiado." : "Disponivel para convidados externos."}
+            </span>
+            <a
+              className="inline-flex h-8 items-center justify-center rounded-md bg-[#101820] px-3 text-xs font-semibold text-white transition hover:bg-[#1f2937]"
+              href={roomPath ?? "#"}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Abrir sala
+            </a>
+          </div>
+        </div>
+      ) : null}
+
+      {meeting.objective ? (
+        <div className="grid gap-1 rounded-md border border-[#edf0f4] bg-white p-3">
+          <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+            Descricao
+          </p>
+          <p className="m-0 text-sm leading-5 text-[#344054]">
+            {meeting.objective}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-2">
+        <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+          Convidados
+        </p>
+        {participants.length > 0 ? (
+          <div className="grid max-h-40 gap-1 overflow-auto">
+            {participants.map((participant) => (
+              <div
+                className="flex items-center justify-between gap-2 rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2"
+                key={participant.id}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-[#101820]">
+                    {participant.displayName}
+                  </span>
+                  <span className="block truncate text-xs text-[#667085]">
+                    {[participant.email, participant.organization]
+                      .filter(Boolean)
+                      .join(" / ") || "Sem contato cadastrado"}
+                  </span>
+                </span>
+                <Badge variant="neutral">{participant.role}</Badge>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <span className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-3 text-sm text-[#667085]">
+            Nenhum convidado adicional registrado.
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
+      <span className="text-xs font-bold uppercase text-[#667085]">{label}</span>
+      <span className="truncate font-semibold text-[#101820]">{value}</span>
+    </div>
   );
 }
 
@@ -1782,6 +2050,8 @@ function ChronosCalendarEventPopup({
   const [endsAt, setEndsAt] = useState(() =>
     addMinutesToDateTimeLocal(initialStartsAt, 60),
   );
+  const [calendarEventKind, setCalendarEventKind] =
+    useState<ChronosCalendarEventKind>("event");
   const [profileId, setProfileId] = useState(
     activeProfiles[0]?.id ?? "external",
   );
@@ -1791,12 +2061,14 @@ function ChronosCalendarEventPopup({
   const [locationAddress, setLocationAddress] = useState("");
   const [objective, setObjective] = useState("");
   const [agenda, setAgenda] = useState("");
+  const [inviteeSource, setInviteeSource] =
+    useState<ChronosInviteeSource>("internal");
   const [contactQuery, setContactQuery] = useState("");
-  const [contactOptions, setContactOptions] = useState<ChronosApoloInvitee[]>(
+  const [contactOptions, setContactOptions] = useState<ChronosAgendaInvitee[]>(
     [],
   );
   const [selectedInvitees, setSelectedInvitees] = useState<
-    ChronosApoloInvitee[]
+    ChronosAgendaInvitee[]
   >([]);
   const [contactSearchStatus, setContactSearchStatus] =
     useState<ChronosApoloSearchState>("idle");
@@ -1807,7 +2079,12 @@ function ChronosCalendarEventPopup({
     activeProfiles.find((profile) => profile.id === profileId) ??
     activeProfiles[0] ??
     defaultChronosMeetingProfiles[0];
-  const eventKinds = ["Evento", "Tarefa", "Ausente", "Agendamento"];
+  const eventKinds: Array<{ id: ChronosCalendarEventKind; label: string }> = [
+    { id: "event", label: "Evento" },
+    { id: "task", label: "Tarefa" },
+    { id: "out_of_office", label: "Ausente" },
+    { id: "appointment", label: "Agendamento" },
+  ];
 
   useEffect(() => {
     setStartsAt(initialStartsAt);
@@ -1839,52 +2116,32 @@ function ChronosCalendarEventPopup({
     let active = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      void searchApoloInvitees();
+      void searchInvitees();
     }, 240);
 
-    async function searchApoloInvitees() {
+    async function searchInvitees() {
       try {
         setContactSearchStatus("loading");
         setContactSearchError(null);
 
-        const accessToken = await getChronosApoloAccessToken();
-        const params = new URLSearchParams({
-          limit: "8",
-          q: normalizedQuery,
-        });
-        const response = await fetch(
-          `/api/apolo/relationships?${params.toString()}`,
-          {
-            cache: "no-store",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-            signal: controller.signal,
-          },
-        );
-        const payload = (await response.json().catch(() => null)) as
-          | { data?: ApoloDashboardData; error?: string }
-          | null;
-
-        if (!response.ok || !payload?.data) {
-          throw new Error(payload?.error ?? "Nao foi possivel buscar no Apolo.");
-        }
+        const options =
+          inviteeSource === "internal"
+            ? await searchInternalInvitees(normalizedQuery)
+            : await searchExternalInvitees(normalizedQuery, controller.signal);
 
         if (!active) {
           return;
         }
 
-        const options = payload.data.entities
-          .map(mapApoloEntityToChronosInvitee)
-          .filter(hasChronosInviteeContact)
-          .filter(
+        setContactOptions(
+          options.filter(
             (invitee) =>
               !selectedInvitees.some(
-                (selectedInvitee) => selectedInvitee.entityId === invitee.entityId,
+                (selectedInvitee) =>
+                  getInviteeKey(selectedInvitee) === getInviteeKey(invitee),
               ),
-          );
-
-        setContactOptions(options);
+          ),
+        );
         setContactSearchStatus("ready");
       } catch (error) {
         if (!active) {
@@ -1899,7 +2156,9 @@ function ChronosCalendarEventPopup({
         setContactSearchError(
           error instanceof Error
             ? error.message
-            : "Nao foi possivel buscar contatos no Apolo.",
+            : inviteeSource === "internal"
+              ? "Nao foi possivel buscar o time interno."
+              : "Nao foi possivel buscar contatos no Apolo.",
         );
         setContactSearchStatus("error");
       }
@@ -1910,7 +2169,43 @@ function ChronosCalendarEventPopup({
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [contactQuery, selectedInvitees]);
+  }, [contactQuery, inviteeSource, selectedInvitees]);
+
+  async function searchInternalInvitees(query: string) {
+    const invitees = await searchChronosInternalInvitees(query);
+
+    return invitees.map(mapHubInviteeToAgendaInvitee);
+  }
+
+  async function searchExternalInvitees(query: string, signal: AbortSignal) {
+    const accessToken = await getChronosApoloAccessToken();
+    const params = new URLSearchParams({
+      limit: "8",
+      q: query,
+    });
+    const response = await fetch(`/api/apolo/relationships?${params.toString()}`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      signal,
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | { data?: ApoloDashboardData; error?: string }
+      | null;
+
+    if (!response.ok || !payload?.data) {
+      throw new Error(payload?.error ?? "Nao foi possivel buscar no Apolo.");
+    }
+
+    return payload.data.entities
+      .map(mapApoloEntityToChronosInvitee)
+      .filter(hasChronosInviteeContact)
+      .map((invitee) => ({
+        ...invitee,
+        source: "external" as const,
+      }));
+  }
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1932,10 +2227,10 @@ function ChronosCalendarEventPopup({
     }
   }
 
-  function addInvitee(invitee: ChronosApoloInvitee) {
+  function addInvitee(invitee: ChronosAgendaInvitee) {
     setSelectedInvitees((currentInvitees) =>
       currentInvitees.some(
-        (currentInvitee) => currentInvitee.entityId === invitee.entityId,
+        (currentInvitee) => getInviteeKey(currentInvitee) === getInviteeKey(invitee),
       )
         ? currentInvitees
         : [...currentInvitees, invitee].slice(0, 30),
@@ -1945,19 +2240,27 @@ function ChronosCalendarEventPopup({
     setContactSearchStatus("idle");
   }
 
-  function removeInvitee(entityId: string) {
+  function removeInvitee(inviteeKey: string) {
     setSelectedInvitees((currentInvitees) =>
-      currentInvitees.filter((invitee) => invitee.entityId !== entityId),
+      currentInvitees.filter((invitee) => getInviteeKey(invitee) !== inviteeKey),
     );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const internalInvitees = selectedInvitees.filter(
+      (invitee) => invitee.source === "internal",
+    );
+    const externalInvitees = selectedInvitees.filter(
+      (invitee) => invitee.source === "external",
+    );
 
     await onCreate({
       agenda: parseLines(agenda),
-      apoloInvitees: selectedInvitees,
+      apoloInvitees: externalInvitees.map(mapAgendaInviteeToApoloInvitee),
+      calendarEventKind,
       endsAt,
+      hubInvitees: internalInvitees.map(mapAgendaInviteeToHubInvitee),
       locationAddress:
         locationMode === "offline" ? locationAddress.trim() : undefined,
       locationMode,
@@ -1966,8 +2269,11 @@ function ChronosCalendarEventPopup({
       participants: selectedInvitees.map((invitee) => ({
         displayName: invitee.displayName,
         email: invitee.email,
-        organization: invitee.organization,
+        organization:
+          invitee.organization ??
+          (invitee.source === "internal" ? "Careli" : undefined),
         role: "participant" as const,
+        userId: invitee.userId,
       })),
       profileId: selectedProfile.id,
       roomId: locationMode === "online" ? roomId : undefined,
@@ -2006,19 +2312,19 @@ function ChronosCalendarEventPopup({
         />
 
         <div className="flex gap-1 overflow-x-auto">
-          {eventKinds.map((kind, index) => (
+          {eventKinds.map((kind) => (
             <button
-              aria-pressed={index === 0}
+              aria-pressed={calendarEventKind === kind.id}
               className={`h-8 shrink-0 rounded-md px-3 text-xs font-semibold transition ${
-                index === 0
+                calendarEventKind === kind.id
                   ? "bg-[#d8edf8] text-[#075985]"
                   : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
               }`}
-              disabled={index !== 0}
-              key={kind}
+              key={kind.id}
+              onClick={() => setCalendarEventKind(kind.id)}
               type="button"
             >
-              {kind}
+              {kind.label}
             </button>
           ))}
         </div>
@@ -2055,6 +2361,32 @@ function ChronosCalendarEventPopup({
         <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
           <UsersRound aria-hidden="true" className="justify-self-center text-[#667085]" size={17} />
           <div className="grid gap-2">
+            <div className="inline-grid w-fit grid-cols-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-0.5">
+              {[
+                { id: "internal", label: "Interno" },
+                { id: "external", label: "Apolo" },
+              ].map((option) => (
+                <button
+                  aria-pressed={inviteeSource === option.id}
+                  className={`h-8 rounded px-3 text-xs font-semibold transition ${
+                    inviteeSource === option.id
+                      ? "bg-[#101820] text-white"
+                      : "text-[#667085] hover:bg-white hover:text-[#101820]"
+                  }`}
+                  key={option.id}
+                  onClick={() => {
+                    setInviteeSource(option.id as ChronosInviteeSource);
+                    setContactQuery("");
+                    setContactOptions([]);
+                    setContactSearchStatus("idle");
+                    setContactSearchError(null);
+                  }}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <div className="relative">
               <Search
                 aria-hidden="true"
@@ -2064,14 +2396,20 @@ function ChronosCalendarEventPopup({
               <input
                 className="h-9 w-full rounded-md border border-[#d9e0e7] bg-[#fafbfc] pl-9 pr-3 text-sm text-[#101820] outline-none placeholder:text-[#98a2b3] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                 onChange={(event) => setContactQuery(event.target.value)}
-                placeholder="Buscar convidados no Apolo"
+                placeholder={
+                  inviteeSource === "internal"
+                    ? "Buscar time interno"
+                    : "Buscar convidados no Apolo"
+                }
                 type="search"
                 value={contactQuery}
               />
             </div>
             {contactSearchStatus === "loading" ? (
               <span className="text-xs font-semibold text-[#667085]">
-                Buscando contatos reais do Apolo...
+                {inviteeSource === "internal"
+                  ? "Buscando cadastro interno..."
+                  : "Buscando contatos reais do Apolo..."}
               </span>
             ) : null}
             {contactSearchError ? (
@@ -2084,7 +2422,7 @@ function ChronosCalendarEventPopup({
                 {contactOptions.map((invitee) => (
                   <button
                     className="grid gap-0.5 rounded px-2 py-2 text-left text-sm transition hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                    key={invitee.entityId}
+                    key={getInviteeKey(invitee)}
                     onClick={() => addInvitee(invitee)}
                     type="button"
                   >
@@ -2092,7 +2430,12 @@ function ChronosCalendarEventPopup({
                       {invitee.displayName}
                     </span>
                     <span className="truncate text-xs text-[#667085]">
-                      {[invitee.email, invitee.phone, invitee.organization]
+                      {[
+                        invitee.email,
+                        invitee.phone,
+                        invitee.organization ??
+                          (invitee.source === "internal" ? "Careli" : null),
+                      ]
                         .filter(Boolean)
                         .join(" / ")}
                     </span>
@@ -2105,13 +2448,16 @@ function ChronosCalendarEventPopup({
                 {selectedInvitees.map((invitee) => (
                   <span
                     className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[#d9e0e7] bg-white px-2 text-xs font-semibold text-[#344054]"
-                    key={invitee.entityId}
+                    key={getInviteeKey(invitee)}
                   >
                     {invitee.displayName}
+                    <span className="rounded bg-[#edf0f4] px-1 py-0.5 text-[10px] uppercase text-[#667085]">
+                      {invitee.source === "internal" ? "Interno" : "Apolo"}
+                    </span>
                     <button
                       aria-label={`Remover ${invitee.displayName}`}
                       className="grid h-5 w-5 place-items-center rounded text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
-                      onClick={() => removeInvitee(invitee.entityId)}
+                      onClick={() => removeInvitee(getInviteeKey(invitee))}
                       type="button"
                     >
                       <X aria-hidden="true" size={12} />
@@ -2121,8 +2467,7 @@ function ChronosCalendarEventPopup({
               </div>
             ) : (
               <span className="text-xs text-[#667085]">
-                Convidados entram exclusivamente pela base Apolo, com e-mail e
-                telefone quando cadastrados.
+                Use Interno para o time da empresa e Apolo para convidados externos.
               </span>
             )}
           </div>
@@ -2239,142 +2584,6 @@ function ChronosCalendarEventPopup({
         </button>
       </div>
     </form>
-  );
-}
-
-function ChronosGoogleCalendarReadiness({
-  connecting,
-  error,
-  onConnect,
-  onRefresh,
-  onSync,
-  status,
-  syncing,
-}: {
-  connecting: boolean;
-  error: string | null;
-  onConnect: () => void;
-  onRefresh: () => void;
-  onSync: () => void;
-  status: ChronosGoogleCalendarStatus | null;
-  syncing: boolean;
-}) {
-  if (error) {
-    return (
-      <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-        <p className="m-0">
-          Google Agenda preparado com rota segura, mas o status nao pode ser
-          consultado agora.
-        </p>
-        <p className="m-0 font-semibold">{error}</p>
-        <button
-          className="h-8 rounded-md border border-amber-200 bg-white px-2 font-bold text-amber-900"
-          onClick={onRefresh}
-          type="button"
-        >
-          Tentar novamente
-        </button>
-      </div>
-    );
-  }
-
-  if (!status) {
-    return (
-      <div className="rounded-md border border-[#edf0f4] bg-white p-3 text-xs leading-5 text-[#667085]">
-        Verificando preparo seguro do Google Agenda...
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-2 rounded-md border border-[#edf0f4] bg-white p-3 text-xs leading-5 text-[#667085]">
-      <p className="m-0">
-        Espelho Google para criar e atualizar eventos dos dois lados com vinculo
-        idempotente por evento.
-      </p>
-      <div className="flex flex-wrap gap-1">
-        <Badge variant={status.configured ? "info" : "warning"}>
-          {status.configured ? "envs obrigatorias presentes" : "envs pendentes"}
-        </Badge>
-        <Badge variant={status.connection.connected ? "success" : "warning"}>
-          {status.connection.connected ? "conectado" : "nao conectado"}
-        </Badge>
-        <Badge variant={status.connection.storageReady ? "success" : "warning"}>
-          {status.connection.storageReady ? "storage ok" : "migration pendente"}
-        </Badge>
-        <Badge variant="neutral">{status.provider}</Badge>
-      </div>
-      {status.connection.calendarId ? (
-        <p className="m-0">
-          Calendario: <strong>{status.connection.calendarId}</strong>
-        </p>
-      ) : null}
-      {status.connection.lastSyncedAt ? (
-        <p className="m-0">
-          Ultimo sync: {formatDateTime(status.connection.lastSyncedAt)}
-        </p>
-      ) : null}
-      {status.missingEnvNames.length > 0 ? (
-        <div>
-          <p className="m-0 font-bold uppercase text-[#667085]">
-            Pendentes por nome
-          </p>
-          <p className="m-0 mt-1 break-words">
-            {status.missingEnvNames.join(", ")}
-          </p>
-        </div>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        <button
-          aria-label={
-            status.connection.connected ? "Google conectado" : "Conectar Google"
-          }
-          className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${
-            status.configured && status.connection.storageReady
-              ? "bg-[#101820] text-white"
-              : "bg-[#edf0f4] text-[#98a2b3]"
-          }`}
-          disabled={
-            connecting || !status.configured || !status.connection.storageReady
-          }
-          onClick={onConnect}
-          type="button"
-        >
-          <GoogleGlyph connected={status.connection.connected} />
-          {connecting ? "Abrindo..." : "Google"}
-        </button>
-        <button
-          className="h-8 rounded-md border border-[#d9e0e7] bg-white px-2 font-bold text-[#101820] disabled:opacity-50"
-          disabled={!status.connection.connected || syncing}
-          onClick={onSync}
-          type="button"
-        >
-          {syncing ? "Sincronizando..." : "Sincronizar"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function GoogleGlyph({ connected }: { connected?: boolean }) {
-  if (connected) {
-    return (
-      <span
-        aria-hidden="true"
-        className="grid h-5 w-5 place-items-center rounded-full bg-white text-[11px] font-black text-[#4285f4] shadow-[inset_0_0_0_1px_rgba(16,24,32,0.1)]"
-      >
-        G
-      </span>
-    );
-  }
-
-  return (
-    <span
-      aria-hidden="true"
-      className="grid h-5 w-5 place-items-center rounded-full border border-current bg-transparent text-[11px] font-black"
-    >
-      G
-    </span>
   );
 }
 
@@ -2637,18 +2846,21 @@ function ChronosYearGrid({
             </p>
             <div className="mt-2 grid grid-cols-7 gap-1">
               {monthDays.map((date) => {
-                const hasMeeting = meetings.some((meeting) =>
+                const dayMeeting = meetings.find((meeting) =>
                   sameMeetingDay(meeting, date),
                 );
+                const typeVisual = dayMeeting
+                  ? chronosMeetingTypeVisuals[dayMeeting.meetingType]
+                  : null;
 
                 return (
                   <button
-                    className={`grid h-7 place-items-center rounded text-xs font-semibold transition hover:bg-white ${
-                      hasMeeting
-                        ? "bg-[#101820] text-white"
+                    className={`grid h-7 place-items-center rounded border text-xs font-semibold transition hover:bg-white ${
+                      typeVisual
+                        ? typeVisual.pillClass
                         : sameDay(date, new Date())
-                          ? "bg-[#0b66d8] text-white"
-                          : "text-[#667085]"
+                          ? "border-[#0b66d8] bg-[#0b66d8] text-white"
+                          : "border-transparent text-[#667085]"
                     }`}
                     key={date.toISOString()}
                     onClick={() => onCreateAt(setDateHour(date, 9))}
@@ -2675,12 +2887,14 @@ function ChronosAgendaEventCard({
   onSelectMeeting: (meetingId: string) => void;
   selected: boolean;
 }) {
+  const typeVisual = chronosMeetingTypeVisuals[meeting.meetingType];
+
   return (
     <button
-      className={`grid gap-2 rounded-md border p-3 text-left transition ${
+      className={`grid gap-2 rounded-md border border-l-4 p-3 text-left transition ${
         selected
-          ? "border-[#A07C3B] bg-[#fffaf0]"
-          : "border-[#edf0f4] bg-[#fafbfc] hover:border-[#d9e0e7] hover:bg-white"
+          ? `border-[#A07C3B] bg-[#fffaf0] ${typeVisual.accentClass}`
+          : `border-[#edf0f4] bg-[#fafbfc] hover:border-[#d9e0e7] hover:bg-white ${typeVisual.accentClass}`
       }`}
       onClick={() => onSelectMeeting(meeting.id)}
       type="button"
@@ -2700,6 +2914,11 @@ function ChronosAgendaEventCard({
         </Badge>
       </span>
       <span className="flex flex-wrap gap-1">
+        <span
+          className={`inline-flex h-6 items-center rounded-full border px-2 text-xs font-semibold ${typeVisual.chipClass}`}
+        >
+          {typeVisual.label}
+        </span>
         <Badge variant="neutral">{meeting.protocol}</Badge>
         <Badge variant={minutesVariant[meeting.minutesStatus]}>
           {chronosMinutesStatusLabels[meeting.minutesStatus]}
@@ -2721,22 +2940,39 @@ function ChronosCalendarEventPill({
   onSelectMeeting: (meetingId: string) => void;
   selected: boolean;
 }) {
+  const typeVisual = chronosMeetingTypeVisuals[meeting.meetingType];
+
   return (
     <span
       className={`block rounded border px-2 py-1 text-xs font-semibold ${
         selected
-          ? "border-[#A07C3B] bg-[#fffaf0] text-[#101820]"
-          : "border-[#0ea5e9] bg-[#e0f2fe] text-[#0369a1]"
+          ? `${typeVisual.pillClass} ring-2 ring-[#A07C3B]/40`
+          : typeVisual.pillClass
       }`}
       onClick={(event) => {
+        event.stopPropagation();
+        onSelectMeeting(meeting.id);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+
+        event.preventDefault();
         event.stopPropagation();
         onSelectMeeting(meeting.id);
       }}
       role="button"
       tabIndex={0}
     >
-      <span className="block truncate">
-        {formatMeetingHour(meeting)} {meeting.title}
+      <span className="flex min-w-0 items-center gap-1 truncate">
+        <span
+          aria-hidden="true"
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${typeVisual.dotClass}`}
+        />
+        <span className="truncate">
+          {formatMeetingHour(meeting)} {meeting.title}
+        </span>
       </span>
       <span className="block truncate font-medium">
         {getChronosMeetingLocationLabel(meeting)}
@@ -2771,9 +3007,12 @@ function MiniCalendar({
           </span>
         ))}
         {monthDays.map((date) => {
-          const hasMeeting = meetings.some((meeting) =>
+          const dayMeeting = meetings.find((meeting) =>
             sameMeetingDay(meeting, date),
           );
+          const typeVisual = dayMeeting
+            ? chronosMeetingTypeVisuals[dayMeeting.meetingType]
+            : null;
 
           return (
             <button
@@ -2792,8 +3031,10 @@ function MiniCalendar({
             >
               <span className="relative">
                 {date.getDate()}
-                {hasMeeting ? (
-                  <span className="absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#A07C3B]" />
+                {typeVisual ? (
+                  <span
+                    className={`absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full ${typeVisual.dotClass}`}
+                  />
                 ) : null}
               </span>
             </button>
@@ -2809,7 +3050,6 @@ function ChronosRoomsManagementScreen({
   onCreateRoom,
   onDeleteRoom,
   onUpdateRoom,
-  profiles,
   rooms,
   saving,
 }: {
@@ -2817,23 +3057,17 @@ function ChronosRoomsManagementScreen({
   onCreateRoom: (input: ChronosRoomInput) => Promise<ChronosRoom | null>;
   onDeleteRoom: (roomId: string) => Promise<ChronosRoom | null>;
   onUpdateRoom: (input: ChronosRoomUpdateInput) => Promise<ChronosRoom | null>;
-  profiles: ChronosMeetingProfile[];
   rooms: ChronosRoom[];
   saving: boolean;
 }) {
   const [selectedRoomId, setSelectedRoomId] = useState(rooms[0]?.id ?? "");
-  const [activeRoomsTab, setActiveRoomsTab] =
-    useState<ChronosRoomsTab>("rooms");
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [roomEditorOpen, setRoomEditorOpen] = useState(false);
   const [roomDraft, setRoomDraft] = useState<ChronosRoomDraft>(() =>
     createRoomDraft(rooms[0] ?? null),
   );
   const selectedRoom =
     rooms.find((room) => room.id === selectedRoomId) ?? rooms[0] ?? null;
-  const activeProfiles = useMemo(
-    () => profiles.filter((profile) => profile.status === "active"),
-    [profiles],
-  );
 
   useEffect(() => {
     setSelectedRoomId((currentRoomId) => currentRoomId || rooms[0]?.id || "");
@@ -2865,10 +3099,26 @@ function ChronosRoomsManagementScreen({
   }
 
   function startNewRoomDraft() {
-    setActiveRoomsTab("rooms");
     setIsCreatingRoom(true);
     setSelectedRoomId("");
     setRoomDraft(createRoomDraft(null));
+    setRoomEditorOpen(true);
+  }
+
+  function openRoomEditor(room: ChronosRoom) {
+    setIsCreatingRoom(false);
+    setSelectedRoomId(room.id);
+    setRoomDraft(createRoomDraft(room));
+    setRoomEditorOpen(true);
+  }
+
+  function closeRoomEditor() {
+    setRoomEditorOpen(false);
+
+    if (isCreatingRoom) {
+      setIsCreatingRoom(false);
+      setSelectedRoomId(rooms[0]?.id ?? "");
+    }
   }
 
   async function handleSaveRoom(event: FormEvent<HTMLFormElement>) {
@@ -2882,6 +3132,7 @@ function ChronosRoomsManagementScreen({
       if (room) {
         setIsCreatingRoom(false);
         setSelectedRoomId(room.id);
+        setRoomEditorOpen(false);
       }
 
       return;
@@ -2891,10 +3142,14 @@ function ChronosRoomsManagementScreen({
       return;
     }
 
-    await onUpdateRoom({
+    const updatedRoom = await onUpdateRoom({
       ...input,
       roomId: selectedRoom.id,
     });
+
+    if (updatedRoom) {
+      setRoomEditorOpen(false);
+    }
   }
 
   async function handleDeleteRoom() {
@@ -2916,6 +3171,7 @@ function ChronosRoomsManagementScreen({
       setSelectedRoomId(
         rooms.find((room) => room.id !== selectedRoom.id)?.id ?? "",
       );
+      setRoomEditorOpen(false);
     }
   }
 
@@ -2946,136 +3202,117 @@ function ChronosRoomsManagementScreen({
 
   return (
     <div className="grid gap-4">
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(22rem,0.9fr)]">
-        <Surface bordered className="border-[#d9e0e7] bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] p-4">
-            <PanelTitle eyebrow="Salas" title="Ambientes fixos" />
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-grid grid-cols-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-0.5">
-                {[
-                  { id: "rooms", label: "Salas" },
-                  { id: "profiles", label: "Perfis" },
-                ].map((tab) => (
-                  <button
-                    aria-pressed={activeRoomsTab === tab.id}
-                    className={`h-8 rounded px-3 text-xs font-semibold transition ${
-                      activeRoomsTab === tab.id
-                        ? "bg-[#101820] text-white"
-                        : "text-[#667085] hover:bg-white hover:text-[#101820]"
-                    }`}
-                    key={tab.id}
-                    onClick={() => setActiveRoomsTab(tab.id as ChronosRoomsTab)}
-                    type="button"
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              {activeRoomsTab === "rooms" ? (
+      <Surface bordered className="border-[#d9e0e7] bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] p-4">
+          <PanelTitle eyebrow="Salas" title="Ambientes fixos" />
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:border-[#A07C3B] hover:text-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={saving}
+            onClick={startNewRoomDraft}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={15} />
+            Nova sala
+          </button>
+        </div>
+        <div className="hidden grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.7fr)_auto] gap-3 border-b border-[#edf0f4] bg-[#fafbfc] px-4 py-2 text-xs font-bold uppercase text-[#667085] lg:grid">
+          <span>Sala</span>
+          <span>Link</span>
+          <span>Configuracao</span>
+          <span>Historico</span>
+          <span className="text-right">Acoes</span>
+        </div>
+        <div className="divide-y divide-[#edf0f4]">
+          {rooms.map((room) => {
+            const totalRoomMeetings = meetings.filter(
+              (currentMeeting) => currentMeeting.roomId === room.id,
+            ).length;
+
+            return (
+              <div
+                className={`grid gap-3 px-4 py-3 text-sm transition lg:grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.7fr)_auto] lg:items-center ${
+                  roomEditorOpen && !isCreatingRoom && room.id === selectedRoom?.id
+                    ? "bg-[#fffaf0]"
+                    : "bg-white hover:bg-[#fafbfc]"
+                }`}
+                key={room.id}
+              >
                 <button
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:border-[#A07C3B] hover:text-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-55"
-                  disabled={saving}
-                  onClick={startNewRoomDraft}
+                  className="grid min-w-0 gap-1 text-left"
+                  onClick={() => openRoomEditor(room)}
                   type="button"
                 >
-                  <Plus aria-hidden="true" size={15} />
-                  Nova sala
+                  <span className="truncate font-semibold text-[#101820]">
+                    {room.name}
+                  </span>
+                  <span className="text-xs text-[#667085]">
+                    {room.capacity} lugares
+                  </span>
                 </button>
-              ) : null}
-            </div>
-          </div>
-          {activeRoomsTab === "rooms" ? (
-            <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
-              {rooms.map((room) => {
-                const totalRoomMeetings = meetings.filter(
-                  (currentMeeting) => currentMeeting.roomId === room.id,
-                ).length;
-
-                return (
+                <span className="truncate text-xs font-semibold text-[#526078]">
+                  {buildExternalRoomLink(room.slug)}
+                </span>
+                <span className="flex flex-wrap gap-1">
+                  <Badge variant={room.recordingRequired ? "info" : "neutral"}>
+                    gravacao {room.recordingRequired ? "sim" : "nao"}
+                  </Badge>
+                  <Badge
+                    variant={room.transcriptionRequired ? "info" : "neutral"}
+                  >
+                    transcricao {room.transcriptionRequired ? "sim" : "nao"}
+                  </Badge>
+                  <Badge variant={room.minutesRequired ? "info" : "neutral"}>
+                    ata {room.minutesRequired ? "sim" : "nao"}
+                  </Badge>
+                </span>
+                <span className="flex flex-wrap gap-1">
+                  <Badge variant={room.status === "active" ? "success" : "neutral"}>
+                    {room.status}
+                  </Badge>
+                  <Badge variant="neutral">{totalRoomMeetings} reunioes</Badge>
+                </span>
+                <div className="flex justify-start lg:justify-end">
                   <button
-                    className={`grid gap-3 rounded-md border p-3 text-left transition ${
-                      !isCreatingRoom && room.id === selectedRoom?.id
-                        ? "border-[#A07C3B] bg-[#fffaf0]"
-                        : "border-[#edf0f4] bg-[#fafbfc] hover:border-[#d9e0e7] hover:bg-white"
-                    }`}
-                    key={room.id}
-                    onClick={() => {
-                      setIsCreatingRoom(false);
-                      setSelectedRoomId(room.id);
-                    }}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B] hover:text-[#A07C3B]"
+                    onClick={() => openRoomEditor(room)}
                     type="button"
                   >
-                    <span className="flex items-start justify-between gap-2">
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-[#101820]">
-                          {room.name}
-                        </span>
-                        <span className="mt-1 block text-xs text-[#667085]">
-                          {getChronosProfileLabel(activeProfiles, room.roomType)} /{" "}
-                          {room.capacity} lugares
-                        </span>
-                      </span>
-                      <Badge variant={room.status === "active" ? "success" : "neutral"}>
-                        {room.status}
-                      </Badge>
-                    </span>
-                    <span className="grid grid-cols-3 gap-2 text-xs font-semibold text-[#667085]">
-                      <span>gravacao {room.recordingRequired ? "sim" : "nao"}</span>
-                      <span>
-                        transcricao {room.transcriptionRequired ? "sim" : "nao"}
-                      </span>
-                      <span>ata {room.minutesRequired ? "sim" : "nao"}</span>
-                    </span>
-                    <span className="flex flex-wrap gap-1">
-                      <Badge variant="neutral">{totalRoomMeetings} reunioes</Badge>
-                      <Badge variant="info">{buildExternalRoomLink(room.slug)}</Badge>
-                    </span>
+                    <ImagePlus aria-hidden="true" size={13} />
+                    Configurar
                   </button>
-                );
-              })}
-              {rooms.length === 0 ? (
-                <EmptyPanel text="Nenhuma sala Chronos carregada." />
-              ) : null}
+                </div>
+              </div>
+            );
+          })}
+          {rooms.length === 0 ? (
+            <div className="p-4">
+              <EmptyPanel text="Nenhuma sala Chronos carregada." />
             </div>
-          ) : (
-            <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
-              {activeProfiles.map((profile) => {
-                const usedByRooms = rooms.filter(
-                  (room) => normalizeChronosProfileId(room.roomType) === profile.id,
-                ).length;
+          ) : null}
+        </div>
+      </Surface>
 
-                return (
-                  <article
-                    className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
-                    key={profile.id}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 text-sm font-semibold text-[#101820]">
-                        {profile.label}
-                      </span>
-                      <Badge variant="info">oficial</Badge>
-                    </span>
-                    <p className="m-0 text-xs leading-5 text-[#667085]">
-                      {profile.description}
-                    </p>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs font-semibold uppercase text-[#A07C3B]">
-                        {chronosMeetingTypeLabels[profile.meetingType]}
-                      </span>
-                      <Badge variant="neutral">{usedByRooms} salas</Badge>
-                    </div>
-                  </article>
-                );
-              })}
+      {roomEditorOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#101820]/35 px-4 py-8 backdrop-blur-sm">
+          <button
+            aria-label="Fechar configuracao de sala"
+            className="absolute inset-0 cursor-default"
+            onClick={closeRoomEditor}
+            type="button"
+          />
+          <Surface bordered className="relative z-10 w-full max-w-3xl border-[#d9e0e7] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-[#edf0f4] p-4">
+              <PanelTitle eyebrow="Configuracao" title={roomFormTitle} />
+              <button
+                aria-label="Fechar configuracao"
+                className="grid h-8 w-8 place-items-center rounded-md text-[#667085] transition hover:bg-[#f3f6fa] hover:text-[#101820]"
+                onClick={closeRoomEditor}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} />
+              </button>
             </div>
-          )}
-        </Surface>
-
-        <Surface bordered className="border-[#d9e0e7] bg-white">
-          <div className="border-b border-[#edf0f4] p-4">
-            <PanelTitle eyebrow="Configuracao" title={roomFormTitle} />
-          </div>
-          <form className="grid gap-3 p-4" onSubmit={handleSaveRoom}>
+            <form className="grid gap-3 p-4" onSubmit={handleSaveRoom}>
             <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
               Nome da sala
               <input
@@ -3104,37 +3341,19 @@ function ChronosRoomsManagementScreen({
                 {externalRoomLink}
               </span>
             </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
-                Perfil
-                <select
-                  className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
-                  onChange={(event) =>
-                    updateRoomDraft("roomType", event.target.value)
-                  }
-                  value={roomDraft.roomType}
-                >
-                  {activeProfiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
-                Lugares
-                <input
-                  className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
-                  min={1}
-                  max={200}
-                  onChange={(event) =>
-                    updateRoomDraft("capacity", event.target.value)
-                  }
-                  type="number"
-                  value={roomDraft.capacity}
-                />
-              </label>
-            </div>
+            <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+              Lugares
+              <input
+                className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                min={1}
+                max={200}
+                onChange={(event) =>
+                  updateRoomDraft("capacity", event.target.value)
+                }
+                type="number"
+                value={roomDraft.capacity}
+              />
+            </label>
             <div className="grid gap-2 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
               {[
                 {
@@ -3216,8 +3435,7 @@ function ChronosRoomsManagementScreen({
                   <button
                     className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#667085] transition hover:text-[#101820]"
                     onClick={() => {
-                      setIsCreatingRoom(false);
-                      setSelectedRoomId(rooms[0]?.id ?? "");
+                      closeRoomEditor();
                     }}
                     type="button"
                   >
@@ -3240,7 +3458,8 @@ function ChronosRoomsManagementScreen({
             </div>
           </form>
         </Surface>
-      </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3300,6 +3519,24 @@ function ChronosDriveLibraryScreen({
     return sortMeetingsByDate(byRoom);
   }, [activeDriveView, meetings, roomFilter]);
 
+  if (activeDriveView === "recordings") {
+    return (
+      <ChronosDrivePanel
+        activeDriveView={activeDriveView}
+        onChangeDriveView={onChangeDriveView}
+      >
+        <ChronosRecordingFolderExplorer
+          localRecordings={localRecordings}
+          meetings={meetings}
+          onSelectMeeting={onSelectMeeting}
+          onTranscribeRecording={onTranscribeRecording}
+          rooms={rooms}
+          saving={saving}
+        />
+      </ChronosDrivePanel>
+    );
+  }
+
   return (
     <ChronosDrivePanel
       activeDriveView={activeDriveView}
@@ -3308,10 +3545,7 @@ function ChronosDriveLibraryScreen({
       <section className="grid min-h-[42rem] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.72fr)]">
         <Surface bordered className="border-[#d9e0e7] bg-white">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] p-4">
-            <PanelTitle
-              eyebrow="Drive Chronos"
-              title={activeDriveView === "recordings" ? "Gravacoes" : "Atas"}
-            />
+            <PanelTitle eyebrow="Drive Chronos" title="Atas" />
             <select
               className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#526078] outline-none focus:border-[#A07C3B]"
               onChange={(event) => setRoomFilter(event.target.value)}
@@ -3328,7 +3562,7 @@ function ChronosDriveLibraryScreen({
           <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
             {filteredMeetings.map((driveMeeting) => (
               <ChronosDriveItemCard
-                driveView={activeDriveView}
+                driveView="minutes"
                 key={driveMeeting.id}
                 meeting={driveMeeting}
                 onSelectMeeting={onSelectMeeting}
@@ -3336,41 +3570,26 @@ function ChronosDriveLibraryScreen({
               />
             ))}
             {filteredMeetings.length === 0 ? (
-              <EmptyPanel
-                text={
-                  activeDriveView === "recordings"
-                    ? "Nenhuma gravacao encontrada para este filtro."
-                    : "Nenhuma reuniao encontrada para organizar atas."
-                }
-              />
+              <EmptyPanel text="Nenhuma reuniao encontrada para organizar atas." />
             ) : null}
           </div>
         </Surface>
 
         {meeting ? (
-          activeDriveView === "recordings" ? (
-            <RecordingsPanel
-              localRecordings={localRecordings}
+          <div className="grid gap-4">
+            <MinutesPanel
               meeting={meeting}
-              onTranscribeRecording={onTranscribeRecording}
+              onGenerateMinutesDraft={onGenerateMinutesDraft}
+              onUpdate={onUpdate}
               saving={saving}
             />
-          ) : (
-            <div className="grid gap-4">
-              <MinutesPanel
-                meeting={meeting}
-                onGenerateMinutesDraft={onGenerateMinutesDraft}
-                onUpdate={onUpdate}
-                saving={saving}
-              />
-              <TranscriptPanel
-                meeting={meeting}
-                onUpdate={onUpdate}
-                saving={saving}
-                userName={userName}
-              />
-            </div>
-          )
+            <TranscriptPanel
+              meeting={meeting}
+              onUpdate={onUpdate}
+              saving={saving}
+              userName={userName}
+            />
+          </div>
         ) : (
           <Surface bordered className="grid min-h-full place-items-center border-[#d9e0e7] bg-white p-5 text-sm text-[#667085]">
             Selecione um item do Drive.
@@ -3378,6 +3597,488 @@ function ChronosDriveLibraryScreen({
         )}
       </section>
     </ChronosDrivePanel>
+  );
+}
+
+function ChronosRecordingFolderExplorer({
+  localRecordings,
+  meetings,
+  onSelectMeeting,
+  onTranscribeRecording,
+  rooms,
+  saving,
+}: {
+  localRecordings: LocalRecording[];
+  meetings: ChronosMeeting[];
+  onSelectMeeting: (meetingId: string) => void;
+  onTranscribeRecording: (input: {
+    file: Blob;
+    fileName?: string;
+    meeting: ChronosMeeting;
+    recordingId?: string;
+  }) => Promise<void>;
+  rooms: ChronosRoom[];
+  saving: boolean;
+}) {
+  const folders = useMemo(
+    () => buildChronosRecordingFolders({ localRecordings, meetings, rooms }),
+    [localRecordings, meetings, rooms],
+  );
+  const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [viewMode, setViewMode] = useState<ChronosDriveViewMode>("list");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
+  const [peopleFilter, setPeopleFilter] = useState("");
+  const selectedFolder =
+    folders.find((folder) => folder.id === selectedFolderId) ??
+    folders[0] ??
+    null;
+  const filteredMeetings = useMemo(
+    () =>
+      filterChronosDriveRecordingMeetings(selectedFolder?.meetings ?? [], {
+        dateFrom,
+        dateTo,
+        people: peopleFilter,
+        subject: subjectFilter,
+      }),
+    [dateFrom, dateTo, peopleFilter, selectedFolder, subjectFilter],
+  );
+  const filtersActive = Boolean(
+    dateFrom || dateTo || subjectFilter.trim() || peopleFilter.trim(),
+  );
+
+  useEffect(() => {
+    if (!folders.some((folder) => folder.id === selectedFolderId)) {
+      setSelectedFolderId(folders[0]?.id ?? "");
+    }
+  }, [folders, selectedFolderId]);
+
+  function clearFilters() {
+    setDateFrom("");
+    setDateTo("");
+    setSubjectFilter("");
+    setPeopleFilter("");
+  }
+
+  return (
+    <section className="grid min-h-[42rem] overflow-hidden rounded-md border border-[#d9e0e7] bg-white xl:grid-cols-[18rem_minmax(0,1fr)]">
+      <aside className="border-r border-[#edf0f4] bg-[#fbfcfe]">
+        <div className="border-b border-[#edf0f4] p-4">
+          <PanelTitle eyebrow="Drive Chronos" title="Pastas" />
+        </div>
+        <div className="grid gap-2 p-4">
+          {folders.map((folder) => {
+            const selected = selectedFolder?.id === folder.id;
+            const FolderIcon = selected ? FolderOpen : Folder;
+
+            return (
+              <button
+                className={`grid gap-2 rounded-md px-2.5 py-2 text-left transition ${
+                  selected
+                    ? "bg-[#fffaf0] shadow-[inset_2px_0_0_#A07C3B]"
+                    : "hover:bg-white"
+                }`}
+                key={folder.id}
+                onClick={() => setSelectedFolderId(folder.id)}
+                type="button"
+              >
+                <span className="flex items-start gap-3">
+                  <span
+                    className={`grid h-10 w-10 shrink-0 place-items-center rounded-md ${
+                      selected
+                        ? "bg-[#101820] text-white"
+                        : "bg-white text-[#A07C3B]"
+                    }`}
+                  >
+                    <FolderIcon aria-hidden="true" size={18} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-[#101820]">
+                      {folder.label}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-[#667085]">
+                      {folder.subtitle}
+                    </span>
+                  </span>
+                </span>
+                <span className="flex flex-wrap gap-1">
+                  <Badge variant="neutral">
+                    {folder.meetings.length} reunioes
+                  </Badge>
+                  <Badge variant="neutral">
+                    {folder.totalRecordings} arquivos
+                  </Badge>
+                </span>
+              </button>
+            );
+          })}
+          {folders.length === 0 ? (
+            <EmptyPanel text="Nenhuma pasta com gravacoes encontrada." />
+          ) : null}
+        </div>
+      </aside>
+
+      <div className="min-w-0 bg-white">
+        {selectedFolder ? (
+          <>
+            <div className="grid gap-3 border-b border-[#edf0f4] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <PanelTitle eyebrow="Gravacoes" title={selectedFolder.label} />
+                <span className="text-xs font-semibold text-[#667085]">
+                  {filteredMeetings.length} reunioes filtradas
+                </span>
+              </div>
+              <div className="grid gap-2 xl:grid-cols-[minmax(8rem,0.7fr)_minmax(8rem,0.7fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto]">
+                <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                  De
+                  <input
+                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    onChange={(event) => setDateFrom(event.target.value)}
+                    type="date"
+                    value={dateFrom}
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                  Ate
+                  <input
+                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    onChange={(event) => setDateTo(event.target.value)}
+                    type="date"
+                    value={dateTo}
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                  Assunto
+                  <span className="relative">
+                    <Search
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8a95a6]"
+                      size={14}
+                    />
+                    <input
+                      className="h-9 w-full rounded-md border border-[#d9e0e7] bg-white pl-8 pr-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                      onChange={(event) => setSubjectFilter(event.target.value)}
+                      placeholder="Tema ou protocolo"
+                      value={subjectFilter}
+                    />
+                  </span>
+                </label>
+                <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                  Pessoas
+                  <span className="relative">
+                    <UsersRound
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8a95a6]"
+                      size={14}
+                    />
+                    <input
+                      className="h-9 w-full rounded-md border border-[#d9e0e7] bg-white pl-8 pr-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                      onChange={(event) => setPeopleFilter(event.target.value)}
+                      placeholder="Nome, email ou empresa"
+                      value={peopleFilter}
+                    />
+                  </span>
+                </label>
+                <div className="flex items-end">
+                  <button
+                    className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#526078] transition hover:border-[#A07C3B] hover:text-[#101820] disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!filtersActive}
+                    onClick={clearFilters}
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={14} />
+                    Limpar
+                  </button>
+                </div>
+                <div className="flex items-end">
+                  <div className="inline-flex h-9 rounded-md border border-[#d9e0e7] bg-white p-1">
+                    {[
+                      { icon: LayoutGrid, id: "grid" as const, label: "Grade" },
+                      { icon: ListChecks, id: "list" as const, label: "Lista" },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      const active = viewMode === item.id;
+
+                      return (
+                        <button
+                          aria-label={item.label}
+                          className={`grid h-7 w-8 place-items-center rounded-md transition ${
+                            active
+                              ? "bg-[#101820] text-white"
+                              : "text-[#667085] hover:bg-[#f3f6fa] hover:text-[#101820]"
+                          }`}
+                          key={item.id}
+                          onClick={() => setViewMode(item.id)}
+                          type="button"
+                        >
+                          <Icon aria-hidden="true" size={14} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {filteredMeetings.length > 0 ? (
+              <div
+                className={
+                  viewMode === "grid"
+                    ? "grid gap-3 p-4 lg:grid-cols-2 2xl:grid-cols-3"
+                    : "grid gap-2 p-4"
+                }
+              >
+                {filteredMeetings.map((recordingMeeting) => (
+                  <ChronosDriveMeetingRecordingCard
+                    key={recordingMeeting.id}
+                    onSelectMeeting={onSelectMeeting}
+                    onTranscribeRecording={onTranscribeRecording}
+                    recordingMeeting={recordingMeeting}
+                    saving={saving}
+                    viewMode={viewMode}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid min-h-[20rem] place-items-center p-5">
+                <EmptyPanel text="Nenhuma reuniao encontrada com os filtros atuais." />
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="grid min-h-[28rem] place-items-center p-5">
+            <EmptyPanel text="Nenhuma gravacao registrada no Chronos Drive." />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ChronosDriveMeetingRecordingCard({
+  onSelectMeeting,
+  onTranscribeRecording,
+  recordingMeeting,
+  saving,
+  viewMode,
+}: {
+  onSelectMeeting: (meetingId: string) => void;
+  onTranscribeRecording: (input: {
+    file: Blob;
+    fileName?: string;
+    meeting: ChronosMeeting;
+    recordingId?: string;
+  }) => Promise<void>;
+  recordingMeeting: ChronosDriveRecordingMeeting;
+  saving: boolean;
+  viewMode: ChronosDriveViewMode;
+}) {
+  const { meeting, primaryRecording } = recordingMeeting;
+  const downloadUrl = primaryRecording?.downloadUrl ?? primaryRecording?.url;
+  const canOpenVideo = Boolean(primaryRecording?.url && primaryRecording.url !== "#");
+  const startedAt = getChronosMeetingDriveStart(meeting);
+  const endedAt = getChronosMeetingDriveEnd(meeting);
+  const displayTitle = getChronosDriveMeetingDisplayTitle(
+    meeting,
+    recordingMeeting.roomLabel,
+  );
+  const status =
+    primaryRecording?.status ??
+    (recordingMeeting.availableRecordings > 0 ? "available" : meeting.recordingStatus);
+
+  if (viewMode === "list") {
+    return (
+      <article className="grid gap-3 border-b border-[#edf0f4] bg-white px-3 py-3 text-sm text-[#101820] transition hover:bg-[#fafbfc] xl:grid-cols-[minmax(14rem,1.4fr)_minmax(10rem,0.8fr)_minmax(14rem,1fr)_auto] xl:items-center">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="m-0 truncate text-sm font-semibold text-[#101820]">
+              {displayTitle}
+            </p>
+            <Badge variant={status === "available" ? "success" : "neutral"}>
+              {chronosCaptureStatusLabels[status]}
+            </Badge>
+          </div>
+          <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+            {meeting.protocol}
+          </p>
+        </div>
+        <div className="grid gap-1 text-xs text-[#667085]">
+          <span>Inicio: {formatDateTime(startedAt)}</span>
+          <span>Fim: {formatDateTime(endedAt)}</span>
+        </div>
+        <div className="grid gap-1 text-xs text-[#667085]">
+          <span>Participantes: {meeting.participants.length}</span>
+          <span className="truncate">Pessoas: {recordingMeeting.participantText || "-"}</span>
+          <span className="truncate">
+            Assunto: {meeting.objective || meeting.title}
+          </span>
+        </div>
+        <ChronosDriveRecordingActions
+          canOpenVideo={canOpenVideo}
+          downloadUrl={downloadUrl}
+          onSelectMeeting={onSelectMeeting}
+          onTranscribeRecording={onTranscribeRecording}
+          primaryRecording={primaryRecording}
+          recordingMeeting={recordingMeeting}
+          saving={saving}
+        />
+      </article>
+    );
+  }
+
+  return (
+    <article className="grid overflow-hidden rounded-md border border-[#edf0f4] bg-[#fafbfc] text-sm text-[#101820] transition hover:border-[#d9e0e7] hover:bg-white">
+      {canOpenVideo ? (
+        <video
+          className="aspect-video w-full bg-black"
+          controls
+          preload="metadata"
+          src={primaryRecording?.url}
+        />
+      ) : (
+        <div className="grid aspect-video place-items-center bg-[#101820] text-white">
+          <div className="grid justify-items-center gap-2">
+            <Video aria-hidden="true" size={24} />
+            <span className="text-xs font-semibold text-[#d7dee8]">
+              {recordingMeeting.recordings.length > 0
+                ? "Video em processamento"
+                : "Gravacao ainda nao disponivel"}
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="grid gap-3 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="m-0 truncate text-sm font-semibold text-[#101820]">
+              {displayTitle}
+            </p>
+            <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+              {meeting.protocol}
+            </p>
+          </div>
+          <Badge variant={status === "available" ? "success" : "neutral"}>
+            {chronosCaptureStatusLabels[status]}
+          </Badge>
+        </div>
+        <div className="grid gap-1 text-xs text-[#667085]">
+          <span>Inicio: {formatDateTime(startedAt)}</span>
+          <span>Fim: {formatDateTime(endedAt)}</span>
+          <span>Participantes: {meeting.participants.length}</span>
+          <span className="truncate">
+            Pessoas: {recordingMeeting.participantText || "-"}
+          </span>
+          <span className="truncate">
+            Assunto: {meeting.objective || meeting.title}
+          </span>
+          <span>
+            Duracao: {formatDuration(recordingMeeting.totalDurationSeconds)}
+            {primaryRecording?.sizeBytes
+              ? ` / ${formatFileSize(primaryRecording.sizeBytes)}`
+              : ""}
+          </span>
+          <span>
+            Arquivos: {recordingMeeting.recordings.length} / disponiveis:{" "}
+            {recordingMeeting.availableRecordings}
+          </span>
+        </div>
+        <ChronosDriveRecordingActions
+          canOpenVideo={canOpenVideo}
+          downloadUrl={downloadUrl}
+          onSelectMeeting={onSelectMeeting}
+          onTranscribeRecording={onTranscribeRecording}
+          primaryRecording={primaryRecording}
+          recordingMeeting={recordingMeeting}
+          saving={saving}
+        />
+      </div>
+    </article>
+  );
+}
+
+function ChronosDriveRecordingActions({
+  canOpenVideo,
+  downloadUrl,
+  onSelectMeeting,
+  onTranscribeRecording,
+  primaryRecording,
+  recordingMeeting,
+  saving,
+}: {
+  canOpenVideo: boolean;
+  downloadUrl?: string;
+  onSelectMeeting: (meetingId: string) => void;
+  onTranscribeRecording: (input: {
+    file: Blob;
+    fileName?: string;
+    meeting: ChronosMeeting;
+    recordingId?: string;
+  }) => Promise<void>;
+  primaryRecording: ChronosDriveRecordingItem | null;
+  recordingMeeting: ChronosDriveRecordingMeeting;
+  saving: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <button
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
+        onClick={() => onSelectMeeting(recordingMeeting.meeting.id)}
+        type="button"
+      >
+        <FileText aria-hidden="true" size={13} />
+        Reuniao
+      </button>
+      <div className="flex flex-wrap gap-2">
+        {canOpenVideo && primaryRecording ? (
+          <a
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
+            href={primaryRecording.url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <PlayCircle aria-hidden="true" size={13} />
+            Assistir
+          </a>
+        ) : (
+          <button
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#8a95a6] disabled:cursor-not-allowed disabled:opacity-70"
+            disabled
+            type="button"
+          >
+            <PlayCircle aria-hidden="true" size={13} />
+            Video em processamento
+          </button>
+        )}
+        {downloadUrl && downloadUrl !== "#" && primaryRecording ? (
+          <a
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#101820] bg-[#101820] px-2.5 text-xs font-semibold text-white transition hover:bg-black"
+            download={primaryRecording.name}
+            href={downloadUrl}
+          >
+            <Download aria-hidden="true" size={13} />
+            Baixar
+          </a>
+        ) : null}
+        {primaryRecording?.blob ? (
+          <button
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+            disabled={saving || Boolean(primaryRecording.transcribedAt)}
+            onClick={() =>
+              void onTranscribeRecording({
+                file: primaryRecording.blob as Blob,
+                fileName: primaryRecording.name,
+                meeting: recordingMeeting.meeting,
+                recordingId: primaryRecording.id,
+              })
+            }
+            type="button"
+          >
+            <Mic aria-hidden="true" size={13} />
+            {primaryRecording.transcribedAt ? "Transcrita" : "Transcrever"}
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -3639,7 +4340,6 @@ function RoomsPanel({
                   {room.name}
                 </p>
                 <p className="m-0 mt-1 text-xs text-[#667085]">
-                  {getChronosProfileLabel(defaultChronosMeetingProfiles, room.roomType)} /{" "}
                   {room.capacity} lugares
                 </p>
               </div>
@@ -4322,6 +5022,38 @@ function getChronosMeetingLocationLabel(meeting: ChronosMeeting) {
   return meeting.room?.name ?? "Sala pendente";
 }
 
+function getChronosMeetingRoomPath(meeting: ChronosMeeting) {
+  return meeting.room?.slug ? `/chronos/${meeting.room.slug}` : null;
+}
+
+function getChronosCalendarEventKind(
+  meeting: ChronosMeeting,
+): ChronosCalendarEventKind {
+  const value = meeting.metadata.calendarEventKind;
+
+  return typeof value === "string" && value in chronosCalendarEventKindLabels
+    ? (value as ChronosCalendarEventKind)
+    : "event";
+}
+
+function getChronosMeetingProfileLabel(meeting: ChronosMeeting) {
+  const meetingProfile = meeting.metadata.meetingProfile;
+
+  if (
+    meetingProfile &&
+    typeof meetingProfile === "object" &&
+    !Array.isArray(meetingProfile)
+  ) {
+    const label = (meetingProfile as { label?: unknown }).label;
+
+    if (typeof label === "string" && label.trim()) {
+      return label.trim();
+    }
+  }
+
+  return chronosMeetingTypeLabels[meeting.meetingType];
+}
+
 function formatCalendarPeriod(date: Date, view: ChronosCalendarView) {
   if (view === "year") {
     return String(date.getFullYear());
@@ -4344,27 +5076,6 @@ function formatCalendarPeriod(date: Date, view: ChronosCalendarView) {
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "full",
   }).format(date);
-}
-
-function buildChronosMetrics(meetings: ChronosMeeting[]) {
-  return {
-    followUpsOpen: meetings.reduce(
-      (total, meeting) =>
-        total +
-        meeting.followUps.filter((followUp) => followUp.status !== "done")
-          .length,
-      0,
-    ),
-    live: meetings.filter((meeting) => meeting.status === "live").length,
-    minutesPending: meetings.filter(
-      (meeting) => meeting.minutesStatus !== "approved",
-    ).length,
-    minutesReview: meetings.filter(
-      (meeting) => meeting.minutesStatus === "in_review",
-    ).length,
-    today: meetings.filter((meeting) => isToday(meeting.startsAt)).length,
-    total: meetings.length,
-  };
 }
 
 function filterChronosMeetings(
@@ -4573,6 +5284,49 @@ function hasChronosInviteeContact(invitee: ChronosApoloInvitee) {
   return Boolean(invitee.email || invitee.phone);
 }
 
+function mapHubInviteeToAgendaInvitee(
+  invitee: ChronosHubInvitee,
+): ChronosAgendaInvitee {
+  return {
+    displayName: invitee.displayName,
+    email: invitee.email,
+    entityId: invitee.userId,
+    operationalProfile: invitee.operationalProfile,
+    organization: "Careli",
+    role: invitee.role,
+    source: "internal",
+    userId: invitee.userId,
+  };
+}
+
+function mapAgendaInviteeToApoloInvitee(
+  invitee: ChronosAgendaInvitee,
+): ChronosApoloInvitee {
+  return {
+    displayName: invitee.displayName,
+    email: invitee.email,
+    entityId: invitee.entityId,
+    organization: invitee.organization,
+    phone: invitee.phone,
+  };
+}
+
+function mapAgendaInviteeToHubInvitee(
+  invitee: ChronosAgendaInvitee,
+): ChronosHubInvitee {
+  return {
+    displayName: invitee.displayName,
+    email: invitee.email ?? "",
+    operationalProfile: invitee.operationalProfile ?? null,
+    role: invitee.role ?? null,
+    userId: invitee.userId ?? invitee.entityId,
+  };
+}
+
+function getInviteeKey(invitee: ChronosAgendaInvitee) {
+  return `${invitee.source}:${invitee.entityId}`;
+}
+
 function parseParticipants(value: string) {
   return parseLines(value).map((line) => {
     const [displayName = "", email = "", organization = ""] = line
@@ -4620,6 +5374,398 @@ function buildMinutesDraft(meeting: ChronosMeeting) {
   ].join("\n");
 }
 
+function buildChronosRecordingFolders({
+  localRecordings,
+  meetings,
+  rooms,
+}: {
+  localRecordings: LocalRecording[];
+  meetings: ChronosMeeting[];
+  rooms: ChronosRoom[];
+}) {
+  const roomsById = new Map(rooms.map((room) => [room.id, room]));
+  const foldersById = new Map<string, ChronosDriveRecordingFolder>();
+
+  for (const meeting of meetings) {
+    const room =
+      meeting.room ??
+      (meeting.roomId ? roomsById.get(meeting.roomId) ?? null : null);
+    const descriptor = getChronosDriveFolderDescriptor(meeting, room);
+    const recordings = getChronosMeetingRecordingItems({
+      localRecordings,
+      meeting,
+      roomLabel: descriptor.roomLabel,
+      sectorLabel: descriptor.label,
+    });
+
+    if (recordings.length === 0) {
+      continue;
+    }
+
+    const currentFolder =
+      foldersById.get(descriptor.id) ??
+      {
+        id: descriptor.id,
+        label: descriptor.label,
+        latestAt: null,
+        meetings: [],
+        roomLabels: [],
+        subtitle: descriptor.subtitle,
+        totalRecordings: 0,
+        totalMeetings: 0,
+      };
+    const recordingMeeting = buildChronosDriveRecordingMeeting({
+      meeting,
+      recordings,
+      roomLabel: descriptor.roomLabel,
+      sectorLabel: descriptor.label,
+    });
+
+    currentFolder.meetings.push(recordingMeeting);
+    currentFolder.totalRecordings += recordings.length;
+    currentFolder.totalMeetings += 1;
+
+    if (!currentFolder.roomLabels.includes(descriptor.roomLabel)) {
+      currentFolder.roomLabels.push(descriptor.roomLabel);
+    }
+
+    const meetingDate = recordingMeeting.latestAt ?? meeting.startsAt ?? meeting.updatedAt;
+
+    if (
+      meetingDate &&
+      (!currentFolder.latestAt ||
+        Date.parse(meetingDate) > Date.parse(currentFolder.latestAt))
+    ) {
+      currentFolder.latestAt = meetingDate;
+    }
+
+    foldersById.set(descriptor.id, currentFolder);
+  }
+
+  return [...foldersById.values()]
+    .map((folder) => ({
+      ...folder,
+      meetings: folder.meetings.sort((firstMeeting, secondMeeting) => {
+        const firstDate = getChronosDriveMeetingSortDate(firstMeeting);
+        const secondDate = getChronosDriveMeetingSortDate(secondMeeting);
+
+        return secondDate - firstDate;
+      }),
+      roomLabels: folder.roomLabels.sort((firstLabel, secondLabel) =>
+        firstLabel.localeCompare(secondLabel, "pt-BR"),
+      ),
+    }))
+    .sort((firstFolder, secondFolder) => {
+      const firstDate = firstFolder.latestAt
+        ? Date.parse(firstFolder.latestAt)
+        : 0;
+      const secondDate = secondFolder.latestAt
+        ? Date.parse(secondFolder.latestAt)
+        : 0;
+
+      return secondDate - firstDate;
+    });
+}
+
+function buildChronosDriveRecordingMeeting({
+  meeting,
+  recordings,
+  roomLabel,
+  sectorLabel,
+}: {
+  meeting: ChronosMeeting;
+  recordings: ChronosDriveRecordingItem[];
+  roomLabel: string;
+  sectorLabel: string;
+}): ChronosDriveRecordingMeeting {
+  const primaryRecording = selectChronosPrimaryRecording(recordings);
+  const latestAt =
+    recordings
+      .map((recording) => recording.stoppedAt ?? recording.startedAt)
+      .filter((value): value is string => Boolean(value))
+      .sort((firstValue, secondValue) => Date.parse(secondValue) - Date.parse(firstValue))[0] ??
+    getChronosMeetingDriveEnd(meeting) ??
+    getChronosMeetingDriveStart(meeting) ??
+    meeting.updatedAt;
+  const participantText = meeting.participants
+    .map((participant) =>
+      [participant.displayName, participant.email, participant.organization]
+        .filter(Boolean)
+        .join(" / "),
+    )
+    .filter(Boolean)
+    .join(", ");
+
+  return {
+    availableRecordings: recordings.filter(
+      (recording) => recording.status === "available" && recording.url !== "#",
+    ).length,
+    id: meeting.id,
+    latestAt,
+    meeting,
+    participantText,
+    primaryRecording,
+    recordings,
+    roomLabel,
+    sectorLabel,
+    totalDurationSeconds: recordings.reduce(
+      (total, recording) => total + recording.durationSeconds,
+      0,
+    ),
+  };
+}
+
+function selectChronosPrimaryRecording(recordings: ChronosDriveRecordingItem[]) {
+  return (
+    [...recordings].sort((firstRecording, secondRecording) => {
+      const firstPlayable = firstRecording.url && firstRecording.url !== "#" ? 1 : 0;
+      const secondPlayable =
+        secondRecording.url && secondRecording.url !== "#" ? 1 : 0;
+
+      if (firstPlayable !== secondPlayable) {
+        return secondPlayable - firstPlayable;
+      }
+
+      const firstAvailable = firstRecording.status === "available" ? 1 : 0;
+      const secondAvailable = secondRecording.status === "available" ? 1 : 0;
+
+      if (firstAvailable !== secondAvailable) {
+        return secondAvailable - firstAvailable;
+      }
+
+      return (
+        getChronosRecordingSortDate(secondRecording) -
+        getChronosRecordingSortDate(firstRecording)
+      );
+    })[0] ?? null
+  );
+}
+
+function filterChronosDriveRecordingMeetings(
+  recordingMeetings: ChronosDriveRecordingMeeting[],
+  filters: {
+    dateFrom: string;
+    dateTo: string;
+    people: string;
+    subject: string;
+  },
+) {
+  const subjectQuery = normalizeChronosSearchText(filters.subject);
+  const peopleQuery = normalizeChronosSearchText(filters.people);
+  const fromTime = filters.dateFrom
+    ? Date.parse(`${filters.dateFrom}T00:00:00`)
+    : null;
+  const toTime = filters.dateTo
+    ? Date.parse(`${filters.dateTo}T23:59:59`)
+    : null;
+
+  return recordingMeetings.filter((recordingMeeting) => {
+    const meetingDate = getChronosDriveMeetingSortDate(recordingMeeting);
+
+    if (fromTime !== null && meetingDate < fromTime) {
+      return false;
+    }
+
+    if (toTime !== null && meetingDate > toTime) {
+      return false;
+    }
+
+    if (subjectQuery) {
+      const subjectText = normalizeChronosSearchText(
+        [
+          recordingMeeting.meeting.title,
+          recordingMeeting.meeting.protocol,
+          recordingMeeting.meeting.objective,
+          recordingMeeting.roomLabel,
+          recordingMeeting.sectorLabel,
+          ...recordingMeeting.recordings.map((recording) => recording.name),
+        ].join(" "),
+      );
+
+      if (!subjectText.includes(subjectQuery)) {
+        return false;
+      }
+    }
+
+    if (peopleQuery) {
+      const peopleText = normalizeChronosSearchText(recordingMeeting.participantText);
+
+      if (!peopleText.includes(peopleQuery)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+function getChronosDriveMeetingSortDate(recordingMeeting: ChronosDriveRecordingMeeting) {
+  return (
+    parseChronosDateValue(recordingMeeting.latestAt) ??
+    parseChronosDateValue(getChronosMeetingDriveEnd(recordingMeeting.meeting)) ??
+    parseChronosDateValue(getChronosMeetingDriveStart(recordingMeeting.meeting)) ??
+    parseChronosDateValue(recordingMeeting.meeting.updatedAt) ??
+    0
+  );
+}
+
+function getChronosRecordingSortDate(recording: ChronosDriveRecordingItem) {
+  return (
+    parseChronosDateValue(recording.stoppedAt) ??
+    parseChronosDateValue(recording.startedAt) ??
+    parseChronosDateValue(recording.meeting.startsAt) ??
+    parseChronosDateValue(recording.meeting.updatedAt) ??
+    0
+  );
+}
+
+function getChronosDriveMeetingDisplayTitle(
+  meeting: ChronosMeeting,
+  roomLabel: string,
+) {
+  const title = (meeting.title || meeting.objective || meeting.protocol).trim();
+  const normalizedTitle = title.toLocaleLowerCase("pt-BR");
+  const normalizedRoomPrefix = `${roomLabel} - `.toLocaleLowerCase("pt-BR");
+
+  if (normalizedTitle.startsWith(normalizedRoomPrefix)) {
+    return title.slice(roomLabel.length + 3).trim() || title;
+  }
+
+  return title;
+}
+
+function getChronosMeetingRecordingItems({
+  localRecordings,
+  meeting,
+  roomLabel,
+  sectorLabel,
+}: {
+  localRecordings: LocalRecording[];
+  meeting: ChronosMeeting;
+  roomLabel: string;
+  sectorLabel: string;
+}) {
+  const meetingLocalRecordings = localRecordings.filter(
+    (recording) => recording.meetingId === meeting.id,
+  );
+
+  return [
+    ...meetingLocalRecordings.map((recording) => ({
+      ...recording,
+      meeting,
+      roomLabel,
+      sectorLabel,
+      status: (recording.status ?? "available") as ChronosCaptureStatus,
+    })),
+    ...meeting.recordings.map((recording) => ({
+      ...mapPersistedRecording(recording, meeting.id),
+      meeting,
+      roomLabel,
+      sectorLabel,
+    })),
+  ];
+}
+
+function getChronosDriveFolderDescriptor(
+  meeting: ChronosMeeting,
+  room: ChronosRoom | null,
+) {
+  const metadata = room?.metadata ?? {};
+  const sectorId = readChronosMetadataText(metadata, [
+    "sectorId",
+    "sector_id",
+    "departmentId",
+    "department_id",
+  ]);
+  const sectorLabel = readChronosMetadataText(metadata, [
+    "sectorName",
+    "sectorLabel",
+    "sector",
+    "setor",
+    "departmentName",
+    "departmentLabel",
+    "department",
+  ]);
+  const roomLabel = room?.name ?? meeting.room?.name ?? "Sala pendente";
+
+  return {
+    id: sectorId
+      ? `sector:${sectorId}`
+      : room?.id
+        ? `room:${room.id}`
+        : `room:${meeting.roomId ?? "sem-sala"}`,
+    label: sectorLabel || roomLabel,
+    roomLabel,
+    subtitle: sectorLabel ? roomLabel : "Sala Chronos",
+  };
+}
+
+function readChronosMetadataText(
+  metadata: Record<string, unknown>,
+  keys: string[],
+) {
+  for (const key of keys) {
+    const value = metadata[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      const label = record.label ?? record.name ?? record.title;
+
+      if (typeof label === "string" && label.trim()) {
+        return label.trim();
+      }
+    }
+  }
+
+  return "";
+}
+
+function getChronosMeetingDriveStart(meeting: ChronosMeeting) {
+  return (
+    readChronosMetadataText(meeting.metadata, [
+      "actualStartedAt",
+      "startedAt",
+      "openedAt",
+    ]) ||
+    meeting.startsAt ||
+    meeting.createdAt
+  );
+}
+
+function getChronosMeetingDriveEnd(meeting: ChronosMeeting) {
+  return (
+    readChronosMetadataText(meeting.metadata, [
+      "actualEndedAt",
+      "closedAt",
+      "endedAt",
+    ]) ||
+    meeting.endsAt ||
+    null
+  );
+}
+
+function parseChronosDateValue(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function normalizeChronosSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function mapPersistedRecording(
   recording: ChronosMeeting["recordings"][number],
   meetingId: string,
@@ -4631,6 +5777,10 @@ function mapPersistedRecording(
     meetingId,
     mimeType: recording.mimeType,
     name: recording.fileName ?? recording.storagePath ?? recording.status,
+    sizeBytes: recording.sizeBytes,
+    startedAt: recording.startedAt,
+    status: recording.status,
+    stoppedAt: recording.stoppedAt,
     url: recording.playbackUrl ?? recording.downloadUrl ?? "#",
   };
 }
@@ -4645,7 +5795,6 @@ function createRoomDraft(room: ChronosRoom | null): ChronosRoomDraft {
     minutesRequired: room?.minutesRequired ?? true,
     name: room?.name ?? "",
     recordingRequired: room?.recordingRequired ?? true,
-    roomType: normalizeChronosProfileId(room?.roomType),
     slug: room?.slug ?? "",
     transcriptionRequired: room?.transcriptionRequired ?? true,
   };
@@ -4661,31 +5810,9 @@ function buildRoomInputFromDraft(draft: ChronosRoomDraft): ChronosRoomInput {
     minutesRequired: draft.minutesRequired,
     name,
     recordingRequired: draft.recordingRequired,
-    roomType: normalizeChronosProfileId(draft.roomType),
     slug: slugifyRoomName(draft.slug || name),
     transcriptionRequired: draft.transcriptionRequired,
   };
-}
-
-function normalizeChronosProfileId(value?: string | null) {
-  const candidate = value ?? "";
-
-  return defaultChronosMeetingProfiles.some((profile) => profile.id === candidate)
-    ? candidate
-    : defaultChronosMeetingProfiles[0].id;
-}
-
-function getChronosProfileLabel(
-  profiles: ReadonlyArray<Pick<ChronosMeetingProfile, "id" | "label">>,
-  value?: string | null,
-) {
-  const profileId = normalizeChronosProfileId(value);
-
-  return (
-    profiles.find((profile) => profile.id === profileId)?.label ??
-    defaultChronosMeetingProfiles.find((profile) => profile.id === profileId)?.label ??
-    defaultChronosMeetingProfiles[0].label
-  );
 }
 
 function readRoomBackground(room: ChronosRoom | null) {
@@ -4751,6 +5878,23 @@ function formatDuration(totalSeconds: number) {
   const seconds = totalSeconds % 60;
 
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatFileSize(sizeBytes: number) {
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    return "-";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = sizeBytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex] ?? "B"}`;
 }
 
 function getSupportedRecordingMimeType() {

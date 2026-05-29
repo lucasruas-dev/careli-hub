@@ -8,6 +8,7 @@ import { getPermissionsForRole } from "@repo/shared";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import {
   chronosCaptureStatuses,
+  chronosCalendarEventKinds,
   chronosEventTypes,
   chronosMeetingStatuses,
   chronosMeetingTypes,
@@ -15,13 +16,16 @@ import {
   chronosParticipantRoles,
   defaultChronosMeetingProfiles,
   type ChronosApoloInvitee,
+  type ChronosCalendarEventKind,
   type ChronosCaptureStatus,
   type ChronosChatMessage,
   type ChronosCreateMeetingInput,
   type ChronosEventType,
   type ChronosFollowUp,
   type ChronosFollowUpStatus,
+  type ChronosHubInvitee,
   type ChronosMeeting,
+  type ChronosMeetingDeleteInput,
   type ChronosMeetingProfile,
   type ChronosMeetingStatus,
   type ChronosMeetingType,
@@ -42,7 +46,6 @@ import {
   type ChronosTranscriptSegment,
   type ChronosUpdateInput,
 } from "./types";
-import { syncChronosMeetingToGoogleCalendar } from "./google-calendar";
 
 type ChronosUserRow = {
   avatar_url?: string | null;
@@ -550,6 +553,7 @@ export async function listChronosSnapshot(
     const meetingsResult = await client
       .from("chronos_meetings")
       .select("*")
+      .neq("status", "cancelled")
       .order("updated_at", { ascending: false })
       .limit(80);
 
@@ -767,6 +771,8 @@ export async function createChronosMeeting({
         metadata: {
           agenda: normalizedInput.agenda ?? [],
           apoloInvitees: normalizedInput.apoloInvitees ?? [],
+          calendarEventKind: normalizedInput.calendarEventKind ?? "event",
+          hubInvitees: normalizedInput.hubInvitees ?? [],
           location: {
             address: normalizedInput.locationAddress ?? null,
             mode: normalizedInput.locationMode ?? "online",
@@ -814,11 +820,6 @@ export async function createChronosMeeting({
       meetingId: meeting.id,
       title: "Reuniao formal criada",
     });
-    await syncChronosMeetingToGoogleCalendar({
-      meetingId: meeting.id,
-      trigger: "chronos_create",
-      userId: authorization.user.id,
-    }).catch(() => null);
 
     const snapshot = await listChronosSnapshot(authorization);
     const createdMeeting = snapshot.meetings.find(
@@ -1007,6 +1008,59 @@ export async function deleteChronosProfile({
   throw new Error(
     "Os perfis oficiais do Chronos nao podem ser excluidos ou alterados.",
   );
+}
+
+export async function listChronosInternalInvitees({
+  authorization,
+  query,
+}: {
+  authorization: Extract<ChronosAuthorization, { ok: true }>;
+  query?: string | null;
+}): Promise<ChronosHubInvitee[]> {
+  if (!authorization.client) {
+    return [
+      {
+        displayName: authorization.user.name,
+        email: authorization.user.email,
+        operationalProfile: authorization.user.operationalProfile ?? null,
+        role: authorization.user.role,
+        userId: authorization.user.id,
+      },
+    ];
+  }
+
+  const normalizedQuery = normalizeSearchTerm(query);
+  const { data, error } = await authorization.client
+    .from("hub_users")
+    .select("id,email,display_name,role,status,operational_profile")
+    .eq("status", "active")
+    .order("display_name", { ascending: true })
+    .limit(80);
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as ChronosUserRow[])
+    .filter((user) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      return [user.display_name, user.email, user.operational_profile, user.role]
+        .filter(Boolean)
+        .some((value) =>
+          String(value).toLowerCase().includes(normalizedQuery),
+        );
+    })
+    .slice(0, 10)
+    .map((user) => ({
+      displayName: user.display_name,
+      email: user.email,
+      operationalProfile: user.operational_profile ?? null,
+      role: user.role,
+      userId: user.id,
+    }));
 }
 
 export async function getChronosPublicRoomBySlug(roomSlug: string) {
@@ -1598,11 +1652,6 @@ export async function updateChronosMeeting({
       input: normalizedInput,
       user: authorization.user,
     });
-    await syncChronosMeetingToGoogleCalendar({
-      meetingId: normalizedInput.meetingId,
-      trigger: `chronos_update_${normalizedInput.action}`,
-      userId: authorization.user.id,
-    }).catch(() => null);
 
     const snapshot = await listChronosSnapshot(authorization);
     const meeting = snapshot.meetings.find(
@@ -1624,6 +1673,42 @@ export async function updateChronosMeeting({
 
     throw error;
   }
+}
+
+export async function deleteChronosMeeting({
+  authorization,
+  input,
+}: {
+  authorization: Extract<ChronosAuthorization, { ok: true }>;
+  input: unknown;
+}) {
+  assertCanManageChronos(authorization.user);
+
+  const normalizedInput = normalizeDeleteMeetingInput(input);
+
+  if (!authorization.client) {
+    return deleteLocalChronosMeeting({ input: normalizedInput });
+  }
+
+  const { data, error } = await authorization.client
+    .from("chronos_meetings")
+    .update({ status: "cancelled" })
+    .eq("id", normalizedInput.meetingId)
+    .select("id")
+    .single<{ id: string }>();
+
+  if (error) {
+    throw error;
+  }
+
+  await insertTimelineEvent(authorization.client, {
+    actorUserId: authorization.user.id,
+    eventType: "note",
+    meetingId: normalizedInput.meetingId,
+    title: "Evento excluido da agenda Chronos",
+  });
+
+  return { meetingId: data.id };
 }
 
 export function isChronosSchemaMissingError(error: unknown) {
@@ -2251,8 +2336,12 @@ function normalizeCreateMeetingInput(input: unknown): ChronosCreateMeetingInput 
   return {
     agenda: normalizeStringList(maybeInput.agenda).slice(0, 12),
     apoloInvitees: normalizeApoloInvitees(maybeInput.apoloInvitees),
+    calendarEventKind: isChronosCalendarEventKind(maybeInput.calendarEventKind)
+      ? maybeInput.calendarEventKind
+      : "event",
     endsAt,
     externalReference: sanitizeOptionalText(maybeInput.externalReference, 180),
+    hubInvitees: normalizeHubInvitees(maybeInput.hubInvitees),
     locationAddress,
     locationMode,
     meetingType: isChronosMeetingType(maybeInput.meetingType)
@@ -2363,6 +2452,23 @@ function normalizeRoomDeleteInput(input: unknown): ChronosRoomDeleteInput {
   }
 
   return { roomId };
+}
+
+function normalizeDeleteMeetingInput(input: unknown): ChronosMeetingDeleteInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe o evento Chronos.");
+  }
+
+  const meetingId = sanitizeText(
+    (input as Partial<ChronosMeetingDeleteInput>).meetingId,
+    80,
+  );
+
+  if (!meetingId) {
+    throw new Error("Evento Chronos nao informado.");
+  }
+
+  return { meetingId };
 }
 
 function normalizeChronosProfileList(
@@ -2733,6 +2839,7 @@ function normalizeParticipantsForInsert({
       meeting_id: meetingId,
       organization: participant.organization ?? null,
       role: participant.role ?? "participant",
+      user_id: participant.userId ?? null,
     })),
   ];
 }
@@ -2753,6 +2860,7 @@ function normalizeCreateParticipants(input: unknown) {
         email?: unknown;
         organization?: unknown;
         role?: unknown;
+        userId?: unknown;
       };
       const displayName = sanitizeText(maybeParticipant.displayName, 120);
 
@@ -2767,10 +2875,50 @@ function normalizeCreateParticipants(input: unknown) {
         role: isChronosParticipantRole(maybeParticipant.role)
           ? maybeParticipant.role
           : "participant",
+        userId: sanitizeOptionalText(maybeParticipant.userId, 80),
       };
     })
     .filter(Boolean)
     .slice(0, 30) as NonNullable<ChronosCreateMeetingInput["participants"]>;
+}
+
+function normalizeHubInvitees(input: unknown): ChronosHubInvitee[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((invitee) => {
+      if (!invitee || typeof invitee !== "object") {
+        return null;
+      }
+
+      const maybeInvitee = invitee as {
+        displayName?: unknown;
+        email?: unknown;
+        operationalProfile?: unknown;
+        role?: unknown;
+        userId?: unknown;
+      };
+      const userId = sanitizeText(maybeInvitee.userId, 80);
+      const displayName = sanitizeText(maybeInvitee.displayName, 120);
+      const email = sanitizeText(maybeInvitee.email, 160);
+
+      if (!userId || !displayName || !email) {
+        return null;
+      }
+
+      return {
+        displayName,
+        email,
+        operationalProfile:
+          sanitizeOptionalText(maybeInvitee.operationalProfile, 40) ?? null,
+        role: sanitizeOptionalText(maybeInvitee.role, 40) ?? null,
+        userId,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 30) as ChronosHubInvitee[];
 }
 
 function normalizeApoloInvitees(input: unknown): ChronosApoloInvitee[] {
@@ -2876,6 +3024,8 @@ async function createLocalChronosMeeting({
     metadata: {
       agenda: input.agenda ?? [],
       apoloInvitees: input.apoloInvitees ?? [],
+      calendarEventKind: input.calendarEventKind ?? "event",
+      hubInvitees: input.hubInvitees ?? [],
       location: {
         address: input.locationAddress ?? null,
         mode: input.locationMode ?? "online",
@@ -2906,7 +3056,7 @@ async function createLocalChronosMeeting({
         id: `participant-${Date.now().toString(36)}-${index}`,
         organization: participant.organization ?? null,
         role: participant.role ?? "participant",
-        userId: null,
+        userId: participant.userId ?? null,
       })),
     ],
     protocol: await generateChronosProtocol(null),
@@ -3057,6 +3207,31 @@ async function deleteLocalChronosRoom({
   });
 
   return archivedRoom;
+}
+
+async function deleteLocalChronosMeeting({
+  input,
+}: {
+  input: ChronosMeetingDeleteInput;
+}) {
+  const snapshot = await readLocalChronosSnapshot();
+  const meetingExists = snapshot.meetings.some(
+    (meeting) => meeting.id === input.meetingId,
+  );
+
+  if (!meetingExists) {
+    throw new Error("Evento Chronos nao encontrado.");
+  }
+
+  await writeLocalChronosStore({
+    meetings: snapshot.meetings.filter(
+      (meeting) => meeting.id !== input.meetingId,
+    ),
+    profiles: snapshot.profiles,
+    rooms: snapshot.rooms,
+  });
+
+  return { meetingId: input.meetingId };
 }
 
 async function joinLocalChronosPublicRoom({
@@ -3823,6 +3998,10 @@ function sanitizeOptionalText(input: unknown, maxLength: number) {
   return value || undefined;
 }
 
+function normalizeSearchTerm(input: unknown) {
+  return sanitizeText(input, 80).toLowerCase();
+}
+
 function normalizeStringList(input: unknown) {
   if (!Array.isArray(input)) {
     return [];
@@ -3974,6 +4153,12 @@ function normalizeOptionalDate(input: unknown) {
 
 function isChronosMeetingType(value: unknown): value is ChronosMeetingType {
   return chronosMeetingTypes.some((meetingType) => meetingType === value);
+}
+
+function isChronosCalendarEventKind(
+  value: unknown,
+): value is ChronosCalendarEventKind {
+  return chronosCalendarEventKinds.some((eventKind) => eventKind === value);
 }
 
 function isChronosMeetingStatus(value: unknown): value is ChronosMeetingStatus {

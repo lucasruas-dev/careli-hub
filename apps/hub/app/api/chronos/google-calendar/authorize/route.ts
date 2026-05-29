@@ -44,13 +44,5 @@ export async function GET(request: NextRequest) {
     userId: authorization.user.id,
   });
 
-  const wantsJson =
-    request.nextUrl.searchParams.get("response") === "json" ||
-    request.headers.get("accept")?.includes("application/json");
-
-  if (wantsJson) {
-    return Response.json({ authorizationUrl, googleCalendar });
-  }
-
   return Response.redirect(authorizationUrl, 302);
 }

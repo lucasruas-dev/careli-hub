@@ -6,7 +6,9 @@ import type {
   ChronosGoogleCalendarSyncDirection,
   ChronosGoogleCalendarSyncResult,
   ChronosGoogleCalendarStatus,
+  ChronosHubInvitee,
   ChronosMeeting,
+  ChronosMeetingDeleteInput,
   ChronosMeetingProfile,
   ChronosMeetingProfileDeleteInput,
   ChronosMeetingProfileInput,
@@ -20,10 +22,11 @@ import type {
 } from "./types";
 
 type ChronosApiResponse = Partial<ChronosSnapshot> & {
-  authorizationUrl?: string;
   error?: string;
   googleCalendar?: ChronosGoogleCalendarStatus | ChronosGoogleCalendarSyncResult;
+  invitees?: ChronosHubInvitee[];
   meeting?: ChronosMeeting;
+  meetingId?: string;
   minutes?: string;
   minutesProfile?: ChronosMinutesProfile;
   profile?: ChronosMeetingProfile;
@@ -109,37 +112,6 @@ export async function loadChronosGoogleCalendarStatus(
   return googleCalendar;
 }
 
-export async function startChronosGoogleCalendarConnection(
-  returnTo = "/chronos",
-) {
-  const token = await getChronosAccessToken();
-  const searchParams = new URLSearchParams({
-    response: "json",
-    returnTo,
-  });
-  const response = await fetch(
-    `/api/chronos/google-calendar/authorize?${searchParams.toString()}`,
-    {
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  );
-  const payload = (await response.json().catch(() => null)) as
-    | ChronosApiResponse
-    | null;
-
-  if (!response.ok || !payload?.authorizationUrl) {
-    throw new Error(
-      payload?.error ?? "Nao foi possivel iniciar a conexao com Google Agenda.",
-    );
-  }
-
-  return payload.authorizationUrl;
-}
-
 export async function syncChronosGoogleCalendar(
   direction: ChronosGoogleCalendarSyncDirection = "both",
 ) {
@@ -189,6 +161,51 @@ export async function createChronosMeeting(input: ChronosCreateMeetingInput) {
   }
 
   return payload.meeting;
+}
+
+export async function deleteChronosMeeting(input: ChronosMeetingDeleteInput) {
+  const token = await getChronosAccessToken();
+  const response = await fetch("/api/chronos/meetings", {
+    body: JSON.stringify(input),
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    method: "DELETE",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | ChronosApiResponse
+    | null;
+
+  if (!response.ok || !payload?.meetingId) {
+    throw new Error(payload?.error ?? "Nao foi possivel excluir o evento.");
+  }
+
+  return payload.meetingId;
+}
+
+export async function searchChronosInternalInvitees(query: string) {
+  const token = await getChronosAccessToken();
+  const params = new URLSearchParams({
+    limit: "10",
+    q: query,
+  });
+  const response = await fetch(`/api/chronos/invitees?${params.toString()}`, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | ChronosApiResponse
+    | null;
+
+  if (!response.ok || !Array.isArray(payload?.invitees)) {
+    throw new Error(payload?.error ?? "Nao foi possivel buscar o time interno.");
+  }
+
+  return payload.invitees;
 }
 
 export async function createChronosRoom(input: ChronosRoomInput) {
