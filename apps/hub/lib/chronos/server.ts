@@ -552,10 +552,35 @@ export async function listChronosSnapshot(
       throw roomsResult.error;
     }
 
-    const meetingsResult = await client
+    const participantMeetingsResult = await client
+      .from("chronos_participants")
+      .select("meeting_id")
+      .eq("user_id", authorization.user.id);
+
+    if (participantMeetingsResult.error) {
+      throw participantMeetingsResult.error;
+    }
+
+    const participantMeetingIds = Array.from(
+      new Set(
+        (participantMeetingsResult.data ?? [])
+          .map((participant) => participant.meeting_id)
+          .filter(Boolean),
+      ),
+    );
+    let meetingsQuery = client
       .from("chronos_meetings")
       .select("*")
-      .neq("status", "cancelled")
+      .neq("status", "cancelled");
+
+    meetingsQuery =
+      participantMeetingIds.length > 0
+        ? meetingsQuery.or(
+            `host_user_id.eq.${authorization.user.id},id.in.(${participantMeetingIds.join(",")})`,
+          )
+        : meetingsQuery.eq("host_user_id", authorization.user.id);
+
+    const meetingsResult = await meetingsQuery
       .order("updated_at", { ascending: false })
       .limit(80);
 

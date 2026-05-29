@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     {
       googleCalendar: await getChronosGoogleCalendarStatus({
         baseUrl: request.nextUrl.origin,
+        userId: authorization.user.id,
       }),
     },
     {

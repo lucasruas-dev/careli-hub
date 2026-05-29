@@ -352,9 +352,11 @@ class GoogleCalendarApiError extends Error {
 export async function getChronosGoogleCalendarStatus({
   baseUrl,
   ensureWatch = true,
+  userId,
 }: {
   baseUrl?: string | null;
   ensureWatch?: boolean;
+  userId?: string | null;
 } = {}): Promise<ChronosGoogleCalendarStatus> {
   const configStatus = getChronosGoogleCalendarConfigStatus();
   const baseStatus: ChronosGoogleCalendarStatus = {
@@ -386,7 +388,7 @@ export async function getChronosGoogleCalendarStatus({
     };
   }
 
-  const lookup = await getDefaultGoogleCalendarConnection(client);
+  const lookup = await getDefaultGoogleCalendarConnection(client, userId ?? null);
 
   if (!lookup.storageReady) {
     return {
@@ -549,6 +551,14 @@ export async function completeChronosGoogleCalendarAuthorization(
   const oauthState = stateResult.data;
   const redirectAfter = sanitizeReturnPath(oauthState.redirect_after) ?? "/chronos";
 
+  if (!oauthState.requested_by_user_id) {
+    return buildChronosGoogleCalendarRedirect(
+      redirectAfter,
+      "invalid_user",
+      callbackOrigin,
+    );
+  }
+
   if (new Date(oauthState.expires_at).getTime() < Date.now()) {
     return buildChronosGoogleCalendarRedirect(
       redirectAfter,
@@ -583,6 +593,7 @@ export async function completeChronosGoogleCalendarAuthorization(
       status: "revoked",
     })
     .eq("calendar_id", calendarId)
+    .eq("created_by_user_id", oauthState.requested_by_user_id)
     .eq("is_default", true)
     .eq("status", "active");
 
@@ -646,7 +657,22 @@ export async function syncChronosMeetingToGoogleCalendar({
     return createSkippedSyncResult("push", "supabase_unconfigured");
   }
 
-  const connectionLookup = await getDefaultGoogleCalendarConnection(client);
+  const context = await loadMeetingContext(client, meetingId);
+
+  if (!context) {
+    return createSkippedSyncResult("push", "meeting_missing");
+  }
+
+  const connectionUserId = context.meeting.host_user_id ?? userId ?? null;
+
+  if (!connectionUserId) {
+    return createSkippedSyncResult("push", "connection_owner_missing");
+  }
+
+  const connectionLookup = await getDefaultGoogleCalendarConnection(
+    client,
+    connectionUserId,
+  );
 
   if (!connectionLookup.storageReady) {
     return createSkippedSyncResult("push", "storage_pending");
@@ -661,12 +687,6 @@ export async function syncChronosMeetingToGoogleCalendar({
     });
 
     return createSkippedSyncResult("push", "connection_missing");
-  }
-
-  const context = await loadMeetingContext(client, meetingId);
-
-  if (!context) {
-    return createSkippedSyncResult("push", "meeting_missing");
   }
 
   if (!context.meeting.starts_at) {
@@ -685,6 +705,7 @@ export async function syncChronosMeetingToGoogleCalendar({
     const accessToken = await refreshGoogleAccessToken(connectionLookup.connection);
     const existingLink = await findGoogleCalendarEventLink(client, {
       calendarId: connectionLookup.connection.calendar_id,
+      connectionId: connectionLookup.connection.id,
       meetingId,
     });
 
@@ -815,7 +836,10 @@ export async function syncChronosGoogleCalendar({
   const runId = await createSyncRun(client, direction, userId ?? null);
 
   try {
-    await ensureDefaultGoogleCalendarWatch(client, { baseUrl });
+    await ensureDefaultGoogleCalendarWatch(client, {
+      baseUrl,
+      userId: userId ?? null,
+    });
 
     const result =
       direction === "pull"
@@ -931,7 +955,12 @@ export async function handleChronosGoogleCalendarWebhook(request: Request) {
     };
   }
 
-  const result = await pullChronosEventsFromGoogleCalendar(client, null, false);
+  const result = await pullChronosEventsFromGoogleCalendar(
+    client,
+    connection.created_by_user_id,
+    false,
+    connection,
+  );
 
   return {
     body: {
@@ -1000,14 +1029,19 @@ function createChronosGoogleCalendarClient() {
 
 async function getDefaultGoogleCalendarConnection(
   client: ChronosGoogleCalendarClient,
+  userId?: string | null,
 ): Promise<GoogleConnectionLookup> {
-  const result = await client
+  let query = client
     .from("chronos_google_calendar_connections")
     .select("*")
     .eq("status", "active")
-    .eq("is_default", true)
-    .order("connected_at", { ascending: false })
-    .limit(1);
+    .eq("is_default", true);
+
+  query = userId
+    ? query.eq("created_by_user_id", userId)
+    : query.is("created_by_user_id", null);
+
+  const result = await query.order("connected_at", { ascending: false }).limit(1);
 
   if (result.error) {
     if (isGoogleCalendarStorageMissingError(result.error)) {
@@ -1025,9 +1059,12 @@ async function getDefaultGoogleCalendarConnection(
 
 async function ensureDefaultGoogleCalendarWatch(
   client: ChronosGoogleCalendarClient,
-  options: { baseUrl?: string | null } = {},
+  options: { baseUrl?: string | null; userId?: string | null } = {},
 ) {
-  const lookup = await getDefaultGoogleCalendarConnection(client);
+  const lookup = await getDefaultGoogleCalendarConnection(
+    client,
+    options.userId ?? null,
+  );
 
   if (!lookup.storageReady || !lookup.connection) {
     return lookup.connection;
@@ -1522,12 +1559,13 @@ async function stopGoogleCalendarWatchChannel({
 
 async function findGoogleCalendarEventLink(
   client: ChronosGoogleCalendarClient,
-  input: { calendarId: string; meetingId: string },
+  input: { calendarId: string; connectionId: string; meetingId: string },
 ) {
   const result = await client
     .from("chronos_google_calendar_event_links")
     .select("*")
     .eq("calendar_id", input.calendarId)
+    .eq("connection_id", input.connectionId)
     .eq("meeting_id", input.meetingId)
     .maybeSingle<ChronosGoogleCalendarEventLinkRow>();
 
@@ -1540,12 +1578,13 @@ async function findGoogleCalendarEventLink(
 
 async function findGoogleCalendarEventLinkByEventId(
   client: ChronosGoogleCalendarClient,
-  input: { calendarId: string; eventId: string },
+  input: { calendarId: string; connectionId: string; eventId: string },
 ) {
   const result = await client
     .from("chronos_google_calendar_event_links")
     .select("*")
     .eq("calendar_id", input.calendarId)
+    .eq("connection_id", input.connectionId)
     .eq("google_event_id", input.eventId)
     .maybeSingle<ChronosGoogleCalendarEventLinkRow>();
 
@@ -1593,7 +1632,7 @@ async function upsertGoogleCalendarEventLink(
         origin: input.origin,
         sync_status: input.status,
       },
-      { onConflict: "meeting_id,calendar_id" },
+      { onConflict: "meeting_id,connection_id" },
     );
 
   if (result.error) {
@@ -1653,12 +1692,17 @@ async function pushChronosMeetingsToGoogleCalendar(
   client: ChronosGoogleCalendarClient,
   userId: string | null,
 ): Promise<ChronosGoogleCalendarSyncResult> {
+  if (!userId) {
+    return createSkippedSyncResult("push", "connection_owner_missing");
+  }
+
   const since = new Date(
     Date.now() - googleCalendarSyncWindowPastDays * 24 * 60 * 60_000,
   ).toISOString();
   const meetingsResult = await client
     .from("chronos_meetings")
     .select("id")
+    .eq("host_user_id", userId)
     .gte("updated_at", since)
     .order("updated_at", { ascending: false })
     .limit(100);
@@ -1696,8 +1740,11 @@ async function pullChronosEventsFromGoogleCalendar(
   client: ChronosGoogleCalendarClient,
   userId: string | null,
   forceFull = false,
+  connectionOverride?: ChronosGoogleCalendarConnectionRow | null,
 ): Promise<ChronosGoogleCalendarSyncResult> {
-  const connectionLookup = await getDefaultGoogleCalendarConnection(client);
+  const connectionLookup = connectionOverride
+    ? { connection: connectionOverride, storageReady: true }
+    : await getDefaultGoogleCalendarConnection(client, userId);
 
   if (!connectionLookup.storageReady) {
     return createSkippedSyncResult("pull", "storage_pending");
@@ -1757,6 +1804,7 @@ async function pullChronosEventsFromGoogleCalendar(
 
     const link = await findGoogleCalendarEventLinkByEventId(client, {
       calendarId: connectionLookup.connection.calendar_id,
+      connectionId: connectionLookup.connection.id,
       eventId,
     });
 
@@ -1785,6 +1833,7 @@ async function pullChronosEventsFromGoogleCalendar(
     if (link) {
       await applyGoogleEventToChronosMeeting(client, {
         calendarId: connectionLookup.connection.calendar_id,
+        connectionId: connectionLookup.connection.id,
         event,
         link,
         userId,
@@ -1907,6 +1956,7 @@ async function applyGoogleEventToChronosMeeting(
   client: ChronosGoogleCalendarClient,
   input: {
     calendarId: string;
+    connectionId: string;
     event: GoogleCalendarEvent;
     link: ChronosGoogleCalendarEventLinkRow;
     userId: string | null;
@@ -1953,7 +2003,7 @@ async function applyGoogleEventToChronosMeeting(
     .eq("id", input.link.meeting_id);
   await upsertGoogleCalendarEventLink(client, {
     calendarId: input.calendarId,
-    connectionId: input.link.connection_id ?? "",
+    connectionId: input.connectionId,
     event: input.event,
     meetingId: input.link.meeting_id,
     origin: input.link.origin,

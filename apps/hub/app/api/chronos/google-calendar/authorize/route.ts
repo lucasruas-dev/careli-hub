@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
 
   const googleCalendar = await getChronosGoogleCalendarStatus({
     baseUrl: request.nextUrl.origin,
+    userId: authorization.user.id,
   });
 
   if (!googleCalendar.configured) {
@@ -45,6 +46,14 @@ export async function GET(request: NextRequest) {
     redirectAfter: request.nextUrl.searchParams.get("returnTo") ?? "/chronos",
     userId: authorization.user.id,
   });
+
+  const wantsJson =
+    request.nextUrl.searchParams.get("response") === "json" ||
+    request.headers.get("accept")?.includes("application/json");
+
+  if (wantsJson) {
+    return Response.json({ authorizationUrl, googleCalendar });
+  }
 
   return Response.redirect(authorizationUrl, 302);
 }

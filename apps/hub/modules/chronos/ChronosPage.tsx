@@ -9,6 +9,7 @@ import {
   loadChronosGoogleCalendarStatus,
   loadChronosSnapshot,
   searchChronosInternalInvitees,
+  startChronosGoogleCalendarConnection,
   syncChronosGoogleCalendar,
   transcribeChronosRecording,
   updateChronosRoom,
@@ -120,13 +121,6 @@ type ChronosAgendaInvitee = ChronosApoloInvitee & {
   source: ChronosInviteeSource;
   userId?: string;
 };
-
-const chronosCalendarLegendItems = [
-  { color: "#2f80ed", label: "Alinhamento" },
-  { color: "#12b76a", label: "Resultado" },
-  { color: "#f59e0b", label: "Comunicado" },
-  { color: "#101820", label: "Reuniao" },
-] as const;
 
 type ChronosRoomDraft = {
   backgroundDataUrl: string;
@@ -1942,6 +1936,7 @@ function ChronosAgendaScreen({
               ))}
             </div>
           </div>
+        </div>
       </div>
 
       <div className="grid min-h-0 grid-cols-[16rem_minmax(0,1fr)] max-xl:grid-cols-1">
