@@ -173,6 +173,12 @@ export function HermesWorkspace() {
   const [channels, setChannels] = useState<HermesChannel[]>([]);
   const [departments, setDepartments] = useState<HermesDepartment[]>([]);
   const [messages, setMessages] = useState<HermesMessage[]>([]);
+  const [loadingChannelIds, setLoadingChannelIds] = useState<
+    readonly HermesChannel["id"][]
+  >([]);
+  const [failedChannelIds, setFailedChannelIds] = useState<
+    readonly HermesChannel["id"][]
+  >([]);
   const [presenceUsers, setPresenceUsers] = useState<HermesPresenceUser[]>([]);
   const [threadReplies, setThreadReplies] = useState<
     Record<string, HermesThreadReply[]>
@@ -219,6 +225,7 @@ export function HermesWorkspace() {
     useRef<HubRealtimeChannel | null>(null);
   const channelsRef = useRef<readonly HermesChannel[]>([]);
   const presenceUsersRef = useRef<readonly HermesPresenceUser[]>([]);
+  const messageListScrollRef = useRef<HTMLDivElement>(null);
   const notifyIncomingMessagesRef = useRef<
     (messages: readonly HermesMessage[]) => void
   >(() => undefined);
@@ -269,6 +276,13 @@ export function HermesWorkspace() {
   const channelMessages = messages.filter(
     (message) => message.channelId === activeChannel.id,
   );
+  const isActiveChannelLoading = loadingChannelIds.includes(activeChannel.id);
+  const hasActiveChannelLoadFailed = failedChannelIds.includes(activeChannel.id);
+  const activeMessageLoadState = hasActiveChannelLoadFailed
+    ? "error"
+    : isActiveChannelLoading
+      ? "loading"
+      : "ready";
   const athenaFocusedMessage = athenaFocusedMessageId
     ? channelMessages.find((message) => message.id === athenaFocusedMessageId)
     : null;
@@ -714,6 +728,18 @@ export function HermesWorkspace() {
         return;
       }
 
+      const channelId = activeChannel.id;
+      const isFirstChannelLoad = !loadedChannelIdsRef.current.has(channelId);
+
+      if (isFirstChannelLoad) {
+        setLoadingChannelIds((currentIds) =>
+          currentIds.includes(channelId) ? currentIds : [...currentIds, channelId],
+        );
+        setFailedChannelIds((currentIds) =>
+          currentIds.filter((currentId) => currentId !== channelId),
+        );
+      }
+
       listChannelMessages(activeChannel.id)
         .then((nextMessages) => {
           if (!shouldApply()) {
@@ -724,9 +750,6 @@ export function HermesWorkspace() {
             nextMessages,
             channels,
           );
-          const isFirstChannelLoad = !loadedChannelIdsRef.current.has(
-            activeChannel.id,
-          );
           const newMessages = nextDeliveredMessages.filter(
             (message) => !knownMessageIdsRef.current.has(message.id),
           );
@@ -735,6 +758,12 @@ export function HermesWorkspace() {
             knownMessageIdsRef.current.add(message.id),
           );
           loadedChannelIdsRef.current.add(activeChannel.id);
+          setLoadingChannelIds((currentIds) =>
+            currentIds.filter((currentId) => currentId !== channelId),
+          );
+          setFailedChannelIds((currentIds) =>
+            currentIds.filter((currentId) => currentId !== channelId),
+          );
 
           if (!isFirstChannelLoad) {
             notifyIncomingMessages(
@@ -754,6 +783,19 @@ export function HermesWorkspace() {
           );
         })
         .catch((error: unknown) => {
+          if (shouldApply()) {
+            setLoadingChannelIds((currentIds) =>
+              currentIds.filter((currentId) => currentId !== channelId),
+            );
+            if (!loadedChannelIdsRef.current.has(channelId)) {
+              setFailedChannelIds((currentIds) =>
+                currentIds.includes(channelId)
+                  ? currentIds
+                  : [...currentIds, channelId],
+              );
+            }
+          }
+
           if (isLocalDevelopmentRuntime()) {
             console.warn("[pulsex] list channel messages error", error);
           }
@@ -1686,11 +1728,16 @@ export function HermesWorkspace() {
             unreadCallCount={unreadCallCount}
             unreadThreadReplyCount={unreadThreadReplyCount}
           />
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4"
+            ref={messageListScrollRef}
+          >
             <MessageList
               callEvents={activeChannelCallEvents}
+              channelId={activeChannel.id}
               currentUserId={currentUserId}
               filter={activeMessageFilter}
+              loadState={activeMessageLoadState}
               messages={filteredChannelMessages}
               onAskAiReply={handleOpenAthenaAgentForMessage}
               onEditMessage={handleEditMessage}
@@ -1703,6 +1750,7 @@ export function HermesWorkspace() {
                 threadUnreadCountByMessageId.get(messageId) ?? 0
               }
               reactionOptions={hermesReactionOptions}
+              scrollContainerRef={messageListScrollRef}
               users={presenceUsers}
             />
           </div>

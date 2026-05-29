@@ -10,13 +10,15 @@ import type {
 } from "@/lib/pulsex";
 import { EmptyState } from "@repo/uix";
 import { PhoneCall, PhoneMissed, Video } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { MessageItem } from "./message-item";
 
 type MessageListProps = {
   callEvents?: readonly HermesCallHistoryEntry[];
+  channelId: string;
   currentUserId?: HermesPresenceUser["id"];
   filter?: HermesMessageFilter;
+  loadState?: "error" | "loading" | "ready";
   messages: readonly HermesMessage[];
   onEditMessage?: (
     messageId: HermesMessage["id"],
@@ -38,13 +40,16 @@ type MessageListProps = {
   ) => void;
   getThreadUnreadCount?: (messageId: HermesMessage["id"]) => number;
   reactionOptions?: readonly HermesReactionEmoji[];
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
   users: readonly HermesPresenceUser[];
 };
 
 export function MessageList({
   callEvents = [],
+  channelId,
   currentUserId,
   filter = "all",
+  loadState = "ready",
   messages,
   onEditMessage,
   onAskAiReply,
@@ -55,39 +60,98 @@ export function MessageList({
   onToggleTag,
   getThreadUnreadCount,
   reactionOptions,
+  scrollContainerRef,
   users,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const previousChannelIdRef = useRef<string | null>(null);
+  const previousLastTimelineItemIdRef = useRef<string | undefined>(undefined);
+  const suppressNextChannelAutoScrollRef = useRef(false);
   const timelineItems = getHermesTimelineItems({
     callEvents: filter === "all" ? callEvents : [],
     messages,
   });
-  const lastTimelineItemId = timelineItems.at(-1)?.id;
+  const lastTimelineItem = timelineItems.at(-1);
+  const lastTimelineItemId = lastTimelineItem?.id;
+  const lastMessageAuthorId =
+    lastTimelineItem?.kind === "message"
+      ? lastTimelineItem.message.authorId
+      : undefined;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
+    const scrollContainer = scrollContainerRef.current;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    const container = scrollContainer;
+
+    function updateNearBottomState() {
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+
+      isNearBottomRef.current = distanceFromBottom <= 96;
+    }
+
+    updateNearBottomState();
+    container.addEventListener("scroll", updateNearBottomState, {
+      passive: true,
     });
-  }, [lastTimelineItemId]);
+
+    return () => {
+      container.removeEventListener("scroll", updateNearBottomState);
+    };
+  }, [scrollContainerRef]);
+
+  useEffect(() => {
+    const previousChannelId = previousChannelIdRef.current;
+    const previousLastTimelineItemId = previousLastTimelineItemIdRef.current;
+    const isInitialRender = previousChannelId === null;
+    const channelChanged =
+      previousChannelId !== null && previousChannelId !== channelId;
+    const timelineChanged = previousLastTimelineItemId !== lastTimelineItemId;
+
+    if (channelChanged) {
+      suppressNextChannelAutoScrollRef.current = true;
+    }
+
+    const shouldSuppressChannelRefreshScroll =
+      !channelChanged &&
+      timelineChanged &&
+      suppressNextChannelAutoScrollRef.current &&
+      lastMessageAuthorId !== currentUserId;
+
+    if (shouldSuppressChannelRefreshScroll) {
+      suppressNextChannelAutoScrollRef.current = false;
+    }
+
+    const shouldScrollToBottom =
+      Boolean(lastTimelineItemId) &&
+      (isInitialRender ||
+        (timelineChanged &&
+          !channelChanged &&
+          !shouldSuppressChannelRefreshScroll &&
+          (isNearBottomRef.current || lastMessageAuthorId === currentUserId)));
+
+    if (shouldScrollToBottom) {
+      bottomRef.current?.scrollIntoView({
+        behavior: "auto",
+        block: "end",
+      });
+      isNearBottomRef.current = true;
+    }
+
+    previousChannelIdRef.current = channelId;
+    previousLastTimelineItemIdRef.current = lastTimelineItemId;
+  }, [channelId, currentUserId, lastMessageAuthorId, lastTimelineItemId]);
 
   if (timelineItems.length === 0) {
     return (
       <EmptyState
-        description={
-          filter === "all"
-            ? "As mensagens deste canal aparecerao aqui."
-            : filter === "mentions"
-              ? "Nenhuma mensagem marcou voce neste canal."
-            : "Nenhuma mensagem desta conversa possui a tag selecionada."
-        }
-        title={
-          filter === "all"
-            ? "Nenhuma mensagem"
-            : filter === "mentions"
-              ? "Nenhuma mencao"
-              : "Nenhuma mensagem no filtro"
-        }
+        description={getEmptyMessagesDescription(loadState, filter)}
+        title={getEmptyMessagesTitle(loadState, filter)}
       />
     );
   }
@@ -126,6 +190,48 @@ export function MessageList({
       <div ref={bottomRef} />
     </div>
   );
+}
+
+function getEmptyMessagesDescription(
+  loadState: NonNullable<MessageListProps["loadState"]>,
+  filter: HermesMessageFilter,
+) {
+  if (loadState === "loading") {
+    return "Sincronizando mensagens deste canal.";
+  }
+
+  if (loadState === "error") {
+    return "Nao foi possivel carregar a conversa agora.";
+  }
+
+  if (filter === "mentions") {
+    return "Nenhuma mensagem marcou voce neste canal.";
+  }
+
+  if (filter !== "all") {
+    return "Nenhuma mensagem desta conversa possui a tag selecionada.";
+  }
+
+  return "As mensagens deste canal aparecerao aqui.";
+}
+
+function getEmptyMessagesTitle(
+  loadState: NonNullable<MessageListProps["loadState"]>,
+  filter: HermesMessageFilter,
+) {
+  if (loadState === "loading") {
+    return "Carregando mensagens";
+  }
+
+  if (loadState === "error") {
+    return "Mensagens indisponiveis";
+  }
+
+  if (filter === "mentions") {
+    return "Nenhuma mencao";
+  }
+
+  return filter === "all" ? "Nenhuma mensagem" : "Nenhuma mensagem no filtro";
 }
 
 type HermesTimelineItem =
