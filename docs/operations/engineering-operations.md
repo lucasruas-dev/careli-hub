@@ -20646,3 +20646,42 @@ Validacoes:
 Conclusao:
 - O ajuste visual do Chronos Google esta pronto no recorte e ainda nao foi publicado em Production.
 - Para publicar, usar worktree externa limpa fora de `.codex-deploy`, pois `.vercelignore` do root ignora esse diretorio e pode gerar deploy misto.
+
+## 2026-05-29 - CHRONOS-20260529-003-GOOGLE-AGENDA-INDIVIDUAL
+
+Status: VALIDADO LOCAL / BLOQUEADO PARA PRODUCAO ATE MIGRATION 0037.
+
+Resumo:
+- Lucas identificou que outra pessoa autenticada no Chronos visualizou a agenda Google do Lucas, o que caracteriza risco de escopo de dados entre colaboradores.
+- A causa tecnica isolada foi o indice default da migration `0035`, que tratava `calendar_id = primary` como unico default global, e a listagem de agenda que ainda consultava reunioes Chronos sem limitar por usuario logado.
+- O recorte corrigiu o status/conexao Google para usar `created_by_user_id`, sincronizacao Google por dono da reuniao, importacao vinculada a `connection_id` e listagem de agenda filtrada por host ou participante do usuario autenticado.
+- A migration `0037_chronos_google_calendar_user_scope.sql` foi criada para remover o default global por `calendar_id`, permitir uma conexao default por usuario/calendario e trocar a unicidade de links Google para `meeting_id + connection_id`.
+- Producao permanece bloqueada ate Lucas autorizar explicitamente a aplicacao da migration `0037` em Production; publicar o codigo sem essa migration pode quebrar OAuth/sync por conflito de schema.
+
+Pacote candidato:
+- Worktree: `careli-hub-worktrees/chronos-restore-google-prod-20260529`.
+- Branch: `codex/hefesto/chronos-restore-google-prod-20260529`.
+- Commit tecnico: `fc6538f fix(chronos): scope google calendar per user`.
+- Arquivos principais:
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/lib/chronos/google-calendar.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/app/api/chronos/google-calendar/authorize/route.ts`;
+  - `apps/hub/app/api/chronos/google-calendar/status/route.ts`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `packages/database/migrations/0037_chronos_google_calendar_user_scope.sql`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, apos compilar os pacotes internos `@repo/*` para gerar `dist`; warning conhecido Turbopack/NFT em SquadOps.
+
+Riscos e pendencias:
+- Migration `0037` ainda nao aplicada em Production.
+- Deploy Production ainda nao executado neste recorte.
+- Validacao funcional autenticada precisa confirmar com dois usuarios reais que cada colaborador ve apenas sua propria agenda e eventos em que participa.
+
+Conclusao:
+- A correcao de codigo esta preparada e validada, mas nao deve ir para producao antes da migration `0037`.
+- O proximo passo seguro e Lucas autorizar explicitamente: `autorizo aplicar a migration 0037 do Chronos Google em Production`.

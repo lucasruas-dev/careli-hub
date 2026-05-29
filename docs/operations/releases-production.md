@@ -2068,3 +2068,40 @@ Registro de producao:
   - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Lucas validar se o carregamento textual saiu e se os canais aparecem mais rapido apos alguns segundos de Hermes aberto.
+
+## 2026-05-29 - CHRONOS-20260529-003-GOOGLE-AGENDA-INDIVIDUAL
+
+Status: BLOQUEADO PARA PRODUCAO ATE AUTORIZACAO DA MIGRATION 0037.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Agenda Google individual por colaborador`.
+- Squad/agente responsavel: `Hefesto/Zeus autorizado para preparar recorte; operacao de banco ainda bloqueada`.
+- Ambiente alvo: `producao`.
+- Origem: Lucas reportou que outro colaborador viu a agenda Google do Lucas no Chronos.
+- Escopo preparado:
+  - limitar conexao/status Google ao usuario logado;
+  - listar agenda Chronos apenas para reunioes em que o usuario logado e host ou participante;
+  - sincronizar Google usando a conexao do dono da reuniao;
+  - vincular eventos Google por `connection_id`, nao apenas por `calendar_id`;
+  - manter layout discreto do botao Google e legenda da Agenda.
+- Commit tecnico candidato: `fc6538f fix(chronos): scope google calendar per user`.
+- Migration nova preparada: `0037_chronos_google_calendar_user_scope.sql`.
+- Deploy Production: nao executado.
+- Motivo do bloqueio:
+  - a correcao depende de alterar schema/indices em Production;
+  - a autorizacao anterior do Lucas cobriu `0035` e `0036`, nao a migration nova `0037`;
+  - publicar o codigo sem `0037` pode causar falha de OAuth/sync por constraint ausente ou indice global antigo.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, apos compilar pacotes internos `@repo/*` para gerar `dist`; warning conhecido Turbopack/NFT em SquadOps.
+- Riscos conhecidos:
+  - depende de aplicacao controlada da migration `0037` em Production;
+  - exige validacao autenticada com dois usuarios reais apos deploy;
+  - nao expor secrets, tokens, refresh tokens ou payloads Google nos registros.
+- Rollback esperado:
+  - se a migration ainda nao for aplicada, nao publicar;
+  - se publicada apos migration e houver regressao critica, promover o deployment anterior saudavel e avaliar rollback de codigo; rollback de schema exige autorizacao especifica do Lucas.
+- Proxima acao: aguardar autorizacao literal do Lucas para aplicar `0037` em Production.
