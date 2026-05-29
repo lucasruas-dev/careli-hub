@@ -1690,6 +1690,14 @@ function ChronosAgendaScreen({
     };
   }, [googleCalendarStatus?.connection.connected, runGoogleCalendarAutoSync]);
 
+  const googleCalendarConnected = Boolean(
+    googleCalendarStatus?.connection.connected,
+  );
+  const googleCalendarReady = Boolean(
+    googleCalendarStatus?.configured &&
+      googleCalendarStatus.connection.storageReady,
+  );
+
   return (
     <Surface bordered className="relative grid min-h-[45rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-[#d9e0e7] bg-white">
       <div className="grid gap-3 border-b border-[#edf0f4] p-3">
@@ -1698,25 +1706,43 @@ function ChronosAgendaScreen({
           <div className="flex flex-wrap items-center gap-2">
             <button
               aria-label={
-                googleCalendarStatus?.connection.connected
+                googleCalendarConnected
                   ? "Google conectado"
                   : "Conectar Google"
               }
               className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-55 ${
-                googleCalendarStatus?.connection.connected
+                googleCalendarConnected
                   ? "border-[#d6eadf] bg-[#f1fbf5] text-[#067647] hover:bg-[#e7f8ef]"
                   : "border-[#d9e0e7] bg-white text-[#101820] hover:bg-[#f8fafc]"
               }`}
-              disabled={
-                googleCalendarConnecting ||
-                !googleCalendarStatus?.configured ||
-                !googleCalendarStatus.connection.storageReady
+              disabled={googleCalendarConnecting || !googleCalendarReady}
+              onClick={
+                googleCalendarConnected
+                  ? refreshGoogleCalendarStatus
+                  : handleGoogleCalendarConnect
               }
-              onClick={handleGoogleCalendarConnect}
               type="button"
             >
-              <GoogleGlyph connected={googleCalendarStatus?.connection.connected} />
-              {googleCalendarConnecting ? "Abrindo..." : "Google"}
+              <GoogleGlyph connected={googleCalendarConnected} />
+              {googleCalendarConnecting
+                ? "Abrindo..."
+                : googleCalendarConnected
+                  ? "Google conectado"
+                  : "Conectar Google"}
+            </button>
+            <button
+              aria-label="Atualizar Google Agenda"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={!googleCalendarConnected || googleCalendarSyncing}
+              onClick={handleGoogleCalendarSync}
+              type="button"
+            >
+              <RefreshCcw
+                aria-hidden="true"
+                className={googleCalendarSyncing ? "animate-spin" : undefined}
+                size={15}
+              />
+              {googleCalendarSyncing ? "Atualizando..." : "Atualizar"}
             </button>
             <button
               className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-55"
@@ -2374,6 +2400,9 @@ function ChronosGoogleCalendarReadiness({
     );
   }
 
+  const googleCalendarConnected = status.connection.connected;
+  const googleCalendarReady = status.configured && status.connection.storageReady;
+
   return (
     <div className="grid gap-2 rounded-md border border-[#edf0f4] bg-white p-3 text-xs leading-5 text-[#667085]">
       <p className="m-0">
@@ -2443,29 +2472,38 @@ function ChronosGoogleCalendarReadiness({
       <div className="flex flex-wrap gap-2">
         <button
           aria-label={
-            status.connection.connected ? "Google conectado" : "Conectar Google"
+            googleCalendarConnected ? "Google conectado" : "Conectar Google"
           }
-          className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-2 font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${
-            status.configured && status.connection.storageReady
-              ? "bg-[#101820] text-white"
-              : "bg-[#edf0f4] text-[#98a2b3]"
+          className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2 font-bold transition disabled:cursor-not-allowed disabled:opacity-55 ${
+            googleCalendarConnected
+              ? "border-[#b7ebc6] bg-[#ecfdf3] text-[#067647]"
+              : googleCalendarReady
+                ? "border-[#101820] bg-[#101820] text-white"
+                : "border-[#edf0f4] bg-[#edf0f4] text-[#98a2b3]"
           }`}
-          disabled={
-            connecting || !status.configured || !status.connection.storageReady
-          }
-          onClick={onConnect}
+          disabled={connecting || !googleCalendarReady}
+          onClick={googleCalendarConnected ? onRefresh : onConnect}
           type="button"
         >
-          <GoogleGlyph connected={status.connection.connected} />
-          {connecting ? "Abrindo..." : "Google"}
+          <GoogleGlyph connected={googleCalendarConnected} />
+          {connecting
+            ? "Abrindo..."
+            : googleCalendarConnected
+              ? "Google conectado"
+              : "Conectar Google"}
         </button>
         <button
-          className="h-8 rounded-md border border-[#d9e0e7] bg-white px-2 font-bold text-[#101820] disabled:opacity-50"
-          disabled={!status.connection.connected || syncing}
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2 font-bold text-[#101820] disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!googleCalendarConnected || syncing}
           onClick={onSync}
           type="button"
         >
-          {syncing ? "Sincronizando..." : "Sincronizar"}
+          <RefreshCcw
+            aria-hidden="true"
+            className={syncing ? "animate-spin" : undefined}
+            size={14}
+          />
+          {syncing ? "Atualizando..." : "Atualizar"}
         </button>
       </div>
     </div>
@@ -2477,7 +2515,7 @@ function GoogleGlyph({ connected }: { connected?: boolean }) {
     return (
       <span
         aria-hidden="true"
-        className="grid h-5 w-5 place-items-center rounded-full bg-white text-[11px] font-black text-[#4285f4] shadow-[inset_0_0_0_1px_rgba(16,24,32,0.1)]"
+        className="grid h-5 w-5 place-items-center rounded-full bg-[#12b76a] text-[11px] font-black text-white shadow-[inset_0_0_0_1px_rgba(6,118,71,0.2)]"
       >
         G
       </span>
