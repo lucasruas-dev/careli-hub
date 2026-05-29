@@ -21346,3 +21346,39 @@ Conclusao:
 - O erro de fuso foi tratado na origem: data local agora e convertida como `America/Sao_Paulo` antes de persistir/enviar para o Google.
 - A homologacao tambem ganhou full sync manual para recalcular eventos do espelho quando necessario.
 - O ambiente `homo` esta publicado e saudavel; a validacao final agora e criar/sincronizar um novo compromisso real no fluxo autenticado.
+## 2026-05-28 - Chronos - Auto-sync Google Agenda
+
+- Assunto: [Chronos] Auto-sync Google Agenda.
+- Protocolo: CHRONOS-20260528-011-GOOGLE-AUTOSYNC-WATCH.
+- Status: EM_PREPARACAO PARA HOMOLOGACAO.
+- Decisao: complementar o espelho Google Agenda com duas camadas:
+  - push notification oficial via Google Calendar `events.watch`, com webhook server-side `/api/chronos/google-calendar/webhook`;
+  - fallback de polling autenticado no browser a cada minuto e ao voltar foco/visibilidade da aba.
+- Seguranca: o token do canal Google e gerado por canal, enviado ao Google e nunca persistido em texto puro; o banco guarda somente `watch_token_hash`.
+- Seguranca adicional: antes de chamar `events.watch`, o Chronos confere se as colunas `watch_*` existem na conexao carregada; sem a migration, nao cria canal Google e fica no fallback de polling.
+- Banco: nova migration nao destrutiva `packages/database/migrations/0036_chronos_google_calendar_watch.sql` adiciona metadados `watch_*` em `chronos_google_calendar_connections`.
+- Comportamento:
+  - status da Agenda passa a indicar `push ativo` quando o canal Google esta valido;
+  - quando o push nao esta ativo, a UI informa `polling ativo`;
+  - webhook valida `X-Goog-Channel-ID` e `X-Goog-Channel-Token`, registra ultimo aviso e executa pull incremental;
+  - se o `sync_token` expirar, o Chronos limpa o token e refaz pull completo dentro da janela operacional.
+- Validacoes iniciais:
+  - typecheck escopado do Hub: OK;
+  - lint escopado Chronos Google: OK;
+  - `git diff --check` do recorte: OK.
+- Validacoes Zeus apos ajuste de seguranca:
+  - `git diff --check`: OK, apenas aviso CRLF;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, apenas aviso conhecido de `type: module`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, apenas avisos conhecidos de lockfile/worktree e tracing SquadOps;
+  - smoke local na porta 3002: `/chronos` 200, `/api/chronos/google-calendar/status` 401 sem sessao, webhook 400 sem cabecalhos Google.
+- Pendencias antes de concluir homologacao:
+  - aplicar `0036` em homologacao com `HOMOLOG_POSTGRES_URL` sem expor valor;
+  - rodar `check-types:hub`, `lint:hub`, `build`;
+  - Safety Gate pre/post e healthchecks;
+  - Lucas testar evento novo/alterado no Google e no Chronos com intervalo curto.
+
+Conclusao:
+- O recorte reduz a dependencia do botao manual `Sincronizar`.
+- A sincronizacao passa a ser quase realtime quando o Google entrega webhook e continua funcionando por polling caso o webhook atrase.
+- Producao segue fora do escopo ate validacao em homologacao.

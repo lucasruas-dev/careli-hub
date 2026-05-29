@@ -5128,3 +5128,12 @@ Conclusao:
 - Exclui: envs, secrets, banco, migrations, producao, Google push webhook e demais modulos.
 - Validacoes: diff-check, check-types, lint, build, Safety Gate pre/post, `/chronos` 200, rota status 401 sem sessao e logs sem erro.
 - Pendencia: Lucas criar/sincronizar novo evento real e confirmar que 13:00 permanece 13:00 no Chronos e Google.
+## CHRONOS-20260528-011-GOOGLE-AUTOSYNC-WATCH - PREPARADO PARA HOMOLOGACAO
+
+- Ambiente alvo: https://homo.c2x.app.br.
+- Escopo: ativar auto-sync Google Agenda com webhook `events.watch`, fallback de polling a cada minuto e renovacao segura do canal Google sem persistir token bruto.
+- Inclui: rota `/api/chronos/google-calendar/webhook`, migration `0036_chronos_google_calendar_watch.sql`, status visual `push ativo`/`polling ativo`, ultimo aviso Google e recuperacao de `sync_token` expirado.
+- Protecao: sem a migration `0036`, o Chronos nao registra canal Google e usa polling com aviso operacional, evitando canal webhook sem persistencia segura.
+- Exclui: producao, novos secrets em docs/chat, dominio novo, alias de producao e outros modulos.
+- Validacoes Zeus: `git diff --check` OK, `npm.cmd run check-types:hub` OK, `npm.cmd run lint:hub` OK, `npm.cmd run build --workspace @repo/hub` OK e smoke local 3002 OK.
+- Proximo passo: aplicar `0036` em homologacao, rodar validacoes globais, Safety Gate e publicar Preview/alias homo.

@@ -834,3 +834,25 @@ O manifesto de homologacao deve incluir:
 - Exclui: envs, secrets, banco, migrations, producao, Google push webhook e demais modulos.
 - Validacoes: diff-check, check-types, lint, build, Safety Gate pre/post, `/chronos` 200, rota status 401 sem sessao e logs sem erro.
 - Pendencia: Lucas criar/sincronizar novo evento real e confirmar que 13:00 permanece 13:00 no Chronos e Google.
+## CHRONOS-20260528-011-GOOGLE-AUTOSYNC-WATCH - EM_PREPARACAO
+
+- Modulo: Chronos.
+- Owner: Zeus/Chronos.
+- Escopo: auto-sync Google Agenda quase realtime com `events.watch`, webhook server-side protegido por hash de token, renovacao oportunista do canal, fallback de polling a cada minuto no browser e recuperacao de `sync_token` expirado com full pull seguro.
+- Protecao: se a migration `0036` ainda nao estiver visivel na conexao carregada, o Chronos nao chama `events.watch` e permanece em polling com erro operacional controlado.
+- Arquivos incluidos:
+  - `apps/hub/lib/chronos/google-calendar.ts`;
+  - `apps/hub/lib/chronos/types.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `apps/hub/app/api/chronos/google-calendar/status/route.ts`;
+  - `apps/hub/app/api/chronos/google-calendar/sync/route.ts`;
+  - `apps/hub/app/api/chronos/google-calendar/webhook/route.ts`;
+  - `packages/database/migrations/0036_chronos_google_calendar_watch.sql`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-homologation.md`.
+- Exclusoes: sem producao, sem novos valores de env em docs/chat, sem outros modulos, sem dominio novo e sem alias de producao.
+- Mudanca sensivel autorizada: Lucas autorizou migrations e env Google no recorte Chronos; aplicar somente a migration nao destrutiva `0036` em homologacao antes do deploy.
+- Validacoes: `git diff --check` OK, `npm.cmd run check-types:hub` OK, `npm.cmd run lint:hub` OK, `npm.cmd run build --workspace @repo/hub` OK e smoke local 3002 OK.
+- Rollback: voltar alias homo para o deployment anterior e manter as colunas `watch_*` inertes; remocao fisica das colunas somente com nova autorizacao DataOps/Zeus.
