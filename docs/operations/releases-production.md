@@ -2163,3 +2163,53 @@ Registro de producao:
   - registro estruturado remoto no Operations Center ainda nao foi reconciliado nesta etapa.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Lucas atualizar `https://c2x.app.br/chronos`, conferir o botao `Google conectado` em verde ou usar `Conectar Google`, e clicar `Atualizar` para testar sync manual.
+
+## 2026-05-29 - CHRONOS-20260529-002-GOOGLE-TOOLBAR-STATUS
+
+Registro de producao:
+
+- Assunto: `[Chronos] status Google discreto na Agenda`.
+- Squad/agente responsavel: `Hefesto / Zeus Operations`.
+- Data e hora local: `2026-05-29 08:55:50 -03:00`.
+- Ambiente: `producao`.
+- Origem/autorizacao: Lucas autorizou publicar o ajuste visual apos apontar que o bloco `Fonte atual` nao deveria ficar visivel na lateral.
+- Escopo publicado:
+  - remover o bloco lateral `Fonte atual`;
+  - manter a legenda operacional da Agenda visivel na barra superior;
+  - manter o botao Google discreto no topo;
+  - esconder detalhes de fonte/status Google em popup de hover/foco;
+  - preservar `Atualizar` como acao separada de sync.
+- Commit publicado: `ee87f65 fix(chronos): make google status discreet`.
+- Deployment anterior saudavel: `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi`.
+- Deployment novo final: `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw`; URL tecnica `https://careli-hub-hub-i2bs-myqtgeib6-lucasruas-devs-projects.vercel.app`.
+- Worktree externa de deploy limpo: `careli-hub-worktrees/chronos-google-toolbar-prod-20260529`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado em `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no mesmo deployment, status `Ready`.
+- Validacoes executadas antes do deploy:
+  - `git diff --check`: OK, apenas aviso LF/CRLF conhecido;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile/worktree `.codex-deploy` e Turbopack/NFT em SquadOps;
+  - smoke HTTP local em `http://localhost:3002/chronos`: 200.
+- Validacoes pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no mesmo deployment;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/sync` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/webhook` sem headers Google: 400 seguro;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado;
+  - assets publicos de `/chronos`: texto `Fonte atual` ausente e textos de Google/legenda presentes no bundle.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Rollback definido: promover `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi` se houver regressao critica em login, Hermes, Zeus/OPS ou Chronos.
+- Riscos conhecidos:
+  - validacao visual final depende de sessao autenticada do Lucas no Chrome/PWA;
+  - PWA/Chrome pode manter bundle antigo ate recarregamento forçado ou fechamento/reabertura.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas atualizar `https://c2x.app.br/chronos`; se ainda aparecer `Fonte atual`, fechar o PWA/Chrome e abrir novamente.

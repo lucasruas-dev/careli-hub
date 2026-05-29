@@ -20627,7 +20627,7 @@ Conclusao:
 
 ## 2026-05-29 - CHRONOS-20260529-002-GOOGLE-TOOLBAR-STATUS
 
-Status: PREPARADO, validado localmente, aguardando autorizacao explicita para publicar em Production.
+Status: EM PRODUCAO, aguardando validacao visual autenticada do Lucas.
 
 Resumo:
 - Lucas pediu preservar o layout operacional da Agenda, manter a legenda visivel e retirar o bloco lateral `Fonte atual`.
@@ -20642,7 +20642,25 @@ Validacoes:
 - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile/worktree `.codex-deploy` e Turbopack/NFT em SquadOps.
 - Smoke HTTP local em `http://localhost:3002/chronos`: 200.
 - Validacao visual por navegador embutido ficou bloqueada por falha de sandbox do runtime de browser, sem indicio de erro de codigo no recorte.
+- Lucas autorizou publicacao em Production em 2026-05-29.
+- Deploy Production executado por worktree externa limpa `careli-hub-worktrees/chronos-google-toolbar-prod-20260529`.
+- Commit publicado: `ee87f65 fix(chronos): make google status discreet`.
+- Deployment anterior: `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi`.
+- Deployment novo: `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw`.
+- URL tecnica: `https://careli-hub-hub-i2bs-myqtgeib6-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados no novo deployment: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/sync` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/webhook` sem headers Google: 400 seguro;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado.
+- Assets publicados de `/chronos`: `Fonte atual` ausente; textos de Google/legenda presentes no bundle.
+- Logs de erro Vercel em `c2x.app.br` e `ops.c2x.app.br` nos ultimos 10 minutos: sem logs encontrados.
 
 Conclusao:
-- O ajuste visual do Chronos Google esta pronto no recorte e ainda nao foi publicado em Production.
-- Para publicar, usar worktree externa limpa fora de `.codex-deploy`, pois `.vercelignore` do root ignora esse diretorio e pode gerar deploy misto.
+- O ajuste visual do Chronos Google esta publicado em Production por pacote limpo.
+- Lucas deve atualizar `https://c2x.app.br/chronos`; se o PWA/Chrome mantiver cache antigo, fechar e abrir novamente ou fazer recarregamento forçado.
