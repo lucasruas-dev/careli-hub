@@ -14,6 +14,11 @@ import {
   type ChronosMeeting,
   type ChronosMinutesProfile,
 } from "@/lib/chronos/types";
+import {
+  buildChronosMinutesContext,
+  formatChronosDate,
+  formatChronosDateTime,
+} from "@/lib/chronos/minutes";
 
 const DEFAULT_MINUTES_MODEL = "gpt-5.5";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
@@ -109,6 +114,16 @@ export async function POST(request: NextRequest) {
       return Response.json(
         { error: "Reuniao Chronos nao encontrada." },
         { status: 404 },
+      );
+    }
+
+    if (!hasChronosAvailableRecording(meeting)) {
+      return Response.json(
+        {
+          error:
+            "Ata Chronos requer gravacao disponivel vinculada a reuniao.",
+        },
+        { status: 409 },
       );
     }
 
@@ -259,7 +274,18 @@ async function transcribeChronosRecording({
   formData.append("model", model);
   formData.append("file", file, file.name || "chronos-recording.webm");
   formData.append("language", "pt");
+  formData.append(
+    "prompt",
+    [
+      "Transcreva literalmente uma reuniao corporativa em portugues do Brasil.",
+      "Use somente falas audiveis. Nao complete frases, nao resuma e nao invente conteudo.",
+      "Quando um trecho estiver incerto, use [inaudivel] ou [trecho incerto].",
+      "Preserve nomes, siglas, protocolos, datas e tarefas quando forem claramente ditos.",
+      "Ignore ruido de fundo, silencio, eco, notificacoes e falas sobrepostas que nao fiquem inteligiveis.",
+    ].join(" "),
+  );
   formData.append("response_format", "json");
+  formData.append("temperature", "0");
 
   try {
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -279,7 +305,7 @@ async function transcribeChronosRecording({
       throw new Error(getOpenAiErrorMessage(payload, "Falha na transcricao."));
     }
 
-    const transcript = normalizeText(payload?.text, 8_000);
+    const transcript = normalizeText(payload?.text, 12_000);
 
     if (!transcript) {
       throw new Error("OpenAI nao retornou transcricao para este arquivo.");
@@ -358,6 +384,12 @@ async function draftChronosMinutes({
   }
 }
 
+function hasChronosAvailableRecording(meeting: ChronosMeeting) {
+  return meeting.recordings.some(
+    (recording) => recording.status === "available",
+  );
+}
+
 function buildChronosMinutesPrompt({
   meeting,
   minutesProfile,
@@ -368,9 +400,10 @@ function buildChronosMinutesPrompt({
   const agenda = Array.isArray(meeting.metadata?.agenda)
     ? meeting.metadata.agenda
     : [];
+  const minutesContext = buildChronosMinutesContext(meeting);
   const profileInstruction = {
     alinhamento:
-      "Ata de alinhamento: destaque contexto, pontos alinhados, decisoes, responsaveis, pendencias e proximos passos.",
+      "Ata de alinhamento: destaque contexto, pontos alinhados, decisoes, responsaveis, pendencias e proximos passos. Sempre inclua uma secao 'Plano de acao' em tabela.",
     comunicado:
       "Ata comunicado: destaque mensagem executiva, publico afetado, decisao comunicada, impacto e proximos passos.",
     resultado:
@@ -381,6 +414,14 @@ function buildChronosMinutesPrompt({
     "Monte um rascunho de ata Chronos para revisao humana.",
     `Perfil da ata: ${chronosMinutesProfileLabels[minutesProfile]}.`,
     profileInstruction[minutesProfile],
+    "Use topicos com bullets para deixar a leitura organizada.",
+    "Use negrito em titulos e dados importantes usando markdown (**texto**).",
+    "Na identificacao da reuniao, use sempre o inicio programado e o fim real de encerramento. Nao use o fim agendado como fim da ata.",
+    "Nos participantes, liste somente quem fez check-in/entrou na reuniao. Nao use convidados sem check-in.",
+    "Para transcricao, use somente o que esta nos trechos recebidos. Se houver ruido ou baixa confianca, registre como 'Nao identificado' e nao invente fala.",
+    "Para reuniao de alinhamento, o Plano de acao deve ser uma tabela markdown com colunas: Atividade | Responsavel | Prazo | Status.",
+    `Se uma atividade ficar sem prazo mencionado, use ${minutesContext.defaultActionDueLabel} como prazo padrao de 5 dias uteis a partir da reuniao.`,
+    "Se nenhuma atividade for mencionada, registre uma linha com 'Sem atividade formal registrada' e prazo 'Nao informado'.",
     "",
     "Retorne JSON neste formato:",
     '{"summary":"Resumo executivo curto.","minutes":"Conteudo completo da ata."}',
@@ -389,8 +430,11 @@ function buildChronosMinutesPrompt({
     `Protocolo: ${meeting.protocol}`,
     `Titulo: ${meeting.title}`,
     `Tipo: ${chronosMeetingTypeLabels[meeting.meetingType]}`,
-    `Inicio: ${meeting.startsAt ?? "Nao informado"}`,
-    `Fim: ${meeting.endsAt ?? "Nao informado"}`,
+    `Inicio programado: ${minutesContext.scheduledStartLabel}`,
+    `Fim real de encerramento: ${minutesContext.actualEndLabel}`,
+    `Data base do prazo padrao: ${formatChronosDate(
+      minutesContext.actualEndAt ?? minutesContext.scheduledStartAt,
+    )}`,
     `Objetivo: ${meeting.objective ?? "Nao informado"}`,
     `Sala: ${meeting.room?.name ?? "Nao informado"}`,
     `Host: ${meeting.hostName ?? "Nao informado"}`,
@@ -401,11 +445,13 @@ function buildChronosMinutesPrompt({
       : "Nao informada.",
     "",
     "Participantes:",
-    meeting.participants.length
-      ? meeting.participants
+    minutesContext.participants.length
+      ? minutesContext.participants
           .map(
             (participant) =>
-              `- ${participant.displayName} (${participant.role})${
+              `- ${participant.displayName} (${participant.role}; check-in: ${formatChronosDateTime(
+                participant.joinedAt,
+              )})${
                 participant.email ? ` - ${participant.email}` : ""
               }`,
           )

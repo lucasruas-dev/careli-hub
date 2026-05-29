@@ -115,6 +115,7 @@ export function AuthProvider({
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,
     [authState.user],
   );
+  const isPublicChronosRoomRoute = isChronosPublicRoomPath(pathname);
 
   useEffect(() => {
     if (hasHubSupabaseConfig()) {
@@ -287,7 +288,11 @@ export function AuthProvider({
     }
 
     if (authState.status === "error") {
-      if (!isLoginRoute && shouldResetSessionAfterAuthError(authState.error)) {
+      if (
+        !isLoginRoute &&
+        !isPublicChronosRoomRoute &&
+        shouldResetSessionAfterAuthError(authState.error)
+      ) {
         resetBrokenSessionToLogin({
           setAuthState,
           setProfileStatus,
@@ -297,7 +302,11 @@ export function AuthProvider({
       return;
     }
 
-    if (!isAuthenticated(authState) && !isLoginRoute) {
+    if (
+      !isAuthenticated(authState) &&
+      !isLoginRoute &&
+      !isPublicChronosRoomRoute
+    ) {
       router.replace("/login");
       return;
     }
@@ -305,7 +314,7 @@ export function AuthProvider({
     if (isAuthenticated(authState) && isLoginRoute) {
       router.replace("/");
     }
-  }, [authState, isLoginRoute, router]);
+  }, [authState, isLoginRoute, isPublicChronosRoomRoute, router]);
 
   async function signIn({
     email,
@@ -528,11 +537,19 @@ export function AuthProvider({
     }
   }
 
-  if (authState.status === "loading" && !isLoginRoute) {
+  if (
+    authState.status === "loading" &&
+    !isLoginRoute &&
+    !isPublicChronosRoomRoute
+  ) {
     return <AuthGateMessage message="Carregando sessao..." />;
   }
 
-  if (authState.status === "error" && !isLoginRoute) {
+  if (
+    authState.status === "error" &&
+    !isLoginRoute &&
+    !isPublicChronosRoomRoute
+  ) {
     const authGateMessage = getAuthGateMessage(authState);
     const shouldResetSession = shouldResetSessionAfterAuthError(authGateMessage);
 
@@ -557,7 +574,7 @@ export function AuthProvider({
     );
   }
 
-  if (!isLoginRoute && !isAuthenticated(authState)) {
+  if (!isLoginRoute && !isPublicChronosRoomRoute && !isAuthenticated(authState)) {
     return <AuthGateMessage message="Redirecionando para login..." />;
   }
 
@@ -1323,6 +1340,16 @@ function clearLocalAuthStorage() {
 
   window.localStorage.removeItem(supabaseStorageKey);
   window.localStorage.removeItem(`${supabaseStorageKey}-code-verifier`);
+}
+
+function isChronosPublicRoomPath(pathname: string | null) {
+  if (!pathname?.startsWith("/chronos/")) {
+    return false;
+  }
+
+  const segments = pathname.split("/").filter(Boolean);
+
+  return segments.length === 2;
 }
 
 function getSupabaseAuthStorageKey(url?: string) {

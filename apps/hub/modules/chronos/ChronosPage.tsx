@@ -3465,6 +3465,7 @@ function ChronosRoomsManagementScreen({
     }));
   }
 
+  const externalRoomPath = buildExternalRoomPath(roomDraft.slug);
   const externalRoomLink = buildExternalRoomLink(roomDraft.slug);
   const roomFormTitle = isCreatingRoom ? "Nova sala" : selectedRoom?.name ?? "Sala";
 
@@ -3517,9 +3518,14 @@ function ChronosRoomsManagementScreen({
                     {room.capacity} lugares
                   </span>
                 </button>
-                <span className="truncate text-xs font-semibold text-[#526078]">
+                <a
+                  className="truncate text-xs font-semibold text-[#526078] transition hover:text-[#A07C3B]"
+                  href={buildExternalRoomPath(room.slug)}
+                  rel="noreferrer"
+                  target="_blank"
+                >
                   {buildExternalRoomLink(room.slug)}
-                </span>
+                </a>
                 <span className="flex flex-wrap gap-1">
                   <Badge variant={room.recordingRequired ? "info" : "neutral"}>
                     gravacao {room.recordingRequired ? "sim" : "nao"}
@@ -3605,9 +3611,14 @@ function ChronosRoomsManagementScreen({
                   solicitar entrada
                 </span>
               </div>
-              <span className="truncate rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2 text-xs normal-case text-[#526078]">
+              <a
+                className="truncate rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2 text-xs normal-case text-[#526078] transition hover:border-[#A07C3B] hover:text-[#A07C3B]"
+                href={externalRoomPath}
+                rel="noreferrer"
+                target="_blank"
+              >
                 {externalRoomLink}
-              </span>
+              </a>
             </label>
             <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
               Lugares
@@ -6108,8 +6119,12 @@ function slugifyRoomName(value: string) {
   return slug || "";
 }
 
-function buildExternalRoomLink(slug: string) {
+function buildExternalRoomPath(slug: string) {
   return `/chronos/${slug || "nome-da-sala"}`;
+}
+
+function buildExternalRoomLink(slug: string) {
+  return new URL(buildExternalRoomPath(slug), "https://c2x.app.br").toString();
 }
 
 function readFileAsDataUrl(file: File) {

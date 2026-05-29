@@ -2060,6 +2060,34 @@ function assertCanManageChronos(user: AuthorizedChronosUser) {
   }
 }
 
+function assertChronosAdmin(user: AuthorizedChronosUser) {
+  if (user.role !== "admin") {
+    throw new ChronosForbiddenError("Somente administradores podem excluir atas.");
+  }
+}
+
+async function assertChronosMeetingHasAvailableRecording(
+  client: ChronosClient,
+  meetingId: string,
+) {
+  const recordingResult = await client
+    .from("chronos_recordings")
+    .select("id")
+    .eq("meeting_id", meetingId)
+    .eq("status", "available")
+    .limit(1);
+
+  if (recordingResult.error) {
+    throw recordingResult.error;
+  }
+
+  if (!recordingResult.data?.length) {
+    throw new Error(
+      "Ata Chronos requer gravacao disponivel vinculada a reuniao.",
+    );
+  }
+}
+
 async function applyChronosUpdate({
   client,
   input,
@@ -2185,6 +2213,7 @@ async function applyChronosUpdate({
   }
 
   if (input.action === "save_minutes") {
+    await assertChronosMeetingHasAvailableRecording(client, input.meetingId);
     const version = await getNextMinutesVersion(client, input.meetingId);
     const minutesResult = await client.from("chronos_minutes").insert({
       content: sanitizeText(input.content, maxTextLength),
@@ -2218,6 +2247,53 @@ async function applyChronosUpdate({
         input.status === "approved"
           ? "Ata aprovada por revisao humana"
           : "Ata registrada para revisao",
+    });
+    return;
+  }
+
+  if (input.action === "delete_minutes") {
+    assertChronosAdmin(user);
+
+    const deleteResult = await client
+      .from("chronos_minutes")
+      .delete()
+      .eq("meeting_id", input.meetingId)
+      .eq("id", input.minutesId);
+
+    if (deleteResult.error) {
+      throw deleteResult.error;
+    }
+
+    const remainingResult = await client
+      .from("chronos_minutes")
+      .select("status,created_at")
+      .eq("meeting_id", input.meetingId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (remainingResult.error) {
+      throw remainingResult.error;
+    }
+
+    const nextStatus =
+      remainingResult.data?.[0]?.status &&
+      isChronosMinutesStatus(remainingResult.data[0].status)
+        ? remainingResult.data[0].status
+        : "not_started";
+    const meetingResult = await client
+      .from("chronos_meetings")
+      .update({ minutes_status: nextStatus })
+      .eq("id", input.meetingId);
+
+    if (meetingResult.error) {
+      throw meetingResult.error;
+    }
+
+    await insertTimelineEvent(client, {
+      actorUserId: user.id,
+      eventType: "note",
+      meetingId: input.meetingId,
+      title: "Ata excluida por administrador",
     });
     return;
   }
@@ -2789,6 +2865,23 @@ function normalizeUpdateInput(input: unknown): ChronosUpdateInput {
     };
   }
 
+  if (action === "delete_minutes") {
+    const minutesId = sanitizeOptionalText(
+      (maybeInput as { minutesId?: unknown }).minutesId,
+      80,
+    );
+
+    if (!minutesId) {
+      throw new Error("Ata nao informada para exclusao.");
+    }
+
+    return {
+      action,
+      meetingId,
+      minutesId,
+    };
+  }
+
   if (action === "create_followup") {
     return {
       action,
@@ -3305,6 +3398,7 @@ async function joinLocalChronosPublicRoom({
     displayName: participantName,
     email: null,
     id: `local-public-participant-${Date.now().toString(36)}`,
+    joinedAt: now,
     organization: input.organization ?? null,
     role: "external",
     userId: null,
@@ -3441,6 +3535,7 @@ async function closeLocalChronosPublicMeeting({
       participants: meeting.participants.map((participant) => ({
         ...participant,
         attendanceStatus: "left",
+        leftAt: now,
       })),
       status: "closed",
       timeline: [
@@ -3725,6 +3820,12 @@ async function updateLocalChronosMeeting({
         ...meeting.timeline,
       ];
     } else if (input.action === "save_minutes") {
+      if (!hasLocalChronosAvailableRecording(meeting)) {
+        throw new Error(
+          "Ata Chronos requer gravacao disponivel vinculada a reuniao.",
+        );
+      }
+
       nextMeeting.minutesStatus = input.status;
       nextMeeting.minutes = [
         {
@@ -3745,6 +3846,17 @@ async function updateLocalChronosMeeting({
             : "Ata registrada para revisao",
           input.status === "approved" ? "minutes_approved" : "minutes_drafted",
         ),
+        ...meeting.timeline,
+      ];
+    } else if (input.action === "delete_minutes") {
+      assertChronosAdmin(user);
+      nextMeeting.minutes = meeting.minutes.filter(
+        (minutes) => minutes.id !== input.minutesId,
+      );
+      nextMeeting.minutesStatus =
+        nextMeeting.minutes[0]?.status ?? "not_started";
+      nextMeeting.timeline = [
+        event("Ata excluida por administrador", "note"),
         ...meeting.timeline,
       ];
     } else if (input.action === "create_followup") {
@@ -3795,6 +3907,12 @@ async function updateLocalChronosMeeting({
   });
 
   return updatedMeeting;
+}
+
+function hasLocalChronosAvailableRecording(meeting: ChronosMeeting) {
+  return meeting.recordings.some(
+    (recording) => recording.status === "available",
+  );
 }
 
 function mapRoomRow(row: ChronosRoomRow): ChronosRoom {
@@ -3888,6 +4006,8 @@ function mapParticipantRow(row: ChronosParticipantRow): ChronosParticipant {
     displayName: row.display_name,
     email: row.email,
     id: row.id,
+    joinedAt: row.joined_at,
+    leftAt: row.left_at,
     organization: row.organization,
     role: row.role,
     userId: row.user_id,

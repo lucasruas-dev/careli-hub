@@ -246,6 +246,8 @@ export type ChronosParticipant = {
   displayName: string;
   email?: string | null;
   id: string;
+  joinedAt?: string | null;
+  leftAt?: string | null;
   organization?: string | null;
   role: ChronosParticipantRole;
   userId?: string | null;
@@ -362,6 +364,7 @@ export type ChronosCreateMeetingInput = {
   agenda?: string[];
   apoloInvitees?: ChronosApoloInvitee[];
   calendarEventKind?: ChronosCalendarEventKind;
+  calendarOptions?: ChronosCalendarOptionsInput;
   endsAt?: string;
   externalReference?: string;
   hubInvitees?: ChronosHubInvitee[];
@@ -377,9 +380,27 @@ export type ChronosCreateMeetingInput = {
     userId?: string;
   }>;
   profileId?: string;
+  recurrence?: ChronosMeetingRecurrenceInput;
   roomId?: string;
   startsAt?: string;
   title: string;
+};
+
+export type ChronosMeetingRecurrenceInput = {
+  label: string;
+  mode: string;
+  rrule?: string;
+};
+
+export type ChronosCalendarOptionsInput = {
+  availability?: "busy" | "free";
+  guestPermissions?: {
+    canInviteOthers?: boolean;
+    canModify?: boolean;
+    canSeeGuestList?: boolean;
+  };
+  notificationMinutes?: number;
+  visibility?: "default" | "private" | "public";
 };
 
 export type ChronosRoomInput = {
@@ -474,6 +495,11 @@ export type ChronosUpdateInput =
       content: string;
       meetingId: string;
       status: ChronosMinutesStatus;
+    }
+  | {
+      action: "delete_minutes";
+      meetingId: string;
+      minutesId: string;
     }
   | {
       action: "create_followup";

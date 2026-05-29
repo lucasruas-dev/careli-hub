@@ -1382,13 +1382,7 @@ function buildGoogleCalendarEventDescription(context: MeetingContext) {
         (item): item is string => typeof item === "string",
       )
     : [];
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.NEXT_PUBLIC_CARELI_APP_URL?.trim() ||
-    process.env.VERCEL_URL?.trim();
-  const roomPath = context.room?.slug ? `/chronos/${context.room.slug}` : null;
-  const roomUrl =
-    appUrl && roomPath ? new URL(roomPath, ensureUrl(appUrl)).toString() : null;
+  const roomUrl = getChronosGoogleCalendarRoomUrl(context);
   const lines = [
     `Protocolo Chronos: ${context.meeting.protocol}`,
     context.meeting.objective ? `Objetivo: ${context.meeting.objective}` : null,
@@ -1410,7 +1404,13 @@ function buildGoogleCalendarLocation(context: MeetingContext) {
     return location.address;
   }
 
-  return context.room?.name ?? "Chronos";
+  return getChronosGoogleCalendarRoomUrl(context) ?? context.room?.name ?? "Chronos";
+}
+
+function getChronosGoogleCalendarRoomUrl(context: MeetingContext) {
+  return context.room?.slug
+    ? new URL(`/chronos/${context.room.slug}`, "https://c2x.app.br").toString()
+    : null;
 }
 
 async function insertGoogleCalendarEvent({
