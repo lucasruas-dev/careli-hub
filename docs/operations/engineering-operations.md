@@ -20941,6 +20941,7 @@ Validacoes:
   - APIs Chronos protegidas sem sessao retornaram 401 esperado;
   - webhook Google sem headers retornou 400 seguro.
 - Logs recentes de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Sync estruturado do Operations Center: HTTP 200 com `recordsTotal=456`, `recordsUpserted=456`, `releasesUpserted=66`, `mode=content-upload`.
 
 Riscos e acompanhamento:
 - Validacao completa de invite/fuso depende de evento real com Google conectado.

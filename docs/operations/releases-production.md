@@ -2268,6 +2268,7 @@ Registro de producao:
   - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
   - `POST https://c2x.app.br/api/chronos/google-calendar/webhook` sem headers Google: 400 seguro.
 - Logs recentes de `c2x.app.br` e `ops.c2x.app.br`: `npx.cmd vercel logs --since 10m --level error` sem logs encontrados.
+- Registro estruturado: sync oficial do Operations Center concluiu com `recordsTotal=456`, `recordsUpserted=456`, `releasesUpserted=66` e `mode=content-upload`.
 - Observacao de commit: o commit foi criado com `--no-verify` porque o hook local aponta para `scripts/panteon-hook-runner.ps1`, ausente no worktree limpo. Validacoes operacionais foram executadas manualmente antes do deploy.
 - Riscos e acompanhamento:
   - validacao completa de invite/fuso depende de criar ou atualizar evento real com Google conectado;
