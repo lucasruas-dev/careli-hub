@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import {
   chronosDefaultTimeZone,
+  formatChronosDateTimeForGoogleCalendar,
   normalizeGoogleCalendarDateTime,
 } from "./datetime";
 import type {
@@ -230,6 +231,15 @@ type ChronosGoogleCalendarDatabase = {
           synced_events?: number;
         };
       };
+      hub_users: {
+        Insert: never;
+        Relationships: [];
+        Row: {
+          email: string | null;
+          id: string;
+        };
+        Update: never;
+      };
       chronos_meetings: {
         Insert: Partial<ChronosMeetingRow> & {
           protocol: string;
@@ -285,6 +295,11 @@ type GoogleCalendarEvent = {
     email?: string;
     responseStatus?: string;
   }>;
+  creator?: {
+    displayName?: string;
+    email?: string;
+    self?: boolean;
+  };
   description?: string;
   end?: {
     date?: string;
@@ -300,6 +315,11 @@ type GoogleCalendarEvent = {
   iCalUID?: string;
   id?: string;
   location?: string;
+  organizer?: {
+    displayName?: string;
+    email?: string;
+    self?: boolean;
+  };
   start?: {
     date?: string;
     dateTime?: string;
@@ -1057,6 +1077,66 @@ async function getDefaultGoogleCalendarConnection(
   };
 }
 
+async function getChronosGoogleCalendarOwnerEmail(
+  client: ChronosGoogleCalendarClient,
+  userId?: string | null,
+) {
+  if (!userId) {
+    return null;
+  }
+
+  const result = await client
+    .from("hub_users")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle<{ email: string | null }>();
+
+  if (result.error) {
+    return null;
+  }
+
+  return normalizeGoogleCalendarEmail(result.data?.email);
+}
+
+function isGoogleCalendarEventEligibleForConnection(
+  event: GoogleCalendarEvent,
+  ownerEmail: string | null,
+) {
+  if (isChronosGeneratedGoogleCalendarEvent(event)) {
+    return true;
+  }
+
+  if (!ownerEmail) {
+    return true;
+  }
+
+  const eventOwnerEmails = [
+    normalizeGoogleCalendarEmail(event.organizer?.email),
+    normalizeGoogleCalendarEmail(event.creator?.email),
+  ].filter((email): email is string => Boolean(email));
+
+  if (eventOwnerEmails.length === 0) {
+    return true;
+  }
+
+  return eventOwnerEmails.includes(ownerEmail);
+}
+
+function isChronosGeneratedGoogleCalendarEvent(event: GoogleCalendarEvent) {
+  const privateSource = event.extendedProperties?.private?.source;
+  const sharedSource = event.extendedProperties?.shared?.source;
+
+  return (
+    privateSource === "chronos" ||
+    sharedSource === "chronos" ||
+    event.description?.includes("Protocolo Chronos:") === true
+  );
+}
+
+function normalizeGoogleCalendarEmail(value?: string | null) {
+  return value?.trim().toLowerCase() || null;
+}
+
 async function ensureDefaultGoogleCalendarWatch(
   client: ChronosGoogleCalendarClient,
   options: { baseUrl?: string | null; userId?: string | null } = {},
@@ -1341,6 +1421,19 @@ function buildGoogleCalendarEventBody(context: MeetingContext): GoogleCalendarEv
   const endsAt =
     context.meeting.ends_at ??
     new Date(new Date(startsAt).getTime() + 60 * 60_000).toISOString();
+  const googleStartsAt = formatChronosDateTimeForGoogleCalendar(
+    startsAt,
+    googleCalendarDefaultTimezone,
+  );
+  const googleEndsAt = formatChronosDateTimeForGoogleCalendar(
+    endsAt,
+    googleCalendarDefaultTimezone,
+  );
+
+  if (!googleStartsAt || !googleEndsAt) {
+    throw new Error("Horario da reuniao Chronos invalido para o Google Agenda.");
+  }
+
   const privateProperties: Record<string, string> = {
     chronosMeetingId: context.meeting.id,
     chronosProtocol: context.meeting.protocol,
@@ -1357,7 +1450,7 @@ function buildGoogleCalendarEventBody(context: MeetingContext): GoogleCalendarEv
     attendees,
     description: buildGoogleCalendarEventDescription(context),
     end: {
-      dateTime: endsAt,
+      dateTime: googleEndsAt,
       timeZone: googleCalendarDefaultTimezone,
     },
     extendedProperties: {
@@ -1368,7 +1461,7 @@ function buildGoogleCalendarEventBody(context: MeetingContext): GoogleCalendarEv
     },
     location: buildGoogleCalendarLocation(context),
     start: {
-      dateTime: startsAt,
+      dateTime: googleStartsAt,
       timeZone: googleCalendarDefaultTimezone,
     },
     status: context.meeting.status === "cancelled" ? "cancelled" : "confirmed",
@@ -1424,7 +1517,7 @@ async function insertGoogleCalendarEvent({
 }) {
   return googleCalendarFetch<GoogleCalendarEvent>(
     accessToken,
-    `/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=none`,
+    `/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=all`,
     {
       body: JSON.stringify(eventBody),
       method: "POST",
@@ -1445,7 +1538,7 @@ async function patchGoogleCalendarEvent({
 }) {
   return googleCalendarFetch<GoogleCalendarEvent>(
     accessToken,
-    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=none`,
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
     {
       body: JSON.stringify(eventBody),
       method: "PATCH",
@@ -1464,7 +1557,7 @@ async function deleteGoogleCalendarEvent({
 }) {
   await googleCalendarFetch<unknown>(
     accessToken,
-    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=none`,
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
     {
       method: "DELETE",
     },
@@ -1666,6 +1759,26 @@ async function updateMeetingGoogleCalendarMetadata(
   await client.from("chronos_meetings").update({ metadata }).eq("id", meetingId);
 }
 
+async function markGoogleCalendarImportedMeetingOutOfScope(
+  client: ChronosGoogleCalendarClient,
+  input: {
+    calendarId: string;
+    event: GoogleCalendarEvent;
+    meetingId: string;
+  },
+) {
+  await updateMeetingGoogleCalendarMetadata(client, input.meetingId, {
+    calendarId: input.calendarId,
+    creatorEmail: normalizeGoogleCalendarEmail(input.event.creator?.email),
+    eventId: input.event.id,
+    inboundSyncedAt: new Date().toISOString(),
+    organizerEmail: normalizeGoogleCalendarEmail(input.event.organizer?.email),
+    source: "google",
+    status: "out_of_scope",
+    visibility: "out_of_scope",
+  });
+}
+
 async function insertGoogleCalendarTimelineEvent(
   client: ChronosGoogleCalendarClient,
   input: {
@@ -1755,6 +1868,10 @@ async function pullChronosEventsFromGoogleCalendar(
   }
 
   const accessToken = await refreshGoogleAccessToken(connectionLookup.connection);
+  const connectionOwnerEmail = await getChronosGoogleCalendarOwnerEmail(
+    client,
+    connectionLookup.connection.created_by_user_id,
+  );
   let listResult: Awaited<ReturnType<typeof listGoogleCalendarEvents>>;
 
   try {
@@ -1807,6 +1924,23 @@ async function pullChronosEventsFromGoogleCalendar(
       connectionId: connectionLookup.connection.id,
       eventId,
     });
+
+    if (
+      !isGoogleCalendarEventEligibleForConnection(event, connectionOwnerEmail)
+    ) {
+      if (link?.origin === "google") {
+        await markGoogleCalendarImportedMeetingOutOfScope(client, {
+          calendarId: connectionLookup.connection.calendar_id,
+          event,
+          meetingId: link.meeting_id,
+        });
+        synced += 1;
+      } else {
+        skipped += 1;
+      }
+
+      continue;
+    }
 
     if (event.status === "cancelled") {
       if (link) {
@@ -1975,12 +2109,15 @@ async function applyGoogleEventToChronosMeeting(
       googleCalendar: {
         ...readRecord(existingMeeting.data?.metadata?.googleCalendar),
         calendarId: input.calendarId,
+        creatorEmail: normalizeGoogleCalendarEmail(input.event.creator?.email),
         eventId: input.event.id,
         htmlLink: input.event.htmlLink,
         inboundSyncedAt: new Date().toISOString(),
+        organizerEmail: normalizeGoogleCalendarEmail(input.event.organizer?.email),
         provider: googleCalendarProvider,
         source: "google",
         status: "synced",
+        visibility: "owner",
       },
     },
   };
@@ -2045,12 +2182,15 @@ async function importGoogleEventAsChronosMeeting(
       metadata: {
         googleCalendar: {
           calendarId: input.calendarId,
+          creatorEmail: normalizeGoogleCalendarEmail(input.event.creator?.email),
           eventId,
           htmlLink: input.event.htmlLink,
           inboundSyncedAt: new Date().toISOString(),
+          organizerEmail: normalizeGoogleCalendarEmail(input.event.organizer?.email),
           provider: googleCalendarProvider,
           source: "google",
           status: "synced",
+          visibility: "owner",
         },
         source: "google-calendar",
       },

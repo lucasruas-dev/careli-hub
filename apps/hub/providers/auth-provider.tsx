@@ -110,12 +110,16 @@ export function AuthProvider({
   const [profileStatus, setProfileStatus] =
     useState<AuthContextValue["profileStatus"]>("idle");
   const isLoginRoute = pathname === "/login";
+  const browserPathname =
+    typeof window === "undefined" ? null : window.location.pathname;
   const hubUser = useMemo(
     () =>
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,
     [authState.user],
   );
-  const isPublicChronosRoomRoute = isChronosPublicRoomPath(pathname);
+  const isPublicChronosRoomRoute =
+    isChronosPublicRoomPath(pathname) ||
+    isChronosPublicRoomPath(browserPathname);
 
   useEffect(() => {
     if (hasHubSupabaseConfig()) {

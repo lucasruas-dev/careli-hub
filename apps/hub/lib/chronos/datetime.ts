@@ -74,6 +74,47 @@ export function normalizeGoogleCalendarDateTime(
   });
 }
 
+export function formatChronosDateTimeForGoogleCalendar(
+  input: string,
+  timeZone = chronosDefaultTimeZone,
+) {
+  const date = new Date(input);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  });
+  const values = Object.fromEntries(
+    formatter
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  ) as Partial<Record<Intl.DateTimeFormatPartTypes, string>>;
+
+  if (
+    !values.year ||
+    !values.month ||
+    !values.day ||
+    !values.hour ||
+    !values.minute ||
+    !values.second
+  ) {
+    return null;
+  }
+
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:${values.second}`;
+}
+
 function parseLocalDateTime(value: string): ChronosLocalDateTimeParts | null {
   const match = localDateTimePattern.exec(value);
 

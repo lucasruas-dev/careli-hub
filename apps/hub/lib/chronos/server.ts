@@ -588,7 +588,9 @@ export async function listChronosSnapshot(
       throw meetingsResult.error;
     }
 
-    const meetings = meetingsResult.data ?? [];
+    const meetings = (meetingsResult.data ?? []).filter((meeting) =>
+      isChronosMeetingVisibleInUserAgenda(meeting, authorization.user),
+    );
     const meetingIds = meetings.map((meeting) => meeting.id);
 
     const [
@@ -1992,6 +1994,48 @@ function readRecordMetadata(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function isChronosMeetingVisibleInUserAgenda(
+  meeting: ChronosMeetingRow,
+  user: AuthorizedChronosUser,
+) {
+  const metadata = readRecordMetadata(meeting.metadata);
+  const source = typeof metadata.source === "string" ? metadata.source : null;
+
+  if (source !== "google-calendar") {
+    return true;
+  }
+
+  const googleCalendar = readRecordMetadata(metadata.googleCalendar);
+  const visibility =
+    typeof googleCalendar.visibility === "string"
+      ? googleCalendar.visibility
+      : null;
+
+  if (visibility === "out_of_scope") {
+    return false;
+  }
+
+  const userEmail = normalizeChronosEmail(user.email);
+  const eventOwnerEmails = [
+    normalizeChronosEmail(googleCalendar.organizerEmail),
+    normalizeChronosEmail(googleCalendar.creatorEmail),
+  ].filter((email): email is string => Boolean(email));
+
+  if (
+    userEmail &&
+    eventOwnerEmails.length > 0 &&
+    !eventOwnerEmails.includes(userEmail)
+  ) {
+    return false;
+  }
+
+  return meeting.host_user_id === user.id;
+}
+
+function normalizeChronosEmail(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : null;
 }
 
 async function getChronosPublicMeetingContext({
