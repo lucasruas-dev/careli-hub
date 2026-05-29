@@ -10,7 +10,7 @@ import type {
 } from "@/lib/pulsex";
 import { EmptyState } from "@repo/uix";
 import { PhoneCall, PhoneMissed, Video } from "lucide-react";
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { MessageItem } from "./message-item";
 
 type MessageListProps = {
@@ -105,7 +105,7 @@ export function MessageList({
     };
   }, [scrollContainerRef]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previousChannelId = previousChannelIdRef.current;
     const previousLastTimelineItemId = previousLastTimelineItemIdRef.current;
     const isInitialRender = previousChannelId === null;
@@ -115,6 +115,11 @@ export function MessageList({
 
     if (channelChanged) {
       suppressNextChannelAutoScrollRef.current = true;
+      scrollContainerRef.current?.scrollTo({
+        behavior: "auto",
+        top: 0,
+      });
+      isNearBottomRef.current = false;
     }
 
     const shouldSuppressChannelRefreshScroll =
@@ -129,11 +134,11 @@ export function MessageList({
 
     const shouldScrollToBottom =
       Boolean(lastTimelineItemId) &&
-      (isInitialRender ||
-        (timelineChanged &&
-          !channelChanged &&
-          !shouldSuppressChannelRefreshScroll &&
-          (isNearBottomRef.current || lastMessageAuthorId === currentUserId)));
+      !isInitialRender &&
+      timelineChanged &&
+      !channelChanged &&
+      !shouldSuppressChannelRefreshScroll &&
+      (isNearBottomRef.current || lastMessageAuthorId === currentUserId);
 
     if (shouldScrollToBottom) {
       bottomRef.current?.scrollIntoView({
@@ -145,7 +150,13 @@ export function MessageList({
 
     previousChannelIdRef.current = channelId;
     previousLastTimelineItemIdRef.current = lastTimelineItemId;
-  }, [channelId, currentUserId, lastMessageAuthorId, lastTimelineItemId]);
+  }, [
+    channelId,
+    currentUserId,
+    lastMessageAuthorId,
+    lastTimelineItemId,
+    scrollContainerRef,
+  ]);
 
   if (timelineItems.length === 0) {
     return (
