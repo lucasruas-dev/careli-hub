@@ -2068,3 +2068,47 @@ Registro de producao:
   - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Lucas validar se o carregamento textual saiu e se os canais aparecem mais rapido apos alguns segundos de Hermes aberto.
+
+## 2026-05-29 - CHRONOS-20260529-001-GOOGLE-PROD-PROMOCAO
+
+Registro de producao:
+
+- Assunto: `[Chronos] Google Calendar candidato para producao bloqueado por envs`.
+- Squad/agente responsavel: `Hefesto / Zeus Operations`.
+- Data e hora local: `2026-05-29 06:15:24 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: Chronos Google publicado em homologacao no deployment `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`, com codigo validado e pedido posterior do Lucas para subir Google/Chronos para producao.
+- Escopo candidato:
+  - preservar hotfixes Hermes atualmente em producao;
+  - adicionar Chronos Agenda/Salas/Drive e sala externa;
+  - adicionar Google Calendar OAuth, sync manual, timezone `America/Sao_Paulo`, auto-sync seguro e webhook com fallback;
+  - manter falha fechada quando envs ou schema Google estiverem ausentes.
+- Commit publicado: `n/a - deploy de producao bloqueado`.
+- Deployment anterior: `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- Deployment novo: `n/a`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: permanece em `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`;
+  - `https://ops.c2x.app.br`: permanece em `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- Arquivos/modulos incluidos no candidato: `apps/hub/app/api/chronos/**`, `apps/hub/app/chronos/**`, `apps/hub/lib/chronos/**`, `apps/hub/modules/chronos/**`, `packages/database/migrations/0035_chronos_google_calendar_mirror.sql`, `packages/database/migrations/0036_chronos_google_calendar_watch.sql`, `scripts/chronos-apply-google-watch-schema.mjs`, `turbo.json`, `package-lock.json`, env examples e registros operacionais.
+- Arquivos/modulos excluidos da publicacao efetiva: Hades, Hermes fora da base preservada, Iris, Apolo, Ares, Atlas, Setup, banco Production, migrations aplicadas, env values, secrets, tokens, dominios e aliases manuais.
+- Validacoes executadas:
+  - `git diff --check`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos;
+  - smoke local do build: `/chronos`, `/`, `/login` e `/zeus` retornaram 200;
+  - rotas Google protegidas sem sessao retornaram 401 esperado.
+- Healthchecks pos-deploy: `n/a - deploy bloqueado`.
+- Logs recentes: `n/a - sem novo deployment`.
+- Rollback definido: manter `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih` como producao vigente ate desbloqueio.
+- Riscos conhecidos:
+  - Production nao possui as envs `GOOGLE_CALENDAR_*`;
+  - copiar automaticamente valores de Preview para Production foi bloqueado por seguranca para nao puxar/expor secrets;
+  - Google funcional ainda depende de envs Production e migrations `0035`/`0036` no banco Production com autorizacao explicita separada.
+- Pendencias:
+  - Lucas configurar no Vercel Production as envs `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI`, `GOOGLE_CALENDAR_SCOPES` e `GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID`;
+  - `GOOGLE_CALENDAR_REDIRECT_URI` deve usar o callback de producao `https://c2x.app.br/api/chronos/google-calendar/callback`;
+  - Lucas autorizar explicitamente a aplicacao das migrations Chronos Google `0035` e `0036` no banco Production, se desejar Google funcional completo;
+  - Hefesto reinspecionar envs por nome, validar schema, publicar producao e rodar healthchecks.
+- Status: `BLOQUEADO`.
+- Proxima acao: Lucas configurar envs no dashboard Vercel Production e confirmar no chat; depois Hefesto continua a promocao.

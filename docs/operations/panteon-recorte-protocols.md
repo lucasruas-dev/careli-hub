@@ -560,3 +560,43 @@ O manifesto de homologacao deve incluir:
 - Rollback imediato: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
 - Validacoes finais: diff check, secret scan de codigo, eslint escopado, check-types, lint, build, deploy Vercel Production, inspect dos aliases, healthchecks HTTP e logs recentes sem erro critico.
 - Observacao: validacao funcional de badges/notificacoes de thread depende de sessao real no Hermes/PulseX com mensagens em thread.
+
+## CHRONOS-20260529-001-GOOGLE-PROD-PROMOCAO
+
+- Modulo/agente dono: `Chronos / Hefesto`.
+- Status: `BLOQUEADO`.
+- Origem: Lucas pediu subir o recorte Chronos Google para producao e autorizou inserir envs Google em Production.
+- Objetivo do recorte: promover para producao o Chronos Google Calendar ja homologado, preservando o hotfix Hermes vigente e mantendo falha fechada quando envs ou schema estiverem ausentes.
+- Worktree/branch:
+  - `.codex-deploy/z29-001-chronos-google-prod-20260529`;
+  - `codex/hefesto/chronos-google-prod-20260529`.
+- Base de producao: `b67edc9`, deployment vigente `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- Arquivos incluidos no candidato:
+  - `apps/hub/app/api/chronos/**`;
+  - `apps/hub/app/chronos/**`;
+  - `apps/hub/lib/chronos/**`;
+  - `apps/hub/modules/chronos/**`;
+  - `packages/database/migrations/0035_chronos_google_calendar_mirror.sql`;
+  - `packages/database/migrations/0036_chronos_google_calendar_watch.sql`;
+  - `scripts/chronos-apply-google-watch-schema.mjs`;
+  - `turbo.json`;
+  - `package-lock.json`;
+  - env examples e registros operacionais.
+- Arquivos excluidos da publicacao efetiva:
+  - env values, secrets, tokens, `.env*`, service role, banco Production, migrations aplicadas, dominio, alias manual e recortes de outros modulos fora da base preservada.
+- Validacoes locais:
+  - `git diff --check`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - smoke local do build em `http://127.0.0.1:3030`: `/chronos`, `/`, `/login`, `/zeus` 200; rotas Google protegidas sem sessao 401 esperado.
+- Preview/Homo de referencia:
+  - Homologacao Chronos Google: `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`.
+- Deployment de producao: `n/a - bloqueado`.
+- Riscos e pendencias:
+  - envs Google Production ausentes por nome;
+  - automacao de copia de Preview para Production bloqueada por seguranca;
+  - migrations `0035` e `0036` ainda nao autorizadas para Production;
+  - Google OAuth de producao requer callback `https://c2x.app.br/api/chronos/google-calendar/callback` autorizado no Google Cloud.
+- Rollback sugerido: manter `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih` ate desbloqueio; se deploy futuro falhar, promover novamente esse deployment.
+- Decisao de Lucas: envs Google em Production autorizadas, mas devem ser configuradas por caminho seguro sem expor valores.

@@ -20519,3 +20519,55 @@ Conclusao:
 - O Hermes agora tenta antecipar as mensagens dos canais em memoria e nao mostra mais a tela grande `Carregando mensagens` como estado central.
 - A fonte de verdade continua sendo Supabase; o cache deste hotfix e temporario, em memoria da sessao, para nao gravar conversas sensiveis no dispositivo.
 - Lucas deve atualizar `https://c2x.app.br/hermes` e alternar entre `Tecnologia`, `Lideranca` e demais canais para confirmar se o carregamento deixou de incomodar.
+
+## 2026-05-29 - CHRONOS-20260529-001-GOOGLE-PROD-PROMOCAO
+
+Status: BLOQUEADO POR ENVS/MIGRATIONS DE PRODUCAO.
+
+Resumo:
+- Lucas pediu subir as melhorias do Chronos Google para producao e autorizou inserir as envs Google em Production.
+- Hefesto montou um candidato de producao em worktree limpa a partir da base vigente de producao `b67edc9`, preservando o hotfix Hermes publicado em `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- O recorte Chronos Google foi aplicado sobre a base de producao e validado localmente, mas a producao ainda nao tem as envs `GOOGLE_CALENDAR_*` configuradas.
+- A tentativa de copiar automaticamente valores de Preview para Production foi bloqueada por seguranca porque exigiria puxar um arquivo temporario com todas as envs de Preview e trafegar secrets pela linha de comando. Nenhum valor sensivel foi exibido, registrado ou commitado.
+
+Pacote candidato:
+- Worktree: `.codex-deploy/z29-001-chronos-google-prod-20260529`.
+- Branch: `codex/hefesto/chronos-google-prod-20260529`.
+- Base de producao preservada: `b67edc9 docs(zeus): record hermes message prefetch hotfix`.
+- Commits Chronos aplicados:
+  - `3700be3 feat(chronos): prepare athena meeting workflow for homologation`;
+  - `b6ae5d3 feat(chronos): mirror meetings with google calendar`;
+  - `17d682e fix(chronos): make google calendar connection actionable`;
+  - `f38303b fix(chronos): keep google oauth callback on app origin`;
+  - `8e980a3 fix(chronos): normalize google calendar timezone`;
+  - `2f15033 fix(chronos): auto-sync google calendar`.
+
+Validacoes executadas:
+- `git diff --check`: OK.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile/worktree `.codex-deploy` e Turbopack/NFT em SquadOps.
+- Smoke local do build em `http://127.0.0.1:3030`:
+  - `GET /chronos`: 200;
+  - `GET /`: 200;
+  - `GET /login`: 200;
+  - `GET /zeus`: 200;
+  - `GET /api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST /api/chronos/google-calendar/sync` sem sessao: 401 esperado;
+  - `GET /api/chronos/google-calendar/webhook`: 405 esperado para metodo nao suportado.
+
+Ambiente de producao observado:
+- `https://c2x.app.br` e `https://ops.c2x.app.br` continuam em `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- `npx.cmd vercel env ls production` confirmou ausencia das envs `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI`, `GOOGLE_CALENDAR_SCOPES` e `GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID`.
+- `npx.cmd vercel env list preview` confirmou que as envs Google existem em Preview por nome, sem valores.
+
+Bloqueios:
+- Production deploy nao foi executado nesta etapa.
+- Insercao automatica de secrets foi bloqueada por politica de seguranca.
+- Para Google funcional em producao, Lucas deve configurar as envs Google em Production no Vercel sem enviar valores no chat.
+- `GOOGLE_CALENDAR_REDIRECT_URI` em Production deve apontar para o callback de producao `https://c2x.app.br/api/chronos/google-calendar/callback` e esse URI deve estar autorizado no Google Cloud OAuth.
+- Migrations de producao `0035_chronos_google_calendar_mirror.sql` e `0036_chronos_google_calendar_watch.sql` continuam bloqueadas ate autorizacao explicita separada do Lucas para aplicar schema no banco Production.
+
+Conclusao:
+- O codigo candidato do Chronos Google esta validado, mas a promocao funcional para producao ainda esta bloqueada.
+- O proximo passo seguro e Lucas configurar as cinco envs Google em Production no Vercel; depois Hefesto deve reinspecionar envs por nome, tratar migrations com autorizacao explicita e so entao publicar o deployment de producao com healthchecks.
