@@ -25,7 +25,6 @@ import {
 import { Tooltip } from "@repo/uix";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
-import Image from "next/image";
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 
 export type HermesCallSoundOption = {
@@ -102,6 +101,7 @@ export function ConversationHeader({
   const presenceStatus = getChannelPresenceStatus(presenceUsers);
   const presenceLabel = presenceLabelMap[presenceStatus];
   const isDirectChannel = channel.kind === "direct";
+  const channelUnit = channel.context?.unit ?? "Hub";
 
   useOutsideDismiss({
     enabled: isSoundMenuOpen,
@@ -135,7 +135,7 @@ export function ConversationHeader({
             />
             {presenceLabel}
             <span className="text-[#c8d0dc]">/</span>
-            {channel.context.unit}
+            {channelUnit}
             {onlineCount > 0 ? (
               <>
                 <span className="text-[#c8d0dc]">/</span>
@@ -255,6 +255,7 @@ export function ConversationHeader({
 
 function ChannelAvatar({ channel }: { channel: HermesChannel }) {
   const isDirectChannel = channel.kind === "direct";
+  const avatarUrl = getSafeAvatarUrl(channel.avatarUrl);
 
   return (
     <span
@@ -264,21 +265,43 @@ function ChannelAvatar({ channel }: { channel: HermesChannel }) {
       }`}
       role="img"
     >
-      {isDirectChannel && channel.avatarUrl ? (
-        <Image
-          alt=""
-          className="object-cover"
-          draggable={false}
-          fill
-          sizes="40px"
-          src={channel.avatarUrl}
-          unoptimized
+      {isDirectChannel && avatarUrl ? (
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${avatarUrl})` }}
         />
       ) : (
         channel.avatar
       )}
     </span>
   );
+}
+
+function getSafeAvatarUrl(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  if (trimmedValue.startsWith("/") || trimmedValue.startsWith("data:image/")) {
+    return trimmedValue;
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? trimmedValue
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function CallHistoryMenu({

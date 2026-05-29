@@ -444,15 +444,21 @@ export function HermesWorkspace() {
           return;
         }
 
+        const payloadUsers = payload.users.map(
+          normalizeHermesPresenceUserForRender,
+        );
+        const payloadChannels = payload.channels.map(
+          normalizeHermesChannelForRender,
+        );
         const nextChannels = withDirectUserChannels(
-          payload.channels,
-          payload.users,
+          payloadChannels,
+          payloadUsers,
           currentUserId,
-        );
+        ).map(normalizeHermesChannelForRender);
         const nextPresenceUsers = withUserChannelAccess(
-          payload.users,
+          payloadUsers,
           nextChannels,
-        );
+        ).map(normalizeHermesPresenceUserForRender);
 
         const nextMessages = withMessageDeliveryData(
           payload.messages,
@@ -2582,6 +2588,164 @@ const emptyHermesChannel = {
   preview: "Configure canais no Setup Central.",
   status: "offline",
 } satisfies HermesChannel;
+
+const hermesChannelKinds = [
+  "direct",
+  "operations",
+  "relation",
+  "system",
+  "technology",
+] as const satisfies readonly HermesChannel["kind"][];
+
+const hermesPresenceStatuses = [
+  "agenda",
+  "away",
+  "busy",
+  "lunch",
+  "offline",
+  "online",
+] as const satisfies readonly HermesPresenceUser["status"][];
+
+function normalizeHermesChannelForRender(channel: HermesChannel): HermesChannel {
+  const name = normalizeHermesText(channel.name, emptyHermesChannel.name);
+  const priority = channel.context?.priority;
+  const context = {
+    filesCount:
+      typeof channel.context?.filesCount === "number" &&
+      Number.isFinite(channel.context.filesCount)
+        ? channel.context.filesCount
+        : 0,
+    owner: normalizeHermesText(channel.context?.owner, "Hermes"),
+    status: normalizeHermesText(channel.context?.status, "Ativo"),
+    unit: normalizeHermesText(channel.context?.unit, "Hub"),
+  } satisfies HermesChannel["context"];
+
+  return {
+    ...channel,
+    avatar: normalizeHermesText(channel.avatar, getInitials(name) || "--"),
+    avatarUrl: normalizeHermesAvatarUrl(channel.avatarUrl),
+    context: isHermesChannelPriority(priority)
+      ? {
+          ...context,
+          priority,
+        }
+      : context,
+    description: normalizeHermesText(channel.description, `Canal ${name}`),
+    id: normalizeHermesText(channel.id, emptyHermesChannel.id),
+    kind: isHermesChannelKind(channel.kind) ? channel.kind : "system",
+    lastMessageAt: normalizeHermesText(channel.lastMessageAt, "-"),
+    memberReadAtByUserId: normalizeHermesReadReceiptRecord(
+      channel.memberReadAtByUserId,
+    ),
+    memberUserIds: normalizeHermesStringList(channel.memberUserIds),
+    name,
+    preview: normalizeHermesText(channel.preview, "Canal operacional"),
+    status: isHermesPresenceStatus(channel.status) ? channel.status : "offline",
+    unreadCount:
+      typeof channel.unreadCount === "number" &&
+      Number.isFinite(channel.unreadCount) &&
+      channel.unreadCount > 0
+        ? channel.unreadCount
+        : undefined,
+  };
+}
+
+function normalizeHermesPresenceUserForRender(
+  user: HermesPresenceUser,
+): HermesPresenceUser {
+  const fallbackLabel =
+    typeof user.email === "string" && user.email.includes("@")
+      ? (user.email.split("@")[0] ?? "Usuario")
+      : "Usuario";
+  const label = normalizeHermesText(user.label, fallbackLabel);
+
+  return {
+    ...user,
+    avatarUrl: normalizeHermesAvatarUrl(user.avatarUrl),
+    channelIds: normalizeHermesStringList(user.channelIds),
+    email: typeof user.email === "string" ? user.email : undefined,
+    id: normalizeHermesText(user.id, `user-${label}`),
+    initials: normalizeHermesText(user.initials, getInitials(label) || "U"),
+    label,
+    role: normalizeHermesText(user.role, "Participante"),
+    status: isHermesPresenceStatus(user.status) ? user.status : "offline",
+    username:
+      typeof user.username === "string" && user.username.trim()
+        ? user.username.trim()
+        : undefined,
+  };
+}
+
+function normalizeHermesText(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeHermesStringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0,
+      )
+    : [];
+}
+
+function normalizeHermesReadReceiptRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([userId, readAt]) =>
+        typeof userId === "string" &&
+        userId.trim().length > 0 &&
+        typeof readAt === "string" &&
+        readAt.trim().length > 0,
+    ),
+  );
+}
+
+function normalizeHermesAvatarUrl(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  if (trimmedValue.startsWith("/") || trimmedValue.startsWith("data:image/")) {
+    return trimmedValue;
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? trimmedValue
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isHermesChannelKind(value: unknown): value is HermesChannel["kind"] {
+  return hermesChannelKinds.includes(value as HermesChannel["kind"]);
+}
+
+function isHermesPresenceStatus(
+  value: unknown,
+): value is HermesPresenceUser["status"] {
+  return hermesPresenceStatuses.includes(value as HermesPresenceUser["status"]);
+}
+
+function isHermesChannelPriority(
+  value: unknown,
+): value is NonNullable<HermesChannel["context"]["priority"]> {
+  return value === "baixa" || value === "media" || value === "alta";
+}
 
 function createLocalCallSession({
   channel,

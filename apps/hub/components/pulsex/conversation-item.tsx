@@ -1,6 +1,5 @@
 import type { HermesChannel } from "@/lib/pulsex";
 import type { ReactNode } from "react";
-import Image from "next/image";
 import { Bot, Hash, Megaphone, Users } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
@@ -121,6 +120,7 @@ function ChannelAvatar({
 }) {
   const isDirect = channel.kind === "direct";
   const avatarSizeClass = isDirect && !collapsed ? "h-10 w-10" : "h-9 w-9";
+  const avatarUrl = getSafeAvatarUrl(channel.avatarUrl);
 
   return (
     <span
@@ -132,21 +132,12 @@ function ChannelAvatar({
           : "rounded-md border-white/[0.085]"
       }`}
     >
-      {isDirect && channel.avatarUrl ? (
+      {isDirect && avatarUrl ? (
         <span
           aria-hidden="true"
-          className="absolute inset-0 overflow-hidden rounded-full"
-        >
-          <Image
-            alt=""
-            className="object-cover"
-            draggable={false}
-            fill
-            sizes={isDirect && !collapsed ? "40px" : "36px"}
-            src={channel.avatarUrl}
-            unoptimized
-          />
-        </span>
+          className="absolute inset-0 overflow-hidden rounded-full bg-cover bg-center"
+          style={{ backgroundImage: `url(${avatarUrl})` }}
+        />
       ) : (
         <span className="relative z-10 grid place-items-center text-[0.68rem] font-semibold leading-none">
           {isDirect ? label : collapsed ? label : (icon ?? label)}
@@ -169,6 +160,32 @@ function ChannelAvatar({
       ) : null}
     </span>
   );
+}
+
+function getSafeAvatarUrl(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  if (trimmedValue.startsWith("/") || trimmedValue.startsWith("data:image/")) {
+    return trimmedValue;
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? trimmedValue
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function formatUnreadCount(count: number) {

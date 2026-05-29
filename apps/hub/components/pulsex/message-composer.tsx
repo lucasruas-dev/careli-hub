@@ -1092,9 +1092,18 @@ function getStickerStorageKey(currentUserId?: HermesPresenceUser["id"]) {
   return `${HERMES_STICKER_STORAGE_KEY_PREFIX}:${currentUserId ?? "anonimo"}`;
 }
 
+function getStickerStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 function loadSavedStickers(storageKey: string): ComposerStickerOption[] {
   try {
-    const storedValue = window.localStorage.getItem(storageKey);
+    const storage = getStickerStorage();
+    const storedValue = storage?.getItem(storageKey);
     const parsedValue = storedValue ? JSON.parse(storedValue) : [];
 
     if (!Array.isArray(parsedValue)) {
@@ -1115,7 +1124,13 @@ function saveStickers(
   stickers: readonly ComposerStickerOption[],
 ) {
   try {
-    window.localStorage.setItem(
+    const storage = getStickerStorage();
+
+    if (!storage) {
+      return false;
+    }
+
+    storage.setItem(
       storageKey,
       JSON.stringify(stickers.slice(0, MAX_SAVED_STICKERS)),
     );

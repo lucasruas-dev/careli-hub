@@ -5,6 +5,7 @@ import { AlertTriangle, RefreshCcw, Trash2 } from "lucide-react";
 import { useEffect } from "react";
 
 const HERMES_RECOVERY_STORAGE_PREFIXES = ["careli:pulsex", "careli:hermes"];
+const FALLBACK_ERROR_MESSAGE = "Codigo tecnico indisponivel";
 
 function getRecoveryStorage(kind: "local" | "session") {
   try {
@@ -48,12 +49,14 @@ export default function HermesError({
   error: Error & { digest?: string };
   reset: () => void;
 }>) {
+  const safeErrorMessage = getSafeErrorMessage(error);
+
   useEffect(() => {
     console.error("[Hermes] client route error captured", {
       digest: error.digest ?? null,
-      message: error.message,
+      message: safeErrorMessage,
     });
-  }, [error]);
+  }, [error.digest, safeErrorMessage]);
 
   function handleClearLocalState() {
     clearHermesStorage("local");
@@ -88,7 +91,9 @@ export default function HermesError({
         </div>
 
         <div className="mt-6 rounded-md border border-[#e5ebf0] bg-[#f7f9fb] p-4 text-xs font-semibold text-[#53627a]">
-          {error.digest ? `Codigo tecnico: ${error.digest}` : "Codigo tecnico indisponivel"}
+          {error.digest
+            ? `Codigo tecnico: ${error.digest}`
+            : safeErrorMessage || FALLBACK_ERROR_MESSAGE}
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
@@ -118,4 +123,27 @@ export default function HermesError({
       </section>
     </main>
   );
+}
+
+function getSafeErrorMessage(error: Error & { digest?: string }) {
+  const name = sanitizeErrorText(error.name || "Erro");
+  const message = sanitizeErrorText(error.message || "");
+
+  if (!message) {
+    return "";
+  }
+
+  return `${name}: ${message}`.slice(0, 180);
+}
+
+function sanitizeErrorText(value: string) {
+  return value
+    .replace(/https?:\/\/\S+/gi, "[url]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    .replace(
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+      "[id]",
+    )
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[redacted]")
+    .trim();
 }

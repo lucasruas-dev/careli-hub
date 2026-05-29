@@ -736,7 +736,7 @@ function buildHermesAgentContext({
       nome: channel.name,
       status: channel.status ?? "offline",
       tipo: channel.kind,
-      unidade: channel.context.unit,
+      unidade: channel.context?.unit ?? "Hub",
     },
     conversaRecente: messages.slice(-MAX_CONTEXT_MESSAGES).map((message) => ({
       anexos: message.attachment

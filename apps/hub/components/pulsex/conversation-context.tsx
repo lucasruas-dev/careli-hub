@@ -12,6 +12,14 @@ export function ConversationContext({
   channel,
   users,
 }: ConversationContextProps) {
+  const context = {
+    filesCount: channel.context?.filesCount ?? 0,
+    owner: channel.context?.owner ?? "Hermes",
+    priority: channel.context?.priority,
+    status: channel.context?.status ?? "Ativo",
+    unit: channel.context?.unit ?? "Hub",
+  };
+
   return (
     <aside className="h-full border-l border-[var(--uix-border-subtle)] bg-[var(--uix-surface)] px-5 py-5">
       <div className="flex flex-col items-center text-center">
@@ -22,7 +30,7 @@ export function ConversationContext({
           {channel.name}
         </h2>
         <p className="m-0 mt-1 text-sm text-[var(--uix-text-muted)]">
-          {channel.context.unit}
+          {context.unit}
         </p>
       </div>
 
@@ -30,27 +38,27 @@ export function ConversationContext({
         <div>
           <dt className="text-xs text-[var(--uix-text-muted)]">Status</dt>
           <dd className="m-0 mt-1 text-[var(--uix-text-primary)]">
-            {channel.context.status}
+            {context.status}
           </dd>
         </div>
         <div>
           <dt className="text-xs text-[var(--uix-text-muted)]">Responsavel</dt>
           <dd className="m-0 mt-1 text-[var(--uix-text-primary)]">
-            {channel.context.owner}
+            {context.owner}
           </dd>
         </div>
-        {channel.context.priority ? (
+        {context.priority ? (
           <div>
             <dt className="text-xs text-[var(--uix-text-muted)]">Prioridade</dt>
             <dd className="m-0 mt-1 text-[var(--uix-text-primary)]">
-              {channel.context.priority}
+              {context.priority}
             </dd>
           </div>
         ) : null}
         <div>
           <dt className="text-xs text-[var(--uix-text-muted)]">Arquivos</dt>
           <dd className="m-0 mt-1 text-[var(--uix-text-primary)]">
-            {channel.context.filesCount}
+            {context.filesCount}
           </dd>
         </div>
       </dl>
