@@ -20472,3 +20472,50 @@ Conclusao:
 - O Hermes foi corrigido para abrir canal no fim da conversa, na ultima mensagem enviada.
 - O comportamento esperado agora e: abrir/trocar canal no fim; durante refresh, manter a leitura se Lucas estiver no historico; descer sozinho quando chegar mensagem propria ou quando ja estiver perto do fim.
 - Lucas deve atualizar `https://c2x.app.br/hermes` e testar `Lideranca` novamente para validar visualmente.
+
+## 2026-05-28 - HERMES-20260528-008-MESSAGE-PREFETCH-FALLBACK
+
+Status: EM PRODUCAO, aguardando validacao visual do Lucas.
+
+Resumo:
+- Lucas perguntou se o carregamento grande ao alternar canal poderia ser removido com cache, fallback ou alternativa.
+- A decisao operacional foi nao persistir mensagens em `localStorage`/IndexedDB neste hotfix, porque conversa Hermes pode conter dado sensivel e cache persistente exige politica de expiracao, limpeza por usuario e governanca propria.
+- Foi aplicado um fallback seguro de producao: prefetch em memoria dos canais e skeleton visual discreto quando um canal ainda esta frio.
+
+Correcoes aplicadas:
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`: adiciona prefetch em segundo plano para ate 8 canais ainda nao carregados, sem disparar notificacoes nem gravar mensagens no storage local.
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`: se o canal ativo ja esta em prefetch, evita duplicar fetch e evita acionar o estado grande de carregamento.
+- `apps/hub/components/pulsex/message-list.tsx`: substitui a tela textual `Carregando mensagens` por skeletons de conversa sem expor texto operacional no centro da tela.
+
+Arquivos publicados:
+- `apps/hub/components/pulsex/message-list.tsx`
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`
+
+Deployments:
+- Deployment anterior imediato: `dpl_5ipUS3Xm1qTM9P81yyW1wyjuBpWw`.
+- Deployment novo: `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- URL tecnica: https://careli-hub-hub-i2bs-l2filfh7w-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit publicado: `f47cbb9 fix(hermes): prefetch channel messages`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npx.cmd eslint components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps.
+- `npx.cmd vercel deploy --prod --yes`: READY.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no mesmo deployment.
+- Healthchecks pos-deploy: `GET /hermes`, `/`, `/login` e `ops /zeus` retornaram 200; `GET /api/hermes/messages` sem sessao retornou 401 esperado.
+- `npx.cmd vercel logs https://c2x.app.br --since 5m` e `npx.cmd vercel logs https://ops.c2x.app.br --since 5m`: sem erro critico; chamadas extras `GET /api/hermes/messages` 200 sao esperadas pelo prefetch.
+
+Riscos e acompanhamento:
+- Primeiro acesso absoluto apos abrir o PWA ainda depende da rede/Supabase; o fallback reduz a tela textual e o prefetch tende a aquecer canais antes do clique.
+- Cache persistente em IndexedDB/sessionStorage deve ser tratado em recorte separado, com limite de mensagens, TTL, limpeza no logout e registro de seguranca.
+- Validacao visual final depende do Chrome/PWA autenticado do Lucas alternando canais reais.
+
+Conclusao:
+- O Hermes agora tenta antecipar as mensagens dos canais em memoria e nao mostra mais a tela grande `Carregando mensagens` como estado central.
+- A fonte de verdade continua sendo Supabase; o cache deste hotfix e temporario, em memoria da sessao, para nao gravar conversas sensiveis no dispositivo.
+- Lucas deve atualizar `https://c2x.app.br/hermes` e alternar entre `Tecnologia`, `Lideranca` e demais canais para confirmar se o carregamento deixou de incomodar.

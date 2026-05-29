@@ -2014,3 +2014,57 @@ Registro de producao:
   - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Lucas validar que o canal abre na ultima mensagem enviada e que a tela nao volta para o topo.
+
+## 2026-05-28 - HERMES-20260528-008-MESSAGE-PREFETCH-FALLBACK
+
+Status: EM PRODUCAO, aguardando validacao visual do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Prefetch e fallback visual de mensagens`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Data e hora local: `2026-05-28 23:24 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: incidente urgente Hermes em producao; Lucas pediu alternativa para remover o carregamento textual ao alternar canais e perguntou sobre cache/fallback.
+- Escopo publicado:
+  - prefetch em memoria de ate 8 canais Hermes ainda nao carregados;
+  - evitar fetch duplicado quando o canal selecionado ja esta sendo pre-carregado;
+  - substituir o estado textual `Carregando mensagens` por skeletons discretos;
+  - nao persistir mensagens em `localStorage`, sessionStorage ou IndexedDB neste hotfix.
+- Commit publicado: `f47cbb9 fix(hermes): prefetch channel messages`.
+- Deployment anterior: `dpl_5ipUS3Xm1qTM9P81yyW1wyjuBpWw`.
+- Deployment novo: `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`; URL tecnica `https://careli-hub-hub-i2bs-l2filfh7w-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no mesmo deployment, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos: Hades, Iris, Chronos, Athena, Apolo, Ares, Atlas, Guardian, CareDesk, migrations, banco, Supabase remoto, envs, secrets, tokens, dominios e alias manual.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npx.cmd eslint components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps;
+  - `npx.cmd vercel deploy --prod --yes`: READY.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 5m`: sem erro critico; chamadas extras `GET /api/hermes/messages` 200 sao esperadas pelo prefetch;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 5m`: sem erro critico.
+- Rollback definido: `dpl_5ipUS3Xm1qTM9P81yyW1wyjuBpWw` se o prefetch aumentar carga ou causar regressao visual critica; esse rollback preserva a regra de abrir no fim da conversa, mas volta a exibir o carregamento textual em canal frio.
+- Riscos conhecidos:
+  - primeiro acesso frio ainda depende de rede/Supabase;
+  - prefetch aumenta algumas chamadas `GET /api/hermes/messages`, observado nos logs como 200 sem erro critico;
+  - cache persistente de mensagens requer recorte separado com governanca de seguranca.
+- Pendencias:
+  - Lucas retestar alternancia de canais em `https://c2x.app.br/hermes`;
+  - se ainda houver espera perceptivel, avaliar recorte posterior de IndexedDB com TTL/limite/limpeza no logout ou otimizacao server-side da query;
+  - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar se o carregamento textual saiu e se os canais aparecem mais rapido apos alguns segundos de Hermes aberto.
