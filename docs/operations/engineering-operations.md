@@ -20743,3 +20743,71 @@ Conclusao:
 - A causa de agenda global foi mitigada no schema e no codigo.
 - Chronos Google esta em producao com escopo por colaborador.
 - O proximo passo e Lucas testar `https://c2x.app.br/chronos` com a propria conta e com outro colaborador para confirmar isolamento visual/funcional.
+
+## 2026-05-29 - CHRONOS-20260529-004-AUDITORIA-RECORTES-20260528
+
+Status: RECORTE LOCAL PREPARADO / BANCO PRODUCTION BLOQUEADO.
+
+Resumo:
+- Lucas solicitou revisar tudo que o Chronos fez em `2026-05-28`, comparar com o codigo em producao e trazer o que nao estivesse no recorte publicado.
+- A worktree limpa de producao `chronos-restore-google-prod-20260529` foi comparada contra o pacote limpo de homologacao `.codex-deploy/chronos-homolog-20260528-1435/workspace`.
+- O codigo de Agenda, Salas, Drive, sala externa, convites, detalhes/exclusao de eventos e pacote visual final esta presente na producao; as diferencas atuais em `ChronosPage.tsx`, APIs Google e `apps/hub/lib/chronos/*` correspondem ao overlay posterior do Google Agenda, timezone, auto-sync, estado discreto e escopo por colaborador.
+- O unico artefato de `2026-05-28` ausente da worktree de producao era `packages/database/migrations/0034_chronos_drive_chat_storage.sql`.
+- A migration `0034` foi trazida para a worktree limpa apenas como artefato de codigo/rastreabilidade. Ela nao foi aplicada no Supabase Production e nao foi publicada por deploy neste registro.
+
+Escopo trazido:
+- `packages/database/migrations/0034_chronos_drive_chat_storage.sql`.
+
+Validacoes:
+- `git diff --check -- packages/database/migrations/0034_chronos_drive_chat_storage.sql`: OK.
+- Comparacao `git diff --no-index --name-status` entre pacote homologado de `2026-05-28` e worktree de producao confirmou que o codigo funcional V1 esta presente; diferencas restantes sao overlays posteriores do Google Agenda.
+
+Riscos e pendencias:
+- Aplicar `0034` em Production continua operacao sensivel e bloqueada ate autorizacao explicita do Lucas, porque cria/ajusta Storage, tabelas, RLS, grants, indices e politicas.
+- A liberacao real do Storage/Drive em producao exige validacao de banco/Storage, smoke autenticado de gravacao nova, player/download e registro em `releases-production.md`.
+
+Conclusao:
+- O pacote funcional do Chronos de `2026-05-28` esta preservado em producao.
+- O item faltante era infraestrutura de banco/Storage, agora preparado localmente como migration no recorte limpo, mas ainda nao aplicado em Production.
+
+## 2026-05-29 - CHRONOS-20260529-005-STORAGE-PRODUCTION-SCHEMA
+
+Status: SCHEMA PRODUCTION APLICADO / DEPLOY PRODUCTION PENDENTE.
+
+Resumo:
+- Lucas autorizou aplicar a migration `0034_chronos_drive_chat_storage.sql` no banco Production e publicar o recorte em producao.
+- Foi criado script controlado `scripts/chronos-apply-drive-storage-schema.mjs` para aplicar a migration e verificar o resultado sem expor valores sensiveis.
+- As envs Production foram puxadas temporariamente via Vercel CLI para `.env.production.local`, arquivo ignorado pelo Git, usadas somente para a conexao Postgres e removidas logo apos a aplicacao.
+- A migration `0034` foi aplicada em Production.
+
+Validacao do banco Production:
+- Bucket privado `chronos-drive`: presente, privado, limite configurado e MIME types configurados.
+- `public.chronos_recordings`: colunas `file_name`, `mime_type`, `size_bytes` e `uploaded_at` presentes.
+- `public.chronos_chat_messages`: tabela presente, RLS ativo e replica identity full.
+- `public.chronos_participant_preferences`: tabela presente, RLS ativo e replica identity full.
+- Indices verificados:
+  - `chronos_recordings_storage_path_idx`;
+  - `chronos_chat_messages_meeting_created_idx`;
+  - `chronos_participant_preferences_user_idx`;
+  - `chronos_participant_preferences_user_key`;
+  - `chronos_participant_preferences_guest_key`.
+- Policies verificadas:
+  - `chronos authenticated read`;
+  - `chronos authenticated manage`;
+  - `chronos drive authenticated read`;
+  - `chronos drive authenticated manage`.
+
+Validacoes locais pre-deploy:
+- `node --check scripts/chronos-apply-drive-storage-schema.mjs`: OK.
+- `git diff --check`: OK, apenas aviso LF/CRLF conhecido do Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em SquadOps.
+
+Riscos e pendencias:
+- Deploy Production ainda sera executado no proximo passo a partir da worktree limpa.
+- Smoke autenticado de gravacao nova, player/download e Drive ainda precisa ser feito por Lucas ou em sessao autenticada apos deploy.
+
+Conclusao:
+- A infraestrutura de Storage/Drive do Chronos agora existe em Production.
+- O proximo passo operacional e publicar o recorte em Production e validar as rotas/fluxos sem expor secrets.
