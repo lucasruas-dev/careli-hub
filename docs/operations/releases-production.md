@@ -2181,3 +2181,47 @@ Registro de producao:
   - smoke real de gravacao nova, player/download e Drive exige sessao autenticada e uma chamada Chronos real;
   - rollback de codigo pode promover `dpl_7DUUC2DMev6r1T6tM29YTYJzgRye`; rollback de schema/Storage exige autorizacao separada do Lucas.
 - Proxima acao: Lucas validar uma nova chamada do Chronos, gravar, encerrar pelo host e confirmar se o item aparece no Drive com player/download.
+
+## 2026-05-29 - CHRONOS-20260529-007-LINK-PUBLICO-CANONICO-PRODUCTION
+
+Status: EM PRODUCAO, aguardando validacao visual do Lucas no cadastro da sala e no convite Google.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Link publico executivo de sala em producao`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Ambiente alvo: `producao`.
+- Origem: Lucas apontou que o link externo da sala Chronos estava usando URL tecnica de deployment Vercel e que a rota externa `/chronos/lideranca` pedia login, o que bloqueava o uso com publico externo.
+- Autorizacao: Lucas autorizou publicar o recorte em Production.
+- Escopo publicado:
+  - liberar no AuthProvider somente rotas publicas de sala no formato `/chronos/{slug}`, mantendo `/chronos` interno protegido;
+  - exibir no cadastro/listagem de salas o link canonico `https://c2x.app.br/chronos/{slug}`;
+  - usar o mesmo link canonico em eventos espelhados no Google Calendar;
+  - reforcar o agente Athena de atas para exigir gravacao disponivel, usar inicio programado, fim real e participantes com check-in.
+- Itens nao alterados: envs, secrets, banco, migrations, Storage, Supabase, dominio, alias manual e demais modulos.
+- Commit publicado: `86a87b0 fix(chronos): publish canonical public room links`.
+- Deployment anterior: `dpl_7SZAvMo3o6ikJeMMZNSULtL6DFe5`.
+- Deployment novo: `dpl_6MK4mxPNzdUHe91CmmzAa5TWBiZ2`.
+- URL tecnica: `https://careli-hub-hub-i2bs-44toe0wb4-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em SquadOps;
+  - smoke local com env local carregada: `GET http://localhost:3008/chronos/lideranca` retornou 200.
+- Build remoto Vercel: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres ausentes no `turbo.json` e Turbopack/NFT em SquadOps.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200, sem redirect HTTP para login;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/invitees?q=lu` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes de `c2x.app.br` e `ops.c2x.app.br`: sem erro critico observado; `GET /chronos/lideranca` retornou 200 e os 401 foram smokes sem sessao.
+- Rollback: promover `dpl_7SZAvMo3o6ikJeMMZNSULtL6DFe5` se houver regressao critica de runtime; nao houve alteracao de schema neste recorte.
+- Proxima acao: Lucas validar no app o cadastro da sala e criar/abrir um evento Google para confirmar que o campo `Acesso Chronos` aponta para `https://c2x.app.br/chronos/{slug}`.
