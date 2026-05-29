@@ -1858,3 +1858,55 @@ Registro de producao:
   - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Lucas validar abertura do Hermes; Zeus acompanhar logs e seguir investigando se aparecer nova mensagem tecnica.
+
+## 2026-05-28 - HERMES-20260528-005-MESSAGE-VIEW-STABILITY
+
+Status: EM PRODUCAO, aguardando validacao visual do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Estabilidade visual ao alternar canais`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Data e hora local: `2026-05-28 22:40 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: incidente urgente Hermes em producao; Lucas reportou que, ao clicar em canais, a area de mensagens parecia atualizar/descer a tela e podia exibir `Nenhuma mensagem` enquanto a sincronizacao ainda ocorria.
+- Escopo publicado:
+  - controlar auto-scroll da lista de mensagens para evitar descida agressiva ao alternar canais;
+  - manter mensagens ja carregadas em memoria durante a sincronizacao do canal;
+  - diferenciar visualmente carregamento, falha e conversa realmente vazia;
+  - nao persistir mensagens sensiveis em `localStorage` ou IndexedDB nesta etapa.
+- Commit publicado: `46f2582 fix(hermes): keep message view stable while syncing`.
+- Deployment anterior: `dpl_EBvQAaDDBTi6cmayVDmwdfessbV8`.
+- Deployment novo: `dpl_EHuQwKBYi7FHB2Wv7GJbBJ4kL9dv`; URL tecnica `https://careli-hub-hub-i2bs-ua2bjj524-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_EHuQwKBYi7FHB2Wv7GJbBJ4kL9dv`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no mesmo deployment, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos: Hades, Iris, Chronos, Athena, Apolo, Ares, Atlas, Guardian, CareDesk, migrations, banco, Supabase remoto, envs, secrets, tokens, dominios e alias manual.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps;
+  - `npx.cmd vercel deploy --prod --yes`: READY.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 5m`: inconclusivo por timeout do CLI local.
+- Rollback definido: `dpl_EBvQAaDDBTi6cmayVDmwdfessbV8` como rollback imediato apenas se o novo deployment causar regressao critica fora do comportamento visual corrigido.
+- Riscos conhecidos:
+  - esta entrega nao implementa cache persistente de mensagens no dispositivo;
+  - cache persistente de mensagens exigiria politica explicita de seguranca, expiracao, limites por usuario/canal e cuidado com dados sensiveis;
+  - validacao visual final depende do Chrome/PWA autenticado do Lucas, clicando entre canais com historico.
+- Pendencias:
+  - Lucas retestar alternancia de canais em `https://c2x.app.br/hermes`;
+  - se canal com historico ainda aparecer vazio apos sincronizar, investigar `listChannelMessages`, permissoes/RLS e dados reais antes de persistir cache local;
+  - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar se a lista parou de piscar/descer ao alternar canais; Zeus acompanha e investiga query/permissao se ainda houver canal vazio.

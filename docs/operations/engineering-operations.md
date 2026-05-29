@@ -20334,3 +20334,49 @@ Conclusao:
 - O erro visivel apos o segundo hotfix era de ordem/ciclo de assinatura Supabase Realtime no cliente, nao de storage nem de rota server-side.
 - O terceiro hotfix isola a assinatura de `postgres_changes` e preserva o broadcast global, reduzindo a chance de novo crash na abertura do Hermes.
 - Lucas deve recarregar `https://c2x.app.br/hermes` uma vez para validar com a sessao real; Zeus acompanha logs e mantem rollback preparado.
+
+## 2026-05-28 - HERMES-20260528-005-MESSAGE-VIEW-STABILITY
+
+Status: EM PRODUCAO, aguardando validacao visual do Lucas.
+
+Resumo:
+- Lucas reportou que, ao clicar em canais do Hermes, a area de mensagens parecia atualizar/descer a tela e alguns canais mostravam `Nenhuma mensagem` durante a sincronizacao.
+- Foi esclarecido que o Hub nao possui cache persistente completo de mensagens Hermes no navegador; ele mantem estado em memoria durante a sessao e busca o historico no Supabase ao sincronizar canal.
+- Para reduzir risco em producao, a decisao foi aplicar cache visual em memoria e controle de scroll, sem persistir mensagens sensiveis em `localStorage`/IndexedDB nesta etapa.
+
+Correcoes aplicadas:
+- `apps/hub/components/pulsex/message-list.tsx`: auto-scroll deixa de rodar a cada troca de canal ou refresh de polling; agora so desce automaticamente no primeiro render ou quando chega mensagem nova enquanto o operador ja esta perto do fim da conversa, ou quando a mensagem e do usuario atual.
+- `apps/hub/components/pulsex/message-list.tsx`: estado vazio passa a diferenciar `Carregando mensagens`, `Mensagens indisponiveis` e `Nenhuma mensagem`, evitando comunicar vazio antes da sincronizacao terminar.
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`: adiciona estado por canal para carregamento/falha de mensagens, mantendo mensagens ja presentes em memoria enquanto o canal sincroniza.
+
+Arquivos publicados:
+- `apps/hub/components/pulsex/message-list.tsx`
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`
+
+Deployments:
+- Deployment anterior imediato: `dpl_EBvQAaDDBTi6cmayVDmwdfessbV8`.
+- Deployment novo: `dpl_EHuQwKBYi7FHB2Wv7GJbBJ4kL9dv`.
+- URL tecnica: https://careli-hub-hub-i2bs-ua2bjj524-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit publicado: `46f2582 fix(hermes): keep message view stable while syncing`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps.
+- `npx.cmd vercel deploy --prod --yes`: READY.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_EHuQwKBYi7FHB2Wv7GJbBJ4kL9dv`.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no mesmo deployment.
+- Healthchecks pos-deploy: `GET /hermes`, `/`, `/login` e `ops /zeus` retornaram 200; `GET /api/hermes/messages` sem sessao retornou 401 esperado.
+- Tentativa de `npx.cmd vercel logs https://c2x.app.br --since 5m`: inconclusiva por timeout do CLI local.
+
+Riscos e acompanhamento:
+- Esta entrega nao implementa cache persistente de mensagens no dispositivo; cache persistente precisa de politica explicita de seguranca, expiracao, limites por usuario/canal e cuidado com dados sensiveis.
+- Validacao visual real depende do Chrome/PWA autenticado do Lucas, clicando entre canais com historico.
+- Se ainda aparecer vazio em canal com historico, investigar a query de `listChannelMessages` e permissoes/RLS antes de persistir cache local.
+
+Conclusao:
+- O refinamento publicado melhora a estabilidade visual enquanto o Hermes sincroniza mensagens e evita auto-scroll agressivo ao trocar de canal.
+- O Hub continua tratando Supabase como fonte de verdade; a memoria local atual e apenas da sessao aberta.
+- Lucas deve atualizar o Hermes e testar cliques entre canais com historico para confirmar se a tela parou de piscar/descer.
