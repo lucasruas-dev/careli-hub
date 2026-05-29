@@ -1462,3 +1462,29 @@ Registro de producao:
   - warnings herdados de npm audit e Turbopack/NFT continuam pendentes fora deste recorte.
 - Rollback: promover novamente dpl_HgRaFSDbSWjF31khxDQw4YJHvBWT se houver regressao critica em Apolo, Hermes, login, Panteon principal ou OPS.
 - Proxima acao: Lucas validar Apolo/Hermes/Login em producao; quando quiser iniciar Iris em producao, abrir recorte explicito para remover/alterar o standby e rodar novo deploy/healthcheck.
+## 2026-05-29 - HEFESTO-PROD-BLOCKED-CHRONOS-GOOGLE-AUTOSYNC
+
+Status: BLOQUEADO COM SEGURANCA / SEM DEPLOY.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] Chronos Google nao promovido para producao`.
+- Ambiente avaliado: producao `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Deployment de producao atual: `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`, status Ready.
+- Deployment de homologacao Chronos atual: `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`, status Ready.
+- Autorizacao: Lucas pediu preparar e subir os recortes pendentes com foco em go-live; Hefesto bloqueou o deploy automatico por risco concreto.
+- Motivos do bloqueio:
+  - promover o pacote de `homo` diretamente removeria hotfixes Hermes que ja estao em producao;
+  - Production nao possui `GOOGLE_CALENDAR_*` cadastradas, enquanto Preview possui esses envs;
+  - migration `0036` do push Google nao foi aplicada por este agente por falta de credencial local segura;
+  - validacao funcional logada do Chronos Google auto-sync em homo ainda esta pendente.
+- Escopo apto para proximo candidato:
+  - base obrigatoria: deployment/branch de producao atual que contem Hermes hotfix `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`;
+  - cherry-picks futuros: somente recortes Chronos/Athena/Google aprovados pelo Lucas apos validacao em homo.
+- Validacoes executadas nesta auditoria:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br`: Ready em `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`;
+  - `npx.cmd vercel env ls production`: auditou nomes/status, sem valores; Google Calendar nao esta presente em Production;
+  - `npx.cmd vercel env ls preview`: auditou nomes/status, sem valores; Google Calendar esta presente em Preview.
+- Rollback: nenhum rollback necessario porque nenhum deploy de producao foi feito.
+- Proxima acao: validar Chronos em homo, decidir/envs Google Production por canal seguro, aplicar migrations autorizadas e entao montar pacote de producao a partir da base Hermes atual.

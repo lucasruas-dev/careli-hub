@@ -21406,3 +21406,22 @@ Conclusao:
 - O recorte Chronos Google esta publicado em homologacao com fallback seguro.
 - O push real por webhook depende somente da migration `0036` estar aplicada no Supabase de homologacao.
 - Producao ainda nao deve receber Chronos Google ate a validacao logada confirmar sincronizacao, fuso e estado do push/polling.
+## 2026-05-29 - Zeus/Hefesto - comparativo Chronos x producao
+
+- Assunto: [Hefesto] Comparativo de producao pos-homologacao Chronos.
+- Status: PRODUCAO CHRONOS GOOGLE BLOQUEADA COM SEGURANCA.
+- Producao atual: `https://c2x.app.br` e `https://ops.c2x.app.br` em `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`, deployment Hermes hotfix/prefetch de mensagens, status Ready.
+- Homologacao atual: `https://homo.c2x.app.br` em `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`, recorte Chronos Google auto-sync, status Ready.
+- Comparativo:
+  - nao e seguro promover `homo` diretamente para producao porque a linha de homologacao Chronos nao carrega os hotfixes Hermes publicados depois na producao;
+  - Production nao possui envs `GOOGLE_CALENDAR_*`, enquanto Preview possui os nomes Google como Encrypted;
+  - a migration `0036_chronos_google_calendar_watch.sql` esta no recorte, mas nao foi aplicada por este agente porque nao ha `HOMOLOG_POSTGRES_URL` local e nenhum segredo deve ser puxado/exposto;
+  - o recorte Chronos Google ainda precisa de validacao logada do Lucas em homo para confirmar evento Google -> Chronos, Chronos -> Google, fuso `America/Sao_Paulo` e estado `push ativo` ou `polling ativo`.
+- Decisao:
+  - nao publicar Chronos Google/Athena em producao nesta janela;
+  - preparar producao deve partir do deployment atual `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`/linha Hermes, cherry-pickando apenas recortes Chronos aprovados, nunca promovendo o alias de homo como pacote bruto;
+  - antes de producao Chronos Google, configurar envs Google em Production por canal seguro, aplicar migrations necessarias com autorizacao explicita e repetir build/healthchecks.
+
+Conclusao:
+- A producao atual fica preservada porque ela contem os hotfixes Hermes do incidente.
+- O proximo passo seguro e Lucas validar Chronos em homo; depois Hefesto monta um candidato de producao baseado na producao atual, nao no root misto nem no alias homo.
