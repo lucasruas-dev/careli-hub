@@ -20519,3 +20519,130 @@ Conclusao:
 - O Hermes agora tenta antecipar as mensagens dos canais em memoria e nao mostra mais a tela grande `Carregando mensagens` como estado central.
 - A fonte de verdade continua sendo Supabase; o cache deste hotfix e temporario, em memoria da sessao, para nao gravar conversas sensiveis no dispositivo.
 - Lucas deve atualizar `https://c2x.app.br/hermes` e alternar entre `Tecnologia`, `Lideranca` e demais canais para confirmar se o carregamento deixou de incomodar.
+
+## 2026-05-29 - CHRONOS-20260529-001-GOOGLE-PROD-PROMOCAO
+
+Status: BLOQUEADO POR ENVS/MIGRATIONS DE PRODUCAO.
+
+Resumo:
+- Lucas pediu subir as melhorias do Chronos Google para producao e autorizou inserir as envs Google em Production.
+- Hefesto montou um candidato de producao em worktree limpa a partir da base vigente de producao `b67edc9`, preservando o hotfix Hermes publicado em `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- O recorte Chronos Google foi aplicado sobre a base de producao e validado localmente, mas a producao ainda nao tem as envs `GOOGLE_CALENDAR_*` configuradas.
+- A tentativa de copiar automaticamente valores de Preview para Production foi bloqueada por seguranca porque exigiria puxar um arquivo temporario com todas as envs de Preview e trafegar secrets pela linha de comando. Nenhum valor sensivel foi exibido, registrado ou commitado.
+
+Pacote candidato:
+- Worktree: `.codex-deploy/z29-001-chronos-google-prod-20260529`.
+- Branch: `codex/hefesto/chronos-google-prod-20260529`.
+- Base de producao preservada: `b67edc9 docs(zeus): record hermes message prefetch hotfix`.
+- Commits Chronos aplicados:
+  - `3700be3 feat(chronos): prepare athena meeting workflow for homologation`;
+  - `b6ae5d3 feat(chronos): mirror meetings with google calendar`;
+  - `17d682e fix(chronos): make google calendar connection actionable`;
+  - `f38303b fix(chronos): keep google oauth callback on app origin`;
+  - `8e980a3 fix(chronos): normalize google calendar timezone`;
+  - `2f15033 fix(chronos): auto-sync google calendar`.
+
+Validacoes executadas:
+- `git diff --check`: OK.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile/worktree `.codex-deploy` e Turbopack/NFT em SquadOps.
+- Smoke local do build em `http://127.0.0.1:3030`:
+  - `GET /chronos`: 200;
+  - `GET /`: 200;
+  - `GET /login`: 200;
+  - `GET /zeus`: 200;
+  - `GET /api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST /api/chronos/google-calendar/sync` sem sessao: 401 esperado;
+  - `GET /api/chronos/google-calendar/webhook`: 405 esperado para metodo nao suportado.
+
+Ambiente de producao observado:
+- `https://c2x.app.br` e `https://ops.c2x.app.br` continuam em `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- `npx.cmd vercel env ls production` confirmou ausencia das envs `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI`, `GOOGLE_CALENDAR_SCOPES` e `GOOGLE_CALENDAR_PRIMARY_CALENDAR_ID`.
+- `npx.cmd vercel env list preview` confirmou que as envs Google existem em Preview por nome, sem valores.
+
+Bloqueios:
+- Production deploy nao foi executado nesta etapa.
+- Insercao automatica de secrets foi bloqueada por politica de seguranca.
+- Para Google funcional em producao, Lucas deve configurar as envs Google em Production no Vercel sem enviar valores no chat.
+- `GOOGLE_CALENDAR_REDIRECT_URI` em Production deve apontar para o callback de producao `https://c2x.app.br/api/chronos/google-calendar/callback` e esse URI deve estar autorizado no Google Cloud OAuth.
+- Migrations de producao `0035_chronos_google_calendar_mirror.sql` e `0036_chronos_google_calendar_watch.sql` continuam bloqueadas ate autorizacao explicita separada do Lucas para aplicar schema no banco Production.
+
+Conclusao:
+- O codigo candidato do Chronos Google esta validado, mas a promocao funcional para producao ainda esta bloqueada.
+- O proximo passo seguro e Lucas configurar as cinco envs Google em Production no Vercel; depois Hefesto deve reinspecionar envs por nome, tratar migrations com autorizacao explicita e so entao publicar o deployment de producao com healthchecks.
+
+## 2026-05-29 - CHRONOS-20260529-001-GOOGLE-PROD-PROMOCAO-FINAL
+
+Status: EM PRODUCAO, aguardando validacao funcional autenticada do Lucas.
+
+Resumo:
+- Lucas autorizou envs Google em Production e depois autorizou aplicar as migrations Chronos Google `0035` e `0036` em Production.
+- As envs `GOOGLE_CALENDAR_*` foram inseridas e confirmadas por nome no Vercel Production sem exibir valores.
+- As migrations `0035_chronos_google_calendar_mirror.sql` e `0036_chronos_google_calendar_watch.sql` foram aplicadas em Production.
+- A verificacao segura por metadados confirmou tabelas Google, colunas `watch_*`, indices, triggers, RLS ativo e grants CRUD para `service_role`.
+- Durante a promocao, um deploy transitorio `dpl_cgJqxny9yXWffCRiZj8axyormjn9` foi identificado como root misto porque a publicacao foi iniciada dentro de `.codex-deploy`, que e ignorado pelo `.vercelignore` do root. Esse deployment foi substituido imediatamente por uma worktree externa limpa.
+- Lucas apontou que o botao Google havia perdido a semantica de conexao. O Chronos foi ajustado para exibir `Conectar Google` quando desconectado, `Google conectado` em verde quando conectado e `Atualizar` como botao separado de sincronizacao.
+
+Pacote final:
+- Branch: `codex/hefesto/chronos-google-prod-20260529`.
+- Commit publicado: `03d8157 fix(chronos): clarify google calendar connection state`.
+- Worktree de preparo: `.codex-deploy/z29-001-chronos-google-prod-20260529`.
+- Worktree externa de deploy limpo: `careli-hub-worktrees/chronos-google-prod-final-20260529`.
+- Deployment anterior saudavel: `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih`.
+- Deployment transitorio substituido: `dpl_cgJqxny9yXWffCRiZj8axyormjn9`.
+- Deployment final: `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi`.
+- URL tecnica final: `https://careli-hub-hub-i2bs-bqeioabul-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+
+Validacoes:
+- `git diff --check`: OK, apenas aviso LF/CRLF conhecido no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps.
+- Build remoto Vercel final: READY; rota `/api/chronos/google-calendar/webhook` presente e rota `/api/chronos/invitees` ausente, confirmando pacote limpo.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_EdThYht1hMWWEg3XNGXXoj5YqSbi`.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no mesmo deployment.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/sync` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/webhook` sem headers Google: 400 seguro;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado.
+- Logs recentes de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+
+Riscos e acompanhamento:
+- Validacao funcional final do OAuth/sync depende de sessao autenticada do Lucas no Chrome/PWA.
+- Google Cloud pode levar alguns minutos para propagar o novo client OAuth e redirect salvo.
+- Registro estruturado remoto no Operations Center ainda nao foi reconciliado nesta etapa; o registro Markdown oficial foi atualizado.
+- Rollback tecnico: promover `dpl_4UC5RNJck6UnFQWp7WqKb7Vk65ih` se houver regressao critica.
+
+Conclusao:
+- Chronos Google esta em producao por pacote limpo e com schema/envs Production preparados.
+- O botao Google deve aparecer no topo da Agenda como `Conectar Google` quando desconectado, `Google conectado` em verde quando conectado e `Atualizar` como acao separada.
+- Lucas deve atualizar `https://c2x.app.br/chronos`, testar a conexao Google e usar `Atualizar` para confirmar o sync manual.
+
+## 2026-05-29 - CHRONOS-20260529-002-GOOGLE-TOOLBAR-STATUS
+
+Status: PREPARADO, validado localmente, aguardando autorizacao explicita para publicar em Production.
+
+Resumo:
+- Lucas pediu preservar o layout operacional da Agenda, manter a legenda visivel e retirar o bloco lateral `Fonte atual`.
+- O status detalhado do Google Agenda foi movido para um popup discreto no botao Google, visivel apenas por hover/foco.
+- O botao Google ficou compacto no topo da Agenda: desconectado exibe `Conectar Google`; conectado exibe `Google` em estado verde.
+- A legenda `Alinhamento`, `Resultado`, `Comunicado` e `Reuniao` permanece na barra da Agenda, ao lado dos modos de visualizacao.
+
+Validacoes:
+- `git diff --check`: OK, apenas aviso LF/CRLF conhecido no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile/worktree `.codex-deploy` e Turbopack/NFT em SquadOps.
+- Smoke HTTP local em `http://localhost:3002/chronos`: 200.
+- Validacao visual por navegador embutido ficou bloqueada por falha de sandbox do runtime de browser, sem indicio de erro de codigo no recorte.
+
+Conclusao:
+- O ajuste visual do Chronos Google esta pronto no recorte e ainda nao foi publicado em Production.
+- Para publicar, usar worktree externa limpa fora de `.codex-deploy`, pois `.vercelignore` do root ignora esse diretorio e pode gerar deploy misto.

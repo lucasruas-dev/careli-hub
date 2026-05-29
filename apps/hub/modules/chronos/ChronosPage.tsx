@@ -121,6 +121,13 @@ type ChronosAgendaInvitee = ChronosApoloInvitee & {
   userId?: string;
 };
 
+const chronosCalendarLegendItems = [
+  { color: "#2f80ed", label: "Alinhamento" },
+  { color: "#12b76a", label: "Resultado" },
+  { color: "#f59e0b", label: "Comunicado" },
+  { color: "#101820", label: "Reuniao" },
+] as const;
+
 type ChronosRoomDraft = {
   backgroundDataUrl: string;
   backgroundName: string;
