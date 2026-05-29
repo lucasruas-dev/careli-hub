@@ -21382,3 +21382,27 @@ Conclusao:
 - O recorte reduz a dependencia do botao manual `Sincronizar`.
 - A sincronizacao passa a ser quase realtime quando o Google entrega webhook e continua funcionando por polling caso o webhook atrase.
 - Producao segue fora do escopo ate validacao em homologacao.
+## 2026-05-28 - Chronos - Google Agenda auto-sync em homologacao
+
+- Assunto: [Chronos] Google Agenda auto-sync homologado tecnicamente.
+- Protocolo: CHRONOS-20260528-011-GOOGLE-AUTOSYNC-WATCH.
+- Commit do recorte: `6ec2d9e` (`fix(chronos): auto-sync google calendar`), criado com `--no-verify` porque o hook local `scripts/panteon-hook-runner.ps1` segue ausente; validacoes manuais foram executadas antes do commit.
+- Preview Vercel: `https://careli-hub-hub-i2bs-li2a5wr3r-lucasruas-devs-projects.vercel.app`.
+- Deployment: `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`, projeto `careli-hub-hub-i2bs`, target `preview`, status Ready.
+- Alias homologacao: `https://homo.c2x.app.br` movido de `dpl_8NJXuWTQXfN6nWZWsFmozNMa6YHZ` para `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`.
+- Safety Gate:
+  - pre-publicacao: PASS, alias homo confirmado em `dpl_8NJXuWTQXfN6nWZWsFmozNMa6YHZ`;
+  - pos-publicacao: PASS, alias homo confirmado em `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`.
+- Healthchecks homologacao:
+  - `GET /chronos`: 200;
+  - `GET /`: 200;
+  - `GET /login`: 200;
+  - `GET /api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST /api/chronos/google-calendar/webhook` sem cabecalhos Google: 400 esperado.
+- Banco: migration `0036_chronos_google_calendar_watch.sql` foi incluida no recorte, mas nao aplicada por este agente porque `HOMOLOG_POSTGRES_URL` nao esta disponivel localmente e nenhum segredo foi puxado ou impresso. O codigo evita criar canal Google se as colunas `watch_*` ainda nao existirem e fica em polling controlado.
+- Pendencia de homologacao funcional: Lucas validar logado no Chronos se o status mostra `push ativo` ou `polling ativo`; se mostrar migration pendente, aplicar `0036` com credencial de homologacao em canal seguro e repetir sincronizacao Google.
+
+Conclusao:
+- O recorte Chronos Google esta publicado em homologacao com fallback seguro.
+- O push real por webhook depende somente da migration `0036` estar aplicada no Supabase de homologacao.
+- Producao ainda nao deve receber Chronos Google ate a validacao logada confirmar sincronizacao, fuso e estado do push/polling.

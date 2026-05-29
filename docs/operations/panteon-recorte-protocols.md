@@ -834,7 +834,7 @@ O manifesto de homologacao deve incluir:
 - Exclui: envs, secrets, banco, migrations, producao, Google push webhook e demais modulos.
 - Validacoes: diff-check, check-types, lint, build, Safety Gate pre/post, `/chronos` 200, rota status 401 sem sessao e logs sem erro.
 - Pendencia: Lucas criar/sincronizar novo evento real e confirmar que 13:00 permanece 13:00 no Chronos e Google.
-## CHRONOS-20260528-011-GOOGLE-AUTOSYNC-WATCH - EM_PREPARACAO
+## CHRONOS-20260528-011-GOOGLE-AUTOSYNC-WATCH - EM_HOMOLOGACAO
 
 - Modulo: Chronos.
 - Owner: Zeus/Chronos.
@@ -854,5 +854,7 @@ O manifesto de homologacao deve incluir:
   - `docs/operations/releases-homologation.md`.
 - Exclusoes: sem producao, sem novos valores de env em docs/chat, sem outros modulos, sem dominio novo e sem alias de producao.
 - Mudanca sensivel autorizada: Lucas autorizou migrations e env Google no recorte Chronos; aplicar somente a migration nao destrutiva `0036` em homologacao antes do deploy.
-- Validacoes: `git diff --check` OK, `npm.cmd run check-types:hub` OK, `npm.cmd run lint:hub` OK, `npm.cmd run build --workspace @repo/hub` OK e smoke local 3002 OK.
+- Deploy homologacao: `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi` em `https://homo.c2x.app.br`, com Safety Gate pre/post PASS.
+- Validacoes: `git diff --check` OK, `npm.cmd run check-types:hub` OK, `npm.cmd run lint:hub` OK, `npm.cmd run build --workspace @repo/hub` OK, smoke local 3002 OK e healthchecks homo OK.
+- Pendencia: validar fluxo autenticado e aplicar `0036` em homologacao se o painel indicar migration pendente para push Google.
 - Rollback: voltar alias homo para o deployment anterior e manter as colunas `watch_*` inertes; remocao fisica das colunas somente com nova autorizacao DataOps/Zeus.

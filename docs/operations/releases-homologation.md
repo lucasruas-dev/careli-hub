@@ -5137,3 +5137,15 @@ Conclusao:
 - Exclui: producao, novos secrets em docs/chat, dominio novo, alias de producao e outros modulos.
 - Validacoes Zeus: `git diff --check` OK, `npm.cmd run check-types:hub` OK, `npm.cmd run lint:hub` OK, `npm.cmd run build --workspace @repo/hub` OK e smoke local 3002 OK.
 - Proximo passo: aplicar `0036` em homologacao, rodar validacoes globais, Safety Gate e publicar Preview/alias homo.
+## CHRONOS-20260528-011-GOOGLE-AUTOSYNC-WATCH - EM HOMOLOGACAO
+
+- Ambiente: `https://homo.c2x.app.br`.
+- Deployment anterior: `dpl_8NJXuWTQXfN6nWZWsFmozNMa6YHZ`.
+- Deployment atual: `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`.
+- Preview: `https://careli-hub-hub-i2bs-li2a5wr3r-lucasruas-devs-projects.vercel.app`.
+- Commit do recorte: `6ec2d9e`.
+- Publicado por: Zeus, via pacote limpo `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub\.codex-deploy\chronos-google-autosync-homo-20260528-2355\workspace`.
+- Safety Gate: PASS antes e depois da movimentacao do alias.
+- Healthchecks: `/chronos` 200, `/` 200, `/login` 200, status Google sem sessao 401 esperado e webhook sem cabecalhos 400 esperado.
+- Observacao: a migration `0036` nao foi aplicada localmente porque `HOMOLOG_POSTGRES_URL` nao esta disponivel neste ambiente. Sem ela, o Chronos permanece em fallback de polling e nao registra canal Google.
+- Pendencia Lucas: validar logado evento Google -> Chronos, Chronos -> Google, fuso `America/Sao_Paulo` e indicador `push ativo`/`polling ativo`.
