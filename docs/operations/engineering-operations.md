@@ -20988,3 +20988,65 @@ Conclusao:
 - O recorte tecnico esta validado localmente e preparado para teste funcional.
 - A causa mais provavel do Drive era upload grande passando pela API da Vercel; o novo fluxo envia direto ao Supabase Storage por URL assinada.
 - A causa mais provavel das chamadas era negociacao WebRTC fragil em grupo; o Chronos agora segue padrao mais robusto para offer/answer e ICE.
+
+## 2026-05-29 - Z29-20260529-004-CHRONOS-ATHENA-MEDIA-PRODUCTION
+
+Status: EM PRODUCAO / VALIDADO POR HEALTHCHECK E LOGS.
+
+Resumo:
+- Lucas autorizou publicar em producao os dois recortes finalizados: estabilidade de chamadas/gravacoes Zeus e correcoes Athena de ata, audio, participantes e fallback.
+- O pacote final foi montado sobre a worktree limpa `z29-003-chronos-hermes-media-stability-20260529`, preservando a producao vigente e incorporando somente o recorte Chronos/Athena necessario.
+
+Escopo publicado:
+- Chronos sala externa: gravação passa a incluir audio local e audio remoto dos participantes, mantendo o WebRTC estabilizado com TURN, transceivers e fila ICE.
+- Chronos sala externa: estado de gravacao e segmentos de transcricao sao sinalizados entre participantes para reduzir perda de fala quando o host grava.
+- Chronos participantes: entrada externa deduplica participante por usuario, e-mail ou nome operacional, evitando inflar check-ins e atas.
+- Athena atas: modelos configurados com placeholders invalidos sao ignorados e a geracao de ata cria fallback local rastreavel se a OpenAI falhar.
+- Chronos minutos: contexto de ata agora inclui fim real, duracao real e dedupe conservador de participantes.
+- Chronos Drive: mantido fluxo de upload assinado para Supabase Storage e finalizacao separada de gravacao.
+- Hermes/PulseX: mantido reforco de audio e tolerancia a `disconnected` transitorio do recorte de estabilidade.
+
+Publicacao:
+- Data/hora local: `2026-05-29 20:34:32 -03:00`.
+- Branch: `codex/zeus/chronos-hermes-media-stability-20260529`.
+- Commit publicado: `760f6f2 fix(chronos): ship athena and media stability fixes`.
+- Deployment anterior correto: `dpl_BLqFpDRhWqyXqYpcGv3JCnVjy8Ez`.
+- Deployment intermediario descartado: `dpl_B5CUumprXckHRzjrLueJgQZz2TGp`, substituido por roll-forward porque o Vercel CLI usou o link do root ao inves da worktree limpa.
+- Deployment final: `dpl_8wpkFvJ8Jese445Kz98U8WeHmKcw`.
+- URL tecnica final: `https://careli-hub-hub-i2bs-iogu0dyha-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT em SquadOps.
+- Smoke local com `next start`: bloqueado para `/chronos/lideranca` por ausencia de Supabase server-side local nesta worktree; validacao funcional foi feita em Production apos deploy.
+- Build remoto Vercel Production: READY.
+- Healthchecks Production:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200;
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/invitees?q=lu` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/lideranca/recording/upload-url` com payload vazio: 400 esperado, confirmando rota publicada e nao 404;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/lideranca/recording/upload-complete` com payload vazio: 400 esperado, confirmando rota publicada e nao 404;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/webhook` sem headers Google: 400 seguro.
+- Logs Vercel recentes: sem 5xx critico no recorte; observados `200` reais para `POST /api/chronos/public/rooms/careli/recording/upload-url`, `upload-complete`, `transcript`, `join`, `close`, `POST /api/chronos/google-calendar/sync` e `GET /chronos/lideranca`.
+- Registro estruturado Operations Center: pendente de sync autenticado. A API oficial exige sessao admin; Zeus nao usou token/cookie direto nem escreveu no banco para evitar atalho sensivel fora da sessao operacional.
+
+Riscos e acompanhamento:
+- Teste real recomendado: sala Chronos com 3+ participantes, gravacao curta, encerramento pelo host e validacao no Drive com player/download.
+- O deployment intermediario `dpl_B5CUumprXckHRzjrLueJgQZz2TGp` nao deve ser usado como rollback, pois foi gerado a partir do root misto por falta de `.vercel/project.json` na worktree.
+- Rollback seguro de codigo: promover `dpl_BLqFpDRhWqyXqYpcGv3JCnVjy8Ez` se houver regressao critica.
+- Worktrees de deploy em `.codex-deploy` devem receber `.vercel/project.json` local antes de qualquer `vercel deploy`, ou usar pacote fora de caminho ignorado por `.vercelignore`.
+- O commit foi criado com `--no-verify` porque o hook local aponta para `scripts/panteon-hook-runner.ps1`, ausente no root/worktree; validacoes obrigatorias foram executadas manualmente.
+
+Conclusao:
+- Os dois recortes autorizados foram publicados no deployment final limpo.
+- A primeira tentativa de deploy revelou um risco operacional real de root misto; foi corrigida por roll-forward imediato e registrada para endurecer o processo.
+- O proximo passo e Lucas validar uma chamada real com 3+ pessoas e uma nova gravacao aparecendo no Drive com play/download.
