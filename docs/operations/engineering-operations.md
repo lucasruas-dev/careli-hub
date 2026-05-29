@@ -20732,6 +20732,7 @@ Validacoes:
   - `GET https://c2x.app.br/api/chronos/invitees?q=lu` sem sessao: 401 esperado.
 - `POST /api/chronos/google-calendar/sync` sem sessao nao foi executado no smoke final porque a revisao automatica de seguranca bloqueou o POST em producao; a rota `status` protegida e o webhook cobriram smokes nao destrutivos.
 - Logs recentes de `c2x.app.br` e `ops.c2x.app.br`: sem erro critico observado; chamadas `401`/`400` acima correspondem aos smokes seguros.
+- Registro estruturado do Operations Center: sync oficial executado em Production com `recordsTotal=456`, `recordsUpserted=456` e `releasesUpserted=66`, sem exibir bearer ou secrets.
 
 Riscos e acompanhamento:
 - Validacao real ainda precisa ser feita com dois colaboradores autenticados: cada um deve ver a propria agenda Google e eventos em que participa, sem herdar a agenda do Lucas.

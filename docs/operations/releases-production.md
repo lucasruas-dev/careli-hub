@@ -2130,5 +2130,6 @@ Registro de producao:
   - `POST /api/chronos/google-calendar/webhook` sem headers Google: 400 seguro;
   - `GET /api/chronos/invitees?q=lu` sem sessao: 401 esperado;
   - logs recentes sem erro critico observado.
+- Registro estruturado: sync oficial do Operations Center em Production concluiu com `recordsTotal=456`, `recordsUpserted=456` e `releasesUpserted=66`.
 - Observacao de smoke: `POST /api/chronos/google-calendar/sync` sem sessao nao foi executado no fechamento porque a revisao automatica de seguranca bloqueou POST em producao; validacoes nao destrutivas foram priorizadas.
 - Rollback: promover `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw` para regressao critica de codigo; rollback de schema somente com autorizacao especifica.
