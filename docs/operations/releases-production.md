@@ -2105,3 +2105,30 @@ Registro de producao:
   - se a migration ainda nao for aplicada, nao publicar;
   - se publicada apos migration e houver regressao critica, promover o deployment anterior saudavel e avaliar rollback de codigo; rollback de schema exige autorizacao especifica do Lucas.
 - Proxima acao: aguardar autorizacao literal do Lucas para aplicar `0037` em Production.
+
+### Fechamento CHRONOS-20260529-003
+
+- Status: `EM PRODUCAO`, aguardando validacao funcional autenticada com dois colaboradores.
+- Autorizacao: Lucas autorizou aplicar a migration `0037` e publicar em Production.
+- Migration aplicada: `packages/database/migrations/0037_chronos_google_calendar_user_scope.sql`.
+- Verificacao segura de schema:
+  - indices por usuario/conexao presentes;
+  - constraints por `connection_id` presentes;
+  - indice global antigo `chronos_google_calendar_connections_default_idx` ausente.
+- Deployment anterior: `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw`.
+- Deployment novo: `dpl_7DUUC2DMev6r1T6tM29YTYJzgRye`.
+- URL tecnica: `https://careli-hub-hub-i2bs-p2vu9lvbe-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Homologacao: `https://homo.c2x.app.br` observada em Preview `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`; nao reapontada neste fechamento porque exigiria Safety Gate proprio e a autorizacao foi para Production.
+- Validacoes finais:
+  - build remoto Vercel Production: READY, com warnings conhecidos;
+  - `GET /`: 200;
+  - `GET /login`: 200;
+  - `GET /chronos`: 200;
+  - `GET ops /zeus`: 200;
+  - `GET /api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST /api/chronos/google-calendar/webhook` sem headers Google: 400 seguro;
+  - `GET /api/chronos/invitees?q=lu` sem sessao: 401 esperado;
+  - logs recentes sem erro critico observado.
+- Observacao de smoke: `POST /api/chronos/google-calendar/sync` sem sessao nao foi executado no fechamento porque a revisao automatica de seguranca bloqueou POST em producao; validacoes nao destrutivas foram priorizadas.
+- Rollback: promover `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw` para regressao critica de codigo; rollback de schema somente com autorizacao especifica.

@@ -20685,3 +20685,60 @@ Riscos e pendencias:
 Conclusao:
 - A correcao de codigo esta preparada e validada, mas nao deve ir para producao antes da migration `0037`.
 - O proximo passo seguro e Lucas autorizar explicitamente: `autorizo aplicar a migration 0037 do Chronos Google em Production`.
+
+## 2026-05-29 - CHRONOS-20260529-003-GOOGLE-AGENDA-INDIVIDUAL-FINAL
+
+Status: EM PRODUCAO, aguardando validacao funcional autenticada com dois colaboradores.
+
+Resumo:
+- Lucas autorizou aplicar a migration `0037` do Chronos Google em Production e publicar o recorte.
+- A migration `0037_chronos_google_calendar_user_scope.sql` foi aplicada em Production sem expor secrets.
+- Verificacao segura confirmou:
+  - indice `chronos_google_calendar_connections_user_default_idx` presente;
+  - indice `chronos_google_calendar_connections_legacy_default_idx` presente;
+  - indice `chronos_google_calendar_event_links_connection_idx` presente;
+  - constraints `chronos_google_calendar_event_links_event_connection_key` e `chronos_google_calendar_event_links_meeting_connection_key` presentes;
+  - indice global antigo `chronos_google_calendar_connections_default_idx` ausente.
+- O deploy de producao foi executado a partir da worktree externa limpa do Chronos.
+
+Publicacao:
+- Data/hora local: `2026-05-29 12:45:06 -03:00`.
+- Branch: `codex/hefesto/chronos-restore-google-prod-20260529`.
+- Commits de referencia:
+  - `fc6538f fix(chronos): scope google calendar per user`;
+  - `574ce27 docs(chronos): record google agenda user scope gate`.
+- Deployment anterior: `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw`.
+- Deployment novo: `dpl_7DUUC2DMev6r1T6tM29YTYJzgRye`.
+- URL tecnica: `https://careli-hub-hub-i2bs-p2vu9lvbe-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Homologacao observada apos deploy: `https://homo.c2x.app.br` segue em Preview `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`; nao foi reapontada neste fechamento porque o pedido/autorizacao foi para Production e o alias de homologacao exige Safety Gate proprio.
+
+Validacoes:
+- Pre-deploy:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em SquadOps.
+- Build remoto Vercel: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres ausentes no `turbo.json` e Turbopack/NFT em SquadOps.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/webhook` sem headers Google: 400 seguro;
+  - `GET https://c2x.app.br/api/chronos/invitees?q=lu` sem sessao: 401 esperado.
+- `POST /api/chronos/google-calendar/sync` sem sessao nao foi executado no smoke final porque a revisao automatica de seguranca bloqueou o POST em producao; a rota `status` protegida e o webhook cobriram smokes nao destrutivos.
+- Logs recentes de `c2x.app.br` e `ops.c2x.app.br`: sem erro critico observado; chamadas `401`/`400` acima correspondem aos smokes seguros.
+
+Riscos e acompanhamento:
+- Validacao real ainda precisa ser feita com dois colaboradores autenticados: cada um deve ver a propria agenda Google e eventos em que participa, sem herdar a agenda do Lucas.
+- Se algum colaborador que ja conectou antes continuar vendo agenda cruzada, orientar reconectar Google apos a `0037` e retestar.
+- Rollback de codigo: promover `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw` se houver regressao critica; rollback de schema exige autorizacao separada do Lucas.
+
+Conclusao:
+- A causa de agenda global foi mitigada no schema e no codigo.
+- Chronos Google esta em producao com escopo por colaborador.
+- O proximo passo e Lucas testar `https://c2x.app.br/chronos` com a propria conta e com outro colaborador para confirmar isolamento visual/funcional.
