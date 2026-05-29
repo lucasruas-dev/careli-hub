@@ -66,14 +66,18 @@ type ChronosRoomSignal = {
     | "media-state"
     | "meeting-closed"
     | "offer"
+    | "recording-state"
     | "screen-share-start"
-    | "screen-share-stop";
+    | "screen-share-stop"
+    | "transcript-segment";
   message?: ChronosChatMessage;
   meetingId: string;
   participant?: Omit<ChronosRoomParticipant, "stream">;
+  recordingStatus?: "available" | "recording";
   roomSlug: string;
   sentAt: string;
   toParticipantId?: string;
+  transcript?: ChronosTranscriptPreview;
 };
 
 type ChronosPeerNegotiationState = {
@@ -124,6 +128,7 @@ type SpeechRecognitionEventLike = {
   resultIndex: number;
   results: ArrayLike<{
     0?: {
+      confidence?: number;
       transcript?: string;
     };
     isFinal?: boolean;
@@ -221,11 +226,26 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingStartedAtRef = useRef(0);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStopPromiseRef = useRef<Promise<void> | null>(null);
   const resolveRecordingStopRef = useRef<(() => void) | null>(null);
   const lastRecordingUrlRef = useRef("");
+  const lastTranscriptSegmentRef = useRef<{
+    content: string;
+    sentAt: number;
+  } | null>(null);
+  const athenaTranscriptionActiveRef = useRef(false);
+  const isRecordingRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const remoteParticipantsRef = useRef<Record<string, ChronosRoomParticipant>>(
+    {},
+  );
+  const sendRecordingStateSignalRef = useRef<
+    (status: "available" | "recording", toParticipantId?: string) => void
+  >(() => undefined);
+  const startAthenaTranscriptionRef = useRef<() => void>(() => undefined);
+  const stopAthenaTranscriptionRef = useRef<() => void>(() => undefined);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const virtualBackgroundCleanupRef = useRef<(() => void) | null>(null);
   const videoElementsByParticipantIdRef = useRef<Map<string, HTMLVideoElement>>(
@@ -284,6 +304,23 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   useEffect(() => {
     localParticipantRef.current = localParticipant;
   }, [localParticipant]);
+
+  useEffect(() => {
+    remoteParticipantsRef.current = remoteParticipants;
+
+    if (!isRecording || !recordingStreamRef.current) {
+      return;
+    }
+
+    addMissingRecordingAudioTracks(recordingStreamRef.current, {
+      localStream,
+      remoteParticipants,
+    });
+  }, [isRecording, localStream, remoteParticipants]);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
@@ -687,6 +724,19 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       }
 
       if (signal.kind === "join") {
+        sendSignal({
+          fromParticipantId: participant.id,
+          kind: "media-state",
+          meetingId: currentMeetingId,
+          participant: stripParticipantStream(participant),
+          roomSlug: room.slug,
+          toParticipantId: remoteParticipantId,
+        });
+
+        if (isRecordingRef.current) {
+          sendRecordingStateSignalRef.current("recording", remoteParticipantId);
+        }
+
         await createOfferForParticipant(remoteParticipantId);
         return;
       }
@@ -695,11 +745,31 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         return;
       }
 
+      if (signal.kind === "recording-state") {
+        if (signal.recordingStatus === "recording") {
+          startAthenaTranscriptionRef.current();
+        } else {
+          stopAthenaTranscriptionRef.current();
+        }
+
+        return;
+      }
+
       if (signal.kind === "chat-message" && signal.message) {
         setChatMessages((currentMessages) =>
           appendUniqueChronosChatMessage(currentMessages, signal.message),
         );
         setIsChatOpen(true);
+        return;
+      }
+
+      if (signal.kind === "transcript-segment" && signal.transcript) {
+        setTranscriptPreview((currentSegments) =>
+          appendUniqueChronosTranscriptPreview(
+            currentSegments,
+            signal.transcript as ChronosTranscriptPreview,
+          ),
+        );
         return;
       }
 
@@ -1193,6 +1263,28 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     });
   }
 
+  function sendRecordingStateSignal(
+    status: "available" | "recording",
+    toParticipantId?: string,
+  ) {
+    const participant = localParticipantRef.current;
+    const currentMeetingId = meetingIdRef.current;
+
+    if (!participant || !currentMeetingId) {
+      return;
+    }
+
+    sendSignal({
+      fromParticipantId: participant.id,
+      kind: "recording-state",
+      meetingId: currentMeetingId,
+      participant: stripParticipantStream(participant),
+      recordingStatus: status,
+      roomSlug: room.slug,
+      toParticipantId,
+    });
+  }
+
   async function handleToggleRecording() {
     if (isRecording) {
       await stopRecording();
@@ -1214,6 +1306,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
     const stream = buildRecordingStream({
       localStream: localStreamRef.current,
+      remoteParticipants: remoteParticipantsRef.current,
       screenTrack: screenTrackRef.current,
     });
 
@@ -1226,6 +1319,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     setRecordingStorageStatus("idle");
     const mimeType = getSupportedRecordingMimeType();
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recordingStreamRef.current = stream;
     recorderRef.current = recorder;
     recordingStopPromiseRef.current = new Promise((resolve) => {
       resolveRecordingStopRef.current = resolve;
@@ -1287,6 +1381,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     setIsRecording(true);
     await postChronosRecordingStatus("recording");
     startAthenaTranscription();
+    sendRecordingStateSignal("recording");
   }
 
   async function stopRecording() {
@@ -1298,8 +1393,10 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     }
 
     recorderRef.current = null;
+    recordingStreamRef.current = null;
     stopAthenaTranscription();
     setIsRecording(false);
+    sendRecordingStateSignal("available");
     await stopPromise;
   }
 
@@ -1487,16 +1584,22 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   }
 
   function startAthenaTranscription() {
+    if (athenaTranscriptionActiveRef.current) {
+      return;
+    }
+
     const SpeechRecognition = getSpeechRecognitionConstructor();
 
     if (!SpeechRecognition || !localParticipant) {
       setMediaError(
         "Athena registrou gravacao. Transcricao local depende do navegador.",
       );
+      athenaTranscriptionActiveRef.current = false;
       return;
     }
 
     const recognition = new SpeechRecognition();
+    athenaTranscriptionActiveRef.current = true;
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "pt-BR";
@@ -1509,7 +1612,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     };
     recognition.onerror = () => undefined;
     recognition.onend = () => {
-      if (recorderRef.current) {
+      if (athenaTranscriptionActiveRef.current) {
         try {
           recognition.start();
         } catch {
@@ -1522,12 +1625,22 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     try {
       recognition.start();
     } catch {
+      athenaTranscriptionActiveRef.current = false;
       recognitionRef.current = null;
     }
   }
 
   function stopAthenaTranscription() {
-    recognitionRef.current?.stop();
+    athenaTranscriptionActiveRef.current = false;
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // Ignore browser-specific SpeechRecognition shutdown errors.
+      }
+    }
     recognitionRef.current = null;
   }
 
@@ -1536,17 +1649,48 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       return;
     }
 
+    const normalizedContent = normalizeChronosSpeechSegment(content);
+
+    if (!normalizedContent) {
+      return;
+    }
+
+    const previousSegment = lastTranscriptSegmentRef.current;
+    const now = Date.now();
+
+    if (
+      previousSegment &&
+      previousSegment.content === normalizedContent &&
+      now - previousSegment.sentAt < 12_000
+    ) {
+      return;
+    }
+
+    lastTranscriptSegmentRef.current = {
+      content: normalizedContent,
+      sentAt: now,
+    };
+
     const segment = {
-      content,
+      content: normalizedContent,
       id: `local-transcript-${Date.now().toString(36)}`,
       speakerLabel: localParticipant.displayName,
     } satisfies ChronosTranscriptPreview;
 
-    setTranscriptPreview((currentSegments) => [segment, ...currentSegments].slice(0, 8));
+    setTranscriptPreview((currentSegments) =>
+      appendUniqueChronosTranscriptPreview(currentSegments, segment),
+    );
+    sendSignal({
+      fromParticipantId: localParticipant.id,
+      kind: "transcript-segment",
+      meetingId,
+      roomSlug: room.slug,
+      transcript: segment,
+    });
 
     await fetch(`/api/chronos/public/rooms/${room.slug}/transcript`, {
       body: JSON.stringify({
-        content,
+        content: normalizedContent,
         meetingId,
         participantId: localParticipant.id,
         speakerLabel: localParticipant.displayName,
@@ -1725,6 +1869,9 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   }
 
   handleLeaveRoomRef.current = handleLeaveRoom;
+  sendRecordingStateSignalRef.current = sendRecordingStateSignal;
+  startAthenaTranscriptionRef.current = startAthenaTranscription;
+  stopAthenaTranscriptionRef.current = stopAthenaTranscription;
 
   async function closeChronosReservationCall() {
     if (!localParticipant || !meetingId) {
@@ -2960,18 +3107,66 @@ function getEnabledAudioTracks(stream: MediaStream | null) {
 
 function buildRecordingStream({
   localStream,
+  remoteParticipants,
   screenTrack,
 }: {
   localStream: MediaStream | null;
+  remoteParticipants: Record<string, ChronosRoomParticipant>;
   screenTrack: MediaStreamTrack | null;
 }) {
-  const audioTracks = localStream?.getAudioTracks() ?? [];
+  const audioTracks = getRecordingAudioTracks({
+    localStream,
+    remoteParticipants,
+  });
   const videoTracks = screenTrack
     ? [screenTrack]
     : (localStream?.getVideoTracks() ?? []);
   const tracks = [...audioTracks, ...videoTracks];
 
   return tracks.length > 0 ? new MediaStream(tracks) : null;
+}
+
+function addMissingRecordingAudioTracks(
+  stream: MediaStream,
+  input: {
+    localStream: MediaStream | null;
+    remoteParticipants: Record<string, ChronosRoomParticipant>;
+  },
+) {
+  const currentTrackIds = new Set(stream.getAudioTracks().map((track) => track.id));
+
+  for (const track of getRecordingAudioTracks(input)) {
+    if (!currentTrackIds.has(track.id)) {
+      stream.addTrack(track);
+      currentTrackIds.add(track.id);
+    }
+  }
+}
+
+function getRecordingAudioTracks({
+  localStream,
+  remoteParticipants,
+}: {
+  localStream: MediaStream | null;
+  remoteParticipants: Record<string, ChronosRoomParticipant>;
+}) {
+  const tracksById = new Map<string, MediaStreamTrack>();
+
+  for (const track of localStream?.getAudioTracks() ?? []) {
+    if (track.readyState === "live") {
+      tracksById.set(track.id, track);
+    }
+  }
+
+  for (const participant of Object.values(remoteParticipants)) {
+    for (const track of participant.stream?.getAudioTracks() ?? []) {
+      if (track.readyState === "live") {
+        tracksById.set(track.id, track);
+      }
+    }
+  }
+
+  return Array.from(tracksById.values());
 }
 
 function getSupportedRecordingMimeType() {
@@ -2998,14 +3193,43 @@ function collectFinalSpeechTranscript(event: SpeechRecognitionEventLike) {
 
   for (let index = event.resultIndex; index < event.results.length; index += 1) {
     const result = event.results[index];
-    const transcript = result?.[0]?.transcript?.trim();
+    const alternative = result?.[0];
+    const transcript = alternative?.transcript?.trim();
+    const confidence =
+      typeof alternative?.confidence === "number"
+        ? alternative.confidence
+        : null;
 
-    if (result?.isFinal && transcript) {
+    if (
+      result?.isFinal &&
+      transcript &&
+      (confidence === null || confidence >= 0.58)
+    ) {
       parts.push(transcript);
     }
   }
 
-  return parts.join(" ").trim();
+  return normalizeChronosSpeechSegment(parts.join(" "));
+}
+
+function normalizeChronosSpeechSegment(value: string) {
+  const text = value
+    .replace(/\s+/g, " ")
+    .replace(/\b(uh|hum|aham|ha|e{2,}|ne{2,})\b/gi, "")
+    .trim();
+
+  if (text.length < 4) {
+    return "";
+  }
+
+  const words = text.split(/\s+/);
+  const uniqueWords = new Set(words.map((word) => word.toLowerCase()));
+
+  if (words.length >= 6 && uniqueWords.size <= 2) {
+    return "";
+  }
+
+  return text.slice(0, 1_200);
 }
 
 function readFileAsDataUrl(file: File) {
@@ -3040,6 +3264,20 @@ function appendUniqueChronosChatMessage(
     (left, right) =>
       new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
   );
+}
+
+function appendUniqueChronosTranscriptPreview(
+  currentSegments: ChronosTranscriptPreview[],
+  nextSegment?: ChronosTranscriptPreview,
+) {
+  if (!nextSegment) {
+    return currentSegments;
+  }
+
+  return [
+    nextSegment,
+    ...currentSegments.filter((segment) => segment.id !== nextSegment.id),
+  ].slice(0, 8);
 }
 
 function readChronosBackgroundPreference(key: string): {

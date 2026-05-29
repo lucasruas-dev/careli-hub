@@ -1212,35 +1212,80 @@ export async function joinChronosPublicRoom({
           participantName,
           room,
         });
-  const { data: participant, error: participantError } = await client
+  const now = new Date().toISOString();
+  const existingParticipantsResult = await client
     .from("chronos_participants")
-    .insert({
-      attendance_status: "joined",
-      display_name: participantName,
-      email: loggedUser?.email ?? null,
-      joined_at: new Date().toISOString(),
-      meeting_id: meeting.id,
-      metadata: {
-        company: organization ?? null,
-        entryMode: loggedUser ? "hub_login" : "external_guest",
-        source: "chronos-external-room",
-      },
-      organization: organization ?? null,
-      role: isHost ? "host" : loggedUser ? "participant" : "external",
-      user_id: loggedUser?.id ?? null,
-    })
     .select("*")
-    .single<ChronosParticipantRow>();
+    .eq("meeting_id", meeting.id)
+    .returns<ChronosParticipantRow[]>();
+
+  if (existingParticipantsResult.error) {
+    throw existingParticipantsResult.error;
+  }
+
+  const existingParticipant = findMatchingChronosParticipantRow(
+    existingParticipantsResult.data ?? [],
+    {
+      displayName: participantName,
+      email: loggedUser?.email ?? null,
+      organization,
+      userId: loggedUser?.id ?? null,
+    },
+  );
+  const participantResult = existingParticipant
+    ? await client
+        .from("chronos_participants")
+        .update({
+          attendance_status: "joined",
+          display_name: participantName,
+          email: loggedUser?.email ?? existingParticipant.email,
+          joined_at: existingParticipant.joined_at ?? now,
+          left_at: null,
+          metadata: {
+            ...readRecordMetadata(existingParticipant.metadata),
+            company: organization ?? existingParticipant.organization ?? null,
+            entryMode: loggedUser ? "hub_login" : "external_guest",
+            source: "chronos-external-room",
+          },
+          organization: organization ?? existingParticipant.organization,
+          role: isHost ? "host" : existingParticipant.role,
+          user_id: loggedUser?.id ?? existingParticipant.user_id,
+        })
+        .eq("id", existingParticipant.id)
+        .select("*")
+        .single<ChronosParticipantRow>()
+    : await client
+        .from("chronos_participants")
+        .insert({
+          attendance_status: "joined",
+          display_name: participantName,
+          email: loggedUser?.email ?? null,
+          joined_at: now,
+          meeting_id: meeting.id,
+          metadata: {
+            company: organization ?? null,
+            entryMode: loggedUser ? "hub_login" : "external_guest",
+            source: "chronos-external-room",
+          },
+          organization: organization ?? null,
+          role: isHost ? "host" : loggedUser ? "participant" : "external",
+          user_id: loggedUser?.id ?? null,
+        })
+        .select("*")
+        .single<ChronosParticipantRow>();
+  const { data: participant, error: participantError } = participantResult;
 
   if (participantError) {
     throw participantError;
   }
 
-  await insertTimelineEvent(client, {
-    eventType: "joined",
-    meetingId: meeting.id,
-    title: `${participantName} entrou na sala externa`,
-  });
+  if (!existingParticipant?.joined_at || existingParticipant.left_at) {
+    await insertTimelineEvent(client, {
+      eventType: "joined",
+      meetingId: meeting.id,
+      title: `${participantName} entrou na sala externa`,
+    });
+  }
 
   return {
     athenaNotice:
@@ -3662,16 +3707,6 @@ async function joinLocalChronosPublicRoom({
       meeting.roomId === room.id &&
       (meeting.status === "live" || meeting.status === "lobby"),
   );
-  const participant: ChronosParticipant = {
-    attendanceStatus: "joined",
-    displayName: participantName,
-    email: null,
-    id: `local-public-participant-${Date.now().toString(36)}`,
-    joinedAt: now,
-    organization: input.organization ?? null,
-    role: "external",
-    userId: null,
-  };
   const meeting =
     existingMeeting ??
     ({
@@ -3722,23 +3757,60 @@ async function joinLocalChronosPublicRoom({
       transcript: [],
       updatedAt: now,
     } satisfies ChronosMeeting);
+  const existingParticipant = findMatchingChronosParticipant(
+    meeting.participants,
+    {
+      displayName: participantName,
+      email: null,
+      organization: input.organization ?? null,
+      userId: null,
+    },
+  );
+  const participant: ChronosParticipant = existingParticipant
+    ? {
+        ...existingParticipant,
+        attendanceStatus: "joined",
+        displayName: chooseChronosParticipantDisplayName(
+          existingParticipant.displayName,
+          participantName,
+        ),
+        joinedAt: existingParticipant.joinedAt ?? now,
+        leftAt: null,
+        organization: input.organization ?? existingParticipant.organization,
+      }
+    : {
+        attendanceStatus: "joined",
+        displayName: participantName,
+        email: null,
+        id: `local-public-participant-${Date.now().toString(36)}`,
+        joinedAt: now,
+        organization: input.organization ?? null,
+        role: "external",
+        userId: null,
+      };
+  const shouldAppendJoinTimeline =
+    !existingParticipant?.joinedAt || Boolean(existingParticipant.leftAt);
   const nextMeeting: ChronosMeeting = {
     ...meeting,
     participants: [
       participant,
       ...meeting.participants.filter(
-        (currentParticipant) => currentParticipant.id !== participant.id,
+        (currentParticipant) =>
+          currentParticipant.id !== participant.id &&
+          !isSameChronosParticipantIdentity(currentParticipant, participant),
       ),
     ],
-    timeline: [
-      ...meeting.timeline,
-      {
-        eventAt: now,
-        eventType: "joined",
-        id: `event-${Date.now().toString(36)}-joined`,
-        title: `${participantName} entrou na sala externa`,
-      },
-    ],
+    timeline: shouldAppendJoinTimeline
+      ? [
+          ...meeting.timeline,
+          {
+            eventAt: now,
+            eventType: "joined",
+            id: `event-${Date.now().toString(36)}-joined`,
+            title: `${participantName} entrou na sala externa`,
+          },
+        ]
+      : meeting.timeline,
     updatedAt: now,
   };
 
@@ -4281,6 +4353,111 @@ function mapParticipantRow(row: ChronosParticipantRow): ChronosParticipant {
     role: row.role,
     userId: row.user_id,
   };
+}
+
+function findMatchingChronosParticipantRow(
+  participants: ChronosParticipantRow[],
+  identity: {
+    displayName: string;
+    email?: string | null;
+    organization?: string | null;
+    userId?: string | null;
+  },
+) {
+  return participants.find((participant) =>
+    isSameChronosParticipantIdentity(
+      {
+        displayName: participant.display_name,
+        email: participant.email,
+        organization: participant.organization,
+        userId: participant.user_id,
+      },
+      identity,
+    ),
+  );
+}
+
+function findMatchingChronosParticipant(
+  participants: ChronosParticipant[],
+  identity: {
+    displayName: string;
+    email?: string | null;
+    organization?: string | null;
+    userId?: string | null;
+  },
+) {
+  return participants.find((participant) =>
+    isSameChronosParticipantIdentity(participant, identity),
+  );
+}
+
+function isSameChronosParticipantIdentity(
+  current: {
+    displayName?: string | null;
+    email?: string | null;
+    organization?: string | null;
+    userId?: string | null;
+  },
+  incoming: {
+    displayName?: string | null;
+    email?: string | null;
+    organization?: string | null;
+    userId?: string | null;
+  },
+) {
+  const currentEmail = normalizeChronosIdentityValue(current.email);
+  const incomingEmail = normalizeChronosIdentityValue(incoming.email);
+
+  if (currentEmail && incomingEmail && currentEmail === incomingEmail) {
+    return true;
+  }
+
+  if (current.userId && incoming.userId && current.userId === incoming.userId) {
+    return true;
+  }
+
+  const currentName = getChronosParticipantNameIdentity(current.displayName);
+  const incomingName = getChronosParticipantNameIdentity(incoming.displayName);
+
+  if (!currentName || !incomingName) {
+    return false;
+  }
+
+  if (currentName === incomingName) {
+    return true;
+  }
+
+  return (
+    currentName.startsWith(`${incomingName} `) ||
+    incomingName.startsWith(`${currentName} `)
+  );
+}
+
+function chooseChronosParticipantDisplayName(current: string, incoming: string) {
+  const currentIsAllCaps = current === current.toUpperCase();
+  const incomingIsAllCaps = incoming === incoming.toUpperCase();
+
+  if (currentIsAllCaps && !incomingIsAllCaps) {
+    return incoming;
+  }
+
+  return current;
+}
+
+function getChronosParticipantNameIdentity(value?: string | null) {
+  const words = normalizeChronosIdentityValue(value)
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return words.length >= 2 ? words.slice(0, 2).join(" ") : words.join(" ");
+}
+
+function normalizeChronosIdentityValue(value?: string | null) {
+  return sanitizeText(value, 180)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 }
 
 function mapTimelineRow(row: ChronosTimelineEventRow): ChronosTimelineEvent {

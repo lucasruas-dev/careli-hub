@@ -263,10 +263,11 @@ async function transcribeChronosRecording({
   apiKey: string;
   file: File;
 }) {
-  const model =
-    process.env.HUB_CHRONOS_TRANSCRIPTION_MODEL?.trim() ||
-    process.env.HUB_IT_TICKET_TRANSCRIPTION_MODEL?.trim() ||
-    DEFAULT_TRANSCRIPTION_MODEL;
+  const model = resolveChronosOpenAiModel(
+    DEFAULT_TRANSCRIPTION_MODEL,
+    process.env.HUB_CHRONOS_TRANSCRIPTION_MODEL,
+    process.env.HUB_IT_TICKET_TRANSCRIPTION_MODEL,
+  );
   const formData = new FormData();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
@@ -326,10 +327,11 @@ async function draftChronosMinutes({
   meeting: ChronosMeeting;
   minutesProfile: ChronosMinutesProfile;
 }) {
-  const model =
-    process.env.HUB_CHRONOS_MINUTES_MODEL?.trim() ||
-    process.env.HUB_AI_MODEL?.trim() ||
-    DEFAULT_MINUTES_MODEL;
+  const model = resolveChronosOpenAiModel(
+    DEFAULT_MINUTES_MODEL,
+    process.env.HUB_CHRONOS_MINUTES_MODEL,
+    process.env.HUB_AI_MODEL,
+  );
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
 
@@ -379,9 +381,38 @@ async function draftChronosMinutes({
     }
 
     return parsed;
+  } catch (error) {
+    return buildChronosFallbackMinutes({
+      error,
+      meeting,
+      minutesProfile,
+    });
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function resolveChronosOpenAiModel(
+  fallback: string,
+  ...candidates: Array<string | undefined>
+) {
+  return (
+    candidates
+      .map((candidate) => candidate?.trim())
+      .find((candidate): candidate is string =>
+        isUsableChronosOpenAiModel(candidate),
+      ) ?? fallback
+  );
+}
+
+function isUsableChronosOpenAiModel(value?: string) {
+  if (!value) {
+    return false;
+  }
+
+  return !["default", "none", "null", "option", "select", "undefined"].includes(
+    value.toLowerCase(),
+  );
 }
 
 function hasChronosAvailableRecording(meeting: ChronosMeeting) {
@@ -493,6 +524,94 @@ function buildChronosMinutesPrompt({
     "Resumo executivo atual:",
     meeting.executiveSummary ?? "Nao informado.",
   ].join("\n");
+}
+
+function buildChronosFallbackMinutes({
+  error,
+  meeting,
+  minutesProfile,
+}: {
+  error: unknown;
+  meeting: ChronosMeeting;
+  minutesProfile: ChronosMinutesProfile;
+}) {
+  const context = buildChronosMinutesContext(meeting);
+  const participants = context.participants
+    .map((participant) => {
+      const details = [
+        participant.role,
+        participant.email,
+        participant.organization,
+      ].filter(Boolean);
+
+      return `- ${participant.displayName}${
+        details.length ? ` (${details.join(" / ")})` : ""
+      }`;
+    })
+    .join("\n");
+  const transcript = meeting.transcript
+    .slice(0, 18)
+    .map(
+      (segment) =>
+        `- **${segment.speakerLabel ?? "Participante"}:** ${segment.content}`,
+    )
+    .join("\n");
+  const timeline = meeting.timeline
+    .slice(0, 14)
+    .map((event) => `- ${formatChronosDateTime(event.eventAt)}: ${event.title}`)
+    .join("\n");
+  const followUps = meeting.followUps
+    .map(
+      (followUp) =>
+        `| ${followUp.title} | ${followUp.ownerName ?? "Nao informado"} | ${
+          followUp.dueAt ? formatChronosDate(followUp.dueAt) : "Nao informado"
+        } | ${followUp.status} |`,
+    )
+    .join("\n");
+  const fallbackReason =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : "Falha operacional da OpenAI";
+  const summary = `Rascunho de ata ${chronosMinutesProfileLabels[
+    minutesProfile
+  ].toLowerCase()} gerado localmente para revisao humana.`;
+  const minutes = [
+    `**Ata ${meeting.protocol}**`,
+    "",
+    "**Identificacao da reuniao**",
+    `- **Reuniao:** ${meeting.title}`,
+    `- **Perfil:** ${chronosMinutesProfileLabels[minutesProfile]}`,
+    `- **Inicio programado:** ${context.scheduledStartLabel}`,
+    `- **Fim real:** ${context.actualEndLabel}`,
+    `- **Duracao:** ${context.durationLabel}`,
+    `- **Sala:** ${meeting.room?.name ?? "Nao informado"}`,
+    `- **Host:** ${meeting.hostName ?? "Nao informado"}`,
+    "",
+    "**Participantes com check-in**",
+    participants || "- Nao informado",
+    "",
+    "**Resumo executivo**",
+    meeting.executiveSummary ||
+      "Rascunho gerado com base nos registros disponiveis do Chronos.",
+    "",
+    "**Falas registradas**",
+    transcript || "- Nao ha transcricao salva.",
+    "",
+    "**Linha do tempo**",
+    timeline || "- Nao informada.",
+    "",
+    "**Plano de acao**",
+    "| Atividade | Responsavel | Prazo | Status |",
+    "| --- | --- | --- | --- |",
+    followUps ||
+      `| Sem atividade formal registrada | Nao informado | ${context.defaultActionDueLabel} | Aberto |`,
+    "",
+    "**Observacao operacional**",
+    `- Athena gerou este rascunho localmente porque a chamada OpenAI retornou: ${fallbackReason}.`,
+    "- Ata sujeita a revisao humana antes de aprovacao.",
+  ].join("\n");
+
+  return { minutes, summary };
 }
 
 function parseChronosMinutesJson(value: string) {
