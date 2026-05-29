@@ -1493,6 +1493,12 @@ function ChronosAgendaScreen({
   const [googleCalendarConnecting, setGoogleCalendarConnecting] =
     useState(false);
   const [googleCalendarSyncing, setGoogleCalendarSyncing] = useState(false);
+  const [googleCalendarAutoSyncing, setGoogleCalendarAutoSyncing] =
+    useState(false);
+  const [googleCalendarAutoSyncedAt, setGoogleCalendarAutoSyncedAt] =
+    useState<string | null>(null);
+  const googleCalendarAutoSyncInFlightRef = useRef(false);
+  const googleCalendarLastAutoSyncAtRef = useRef(0);
   const sortedMeetings = useMemo(() => sortMeetingsByDate(meetings), [meetings]);
   const calendarViewItems: Array<{ id: ChronosCalendarView; label: string }> = [
     { id: "day", label: "Dia" },
@@ -1563,6 +1569,49 @@ function ChronosAgendaScreen({
     }
   }, [onRefresh, refreshGoogleCalendarStatus]);
 
+  const runGoogleCalendarAutoSync = useCallback(
+    async (trigger: "interval" | "visible") => {
+      if (
+        !googleCalendarStatus?.connection.connected ||
+        googleCalendarAutoSyncInFlightRef.current ||
+        googleCalendarSyncing
+      ) {
+        return;
+      }
+
+      const now = Date.now();
+      const minimumGapMs = trigger === "visible" ? 20_000 : 55_000;
+
+      if (now - googleCalendarLastAutoSyncAtRef.current < minimumGapMs) {
+        return;
+      }
+
+      googleCalendarAutoSyncInFlightRef.current = true;
+      googleCalendarLastAutoSyncAtRef.current = now;
+      setGoogleCalendarAutoSyncing(true);
+
+      try {
+        const result = await syncChronosGoogleCalendar("pull");
+
+        if (result.status !== "failed") {
+          setGoogleCalendarAutoSyncedAt(new Date().toISOString());
+          await Promise.all([refreshGoogleCalendarStatus(), onRefresh()]);
+        }
+      } catch {
+        // Auto-sync e silencioso para nao atrapalhar a operacao manual da agenda.
+      } finally {
+        googleCalendarAutoSyncInFlightRef.current = false;
+        setGoogleCalendarAutoSyncing(false);
+      }
+    },
+    [
+      googleCalendarStatus?.connection.connected,
+      googleCalendarSyncing,
+      onRefresh,
+      refreshGoogleCalendarStatus,
+    ],
+  );
+
   const handleGoogleCalendarConnect = useCallback(async () => {
     setGoogleCalendarConnecting(true);
     setGoogleCalendarError(null);
@@ -1611,6 +1660,35 @@ function ChronosAgendaScreen({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!googleCalendarStatus?.connection.connected) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) {
+        void runGoogleCalendarAutoSync("interval");
+      }
+    }, 60_000);
+    const handleFocus = () => {
+      void runGoogleCalendarAutoSync("visible");
+    };
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void runGoogleCalendarAutoSync("visible");
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [googleCalendarStatus?.connection.connected, runGoogleCalendarAutoSync]);
 
   return (
     <Surface bordered className="relative grid min-h-[45rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-[#d9e0e7] bg-white">
@@ -1713,6 +1791,8 @@ function ChronosAgendaScreen({
               Fonte atual
             </p>
             <ChronosGoogleCalendarReadiness
+              autoSyncedAt={googleCalendarAutoSyncedAt}
+              autoSyncing={googleCalendarAutoSyncing}
               connecting={googleCalendarConnecting}
               error={googleCalendarError}
               onConnect={handleGoogleCalendarConnect}
@@ -2247,6 +2327,8 @@ function ChronosCalendarEventPopup({
 }
 
 function ChronosGoogleCalendarReadiness({
+  autoSyncedAt,
+  autoSyncing,
   connecting,
   error,
   onConnect,
@@ -2255,6 +2337,8 @@ function ChronosGoogleCalendarReadiness({
   status,
   syncing,
 }: {
+  autoSyncedAt: string | null;
+  autoSyncing: boolean;
   connecting: boolean;
   error: string | null;
   onConnect: () => void;
@@ -2306,6 +2390,11 @@ function ChronosGoogleCalendarReadiness({
         <Badge variant={status.connection.storageReady ? "success" : "warning"}>
           {status.connection.storageReady ? "storage ok" : "migration pendente"}
         </Badge>
+        {status.connection.connected ? (
+          <Badge variant={status.connection.push?.active ? "success" : "info"}>
+            {status.connection.push?.active ? "push ativo" : "polling ativo"}
+          </Badge>
+        ) : null}
         <Badge variant="neutral">{status.provider}</Badge>
       </div>
       {status.connection.calendarId ? (
@@ -2316,6 +2405,29 @@ function ChronosGoogleCalendarReadiness({
       {status.connection.lastSyncedAt ? (
         <p className="m-0">
           Ultimo sync: {formatDateTime(status.connection.lastSyncedAt)}
+        </p>
+      ) : null}
+      {status.connection.push?.lastNotificationAt ? (
+        <p className="m-0">
+          Ultimo aviso Google:{" "}
+          {formatDateTime(status.connection.push.lastNotificationAt)}
+        </p>
+      ) : null}
+      {status.connection.connected ? (
+        <p className="m-0">
+          Auto-sync:{" "}
+          {autoSyncing
+            ? "verificando agora"
+            : autoSyncedAt
+              ? `ultimo em ${formatDateTime(autoSyncedAt)}`
+              : status.connection.push?.active
+                ? "webhook ativo com fallback a cada minuto"
+                : "fallback a cada minuto"}
+        </p>
+      ) : null}
+      {status.connection.push?.lastError ? (
+        <p className="m-0 text-amber-700">
+          Webhook Google: {status.connection.push.lastError}
         </p>
       ) : null}
       {status.missingEnvNames.length > 0 ? (

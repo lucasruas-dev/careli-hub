@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -56,6 +56,9 @@ const googleCalendarDefaultTimezone = chronosDefaultTimeZone;
 const googleCalendarStateTtlMinutes = 15;
 const googleCalendarSyncWindowPastDays = 7;
 const googleCalendarSyncWindowFutureDays = 180;
+const googleCalendarWatchRenewalWindowMs = 24 * 60 * 60_000;
+const googleCalendarWatchTtlMs = 6 * 24 * 60 * 60_000;
+const googleCalendarWebhookPath = "/api/chronos/google-calendar/webhook";
 const maxGoogleCalendarDescriptionLength = 7_500;
 
 type ChronosGoogleCalendarConnectionRow = {
@@ -74,6 +77,15 @@ type ChronosGoogleCalendarConnectionRow = {
   sync_token_status: "active" | "expired" | "missing";
   token_type: string | null;
   updated_at: string;
+  watch_channel_id: string | null;
+  watch_expires_at: string | null;
+  watch_last_error: string | null;
+  watch_last_notification_at: string | null;
+  watch_resource_id: string | null;
+  watch_resource_uri: string | null;
+  watch_started_at: string | null;
+  watch_status: "active" | "error" | "expired" | "missing";
+  watch_token_hash: string | null;
 };
 
 type ChronosGoogleCalendarConnectionInsert =
@@ -309,6 +321,13 @@ type GoogleCalendarEventsListResponse = {
   nextSyncToken?: string;
 };
 
+type GoogleCalendarWatchResponse = {
+  expiration?: number | string;
+  id?: string;
+  resourceId?: string;
+  resourceUri?: string;
+};
+
 type MeetingContext = {
   meeting: ChronosMeetingRow;
   participants: ChronosParticipantRow[];
@@ -320,7 +339,23 @@ type GoogleConnectionLookup = {
   storageReady: boolean;
 };
 
-export async function getChronosGoogleCalendarStatus(): Promise<ChronosGoogleCalendarStatus> {
+class GoogleCalendarApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "GoogleCalendarApiError";
+  }
+}
+
+export async function getChronosGoogleCalendarStatus({
+  baseUrl,
+  ensureWatch = true,
+}: {
+  baseUrl?: string | null;
+  ensureWatch?: boolean;
+} = {}): Promise<ChronosGoogleCalendarStatus> {
   const configStatus = getChronosGoogleCalendarConfigStatus();
   const baseStatus: ChronosGoogleCalendarStatus = {
     ...configStatus,
@@ -366,7 +401,9 @@ export async function getChronosGoogleCalendarStatus(): Promise<ChronosGoogleCal
     };
   }
 
-  if (!lookup.connection) {
+  let connection = lookup.connection;
+
+  if (!connection) {
     return {
       ...baseStatus,
       connection: {
@@ -377,9 +414,15 @@ export async function getChronosGoogleCalendarStatus(): Promise<ChronosGoogleCal
     };
   }
 
+  if (ensureWatch) {
+    connection = await ensureGoogleCalendarWatchForConnection(client, connection, {
+      baseUrl,
+    });
+  }
+
   return {
     ...baseStatus,
-    connection: mapConnectionStatus(lookup.connection, true),
+    connection: mapConnectionStatus(connection, true),
     status: "connected",
   };
 }
@@ -559,7 +602,10 @@ export async function completeChronosGoogleCalendarAuthorization(
       status: "active",
       sync_token_status: "missing",
       token_type: tokenResponse.token_type ?? "Bearer",
-    });
+      watch_status: "missing",
+    })
+    .select("*")
+    .single<ChronosGoogleCalendarConnectionRow>();
 
   if (connectionResult.error) {
     return buildChronosGoogleCalendarRedirect(
@@ -573,6 +619,10 @@ export async function completeChronosGoogleCalendarAuthorization(
     .from("chronos_google_calendar_oauth_states")
     .update({ consumed_at: now })
     .eq("id", oauthState.id);
+
+  await ensureGoogleCalendarWatchForConnection(client, connectionResult.data, {
+    baseUrl: callbackOrigin,
+  });
 
   return buildChronosGoogleCalendarRedirect(
     redirectAfter,
@@ -746,10 +796,12 @@ export async function syncChronosMeetingToGoogleCalendar({
 }
 
 export async function syncChronosGoogleCalendar({
+  baseUrl,
   direction,
   forceFull = false,
   userId,
 }: {
+  baseUrl?: string | null;
   direction: ChronosGoogleCalendarSyncDirection;
   forceFull?: boolean;
   userId?: string | null;
@@ -763,6 +815,8 @@ export async function syncChronosGoogleCalendar({
   const runId = await createSyncRun(client, direction, userId ?? null);
 
   try {
+    await ensureDefaultGoogleCalendarWatch(client, { baseUrl });
+
     const result =
       direction === "pull"
         ? await pullChronosEventsFromGoogleCalendar(
@@ -791,6 +845,104 @@ export async function syncChronosGoogleCalendar({
 
     return failedResult;
   }
+}
+
+export async function handleChronosGoogleCalendarWebhook(request: Request) {
+  const channelId = request.headers.get("x-goog-channel-id")?.trim();
+  const channelToken = request.headers.get("x-goog-channel-token")?.trim();
+  const messageNumber = request.headers.get("x-goog-message-number")?.trim();
+  const resourceState =
+    request.headers.get("x-goog-resource-state")?.trim().toLowerCase() ??
+    "unknown";
+
+  if (!channelId || !channelToken) {
+    return {
+      body: { error: "invalid_google_calendar_webhook", ok: false },
+      status: 400,
+    };
+  }
+
+  const client = createChronosGoogleCalendarClient();
+
+  if (!client) {
+    return {
+      body: { error: "supabase_unconfigured", ok: false },
+      status: 503,
+    };
+  }
+
+  const connectionResult = await client
+    .from("chronos_google_calendar_connections")
+    .select("*")
+    .eq("watch_channel_id", channelId)
+    .eq("status", "active")
+    .maybeSingle<ChronosGoogleCalendarConnectionRow>();
+
+  if (connectionResult.error) {
+    return {
+      body: { error: "google_calendar_watch_lookup_failed", ok: false },
+      status: isGoogleCalendarStorageMissingError(connectionResult.error)
+        ? 503
+        : 400,
+    };
+  }
+
+  const connection = connectionResult.data;
+
+  if (!connection?.watch_token_hash) {
+    return {
+      body: { error: "google_calendar_watch_not_found", ok: false },
+      status: 404,
+    };
+  }
+
+  if (!safeHashEquals(hashSecret(channelToken), connection.watch_token_hash)) {
+    return {
+      body: { error: "google_calendar_watch_unauthorized", ok: false },
+      status: 401,
+    };
+  }
+
+  const notifiedAt = new Date().toISOString();
+  await client
+    .from("chronos_google_calendar_connections")
+    .update({
+      metadata: {
+        ...readRecord(connection.metadata),
+        lastGoogleWebhookMessageNumber: messageNumber ?? null,
+        lastGoogleWebhookState: resourceState,
+      },
+      watch_last_error: null,
+      watch_last_notification_at: notifiedAt,
+      watch_status: "active",
+    })
+    .eq("id", connection.id);
+
+  if (resourceState === "sync") {
+    return {
+      body: {
+        googleCalendar: {
+          resourceState,
+          status: "registered",
+        },
+        ok: true,
+      },
+      status: 200,
+    };
+  }
+
+  const result = await pullChronosEventsFromGoogleCalendar(client, null, false);
+
+  return {
+    body: {
+      googleCalendar: {
+        ...result,
+        resourceState,
+      },
+      ok: result.status !== "failed",
+    },
+    status: result.status === "failed" ? 503 : 200,
+  };
 }
 
 function getChronosGoogleCalendarConfigStatus(): Omit<
@@ -871,16 +1023,171 @@ async function getDefaultGoogleCalendarConnection(
   };
 }
 
+async function ensureDefaultGoogleCalendarWatch(
+  client: ChronosGoogleCalendarClient,
+  options: { baseUrl?: string | null } = {},
+) {
+  const lookup = await getDefaultGoogleCalendarConnection(client);
+
+  if (!lookup.storageReady || !lookup.connection) {
+    return lookup.connection;
+  }
+
+  return ensureGoogleCalendarWatchForConnection(client, lookup.connection, options);
+}
+
+async function ensureGoogleCalendarWatchForConnection(
+  client: ChronosGoogleCalendarClient,
+  connection: ChronosGoogleCalendarConnectionRow,
+  { baseUrl }: { baseUrl?: string | null } = {},
+) {
+  if (!hasGoogleCalendarWatchStorage(connection)) {
+    return {
+      ...connection,
+      watch_last_error:
+        "Migration Chronos Google Agenda webhook ainda nao aplicada no Supabase.",
+      watch_status: "error",
+    } satisfies ChronosGoogleCalendarConnectionRow;
+  }
+
+  const watchStatus = normalizeGoogleCalendarWatchStatus(connection);
+  const expiresAtMs = connection.watch_expires_at
+    ? new Date(connection.watch_expires_at).getTime()
+    : 0;
+
+  if (
+    watchStatus === "active" &&
+    Number.isFinite(expiresAtMs) &&
+    expiresAtMs - Date.now() > googleCalendarWatchRenewalWindowMs
+  ) {
+    return connection;
+  }
+
+  const webhookAddress = new URL(
+    googleCalendarWebhookPath,
+    getAppBaseUrl(baseUrl),
+  ).toString();
+
+  if (!webhookAddress.startsWith("https://")) {
+    return markGoogleCalendarWatchError(
+      client,
+      connection,
+      "Webhook Google Agenda requer URL publica HTTPS.",
+    );
+  }
+
+  try {
+    const accessToken = await refreshGoogleAccessToken(connection);
+
+    if (connection.watch_channel_id && connection.watch_resource_id) {
+      await stopGoogleCalendarWatchChannel({
+        accessToken,
+        channelId: connection.watch_channel_id,
+        resourceId: connection.watch_resource_id,
+      });
+    }
+
+    const channelId = `chronos-${toBase64Url(randomBytes(18))}`;
+    const channelToken = toBase64Url(randomBytes(32));
+    const requestedExpiration = Date.now() + googleCalendarWatchTtlMs;
+    const watch = await startGoogleCalendarWatch({
+      accessToken,
+      calendarId: connection.calendar_id,
+      channelId,
+      expiration: requestedExpiration,
+      token: channelToken,
+      webhookAddress,
+    });
+    const now = new Date().toISOString();
+    const updatePayload: Partial<ChronosGoogleCalendarConnectionRow> = {
+      last_error: null,
+      watch_channel_id: watch.id ?? channelId,
+      watch_expires_at: normalizeGoogleCalendarWatchExpiration(
+        watch.expiration,
+        requestedExpiration,
+      ),
+      watch_last_error: null,
+      watch_resource_id: watch.resourceId ?? null,
+      watch_resource_uri: watch.resourceUri ?? null,
+      watch_started_at: now,
+      watch_status: "active",
+      watch_token_hash: hashSecret(channelToken),
+    };
+    const updateResult = await client
+      .from("chronos_google_calendar_connections")
+      .update(updatePayload)
+      .eq("id", connection.id)
+      .select("*")
+      .single<ChronosGoogleCalendarConnectionRow>();
+
+    if (updateResult.error || !updateResult.data) {
+      if (isGoogleCalendarStorageMissingError(updateResult.error)) {
+        return {
+          ...connection,
+          watch_last_error:
+            "Migration Chronos Google Agenda webhook ainda nao aplicada no Supabase.",
+          watch_status: "error",
+        } satisfies ChronosGoogleCalendarConnectionRow;
+      }
+
+      throw updateResult.error ?? new Error("Falha ao atualizar watch Google.");
+    }
+
+    return updateResult.data;
+  } catch (error) {
+    return markGoogleCalendarWatchError(
+      client,
+      connection,
+      sanitizeGoogleCalendarError(error),
+    );
+  }
+}
+
+async function markGoogleCalendarWatchError(
+  client: ChronosGoogleCalendarClient,
+  connection: ChronosGoogleCalendarConnectionRow,
+  error: string,
+) {
+  const sanitizedError = error.slice(0, 280);
+  const updateResult = await client
+    .from("chronos_google_calendar_connections")
+    .update({
+      watch_last_error: sanitizedError,
+      watch_status: "error",
+    })
+    .eq("id", connection.id)
+    .select("*")
+    .single<ChronosGoogleCalendarConnectionRow>();
+
+  return (
+    updateResult.data ??
+    ({
+      ...connection,
+      watch_last_error: sanitizedError,
+      watch_status: "error",
+    } satisfies ChronosGoogleCalendarConnectionRow)
+  );
+}
+
 function mapConnectionStatus(
   connection: ChronosGoogleCalendarConnectionRow,
   storageReady: boolean,
 ): ChronosGoogleCalendarConnectionStatus {
+  const watchStatus = normalizeGoogleCalendarWatchStatus(connection);
+
   return {
     calendarId: connection.calendar_id,
     connected: true,
     connectedAt: connection.connected_at,
     lastError: connection.last_error,
     lastSyncedAt: connection.last_synced_at,
+    push: {
+      active: watchStatus === "active",
+      expiresAt: connection.watch_expires_at,
+      lastError: connection.watch_last_error,
+      lastNotificationAt: connection.watch_last_notification_at,
+      status: watchStatus,
+    },
     storageReady,
     syncTokenPresent: Boolean(connection.sync_token),
   };
@@ -1146,7 +1453,10 @@ async function googleCalendarFetch<T>(
   const payload = text ? (JSON.parse(text) as unknown) : null;
 
   if (!response.ok) {
-    throw new Error(extractGoogleCalendarError(payload) ?? "Falha Google Agenda.");
+    throw new GoogleCalendarApiError(
+      extractGoogleCalendarError(payload) ?? "Falha Google Agenda.",
+      response.status,
+    );
   }
 
   if (!payload && !options.allowEmpty) {
@@ -1154,6 +1464,60 @@ async function googleCalendarFetch<T>(
   }
 
   return payload as T;
+}
+
+async function startGoogleCalendarWatch({
+  accessToken,
+  calendarId,
+  channelId,
+  expiration,
+  token,
+  webhookAddress,
+}: {
+  accessToken: string;
+  calendarId: string;
+  channelId: string;
+  expiration: number;
+  token: string;
+  webhookAddress: string;
+}) {
+  return googleCalendarFetch<GoogleCalendarWatchResponse>(
+    accessToken,
+    `/calendars/${encodeURIComponent(calendarId)}/events/watch`,
+    {
+      body: JSON.stringify({
+        address: webhookAddress,
+        expiration,
+        id: channelId,
+        token,
+        type: "web_hook",
+      }),
+      method: "POST",
+    },
+  );
+}
+
+async function stopGoogleCalendarWatchChannel({
+  accessToken,
+  channelId,
+  resourceId,
+}: {
+  accessToken: string;
+  channelId: string;
+  resourceId: string;
+}) {
+  await googleCalendarFetch<unknown>(
+    accessToken,
+    "/channels/stop",
+    {
+      body: JSON.stringify({
+        id: channelId,
+        resourceId,
+      }),
+      method: "POST",
+    },
+    { allowEmpty: true },
+  ).catch(() => null);
 }
 
 async function findGoogleCalendarEventLink(
@@ -1344,11 +1708,40 @@ async function pullChronosEventsFromGoogleCalendar(
   }
 
   const accessToken = await refreshGoogleAccessToken(connectionLookup.connection);
-  const listResult = await listGoogleCalendarEvents({
-    accessToken,
-    connection: connectionLookup.connection,
-    forceFull,
-  });
+  let listResult: Awaited<ReturnType<typeof listGoogleCalendarEvents>>;
+
+  try {
+    listResult = await listGoogleCalendarEvents({
+      accessToken,
+      connection: connectionLookup.connection,
+      forceFull,
+    });
+  } catch (error) {
+    if (
+      isGoogleCalendarSyncTokenExpired(error) &&
+      connectionLookup.connection.sync_token &&
+      !forceFull
+    ) {
+      await client
+        .from("chronos_google_calendar_connections")
+        .update({
+          sync_token: null,
+          sync_token_status: "expired",
+        })
+        .eq("id", connectionLookup.connection.id);
+      listResult = await listGoogleCalendarEvents({
+        accessToken,
+        connection: {
+          ...connectionLookup.connection,
+          sync_token: null,
+          sync_token_status: "expired",
+        },
+        forceFull: true,
+      });
+    } else {
+      throw error;
+    }
+  }
   let processed = 0;
   let skipped = 0;
   let synced = 0;
@@ -1847,6 +2240,20 @@ function hashSecret(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function safeHashEquals(left: string, right: string) {
+  try {
+    const leftBuffer = Buffer.from(left, "hex");
+    const rightBuffer = Buffer.from(right, "hex");
+
+    return (
+      leftBuffer.length === rightBuffer.length &&
+      timingSafeEqual(leftBuffer, rightBuffer)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function toBase64Url(value: Buffer) {
   return value
     .toString("base64")
@@ -1861,6 +2268,48 @@ function readRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function normalizeGoogleCalendarWatchStatus(
+  connection: ChronosGoogleCalendarConnectionRow,
+): "active" | "error" | "expired" | "missing" {
+  const status = connection.watch_status ?? "missing";
+  const expiresAt = connection.watch_expires_at
+    ? new Date(connection.watch_expires_at).getTime()
+    : 0;
+
+  if (
+    status === "active" &&
+    Number.isFinite(expiresAt) &&
+    expiresAt > Date.now()
+  ) {
+    return "active";
+  }
+
+  if (status === "active" && expiresAt > 0 && expiresAt <= Date.now()) {
+    return "expired";
+  }
+
+  return status === "error" || status === "expired" ? status : "missing";
+}
+
+function hasGoogleCalendarWatchStorage(
+  connection: ChronosGoogleCalendarConnectionRow,
+) {
+  return (
+    Object.prototype.hasOwnProperty.call(connection, "watch_status") &&
+    Object.prototype.hasOwnProperty.call(connection, "watch_token_hash")
+  );
+}
+
+function normalizeGoogleCalendarWatchExpiration(
+  value: number | string | undefined,
+  fallbackMs: number,
+) {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  const timestamp = Number.isFinite(parsed) && parsed ? parsed : fallbackMs;
+
+  return new Date(timestamp).toISOString();
+}
+
 function isGoogleCalendarStorageMissingError(error: unknown) {
   const maybeError = error as { code?: unknown; message?: unknown };
   const message = typeof maybeError.message === "string" ? maybeError.message : "";
@@ -1871,6 +2320,10 @@ function isGoogleCalendarStorageMissingError(error: unknown) {
     (message.includes("chronos_google_calendar") &&
       (message.includes("does not exist") || message.includes("schema cache")))
   );
+}
+
+function isGoogleCalendarSyncTokenExpired(error: unknown) {
+  return error instanceof GoogleCalendarApiError && error.status === 410;
 }
 
 function extractGoogleCalendarError(payload: unknown) {

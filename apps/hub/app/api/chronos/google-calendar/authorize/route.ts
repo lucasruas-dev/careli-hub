@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
     return authorization.response;
   }
 
-  const googleCalendar = await getChronosGoogleCalendarStatus();
+  const googleCalendar = await getChronosGoogleCalendarStatus({
+    baseUrl: request.nextUrl.origin,
+  });
 
   if (!googleCalendar.configured) {
     return Response.json(
