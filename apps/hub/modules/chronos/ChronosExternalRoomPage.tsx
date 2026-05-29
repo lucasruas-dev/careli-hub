@@ -76,6 +76,11 @@ type ChronosRoomSignal = {
   toParticipantId?: string;
 };
 
+type ChronosPeerNegotiationState = {
+  ignoreOffer: boolean;
+  makingOffer: boolean;
+};
+
 type ChronosLeaveRoomOptions = {
   closeMeeting?: boolean;
   notifyPeers?: boolean;
@@ -141,7 +146,7 @@ const defaultDeviceValue = "__default__";
 const chronosSignalEvent = "chronos-room-signal";
 const peerConnectionConfig = {
   iceCandidatePoolSize: 4,
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: createChronosIceServers(),
 } satisfies RTCConfiguration;
 const chronosVirtualBackgroundFps = 24;
 const chronosVirtualBackgroundModelUrl =
@@ -206,7 +211,13 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const localStreamRef = useRef<MediaStream | null>(null);
   const localParticipantRef = useRef<ChronosRoomParticipant | null>(null);
   const meetingIdRef = useRef("");
+  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(
+    new Map(),
+  );
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerNegotiationStatesRef = useRef<
+    Map<string, ChronosPeerNegotiationState>
+  >(new Map());
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingStartedAtRef = useRef(0);
@@ -315,16 +326,36 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     setVideoInputs(createDeviceOptions(devices, "videoinput", "Camera"));
   }, []);
 
-  const replaceVideoTrackForPeers = useCallback(
-    (track: MediaStreamTrack | null) => {
+  const replaceMediaTrackForPeers = useCallback(
+    (kind: "audio" | "video", track: MediaStreamTrack | null) => {
       peerConnectionsRef.current.forEach((peerConnection) => {
-        const sender = peerConnection
-          .getSenders()
-          .find((currentSender) => currentSender.track?.kind === "video");
+        ensureChronosPeerTransceiver(peerConnection, kind);
+        const sender = findChronosPeerSender(peerConnection, kind);
 
         if (sender) {
           void sender.replaceTrack(track);
         }
+      });
+    },
+    [],
+  );
+  const replaceVideoTrackForPeers = useCallback(
+    (track: MediaStreamTrack | null) => {
+      replaceMediaTrackForPeers("video", track);
+    },
+    [replaceMediaTrackForPeers],
+  );
+  const replaceAudioTrackForPeers = useCallback(
+    (track: MediaStreamTrack | null) => {
+      replaceMediaTrackForPeers("audio", track);
+    },
+    [replaceMediaTrackForPeers],
+  );
+
+  const syncLocalTracksForPeers = useCallback(
+    (stream: MediaStream, options?: { includeVideo?: boolean }) => {
+      peerConnectionsRef.current.forEach((peerConnection) => {
+        attachChronosLocalTracks(peerConnection, stream, options);
       });
     },
     [],
@@ -362,6 +393,11 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       nextStream.getAudioTracks().forEach((track) => {
         track.enabled = !isMutedRef.current;
       });
+      if (screenTrackRef.current) {
+        replaceAudioTrackForPeers(nextStream.getAudioTracks()[0] ?? null);
+      } else {
+        syncLocalTracksForPeers(nextStream);
+      }
       setLocalStream(nextStream);
       if (localParticipantRef.current && meetingIdRef.current && !screenTrackRef.current) {
         const nextParticipant = {
@@ -370,7 +406,6 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
           stream: nextStream,
         };
 
-        replaceVideoTrackForPeers(nextStream.getVideoTracks()[0] ?? null);
         localParticipantRef.current = nextParticipant;
         setLocalParticipant(nextParticipant);
       }
@@ -398,7 +433,8 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     guestBackgroundDataUrl,
     guestBackgroundMode,
     refreshDevices,
-    replaceVideoTrackForPeers,
+    replaceAudioTrackForPeers,
+    syncLocalTracksForPeers,
     stopCurrentLocalMedia,
     videoInputId,
   ]);
@@ -471,16 +507,19 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         remoteParticipantId,
       );
 
-      if (currentConnection) {
+      if (currentConnection && currentConnection.connectionState !== "closed") {
         return currentConnection;
       }
 
       const peerConnection = new RTCPeerConnection(peerConnectionConfig);
       const stream = localStreamRef.current;
 
-      stream?.getTracks().forEach((track) => {
-        peerConnection.addTrack(track, stream);
-      });
+      ensureChronosPeerTransceiver(peerConnection, "audio");
+      ensureChronosPeerTransceiver(peerConnection, "video");
+
+      if (stream) {
+        attachChronosLocalTracks(peerConnection, stream);
+      }
 
       peerConnection.addEventListener("icecandidate", (event) => {
         const participant = localParticipantRef.current;
@@ -501,11 +540,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       });
 
       peerConnection.addEventListener("track", (event) => {
-        const [remoteStream] = event.streams;
-
-        if (!remoteStream) {
-          return;
-        }
+        const incomingTracks = event.streams[0]?.getTracks() ?? [event.track];
 
         setRemoteParticipants((currentParticipants) => ({
           ...currentParticipants,
@@ -517,9 +552,22 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
               isMuted: false,
               isScreenSharing: false,
             }),
-            stream: remoteStream,
+            stream: mergeChronosMediaTracks(
+              currentParticipants[remoteParticipantId]?.stream,
+              incomingTracks,
+            ),
           },
         }));
+      });
+      peerConnection.addEventListener("connectionstatechange", () => {
+        if (peerConnection.connectionState === "failed") {
+          peerConnection.restartIce?.();
+        }
+
+        if (peerConnection.connectionState === "closed") {
+          pendingIceCandidatesRef.current.delete(remoteParticipantId);
+          peerNegotiationStatesRef.current.delete(remoteParticipantId);
+        }
       });
 
       peerConnectionsRef.current.set(remoteParticipantId, peerConnection);
@@ -530,7 +578,10 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   );
 
   const createOfferForParticipant = useCallback(
-    async (remoteParticipantId: string) => {
+    async (
+      remoteParticipantId: string,
+      options?: { iceRestart?: boolean },
+    ) => {
       const participant = localParticipantRef.current;
       const currentMeetingId = meetingIdRef.current;
 
@@ -538,20 +589,68 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         return;
       }
 
+      const negotiationState = getChronosPeerNegotiationState(
+        peerNegotiationStatesRef.current,
+        remoteParticipantId,
+      );
       const peerConnection = createPeerConnection(remoteParticipantId);
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
 
-      sendSignal({
-        description: offer,
-        fromParticipantId: participant.id,
-        kind: "offer",
-        meetingId: currentMeetingId,
-        roomSlug: room.slug,
-        toParticipantId: remoteParticipantId,
-      });
+      if (negotiationState.makingOffer) {
+        return;
+      }
+
+      try {
+        negotiationState.makingOffer = true;
+        const stream = localStreamRef.current;
+
+        if (stream) {
+          attachChronosLocalTracks(peerConnection, stream);
+        }
+
+        const offer = await peerConnection.createOffer({
+          iceRestart: Boolean(options?.iceRestart),
+        });
+        await peerConnection.setLocalDescription(offer);
+
+        if (!peerConnection.localDescription) {
+          return;
+        }
+
+        sendSignal({
+          description: {
+            sdp: peerConnection.localDescription.sdp,
+            type: peerConnection.localDescription.type,
+          },
+          fromParticipantId: participant.id,
+          kind: "offer",
+          meetingId: currentMeetingId,
+          roomSlug: room.slug,
+          toParticipantId: remoteParticipantId,
+        });
+      } finally {
+        negotiationState.makingOffer = false;
+      }
     },
     [createPeerConnection, room.slug, sendSignal],
+  );
+
+  const flushPendingIceCandidates = useCallback(
+    async (remoteParticipantId: string) => {
+      const peerConnection = peerConnectionsRef.current.get(remoteParticipantId);
+      const candidates =
+        pendingIceCandidatesRef.current.get(remoteParticipantId) ?? [];
+
+      if (!peerConnection?.remoteDescription || candidates.length === 0) {
+        return;
+      }
+
+      pendingIceCandidatesRef.current.delete(remoteParticipantId);
+
+      for (const candidate of candidates) {
+        await peerConnection.addIceCandidate(candidate);
+      }
+    },
+    [],
   );
 
   const handleSignal = useCallback(
@@ -588,10 +687,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       }
 
       if (signal.kind === "join") {
-        if (participant.id < remoteParticipantId) {
-          await createOfferForParticipant(remoteParticipantId);
-        }
-
+        await createOfferForParticipant(remoteParticipantId);
         return;
       }
 
@@ -641,12 +737,41 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
       if (signal.kind === "offer" && signal.description) {
         const peerConnection = createPeerConnection(remoteParticipantId);
+        const negotiationState = getChronosPeerNegotiationState(
+          peerNegotiationStatesRef.current,
+          remoteParticipantId,
+        );
+        const isPolitePeer = participant.id > remoteParticipantId;
+        const offerCollision =
+          negotiationState.makingOffer ||
+          peerConnection.signalingState !== "stable";
+
+        negotiationState.ignoreOffer = !isPolitePeer && offerCollision;
+
+        if (negotiationState.ignoreOffer) {
+          return;
+        }
+
         await peerConnection.setRemoteDescription(signal.description);
+        await flushPendingIceCandidates(remoteParticipantId);
+        const stream = localStreamRef.current;
+
+        if (stream) {
+          attachChronosLocalTracks(peerConnection, stream);
+        }
+
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
+        if (!peerConnection.localDescription) {
+          return;
+        }
+
         sendSignal({
-          description: answer,
+          description: {
+            sdp: peerConnection.localDescription.sdp,
+            type: peerConnection.localDescription.type,
+          },
           fromParticipantId: participant.id,
           kind: "answer",
           meetingId: currentMeetingId,
@@ -658,16 +783,46 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
       if (signal.kind === "answer" && signal.description) {
         const peerConnection = createPeerConnection(remoteParticipantId);
+        if (peerConnection.signalingState === "stable") {
+          return;
+        }
+
         await peerConnection.setRemoteDescription(signal.description);
+        await flushPendingIceCandidates(remoteParticipantId);
         return;
       }
 
       if (signal.kind === "ice-candidate" && signal.candidate) {
         const peerConnection = createPeerConnection(remoteParticipantId);
+        const negotiationState = getChronosPeerNegotiationState(
+          peerNegotiationStatesRef.current,
+          remoteParticipantId,
+        );
+
+        if (negotiationState.ignoreOffer) {
+          return;
+        }
+
+        if (!peerConnection.remoteDescription) {
+          const candidates =
+            pendingIceCandidatesRef.current.get(remoteParticipantId) ?? [];
+          pendingIceCandidatesRef.current.set(remoteParticipantId, [
+            ...candidates,
+            signal.candidate,
+          ]);
+          return;
+        }
+
         await peerConnection.addIceCandidate(signal.candidate);
       }
     },
-    [createOfferForParticipant, createPeerConnection, room.slug, sendSignal],
+    [
+      createOfferForParticipant,
+      createPeerConnection,
+      flushPendingIceCandidates,
+      room.slug,
+      sendSignal,
+    ],
   );
 
   useEffect(() => {
@@ -1113,10 +1268,10 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
                 fileName: recordingName,
               });
             } else {
-              await postChronosRecordingStatus("available");
+              await postChronosRecordingStatus("failed");
             }
           } else {
-            await postChronosRecordingStatus("available");
+            await postChronosRecordingStatus("failed");
           }
         } finally {
           recordingChunksRef.current = [];
@@ -1165,39 +1320,146 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     setRecordingStorageStatus("uploading");
 
     try {
-      const formData = new FormData();
       const recordingFile = new File([blob], fileName, {
         type: blob.type || "video/webm",
       });
+      const uploadTarget = await prepareChronosRecordingUpload({
+        durationSeconds,
+        fileName,
+        mimeType: recordingFile.type || "video/webm",
+        sizeBytes: recordingFile.size,
+      });
+      const client = getHubSupabaseClient();
 
-      formData.set("durationSeconds", String(durationSeconds));
-      formData.set("file", recordingFile);
-      formData.set("fileName", fileName);
-      formData.set("meetingId", meetingId);
-      formData.set("participantId", localParticipant.id);
-
-      const response = await fetch(
-        `/api/chronos/public/rooms/${room.slug}/recording/upload`,
-        {
-          body: formData,
-          cache: "no-store",
-          method: "POST",
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Chronos recording upload failed");
+      if (!client) {
+        throw new Error("Chronos Supabase client unavailable");
       }
+
+      const uploadResult = await client.storage
+        .from(uploadTarget.bucket)
+        .uploadToSignedUrl(
+          uploadTarget.path,
+          uploadTarget.token,
+          recordingFile,
+          {
+            contentType: recordingFile.type || "video/webm",
+          },
+        );
+
+      if (uploadResult.error) {
+        throw uploadResult.error;
+      }
+
+      await completeChronosRecordingUpload({
+        durationSeconds,
+        fileName,
+        mimeType: recordingFile.type || "video/webm",
+        sizeBytes: recordingFile.size,
+        storageBucket: uploadTarget.bucket,
+        storagePath: uploadTarget.path,
+      });
 
       setRecordingStorageStatus("saved");
     } catch {
       setRecordingStorageStatus("failed");
-      await postChronosRecordingStatus("available");
+      await postChronosRecordingStatus("failed");
+    }
+  }
+
+  async function prepareChronosRecordingUpload({
+    durationSeconds,
+    fileName,
+    mimeType,
+    sizeBytes,
+  }: {
+    durationSeconds: number;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+  }) {
+    const response = await fetch(
+      `/api/chronos/public/rooms/${room.slug}/recording/upload-url`,
+      {
+        body: JSON.stringify({
+          durationSeconds,
+          fileName,
+          meetingId,
+          mimeType,
+          participantId: localParticipant?.id,
+          sizeBytes,
+        }),
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Chronos recording upload URL failed");
+    }
+
+    const payload = (await response.json()) as Partial<{
+      bucket: string;
+      path: string;
+      token: string;
+    }>;
+
+    if (!payload.bucket || !payload.path || !payload.token) {
+      throw new Error("Chronos recording upload URL invalid");
+    }
+
+    return {
+      bucket: payload.bucket,
+      path: payload.path,
+      token: payload.token,
+    };
+  }
+
+  async function completeChronosRecordingUpload({
+    durationSeconds,
+    fileName,
+    mimeType,
+    sizeBytes,
+    storageBucket,
+    storagePath,
+  }: {
+    durationSeconds: number;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    storageBucket: string;
+    storagePath: string;
+  }) {
+    const response = await fetch(
+      `/api/chronos/public/rooms/${room.slug}/recording/upload-complete`,
+      {
+        body: JSON.stringify({
+          durationSeconds,
+          fileName,
+          meetingId,
+          mimeType,
+          participantId: localParticipant?.id,
+          sizeBytes,
+          storageBucket,
+          storagePath,
+        }),
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Chronos recording upload completion failed");
     }
   }
 
   async function postChronosRecordingStatus(
-    status: "available" | "recording",
+    status: "available" | "failed" | "recording",
   ) {
     if (!meetingId || !localParticipant) {
       return;
@@ -1994,6 +2256,8 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
     peerConnection?.close();
     peerConnectionsRef.current.delete(participantId);
+    pendingIceCandidatesRef.current.delete(participantId);
+    peerNegotiationStatesRef.current.delete(participantId);
   }
 
   function closeAllPeerConnections() {
@@ -2001,7 +2265,131 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       peerConnection.close();
     });
     peerConnectionsRef.current.clear();
+    pendingIceCandidatesRef.current.clear();
+    peerNegotiationStatesRef.current.clear();
   }
+}
+
+function createChronosIceServers(): RTCIceServer[] {
+  const stunServers: RTCIceServer[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:openrelay.metered.ca:80" },
+  ];
+  const configuredTurnUrls = process.env.NEXT_PUBLIC_PULSEX_TURN_URLS?.split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  const configuredTurnUsername =
+    process.env.NEXT_PUBLIC_PULSEX_TURN_USERNAME?.trim();
+  const configuredTurnCredential =
+    process.env.NEXT_PUBLIC_PULSEX_TURN_CREDENTIAL?.trim();
+
+  if (
+    configuredTurnUrls?.length &&
+    configuredTurnUsername &&
+    configuredTurnCredential
+  ) {
+    return [
+      ...stunServers,
+      {
+        credential: configuredTurnCredential,
+        username: configuredTurnUsername,
+        urls: configuredTurnUrls,
+      },
+    ];
+  }
+
+  return [
+    ...stunServers,
+    {
+      credential: "openrelayproject",
+      username: "openrelayproject",
+      urls: [
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:443",
+        "turn:openrelay.metered.ca:443?transport=tcp",
+      ],
+    },
+  ];
+}
+
+function getChronosPeerNegotiationState(
+  states: Map<string, ChronosPeerNegotiationState>,
+  remoteParticipantId: string,
+) {
+  const existingState = states.get(remoteParticipantId);
+
+  if (existingState) {
+    return existingState;
+  }
+
+  const nextState = {
+    ignoreOffer: false,
+    makingOffer: false,
+  };
+
+  states.set(remoteParticipantId, nextState);
+
+  return nextState;
+}
+
+function ensureChronosPeerTransceiver(
+  peerConnection: RTCPeerConnection,
+  kind: "audio" | "video",
+) {
+  const hasTransceiver = peerConnection.getTransceivers().some((transceiver) => {
+    const senderKind = transceiver.sender.track?.kind;
+    const receiverKind = transceiver.receiver.track?.kind;
+
+    return senderKind === kind || receiverKind === kind;
+  });
+
+  if (!hasTransceiver) {
+    peerConnection.addTransceiver(kind, { direction: "sendrecv" });
+  }
+}
+
+function findChronosPeerSender(
+  peerConnection: RTCPeerConnection,
+  kind: "audio" | "video",
+) {
+  return (
+    peerConnection.getSenders().find((sender) => sender.track?.kind === kind) ??
+    peerConnection
+      .getTransceivers()
+      .find((transceiver) => transceiver.receiver.track?.kind === kind)?.sender ??
+    null
+  );
+}
+
+function attachChronosLocalTracks(
+  peerConnection: RTCPeerConnection,
+  stream: MediaStream,
+  options?: { includeVideo?: boolean },
+) {
+  const includeVideo = options?.includeVideo !== false;
+  const audioTrack = stream.getAudioTracks()[0] ?? null;
+  const videoTrack = includeVideo ? (stream.getVideoTracks()[0] ?? null) : null;
+
+  ensureChronosPeerTransceiver(peerConnection, "audio");
+  ensureChronosPeerTransceiver(peerConnection, "video");
+
+  void findChronosPeerSender(peerConnection, "audio")?.replaceTrack(audioTrack);
+  void findChronosPeerSender(peerConnection, "video")?.replaceTrack(videoTrack);
+}
+
+function mergeChronosMediaTracks(
+  currentStream: MediaStream | null | undefined,
+  incomingTracks: MediaStreamTrack[],
+) {
+  const nextStream = new MediaStream(currentStream?.getTracks() ?? []);
+
+  incomingTracks.forEach((track) => {
+    if (!nextStream.getTracks().some((currentTrack) => currentTrack.id === track.id)) {
+      nextStream.addTrack(track);
+    }
+  });
+
+  return nextStream;
 }
 
 function createDeviceOptions(
@@ -2042,7 +2430,7 @@ async function requestChronosRoomMedia({
 
 async function requestChronosAudioTrack(audioInputId: string) {
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: createDeviceConstraint(audioInputId),
+    audio: createAudioDeviceConstraint(audioInputId),
     video: false,
   });
   const audioTrack = stream.getAudioTracks()[0];
@@ -2434,14 +2822,21 @@ function applyChronosPersonMask({
   }
 }
 
-function createDeviceConstraint(deviceId: string) {
+function createAudioDeviceConstraint(deviceId: string): MediaTrackConstraints {
+  const baseConstraint = {
+    autoGainControl: true,
+    echoCancellation: true,
+    noiseSuppression: true,
+  } satisfies MediaTrackConstraints;
+
   return deviceId && deviceId !== defaultDeviceValue
     ? {
+        ...baseConstraint,
         deviceId: {
           exact: deviceId,
         },
       }
-    : true;
+    : baseConstraint;
 }
 
 function createVideoDeviceConstraint(deviceId: string): MediaTrackConstraints {

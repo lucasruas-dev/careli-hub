@@ -341,7 +341,7 @@ type NormalizedChronosPublicRecordingInput = {
   durationSeconds?: number;
   meetingId: string;
   participantId: string;
-  status: Extract<ChronosCaptureStatus, "available" | "recording">;
+  status: Extract<ChronosCaptureStatus, "available" | "failed" | "recording">;
 };
 
 type NormalizedChronosPublicRecordingUploadInput = {
@@ -353,6 +353,21 @@ type NormalizedChronosPublicRecordingUploadInput = {
   participantId: string;
   sizeBytes: number;
 };
+
+type NormalizedChronosPublicRecordingUploadUrlInput = {
+  durationSeconds?: number;
+  fileName: string;
+  meetingId: string;
+  mimeType: string;
+  participantId: string;
+  sizeBytes: number;
+};
+
+type NormalizedChronosPublicRecordingUploadCompletionInput =
+  NormalizedChronosPublicRecordingUploadUrlInput & {
+    storageBucket: string;
+    storagePath: string;
+  };
 
 type NormalizedChronosPublicChatInput = {
   clientMessageId?: string;
@@ -1438,6 +1453,155 @@ export async function markChronosPublicRecording({
   });
 
   return { ok: true, status: normalizedInput.status };
+}
+
+export async function prepareChronosPublicRecordingUpload({
+  input,
+  roomSlug,
+}: {
+  input: unknown;
+  roomSlug: string;
+}) {
+  const normalizedInput = normalizePublicRecordingUploadUrlInput(input);
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    throw new Error(
+      "Chronos requer Supabase server-side configurado para preparar gravacoes.",
+    );
+  }
+
+  const { meeting } = await getChronosPublicMeetingContext({
+    client,
+    meetingId: normalizedInput.meetingId,
+    roomSlug: slug,
+  });
+  const storagePath = buildChronosRecordingStoragePath({
+    fileName: normalizedInput.fileName,
+    meetingId: meeting.id,
+    participantId: normalizedInput.participantId,
+    roomSlug: slug,
+  });
+  const { data, error } = await client.storage
+    .from(chronosDriveStorageBucket)
+    .createSignedUploadUrl(storagePath);
+
+  if (error || !data?.path || !data.token) {
+    throw error ?? new Error("Nao foi possivel preparar upload Chronos.");
+  }
+
+  return {
+    bucket: chronosDriveStorageBucket,
+    path: data.path,
+    token: data.token,
+  };
+}
+
+export async function completeChronosPublicRecordingUpload({
+  input,
+  roomSlug,
+}: {
+  input: unknown;
+  roomSlug: string;
+}) {
+  const normalizedInput = normalizePublicRecordingUploadCompletionInput(input);
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    throw new Error(
+      "Chronos requer Supabase server-side configurado para finalizar gravacoes.",
+    );
+  }
+
+  const { meeting } = await getChronosPublicMeetingContext({
+    client,
+    meetingId: normalizedInput.meetingId,
+    roomSlug: slug,
+  });
+
+  assertChronosRecordingStorageTarget({
+    bucket: normalizedInput.storageBucket,
+    meetingId: meeting.id,
+    participantId: normalizedInput.participantId,
+    roomSlug: slug,
+    storagePath: normalizedInput.storagePath,
+  });
+  await assertChronosRecordingStorageObjectExists({
+    bucket: normalizedInput.storageBucket,
+    client,
+    storagePath: normalizedInput.storagePath,
+  });
+
+  const existingRecordingResult = await client
+    .from("chronos_recordings")
+    .select("*")
+    .eq("storage_bucket", normalizedInput.storageBucket)
+    .eq("storage_path", normalizedInput.storagePath)
+    .maybeSingle<ChronosRecordingRow>();
+
+  if (existingRecordingResult.error) {
+    throw existingRecordingResult.error;
+  }
+
+  const now = new Date().toISOString();
+  const meetingResult = await client
+    .from("chronos_meetings")
+    .update({ recording_status: "available" })
+    .eq("id", meeting.id);
+
+  if (meetingResult.error) {
+    throw meetingResult.error;
+  }
+
+  if (existingRecordingResult.data) {
+    const [recording] = await hydrateChronosRecordingUrls(client, [
+      mapRecordingRow(existingRecordingResult.data),
+    ]);
+
+    return { ok: true, recording };
+  }
+
+  const recordingResult = await client
+    .from("chronos_recordings")
+    .insert({
+      duration_seconds: normalizedInput.durationSeconds ?? null,
+      file_name: normalizedInput.fileName,
+      meeting_id: meeting.id,
+      metadata: {
+        fileName: normalizedInput.fileName,
+        mimeType: normalizedInput.mimeType,
+        participantId: normalizedInput.participantId,
+        sizeBytes: normalizedInput.sizeBytes,
+        source: "chronos-external-room-storage-direct",
+      },
+      mime_type: normalizedInput.mimeType,
+      size_bytes: normalizedInput.sizeBytes,
+      status: "available",
+      stopped_at: now,
+      storage_bucket: normalizedInput.storageBucket,
+      storage_path: normalizedInput.storagePath,
+      uploaded_at: now,
+    })
+    .select("*")
+    .single<ChronosRecordingRow>();
+
+  if (recordingResult.error) {
+    throw recordingResult.error;
+  }
+
+  await insertTimelineEvent(client, {
+    eventType: "recording_stopped",
+    meetingId: meeting.id,
+    title: "Gravacao salva no Chronos Drive",
+  });
+
+  const [recording] = await hydrateChronosRecordingUrls(client, [
+    mapRecordingRow(recordingResult.data),
+  ]);
+
+  return { ok: true, recording };
 }
 
 export async function uploadChronosPublicRecording({
@@ -2683,7 +2847,7 @@ function normalizePublicRecordingInput(
     throw new Error("Reuniao ou participante Chronos nao informado.");
   }
 
-  if (status !== "available" && status !== "recording") {
+  if (status !== "available" && status !== "failed" && status !== "recording") {
     throw new Error("Status de gravacao Chronos invalido.");
   }
 
@@ -2729,6 +2893,67 @@ function normalizePublicRecordingUploadInput(
     mimeType: sanitizeOptionalText(file.type, 120) ?? "video/webm",
     participantId,
     sizeBytes: file.size,
+  };
+}
+
+function normalizePublicRecordingUploadUrlInput(
+  input: unknown,
+): NormalizedChronosPublicRecordingUploadUrlInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe os dados da gravacao Chronos.");
+  }
+
+  const maybeInput =
+    input as Partial<NormalizedChronosPublicRecordingUploadUrlInput>;
+  const meetingId = sanitizeText(maybeInput.meetingId, 80);
+  const participantId = sanitizeText(maybeInput.participantId, 80);
+  const fileName = sanitizeChronosFileName(
+    sanitizeOptionalText(maybeInput.fileName, 180) ?? "gravacao-chronos.webm",
+  );
+  const mimeType =
+    sanitizeOptionalText(maybeInput.mimeType, 120) ?? "video/webm";
+  const sizeBytes =
+    typeof maybeInput.sizeBytes === "number" && Number.isFinite(maybeInput.sizeBytes)
+      ? maybeInput.sizeBytes
+      : 0;
+
+  if (!meetingId || !participantId) {
+    throw new Error("Reuniao ou participante Chronos nao informado.");
+  }
+
+  if (sizeBytes <= 0 || sizeBytes > maxChronosRecordingUploadBytes) {
+    throw new Error("Arquivo de gravacao Chronos fora do limite permitido.");
+  }
+
+  return {
+    durationSeconds: normalizeOptionalDurationSeconds(
+      maybeInput.durationSeconds,
+    ),
+    fileName,
+    meetingId,
+    mimeType,
+    participantId,
+    sizeBytes,
+  };
+}
+
+function normalizePublicRecordingUploadCompletionInput(
+  input: unknown,
+): NormalizedChronosPublicRecordingUploadCompletionInput {
+  const normalizedInput = normalizePublicRecordingUploadUrlInput(input);
+  const maybeInput =
+    input as Partial<NormalizedChronosPublicRecordingUploadCompletionInput>;
+  const storageBucket = sanitizeText(maybeInput.storageBucket, 80);
+  const storagePath = sanitizeText(maybeInput.storagePath, 500);
+
+  if (!storageBucket || !storagePath) {
+    throw new Error("Arquivo de gravacao Chronos nao confirmado.");
+  }
+
+  return {
+    ...normalizedInput,
+    storageBucket,
+    storagePath,
   };
 }
 
@@ -4257,6 +4482,63 @@ function buildChronosRecordingStoragePath({
     sanitizeChronosFileName(meetingId),
     `${timestamp}-${sanitizeChronosFileName(participantId)}-${fileName}`,
   ].join("/");
+}
+
+function assertChronosRecordingStorageTarget({
+  bucket,
+  meetingId,
+  participantId,
+  roomSlug,
+  storagePath,
+}: {
+  bucket: string;
+  meetingId: string;
+  participantId: string;
+  roomSlug: string;
+  storagePath: string;
+}) {
+  const expectedPrefix = [
+    "recordings",
+    normalizeRoomSlug(roomSlug, "sala-chronos"),
+    sanitizeChronosFileName(meetingId),
+    "",
+  ].join("/");
+  const participantMarker = `-${sanitizeChronosFileName(participantId)}-`;
+
+  if (
+    bucket !== chronosDriveStorageBucket ||
+    !storagePath.startsWith(expectedPrefix) ||
+    !storagePath.includes(participantMarker)
+  ) {
+    throw new Error("Destino da gravacao Chronos invalido.");
+  }
+}
+
+async function assertChronosRecordingStorageObjectExists({
+  bucket,
+  client,
+  storagePath,
+}: {
+  bucket: string;
+  client: ChronosClient;
+  storagePath: string;
+}) {
+  const lastSlashIndex = storagePath.lastIndexOf("/");
+  const folderPath =
+    lastSlashIndex > 0 ? storagePath.slice(0, lastSlashIndex) : "";
+  const fileName =
+    lastSlashIndex > 0 ? storagePath.slice(lastSlashIndex + 1) : storagePath;
+  const { data, error } = await client.storage
+    .from(bucket)
+    .list(folderPath, { limit: 100, search: fileName });
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data?.some((object) => object.name === fileName)) {
+    throw new Error("Arquivo de gravacao Chronos ainda nao esta no Storage.");
+  }
 }
 
 function isChronosUploadFile(input: unknown): input is File {

@@ -20953,3 +20953,38 @@ Conclusao:
 - Hotfix Chronos publicado em producao sem substituir o recorte vigente.
 - Sala publica, invite Google, fuso e filtro de agenda individual receberam correcoes minimas e rastreadas.
 - Proximo passo e Lucas criar/atualizar um evento Chronos real e confirmar invite, horario e acesso externo.
+
+## 2026-05-29 - Z29-20260529-003-CHRONOS-HERMES-MEDIA-STABILITY
+
+Status: EM CORRECAO VALIDADA LOCALMENTE / AGUARDANDO ORDEM DE PUBLICACAO DO LUCAS.
+
+Resumo:
+- Lucas reportou instabilidade em chamadas com mais de duas pessoas no Chronos/Hermes e gravacoes do Chronos Drive presas como `Video em processamento`.
+- O recorte foi separado em worktree limpo a partir da base de producao, sem publicar do root misto e sem alterar layout/UX das telas.
+
+Escopo:
+- Chronos sala externa: malha WebRTC ajustada com TURN, transceivers audio/video, fila de candidatos ICE, tratamento de colisao de offer/answer e sincronizacao de tracks locais.
+- Hermes/PulseX chamada: audio reforcado com echo cancellation/noise suppression/auto gain e conexao nao e mais encerrada no estado transitorio `disconnected`.
+- Chronos Drive: gravacoes passam a usar upload direto assinado para Supabase Storage e finalizacao separada, evitando enviar arquivos grandes pela funcao Vercel.
+- Fallback de gravacao: falha de upload ou blob vazio deixa de marcar video como `available` sem arquivo.
+
+Supabase:
+- Auditoria confirmou bucket privado `chronos-drive` existente e 3 gravacoes `available` sem `storage_path`.
+- Correcao de dados aplicada: 3 gravacoes orfas sem arquivo foram marcadas como `failed`; 1 reuniao sem gravacao armazenada foi ajustada para `recording_status=failed`.
+- Nao houve alteracao de schema, bucket, policy, secret ou env.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de root/Turbopack/NFT fora do recorte.
+
+Riscos e acompanhamento:
+- Videos antigos sem `storage_path` nao sao recuperaveis pelo servidor porque o arquivo nao chegou ao Storage; a correcao impede novos falsos positivos.
+- Validacao funcional completa ainda precisa de teste real com 3+ participantes e nova gravacao curta, antes de publicar em producao.
+- Publicacao segue bloqueada ate Lucas autorizar o deploy conjunto com o recorte da Athena.
+
+Conclusao:
+- O recorte tecnico esta validado localmente e preparado para teste funcional.
+- A causa mais provavel do Drive era upload grande passando pela API da Vercel; o novo fluxo envia direto ao Supabase Storage por URL assinada.
+- A causa mais provavel das chamadas era negociacao WebRTC fragil em grupo; o Chronos agora segue padrao mais robusto para offer/answer e ICE.

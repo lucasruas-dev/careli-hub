@@ -521,7 +521,6 @@ export function CallPanel({
       peerConnection.onconnectionstatechange = () => {
         if (
           peerConnection.connectionState === "closed" ||
-          peerConnection.connectionState === "disconnected" ||
           peerConnection.connectionState === "failed"
         ) {
           closePeerConnection(remoteUserId);
@@ -1368,7 +1367,7 @@ async function requestCallMedia({
 
 async function requestCallAudioTrack(audioInputId: string) {
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: createDeviceConstraint(audioInputId),
+    audio: createAudioDeviceConstraint(audioInputId),
     video: false,
   });
 
@@ -1470,6 +1469,23 @@ function createDeviceConstraint(
   return deviceId === defaultDeviceValue
     ? true
     : {
+        deviceId: {
+          exact: deviceId,
+        },
+      };
+}
+
+function createAudioDeviceConstraint(deviceId: string): MediaTrackConstraints {
+  const baseConstraints: MediaTrackConstraints = {
+    autoGainControl: true,
+    echoCancellation: true,
+    noiseSuppression: true,
+  };
+
+  return deviceId === defaultDeviceValue
+    ? baseConstraints
+    : {
+        ...baseConstraints,
         deviceId: {
           exact: deviceId,
         },
