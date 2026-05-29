@@ -2133,3 +2133,51 @@ Registro de producao:
 - Registro estruturado: sync oficial do Operations Center em Production concluiu com `recordsTotal=456`, `recordsUpserted=456` e `releasesUpserted=66`.
 - Observacao de smoke: `POST /api/chronos/google-calendar/sync` sem sessao nao foi executado no fechamento porque a revisao automatica de seguranca bloqueou POST em producao; validacoes nao destrutivas foram priorizadas.
 - Rollback: promover `dpl_6eqx6sAfoV8kLvG3hJTtYBkUHTPw` para regressao critica de codigo; rollback de schema somente com autorizacao especifica.
+
+## 2026-05-29 - CHRONOS-20260529-004-STORAGE-DRIVE-PRODUCTION
+
+Status: EM PRODUCAO, aguardando smoke autenticado de nova gravacao/player/download.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Storage e Drive de gravacoes em producao`.
+- Squad/agente responsavel: `Zeus/Hefesto autorizado pelo Lucas`.
+- Ambiente alvo: `producao`.
+- Origem: auditoria dos recortes Chronos de `2026-05-28` identificou que o codigo funcional estava em producao, mas o artefato de banco/Storage `0034_chronos_drive_chat_storage.sql` ainda nao estava no recorte limpo publicado.
+- Autorizacao: Lucas autorizou aplicar a migration `0034` no banco Production e publicar o recorte.
+- Escopo publicado:
+  - `packages/database/migrations/0034_chronos_drive_chat_storage.sql`;
+  - `scripts/chronos-apply-drive-storage-schema.mjs`;
+  - registros operacionais.
+- Commit publicado: `227feef fix(chronos): release drive storage schema`.
+- Migration aplicada: `packages/database/migrations/0034_chronos_drive_chat_storage.sql`.
+- Verificacao segura de schema:
+  - bucket privado `chronos-drive` presente;
+  - colunas `file_name`, `mime_type`, `size_bytes` e `uploaded_at` presentes em `chronos_recordings`;
+  - tabelas `chronos_chat_messages` e `chronos_participant_preferences` presentes com RLS ativo e replica identity full;
+  - indices e policies esperados presentes.
+- Deployment anterior: `dpl_7DUUC2DMev6r1T6tM29YTYJzgRye`.
+- Deployment novo: `dpl_7SZAvMo3o6ikJeMMZNSULtL6DFe5`.
+- URL tecnica: `https://careli-hub-hub-i2bs-mjvpuksr3-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Homologacao observada apos deploy: `https://homo.c2x.app.br` segue no Preview `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`; nao foi reapontada neste fechamento porque a autorizacao foi para Production e o alias de homologacao exige Safety Gate proprio.
+- Validacoes pre-deploy:
+  - `node --check scripts/chronos-apply-drive-storage-schema.mjs`: OK;
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT em SquadOps.
+- Build remoto Vercel: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres ausentes no `turbo.json` e Turbopack/NFT em SquadOps.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/invitees?q=lu` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes de `c2x.app.br` e `ops.c2x.app.br`: sem erro critico observado; `401` registrados correspondem aos smokes sem sessao.
+- Riscos conhecidos:
+  - smoke real de gravacao nova, player/download e Drive exige sessao autenticada e uma chamada Chronos real;
+  - rollback de codigo pode promover `dpl_7DUUC2DMev6r1T6tM29YTYJzgRye`; rollback de schema/Storage exige autorizacao separada do Lucas.
+- Proxima acao: Lucas validar uma nova chamada do Chronos, gravar, encerrar pelo host e confirmar se o item aparece no Drive com player/download.
