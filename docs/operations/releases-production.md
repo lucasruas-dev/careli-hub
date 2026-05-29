@@ -1808,3 +1808,53 @@ Registro de producao:
   - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
 - Status: `EM PRODUCAO`.
 - Proxima acao: Lucas validar a abertura do Hermes; Zeus acompanhar logs e preparar rollback apenas se houver regressao critica.
+
+## 2026-05-28 - HERMES-20260528-004-REALTIME-SUBSCRIPTION-RECOVERY
+
+Status: EM PRODUCAO, aguardando validacao autenticada final do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Correcao de crash Realtime na abertura do modulo`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Data e hora local: `2026-05-28 22:10 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: incidente urgente Hermes em producao, com erro client-side visivel na boundary apos deploy anterior: `cannot add postgres_changes callbacks ... after subscribe()`.
+- Escopo publicado:
+  - separar a assinatura `postgres_changes` da tela ativa do Hermes para topico interno unico por canal;
+  - evitar colisao com o topico global de broadcast usado por notificacoes;
+  - estabilizar a assinatura Realtime para nao resubscrever quando listas de canais/usuarios mudam;
+  - preservar broadcast de envio no topico publico sem adicionar callback novo a canal ja inscrito.
+- Commit publicado: `eafd01e fix(hermes): isolate realtime message subscription`.
+- Deployment anterior: `dpl_CHVwuJFZ26GMAeYoERX3Cy1T1KH9`.
+- Deployment novo: `dpl_EBvQAaDDBTi6cmayVDmwdfessbV8`; URL tecnica `https://careli-hub-hub-i2bs-8w30koz3v-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_EBvQAaDDBTi6cmayVDmwdfessbV8`, status `Ready`;
+  - `https://ops.c2x.app.br`: confirmado no mesmo deployment, status `Ready`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`.
+- Arquivos/modulos excluidos: Hades, Iris, Chronos, Athena, Apolo, Ares, Atlas, Guardian, CareDesk, migrations, banco, Supabase remoto, envs, secrets, tokens, dominios e alias manual.
+- Validacoes executadas:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT;
+  - `npx.cmd vercel deploy --prod --yes`: READY.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m`: sem erro critico; apenas healthchecks 200 e 401 esperado sem sessao.
+- Rollback definido: `dpl_CHVwuJFZ26GMAeYoERX3Cy1T1KH9` como rollback imediato apenas se o novo deployment causar regressao critica fora do Hermes.
+- Riscos conhecidos:
+  - validacao funcional final depende do Chrome autenticado do Lucas;
+  - se a boundary reaparecer, a mensagem tecnica sanitizada deve guiar a proxima investigacao;
+  - nenhuma alteracao em env, secrets, banco, Supabase remoto ou migrations foi feita.
+- Pendencias:
+  - Lucas retestar `https://c2x.app.br/hermes` no Chrome/PWA autenticado;
+  - registro estruturado remoto no Operations Center ficou bloqueado sem autorizacao adicional para escrita em banco.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar abertura do Hermes; Zeus acompanhar logs e seguir investigando se aparecer nova mensagem tecnica.

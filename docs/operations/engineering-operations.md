@@ -20289,3 +20289,48 @@ Conclusao:
 - O hotfix de producao protege o Hermes contra crashes causados por storage local bloqueado/corrompido e adiciona recuperacao especifica do modulo.
 - O impacto pratico e impedir que uma falha local do navegador derrube a tela inteira depois da montagem.
 - Lucas deve retestar `https://c2x.app.br/hermes` no Chrome/PWA; Zeus acompanha logs e fica pronto para rollback se houver regressao critica.
+
+## 2026-05-28 - HERMES-20260528-004-REALTIME-SUBSCRIPTION-RECOVERY
+
+Status: EM PRODUCAO, aguardando validacao autenticada final do Lucas.
+
+Resumo:
+- Apos o hotfix de boundary, Lucas confirmou que a tela de recuperacao ainda aparecia, agora com erro tecnico visivel: `cannot add postgres_changes callbacks ... after subscribe()`.
+- A causa foi isolada no Realtime do Hermes: a tela aberta tentava usar o mesmo topico base de broadcast das notificacoes globais para registrar `postgres_changes`, e a versao atual do Supabase Realtime reutiliza canal existente por topico quando ele ja esta inscrito.
+- O crash ocorria no cliente apos a montagem, por isso os healthchecks HTTP seguiam 200 e os logs server-side nao mostravam 5xx.
+
+Correcoes aplicadas:
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`: separa a assinatura `postgres_changes` da tela ativa para topico interno unico por canal (`:postgres`), evitando colisao com o topico global de broadcast.
+- A assinatura Realtime da tela passa a depender apenas de canal ativo/status/usuario, usando refs para listas dinamicas de canais, usuarios e notificacao; isso evita resubscricoes desnecessarias durante atualizacoes de estado.
+- O broadcast de envio continua no topico publico de mensagens, reaproveitando canal existente quando houver, ou usando envio REST temporario sem registrar callback novo em canal ja inscrito.
+
+Arquivos publicados:
+- `apps/hub/components/pulsex/pulsex-workspace.tsx`
+
+Deployments:
+- Deployment anterior imediato: `dpl_CHVwuJFZ26GMAeYoERX3Cy1T1KH9`.
+- Deployment novo: `dpl_EBvQAaDDBTi6cmayVDmwdfessbV8`.
+- URL tecnica: https://careli-hub-hub-i2bs-8w30koz3v-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit publicado: `eafd01e fix(hermes): isolate realtime message subscription`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps.
+- `npx.cmd vercel deploy --prod --yes`: READY.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_EBvQAaDDBTi6cmayVDmwdfessbV8`.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no mesmo deployment.
+- Healthchecks pos-deploy: `GET /hermes`, `/`, `/login` e `ops /zeus` retornaram 200; `GET /api/hermes/messages` sem sessao retornou 401 esperado.
+- `npx.cmd vercel logs https://c2x.app.br --since 10m`: sem erro critico; apenas healthchecks 200 e 401 esperado da API sem sessao.
+
+Riscos e acompanhamento:
+- Validacao plena ainda depende do Chrome autenticado do Lucas, pois o incidente e client-side pos-montagem com dados reais e sessao real.
+- Se o navegador ainda exibir a tela de recuperacao, usar a mensagem tecnica sanitizada como proxima pista, sem limpar env, banco ou secrets.
+- Rollback imediato: reapontar para `dpl_CHVwuJFZ26GMAeYoERX3Cy1T1KH9` apenas se houver regressao critica fora do Hermes; para o erro Realtime especifico, o deployment novo e o candidato correto.
+
+Conclusao:
+- O erro visivel apos o segundo hotfix era de ordem/ciclo de assinatura Supabase Realtime no cliente, nao de storage nem de rota server-side.
+- O terceiro hotfix isola a assinatura de `postgres_changes` e preserva o broadcast global, reduzindo a chance de novo crash na abertura do Hermes.
+- Lucas deve recarregar `https://c2x.app.br/hermes` uma vez para validar com a sessao real; Zeus acompanha logs e mantem rollback preparado.
