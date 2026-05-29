@@ -20426,3 +20426,49 @@ Conclusao:
 - O hotfix corrige a ancoragem visual para mostrar o inicio do historico carregado ao abrir ou alternar canal.
 - O comportamento esperado agora e: abrir canal no topo, manter estabilidade durante sync e descer sozinho apenas quando fizer sentido operacional.
 - Lucas deve atualizar o Hermes e clicar novamente em `Lideranca`/outros canais para confirmar a primeira mensagem visivel.
+
+## 2026-05-28 - HERMES-20260528-007-LATEST-MESSAGE-ANCHOR
+
+Status: EM PRODUCAO, aguardando validacao visual do Lucas.
+
+Resumo:
+- Lucas validou que o comportamento do hotfix 006 nao estava correto para uso operacional: ao abrir ou trocar canal, o Hermes deve iniciar no fim da conversa, na ultima mensagem enviada, nao no topo do historico.
+- A causa foi uma interpretacao invertida do sintoma anterior; o ajuste 006 ancorou no topo, mas o comportamento esperado de chat e ancoragem no fim.
+- O novo recorte reverte a rolagem para o topo e mantem a protecao contra refresh agressivo quando o operador esta lendo historico antigo.
+
+Correcoes aplicadas:
+- `apps/hub/components/pulsex/message-list.tsx`: ao abrir/trocar canal, marca a lista como proxima do fim e ancora na ultima mensagem disponivel.
+- O primeiro render com mensagens volta a descer para a ultima mensagem.
+- Atualizacoes no mesmo canal continuam preservando a posicao quando o operador nao esta no fim, exceto quando a nova mensagem e do usuario atual.
+
+Arquivos publicados:
+- `apps/hub/components/pulsex/message-list.tsx`
+
+Deployments:
+- Deployment anterior imediato: `dpl_DkhBzjpfQ333zRDpTw9bAVuLATyV`.
+- Deployment novo: `dpl_5ipUS3Xm1qTM9P81yyW1wyjuBpWw`.
+- URL tecnica: https://careli-hub-hub-i2bs-858o4fih5-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit publicado: `7f2a19c fix(hermes): open channels at latest message`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npx.cmd eslint components/pulsex/message-list.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warning conhecido Turbopack/NFT por leitura filesystem no SquadOps.
+- `npx.cmd vercel deploy --prod --yes`: READY.
+- `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_5ipUS3Xm1qTM9P81yyW1wyjuBpWw`.
+- `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no mesmo deployment.
+- Healthchecks pos-deploy: `GET /hermes`, `/`, `/login` e `ops /zeus` retornaram 200; `GET /api/hermes/messages` sem sessao retornou 401 esperado.
+- `npx.cmd vercel logs https://c2x.app.br --since 5m` e `npx.cmd vercel logs https://ops.c2x.app.br --since 5m`: sem erro critico; logs mostram Hermes 200 e 401 esperado sem sessao.
+
+Riscos e acompanhamento:
+- Validacao visual final depende do Chrome/PWA autenticado do Lucas, abrindo `Lideranca` e alternando canais reais.
+- O hotfix nao altera paginacao nem cache persistente; mensagens antigas alem do lote carregado continuam dependendo de recorte posterior de paginacao.
+- Rollback tecnico imediato: `dpl_DkhBzjpfQ333zRDpTw9bAVuLATyV`, sabendo que ele tem comportamento funcional incorreto de abrir no topo e so deve ser usado em regressao critica.
+
+Conclusao:
+- O Hermes foi corrigido para abrir canal no fim da conversa, na ultima mensagem enviada.
+- O comportamento esperado agora e: abrir/trocar canal no fim; durante refresh, manter a leitura se Lucas estiver no historico; descer sozinho quando chegar mensagem propria ou quando ja estiver perto do fim.
+- Lucas deve atualizar `https://c2x.app.br/hermes` e testar `Lideranca` novamente para validar visualmente.
