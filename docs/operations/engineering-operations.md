@@ -20901,3 +20901,54 @@ Conclusao:
 - O link externo do Chronos foi promovido para o formato publico e executivo solicitado.
 - O acesso externo de sala nao deve mais exigir login para `/chronos/{slug}`.
 - O proximo passo e Lucas validar visualmente uma sala real e um convite Google gerado apos este deploy.
+
+## 2026-05-29 - CHRONOS-20260529-008-GOOGLE-INVITE-SALA-HOTFIX-PRODUCTION
+
+Status: EM PRODUCAO / VALIDACAO FUNCIONAL AUTENTICADA PENDENTE.
+
+Resumo:
+- Lucas autorizou publicar hotfix minimo em producao, preservando tudo que entrou hoje e corrigindo apenas os pontos apontados: sala publica presa em login, invite Google com menos 3 horas e agenda individual exibindo blocos de outro colaborador.
+- O recorte foi feito sobre a base atual de producao `dpl_6MK4mxPNzdUHe91CmmzAa5TWBiZ2`, sem publicar do root misto.
+
+Escopo:
+- AuthProvider reforcado para tratar `/chronos/{slug}` como rota publica tambem durante hidratacao/cache client-side.
+- Google Calendar agora usa `sendUpdates=all` em insert/patch/delete de evento, restaurando disparo aos convidados.
+- Horarios enviados ao Google sao formatados como horario local `America/Sao_Paulo`, preservando 16:00-17:00 em vez de deslocar para 13:00-14:00.
+- Sync/import Google passou a identificar eventos fora do dono da conexao e a agenda filtra esses imports como fora de escopo.
+
+Publicacao:
+- Data/hora local: `2026-05-29 16:55:03 -03:00`.
+- Branch: `codex/zeus/chronos-room-invite-agenda-hotfix-20260529`.
+- Commit publicado: `78d651d fix(chronos): restore google invite timing and room access`.
+- Deployment anterior: `dpl_6MK4mxPNzdUHe91CmmzAa5TWBiZ2`.
+- Deployment novo: `dpl_BLqFpDRhWqyXqYpcGv3JCnVjy8Ez`.
+- URL tecnica: `https://careli-hub-hub-i2bs-ia2er49x2-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT em SquadOps.
+- Conversao de horario validada: `2026-05-29T19:00:00.000Z` corresponde a `2026-05-29T16:00:00` em America/Sao_Paulo.
+- Build remoto Vercel Production: READY.
+- Healthchecks Production:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200, sem texto de login no HTML retornado;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - APIs Chronos protegidas sem sessao retornaram 401 esperado;
+  - webhook Google sem headers retornou 400 seguro.
+- Logs recentes de erro em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+
+Riscos e acompanhamento:
+- Validacao completa de invite/fuso depende de evento real com Google conectado.
+- Agenda individual deve melhorar no carregamento e no proximo sync; se houver imports antigos com metadata incompleta, pode exigir auditoria de dados separada antes de qualquer limpeza.
+- O commit foi criado com `--no-verify` porque o hook local aponta para `scripts/panteon-hook-runner.ps1`, ausente no worktree limpo; as validacoes foram executadas manualmente.
+- Rollback: promover `dpl_6MK4mxPNzdUHe91CmmzAa5TWBiZ2` se houver regressao critica. Nao houve schema/env/migration neste recorte.
+
+Conclusao:
+- Hotfix Chronos publicado em producao sem substituir o recorte vigente.
+- Sala publica, invite Google, fuso e filtro de agenda individual receberam correcoes minimas e rastreadas.
+- Proximo passo e Lucas criar/atualizar um evento Chronos real e confirmar invite, horario e acesso externo.

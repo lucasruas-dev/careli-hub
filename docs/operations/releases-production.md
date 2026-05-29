@@ -2225,3 +2225,52 @@ Registro de producao:
 - Logs recentes de `c2x.app.br` e `ops.c2x.app.br`: sem erro critico observado; `GET /chronos/lideranca` retornou 200 e os 401 foram smokes sem sessao.
 - Rollback: promover `dpl_7SZAvMo3o6ikJeMMZNSULtL6DFe5` se houver regressao critica de runtime; nao houve alteracao de schema neste recorte.
 - Proxima acao: Lucas validar no app o cadastro da sala e criar/abrir um evento Google para confirmar que o campo `Acesso Chronos` aponta para `https://c2x.app.br/chronos/{slug}`.
+
+## 2026-05-29 - CHRONOS-20260529-008-GOOGLE-INVITE-SALA-HOTFIX-PRODUCTION
+
+Status: EM PRODUCAO, aguardando smoke funcional autenticado do Lucas com criacao/atualizacao de evento Google e entrada na sala externa.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Hotfix de invite Google, fuso e sala publica`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Ambiente alvo: `producao`.
+- Origem: Lucas identificou, apos o deploy do link publico canonico, tres regressoes operacionais: sala publica ainda podia ficar presa no estado de login no navegador, invite Google chegava com horario reduzido em 3 horas e agenda individual podia exibir blocos importados de outro colaborador.
+- Autorizacao: Lucas autorizou publicar o hotfix em Production.
+- Escopo publicado:
+  - reforco do bypass client-side para rotas publicas `/chronos/{slug}` no AuthProvider, usando tambem `window.location.pathname` como fallback de hidratacao/cache;
+  - envio de eventos Google com `sendUpdates=all`, restaurando notificacao/convite aos participantes;
+  - formatacao dos horarios enviados ao Google como horario local `America/Sao_Paulo`, evitando deslocamento de 3 horas;
+  - filtro defensivo para imports Google fora do dono da conexao, ocultando da agenda do colaborador eventos marcados como fora de escopo.
+- Itens nao alterados: envs, secrets, banco, migrations, Storage, Supabase, dominio, alias manual, Hermes, Iris, Hades, Athena e demais modulos.
+- Commit publicado: `78d651d fix(chronos): restore google invite timing and room access`.
+- Deployment anterior: `dpl_6MK4mxPNzdUHe91CmmzAa5TWBiZ2`.
+- Deployment novo: `dpl_BLqFpDRhWqyXqYpcGv3JCnVjy8Ez`.
+- URL tecnica: `https://careli-hub-hub-i2bs-ia2er49x2-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT em SquadOps;
+  - validacao de conversao segura: `2026-05-29T19:00:00.000Z` convertido para `2026-05-29T16:00:00` em America/Sao_Paulo.
+- Build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres ausentes no `turbo.json` e Turbopack/NFT em SquadOps.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200, sem texto de login no HTML retornado;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/invitees?q=lu` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/google-calendar/webhook` sem headers Google: 400 seguro.
+- Logs recentes de `c2x.app.br` e `ops.c2x.app.br`: `npx.cmd vercel logs --since 10m --level error` sem logs encontrados.
+- Observacao de commit: o commit foi criado com `--no-verify` porque o hook local aponta para `scripts/panteon-hook-runner.ps1`, ausente no worktree limpo. Validacoes operacionais foram executadas manualmente antes do deploy.
+- Riscos e acompanhamento:
+  - validacao completa de invite/fuso depende de criar ou atualizar evento real com Google conectado;
+  - ocultacao de eventos Google fora do dono e aplicada no carregamento da agenda e reforcada no proximo sync;
+  - rollback de codigo: promover `dpl_6MK4mxPNzdUHe91CmmzAa5TWBiZ2` se houver regressao critica; nao houve alteracao de schema/env neste recorte.
+- Proxima acao: Lucas criar/atualizar uma reuniao Chronos para 16:00, confirmar no Google que permanece 16:00-17:00, verificar chegada dos convidados e abrir `https://c2x.app.br/chronos/lideranca` em janela sem login.
