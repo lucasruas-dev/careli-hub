@@ -148,6 +148,7 @@ function toggleHermesReactions({
 
 const PULSEX_PRESENCE_REFRESH_MS = 10_000;
 const PULSEX_MESSAGE_REFRESH_MS = 15_000;
+const HERMES_CHANNEL_PREFETCH_LIMIT = 8;
 const PULSEX_FAVORITE_CHANNELS_STORAGE_KEY = "careli:pulsex:favorite-channels";
 const HERMES_THREAD_READ_STORAGE_PREFIX = "careli:hermes:thread-read-state";
 
@@ -221,6 +222,7 @@ export function HermesWorkspace() {
     useState(false);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
+  const prefetchingChannelIdsRef = useRef<Set<string>>(new Set());
   const messagePostgresRealtimeChannelRef =
     useRef<HubRealtimeChannel | null>(null);
   const channelsRef = useRef<readonly HermesChannel[]>([]);
@@ -731,6 +733,10 @@ export function HermesWorkspace() {
       const channelId = activeChannel.id;
       const isFirstChannelLoad = !loadedChannelIdsRef.current.has(channelId);
 
+      if (prefetchingChannelIdsRef.current.has(channelId)) {
+        return;
+      }
+
       if (isFirstChannelLoad) {
         setLoadingChannelIds((currentIds) =>
           currentIds.includes(channelId) ? currentIds : [...currentIds, channelId],
@@ -809,6 +815,60 @@ export function HermesWorkspace() {
     ],
   );
 
+  const prefetchChannelMessages = useCallback(
+    async (
+      channelId: HermesChannel["id"],
+      shouldApply: () => boolean = () => true,
+    ) => {
+      if (
+        !hasHubSupabaseConfig() ||
+        channelId === emptyHermesChannel.id ||
+        loadedChannelIdsRef.current.has(channelId) ||
+        prefetchingChannelIdsRef.current.has(channelId)
+      ) {
+        return;
+      }
+
+      prefetchingChannelIdsRef.current.add(channelId);
+
+      try {
+        const nextMessages = await listChannelMessages(channelId);
+
+        if (!shouldApply()) {
+          return;
+        }
+
+        const nextDeliveredMessages = withMessageDeliveryData(
+          nextMessages,
+          channels,
+        );
+
+        nextDeliveredMessages.forEach((message) =>
+          knownMessageIdsRef.current.add(message.id),
+        );
+        loadedChannelIdsRef.current.add(channelId);
+        setFailedChannelIds((currentIds) =>
+          currentIds.filter((currentId) => currentId !== channelId),
+        );
+        setMessages((currentMessages) =>
+          mergeHermesChannelMessages({
+            channelId,
+            currentMessages,
+            nextMessages: nextDeliveredMessages,
+            replaceChannel: true,
+          }),
+        );
+      } catch (error: unknown) {
+        if (isLocalDevelopmentRuntime()) {
+          console.warn("[pulsex] prefetch channel messages error", error);
+        }
+      } finally {
+        prefetchingChannelIdsRef.current.delete(channelId);
+      }
+    },
+    [channels],
+  );
+
   useEffect(() => {
     if (
       !hasHubSupabaseConfig() ||
@@ -829,6 +889,40 @@ export function HermesWorkspace() {
       window.clearInterval(intervalId);
     };
   }, [activeChannel.id, activeChannel.kind, loadActiveChannelMessages]);
+
+  useEffect(() => {
+    if (!hasHubSupabaseConfig() || dataStatus !== "ready") {
+      return;
+    }
+
+    let isMounted = true;
+    const channelIdsToPrefetch = channels
+      .map((channel) => channel.id)
+      .filter((channelId) => channelId !== activeChannel.id)
+      .filter((channelId) => channelId !== emptyHermesChannel.id)
+      .filter((channelId) => !loadedChannelIdsRef.current.has(channelId))
+      .filter((channelId) => !prefetchingChannelIdsRef.current.has(channelId))
+      .slice(0, HERMES_CHANNEL_PREFETCH_LIMIT);
+
+    void (async () => {
+      for (const channelId of channelIdsToPrefetch) {
+        if (!isMounted) {
+          return;
+        }
+
+        await prefetchChannelMessages(channelId, () => isMounted);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    activeChannel.id,
+    channels,
+    dataStatus,
+    prefetchChannelMessages,
+  ]);
 
   useEffect(() => {
     if (

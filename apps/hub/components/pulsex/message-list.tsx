@@ -141,6 +141,10 @@ export function MessageList({
   ]);
 
   if (timelineItems.length === 0) {
+    if (loadState === "loading") {
+      return <HermesMessageSkeletonList />;
+    }
+
     return (
       <EmptyState
         description={getEmptyMessagesDescription(loadState, filter)}
@@ -181,6 +185,38 @@ export function MessageList({
         ),
       )}
       <div ref={bottomRef} />
+    </div>
+  );
+}
+
+function HermesMessageSkeletonList() {
+  const rows = [
+    { align: "left", width: "w-52" },
+    { align: "right", width: "w-64" },
+    { align: "left", width: "w-60" },
+    { align: "left", width: "w-48" },
+    { align: "right", width: "w-56" },
+  ] as const;
+
+  return (
+    <div
+      aria-busy="true"
+      aria-label="Sincronizando mensagens"
+      className="grid gap-3 px-2 py-1"
+      role="status"
+    >
+      {rows.map((row, index) => (
+        <div
+          className={`grid ${
+            row.align === "right" ? "justify-items-end pr-10" : "pl-10"
+          }`}
+          key={`message-skeleton-${index}`}
+        >
+          <div
+            className={`h-20 ${row.width} animate-pulse rounded-2xl border border-[#d9e0ea] bg-white/80 shadow-sm`}
+          />
+        </div>
+      ))}
     </div>
   );
 }
