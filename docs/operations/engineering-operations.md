@@ -20624,3 +20624,25 @@ Conclusao:
 - Chronos Google esta em producao por pacote limpo e com schema/envs Production preparados.
 - O botao Google deve aparecer no topo da Agenda como `Conectar Google` quando desconectado, `Google conectado` em verde quando conectado e `Atualizar` como acao separada.
 - Lucas deve atualizar `https://c2x.app.br/chronos`, testar a conexao Google e usar `Atualizar` para confirmar o sync manual.
+
+## 2026-05-29 - CHRONOS-20260529-002-GOOGLE-TOOLBAR-STATUS
+
+Status: PREPARADO, validado localmente, aguardando autorizacao explicita para publicar em Production.
+
+Resumo:
+- Lucas pediu preservar o layout operacional da Agenda, manter a legenda visivel e retirar o bloco lateral `Fonte atual`.
+- O status detalhado do Google Agenda foi movido para um popup discreto no botao Google, visivel apenas por hover/foco.
+- O botao Google ficou compacto no topo da Agenda: desconectado exibe `Conectar Google`; conectado exibe `Google` em estado verde.
+- A legenda `Alinhamento`, `Resultado`, `Comunicado` e `Reuniao` permanece na barra da Agenda, ao lado dos modos de visualizacao.
+
+Validacoes:
+- `git diff --check`: OK, apenas aviso LF/CRLF conhecido no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile/worktree `.codex-deploy` e Turbopack/NFT em SquadOps.
+- Smoke HTTP local em `http://localhost:3002/chronos`: 200.
+- Validacao visual por navegador embutido ficou bloqueada por falha de sandbox do runtime de browser, sem indicio de erro de codigo no recorte.
+
+Conclusao:
+- O ajuste visual do Chronos Google esta pronto no recorte e ainda nao foi publicado em Production.
+- Para publicar, usar worktree externa limpa fora de `.codex-deploy`, pois `.vercelignore` do root ignora esse diretorio e pode gerar deploy misto.
