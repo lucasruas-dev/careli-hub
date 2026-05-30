@@ -593,12 +593,13 @@ O manifesto de homologacao deve incluir:
   - `GET http://localhost:3031/chronos`: 200 OK em build local temporario;
   - `POST http://localhost:3031/api/chronos/meetings/agent` sem sessao: 401 esperado;
   - `/chronos/lideranca` local sem env: bloqueado por Supabase server-side ausente, esperado fora de ambiente real.
-- Status: `VALIDADO_LOCAL`.
-- Preview Vercel: nao publicado.
-- Deployment id e URL tecnica: nao publicados.
+- Status: `EM_PRODUCAO`.
+- Preview Vercel: nao publicado; Lucas autorizou producao direta do hotfix combinado.
+- Deployment production: `dpl_EyKuq7oQgbsv7yRvKC69sNBreNQt`.
+- URL tecnica: `https://careli-hub-hub-i2bs-dszlru2h9-lucasruas-devs-projects.vercel.app`.
 - Riscos e pendencias:
   - exige teste funcional real com tela compartilhada durante gravacao e conferencia do video no Drive;
   - reconciliacao com Athena concluida neste pacote; ainda exige deploy controlado e healthcheck pos-publicacao;
   - nao houve alteracao remota de Supabase, env, migration, dominio ou alias.
-- Rollback sugerido: manter producao atual `dpl_8wpkFvJ8Jese445Kz98U8WeHmKcw` ate deploy autorizado; se houver regressao futura, promover o deployment imediatamente anterior ao deploy deste protocolo.
-- Decisao de Lucas: solicitou unir as melhorias da Athena ao recorte Zeus antes da publicacao.
+- Rollback final: promover `dpl_8wpkFvJ8Jese445Kz98U8WeHmKcw` se houver regressao critica; nao houve alteracao de schema/env.
+- Decisao de Lucas: solicitou unir as melhorias da Athena ao recorte Zeus antes da publicacao; Zeus publicou Production em 2026-05-29.
