@@ -655,7 +655,7 @@ O manifesto de homologacao deve incluir:
   - `apps/hub/lib/chronos/server.ts`;
   - `docs/operations/engineering-operations.md`;
   - `docs/operations/panteon-recorte-protocols.md`.
-- Arquivos excluidos: root misto, Hermes, Hades, Iris, Athena, Apolo, Atlas, Setup, envs, secrets, migrations, banco remoto, service role, dominio, alias manual e deploy.
+- Arquivos excluidos: root misto, Hermes, Hades, Iris, Athena, Apolo, Atlas, Setup, envs, secrets, migrations, banco remoto, service role, dominio, alias manual, Drive/Atas e gravacao.
 - Comportamento esperado:
   - a conexao Google do usuario logado passa a ser a fronteira da agenda individual;
   - eventos retornados por `events.list` da agenda conectada nao sao descartados por `organizer.email` ou `creator.email` diferentes do e-mail do colaborador;
@@ -667,14 +667,22 @@ O manifesto de homologacao deve incluir:
   - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
   - `npm.cmd run check-types:hub`: OK;
   - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
-  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
-- Status: `VALIDADO_LOCALMENTE / AGUARDANDO AUTORIZACAO DE PUBLICACAO`.
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`;
+  - Vercel Production build: READY;
+  - healthchecks Production em `/`, `/login`, `/chronos`, `ops.c2x.app.br/zeus`: 200;
+  - `GET /api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `GET /api/chronos/meetings` sem sessao: 401 esperado;
+  - logs Vercel recentes sem 5xx critico observado no recorte.
+- Status: `EM_PRODUCAO / OPERACIONAL_COM_ATENCAO`.
 - Preview Vercel: nao publicado.
-- Production: nao publicado.
+- Commit de codigo: `e5c7ac3 fix(chronos): restore google calendar fidelity`.
+- Deployment anterior: `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`.
+- Deployment production: `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
+- URL tecnica: `https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app`.
 - Riscos e pendencias:
   - nao houve alteracao de banco, migration, env, secret, dominio ou alias;
   - para refletir eventos ja pulados em producao, cada conexao ativa fara uma full sync automatica uma vez apos o deploy;
   - validacao funcional final exige Lucas/Nivea abrir Chronos autenticado e comparar a semana com o Google Calendar apos a sincronizacao;
   - commit pode exigir `--no-verify` porque o hook local referencia `scripts/panteon-hook-runner.ps1`, ausente neste snapshot; validacoes obrigatorias foram executadas manualmente.
-- Rollback sugerido: se publicado e houver regressao, promover novamente `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`; nao ha rollback de schema/env.
-- Decisao: recorte preparado por Zeus em resposta ao incidente de divergencia visual entre Google Calendar da Nivea e agenda Chronos em 2026-05-30.
+- Rollback final: promover novamente `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`; nao ha rollback de schema/env.
+- Decisao: Lucas autorizou publicar o hotfix de agenda Google individual antes do congelamento operacional para reorganizacao de engenharia.

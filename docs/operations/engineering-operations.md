@@ -21273,3 +21273,49 @@ Riscos e acompanhamento:
 Conclusao:
 - A divergencia da agenda foi causada por filtro incorreto de dono do evento, nao por falta de conexao Google.
 - O recorte esta validado localmente e pronto para Preview/Producao quando Lucas autorizar a publicacao.
+
+## 2026-05-30 - Z30-20260530-002-CHRONOS-GOOGLE-AGENDA-FIDELIDADE-PRODUCTION
+
+Status: EM PRODUCAO / OPERACIONAL COM ATENCAO.
+
+Resumo:
+- Lucas autorizou publicar primeiro a correcao de fidelidade da agenda Google do Chronos e, a partir desse deployment, pausar novas alteracoes de agentes para organizar a engenharia do Panteon.
+- Zeus publicou o recorte limpo da agenda Google individual a partir de `.codex-deploy/z30-001-chronos-google-calendar-fidelity-20260530`, sem usar o root misto.
+- O hotfix remove o descarte por criador/organizador externo e usa a conexao Google do colaborador logado como fronteira da agenda individual.
+
+Deploy:
+- Commit publicado: `e5c7ac3 fix(chronos): restore google calendar fidelity`.
+- Deployment anterior: `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`.
+- Deployment novo: `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
+- URL tecnica: `https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+
+Validacoes:
+- `git diff --check HEAD^ HEAD`: OK.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
+- Build remoto Vercel Production: READY.
+- Healthchecks Production:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs Vercel recentes: sem 5xx critico observado; smokes sem sessao retornaram 401 esperado.
+
+Riscos e acompanhamento:
+- A primeira sincronizacao apos o hotfix fara full sync uma vez por conexao ativa; depois volta ao fluxo incremental por `syncToken`.
+- Validacao funcional final exige comparar a agenda Chronos autenticada da Nivea/Lucas contra o Google Calendar depois da sincronizacao.
+- Nao houve env, secret, migration, schema, Storage policy, dominio ou alias manual neste recorte.
+- O build remoto manteve warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT em SquadOps; nenhum deles bloqueou o hotfix.
+- Rollback seguro: promover `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6` se houver regressao critica.
+
+Decisao operacional:
+- A partir deste deployment, Lucas pediu congelamento de alteracoes por agentes para reorganizar a engenharia do Panteon.
+- Zeus deve preparar a arvore de atividades de reestruturacao, governanca de worktrees, ownership por modulo/bloco, safety gates e processo de deploy antes de novas construcoes.
+
+Conclusao:
+- O hotfix de agenda Google individual esta em producao.
+- O proximo passo e validacao funcional lado a lado no navegador e, em seguida, congelar alteracoes de produto para iniciar a reorganizacao tecnica do projeto.

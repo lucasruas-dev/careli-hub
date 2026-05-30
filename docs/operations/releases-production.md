@@ -2443,3 +2443,55 @@ Registro de producao:
   - nao houve alteracao de schema/env/remoto de Supabase.
 - Rollback: promover `dpl_EyKuq7oQgbsv7yRvKC69sNBreNQt` se houver regressao critica; nao houve alteracao de schema/env neste recorte.
 - Proxima acao: Lucas atualizar a aba do Chronos, iniciar uma nova chamada com pelo menos uma pessoa remota, compartilhar tela, gravar poucos segundos, encerrar pelo host e conferir no Drive se o video mostra tela principal e participantes na lateral.
+
+## 2026-05-30 - Z30-20260530-002-CHRONOS-GOOGLE-AGENDA-FIDELIDADE-PRODUCTION
+
+Status: EM PRODUCAO, aguardando validacao funcional lado a lado com Google Calendar da colaboradora.
+
+Registro de producao:
+
+- Assunto: `[Chronos] agenda Google individual corrigida em producao`.
+- Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
+- Ambiente alvo: `producao`.
+- Origem: Lucas reportou que a agenda Chronos nao refletia fielmente a agenda Google individual, especialmente no perfil da Nivea Careli, exibindo poucos blocos enquanto o Google Calendar mostrava uma semana densa.
+- Causa identificada:
+  - a importacao Google descartava eventos quando `organizer.email` ou `creator.email` nao batiam com o e-mail do colaborador;
+  - o snapshot do Chronos repetia esse filtro e escondia eventos que pertenciam a agenda conectada, mas haviam sido criados ou organizados por outra pessoa;
+  - o limite de snapshot de 80 reunioes podia truncar agendas densas.
+- Escopo publicado:
+  - conexao Google individual passa a ser a fronteira de pertencimento da agenda do colaborador;
+  - eventos retornados pela agenda conectada nao sao descartados por criador/organizador externo;
+  - primeira sincronizacao apos o hotfix faz full sync uma vez por conexao ativa para recuperar eventos antes ignorados;
+  - full sync usa `singleEvents=true` com `orderBy=startTime`;
+  - snapshot do Chronos sobe de 80 para 1000 reunioes enquanto a arquitetura de cache/janela dedicada e formalizada.
+- Itens nao alterados: envs, secrets, banco, migrations, Storage policies, dominio, alias manual, Drive/Atas, gravacao, Iris, Hades, Hermes, Atlas, Apolo, Ares e demais modulos fora de Chronos Google Agenda.
+- Commit publicado: `e5c7ac3 fix(chronos): restore google calendar fidelity`.
+- Deployment anterior: `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`.
+- Deployment novo: `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
+- URL tecnica: `https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - `git diff --check HEAD^ HEAD`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
+- Build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres ausentes no `turbo.json` e Turbopack/NFT em SquadOps.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/google-calendar/status` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes do deployment final:
+  - sem 5xx critico observado no recorte;
+  - observados `200` para `/`, `/login`, `/chronos`, `/zeus`, `/api/hub/presence` e `/api/hermes/messages`;
+  - observados `401` esperados para smokes sem sessao de Chronos.
+- Observacoes operacionais:
+  - primeira sincronizacao de cada conexao Google ativa deve ser mais completa, pois o hotfix forca full sync uma vez por versao de fidelidade;
+  - depois da recuperacao, o fluxo volta ao incremental por `syncToken`;
+  - nao houve alteracao de schema/env/remoto de Supabase.
+- Rollback: promover `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6` se houver regressao critica; nao houve alteracao de schema/env neste recorte.
+- Proxima acao: Lucas ou Nivea abrir o Chronos autenticado, clicar em `Atualizar` se necessario e comparar a semana da tela com o Google Calendar apos a sincronizacao.
