@@ -502,6 +502,11 @@ export type ChronosUpdateInput =
       minutesId: string;
     }
   | {
+      action: "delete_recording";
+      meetingId: string;
+      recordingId: string;
+    }
+  | {
       action: "create_followup";
       dueAt?: string;
       meetingId: string;

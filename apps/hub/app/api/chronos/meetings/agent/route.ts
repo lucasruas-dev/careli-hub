@@ -18,6 +18,7 @@ import {
   buildChronosMinutesContext,
   formatChronosDate,
   formatChronosDateTime,
+  formatChronosDuration,
 } from "@/lib/chronos/minutes";
 
 const DEFAULT_MINUTES_MODEL = "gpt-5.5";
@@ -28,7 +29,10 @@ const MAX_RECORDING_BYTES = 150_000_000;
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type ChronosAgentAction = "draft_minutes" | "transcribe_recording";
+type ChronosAgentAction =
+  | "draft_minutes"
+  | "transcribe_existing_recording"
+  | "transcribe_recording";
 
 type ParsedChronosAgentRequest =
   | {
@@ -36,6 +40,14 @@ type ParsedChronosAgentRequest =
       meetingId: string;
       minutesProfile: ChronosMinutesProfile;
       ok: true;
+    }
+  | {
+      action: "transcribe_existing_recording";
+      meetingId: string;
+      minutesProfile: ChronosMinutesProfile;
+      ok: true;
+      recordingId: string;
+      speakerLabel?: string;
     }
   | {
       action: "transcribe_recording";
@@ -78,12 +90,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (parsed.action === "transcribe_recording") {
+    if (parsed.action === "transcribe_existing_recording") {
+      const snapshot = await listChronosSnapshot(authorization);
+      const meeting = snapshot.meetings.find(
+        (currentMeeting) => currentMeeting.id === parsed.meetingId,
+      );
+
+      if (!meeting) {
+        return Response.json(
+          { error: "Reuniao Chronos nao encontrada." },
+          { status: 404 },
+        );
+      }
+
+      const recording = meeting.recordings.find(
+        (currentRecording) => currentRecording.id === parsed.recordingId,
+      );
+
+      if (!recording || recording.status !== "available") {
+        return Response.json(
+          {
+            error:
+              "Gravacao Chronos ainda nao esta disponivel para transcricao.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const recordingUrl = recording.downloadUrl ?? recording.playbackUrl;
+
+      if (!recordingUrl || recordingUrl === "#") {
+        return Response.json(
+          {
+            error:
+              "Gravacao Chronos nao possui arquivo assinado para transcricao.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const file = await fetchChronosRecordingFile({
+        fileName: recording.fileName ?? "chronos-recording.webm",
+        mimeType: recording.mimeType,
+        url: recordingUrl,
+      });
       const transcript = await transcribeChronosRecording({
         apiKey,
-        file: parsed.file,
+        file,
       });
-      const meeting = await updateChronosMeeting({
+      const transcribedMeeting = await updateChronosMeeting({
         authorization,
         input: {
           action: "add_transcript",
@@ -93,12 +148,57 @@ export async function POST(request: NextRequest) {
           speakerLabel: parsed.speakerLabel ?? "Athena",
         },
       });
+      const { draft, meeting: updatedMeeting } = await saveChronosMinutesDraft({
+        apiKey,
+        authorization,
+        meeting: transcribedMeeting,
+        meetingId: parsed.meetingId,
+        minutesProfile: parsed.minutesProfile,
+      });
+
+      return Response.json(
+        {
+          meeting: updatedMeeting,
+          minutes: draft.minutes,
+          minutesProfile: parsed.minutesProfile,
+          source: "openai",
+          summary: draft.summary,
+          transcript,
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (parsed.action === "transcribe_recording") {
+      const transcript = await transcribeChronosRecording({
+        apiKey,
+        file: parsed.file,
+      });
+      const transcribedMeeting = await updateChronosMeeting({
+        authorization,
+        input: {
+          action: "add_transcript",
+          content: transcript,
+          meetingId: parsed.meetingId,
+          source: "openai",
+          speakerLabel: parsed.speakerLabel ?? "Athena",
+        },
+      });
+      const { draft, meeting } = await saveChronosMinutesDraft({
+        apiKey,
+        authorization,
+        meeting: transcribedMeeting,
+        meetingId: parsed.meetingId,
+        minutesProfile: parsed.minutesProfile,
+      });
 
       return Response.json(
         {
           meeting,
+          minutes: draft.minutes,
           minutesProfile: parsed.minutesProfile,
           source: "openai",
+          summary: draft.summary,
           transcript,
         },
         { headers: { "Cache-Control": "no-store" } },
@@ -117,38 +217,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!hasChronosAvailableRecording(meeting)) {
+    if (!hasChronosAvailableRecording(meeting) && meeting.transcript.length === 0) {
       return Response.json(
         {
           error:
-            "Ata Chronos requer gravacao disponivel vinculada a reuniao.",
+            "Ata Chronos requer gravacao disponivel ou transcricao vinculada a reuniao.",
         },
         { status: 409 },
       );
     }
 
-    const draft = await draftChronosMinutes({
+    const { draft, meeting: updatedMeeting } = await saveChronosMinutesDraft({
       apiKey,
+      authorization,
       meeting,
+      meetingId: parsed.meetingId,
       minutesProfile: parsed.minutesProfile,
-    });
-
-    await updateChronosMeeting({
-      authorization,
-      input: {
-        action: "save_summary",
-        meetingId: parsed.meetingId,
-        summary: draft.summary,
-      },
-    });
-    const updatedMeeting = await updateChronosMeeting({
-      authorization,
-      input: {
-        action: "save_minutes",
-        content: draft.minutes,
-        meetingId: parsed.meetingId,
-        status: "draft",
-      },
     });
 
     return Response.json(
@@ -172,6 +256,46 @@ export async function POST(request: NextRequest) {
       { status: getChronosAgentErrorStatus(error) },
     );
   }
+}
+
+async function saveChronosMinutesDraft({
+  apiKey,
+  authorization,
+  meeting,
+  meetingId,
+  minutesProfile,
+}: {
+  apiKey: string;
+  authorization: Parameters<typeof updateChronosMeeting>[0]["authorization"];
+  meeting: ChronosMeeting;
+  meetingId: string;
+  minutesProfile: ChronosMinutesProfile;
+}) {
+  const draft = await draftChronosMinutes({
+    apiKey,
+    meeting,
+    minutesProfile,
+  });
+
+  await updateChronosMeeting({
+    authorization,
+    input: {
+      action: "save_summary",
+      meetingId,
+      summary: draft.summary,
+    },
+  });
+  const updatedMeeting = await updateChronosMeeting({
+    authorization,
+    input: {
+      action: "save_minutes",
+      content: draft.minutes,
+      meetingId,
+      status: "draft",
+    },
+  });
+
+  return { draft, meeting: updatedMeeting };
 }
 
 async function parseChronosAgentRequest(
@@ -233,6 +357,23 @@ async function parseChronosAgentRequest(
   }
 
   if (action !== "draft_minutes") {
+    if (action === "transcribe_existing_recording") {
+      const recordingId = normalizeText(input.recordingId, 120);
+
+      if (!recordingId) {
+        return { error: "Gravacao Chronos nao informada.", ok: false };
+      }
+
+      return {
+        action,
+        meetingId,
+        minutesProfile: normalizeMinutesProfile(input.minutesProfile),
+        ok: true,
+        recordingId,
+        speakerLabel: normalizeOptionalText(input.speakerLabel, 80),
+      };
+    }
+
     return { error: "Acao Chronos invalida para JSON.", ok: false };
   }
 
@@ -245,7 +386,9 @@ async function parseChronosAgentRequest(
 }
 
 function normalizeChronosAgentAction(value: unknown): ChronosAgentAction {
-  return value === "transcribe_recording" || value === "draft_minutes"
+  return value === "transcribe_recording" ||
+    value === "transcribe_existing_recording" ||
+    value === "draft_minutes"
     ? value
     : "draft_minutes";
 }
@@ -316,6 +459,28 @@ async function transcribeChronosRecording({
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function fetchChronosRecordingFile({
+  fileName,
+  mimeType,
+  url,
+}: {
+  fileName: string;
+  mimeType?: string | null;
+  url: string;
+}) {
+  const response = await fetch(url, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error("Nao foi possivel abrir o arquivo da gravacao Chronos.");
+  }
+
+  const blob = await response.blob();
+
+  return new File([blob], fileName || "chronos-recording.webm", {
+    type: mimeType || blob.type || "video/webm",
+  });
 }
 
 async function draftChronosMinutes({
@@ -432,6 +597,8 @@ function buildChronosMinutesPrompt({
     ? meeting.metadata.agenda
     : [];
   const minutesContext = buildChronosMinutesContext(meeting);
+  const recordingEvidence = buildChronosRecordingEvidence(meeting);
+  const chatContext = buildChronosChatContext(meeting);
   const profileInstruction = {
     alinhamento:
       "Ata de alinhamento: destaque contexto, pontos alinhados, decisoes, responsaveis, pendencias e proximos passos. Sempre inclua uma secao 'Plano de acao' em tabela.",
@@ -450,6 +617,8 @@ function buildChronosMinutesPrompt({
     "Na identificacao da reuniao, use sempre o inicio programado e o fim real de encerramento. Nao use o fim agendado como fim da ata.",
     "Nos participantes, liste somente quem fez check-in/entrou na reuniao. Nao use convidados sem check-in.",
     "Para transcricao, use somente o que esta nos trechos recebidos. Se houver ruido ou baixa confianca, registre como 'Nao identificado' e nao invente fala.",
+    "Trate gravacoes de video como evidencias vinculadas da reuniao. Use o video como lastro operacional, mas nao descreva tela, gesto, planilha ou conteudo visual que nao esteja na transcricao, chat, timeline ou metadados.",
+    "Quando existir transcricao salva, ela e o gatilho principal para gerar a ata formatada, mesmo que a gravacao ainda esteja apenas como evidencia.",
     "Para reuniao de alinhamento, o Plano de acao deve ser uma tabela markdown com colunas: Atividade | Responsavel | Prazo | Status.",
     `Se uma atividade ficar sem prazo mencionado, use ${minutesContext.defaultActionDueLabel} como prazo padrao de 5 dias uteis a partir da reuniao.`,
     "Se nenhuma atividade for mencionada, registre uma linha com 'Sem atividade formal registrada' e prazo 'Nao informado'.",
@@ -463,6 +632,7 @@ function buildChronosMinutesPrompt({
     `Tipo: ${chronosMeetingTypeLabels[meeting.meetingType]}`,
     `Inicio programado: ${minutesContext.scheduledStartLabel}`,
     `Fim real de encerramento: ${minutesContext.actualEndLabel}`,
+    `Duracao real: ${minutesContext.durationLabel}`,
     `Data base do prazo padrao: ${formatChronosDate(
       minutesContext.actualEndAt ?? minutesContext.scheduledStartAt,
     )}`,
@@ -488,6 +658,12 @@ function buildChronosMinutesPrompt({
           )
           .join("\n")
       : "Nao informado.",
+    "",
+    "Evidencias de gravacao/video:",
+    recordingEvidence,
+    "",
+    "Chat da reuniao:",
+    chatContext,
     "",
     "Transcricao:",
     meeting.transcript.length
@@ -526,6 +702,50 @@ function buildChronosMinutesPrompt({
   ].join("\n");
 }
 
+function buildChronosRecordingEvidence(meeting: ChronosMeeting) {
+  if (meeting.recordings.length === 0) {
+    return "Nao ha gravacao vinculada.";
+  }
+
+  return meeting.recordings
+    .map((recording, index) => {
+      const isVideo = recording.mimeType?.toLowerCase().includes("video");
+      const source =
+        recording.storagePath || recording.fileName || recording.id || "arquivo";
+
+      return [
+        `${index + 1}. ${source}`,
+        `status: ${recording.status}`,
+        `tipo: ${recording.mimeType ?? "Nao informado"}`,
+        `inicio: ${formatChronosDateTime(recording.startedAt)}`,
+        `fim: ${formatChronosDateTime(recording.stoppedAt)}`,
+        `duracao: ${formatChronosDuration(recording.durationSeconds)}`,
+        `uso operacional: ${
+          isVideo
+            ? "video anexado como evidencia; conteudo visual nao analisado automaticamente"
+            : "audio/anexo usado para transcricao"
+        }`,
+      ].join(" | ");
+    })
+    .join("\n");
+}
+
+function buildChronosChatContext(meeting: ChronosMeeting) {
+  const messages = meeting.chatMessages ?? [];
+
+  if (messages.length === 0) {
+    return "Nao ha chat salvo.";
+  }
+
+  return messages
+    .slice(-25)
+    .map(
+      (message) =>
+        `- ${formatChronosDateTime(message.createdAt)} | ${message.senderName}: ${message.content}`,
+    )
+    .join("\n");
+}
+
 function buildChronosFallbackMinutes({
   error,
   meeting,
@@ -560,6 +780,8 @@ function buildChronosFallbackMinutes({
     .slice(0, 14)
     .map((event) => `- ${formatChronosDateTime(event.eventAt)}: ${event.title}`)
     .join("\n");
+  const recordingEvidence = buildChronosRecordingEvidence(meeting);
+  const chatContext = buildChronosChatContext(meeting);
   const followUps = meeting.followUps
     .map(
       (followUp) =>
@@ -596,6 +818,12 @@ function buildChronosFallbackMinutes({
     "",
     "**Falas registradas**",
     transcript || "- Nao ha transcricao salva.",
+    "",
+    "**Evidencias de gravacao/video**",
+    recordingEvidence,
+    "",
+    "**Chat da reuniao**",
+    chatContext,
     "",
     "**Linha do tempo**",
     timeline || "- Nao informada.",
@@ -691,7 +919,15 @@ function getOpenAiErrorMessage(
       ? (payload.error as { message: string }).message
       : "";
 
-  return message || fallback;
+  return normalizeChronosOpenAiErrorMessage(message || fallback);
+}
+
+function normalizeChronosOpenAiErrorMessage(message: string) {
+  if (/invalid option\s*:?\s*option/i.test(message)) {
+    return "OpenAI recusou um placeholder de modelo chamado option. Chronos deve ignorar esse placeholder e usar o modelo padrao.";
+  }
+
+  return message;
 }
 
 function normalizeOptionalText(value: unknown, maxLength: number) {
@@ -709,9 +945,9 @@ function getChronosAgentErrorMessage(error: unknown, fallback: string) {
     return "Chronos aguarda aplicacao da migration Supabase 0019_chronos_core.sql.";
   }
 
-  return error instanceof Error && error.message.trim()
-    ? error.message
-    : fallback;
+  return normalizeChronosOpenAiErrorMessage(
+    error instanceof Error && error.message.trim() ? error.message : fallback,
+  );
 }
 
 function getChronosAgentErrorStatus(error: unknown) {

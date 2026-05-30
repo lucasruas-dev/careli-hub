@@ -11,6 +11,7 @@ import {
   searchChronosInternalInvitees,
   startChronosGoogleCalendarConnection,
   syncChronosGoogleCalendar,
+  transcribeChronosExistingRecording,
   transcribeChronosRecording,
   updateChronosRoom,
   updateChronosMeeting,
@@ -41,11 +42,17 @@ import {
   type ChronosRoomUpdateInput,
   type ChronosSnapshot,
 } from "@/lib/chronos/types";
+import {
+  buildChronosMinutesContext,
+  formatChronosDate,
+  getChronosCheckedInParticipants,
+} from "@/lib/chronos/minutes";
 import type { ApoloDashboardData, ApoloEntity } from "@/lib/apolo/types";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
 import { Badge, Surface, Tooltip, WorkspaceLayout } from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
+import Image from "next/image";
 import {
   AlertTriangle,
   CalendarClock,
@@ -285,6 +292,7 @@ export function ChronosPage() {
   const canManageChronos = Boolean(
     hubUser?.permissions.includes("chronos:manage"),
   );
+  const canDeleteChronosArtifacts = hubUser?.role === "admin";
   const [snapshot, setSnapshot] = useState<ChronosSnapshot>(emptySnapshot);
   const [selectedMeetingId, setSelectedMeetingId] = useState("");
   const [activeView, setActiveView] = useState<ChronosView>("agenda");
@@ -576,6 +584,34 @@ export function ChronosPage() {
     }
   }
 
+  async function handleTranscribeExistingRecording(input: {
+    meeting: ChronosMeeting;
+    minutesProfile?: ChronosMinutesProfile;
+    recordingId: string;
+  }) {
+    setSaving(true);
+    setError(null);
+
+    try {
+      const updatedMeeting = await transcribeChronosExistingRecording({
+        meetingId: input.meeting.id,
+        minutesProfile: input.minutesProfile,
+        recordingId: input.recordingId,
+        speakerLabel: "Athena",
+      });
+
+      replaceMeeting(updatedMeeting);
+    } catch (transcriptionError) {
+      setError(
+        transcriptionError instanceof Error
+          ? transcriptionError.message
+          : "Nao foi possivel transcrever a gravacao salva.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-[#f3f6fa] text-[#101820]">
       <div
@@ -663,12 +699,14 @@ export function ChronosPage() {
         {activeView === "drive" ? (
           <ChronosDriveLibraryScreen
             activeDriveView={driveView}
+            canDeleteArtifacts={canDeleteChronosArtifacts}
             localRecordings={localRecordings}
             meeting={selectedMeeting}
             meetings={snapshot.meetings}
             onChangeDriveView={setDriveView}
             onGenerateMinutesDraft={handleGenerateMinutesDraft}
             onSelectMeeting={setSelectedMeetingId}
+            onTranscribeExistingRecording={handleTranscribeExistingRecording}
             onTranscribeRecording={handleTranscribeRecording}
             onUpdate={handleUpdateMeeting}
             rooms={snapshot.rooms}
@@ -1410,6 +1448,7 @@ export function ChronosPrimaryPanel({
   onGenerateMinutesDraft,
   onLocalRecording,
   onSelectMeeting,
+  onTranscribeExistingRecording,
   onTranscribeRecording,
   onUpdate,
   meetings,
@@ -1426,6 +1465,11 @@ export function ChronosPrimaryPanel({
   ) => Promise<void>;
   onLocalRecording: (recording: LocalRecording) => void;
   onSelectMeeting: (meetingId: string) => void;
+  onTranscribeExistingRecording: (input: {
+    meeting: ChronosMeeting;
+    minutesProfile?: ChronosMinutesProfile;
+    recordingId: string;
+  }) => Promise<void>;
   onTranscribeRecording: (input: {
     file: Blob;
     fileName?: string;
@@ -1479,9 +1523,11 @@ export function ChronosPrimaryPanel({
         onChangeDriveView={onDriveViewChange}
       >
         <RecordingsPanel
+          canDeleteArtifacts={false}
           localRecordings={localRecordings}
           meeting={meeting}
           onTranscribeRecording={onTranscribeRecording}
+          onUpdate={onUpdate}
           saving={saving}
         />
       </ChronosDrivePanel>
@@ -1494,8 +1540,10 @@ export function ChronosPrimaryPanel({
       onChangeDriveView={onDriveViewChange}
     >
       <MinutesPanel
+        canDeleteArtifacts={false}
         meeting={meeting}
         onGenerateMinutesDraft={onGenerateMinutesDraft}
+        onTranscribeExistingRecording={onTranscribeExistingRecording}
         onUpdate={onUpdate}
         saving={saving}
       />
@@ -3745,12 +3793,14 @@ function ChronosRoomsManagementScreen({
 
 function ChronosDriveLibraryScreen({
   activeDriveView,
+  canDeleteArtifacts,
   localRecordings,
   meeting,
   meetings,
   onChangeDriveView,
   onGenerateMinutesDraft,
   onSelectMeeting,
+  onTranscribeExistingRecording,
   onTranscribeRecording,
   onUpdate,
   rooms,
@@ -3758,6 +3808,7 @@ function ChronosDriveLibraryScreen({
   userName,
 }: {
   activeDriveView: ChronosDriveView;
+  canDeleteArtifacts: boolean;
   localRecordings: LocalRecording[];
   meeting: ChronosMeeting | null;
   meetings: ChronosMeeting[];
@@ -3767,6 +3818,11 @@ function ChronosDriveLibraryScreen({
     minutesProfile: ChronosMinutesProfile,
   ) => Promise<void>;
   onSelectMeeting: (meetingId: string) => void;
+  onTranscribeExistingRecording: (input: {
+    meeting: ChronosMeeting;
+    minutesProfile?: ChronosMinutesProfile;
+    recordingId: string;
+  }) => Promise<void>;
   onTranscribeRecording: (input: {
     file: Blob;
     fileName?: string;
@@ -3795,8 +3851,15 @@ function ChronosDriveLibraryScreen({
       );
     }
 
-    return sortMeetingsByDate(byRoom);
+    return sortMeetingsByDate(byRoom.filter(hasChronosMeetingAvailableRecording));
   }, [activeDriveView, meetings, roomFilter]);
+  const selectedMinutesMeeting =
+    activeDriveView === "minutes"
+      ? meeting &&
+        filteredMeetings.some((currentMeeting) => currentMeeting.id === meeting.id)
+        ? meeting
+        : filteredMeetings[0] ?? null
+      : meeting;
 
   if (activeDriveView === "recordings") {
     return (
@@ -3805,10 +3868,13 @@ function ChronosDriveLibraryScreen({
         onChangeDriveView={onChangeDriveView}
       >
         <ChronosRecordingFolderExplorer
+          canDeleteArtifacts={canDeleteArtifacts}
           localRecordings={localRecordings}
           meetings={meetings}
           onSelectMeeting={onSelectMeeting}
+          onTranscribeExistingRecording={onTranscribeExistingRecording}
           onTranscribeRecording={onTranscribeRecording}
+          onUpdate={onUpdate}
           rooms={rooms}
           saving={saving}
         />
@@ -3845,25 +3911,27 @@ function ChronosDriveLibraryScreen({
                 key={driveMeeting.id}
                 meeting={driveMeeting}
                 onSelectMeeting={onSelectMeeting}
-                selected={driveMeeting.id === meeting?.id}
+                selected={driveMeeting.id === selectedMinutesMeeting?.id}
               />
             ))}
             {filteredMeetings.length === 0 ? (
-              <EmptyPanel text="Nenhuma reuniao encontrada para organizar atas." />
+              <EmptyPanel text="Nenhuma ata disponivel sem gravacao vinculada." />
             ) : null}
           </div>
         </Surface>
 
-        {meeting ? (
+        {selectedMinutesMeeting ? (
           <div className="grid gap-4">
             <MinutesPanel
-              meeting={meeting}
+              canDeleteArtifacts={canDeleteArtifacts}
+              meeting={selectedMinutesMeeting}
               onGenerateMinutesDraft={onGenerateMinutesDraft}
+              onTranscribeExistingRecording={onTranscribeExistingRecording}
               onUpdate={onUpdate}
               saving={saving}
             />
             <TranscriptPanel
-              meeting={meeting}
+              meeting={selectedMinutesMeeting}
               onUpdate={onUpdate}
               saving={saving}
               userName={userName}
@@ -3880,22 +3948,32 @@ function ChronosDriveLibraryScreen({
 }
 
 function ChronosRecordingFolderExplorer({
+  canDeleteArtifacts,
   localRecordings,
   meetings,
   onSelectMeeting,
+  onTranscribeExistingRecording,
   onTranscribeRecording,
+  onUpdate,
   rooms,
   saving,
 }: {
+  canDeleteArtifacts: boolean;
   localRecordings: LocalRecording[];
   meetings: ChronosMeeting[];
   onSelectMeeting: (meetingId: string) => void;
+  onTranscribeExistingRecording: (input: {
+    meeting: ChronosMeeting;
+    minutesProfile?: ChronosMinutesProfile;
+    recordingId: string;
+  }) => Promise<void>;
   onTranscribeRecording: (input: {
     file: Blob;
     fileName?: string;
     meeting: ChronosMeeting;
     recordingId?: string;
   }) => Promise<void>;
+  onUpdate: (input: Parameters<typeof updateChronosMeeting>[0]) => Promise<void>;
   rooms: ChronosRoom[];
   saving: boolean;
 }) {
@@ -4109,9 +4187,12 @@ function ChronosRecordingFolderExplorer({
               >
                 {filteredMeetings.map((recordingMeeting) => (
                   <ChronosDriveMeetingRecordingCard
+                    canDeleteArtifacts={canDeleteArtifacts}
                     key={recordingMeeting.id}
                     onSelectMeeting={onSelectMeeting}
+                    onTranscribeExistingRecording={onTranscribeExistingRecording}
                     onTranscribeRecording={onTranscribeRecording}
+                    onUpdate={onUpdate}
                     recordingMeeting={recordingMeeting}
                     saving={saving}
                     viewMode={viewMode}
@@ -4135,19 +4216,29 @@ function ChronosRecordingFolderExplorer({
 }
 
 function ChronosDriveMeetingRecordingCard({
+  canDeleteArtifacts,
   onSelectMeeting,
+  onTranscribeExistingRecording,
   onTranscribeRecording,
+  onUpdate,
   recordingMeeting,
   saving,
   viewMode,
 }: {
+  canDeleteArtifacts: boolean;
   onSelectMeeting: (meetingId: string) => void;
+  onTranscribeExistingRecording: (input: {
+    meeting: ChronosMeeting;
+    minutesProfile?: ChronosMinutesProfile;
+    recordingId: string;
+  }) => Promise<void>;
   onTranscribeRecording: (input: {
     file: Blob;
     fileName?: string;
     meeting: ChronosMeeting;
     recordingId?: string;
   }) => Promise<void>;
+  onUpdate: (input: Parameters<typeof updateChronosMeeting>[0]) => Promise<void>;
   recordingMeeting: ChronosDriveRecordingMeeting;
   saving: boolean;
   viewMode: ChronosDriveViewMode;
@@ -4164,6 +4255,7 @@ function ChronosDriveMeetingRecordingCard({
   const status =
     primaryRecording?.status ??
     (recordingMeeting.availableRecordings > 0 ? "available" : meeting.recordingStatus);
+  const checkedInParticipants = getChronosCheckedInParticipants(meeting);
 
   if (viewMode === "list") {
     return (
@@ -4186,17 +4278,20 @@ function ChronosDriveMeetingRecordingCard({
           <span>Fim: {formatDateTime(endedAt)}</span>
         </div>
         <div className="grid gap-1 text-xs text-[#667085]">
-          <span>Participantes: {meeting.participants.length}</span>
+          <span>Participantes: {checkedInParticipants.length}</span>
           <span className="truncate">Pessoas: {recordingMeeting.participantText || "-"}</span>
           <span className="truncate">
             Assunto: {meeting.objective || meeting.title}
           </span>
         </div>
         <ChronosDriveRecordingActions
+          canDeleteArtifacts={canDeleteArtifacts}
           canOpenVideo={canOpenVideo}
           downloadUrl={downloadUrl}
           onSelectMeeting={onSelectMeeting}
+          onTranscribeExistingRecording={onTranscribeExistingRecording}
           onTranscribeRecording={onTranscribeRecording}
+          onUpdate={onUpdate}
           primaryRecording={primaryRecording}
           recordingMeeting={recordingMeeting}
           saving={saving}
@@ -4243,7 +4338,7 @@ function ChronosDriveMeetingRecordingCard({
         <div className="grid gap-1 text-xs text-[#667085]">
           <span>Inicio: {formatDateTime(startedAt)}</span>
           <span>Fim: {formatDateTime(endedAt)}</span>
-          <span>Participantes: {meeting.participants.length}</span>
+          <span>Participantes: {checkedInParticipants.length}</span>
           <span className="truncate">
             Pessoas: {recordingMeeting.participantText || "-"}
           </span>
@@ -4262,10 +4357,13 @@ function ChronosDriveMeetingRecordingCard({
           </span>
         </div>
         <ChronosDriveRecordingActions
+          canDeleteArtifacts={canDeleteArtifacts}
           canOpenVideo={canOpenVideo}
           downloadUrl={downloadUrl}
           onSelectMeeting={onSelectMeeting}
+          onTranscribeExistingRecording={onTranscribeExistingRecording}
           onTranscribeRecording={onTranscribeRecording}
+          onUpdate={onUpdate}
           primaryRecording={primaryRecording}
           recordingMeeting={recordingMeeting}
           saving={saving}
@@ -4276,27 +4374,53 @@ function ChronosDriveMeetingRecordingCard({
 }
 
 function ChronosDriveRecordingActions({
+  canDeleteArtifacts,
   canOpenVideo,
   downloadUrl,
   onSelectMeeting,
+  onTranscribeExistingRecording,
   onTranscribeRecording,
+  onUpdate,
   primaryRecording,
   recordingMeeting,
   saving,
 }: {
+  canDeleteArtifacts: boolean;
   canOpenVideo: boolean;
   downloadUrl?: string;
   onSelectMeeting: (meetingId: string) => void;
+  onTranscribeExistingRecording: (input: {
+    meeting: ChronosMeeting;
+    minutesProfile?: ChronosMinutesProfile;
+    recordingId: string;
+  }) => Promise<void>;
   onTranscribeRecording: (input: {
     file: Blob;
     fileName?: string;
     meeting: ChronosMeeting;
     recordingId?: string;
   }) => Promise<void>;
+  onUpdate: (input: Parameters<typeof updateChronosMeeting>[0]) => Promise<void>;
   primaryRecording: ChronosDriveRecordingItem | null;
   recordingMeeting: ChronosDriveRecordingMeeting;
   saving: boolean;
 }) {
+  function handleDeleteRecording() {
+    if (!primaryRecording || primaryRecording.blob) {
+      return;
+    }
+
+    if (!window.confirm("Excluir esta gravacao do Chronos Drive?")) {
+      return;
+    }
+
+    void onUpdate({
+      action: "delete_recording",
+      meetingId: recordingMeeting.meeting.id,
+      recordingId: primaryRecording.id,
+    });
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <button
@@ -4338,22 +4462,38 @@ function ChronosDriveRecordingActions({
             Baixar
           </a>
         ) : null}
-        {primaryRecording?.blob ? (
+        {primaryRecording ? (
           <button
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
             disabled={saving || Boolean(primaryRecording.transcribedAt)}
             onClick={() =>
-              void onTranscribeRecording({
-                file: primaryRecording.blob as Blob,
-                fileName: primaryRecording.name,
-                meeting: recordingMeeting.meeting,
-                recordingId: primaryRecording.id,
-              })
+              primaryRecording.blob
+                ? void onTranscribeRecording({
+                    file: primaryRecording.blob as Blob,
+                    fileName: primaryRecording.name,
+                    meeting: recordingMeeting.meeting,
+                    recordingId: primaryRecording.id,
+                  })
+                : void onTranscribeExistingRecording({
+                    meeting: recordingMeeting.meeting,
+                    recordingId: primaryRecording.id,
+                  })
             }
             type="button"
           >
             <Mic aria-hidden="true" size={13} />
             {primaryRecording.transcribedAt ? "Transcrita" : "Transcrever"}
+          </button>
+        ) : null}
+        {canDeleteArtifacts && primaryRecording && !primaryRecording.blob ? (
+          <button
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 bg-white px-2.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+            disabled={saving}
+            onClick={handleDeleteRecording}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={13} />
+            Excluir
           </button>
         ) : null}
       </div>
@@ -4372,7 +4512,8 @@ function ChronosDriveItemCard({
   onSelectMeeting: (meetingId: string) => void;
   selected: boolean;
 }) {
-  const participants = meeting.participants
+  const checkedInParticipants = getChronosCheckedInParticipants(meeting);
+  const participants = checkedInParticipants
     .map((participant) => participant.displayName)
     .filter(Boolean)
     .slice(0, 3)
@@ -4413,7 +4554,7 @@ function ChronosDriveItemCard({
       </span>
       <span className="grid gap-1 text-xs text-[#667085]">
         <span>Inicio: {formatDateTime(meeting.startsAt)}</span>
-        <span>Participantes: {meeting.participants.length}</span>
+        <span>Participantes: {checkedInParticipants.length}</span>
         <span className="truncate">Nomes: {participants || "-"}</span>
         <span>Tema: {meeting.objective || meeting.title}</span>
       </span>
@@ -4639,11 +4780,14 @@ function RoomsPanel({
 }
 
 function RecordingsPanel({
+  canDeleteArtifacts,
   localRecordings,
   meeting,
   onTranscribeRecording,
+  onUpdate,
   saving,
 }: {
+  canDeleteArtifacts: boolean;
   localRecordings: LocalRecording[];
   meeting: ChronosMeeting;
   onTranscribeRecording: (input: {
@@ -4652,6 +4796,7 @@ function RecordingsPanel({
     meeting: ChronosMeeting;
     recordingId?: string;
   }) => Promise<void>;
+  onUpdate: (input: Parameters<typeof updateChronosMeeting>[0]) => Promise<void>;
   saving: boolean;
 }) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -4677,6 +4822,22 @@ function RecordingsPanel({
     }
 
     event.target.value = "";
+  }
+
+  function handleDeleteRecording(recording: LocalRecording) {
+    if (recording.blob) {
+      return;
+    }
+
+    if (!window.confirm("Excluir esta gravacao do Chronos Drive?")) {
+      return;
+    }
+
+    void onUpdate({
+      action: "delete_recording",
+      meetingId: meeting.id,
+      recordingId: recording.id,
+    });
   }
 
   return (
@@ -4766,6 +4927,17 @@ function RecordingsPanel({
                     >
                       <Mic aria-hidden="true" size={13} />
                       {recording.transcribedAt ? "Transcrita" : "Transcrever"}
+                    </button>
+                  ) : null}
+                  {canDeleteArtifacts && !recording.blob ? (
+                    <button
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 bg-white px-2.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+                      disabled={saving}
+                      onClick={() => handleDeleteRecording(recording)}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" size={13} />
+                      Excluir
                     </button>
                   ) : null}
                 </div>
@@ -4893,25 +5065,54 @@ function TranscriptPanel({
 }
 
 function MinutesPanel({
+  canDeleteArtifacts,
   meeting,
   onGenerateMinutesDraft,
+  onTranscribeExistingRecording,
   onUpdate,
   saving,
 }: {
+  canDeleteArtifacts: boolean;
   meeting: ChronosMeeting;
   onGenerateMinutesDraft: (
     meeting: ChronosMeeting,
     minutesProfile: ChronosMinutesProfile,
   ) => Promise<void>;
+  onTranscribeExistingRecording: (input: {
+    meeting: ChronosMeeting;
+    minutesProfile?: ChronosMinutesProfile;
+    recordingId: string;
+  }) => Promise<void>;
   onUpdate: (input: Parameters<typeof updateChronosMeeting>[0]) => Promise<void>;
   saving: boolean;
 }) {
   const latestMinutes = meeting.minutes[0];
   const [minutesProfile, setMinutesProfile] =
     useState<ChronosMinutesProfile>("alinhamento");
+  const [minutesView, setMinutesView] = useState<"edit" | "preview">("preview");
   const [minutesDraft, setMinutesDraft] = useState(
     latestMinutes?.content || buildMinutesDraft(meeting),
   );
+  const minutesContext = useMemo(
+    () => buildChronosMinutesContext(meeting),
+    [meeting],
+  );
+  const hasTranscript = meeting.transcript.length > 0;
+  const transcribableRecording = useMemo(
+    () =>
+      meeting.recordings.find(
+        (recording) =>
+          recording.status === "available" &&
+          Boolean(recording.downloadUrl ?? recording.playbackUrl),
+      ) ?? null,
+    [meeting.recordings],
+  );
+  const canGenerateMinutes = hasTranscript || Boolean(transcribableRecording);
+  const minutesEvidenceLabel = hasTranscript
+    ? "Transcricao registrada: ata formatada pode ser gerada pela memoria textual."
+    : transcribableRecording
+      ? "Gravacao disponivel: transcreva para a Athena montar a ata com mais precisao."
+      : "Aguardando gravacao ou transcricao para liberar a ata operacional.";
 
   useEffect(() => {
     setMinutesDraft(latestMinutes?.content || buildMinutesDraft(meeting));
@@ -4926,6 +5127,22 @@ function MinutesPanel({
     });
   }
 
+  async function deleteLatestMinutes() {
+    if (!latestMinutes) {
+      return;
+    }
+
+    if (!window.confirm("Excluir a ata selecionada? Essa acao fica registrada no Chronos.")) {
+      return;
+    }
+
+    await onUpdate({
+      action: "delete_minutes",
+      meetingId: meeting.id,
+      minutesId: latestMinutes.id,
+    });
+  }
+
   return (
     <Surface bordered className="grid min-h-full grid-rows-[auto_minmax(0,1fr)_auto] border-[#d9e0e7] bg-white">
       <div className="flex items-start justify-between gap-3 border-b border-[#edf0f4] p-4">
@@ -4936,46 +5153,122 @@ function MinutesPanel({
       </div>
       <div className="min-h-0 overflow-y-auto p-4">
         <div className="mb-4 grid gap-2">
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(chronosMinutesProfileLabels).map(
-              ([profileId, label]) => (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(chronosMinutesProfileLabels).map(
+                ([profileId, label]) => (
+                  <button
+                    className={`inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold transition ${
+                      minutesProfile === profileId
+                        ? "border-[#101820] bg-[#101820] text-white"
+                        : "border-[#d9e0e7] bg-white text-[#526078] hover:bg-[#f8fafc]"
+                    }`}
+                    key={profileId}
+                    onClick={() =>
+                      setMinutesProfile(profileId as ChronosMinutesProfile)
+                    }
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ),
+              )}
+            </div>
+            <div className="inline-flex rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-1">
+              {[
+                ["preview", "Formatada"],
+                ["edit", "Texto"],
+              ].map(([viewId, label]) => (
                 <button
-                  className={`inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold transition ${
-                    minutesProfile === profileId
-                      ? "border-[#101820] bg-[#101820] text-white"
-                      : "border-[#d9e0e7] bg-white text-[#526078] hover:bg-[#f8fafc]"
+                  className={`h-7 rounded px-2 text-xs font-bold transition ${
+                    minutesView === viewId
+                      ? "bg-[#101820] text-white"
+                      : "text-[#526078] hover:bg-white"
                   }`}
-                  key={profileId}
-                  onClick={() =>
-                    setMinutesProfile(profileId as ChronosMinutesProfile)
-                  }
+                  key={viewId}
+                  onClick={() => setMinutesView(viewId as "edit" | "preview")}
                   type="button"
                 >
                   {label}
                 </button>
-              ),
-            )}
+              ))}
+            </div>
           </div>
-          <button
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
-            disabled={saving}
-            onClick={() => void onGenerateMinutesDraft(meeting, minutesProfile)}
-            type="button"
-          >
-            <Sparkles aria-hidden="true" size={15} />
-            Gerar ata Athena
-          </button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+              disabled={saving || !canGenerateMinutes}
+              onClick={() => void onGenerateMinutesDraft(meeting, minutesProfile)}
+              type="button"
+            >
+              <Sparkles aria-hidden="true" size={15} />
+              {hasTranscript ? "Gerar ata da transcricao" : "Gerar ata Athena"}
+            </button>
+            <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#101820] bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:border-[#d9e0e7] disabled:bg-[#f8fafc] disabled:text-[#8a95a6]"
+              disabled={saving || !transcribableRecording}
+              onClick={() =>
+                transcribableRecording
+                  ? void onTranscribeExistingRecording({
+                      meeting,
+                      minutesProfile,
+                      recordingId: transcribableRecording.id,
+                    })
+                  : undefined
+              }
+              type="button"
+            >
+              <Mic aria-hidden="true" size={15} />
+              {transcribableRecording
+                ? "Transcrever gravacao"
+                : hasTranscript
+                  ? "Transcricao registrada"
+                  : "Gravacao pendente"}
+            </button>
+          </div>
+          <div className="rounded-md border border-[#d9e0e7] bg-white px-3 py-2 text-xs font-semibold text-[#526078]">
+            {minutesEvidenceLabel}
+          </div>
           <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 text-sm leading-6 text-[#344054]">
             {meeting.executiveSummary || "Resumo executivo pendente."}
           </div>
         </div>
-        <textarea
-          className="min-h-[22rem] w-full resize-none rounded-md border border-[#d9e0e7] bg-white p-3 text-sm leading-6 outline-none focus:border-[#A07C3B]"
-          onChange={(event) => setMinutesDraft(event.target.value)}
-          value={minutesDraft}
-        />
+        {minutesView === "edit" ? (
+          <textarea
+            className="min-h-[22rem] w-full resize-none rounded-md border border-[#d9e0e7] bg-white p-3 text-sm leading-6 outline-none focus:border-[#A07C3B]"
+            onChange={(event) => setMinutesDraft(event.target.value)}
+            value={minutesDraft}
+          />
+        ) : (
+          <ChronosMinutesFormattedPreview
+            context={minutesContext}
+            meeting={meeting}
+            minutes={minutesDraft}
+          />
+        )}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#edf0f4] p-3">
+        {canDeleteArtifacts && latestMinutes ? (
+          <button
+            aria-label="Excluir ata"
+            className="mr-auto inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+            disabled={saving}
+            onClick={() => void deleteLatestMinutes()}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={15} />
+            Excluir
+          </button>
+        ) : null}
+        <button
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+          disabled={saving}
+          onClick={() => openChronosMinutesPrintWindow({ meeting, minutes: minutesDraft })}
+          type="button"
+        >
+          <Download aria-hidden="true" size={15} />
+          PDF
+        </button>
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
           disabled={saving}
@@ -4999,12 +5292,316 @@ function MinutesPanel({
   );
 }
 
+function ChronosMinutesFormattedPreview({
+  context,
+  meeting,
+  minutes,
+}: {
+  context: ReturnType<typeof buildChronosMinutesContext>;
+  meeting: ChronosMeeting;
+  minutes: string;
+}) {
+  return (
+    <div className="rounded-md border border-[#d9e0e7] bg-[#eef2f6] p-3">
+      <div className="mb-3 grid gap-2 text-xs font-semibold text-[#526078] sm:grid-cols-3">
+        <span>Inicio: {context.scheduledStartLabel}</span>
+        <span>Fim real: {context.actualEndLabel}</span>
+        <span>
+          Check-ins: {context.participants.length} | Duracao:{" "}
+          {context.durationLabel}
+        </span>
+      </div>
+      <div
+        className="relative mx-auto min-h-[34rem] max-w-[52rem] overflow-hidden rounded-md bg-white p-8 shadow-sm"
+        style={{
+          fontFamily: '"Century Gothic", "Aptos", "Segoe UI", sans-serif',
+          fontSize: "9pt",
+          lineHeight: 1.5,
+        }}
+      >
+        <Image
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-1/2 w-72 -translate-x-1/2 -translate-y-1/2 opacity-[0.035]"
+          height={288}
+          src="/logoc.png"
+          width={288}
+        />
+        <div className="relative z-10">
+          <header className="mb-6 flex items-start justify-between gap-4 border-b border-[#eadfcb] pb-3">
+            <div>
+              <p className="m-0 text-[8pt] font-bold uppercase tracking-[0.14em] text-[#A07C3B]">
+                Chronos
+              </p>
+              <h2 className="m-0 mt-1 text-[13pt] font-bold text-[#101820]">
+                Ata de reuniao
+              </h2>
+              <p className="m-0 mt-1 text-[8pt] font-bold text-[#526078]">
+                {meeting.protocol} | {meeting.title}
+              </p>
+            </div>
+            <Image
+              alt="Careli"
+              className="h-12 w-12 object-contain"
+              height={48}
+              src="/logoc.png"
+              width={48}
+            />
+          </header>
+          <div
+            className="chronos-minutes-body [&_h2]:mb-0 [&_h2]:mt-3 [&_h2]:text-[10pt] [&_h2]:font-bold [&_li]:mt-0.5 [&_p]:m-0 [&_p]:mt-1 [&_strong]:font-bold [&_table]:mt-2 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-[#d9e0e7] [&_td]:p-1.5 [&_td]:align-top [&_th]:border [&_th]:border-[#d9e0e7] [&_th]:bg-[#f3f6fa] [&_th]:p-1.5 [&_th]:text-left [&_th]:font-bold [&_ul]:m-0 [&_ul]:mt-1 [&_ul]:pl-5"
+            dangerouslySetInnerHTML={{
+              __html: buildChronosMinutesBodyHtml(minutes),
+            }}
+          />
+          <footer className="mt-8 border-t border-[#eadfcb] pt-2 text-[7pt] font-bold text-[#A07C3B]">
+            Careli | documento gerado para revisao e formalizacao humana
+          </footer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function openChronosMinutesPrintWindow({
+  meeting,
+  minutes,
+}: {
+  meeting: ChronosMeeting;
+  minutes: string;
+}) {
+  const printWindow = window.open("", "_blank", "width=920,height=1180");
+
+  if (!printWindow) {
+    return;
+  }
+
+  const context = buildChronosMinutesContext(meeting);
+  const logoUrl = `${window.location.origin}/logoc.png`;
+  const title = `Ata ${meeting.protocol} - ${meeting.title}`;
+
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeChronosHtml(title)}</title>
+    <style>
+      @page { size: A4; margin: 18mm 16mm 20mm; }
+      * { box-sizing: border-box; }
+      body {
+        color: #101820;
+        font-family: "Century Gothic", "Aptos", "Segoe UI", sans-serif;
+        font-size: 9pt;
+        line-height: 1.5;
+        margin: 0;
+        padding: 0;
+      }
+      body::before {
+        background: url("${logoUrl}") center 42% / 46% auto no-repeat;
+        content: "";
+        inset: 0;
+        opacity: 0.035;
+        position: fixed;
+        z-index: -1;
+      }
+      header {
+        align-items: flex-start;
+        border-bottom: 1px solid #eadfcb;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 18px;
+        padding-bottom: 10px;
+      }
+      header img { height: 44px; object-fit: contain; width: 44px; }
+      h1, h2, h3, p, ul { margin-bottom: 0; margin-top: 0; }
+      h1 { font-size: 13pt; font-weight: 700; }
+      h2 { font-size: 10pt; font-weight: 700; margin-top: 12px; }
+      p { margin-top: 4px; }
+      ul { padding-left: 18px; }
+      li { margin-top: 2px; }
+      strong { font-weight: 700; }
+      table {
+        border-collapse: collapse;
+        margin-top: 8px;
+        page-break-inside: avoid;
+        width: 100%;
+      }
+      th, td {
+        border: 1px solid #d9e0e7;
+        padding: 5px 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th { background: #f3f6fa; font-weight: 700; }
+      .meta {
+        color: #526078;
+        font-size: 8pt;
+        font-weight: 700;
+        margin-top: 2px;
+      }
+      .eyebrow {
+        color: #A07C3B;
+        font-size: 8pt;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .footer {
+        border-top: 1px solid #eadfcb;
+        color: #A07C3B;
+        font-size: 7pt;
+        font-weight: 700;
+        margin-top: 24px;
+        padding-top: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">Chronos</p>
+        <h1>Ata de reuniao</h1>
+        <p class="meta">${escapeChronosHtml(meeting.protocol)} | ${escapeChronosHtml(meeting.title)}</p>
+        <p class="meta">Inicio: ${escapeChronosHtml(context.scheduledStartLabel)} | Fim real: ${escapeChronosHtml(context.actualEndLabel)} | Duracao: ${escapeChronosHtml(context.durationLabel)}</p>
+      </div>
+      <img alt="Careli" src="${logoUrl}" />
+    </header>
+    ${buildChronosMinutesBodyHtml(minutes)}
+    <p class="footer">Careli | documento gerado para revisao e formalizacao humana</p>
+    <script>
+      window.addEventListener("load", () => setTimeout(() => window.print(), 250));
+    </script>
+  </body>
+</html>`);
+  printWindow.document.close();
+}
+
+function buildChronosMinutesBodyHtml(minutes: string) {
+  const lines = minutes.replace(/\r/g, "").split("\n");
+  const chunks: string[] = [];
+  let listItems: string[] = [];
+  let tableLines: string[] = [];
+
+  function flushList() {
+    if (listItems.length === 0) {
+      return;
+    }
+
+    chunks.push(`<ul>${listItems.map((item) => `<li>${item}</li>`).join("")}</ul>`);
+    listItems = [];
+  }
+
+  function flushTable() {
+    if (tableLines.length === 0) {
+      return;
+    }
+
+    chunks.push(buildChronosMinutesTableHtml(tableLines));
+    tableLines = [];
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      flushList();
+      flushTable();
+      continue;
+    }
+
+    if (isChronosMarkdownTableLine(line)) {
+      flushList();
+      tableLines.push(line);
+      continue;
+    }
+
+    flushTable();
+
+    if (/^[-*]\s+/.test(line)) {
+      listItems.push(formatChronosMinutesInline(line.replace(/^[-*]\s+/, "")));
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(line) || /^[A-Z0-9\sÇÃÕÁÉÍÓÚÂÊÔÀ:.-]{6,}$/.test(line)) {
+      flushList();
+      chunks.push(`<h2>${formatChronosMinutesInline(line)}</h2>`);
+      continue;
+    }
+
+    chunks.push(`<p>${formatChronosMinutesInline(line)}</p>`);
+  }
+
+  flushList();
+  flushTable();
+
+  return chunks.join("");
+}
+
+function buildChronosMinutesTableHtml(lines: string[]) {
+  const rows = lines
+    .map((line) =>
+      line
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split("|")
+        .map((cell) => cell.trim()),
+    )
+    .filter(
+      (cells) =>
+        cells.length > 1 &&
+        !cells.every((cell) => /^:?-{2,}:?$/.test(cell.replace(/\s/g, ""))),
+    );
+
+  if (rows.length === 0) {
+    return "";
+  }
+
+  const header = rows[0] ?? [];
+  const bodyRows = rows.slice(1);
+
+  return [
+    "<table>",
+    `<thead><tr>${header
+      .map((cell) => `<th>${formatChronosMinutesInline(cell)}</th>`)
+      .join("")}</tr></thead>`,
+    `<tbody>${bodyRows
+      .map(
+        (row) =>
+          `<tr>${row
+            .map((cell) => `<td>${formatChronosMinutesInline(cell)}</td>`)
+            .join("")}</tr>`,
+      )
+      .join("")}</tbody>`,
+    "</table>",
+  ].join("");
+}
+
+function isChronosMarkdownTableLine(line: string) {
+  return line.includes("|") && line.split("|").filter(Boolean).length >= 2;
+}
+
+function formatChronosMinutesInline(value: string) {
+  return escapeChronosHtml(value).replace(
+    /\*\*([^*]+)\*\*/g,
+    "<strong>$1</strong>",
+  );
+}
+
+function escapeChronosHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function ParticipantMiniPanel({ meeting }: { meeting: ChronosMeeting | null }) {
   return (
     <MiniPanel
       icon={<UsersRound size={16} />}
       label="participantes"
-      value={String(meeting?.participants.length ?? 0)}
+      value={String(meeting ? getChronosCheckedInParticipants(meeting).length : 0)}
     />
   );
 }
@@ -5622,12 +6219,18 @@ function parseParticipants(value: string) {
 }
 
 function buildMinutesDraft(meeting: ChronosMeeting) {
-  const participants = meeting.participants
+  const context = buildChronosMinutesContext(meeting);
+  const participants = context.participants
     .map((participant) => participant.displayName)
     .join(", ");
   const timeline = meeting.timeline
     .slice(0, 8)
     .map((event) => `- ${event.title}`)
+    .join("\n");
+  const recordingEvidence = buildChronosRecordingEvidenceDraft(meeting);
+  const chatMessages = (meeting.chatMessages ?? [])
+    .slice(-10)
+    .map((message) => `- ${message.senderName}: ${message.content}`)
     .join("\n");
   const followUps = meeting.followUps
     .map((followUp) => `- ${followUp.title} / ${followUp.ownerName ?? "-"}`)
@@ -5637,11 +6240,19 @@ function buildMinutesDraft(meeting: ChronosMeeting) {
     `Ata ${meeting.protocol}`,
     "",
     `Reuniao: ${meeting.title}`,
-    `Data: ${formatDateTime(meeting.startsAt)}`,
+    `Inicio programado: ${context.scheduledStartLabel}`,
+    `Fim real: ${context.actualEndLabel}`,
+    `Duracao: ${context.durationLabel}`,
     `Participantes: ${participants || "-"}`,
     "",
     "Resumo executivo:",
     meeting.executiveSummary || "-",
+    "",
+    "Evidencias de gravacao/video:",
+    recordingEvidence,
+    "",
+    "Chat da reuniao:",
+    chatMessages || "- Nao ha chat salvo.",
     "",
     "Linha do tempo:",
     timeline || "-",
@@ -5649,8 +6260,33 @@ function buildMinutesDraft(meeting: ChronosMeeting) {
     "Follow-ups:",
     followUps || "-",
     "",
+    "Plano de acao:",
+    "| Atividade | Responsavel | Prazo | Status |",
+    "| --- | --- | --- | --- |",
+    `| Sem atividade formal registrada | Nao informado | ${formatChronosDate(
+      context.defaultActionDueAt,
+    )} | Aberto |`,
+    "",
     "Status: rascunho sujeito a revisao humana.",
   ].join("\n");
+}
+
+function buildChronosRecordingEvidenceDraft(meeting: ChronosMeeting) {
+  if (meeting.recordings.length === 0) {
+    return "- Nao ha gravacao vinculada.";
+  }
+
+  return meeting.recordings
+    .map((recording) => {
+      const source = recording.fileName ?? recording.storagePath ?? recording.id;
+      const status = chronosCaptureStatusLabels[recording.status];
+      const type = recording.mimeType?.includes("video")
+        ? "video vinculado como evidencia"
+        : "audio/anexo vinculado como evidencia";
+
+      return `- ${source} / ${status} / ${type}`;
+    })
+    .join("\n");
 }
 
 function buildChronosRecordingFolders({
@@ -5766,7 +6402,8 @@ function buildChronosDriveRecordingMeeting({
     getChronosMeetingDriveEnd(meeting) ??
     getChronosMeetingDriveStart(meeting) ??
     meeting.updatedAt;
-  const participantText = meeting.participants
+  const checkedInParticipants = getChronosCheckedInParticipants(meeting);
+  const participantText = checkedInParticipants
     .map((participant) =>
       [participant.displayName, participant.email, participant.organization]
         .filter(Boolean)
@@ -6125,6 +6762,10 @@ function buildExternalRoomPath(slug: string) {
 
 function buildExternalRoomLink(slug: string) {
   return new URL(buildExternalRoomPath(slug), "https://c2x.app.br").toString();
+}
+
+function hasChronosMeetingAvailableRecording(meeting: ChronosMeeting) {
+  return meeting.recordings.some((recording) => recording.status === "available");
 }
 
 function readFileAsDataUrl(file: File) {

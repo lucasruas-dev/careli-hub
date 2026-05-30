@@ -21050,3 +21050,57 @@ Conclusao:
 - Os dois recortes autorizados foram publicados no deployment final limpo.
 - A primeira tentativa de deploy revelou um risco operacional real de root misto; foi corrigida por roll-forward imediato e registrada para endurecer o processo.
 - O proximo passo e Lucas validar uma chamada real com 3+ pessoas e uma nova gravacao aparecendo no Drive com play/download.
+
+## 2026-05-29 - Z29-20260529-005-CHRONOS-GRAVACAO-TELA-UI-DRIVE-ADMIN
+
+Status: VALIDADO_LOCAL / PACOTE COMBINADO ZEUS + ATHENA / NAO PUBLICADO.
+
+Resumo:
+- Lucas reportou que uma gravacao Chronos com compartilhamento de tela foi salva, mas o video final nao exibiu a tela compartilhada.
+- Lucas tambem pediu que a sala Chronos aproveitasse o comportamento visual do Hermes quando ha compartilhamento de tela: tela principal em destaque, participantes no lado direito e zoom individual.
+- Lucas pediu acao admin para excluir video e ata no Chronos Drive.
+- Athena concluiu melhorias complementares de ata/transcricao; Zeus reconciliou manualmente o recorte para preservar a producao vigente, a conexao Google e a nova gravacao de tela.
+
+Escopo:
+- Chronos sala externa: a gravacao passa a usar um video controller baseado em canvas para trocar dinamicamente entre camera e tela compartilhada durante a mesma gravacao.
+- Chronos sala externa: audio da gravacao passa por mixer Web Audio para preservar trilhas locais/remotas sem depender de adicionar tracks tardias ao MediaRecorder.
+- Chronos sala externa: quando alguem compartilha tela, a tela fica em destaque, os participantes ficam em trilha lateral responsiva e o host/participante pode ajustar zoom da tela compartilhada.
+- Chronos Drive: administradores podem excluir gravacoes persistidas; a exclusao remove o objeto do Supabase Storage quando houver bucket/path e remove a linha em `chronos_recordings`.
+- Chronos Drive: administradores podem excluir a ultima ata da reuniao pelo painel de atas, reaproveitando o fluxo server-side de `delete_minutes`.
+- Athena/ata: gravacoes persistidas no Drive podem ser transcritas server-side por `transcribe_existing_recording`.
+- Athena/ata: transcricao passa a gerar rascunho de ata em sequencia, aceita transcricao salva como evidencia minima e vincula video/gravacao como evidencia operacional.
+- Athena/ata: ata local/preview usa inicio programado, fim real, duracao, participantes com check-in deduplicado, chat, evidencias e plano de acao em tabela.
+- Chronos Drive: contagem e nomes de participantes passam a refletir check-in real/deduplicado, nao apenas convidados.
+
+Arquivos alterados:
+- `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+- `apps/hub/modules/chronos/ChronosPage.tsx`;
+- `apps/hub/app/api/chronos/meetings/agent/route.ts`;
+- `apps/hub/lib/chronos/client.ts`;
+- `apps/hub/lib/chronos/server.ts`;
+- `apps/hub/lib/chronos/types.ts`;
+- `docs/operations/engineering-operations.md`;
+- `docs/operations/panteon-recorte-protocols.md`.
+
+Arquivos excluidos do escopo:
+- Hermes, Hades, Iris, Athena, Apolo, Atlas, Setup, envs, secrets, migrations, dominio, alias, Supabase schema remoto e producao.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de Turbopack/NFT por worktree em `.codex-deploy`.
+- Smoke local buildado `GET http://localhost:3031/chronos`: 200 OK.
+- Smoke local buildado `POST http://localhost:3031/api/chronos/meetings/agent` sem sessao: 401 esperado.
+- Smoke local `/chronos/lideranca`: bloqueado no pacote sem env por falta de Supabase server-side, comportamento esperado para sala externa fora de ambiente real.
+
+Riscos e acompanhamento:
+- A validacao funcional completa ainda exige teste real em sala Chronos com compartilhamento de tela durante gravacao, encerramento e conferencia do video no Drive.
+- A exclusao de video/ata foi limitada a admin no cliente e no servidor; usuarios nao admin nao veem os botoes e o backend bloqueia a acao.
+- Nao houve deploy, migracao ou alteracao remota de Supabase neste recorte.
+- A reconciliacao com Athena foi feita neste pacote; ainda exige deploy controlado em producao e healthcheck real para sala externa/Drive.
+
+Conclusao:
+- O problema da tela compartilhada nao aparecer na gravacao tinha causa provavel no desenho antigo do MediaRecorder: ele prendia a trilha de video inicial e nao acompanhava o compartilhamento iniciado depois.
+- O recorte corrige esse comportamento, melhora a experiencia visual da sala sem redesenhar a identidade, adiciona exclusao admin de artefatos no Drive e incorpora as melhorias de ata/transcricao da Athena.
+- Producao segue bloqueada ate auditoria final de deploy, commit limpo e publicacao autorizada pelo Lucas.

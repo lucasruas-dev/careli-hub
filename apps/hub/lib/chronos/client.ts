@@ -378,6 +378,41 @@ export async function transcribeChronosRecording(input: {
   return payload.meeting;
 }
 
+export async function transcribeChronosExistingRecording(input: {
+  meetingId: string;
+  minutesProfile?: ChronosMinutesProfile;
+  recordingId: string;
+  speakerLabel?: string;
+}) {
+  const token = await getChronosAccessToken();
+  const response = await fetch("/api/chronos/meetings/agent", {
+    body: JSON.stringify({
+      action: "transcribe_existing_recording",
+      meetingId: input.meetingId,
+      minutesProfile: input.minutesProfile ?? "alinhamento",
+      recordingId: input.recordingId,
+      speakerLabel: input.speakerLabel ?? "Athena",
+    }),
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | ChronosApiResponse
+    | null;
+
+  if (!response.ok || !payload?.meeting) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel transcrever a gravacao salva.",
+    );
+  }
+
+  return payload.meeting;
+}
+
 export async function draftChronosMinutes(input: {
   meetingId: string;
   minutesProfile: ChronosMinutesProfile;

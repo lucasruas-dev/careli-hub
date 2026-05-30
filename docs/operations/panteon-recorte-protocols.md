@@ -560,3 +560,45 @@ O manifesto de homologacao deve incluir:
 - Rollback imediato: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
 - Validacoes finais: diff check, secret scan de codigo, eslint escopado, check-types, lint, build, deploy Vercel Production, inspect dos aliases, healthchecks HTTP e logs recentes sem erro critico.
 - Observacao: validacao funcional de badges/notificacoes de thread depende de sessao real no Hermes/PulseX com mensagens em thread.
+
+## Z29-20260529-005-CHRONOS-GRAVACAO-TELA-UI-DRIVE-ADMIN
+
+- Modulo/agente dono: Chronos / Zeus Operations.
+- Objetivo do recorte: corrigir gravacao Chronos para capturar compartilhamento de tela iniciado durante a chamada, melhorar layout de tela compartilhada com participantes laterais e zoom, liberar exclusao admin de video/ata no Drive e incorporar melhorias Athena de ata/transcricao persistida.
+- Worktree/branch: `.codex-deploy/z29-005-chronos-recording-ui-drive-admin-20260529` em `codex/zeus/chronos-recording-ui-drive-admin-20260529`.
+- Base limpa: commit `2b0fc09`, preservando a producao publicada em `dpl_8wpkFvJ8Jese445Kz98U8WeHmKcw`.
+- Arquivos incluidos:
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts`;
+  - `apps/hub/lib/chronos/client.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/lib/chronos/types.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`.
+- Arquivos excluidos: root misto, Hermes, Hades, Iris, Athena, Apolo, Atlas, Setup, envs, secrets, migrations, banco remoto, service role, dominio, alias, Vercel deploy e producao.
+- Comportamento esperado:
+  - se a gravacao ja estiver em andamento e o host iniciar compartilhamento de tela, o video gravado passa a acompanhar a tela compartilhada;
+  - ao parar o compartilhamento, a gravacao volta para camera local quando houver camera ativa;
+  - na sala, a tela compartilhada fica em destaque, participantes ficam em trilha lateral responsiva e ha controle de zoom por usuario;
+  - administradores podem excluir gravacao persistida e ata pelo Chronos Drive;
+  - usuarios nao admin nao veem a acao e o servidor bloqueia exclusao por permissao.
+  - Athena pode transcrever gravacao persistida do Drive por rota server-side e gerar rascunho de ata em sequencia;
+  - ata/Drive usam inicio programado, fim real, duracao, chat, evidencias e participantes com check-in deduplicado.
+- Validacoes:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
+  - `GET http://localhost:3031/chronos`: 200 OK em build local temporario;
+  - `POST http://localhost:3031/api/chronos/meetings/agent` sem sessao: 401 esperado;
+  - `/chronos/lideranca` local sem env: bloqueado por Supabase server-side ausente, esperado fora de ambiente real.
+- Status: `VALIDADO_LOCAL`.
+- Preview Vercel: nao publicado.
+- Deployment id e URL tecnica: nao publicados.
+- Riscos e pendencias:
+  - exige teste funcional real com tela compartilhada durante gravacao e conferencia do video no Drive;
+  - reconciliacao com Athena concluida neste pacote; ainda exige deploy controlado e healthcheck pos-publicacao;
+  - nao houve alteracao remota de Supabase, env, migration, dominio ou alias.
+- Rollback sugerido: manter producao atual `dpl_8wpkFvJ8Jese445Kz98U8WeHmKcw` ate deploy autorizado; se houver regressao futura, promover o deployment imediatamente anterior ao deploy deste protocolo.
+- Decisao de Lucas: solicitou unir as melhorias da Athena ao recorte Zeus antes da publicacao.

@@ -2313,9 +2313,12 @@ function assertCanManageChronos(user: AuthorizedChronosUser) {
   }
 }
 
-function assertChronosAdmin(user: AuthorizedChronosUser) {
+function assertChronosAdmin(
+  user: AuthorizedChronosUser,
+  message = "Somente administradores podem executar esta acao.",
+) {
   if (user.role !== "admin") {
-    throw new ChronosForbiddenError("Somente administradores podem excluir atas.");
+    throw new ChronosForbiddenError(message);
   }
 }
 
@@ -2504,8 +2507,86 @@ async function applyChronosUpdate({
     return;
   }
 
+  if (input.action === "delete_recording") {
+    assertChronosAdmin(
+      user,
+      "Somente administradores podem excluir gravacoes.",
+    );
+
+    const recordingResult = await client
+      .from("chronos_recordings")
+      .select("*")
+      .eq("meeting_id", input.meetingId)
+      .eq("id", input.recordingId)
+      .maybeSingle<ChronosRecordingRow>();
+
+    if (recordingResult.error) {
+      throw recordingResult.error;
+    }
+
+    if (!recordingResult.data) {
+      throw new Error("Gravacao Chronos nao encontrada.");
+    }
+
+    if (
+      recordingResult.data.storage_bucket &&
+      recordingResult.data.storage_path
+    ) {
+      const removeResult = await client.storage
+        .from(recordingResult.data.storage_bucket)
+        .remove([recordingResult.data.storage_path]);
+
+      if (removeResult.error) {
+        throw removeResult.error;
+      }
+    }
+
+    const deleteResult = await client
+      .from("chronos_recordings")
+      .delete()
+      .eq("meeting_id", input.meetingId)
+      .eq("id", input.recordingId);
+
+    if (deleteResult.error) {
+      throw deleteResult.error;
+    }
+
+    const remainingResult = await client
+      .from("chronos_recordings")
+      .select("status,created_at")
+      .eq("meeting_id", input.meetingId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (remainingResult.error) {
+      throw remainingResult.error;
+    }
+
+    const nextStatus =
+      remainingResult.data?.[0]?.status &&
+      isChronosCaptureStatus(remainingResult.data[0].status)
+        ? remainingResult.data[0].status
+        : "not_started";
+    const meetingResult = await client
+      .from("chronos_meetings")
+      .update({ recording_status: nextStatus })
+      .eq("id", input.meetingId);
+
+    if (meetingResult.error) {
+      throw meetingResult.error;
+    }
+
+    await insertTimelineEvent(client, {
+      actorUserId: user.id,
+      eventType: "note",
+      meetingId: input.meetingId,
+      title: "Gravacao excluida por administrador",
+    });
+    return;
+  }
+
   if (input.action === "delete_minutes") {
-    assertChronosAdmin(user);
+    assertChronosAdmin(user, "Somente administradores podem excluir atas.");
 
     const deleteResult = await client
       .from("chronos_minutes")
@@ -3193,6 +3274,23 @@ function normalizeUpdateInput(input: unknown): ChronosUpdateInput {
       action,
       meetingId,
       minutesId,
+    };
+  }
+
+  if (action === "delete_recording") {
+    const recordingId = sanitizeOptionalText(
+      (maybeInput as { recordingId?: unknown }).recordingId,
+      80,
+    );
+
+    if (!recordingId) {
+      throw new Error("Gravacao nao informada para exclusao.");
+    }
+
+    return {
+      action,
+      meetingId,
+      recordingId,
     };
   }
 
@@ -4190,7 +4288,7 @@ async function updateLocalChronosMeeting({
         ...meeting.timeline,
       ];
     } else if (input.action === "delete_minutes") {
-      assertChronosAdmin(user);
+      assertChronosAdmin(user, "Somente administradores podem excluir atas.");
       nextMeeting.minutes = meeting.minutes.filter(
         (minutes) => minutes.id !== input.minutesId,
       );
@@ -4198,6 +4296,20 @@ async function updateLocalChronosMeeting({
         nextMeeting.minutes[0]?.status ?? "not_started";
       nextMeeting.timeline = [
         event("Ata excluida por administrador", "note"),
+        ...meeting.timeline,
+      ];
+    } else if (input.action === "delete_recording") {
+      assertChronosAdmin(
+        user,
+        "Somente administradores podem excluir gravacoes.",
+      );
+      nextMeeting.recordings = meeting.recordings.filter(
+        (recording) => recording.id !== input.recordingId,
+      );
+      nextMeeting.recordingStatus =
+        nextMeeting.recordings[0]?.status ?? "not_started";
+      nextMeeting.timeline = [
+        event("Gravacao excluida por administrador", "note"),
         ...meeting.timeline,
       ];
     } else if (input.action === "create_followup") {

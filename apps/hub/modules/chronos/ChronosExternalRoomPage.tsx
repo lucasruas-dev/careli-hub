@@ -10,7 +10,7 @@ import type {
 import type { HermesCallParticipant } from "@/lib/pulsex";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
-import { Badge } from "@repo/uix";
+import { Badge, Tooltip } from "@repo/uix";
 import type { ImageSegmenter } from "@mediapipe/tasks-vision";
 import {
   Ban,
@@ -26,6 +26,8 @@ import {
   Square,
   UsersRound,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   useCallback,
@@ -112,6 +114,28 @@ type ChronosPreparedLocalMedia = {
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
+type ChronosRecordingVideoController = {
+  sourceTrack: MediaStreamTrack | null;
+  stop: () => void;
+  track: MediaStreamTrack;
+  update: (track: MediaStreamTrack | null) => void;
+};
+
+type ChronosRecordingAudioMixer = {
+  stop: () => void;
+  sync: (input: {
+    localStream: MediaStream | null;
+    remoteParticipants: Record<string, ChronosRoomParticipant>;
+  }) => void;
+  track: MediaStreamTrack | null;
+};
+
+type ChronosRecordingCapture = {
+  audioMixer: ChronosRecordingAudioMixer | null;
+  stream: MediaStream;
+  videoController: ChronosRecordingVideoController | null;
+};
+
 type SpeechRecognitionLike = {
   abort: () => void;
   continuous: boolean;
@@ -179,6 +203,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenShareZoom, setScreenShareZoom] = useState(1);
   const [isRecording, setIsRecording] = useState(false);
   const [lastRecordingName, setLastRecordingName] = useState("");
   const [lastRecordingUrl, setLastRecordingUrl] = useState("");
@@ -227,6 +252,9 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingStartedAtRef = useRef(0);
   const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingAudioMixerRef = useRef<ChronosRecordingAudioMixer | null>(null);
+  const recordingVideoControllerRef =
+    useRef<ChronosRecordingVideoController | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStopPromiseRef = useRef<Promise<void> | null>(null);
   const resolveRecordingStopRef = useRef<(() => void) | null>(null);
@@ -312,10 +340,24 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       return;
     }
 
-    addMissingRecordingAudioTracks(recordingStreamRef.current, {
-      localStream,
-      remoteParticipants,
-    });
+    if (recordingAudioMixerRef.current) {
+      recordingAudioMixerRef.current.sync({
+        localStream,
+        remoteParticipants,
+      });
+    } else {
+      addMissingRecordingAudioTracks(recordingStreamRef.current, {
+        localStream,
+        remoteParticipants,
+      });
+    }
+
+    recordingVideoControllerRef.current?.update(
+      getChronosRecordingVideoTrack({
+        localStream,
+        screenTrack: screenTrackRef.current,
+      }),
+    );
   }, [isRecording, localStream, remoteParticipants]);
 
   useEffect(() => {
@@ -1147,6 +1189,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       }
 
       screenTrackRef.current = screenTrack;
+      recordingVideoControllerRef.current?.update(screenTrack);
       screenTrack.addEventListener("ended", () => {
         void stopScreenShare();
       });
@@ -1174,11 +1217,18 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   async function stopScreenShare() {
     screenTrackRef.current?.stop();
     screenTrackRef.current = null;
+    recordingVideoControllerRef.current?.update(
+      getChronosRecordingVideoTrack({
+        localStream: localStreamRef.current,
+        screenTrack: null,
+      }),
+    );
     setIsScreenSharing(false);
     sendScreenShareSignal("screen-share-stop");
 
     if (!cameraEnabled) {
       replaceVideoTrackForPeers(null);
+      recordingVideoControllerRef.current?.update(null);
       setLocalParticipant((currentParticipant) =>
         currentParticipant
           ? {
@@ -1208,6 +1258,9 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       virtualBackgroundCleanupRef.current = preparedMedia.cleanup;
       localStreamRef.current = nextStream;
       replaceVideoTrackForPeers(nextStream.getVideoTracks()[0] ?? null);
+      recordingVideoControllerRef.current?.update(
+        nextStream.getVideoTracks()[0] ?? null,
+      );
       setLocalStream(new MediaStream(nextStream.getTracks()));
       setMediaError(
         hasChronosVirtualBackgroundRequest({
@@ -1228,6 +1281,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       );
     } catch {
       replaceVideoTrackForPeers(null);
+      recordingVideoControllerRef.current?.update(null);
       setMediaError("Nao foi possivel restaurar a camera.");
     }
   }
@@ -1304,11 +1358,12 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       return;
     }
 
-    const stream = buildRecordingStream({
+    const recordingCapture = buildRecordingStream({
       localStream: localStreamRef.current,
       remoteParticipants: remoteParticipantsRef.current,
       screenTrack: screenTrackRef.current,
     });
+    const stream = recordingCapture?.stream ?? null;
 
     if (!stream || stream.getTracks().length === 0) {
       setMediaError("Nenhuma midia disponivel para gravar.");
@@ -1320,6 +1375,8 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     const mimeType = getSupportedRecordingMimeType();
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     recordingStreamRef.current = stream;
+    recordingAudioMixerRef.current = recordingCapture?.audioMixer ?? null;
+    recordingVideoControllerRef.current = recordingCapture?.videoController ?? null;
     recorderRef.current = recorder;
     recordingStopPromiseRef.current = new Promise((resolve) => {
       resolveRecordingStopRef.current = resolve;
@@ -1393,11 +1450,15 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     }
 
     recorderRef.current = null;
-    recordingStreamRef.current = null;
     stopAthenaTranscription();
     setIsRecording(false);
     sendRecordingStateSignal("available");
     await stopPromise;
+    recordingStreamRef.current = null;
+    recordingAudioMixerRef.current?.stop();
+    recordingAudioMixerRef.current = null;
+    recordingVideoControllerRef.current?.stop();
+    recordingVideoControllerRef.current = null;
   }
 
   async function uploadChronosRecordingBlob({
@@ -1914,6 +1975,13 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         ({ source }) => source.id !== screenShareParticipant.source.id,
       )
     : tileParticipants;
+  const screenShareParticipantSourceId =
+    screenShareParticipant?.source.id ?? "";
+  useEffect(() => {
+    if (!screenShareParticipantSourceId) {
+      setScreenShareZoom(1);
+    }
+  }, [screenShareParticipantSourceId]);
   const participantGridClassName = getChronosParticipantGridClassName(
     tileParticipants.length,
   );
@@ -2155,10 +2223,16 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
             <div className="min-h-0 overflow-hidden pt-12">
               {screenShareParticipant ? (
-                <div className="relative h-full min-h-0">
-                  <div className="h-full min-h-0 rounded-[1.25rem] border border-white/25 bg-[#111820]/30 p-1.5 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-black/20 backdrop-blur-[2px] [&_video]:object-contain">
+                <div
+                  className={`grid h-full min-h-0 gap-3 ${
+                    companionParticipants.length > 0
+                      ? "lg:grid-cols-[minmax(0,1fr)_17rem]"
+                      : ""
+                  }`}
+                >
+                  <div className="relative min-h-0 rounded-[1.25rem] border border-white/25 bg-[#111820]/30 p-1.5 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-black/20 backdrop-blur-[2px] [&_video]:object-contain">
                     <div
-                      className="h-full min-h-0 rounded-[1rem]"
+                      className="h-full min-h-0 overflow-hidden rounded-[1rem]"
                       style={getChronosParticipantWindowStyle({
                         backgroundDataUrl: localParticipantFallbackBackground,
                         isLocal:
@@ -2175,29 +2249,79 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
                         mediaStream={screenShareParticipant.source.stream}
                         onVideoElementChange={handleVideoElementChange}
                         participant={screenShareParticipant.participant}
+                        presentationZoom={screenShareZoom}
                       />
                     </div>
-                  </div>
-                  <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex gap-3 overflow-x-auto pb-1">
-                    {companionParticipants.map(({ participant, source }) => (
-                      <div
-                        className="pointer-events-auto w-64 shrink-0 rounded-2xl border border-white/25 bg-[#111820]/50 p-1.5 shadow-2xl ring-1 ring-black/30 backdrop-blur-sm [&_video]:object-contain"
-                        key={source.id}
-                        style={getChronosParticipantWindowStyle({
-                          backgroundDataUrl: localParticipantFallbackBackground,
-                          isLocal: source.id === localParticipant?.id,
-                        })}
+                    <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-full border border-white/10 bg-black/55 p-1 shadow-xl backdrop-blur">
+                      <Tooltip content="Diminuir zoom">
+                        <button
+                          aria-label="Diminuir zoom da tela"
+                          className="grid h-8 w-8 place-items-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                          disabled={screenShareZoom <= 1}
+                          onClick={() =>
+                            setScreenShareZoom((currentZoom) =>
+                              Math.max(
+                                1,
+                                Number((currentZoom - 0.25).toFixed(2)),
+                              ),
+                            )
+                          }
+                          type="button"
+                        >
+                          <ZoomOut aria-hidden="true" size={16} />
+                        </button>
+                      </Tooltip>
+                      <button
+                        className="h-8 rounded-full px-2 text-xs font-semibold text-white/85 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                        onClick={() => setScreenShareZoom(1)}
+                        type="button"
                       >
-                        <CallParticipantTile
-                          isLocalMedia={source.id === localParticipant?.id}
-                          layout="floating"
-                          mediaStream={source.stream}
-                          onVideoElementChange={handleVideoElementChange}
-                          participant={participant}
-                        />
-                      </div>
-                    ))}
+                        {Math.round(screenShareZoom * 100)}%
+                      </button>
+                      <Tooltip content="Aumentar zoom">
+                        <button
+                          aria-label="Aumentar zoom da tela"
+                          className="grid h-8 w-8 place-items-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                          disabled={screenShareZoom >= 2.25}
+                          onClick={() =>
+                            setScreenShareZoom((currentZoom) =>
+                              Math.min(
+                                2.25,
+                                Number((currentZoom + 0.25).toFixed(2)),
+                              ),
+                            )
+                          }
+                          type="button"
+                        >
+                          <ZoomIn aria-hidden="true" size={16} />
+                        </button>
+                      </Tooltip>
+                    </div>
                   </div>
+                  {companionParticipants.length > 0 ? (
+                    <aside className="min-h-0 overflow-x-auto rounded-[1.25rem] border border-white/15 bg-[#101820]/55 p-2 shadow-2xl ring-1 ring-black/20 backdrop-blur-sm lg:overflow-x-hidden lg:overflow-y-auto">
+                      <div className="flex gap-2 lg:grid">
+                        {companionParticipants.map(({ participant, source }) => (
+                          <div
+                            className="w-56 shrink-0 rounded-2xl border border-white/20 bg-[#111820]/58 p-1.5 shadow-xl [&_video]:object-contain lg:w-full"
+                            key={source.id}
+                            style={getChronosParticipantWindowStyle({
+                              backgroundDataUrl: localParticipantFallbackBackground,
+                              isLocal: source.id === localParticipant?.id,
+                            })}
+                          >
+                            <CallParticipantTile
+                              isLocalMedia={source.id === localParticipant?.id}
+                              layout="floating"
+                              mediaStream={source.stream}
+                              onVideoElementChange={handleVideoElementChange}
+                              participant={participant}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </aside>
+                  ) : null}
                 </div>
               ) : (
                 <div className={participantGridClassName}>
@@ -3113,17 +3237,233 @@ function buildRecordingStream({
   localStream: MediaStream | null;
   remoteParticipants: Record<string, ChronosRoomParticipant>;
   screenTrack: MediaStreamTrack | null;
-}) {
-  const audioTracks = getRecordingAudioTracks({
+}): ChronosRecordingCapture | null {
+  const audioMixer = createChronosRecordingAudioMixer({
     localStream,
     remoteParticipants,
   });
-  const videoTracks = screenTrack
-    ? [screenTrack]
-    : (localStream?.getVideoTracks() ?? []);
+  const videoController = createChronosRecordingVideoController(
+    getChronosRecordingVideoTrack({ localStream, screenTrack }),
+  );
+  const audioTracks = audioMixer?.track
+    ? [audioMixer.track]
+    : getRecordingAudioTracks({ localStream, remoteParticipants });
+  const fallbackVideoTrack = getChronosRecordingVideoTrack({
+    localStream,
+    screenTrack,
+  });
+  const videoTracks = videoController
+    ? [videoController.track]
+    : fallbackVideoTrack
+      ? [fallbackVideoTrack]
+      : [];
   const tracks = [...audioTracks, ...videoTracks];
 
-  return tracks.length > 0 ? new MediaStream(tracks) : null;
+  if (tracks.length === 0) {
+    audioMixer?.stop();
+    videoController?.stop();
+    return null;
+  }
+
+  return {
+    audioMixer,
+    stream: new MediaStream(tracks),
+    videoController,
+  };
+}
+
+function createChronosRecordingVideoController(
+  initialTrack: MediaStreamTrack | null,
+): ChronosRecordingVideoController | null {
+  const canvas = document.createElement("canvas");
+
+  if (typeof canvas.captureStream !== "function") {
+    return null;
+  }
+
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    return null;
+  }
+
+  const videoElement = document.createElement("video");
+  let animationFrameId = 0;
+  let currentTrack: MediaStreamTrack | null = null;
+
+  videoElement.autoplay = true;
+  videoElement.muted = true;
+  videoElement.playsInline = true;
+  canvas.width = 1280;
+  canvas.height = 720;
+
+  const update = (track: MediaStreamTrack | null) => {
+    currentTrack = track?.readyState === "live" ? track : null;
+
+    if (!currentTrack) {
+      videoElement.srcObject = null;
+      return;
+    }
+
+    const settings = currentTrack.getSettings();
+    const nextWidth = normalizeChronosRecordingDimension(settings.width, 1280);
+    const nextHeight = normalizeChronosRecordingDimension(settings.height, 720);
+
+    if (canvas.width !== nextWidth) {
+      canvas.width = nextWidth;
+    }
+
+    if (canvas.height !== nextHeight) {
+      canvas.height = nextHeight;
+    }
+
+    videoElement.srcObject = new MediaStream([currentTrack]);
+    void videoElement.play().catch(() => undefined);
+  };
+  const paint = () => {
+    context.fillStyle = "#101820";
+    context.fillRect(0, 0, canvas.width || 1280, canvas.height || 720);
+
+    if (
+      currentTrack?.readyState === "live" &&
+      videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+    ) {
+      drawContainVideoFrame(context, videoElement, canvas);
+    }
+
+    animationFrameId = window.requestAnimationFrame(paint);
+  };
+
+  update(initialTrack);
+  const [track] = canvas.captureStream(30).getVideoTracks();
+
+  if (!track) {
+    return null;
+  }
+
+  paint();
+
+  return {
+    sourceTrack: currentTrack,
+    stop: () => {
+      window.cancelAnimationFrame(animationFrameId);
+      videoElement.pause();
+      videoElement.srcObject = null;
+      track.stop();
+    },
+    track,
+    update: (trackInput) => {
+      update(trackInput);
+    },
+  };
+}
+
+function createChronosRecordingAudioMixer(input: {
+  localStream: MediaStream | null;
+  remoteParticipants: Record<string, ChronosRoomParticipant>;
+}): ChronosRecordingAudioMixer | null {
+  const audioWindow = window as typeof window & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+  const AudioContextConstructor =
+    audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+
+  if (!AudioContextConstructor) {
+    return null;
+  }
+
+  const context = new AudioContextConstructor();
+  const destination = context.createMediaStreamDestination();
+  const sources = new Map<
+    string,
+    { node: MediaStreamAudioSourceNode; stream: MediaStream }
+  >();
+  const sync = (nextInput: {
+    localStream: MediaStream | null;
+    remoteParticipants: Record<string, ChronosRoomParticipant>;
+  }) => {
+    const nextTracks = getRecordingAudioTracks(nextInput);
+    const nextTrackIds = new Set(nextTracks.map((track) => track.id));
+
+    sources.forEach((source, trackId) => {
+      if (!nextTrackIds.has(trackId)) {
+        source.node.disconnect();
+        sources.delete(trackId);
+      }
+    });
+
+    for (const track of nextTracks) {
+      if (sources.has(track.id)) {
+        continue;
+      }
+
+      const stream = new MediaStream([track]);
+      const node = context.createMediaStreamSource(stream);
+
+      node.connect(destination);
+      sources.set(track.id, { node, stream });
+    }
+  };
+
+  sync(input);
+  void context.resume().catch(() => undefined);
+
+  return {
+    stop: () => {
+      sources.forEach((source) => source.node.disconnect());
+      sources.clear();
+      destination.stream.getTracks().forEach((track) => track.stop());
+      void context.close().catch(() => undefined);
+    },
+    sync,
+    track: destination.stream.getAudioTracks()[0] ?? null,
+  };
+}
+
+function getChronosRecordingVideoTrack({
+  localStream,
+  screenTrack,
+}: {
+  localStream: MediaStream | null;
+  screenTrack: MediaStreamTrack | null;
+}) {
+  if (screenTrack?.readyState === "live") {
+    return screenTrack;
+  }
+
+  return (
+    localStream?.getVideoTracks().find((track) => track.readyState === "live") ??
+    null
+  );
+}
+
+function normalizeChronosRecordingDimension(
+  value: number | undefined,
+  fallback: number,
+) {
+  if (!value || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(Math.round(value), 480), 1920);
+}
+
+function drawContainVideoFrame(
+  context: CanvasRenderingContext2D,
+  videoElement: HTMLVideoElement,
+  canvas: HTMLCanvasElement,
+) {
+  const videoWidth = videoElement.videoWidth || canvas.width || 1280;
+  const videoHeight = videoElement.videoHeight || canvas.height || 720;
+  const canvasWidth = canvas.width || 1280;
+  const canvasHeight = canvas.height || 720;
+  const scale = Math.min(canvasWidth / videoWidth, canvasHeight / videoHeight);
+  const width = videoWidth * scale;
+  const height = videoHeight * scale;
+  const x = (canvasWidth - width) / 2;
+  const y = (canvasHeight - height) / 2;
+
+  context.drawImage(videoElement, x, y, width, height);
 }
 
 function addMissingRecordingAudioTracks(
