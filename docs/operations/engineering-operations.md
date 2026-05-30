@@ -21222,3 +21222,54 @@ Conclusao:
 - O Chronos agora atualiza a composicao gravada quando as janelas de participantes aparecem, reduzindo o risco de a gravacao salvar apenas a tela compartilhada.
 - A aba Atas foi estabilizada para nao derrubar o Drive por estado local/placeholder de agente.
 - O proximo passo operacional e Lucas validar uma nova gravacao curta no Chronos com compartilhamento de tela e ao menos um participante remoto.
+
+## 2026-05-30 - Z30-20260530-002-CHRONOS-GOOGLE-AGENDA-FIDELIDADE
+
+Status: VALIDADO LOCALMENTE / AGUARDANDO AUTORIZACAO DE PUBLICACAO.
+
+Data/hora local: `2026-05-30 06:51:09 -03:00`.
+
+Resumo:
+- Lucas reportou que a agenda Chronos da Nivea Careli nao refletia a semana exibida no Google Calendar, mostrando poucos blocos enquanto a agenda Google estava densa.
+- Zeus investigou o recorte de producao em worktree limpa e confirmou que o problema estava no filtro de fidelidade da integracao Google, nao em layout.
+- O codigo tratava `organizer.email` e `creator.email` como criterio de pertencimento; isso descartava eventos em que o colaborador estava na propria agenda Google, mas nao era criador ou organizador.
+
+Causa:
+- Em `apps/hub/lib/chronos/google-calendar.ts`, a importacao de eventos pulava eventos cujo organizador/criador nao fosse o e-mail do dono da conexao.
+- Em `apps/hub/lib/chronos/server.ts`, o snapshot da agenda repetia esse filtro e escondia eventos Google importados quando criador/organizador externo nao batia com o usuario logado.
+- Como o Google Calendar usa a agenda conectada como fonte autorizada, esse filtro conflitava com a regra operacional correta: a agenda do colaborador e definida pela conexao Google individual daquele colaborador.
+
+Correcao preparada:
+- Removido o filtro por `organizer.email`/`creator.email` na importacao Google e no snapshot da agenda individual.
+- Mantida a fronteira por `created_by_user_id`, `connection_id` e `host_user_id`, preservando agenda individual por colaborador.
+- Adicionado marcador `agendaFidelityVersion` na metadata da conexao para forcar uma full sync automatica uma vez apos o hotfix, recuperando eventos antes ignorados pelo filtro antigo.
+- Full sync passa a usar `orderBy=startTime` com `singleEvents=true`, alinhado ao uso oficial de `events.list` para eventos expandidos.
+- Snapshot da agenda aumentou limite de 80 para 1000 reunioes para reduzir truncamento em agendas densas ate a etapa seguinte de cache/janela dedicada.
+
+Arquitetura recomendada apos estabilizacao:
+- Google Calendar deve ser fonte de verdade por colaborador conectado.
+- Chronos deve manter cache operacional por usuario/conexao, usando full sync inicial, `nextSyncToken` para incrementais e webhook/watch para reduzir delay.
+- A tela deve ler cache local/Supabase imediatamente e disparar sync em segundo plano; etapa futura deve separar endpoint de agenda por janela visivel para evitar carregar historico desnecessario no Drive.
+
+Escopo:
+- `apps/hub/lib/chronos/google-calendar.ts`;
+- `apps/hub/lib/chronos/server.ts`;
+- `docs/operations/engineering-operations.md`;
+- `docs/operations/panteon-recorte-protocols.md`.
+
+Validacoes:
+- `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows.
+- `npm.cmd run check-types:hub`: OK.
+- `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
+
+Riscos e acompanhamento:
+- Nao houve deploy, migration, banco, env, secret, dominio ou alias neste recorte.
+- A primeira sincronizacao apos publicacao fara full sync uma vez por conexao ativa; depois volta ao fluxo incremental por `syncToken`.
+- A validacao funcional real deve comparar a agenda da Nivea no Chronos com a semana exibida no Google Calendar apos a sincronizacao.
+- Commit pode exigir `--no-verify` porque o hook local referencia `scripts/panteon-hook-runner.ps1`, ausente neste snapshot; validacoes obrigatorias foram executadas manualmente.
+- Rollback sugerido caso seja publicado e gere regressao: promover `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`, sem rollback de schema/env.
+
+Conclusao:
+- A divergencia da agenda foi causada por filtro incorreto de dono do evento, nao por falta de conexao Google.
+- O recorte esta validado localmente e pronto para Preview/Producao quando Lucas autorizar a publicacao.

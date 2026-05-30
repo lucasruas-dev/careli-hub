@@ -597,7 +597,7 @@ export async function listChronosSnapshot(
 
     const meetingsResult = await meetingsQuery
       .order("updated_at", { ascending: false })
-      .limit(80);
+      .limit(1000);
 
     if (meetingsResult.error) {
       throw meetingsResult.error;
@@ -2226,25 +2226,7 @@ function isChronosMeetingVisibleInUserAgenda(
     return false;
   }
 
-  const userEmail = normalizeChronosEmail(user.email);
-  const eventOwnerEmails = [
-    normalizeChronosEmail(googleCalendar.organizerEmail),
-    normalizeChronosEmail(googleCalendar.creatorEmail),
-  ].filter((email): email is string => Boolean(email));
-
-  if (
-    userEmail &&
-    eventOwnerEmails.length > 0 &&
-    !eventOwnerEmails.includes(userEmail)
-  ) {
-    return false;
-  }
-
   return meeting.host_user_id === user.id;
-}
-
-function normalizeChronosEmail(value: unknown) {
-  return typeof value === "string" ? value.trim().toLowerCase() : null;
 }
 
 async function getChronosPublicMeetingContext({

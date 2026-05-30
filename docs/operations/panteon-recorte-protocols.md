@@ -643,3 +643,38 @@ O manifesto de homologacao deve incluir:
   - commit usou `--no-verify` por falha local do hook `scripts/panteon-hook-runner.ps1`, com validacoes manuais obrigatorias executadas.
 - Rollback final: promover `dpl_EyKuq7oQgbsv7yRvKC69sNBreNQt` se houver regressao critica; nao houve alteracao de schema/env.
 - Decisao de Lucas: pediu corrigir a gravacao que cortava participantes e subir em producao.
+
+## Z30-20260530-002-CHRONOS-GOOGLE-AGENDA-FIDELIDADE
+
+- Modulo/agente dono: Chronos / Zeus Operations.
+- Objetivo do recorte: corrigir a fidelidade da agenda Google no Chronos para que a tela reflita a agenda conectada do colaborador logado, inclusive eventos em que o colaborador e convidado e nao organizador/criador.
+- Worktree/branch: `.codex-deploy/z30-001-chronos-google-calendar-fidelity-20260530` em `codex/zeus/chronos-google-calendar-fidelity-20260530`.
+- Base limpa: commit `eee7bf8`, preservando a producao publicada em `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`.
+- Arquivos incluidos:
+  - `apps/hub/lib/chronos/google-calendar.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`.
+- Arquivos excluidos: root misto, Hermes, Hades, Iris, Athena, Apolo, Atlas, Setup, envs, secrets, migrations, banco remoto, service role, dominio, alias manual e deploy.
+- Comportamento esperado:
+  - a conexao Google do usuario logado passa a ser a fronteira da agenda individual;
+  - eventos retornados por `events.list` da agenda conectada nao sao descartados por `organizer.email` ou `creator.email` diferentes do e-mail do colaborador;
+  - o snapshot do Chronos nao oculta eventos Google importados do proprio colaborador por causa de criador/organizador externo;
+  - a primeira sincronizacao apos o hotfix faz full sync uma vez por conexao para recuperar eventos antes pulados pelo filtro antigo;
+  - full sync usa `orderBy=startTime` com `singleEvents=true`, conforme fluxo oficial do Google Calendar para eventos expandidos;
+  - o snapshot sobe de 80 para 1000 reunioes para reduzir truncamento em agendas densas enquanto a arquitetura de janela/cache dedicada e formalizada.
+- Validacoes:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
+- Status: `VALIDADO_LOCALMENTE / AGUARDANDO AUTORIZACAO DE PUBLICACAO`.
+- Preview Vercel: nao publicado.
+- Production: nao publicado.
+- Riscos e pendencias:
+  - nao houve alteracao de banco, migration, env, secret, dominio ou alias;
+  - para refletir eventos ja pulados em producao, cada conexao ativa fara uma full sync automatica uma vez apos o deploy;
+  - validacao funcional final exige Lucas/Nivea abrir Chronos autenticado e comparar a semana com o Google Calendar apos a sincronizacao;
+  - commit pode exigir `--no-verify` porque o hook local referencia `scripts/panteon-hook-runner.ps1`, ausente neste snapshot; validacoes obrigatorias foram executadas manualmente.
+- Rollback sugerido: se publicado e houver regressao, promover novamente `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`; nao ha rollback de schema/env.
+- Decisao: recorte preparado por Zeus em resposta ao incidente de divergencia visual entre Google Calendar da Nivea e agenda Chronos em 2026-05-30.

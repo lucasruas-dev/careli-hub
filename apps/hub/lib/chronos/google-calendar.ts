@@ -60,6 +60,7 @@ const googleCalendarSyncWindowFutureDays = 180;
 const googleCalendarWatchRenewalWindowMs = 24 * 60 * 60_000;
 const googleCalendarWatchTtlMs = 6 * 24 * 60 * 60_000;
 const googleCalendarWebhookPath = "/api/chronos/google-calendar/webhook";
+const googleCalendarAgendaFidelityVersion = 1;
 const maxGoogleCalendarDescriptionLength = 7_500;
 
 type ChronosGoogleCalendarConnectionRow = {
@@ -1077,62 +1078,6 @@ async function getDefaultGoogleCalendarConnection(
   };
 }
 
-async function getChronosGoogleCalendarOwnerEmail(
-  client: ChronosGoogleCalendarClient,
-  userId?: string | null,
-) {
-  if (!userId) {
-    return null;
-  }
-
-  const result = await client
-    .from("hub_users")
-    .select("email")
-    .eq("id", userId)
-    .maybeSingle<{ email: string | null }>();
-
-  if (result.error) {
-    return null;
-  }
-
-  return normalizeGoogleCalendarEmail(result.data?.email);
-}
-
-function isGoogleCalendarEventEligibleForConnection(
-  event: GoogleCalendarEvent,
-  ownerEmail: string | null,
-) {
-  if (isChronosGeneratedGoogleCalendarEvent(event)) {
-    return true;
-  }
-
-  if (!ownerEmail) {
-    return true;
-  }
-
-  const eventOwnerEmails = [
-    normalizeGoogleCalendarEmail(event.organizer?.email),
-    normalizeGoogleCalendarEmail(event.creator?.email),
-  ].filter((email): email is string => Boolean(email));
-
-  if (eventOwnerEmails.length === 0) {
-    return true;
-  }
-
-  return eventOwnerEmails.includes(ownerEmail);
-}
-
-function isChronosGeneratedGoogleCalendarEvent(event: GoogleCalendarEvent) {
-  const privateSource = event.extendedProperties?.private?.source;
-  const sharedSource = event.extendedProperties?.shared?.source;
-
-  return (
-    privateSource === "chronos" ||
-    sharedSource === "chronos" ||
-    event.description?.includes("Protocolo Chronos:") === true
-  );
-}
-
 function normalizeGoogleCalendarEmail(value?: string | null) {
   return value?.trim().toLowerCase() || null;
 }
@@ -1759,26 +1704,6 @@ async function updateMeetingGoogleCalendarMetadata(
   await client.from("chronos_meetings").update({ metadata }).eq("id", meetingId);
 }
 
-async function markGoogleCalendarImportedMeetingOutOfScope(
-  client: ChronosGoogleCalendarClient,
-  input: {
-    calendarId: string;
-    event: GoogleCalendarEvent;
-    meetingId: string;
-  },
-) {
-  await updateMeetingGoogleCalendarMetadata(client, input.meetingId, {
-    calendarId: input.calendarId,
-    creatorEmail: normalizeGoogleCalendarEmail(input.event.creator?.email),
-    eventId: input.event.id,
-    inboundSyncedAt: new Date().toISOString(),
-    organizerEmail: normalizeGoogleCalendarEmail(input.event.organizer?.email),
-    source: "google",
-    status: "out_of_scope",
-    visibility: "out_of_scope",
-  });
-}
-
 async function insertGoogleCalendarTimelineEvent(
   client: ChronosGoogleCalendarClient,
   input: {
@@ -1868,9 +1793,9 @@ async function pullChronosEventsFromGoogleCalendar(
   }
 
   const accessToken = await refreshGoogleAccessToken(connectionLookup.connection);
-  const connectionOwnerEmail = await getChronosGoogleCalendarOwnerEmail(
-    client,
-    connectionLookup.connection.created_by_user_id,
+  const effectiveForceFull = shouldRunGoogleCalendarFidelityFullSync(
+    connectionLookup.connection,
+    forceFull,
   );
   let listResult: Awaited<ReturnType<typeof listGoogleCalendarEvents>>;
 
@@ -1878,13 +1803,13 @@ async function pullChronosEventsFromGoogleCalendar(
     listResult = await listGoogleCalendarEvents({
       accessToken,
       connection: connectionLookup.connection,
-      forceFull,
+      forceFull: effectiveForceFull,
     });
   } catch (error) {
     if (
       isGoogleCalendarSyncTokenExpired(error) &&
       connectionLookup.connection.sync_token &&
-      !forceFull
+      !effectiveForceFull
     ) {
       await client
         .from("chronos_google_calendar_connections")
@@ -1924,23 +1849,6 @@ async function pullChronosEventsFromGoogleCalendar(
       connectionId: connectionLookup.connection.id,
       eventId,
     });
-
-    if (
-      !isGoogleCalendarEventEligibleForConnection(event, connectionOwnerEmail)
-    ) {
-      if (link?.origin === "google") {
-        await markGoogleCalendarImportedMeetingOutOfScope(client, {
-          calendarId: connectionLookup.connection.calendar_id,
-          event,
-          meetingId: link.meeting_id,
-        });
-        synced += 1;
-      } else {
-        skipped += 1;
-      }
-
-      continue;
-    }
 
     if (event.status === "cancelled") {
       if (link) {
@@ -1990,11 +1898,17 @@ async function pullChronosEventsFromGoogleCalendar(
     }
   }
 
+  const syncedAt = new Date().toISOString();
   await client
     .from("chronos_google_calendar_connections")
     .update({
       last_error: null,
-      last_synced_at: new Date().toISOString(),
+      last_synced_at: syncedAt,
+      metadata: {
+        ...readRecord(connectionLookup.connection.metadata),
+        agendaFidelitySyncedAt: syncedAt,
+        agendaFidelityVersion: googleCalendarAgendaFidelityVersion,
+      },
       sync_token: listResult.nextSyncToken ?? connectionLookup.connection.sync_token,
       sync_token_status: listResult.nextSyncToken ? "active" : "missing",
     })
@@ -2051,6 +1965,7 @@ async function listGoogleCalendarEvents({
   if (connection.sync_token && !forceFull) {
     baseParams.set("syncToken", connection.sync_token);
   } else {
+    baseParams.set("orderBy", "startTime");
     baseParams.set(
       "timeMin",
       new Date(
@@ -2084,6 +1999,20 @@ async function listGoogleCalendarEvents({
   } while (pageToken);
 
   return { events, nextSyncToken };
+}
+
+function shouldRunGoogleCalendarFidelityFullSync(
+  connection: ChronosGoogleCalendarConnectionRow,
+  forceFull: boolean,
+) {
+  if (forceFull) {
+    return true;
+  }
+
+  return (
+    readRecord(connection.metadata).agendaFidelityVersion !==
+    googleCalendarAgendaFidelityVersion
+  );
 }
 
 async function applyGoogleEventToChronosMeeting(
