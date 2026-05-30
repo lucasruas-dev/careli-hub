@@ -115,10 +115,9 @@ type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
 type ChronosRecordingVideoController = {
-  sourceTrack: MediaStreamTrack | null;
   stop: () => void;
   track: MediaStreamTrack;
-  update: (track: MediaStreamTrack | null) => void;
+  update: (input: ChronosRecordingVideoInput) => void;
 };
 
 type ChronosRecordingAudioMixer = {
@@ -134,6 +133,20 @@ type ChronosRecordingCapture = {
   audioMixer: ChronosRecordingAudioMixer | null;
   stream: MediaStream;
   videoController: ChronosRecordingVideoController | null;
+};
+
+type ChronosRecordingVideoParticipantFrame = {
+  displayName: string;
+  id: string;
+  isCameraOn: boolean;
+  isMuted: boolean;
+  isScreenSharing: boolean;
+  videoElement: HTMLVideoElement | null;
+};
+
+type ChronosRecordingVideoInput = {
+  mainTrack: MediaStreamTrack | null;
+  participants: ChronosRecordingVideoParticipantFrame[];
 };
 
 type SpeechRecognitionLike = {
@@ -182,6 +195,8 @@ const chronosVirtualBackgroundModelUrl =
   "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite";
 const chronosVirtualBackgroundWasmUrl =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
+const chronosRecordingCanvasWidth = 1600;
+const chronosRecordingCanvasHeight = 900;
 let chronosImageSegmenterPromise: Promise<ImageSegmenter> | null = null;
 
 export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) {
@@ -279,6 +294,16 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const videoElementsByParticipantIdRef = useRef<Map<string, HTMLVideoElement>>(
     new Map(),
   );
+  const getRecordingVideoInput = useCallback(
+    () =>
+      buildChronosRecordingVideoInput({
+        localParticipant: localParticipantRef.current,
+        remoteParticipants: remoteParticipantsRef.current,
+        screenTrack: screenTrackRef.current,
+        videoElementsByParticipantId: videoElementsByParticipantIdRef.current,
+      }),
+    [],
+  );
   const hasJoined = Boolean(localParticipant && meetingId);
   const pageBackgroundImage = room.backgroundDataUrl || "";
   const participantLabel = isHubParticipant
@@ -352,13 +377,8 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       });
     }
 
-    recordingVideoControllerRef.current?.update(
-      getChronosRecordingVideoTrack({
-        localStream,
-        screenTrack: screenTrackRef.current,
-      }),
-    );
-  }, [isRecording, localStream, remoteParticipants]);
+    recordingVideoControllerRef.current?.update(getRecordingVideoInput());
+  }, [getRecordingVideoInput, isRecording, localStream, remoteParticipants]);
 
   useEffect(() => {
     isRecordingRef.current = isRecording;
@@ -1189,25 +1209,29 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       }
 
       screenTrackRef.current = screenTrack;
-      recordingVideoControllerRef.current?.update(screenTrack);
       screenTrack.addEventListener("ended", () => {
         void stopScreenShare();
       });
       replaceVideoTrackForPeers(screenTrack);
       setIsScreenSharing(true);
-      setLocalParticipant((currentParticipant) =>
-        currentParticipant
-          ? {
-              ...currentParticipant,
-              isCameraOn: true,
-              isScreenSharing: true,
-              stream: new MediaStream([
-                ...getEnabledAudioTracks(localStreamRef.current),
-                screenTrack,
-              ]),
-            }
-          : currentParticipant,
-      );
+      const participant = localParticipantRef.current;
+
+      if (participant) {
+        const nextParticipant = {
+          ...participant,
+          isCameraOn: true,
+          isScreenSharing: true,
+          stream: new MediaStream([
+            ...getEnabledAudioTracks(localStreamRef.current),
+            screenTrack,
+          ]),
+        };
+
+        localParticipantRef.current = nextParticipant;
+        setLocalParticipant(nextParticipant);
+      }
+
+      recordingVideoControllerRef.current?.update(getRecordingVideoInput());
       sendScreenShareSignal("screen-share-start");
     } catch {
       setMediaError("Nao foi possivel compartilhar a tela.");
@@ -1217,27 +1241,25 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   async function stopScreenShare() {
     screenTrackRef.current?.stop();
     screenTrackRef.current = null;
-    recordingVideoControllerRef.current?.update(
-      getChronosRecordingVideoTrack({
-        localStream: localStreamRef.current,
-        screenTrack: null,
-      }),
-    );
     setIsScreenSharing(false);
     sendScreenShareSignal("screen-share-stop");
 
     if (!cameraEnabled) {
       replaceVideoTrackForPeers(null);
-      recordingVideoControllerRef.current?.update(null);
-      setLocalParticipant((currentParticipant) =>
-        currentParticipant
-          ? {
-              ...currentParticipant,
-              isScreenSharing: false,
-              stream: localStreamRef.current,
-            }
-          : currentParticipant,
-      );
+      const participant = localParticipantRef.current;
+
+      if (participant) {
+        const nextParticipant = {
+          ...participant,
+          isScreenSharing: false,
+          stream: localStreamRef.current,
+        };
+
+        localParticipantRef.current = nextParticipant;
+        setLocalParticipant(nextParticipant);
+      }
+
+      recordingVideoControllerRef.current?.update(getRecordingVideoInput());
       return;
     }
 
@@ -1258,9 +1280,6 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       virtualBackgroundCleanupRef.current = preparedMedia.cleanup;
       localStreamRef.current = nextStream;
       replaceVideoTrackForPeers(nextStream.getVideoTracks()[0] ?? null);
-      recordingVideoControllerRef.current?.update(
-        nextStream.getVideoTracks()[0] ?? null,
-      );
       setLocalStream(new MediaStream(nextStream.getTracks()));
       setMediaError(
         hasChronosVirtualBackgroundRequest({
@@ -1270,18 +1289,36 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
           ? "Nao foi possivel aplicar o fundo virtual; usando a camera original."
           : null,
       );
-      setLocalParticipant((currentParticipant) =>
-        currentParticipant
-          ? {
-              ...currentParticipant,
-              isScreenSharing: false,
-              stream: nextStream,
-            }
-          : currentParticipant,
-      );
+      const participant = localParticipantRef.current;
+
+      if (participant) {
+        const nextParticipant = {
+          ...participant,
+          isScreenSharing: false,
+          stream: nextStream,
+        };
+
+        localParticipantRef.current = nextParticipant;
+        setLocalParticipant(nextParticipant);
+      }
+
+      recordingVideoControllerRef.current?.update(getRecordingVideoInput());
     } catch {
       replaceVideoTrackForPeers(null);
-      recordingVideoControllerRef.current?.update(null);
+      const participant = localParticipantRef.current;
+
+      if (participant) {
+        const nextParticipant = {
+          ...participant,
+          isScreenSharing: false,
+          stream: localStreamRef.current,
+        };
+
+        localParticipantRef.current = nextParticipant;
+        setLocalParticipant(nextParticipant);
+      }
+
+      recordingVideoControllerRef.current?.update(getRecordingVideoInput());
       setMediaError("Nao foi possivel restaurar a camera.");
     }
   }
@@ -1361,7 +1398,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     const recordingCapture = buildRecordingStream({
       localStream: localStreamRef.current,
       remoteParticipants: remoteParticipantsRef.current,
-      screenTrack: screenTrackRef.current,
+      videoInput: getRecordingVideoInput(),
     });
     const stream = recordingCapture?.stream ?? null;
 
@@ -1883,10 +1920,12 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   ) {
     if (videoElement) {
       videoElementsByParticipantIdRef.current.set(participantId, videoElement);
+      recordingVideoControllerRef.current?.update(getRecordingVideoInput());
       return;
     }
 
     videoElementsByParticipantIdRef.current.delete(participantId);
+    recordingVideoControllerRef.current?.update(getRecordingVideoInput());
   }
 
   async function handleLeaveRoom(
@@ -3232,26 +3271,21 @@ function getEnabledAudioTracks(stream: MediaStream | null) {
 function buildRecordingStream({
   localStream,
   remoteParticipants,
-  screenTrack,
+  videoInput,
 }: {
   localStream: MediaStream | null;
   remoteParticipants: Record<string, ChronosRoomParticipant>;
-  screenTrack: MediaStreamTrack | null;
+  videoInput: ChronosRecordingVideoInput;
 }): ChronosRecordingCapture | null {
   const audioMixer = createChronosRecordingAudioMixer({
     localStream,
     remoteParticipants,
   });
-  const videoController = createChronosRecordingVideoController(
-    getChronosRecordingVideoTrack({ localStream, screenTrack }),
-  );
+  const videoController = createChronosRecordingVideoController(videoInput);
   const audioTracks = audioMixer?.track
     ? [audioMixer.track]
     : getRecordingAudioTracks({ localStream, remoteParticipants });
-  const fallbackVideoTrack = getChronosRecordingVideoTrack({
-    localStream,
-    screenTrack,
-  });
+  const fallbackVideoTrack = videoInput.mainTrack;
   const videoTracks = videoController
     ? [videoController.track]
     : fallbackVideoTrack
@@ -3273,7 +3307,7 @@ function buildRecordingStream({
 }
 
 function createChronosRecordingVideoController(
-  initialTrack: MediaStreamTrack | null,
+  initialInput: ChronosRecordingVideoInput,
 ): ChronosRecordingVideoController | null {
   const canvas = document.createElement("canvas");
 
@@ -3287,54 +3321,46 @@ function createChronosRecordingVideoController(
     return null;
   }
 
-  const videoElement = document.createElement("video");
+  const mainVideoElement = document.createElement("video");
   let animationFrameId = 0;
-  let currentTrack: MediaStreamTrack | null = null;
+  let currentInput = initialInput;
+  let currentMainTrack: MediaStreamTrack | null = null;
 
-  videoElement.autoplay = true;
-  videoElement.muted = true;
-  videoElement.playsInline = true;
-  canvas.width = 1280;
-  canvas.height = 720;
+  mainVideoElement.autoplay = true;
+  mainVideoElement.muted = true;
+  mainVideoElement.playsInline = true;
+  canvas.width = chronosRecordingCanvasWidth;
+  canvas.height = chronosRecordingCanvasHeight;
 
-  const update = (track: MediaStreamTrack | null) => {
-    currentTrack = track?.readyState === "live" ? track : null;
+  const updateMainTrack = (track: MediaStreamTrack | null) => {
+    const nextTrack = track?.readyState === "live" ? track : null;
 
-    if (!currentTrack) {
-      videoElement.srcObject = null;
+    if (currentMainTrack?.id === nextTrack?.id) {
       return;
     }
 
-    const settings = currentTrack.getSettings();
-    const nextWidth = normalizeChronosRecordingDimension(settings.width, 1280);
-    const nextHeight = normalizeChronosRecordingDimension(settings.height, 720);
-
-    if (canvas.width !== nextWidth) {
-      canvas.width = nextWidth;
+    currentMainTrack = nextTrack;
+    if (!currentMainTrack) {
+      mainVideoElement.srcObject = null;
+      return;
     }
 
-    if (canvas.height !== nextHeight) {
-      canvas.height = nextHeight;
-    }
-
-    videoElement.srcObject = new MediaStream([currentTrack]);
-    void videoElement.play().catch(() => undefined);
+    mainVideoElement.srcObject = new MediaStream([currentMainTrack]);
+    void mainVideoElement.play().catch(() => undefined);
+  };
+  const update = (input: ChronosRecordingVideoInput) => {
+    currentInput = input;
+    updateMainTrack(input.mainTrack);
   };
   const paint = () => {
     context.fillStyle = "#101820";
-    context.fillRect(0, 0, canvas.width || 1280, canvas.height || 720);
-
-    if (
-      currentTrack?.readyState === "live" &&
-      videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
-    ) {
-      drawContainVideoFrame(context, videoElement, canvas);
-    }
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    drawChronosRecordingComposition(context, canvas, currentInput, mainVideoElement);
 
     animationFrameId = window.requestAnimationFrame(paint);
   };
 
-  update(initialTrack);
+  update(initialInput);
   const [track] = canvas.captureStream(30).getVideoTracks();
 
   if (!track) {
@@ -3344,17 +3370,14 @@ function createChronosRecordingVideoController(
   paint();
 
   return {
-    sourceTrack: currentTrack,
     stop: () => {
       window.cancelAnimationFrame(animationFrameId);
-      videoElement.pause();
-      videoElement.srcObject = null;
+      mainVideoElement.pause();
+      mainVideoElement.srcObject = null;
       track.stop();
     },
     track,
-    update: (trackInput) => {
-      update(trackInput);
-    },
+    update,
   };
 }
 
@@ -3437,33 +3460,292 @@ function getChronosRecordingVideoTrack({
   );
 }
 
-function normalizeChronosRecordingDimension(
-  value: number | undefined,
-  fallback: number,
-) {
-  if (!value || !Number.isFinite(value)) {
-    return fallback;
-  }
+function buildChronosRecordingVideoInput({
+  localParticipant,
+  remoteParticipants,
+  screenTrack,
+  videoElementsByParticipantId,
+}: {
+  localParticipant: ChronosRoomParticipant | null;
+  remoteParticipants: Record<string, ChronosRoomParticipant>;
+  screenTrack: MediaStreamTrack | null;
+  videoElementsByParticipantId: Map<string, HTMLVideoElement>;
+}): ChronosRecordingVideoInput {
+  const participants = localParticipant
+    ? [localParticipant, ...Object.values(remoteParticipants)]
+    : Object.values(remoteParticipants);
 
-  return Math.min(Math.max(Math.round(value), 480), 1920);
+  return {
+    mainTrack: getChronosRecordingVideoTrack({
+      localStream: localParticipant?.stream ?? null,
+      screenTrack,
+    }),
+    participants: participants.map((participant) => ({
+      displayName: participant.displayName,
+      id: participant.id,
+      isCameraOn: participant.isCameraOn,
+      isMuted: participant.isMuted,
+      isScreenSharing: participant.isScreenSharing,
+      videoElement: videoElementsByParticipantId.get(participant.id) ?? null,
+    })),
+  };
 }
 
-function drawContainVideoFrame(
+function drawChronosRecordingComposition(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  input: ChronosRecordingVideoInput,
+  fallbackVideoElement: HTMLVideoElement,
+) {
+  const participants = input.participants;
+  const screenShareFrame = participants.find(
+    (participant) => participant.isScreenSharing,
+  );
+
+  if (screenShareFrame) {
+    drawChronosRecordingScreenShareLayout(
+      context,
+      canvas,
+      screenShareFrame,
+      participants.filter((participant) => participant.id !== screenShareFrame.id),
+      fallbackVideoElement,
+    );
+    return;
+  }
+
+  drawChronosRecordingParticipantGrid(context, canvas, participants, fallbackVideoElement);
+}
+
+function drawChronosRecordingScreenShareLayout(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  screenShareFrame: ChronosRecordingVideoParticipantFrame,
+  companionFrames: ChronosRecordingVideoParticipantFrame[],
+  fallbackVideoElement: HTMLVideoElement,
+) {
+  const padding = 28;
+  const gap = 18;
+  const sidebarWidth = companionFrames.length > 0 ? 300 : 0;
+  const mainRect = {
+    height: canvas.height - padding * 2,
+    width: canvas.width - padding * 2 - (sidebarWidth ? sidebarWidth + gap : 0),
+    x: padding,
+    y: padding,
+  };
+
+  drawChronosRecordingParticipantFrame(context, screenShareFrame, mainRect, {
+    fallbackVideoElement,
+    large: true,
+  });
+
+  if (companionFrames.length === 0) {
+    return;
+  }
+
+  const visibleFrames = companionFrames.slice(0, 5);
+  const cardHeight = Math.min(
+    148,
+    (canvas.height - padding * 2 - gap * (visibleFrames.length - 1)) /
+      visibleFrames.length,
+  );
+  const sidebarX = mainRect.x + mainRect.width + gap;
+
+  visibleFrames.forEach((frame, index) => {
+    drawChronosRecordingParticipantFrame(
+      context,
+      frame,
+      {
+        height: cardHeight,
+        width: sidebarWidth,
+        x: sidebarX,
+        y: padding + index * (cardHeight + gap),
+      },
+      { fallbackVideoElement: null, large: false },
+    );
+  });
+}
+
+function drawChronosRecordingParticipantGrid(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  participants: ChronosRecordingVideoParticipantFrame[],
+  fallbackVideoElement: HTMLVideoElement,
+) {
+  const frames =
+    participants.length > 0
+      ? participants.slice(0, 6)
+      : [
+          {
+            displayName: "Chronos",
+            id: "empty",
+            isCameraOn: false,
+            isMuted: false,
+            isScreenSharing: false,
+            videoElement: null,
+          },
+        ];
+  const columns = frames.length <= 1 ? 1 : frames.length <= 4 ? 2 : 3;
+  const rows = Math.ceil(frames.length / columns);
+  const gap = 18;
+  const padding = 28;
+  const cellWidth = (canvas.width - padding * 2 - gap * (columns - 1)) / columns;
+  const cellHeight = (canvas.height - padding * 2 - gap * (rows - 1)) / rows;
+
+  frames.forEach((frame, index) => {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+
+    drawChronosRecordingParticipantFrame(
+      context,
+      frame,
+      {
+        height: cellHeight,
+        width: cellWidth,
+        x: padding + column * (cellWidth + gap),
+        y: padding + row * (cellHeight + gap),
+      },
+      {
+        fallbackVideoElement:
+          index === 0 && isChronosRecordingVideoReady(fallbackVideoElement)
+            ? fallbackVideoElement
+            : null,
+        large: frames.length === 1,
+      },
+    );
+  });
+}
+
+function drawChronosRecordingParticipantFrame(
+  context: CanvasRenderingContext2D,
+  participant: ChronosRecordingVideoParticipantFrame,
+  rect: { height: number; width: number; x: number; y: number },
+  options: { fallbackVideoElement: HTMLVideoElement | null; large?: boolean },
+) {
+  const radius = options.large ? 22 : 16;
+  const videoElement =
+    isChronosRecordingVideoReady(participant.videoElement)
+      ? participant.videoElement
+      : isChronosRecordingVideoReady(options.fallbackVideoElement)
+        ? options.fallbackVideoElement
+        : null;
+
+  context.save();
+  drawChronosRoundedRect(context, rect.x, rect.y, rect.width, rect.height, radius);
+  context.clip();
+  context.fillStyle = "#111820";
+  context.fillRect(rect.x, rect.y, rect.width, rect.height);
+
+  if (videoElement && participant.isCameraOn) {
+    drawChronosRecordingVideoContain(context, videoElement, rect);
+  } else {
+    context.fillStyle = "#151e29";
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    context.fillStyle = "#A07C3B";
+    context.beginPath();
+    context.arc(
+      rect.x + rect.width / 2,
+      rect.y + rect.height / 2,
+      Math.min(rect.width, rect.height) * 0.16,
+      0,
+      Math.PI * 2,
+    );
+    context.fill();
+    context.fillStyle = "#ffffff";
+    context.font = `700 ${Math.max(22, Math.min(rect.width, rect.height) * 0.14)}px Arial`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(
+      getInitials(participant.displayName || "Chronos"),
+      rect.x + rect.width / 2,
+      rect.y + rect.height / 2,
+    );
+  }
+
+  const labelHeight = options.large ? 54 : 38;
+  const gradient = context.createLinearGradient(
+    rect.x,
+    rect.y + rect.height - labelHeight,
+    rect.x,
+    rect.y + rect.height,
+  );
+
+  gradient.addColorStop(0, "rgba(16, 24, 32, 0)");
+  gradient.addColorStop(1, "rgba(16, 24, 32, 0.86)");
+  context.fillStyle = gradient;
+  context.fillRect(rect.x, rect.y + rect.height - labelHeight, rect.width, labelHeight);
+  context.fillStyle = "#ffffff";
+  context.font = `700 ${options.large ? 18 : 14}px Arial`;
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+  context.fillText(
+    participant.displayName || "Participante",
+    rect.x + 18,
+    rect.y + rect.height - (options.large ? 18 : 13),
+    rect.width - 36,
+  );
+  context.restore();
+
+  context.save();
+  context.strokeStyle = "rgba(255,255,255,0.22)";
+  context.lineWidth = 2;
+  drawChronosRoundedRect(context, rect.x, rect.y, rect.width, rect.height, radius);
+  context.stroke();
+  context.restore();
+}
+
+function drawChronosRecordingVideoContain(
   context: CanvasRenderingContext2D,
   videoElement: HTMLVideoElement,
-  canvas: HTMLCanvasElement,
+  rect: { height: number; width: number; x: number; y: number },
 ) {
-  const videoWidth = videoElement.videoWidth || canvas.width || 1280;
-  const videoHeight = videoElement.videoHeight || canvas.height || 720;
-  const canvasWidth = canvas.width || 1280;
-  const canvasHeight = canvas.height || 720;
-  const scale = Math.min(canvasWidth / videoWidth, canvasHeight / videoHeight);
+  const videoWidth = videoElement.videoWidth || rect.width;
+  const videoHeight = videoElement.videoHeight || rect.height;
+  const scale = Math.min(rect.width / videoWidth, rect.height / videoHeight);
   const width = videoWidth * scale;
   const height = videoHeight * scale;
-  const x = (canvasWidth - width) / 2;
-  const y = (canvasHeight - height) / 2;
+  const x = rect.x + (rect.width - width) / 2;
+  const y = rect.y + (rect.height - height) / 2;
 
   context.drawImage(videoElement, x, y, width, height);
+}
+
+function isChronosRecordingVideoReady(
+  videoElement: HTMLVideoElement | null | undefined,
+) {
+  return Boolean(
+    videoElement &&
+      videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      videoElement.videoWidth > 0 &&
+      videoElement.videoHeight > 0,
+  );
+}
+
+function drawChronosRoundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+
+  context.beginPath();
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  context.lineTo(x + width, y + height - safeRadius);
+  context.quadraticCurveTo(
+    x + width,
+    y + height,
+    x + width - safeRadius,
+    y + height,
+  );
+  context.lineTo(x + safeRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
+  context.closePath();
 }
 
 function addMissingRecordingAudioTracks(

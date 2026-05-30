@@ -355,6 +355,10 @@ export function ChronosPage() {
     void reloadChronos();
   }, [reloadChronos]);
 
+  useEffect(() => {
+    setError(null);
+  }, [activeView, driveView]);
+
   async function handleCreateMeeting(input: ChronosCreateMeetingInput) {
     if (!canManageChronos) {
       setError("Seu usuario pode visualizar o Chronos, mas nao gerenciar reunioes.");
@@ -3851,7 +3855,7 @@ function ChronosDriveLibraryScreen({
       );
     }
 
-    return sortMeetingsByDate(byRoom.filter(hasChronosMeetingAvailableRecording));
+    return sortMeetingsByDate(byRoom.filter(hasChronosMeetingMinutesEvidence));
   }, [activeDriveView, meetings, roomFilter]);
   const selectedMinutesMeeting =
     activeDriveView === "minutes"
@@ -3915,7 +3919,7 @@ function ChronosDriveLibraryScreen({
               />
             ))}
             {filteredMeetings.length === 0 ? (
-              <EmptyPanel text="Nenhuma ata disponivel sem gravacao vinculada." />
+              <EmptyPanel text="Nenhuma ata disponivel com gravacao, transcricao ou rascunho vinculado." />
             ) : null}
           </div>
         </Surface>
@@ -5478,7 +5482,9 @@ function openChronosMinutesPrintWindow({
 }
 
 function buildChronosMinutesBodyHtml(minutes: string) {
-  const lines = minutes.replace(/\r/g, "").split("\n");
+  const lines = (typeof minutes === "string" ? minutes : "")
+    .replace(/\r/g, "")
+    .split("\n");
   const chunks: string[] = [];
   let listItems: string[] = [];
   let tableLines: string[] = [];
@@ -6764,8 +6770,12 @@ function buildExternalRoomLink(slug: string) {
   return new URL(buildExternalRoomPath(slug), "https://c2x.app.br").toString();
 }
 
-function hasChronosMeetingAvailableRecording(meeting: ChronosMeeting) {
-  return meeting.recordings.some((recording) => recording.status === "available");
+function hasChronosMeetingMinutesEvidence(meeting: ChronosMeeting) {
+  return (
+    meeting.minutes.length > 0 ||
+    meeting.transcript.length > 0 ||
+    meeting.recordings.some((recording) => recording.status === "available")
+  );
 }
 
 function readFileAsDataUrl(file: File) {

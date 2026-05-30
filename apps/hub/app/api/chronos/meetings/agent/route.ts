@@ -563,11 +563,23 @@ function resolveChronosOpenAiModel(
 ) {
   return (
     candidates
-      .map((candidate) => candidate?.trim())
+      .map(normalizeChronosOpenAiModelCandidate)
       .find((candidate): candidate is string =>
         isUsableChronosOpenAiModel(candidate),
       ) ?? fallback
   );
+}
+
+function normalizeChronosOpenAiModelCandidate(value?: string) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed
+    .replace(/^["']+|["']+$/g, "")
+    .trim();
 }
 
 function isUsableChronosOpenAiModel(value?: string) {
@@ -575,7 +587,18 @@ function isUsableChronosOpenAiModel(value?: string) {
     return false;
   }
 
-  return !["default", "none", "null", "option", "select", "undefined"].includes(
+  return ![
+    "choose",
+    "default",
+    "model",
+    "none",
+    "null",
+    "option",
+    "placeholder",
+    "select",
+    "selecione",
+    "undefined",
+  ].includes(
     value.toLowerCase(),
   );
 }
@@ -923,7 +946,11 @@ function getOpenAiErrorMessage(
 }
 
 function normalizeChronosOpenAiErrorMessage(message: string) {
-  if (/invalid option\s*:?\s*option/i.test(message)) {
+  if (
+    /invalid option\s*:?\s*option/i.test(message) ||
+    /\bmodel\b.*\boption\b/i.test(message) ||
+    /\boption\b.*\bmodel\b/i.test(message)
+  ) {
     return "OpenAI recusou um placeholder de modelo chamado option. Chronos deve ignorar esse placeholder e usar o modelo padrao.";
   }
 
