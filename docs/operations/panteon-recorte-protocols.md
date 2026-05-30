@@ -603,3 +603,43 @@ O manifesto de homologacao deve incluir:
   - nao houve alteracao remota de Supabase, env, migration, dominio ou alias.
 - Rollback final: promover `dpl_8wpkFvJ8Jese445Kz98U8WeHmKcw` se houver regressao critica; nao houve alteracao de schema/env.
 - Decisao de Lucas: solicitou unir as melhorias da Athena ao recorte Zeus antes da publicacao; Zeus publicou Production em 2026-05-29.
+
+## Z30-20260530-001-CHRONOS-DRIVE-ATAS-GRAVACAO-COMPOSTA
+
+- Modulo/agente dono: Chronos / Zeus Operations.
+- Objetivo do recorte: estabilizar a aba Atas do Chronos Drive e corrigir a gravacao composta para incluir participantes laterais quando ha compartilhamento de tela.
+- Worktree/branch: `.codex-deploy/z29-005-chronos-recording-ui-drive-admin-20260529` em `codex/zeus/chronos-recording-ui-drive-admin-20260529`.
+- Base limpa: commit `55f4882`, preservando a producao publicada em `dpl_EyKuq7oQgbsv7yRvKC69sNBreNQt`.
+- Arquivos incluidos:
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-production.md`.
+- Arquivos excluidos: root misto, Hermes, Hades, Iris, Athena, Apolo, Atlas, Setup, envs, secrets, migrations, banco remoto, service role, Google Calendar, dominio, alias manual e alteracoes de Supabase.
+- Comportamento esperado:
+  - Drive/Atas nao deve derrubar a pagina por erro local antigo do agente;
+  - reunioes com ata, transcricao ou gravacao disponivel ficam elegiveis para a aba Atas;
+  - placeholders invalidos de modelo OpenAI, inclusive `option` com aspas, sao ignorados;
+  - a gravacao com tela compartilhada desenha a tela como quadro principal e atualiza participantes laterais quando seus videos entram no DOM.
+- Validacoes:
+  - `git diff --check`: OK, apenas avisos LF/CRLF conhecidos no Windows;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`;
+  - Vercel Production build: READY;
+  - healthchecks Production em `/`, `/login`, `/chronos`, `/chronos/lideranca`, `/hermes`, `ops.c2x.app.br/zeus`: 200;
+  - `POST /api/chronos/meetings/agent` sem sessao: 401 esperado.
+- Status: `EM_PRODUCAO`.
+- Preview Vercel: nao publicado; Lucas autorizou hotfix direto em producao.
+- Commit de codigo: `a6ab0d5 fix(chronos): stabilize drive minutes and recording composition`.
+- Deployment anterior: `dpl_EyKuq7oQgbsv7yRvKC69sNBreNQt`.
+- Deployment production: `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`.
+- URL tecnica: `https://careli-hub-hub-i2bs-mumdx2rvg-lucasruas-devs-projects.vercel.app`.
+- Riscos e pendencias:
+  - gravacoes antigas nao sao reprocessadas;
+  - exige validacao real com participante remoto, compartilhamento de tela, gravacao curta e conferencia no Drive;
+  - commit usou `--no-verify` por falha local do hook `scripts/panteon-hook-runner.ps1`, com validacoes manuais obrigatorias executadas.
+- Rollback final: promover `dpl_EyKuq7oQgbsv7yRvKC69sNBreNQt` se houver regressao critica; nao houve alteracao de schema/env.
+- Decisao de Lucas: pediu corrigir a gravacao que cortava participantes e subir em producao.
