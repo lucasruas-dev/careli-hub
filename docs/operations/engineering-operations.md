@@ -29013,3 +29013,60 @@ Conclusao:
 - O quarto hotfix esta em producao e cobre a quebra do `HubShell` quando a sessao autenticada nao entrega `permissions` como array.
 - O impacto pratico e que o Chronos deve conseguir montar a rota e chegar ao Drive/Atas sem boundary por permissao malformada.
 - A acao agora e Lucas atualizar `https://c2x.app.br/chronos` com reload do navegador e testar novamente o acesso ao Drive/Atas.
+
+## 2026-06-01 03:26:40 -03:00 - Chronos/Zeus - transcricao, Atas e compartilhamento em producao
+
+Assunto: [Chronos] transcricao, Atas e compartilhamento publicados
+
+- Nome da squad/agente: Chronos Core, publicado por Zeus/Hefesto.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-124-CHRONOS-TRANSCRIPTION-ATAS-SCREENSHARE`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO TESTE FUNCIONAL AUTENTICADO DO LUCAS.
+- Origem:
+  - Lucas reportou que a gravacao parecia parar ao compartilhar tela;
+  - o botao `Transcrever` retornava erro OpenAI;
+  - a aba `Atas` ainda caia no boundary do Next;
+  - o registro real em `chronos_recordings` mostrava arquivo `available`, mas `started_at` nulo e apenas 11 segundos de duracao.
+- Revisao com documentacao:
+  - OpenAI audio transcriptions aceita modelos reais como `gpt-4o-transcribe`, `gpt-4o-mini-transcribe` e `whisper-1`, nao placeholders;
+  - Supabase `uploadToSignedUrl` deve usar path, token e file do upload assinado preparado;
+  - MDN MediaRecorder registra o `MediaStream` passado ao construtor, entao a troca de trilha camera/tela depois do inicio precisa reconstruir a captura.
+- Implementacao:
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` agora usa allowlist de modelo de transcricao e remove `temperature` da chamada de audio;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` reinicia a gravacao quando compartilhamento de tela entra ou sai, evitando manter a camera como unica trilha gravada;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` envia `startedAt` real no upload completo;
+  - `apps/hub/lib/chronos/server.ts` persiste `started_at` e metadata de inicio para o arquivo salvo no Drive;
+  - `apps/hub/lib/chronos/drive.ts` usa fim real de gravacao antes do fim agendado no Drive;
+  - `apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx` ganhou boundary local para impedir que um dado inconsistente derrube a rota inteira de Chronos ao abrir Atas.
+- Commit publicado: `b6e37ac fix(chronos): stabilize transcription and screen recording`.
+- Deployment:
+  - deployment anterior: `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW`;
+  - deployment novo: `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`;
+  - URL tecnica nova: `https://careli-hub-hub-i2bs-12gk4raig-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato: `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW`.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check`: PASS, com avisos esperados LF/CRLF;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos Turbopack/NFT e root inferido;
+  - smoke HTTP local em servidor ja ativo: `/chronos` 200 e `/chronos/careli` 200;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-124-chronos-transcription-atas-screenshare.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: PASS;
+  - deploy Vercel Production: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - logs de erro recentes em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Limites:
+  - sem DDL, migration, env, secret, token, dominio, alias manual, Supabase admin ou alteracao direta de banco;
+  - validacao autenticada completa continua dependendo do navegador real do Lucas, porque o plugin Chrome local falhou com `windows sandbox failed: spawn setup refresh`.
+
+Conclusao:
+
+- O quinto hotfix de Chronos esta em producao e cobre o fluxo de transcricao, a estabilidade da aba Atas e a captura quando o compartilhamento de tela entra ou sai.
+- O impacto pratico e que `Transcrever` nao deve mais enviar placeholder/parametro rejeitado para OpenAI, `Atas` nao deve derrubar a rota inteira e novas gravacoes devem criar segmentos corretos quando a tela for compartilhada.
+- A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos` e testar uma chamada curta com gravacao, compartilhamento, `Assistir`, `Baixar`, `Transcrever` e `Drive > Atas`.

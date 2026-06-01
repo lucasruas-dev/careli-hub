@@ -2801,3 +2801,59 @@ Registro de producao:
   - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
 - Rollback planejado: promover novamente `dpl_2s6CTppev67fsAKScYThnnGYHRY9` se houver regressao critica.
 - Proxima acao: Lucas atualizar `https://c2x.app.br/chronos`, testar gravacao curta em uma sala Chronos, abrir `Drive > Gravacoes` e conferir `Assistir`, `Baixar`, `Transcrever` e `Drive > Atas`.
+
+## 2026-06-01 - CH-20260601-124-CHRONOS-TRANSCRIPTION-ATAS-SCREENSHARE
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando teste funcional autenticado do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] transcricao, Atas e compartilhamento em producao`.
+- Protocolo: `CH-20260601-124-CHRONOS-TRANSCRIPTION-ATAS-SCREENSHARE`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas reportou que a gravacao parecia parar ao compartilhar tela, que `Transcrever` retornava erro OpenAI e que a aba `Atas` ainda caia no boundary do Next.
+- Causa tratada:
+  - a chamada de transcricao aceitava qualquer string de env como modelo e podia encaminhar placeholder/incompatibilidade para a OpenAI;
+  - a chamada enviava `temperature` para modelos novos de audio, parametro removido neste recorte;
+  - a gravacao era iniciada com o stream atual e nao reconstruia a captura quando a tela compartilhada entrava depois do `MediaRecorder`;
+  - a aba Atas nao tinha barreira local para impedir que um dado inconsistente derrubasse a rota inteira;
+  - registros de Drive salvos via upload direto ainda podiam ficar com `started_at` nulo.
+- Escopo publicado:
+  - allowlist de modelos de transcricao: `gpt-4o-mini-transcribe`, `gpt-4o-transcribe` e `whisper-1`;
+  - remocao de `temperature` da chamada `/v1/audio/transcriptions`;
+  - log server-side seguro para falha OpenAI de transcricao, sem segredo;
+  - reinicio controlado da gravacao quando compartilhamento de tela entra ou sai;
+  - protecao local em `Drive > Atas` para evitar queda total da rota;
+  - Drive passa a priorizar fim real de gravacao antes do fim agendado;
+  - upload final salva `startedAt` real no registro de `chronos_recordings`.
+- Itens nao alterados: DDL, migration, env, secret, token, dominio, alias manual, Supabase admin e alteracao direta de banco.
+- Commit publicado: `b6e37ac fix(chronos): stabilize transcription and screen recording`.
+- Deployment anterior: `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW`.
+- Deployment novo: `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`.
+- URL tecnica: `https://careli-hub-hub-i2bs-12gk4raig-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - documentacao oficial revisada: OpenAI audio transcriptions, Supabase signed upload e MDN MediaRecorder;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - smoke HTTP local em servidor ja ativo: `/chronos` 200 e `/chronos/careli` 200;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-124-chronos-transcription-atas-screenshare.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: OK;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF.
+- Build remoto Vercel Production: READY, com warnings conhecidos.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Rollback planejado: promover novamente `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW` se houver regressao critica.
+- Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, criar uma reuniao curta, iniciar gravacao, compartilhar tela, parar gravacao, abrir `Drive > Gravacoes`, clicar `Assistir`, `Baixar`, `Transcrever` e depois `Drive > Atas`.
