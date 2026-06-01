@@ -2745,3 +2745,59 @@ Registro de producao:
   - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
 - Rollback planejado: promover novamente `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS` se houver regressao critica.
 - Proxima acao: Lucas atualizar `https://c2x.app.br/chronos` e testar acesso ao Drive/Atas; se persistir, capturar console/overlay exato do Chrome porque servidor e rota publica seguem sem erro.
+
+## 2026-06-01 - CH-20260601-123-CHRONOS-VIDEO-CALLS-DRIVE-PLAYBACK
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando teste funcional autenticado do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] videochamadas, Drive e Atas em producao`.
+- Protocolo: `CH-20260601-123-CHRONOS-VIDEO-CALLS-DRIVE-PLAYBACK`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas reportou que a aba Atas abriu ao remover um video antigo, mas novas gravacoes ficaram sem playback em `Drive > Gravacoes`.
+- Causa tratada:
+  - upload de gravacao ainda passava pela rota serverless `/recording/upload`;
+  - em falha, o client marcava a reuniao como `available`;
+  - o endpoint de status criava `chronos_recordings` sem `storage_bucket`/`storage_path`;
+  - Drive/Atas liam essas linhas como gravacao disponivel, sem URL real.
+- Escopo publicado:
+  - upload assinado direto do navegador para Supabase Storage via `uploadToSignedUrl`;
+  - confirmacao server-side somente apos o objeto existir no Storage;
+  - status-only de sala externa nao cria mais registro de gravacao sem arquivo;
+  - falha de upload passa a registrar `failed`, nao `available`;
+  - Drive filtra registros sem midia e expõe `Link pendente` quando faltar URL real;
+  - Atas exige playback real antes de listar/transcrever;
+  - transcricao de gravacao existente bloqueia quando nao houver Blob local ou URL assinada;
+  - compartilhamento de tela reorganiza as demais janelas no lado direito em desktop;
+  - a sala oferece `Assistir gravacao` e `Baixar` para o Blob local recem-gerado.
+- Itens nao alterados: DDL, migration, env, secret, token, dominio, alias manual, Supabase admin e alteracao direta de banco.
+- Commit publicado: `b962cde fix(chronos): repair recording playback flow`.
+- Deployment anterior: `dpl_2s6CTppev67fsAKScYThnnGYHRY9`.
+- Deployment novo: `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW`.
+- URL tecnica: `https://careli-hub-hub-i2bs-oshc9es0w-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - ESLint focado em `ChronosExternalRoomPage.tsx` e `chronos-drive-recording-card.tsx`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - smoke HTTP local em build compilado na porta `3011`: `/chronos` 200 e `/api/chronos/meetings` 401 esperado;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-123-chronos-video-calls-drive-playback.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: OK;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF.
+- Build remoto Vercel Production: READY, com warnings conhecidos.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `GET https://ops.c2x.app.br/zeus`: 200.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Rollback planejado: promover novamente `dpl_2s6CTppev67fsAKScYThnnGYHRY9` se houver regressao critica.
+- Proxima acao: Lucas atualizar `https://c2x.app.br/chronos`, testar gravacao curta em uma sala Chronos, abrir `Drive > Gravacoes` e conferir `Assistir`, `Baixar`, `Transcrever` e `Drive > Atas`.

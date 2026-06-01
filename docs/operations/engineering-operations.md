@@ -28667,6 +28667,64 @@ Conclusao:
 - O impacto pratico e que Lucas ja pode testar nos dominios oficiais sem depender do ambiente local.
 - A acao agora e validacao funcional autenticada pelo Lucas; se houver regressao critica, Hefesto deve promover rollback para `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
 
+## 2026-06-01 02:56:30 -03:00 - Chronos - Videochamadas, Drive e Atas
+
+Assunto: [Chronos] hotfix de gravacoes e layout de compartilhamento em producao
+
+- Nome da squad/agente: Chronos Core, coordenado por Zeus/Hefesto.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-123-CHRONOS-VIDEO-CALLS-DRIVE-PLAYBACK`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO TESTE FUNCIONAL AUTENTICADO DO LUCAS.
+- Origem:
+  - Lucas reportou que, apos os hotfixes de Atas, a aba abriu quando um video antigo foi removido, mas novas gravacoes passaram a aparecer sem playback.
+  - O print de `Drive > Gravacoes` mostrava reuniao `Disponivel` com acao `Video em processamento`, indicando status persistido sem URL de midia.
+- Causa tratada:
+  - a sala externa ainda tentava enviar o Blob da gravacao inteiro para rota serverless `/recording/upload`;
+  - se o upload falhasse, o client chamava o endpoint de status como `available`;
+  - `markChronosPublicRecording` criava linha em `chronos_recordings` sem `storage_bucket`/`storage_path`;
+  - Drive e Atas interpretavam a linha como gravacao disponivel, mas nao havia URL assinada para assistir, baixar ou transcrever.
+- Implementacao:
+  - `ChronosExternalRoomPage.tsx` passou a preparar URL assinada em `/recording/upload-url`, subir o arquivo direto do navegador para Supabase Storage com `uploadToSignedUrl` e confirmar em `/recording/upload-complete`;
+  - falhas ou blobs vazios agora marcam `failed`, nao `available`;
+  - `markChronosPublicRecording` nao cria mais linhas de gravacao sem arquivo real; ele apenas atualiza o status da reuniao e timeline;
+  - hidratacao de URLs recupera bucket padrao quando houver `storage_path` legado sem `storage_bucket`;
+  - Drive filtra registros persistidos sem midia e mostra `Link pendente` quando existir status available sem playback;
+  - botao `Transcrever` fica bloqueado quando nao houver Blob local nem URL real;
+  - Atas exige gravacao com playback real;
+  - em compartilhamento de tela, a tela compartilhada fica no palco principal e as demais janelas passam para trilho lateral direito em desktop;
+  - apos encerrar gravacao, a sala exibe acoes imediatas `Assistir gravacao` e `Baixar` usando o Blob local.
+- Commit publicado: `b962cde fix(chronos): repair recording playback flow`.
+- Deployment anterior: `dpl_2s6CTppev67fsAKScYThnnGYHRY9`.
+- Deployment novo: `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW`.
+- URL tecnica: `https://careli-hub-hub-i2bs-oshc9es0w-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes:
+  - ESLint focado em `ChronosExternalRoomPage.tsx` e `chronos-drive-recording-card.tsx`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos Turbopack/NFT e root inferido;
+  - smoke HTTP local no build compilado em `http://localhost:3011`: `/chronos` 200 e `/api/chronos/meetings` 401 esperado sem sessao;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-123-chronos-video-calls-drive-playback.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: PASS;
+  - `git diff --check`: PASS, com avisos esperados LF/CRLF;
+  - build remoto Vercel Production: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment novo;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment novo;
+  - healthchecks: `GET https://c2x.app.br/chronos` 200, `GET https://c2x.app.br/api/chronos/meetings` 401 esperado sem sessao, `GET https://ops.c2x.app.br/zeus` 200;
+  - logs de erro Vercel em `c2x.app.br` e `ops.c2x.app.br` nos ultimos 10 minutos: sem logs encontrados.
+- Limites:
+  - sem DDL, migration, env, secret, token, dominio, alias manual ou alteracao direta de banco;
+  - sem limpeza automatica de registros antigos no banco; os registros sem midia deixam de contaminar a UI, mas a higienizacao historica deve ser tratada em recorte proprio se necessario.
+- Rollback planejado: promover novamente `dpl_2s6CTppev67fsAKScYThnnGYHRY9` se houver regressao critica.
+
+Conclusao:
+
+- O fluxo de gravacao Chronos agora so cria gravacao utilizavel quando existe arquivo real no Storage e URL de playback assinada.
+- O impacto pratico e reduzir a quebra de Atas/Drive por linhas antigas sem midia e recuperar a capacidade de assistir/baixar gravacoes novas.
+- Lucas precisa fazer refresh duro em `https://c2x.app.br/chronos`, criar uma sala curta, gravar poucos segundos, parar, abrir `Drive > Gravacoes` e confirmar `Assistir`, `Baixar` e `Transcrever`.
+
 ## 2026-06-01 01:43:00 -03:00 - Chronos/Zeus - hotfix tela de Atas
 
 Assunto: [Chronos] hotfix Atas client guard

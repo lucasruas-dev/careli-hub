@@ -4,7 +4,7 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos video calls drive playback hotfix",
-  "status": "VALIDADO_LOCAL",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -45,15 +45,21 @@
     "smoke HTTP local em build compilado via npx.cmd next start --port 3011: /chronos 200 e /api/chronos/meetings sem sessao 401 esperado",
     "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-123-chronos-video-calls-drive-playback.json: PASS",
     "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS",
-    "git diff --check: PASS com avisos esperados LF/CRLF"
+    "git diff --check: PASS com avisos esperados LF/CRLF",
+    "npx.cmd vercel deploy --prod --yes: PASS, deployment dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW READY",
+    "npx.cmd vercel inspect https://c2x.app.br: PASS, Ready no deployment dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: PASS, Ready no deployment dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW",
+    "healthchecks producao: GET https://c2x.app.br/chronos 200; GET https://c2x.app.br/api/chronos/meetings sem sessao 401 esperado; GET https://ops.c2x.app.br/zeus 200",
+    "npx.cmd vercel logs https://c2x.app.br --since 10m --level error: PASS, sem logs encontrados",
+    "npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error: PASS, sem logs encontrados"
   ],
   "productionContext": {
     "currentDeploymentIdBeforeHotfix": "dpl_2s6CTppev67fsAKScYThnnGYHRY9",
-    "hotfixDeploymentId": null,
-    "hotfixTechnicalUrl": null,
+    "hotfixDeploymentId": "dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-oshc9es0w-lucasruas-devs-projects.vercel.app",
     "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
     "rollbackDeploymentId": "dpl_2s6CTppev67fsAKScYThnnGYHRY9",
-    "hotfixCodeCommit": null
+    "hotfixCodeCommit": "b962cde"
   },
   "sensitiveOperations": [
     "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas apos regressao funcional em videochamadas, Drive e Atas."
