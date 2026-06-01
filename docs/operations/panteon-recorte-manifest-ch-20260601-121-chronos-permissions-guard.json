@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-121-CHRONOS-PERMISSIONS-GUARD",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos authenticated permissions guard hotfix",
+  "status": "PRONTO_PARA_PRODUCAO",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "client-runtime",
+    "auth-session",
+    "permissions"
+  ],
+  "allowedLayers": ["zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-121-chronos-permissions-guard.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/chronos/ChronosPage.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-121-chronos-permissions-guard.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS",
+    "git diff --check: PASS com avisos esperados LF/CRLF",
+    "rg --fixed-strings 'hubUser?.permissions.includes' apps/hub/modules/chronos apps/hub/lib/chronos apps/hub/app/chronos: PASS, sem ocorrencias"
+  ],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
+    "hotfixDeploymentId": "pendente",
+    "hotfixTechnicalUrl": "pendente",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
+    "rollbackDeploymentIdPreviousChronosHotfix": "dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j",
+    "rollbackDeploymentIdPreviousEngineeringRelease": "dpl_34sTeQMRmSLBQzHkx26urYGcgCkT",
+    "hotfixCodeCommit": "pendente"
+  },
+  "sensitiveOperations": [
+    "Deploy Vercel --prod do terceiro hotfix Chronos autorizado por Lucas apos confirmar que o erro persistiu mesmo depois do segundo hotfix."
+  ],
+  "rollback": [
+    "Reapontar producao para dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu se a guarda de permissoes causar regressao imediata.",
+    "Nao ha DDL, env, secret, token, migration, dominio, alias manual ou banco associado."
+  ],
+  "notes": [
+    "A nova evidencia mostrou que /chronos cai depois do carregamento autenticado e sem stack server-side nos logs.",
+    "ChronosPage acessava hubUser?.permissions.includes(...), o que ainda quebra quando hubUser existe mas permissions nao vem como array.",
+    "A correcao transforma permissoes ausentes ou invalidas em lista vazia antes de calcular canManageChronos."
+  ]
+}

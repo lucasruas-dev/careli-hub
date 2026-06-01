@@ -28809,3 +28809,38 @@ Conclusao:
 - A segunda camada ja esta em producao e cobre datas invalidas e enums/status legados fora do esperado.
 - O impacto pratico e impedir que eventos vindos do Google/Chronos quebrem a Agenda/Drive antes da aba Atas carregar.
 - A acao agora e Lucas dar refresh completo na pagina de producao e testar novamente `Drive > Atas`.
+
+## 2026-06-01 02:09:04 -03:00 - Chronos/Zeus - guarda de permissoes autenticadas
+
+Assunto: [Chronos] permissions guard para erro persistente
+
+- Nome da squad/agente: Chronos Core, coordenado por Zeus/Hefesto.
+- Ambiente: pacote limpo de producao.
+- Protocolo: `CH-20260601-121-CHRONOS-PERMISSIONS-GUARD`.
+- Status: PRONTO_PARA_PRODUCAO / AUTORIZADO POR LUCAS / AGUARDANDO DEPLOY.
+- Origem:
+  - Lucas confirmou que o mesmo boundary persistiu em `https://c2x.app.br/chronos` apos o segundo hotfix;
+  - a captura de logs Vercel mostrou `/chronos` com request interrompida e APIs autenticadas recentes sem stack server-side util;
+  - a falha passou a apontar para runtime client-side apos carregamento de sessao autenticada, nao apenas payload de Atas.
+- Hipotese corrigida:
+  - `ChronosPage.tsx` calculava `hubUser?.permissions.includes("chronos:manage")`;
+  - se `hubUser` existe mas `permissions` vem ausente, nulo ou fora de array para um perfil real, o optional chaining nao protege o `.includes` e a renderizacao cai antes de montar a tela.
+- Implementacao:
+  - criada guarda local `hubUserPermissions` com `Array.isArray(hubUser?.permissions)`;
+  - `canManageChronos` passa a usar uma lista vazia quando permissoes nao forem array;
+  - comportamento funcional preservado: quem tem `chronos:manage` continua podendo gerenciar; quem nao tem permanece somente leitura.
+- Validacao pre-deploy:
+  - `npx.cmd eslint modules/chronos/ChronosPage.tsx --max-warnings 0` em `apps/hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos Turbopack/NFT e root inferido.
+- Limites:
+  - sem endpoint novo, env, secret, token, schema, migration, Supabase admin, dominio ou alias manual;
+  - sem mudanca de regra de negocio de Chronos, Atas, Drive ou Agenda;
+  - correcao restrita a guarda de runtime client-side no carregamento autenticado.
+
+Conclusao:
+
+- A causa mais provavel agora e uma permissao ausente no perfil autenticado real, quebrando a tela inteira no primeiro render autenticado.
+- O impacto pratico do hotfix e impedir que um perfil sem array de permissoes derrube `/chronos`; a tela passa a abrir em modo visualizacao quando a permissao de gerencia nao vier.
+- A proxima acao e publicar o terceiro hotfix, validar os aliases de producao e pedir novo refresh/teste autenticado do Lucas.

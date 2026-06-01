@@ -44,9 +44,10 @@ const emptySnapshot: ChronosSnapshot = {
 
 export function ChronosPage() {
   const { hubUser } = useAuth();
-  const canManageChronos = Boolean(
-    hubUser?.permissions.includes("chronos:manage"),
-  );
+  const hubUserPermissions = Array.isArray(hubUser?.permissions)
+    ? hubUser.permissions
+    : [];
+  const canManageChronos = hubUserPermissions.includes("chronos:manage");
   const canDeleteChronosMinutes = hubUser?.role === "admin";
   const [snapshot, setSnapshot] = useState<ChronosSnapshot>(emptySnapshot);
   const [selectedMeetingId, setSelectedMeetingId] = useState("");
