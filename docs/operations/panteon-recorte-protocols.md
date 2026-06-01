@@ -711,12 +711,21 @@ O manifesto de homologacao deve incluir:
 - Validacoes:
   - `npm.cmd run check-types:hub`: OK;
   - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
-  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
-- Status: `VALIDADO_LOCAL / AGUARDANDO AUTORIZACAO PARA PUBLICAR`.
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF no Windows;
+  - healthchecks pos-deploy: `GET /`, `GET /hermes` e `GET /zeus` 200; APIs protegidas sem sessao 401 esperado.
+- Status: `EM PRODUCAO / AGUARDANDO TESTE FUNCIONAL AUTENTICADO DO LUCAS`.
 - Preview Vercel: nao publicado.
+- Commit publicado: `3794c35`.
+- Deployment anterior/rollback: `dpl_5pjadPafkx6K44kfmDcQCNE7rgG3`.
+- Deployment novo: `dpl_An7vpw7MuXJWznd6iWyHRb8egwTC`.
+- URL tecnica: `https://careli-hub-hub-i2bs-6x964gbgz-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
 - Riscos e pendencias:
   - validacao funcional autenticada ainda precisa confirmar Lideranca em producao apos deploy;
   - canais filtrados por mencao/tag podem exigir paginas adicionais ate encontrar itens antigos daquele filtro;
   - nao houve alteracao de banco, migration, env, secret, dominio ou alias.
-- Rollback final: remover o cursor/paginacao do Hermes e voltar ao comportamento anterior de janela unica; nao ha rollback de schema/env.
+- Rollback final: promover novamente `dpl_5pjadPafkx6K44kfmDcQCNE7rgG3` se houver regressao critica; nao ha rollback de schema/env.
 - Decisao: Lucas reportou que Lideranca, por ter mais mensagens, nao permitia voltar no historico enquanto Tecnologia permitia.
