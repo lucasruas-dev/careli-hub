@@ -2909,3 +2909,58 @@ Registro de producao:
   - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
 - Rollback planejado: promover novamente `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX` se houver regressao critica.
 - Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, criar uma chamada curta com camera ligada, iniciar gravacao, compartilhar tela, encerrar, abrir `Assistir` e conferir se o arquivo mostra tela compartilhada mais a trilha lateral da sala; depois testar `Transcrever` e `Drive > Atas`.
+
+## 2026-06-01 - CH-20260601-126-CHRONOS-STABLE-RECORDING-ATAS-OPTION
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando teste funcional autenticado do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Gravacao estavel com tela e fallback OpenAI em producao`.
+- Protocolo: `CH-20260601-126-CHRONOS-STABLE-RECORDING-ATAS-OPTION`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas reportou regressao recorrente em que a gravacao caia ao compartilhar tela, o arquivo final nao trazia a tela compartilhada junto da sala e `Drive > Atas`/`Transcrever` continuavam retornando `Invalid option : option`.
+- Causa tratada:
+  - o cliente ainda reiniciava o `MediaRecorder` ao entrar/sair do compartilhamento, criando parada real de gravacao;
+  - a composicao por canvas dependia da trilha de tela existente no inicio e podia ficar com fundo escuro se a tela entrasse depois ou trocasse de trilha;
+  - a chamada OpenAI de transcricao nao tinha retry seguro entre modelos oficiais e ainda enviava parametro opcional desnecessario;
+  - a transcricao ficava acoplada a geracao posterior da ata, entao uma falha de ata podia fazer a acao inteira parecer perdida.
+- Escopo publicado:
+  - remocao do restart automatico de gravacao em start/stop de compartilhamento;
+  - canvas de gravacao estavel desde o inicio da gravacao, com selecao dinamica de tela compartilhada, camera local e participantes;
+  - tela compartilhada como area principal e camera/participantes no trilho lateral quando houver compartilhamento;
+  - modelo padrao de ata ajustado para modelo OpenAI estavel e fallback controlado;
+  - transcricao com fallback entre `gpt-4o-mini-transcribe`, `gpt-4o-transcribe` e `whisper-1`;
+  - remocao de `response_format` na transcricao e leitura tolerante de payload JSON/texto;
+  - transcricao salva mesmo se a geracao de ata posterior falhar.
+- Itens nao alterados: DDL, migration, env, secret, token, dominio, alias manual, Supabase admin e alteracao direta de banco.
+- Commit publicado: `038fdc1 fix(chronos): stabilize screen recording and atas fallback`.
+- Deployment anterior: `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`.
+- Deployment novo: `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`.
+- URL tecnica: `https://careli-hub-hub-i2bs-6apiro0o2-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - documentacao oficial MDN revisada para `MediaRecorder`, `HTMLCanvasElement.captureStream` e `MediaDevices.getDisplayMedia`;
+  - documentacao oficial OpenAI revisada para audio transcriptions/modelos oficiais;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-126-chronos-stable-recording-atas-option.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: OK.
+- Build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 15m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 15m --level error`: sem logs encontrados.
+- Rollback planejado: promover novamente `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83` se houver regressao critica.
+- Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, iniciar uma chamada curta, iniciar gravacao, compartilhar a tela, parar a gravacao manualmente, abrir `Assistir` e conferir se a tela fica no painel principal com a camera no lado direito; depois testar `Transcrever` e `Drive > Atas`.

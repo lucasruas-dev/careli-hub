@@ -29126,3 +29126,64 @@ Conclusao:
 - O sexto hotfix de Chronos esta em producao e cobre os dois sintomas novos: dado/erro estruturado derrubando Atas e gravacao de compartilhamento capturando somente a tela.
 - O impacto pratico e que, se a ata receber objeto onde esperava texto, a tela deve mostrar mensagem tecnica legivel em vez de cair em `[object Object]`; e novas gravacoes com compartilhamento devem tentar registrar tela + lateral da sala.
 - A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos`, gravar uma chamada curta com camera ligada e compartilhamento de tela, abrir `Assistir`, depois `Transcrever` e `Drive > Atas`.
+
+## 2026-06-01 04:48:00 -03:00 - Chronos/Zeus - Gravacao estavel com tela e fallback OpenAI em producao
+
+Assunto: [Chronos] Gravacao estavel com tela e fallback OpenAI publicados
+
+- Nome da squad/agente: Chronos Core, publicado por Zeus/Hefesto.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-126-CHRONOS-STABLE-RECORDING-ATAS-OPTION`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO TESTE FUNCIONAL AUTENTICADO DO LUCAS.
+- Origem:
+  - Lucas reportou que o erro voltou: ao compartilhar a tela, a gravacao caia;
+  - o arquivo gravado nao trazia a tela compartilhada corretamente e podia ficar com fundo escuro/diferente;
+  - `Transcrever` e `Drive > Atas` continuavam retornando `Invalid option : option`.
+- Revisao com documentacao:
+  - MDN registra que o evento `stop` do `MediaRecorder` acontece quando `MediaRecorder.stop()` e chamado ou quando a stream gravada termina;
+  - MDN `HTMLCanvasElement.captureStream()` fornece uma `MediaStream` de video gerada pelo canvas, adequada para manter uma trilha estavel;
+  - MDN `getDisplayMedia()` entrega a trilha de compartilhamento de tela separada da camera;
+  - OpenAI audio transcriptions usa modelos oficiais como `gpt-4o-mini-transcribe`, `gpt-4o-transcribe` e `whisper-1`.
+- Causa tratada:
+  - o codigo ainda chamava `stopRecording()` seguido de `startRecording()` quando o compartilhamento de tela entrava ou saia, causando a queda percebida da gravacao;
+  - a composicao anterior prendia a gravacao a uma trilha de tela capturada no inicio; se a tela entrasse depois, mudasse ou demorasse a ficar pronta, o canvas podia gravar fundo escuro;
+  - a rota `/api/chronos/meetings/agent` nao tinha fallback sequencial para modelo oficial de transcricao e ainda enviava parametro opcional de formato;
+  - a transcricao e a geracao de ata estavam acopladas no retorno da acao, entao a falha de ata podia bloquear a entrega da transcricao.
+- Implementacao:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` removeu o restart automatico de gravacao em start/stop de compartilhamento;
+  - `apps/hub/lib/chronos/recording.ts` passou a criar canvas estavel desde o inicio da gravacao e selecionar dinamicamente tela compartilhada, camera local e participantes;
+  - a gravacao com tela agora desenha a tela como area principal e camera/participantes no trilho lateral direito; sem tela, a camera volta a ser o video principal;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` trocou o modelo padrao de ata para modelo estavel, filtrou placeholders como `option` e adicionou retry controlado de modelo;
+  - a transcricao removeu `response_format`, le payload JSON/texto e tenta `gpt-4o-mini-transcribe`, `gpt-4o-transcribe` e `whisper-1`;
+  - se a transcricao salvar mas a ata falhar depois, a rota retorna sucesso com a reuniao atualizada e `minutesError`, em vez de perder a transcricao.
+- Commit publicado: `038fdc1 fix(chronos): stabilize screen recording and atas fallback`.
+- Deployment:
+  - deployment anterior: `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`;
+  - deployment novo: `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`;
+  - URL tecnica nova: `https://careli-hub-hub-i2bs-6apiro0o2-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato: `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos Turbopack/NFT e root inferido;
+  - `git diff --check`: PASS, com avisos esperados LF/CRLF;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-126-chronos-stable-recording-atas-option.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: PASS;
+  - deploy Vercel Production: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado;
+  - logs de erro recentes em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Limites:
+  - sem DDL, migration, env, secret, token, dominio, alias manual, Supabase admin ou alteracao direta de banco;
+  - teste autenticado visual continua com Lucas, porque envolve camera, microfone, permissao de tela e arquivo de gravacao gerado no navegador real.
+
+Conclusao:
+
+- O setimo hotfix de Chronos esta em producao e remove o gatilho que derrubava a gravacao quando a tela era compartilhada.
+- O impacto pratico e que novas gravacoes devem permanecer continuas ate Lucas parar manualmente, com tela compartilhada gravada no painel principal e camera/participantes no lado direito.
+- A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos`, gravar uma chamada curta com compartilhamento, abrir `Assistir`, validar o video, clicar `Transcrever` e depois `Drive > Atas`.

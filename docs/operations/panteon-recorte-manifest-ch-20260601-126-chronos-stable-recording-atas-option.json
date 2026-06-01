@@ -4,7 +4,7 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos stable screen-share recording and OpenAI option fallback",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -42,15 +42,26 @@
     "npm.cmd run check-types:hub: PASS",
     "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
     "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
-    "git diff --check: PASS com avisos esperados LF/CRLF"
+    "git diff --check: PASS com avisos esperados LF/CRLF",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-126-chronos-stable-recording-atas-option.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS",
+    "npx.cmd vercel deploy --prod --yes: READY",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready no deployment dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready no deployment dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS",
+    "GET https://c2x.app.br/chronos: 200",
+    "GET https://ops.c2x.app.br/zeus: 200",
+    "POST https://c2x.app.br/api/chronos/meetings/agent sem sessao: 401 esperado",
+    "GET https://c2x.app.br/api/chronos/meetings sem sessao: 401 esperado",
+    "npx.cmd vercel logs https://c2x.app.br --since 15m --level error: sem logs encontrados",
+    "npx.cmd vercel logs https://ops.c2x.app.br --since 15m --level error: sem logs encontrados"
   ],
   "productionContext": {
     "currentDeploymentIdBeforeHotfix": "dpl_2PePdZRXy6K38SBG3nvM9m9wfP83",
-    "hotfixDeploymentId": "PENDENTE",
-    "hotfixTechnicalUrl": "PENDENTE",
+    "hotfixDeploymentId": "dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-6apiro0o2-lucasruas-devs-projects.vercel.app",
     "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
     "rollbackDeploymentId": "dpl_2PePdZRXy6K38SBG3nvM9m9wfP83",
-    "hotfixCodeCommit": "PENDENTE"
+    "hotfixCodeCommit": "038fdc190b658cb1c4d3c3d51d7c2d9314407e5e"
   },
   "sensitiveOperations": [
     "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas no incidente de queda da gravacao com compartilhamento, tela ausente no video e erro Invalid option : option em Atas/Transcricao."
