@@ -5,7 +5,7 @@ import { listHubPresence } from "@/lib/hub-presence";
 import {
   createHermesMessage,
   createHermesThreadReply,
-  listChannelMessages,
+  listChannelMessagesPage,
   listHermesThreadReplies,
   loadHermesOperationalData,
   markHermesChannelRead,
@@ -88,8 +88,16 @@ type HermesToastNotification = {
   title: string;
 };
 
+type HermesMessageHistoryState = {
+  hasMore: boolean;
+  isLoadingOlder: boolean;
+  oldestCreatedAt?: string;
+};
+
 const PULSEX_PRESENCE_REFRESH_MS = 5_000;
 const PULSEX_MESSAGE_REFRESH_MS = 4_000;
+const PULSEX_INITIAL_MESSAGE_LIMIT = 250;
+const PULSEX_HISTORY_PAGE_LIMIT = 100;
 const PULSEX_FAVORITE_CHANNELS_STORAGE_KEY = "careli:pulsex:favorite-channels";
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
@@ -113,6 +121,9 @@ export function HermesWorkspace() {
   const [channels, setChannels] = useState<HermesChannel[]>([]);
   const [departments, setDepartments] = useState<HermesDepartment[]>([]);
   const [messages, setMessages] = useState<HermesMessage[]>([]);
+  const [messageHistoryByChannelId, setMessageHistoryByChannelId] = useState<
+    Record<string, HermesMessageHistoryState>
+  >({});
   const [presenceUsers, setPresenceUsers] = useState<HermesPresenceUser[]>([]);
   const [threadReplies, setThreadReplies] = useState<
     Record<string, HermesThreadReply[]>
@@ -168,6 +179,8 @@ export function HermesWorkspace() {
     channels.find((channel) => channel.id === activeChannelId) ??
     channels[0] ??
     emptyHermesChannel;
+  const activeMessageHistory =
+    messageHistoryByChannelId[activeChannel.id] ?? emptyHermesMessageHistory;
 
   useOutsideDismiss({
     enabled: isAthenaAgentOpen && !isAthenaTicketRecordingMinimized,
@@ -632,16 +645,21 @@ export function HermesWorkspace() {
         return;
       }
 
-      listChannelMessages(activeChannel.id)
-        .then((nextMessages) => {
+      listChannelMessagesPage(activeChannel.id, {
+        limit: PULSEX_INITIAL_MESSAGE_LIMIT,
+      })
+        .then((page) => {
           if (!shouldApply()) {
             return;
           }
 
           const nextDeliveredMessages = withMessageDeliveryData(
-            nextMessages,
+            page.messages,
             channels,
           );
+          const oldestCreatedAt =
+            getOldestHermesMessageCreatedAt(nextDeliveredMessages) ??
+            page.oldestCreatedAt;
           const isFirstChannelLoad = !loadedChannelIdsRef.current.has(
             activeChannel.id,
           );
@@ -667,9 +685,19 @@ export function HermesWorkspace() {
               channelId: activeChannel.id,
               currentMessages,
               nextMessages: nextDeliveredMessages,
-              replaceChannel: true,
+              replaceChannel: false,
             }),
           );
+          setMessageHistoryByChannelId((currentState) => ({
+            ...currentState,
+            [activeChannel.id]: {
+              hasMore: page.hasMore,
+              isLoadingOlder: false,
+              oldestCreatedAt:
+                oldestCreatedAt ??
+                currentState[activeChannel.id]?.oldestCreatedAt,
+            },
+          }));
         })
         .catch((error: unknown) => {
           if (isLocalDevelopmentRuntime()) {
@@ -684,6 +712,94 @@ export function HermesWorkspace() {
       notifyIncomingMessages,
     ],
   );
+
+  const handleLoadOlderChannelMessages = useCallback(() => {
+    if (
+      !hasHubSupabaseConfig() ||
+      activeChannel.id === emptyHermesChannel.id ||
+      !activeMessageHistory.hasMore ||
+      activeMessageHistory.isLoadingOlder
+    ) {
+      return;
+    }
+
+    const before =
+      activeMessageHistory.oldestCreatedAt ??
+      getOldestHermesMessageCreatedAt(
+        messages.filter((message) => message.channelId === activeChannel.id),
+      );
+
+    if (!before) {
+      return;
+    }
+
+    setMessageHistoryByChannelId((currentState) => ({
+      ...currentState,
+      [activeChannel.id]: {
+        ...(currentState[activeChannel.id] ?? emptyHermesMessageHistory),
+        isLoadingOlder: true,
+        oldestCreatedAt: before,
+      },
+    }));
+
+    listChannelMessagesPage(activeChannel.id, {
+      before,
+      limit: PULSEX_HISTORY_PAGE_LIMIT,
+    })
+      .then((page) => {
+        const nextDeliveredMessages = withMessageDeliveryData(
+          page.messages,
+          channels,
+        );
+        const oldestCreatedAt =
+          getOldestHermesMessageCreatedAt(nextDeliveredMessages) ??
+          page.oldestCreatedAt ??
+          before;
+
+        nextDeliveredMessages.forEach((message) =>
+          knownMessageIdsRef.current.add(message.id),
+        );
+        loadedChannelIdsRef.current.add(activeChannel.id);
+
+        setMessages((currentMessages) =>
+          mergeHermesChannelMessages({
+            channelId: activeChannel.id,
+            currentMessages,
+            nextMessages: nextDeliveredMessages,
+            replaceChannel: false,
+          }),
+        );
+        setMessageHistoryByChannelId((currentState) => ({
+          ...currentState,
+          [activeChannel.id]: {
+            hasMore: page.hasMore,
+            isLoadingOlder: false,
+            oldestCreatedAt,
+          },
+        }));
+      })
+      .catch((error: unknown) => {
+        if (isLocalDevelopmentRuntime()) {
+          console.warn("[pulsex] list older channel messages error", error);
+        }
+
+        setMessageHistoryByChannelId((currentState) => ({
+          ...currentState,
+          [activeChannel.id]: {
+            ...(currentState[activeChannel.id] ?? emptyHermesMessageHistory),
+            isLoadingOlder: false,
+            oldestCreatedAt: before,
+          },
+        }));
+      });
+  }, [
+    activeChannel.id,
+    activeMessageHistory.hasMore,
+    activeMessageHistory.isLoadingOlder,
+    activeMessageHistory.oldestCreatedAt,
+    channels,
+    messages,
+  ]);
 
   useEffect(() => {
     if (
@@ -1587,9 +1703,12 @@ export function HermesWorkspace() {
               channelId={activeChannel.id}
               currentUserId={currentUserId}
               filter={activeMessageFilter}
+              hasMoreHistory={activeMessageHistory.hasMore}
+              isLoadingOlder={activeMessageHistory.isLoadingOlder}
               messages={filteredChannelMessages}
               onAskAiReply={handleOpenAthenaAgentForMessage}
               onEditMessage={handleEditMessage}
+              onLoadOlder={handleLoadOlderChannelMessages}
               onOpenThread={handleOpenThread}
               onPreviewAttachment={handlePreviewAttachment}
               onReturnCall={handleReturnCallFromHistory}
@@ -2047,6 +2166,30 @@ function isMessageMentioningUser(
   );
 }
 
+function getOldestHermesMessageCreatedAt(
+  messages: readonly Pick<HermesMessage, "createdAt">[],
+) {
+  let oldestMessage: Pick<HermesMessage, "createdAt"> | undefined;
+  let oldestTime = Number.POSITIVE_INFINITY;
+
+  for (const message of messages) {
+    if (!message.createdAt) {
+      continue;
+    }
+
+    const time = Date.parse(message.createdAt);
+
+    if (Number.isNaN(time) || time >= oldestTime) {
+      continue;
+    }
+
+    oldestMessage = message;
+    oldestTime = time;
+  }
+
+  return oldestMessage?.createdAt;
+}
+
 const emptyHermesChannel = {
   avatar: "--",
   context: {
@@ -2066,6 +2209,11 @@ const emptyHermesChannel = {
   preview: "Configure canais no Setup Central.",
   status: "offline",
 } satisfies HermesChannel;
+
+const emptyHermesMessageHistory: HermesMessageHistoryState = {
+  hasMore: false,
+  isLoadingOlder: false,
+};
 
 function createLocalCallSession({
   channel,

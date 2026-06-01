@@ -41,6 +41,17 @@ export type HermesOperationalData = {
   users: HermesPresenceUser[];
 };
 
+export type HermesChannelMessagesPage = {
+  hasMore: boolean;
+  messages: HermesMessage[];
+  oldestCreatedAt?: string;
+};
+
+type HermesChannelMessagesPageOptions = {
+  before?: string;
+  limit?: number;
+};
+
 type DepartmentRow = {
   id: string;
   name: string;
@@ -430,37 +441,62 @@ export async function listDirectUsers(): Promise<HermesPresenceUser[]> {
 export async function listChannelMessages(
   channelId: HermesChannel["id"],
 ): Promise<HermesMessage[]> {
+  const page = await listChannelMessagesPage(channelId);
+
+  return page.messages;
+}
+
+export async function listChannelMessagesPage(
+  channelId: HermesChannel["id"],
+  options: HermesChannelMessagesPageOptions = {},
+): Promise<HermesChannelMessagesPage> {
   const client = getHubSupabaseClient();
 
   if (!client) {
-    return [];
+    return createEmptyMessagesPage();
   }
 
-  const apiMessages = await listChannelMessagesViaApi(client, channelId);
+  const apiPage = await listChannelMessagesViaApi(client, channelId, options);
 
-  if (apiMessages) {
-    return apiMessages;
+  if (apiPage) {
+    return apiPage;
   }
 
   if (isHermesDirectChannelId(channelId)) {
-    return [];
+    return createEmptyMessagesPage();
   }
+
+  const limit = normalizeHermesMessagesPageLimit(options.limit);
+  const pageLimit = limit + 1;
+  const before = normalizeHermesMessagesPageCursor(options.before);
+  const query = before
+    ? client
+        .from("pulsex_messages")
+        .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+        .eq("channel_id", channelId)
+        .is("deleted_at", null)
+        .lt("created_at", before)
+        .order("created_at", { ascending: false })
+        .limit(pageLimit)
+    : client
+        .from("pulsex_messages")
+        .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+        .eq("channel_id", channelId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(pageLimit);
 
   const result = await runHermesQuery<HermesMessageRow[]>(
     "list channel messages",
     "pulsex_messages",
-    client
-      .from("pulsex_messages")
-      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-      .eq("channel_id", channelId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true }),
+    query,
   );
 
   assertQuery("mensagens Hermes", result);
 
-  return mapChannelMessages(
+  return createMessagesPageFromRows(
     (result as QueryResult<HermesMessageRow[]>).data ?? [],
+    limit,
   );
 }
 
@@ -707,20 +743,31 @@ export async function markHermesChannelRead(input: {
 async function listChannelMessagesViaApi(
   client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
   channelId: HermesChannel["id"],
+  options: HermesChannelMessagesPageOptions = {},
 ) {
   const apiResult = await fetchHermesMessagesApi<{
     data?: HermesMessageRow[];
     error?: string;
+    hasMore?: boolean;
+    oldestCreatedAt?: string | null;
   }>({
     client,
-    url: getHermesMessagesApiUrl({ channelId }),
+    url: getHermesMessagesApiUrl({
+      before: options.before,
+      channelId,
+      limit: options.limit,
+    }),
   });
 
   if (!apiResult?.response.ok || !apiResult.payload?.data) {
     return null;
   }
 
-  return mapChannelMessages(apiResult.payload.data);
+  return {
+    hasMore: Boolean(apiResult.payload.hasMore),
+    messages: mapChannelMessages(apiResult.payload.data),
+    oldestCreatedAt: getString(apiResult.payload.oldestCreatedAt) || undefined,
+  } satisfies HermesChannelMessagesPage;
 }
 
 async function createHermesMessageViaApi(
@@ -937,6 +984,50 @@ function mapChannelMessages(rows: readonly HermesMessageRow[]): HermesMessage[] 
         threadCount: (message.threadCount ?? 0) + (replyActivity?.count ?? 0),
       };
     });
+}
+
+function createMessagesPageFromRows(
+  rows: readonly HermesMessageRow[],
+  limit: number,
+): HermesChannelMessagesPage {
+  const pageRows = rows.slice(0, limit);
+
+  return {
+    hasMore: rows.length > limit,
+    messages: mapChannelMessages([...pageRows].reverse()),
+    oldestCreatedAt: pageRows.at(-1)?.created_at,
+  };
+}
+
+function createEmptyMessagesPage(): HermesChannelMessagesPage {
+  return {
+    hasMore: false,
+    messages: [],
+  };
+}
+
+function normalizeHermesMessagesPageLimit(value: number | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 250;
+  }
+
+  return Math.max(25, Math.min(250, Math.trunc(value)));
+}
+
+function normalizeHermesMessagesPageCursor(value: string | undefined) {
+  const trimmedValue = getString(value);
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  const time = Date.parse(trimmedValue);
+
+  if (Number.isNaN(time)) {
+    return "";
+  }
+
+  return new Date(time).toISOString();
 }
 
 function mapMessage(row: HermesMessageRow | null): HermesMessage {

@@ -686,3 +686,37 @@ O manifesto de homologacao deve incluir:
   - commit pode exigir `--no-verify` porque o hook local referencia `scripts/panteon-hook-runner.ps1`, ausente neste snapshot; validacoes obrigatorias foram executadas manualmente.
 - Rollback final: promover novamente `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`; nao ha rollback de schema/env.
 - Decisao: Lucas autorizou publicar o hotfix de agenda Google individual antes do congelamento operacional para reorganizacao de engenharia.
+
+## HM-20260601-132-HERMES-HISTORY-PAGINATION
+
+- Modulo/agente dono: Hermes / Zeus Operations.
+- Objetivo do recorte: corrigir a diferenca entre Lideranca e Tecnologia no historico de mensagens, permitindo buscar paginas antigas em canais com volume superior a janela inicial.
+- Worktree/branch: `.codex-deploy/z01-001-engineering-prod-20260601` em `codex/hefesto/engineering-prod-20260601`.
+- Base limpa: producao publicada em `dpl_5pjadPafkx6K44kfmDcQCNE7rgG3`, sem alteracao de schema/env.
+- Arquivos incluidos:
+  - `apps/hub/app/api/pulsex/messages/route.ts`;
+  - `apps/hub/lib/pulsex/routes.ts`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`.
+- Arquivos excluidos: Chronos, Hades, Iris, Atlas, Setup, envs, secrets, migrations, banco remoto, service role, dominio, alias manual e qualquer alteracao de Supabase.
+- Comportamento esperado:
+  - a API de mensagens Hermes aceita cursor `before` e devolve `hasMore`/`oldestCreatedAt`;
+  - canais densos como Lideranca deixam de ficar presos as ultimas 250 mensagens;
+  - a lista carrega mensagens anteriores ao subir ou acionar o controle de historico;
+  - o scroll preserva a posicao ao inserir mensagens antigas acima;
+  - o refresh periodico do canal ativo nao apaga paginas antigas ja carregadas.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`.
+- Status: `VALIDADO_LOCAL / AGUARDANDO AUTORIZACAO PARA PUBLICAR`.
+- Preview Vercel: nao publicado.
+- Riscos e pendencias:
+  - validacao funcional autenticada ainda precisa confirmar Lideranca em producao apos deploy;
+  - canais filtrados por mencao/tag podem exigir paginas adicionais ate encontrar itens antigos daquele filtro;
+  - nao houve alteracao de banco, migration, env, secret, dominio ou alias.
+- Rollback final: remover o cursor/paginacao do Hermes e voltar ao comportamento anterior de janela unica; nao ha rollback de schema/env.
+- Decisao: Lucas reportou que Lideranca, por ter mais mensagens, nao permitia voltar no historico enquanto Tecnologia permitia.

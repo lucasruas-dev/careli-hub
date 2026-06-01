@@ -9,7 +9,7 @@ import type {
   HermesReactionEmoji,
 } from "@/lib/pulsex";
 import { EmptyState } from "@repo/uix";
-import { PhoneCall, PhoneMissed, Video } from "lucide-react";
+import { Loader2, PhoneCall, PhoneMissed, Video } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { MessageItem } from "./message-item";
 
@@ -18,12 +18,15 @@ type MessageListProps = {
   channelId: string;
   currentUserId?: HermesPresenceUser["id"];
   filter?: HermesMessageFilter;
+  hasMoreHistory?: boolean;
+  isLoadingOlder?: boolean;
   messages: readonly HermesMessage[];
   onEditMessage?: (
     messageId: HermesMessage["id"],
     body: string,
   ) => Promise<void> | void;
   onAskAiReply?: (messageId: HermesMessage["id"]) => void;
+  onLoadOlder?: () => void;
   onOpenThread?: (messageId: HermesMessage["id"]) => void;
   onReturnCall?: (entry: HermesCallHistoryEntry) => void;
   onToggleTag?: (
@@ -47,9 +50,12 @@ export function MessageList({
   channelId,
   currentUserId,
   filter = "all",
+  hasMoreHistory = false,
+  isLoadingOlder = false,
   messages,
   onEditMessage,
   onAskAiReply,
+  onLoadOlder,
   onOpenThread,
   onPreviewAttachment,
   onReturnCall,
@@ -61,8 +67,10 @@ export function MessageList({
 }: MessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const historyScrollHeightRef = useRef<number | null>(null);
   const previousChannelIdRef = useRef(channelId);
   const shouldFollowTailRef = useRef(true);
+  const wasLoadingOlderRef = useRef(false);
   const timelineItems = getHermesTimelineItems({
     callEvents: filter === "all" ? callEvents : [],
     messages,
@@ -82,6 +90,22 @@ export function MessageList({
       container.scrollHeight - container.scrollTop - container.clientHeight;
 
     shouldFollowTailRef.current = distanceFromBottom < 96;
+
+    if (container.scrollTop < 96) {
+      requestOlderHistory();
+    }
+  }
+
+  function requestOlderHistory() {
+    if (!hasMoreHistory || isLoadingOlder || !onLoadOlder) {
+      return;
+    }
+
+    const container = scrollContainerRef.current;
+
+    historyScrollHeightRef.current = container?.scrollHeight ?? null;
+    shouldFollowTailRef.current = false;
+    onLoadOlder();
   }
 
   useEffect(() => {
@@ -104,7 +128,24 @@ export function MessageList({
     });
   }, [channelId, lastTimelineItemId]);
 
-  if (timelineItems.length === 0) {
+  useEffect(() => {
+    const finishedLoadingOlder = wasLoadingOlderRef.current && !isLoadingOlder;
+
+    if (finishedLoadingOlder) {
+      const container = scrollContainerRef.current;
+      const previousScrollHeight = historyScrollHeightRef.current;
+
+      if (container && previousScrollHeight !== null) {
+        container.scrollTop += container.scrollHeight - previousScrollHeight;
+      }
+
+      historyScrollHeightRef.current = null;
+    }
+
+    wasLoadingOlderRef.current = isLoadingOlder;
+  }, [isLoadingOlder, visibleTimelineItems.length]);
+
+  if (timelineItems.length === 0 && !hasMoreHistory) {
     return (
       <div className="grid h-full min-h-0 place-items-center px-4">
         <EmptyState
@@ -136,6 +177,27 @@ export function MessageList({
       role="log"
     >
       <div className="grid min-h-full content-end gap-2">
+        {hasMoreHistory ? (
+          <div className="grid place-items-center pb-2 pt-1">
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-[#d9e0ea] bg-white px-3 text-xs font-semibold text-[#344054] shadow-sm transition hover:border-[#A07C3B] hover:text-[#101820] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-wait disabled:opacity-75"
+              disabled={isLoadingOlder}
+              onClick={requestOlderHistory}
+              type="button"
+            >
+              {isLoadingOlder ? (
+                <Loader2
+                  aria-hidden="true"
+                  className="animate-spin"
+                  size={14}
+                />
+              ) : null}
+              {isLoadingOlder
+                ? "Carregando historico"
+                : "Carregar mensagens anteriores"}
+            </button>
+          </div>
+        ) : null}
         {visibleTimelineItems.map((item) => {
           if (item.kind === "message") {
             return (

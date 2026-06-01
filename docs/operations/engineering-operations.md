@@ -29573,3 +29573,44 @@ Conclusao:
 - O pacote saiu do estado guardado e foi publicado em producao.
 - O impacto esperado e melhorar a leitura historica do Hermes, permitir agenda Chronos conectada por usuario e reduzir queda de chamada/gravacao em troca de midia e compartilhamento de tela.
 - A acao agora e Lucas fazer refresh duro em `https://c2x.app.br`, testar Hermes, conectar Google Agenda com outro usuario e validar uma chamada Chronos com gravacao e compartilhamento.
+
+## 2026-06-01 12:20:45 -03:00 - Hermes - historico paginado para canais densos
+
+Assunto: [Hermes] Lideranca nao carregava mensagens antigas por limite de janela
+
+- Nome da squad/agente: Hermes Core, coordenado por Zeus.
+- Ambiente: worktree local `.codex-deploy/z01-001-engineering-prod-20260601`.
+- Protocolo relacionado: `HM-20260601-132-HERMES-HISTORY-PAGINATION`.
+- Status: VALIDADO LOCAL / AGUARDANDO AUTORIZACAO PARA PUBLICAR.
+- Causa identificada:
+  - a API de mensagens do Hermes trazia apenas a janela mais recente, limitada a 250 registros;
+  - Tecnologia parecia correto porque o historico util cabia nessa janela;
+  - Lideranca, por ter muito mais mensagens, ficava sem acesso ao passado anterior a janela carregada.
+- Correcao aplicada:
+  - `GET /api/pulsex/messages` e o alias `/api/hermes/messages` passam a aceitar cursor `before` e responder `hasMore`/`oldestCreatedAt`;
+  - `listChannelMessagesPage` foi criado no cliente Hermes para buscar paginas antigas sem alterar o contrato simples existente;
+  - `HermesWorkspace` preserva paginas antigas durante refresh periodico do canal ativo;
+  - `MessageList` ganhou controle/auto-load de mensagens anteriores e preserva a posicao do scroll ao inserir historico acima.
+- Arquivos alterados:
+  - `apps/hub/app/api/pulsex/messages/route.ts`;
+  - `apps/hub/lib/pulsex/routes.ts`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS com warnings conhecidos Turbopack/NFT por worktree `.codex-deploy`.
+- Operacoes sensiveis:
+  - nenhum deploy, env, secret, token, migration, DDL, Supabase admin, service role, banco, dominio ou alias foi executado.
+- Riscos:
+  - ainda precisa teste autenticado do Lucas em Lideranca depois de publicar;
+  - filtros por tag/mencao podem exigir carregar mais de uma pagina ate encontrar itens antigos correspondentes.
+
+Conclusao:
+
+- A diferenca entre Lideranca e Tecnologia era estrutural: Lideranca excedia a janela de mensagens, Tecnologia nao.
+- O impacto pratico da correcao e liberar busca progressiva de historico sem carregar todo o canal de uma vez.
+- A acao agora e Lucas autorizar publicacao deste protocolo se quiser levar o ajuste para producao; depois disso, o teste e subir no canal Lideranca e confirmar que novas paginas antigas aparecem.

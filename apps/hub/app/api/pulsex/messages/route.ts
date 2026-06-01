@@ -195,6 +195,7 @@ export async function GET(request: NextRequest) {
 
   const threadParentMessageId =
     request.nextUrl.searchParams.get("threadParentMessageId")?.trim() ?? "";
+  const before = normalizeMessageCursor(request.nextUrl.searchParams.get("before"));
   const channelId = request.nextUrl.searchParams.get("channelId")?.trim();
   const limit = normalizeMessageLimit(request.nextUrl.searchParams.get("limit"));
 
@@ -250,9 +251,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      data: [...(data ?? [])].reverse(),
-    });
+    return NextResponse.json(createHermesMessagesPagePayload(data ?? [], limit));
   }
 
   if (!channelId) {
@@ -267,6 +266,7 @@ export async function GET(request: NextRequest) {
 
   const messagesResult = await listChannelMessages({
     adminClient: context.adminClient,
+    before,
     channelId,
     limit,
   });
@@ -285,7 +285,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ data: [...(data ?? [])].reverse() });
+  return NextResponse.json(createHermesMessagesPagePayload(data ?? [], limit));
 }
 
 export async function POST(request: NextRequest) {
@@ -706,24 +706,33 @@ class HermesRouteTimeoutError extends Error {
 
 async function listChannelMessages(input: {
   adminClient: SupabaseAdminClient;
+  before: string;
   channelId: string;
   limit: number;
 }): Promise<
   | { ok: true; result: HermesRouteQueryResult<HermesMessageRow[]> }
   | { ok: false; response: NextResponse }
 > {
+  const pageLimit = input.limit + 1;
+  const primaryQuery = input.before
+    ? input.adminClient
+        .from("pulsex_messages")
+        .select(HERMES_MESSAGE_SELECT)
+        .eq("channel_id", input.channelId)
+        .is("deleted_at", null)
+        .lt("created_at", input.before)
+        .order("created_at", { ascending: false })
+        .limit(pageLimit)
+    : input.adminClient
+        .from("pulsex_messages")
+        .select(HERMES_MESSAGE_SELECT)
+        .eq("channel_id", input.channelId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(pageLimit);
   const primaryResult = await withHermesRouteFallback<
     HermesRouteQueryResult<HermesMessageRow[]>
-  >(
-    "messages.channel.primary",
-    input.adminClient
-      .from("pulsex_messages")
-      .select(HERMES_MESSAGE_SELECT)
-      .eq("channel_id", input.channelId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(input.limit),
-  );
+  >("messages.channel.primary", primaryQuery);
 
   if (!primaryResult.ok || !primaryResult.result.error) {
     return primaryResult;
@@ -734,15 +743,26 @@ async function listChannelMessages(input: {
     primaryResult.result.error,
   );
 
+  const fallbackQuery = input.before
+    ? input.adminClient
+        .from("pulsex_messages")
+        .select(HERMES_MESSAGE_SELECT_FALLBACK)
+        .eq("channel_id", input.channelId)
+        .is("deleted_at", null)
+        .lt("created_at", input.before)
+        .order("created_at", { ascending: false })
+        .limit(pageLimit)
+    : input.adminClient
+        .from("pulsex_messages")
+        .select(HERMES_MESSAGE_SELECT_FALLBACK)
+        .eq("channel_id", input.channelId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(pageLimit);
+
   return withHermesRouteFallback<HermesRouteQueryResult<HermesMessageRow[]>>(
     "messages.channel.fallback",
-    input.adminClient
-      .from("pulsex_messages")
-      .select(HERMES_MESSAGE_SELECT_FALLBACK)
-      .eq("channel_id", input.channelId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(input.limit),
+    fallbackQuery,
   );
 }
 
@@ -927,6 +947,36 @@ function normalizeMessageLimit(value: string | null) {
   }
 
   return Math.max(25, Math.min(250, Math.trunc(parsedValue)));
+}
+
+function normalizeMessageCursor(value: string | null) {
+  const trimmedValue = getString(value);
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  const time = Date.parse(trimmedValue);
+
+  if (Number.isNaN(time)) {
+    return "";
+  }
+
+  return new Date(time).toISOString();
+}
+
+function createHermesMessagesPagePayload(
+  rows: readonly HermesMessageRow[],
+  limit: number,
+) {
+  const pageRows = rows.slice(0, limit);
+  const oldestCreatedAt = pageRows.at(-1)?.created_at;
+
+  return {
+    data: [...pageRows].reverse(),
+    hasMore: rows.length > limit,
+    oldestCreatedAt: oldestCreatedAt ?? null,
+  };
 }
 
 function parseEditMessagePayload(payload: unknown):
