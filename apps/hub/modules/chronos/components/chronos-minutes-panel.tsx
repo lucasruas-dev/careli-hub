@@ -40,25 +40,38 @@ export function MinutesPanel({
   onUpdate,
   saving,
 }: MinutesPanelProps) {
-  const latestMinutes = meeting.minutes[0];
+  const meetingMinutes = Array.isArray(meeting.minutes) ? meeting.minutes : [];
+  const meetingTranscript = Array.isArray(meeting.transcript)
+    ? meeting.transcript
+    : [];
+  const latestMinutes = meetingMinutes[0];
+  const latestMinutesContent =
+    typeof latestMinutes?.content === "string" ? latestMinutes.content : "";
   const [minutesProfile, setMinutesProfile] =
     useState<ChronosMinutesProfile>("alinhamento");
   const [minutesView, setMinutesView] = useState<"edit" | "preview">("preview");
   const [minutesDraft, setMinutesDraft] = useState(
-    latestMinutes?.content || buildChronosMinutesDraft(meeting),
+    latestMinutesContent || buildChronosMinutesDraft(meeting),
   );
   const minutesContext = useMemo(
     () => buildChronosMinutesContext(meeting),
     [meeting],
   );
-  const hasTranscript = meeting.transcript.length > 0;
+  const hasTranscript = meetingTranscript.length > 0;
   const transcribableRecording = useMemo(
-    () =>
-      meeting.recordings.find(
-        (recording) =>
-          recording.status === "available" &&
-          Boolean(recording.downloadUrl ?? recording.playbackUrl),
-      ) ?? null,
+    () => {
+      const recordings = Array.isArray(meeting.recordings)
+        ? meeting.recordings
+        : [];
+
+      return (
+        recordings.find(
+          (recording) =>
+            recording.status === "available" &&
+            Boolean(recording.downloadUrl ?? recording.playbackUrl),
+        ) ?? null
+      );
+    },
     [meeting.recordings],
   );
   const canGenerateMinutes = hasTranscript || Boolean(transcribableRecording);
@@ -69,8 +82,8 @@ export function MinutesPanel({
       : "Aguardando gravacao ou transcricao para liberar a ata operacional.";
 
   useEffect(() => {
-    setMinutesDraft(latestMinutes?.content || buildChronosMinutesDraft(meeting));
-  }, [latestMinutes?.content, meeting]);
+    setMinutesDraft(latestMinutesContent || buildChronosMinutesDraft(meeting));
+  }, [latestMinutesContent, meeting]);
 
   async function saveMinutes(status: ChronosMinutesStatus) {
     await onUpdate({

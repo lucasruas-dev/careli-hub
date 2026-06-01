@@ -49,7 +49,9 @@ export function buildChronosMinutesContext(
 export function getChronosCheckedInParticipants(
   meeting: ChronosMeeting,
 ): ChronosMinutesParticipant[] {
-  const participants = meeting.participants.filter(hasChronosCheckIn);
+  const participants = (
+    Array.isArray(meeting.participants) ? meeting.participants : []
+  ).filter(hasChronosCheckIn);
   const participantsByKey = new Map<string, ChronosMinutesParticipant>();
 
   for (const participant of participants) {
@@ -82,6 +84,11 @@ export function getChronosActualEndAt(meeting: ChronosMeeting) {
   const closure = readRecord(metadata.closure);
   const explicitEnd =
     readString(externalRoom.actualEndedAt) ?? readString(closure.closedAt);
+  const recordings = Array.isArray(meeting.recordings) ? meeting.recordings : [];
+  const participants = Array.isArray(meeting.participants)
+    ? meeting.participants
+    : [];
+  const timeline = Array.isArray(meeting.timeline) ? meeting.timeline : [];
 
   if (explicitEnd) {
     return explicitEnd;
@@ -89,9 +96,9 @@ export function getChronosActualEndAt(meeting: ChronosMeeting) {
 
   const candidates = [
     meeting.status === "closed" ? meeting.updatedAt : null,
-    ...meeting.recordings.map((recording) => recording.stoppedAt),
-    ...meeting.participants.map((participant) => participant.leftAt),
-    ...meeting.timeline
+    ...recordings.map((recording) => recording.stoppedAt),
+    ...participants.map((participant) => participant.leftAt),
+    ...timeline
       .filter((event) => event.eventType === "left")
       .map((event) => event.eventAt),
   ].filter(isValidDateString);
@@ -337,8 +344,8 @@ function isValidDateString(value: unknown): value is string {
   return typeof value === "string" && !Number.isNaN(new Date(value).getTime());
 }
 
-function normalizeSearchText(value: string) {
-  return value
+function normalizeSearchText(value: unknown) {
+  return String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim()

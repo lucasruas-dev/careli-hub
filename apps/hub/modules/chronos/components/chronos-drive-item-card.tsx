@@ -32,6 +32,8 @@ export function ChronosDriveItemCard({
   onSelectMeeting,
   selected,
 }: ChronosDriveItemCardProps) {
+  const recordings = Array.isArray(meeting.recordings) ? meeting.recordings : [];
+  const minutes = Array.isArray(meeting.minutes) ? meeting.minutes : [];
   const checkedInParticipants = getChronosCheckedInParticipants(meeting);
   const participants = checkedInParticipants
     .map((participant) => participant.displayName)
@@ -81,9 +83,9 @@ export function ChronosDriveItemCard({
       <span className="flex flex-wrap gap-1">
         <Badge variant="neutral">{meeting.protocol}</Badge>
         {driveView === "recordings" ? (
-          <Badge variant="neutral">{meeting.recordings.length} arquivos</Badge>
+          <Badge variant="neutral">{recordings.length} arquivos</Badge>
         ) : (
-          <Badge variant="neutral">{meeting.minutes.length} versoes</Badge>
+          <Badge variant="neutral">{minutes.length} versoes</Badge>
         )}
       </span>
     </button>

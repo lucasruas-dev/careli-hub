@@ -90,11 +90,16 @@ export function ChronosDriveLibraryScreen({
 
     if (activeDriveView === "recordings") {
       return sortMeetingsByDate(
-        byRoom.filter(
-          (currentMeeting) =>
+        byRoom.filter((currentMeeting) => {
+          const recordings = Array.isArray(currentMeeting.recordings)
+            ? currentMeeting.recordings
+            : [];
+
+          return (
             currentMeeting.recordingStatus !== "not_started" ||
-            currentMeeting.recordings.length > 0,
-        ),
+            recordings.length > 0
+          );
+        }),
       );
     }
 
@@ -159,7 +164,7 @@ export function ChronosDriveLibraryScreen({
               />
             ))}
             {filteredMeetings.length === 0 ? (
-              <EmptyPanel text="Nenhuma ata disponivel sem gravacao vinculada." />
+              <EmptyPanel text="Nenhuma ata disponivel com gravacao vinculada." />
             ) : null}
           </div>
         </Surface>

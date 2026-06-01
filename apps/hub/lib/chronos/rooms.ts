@@ -74,7 +74,9 @@ export function buildAbsoluteExternalRoomLink(slug: string) {
 }
 
 export function hasChronosMeetingAvailableRecording(meeting: ChronosMeeting) {
-  return meeting.recordings.some((recording) => recording.status === "available");
+  const recordings = Array.isArray(meeting.recordings) ? meeting.recordings : [];
+
+  return recordings.some((recording) => recording.status === "available");
 }
 
 export function readFileAsDataUrl(file: File) {

@@ -337,6 +337,9 @@ function getChronosMeetingRecordingItems({
   const meetingLocalRecordings = localRecordings.filter(
     (recording) => recording.meetingId === meeting.id,
   );
+  const meetingRecordings = Array.isArray(meeting.recordings)
+    ? meeting.recordings
+    : [];
 
   return [
     ...meetingLocalRecordings.map((recording) => ({
@@ -346,7 +349,7 @@ function getChronosMeetingRecordingItems({
       sectorLabel,
       status: (recording.status ?? "available") as ChronosCaptureStatus,
     })),
-    ...meeting.recordings.map((recording) => ({
+    ...meetingRecordings.map((recording) => ({
       ...mapPersistedRecording(recording, meeting.id),
       meeting,
       roomLabel,
@@ -447,8 +450,8 @@ function parseChronosDateValue(value?: string | null) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function normalizeChronosSearchText(value: string) {
-  return value
+function normalizeChronosSearchText(value: unknown) {
+  return String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()

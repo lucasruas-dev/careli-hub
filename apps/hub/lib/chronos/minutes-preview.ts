@@ -115,8 +115,9 @@ export function openChronosMinutesPrintWindow({
   printWindow.document.close();
 }
 
-export function buildChronosMinutesBodyHtml(minutes: string) {
-  const lines = minutes.replace(/\r/g, "").split("\n");
+export function buildChronosMinutesBodyHtml(minutes: string | null | undefined) {
+  const safeMinutes = typeof minutes === "string" ? minutes : "";
+  const lines = safeMinutes.replace(/\r/g, "").split("\n");
   const chunks: string[] = [];
   let listItems: string[] = [];
   let tableLines: string[] = [];

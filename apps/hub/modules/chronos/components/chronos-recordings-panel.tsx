@@ -34,9 +34,12 @@ export function RecordingsPanel({
   const meetingLocalRecordings = localRecordings.filter(
     (recording) => recording.meetingId === meeting.id,
   );
+  const meetingRecordings = Array.isArray(meeting.recordings)
+    ? meeting.recordings
+    : [];
   const recordings = [
     ...meetingLocalRecordings,
-    ...meeting.recordings.map((recording) =>
+    ...meetingRecordings.map((recording) =>
       mapPersistedRecording(recording, meeting.id),
     ),
   ];

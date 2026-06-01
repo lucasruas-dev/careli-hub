@@ -21,6 +21,7 @@ export function TranscriptPanel({
   const [speakerLabel, setSpeakerLabel] = useState(userName);
   const [content, setContent] = useState("");
   const [expanded, setExpanded] = useState(true);
+  const transcript = Array.isArray(meeting.transcript) ? meeting.transcript : [];
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +49,7 @@ export function TranscriptPanel({
           ) : (
             <ChevronDown aria-hidden="true" size={13} />
           )}
-          {expanded ? "Ocultar" : `Expandir (${meeting.transcript.length})`}
+          {expanded ? "Ocultar" : `Expandir (${transcript.length})`}
         </button>
       </div>
       {expanded ? (
@@ -80,7 +81,7 @@ export function TranscriptPanel({
             </button>
           </form>
           <div className="min-h-0 overflow-y-auto p-3">
-            {meeting.transcript.map((segment) => (
+            {transcript.map((segment) => (
               <div
                 className="mb-2 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
                 key={segment.id}
@@ -98,14 +99,14 @@ export function TranscriptPanel({
                 </p>
               </div>
             ))}
-            {meeting.transcript.length === 0 ? (
+            {transcript.length === 0 ? (
               <EmptyPanel text="Nenhum trecho transcrito." />
             ) : null}
           </div>
         </>
       ) : (
         <div className="p-3 text-sm font-semibold text-[#667085]">
-          {meeting.transcript.length} trecho(s) transcrito(s) oculto(s).
+          {transcript.length} trecho(s) transcrito(s) oculto(s).
         </div>
       )}
     </Surface>

@@ -36,9 +36,9 @@ export function ChronosCalendarEventDetailsPopup({
       : roomPath;
   const eventKind = getChronosCalendarEventKind(meeting);
   const meetingProfile = getChronosMeetingProfileLabel(meeting);
-  const participants = meeting.participants.filter(
-    (participant) => participant.role !== "host",
-  );
+  const participants = (
+    Array.isArray(meeting.participants) ? meeting.participants : []
+  ).filter((participant) => participant.role !== "host");
 
   async function copyRoomLink() {
     if (!roomUrl) {

@@ -412,8 +412,9 @@ export function sortMeetingsByDate(meetings: ChronosMeeting[]) {
 }
 
 export function countOpenFollowUps(meeting: ChronosMeeting) {
-  return meeting.followUps.filter((followUp) => followUp.status !== "done")
-    .length;
+  const followUps = Array.isArray(meeting.followUps) ? meeting.followUps : [];
+
+  return followUps.filter((followUp) => followUp.status !== "done").length;
 }
 
 export function sameDay(firstDate: Date, secondDate: Date) {

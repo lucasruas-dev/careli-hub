@@ -12,16 +12,20 @@ export function buildChronosMinutesDraft(meeting: ChronosMeeting) {
   const participants = context.participants
     .map((participant) => participant.displayName)
     .join(", ");
-  const timeline = meeting.timeline
+  const timeline = (Array.isArray(meeting.timeline) ? meeting.timeline : [])
     .slice(0, 8)
     .map((event) => `- ${event.title}`)
     .join("\n");
   const recordingEvidence = buildChronosRecordingEvidenceDraft(meeting);
-  const chatMessages = (meeting.chatMessages ?? [])
+  const chatMessages = (
+    Array.isArray(meeting.chatMessages) ? meeting.chatMessages : []
+  )
     .slice(-10)
     .map((message) => `- ${message.senderName}: ${message.content}`)
     .join("\n");
-  const followUps = meeting.followUps
+  const followUps = (
+    Array.isArray(meeting.followUps) ? meeting.followUps : []
+  )
     .map((followUp) => `- ${followUp.title} / ${followUp.ownerName ?? "-"}`)
     .join("\n");
 
@@ -61,11 +65,13 @@ export function buildChronosMinutesDraft(meeting: ChronosMeeting) {
 }
 
 function buildChronosRecordingEvidenceDraft(meeting: ChronosMeeting) {
-  if (meeting.recordings.length === 0) {
+  const recordings = Array.isArray(meeting.recordings) ? meeting.recordings : [];
+
+  if (recordings.length === 0) {
     return "- Nao ha gravacao vinculada.";
   }
 
-  return meeting.recordings
+  return recordings
     .map((recording) => {
       const source = recording.fileName ?? recording.storagePath ?? recording.id;
       const status = chronosCaptureStatusLabels[recording.status];

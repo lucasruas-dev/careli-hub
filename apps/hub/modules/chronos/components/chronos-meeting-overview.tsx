@@ -142,6 +142,7 @@ function ChronosGovernanceChecklist({ meeting }: { meeting: ChronosMeeting }) {
   const agenda = Array.isArray(meeting.metadata.agenda)
     ? meeting.metadata.agenda
     : [];
+  const transcript = Array.isArray(meeting.transcript) ? meeting.transcript : [];
   const checkedInParticipants = getChronosCheckedInParticipants(meeting);
   const items = [
     {
@@ -157,7 +158,7 @@ function ChronosGovernanceChecklist({ meeting }: { meeting: ChronosMeeting }) {
       label: "gravacao",
     },
     {
-      complete: meeting.transcript.length > 0,
+      complete: transcript.length > 0,
       label: "transcricao",
     },
     {

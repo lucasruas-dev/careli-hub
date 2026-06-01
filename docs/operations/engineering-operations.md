@@ -28666,3 +28666,43 @@ Conclusao:
 - A nova engenharia modular de Iris, Hades, Hermes, Chronos e Zeus/governanca esta em producao.
 - O impacto pratico e que Lucas ja pode testar nos dominios oficiais sem depender do ambiente local.
 - A acao agora e validacao funcional autenticada pelo Lucas; se houver regressao critica, Hefesto deve promover rollback para `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
+
+## 2026-06-01 01:43:00 -03:00 - Chronos/Zeus - hotfix tela de Atas
+
+Assunto: [Chronos] hotfix Atas client guard
+
+- Nome da squad/agente: Chronos Core, coordenado por Zeus/Hefesto por se tratar de correcao em producao.
+- Ambiente: pacote limpo de producao em `.codex-deploy/z01-001-engineering-prod-20260601`.
+- Protocolo: `CH-20260601-119-CHRONOS-ATAS-CLIENT-GUARD`.
+- Status: PRONTO_PARA_PRODUCAO / AUTORIZADO POR LUCAS / AGUARDANDO DEPLOY DO HOTFIX.
+- Origem:
+  - Lucas reportou que, ao acessar a tela de Atas em `https://c2x.app.br/chronos`, a pagina caia no boundary do Next com "This page couldn't load";
+  - logs Vercel de producao para `/chronos` nao trouxeram stack server-side, indicando falha client-side/hidratacao/runtime ao abrir a aba.
+- Implementacao:
+  - `loadChronosSnapshot` agora normaliza reunioes carregadas da API antes de entregar ao estado React;
+  - retornos de criacao, atualizacao, transcricao e geracao de ata tambem passam por normalizacao;
+  - paineis de Atas, Transcricao, Gravacoes, Drive, cards e helpers de ata passaram a tratar arrays ausentes como listas vazias;
+  - conteudo de ata nulo/ausente passa a ser tratado como string vazia no preview/print.
+- Limites:
+  - sem alteracao de regra de negocio de Atas, Drive, transcricao ou gravacao;
+  - sem endpoint novo;
+  - sem DDL, migration, Supabase admin, service role, env, secret, token, dominio, alias manual ou banco;
+  - correcao restrita a runtime client-side defensivo de Chronos.
+- Validacao pre-deploy:
+  - ESLint focado nos arquivos Chronos alterados: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de Turbopack/NFT e root inferido;
+  - smoke HTTP local isolado em `http://localhost:3002`: `/chronos` 200 e `/api/chronos/meetings` 401 esperado sem sessao;
+  - `git diff --check`: PASS, com avisos esperados LF/CRLF;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-119-chronos-atas-client-guard.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: PASS.
+- Rollback planejado:
+  - deployment atual antes do hotfix: `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`;
+  - rollback tecnico anterior do pacote de engenharia: `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
+
+Conclusao:
+
+- A causa provavel foi payload de reuniao com campos de Atas/gravacao/transcricao ausentes, quebrando a renderizacao client-side da aba.
+- O impacto pratico do hotfix e impedir que dado incompleto derrube a tela; a interface passa a mostrar estado vazio/controlado e seguir operando.
+- A proxima acao e publicar o hotfix em Vercel Production, validar `/chronos` em producao e pedir ao Lucas refresh/teste autenticado da aba Atas.

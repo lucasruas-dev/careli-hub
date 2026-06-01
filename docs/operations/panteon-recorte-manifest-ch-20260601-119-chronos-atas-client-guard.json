@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-119-CHRONOS-ATAS-CLIENT-GUARD",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos Atas client guard hotfix",
+  "status": "PRONTO_PARA_PRODUCAO",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "drive",
+    "minutes",
+    "recordings",
+    "client-runtime"
+  ],
+  "allowedLayers": ["zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/lib/chronos/calendar.ts",
+    "apps/hub/lib/chronos/client.ts",
+    "apps/hub/lib/chronos/drive.ts",
+    "apps/hub/lib/chronos/minutes-draft.ts",
+    "apps/hub/lib/chronos/minutes-preview.ts",
+    "apps/hub/lib/chronos/minutes.ts",
+    "apps/hub/lib/chronos/rooms.ts",
+    "apps/hub/modules/chronos/components/chronos-calendar-event-details-popup.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-item-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+    "apps/hub/modules/chronos/components/chronos-meeting-overview.tsx",
+    "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+    "apps/hub/modules/chronos/components/chronos-recordings-panel.tsx",
+    "apps/hub/modules/chronos/components/chronos-transcript-panel.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-119-chronos-atas-client-guard.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint lib/chronos/client.ts lib/chronos/minutes.ts lib/chronos/minutes-draft.ts lib/chronos/minutes-preview.ts lib/chronos/rooms.ts lib/chronos/calendar.ts lib/chronos/drive.ts modules/chronos/components/chronos-drive-library-screen.tsx modules/chronos/components/chronos-drive-item-card.tsx modules/chronos/components/chronos-calendar-event-details-popup.tsx modules/chronos/components/chronos-meeting-overview.tsx modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-transcript-panel.tsx modules/chronos/components/chronos-recordings-panel.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos de Turbopack/NFT sobre trace de release-registers-source.ts e root inferido",
+    "smoke HTTP local isolado em http://localhost:3002: /chronos 200; /api/chronos/meetings 401 esperado sem sessao",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-119-chronos-atas-client-guard.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS"
+  ],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_34sTeQMRmSLBQzHkx26urYGcgCkT",
+    "currentTechnicalUrlBeforeHotfix": "https://careli-hub-hub-i2bs-7g3sssevp-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "publishedCommitBeforeHotfix": "044dd67c",
+    "recordCommitBeforeHotfix": "5e564a7"
+  },
+  "sensitiveOperations": [
+    "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas na conversa de 2026-06-01 para corrigir erro de pagina em producao ao acessar Atas."
+  ],
+  "rollback": [
+    "Reapontar producao para dpl_34sTeQMRmSLBQzHkx26urYGcgCkT se o hotfix causar regressao imediata.",
+    "Rollback tecnico anterior disponivel em dpl_GpLQK812ChTr53ZGmqhrDefbjx4n, conforme release Z01-001.",
+    "Nao ha DDL, env, secret, token, migration, dominio, alias manual ou mudanca de banco associada ao recorte."
+  ],
+  "notes": [
+    "Normaliza o snapshot client-side do Chronos para garantir arrays e statuses validos em reunioes carregadas pela API.",
+    "Adiciona guardas nos paineis de Atas, Transcricao, Gravacoes e cards do Drive para evitar RuntimeError quando uma reuniao vem com campos ausentes.",
+    "Mantem a regra funcional existente: Atas aparecem para reunioes com gravacao disponivel e geram rascunho a partir de transcricao/gravacao.",
+    "O erro reportado por Lucas em https://c2x.app.br/chronos foi tratado como falha client-side sem stack server-side nos logs Vercel."
+  ]
+}
