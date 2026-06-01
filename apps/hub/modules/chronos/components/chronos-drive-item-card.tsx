@@ -34,6 +34,10 @@ export function ChronosDriveItemCard({
 }: ChronosDriveItemCardProps) {
   const recordings = Array.isArray(meeting.recordings) ? meeting.recordings : [];
   const minutes = Array.isArray(meeting.minutes) ? meeting.minutes : [];
+  const recordingStatusLabel =
+    chronosCaptureStatusLabels[meeting.recordingStatus] ?? "Nao iniciada";
+  const minutesStatusLabel =
+    chronosMinutesStatusLabels[meeting.minutesStatus] ?? "Nao iniciada";
   const checkedInParticipants = getChronosCheckedInParticipants(meeting);
   const participants = checkedInParticipants
     .map((participant) => participant.displayName)
@@ -66,12 +70,10 @@ export function ChronosDriveItemCard({
               ? meeting.recordingStatus === "available"
                 ? "success"
                 : "warning"
-              : minutesVariant[meeting.minutesStatus]
+              : minutesVariant[meeting.minutesStatus] ?? "neutral"
           }
         >
-          {driveView === "recordings"
-            ? chronosCaptureStatusLabels[meeting.recordingStatus]
-            : chronosMinutesStatusLabels[meeting.minutesStatus]}
+          {driveView === "recordings" ? recordingStatusLabel : minutesStatusLabel}
         </Badge>
       </span>
       <span className="grid gap-1 text-xs text-[#667085]">

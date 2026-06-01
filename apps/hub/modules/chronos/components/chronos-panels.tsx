@@ -44,7 +44,10 @@ export function CaptureStatusPanel({
       icon={<Mic size={16} />}
       label="transcricao"
       value={
-        meeting ? chronosCaptureStatusLabels[meeting.transcriptionStatus] : "-"
+        meeting
+          ? chronosCaptureStatusLabels[meeting.transcriptionStatus] ??
+            "Nao iniciada"
+          : "-"
       }
     />
   );

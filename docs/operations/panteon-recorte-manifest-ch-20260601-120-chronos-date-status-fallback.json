@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-120-CHRONOS-DATE-STATUS-FALLBACK",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos date and status fallback hotfix",
+  "status": "PRONTO_PARA_PRODUCAO",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "agenda",
+    "drive",
+    "minutes",
+    "client-runtime"
+  ],
+  "allowedLayers": ["zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/lib/chronos/calendar.ts",
+    "apps/hub/lib/chronos/client.ts",
+    "apps/hub/lib/chronos/minutes-draft.ts",
+    "apps/hub/modules/chronos/components/chronos-calendar-canvas.tsx",
+    "apps/hub/modules/chronos/components/chronos-calendar-event-details-popup.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-item-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-executive-room-panel.tsx",
+    "apps/hub/modules/chronos/components/chronos-meeting-overview.tsx",
+    "apps/hub/modules/chronos/components/chronos-meeting-type-visuals.ts",
+    "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+    "apps/hub/modules/chronos/components/chronos-panels.tsx",
+    "apps/hub/modules/chronos/components/chronos-recording-context-panel.tsx",
+    "apps/hub/modules/chronos/components/chronos-recordings-panel.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-120-chronos-date-status-fallback.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint lib/chronos/client.ts lib/chronos/calendar.ts lib/chronos/minutes-draft.ts modules/chronos/components/chronos-calendar-canvas.tsx modules/chronos/components/chronos-calendar-event-details-popup.tsx modules/chronos/components/chronos-drive-item-card.tsx modules/chronos/components/chronos-drive-recording-card.tsx modules/chronos/components/chronos-executive-room-panel.tsx modules/chronos/components/chronos-meeting-overview.tsx modules/chronos/components/chronos-meeting-type-visuals.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-panels.tsx modules/chronos/components/chronos-recording-context-panel.tsx modules/chronos/components/chronos-recordings-panel.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido"
+  ],
+  "sensitiveOperations": [
+    "Deploy Vercel --prod do segundo hotfix Chronos autorizado por Lucas apos reportar que o erro persistiu."
+  ],
+  "rollback": [
+    "Reapontar producao para dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j se a segunda camada causar regressao imediata.",
+    "Rollback anterior da engenharia permanece em dpl_34sTeQMRmSLBQzHkx26urYGcgCkT.",
+    "Nao ha DDL, env, secret, token, migration, dominio, alias manual ou banco associado."
+  ],
+  "notes": [
+    "A primeira camada protegeu arrays ausentes; Lucas confirmou o mesmo erro.",
+    "A segunda camada protege datas invalidas e valores legados fora de enum em tipos/status, que podem quebrar a renderizacao da Agenda antes ou durante o acesso a Atas.",
+    "A tentativa de capturar console pelo Chrome plugin falhou no runtime local, entao a correcao foi guiada por logs de producao e analise de renderizadores client-side."
+  ]
+}

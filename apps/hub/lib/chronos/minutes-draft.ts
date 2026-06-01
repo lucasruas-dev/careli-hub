@@ -74,7 +74,7 @@ function buildChronosRecordingEvidenceDraft(meeting: ChronosMeeting) {
   return recordings
     .map((recording) => {
       const source = recording.fileName ?? recording.storagePath ?? recording.id;
-      const status = chronosCaptureStatusLabels[recording.status];
+      const status = chronosCaptureStatusLabels[recording.status] ?? "Nao iniciada";
       const type = recording.mimeType?.includes("video")
         ? "video vinculado como evidencia"
         : "audio/anexo vinculado como evidencia";

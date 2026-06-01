@@ -36,6 +36,10 @@ export function ChronosCalendarEventDetailsPopup({
       : roomPath;
   const eventKind = getChronosCalendarEventKind(meeting);
   const meetingProfile = getChronosMeetingProfileLabel(meeting);
+  const meetingStatusLabel =
+    chronosMeetingStatusLabels[meeting.status] ?? "Agendada";
+  const meetingStatusVariant =
+    chronosMeetingStatusVariant[meeting.status] ?? "neutral";
   const participants = (
     Array.isArray(meeting.participants) ? meeting.participants : []
   ).filter((participant) => participant.role !== "host");
@@ -70,9 +74,7 @@ export function ChronosCalendarEventDetailsPopup({
             <Badge variant="neutral">
               {chronosCalendarEventKindLabels[eventKind]}
             </Badge>
-            <Badge variant={chronosMeetingStatusVariant[meeting.status]}>
-              {chronosMeetingStatusLabels[meeting.status]}
-            </Badge>
+            <Badge variant={meetingStatusVariant}>{meetingStatusLabel}</Badge>
           </div>
           <h2 className="mt-3 truncate text-xl font-semibold text-[#101820]">
             {meeting.title}

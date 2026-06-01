@@ -53,3 +53,10 @@ export const chronosMeetingTypeVisuals = {
     pillClass: string;
   }
 >;
+
+export function getChronosMeetingTypeVisual(value: string) {
+  return (
+    chronosMeetingTypeVisuals[value as ChronosMeetingType] ??
+    chronosMeetingTypeVisuals.alignment
+  );
+}

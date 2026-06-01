@@ -41,7 +41,7 @@ export function MeetingOverview({
         <InfoBlock label="sala" value={meeting.room?.name ?? "-"} />
         <InfoBlock
           label="tipo"
-          value={chronosMeetingTypeLabels[meeting.meetingType]}
+          value={chronosMeetingTypeLabels[meeting.meetingType] ?? "Alinhamento"}
         />
         <InfoBlock
           label="inicio"

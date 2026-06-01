@@ -69,6 +69,7 @@ export function ChronosDriveMeetingRecordingCard({
     (recordingMeeting.availableRecordings > 0
       ? "available"
       : meeting.recordingStatus);
+  const statusLabel = chronosCaptureStatusLabels[status] ?? "Nao iniciada";
   const checkedInParticipants = getChronosCheckedInParticipants(meeting);
 
   if (viewMode === "list") {
@@ -80,7 +81,7 @@ export function ChronosDriveMeetingRecordingCard({
               {displayTitle}
             </p>
             <Badge variant={status === "available" ? "success" : "neutral"}>
-              {chronosCaptureStatusLabels[status]}
+              {statusLabel}
             </Badge>
           </div>
           <p className="m-0 mt-1 truncate text-xs text-[#667085]">
@@ -146,7 +147,7 @@ export function ChronosDriveMeetingRecordingCard({
             </p>
           </div>
           <Badge variant={status === "available" ? "success" : "neutral"}>
-            {chronosCaptureStatusLabels[status]}
+            {statusLabel}
           </Badge>
         </div>
         <div className="grid gap-1 text-xs text-[#667085]">

@@ -448,14 +448,16 @@ export async function draftChronosMinutes(input: {
 }
 
 function normalizeChronosSnapshot(payload: ChronosApiResponse): ChronosSnapshot {
+  const profiles = readRecordArray<ChronosMeetingProfile>(payload.profiles).map(
+    normalizeChronosMeetingProfile,
+  );
+
   return {
     meetings: readRecordArray<ChronosMeeting>(payload.meetings).map(
       (meeting, index) => normalizeChronosMeeting(meeting, index),
     ),
-    profiles: Array.isArray(payload.profiles)
-      ? payload.profiles
-      : [...defaultChronosMeetingProfiles],
-    rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
+    profiles: profiles.length > 0 ? profiles : [...defaultChronosMeetingProfiles],
+    rooms: readRecordArray<ChronosRoom>(payload.rooms).map(normalizeChronosRoom),
     storage: payload.storage ?? { status: "offline" },
   };
 }
@@ -474,9 +476,14 @@ function normalizeChronosMeeting(
       NonNullable<ChronosMeeting["chatMessages"]>[number]
     >(raw.chatMessages).map(normalizeChronosChatMessage),
     createdAt,
+    endsAt: readDateStringOrNull(raw.endsAt),
+    executiveSummary: readStringOrNull(raw.executiveSummary),
+    externalReference: readStringOrNull(raw.externalReference),
     followUps: readRecordArray<ChronosMeeting["followUps"][number]>(
       raw.followUps,
     ).map(normalizeChronosFollowUp),
+    hostName: readStringOrNull(raw.hostName),
+    hostUserId: readStringOrNull(raw.hostUserId),
     id: readString(raw.id, `chronos-meeting-${index}`),
     meetingType: isChronosMeetingType(raw.meetingType)
       ? raw.meetingType
@@ -488,6 +495,7 @@ function normalizeChronosMeeting(
     minutesStatus: isChronosMinutesStatus(raw.minutesStatus)
       ? raw.minutesStatus
       : "not_started",
+    objective: readStringOrNull(raw.objective),
     participants: readRecordArray<ChronosMeeting["participants"][number]>(
       raw.participants,
     ).map(normalizeChronosParticipant),
@@ -498,6 +506,9 @@ function normalizeChronosMeeting(
     recordings: readRecordArray<ChronosMeeting["recordings"][number]>(
       raw.recordings,
     ).map(normalizeChronosRecording),
+    room: isRecord(raw.room) ? normalizeChronosRoom(raw.room as ChronosRoom) : null,
+    roomId: readStringOrNull(raw.roomId),
+    startsAt: readDateStringOrNull(raw.startsAt),
     status: isChronosMeetingStatus(raw.status) ? raw.status : "scheduled",
     timeline: readRecordArray<ChronosMeeting["timeline"][number]>(
       raw.timeline,
@@ -513,6 +524,47 @@ function normalizeChronosMeeting(
   };
 }
 
+function normalizeChronosMeetingProfile(
+  profile: ChronosMeetingProfile & Record<string, unknown>,
+  index: number,
+): ChronosMeetingProfile {
+  return {
+    ...profile,
+    createdAt: readDateStringOrNull(profile.createdAt) ?? undefined,
+    description: readString(profile.description),
+    id: readString(profile.id, `profile-${index}`),
+    isDefault: profile.isDefault === true,
+    label: readString(profile.label, "Perfil Chronos"),
+    meetingType: isChronosMeetingType(profile.meetingType)
+      ? profile.meetingType
+      : "alignment",
+    status: profile.status === "archived" ? "archived" : "active",
+    updatedAt: readDateStringOrNull(profile.updatedAt) ?? undefined,
+  };
+}
+
+function normalizeChronosRoom(
+  room: ChronosRoom & Record<string, unknown>,
+  index = 0,
+): ChronosRoom {
+  return {
+    ...room,
+    capacity: readFiniteNumber(room.capacity, 0),
+    id: readString(room.id, `room-${index}`),
+    metadata: isRecord(room.metadata) ? room.metadata : {},
+    minutesRequired: room.minutesRequired !== false,
+    name: readString(room.name, "Sala Chronos"),
+    recordingRequired: room.recordingRequired !== false,
+    roomType: readString(room.roomType, "alignment"),
+    slug: readString(room.slug),
+    status:
+      room.status === "archived" || room.status === "disabled"
+        ? room.status
+        : "active",
+    transcriptionRequired: room.transcriptionRequired !== false,
+  };
+}
+
 function normalizeChronosMinutes(
   minutes: ChronosMeeting["minutes"][number] & Record<string, unknown>,
   index: number,
@@ -520,7 +572,7 @@ function normalizeChronosMinutes(
   return {
     ...minutes,
     content: readString(minutes.content),
-    createdAt: readString(minutes.createdAt, new Date(0).toISOString()),
+    createdAt: readDateString(minutes.createdAt, new Date(0).toISOString()),
     id: readString(minutes.id, `minutes-${index}`),
     status: isChronosMinutesStatus(minutes.status) ? minutes.status : "draft",
     version: readFiniteNumber(minutes.version, index + 1),
@@ -537,8 +589,8 @@ function normalizeChronosParticipant(
     displayName: readString(participant.displayName, "Participante"),
     email: readStringOrNull(participant.email),
     id: readString(participant.id, `participant-${index}`),
-    joinedAt: readStringOrNull(participant.joinedAt),
-    leftAt: readStringOrNull(participant.leftAt),
+    joinedAt: readDateStringOrNull(participant.joinedAt),
+    leftAt: readDateStringOrNull(participant.leftAt),
     organization: readStringOrNull(participant.organization),
     role: isChronosParticipantRole(participant.role)
       ? participant.role
@@ -560,11 +612,11 @@ function normalizeChronosRecording(
     mimeType: readStringOrNull(recording.mimeType),
     playbackUrl: readStringOrNull(recording.playbackUrl),
     sizeBytes: readFiniteNumberOrNull(recording.sizeBytes),
-    startedAt: readStringOrNull(recording.startedAt),
+    startedAt: readDateStringOrNull(recording.startedAt),
     status: isChronosCaptureStatus(recording.status)
       ? recording.status
       : "not_started",
-    stoppedAt: readStringOrNull(recording.stoppedAt),
+    stoppedAt: readDateStringOrNull(recording.stoppedAt),
     storageBucket: readStringOrNull(recording.storageBucket),
     storagePath: readStringOrNull(recording.storagePath),
   };
@@ -577,7 +629,7 @@ function normalizeChronosTimelineEvent(
   return {
     ...event,
     description: readStringOrNull(event.description),
-    eventAt: readString(event.eventAt, new Date(0).toISOString()),
+    eventAt: readDateString(event.eventAt, new Date(0).toISOString()),
     eventType: isChronosEventType(event.eventType) ? event.eventType : "note",
     id: readString(event.id, `timeline-${index}`),
     title: readString(event.title, "Evento Chronos"),
@@ -591,12 +643,12 @@ function normalizeChronosTranscriptSegment(
   return {
     ...segment,
     content: readString(segment.content),
-    createdAt: readString(segment.createdAt, new Date(0).toISOString()),
-    endedAt: readStringOrNull(segment.endedAt),
+    createdAt: readDateString(segment.createdAt, new Date(0).toISOString()),
+    endedAt: readDateStringOrNull(segment.endedAt),
     id: readString(segment.id, `transcript-${index}`),
     source: readString(segment.source, "chronos"),
     speakerLabel: readStringOrNull(segment.speakerLabel),
-    startedAt: readStringOrNull(segment.startedAt),
+    startedAt: readDateStringOrNull(segment.startedAt),
   };
 }
 
@@ -608,7 +660,7 @@ function normalizeChronosChatMessage(
   return {
     ...message,
     content: readString(message.content),
-    createdAt: readString(message.createdAt, new Date(0).toISOString()),
+    createdAt: readDateString(message.createdAt, new Date(0).toISOString()),
     id: readString(message.id, `chat-${index}`),
     participantId: readStringOrNull(message.participantId),
     senderName: readString(message.senderName, "Participante"),
@@ -621,8 +673,8 @@ function normalizeChronosFollowUp(
 ): ChronosMeeting["followUps"][number] {
   return {
     ...followUp,
-    completedAt: readStringOrNull(followUp.completedAt),
-    dueAt: readStringOrNull(followUp.dueAt),
+    completedAt: readDateStringOrNull(followUp.completedAt),
+    dueAt: readDateStringOrNull(followUp.dueAt),
     id: readString(followUp.id, `follow-up-${index}`),
     ownerName: readStringOrNull(followUp.ownerName),
     ownerUserId: readStringOrNull(followUp.ownerUserId),
@@ -651,6 +703,18 @@ function readString(value: unknown, fallback = "") {
 
 function readStringOrNull(value: unknown) {
   return typeof value === "string" ? value : null;
+}
+
+function readDateString(value: unknown, fallback: string) {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value))
+    ? value
+    : fallback;
+}
+
+function readDateStringOrNull(value: unknown) {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value))
+    ? value
+    : null;
 }
 
 function readFiniteNumber(value: unknown, fallback: number) {

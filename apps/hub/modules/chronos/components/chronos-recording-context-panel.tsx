@@ -13,6 +13,11 @@ type RecordingContextPanelProps = {
 export function RecordingContextPanel({
   meeting,
 }: RecordingContextPanelProps) {
+  const recordingStatusLabel =
+    chronosCaptureStatusLabels[meeting.recordingStatus] ?? "Nao iniciada";
+  const transcriptionStatusLabel =
+    chronosCaptureStatusLabels[meeting.transcriptionStatus] ?? "Nao iniciada";
+
   return (
     <Surface bordered className="min-h-full border-[#d9e0e7] bg-white p-4">
       <PanelTitle eyebrow="Gravacoes" title="Identificacao da reuniao" />
@@ -26,11 +31,11 @@ export function RecordingContextPanel({
         <InfoBlock label="sala" value={meeting.room?.name ?? "-"} />
         <InfoBlock
           label="gravacao"
-          value={chronosCaptureStatusLabels[meeting.recordingStatus]}
+          value={recordingStatusLabel}
         />
         <InfoBlock
           label="transcricao"
-          value={chronosCaptureStatusLabels[meeting.transcriptionStatus]}
+          value={transcriptionStatusLabel}
         />
       </div>
     </Surface>

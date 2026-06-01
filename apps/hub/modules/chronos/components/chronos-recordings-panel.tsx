@@ -43,6 +43,8 @@ export function RecordingsPanel({
       mapPersistedRecording(recording, meeting.id),
     ),
   ];
+  const recordingStatusLabel =
+    chronosCaptureStatusLabels[meeting.recordingStatus] ?? "Nao iniciada";
 
   async function handleUploadChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -82,7 +84,7 @@ export function RecordingsPanel({
       <div className="mt-4 grid grid-cols-2 gap-3">
         <InfoBlock
           label="status"
-          value={chronosCaptureStatusLabels[meeting.recordingStatus]}
+          value={recordingStatusLabel}
         />
         <InfoBlock
           label="arquivos locais"

@@ -75,6 +75,10 @@ export function MinutesPanel({
     [meeting.recordings],
   );
   const canGenerateMinutes = hasTranscript || Boolean(transcribableRecording);
+  const minutesStatusLabel =
+    chronosMinutesStatusLabels[meeting.minutesStatus] ?? "Nao iniciada";
+  const minutesStatusVariant =
+    chronosMinutesStatusVariant[meeting.minutesStatus] ?? "neutral";
   const minutesEvidenceLabel = hasTranscript
     ? "Transcricao registrada: ata formatada pode ser gerada pela memoria textual."
     : transcribableRecording
@@ -118,9 +122,7 @@ export function MinutesPanel({
     <Surface bordered className="grid min-h-full grid-rows-[auto_minmax(0,1fr)_auto] border-[#d9e0e7] bg-white">
       <div className="flex items-start justify-between gap-3 border-b border-[#edf0f4] p-4">
         <PanelTitle eyebrow="Ata" title="Formalizacao" />
-        <Badge variant={chronosMinutesStatusVariant[meeting.minutesStatus]}>
-          {chronosMinutesStatusLabels[meeting.minutesStatus]}
-        </Badge>
+        <Badge variant={minutesStatusVariant}>{minutesStatusLabel}</Badge>
       </div>
       <div className="min-h-0 overflow-y-auto p-4">
         <div className="mb-4 grid gap-2">

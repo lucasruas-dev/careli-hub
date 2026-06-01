@@ -23,7 +23,7 @@ import {
 import { Badge } from "@repo/uix";
 import type { CSSProperties } from "react";
 import { chronosMeetingStatusVariant } from "./chronos-meeting-status";
-import { chronosMeetingTypeVisuals } from "./chronos-meeting-type-visuals";
+import { getChronosMeetingTypeVisual } from "./chronos-meeting-type-visuals";
 import { chronosMinutesStatusVariant } from "./chronos-minutes-status";
 import { EmptyPanel } from "./chronos-panels";
 
@@ -334,7 +334,7 @@ function ChronosYearGrid({
                   sameMeetingDay(meeting, date),
                 );
                 const typeVisual = dayMeeting
-                  ? chronosMeetingTypeVisuals[dayMeeting.meetingType]
+                  ? getChronosMeetingTypeVisual(dayMeeting.meetingType)
                   : null;
 
                 return (
@@ -371,7 +371,7 @@ function ChronosAgendaEventCard({
   onSelectMeeting: (meetingId: string) => void;
   selected: boolean;
 }) {
-  const typeVisual = chronosMeetingTypeVisuals[meeting.meetingType];
+  const typeVisual = getChronosMeetingTypeVisual(meeting.meetingType);
 
   return (
     <button
@@ -393,8 +393,8 @@ function ChronosAgendaEventCard({
             {getChronosMeetingLocationLabel(meeting)}
           </span>
         </span>
-        <Badge variant={chronosMeetingStatusVariant[meeting.status]}>
-          {chronosMeetingStatusLabels[meeting.status]}
+        <Badge variant={chronosMeetingStatusVariant[meeting.status] ?? "neutral"}>
+          {chronosMeetingStatusLabels[meeting.status] ?? "Agendada"}
         </Badge>
       </span>
       <span className="flex flex-wrap gap-1">
@@ -404,8 +404,10 @@ function ChronosAgendaEventCard({
           {typeVisual.label}
         </span>
         <Badge variant="neutral">{meeting.protocol}</Badge>
-        <Badge variant={chronosMinutesStatusVariant[meeting.minutesStatus]}>
-          {chronosMinutesStatusLabels[meeting.minutesStatus]}
+        <Badge
+          variant={chronosMinutesStatusVariant[meeting.minutesStatus] ?? "neutral"}
+        >
+          {chronosMinutesStatusLabels[meeting.minutesStatus] ?? "Nao iniciada"}
         </Badge>
         {countOpenFollowUps(meeting) > 0 ? (
           <Badge variant="warning">{countOpenFollowUps(meeting)} follow-up</Badge>
@@ -428,7 +430,7 @@ function ChronosCalendarEventPill({
   selected: boolean;
   style?: CSSProperties;
 }) {
-  const typeVisual = chronosMeetingTypeVisuals[meeting.meetingType];
+  const typeVisual = getChronosMeetingTypeVisual(meeting.meetingType);
 
   return (
     <span
@@ -500,7 +502,7 @@ export function MiniCalendar({
             sameMeetingDay(meeting, date),
           );
           const typeVisual = dayMeeting
-            ? chronosMeetingTypeVisuals[dayMeeting.meetingType]
+            ? getChronosMeetingTypeVisual(dayMeeting.meetingType)
             : null;
 
           return (

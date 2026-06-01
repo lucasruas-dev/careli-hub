@@ -200,8 +200,8 @@ export function ExecutiveRoomPanel({
           title={meeting?.title ?? "Sala executiva"}
         />
         {meeting ? (
-          <Badge variant={chronosMeetingStatusVariant[meeting.status]}>
-            {chronosMeetingStatusLabels[meeting.status]}
+          <Badge variant={chronosMeetingStatusVariant[meeting.status] ?? "neutral"}>
+            {chronosMeetingStatusLabels[meeting.status] ?? "Agendada"}
           </Badge>
         ) : null}
       </div>

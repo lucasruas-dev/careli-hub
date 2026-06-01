@@ -28741,3 +28741,39 @@ Conclusao:
 - O hotfix da tela de Atas ja esta em producao e os healthchecks publicos passaram.
 - O impacto pratico e reduzir a falha de pagina inteira quando algum registro Chronos chega sem arrays de ata, gravacao, transcricao, participantes ou follow-ups.
 - A acao agora e Lucas atualizar `https://c2x.app.br/chronos`, abrir `Drive > Atas` e confirmar se a tela carrega; em regressao critica, Hefesto deve promover rollback para `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`.
+
+## 2026-06-01 01:58:00 -03:00 - Chronos/Zeus - segunda camada Atas
+
+Assunto: [Chronos] fallback de datas e status para erro persistente
+
+- Nome da squad/agente: Chronos Core, coordenado por Zeus/Hefesto.
+- Ambiente: pacote limpo de producao.
+- Protocolo: `CH-20260601-120-CHRONOS-DATE-STATUS-FALLBACK`.
+- Status: PRONTO_PARA_PRODUCAO / AUTORIZADO POR LUCAS / AGUARDANDO DEPLOY.
+- Origem:
+  - Lucas confirmou que o mesmo erro persistiu apos o primeiro hotfix;
+  - `c2x.app.br` ja estava no deployment `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`;
+  - logs Vercel mostraram `/chronos`, `/api/chronos/meetings` e `/api/chronos/google-calendar/status` com `200` autenticado, sem stack server-side;
+  - tentativa de capturar console pelo plugin Chrome falhou no runtime local antes de listar abas.
+- Hipotese corrigida:
+  - alem de arrays ausentes, a tela podia quebrar com datas invalidas ou valores legados fora das enums de tipo/status;
+  - esses pontos aparecem na Agenda e nos cards antes ou durante a entrada em `Drive > Atas`.
+- Implementacao:
+  - normalizacao client-side ampliada para campos opcionais, datas, salas e perfis;
+  - datas invalidas em horarios de agenda passam a renderizar `--:--` em vez de estourar `Intl.DateTimeFormat`;
+  - mapas visuais de tipo/status/ata/gravacao passam a ter fallback operacional;
+  - `chronosMeetingTypeVisuals` ganhou helper de fallback para `alignment`.
+- Validacao pre-deploy:
+  - ESLint focado nos arquivos alterados: PASS;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos.
+- Limites:
+  - sem endpoint novo, env, secret, token, schema, migration, Supabase admin, dominio ou alias manual;
+  - sem mudanca de regra de negocio de Chronos.
+
+Conclusao:
+
+- A segunda camada trata valores reais inesperados que ainda poderiam derrubar a renderizacao client-side.
+- O impacto pratico e tornar Chronos tolerante a dados legados/incompletos vindos da agenda e do Drive.
+- A proxima acao e publicar o segundo hotfix e pedir novo teste autenticado do Lucas na aba Atas.
