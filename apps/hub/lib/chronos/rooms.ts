@@ -1,5 +1,6 @@
 import type {
   ChronosMeeting,
+  ChronosRecording,
   ChronosRoom,
   ChronosRoomInput,
 } from "@/lib/chronos/types";
@@ -76,7 +77,25 @@ export function buildAbsoluteExternalRoomLink(slug: string) {
 export function hasChronosMeetingAvailableRecording(meeting: ChronosMeeting) {
   const recordings = Array.isArray(meeting.recordings) ? meeting.recordings : [];
 
-  return recordings.some((recording) => recording.status === "available");
+  return recordings.some(hasChronosRecordingPlayableMedia);
+}
+
+export function hasChronosRecordingPlayableMedia(recording: ChronosRecording) {
+  const playbackUrl = normalizeChronosRecordingUrl(
+    recording.playbackUrl ?? recording.downloadUrl,
+  );
+
+  return recording.status === "available" && Boolean(playbackUrl);
+}
+
+function normalizeChronosRecordingUrl(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed && trimmed !== "#" ? trimmed : "";
 }
 
 export function readFileAsDataUrl(file: File) {

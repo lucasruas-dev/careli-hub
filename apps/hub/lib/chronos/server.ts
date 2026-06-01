@@ -1454,7 +1454,6 @@ export async function markChronosPublicRecording({
     meetingId: normalizedInput.meetingId,
     roomSlug: slug,
   });
-  const now = new Date().toISOString();
 
   const { error: meetingError } = await client
     .from("chronos_meetings")
@@ -1467,24 +1466,6 @@ export async function markChronosPublicRecording({
     throw meetingError;
   }
 
-  const { error: recordingError } = await client
-    .from("chronos_recordings")
-    .insert({
-      duration_seconds: normalizedInput.durationSeconds ?? null,
-      meeting_id: meeting.id,
-      metadata: {
-        participantId: normalizedInput.participantId,
-        source: "chronos-external-room",
-      },
-      started_at: normalizedInput.status === "recording" ? now : null,
-      status: normalizedInput.status,
-      stopped_at: normalizedInput.status === "available" ? now : null,
-    });
-
-  if (recordingError) {
-    throw recordingError;
-  }
-
   await insertTimelineEvent(client, {
     eventType:
       normalizedInput.status === "recording"
@@ -1494,6 +1475,8 @@ export async function markChronosPublicRecording({
     title:
       normalizedInput.status === "recording"
         ? "Gravacao iniciada pela sala externa"
+        : normalizedInput.status === "failed"
+          ? "Gravacao externa falhou antes de salvar o arquivo"
         : "Gravacao encerrada pela sala externa",
   });
 
@@ -2310,7 +2293,7 @@ async function assertChronosMeetingHasAvailableRecording(
 ) {
   const recordingResult = await client
     .from("chronos_recordings")
-    .select("id")
+    .select("id, storage_bucket, storage_path")
     .eq("meeting_id", meetingId)
     .eq("status", "available")
     .limit(1);
@@ -2319,7 +2302,13 @@ async function assertChronosMeetingHasAvailableRecording(
     throw recordingResult.error;
   }
 
-  if (!recordingResult.data?.length) {
+  const hasStoredRecording = Boolean(
+    recordingResult.data?.some((recording) =>
+      Boolean(recording.storage_path?.trim()),
+    ),
+  );
+
+  if (!hasStoredRecording) {
     throw new Error(
       "Ata Chronos requer gravacao disponivel vinculada a reuniao.",
     );
@@ -4635,7 +4624,8 @@ function mapRecordingRow(row: ChronosRecordingRow): ChronosRecording {
     startedAt: row.started_at,
     status: row.status,
     stoppedAt: row.stopped_at,
-    storageBucket: row.storage_bucket,
+    storageBucket:
+      row.storage_bucket ?? (row.storage_path ? chronosDriveStorageBucket : null),
     storagePath: row.storage_path,
   };
 }
@@ -4646,26 +4636,28 @@ async function hydrateChronosRecordingUrls(
 ) {
   return Promise.all(
     recordings.map(async (recording) => {
-      if (
-        recording.status !== "available" ||
-        !recording.storageBucket ||
-        !recording.storagePath
-      ) {
+      const storageBucket = recording.storageBucket ?? chronosDriveStorageBucket;
+
+      if (recording.status !== "available" || !recording.storagePath) {
         return recording;
       }
 
       const { data, error } = await client.storage
-        .from(recording.storageBucket)
+        .from(storageBucket)
         .createSignedUrl(recording.storagePath, 60 * 60);
 
       if (error || !data?.signedUrl) {
-        return recording;
+        return {
+          ...recording,
+          storageBucket,
+        } satisfies ChronosRecording;
       }
 
       return {
         ...recording,
         downloadUrl: data.signedUrl,
         playbackUrl: data.signedUrl,
+        storageBucket,
       } satisfies ChronosRecording;
     }),
   );

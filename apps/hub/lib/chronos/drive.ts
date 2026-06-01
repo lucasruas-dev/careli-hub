@@ -349,12 +349,14 @@ function getChronosMeetingRecordingItems({
       sectorLabel,
       status: (recording.status ?? "available") as ChronosCaptureStatus,
     })),
-    ...meetingRecordings.map((recording) => ({
-      ...mapPersistedRecording(recording, meeting.id),
-      meeting,
-      roomLabel,
-      sectorLabel,
-    })),
+    ...meetingRecordings
+      .filter(shouldIncludePersistedRecordingInDrive)
+      .map((recording) => ({
+        ...mapPersistedRecording(recording, meeting.id),
+        meeting,
+        roomLabel,
+        sectorLabel,
+      })),
   ];
 }
 
@@ -462,8 +464,15 @@ export function mapPersistedRecording(
   recording: ChronosMeeting["recordings"][number],
   meetingId: string,
 ): LocalRecording {
+  const downloadUrl = normalizeChronosDriveRecordingUrl(
+    recording.downloadUrl ?? recording.playbackUrl,
+  );
+  const playbackUrl = normalizeChronosDriveRecordingUrl(
+    recording.playbackUrl ?? recording.downloadUrl,
+  );
+
   return {
-    downloadUrl: recording.downloadUrl ?? recording.playbackUrl ?? "#",
+    downloadUrl,
     durationSeconds: recording.durationSeconds ?? 0,
     id: recording.id,
     meetingId,
@@ -473,6 +482,30 @@ export function mapPersistedRecording(
     startedAt: recording.startedAt,
     status: recording.status,
     stoppedAt: recording.stoppedAt,
-    url: recording.playbackUrl ?? recording.downloadUrl ?? "#",
+    url: playbackUrl,
   };
+}
+
+function shouldIncludePersistedRecordingInDrive(
+  recording: ChronosMeeting["recordings"][number],
+) {
+  const playbackUrl = normalizeChronosDriveRecordingUrl(
+    recording.playbackUrl ?? recording.downloadUrl,
+  );
+
+  if (playbackUrl !== "#") {
+    return true;
+  }
+
+  return Boolean(recording.storagePath?.trim());
+}
+
+function normalizeChronosDriveRecordingUrl(value: unknown) {
+  if (typeof value !== "string") {
+    return "#";
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed && trimmed !== "#" ? trimmed : "#";
 }

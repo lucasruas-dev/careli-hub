@@ -56,8 +56,8 @@ export function ChronosDriveMeetingRecordingCard({
   viewMode,
 }: ChronosDriveMeetingRecordingCardProps) {
   const { meeting, primaryRecording } = recordingMeeting;
-  const downloadUrl = primaryRecording?.downloadUrl ?? primaryRecording?.url;
-  const canOpenVideo = Boolean(primaryRecording?.url && primaryRecording.url !== "#");
+  const canOpenVideo = isChronosDriveRecordingPlayable(primaryRecording);
+  const downloadUrl = getChronosDriveRecordingDownloadUrl(primaryRecording);
   const startedAt = getChronosMeetingDriveStart(meeting);
   const endedAt = getChronosMeetingDriveEnd(meeting);
   const displayTitle = getChronosDriveMeetingDisplayTitle(
@@ -69,7 +69,19 @@ export function ChronosDriveMeetingRecordingCard({
     (recordingMeeting.availableRecordings > 0
       ? "available"
       : meeting.recordingStatus);
-  const statusLabel = chronosCaptureStatusLabels[status] ?? "Nao iniciada";
+  const hasPendingMediaLink = Boolean(
+    primaryRecording?.status === "available" && !canOpenVideo,
+  );
+  const statusLabel = hasPendingMediaLink
+    ? "Link pendente"
+    : chronosCaptureStatusLabels[status] ?? "Nao iniciada";
+  const statusVariant =
+    status === "available" && !hasPendingMediaLink ? "success" : "neutral";
+  const videoPlaceholderLabel = hasPendingMediaLink
+    ? "Link de video pendente"
+    : recordingMeeting.recordings.length > 0
+      ? "Video em processamento"
+      : "Gravacao ainda nao disponivel";
   const checkedInParticipants = getChronosCheckedInParticipants(meeting);
 
   if (viewMode === "list") {
@@ -80,7 +92,7 @@ export function ChronosDriveMeetingRecordingCard({
             <p className="m-0 truncate text-sm font-semibold text-[#101820]">
               {displayTitle}
             </p>
-            <Badge variant={status === "available" ? "success" : "neutral"}>
+            <Badge variant={statusVariant}>
               {statusLabel}
             </Badge>
           </div>
@@ -129,9 +141,7 @@ export function ChronosDriveMeetingRecordingCard({
           <div className="grid justify-items-center gap-2">
             <Video aria-hidden="true" size={24} />
             <span className="text-xs font-semibold text-[#d7dee8]">
-              {recordingMeeting.recordings.length > 0
-                ? "Video em processamento"
-                : "Gravacao ainda nao disponivel"}
+              {videoPlaceholderLabel}
             </span>
           </div>
         </div>
@@ -146,7 +156,7 @@ export function ChronosDriveMeetingRecordingCard({
               {meeting.protocol}
             </p>
           </div>
-          <Badge variant={status === "available" ? "success" : "neutral"}>
+          <Badge variant={statusVariant}>
             {statusLabel}
           </Badge>
         </div>
@@ -253,7 +263,11 @@ function ChronosDriveRecordingActions({
         {primaryRecording ? (
           <button
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
-            disabled={saving || Boolean(primaryRecording.transcribedAt)}
+            disabled={
+              saving ||
+              Boolean(primaryRecording.transcribedAt) ||
+              !canTranscribeChronosDriveRecording(primaryRecording)
+            }
             onClick={() =>
               primaryRecording.blob
                 ? void onTranscribeRecording({
@@ -270,10 +284,44 @@ function ChronosDriveRecordingActions({
             type="button"
           >
             <Mic aria-hidden="true" size={13} />
-            {primaryRecording.transcribedAt ? "Transcrita" : "Transcrever"}
+            {primaryRecording.transcribedAt
+              ? "Transcrita"
+              : canTranscribeChronosDriveRecording(primaryRecording)
+                ? "Transcrever"
+                : "Aguardando video"}
           </button>
         ) : null}
       </div>
     </div>
   );
+}
+
+function canTranscribeChronosDriveRecording(
+  recording: ChronosDriveRecordingItem,
+) {
+  return Boolean(recording.blob || isChronosDriveRecordingPlayable(recording));
+}
+
+function getChronosDriveRecordingDownloadUrl(
+  recording: ChronosDriveRecordingItem | null,
+) {
+  return normalizeChronosDriveRecordingUrl(
+    recording?.downloadUrl ?? recording?.url,
+  );
+}
+
+function isChronosDriveRecordingPlayable(
+  recording: ChronosDriveRecordingItem | null,
+) {
+  return Boolean(normalizeChronosDriveRecordingUrl(recording?.url));
+}
+
+function normalizeChronosDriveRecordingUrl(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed && trimmed !== "#" ? trimmed : "";
 }

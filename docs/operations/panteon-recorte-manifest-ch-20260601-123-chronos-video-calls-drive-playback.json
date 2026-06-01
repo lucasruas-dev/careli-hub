@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-123-CHRONOS-VIDEO-CALLS-DRIVE-PLAYBACK",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos video calls drive playback hotfix",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "video-calls",
+    "recordings",
+    "drive-atas",
+    "screen-share-layout"
+  ],
+  "allowedLayers": ["zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/lib/chronos/drive.ts",
+    "apps/hub/lib/chronos/rooms.ts",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-123-chronos-video-calls-drive-playback.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx modules/chronos/components/chronos-drive-recording-card.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "smoke HTTP local em build compilado via npx.cmd next start --port 3011: /chronos 200 e /api/chronos/meetings sem sessao 401 esperado",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-123-chronos-video-calls-drive-playback.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS",
+    "git diff --check: PASS com avisos esperados LF/CRLF"
+  ],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_2s6CTppev67fsAKScYThnnGYHRY9",
+    "hotfixDeploymentId": null,
+    "hotfixTechnicalUrl": null,
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_2s6CTppev67fsAKScYThnnGYHRY9",
+    "hotfixCodeCommit": null
+  },
+  "sensitiveOperations": [
+    "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas apos regressao funcional em videochamadas, Drive e Atas."
+  ],
+  "rollback": [
+    "Reapontar producao para dpl_2s6CTppev67fsAKScYThnnGYHRY9 se o upload assinado de gravacoes ou layout de compartilhamento gerar regressao critica.",
+    "Nao ha DDL, migration, env, secret, token, dominio, alias manual ou alteracao de banco associada."
+  ],
+  "notes": [
+    "A causa mais consistente da regressao foi o fluxo antigo enviar o Blob inteiro para uma rota serverless e, em falha, marcar a reuniao como available sem storage_bucket/storage_path.",
+    "O fluxo novo prepara uma URL assinada, envia o arquivo direto do navegador para o Storage e so confirma a gravacao depois que o objeto existe.",
+    "Registros publicos de status nao criam mais linhas em chronos_recordings sem arquivo real.",
+    "Drive e Atas passam a tratar available sem playback como link pendente, sem permitir transcricao nem contaminar Atas.",
+    "Durante compartilhamento de tela, a tela compartilhada fica no palco principal e as demais janelas ficam organizadas no trilho lateral direito em desktop."
+  ]
+}

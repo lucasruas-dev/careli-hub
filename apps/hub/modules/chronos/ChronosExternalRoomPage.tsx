@@ -116,6 +116,12 @@ type ChronosPreparedLocalMedia = {
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
+type ChronosRecordingUploadTarget = {
+  bucket: string;
+  path: string;
+  token: string;
+};
+
 type SpeechRecognitionLike = {
   abort: () => void;
   continuous: boolean;
@@ -1261,10 +1267,10 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
                 fileName: recordingName,
               });
             } else {
-              await postChronosRecordingStatus("available");
+              await postChronosRecordingStatus("failed");
             }
           } else {
-            await postChronosRecordingStatus("available");
+            await postChronosRecordingStatus("failed");
           }
         } finally {
           recordingChunksRef.current = [];
@@ -1309,46 +1315,97 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     fileName: string;
   }) {
     if (!meetingId || !localParticipant) {
-      await postChronosRecordingStatus("available");
+      await postChronosRecordingStatus("failed");
       return;
     }
 
     setRecordingStorageStatus("uploading");
 
     try {
-      const formData = new FormData();
+      const client = getHubSupabaseClient();
       const recordingFile = new File([blob], fileName, {
         type: blob.type || "video/webm",
       });
 
-      formData.set("durationSeconds", String(durationSeconds));
-      formData.set("file", recordingFile);
-      formData.set("fileName", fileName);
-      formData.set("meetingId", meetingId);
-      formData.set("participantId", localParticipant.id);
+      if (!client) {
+        throw new Error("Chronos storage client unavailable");
+      }
 
-      const response = await fetch(
-        `/api/chronos/public/rooms/${room.slug}/recording/upload`,
+      const uploadTargetResponse = await fetch(
+        `/api/chronos/public/rooms/${room.slug}/recording/upload-url`,
         {
-          body: formData,
+          body: JSON.stringify({
+            durationSeconds,
+            fileName,
+            meetingId,
+            mimeType: recordingFile.type || "video/webm",
+            participantId: localParticipant.id,
+            sizeBytes: recordingFile.size,
+          }),
           cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        },
+      );
+      const uploadTarget = (await uploadTargetResponse
+        .json()
+        .catch(() => null)) as Partial<ChronosRecordingUploadTarget> | null;
+
+      if (
+        !uploadTargetResponse.ok ||
+        !uploadTarget?.bucket ||
+        !uploadTarget.path ||
+        !uploadTarget.token
+      ) {
+        throw new Error("Chronos recording upload target failed");
+      }
+
+      const uploadResult = await client.storage
+        .from(uploadTarget.bucket)
+        .uploadToSignedUrl(uploadTarget.path, uploadTarget.token, recordingFile, {
+          contentType: recordingFile.type || "video/webm",
+        });
+
+      if (uploadResult.error) {
+        throw uploadResult.error;
+      }
+
+      const completeResponse = await fetch(
+        `/api/chronos/public/rooms/${room.slug}/recording/upload-complete`,
+        {
+          body: JSON.stringify({
+            durationSeconds,
+            fileName,
+            meetingId,
+            mimeType: recordingFile.type || "video/webm",
+            participantId: localParticipant.id,
+            sizeBytes: recordingFile.size,
+            storageBucket: uploadTarget.bucket,
+            storagePath: uploadTarget.path,
+          }),
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
           method: "POST",
         },
       );
 
-      if (!response.ok) {
-        throw new Error("Chronos recording upload failed");
+      if (!completeResponse.ok) {
+        throw new Error("Chronos recording upload completion failed");
       }
 
       setRecordingStorageStatus("saved");
     } catch {
       setRecordingStorageStatus("failed");
-      await postChronosRecordingStatus("available");
+      await postChronosRecordingStatus("failed");
     }
   }
 
   async function postChronosRecordingStatus(
-    status: "available" | "recording",
+    status: "available" | "failed" | "recording",
   ) {
     if (!meetingId || !localParticipant) {
       return;
@@ -1357,7 +1414,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     await fetch(`/api/chronos/public/rooms/${room.slug}/recording`, {
       body: JSON.stringify({
         durationSeconds:
-          status === "available"
+          status === "available" || status === "failed"
             ? Math.max(
                 0,
                 Math.floor((Date.now() - recordingStartedAtRef.current) / 1000),
@@ -1936,20 +1993,30 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
                   {tileParticipants.length} participantes
                 </Badge>
                 {lastRecordingUrl ? (
-                  <a
-                    className="rounded-full border border-white/15 bg-[#101820]/75 px-3 py-1.5 text-xs font-semibold text-white shadow-xl transition hover:bg-[#101820] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                    download={lastRecordingName}
-                    href={lastRecordingUrl}
-                  >
-                    Baixar gravacao
-                  </a>
+                  <span className="inline-flex overflow-hidden rounded-full border border-white/15 bg-[#101820]/75 text-xs font-semibold text-white shadow-xl">
+                    <a
+                      className="px-3 py-1.5 transition hover:bg-[#101820] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                      href={lastRecordingUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Assistir gravacao
+                    </a>
+                    <a
+                      className="border-l border-white/15 px-3 py-1.5 transition hover:bg-[#101820] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                      download={lastRecordingName}
+                      href={lastRecordingUrl}
+                    >
+                      Baixar
+                    </a>
+                  </span>
                 ) : null}
               </div>
             </div>
 
             <div className="min-h-0 overflow-hidden pt-12">
               {screenShareParticipant ? (
-                <div className="relative h-full min-h-0">
+                <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)]">
                   <div className="h-full min-h-0 rounded-[1.25rem] border border-white/25 bg-[#111820]/30 p-1.5 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-black/20 backdrop-blur-[2px] [&_video]:object-contain">
                     <div
                       className="h-full min-h-0 rounded-[1rem]"
@@ -1972,26 +2039,33 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
                       />
                     </div>
                   </div>
-                  <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex gap-3 overflow-x-auto pb-1">
-                    {companionParticipants.map(({ participant, source }) => (
-                      <div
-                        className="pointer-events-auto w-64 shrink-0 rounded-2xl border border-white/25 bg-[#111820]/50 p-1.5 shadow-2xl ring-1 ring-black/30 backdrop-blur-sm [&_video]:object-contain"
-                        key={source.id}
-                        style={getChronosParticipantWindowStyle({
-                          backgroundDataUrl: localParticipantFallbackBackground,
-                          isLocal: source.id === localParticipant?.id,
-                        })}
-                      >
-                        <CallParticipantTile
-                          isLocalMedia={source.id === localParticipant?.id}
-                          layout="floating"
-                          mediaStream={source.stream}
-                          onVideoElementChange={handleVideoElementChange}
-                          participant={participant}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  <aside className="min-h-0 overflow-x-auto rounded-[1.25rem] border border-white/20 bg-[#111820]/42 p-1.5 shadow-2xl ring-1 ring-black/25 backdrop-blur-sm lg:h-full lg:overflow-y-auto lg:overflow-x-hidden">
+                    <div className="flex min-h-full gap-3 lg:grid lg:content-start lg:gap-3">
+                      {companionParticipants.map(({ participant, source }) => (
+                        <div
+                          className="w-56 shrink-0 rounded-2xl border border-white/25 bg-[#111820]/50 p-1.5 ring-1 ring-black/30 [&_video]:object-contain lg:w-full"
+                          key={source.id}
+                          style={getChronosParticipantWindowStyle({
+                            backgroundDataUrl: localParticipantFallbackBackground,
+                            isLocal: source.id === localParticipant?.id,
+                          })}
+                        >
+                          <CallParticipantTile
+                            isLocalMedia={source.id === localParticipant?.id}
+                            layout="floating"
+                            mediaStream={source.stream}
+                            onVideoElementChange={handleVideoElementChange}
+                            participant={participant}
+                          />
+                        </div>
+                      ))}
+                      {companionParticipants.length === 0 ? (
+                        <div className="grid min-h-32 place-items-center rounded-2xl border border-dashed border-white/15 px-3 text-center text-xs font-semibold text-white/45">
+                          Sem outras janelas
+                        </div>
+                      ) : null}
+                    </div>
+                  </aside>
                 </div>
               ) : (
                 <div className={participantGridClassName}>
