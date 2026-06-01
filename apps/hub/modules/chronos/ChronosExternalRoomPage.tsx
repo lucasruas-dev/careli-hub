@@ -228,6 +228,9 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const localParticipantRef = useRef<ChronosRoomParticipant | null>(null);
   const meetingIdRef = useRef("");
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(
+    new Map(),
+  );
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingCleanupRef = useRef<(() => void) | null>(null);
@@ -372,26 +375,6 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     setVideoInputs(createDeviceOptions(devices, "videoinput", "Camera"));
   }, []);
 
-  const replaceVideoTrackForPeers = useCallback(
-    (track: MediaStreamTrack | null) => {
-      peerConnectionsRef.current.forEach((peerConnection) => {
-        const sender =
-          peerConnection
-            .getSenders()
-            .find((currentSender) => currentSender.track?.kind === "video") ??
-          peerConnection
-            .getTransceivers()
-            .find((transceiver) => transceiver.receiver.track.kind === "video")
-            ?.sender;
-
-        if (sender) {
-          void sender.replaceTrack(track);
-        }
-      });
-    },
-    [],
-  );
-
   const stopCurrentLocalMedia = useCallback(() => {
     virtualBackgroundCleanupRef.current?.();
     virtualBackgroundCleanupRef.current = null;
@@ -412,6 +395,14 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
     return currentStream;
   }, []);
+
+  const syncOutboundMediaForPeers = useCallback(() => {
+    const stream = getCurrentOutboundMediaStream();
+
+    peerConnectionsRef.current.forEach((peerConnection) => {
+      syncChronosPeerConnectionOutboundMedia(peerConnection, stream);
+    });
+  }, [getCurrentOutboundMediaStream]);
 
   const startLocalMedia = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -439,6 +430,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         track.enabled = !isMutedRef.current;
       });
       setLocalStream(nextStream);
+      syncOutboundMediaForPeers();
       if (localParticipantRef.current && meetingIdRef.current && !screenTrackRef.current) {
         const nextParticipant = {
           ...localParticipantRef.current,
@@ -446,7 +438,6 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
           stream: nextStream,
         };
 
-        replaceVideoTrackForPeers(nextStream.getVideoTracks()[0] ?? null);
         localParticipantRef.current = nextParticipant;
         setLocalParticipant(nextParticipant);
       }
@@ -474,7 +465,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     guestBackgroundDataUrl,
     guestBackgroundMode,
     refreshDevices,
-    replaceVideoTrackForPeers,
+    syncOutboundMediaForPeers,
     stopCurrentLocalMedia,
     videoInputId,
   ]);
@@ -553,15 +544,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
       const peerConnection = new RTCPeerConnection(peerConnectionConfig);
       const stream = getCurrentOutboundMediaStream();
-      const tracks = stream?.getTracks() ?? [];
-
-      tracks.forEach((track) => {
-        peerConnection.addTrack(track, stream ?? new MediaStream([track]));
-      });
-
-      if (!tracks.some((track) => track.kind === "video")) {
-        peerConnection.addTransceiver("video", { direction: "sendrecv" });
-      }
+      syncChronosPeerConnectionOutboundMedia(peerConnection, stream);
 
       peerConnection.addEventListener("icecandidate", (event) => {
         const participant = localParticipantRef.current;
@@ -608,6 +591,60 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       return peerConnection;
     },
     [getCurrentOutboundMediaStream, room.slug, sendSignal],
+  );
+
+  const flushPendingIceCandidates = useCallback(
+    async (
+      remoteParticipantId: string,
+      peerConnection: RTCPeerConnection,
+    ) => {
+      const queuedCandidates = pendingIceCandidatesRef.current.get(
+        remoteParticipantId,
+      );
+
+      if (!queuedCandidates?.length) {
+        return;
+      }
+
+      pendingIceCandidatesRef.current.delete(remoteParticipantId);
+
+      for (const candidate of queuedCandidates) {
+        try {
+          await peerConnection.addIceCandidate(candidate);
+        } catch (error) {
+          console.warn("[chronos/room] ignored queued ICE candidate", {
+            error,
+            remoteParticipantId,
+          });
+        }
+      }
+    },
+    [],
+  );
+
+  const addIceCandidateForParticipant = useCallback(
+    async (remoteParticipantId: string, candidate: RTCIceCandidateInit) => {
+      const peerConnection = createPeerConnection(remoteParticipantId);
+
+      if (!peerConnection.remoteDescription) {
+        const queuedCandidates =
+          pendingIceCandidatesRef.current.get(remoteParticipantId) ?? [];
+
+        queuedCandidates.push(candidate);
+        pendingIceCandidatesRef.current.set(remoteParticipantId, queuedCandidates);
+        return;
+      }
+
+      try {
+        await peerConnection.addIceCandidate(candidate);
+      } catch (error) {
+        console.warn("[chronos/room] ignored ICE candidate", {
+          error,
+          remoteParticipantId,
+        });
+      }
+    },
+    [createPeerConnection],
   );
 
   const createOfferForParticipant = useCallback(
@@ -690,6 +727,13 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       }
 
       if (signal.kind === "media-state") {
+        if (
+          !peerConnectionsRef.current.has(remoteParticipantId) &&
+          participant.id < remoteParticipantId
+        ) {
+          await createOfferForParticipant(remoteParticipantId);
+        }
+
         return;
       }
 
@@ -757,6 +801,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       if (signal.kind === "offer" && signal.description) {
         const peerConnection = createPeerConnection(remoteParticipantId);
         await peerConnection.setRemoteDescription(signal.description);
+        await flushPendingIceCandidates(remoteParticipantId, peerConnection);
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
@@ -774,17 +819,19 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       if (signal.kind === "answer" && signal.description) {
         const peerConnection = createPeerConnection(remoteParticipantId);
         await peerConnection.setRemoteDescription(signal.description);
+        await flushPendingIceCandidates(remoteParticipantId, peerConnection);
         return;
       }
 
       if (signal.kind === "ice-candidate" && signal.candidate) {
-        const peerConnection = createPeerConnection(remoteParticipantId);
-        await peerConnection.addIceCandidate(signal.candidate);
+        await addIceCandidateForParticipant(remoteParticipantId, signal.candidate);
       }
     },
     [
+      addIceCandidateForParticipant,
       createOfferForParticipant,
       createPeerConnection,
+      flushPendingIceCandidates,
       room.slug,
       sendSignal,
     ],
@@ -950,10 +997,10 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         track.stop();
         stream.removeTrack(track);
       });
-      replaceVideoTrackForPeers(null);
       const nextStream = stream ? new MediaStream(stream.getTracks()) : null;
 
       localStreamRef.current = nextStream;
+      syncOutboundMediaForPeers();
       setCameraEnabled(false);
       setLocalStream(nextStream);
 
@@ -988,8 +1035,8 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
       virtualBackgroundCleanupRef.current?.();
       virtualBackgroundCleanupRef.current = preparedMedia.cleanup;
-      replaceVideoTrackForPeers(nextStream.getVideoTracks()[0] ?? null);
       localStreamRef.current = nextStream;
+      syncOutboundMediaForPeers();
       setCameraEnabled(true);
       setLocalStream(new MediaStream(nextStream.getTracks()));
       setMediaError(
@@ -1045,7 +1092,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       screenTrack.addEventListener("ended", () => {
         void stopScreenShare();
       });
-      replaceVideoTrackForPeers(screenTrack);
+      syncOutboundMediaForPeers();
       setIsScreenSharing(true);
       const currentParticipant = localParticipantRef.current;
       const nextParticipant = currentParticipant
@@ -1084,7 +1131,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       sendScreenShareSignal("screen-share-stop");
 
       if (!cameraEnabled) {
-        replaceVideoTrackForPeers(null);
+        syncOutboundMediaForPeers();
         const currentParticipant = localParticipantRef.current;
         const nextParticipant = currentParticipant
           ? {
@@ -1116,7 +1163,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         virtualBackgroundCleanupRef.current?.();
         virtualBackgroundCleanupRef.current = preparedMedia.cleanup;
         localStreamRef.current = nextStream;
-        replaceVideoTrackForPeers(nextStream.getVideoTracks()[0] ?? null);
+        syncOutboundMediaForPeers();
         setLocalStream(new MediaStream(nextStream.getTracks()));
         setMediaError(
           hasChronosVirtualBackgroundRequest({
@@ -1138,7 +1185,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         localParticipantRef.current = nextParticipant;
         setLocalParticipant(nextParticipant);
       } catch {
-        replaceVideoTrackForPeers(null);
+        syncOutboundMediaForPeers();
         setMediaError("Nao foi possivel restaurar a camera.");
       }
     } finally {
@@ -2373,6 +2420,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
     peerConnection?.close();
     peerConnectionsRef.current.delete(participantId);
+    pendingIceCandidatesRef.current.delete(participantId);
   }
 
   function closeAllPeerConnections() {
@@ -2380,6 +2428,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       peerConnection.close();
     });
     peerConnectionsRef.current.clear();
+    pendingIceCandidatesRef.current.clear();
   }
 }
 
@@ -2394,6 +2443,73 @@ function createDeviceOptions(
       deviceId: device.deviceId,
       label: device.label || `${fallbackLabel} ${index + 1}`,
     }));
+}
+
+function syncChronosPeerConnectionOutboundMedia(
+  peerConnection: RTCPeerConnection,
+  stream: MediaStream | null,
+) {
+  upsertChronosPeerConnectionSender(
+    peerConnection,
+    "audio",
+    getFirstLiveChronosMediaTrack(stream, "audio"),
+    stream,
+  );
+  upsertChronosPeerConnectionSender(
+    peerConnection,
+    "video",
+    getFirstLiveChronosMediaTrack(stream, "video"),
+    stream,
+  );
+}
+
+function getFirstLiveChronosMediaTrack(
+  stream: MediaStream | null,
+  kind: "audio" | "video",
+) {
+  return (
+    stream
+      ?.getTracks()
+      .find((track) => track.kind === kind && track.readyState === "live") ??
+    null
+  );
+}
+
+function upsertChronosPeerConnectionSender(
+  peerConnection: RTCPeerConnection,
+  kind: "audio" | "video",
+  track: MediaStreamTrack | null,
+  stream: MediaStream | null,
+) {
+  const sender =
+    peerConnection
+      .getSenders()
+      .find((currentSender) => currentSender.track?.kind === kind) ??
+    peerConnection
+      .getTransceivers()
+      .find(
+        (transceiver) =>
+          transceiver.sender.track?.kind === kind ||
+          transceiver.receiver.track.kind === kind,
+      )
+      ?.sender;
+
+  if (sender) {
+    void sender.replaceTrack(track).catch((error) => {
+      console.warn("[chronos/room] failed to replace outbound track", {
+        error,
+        kind,
+      });
+    });
+    return;
+  }
+
+  if (track && stream) {
+    peerConnection.addTrack(track, stream);
+    return;
+  }
+
+  peerConnection.addTransceiver(kind, { direction: "sendrecv" });
 }
 
 async function requestChronosRoomMedia({

@@ -35,6 +35,7 @@ import {
   Clock3,
   KeyRound,
   ListChecks,
+  Loader2,
   MessageSquareText,
   RefreshCw,
   Target,
@@ -593,6 +594,21 @@ function AsanaConfigState({
     "ASANA_ACCESS_TOKEN",
   ];
 
+  if (isLoading) {
+    return (
+      <div
+        aria-label="Carregando Asana"
+        className="mt-4 grid min-h-52 place-items-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5"
+        role="status"
+      >
+        <Loader2
+          aria-hidden="true"
+          className="size-8 animate-spin text-[#A07C3B]"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 grid min-h-52 place-items-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-center">
       <div className="max-w-xl">
@@ -600,7 +616,7 @@ function AsanaConfigState({
           <KeyRound aria-hidden="true" size={20} />
         </span>
         <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
-          {isLoading ? "Carregando Asana..." : "Configurar Asana server-side"}
+          Configurar Asana server-side
         </p>
         <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
           {error ??

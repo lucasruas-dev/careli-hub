@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-127-CHRONOS-WEBRTC-HOME-LOADER",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos WebRTC mesh hardening and Home Asana loader",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "ALTO",
+  "approvedBy": null,
+  "blocks": [
+    "video-calls",
+    "webrtc-mesh",
+    "screen-share-propagation",
+    "home-asana-loader"
+  ],
+  "allowedLayers": ["panteon", "zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/app/page.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-127-chronos-webrtc-home-loader.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "Revisao local da malha WebRTC: join/media-state agora garante que o menor participantId crie offer em todos os pares, cobrindo salas com 3+ participantes quando o novo participante tem ID menor que usuarios ja conectados.",
+    "Revisao local da entrega ICE: candidatos recebidos antes de remoteDescription ficam em fila por participante e sao aplicados depois de offer/answer.",
+    "Revisao local de midia outbound: audio e video sao sincronizados nos RTCPeerConnections existentes quando camera/tela muda, evitando ficar limitado a replace de video.",
+    "Home/Asana: estado de carregamento substituido por spinner visual isolado, sem expor textos operacionais/chips enquanto carrega.",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "git diff --check: PASS com avisos esperados LF/CRLF",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-127-chronos-webrtc-home-loader.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow panteon --allow zeus --allow hefesto --from-git: PASS",
+    "dev server temporario em localhost:3017 a partir do worktree limpo: GET / 200 e GET /chronos 200"
+  ],
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apps/hub/modules/chronos/ChronosExternalRoomPage.tsx para o estado do protocolo CH-20260601-126 se a nova negociacao WebRTC causar regressao em salas pequenas.",
+    "Reverter apps/hub/app/page.tsx se o loading por spinner prejudicar leitura operacional da Home.",
+    "Nao ha DDL, migration, env, secret, token, dominio, alias manual ou alteracao direta de banco associada."
+  ],
+  "notes": [
+    "Este protocolo nao foi publicado em producao nesta etapa; esta validado localmente e aguarda autorizacao explicita de Lucas para deploy.",
+    "O ajuste WebRTC mira a falha em chamadas com mais de duas pessoas, onde alguns pares podiam nunca criar offer entre si.",
+    "A propagacao de compartilhamento de tela tambem passa pela mesma sincronizacao outbound, para nao depender apenas da trilha de video criada no inicio da conexao.",
+    "O loading da Home/Asana preserva acessibilidade por role status e aria-label, mas mostra apenas o icone girando na interface."
+  ]
+}

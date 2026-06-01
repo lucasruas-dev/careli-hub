@@ -29187,3 +29187,43 @@ Conclusao:
 - O setimo hotfix de Chronos esta em producao e remove o gatilho que derrubava a gravacao quando a tela era compartilhada.
 - O impacto pratico e que novas gravacoes devem permanecer continuas ate Lucas parar manualmente, com tela compartilhada gravada no painel principal e camera/participantes no lado direito.
 - A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos`, gravar uma chamada curta com compartilhamento, abrir `Assistir`, validar o video, clicar `Transcrever` e depois `Drive > Atas`.
+
+## 2026-06-01 05:04:55 -03:00 - Chronos/Zeus - revisao WebRTC 3+ participantes e loader Home/Asana
+
+Assunto: [Chronos] WebRTC mesh e loading da Home validados localmente
+
+- Nome da squad/agente: Chronos Core, com ajuste visual Panteon/Home.
+- Ambiente: local / worktree limpo de producao; sem deploy neste registro.
+- Protocolo: `CH-20260601-127-CHRONOS-WEBRTC-HOME-LOADER`.
+- Status: VALIDADO_LOCAL / AGUARDANDO AUTORIZACAO EXPLICITA DO LUCAS PARA PUBLICAR.
+- Origem:
+  - Lucas pediu revisao do erro antigo em chamadas com mais de duas pessoas, onde alguns participantes ouviam uns aos outros e outros nao;
+  - Lucas tambem reportou diferenca em compartilhamento de video/tela entre participantes;
+  - Lucas pediu que estados de carregamento, como o bloco Asana da Home, usem apenas icone de carregamento em vez de texto explicativo visivel.
+- Causa tratada:
+  - a malha WebRTC criava offer no `join` apenas quando `participant.id < remoteParticipantId`; quando o participante novo tinha ID menor do que usuarios ja conectados, nenhum lado daquele par precisava criar offer, deixando pares sem audio/video;
+  - candidatos ICE podiam chegar antes de `remoteDescription`, criando risco de falha silenciosa de conectividade;
+  - as trocas de midia sincronizavam principalmente video, deixando audio e transceivers existentes sem um caminho unico de atualizacao quando camera/tela mudavam;
+  - a Home exibia texto e chips operacionais durante o carregamento do Asana, poluindo a leitura visual.
+- Implementacao:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` passou a completar a negociacao no `media-state`, garantindo que o menor `participantId` crie offer para cada par;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` ganhou fila de ICE por participante ate `remoteDescription` existir;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` passou a sincronizar audio e video nos `RTCPeerConnection` existentes quando a midia local muda;
+  - `apps/hub/app/page.tsx` passou a mostrar apenas spinner no estado de carregamento do Asana, com acessibilidade por `role=status`/`aria-label`.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos Turbopack/NFT e root inferido;
+  - `git diff --check`: PASS, com avisos esperados LF/CRLF;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-127-chronos-webrtc-home-loader.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow panteon --allow zeus --allow hefesto --from-git`: PASS;
+  - dev server temporario em `localhost:3017` a partir do worktree limpo: `GET /` 200 e `GET /chronos` 200.
+- Limites:
+  - sem DDL, migration, env, secret, token, dominio, alias manual, Supabase admin, operacao direta de banco ou deploy;
+  - teste real de 3+ pessoas, permissao de microfone/camera e compartilhamento de tela ainda depende do navegador autenticado do Lucas.
+
+Conclusao:
+
+- O recorte local cobre a causa mais provavel do audio/video intermitente em salas com mais de duas pessoas e deixa o loading da Home/Asana mais limpo.
+- O impacto pratico esperado e que cada par da chamada tenha uma offer garantida, ICE pendente seja aplicado no momento correto e as mudancas de camera/tela propaguem audio e video para todos os peers conectados.
+- A acao agora e publicar somente com autorizacao explicita de Lucas e testar uma chamada com pelo menos tres participantes, alternando microfone, camera e compartilhamento de tela.
