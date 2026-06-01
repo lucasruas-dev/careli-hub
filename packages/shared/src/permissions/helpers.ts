@@ -6,7 +6,7 @@ export function hasPermission(
   user: HubUserContext,
   permission: HubPermission,
 ): boolean {
-  return user.permissions.includes(permission);
+  return getUserPermissionList(user).includes(permission);
 }
 
 export function hasAnyPermission(
@@ -44,6 +44,12 @@ export function getPermissionsForRole(
   role: HubUserRole,
 ): readonly HubPermission[] {
   return rolePermissionMatrix[role];
+}
+
+function getUserPermissionList(user: HubUserContext): readonly HubPermission[] {
+  return Array.isArray(user.permissions)
+    ? user.permissions
+    : rolePermissionMatrix[user.role] ?? [];
 }
 
 export function createHubUserContextFromRole(input: {

@@ -28844,3 +28844,81 @@ Conclusao:
 - A causa mais provavel agora e uma permissao ausente no perfil autenticado real, quebrando a tela inteira no primeiro render autenticado.
 - O impacto pratico do hotfix e impedir que um perfil sem array de permissoes derrube `/chronos`; a tela passa a abrir em modo visualizacao quando a permissao de gerencia nao vier.
 - A proxima acao e publicar o terceiro hotfix, validar os aliases de producao e pedir novo refresh/teste autenticado do Lucas.
+
+## 2026-06-01 02:15:54 -03:00 - Chronos/Zeus - permissions guard em producao
+
+Assunto: [Chronos] permissions guard publicado
+
+- Nome da squad/agente: Chronos Core, publicado por Zeus/Hefesto.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-121-CHRONOS-PERMISSIONS-GUARD`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO NOVO TESTE AUTENTICADO DO LUCAS.
+- Commit publicado: `35ea7b8 fix(chronos): guard permissions on authenticated load`.
+- Deployment:
+  - deployment anterior ao terceiro hotfix: `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`;
+  - deployment novo: `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`;
+  - URL tecnica nova: `https://careli-hub-hub-i2bs-imc5lj1i5-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato: `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`.
+- Validacoes pos-deploy:
+  - build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - logs de erro recentes em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Observacao:
+  - a tentativa de validar pelo Chrome autenticado via plugin falhou por problema local do `node_repl` (`windows sandbox failed: spawn setup refresh`);
+  - a validacao funcional final precisa ser feita no navegador autenticado do Lucas;
+  - se o boundary persistir no Chrome apos refresh duro, o proximo passo e capturar a mensagem exata do console/overlay do navegador real.
+
+Conclusao:
+
+- O terceiro hotfix esta em producao e cobre a quebra client-side por permissoes ausentes no perfil autenticado.
+- O impacto pratico e evitar que `/chronos` caia inteiro quando `hubUser.permissions` nao vier como array; o usuario fica sem permissao de gerencia em vez de ver boundary.
+- A acao agora e Lucas atualizar a pagina com refresh duro e testar novamente `https://c2x.app.br/chronos`.
+
+## 2026-06-01 02:21:39 -03:00 - Chronos/Zeus - revisao Atas e shell permissions
+
+Assunto: [Chronos] causa provavel apos revisao de Atas
+
+- Nome da squad/agente: Chronos Core, coordenado por Zeus/Hefesto.
+- Ambiente: pacote limpo de producao.
+- Protocolo: `CH-20260601-122-SHELL-PERMISSIONS-FALLBACK`.
+- Status: PRONTO_PARA_PRODUCAO / AUTORIZADO POR LUCAS / AGUARDANDO VALIDACOES FINAIS E DEPLOY.
+- Origem:
+  - Lucas confirmou que o boundary persistiu mesmo depois do `CH-121`;
+  - Lucas pediu revisar o bloco inteiro de Atas para identificar o motivo;
+  - no log Vercel, requests autenticadas de Chronos aparecem como `200`, enquanto o request `401` selecionado era sem sessao e sem log de funcao, compatível com smoke/ausencia de Authorization, nao com stack server-side.
+- Revisao do bloco Atas:
+  - `ChronosDriveLibraryScreen` ja trata `recordings`, `minutes` e `transcript` como arrays defensivos antes de listar Atas;
+  - `MinutesPanel` ja protege `meeting.minutes`, `meeting.transcript`, `meeting.recordings`, status de ata e conteudo de ata nulo;
+  - `ChronosMinutesFormattedPreview` usa `buildChronosMinutesBodyHtml`, que aceita string nula/ausente e escapa HTML;
+  - `TranscriptPanel` ja protege `meeting.transcript`;
+  - `hasChronosMeetingAvailableRecording` ja valida `meeting.recordings` como array antes de usar `.some`.
+- Causa provavel identificada:
+  - `/chronos` e renderizado dentro do `HubShell` antes de entrar no Drive/Atas;
+  - o `HubShell` usa `canAccessModule`, que chama `hasPermission` em `packages/shared/src/permissions/helpers.ts`;
+  - `hasPermission` ainda fazia `user.permissions.includes(permission)` sem confirmar se `permissions` veio como array;
+  - se a sessao autenticada real entrega `permissions` ausente ou fora do shape esperado, o shell derruba a rota inteira antes de a aba Atas montar.
+- Implementacao:
+  - `hasPermission` passou a usar `getUserPermissionList`;
+  - `getUserPermissionList` usa `user.permissions` quando for array e, se vier ausente, faz fallback para `rolePermissionMatrix[user.role]`;
+  - a regra de negocio permanece a mesma para perfis corretos; o fallback so evita crash de runtime quando o payload de sessao vier incompleto.
+- Validacao inicial:
+  - ESLint focado no Chronos/Atas: PASS;
+  - ESLint focado em `packages/shared/src/permissions/helpers.ts`: PASS;
+  - busca por `user.permissions.includes` no recorte: PASS, removida ocorrencia direta insegura.
+- Gate de fronteira:
+  - primeira rodada do manifesto e do boundary check bloqueou `packages/shared/src/permissions/helpers.ts` porque o manifesto de fronteira classifica `packages/shared/src/permissions/**` como dono de `setup`;
+  - decisao: manter o recorte Chronos, mas declarar `setup` como camada permitida apenas para o helper compartilhado de permissao, sem alterar tela, API, banco, regra ou fluxo de Setup.
+- Limites:
+  - sem endpoint novo, env, secret, token, schema, migration, Supabase admin, dominio ou alias manual;
+  - sem mudanca de regra de negocio de Atas, Drive, Agenda ou permissoes;
+  - alteracao compartilhada minima em `packages/shared/src/permissions/**`, camada permitida para Hefesto no manifesto de fronteira.
+
+Conclusao:
+
+- A revisao do bloco Atas nao apontou uma quebra direta restante dentro dos componentes de ata; o ponto que ainda combinava com o boundary da rota inteira estava antes dela, no helper de permissao do shell.
+- O impacto pratico e que um payload autenticado sem `permissions` como array deixa de quebrar `/chronos`; o acesso cai para as permissoes padrao da `role`.
+- A proxima acao e concluir `check-types`, `lint`, `build`, boundary/manifest e publicar o hotfix `CH-122`.

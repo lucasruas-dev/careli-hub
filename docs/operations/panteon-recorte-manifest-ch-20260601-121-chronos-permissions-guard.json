@@ -4,7 +4,7 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos authenticated permissions guard hotfix",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -40,17 +40,23 @@
     "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-121-chronos-permissions-guard.json: PASS",
     "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS",
     "git diff --check: PASS com avisos esperados LF/CRLF",
-    "rg --fixed-strings 'hubUser?.permissions.includes' apps/hub/modules/chronos apps/hub/lib/chronos apps/hub/app/chronos: PASS, sem ocorrencias"
+    "rg --fixed-strings 'hubUser?.permissions.includes' apps/hub/modules/chronos apps/hub/lib/chronos apps/hub/app/chronos: PASS, sem ocorrencias",
+    "npx.cmd vercel deploy --prod --yes: PASS, deployment dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS READY",
+    "npx.cmd vercel inspect https://c2x.app.br: PASS, Ready no deployment dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: PASS, Ready no deployment dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS",
+    "healthchecks producao: GET https://c2x.app.br/chronos 200; GET https://c2x.app.br/api/chronos/meetings sem sessao 401 esperado",
+    "npx.cmd vercel logs https://c2x.app.br --since 10m --level error: PASS, sem logs encontrados",
+    "npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error: PASS, sem logs encontrados"
   ],
   "productionContext": {
     "currentDeploymentIdBeforeHotfix": "dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
-    "hotfixDeploymentId": "pendente",
-    "hotfixTechnicalUrl": "pendente",
+    "hotfixDeploymentId": "dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-imc5lj1i5-lucasruas-devs-projects.vercel.app",
     "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
     "rollbackDeploymentId": "dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
     "rollbackDeploymentIdPreviousChronosHotfix": "dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j",
     "rollbackDeploymentIdPreviousEngineeringRelease": "dpl_34sTeQMRmSLBQzHkx26urYGcgCkT",
-    "hotfixCodeCommit": "pendente"
+    "hotfixCodeCommit": "35ea7b8"
   },
   "sensitiveOperations": [
     "Deploy Vercel --prod do terceiro hotfix Chronos autorizado por Lucas apos confirmar que o erro persistiu mesmo depois do segundo hotfix."
@@ -62,6 +68,7 @@
   "notes": [
     "A nova evidencia mostrou que /chronos cai depois do carregamento autenticado e sem stack server-side nos logs.",
     "ChronosPage acessava hubUser?.permissions.includes(...), o que ainda quebra quando hubUser existe mas permissions nao vem como array.",
-    "A correcao transforma permissoes ausentes ou invalidas em lista vazia antes de calcular canManageChronos."
+    "A correcao transforma permissoes ausentes ou invalidas em lista vazia antes de calcular canManageChronos.",
+    "A tentativa de validar pelo Chrome autenticado via plugin falhou no node_repl local com windows sandbox failed: spawn setup refresh; a validacao autenticada final permanece com Lucas no navegador real."
   ]
 }

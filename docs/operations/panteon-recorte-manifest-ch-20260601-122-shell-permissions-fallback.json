@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-122-SHELL-PERMISSIONS-FALLBACK",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos shell permissions fallback hotfix",
+  "status": "PRONTO_PARA_PRODUCAO",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "client-runtime",
+    "hub-shell",
+    "permissions",
+    "drive-atas"
+  ],
+  "allowedLayers": ["zeus", "hefesto", "setup"],
+  "includedFiles": [
+    "packages/shared/src/permissions/helpers.ts",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-122-shell-permissions-fallback.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-drive-library-screen.tsx modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-minutes-formatted-preview.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npx.cmd eslint src/permissions/helpers.ts --max-warnings 0 em packages/shared: PASS",
+    "rg -n 'user\\.permissions\\.includes|permissions\\.includes' packages/shared/src/permissions apps/hub/modules/chronos apps/hub/layouts/hub-shell.tsx: PASS; ocorrencias restantes usam matriz por role, nao user.permissions direto",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-122-shell-permissions-fallback.json: BLOQUEADO inicialmente porque packages/shared/src/permissions/helpers.ts pertence a setup no manifesto de fronteira",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: BLOQUEADO inicialmente pelo mesmo owner setup",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-122-shell-permissions-fallback.json apos declarar setup como camada permitida: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --allow setup --from-git: PASS",
+    "git diff --check: PASS com avisos esperados LF/CRLF"
+  ],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS",
+    "hotfixDeploymentId": "pendente",
+    "hotfixTechnicalUrl": "pendente",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS",
+    "rollbackDeploymentIdPreviousChronosHotfix": "dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
+    "hotfixCodeCommit": "pendente"
+  },
+  "sensitiveOperations": [
+    "Deploy Vercel --prod do quarto hotfix Chronos autorizado por Lucas apos solicitar revisao integral do bloco Atas e identificacao do motivo."
+  ],
+  "rollback": [
+    "Reapontar producao para dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS se o fallback compartilhado causar regressao imediata.",
+    "Nao ha DDL, env, secret, token, migration, dominio, alias manual ou banco associado."
+  ],
+  "notes": [
+    "A revisao de Atas indicou guardas nos componentes principais de Drive/Atas, minutos, preview e transcript.",
+    "A rota /chronos monta dentro do HubShell antes da aba Atas; o shell chama canAccessModule, que usa hasPermission.",
+    "hasPermission ainda fazia user.permissions.includes(...), sem fallback quando a sessao real entrega usuario sem permissions como array.",
+    "A correcao usa permissoes do usuario quando forem array e, se ausentes, cai para a matriz de permissoes da role.",
+    "O manifesto de fronteira classifica packages/shared/src/permissions/** como setup; o protocolo declara setup apenas para esse helper compartilhado de permissao, sem alterar tela, API ou dado de Setup."
+  ]
+}

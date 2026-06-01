@@ -2654,3 +2654,49 @@ Registro de producao:
   - `npx.cmd vercel logs https://c2x.app.br --since 10m`: sem erro server-side novo observado.
 - Rollback planejado: promover novamente `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j` se houver regressao critica; rollback anterior da engenharia segue em `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`.
 - Proxima acao: Lucas atualizar totalmente `https://c2x.app.br/chronos` e testar `Drive > Atas`; se persistir, capturar console/overlay do navegador.
+
+## 2026-06-01 - CH-20260601-121-CHRONOS-PERMISSIONS-GUARD
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando novo teste autenticado do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] permissions guard em producao`.
+- Protocolo: `CH-20260601-121-CHRONOS-PERMISSIONS-GUARD`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas confirmou que o mesmo boundary persistiu em `https://c2x.app.br/chronos` mesmo apos os protocolos `CH-119` e `CH-120`.
+- Causa tratada: `ChronosPage.tsx` acessava `hubUser?.permissions.includes("chronos:manage")`; quando o perfil autenticado existe mas `permissions` nao vem como array, a renderizacao client-side quebra antes da tela montar.
+- Escopo publicado:
+  - guarda `Array.isArray(hubUser?.permissions)` antes de calcular `canManageChronos`;
+  - fallback para lista vazia quando as permissoes nao vierem no payload de sessao;
+  - preservacao da regra: apenas usuarios com `chronos:manage` gerenciam reunioes.
+- Itens nao alterados: endpoints, banco, migrations, Supabase admin, envs, secrets, tokens, dominios, aliases manuais e regras de negocio de Chronos.
+- Commit publicado: `35ea7b8 fix(chronos): guard permissions on authenticated load`.
+- Deployment anterior: `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`.
+- Deployment novo: `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`.
+- URL tecnica: `https://careli-hub-hub-i2bs-imc5lj1i5-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - ESLint focado em `ChronosPage.tsx`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-121-chronos-permissions-guard.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: OK;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF;
+  - busca pelo padrao inseguro `hubUser?.permissions.includes` no Chronos: OK, sem ocorrencias.
+- Build remoto Vercel Production: READY, com warnings conhecidos.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Rollback planejado: promover novamente `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu` se houver regressao critica; rollback anterior do segundo hotfix segue em `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`.
+- Observacao: a validacao autenticada pelo plugin Chrome ficou indisponivel por falha local do `node_repl`; Lucas precisa fazer refresh duro no navegador real e testar `/chronos`.
+- Proxima acao: Lucas atualizar `https://c2x.app.br/chronos` com refresh duro; se o boundary persistir, capturar console/overlay exato para atacar a proxima causa client-side.
