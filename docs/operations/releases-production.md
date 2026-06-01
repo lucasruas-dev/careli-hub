@@ -2959,8 +2959,64 @@ Registro de producao:
   - `GET https://ops.c2x.app.br/zeus`: 200;
   - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
   - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado.
+- Operations Center estruturado:
+  - `sync-markdown-content` local: BLOQUEADO por `413 Arquivo do Engineering Operations excede o limite seguro`;
+  - `create-record` local: BLOQUEADO por `503 Supabase server-side nao configurado` no worktree limpo;
+  - nenhum secret, token ou chave foi puxado, impresso ou alterado; registro vivo pendente para reconciliacao posterior.
 - Logs recentes:
   - `npx.cmd vercel logs https://c2x.app.br --since 15m --level error`: sem logs encontrados;
   - `npx.cmd vercel logs https://ops.c2x.app.br --since 15m --level error`: sem logs encontrados.
 - Rollback planejado: promover novamente `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83` se houver regressao critica.
 - Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, iniciar uma chamada curta, iniciar gravacao, compartilhar a tela, parar a gravacao manualmente, abrir `Assistir` e conferir se a tela fica no painel principal com a camera no lado direito; depois testar `Transcrever` e `Drive > Atas`.
+
+## 2026-06-01 - CH-20260601-127-CHRONOS-WEBRTC-HOME-LOADER
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando teste funcional autenticado do Lucas com pelo menos tres participantes.
+
+Registro de producao:
+
+- Assunto: `[Chronos] WebRTC mesh 3+ participantes e loader Home/Asana em producao`.
+- Protocolo: `CH-20260601-127-CHRONOS-WEBRTC-HOME-LOADER`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas autorizou publicar a revisao que trata chamadas Chronos com mais de duas pessoas, onde alguns participantes podiam ouvir/ver e outros nao, e tambem o ajuste visual para o loading do bloco Asana da Home.
+- Causa tratada:
+  - a malha WebRTC podia deixar pares sem negociacao quando o participante novo tinha ID menor do que usuarios ja conectados;
+  - candidatos ICE podiam chegar antes de `remoteDescription`;
+  - trocas de midia sincronizavam principalmente video, sem um caminho unico para audio/video em peers existentes;
+  - a Home exibia texto/chips operacionais durante carregamento do Asana.
+- Escopo publicado:
+  - negociacao complementar no `media-state`, garantindo offer por par na sala;
+  - fila de candidatos ICE por participante ate `remoteDescription`;
+  - sincronizacao outbound de audio e video quando camera/tela muda;
+  - loading do Asana na Home com spinner isolado e acessivel.
+- Itens nao alterados: DDL, migration, env, secret, token, dominio, alias manual, Supabase admin e alteracao direta de banco.
+- Commit publicado: `299aab79c098fd752b3f3962d019e261e34cb294`.
+- Deployment anterior: `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`.
+- Deployment novo: `dpl_94aModt7TkVq5BjKrVCRpvMNU1vF`.
+- URL tecnica: `https://careli-hub-hub-i2bs-hdp58athy-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Homologacao/paridade: `https://homo.c2x.app.br` segue em Preview divergente `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`; nao foi reapontado nesta atividade porque a autorizacao explicita foi para producao.
+- Validacoes pre-deploy:
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT e root inferido;
+  - `git diff --check`: OK;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-127-chronos-webrtc-home-loader.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow panteon --allow zeus --allow hefesto --files <arquivos do protocolo>`: OK.
+- Build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_94aModt7TkVq5BjKrVCRpvMNU1vF`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_94aModt7TkVq5BjKrVCRpvMNU1vF`;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 15m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 15m --level error`: sem logs encontrados.
+- Rollback planejado: promover novamente `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS` se houver regressao critica.
+- Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, abrir chamada com pelo menos tres participantes, alternar microfone/camera, compartilhar tela e conferir se todos os participantes recebem audio/video corretamente.

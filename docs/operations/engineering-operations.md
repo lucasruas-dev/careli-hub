@@ -29229,3 +29229,65 @@ Conclusao:
 - O recorte local cobre a causa mais provavel do audio/video intermitente em salas com mais de duas pessoas e deixa o loading da Home/Asana mais limpo.
 - O impacto pratico esperado e que cada par da chamada tenha uma offer garantida, ICE pendente seja aplicado no momento correto e as mudancas de camera/tela propaguem audio e video para todos os peers conectados.
 - A acao agora e publicar somente com autorizacao explicita de Lucas e testar uma chamada com pelo menos tres participantes, alternando microfone, camera e compartilhamento de tela.
+
+## 2026-06-01 05:35:05 -03:00 - Chronos/Zeus - WebRTC mesh e loader Home/Asana em producao
+
+Assunto: [Chronos] WebRTC mesh 3+ participantes e loader Home/Asana publicados
+
+- Nome da squad/agente: Chronos Core, publicado por Zeus/Hefesto.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-127-CHRONOS-WEBRTC-HOME-LOADER`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO TESTE FUNCIONAL AUTENTICADO DO LUCAS COM 3+ PARTICIPANTES.
+- Autorizacao: Lucas autorizou no chat o deploy em producao desta atividade.
+- Origem:
+  - Lucas pediu revisar o erro antigo em chamadas com mais de duas pessoas, onde alguns participantes ouviam/viam e outros nao;
+  - Lucas tambem pediu que estados de carregamento, como o bloco Asana da Home, mostrem apenas icone de loading.
+- Causa tratada:
+  - a malha WebRTC podia deixar pares sem offer quando o participante novo tinha ID menor do que usuarios ja conectados;
+  - candidatos ICE podiam chegar antes de `remoteDescription`;
+  - audio e video nao tinham sincronizacao unica nos peers existentes quando camera/tela mudavam;
+  - a Home exibia textos/chips operacionais durante carregamento do Asana.
+- Implementacao publicada:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` completa a negociacao no `media-state`, garantindo offer por par;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` enfileira ICE ate o peer ter `remoteDescription`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` sincroniza audio e video nos `RTCPeerConnection` existentes;
+  - `apps/hub/app/page.tsx` troca o carregamento textual do Asana por spinner isolado com `role=status`/`aria-label`.
+- Commit publicado: `299aab79c098fd752b3f3962d019e261e34cb294`.
+- Deployment:
+  - deployment anterior: `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`;
+  - deployment novo: `dpl_94aModt7TkVq5BjKrVCRpvMNU1vF`;
+  - URL tecnica nova: `https://careli-hub-hub-i2bs-hdp58athy-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato: `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`.
+- Homologacao/paridade:
+  - `https://homo.c2x.app.br` segue em Preview divergente `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`;
+  - o alias de homologacao nao foi reapontado nesta atividade porque a autorizacao explicita foi para producao.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos Turbopack/NFT e root inferido;
+  - `git diff --check`: PASS;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-127-chronos-webrtc-home-loader.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow panteon --allow zeus --allow hefesto --files <arquivos do protocolo>`: PASS;
+  - deploy Vercel Production: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_94aModt7TkVq5BjKrVCRpvMNU1vF`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_94aModt7TkVq5BjKrVCRpvMNU1vF`;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado;
+  - logs de erro recentes em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados;
+  - tentativa de sync estruturado local via `sync-markdown-content`: BLOQUEADO por `413 Arquivo do Engineering Operations excede o limite seguro`;
+  - tentativa de registro granular local via `create-record`: BLOQUEADO por `503 Supabase server-side nao configurado` no worktree limpo.
+- Limites:
+  - sem DDL, migration, env, secret, token, dominio, alias manual, Supabase admin ou alteracao direta de banco;
+  - nenhum secret, token ou chave foi puxado, impresso ou alterado nas tentativas de registrar o Operations Center estruturado;
+  - o registro vivo em `hub_engineering_operation_records` ficou pendente por bloqueio tecnico seguro do endpoint local;
+  - teste real de WebRTC 3+ participantes, permissao de camera/microfone e compartilhamento de tela continua dependendo do navegador autenticado do Lucas.
+
+Conclusao:
+
+- O protocolo `CH-20260601-127` esta em producao e os healthchecks tecnicos passaram.
+- O impacto pratico esperado e estabilizar a negociacao de audio/video em chamadas com tres ou mais pessoas e limpar o loading do Asana na Home.
+- A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos`, testar uma chamada com pelo menos tres participantes e alternar microfone, camera e compartilhamento de tela; se houver regressao critica, o rollback imediato e promover `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`. O registro Markdown/release esta fechado; o registro vivo do Operations Center precisa ser reconciliado depois com ambiente server-side configurado ou rotina granular autorizada.

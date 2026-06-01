@@ -4,9 +4,9 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos WebRTC mesh hardening and Home Asana loader",
-  "status": "VALIDADO_LOCAL",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
-  "approvedBy": null,
+  "approvedBy": "Lucas",
   "blocks": [
     "video-calls",
     "webrtc-mesh",
@@ -18,6 +18,7 @@
     "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
     "apps/hub/app/page.tsx",
     "docs/operations/panteon-recorte-manifest-ch-20260601-127-chronos-webrtc-home-loader.json",
+    "docs/operations/releases-production.md",
     "docs/operations/engineering-operations.md"
   ],
   "excludedPaths": [
@@ -44,23 +45,63 @@
     "git diff --check: PASS com avisos esperados LF/CRLF",
     "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-127-chronos-webrtc-home-loader.json: PASS",
     "node scripts/panteon-boundary-check.mjs --module chronos --allow panteon --allow zeus --allow hefesto --from-git: PASS",
-    "dev server temporario em localhost:3017 a partir do worktree limpo: GET / 200 e GET /chronos 200"
+    "dev server temporario em localhost:3017 a partir do worktree limpo: GET / 200 e GET /chronos 200",
+    "pre-deploy 2026-06-01: npm.cmd run check-types:hub: PASS",
+    "pre-deploy 2026-06-01: npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "pre-deploy 2026-06-01: npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "pre-deploy 2026-06-01: node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-127-chronos-webrtc-home-loader.json: PASS",
+    "pre-deploy 2026-06-01: node scripts/panteon-boundary-check.mjs --module chronos --allow panteon --allow zeus --allow hefesto --files <arquivos do protocolo>: PASS",
+    "npx.cmd vercel deploy --prod --yes: READY no deployment dpl_94aModt7TkVq5BjKrVCRpvMNU1vF",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready no deployment dpl_94aModt7TkVq5BjKrVCRpvMNU1vF",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready no deployment dpl_94aModt7TkVq5BjKrVCRpvMNU1vF",
+    "GET https://c2x.app.br/: 200",
+    "GET https://c2x.app.br/chronos: 200",
+    "GET https://ops.c2x.app.br/zeus: 200",
+    "GET https://c2x.app.br/api/chronos/meetings sem sessao: 401 esperado",
+    "POST https://c2x.app.br/api/chronos/meetings/agent sem sessao: 401 esperado",
+    "npx.cmd vercel logs https://c2x.app.br --since 15m --level error: sem logs encontrados",
+    "npx.cmd vercel logs https://ops.c2x.app.br --since 15m --level error: sem logs encontrados",
+    "npx.cmd vercel inspect https://homo.c2x.app.br: Ready em Preview divergente dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi; alias nao reapontado nesta atividade porque a autorizacao explicita foi para producao.",
+    "Operations Center structured sync via sync-markdown-content local: BLOQUEADO por 413 Arquivo do Engineering Operations excede o limite seguro.",
+    "Operations Center structured create-record local: BLOQUEADO por 503 Supabase server-side nao configurado no worktree limpo; nenhum secret foi puxado ou impresso."
   ],
   "gitContext": {
     "localCommit": "69480af9d480870a2009aacd3f1c4c90735b493a",
     "commitMode": "git commit --no-verify",
     "commitNote": "O hook local falhou antes do commit porque pwsh nao reconheceu scripts/panteon-hook-runner.ps1 neste worktree; os gates manuais do protocolo passaram."
   },
-  "sensitiveOperations": [],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS",
+    "hotfixDeploymentId": "dpl_94aModt7TkVq5BjKrVCRpvMNU1vF",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-hdp58athy-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS",
+    "hotfixCodeCommit": "299aab79c098fd752b3f3962d019e261e34cb294",
+    "homoAliasStatus": {
+      "deploymentId": "dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi",
+      "status": "DIVERGENTE_REGISTRADO",
+      "reason": "Alias de homologacao nao reapontado nesta atividade porque a autorizacao explicita de Lucas foi para producao."
+    },
+    "operationsCenterStatus": {
+      "status": "BLOQUEADO",
+      "reason": "Sync markdown-content retornou 413 por limite seguro do diario e create-record local retornou 503 porque o worktree limpo nao tem Supabase server-side configurado.",
+      "sensitiveHandling": "Nenhum secret, token ou chave foi puxado, impresso ou alterado."
+    }
+  },
+  "sensitiveOperations": [
+    "Deploy Vercel Production autorizado por Lucas para publicar o protocolo CH-20260601-127-CHRONOS-WEBRTC-HOME-LOADER."
+  ],
   "rollback": [
+    "Promover novamente o deployment dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS se houver regressao critica em producao.",
     "Reverter apps/hub/modules/chronos/ChronosExternalRoomPage.tsx para o estado do protocolo CH-20260601-126 se a nova negociacao WebRTC causar regressao em salas pequenas.",
     "Reverter apps/hub/app/page.tsx se o loading por spinner prejudicar leitura operacional da Home.",
     "Nao ha DDL, migration, env, secret, token, dominio, alias manual ou alteracao direta de banco associada."
   ],
   "notes": [
-    "Este protocolo nao foi publicado em producao nesta etapa; esta validado localmente e aguarda autorizacao explicita de Lucas para deploy.",
+    "Este protocolo foi publicado em Vercel Production apos autorizacao explicita de Lucas em 2026-06-01.",
     "O ajuste WebRTC mira a falha em chamadas com mais de duas pessoas, onde alguns pares podiam nunca criar offer entre si.",
     "A propagacao de compartilhamento de tela tambem passa pela mesma sincronizacao outbound, para nao depender apenas da trilha de video criada no inicio da conexao.",
-    "O loading da Home/Asana preserva acessibilidade por role status e aria-label, mas mostra apenas o icone girando na interface."
+    "O loading da Home/Asana preserva acessibilidade por role status e aria-label, mas mostra apenas o icone girando na interface.",
+    "O registro vivo do Operations Center ficou pendente por bloqueio tecnico seguro do endpoint local; o registro canonico Markdown e o release de producao foram atualizados."
   ]
 }
