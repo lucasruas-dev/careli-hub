@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import Link from "next/link";
@@ -18,8 +16,25 @@ import {
   ShieldCheck,
   WalletCards,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-const menuItems = [
+type SidebarMenuItem = {
+  badge?: string;
+  href: string;
+  icon: LucideIcon;
+  id:
+    | "cobranca"
+    | "dashboard"
+    | "inteligencia"
+    | "iris"
+    | "monitoramento"
+    | "relatorios"
+    | "setup";
+  label: string;
+  released: boolean;
+};
+
+const menuItems: SidebarMenuItem[] = [
   {
     id: "dashboard",
     label: "Dashboard",
@@ -209,7 +224,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               >
                 {item.label}
               </span>
-              {"badge" in item && item.badge ? (
+              {item.badge ? (
                 <span
                   className={`ml-auto rounded-full bg-[#A07C3B] px-2 py-0.5 text-[11px] font-semibold text-white transition-opacity duration-200 ${
                     collapsed

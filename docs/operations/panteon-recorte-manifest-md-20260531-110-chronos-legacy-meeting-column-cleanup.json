@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-110-CHRONOS-LEGACY-MEETING-COLUMN-CLEANUP",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos legacy meeting column cleanup",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "agenda",
+    "legacy-cleanup",
+    "status-variant",
+    "module-decomposition"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/chronos/components/chronos-meeting-status.ts",
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-110-chronos-legacy-meeting-column-cleanup.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-meeting-status.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos limpeza da coluna legada Chronos",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke HTTP local em servidor ja ativo http://127.0.0.1:3001: /chronos 200, /chronos/lideranca 200, /hermes 200, /hades 200 e /iris 200",
+    "smoke HTTP local sem sessao para /api/chronos/meetings, /api/chronos/google-calendar/status e /api/chronos/invitees?q=lu: PASS 401 esperado",
+    "rg @ts-nocheck e rg eslint-disable em apps/hub/modules/chronos/components/chronos-meeting-status.ts e apps/hub/modules/chronos/ChronosPage.tsx: PASS, sem supressoes",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-110-chronos-legacy-meeting-column-cleanup.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "sem endpoint novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reintroduzir o bloco legado ChronosMeetingColumn/NewMeetingForm no apps/hub/modules/chronos/ChronosPage.tsx, se alguma rota antiga voltar a usa-lo.",
+    "Reverter apps/hub/modules/chronos/components/chronos-meeting-status.ts e recolocar o mapa de status local se necessario.",
+    "Nao ha DDL, env, deploy, endpoint novo, alias, dominio ou mudanca de integracao real associada."
+  ],
+  "notes": [
+    "Remove codigo legado nao utilizado de ChronosMeetingColumn e NewMeetingForm do ChronosPage.tsx.",
+    "Centraliza o variant visual de status de reuniao em apps/hub/modules/chronos/components/chronos-meeting-status.ts para as telas ativas de agenda/calendario/cards.",
+    "Preserva as telas ativas ChronosAgendaScreen, ChronosRoomsManagementScreen e ChronosDriveLibraryScreen sem alterar callbacks, dados, permissao, endpoints ou integracoes.",
+    "Nao altera OpenAI, Google Calendar, storage, schema, env, token, Vercel, Supabase admin, Preview, homologacao ou producao."
+  ]
+}

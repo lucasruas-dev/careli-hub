@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-019-IRIS-PAGE-SHARED-TYPES",
+  "module": "iris",
+  "agent": "Iris Core",
+  "title": "IrisPage shared type imports",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "types",
+    "iris-page",
+    "debt-reduction"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/caredesk/IrisPage.tsx",
+    "apps/hub/modules/caredesk/types/iris-types.ts",
+    "docs/operations/panteon-iris-decomposition-map-2026-05-30.md",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-019-iris-page-shared-types.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke local com next start temporario em http://127.0.0.1:3102/iris: PASS 200 OK",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-019-iris-page-shared-types.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module iris --allow zeus --files apps/hub/modules/caredesk/IrisPage.tsx,apps/hub/modules/caredesk/types/iris-types.ts,docs/operations/panteon-iris-decomposition-map-2026-05-30.md,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-recorte-manifest-md-20260531-019-iris-page-shared-types.json,docs/operations/engineering-operations.md: PASS",
+    "PowerShell trailing whitespace check nos arquivos do recorte: PASS",
+    "git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/modules/caredesk/types/iris-types.ts docs/operations/panteon-iris-decomposition-map-2026-05-30.md docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-recorte-manifest-md-20260531-019-iris-page-shared-types.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF em IrisPage.tsx e engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Restaurar em apps/hub/modules/caredesk/IrisPage.tsx os tipos locais equivalentes, se necessario.",
+    "Remover de apps/hub/modules/caredesk/types/iris-types.ts os campos opcionais adicionados a IrisMetaRef se nenhum arquivo depender deles."
+  ],
+  "notes": [
+    "Recorte local autorizado por continuidade do Lucas no chat, sem autorizacao de deploy.",
+    "IrisPage passou a importar tipos centrais compartilhados, removendo duplicidade local equivalente.",
+    "Tipos contextuais exclusivos da pagina raiz, como contexto Apolo e agenda, permaneceram locais.",
+    "Nao houve chamada Meta real, webhook, env, secret, banco, Supabase admin, Vercel, Preview, homologacao ou producao."
+  ]
+}

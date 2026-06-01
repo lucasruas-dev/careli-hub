@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 import { Bot, Sparkles, X } from "lucide-react";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
 

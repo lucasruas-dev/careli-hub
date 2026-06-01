@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 import type { AttendancePriority } from "@/modules/guardian/attendance/types";
 
 export const priorityStyles: Record<AttendancePriority, string> = {

@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260530-010-IRIS-CACA-PANEL",
+  "module": "iris",
+  "agent": "Iris Core",
+  "title": "Iris Caca panel extraction",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "caca",
+    "attendant-panel",
+    "decomposicao-mecanica"
+  ],
+  "allowedLayers": ["athena", "zeus"],
+  "includedFiles": [
+    "apps/hub/modules/caredesk/IrisPage.tsx",
+    "apps/hub/modules/caredesk/blocks/caca/iris-attendant-panel.tsx",
+    "docs/operations/panteon-iris-decomposition-map-2026-05-30.md",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-activity-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-restructure-plan.md",
+    "docs/operations/panteon-module-agent-map.md",
+    "docs/operations/panteon-engineering-continuity-chronology-2026-05-31.md",
+    "docs/operations/zeus-new-agent-prompt-panteon-engineering-restructure-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260530-010-iris-caca-panel.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub: BLOQUEADO por falta de memoria/paginacao local apos compilacao e TypeScript; Next abriu 31 workers na coleta de page data",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com 1 worker",
+    "dev smoke local temporario: BLOQUEADO por falta de memoria/paginacao local; next dev subiu em 127.0.0.1:3102 e caiu antes de responder",
+    "next start smoke local temporario apos build: GET http://127.0.0.1:3102/iris -> 200 OK; porta encerrada",
+    "react-best-practices checklist aplicado ao recorte TSX",
+    "Browser visual: BLOQUEADO por falha de sandbox do conector Browser/node_repl; rota local validada por HTTP smoke",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260530-010-iris-caca-panel.json",
+    "node scripts/panteon-boundary-check.mjs --module iris --allow athena --allow zeus --files apps/hub/modules/caredesk/IrisPage.tsx,apps/hub/modules/caredesk/blocks/caca/iris-attendant-panel.tsx,docs/operations/panteon-iris-decomposition-map-2026-05-30.md,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-engineering-activity-tree-2026-05-30.md,docs/operations/panteon-engineering-restructure-plan.md,docs/operations/panteon-module-agent-map.md,docs/operations/panteon-engineering-continuity-chronology-2026-05-31.md,docs/operations/zeus-new-agent-prompt-panteon-engineering-restructure-2026-05-31.md,docs/operations/panteon-recorte-manifest-md-20260530-010-iris-caca-panel.json,docs/operations/engineering-operations.md",
+    "git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/modules/caredesk/blocks/caca/iris-attendant-panel.tsx docs/operations/panteon-iris-decomposition-map-2026-05-30.md docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-engineering-activity-tree-2026-05-30.md docs/operations/panteon-engineering-restructure-plan.md docs/operations/panteon-module-agent-map.md docs/operations/panteon-engineering-continuity-chronology-2026-05-31.md docs/operations/zeus-new-agent-prompt-panteon-engineering-restructure-2026-05-31.md docs/operations/panteon-recorte-manifest-md-20260530-010-iris-caca-panel.json docs/operations/engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reintegrar o painel Caca dentro de apps/hub/modules/caredesk/IrisPage.tsx.",
+    "Remover apps/hub/modules/caredesk/blocks/caca/iris-attendant-panel.tsx.",
+    "Manter producao no baseline congelado; este recorte nao altera runtime publicado."
+  ],
+  "notes": [
+    "Recorte local autorizado por continuidade do Lucas no chat, sem autorizacao de deploy.",
+    "Extracao mecanica: sem mudanca intencional de UI, dados, realtime, Meta, OpenAI, env, chave, prompt runtime, payload, endpoint, APIs, banco, Supabase, Vercel, homologacao, producao ou ticket lifecycle.",
+    "IrisPage continua dona do estado, chamada ao endpoint /api/iris/attendant, feedback, selecao de boleto, uso de resposta sugerida, dados, lifecycle e composicao raiz.",
+    "O novo bloco caca/iris-attendant-panel recebe estado e callbacks por contrato explicito para preservar prompt, documento parcial, analise, retorno, boletos e handoff exatamente como estavam.",
+    "IrisPage.tsx ficou com 10481 linhas apos o recorte; o novo bloco Caca possui 280 linhas tipadas."
+  ]
+}

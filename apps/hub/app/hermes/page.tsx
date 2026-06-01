@@ -1,11 +1,12 @@
 import { HermesAccessGate } from "@/components/pulsex";
 import { HubShell } from "@/layouts/hub-shell";
+import { HERMES_MODULE_ID } from "@/lib/pulsex/routes";
 import { getHubModuleById, isHubModuleActive } from "@repo/shared";
 import { EmptyState, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
 import { notFound } from "next/navigation";
 
 export default function HermesPage() {
-  const pantheonModule = getHubModuleById("hermes");
+  const pantheonModule = getHubModuleById(HERMES_MODULE_ID);
 
   if (!pantheonModule) {
     notFound();

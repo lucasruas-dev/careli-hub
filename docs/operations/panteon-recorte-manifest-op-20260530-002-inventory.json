@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "OP-20260530-002-ZEUS-INVENTORY",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Inventario real do projeto e scanner local",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "inventario-estrutural",
+    "scanner-local",
+    "fronteira-cross-owner"
+  ],
+  "allowedLayers": [],
+  "includedFiles": [
+    "docs/operations/panteon-project-inventory-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-op-20260530-002-inventory.json",
+    "docs/operations/panteon-engineering-activity-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-restructure-plan.md",
+    "docs/operations/engineering-operations.md",
+    "scripts/panteon-inventory-scan.mjs"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "node --check scripts/panteon-inventory-scan.mjs",
+    "node scripts/panteon-inventory-scan.mjs --format markdown --top 30",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-op-20260530-002-inventory.json",
+    "node scripts/panteon-boundary-check.mjs --module zeus --files docs/operations/panteon-project-inventory-2026-05-30.md,docs/operations/panteon-recorte-manifest-op-20260530-002-inventory.json,scripts/panteon-inventory-scan.mjs"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": [
+      "https://c2x.app.br",
+      "https://ops.c2x.app.br"
+    ],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Remover o scanner local de inventario e o documento de diagnostico deste recorte.",
+    "Manter a producao congelada no baseline registrado; este recorte nao altera runtime."
+  ],
+  "notes": [
+    "O scanner e somente-leitura e exclui artefatos historicos de deploy para focar no workspace vivo.",
+    "Arquivos .env foram detectados apenas por nome; valores nao foram lidos nem registrados.",
+    "Este recorte prepara a escolha do primeiro modulo piloto, mas nao autoriza refatoracao de produto."
+  ]
+}

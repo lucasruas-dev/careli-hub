@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-042-HADES-IRIS-TEMPLATE-PREVIEW",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades/Iris ticket template preview helper",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "attendance",
+    "iris-ticket-modal",
+    "template-preview"
+  ],
+  "allowedLayers": ["iris", "zeus"],
+  "includedFiles": [
+    "apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx",
+    "apps/hub/modules/guardian/attendance/iris-ticket-template-preview.ts",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-042-hades-iris-template-preview.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS",
+    "npx.cmd eslint modules/guardian/attendance/components/WhatsAppConversationPanel.tsx modules/guardian/attendance/iris-ticket-template-preview.ts --rule \"no-undef:error\" em apps/hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run lint:hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke local com next start temporario em http://127.0.0.1:3029 para /hades/cobranca, /hades/cobranca?view=iris, /hades/atendimento?section=carteira, /guardian/atendimento e /iris: PASS 200 OK",
+    "Browser do Codex/in-app visual smoke: BLOQUEADO por falha recorrente do runtime node_repl/sandbox do conector; build e smoke HTTP local ficam como evidencia atual do recorte",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-042-hades-iris-template-preview.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow iris --allow zeus --files apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx,apps/hub/modules/guardian/attendance/iris-ticket-template-preview.ts,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-recorte-manifest-md-20260531-042-hades-iris-template-preview.json,docs/operations/engineering-operations.md: PASS",
+    "PowerShell trailing whitespace check nos arquivos do recorte: PASS",
+    "git diff --check -- apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx apps/hub/modules/guardian/attendance/iris-ticket-template-preview.ts docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-recorte-manifest-md-20260531-042-hades-iris-template-preview.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF em WhatsAppConversationPanel.tsx e engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Remover apps/hub/modules/guardian/attendance/iris-ticket-template-preview.ts.",
+    "Restaurar em WhatsAppConversationPanel.tsx os helpers inline resolveTicketTemplateProtocolPreview, formatInstallmentSummaryForTemplatePreview e buildTicketTemplateMessagePreview."
+  ],
+  "notes": [
+    "Recorte estrutural local para tirar do WhatsAppConversationPanel a montagem do preview do template Iris.",
+    "O helper preserva derivacao AT para CB, fallback de protocolo, resumo de parcelas e substituicao de parametros {{1}}, {{2}} e {{3}}.",
+    "Nao altera abertura de ticket, envio de mensagem, template Meta real, endpoint Iris, payload funcional, token Supabase client-side, regra financeira, atendimento, carteira, Guardian DB, env, secret, banco, Supabase admin, Vercel, Preview, homologacao ou producao."
+  ]
+}

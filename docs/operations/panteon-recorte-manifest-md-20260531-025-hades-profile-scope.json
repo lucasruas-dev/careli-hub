@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-025-HADES-PROFILE-SCOPE",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades attendance profile scope helpers",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "attendance",
+    "profile-scope"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/guardian/attendance/AttendancePage.tsx",
+    "apps/hub/modules/guardian/attendance/profile-scope.ts",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-025-hades-profile-scope.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS",
+    "npx.cmd eslint modules/guardian/attendance/AttendancePage.tsx --rule \"no-undef:error\" em apps/hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run lint:hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke local com next start temporario em http://127.0.0.1:3012 para /hades/cobranca, /hades/atendimento, /guardian/atendimento, /guardian/cobranca e /iris: PASS 200 OK",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-025-hades-profile-scope.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow zeus --files apps/hub/modules/guardian/attendance/AttendancePage.tsx,apps/hub/modules/guardian/attendance/profile-scope.ts,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-recorte-manifest-md-20260531-025-hades-profile-scope.json,docs/operations/engineering-operations.md: PASS",
+    "PowerShell trailing whitespace check nos arquivos do recorte: PASS",
+    "git diff --check -- apps/hub/modules/guardian/attendance/AttendancePage.tsx apps/hub/modules/guardian/attendance/profile-scope.ts docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-recorte-manifest-md-20260531-025-hades-profile-scope.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF em AttendancePage.tsx e engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Remover apps/hub/modules/guardian/attendance/profile-scope.ts.",
+    "Restaurar em AttendancePage.tsx o tipo OverdueRangeFilter e os helpers resolveHadesOperationalProfile, isClientInHadesProfileScope, isHadesLeadershipProfile, isClientInOverdueRange, buildOverdueRangeCounts e HADES_PROFILE_LABELS."
+  ],
+  "notes": [
+    "Recorte estrutural local para isolar regras puras de escopo por perfil operacional e faixa de atraso.",
+    "O arquivo novo e typechecked diretamente, reduzindo dependencia do @ts-nocheck de AttendancePage.tsx.",
+    "Foi rodada checagem no-undef especifica no AttendancePage para evitar referencia livre em runtime escondida pelo @ts-nocheck.",
+    "Nao altera UI intencionalmente, endpoint, payload funcional, regra financeira, atendimento, Asaas, D4Sign, Guardian DB, Iris, env, secret, banco, Supabase admin, Vercel, Preview, homologacao ou producao."
+  ]
+}

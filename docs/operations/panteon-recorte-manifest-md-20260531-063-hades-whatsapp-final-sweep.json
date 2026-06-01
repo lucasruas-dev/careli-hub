@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-063-HADES-WHATSAPP-FINAL-SWEEP",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades WhatsApp final sweep",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "attendance",
+    "whatsapp-conversation-panel",
+    "final-sweep"
+  ],
+  "allowedLayers": ["iris", "zeus"],
+  "includedFiles": [
+    "apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-063-hades-whatsapp-final-sweep.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "sweep estrutural: WhatsAppConversationPanel.tsx medido com 1037 linhas apos extracoes locais",
+    "rg de funcoes/restos inline: PASS; subcomponentes TemplateModal, TicketSetupModal, OperationDrawer, TicketCloseModal, HeaderToolbarButton e ComposerIconButton nao permanecem inline no painel",
+    "MD-20260531-062-HADES-WHATSAPP-AUTH-TOKEN-BOUNDARY: mantido BLOQUEADO_PARA_MUDANCA_FUNCIONAL; getIrisAccessToken nao foi alterado",
+    "npm.cmd run check-types:hub: PASS no recorte anterior MD-061 sem mudanca de codigo posterior",
+    "npx.cmd eslint modules/guardian/attendance/components/WhatsAppConversationPanel.tsx modules/guardian/attendance/components/hades-whatsapp-ticket-setup-modal.tsx --rule \"no-undef:error\" em apps/hub: PASS no MD-061 com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run lint:hub: PASS no MD-061 com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS no MD-061 com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke local com next start temporario em http://127.0.0.1:3049 para /hades/cobranca, /hades/cobranca?view=iris, /hades/atendimento?section=carteira, /guardian/atendimento e /iris: PASS 200 OK no MD-061",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-063-hades-whatsapp-final-sweep.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow iris --allow zeus --files apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md,docs/operations/panteon-recorte-manifest-md-20260531-063-hades-whatsapp-final-sweep.json,docs/operations/engineering-operations.md: PASS",
+    "PowerShell trailing whitespace check nos arquivos do recorte: PASS",
+    "git diff --check -- apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md docs/operations/panteon-recorte-manifest-md-20260531-063-hades-whatsapp-final-sweep.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF em WhatsAppConversationPanel.tsx e engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Nenhuma alteracao funcional adicional neste sweep.",
+    "Se necessario, reverter somente os registros documentais do MD-063."
+  ],
+  "notes": [
+    "Sweep final local da decomposicao WhatsApp Hades apos MD-053 a MD-061.",
+    "O painel principal ficou com 1037 linhas e os subcomponentes visuais principais estao em arquivos proprios.",
+    "A fronteira de token/sessao Iris foi intencionalmente preservada e mantida bloqueada para mudanca funcional.",
+    "Nao altera endpoint Iris, token, sessao Supabase, template Meta real, envio real, regra financeira, C2X real, Guardian DB, env, secret, banco, Supabase admin, Vercel, Preview, homologacao ou producao."
+  ]
+}

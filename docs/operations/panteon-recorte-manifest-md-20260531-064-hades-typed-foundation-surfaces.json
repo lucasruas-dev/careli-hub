@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-064-HADES-TYPED-FOUNDATION-SURFACES",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades typed foundation surfaces",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "attendance",
+    "dashboard",
+    "foundation-surfaces",
+    "typed-components"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/components/guardian/dashboard/KpiCard.tsx",
+    "apps/hub/components/guardian/ui/button.tsx",
+    "apps/hub/modules/guardian/attendance/components/DetailSection.tsx",
+    "apps/hub/modules/guardian/attendance/components/ExpandableDetailSection.tsx",
+    "apps/hub/modules/guardian/attendance/priority.ts",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-module-boundary-manifest-v1.json",
+    "docs/operations/panteon-recorte-manifest-md-20260531-064-hades-typed-foundation-surfaces.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "rg @ts-nocheck/eslint-disable nos cinco arquivos do recorte: PASS sem ocorrencias",
+    "npx.cmd eslint components/guardian/dashboard/KpiCard.tsx components/guardian/ui/button.tsx modules/guardian/attendance/components/DetailSection.tsx modules/guardian/attendance/components/ExpandableDetailSection.tsx modules/guardian/attendance/priority.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-064-hades-typed-foundation-surfaces.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow zeus --files <arquivos-do-recorte>: PASS apos classificar apps/hub/components/guardian/** como Hades no boundary manifest",
+    "git diff --check nos arquivos de codigo do recorte: PASS com avisos esperados LF/CRLF",
+    "smoke HTTP local com next start temporario em http://127.0.0.1:3050 para /hades, /hades/cobranca, /hades/atendimento?section=carteira, /guardian/atendimento e /iris: PASS 200 OK",
+    "sem alteracao visual intencional; KpiCard preserva article sem acao e button type=button quando clicavel",
+    "sem endpoint novo, payload novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apenas a remocao de ts-nocheck/eslint-disable dos cinco arquivos do recorte e a tipagem condicional do KpiCard.",
+    "Nao ha DDL, env, deploy, endpoint ou mudanca de regra de negocio associada."
+  ],
+  "notes": [
+    "Primeiro recorte pos-WhatsApp para organizar bases pequenas do Hades sem ampliar regra funcional.",
+    "Remove travas globais de TypeScript/ESLint de surfaces basicas e helper de prioridade.",
+    "Classifica apps/hub/components/guardian/** como fronteira Hades, removendo aviso de owner para componentes legados do modulo.",
+    "O prop asChild foi removido do Button do Hades porque nao havia uso no checkout e a implementacao existente nao suportava Slot real.",
+    "Mantem comportamento de KpiCard clicavel como button e nao clicavel como article, agora de forma explicitamente tipada."
+  ]
+}

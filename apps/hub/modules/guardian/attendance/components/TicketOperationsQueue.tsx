@@ -1,6 +1,4 @@
-﻿/* eslint-disable */
-// @ts-nocheck
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -538,8 +536,8 @@ function buildOperationalTickets(clients: QueueClient[]): OperationalTicket[] {
 
   return clients.map((client, index) => {
     const unit = client.carteira.unidades[index % client.carteira.unidades.length] ?? client.carteira.unidades[0];
-    const profile = profiles[index % profiles.length];
-    const status = statuses[index % statuses.length];
+    const profile = profiles[index % profiles.length] ?? "Negociação";
+    const status = statuses[index % statuses.length] ?? "Pendente";
     const critical = status === "SLA crítico" || client.prioridade === "Crítica";
     const warning = !critical && (client.prioridade === "Alta" || status === "Aguardando cliente");
     const promiseDue = client.commitments.some(

@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 import type { WorkflowStage } from "@/modules/guardian/attendance/types";
 
 export const workflowStages: WorkflowStage[] = [

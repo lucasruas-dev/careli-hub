@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-084-HERMES-ROUTE-API-CONTRACTS",
+  "module": "hermes",
+  "agent": "Hermes Core",
+  "title": "Hermes route and API contracts",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "routes",
+    "messages",
+    "api-contracts",
+    "module-decomposition"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/lib/pulsex/routes.ts",
+    "apps/hub/lib/pulsex/index.ts",
+    "apps/hub/lib/pulsex/supabase-data.ts",
+    "apps/hub/app/hermes/page.tsx",
+    "apps/hub/app/pulsex/page.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hermes-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-084-hermes-route-api-contracts.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint app/hermes/page.tsx app/pulsex/page.tsx lib/pulsex/routes.ts lib/pulsex/index.ts lib/pulsex/supabase-data.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos contrato de rotas/API Hermes",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke HTTP local com next start temporario em http://127.0.0.1:3071 para /hermes, /pulsex, /iris e /hades: PASS 200 OK",
+    "smoke HTTP local para /api/hermes/messages?channelId=smoke e /api/pulsex/messages?channelId=smoke sem sessao: PASS 401 esperado",
+    "Select-String literal confirmou /hermes e /api/hermes/messages centralizados em apps/hub/lib/pulsex/routes.ts",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-084-hermes-route-api-contracts.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hermes --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "sem endpoint novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apenas o contrato de rotas em apps/hub/lib/pulsex/routes.ts e os imports associados em Hermes/PulseX.",
+    "Nao ha DDL, env, deploy, endpoint novo, alias, dominio ou mudanca de integracao real associada."
+  ],
+  "notes": [
+    "Centraliza module id, rota canonical /hermes, rota legada /pulsex e API canonical /api/hermes/messages.",
+    "Mantem /api/pulsex/messages como alias legado via constante de contrato.",
+    "Substitui hardcodes de fetch no client Hermes por HERMES_MESSAGES_API_ROUTE/getHermesMessagesApiUrl.",
+    "Preserva redirect /pulsex -> /hermes e gate de modulo Hermes sem alterar UX ou permissao.",
+    "Nao altera handler, payload, banco, schema, env, token, Vercel, Supabase admin, Preview, homologacao ou producao."
+  ]
+}

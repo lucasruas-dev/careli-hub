@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-087-HERMES-REALTIME-CONTRACTS",
+  "module": "hermes",
+  "agent": "Hermes Core",
+  "title": "Hermes message realtime contracts",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "realtime",
+    "messages",
+    "broadcast",
+    "module-decomposition"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/components/pulsex/pulsex-workspace.tsx",
+    "apps/hub/lib/pulsex/realtime.ts",
+    "apps/hub/lib/pulsex/index.ts",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hermes-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-087-hermes-realtime-contracts.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint components/pulsex/pulsex-workspace.tsx lib/pulsex/realtime.ts lib/pulsex/index.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos extracao do broadcast Hermes para contrato realtime",
+    "npm.cmd run check-types --workspace @repo/realtime: PASS",
+    "npm.cmd run lint --workspace @repo/realtime: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke HTTP local em servidor ja ativo http://127.0.0.1:3001: /hermes 200, /pulsex 307 redirect esperado para /hermes, /iris 200 e /hades 200",
+    "smoke HTTP local para /api/hermes/messages?channelId=smoke e /api/pulsex/messages?channelId=smoke sem sessao: PASS 401 esperado",
+    "rg @ts-nocheck|eslint-disable em apps/hub/components/pulsex/pulsex-workspace.tsx, apps/hub/lib/pulsex/realtime.ts e apps/hub/lib/pulsex/index.ts: PASS, sem supressoes",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-087-hermes-realtime-contracts.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hermes --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "sem endpoint novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apps/hub/lib/pulsex/realtime.ts, o export em apps/hub/lib/pulsex/index.ts e reintroduzir a funcao local de broadcast em apps/hub/components/pulsex/pulsex-workspace.tsx.",
+    "Nao ha DDL, env, deploy, endpoint novo, alias, dominio ou mudanca de integracao real associada."
+  ],
+  "notes": [
+    "Move o envio de broadcast de mensagem para broadcastHermesMessage em apps/hub/lib/pulsex/realtime.ts.",
+    "Mantem PULSEX_MESSAGE_BROADCAST_EVENT, getHermesMessageRealtimeTopic e parseHermesMessageBroadcastPayload como contrato local do Hermes.",
+    "O workspace continua dono do canal Supabase ativo e do log de erro via callback onError.",
+    "Nao altera canal externo, evento, payload, permissao, banco, schema, env, token, Vercel, Supabase admin, Preview, homologacao ou producao."
+  ]
+}

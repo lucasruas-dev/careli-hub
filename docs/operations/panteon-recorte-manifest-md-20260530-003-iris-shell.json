@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260530-003-IRIS-SHELL",
+  "module": "iris",
+  "agent": "Iris Core",
+  "title": "Iris shell extraction",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "shell",
+    "sidebar",
+    "topbar",
+    "decomposicao-mecanica"
+  ],
+  "allowedLayers": [
+    "zeus"
+  ],
+  "includedFiles": [
+    "apps/hub/modules/caredesk/IrisPage.tsx",
+    "apps/hub/modules/caredesk/blocks/shell/iris-shell.tsx",
+    "docs/operations/panteon-iris-decomposition-map-2026-05-30.md",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-activity-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-restructure-plan.md",
+    "docs/operations/panteon-module-agent-map.md",
+    "docs/operations/panteon-recorte-manifest-md-20260530-003-iris-shell.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "dev smoke local temporario: GET http://localhost:3102/iris -> 200 OK",
+    "react-best-practices checklist aplicado ao recorte TSX",
+    "Browser visual: BLOQUEADO por falha de sandbox do conector; sem Playwright local instalado para fallback",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260530-003-iris-shell.json",
+    "node scripts/panteon-boundary-check.mjs --module iris --allow zeus --files apps/hub/modules/caredesk/IrisPage.tsx,apps/hub/modules/caredesk/blocks/shell/iris-shell.tsx,docs/operations/panteon-iris-decomposition-map-2026-05-30.md,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-engineering-activity-tree-2026-05-30.md,docs/operations/panteon-engineering-restructure-plan.md,docs/operations/panteon-module-agent-map.md,docs/operations/panteon-recorte-manifest-md-20260530-003-iris-shell.json",
+    "git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/modules/caredesk/blocks/shell/iris-shell.tsx docs/operations/panteon-iris-decomposition-map-2026-05-30.md docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-engineering-activity-tree-2026-05-30.md docs/operations/panteon-engineering-restructure-plan.md docs/operations/panteon-module-agent-map.md docs/operations/panteon-recorte-manifest-md-20260530-003-iris-shell.json docs/operations/engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": [
+      "https://c2x.app.br",
+      "https://ops.c2x.app.br"
+    ],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reintegrar IrisModuleShell, IrisSidebarHeader e IrisTopbar dentro de apps/hub/modules/caredesk/IrisPage.tsx.",
+    "Remover apps/hub/modules/caredesk/blocks/shell/iris-shell.tsx.",
+    "Manter producao no baseline congelado; este recorte nao altera runtime publicado."
+  ],
+  "notes": [
+    "Recorte local autorizado por continuidade do Lucas no chat, sem autorizacao de deploy.",
+    "Extracao mecanica: sem mudanca intencional de UI, dados, realtime, Meta, Caca, APIs ou fluxo.",
+    "IrisPage continua dona de activeView, sidebarCollapsed, historyFocus, dados e selecao de views.",
+    "A validacao visual com Browser foi tentada e ficou bloqueada pelo conector local; a cobertura final ficou em check-types, lint, build, smoke HTTP e gates."
+  ]
+}

@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 export type AttendancePriority = "Crítica" | "Alta" | "Média" | "Baixa";
 export type WorkflowStage =
   | "A acionar"

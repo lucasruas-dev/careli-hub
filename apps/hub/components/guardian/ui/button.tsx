@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 import * as React from "react";
 
 type ButtonVariant = "default" | "destructive" | "ghost" | "link" | "outline" | "secondary";
@@ -20,9 +18,7 @@ type ButtonVariantOptions = {
 };
 
 type ButtonProps = React.ComponentProps<"button"> &
-  ButtonVariantOptions & {
-    asChild?: boolean;
-  };
+  ButtonVariantOptions;
 
 const baseClass =
   "inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent text-sm font-medium whitespace-nowrap transition-all outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
@@ -60,7 +56,6 @@ function buttonVariants({
 }
 
 function Button({
-  asChild: _asChild,
   className,
   size = "default",
   variant = "default",

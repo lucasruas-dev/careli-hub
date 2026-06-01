@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-061-HADES-WHATSAPP-TICKET-SETUP-MODAL",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades WhatsApp Iris ticket setup modal component",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "MEDIO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "attendance",
+    "whatsapp-conversation-panel",
+    "ticket-setup-modal",
+    "iris-boundary"
+  ],
+  "allowedLayers": ["iris", "zeus"],
+  "includedFiles": [
+    "apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx",
+    "apps/hub/modules/guardian/attendance/components/hades-whatsapp-ticket-setup-modal.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-061-hades-whatsapp-ticket-setup-modal.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS apos guarda explicita de selectedProfile no calculo de SLA",
+    "npx.cmd eslint modules/guardian/attendance/components/WhatsAppConversationPanel.tsx modules/guardian/attendance/components/hades-whatsapp-ticket-setup-modal.tsx --rule \"no-undef:error\" em apps/hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run lint:hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke local com next start temporario em http://127.0.0.1:3049 para /hades/cobranca, /hades/cobranca?view=iris, /hades/atendimento?section=carteira, /guardian/atendimento e /iris: PASS 200 OK",
+    "Browser do Codex/in-app visual smoke: BLOQUEADO por falha recorrente do runtime node_repl/sandbox do conector; build e smoke HTTP local ficam como evidencia atual do recorte",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-061-hades-whatsapp-ticket-setup-modal.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow iris --allow zeus --files apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx,apps/hub/modules/guardian/attendance/components/hades-whatsapp-ticket-setup-modal.tsx,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md,docs/operations/panteon-recorte-manifest-md-20260531-061-hades-whatsapp-ticket-setup-modal.json,docs/operations/engineering-operations.md: PASS",
+    "PowerShell trailing whitespace check nos arquivos do recorte: PASS",
+    "git diff --check -- apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx apps/hub/modules/guardian/attendance/components/hades-whatsapp-ticket-setup-modal.tsx docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md docs/operations/panteon-recorte-manifest-md-20260531-061-hades-whatsapp-ticket-setup-modal.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF em WhatsAppConversationPanel.tsx e engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Remover apps/hub/modules/guardian/attendance/components/hades-whatsapp-ticket-setup-modal.tsx.",
+    "Restaurar em WhatsAppConversationPanel.tsx o subcomponente inline TicketSetupModal e seus imports exclusivos de Iris/template preview."
+  ],
+  "notes": [
+    "Recorte estrutural local para tirar do WhatsAppConversationPanel o modal de abertura/complemento de ticket Iris.",
+    "O componente preserva fila Iris, assunto, canal, template Meta aprovado, preview de mensagem, unidade, parcelas C2X, SLA, prioridade, erro operacional e callback onOpenTicket atuais.",
+    "A unica correcao tipada foi guardar selectedProfile possivelmente nulo no calculo de missingSla, mantendo a mesma regra pratica: assunto sem SLA valido bloqueia abertura.",
+    "Nao altera endpoint /api/iris/tickets, token, sessao Supabase, template Meta real, envio real, regra financeira, C2X real, Guardian DB, env, secret, banco, Supabase admin, Vercel, Preview, homologacao ou producao."
+  ]
+}

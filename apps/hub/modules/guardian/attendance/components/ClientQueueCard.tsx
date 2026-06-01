@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 import { MessageCircle } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { priorityStyles } from "@/modules/guardian/attendance/priority";

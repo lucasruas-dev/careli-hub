@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260530-009-IRIS-COMPOSER-ACTIONS",
+  "module": "iris",
+  "agent": "Iris Core",
+  "title": "Iris composer actions extraction",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "conversation",
+    "composer-actions",
+    "decomposicao-mecanica"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/caredesk/IrisPage.tsx",
+    "apps/hub/modules/caredesk/blocks/conversation/iris-composer-actions.tsx",
+    "docs/operations/panteon-iris-decomposition-map-2026-05-30.md",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-activity-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-restructure-plan.md",
+    "docs/operations/panteon-module-agent-map.md",
+    "docs/operations/panteon-engineering-continuity-chronology-2026-05-31.md",
+    "docs/operations/zeus-new-agent-prompt-panteon-engineering-restructure-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260530-009-iris-composer-actions.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "dev smoke local temporario: GET http://127.0.0.1:3102/iris -> 200 OK",
+    "react-best-practices checklist aplicado ao recorte TSX",
+    "Browser visual: BLOQUEADO por falha de sandbox do conector Browser/node_repl; rota local validada por HTTP smoke",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260530-009-iris-composer-actions.json",
+    "node scripts/panteon-boundary-check.mjs --module iris --allow zeus --files apps/hub/modules/caredesk/IrisPage.tsx,apps/hub/modules/caredesk/blocks/conversation/iris-composer-actions.tsx,docs/operations/panteon-iris-decomposition-map-2026-05-30.md,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-engineering-activity-tree-2026-05-30.md,docs/operations/panteon-engineering-restructure-plan.md,docs/operations/panteon-module-agent-map.md,docs/operations/panteon-engineering-continuity-chronology-2026-05-31.md,docs/operations/zeus-new-agent-prompt-panteon-engineering-restructure-2026-05-31.md,docs/operations/panteon-recorte-manifest-md-20260530-009-iris-composer-actions.json,docs/operations/engineering-operations.md",
+    "git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/modules/caredesk/blocks/conversation/iris-composer-actions.tsx docs/operations/panteon-iris-decomposition-map-2026-05-30.md docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-engineering-activity-tree-2026-05-30.md docs/operations/panteon-engineering-restructure-plan.md docs/operations/panteon-module-agent-map.md docs/operations/panteon-engineering-continuity-chronology-2026-05-31.md docs/operations/zeus-new-agent-prompt-panteon-engineering-restructure-2026-05-31.md docs/operations/panteon-recorte-manifest-md-20260530-009-iris-composer-actions.json docs/operations/engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reintegrar o footer/composer dentro de apps/hub/modules/caredesk/IrisPage.tsx.",
+    "Remover apps/hub/modules/caredesk/blocks/conversation/iris-composer-actions.tsx.",
+    "Manter producao no baseline congelado; este recorte nao altera runtime publicado."
+  ],
+  "notes": [
+    "Recorte local autorizado por continuidade do Lucas no chat, sem autorizacao de deploy.",
+    "Extracao mecanica: sem mudanca intencional de UI, dados, realtime, Meta, Caca, APIs, Apolo/search, templates, payload, endpoint, audio, envio ou ticket lifecycle.",
+    "IrisPage continua dona das funcoes de envio, edicao, reacao, gravacao de audio, reparo de mensagem local, janela WhatsApp e ticket lifecycle.",
+    "O novo bloco composer-actions recebe estado e callbacks por contrato explicito para preservar textarea, emoji picker, checklist, janela WhatsApp, toolbar, audio e botao de envio exatamente como estavam.",
+    "IrisPage.tsx ficou com 10743 linhas apos o recorte; o novo bloco composer-actions possui 321 linhas tipadas."
+  ]
+}

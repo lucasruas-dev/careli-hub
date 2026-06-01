@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 import { MainLayout } from "@/components/guardian/layout/MainLayout";
 import { AttendancePage } from "@/modules/guardian/attendance/AttendancePage";
 

@@ -1,10 +1,10 @@
-/* eslint-disable */
-// @ts-nocheck
 import { hadesMockClients } from "@/modules/guardian/hadesMockData";
 import type { HadesMockClient } from "@/modules/guardian/hadesMockData";
-import type { PaymentPromiseStatus, QueueClient } from "@/modules/guardian/attendance/types";
+import type { QueueClient } from "@/modules/guardian/attendance/types";
 
 const EMPTY_FIELD = "-";
+const EMPTY_AGREEMENT_STATUS = EMPTY_FIELD as QueueClient["agreement"]["status"];
+const EMPTY_AGREEMENT_RISK = EMPTY_FIELD as QueueClient["agreement"]["risk"];
 
 export type HadesAttendanceSourceUnit = {
   area: string;
@@ -94,7 +94,8 @@ export function buildQueueClientsFromSources(
         : null;
     const workflow = buildWorkflow(client);
     const units = c2xUnits.length > 0 ? c2xUnits : secondUnit ? [mainUnit, secondUnit] : [mainUnit];
-    const agreement = buildAgreement(client, units[0]);
+    const agreementUnit = units[0] ?? mainUnit;
+    const agreement = buildAgreement(client, agreementUnit);
     const commitments = buildCommitments(client, units, agreement);
 
     return {
@@ -229,13 +230,13 @@ function buildAgreement(
     recoveredValue: EMPTY_FIELD,
     breakRate: 0,
     recoveryRate: 0,
-    status: EMPTY_FIELD,
-    risk: EMPTY_FIELD,
+    status: EMPTY_AGREEMENT_STATUS,
+    risk: EMPTY_AGREEMENT_RISK,
     operator: client.responsavel,
     aiSuggestion: {
       composition: EMPTY_FIELD,
       breakChance: 0,
-      operationalRisk: EMPTY_FIELD,
+      operationalRisk: EMPTY_AGREEMENT_RISK,
       nextAction: EMPTY_FIELD,
     },
     dueDates: [],
@@ -243,129 +244,15 @@ function buildAgreement(
 }
 
 function buildCommitments(
-  client: HadesMockClient,
-  units: QueueClient["carteira"]["unidades"],
-  agreement: QueueClient["agreement"]
+  _client: HadesMockClient,
+  _units: QueueClient["carteira"]["unidades"],
+  _agreement: QueueClient["agreement"]
 ): QueueClient["commitments"] {
+  void _client;
+  void _units;
+  void _agreement;
+
   return [];
-}
-
-function promiseStatusForClient(client: HadesMockClient): PaymentPromiseStatus {
-  if (client.status === "Regularizado") return "Cumprida";
-  if (client.status === "Proposta enviada") return "Aguardando pagamento";
-  if (client.status === "Escalado") return "Quebrada";
-  if (client.status === "Aguardando retorno") return "Reagendada";
-  if (client.status === "A vencer") return "Promessa realizada";
-
-  return "Promessa realizada";
-}
-
-function promiseNote(status: ReturnType<typeof promiseStatusForClient>, client: HadesMockClient) {
-  if (status === "Cumprida") return "Pagamento identificado e compromisso marcado como cumprido na régua operacional.";
-  if (status === "Quebrada") return "Promessa não compensada dentro da janela, exigindo nova abordagem humana.";
-  if (status === "Reagendada") return "Cliente solicitou nova data com justificativa operacional registrada.";
-  if (status === "Aguardando pagamento") return "Cliente recebeu orientação de pagamento e está dentro da janela combinada.";
-
-  return `Promessa capturada após contato positivo para reduzir saldo em atraso de ${money(client.saldoAtraso)}.`;
-}
-
-function buildPromiseHistory(
-  client: HadesMockClient,
-  unitCode: string,
-  status: ReturnType<typeof promiseStatusForClient>,
-  value: number
-) {
-  const base: QueueClient["commitments"][number]["history"] = [
-    {
-      id: `${client.id}-promise-created`,
-      protocol: guardianProtocol(ordinalFor(client.id, 21)),
-      action: "Promessa criada",
-      occurredAt: "10/05/2026 17:45",
-      operator: client.responsavel,
-      description: `Promessa de ${money(value)} registrada para o cod. unidade ${unitCode}.`,
-    },
-  ];
-
-  if (status === "Quebrada") {
-    base.unshift({
-      id: `${client.id}-promise-broken`,
-      protocol: guardianProtocol(ordinalFor(client.id, 22)),
-      action: "Quebra registrada",
-      occurredAt: "11/05/2026 09:20",
-      operator: EMPTY_FIELD,
-      description: "Pagamento prometido não foi compensado e workflow foi direcionado para quebra de promessa.",
-    });
-  }
-
-  if (status === "Cumprida") {
-    base.unshift({
-      id: `${client.id}-promise-paid`,
-      protocol: guardianProtocol(ordinalFor(client.id, 23)),
-      action: "Cumprimento registrado",
-      occurredAt: "11/05/2026 08:42",
-      operator: "Financeiro Careli",
-      description: "Compensação localizada e promessa marcada como cumprida.",
-    });
-  }
-
-  if (status === "Reagendada") {
-    base.unshift({
-      id: `${client.id}-promise-rescheduled`,
-      protocol: guardianProtocol(ordinalFor(client.id, 24)),
-      action: "Reagendamento registrado",
-      occurredAt: "11/05/2026 10:05",
-      operator: client.responsavel,
-      description: "Data prometida foi reagendada após novo contato com o cliente.",
-    });
-  }
-
-  return base;
-}
-
-function buildAgreementHistory(
-  client: HadesMockClient,
-  unitCode: string,
-  agreement: QueueClient["agreement"]
-) {
-  const history: QueueClient["commitments"][number]["history"] = [
-    {
-      id: `${client.id}-agreement-created`,
-      protocol: guardianProtocol(ordinalFor(client.id, 31)),
-      action: "Acordo criado",
-      occurredAt: "10/05/2026 16:58",
-      operator: agreement.operator,
-      description: `Acordo formal registrado para o cod. unidade ${unitCode} com entrada de ${agreement.entry}.`,
-    },
-    {
-      id: `${client.id}-agreement-status`,
-      protocol: guardianProtocol(ordinalFor(client.id, 32)),
-      action: `Status alterado para ${agreement.status}`,
-      occurredAt: "11/05/2026 11:05",
-      operator: agreement.operator,
-      description: `Central Operacional atualizou o acordo para ${agreement.status.toLowerCase()}.`,
-    },
-  ];
-
-  if (agreement.status === "Quebrado") {
-    history.unshift({
-      id: `${client.id}-agreement-broken`,
-      protocol: guardianProtocol(ordinalFor(client.id, 33)),
-      action: "Quebra de acordo registrada",
-      occurredAt: "11/05/2026 09:12",
-      operator: EMPTY_FIELD,
-      description: "Acordo ficou inadimplente e workflow recebeu sinalização de quebra.",
-    });
-  }
-
-  return history;
-}
-
-function buildInstallmentRange(count: number) {
-  const safeCount = Math.max(count, 1);
-  const first = String(Math.max(safeCount - 1, 1)).padStart(2, "0");
-  const second = String(safeCount).padStart(2, "0");
-
-  return `${first}/60, ${second}/60`;
 }
 
 function buildWorkflow(client: HadesMockClient): QueueClient["workflow"] {
@@ -381,212 +268,17 @@ function buildWorkflow(client: HadesMockClient): QueueClient["workflow"] {
 }
 
 function buildOperationalTimeline(
-  client: HadesMockClient,
-  workflow: QueueClient["workflow"],
-  agreement: QueueClient["agreement"],
-  commitments: QueueClient["commitments"]
+  _client: HadesMockClient,
+  _workflow: QueueClient["workflow"],
+  _agreement: QueueClient["agreement"],
+  _commitments: QueueClient["commitments"]
 ): QueueClient["timeline"] {
+  void _client;
+  void _workflow;
+  void _agreement;
+  void _commitments;
+
   return [];
-
-  const urgent = client.prioridade === "Crítica" || client.prioridade === "Alta";
-  const legalOperator = EMPTY_FIELD;
-  const boletoAmount = money(
-    client.parcelasVencidas > 0 ? client.saldoAtraso / client.parcelasVencidas : 0
-  );
-  const agreementAmount = money(Math.max(client.saldoAtraso * 0.35, 1200));
-
-  const workflowEvents: QueueClient["timeline"] = workflow.history.map((change) => ({
-    actionType: "workflow",
-    id: `${change.id}-timeline`,
-    protocol: guardianProtocol(ordinalFor(change.id, 1)),
-    type:
-      change.to === "Crítico"
-        ? "Alteração de risco"
-        : change.to === "Jurídico"
-          ? "Acionamento jurídico"
-          : "Observação operacional",
-    title: `Workflow: ${change.to}`,
-    description: `Etapa alterada de ${change.from} para ${change.to}. ${change.reason}`,
-    occurredAt: change.changedAt,
-    operator: change.operator,
-    status:
-      change.to === "Crítico"
-        ? "Elevado"
-        : change.to === "Jurídico"
-          ? "Jurídico"
-          : "Registrado",
-  }));
-
-  const commitmentEvents: QueueClient["timeline"] = commitments.flatMap((commitment) =>
-    commitment.history.slice(0, 2).map((entry) => ({
-      actionType: commitment.type === "Promessa de pagamento" ? "promessa" : "acordo",
-      id: `${entry.id}-timeline`,
-      protocol: entry.protocol,
-      type:
-        commitment.type === "Promessa de pagamento"
-          ? "Promessa de pagamento"
-          : commitment.status === "Quebrado"
-            ? "Quebra de acordo"
-            : "Acordo gerado",
-      title: `${commitment.type}: ${entry.action}`,
-      description: `${entry.description} Unidade ${commitment.unitCode}.`,
-      occurredAt: entry.occurredAt,
-      operator: entry.operator,
-      status:
-        commitment.type === "Promessa de pagamento"
-          ? commitment.status === "Quebrada"
-            ? "Quebrado"
-            : "Prometido"
-          : commitment.status === "Quebrado"
-            ? "Quebrado"
-            : "Gerado",
-      unitCode: commitment.unitCode,
-      unitLabel: commitment.unitLabel,
-    }))
-  );
-
-  return [
-    ...workflowEvents,
-    ...commitmentEvents,
-    {
-      actionType: "acordo",
-      id: `${client.id}-agreement-central-20260511`,
-      protocol: agreement.status === "Quebrado" ? guardianProtocol(ordinalFor(client.id, 33)) : guardianProtocol(ordinalFor(client.id, 32)),
-      type: agreement.status === "Quebrado" ? "Quebra de acordo" : "Acordo gerado",
-      title: `Acordo ${agreement.status.toLowerCase()}`,
-      description: `Central de Acordos registrou valor negociado de ${agreement.negotiatedValue}, entrada de ${agreement.entry}, ${agreement.installmentsCount} parcela(s) e risco ${agreement.risk.toLowerCase()}.`,
-      occurredAt: "11/05/2026 11:05",
-      operator: agreement.operator,
-      status: agreement.status === "Quebrado" ? "Quebrado" : "Gerado",
-      unitCode: commitments.find((commitment) => commitment.type === "Acordo")?.unitCode,
-      unitLabel: commitments.find((commitment) => commitment.type === "Acordo")?.unitLabel,
-    },
-    {
-      actionType: "ligação",
-      id: `${client.id}-call-20260511`,
-      protocol: guardianProtocol(ordinalFor(client.id, 50)),
-      type: "Ligação realizada",
-      title: "Contato ativo com cliente",
-      description: urgent
-        ? "Ligação consultiva concluída para validar intenção de regularização e barreiras de pagamento."
-        : "Contato preventivo realizado para confirmar ciência das parcelas e manter relacionamento ativo.",
-      occurredAt: "11/05/2026 10:20",
-      operator: client.responsavel,
-      status: "Realizado",
-    },
-    {
-      actionType: "mensagem",
-      id: `${client.id}-whatsapp-20260511`,
-      protocol: guardianProtocol(ordinalFor(client.id, 51)),
-      type: "WhatsApp enviado",
-      title: "Mensagem de negociação enviada",
-      description: `WhatsApp com resumo do saldo em atraso de ${money(client.saldoAtraso)} e canal direto para retorno no mesmo dia.`,
-      occurredAt: "11/05/2026 10:27",
-      operator: client.responsavel,
-      status: "Enviado",
-    },
-    {
-      actionType: "promessa",
-      id: `${client.id}-promise-20260510`,
-      protocol: guardianProtocol(ordinalFor(client.id, 52)),
-      type: "Promessa de pagamento",
-      title: "Promessa registrada",
-      description: `Cliente sinalizou possibilidade de entrada de ${agreementAmount} após validação do fluxo financeiro familiar.`,
-      occurredAt: "10/05/2026 17:45",
-      operator: client.responsavel,
-      status: "Prometido",
-    },
-    {
-      actionType: "acordo",
-      id: `${client.id}-agreement-20260510`,
-      protocol: guardianProtocol(ordinalFor(client.id, 53)),
-      type: "Acordo gerado",
-      title: "Minuta de acordo criada",
-      description: EMPTY_FIELD,
-      occurredAt: "10/05/2026 16:58",
-      operator: client.responsavel,
-      status: "Gerado",
-    },
-    {
-      actionType: "acordo",
-      id: `${client.id}-broken-20260509`,
-      protocol: guardianProtocol(ordinalFor(client.id, 54)),
-      type: "Quebra de acordo",
-      title: "Acordo anterior descumprido",
-      description: "Parcela combinada não foi liquidada no prazo e a régua retornou para acompanhamento humano prioritário.",
-      occurredAt: "09/05/2026 09:12",
-      operator: EMPTY_FIELD,
-      status: "Quebrado",
-    },
-    {
-      actionType: "boleto C2X",
-      id: `${client.id}-invoice-20260508`,
-      protocol: guardianProtocol(ordinalFor(client.id, 55)),
-      type: "Boleto C2X",
-      title: "Boleto C2X consultado",
-      description: `Hades consultou boleto original do C2X com valor de referência de ${boletoAmount} para envio multicanal.`,
-      occurredAt: "08/05/2026 14:36",
-      operator: EMPTY_FIELD,
-      status: "Registrado",
-    },
-    {
-      actionType: "alteração",
-      id: `${client.id}-registration-20260508`,
-      protocol: guardianProtocol(ordinalFor(client.id, 56)),
-      type: "Atualização cadastral",
-      title: "Dados cadastrais revisados",
-      description: `Telefone ${client.telefone}, cidade ${client.cidade} e perfil de renda conferidos antes da abordagem.`,
-      occurredAt: "08/05/2026 11:04",
-      operator: client.responsavel,
-      status: "Atualizado",
-    },
-    {
-      actionType: "interação",
-      id: `${client.id}-note-20260507`,
-      protocol: guardianProtocol(ordinalFor(client.id, 57)),
-      type: "Observação operacional",
-      title: "Contexto de carteira registrado",
-      description: `Cliente vinculado ao empreendimento ${client.empreendimento}; abordagem recomendada deve preservar histórico comercial.`,
-      occurredAt: "07/05/2026 18:10",
-      operator: client.responsavel,
-      status: "Registrado",
-    },
-    {
-      actionType: "workflow",
-      id: `${client.id}-risk-20260507`,
-      protocol: guardianProtocol(ordinalFor(client.id, 58)),
-      type: "Alteração de risco",
-      title: "Risco operacional reclassificado",
-      description: `Score atualizado para ${client.scoreRisco}/100 considerando ${client.atrasoDias} dias de atraso e recorrência recente.`,
-      occurredAt: "07/05/2026 08:42",
-      operator: "Motor de risco Hades",
-      status: "Elevado",
-    },
-    {
-      actionType: "jurídico",
-      id: `${client.id}-legal-20260506`,
-      protocol: guardianProtocol(ordinalFor(client.id, 59)),
-      type: "Acionamento jurídico",
-      title: "Pré-análise jurídica registrada",
-      description: urgent
-        ? "Caso sinalizado para validação jurídica preventiva, ainda sem bloqueio da negociação amigável."
-        : "Registro jurídico mantido apenas como trilha de auditoria, sem escalonamento ativo.",
-      occurredAt: "06/05/2026 15:25",
-      operator: legalOperator,
-      status: "Jurídico",
-    },
-    {
-      actionType: "IA",
-      id: `${client.id}-ai-20260506`,
-      protocol: guardianProtocol(ordinalFor(client.id, 60)),
-      type: "Interação da IA",
-      title: "Assistente Hades sugeriu próxima ação",
-      description: "IA recomendou abordagem consultiva, mensagem objetiva e proposta proporcional ao risco do cliente.",
-      occurredAt: "06/05/2026 09:30",
-      operator: "Assistente Hades",
-      status: "IA",
-    },
-  ];
 }
 
 function workflowStageForClient(client: HadesMockClient): QueueClient["workflow"]["stage"] {
@@ -604,178 +296,14 @@ function workflowStageForClient(client: HadesMockClient): QueueClient["workflow"
   return client.atrasoDias >= 3 ? "Contato" : "A acionar";
 }
 
-function previousWorkflowStage(stage: QueueClient["workflow"]["stage"]): QueueClient["workflow"]["history"][number]["from"] {
-  const map: Partial<Record<QueueClient["workflow"]["stage"], QueueClient["workflow"]["history"][number]["from"]>> = {
-    "A acionar": "Entrada",
-    Contato: "A acionar",
-    Negociação: "Contato",
-    "Promessa de pagamento": "Negociação",
-    Acordo: "Negociação",
-    Quebra: "Promessa de pagamento",
-    Jurídico: "Quebra",
-    "Novo atraso": "Entrada",
-    "Primeiro contato": "A acionar",
-    "Sem retorno": "Contato",
-    "Em negociação": "Contato",
-    "Promessa realizada": "Negociação",
-    "Aguardando pagamento": "Promessa de pagamento",
-    Pago: "Acordo",
-    "Quebra de promessa": "Promessa de pagamento",
-    Crítico: "Quebra",
-    "Distrato/Evasão": "Jurídico",
-  };
-
-  return map[stage] ?? "Entrada";
-}
-
-function workflowNextAction(stage: QueueClient["workflow"]["stage"]) {
-  const map: Partial<Record<QueueClient["workflow"]["stage"], string>> = {
-    "A acionar": "Entrar na cadência ativa e registrar primeira tentativa",
-    Contato: "Manter cliente na régua diária até obter retorno",
-    Negociação: "Conduzir proposta e registrar contraproposta do cliente",
-    "Promessa de pagamento": "Acompanhar data prometida; pausar fila diária enquanto ativa",
-    Acordo: "Formalizar acordo e acompanhar vínculo operacional",
-    Quebra: "Retomar cadência diária e recalibrar proposta",
-    Jurídico: "Validar documentação e encaminhamento jurídico",
-    "Novo atraso": "Entrar na cadência ativa e registrar primeira tentativa",
-    "Primeiro contato": "Manter cliente na régua diária até obter retorno",
-    "Sem retorno": "Reforçar acionamento multicanal e janela de ligação",
-    "Em negociação": "Conduzir proposta e registrar contraproposta do cliente",
-    "Promessa realizada": "Acompanhar data prometida; pausar fila diária enquanto ativa",
-    "Aguardando pagamento": "Acompanhar compensação e enviar lembrete objetivo",
-    Pago: "Registrar regularização e remover da inadimplência ativa",
-    "Quebra de promessa": "Retomar cadência diária e recalibrar proposta",
-    Crítico: "Acionamento humano prioritário com alternativa flexível",
-    "Distrato/Evasão": "Registrar risco de evasão e acionar governança comercial",
-  };
-
-  return map[stage] ?? "Registrar retorno e manter cadência operacional";
-}
-
-function workflowReason(stage: QueueClient["workflow"]["stage"], client: HadesMockClient) {
-  const base = `${client.parcelasVencidas} parcela(s), ${client.atrasoDias} dias de atraso e score ${client.scoreRisco}/100.`;
-
-  if (stage === "Acordo" || stage === "Pago") return "Acordo/regularização registrado; cliente deixa a fila diária enquanto estiver ativo.";
-  if (stage === "Jurídico") return `Escalonamento por severidade operacional: ${base}`;
-  if (stage === "Crítico") return `Risco elevado pela combinação de atraso e recorrência: ${base}`;
-  if (stage === "Quebra" || stage === "Quebra de promessa") return "Promessa ou acordo não cumprido; cliente retorna para a cadência diária.";
-  if (stage === "Promessa de pagamento" || stage === "Promessa realizada" || stage === "Aguardando pagamento") return "Cliente sinalizou data ou condição de pagamento após negociação.";
-  if (stage === "Negociação" || stage === "Em negociação") return "Cliente respondeu e ainda não existe proposta fechada.";
-  if (stage === "Contato" || stage === "Primeiro contato" || stage === "Sem retorno") return "Contato ativo registrado ou pendente de retorno do cliente.";
-  if (stage === "Distrato/Evasão") return "Sinal de evasão registrado para governança comercial.";
-
-  return "Cliente elegível para acionamento pela régua operacional.";
-}
-
-function agreementStatusForClient(client: HadesMockClient): QueueClient["agreement"]["status"] {
-  if (client.status === "Regularizado") return "Pago";
-  if (client.status === "Proposta enviada") return "Formalizando";
-  if (client.status === "Em negociação") return "Em negociação";
-  if (client.status === "Aguardando retorno") return "Em negociação";
-  if (client.status === "Contato programado") return "Em negociação";
-  if (client.status === "Escalado") return client.atrasoDias >= 80 ? "Quebrado" : "Reativado";
-  if (client.status === "A vencer") return "Ativo";
-
-  return "Em negociação";
-}
-
-function agreementRiskForClient(client: HadesMockClient): QueueClient["agreement"]["risk"] {
-  if (client.prioridade === "Crítica" || client.scoreRisco >= 86) return "Crítico";
-  if (client.prioridade === "Alta" || client.scoreRisco >= 74) return "Alto";
-  if (client.prioridade === "Média" || client.scoreRisco >= 55) return "Moderado";
-
-  return "Baixo";
-}
-
-function agreementDiscountRate(client: HadesMockClient) {
-  if (client.prioridade === "Crítica") return 0.18;
-  if (client.prioridade === "Alta") return 0.14;
-  if (client.prioridade === "Média") return 0.1;
-
-  return 0.06;
-}
-
-function agreementEntryRate(client: HadesMockClient) {
-  if (client.prioridade === "Crítica") return 0.18;
-  if (client.prioridade === "Alta") return 0.22;
-  if (client.prioridade === "Média") return 0.28;
-
-  return 0.35;
-}
-
-function agreementInstallments(client: HadesMockClient) {
-  if (client.prioridade === "Crítica") return 6;
-  if (client.prioridade === "Alta") return 5;
-  if (client.prioridade === "Média") return 4;
-
-  return 3;
-}
-
-function agreementBreakChance(
-  client: HadesMockClient,
-  risk: QueueClient["agreement"]["risk"]
-) {
-  const base = {
-    Baixo: 12,
-    Moderado: 28,
-    Alto: 46,
-    "Crítico": 64,
-  }[risk];
-
-  return Math.min(base + Math.floor(client.atrasoDias / 20), 82);
-}
-
-function agreementNextAction(
-  status: QueueClient["agreement"]["status"],
-  risk: QueueClient["agreement"]["risk"]
-) {
-  if (status === "Quebrado") return "Reativar acordo com entrada menor e validação humana no mesmo dia";
-  if (status === "Formalizando") return "Enviar minuta, confirmar aceite e bloquear vencimento de entrada";
-  if (status === "Ativo") return "Monitorar compensação e enviar lembrete antes do próximo vencimento";
-  if (status === "Pago") return "Registrar recuperação e manter régua preventiva";
-  if (status === "Reativado") return "Confirmar pagamento da nova entrada antes de retirar da fila crítica";
-  if (status === "Cancelado") return "Enviar para governança comercial e revisar risco de distrato";
-  if (risk === "Crítico") return "Oferecer composição conservadora com entrada acessível e menos parcelas";
-
-  return "Formalizar proposta e acompanhar promessa de pagamento";
-}
-
-function buildAgreementDueDates(
-  client: HadesMockClient,
-  installmentsCount: number,
-  entryValue: number,
-  installmentValue: number,
-  status: QueueClient["agreement"]["status"]
-): QueueClient["agreement"]["dueDates"] {
-  const totalItems = Math.min(installmentsCount + 1, 7);
-
-  return Array.from({ length: totalItems }, (_, index) => {
-    const isEntry = index === 0;
-    const date = new Date(2026, 4 + index, isEntry ? 15 : 10);
-    const paid =
-      status === "Pago" ||
-      ((status === "Ativo" || status === "Reativado") && index === 0);
-    const overdue = status === "Quebrado" && index <= 1;
-
-    return {
-      id: `${client.id}-agreement-due-${index}`,
-      label: isEntry ? "Entrada" : `Parcela ${String(index).padStart(2, "0")}`,
-      dueDate: formatDate(date),
-      amount: money(isEntry ? entryValue : installmentValue),
-      status: paid ? "Pago" : overdue ? "Vencido" : status === "Reativado" ? "Reprogramado" : "A vencer",
-    };
-  });
-}
-
 function buildSuggestion() {
   return EMPTY_FIELD;
 }
 
-function nextActionForStatus(status: string, priority: QueueClient["prioridade"]) {
-  return EMPTY_FIELD;
-}
+function nextActionForStatus(_status: string, _priority: QueueClient["prioridade"]) {
+  void _status;
+  void _priority;
 
-function brokerForEnterprise(enterprise: string) {
   return EMPTY_FIELD;
 }
 
@@ -822,25 +350,10 @@ function normalizeCodePart(value: string) {
     .replace(/[^A-Z0-9]/g, "");
 }
 
-function guardianProtocol(seed: number) {
-  return `GDN-${String(Math.max(seed, 1)).padStart(6, "0")}`;
-}
+function birthDateFromAge(_ageLabel: string) {
+  void _ageLabel;
 
-function ordinalFor(source: string, offset = 0) {
-  const total = Array.from(source).reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return ((total + offset) % 999999) || 1;
-}
-
-function hasSpouse(status: string) {
-  return status === "Casado" || status === "Casada" || status === "União estável";
-}
-
-function birthDateFromAge(ageLabel: string) {
   return EMPTY_FIELD;
-}
-
-function formatDate(date: Date) {
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
 function money(value: number) {

@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 import { GitBranch, Sparkles } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";

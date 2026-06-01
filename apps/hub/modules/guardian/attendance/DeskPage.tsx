@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -9,14 +7,11 @@ import {
   Bell,
   Bot,
   BrainCircuit,
-  CheckCircle2,
   Clock3,
   Headphones,
   Inbox,
   MessageCircle,
   Network,
-  Radio,
-  RefreshCw,
   Send,
   ShieldAlert,
   Sparkles,

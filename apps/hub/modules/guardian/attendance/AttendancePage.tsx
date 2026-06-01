@@ -1,21 +1,37 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Inbox, MapPinned, MessageCircle } from "lucide-react";
-import { Tooltip } from "@repo/uix";
 import {
-  mapLegacyRoleToOperationalProfile,
-  type HubUserContext,
-  type OperationalProfileRole,
-} from "@repo/shared";
-import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
+  buildTodayContactClientIds,
+  isDailyQueueClient,
+  type QueueMode,
+} from "@/modules/guardian/attendance/daily-queue";
+import {
+  dedupeTimelineEvents,
+  mergeCommitments,
+  upsertById,
+  type ManualHadesOperations,
+} from "@/modules/guardian/attendance/manual-operations";
+import {
+  normalizeAttendanceProtocol,
+  normalizeAttendanceSection,
+  type AttendanceSection,
+} from "@/modules/guardian/attendance/attendance-routing";
+import {
+  buildOverdueRangeCounts,
+  isClientInHadesProfileScope,
+  isHadesLeadershipProfile,
+  isClientInOverdueRange,
+  resolveHadesOperationalProfile,
+  type OverdueRangeFilter,
+} from "@/modules/guardian/attendance/profile-scope";
 import { AiCopilotDrawer } from "@/modules/guardian/attendance/components/AiCopilotDrawer";
+import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
 import { QueuePanel } from "@/modules/guardian/attendance/components/QueuePanel";
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
-import { IrisPage } from "@/modules/caredesk/IrisPage";
+import { IrisCollectionQueueEmbed } from "@/modules/caredesk/embeds/iris-collection-queue-embed";
+import { AttendanceSectionNavigation } from "@/modules/guardian/attendance/components/AttendanceSectionNavigation";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { queueClients } from "@/modules/guardian/attendance/data";
 import { useAuth } from "@/providers/auth-provider";
@@ -34,19 +50,6 @@ const priorities: Array<AttendancePriority | "Todos"> = [
   "Baixa",
 ];
 
-type AttendanceSection = "queue" | "desk" | "portfolio";
-type QueueMode = "daily" | "general";
-type OverdueRangeFilter = "all" | "1-30" | "31-60" | "60+";
-type ManualHadesOperations = {
-  commitments: QueueClient["commitments"];
-  events: OperationalTimelineEvent[];
-};
-
-const attendanceSections: Array<{ id: AttendanceSection; label: string; badge?: string; icon: typeof Inbox }> = [
-  { id: "queue", label: "Fila operacional", icon: Inbox },
-  { id: "desk", label: "Iris", badge: "3", icon: MessageCircle },
-  { id: "portfolio", label: "Carteira", icon: MapPinned },
-];
 const INITIAL_QUEUE_LIMIT = 600;
 const emptyManualOperations: ManualHadesOperations = {
   commitments: [],
@@ -260,9 +263,9 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
           return;
         }
 
-        if (!response.ok || !payload || "error" in payload) {
+        if (!response.ok || !isManualHadesOperations(payload)) {
           throw new Error(
-            payload?.error ?? "Nao foi possivel carregar registros manuais.",
+            getManualOperationsError(payload) ?? "Nao foi possivel carregar registros manuais.",
           );
         }
 
@@ -419,60 +422,18 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     filteredClients[0] ??
     overdueScopedClients.find((client) => client.id === selectedId) ??
     overdueScopedClients[0];
-  const selectedManualOperations =
-    manualOperationsByClient[selectedClient?.id ?? ""] ?? emptyManualOperations;
-  const selectedClientWithManualOperations = selectedClient
-    ? {
-        ...selectedClient,
-        commitments: mergeCommitments(
-          selectedManualOperations.commitments,
-          selectedClient.commitments,
-        ),
-      }
-    : selectedClient;
-  const selectedExtraTimelineEvents = dedupeTimelineEvents([
-    ...selectedManualOperations.events,
-    ...(timelineEventsByClient[selectedClient?.id ?? ""] ?? []),
-  ]);
-  const whatsAppClient = whatsAppClientId
-    ? sourceClients.find((client) => client.id === whatsAppClientId) ?? selectedClient
-    : selectedClient;
   const sectionNavigation = (
-    <nav className="flex w-fit gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-label="Modulos de cobranca">
-      {attendanceSections.map((section) => {
-        const Icon = section.icon;
-        const active = activeSection === section.id;
-
-        return (
-          <Tooltip key={section.id} content={section.label} placement="bottom">
-            <button
-              type="button"
-              onClick={() => setActiveSection(section.id)}
-              aria-label={section.label}
-              className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                active
-                  ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/20"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-            >
-              <Icon className="size-4" aria-hidden="true" />
-              {section.badge ? (
-                <span className="absolute -right-1 -top-1 rounded-full bg-[#A07C3B] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                  {section.badge}
-                </span>
-              ) : null}
-            </button>
-          </Tooltip>
-        );
-      })}
-    </nav>
+    <AttendanceSectionNavigation
+      activeSection={activeSection}
+      onSectionChange={setActiveSection}
+    />
   );
 
   if (activeSection === "desk" && !whatsAppClientId) {
     return (
       <div className="space-y-5">
         {sectionNavigation}
-        <IrisPage embedded boardOnly queueSlugFilter="cobranca" />
+        <IrisCollectionQueueEmbed queueSlugFilter="cobranca" />
       </div>
     );
   }
@@ -487,7 +448,25 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     );
   }
 
-  function openWhatsApp(clientId = selectedClient.id, attendanceProtocol?: string | null) {
+  const activeClient = selectedClient;
+  const selectedManualOperations =
+    manualOperationsByClient[activeClient.id] ?? emptyManualOperations;
+  const selectedClientWithManualOperations: QueueClient = {
+    ...activeClient,
+    commitments: mergeCommitments(
+      selectedManualOperations.commitments,
+      activeClient.commitments,
+    ),
+  };
+  const selectedExtraTimelineEvents = dedupeTimelineEvents([
+    ...selectedManualOperations.events,
+    ...(timelineEventsByClient[activeClient.id] ?? []),
+  ]);
+  const whatsAppClient = whatsAppClientId
+    ? sourceClients.find((client) => client.id === whatsAppClientId) ?? activeClient
+    : activeClient;
+
+  function openWhatsApp(clientId = activeClient.id, attendanceProtocol?: string | null) {
     setSelectedId(clientId);
     setWhatsAppClientId(clientId);
     setWhatsAppAttendanceProtocol(normalizeAttendanceProtocol(attendanceProtocol));
@@ -498,7 +477,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     event: OperationalTimelineEvent,
   ) {
     const clientForEvent =
-      sourceClients.find((client) => client.id === clientId) ?? selectedClient;
+      sourceClients.find((client) => client.id === clientId) ?? activeClient;
 
     if (!clientForEvent) {
       return;
@@ -526,8 +505,10 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       | { error?: string }
       | null;
 
-    if (!response.ok || !payload || "error" in payload) {
-      throw new Error(payload?.error ?? "Nao foi possivel salvar evento manual.");
+    if (!response.ok || !isManualHadesOperations(payload)) {
+      throw new Error(
+        getManualOperationsError(payload) ?? "Nao foi possivel salvar evento manual.",
+      );
     }
 
     upsertManualOperations(clientForEvent.id, payload);
@@ -547,9 +528,9 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     const response = await fetch("/api/hades/attendance/manual-events", {
       body: JSON.stringify({
         client: {
-          c2xAcquisitionRequestId: selectedClient.c2xAcquisitionRequestId,
-          id: selectedClient.id,
-          name: selectedClient.nome,
+          c2xAcquisitionRequestId: activeClient.c2xAcquisitionRequestId,
+          id: activeClient.id,
+          name: activeClient.nome,
         },
         commitment: record,
         kind: "commitment",
@@ -566,11 +547,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       | { error?: string }
       | null;
 
-    if (!response.ok || !payload || "error" in payload) {
-      throw new Error(payload?.error ?? "Nao foi possivel salvar compromisso.");
+    if (!response.ok || !isManualHadesOperations(payload)) {
+      throw new Error(
+        getManualOperationsError(payload) ?? "Nao foi possivel salvar compromisso.",
+      );
     }
 
-    upsertManualOperations(selectedClient.id, payload);
+    upsertManualOperations(activeClient.id, payload);
   }
 
   async function updateManualCommitment(record: QueueClient["commitments"][number]) {
@@ -599,11 +582,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       | { error?: string }
       | null;
 
-    if (!response.ok || !payload || "error" in payload) {
-      throw new Error(payload?.error ?? "Nao foi possivel atualizar compromisso.");
+    if (!response.ok || !isManualHadesOperations(payload)) {
+      throw new Error(
+        getManualOperationsError(payload) ?? "Nao foi possivel atualizar compromisso.",
+      );
     }
 
-    upsertManualOperations(selectedClient.id, payload);
+    upsertManualOperations(activeClient.id, payload);
   }
 
   function upsertManualOperations(clientId: string, payload: ManualHadesOperations) {
@@ -642,7 +627,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
           {sectionNavigation}
 
           {activeSection === "desk" ? (
-            <IrisPage embedded boardOnly queueSlugFilter="cobranca" />
+            <IrisCollectionQueueEmbed queueSlugFilter="cobranca" />
           ) : (
             <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
               <QueuePanel
@@ -660,7 +645,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                 enterprises={enterpriseOptions}
                 search={search}
                 selectedEnterprise={enterprise}
-                selectedClientId={selectedClient.id}
+                selectedClientId={activeClient.id}
                 selectedPriority={priority}
                 selectedStage={stage}
                 onEnterpriseChange={setEnterprise}
@@ -673,14 +658,14 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                 onSelectClient={setSelectedId}
               />
               <ClientDetailPanel
-                key={selectedClient.id}
+                key={activeClient.id}
                 client={selectedClientWithManualOperations}
                 extraTimelineEvents={selectedExtraTimelineEvents}
                 onCreateCommitment={saveManualCommitment}
                 onCreateTimelineEvent={(event) =>
-                  saveManualTimelineEvent(selectedClient.id, event)
+                  saveManualTimelineEvent(activeClient.id, event)
                 }
-                onOpenWhatsApp={() => openWhatsApp(selectedClient.id)}
+                onOpenWhatsApp={() => openWhatsApp(activeClient.id)}
                 onUpdateCommitment={updateManualCommitment}
               />
             </div>
@@ -697,232 +682,21 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   );
 }
 
-function upsertById<T extends { id: string }>(nextRows: T[], currentRows: T[]) {
-  const nextIds = new Set(nextRows.map((row) => row.id));
-
-  return [
-    ...nextRows,
-    ...currentRows.filter((row) => !nextIds.has(row.id)),
-  ];
-}
-
-function mergeCommitments(
-  manualCommitments: QueueClient["commitments"],
-  baseCommitments: QueueClient["commitments"],
-) {
-  return upsertById(manualCommitments, baseCommitments);
-}
-
-function dedupeTimelineEvents(events: OperationalTimelineEvent[]) {
-  return upsertById(events, []);
-}
-
-function normalizeAttendanceProtocol(value?: string | null) {
-  const normalized = String(value ?? "").trim().toUpperCase();
-
-  return /^AT-\d{1,12}$/.test(normalized) ? normalized : null;
-}
-
-function normalizeAttendanceSection(value?: string | null): AttendanceSection | null {
-  const normalized = String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-
-  if (
-    normalized === "iris" ||
-    normalized === "desk" ||
-    normalized === "board"
-  ) {
-    return "desk";
-  }
-
-  if (normalized === "carteira" || normalized === "portfolio") {
-    return "portfolio";
-  }
-
-  if (
-    normalized === "fila" ||
-    normalized === "queue" ||
-    normalized === "cobranca"
-  ) {
-    return "queue";
-  }
-
-  return null;
-}
-
-function resolveHadesOperationalProfile(hubUser: HubUserContext | null) {
-  const profileRole =
-    hubUser?.operationalProfile?.profileRole ??
-    (hubUser ? mapLegacyRoleToOperationalProfile(hubUser.role) : "op1");
-
-  return {
-    label: HADES_PROFILE_LABELS[profileRole],
-    profileRole,
-  };
-}
-
-function isClientInHadesProfileScope(
-  client: QueueClient,
-  profileRole: OperationalProfileRole,
-) {
-  if (profileRole === "adm" || profileRole === "cdr" || profileRole === "ldr") {
-    return true;
-  }
-
-  if (profileRole === "op1") {
-    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
-  }
-
-  if (profileRole === "op2") {
-    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
-  }
-
-  return client.atrasoDias >= 61 && client.atrasoDias <= 90;
-}
-
-function isHadesLeadershipProfile(profileRole: OperationalProfileRole) {
-  return profileRole === "adm" || profileRole === "cdr" || profileRole === "ldr";
-}
-
-function isClientInOverdueRange(client: QueueClient, range: OverdueRangeFilter) {
-  if (range === "1-30") {
-    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
-  }
-
-  if (range === "31-60") {
-    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
-  }
-
-  if (range === "60+") {
-    return client.atrasoDias > 60;
-  }
-
-  return true;
-}
-
-function buildOverdueRangeCounts(clients: QueueClient[]) {
-  return {
-    "1-30": clients.filter((client) => isClientInOverdueRange(client, "1-30")).length,
-    "31-60": clients.filter((client) => isClientInOverdueRange(client, "31-60")).length,
-    "60+": clients.filter((client) => isClientInOverdueRange(client, "60+")).length,
-    all: clients.length,
-  } satisfies Record<OverdueRangeFilter, number>;
-}
-
-function isDailyQueueClient(client: QueueClient) {
-  if (client.atrasoDias < 3) {
-    return false;
-  }
-
-  const stage = normalizeDailyWorkflowStage(client.workflow.stage);
-
-  return stage !== "Promessa de pagamento" && stage !== "Acordo";
-}
-
-function normalizeDailyWorkflowStage(stage: WorkflowStage) {
-  if (stage === "Promessa realizada" || stage === "Aguardando pagamento") {
-    return "Promessa de pagamento";
-  }
-
-  if (stage === "Pago") {
-    return "Acordo";
-  }
-
-  return stage;
-}
-
-function buildTodayContactClientIds({
-  manualOperationsByClient,
-  sourceClients,
-  timelineEventsByClient,
-}: {
-  manualOperationsByClient: Record<string, ManualHadesOperations>;
-  sourceClients: QueueClient[];
-  timelineEventsByClient: Record<string, OperationalTimelineEvent[]>;
-}) {
-  const ids = new Set<string>();
-
-  sourceClients.forEach((client) => {
-    const events = [
-      ...(client.timeline ?? []),
-      ...(client.workflow.history ?? []),
-      ...(timelineEventsByClient[client.id] ?? []),
-      ...(manualOperationsByClient[client.id]?.events ?? []),
-    ];
-
-    if (events.some(hasTodayContactEvidence)) {
-      ids.add(client.id);
-    }
-  });
-
-  return ids;
-}
-
-function hasTodayContactEvidence(event: unknown) {
-  const record = event as {
-    changedAt?: string;
-    occurredAt?: string;
-    status?: string;
-    type?: string;
-  };
-  const type = String(record.type ?? "").toLowerCase();
-  const status = String(record.status ?? "").toLowerCase();
-
-  if (
-    ![
-      "ligação realizada",
-      "whatsapp enviado",
-      "promessa de pagamento",
-      "acordo gerado",
-      "observação operacional",
-    ].some((needle) => type.includes(needle)) &&
-    !["realizado", "enviado", "prometido", "gerado", "registrado"].some(
-      (needle) => status.includes(needle),
-    )
-  ) {
-    return false;
-  }
-
-  return isTodayDateLike(record.occurredAt ?? record.changedAt);
-}
-
-function isTodayDateLike(value?: string | null) {
-  if (!value) {
-    return false;
-  }
-
-  const today = new Date();
-  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-
-  if (match) {
-    return (
-      Number(match[1]) === today.getDate() &&
-      Number(match[2]) === today.getMonth() + 1 &&
-      Number(match[3]) === today.getFullYear()
-    );
-  }
-
-  const parsed = new Date(value);
-
+function isManualHadesOperations(
+  payload: ManualHadesOperations | { error?: string } | null,
+): payload is ManualHadesOperations {
   return (
-    Number.isFinite(parsed.getTime()) &&
-    parsed.getDate() === today.getDate() &&
-    parsed.getMonth() === today.getMonth() &&
-    parsed.getFullYear() === today.getFullYear()
+    Boolean(payload) &&
+    Array.isArray((payload as ManualHadesOperations).commitments) &&
+    Array.isArray((payload as ManualHadesOperations).events)
   );
 }
 
-const HADES_PROFILE_LABELS: Record<OperationalProfileRole, string> = {
-  adm: "Admin | visão total",
-  cdr: "Coordenador | visão total",
-  ldr: "Líder | visão total",
-  op1: "OP1 | 1 a 30 dias",
-  op2: "OP2 | 31 a 60 dias",
-  op3: "OP3 | 61 a 90 dias",
-};
+function getManualOperationsError(
+  payload: ManualHadesOperations | { error?: string } | null,
+) {
+  return payload && "error" in payload ? payload.error : undefined;
+}
 
 async function getHadesAccessToken() {
   const client = getHubSupabaseClient();

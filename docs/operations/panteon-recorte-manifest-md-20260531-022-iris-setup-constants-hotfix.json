@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-022-IRIS-SETUP-CONSTANTS-HOTFIX",
+  "module": "iris",
+  "agent": "Iris Core",
+  "title": "Iris Setup constants hotfix",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "setup",
+    "runtime-hotfix"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/caredesk/IrisPage.tsx",
+    "apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx",
+    "docs/operations/panteon-iris-decomposition-map-2026-05-30.md",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-022-iris-setup-constants-hotfix.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "npx.cmd eslint modules/caredesk/blocks/setup/iris-setup-view.tsx --rule \"no-undef:error\" em apps/hub: PASS, sem identificadores indefinidos no Setup extraido",
+    "npx.cmd eslint <arquivos-com-ts-nocheck> --rule \"no-undef:error\" em apps/hub: PASS nos arquivos @ts-nocheck do Hub, incluindo Iris e Guardian/Hades, com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "smoke HTTP no dev server http://127.0.0.1:3001 para 31 rotas principais do Hub: PASS 200 OK",
+    "smoke local com next start temporario em http://127.0.0.1:3010 para rotas criticas: PASS 200 OK",
+    "Browser/Chrome plugin: BLOQUEADO por falha de sandbox do node_repl; Playwright local nao instalado",
+    "Leitura final do log dev: entradas setupStatusLabel/Clock3 sao anteriores ao hotfix; entradas genericas Next Router action dispatched before initialization ficaram como risco residual de HMR/navegacao dev, sem stack de modulo e nao reproduzidas nos smokes/build",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-022-iris-setup-constants-hotfix.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module iris --allow zeus --files apps/hub/modules/caredesk/IrisPage.tsx,apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx,docs/operations/panteon-iris-decomposition-map-2026-05-30.md,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-recorte-manifest-md-20260531-022-iris-setup-constants-hotfix.json,docs/operations/engineering-operations.md: PASS",
+    "PowerShell trailing whitespace check nos arquivos do recorte: PASS",
+    "git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx docs/operations/panteon-iris-decomposition-map-2026-05-30.md docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-recorte-manifest-md-20260531-022-iris-setup-constants-hotfix.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF em IrisPage.tsx e engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Remover priorityLabel, priorityOptions, setupStatusLabel e setupStatusOptions do contrato constants de IrisSetupView.",
+    "Restaurar a dependencia anterior se o Setup voltar a ser renderizado dentro da IrisPage sem bloco extraido."
+  ],
+  "notes": [
+    "Hotfix local disparado por erro visual reportado pelo Lucas: setupStatusLabel is not defined.",
+    "O Setup extraido usava labels/status/priority como referencias livres; agora recebe esses valores pelo contrato constants do IrisSetupView.",
+    "Na mesma revalidacao local, foram restaurados os imports lucide Clock3 e CircleStop usados pelos cards de status dos templates para evitar Runtime ReferenceError no IrisTemplateSetupPanel.",
+    "Nao altera UI, endpoint, payload funcional, regra de fila/assunto, webhook, env, secret, banco, Supabase admin, Vercel, Preview, homologacao ou producao."
+  ]
+}

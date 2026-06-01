@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-023-HADES-IRIS-QUEUE-EMBED",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades Iris queue embed boundary",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "hades-iris-boundary",
+    "attendance"
+  ],
+  "allowedLayers": ["iris", "zeus"],
+  "includedFiles": [
+    "apps/hub/modules/guardian/attendance/AttendancePage.tsx",
+    "apps/hub/modules/caredesk/embeds/iris-collection-queue-embed.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-023-hades-iris-queue-embed.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com aviso conhecido MODULE_TYPELESS_PACKAGE_JSON em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke HTTP no dev server http://127.0.0.1:3001 para /hades/cobranca, /hades/atendimento, /guardian/atendimento, /guardian/cobranca e /iris: PASS 200 OK",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-023-hades-iris-queue-embed.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow iris --allow zeus --files apps/hub/modules/guardian/attendance/AttendancePage.tsx,apps/hub/modules/caredesk/embeds/iris-collection-queue-embed.tsx,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-recorte-manifest-md-20260531-023-hades-iris-queue-embed.json,docs/operations/engineering-operations.md: PASS",
+    "PowerShell trailing whitespace check nos arquivos do recorte: PASS",
+    "git diff --check -- apps/hub/modules/guardian/attendance/AttendancePage.tsx apps/hub/modules/caredesk/embeds/iris-collection-queue-embed.tsx docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-recorte-manifest-md-20260531-023-hades-iris-queue-embed.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF em AttendancePage.tsx e engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Remover apps/hub/modules/caredesk/embeds/iris-collection-queue-embed.tsx.",
+    "Restaurar em AttendancePage.tsx o import direto de IrisPage e os dois usos <IrisPage embedded boardOnly queueSlugFilter=\"cobranca\" />."
+  ],
+  "notes": [
+    "Recorte escolhido apos Iris por criticidade estrutural: Hades tinha import direto da pagina raiz IrisPage.",
+    "O Hades agora consome um contrato publico IrisCollectionQueueEmbed mantido pela Iris, reduzindo acoplamento sem alterar UI ou fluxo.",
+    "Nao altera endpoint, payload funcional, regra financeira, Asaas, D4Sign, Guardian DB, env, secret, banco, Supabase admin, Vercel, Preview, homologacao ou producao."
+  ]
+}

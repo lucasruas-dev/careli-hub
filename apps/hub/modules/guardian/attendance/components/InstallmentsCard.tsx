@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -754,10 +752,6 @@ function formatViewingDate(value?: string) {
   });
 }
 
-function capitalize(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
 function parseReference(reference: string) {
   const match = reference.trim().match(/^(\d{2})\/(\d{4})$/);
 
@@ -766,16 +760,6 @@ function parseReference(reference: string) {
   }
 
   return Number(match[2]) * 100 + Number(match[1]);
-}
-
-function parseBrazilianDate(date: string) {
-  const [day, month, year] = date.split("/").map(Number);
-  return new Date(year, month - 1, day).getTime();
-}
-
-function toDateInput(date: string) {
-  const [day, month, year] = date.split("/");
-  return `${year}-${month}-${day}`;
 }
 
 function formatLote(lote: string) {

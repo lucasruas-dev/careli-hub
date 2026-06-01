@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "AT-20260530-002-ATHENA-IRIS-CACA",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Contrato Athena e Iris Caca",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "athena-contracts",
+    "iris-caca",
+    "openai-governance",
+    "meta-whatsapp-governance",
+    "documentacao-operacional"
+  ],
+  "allowedLayers": [
+    "athena",
+    "iris"
+  ],
+  "includedFiles": [
+    "docs/operations/panteon-athena-iris-caca-contract-2026-05-30.md",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-agent-governance-v2.md",
+    "docs/operations/panteon-module-agent-map.md",
+    "docs/operations/panteon-engineering-activity-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-restructure-plan.md",
+    "docs/operations/panteon-recorte-manifest-at-20260530-002-athena-iris-caca.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-at-20260530-002-athena-iris-caca.json",
+    "node scripts/panteon-boundary-check.mjs --module zeus --allow athena --allow iris --files docs/operations/panteon-athena-iris-caca-contract-2026-05-30.md,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-agent-governance-v2.md,docs/operations/panteon-module-agent-map.md,docs/operations/panteon-engineering-activity-tree-2026-05-30.md,docs/operations/panteon-engineering-restructure-plan.md,docs/operations/panteon-recorte-manifest-at-20260530-002-athena-iris-caca.json",
+    "git diff --check -- docs/operations/panteon-athena-iris-caca-contract-2026-05-30.md docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-agent-governance-v2.md docs/operations/panteon-module-agent-map.md docs/operations/panteon-engineering-activity-tree-2026-05-30.md docs/operations/panteon-engineering-restructure-plan.md docs/operations/panteon-recorte-manifest-at-20260530-002-athena-iris-caca.json docs/operations/engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": [
+      "https://c2x.app.br",
+      "https://ops.c2x.app.br"
+    ],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Remover docs/operations/panteon-athena-iris-caca-contract-2026-05-30.md.",
+    "Remover referencias ao contrato AT-20260530-002 dos documentos operacionais atualizados.",
+    "Manter producao no baseline congelado; este recorte nao altera runtime publicado."
+  ],
+  "notes": [
+    "Contrato documental para separar Caca customer-facing, Athena transversal, Iris Core owner e Zeus governanca sensivel.",
+    "Este recorte declara env names OpenAI e Meta apenas por nome, sem ler ou registrar valores.",
+    "Este recorte nao executa OpenAI, Meta, APIs externas, codigo, banco, Supabase, Vercel, alias, env, secret ou producao."
+  ]
+}

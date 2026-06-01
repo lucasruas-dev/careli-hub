@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-015-IRIS-TYPES-FOUNDATION",
+  "module": "iris",
+  "agent": "Iris Core",
+  "title": "Iris shared types foundation",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "types",
+    "data-client",
+    "reports",
+    "debt-reduction"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/caredesk/types/iris-types.ts",
+    "apps/hub/modules/caredesk/data/iris-data-client.ts",
+    "apps/hub/modules/caredesk/blocks/reports/iris-reports-view.tsx",
+    "docs/operations/panteon-iris-decomposition-map-2026-05-30.md",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-015-iris-types-foundation.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com 1 worker e warning conhecido Turbopack/NFT",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-015-iris-types-foundation.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module iris --allow zeus --files apps/hub/modules/caredesk/types/iris-types.ts,apps/hub/modules/caredesk/data/iris-data-client.ts,apps/hub/modules/caredesk/blocks/reports/iris-reports-view.tsx,docs/operations/panteon-iris-decomposition-map-2026-05-30.md,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-recorte-manifest-md-20260531-015-iris-types-foundation.json,docs/operations/engineering-operations.md: PASS",
+    "git diff --check -- apps/hub/modules/caredesk/types/iris-types.ts apps/hub/modules/caredesk/data/iris-data-client.ts apps/hub/modules/caredesk/blocks/reports/iris-reports-view.tsx docs/operations/panteon-iris-decomposition-map-2026-05-30.md docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-recorte-manifest-md-20260531-015-iris-types-foundation.json docs/operations/engineering-operations.md: PASS com aviso LF/CRLF esperado no diario"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reintegrar os tipos usados pelo data client e reports nos arquivos locais se necessario.",
+    "Remover apps/hub/modules/caredesk/types/iris-types.ts.",
+    "Restaurar o topo de apps/hub/modules/caredesk/data/iris-data-client.ts com os aliases locais anteriores."
+  ],
+  "notes": [
+    "Recorte local autorizado por continuidade do Lucas no chat, sem autorizacao de deploy.",
+    "Criacao de base de tipos compartilhados sem mudanca intencional de comportamento.",
+    "Data Client deixou de usar @ts-nocheck e passou a importar tipos centrais da Iris.",
+    "Relatorios passou a consumir IrisData e IrisSnapshot compartilhados.",
+    "IrisPage permanece com contrato herdado local; tipagem completa da pagina raiz fica para novo protocolo."
+  ]
+}

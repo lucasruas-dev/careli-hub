@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 import { Bell, ShieldCheck } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";

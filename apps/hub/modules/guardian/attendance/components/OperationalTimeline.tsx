@@ -1,7 +1,6 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import {
   AlertTriangle,
@@ -33,6 +32,18 @@ type OperationalTimelineProps = {
   defaultUnit?: QueueClient["carteira"]["unidades"][number];
   events: QueueClient["timeline"];
   onCreateEvent?: (event: QueueClient["timeline"][number]) => Promise<void>;
+};
+
+type TimelineAttachment = NonNullable<QueueClient["timeline"][number]["attachments"]>[number];
+
+type ManualTimelineDraft = {
+  attachments: TimelineAttachment[];
+  description: string;
+  occurredAt: string;
+  operator: string;
+  title: string;
+  type: TimelineEventType;
+  unitId: string;
 };
 
 const actionItems = [
@@ -371,7 +382,7 @@ function ManualTimelineDrawer({
   saving: boolean;
 }) {
   const units = client?.carteira.unidades ?? [];
-  const [draft, setDraft] = useState({
+  const [draft, setDraft] = useState<ManualTimelineDraft>({
     attachments: [],
     description: "",
     occurredAt: nowForInputDisplay(),
@@ -644,9 +655,12 @@ function EventAttachments({
               download={attachment.fileName}
               className="block overflow-hidden rounded-md border border-slate-200 bg-white"
             >
-              <img
+              <Image
                 src={attachment.dataUrl}
                 alt={attachment.fileName}
+                width={320}
+                height={96}
+                unoptimized
                 className="h-24 w-full object-cover"
               />
             </a>
@@ -676,7 +690,7 @@ function EventAttachments({
   );
 }
 
-function fileToTimelineAttachment(file: File) {
+function fileToTimelineAttachment(file: File): Promise<TimelineAttachment> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -696,7 +710,7 @@ function fileToTimelineAttachment(file: File) {
   });
 }
 
-function attachmentTypeFor(file: File) {
+function attachmentTypeFor(file: File): TimelineAttachment["type"] {
   if (file.type.startsWith("image/")) {
     return "image";
   }

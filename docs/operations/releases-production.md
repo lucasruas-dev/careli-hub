@@ -2495,3 +2495,53 @@ Registro de producao:
   - nao houve alteracao de schema/env/remoto de Supabase.
 - Rollback: promover `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6` se houver regressao critica; nao houve alteracao de schema/env neste recorte.
 - Proxima acao: Lucas ou Nivea abrir o Chronos autenticado, clicar em `Atualizar` se necessario e comparar a semana da tela com o Google Calendar apos a sincronizacao.
+
+## 2026-06-01 - HF-20260601-001-ENGINEERING-PROD
+
+Status: PRONTO PARA PRODUCAO, autorizado por Lucas e aguardando deploy Vercel Production.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] nova engenharia modular do Panteon em producao`.
+- Protocolo: `HF-20260601-001-ENGINEERING-PROD`.
+- Squad/agente responsavel: `Hefesto`, publicando pacote limpo sob autorizacao operacional do Lucas.
+- Ambiente alvo: `producao`.
+- Origem: Lucas pediu publicar tudo que foi feito na nova engenharia e manter os demais modulos como rascunho fora do pacote.
+- Worktree limpo: `.codex-deploy/z01-001-engineering-prod-20260601`.
+- Branch do pacote: `codex/hefesto/engineering-prod-20260601`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-hf-20260601-001-engineering-prod.json`.
+- Escopo candidato:
+  - Iris: decomposicao de tela, blocos, tipos, Setup e fluxo Meta/WhatsApp reorganizados;
+  - Hades: atendimento/cobranca, fila, WhatsApp, cliente, risco, acordos e superficies tipadas;
+  - Hermes: contratos de rota/API, helpers de mensagens, notificacoes, realtime e client de dados;
+  - Chronos: agenda, salas, Drive, gravacoes, atas, helpers e `ChronosPage.tsx` como orquestrador enxuto;
+  - Zeus/governanca: manifestos, boundary checks, protocolos, arvore operacional e orientacao para futuros agentes.
+- Escopo explicitamente fora:
+  - root local `homolog` misto;
+  - Ares, Apolo, Atlas, Setup e demais modulos ainda em rascunho;
+  - migrations, banco, Supabase mutavel, envs, secrets, tokens, service role, aliases manuais e dominio manual;
+  - `.env*`, `.vercel/**`, `.git/**`, `node_modules/**`, `.next/**`, `.turbo/**`, `.codex-deploy/**` e `.codex-artifacts/**`.
+- Base de producao antes do release:
+  - deployment atual: `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`;
+  - URL tecnica atual: `https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app`;
+  - aliases atuais: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato planejado: `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`;
+  - rollback anterior congelado no manifesto: `dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6`.
+- Validacoes pre-deploy:
+  - auditoria de rascunhos no pacote: OK, sem mudancas em Ares/Apolo/Atlas/Setup/migrations;
+  - busca por `.env.local` e `.env.production.local` no pacote: OK, sem ocorrencias;
+  - `.vercelignore`: OK, exclui `node_modules`, `.turbo`, `.next`, `.vercel`, `.env*`, logs e artefatos Codex;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de worktree nested/Turbopack;
+  - smoke local com env carregado somente em memoria: OK para `/`, `/login`, `/chronos`, `/chronos/lideranca`, `/hermes`, `/hades`, `/iris`, `/zeus`;
+  - smoke local sem sessao: OK para `/api/chronos/meetings`, `/api/hermes/messages` e `/api/iris/meta/templates` retornando `401` esperado;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-hf-20260601-001-engineering-prod.json`: OK.
+- Pendencias para fechamento:
+  - criar commit do pacote limpo;
+  - executar Vercel Production;
+  - inspecionar deployment final e aliases;
+  - rodar healthchecks em producao;
+  - atualizar este registro para `EM PRODUCAO`.
+- Rollback planejado: promover novamente `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n` se houver regressao critica; nao ha migration/env/schema neste release.
+- Proxima acao: publicar somente a partir do worktree limpo e registrar deployment final, healthchecks e commit.

@@ -1,8 +1,8 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 import type { AgreementRisk, AgreementStatus } from "@/modules/guardian/attendance/types";
 
-export const agreementStatusStyles: Record<AgreementStatus, string> = {
+type AgreementEmptyValue = "-";
+
+export const agreementStatusStyles: Record<AgreementStatus | AgreementEmptyValue, string> = {
   "-": "bg-slate-50 text-slate-500 ring-slate-200",
   "Em negociação": "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
   Formalizando: "bg-indigo-50 text-indigo-700 ring-indigo-100",
@@ -13,7 +13,7 @@ export const agreementStatusStyles: Record<AgreementStatus, string> = {
   Cancelado: "bg-zinc-100 text-zinc-700 ring-zinc-200",
 };
 
-export const agreementRiskStyles: Record<AgreementRisk, string> = {
+export const agreementRiskStyles: Record<AgreementRisk | AgreementEmptyValue, string> = {
   "-": "bg-slate-50 text-slate-500 ring-slate-200",
   Baixo: "bg-emerald-50 text-emerald-700 ring-emerald-100",
   Moderado: "bg-amber-50 text-amber-700 ring-amber-100",

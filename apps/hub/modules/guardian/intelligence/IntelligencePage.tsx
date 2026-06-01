@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -89,14 +87,6 @@ const emptyKpiDrawerRows = [{
   status: EMPTY_FIELD,
   unidadeLote: EMPTY_FIELD,
 }];
-
-const kpiDrawerData: Record<KpiId, typeof emptyKpiDrawerRows> = {
-  churnProbability: emptyKpiDrawerRows,
-  criticalContracts: emptyKpiDrawerRows,
-  highRisk: emptyKpiDrawerRows,
-  portfolioScore: emptyKpiDrawerRows,
-  predictedRecovery: emptyKpiDrawerRows,
-};
 
 const profileGroups = [
   {
@@ -227,18 +217,6 @@ const trendViews: Record<
   },
 };
 
-const recoveryByChannel = [
-  { channel: EMPTY_FIELD, value: 0 },
-];
-
-const riskRadar = [
-  { subject: EMPTY_FIELD, value: 0 },
-];
-
-const enterpriseRisk = [
-  [EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD, EMPTY_FIELD],
-].map(([enterprise, score, delinquency, risk, recovery]) => ({ enterprise, score, delinquency, risk, recovery }));
-
 const strategicInsights = [
   {
     label: "Perfil com maior risco",
@@ -259,23 +237,6 @@ const strategicInsights = [
     label: "Comportamento da carteira",
     value: EMPTY_FIELD,
     detail: EMPTY_FIELD,
-  },
-];
-
-const heatmapRows = [
-  {
-    label: EMPTY_FIELD,
-    cells: [
-      {
-        enterprise: EMPTY_FIELD,
-        city: EMPTY_FIELD,
-        clients: 0,
-        amount: EMPTY_FIELD,
-        trend: EMPTY_FIELD,
-        severity: EMPTY_FIELD,
-        clientNames: [EMPTY_FIELD],
-      },
-    ],
   },
 ];
 
@@ -357,8 +318,8 @@ export function IntelligencePage() {
                   <AreaChart data={currentTrend.data} margin={{ left: -20, right: 12, top: 12, bottom: 0 }}>
                     <defs>
                       <linearGradient id="trendPrimaryGradient" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="5%" stopColor={currentTrend.lines[0].color} stopOpacity={0.28} />
-                        <stop offset="95%" stopColor={currentTrend.lines[0].color} stopOpacity={0} />
+                        <stop offset="5%" stopColor={currentTrend.lines[0]?.color ?? "#A07C3B"} stopOpacity={0.28} />
+                        <stop offset="95%" stopColor={currentTrend.lines[0]?.color ?? "#A07C3B"} stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="trendMutedGradient" x1="0" x2="0" y1="0" y2="1">
                         <stop offset="5%" stopColor="#64748b" stopOpacity={0.18} />
@@ -725,7 +686,7 @@ function OperationalMapBlock() {
           <div className="min-w-[920px]">
             <div className="grid grid-cols-[120px_repeat(4,minmax(170px,1fr))] gap-3">
               <div />
-              {visibleHeatmapRows[0].cells.map((cell) => (
+              {(visibleHeatmapRows[0]?.cells ?? []).map((cell) => (
                 <div key={cell.enterprise} className="px-3 pb-1">
                   <p className="text-xs font-semibold uppercase tracking-normal text-slate-500">{cell.enterprise}</p>
                 </div>
@@ -819,7 +780,7 @@ function OperationalMapBlock() {
               <div>
                 <p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Clientes</p>
                 <div className="space-y-2">
-                  {selectedCell.clientNames.map((client, index) => (
+                  {selectedCell.clientNames.map((client) => (
                     <div key={client} className="flex items-center justify-between rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-950">{client}</p>

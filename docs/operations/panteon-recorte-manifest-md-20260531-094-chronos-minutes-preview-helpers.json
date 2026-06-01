@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-094-CHRONOS-MINUTES-PREVIEW-HELPERS",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos minutes preview helpers",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "minutes",
+    "preview",
+    "print",
+    "module-decomposition"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/lib/chronos/minutes-preview.ts",
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-094-chronos-minutes-preview-helpers.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/chronos/ChronosPage.tsx lib/chronos/minutes-preview.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos extracao do preview/impressao de ata Chronos",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke HTTP local em servidor ja ativo http://127.0.0.1:3001: /chronos 200, /chronos/lideranca 200, /hermes 200, /hades 200 e /iris 200",
+    "smoke HTTP local sem sessao para /api/chronos/meetings, /api/chronos/google-calendar/status e /api/chronos/invitees?q=lu: PASS 401 esperado",
+    "rg @ts-nocheck e rg eslint-disable em apps/hub/lib/chronos/minutes-preview.ts e apps/hub/modules/chronos/ChronosPage.tsx: PASS, sem supressoes",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-094-chronos-minutes-preview-helpers.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "sem endpoint novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apps/hub/lib/chronos/minutes-preview.ts e reintroduzir openChronosMinutesPrintWindow, buildChronosMinutesBodyHtml e helpers HTML em apps/hub/modules/chronos/ChronosPage.tsx.",
+    "Nao ha DDL, env, deploy, endpoint novo, alias, dominio ou mudanca de integracao real associada."
+  ],
+  "notes": [
+    "Extrai montagem HTML, sanitizacao, tabelas markdown e janela de impressao/PDF de ata para apps/hub/lib/chronos/minutes-preview.ts.",
+    "Preserva preview formatado, marca visual, logo, layout de impressao e texto de revisao/formalizacao humana.",
+    "ChronosPage.tsx passa a consumir um contrato local de preview de ata sem alterar geracao de ata, endpoint, payload, permissao, banco ou integracao externa.",
+    "Nao altera OpenAI, Google Calendar, storage, schema, env, token, Vercel, Supabase admin, Preview, homologacao ou producao."
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-072-HADES-TYPED-OPERATIONAL-TIMELINE",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades typed operational timeline",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "MEDIO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "attendance",
+    "operational-timeline",
+    "typed-manual-events"
+  ],
+  "allowedLayers": ["iris", "zeus"],
+  "includedFiles": [
+    "apps/hub/modules/guardian/attendance/components/OperationalTimeline.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-072-hades-typed-operational-timeline.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/guardian/attendance/components/OperationalTimeline.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos tipar ManualTimelineDraft e TimelineAttachment",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "rg @ts-nocheck/eslint-disable no OperationalTimeline: PASS sem ocorrencias",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-072-hades-typed-operational-timeline.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow iris --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "smoke HTTP local com next start temporario em http://127.0.0.1:3058 para /hades, /hades/cobranca, /hades/atendimento?section=carteira, /guardian/atendimento e /iris: PASS 200 OK",
+    "sem endpoint novo, payload novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apenas a remocao de ts-nocheck/eslint-disable no OperationalTimeline e a tipagem local de draft/anexos.",
+    "Se necessario, trocar o preview Image de volta para img junto com o retorno do eslint-disable, sem tocar em API ou dados.",
+    "Nao ha DDL, env, deploy, endpoint ou mudanca de regra de negocio associada."
+  ],
+  "notes": [
+    "Remove ts-nocheck da timeline operacional do Hades.",
+    "Tipa o draft manual e anexos com o contrato real QueueClient.timeline.",
+    "Substitui preview local de imagem por next/image unoptimized para eliminar warning de lint sem alterar a origem dataUrl.",
+    "Nao altera tipos de evento, status, salvamento manual, FileReader, limite de anexos, labels, callbacks ou timeline renderizada."
+  ]
+}

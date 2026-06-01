@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-018-IRIS-SETUP-TYPES",
+  "module": "iris",
+  "agent": "Iris Core",
+  "title": "Iris Setup shared types and helper wiring",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "types",
+    "setup",
+    "debt-reduction"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/caredesk/IrisPage.tsx",
+    "apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx",
+    "apps/hub/modules/caredesk/blocks/shared/iris-ui.tsx",
+    "apps/hub/modules/caredesk/data/iris-data-client.ts",
+    "apps/hub/modules/caredesk/types/iris-types.ts",
+    "docs/operations/panteon-iris-decomposition-map-2026-05-30.md",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-018-iris-setup-types.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com 1 worker e warning conhecido Turbopack/NFT",
+    "smoke local com next start temporario em http://127.0.0.1:3102/iris: 200 OK, servidor encerrado",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-018-iris-setup-types.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module iris --allow zeus --files apps/hub/modules/caredesk/IrisPage.tsx,apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx,apps/hub/modules/caredesk/blocks/shared/iris-ui.tsx,apps/hub/modules/caredesk/data/iris-data-client.ts,apps/hub/modules/caredesk/types/iris-types.ts,docs/operations/panteon-iris-decomposition-map-2026-05-30.md,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-recorte-manifest-md-20260531-018-iris-setup-types.json,docs/operations/engineering-operations.md: PASS",
+    "PowerShell trailing whitespace check nos arquivos do recorte: PASS",
+    "git diff --check -- apps/hub/modules/caredesk/IrisPage.tsx apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx apps/hub/modules/caredesk/blocks/shared/iris-ui.tsx apps/hub/modules/caredesk/data/iris-data-client.ts apps/hub/modules/caredesk/types/iris-types.ts docs/operations/panteon-iris-decomposition-map-2026-05-30.md docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-recorte-manifest-md-20260531-018-iris-setup-types.json docs/operations/engineering-operations.md: PASS com avisos LF/CRLF esperados em IrisPage.tsx e no diario"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Restaurar os tipos locais/implícitos em apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx se necessario.",
+    "Remover de apps/hub/modules/caredesk/types/iris-types.ts os tipos de template/setup adicionados neste recorte se nenhum outro arquivo depender deles.",
+    "Voltar mapQueueRow/mapTicketProfileRow e toneBg/toneText para escopo interno caso o Setup deixe de depender dessas ligacoes."
+  ],
+  "notes": [
+    "Recorte local autorizado por continuidade do Lucas no chat, sem autorizacao de deploy.",
+    "O Setup passou a declarar contrato de props/constants e reutilizar tipos compartilhados da Iris.",
+    "O recorte tambem corrige a ligacao interna de helpers que o bloco extraido ja usava: useRef, slugify de fila/assunto, mappers de fila/assunto e tons visuais.",
+    "Nao houve chamada Meta real, webhook, env, secret, banco, Supabase admin, Vercel, Preview, homologacao ou producao."
+  ]
+}

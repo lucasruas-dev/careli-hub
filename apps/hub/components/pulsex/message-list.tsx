@@ -10,15 +10,13 @@ import type {
 } from "@/lib/pulsex";
 import { EmptyState } from "@repo/uix";
 import { PhoneCall, PhoneMissed, Video } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef } from "react";
 import { MessageItem } from "./message-item";
 
 type MessageListProps = {
   callEvents?: readonly HermesCallHistoryEntry[];
-  channelId: string;
   currentUserId?: HermesPresenceUser["id"];
   filter?: HermesMessageFilter;
-  loadState?: "error" | "loading" | "ready";
   messages: readonly HermesMessage[];
   onEditMessage?: (
     messageId: HermesMessage["id"],
@@ -40,16 +38,13 @@ type MessageListProps = {
   ) => void;
   getThreadUnreadCount?: (messageId: HermesMessage["id"]) => number;
   reactionOptions?: readonly HermesReactionEmoji[];
-  scrollContainerRef: RefObject<HTMLDivElement | null>;
   users: readonly HermesPresenceUser[];
 };
 
 export function MessageList({
   callEvents = [],
-  channelId,
   currentUserId,
   filter = "all",
-  loadState = "ready",
   messages,
   onEditMessage,
   onAskAiReply,
@@ -60,95 +55,39 @@ export function MessageList({
   onToggleTag,
   getThreadUnreadCount,
   reactionOptions,
-  scrollContainerRef,
   users,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const isNearBottomRef = useRef(true);
-  const previousChannelIdRef = useRef<string | null>(null);
-  const previousLastTimelineItemIdRef = useRef<string | undefined>(undefined);
   const timelineItems = getHermesTimelineItems({
     callEvents: filter === "all" ? callEvents : [],
     messages,
   });
-  const lastTimelineItem = timelineItems.at(-1);
-  const lastTimelineItemId = lastTimelineItem?.id;
-  const lastMessageAuthorId =
-    lastTimelineItem?.kind === "message"
-      ? lastTimelineItem.message.authorId
-      : undefined;
+  const lastTimelineItemId = timelineItems.at(-1)?.id;
 
   useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-
-    if (!scrollContainer) {
-      return;
-    }
-
-    const container = scrollContainer;
-
-    function updateNearBottomState() {
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-
-      isNearBottomRef.current = distanceFromBottom <= 96;
-    }
-
-    updateNearBottomState();
-    container.addEventListener("scroll", updateNearBottomState, {
-      passive: true,
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
     });
-
-    return () => {
-      container.removeEventListener("scroll", updateNearBottomState);
-    };
-  }, [scrollContainerRef]);
-
-  useLayoutEffect(() => {
-    const previousChannelId = previousChannelIdRef.current;
-    const previousLastTimelineItemId = previousLastTimelineItemIdRef.current;
-    const isInitialRender = previousChannelId === null;
-    const channelChanged =
-      previousChannelId !== null && previousChannelId !== channelId;
-    const timelineChanged = previousLastTimelineItemId !== lastTimelineItemId;
-
-    if (channelChanged) {
-      isNearBottomRef.current = true;
-    }
-
-    const shouldScrollToBottom =
-      Boolean(lastTimelineItemId) &&
-      (isInitialRender ||
-        channelChanged ||
-        (timelineChanged &&
-          (isNearBottomRef.current || lastMessageAuthorId === currentUserId)));
-
-    if (shouldScrollToBottom) {
-      bottomRef.current?.scrollIntoView({
-        behavior: "auto",
-        block: "end",
-      });
-      isNearBottomRef.current = true;
-    }
-
-    previousChannelIdRef.current = channelId;
-    previousLastTimelineItemIdRef.current = lastTimelineItemId;
-  }, [
-    channelId,
-    currentUserId,
-    lastMessageAuthorId,
-    lastTimelineItemId,
-  ]);
+  }, [lastTimelineItemId]);
 
   if (timelineItems.length === 0) {
-    if (loadState === "loading") {
-      return <HermesMessageSkeletonList />;
-    }
-
     return (
       <EmptyState
-        description={getEmptyMessagesDescription(loadState, filter)}
-        title={getEmptyMessagesTitle(loadState, filter)}
+        description={
+          filter === "all"
+            ? "As mensagens deste canal aparecerao aqui."
+            : filter === "mentions"
+              ? "Nenhuma mensagem marcou voce neste canal."
+            : "Nenhuma mensagem desta conversa possui a tag selecionada."
+        }
+        title={
+          filter === "all"
+            ? "Nenhuma mensagem"
+            : filter === "mentions"
+              ? "Nenhuma mencao"
+              : "Nenhuma mensagem no filtro"
+        }
       />
     );
   }
@@ -187,80 +126,6 @@ export function MessageList({
       <div ref={bottomRef} />
     </div>
   );
-}
-
-function HermesMessageSkeletonList() {
-  const rows = [
-    { align: "left", width: "w-52" },
-    { align: "right", width: "w-64" },
-    { align: "left", width: "w-60" },
-    { align: "left", width: "w-48" },
-    { align: "right", width: "w-56" },
-  ] as const;
-
-  return (
-    <div
-      aria-busy="true"
-      aria-label="Sincronizando mensagens"
-      className="grid gap-3 px-2 py-1"
-      role="status"
-    >
-      {rows.map((row, index) => (
-        <div
-          className={`grid ${
-            row.align === "right" ? "justify-items-end pr-10" : "pl-10"
-          }`}
-          key={`message-skeleton-${index}`}
-        >
-          <div
-            className={`h-20 ${row.width} animate-pulse rounded-2xl border border-[#d9e0ea] bg-white/80 shadow-sm`}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function getEmptyMessagesDescription(
-  loadState: NonNullable<MessageListProps["loadState"]>,
-  filter: HermesMessageFilter,
-) {
-  if (loadState === "loading") {
-    return "Sincronizando mensagens deste canal.";
-  }
-
-  if (loadState === "error") {
-    return "Nao foi possivel carregar a conversa agora.";
-  }
-
-  if (filter === "mentions") {
-    return "Nenhuma mensagem marcou voce neste canal.";
-  }
-
-  if (filter !== "all") {
-    return "Nenhuma mensagem desta conversa possui a tag selecionada.";
-  }
-
-  return "As mensagens deste canal aparecerao aqui.";
-}
-
-function getEmptyMessagesTitle(
-  loadState: NonNullable<MessageListProps["loadState"]>,
-  filter: HermesMessageFilter,
-) {
-  if (loadState === "loading") {
-    return "Carregando mensagens";
-  }
-
-  if (loadState === "error") {
-    return "Mensagens indisponiveis";
-  }
-
-  if (filter === "mentions") {
-    return "Nenhuma mencao";
-  }
-
-  return filter === "all" ? "Nenhuma mensagem" : "Nenhuma mensagem no filtro";
 }
 
 type HermesTimelineItem =

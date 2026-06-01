@@ -1,0 +1,309 @@
+{
+  "schemaVersion": 1,
+  "status": "documental_base_aguardando_automacao",
+  "protocolId": "ZEUS-20260530-001-FOTOGRAFIA-REESTRUTURACAO",
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "codeCommit": "e5c7ac3",
+    "recordCommit": "a145058",
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6"
+  },
+  "hubModules": [
+    {
+      "id": "panteon",
+      "label": "Panteon",
+      "agent": "Panteon Core / Zeus",
+      "type": "hub_module",
+      "primaryDomain": "Home, shell, launcher e cockpit principal",
+      "allowedPaths": [
+        "apps/hub/app/page.tsx",
+        "apps/hub/app/layout.tsx",
+        "apps/hub/layouts/**",
+        "apps/hub/lib/operational-home.ts",
+        "apps/hub/lib/hub-home.ts",
+        "apps/hub/lib/module-page.tsx",
+        "packages/shared/src/modules/**"
+      ],
+      "candidateBlocks": [
+        "home",
+        "shell",
+        "launcher",
+        "sidebar",
+        "topbar",
+        "module-registry"
+      ],
+      "requiresZeusReview": true
+    },
+    {
+      "id": "zeus",
+      "label": "Zeus",
+      "agent": "Zeus",
+      "type": "hub_module_and_master_agent",
+      "primaryDomain": "OPS, Data, Infra, SupportOps, governanca e controle",
+      "canonicalDomain": "https://ops.c2x.app.br/zeus",
+      "allowedPaths": [
+        "apps/hub/modules/squadops/**",
+        "apps/hub/lib/squadops/**",
+        "apps/hub/app/zeus/**",
+        "apps/hub/app/squadops/**",
+        "apps/hub/app/api/zeus/**",
+        "apps/hub/app/api/squadops/**",
+        "apps/hub/app/api/operations/**",
+        "apps/hub/lib/operations/**",
+        "docs/operations/**",
+        "scripts/panteon-*.mjs",
+        "scripts/zeus-*.mjs",
+        "scripts/squadops-*.mjs",
+        "scripts/squadops-*.ps1"
+      ],
+      "candidateBlocks": [
+        "helpdesk",
+        "deploys",
+        "timeline",
+        "audits",
+        "records",
+        "database-monitoring",
+        "worktrees",
+        "recortes",
+        "incidents"
+      ],
+      "requiresZeusReview": true
+    },
+    {
+      "id": "apolo",
+      "label": "Apolo",
+      "agent": "Apolo Core",
+      "type": "hub_module",
+      "primaryDomain": "Cadastro mestre, CRM e relacoes C2X",
+      "allowedPaths": [
+        "apps/hub/modules/apolo/**",
+        "apps/hub/lib/apolo/**",
+        "apps/hub/app/apolo/**",
+        "apps/hub/app/api/apolo/**",
+        "scripts/apolo-*.mjs",
+        "packages/database/migrations/*apolo*.sql"
+      ],
+      "candidateBlocks": [
+        "crm",
+        "relationships",
+        "search",
+        "sync-c2x",
+        "profiles"
+      ],
+      "requiresZeusReview": true
+    },
+    {
+      "id": "ares",
+      "label": "Ares",
+      "agent": "Ares Core",
+      "type": "hub_module",
+      "primaryDomain": "Pessoas, dimensoes, bases financeiras e estrutura operacional",
+      "allowedPaths": [
+        "apps/hub/modules/ares/**",
+        "apps/hub/lib/ares/**",
+        "apps/hub/app/ares/**",
+        "apps/hub/app/api/ares/**",
+        "packages/database/migrations/*ares*.sql",
+        "docs/operations/ares-*.md"
+      ],
+      "candidateBlocks": [
+        "people",
+        "dimensions",
+        "financial-bases",
+        "entries",
+        "snapshot"
+      ],
+      "requiresZeusReview": true
+    },
+    {
+      "id": "atlas",
+      "label": "Atlas",
+      "agent": "Atlas Core",
+      "type": "hub_module",
+      "primaryDomain": "Indicadores, FPE, desempenho, ocorrencias e evidencias",
+      "allowedPaths": [
+        "apps/hub/modules/atlas/**",
+        "apps/hub/lib/atlas/**",
+        "apps/hub/app/atlas/**",
+        "apps/hub/app/api/atlas/**",
+        "scripts/atlas-*.mjs",
+        "packages/database/migrations/*atlas*.sql",
+        "docs/modules/atlas-*.md"
+      ],
+      "candidateBlocks": [
+        "dashboard",
+        "fpe",
+        "performance",
+        "occurrences",
+        "evidences"
+      ],
+      "requiresZeusReview": true
+    },
+    {
+      "id": "chronos",
+      "label": "Chronos",
+      "agent": "Chronos Core",
+      "type": "hub_module",
+      "primaryDomain": "Agenda, salas, Drive, Google Agenda, gravacoes e atas",
+      "allowedPaths": [
+        "apps/hub/modules/chronos/**",
+        "apps/hub/lib/chronos/**",
+        "apps/hub/app/chronos/**",
+        "apps/hub/app/api/chronos/**",
+        "packages/database/migrations/*chronos*.sql",
+        "docs/operations/chronos-*.md"
+      ],
+      "candidateBlocks": [
+        "agenda",
+        "rooms",
+        "drive",
+        "external-room",
+        "minutes",
+        "google-calendar",
+        "recordings"
+      ],
+      "requiresZeusReview": true
+    },
+    {
+      "id": "hades",
+      "label": "Hades",
+      "agent": "Hades Core",
+      "type": "hub_module",
+      "primaryDomain": "Cobranca, atendimento financeiro, acordos, Asaas, D4Sign e legado Guardian",
+      "allowedPaths": [
+        "apps/hub/components/guardian/**",
+        "apps/hub/modules/guardian/**",
+        "apps/hub/lib/guardian/**",
+        "apps/hub/app/hades/**",
+        "apps/hub/app/guardian/**",
+        "apps/hub/app/api/hades/**",
+        "apps/hub/app/api/guardian/**",
+        "docs/modules/guardian-*.md",
+        "docs/operations/guardian-*.md"
+      ],
+      "candidateBlocks": [
+        "attendance",
+        "billing",
+        "agreements",
+        "asaas",
+        "d4sign",
+        "monitoring",
+        "read-model"
+      ],
+      "requiresZeusReview": true
+    },
+    {
+      "id": "hermes",
+      "label": "Hermes",
+      "agent": "Hermes Core",
+      "type": "hub_module",
+      "primaryDomain": "Comunicacao, mensagens, threads, realtime e chamadas",
+      "allowedPaths": [
+        "apps/hub/components/pulsex/**",
+        "apps/hub/lib/pulsex/**",
+        "apps/hub/app/hermes/**",
+        "apps/hub/app/pulsex/**",
+        "apps/hub/app/api/hermes/**",
+        "apps/hub/app/api/pulsex/**",
+        "packages/realtime/**"
+      ],
+      "candidateBlocks": [
+        "messages",
+        "threads",
+        "channels",
+        "calls",
+        "presence",
+        "notifications",
+        "realtime"
+      ],
+      "requiresZeusReview": true
+    },
+    {
+      "id": "iris",
+      "label": "Iris",
+      "agent": "Iris Core",
+      "type": "hub_module",
+      "primaryDomain": "Atendimento, tickets, WhatsApp/Meta e Caca/Athena no atendimento",
+      "allowedPaths": [
+        "apps/hub/modules/caredesk/**",
+        "apps/hub/lib/iris/**",
+        "apps/hub/lib/caredesk/**",
+        "apps/hub/app/iris/**",
+        "apps/hub/app/caredesk/**",
+        "apps/hub/app/api/iris/**",
+        "apps/hub/app/api/caredesk/**",
+        "scripts/iris-*.mjs",
+        "scripts/iris-*.ps1",
+        "docs/modules/caredesk-*.md",
+        "docs/operations/iris-*.md"
+      ],
+      "candidateBlocks": [
+        "queue",
+        "conversation",
+        "tickets",
+        "meta-whatsapp",
+        "templates",
+        "caca-athena",
+        "attendant"
+      ],
+      "requiresZeusReview": true
+    }
+  ],
+  "operationalLayers": [
+    {
+      "id": "hefesto",
+      "label": "Hefesto",
+      "type": "release_auxiliary",
+      "allowedPaths": [
+        "docs/operations/releases-production.md",
+        "docs/operations/releases-homologation.md",
+        ".codex-deploy/**"
+      ],
+      "rules": [
+        "promote_only_validated_protocols",
+        "inspect_c2x_and_ops_before_after_production",
+        "keep_rollback_defined"
+      ]
+    },
+    {
+      "id": "athena",
+      "label": "Athena",
+      "type": "openai_ai_agent_center",
+      "allowedPaths": [
+        "apps/hub/lib/hub-ai/**",
+        "apps/hub/app/api/ai/**",
+        "apps/hub/app/api/**/copilot/**",
+        "apps/hub/app/api/**/agent/**"
+      ],
+      "rules": [
+        "must_follow_module_owner_when_touching_product",
+        "must_not_log_secrets_or_sensitive_payloads",
+        "must_declare_ai_boundary_in_recorte"
+      ]
+    },
+    {
+      "id": "setup",
+      "label": "Setup",
+      "type": "operational_configuration",
+      "allowedPaths": [
+        "apps/hub/app/setup/**",
+        "apps/hub/lib/setup/**",
+        "apps/hub/app/api/setup/**",
+        "packages/shared/src/permissions/**"
+      ],
+      "rules": [
+        "permission_changes_require_zeus_review",
+        "auth_or_access_changes_require_explicit_scope"
+      ]
+    }
+  ],
+  "globalRules": [
+    "root_mixed_blocks_deploy",
+    "production_or_alias_operations_start_blocked",
+    "env_secret_database_migration_operations_start_blocked",
+    "each_recorte_must_declare_module_blocks_and_allowed_paths",
+    "zeus_validates_boundary_diff_and_deploy",
+    "hefesto_assists_production_release",
+    "athena_is_ai_center_not_product_owner"
+  ]
+}

@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 import { MapPinned } from "lucide-react";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import type { QueueClient } from "@/modules/guardian/attendance/types";

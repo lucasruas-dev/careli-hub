@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "OP-20260530-012-ZEUS-HELPDESK",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Piloto Zeus com HelpDesk isolado em bloco local",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "zeus-pilot",
+    "helpdesk",
+    "helpdesk-board",
+    "helpdesk-ticket-summary",
+    "decomposicao-mecanica"
+  ],
+  "allowedLayers": [],
+  "includedFiles": [
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary.ts",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-zeus-pilot-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-op-20260530-012-zeus-helpdesk.json",
+    "docs/operations/panteon-engineering-activity-tree-2026-05-30.md",
+    "docs/operations/panteon-engineering-restructure-plan.md",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub",
+    "npm.cmd run lint:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-op-20260530-012-zeus-helpdesk.json",
+    "node scripts/panteon-boundary-check.mjs --module zeus --files apps/hub/modules/squadops/ZeusPage.tsx,apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary.ts,docs/operations/panteon-work-execution-tree-2026-05-30.md,docs/operations/panteon-zeus-pilot-2026-05-30.md,docs/operations/panteon-recorte-manifest-op-20260530-012-zeus-helpdesk.json",
+    "git diff --check -- apps/hub/modules/squadops/ZeusPage.tsx apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx apps/hub/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary.ts docs/operations/panteon-work-execution-tree-2026-05-30.md docs/operations/panteon-zeus-pilot-2026-05-30.md docs/operations/panteon-recorte-manifest-op-20260530-012-zeus-helpdesk.json docs/operations/panteon-engineering-activity-tree-2026-05-30.md docs/operations/panteon-engineering-restructure-plan.md docs/operations/engineering-operations.md"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": [
+      "https://c2x.app.br",
+      "https://ops.c2x.app.br"
+    ],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Mover apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx de volta para apps/hub/modules/squadops/HubItTicketsBoard.tsx.",
+    "Reintegrar countOpenItTickets e countItTicketsWaitingForZeus dentro de ZeusPage.tsx.",
+    "Remover apps/hub/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary.ts.",
+    "Manter producao no baseline congelado; este recorte nao altera runtime publicado."
+  ],
+  "notes": [
+    "Movimentacao mecanica do board HelpDesk para a arvore blocks/helpdesk.",
+    "ZeusPage continua dono da aba ativa, token de acesso, contadores e composicao principal.",
+    "Este recorte nao altera endpoint, fetch, persistencia, status, fluxo de resposta, banco, Supabase, Vercel, alias, env, secret ou producao."
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-076-HADES-TYPED-INTELLIGENCE-PAGE",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades typed intelligence page",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "MEDIO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "intelligence",
+    "ai-assistant",
+    "typed-page"
+  ],
+  "allowedLayers": ["iris", "zeus"],
+  "includedFiles": [
+    "apps/hub/modules/guardian/intelligence/IntelligencePage.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-076-hades-typed-intelligence-page.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/guardian/intelligence/IntelligencePage.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos limpar constantes mortas e adicionar fallbacks de arrays",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "rg @ts-nocheck/eslint-disable no IntelligencePage: PASS sem ocorrencias",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-076-hades-typed-intelligence-page.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow iris --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "smoke HTTP local com next start temporario em http://127.0.0.1:3062 para /hades, /hades/inteligencia, /guardian/inteligencia, /hades/atendimento?section=carteira e /iris: PASS 200 OK",
+    "sem endpoint novo, payload novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apenas a remocao de ts-nocheck/eslint-disable no IntelligencePage e os ajustes de tipo/constantes mortas.",
+    "Nao ha DDL, env, deploy, endpoint ou mudanca de fluxo IA associada."
+  ],
+  "notes": [
+    "Remove ts-nocheck da pagina de inteligencia do Hades.",
+    "Remove constantes mortas que nao eram lidas pela tela.",
+    "Adiciona fallbacks para cor primaria do grafico e primeira linha do heatmap.",
+    "Nao altera UX, charts, prompts, chamada da IA, snapshot Hades, fila operacional ou layout."
+  ]
+}

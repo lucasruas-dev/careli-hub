@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -24,6 +22,7 @@ import { agreementRiskStyles, agreementStatusStyles } from "@/modules/guardian/a
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import { useAuth } from "@/providers/auth-provider";
 import type {
+  AgreementStatus,
   CommitmentType,
   PaymentPromiseStatus,
   PortfolioUnit,
@@ -31,6 +30,12 @@ import type {
 } from "@/modules/guardian/attendance/types";
 
 type Commitment = QueueClient["commitments"][number];
+type AgreementCommitment = Extract<Commitment, { type: "Acordo" }>;
+type PromiseCommitment = Extract<Commitment, { type: "Promessa de pagamento" }>;
+type CommitmentStatusUpdater = {
+  (record: PromiseCommitment, status: PaymentPromiseStatus, action: string): void;
+  (record: AgreementCommitment, status: AgreementStatus, action: string): void;
+};
 type CommitmentDrawerMode = "Nova promessa" | "Novo acordo" | "Editar compromisso";
 type EditableCommitment = {
   contactChannel: string;
@@ -49,6 +54,7 @@ type AgreementsCenterCardProps = {
 };
 
 const neutralPillStyle = "bg-slate-50 text-slate-500 ring-slate-200";
+const defaultContactChannel = "WhatsApp";
 
 const promiseStatusStyles: Record<PaymentPromiseStatus, string> = {
   "Promessa realizada": "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
@@ -159,6 +165,11 @@ export function AgreementsCenterCard({
     draft?: EditableCommitment,
   ) {
     const baseUnit = unit ?? client.carteira.unidades[0];
+    if (!baseUnit) {
+      setFeedback("Nao foi possivel registrar compromisso sem unidade vinculada.");
+      return;
+    }
+
     const now = nowForDisplay();
     const operator = currentOperator;
 
@@ -173,7 +184,7 @@ export function AgreementsCenterCard({
         relatedInstallments: draft?.relatedInstallments || defaultRelatedInstallments(client),
         promisedValue: draft?.primaryValue || client.parcelas.ultimaParcela,
         promisedDate: draft?.primaryDate || nowShortDate(),
-        contactChannel: draft?.contactChannel || contactChannelOptions[0],
+        contactChannel: draft?.contactChannel || defaultContactChannel,
         operator,
         note: draft?.note || "-",
         protocol: guardianProtocol(records.length + 101),
@@ -235,6 +246,8 @@ export function AgreementsCenterCard({
     void persistCreatedCommitment(record);
   }
 
+  function updateStatus(record: PromiseCommitment, status: PaymentPromiseStatus, action: string): void;
+  function updateStatus(record: AgreementCommitment, status: AgreementStatus, action: string): void;
   function updateStatus(record: Commitment, status: Commitment["status"], action: string) {
     const updatedRecord = {
       ...record,
@@ -588,7 +601,7 @@ function CommitmentDrawer({
   ) => void;
   operator: string;
   onSave: (record: Commitment, draft: EditableCommitment) => void;
-  onStatusChange: (record: Commitment, status: Commitment["status"], action: string) => void;
+  onStatusChange: CommitmentStatusUpdater;
   record?: Commitment;
 }) {
   const isCreate = mode !== "Editar compromisso";
@@ -647,12 +660,12 @@ function CreateCommitmentForm({
   ) => void;
   operator: string;
 }) {
-  const unit = client.carteira.unidades[0];
+  const unit = primaryPortfolioUnit(client);
   const isPromise = mode === "Nova promessa";
   const installmentOptions = useMemo(() => buildInstallmentOptions(client), [client]);
   const defaultInstallment = installmentOptions[0]?.value ?? "-";
   const [draft, setDraft] = useState<EditableCommitment>({
-    contactChannel: contactChannelOptions[0],
+    contactChannel: defaultContactChannel,
     note: isPromise ? "-" : client.agreement.aiSuggestion.composition,
     operator,
     primaryDate: nowShortDate(),
@@ -764,13 +777,13 @@ function CommitmentDetail({
 }: {
   client: QueueClient;
   onSave: (record: Commitment, draft: EditableCommitment) => void;
-  onStatusChange: (record: Commitment, status: Commitment["status"], action: string) => void;
+  onStatusChange: CommitmentStatusUpdater;
   operator: string;
   record: Commitment;
 }) {
   const installmentOptions = useMemo(() => buildInstallmentOptions(client), [client]);
   const [draft, setDraft] = useState<EditableCommitment>({
-    contactChannel: record.type === "Promessa de pagamento" ? record.contactChannel : contactChannelOptions[0],
+    contactChannel: record.type === "Promessa de pagamento" ? record.contactChannel : defaultContactChannel,
     note: record.note,
     operator,
     primaryDate: record.type === "Promessa de pagamento" ? record.promisedDate : record.entryDueDate,
@@ -926,7 +939,7 @@ function CommitmentDetail({
 
 function handlePrimaryAction(
   record: Commitment,
-  updateStatus: (record: Commitment, status: Commitment["status"], action: string) => void
+  updateStatus: CommitmentStatusUpdater,
 ) {
   if (record.type === "Promessa de pagamento") {
     updateStatus(record, record.status === "Quebrada" ? "Reagendada" : "Aguardando pagamento", "Status operacional alterado");
@@ -1203,6 +1216,21 @@ function ensureSelectedOption(
 
 function defaultRelatedInstallments(client: QueueClient) {
   return buildInstallmentOptions(client)[0]?.value ?? "-";
+}
+
+function primaryPortfolioUnit(client: QueueClient): PortfolioUnit {
+  return client.carteira.unidades[0] ?? {
+    area: "-",
+    empreendimento: client.carteira.empreendimento || client.agreement.enterprise || "-",
+    id: `${client.id}-unidade-indisponivel`,
+    imobiliariaCorretor: client.carteira.imobiliariaCorretor || "-",
+    lote: "-",
+    matricula: client.agreement.unit || "-",
+    quadra: "-",
+    statusVenda: "-",
+    unidadeLote: client.agreement.unit || "-",
+    valorTabela: "-",
+  };
 }
 
 function automaticPromiseStatus(

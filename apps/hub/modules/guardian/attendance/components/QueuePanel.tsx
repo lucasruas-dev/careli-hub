@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,9 +5,16 @@ import { ChevronDown, Filter, Search, X } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { ClientQueueCard } from "@/modules/guardian/attendance/components/ClientQueueCard";
 import { workflowStageDots, workflowStages, workflowStageStyles } from "@/modules/guardian/attendance/workflow";
+import type { QueueMode } from "@/modules/guardian/attendance/daily-queue";
+import { buildQueueActiveFilters } from "@/modules/guardian/attendance/queue-active-filters";
+import { overdueRangeOptions } from "@/modules/guardian/attendance/queue-filter-options";
+import {
+  buildWorkflowStageCounts,
+  getActiveWorkflowStageCounts,
+  getWorkflowStageCount,
+} from "@/modules/guardian/attendance/queue-workflow-metrics";
+import type { OverdueRangeFilter } from "@/modules/guardian/attendance/profile-scope";
 import type { AttendancePriority, QueueClient, WorkflowStage } from "@/modules/guardian/attendance/types";
-
-type OverdueRangeFilter = "all" | "1-30" | "31-60" | "60+";
 
 type QueuePanelProps = {
   clients: QueueClient[];
@@ -17,7 +22,7 @@ type QueuePanelProps = {
   dailyCount: number;
   enterprises: string[];
   generalCount: number;
-  mode: "daily" | "general";
+  mode: QueueMode;
   overdueRange: OverdueRangeFilter;
   overdueRangeCounts: Record<OverdueRangeFilter, number>;
   overdueRangeEnabled: boolean;
@@ -30,7 +35,7 @@ type QueuePanelProps = {
   selectedPriority: AttendancePriority | "Todos";
   selectedStage: WorkflowStage | "Todas";
   onEnterpriseChange: (enterprise: string) => void;
-  onModeChange: (mode: "daily" | "general") => void;
+  onModeChange: (mode: QueueMode) => void;
   onOverdueRangeChange: (range: OverdueRangeFilter) => void;
   onPriorityChange: (priority: AttendancePriority | "Todos") => void;
   onOpenWhatsApp: (clientId: string) => void;
@@ -38,23 +43,6 @@ type QueuePanelProps = {
   onStageChange: (stage: WorkflowStage | "Todas") => void;
   onSelectClient: (id: string) => void;
 };
-
-const overdueRangeLabels: Record<OverdueRangeFilter, string> = {
-  "1-30": "1-30",
-  "31-60": "31-60",
-  "60+": "Acima de 60",
-  all: "Todos",
-};
-
-const overdueRangeOptions: Array<{
-  label: string;
-  value: OverdueRangeFilter;
-}> = [
-  { label: "Todos", value: "all" },
-  { label: "1-30", value: "1-30" },
-  { label: "31-60", value: "31-60" },
-  { label: "60+", value: "60+" },
-];
 
 export function QueuePanel({
   clients,
@@ -85,18 +73,20 @@ export function QueuePanel({
 }: QueuePanelProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [distributionOpen, setDistributionOpen] = useState(false);
-  const stageCounts = workflowStages.map((stage) => ({
-    stage,
-    count: summaryClients.filter((client) => client.workflow.stage === stage).length,
-  }));
-  const activeStages = stageCounts.filter((item) => item.count > 0);
+  const stageCounts = buildWorkflowStageCounts(summaryClients);
+  const activeStages = getActiveWorkflowStageCounts(stageCounts);
   const total = Math.max(summaryClients.length, 1);
-  const activeFilters = [
-    selectedEnterprise !== "Todos" ? { label: "Empreendimento", value: selectedEnterprise, clear: () => onEnterpriseChange("Todos") } : null,
-    overdueRangeEnabled && overdueRange !== "all" ? { label: "Atraso", value: overdueRangeLabels[overdueRange], clear: () => onOverdueRangeChange("all") } : null,
-    selectedPriority !== "Todos" ? { label: "Prioridade", value: selectedPriority, clear: () => onPriorityChange("Todos") } : null,
-    selectedStage !== "Todas" ? { label: "Workflow", value: selectedStage, clear: () => onStageChange("Todas") } : null,
-  ].filter(Boolean) as Array<{ label: string; value: string; clear: () => void }>;
+  const activeFilters = buildQueueActiveFilters({
+    onEnterpriseChange,
+    onOverdueRangeChange,
+    onPriorityChange,
+    onStageChange,
+    overdueRange,
+    overdueRangeEnabled,
+    selectedEnterprise,
+    selectedPriority,
+    selectedStage,
+  });
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -301,7 +291,7 @@ export function QueuePanel({
                       key={stage}
                       active={selectedStage === stage}
                       label={stage}
-                      count={stageCounts.find((item) => item.stage === stage)?.count ?? 0}
+                      count={getWorkflowStageCount(stageCounts, stage)}
                       className={workflowStageStyles[stage]}
                       onClick={() => onStageChange(stage)}
                     />

@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -19,10 +17,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
-import {
-  workflowStageStyles,
-  workflowStages,
-} from "@/modules/guardian/attendance/workflow";
+import { workflowStages } from "@/modules/guardian/attendance/workflow";
 import type {
   AttendancePriority,
   QueueClient,
@@ -160,7 +155,7 @@ export function MonitoringPage() {
       <section className="grid gap-5 2xl:grid-cols-[1.25fr_0.75fr]">
         <Panel
           icon={LineChart}
-          summary={`${formatCount(metrics.queueClients)} clientes no recorte carregado | ${formatCount(metrics.dailyClients)} na fila diária`}
+          summary={`${formatCount(metrics.queueClients)} clientes no recorte carregado | ${formatCount(metrics.dailyClients.length)} na fila diária`}
           title="Fila diária e estágios"
         >
           <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
@@ -630,7 +625,7 @@ function buildMonitoringMetrics(snapshot: MonitoringSnapshot) {
   const todayPromises = queueClients.flatMap((client) => client.commitments ?? []).filter(
     (commitment) =>
       commitment.type === "Promessa de pagamento" &&
-      isTodayDate(commitment.promisedDate ?? commitment.dueDate),
+      isTodayDate(commitment.promisedDate),
   );
   const pendingDeals = queueClients.filter((client) =>
     ["Acordo", "Formalizando", "Ativo"].includes(

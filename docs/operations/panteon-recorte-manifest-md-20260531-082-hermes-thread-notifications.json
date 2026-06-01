@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-082-HERMES-THREAD-NOTIFICATIONS",
+  "module": "hermes",
+  "agent": "Hermes Core",
+  "title": "Hermes thread notifications and safe message links",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "MEDIO",
+  "approvedBy": null,
+  "blocks": [
+    "messages",
+    "threads",
+    "notifications",
+    "realtime"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/components/pulsex/conversation-header.tsx",
+    "apps/hub/components/pulsex/message-item.tsx",
+    "apps/hub/components/pulsex/message-list.tsx",
+    "apps/hub/components/pulsex/pulsex-workspace.tsx",
+    "apps/hub/lib/pulsex/supabase-data.ts",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hermes-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-082-hermes-thread-notifications.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint components/pulsex/conversation-header.tsx components/pulsex/message-item.tsx components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/supabase-data.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos ajustar fallback de lista vazia de respostas Hermes",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke HTTP local com next start temporario em http://127.0.0.1:3068 para /hermes, /pulsex, /iris e /hades: PASS 200 OK; /api/hermes/messages sem sessao: PASS 401 esperado",
+    "Browser/in-app visual: BLOQUEADO por falha do conector node_repl/browser com erro de sandbox durante bootstrap; nao substitui homologacao visual final",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-082-hermes-thread-notifications.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hermes --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "rg @ts-nocheck|eslint-disable nos caminhos Hermes/PulseX escopados: PASS sem ocorrencias",
+    "sem endpoint novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apenas notificacoes de respostas em thread, contadores nao lidos, renderizacao segura de links e fallback de lista vazia de replies no escopo Hermes/PulseX.",
+    "Nao ha DDL, env, deploy, endpoint novo, alias, dominio ou mudanca de integracao real associada."
+  ],
+  "notes": [
+    "Adiciona sino de respostas novas no header do Hermes com lista de threads nao lidas por usuario/localStorage.",
+    "Mostra contador de respostas novas no botao de thread de cada mensagem.",
+    "Atualiza listagem de mensagens para carregar threadCount e lastThreadReplyAt a partir das respostas reais do canal.",
+    "Renderiza links http/https em mensagens como anchors seguros, preservando pontuacao final fora do href.",
+    "Respeita resposta vazia da API de replies como sucesso, evitando fallback legado quando nao ha respostas.",
+    "Nao altera banco, schema, env, token, permissao, Vercel, Supabase admin, Preview, homologacao ou producao."
+  ]
+}

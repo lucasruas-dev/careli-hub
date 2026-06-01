@@ -1,5 +1,3 @@
-﻿/* eslint-disable */
-// @ts-nocheck
 export type DashboardQueueItem = {
   cliente: string;
   empreendimento: string;

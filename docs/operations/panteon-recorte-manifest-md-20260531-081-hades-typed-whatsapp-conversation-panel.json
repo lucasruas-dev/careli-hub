@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-081-HADES-TYPED-WHATSAPP-CONVERSATION-PANEL",
+  "module": "hades",
+  "agent": "Hades Core",
+  "title": "Hades typed WhatsApp conversation panel",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "MEDIO",
+  "approvedBy": null,
+  "blocks": [
+    "module-decomposition",
+    "attendance",
+    "whatsapp-conversation",
+    "typed-component"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx",
+    "apps/hub/modules/guardian/attendance/hades-whatsapp-types.ts",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hades-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-081-hades-typed-whatsapp-conversation-panel.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/guardian/attendance/components/WhatsAppConversationPanel.tsx modules/guardian/attendance/hades-whatsapp-types.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos permitir prioridade vazia tipada no contrato local de ticket",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "rg @ts-nocheck/eslint-disable no WhatsAppConversationPanel e hades-whatsapp-types: PASS sem ocorrencias",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-081-hades-typed-whatsapp-conversation-panel.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hades --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "smoke HTTP local com next start temporario em http://127.0.0.1:3067 para /hades, /hades/atendimento?section=whatsapp, /guardian/atendimento, /hades/cobranca e /iris: PASS 200 OK",
+    "rg @ts-nocheck|eslint-disable nos caminhos Hades/Guardian escopados: PASS sem ocorrencias",
+    "sem endpoint novo, payload novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apenas a remocao de ts-nocheck/eslint-disable no WhatsAppConversationPanel e o ajuste de prioridade vazia no contrato local.",
+    "Nao ha DDL, env, deploy, endpoint ou mudanca de comportamento Iris/WhatsApp associada."
+  ],
+  "notes": [
+    "Remove ts-nocheck e eslint-disable do painel WhatsApp do Hades.",
+    "Tipa explicitamente a prioridade vazia '-' no contrato local de ticket para preservar o estado inicial incompleto.",
+    "Mantem abertura/complemento de ticket Iris, templates, checklist, thread, janela WhatsApp, envio e timeline sem mudanca funcional.",
+    "Nao altera endpoint, payload, token, Meta real, Iris real, envio de mensagem, C2X ou regra financeira."
+  ]
+}

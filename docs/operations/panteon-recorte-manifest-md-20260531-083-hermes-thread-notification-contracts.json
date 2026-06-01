@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260531-083-HERMES-THREAD-NOTIFICATION-CONTRACTS",
+  "module": "hermes",
+  "agent": "Hermes Core",
+  "title": "Hermes thread notification contracts",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "threads",
+    "notifications",
+    "module-decomposition"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/lib/pulsex/thread-notifications.ts",
+    "apps/hub/components/pulsex/conversation-header.tsx",
+    "apps/hub/components/pulsex/pulsex-workspace.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-hermes-auto-continuation-tree-2026-05-31.md",
+    "docs/operations/panteon-recorte-manifest-md-20260531-083-hermes-thread-notification-contracts.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint components/pulsex/conversation-header.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/thread-notifications.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos extracao do contrato de notificacoes de thread",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "$env:CIRCLE_NODE_TOTAL='2'; npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke HTTP local com next start temporario em http://127.0.0.1:3070 para /hermes, /pulsex, /iris e /hades: PASS 200 OK",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260531-083-hermes-thread-notification-contracts.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hermes --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "rg @ts-nocheck|eslint-disable nos caminhos Hermes/PulseX escopados: PASS sem ocorrencias",
+    "sem endpoint novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apenas a extracao de helpers/tipos de thread para apps/hub/lib/pulsex/thread-notifications.ts.",
+    "Nao ha DDL, env, deploy, endpoint novo, alias, dominio ou mudanca de integracao real associada."
+  ],
+  "notes": [
+    "Move tipos e helpers de leitura/notificacao de replies para contrato local em lib/pulsex.",
+    "Remove logica auxiliar do pulsex-workspace.tsx sem alterar comportamento visual, storage local ou abertura de thread.",
+    "ConversationHeader passa a consumir apenas o tipo compartilhado do contrato Hermes.",
+    "Nao altera banco, schema, env, token, permissao, Vercel, Supabase admin, Preview, homologacao ou producao."
+  ]
+}

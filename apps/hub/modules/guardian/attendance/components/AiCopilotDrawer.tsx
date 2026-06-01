@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -83,7 +81,7 @@ export function AiCopilotDrawer({
   const visibleSummaryCards = useMemo(
     () =>
       intelligence.summaryCards.filter(([label]) =>
-        ["Risco", "Parcelas vencidas", "Saldo em atraso", "Próxima ação"].includes(label),
+        ["Risco", "Parcelas vencidas", "Saldo em atraso", "Próxima ação"].includes(String(label)),
       ),
     [intelligence.summaryCards],
   );
@@ -109,7 +107,7 @@ export function AiCopilotDrawer({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [aiUserContext?.firstName, client.id, intelligence.initialMessage]);
+  }, [aiUserContext, client.id, intelligence.initialMessage]);
 
   useEffect(() => {
     if (!open) {
@@ -257,6 +255,10 @@ export function AiCopilotDrawer({
     }
 
     const resendCandidate = candidates[0];
+    if (!resendCandidate) {
+      return;
+    }
+
     setPendingBoletoAction({
       candidate: resendCandidate,
       deliveryMode: "link",
@@ -315,6 +317,10 @@ export function AiCopilotDrawer({
     }
 
     const candidate = candidates[0];
+    if (!candidate) {
+      return;
+    }
+
     setPendingBoletoAction({
       candidate,
       deliveryMode: "link",
@@ -782,23 +788,37 @@ function parseInstallmentPipeTable(content: string) {
   const normalized = content.replace(/\r/g, " ").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   const rowPattern =
     /(\d{2}\/\d{4})\s*\|\s*([^|]+?)\s*\|\s*(\d{2}\/\d{2}\/\d{4}|-)\s*\|\s*(\d{2}\/\d{2}\/\d{4}|-)\s*\|\s*([^|]+?)\s*\|\s*(R\$\s*[\d.,]+)\s*\|\s*([^|]+?)\s*\|\s*([^-|]*?\d+\s+dias|-)/g;
-  const rows = [...normalized.matchAll(rowPattern)].map((match) => ({
-    currentDueDate: match[4].trim(),
-    number: match[2].trim(),
-    originalDueDate: match[3].trim(),
-    overdue: match[8].trim(),
-    paymentDate: match[5].trim(),
-    reference: match[1].trim(),
-    status: match[7].trim(),
-    value: match[6].trim(),
-  }));
+  const rows = [...normalized.matchAll(rowPattern)].map((match) => {
+    const [
+      ,
+      reference = EMPTY_FIELD,
+      number = EMPTY_FIELD,
+      originalDueDate = EMPTY_FIELD,
+      currentDueDate = EMPTY_FIELD,
+      paymentDate = EMPTY_FIELD,
+      value = EMPTY_FIELD,
+      status = EMPTY_FIELD,
+      overdue = EMPTY_FIELD,
+    ] = match;
+
+    return {
+      currentDueDate: currentDueDate.trim(),
+      number: number.trim(),
+      originalDueDate: originalDueDate.trim(),
+      overdue: overdue.trim(),
+      paymentDate: paymentDate.trim(),
+      reference: reference.trim(),
+      status: status.trim(),
+      value: value.trim(),
+    };
+  });
 
   if (rows.length < 2) {
     return null;
   }
 
-  const intro = normalized
-    .split(/Ref\.\s*\||Refer[eê]ncia\s*\|/i)[0]
+  const introParts = normalized.split(/Ref\.\s*\||Refer[eê]ncia\s*\|/i);
+  const intro = (introParts[0] ?? "")
     .replace(/\s*$/g, "")
     .trim();
 
@@ -878,12 +898,10 @@ function addressAiResponse(content: string, user: { firstName?: string } | null)
 
 function buildClientIntelligence(client: QueueClient) {
   const risk = getRiskDescriptor(client.prioridade);
-  const unitsCount = client.carteira.unidades.length;
-  const mainEnterprise = client.carteira.unidades[0]?.empreendimento ?? client.carteira.empreendimento;
   const nextAction = getNextAction(client.prioridade);
   const approach = getRecommendedApproach(client.prioridade);
   const agreement = client.agreement;
-  const hasAgreementData = agreement.status !== EMPTY_FIELD && agreement.risk !== EMPTY_FIELD;
+  const hasAgreementData = isFilledAiField(agreement.status) && isFilledAiField(agreement.risk);
 
   return {
     initialMessage: EMPTY_FIELD,
@@ -897,6 +915,8 @@ function buildClientIntelligence(client: QueueClient) {
       ["Acordo", agreement.status],
       ["Chance de quebra", hasAgreementData ? `${agreement.aiSuggestion.breakChance}%` : EMPTY_FIELD],
       ["Próxima ação", client.workflow.nextAction || EMPTY_FIELD],
+      ["Ação recomendada", nextAction],
+      ["Abordagem recomendada", approach],
     ],
     quickSuggestions: [
       {
@@ -1343,6 +1363,10 @@ function cleanContactValue(value?: string) {
   return normalized;
 }
 
+function isFilledAiField(value: string) {
+  return value.trim() !== EMPTY_FIELD;
+}
+
 function getOpenBoletoCandidates(client: QueueClient): BoletoCandidate[] {
   const unitsById = new Map(client.carteira.unidades.map((unit) => [unit.id, unit]));
 
@@ -1499,10 +1523,6 @@ function getRecommendedApproach(priority: QueueClient["prioridade"]) {
   };
 
   return map[priority];
-}
-
-function getFirstName(name: string) {
-  return name.split(" ")[0] ?? name;
 }
 
 

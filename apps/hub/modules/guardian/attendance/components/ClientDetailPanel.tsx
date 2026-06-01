@@ -1,5 +1,3 @@
-/* eslint-disable */
-// @ts-nocheck
 "use client";
 
 import { useState } from "react";
@@ -12,18 +10,13 @@ import {
   ExternalLink,
   FileText,
   Gauge,
-  HandCoins,
-  LayoutDashboard,
   MapPinned,
   Maximize2,
   MessageCircle,
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
-  ReceiptText,
   ShieldAlert,
-  ThumbsDown,
-  ThumbsUp,
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
@@ -39,6 +32,22 @@ import {
   agreementRiskStyles,
   agreementStatusStyles,
 } from "@/modules/guardian/attendance/agreements";
+import { buildCommitmentOverviewMetrics } from "@/modules/guardian/attendance/client-commitment-metrics";
+import { buildClientDocumentSummary } from "@/modules/guardian/attendance/client-document-summary";
+import {
+  type ClientDetailUnitSubtab as UnitSubtab,
+  type ClientDetailWorkspaceTab as WorkspaceTab,
+  unitSubtabs,
+  workspaceTabs,
+} from "@/modules/guardian/attendance/client-detail-navigation";
+import { buildPaymentBehavior } from "@/modules/guardian/attendance/client-payment-behavior";
+import {
+  buildPortfolioSummary,
+  formatPortfolioLot,
+  resolvePortfolioUnit,
+} from "@/modules/guardian/attendance/client-portfolio-summary";
+import { buildClientProfileSummary } from "@/modules/guardian/attendance/client-profile-summary";
+import { buildClientRiskMetrics } from "@/modules/guardian/attendance/client-risk-metrics";
 import { priorityStyles } from "@/modules/guardian/attendance/priority";
 import { workflowStageStyles } from "@/modules/guardian/attendance/workflow";
 import type {
@@ -49,6 +58,10 @@ import type {
 
 const EMPTY_FIELD = "-";
 const neutralPillStyle = "bg-slate-50 text-slate-500 ring-slate-200";
+
+function isFilledField(value: string) {
+  return value.trim() !== EMPTY_FIELD;
+}
 
 type ClientDetailPanelProps = {
   client: QueueClient;
@@ -62,45 +75,6 @@ type ClientDetailPanelProps = {
     record: QueueClient["commitments"][number],
   ) => Promise<void>;
 };
-type WorkspaceTab =
-  | "overview"
-  | "client"
-  | "portfolio"
-  | "timeline"
-  | "agreements";
-type UnitSubtab =
-  | "summary"
-  | "installments"
-  | "agreements"
-  | "timeline"
-  | "risk"
-  | "documents";
-
-const workspaceTabs: Array<{
-  id: WorkspaceTab;
-  label: string;
-  icon: typeof LayoutDashboard;
-}> = [
-  { id: "overview", label: "Visão geral", icon: LayoutDashboard },
-  { id: "client", label: "Cliente", icon: Building2 },
-  { id: "portfolio", label: "Carteira", icon: MapPinned },
-  { id: "timeline", label: "Timeline", icon: Clock3 },
-  { id: "agreements", label: "Acordos", icon: HandCoins },
-];
-
-const unitSubtabs: Array<{
-  id: UnitSubtab;
-  label: string;
-  icon: typeof LayoutDashboard;
-}> = [
-  { id: "summary", label: "Resumo da unidade", icon: LayoutDashboard },
-  { id: "installments", label: "Parcelas", icon: ReceiptText },
-  { id: "agreements", label: "Acordos", icon: HandCoins },
-  { id: "timeline", label: "Timeline", icon: Clock3 },
-  { id: "risk", label: "Risco", icon: ShieldAlert },
-  { id: "documents", label: "Documentos da unidade", icon: FileText },
-];
-
 export function ClientDetailPanel({
   client,
   extraTimelineEvents = [],
@@ -124,9 +98,7 @@ export function ClientDetailPanel({
 
   const paymentBehavior = buildPaymentBehavior(client);
   const PaymentBehaviorIcon = paymentBehavior.icon;
-  const portfolioUnit =
-    client.carteira.unidades.find((unit) => unit.id === portfolioUnitId) ??
-    client.carteira.unidades[0];
+  const portfolioUnit = resolvePortfolioUnit(client, portfolioUnitId);
   const timelineEvents = [...extraTimelineEvents, ...client.timeline];
 
   function openPortfolio(unitId?: string) {
@@ -293,98 +265,6 @@ export function ClientDetailPanel({
       />
     </section>
   );
-}
-
-function buildPaymentBehavior(client: QueueClient) {
-  const paidInstallments = (client.c2xInstallments ?? []).filter(
-    (installment) =>
-      installment.status === "Liquidada" &&
-      installment.paymentDateInput &&
-      (installment.dueDateOriginalInput || installment.dueDateInput),
-  );
-
-  if (client.c2xInstallmentsLoaded === false) {
-    return {
-      className: "bg-slate-50 text-slate-600 ring-slate-200",
-      icon: Clock3,
-      label: "Calculando histórico",
-      tooltip:
-        "As parcelas reais ainda estao carregando para calcular o comportamento de pagamento.",
-    };
-  }
-
-  if (paidInstallments.length === 0) {
-    return {
-      className: "bg-slate-50 text-slate-600 ring-slate-200",
-      icon: Clock3,
-      label: "Sem histórico pago",
-      tooltip:
-        "Ainda nao ha parcelas liquidadas com data de pagamento para calcular a media.",
-    };
-  }
-
-  const averageDelay =
-    paidInstallments.reduce((total, installment) => {
-      const dueDateInput =
-        installment.dueDateOriginalInput || installment.dueDateInput;
-
-      return (
-        total + daysBetweenDateOnly(dueDateInput, installment.paymentDateInput)
-      );
-    }, 0) / paidInstallments.length;
-  const roundedDays = Math.round(Math.abs(averageDelay));
-  const baseTooltip = `${paidInstallments.length} parcela(s) liquidada(s) consideradas no historico.`;
-
-  if (averageDelay <= -1) {
-    return {
-      className: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-      icon: ThumbsUp,
-      label:
-        roundedDays === 1 ? "Antecipa 1 dia" : `Antecipa ${roundedDays} dias`,
-      tooltip: `${baseTooltip} Em media, paga antes do vencimento.`,
-    };
-  }
-
-  if (averageDelay >= 1) {
-    return {
-      className: "bg-rose-50 text-rose-700 ring-rose-200",
-      icon: ThumbsDown,
-      label: roundedDays === 1 ? "Atrasa 1 dia" : `Atrasa ${roundedDays} dias`,
-      tooltip: `${baseTooltip} Em media, paga apos o vencimento.`,
-    };
-  }
-
-  return {
-    className: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20",
-    icon: Clock3,
-    label: "Paga no vencimento",
-    tooltip: `${baseTooltip} Historico medio muito proximo do vencimento.`,
-  };
-}
-
-function daysBetweenDateOnly(startInput: string, endInput: string) {
-  const start = parseDateOnly(startInput);
-  const end = parseDateOnly(endInput);
-
-  if (!start || !end) {
-    return 0;
-  }
-
-  return Math.round((end.getTime() - start.getTime()) / 86_400_000);
-}
-
-function parseDateOnly(value?: string) {
-  if (!value) {
-    return null;
-  }
-
-  const [year, month, day] = value.split("-").map(Number);
-
-  if (!year || !month || !day) {
-    return null;
-  }
-
-  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function renderWorkspaceTab(props: {
@@ -598,70 +478,53 @@ function CommitmentOverviewCards({
   client: QueueClient;
   onGoToAgreements: () => void;
 }) {
-  const promises = client.commitments.filter(
-    (commitment) => commitment.type === "Promessa de pagamento",
-  );
-  const agreements = client.commitments.filter(
-    (commitment) => commitment.type === "Acordo",
-  );
-  const fulfilled = promises.filter(
-    (promise) => promise.status === "Cumprida",
-  ).length;
-  const broken = promises.filter(
-    (promise) => promise.status === "Quebrada",
-  ).length;
-  const open = promises.filter((promise) =>
-    ["Promessa realizada", "Aguardando pagamento", "Reagendada"].includes(
-      promise.status,
-    ),
-  ).length;
-  const activeAgreements = agreements.filter((agreement) =>
-    ["Ativo", "Formalizando", "Em negociação", "Reativado"].includes(
-      agreement.status,
-    ),
-  ).length;
-  const hasCommitmentData = client.commitments.length > 0;
-  const concluded = fulfilled + broken;
-  const fulfillmentRate =
-    concluded > 0 ? Math.round((fulfilled / concluded) * 100) : 0;
-  const promisedValue = promises.reduce(
-    (total, promise) => total + parseMoney(promise.promisedValue),
-    0,
-  );
+  const metrics = buildCommitmentOverviewMetrics(client);
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       <ActionMetric
         label="Promessas em aberto"
-        value={hasCommitmentData ? `${open}` : EMPTY_FIELD}
+        value={metrics.hasCommitmentData ? `${metrics.open}` : EMPTY_FIELD}
         tone="gold"
         onClick={onGoToAgreements}
       />
       <ActionMetric
         label="Promessas cumpridas"
-        value={hasCommitmentData ? `${fulfilled}` : EMPTY_FIELD}
+        value={
+          metrics.hasCommitmentData ? `${metrics.fulfilled}` : EMPTY_FIELD
+        }
         onClick={onGoToAgreements}
       />
       <ActionMetric
         label="Promessas quebradas"
-        value={hasCommitmentData ? `${broken}` : EMPTY_FIELD}
+        value={metrics.hasCommitmentData ? `${metrics.broken}` : EMPTY_FIELD}
         tone="danger"
         onClick={onGoToAgreements}
       />
       <ActionMetric
         label="Acordos ativos"
-        value={hasCommitmentData ? `${activeAgreements}` : EMPTY_FIELD}
+        value={
+          metrics.hasCommitmentData
+            ? `${metrics.activeAgreements}`
+            : EMPTY_FIELD
+        }
         tone="gold"
         onClick={onGoToAgreements}
       />
       <ActionMetric
         label="Taxa de cumprimento"
-        value={hasCommitmentData ? `${fulfillmentRate}%` : EMPTY_FIELD}
+        value={
+          metrics.hasCommitmentData
+            ? `${metrics.fulfillmentRate}%`
+            : EMPTY_FIELD
+        }
         onClick={onGoToAgreements}
       />
       <ActionMetric
         label="Valor prometido"
-        value={hasCommitmentData ? formatMoney(promisedValue) : EMPTY_FIELD}
+        value={
+          metrics.hasCommitmentData ? metrics.promisedValue : EMPTY_FIELD
+        }
         tone="gold"
         onClick={onGoToAgreements}
       />
@@ -674,7 +537,7 @@ function CommitmentOverviewCards({
       <ActionMetric
         label="Risco de quebra"
         value={
-          client.agreement.risk === EMPTY_FIELD
+          !isFilledField(client.agreement.risk)
             ? EMPTY_FIELD
             : `${client.agreement.aiSuggestion.breakChance}%`
         }
@@ -693,7 +556,7 @@ function AiExecutiveCard({
   onOpenAi: () => void;
 }) {
   const diagnostic =
-    client.agreement.risk === EMPTY_FIELD
+    !isFilledField(client.agreement.risk)
       ? EMPTY_FIELD
       : `Score ${client.scoreRisco}/100, risco de acordo ${client.agreement.risk} e ${client.agreement.aiSuggestion.breakChance}% de chance de quebra.`;
 
@@ -735,14 +598,7 @@ function RiskCockpit({
   client: QueueClient;
   onOpenRiskAnalysis: () => void;
 }) {
-  const evasionTrend = Math.min(
-    client.scoreRisco + Math.floor(client.atrasoDias / 3),
-    96,
-  );
-  const hasAgreementRisk = client.agreement.risk !== EMPTY_FIELD;
-  const financialRisk = hasAgreementRisk
-    ? `${client.agreement.aiSuggestion.breakChance}%`
-    : EMPTY_FIELD;
+  const riskMetrics = buildClientRiskMetrics(client);
 
   return (
     <DetailSection title="Cockpit de risco" icon={ShieldAlert} accent>
@@ -783,7 +639,7 @@ function RiskCockpit({
               Tendência de evasão
             </p>
             <p className="mt-2 text-lg font-semibold text-slate-950">
-              {evasionTrend}%
+              {riskMetrics.evasionTrend}%
             </p>
             <p className="mt-2 text-xs text-slate-500">
               Baseada em atraso e resposta operacional
@@ -827,7 +683,7 @@ function RiskCockpit({
               Risco financeiro
             </p>
             <p className="mt-2 text-lg font-semibold text-rose-700">
-              {financialRisk}
+              {riskMetrics.financialRisk}
             </p>
             <p className="mt-2 text-xs text-slate-500">
               Chance de quebra do acordo
@@ -843,13 +699,7 @@ function RiskCockpit({
         />
         <InfoPanel
           title="Alerta crítico"
-          value={
-            hasAgreementRisk
-              ? client.agreement.aiSuggestion.breakChance >= 50
-                ? "Acordo exige acompanhamento humano próximo e lembrete antes do vencimento."
-                : "Risco sob controle, manter régua preventiva e monitorar compensação."
-              : EMPTY_FIELD
-          }
+          value={riskMetrics.criticalAlert}
         />
         <InfoPanel
           title="Próxima ação recomendada"
@@ -861,27 +711,7 @@ function RiskCockpit({
 }
 
 function ClientTab({ client }: { client: QueueClient }) {
-  const spouseKnown = isKnownValue(client.dados360.conjuge);
-  const spouse = client.dados360.conjugeDados;
-  const spouseItems =
-    spouseKnown && spouse
-      ? [
-          { label: "Cônjuge CPF", value: spouse.cpf },
-          { label: "Cônjuge telefone", value: spouse.telefone },
-          { label: "Cônjuge e-mail", value: spouse.email },
-          { label: "Cônjuge nascimento", value: spouse.nascimento },
-          { label: "Cônjuge idade", value: spouse.idade },
-          { label: "Cônjuge sexo", value: spouse.sexo },
-          { label: "Cônjuge profissão", value: spouse.profissao },
-          { label: "Cônjuge documento", value: spouse.documentoIdentidade },
-          { label: "Cônjuge nacionalidade", value: spouse.nacionalidade },
-          {
-            label: "Cônjuge naturalidade",
-            value: spouse.naturalidade ?? EMPTY_FIELD,
-          },
-          { label: "Cônjuge endereço", value: spouse.endereco },
-        ]
-      : [];
+  const profileSummary = buildClientProfileSummary(client);
 
   return (
     <>
@@ -889,68 +719,15 @@ function ClientTab({ client }: { client: QueueClient }) {
         title="Dados do cliente"
         icon={Building2}
         className="p-6"
-        primaryItems={[
-          { label: "Nome", value: client.nome },
-          { label: "CPF/CNPJ", value: client.cpf },
-          {
-            label: "Razão social",
-            value: client.dados360.razaoSocial ?? EMPTY_FIELD,
-          },
-          {
-            label: "Nome fantasia",
-            value: client.dados360.nomeFantasia ?? EMPTY_FIELD,
-          },
-          { label: "Telefone", value: client.dados360.telefone },
-          { label: "E-mail", value: client.dados360.email },
-          {
-            label: "Endereço",
-            value: client.dados360.endereco ?? EMPTY_FIELD,
-          },
-        ]}
-        expandedItems={[
-          { label: "Tipo pessoa", value: client.dados360.tipoPessoa },
-          { label: "RG", value: client.dados360.rg ?? EMPTY_FIELD },
-          {
-            label: "Documento",
-            value: client.dados360.documentoIdentidade ?? EMPTY_FIELD,
-          },
-          { label: "Nascimento", value: client.dados360.nascimento },
-          { label: "Idade", value: client.dados360.idade },
-          { label: "Sexo", value: client.dados360.sexo },
-          { label: "Estado civil", value: client.dados360.estadoCivil },
-          {
-            label: "Regime de bens",
-            value: client.dados360.regimeBens ?? EMPTY_FIELD,
-          },
-          { label: "Profissão", value: client.dados360.profissao },
-          { label: "Renda", value: client.dados360.faixaSalarial },
-          { label: "Escolaridade", value: client.dados360.escolaridade },
-          { label: "Cidade", value: client.dados360.cidade },
-          { label: "CEP", value: client.dados360.cep ?? EMPTY_FIELD },
-          { label: "Bairro", value: client.dados360.bairro ?? EMPTY_FIELD },
-          {
-            label: "Número",
-            value: client.dados360.numeroEndereco ?? EMPTY_FIELD,
-          },
-          {
-            label: "Complemento",
-            value: client.dados360.complementoEndereco ?? EMPTY_FIELD,
-          },
-          { label: "Naturalidade", value: client.dados360.naturalidade },
-          { label: "Nacionalidade", value: client.dados360.nacionalidade },
-          {
-            label: "Nome da mãe",
-            value: client.dados360.nomeMae ?? EMPTY_FIELD,
-          },
-          { label: "Relacionamento", value: client.dados360.relacionamento },
-        ]}
+        primaryItems={profileSummary.primaryItems}
+        expandedItems={profileSummary.expandedItems}
         buttonLabel="Ver mais"
         expandedLayout="list"
       />
-      {spouseItems.length ? (
+      {profileSummary.spouseItems.length ? (
         <SpouseDetailsBlock
-          spouseName={client.dados360.conjuge}
-          items={spouseItems}
+          spouseName={profileSummary.spouseName}
+          items={profileSummary.spouseItems}
         />
       ) : null}
       <DocumentsTab client={client} />
@@ -997,24 +774,6 @@ function SpouseDetailsBlock({
   );
 }
 
-function isKnownValue(value?: string | null) {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLocaleLowerCase("pt-BR");
-
-  return Boolean(
-    normalized &&
-    ![
-      "-",
-      "nao informado",
-      "não informado",
-      "sem telefone",
-      "sem e-mail",
-      "sem email",
-    ].includes(normalized),
-  );
-}
-
 function PortfolioSummaryCard({
   client,
   onOpenPortfolio,
@@ -1022,22 +781,22 @@ function PortfolioSummaryCard({
   client: QueueClient;
   onOpenPortfolio: () => void;
 }) {
-  const mainUnit = client.carteira.unidades[0];
+  const portfolioSummary = buildPortfolioSummary(client);
 
   return (
     <DetailSection title="Resumo da carteira" icon={MapPinned}>
       <div className="grid gap-3">
         <CompactInfo
           label="Unidades/lotes"
-          value={`${client.carteira.unidades.length}`}
+          value={portfolioSummary.unitsCount}
         />
         <CompactInfo
           label="Empreendimento principal"
-          value={mainUnit?.empreendimento ?? "-"}
+          value={portfolioSummary.mainEnterprise}
         />
         <CompactInfo
           label="Valor de tabela"
-          value={mainUnit?.valorTabela ?? "-"}
+          value={portfolioSummary.mainTableValue}
         />
       </div>
       <button
@@ -1175,7 +934,8 @@ function PortfolioTab({
                       {unit.empreendimento}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Quadra {unit.quadra} · Lote {formatLote(unit.lote)} ·{" "}
+                      Quadra {unit.quadra} · Lote{" "}
+                      {formatPortfolioLot(unit.lote)} ·{" "}
                       {unit.area}
                     </p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1206,7 +966,7 @@ function PortfolioTab({
             </div>
             <p className="mt-1 text-sm text-slate-500">
               Quadra {selectedUnit.quadra} · Lote{" "}
-              {formatLote(selectedUnit.lote)} · {selectedUnit.area}
+              {formatPortfolioLot(selectedUnit.lote)} · {selectedUnit.area}
             </p>
           </div>
 
@@ -1371,7 +1131,7 @@ function renderUnitSubtab({
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <CompactInfo label="Empreendimento" value={unit.empreendimento} />
       <CompactInfo label="Quadra" value={unit.quadra} />
-      <CompactInfo label="Lote" value={formatLote(unit.lote)} />
+      <CompactInfo label="Lote" value={formatPortfolioLot(unit.lote)} />
       <CompactInfo label="Cod. unidade" value={unit.matricula} />
       <CompactInfo label="Área" value={unit.area} />
       <CompactInfo label="Valor de tabela" value={unit.valorTabela} />
@@ -1406,7 +1166,7 @@ function UnitScopeControl({
           {client.carteira.unidades.map((unit) => (
             <option key={unit.id} value={unit.id}>
               {unit.empreendimento} · Quadra {unit.quadra} · Lote{" "}
-              {formatLote(unit.lote)}
+              {formatPortfolioLot(unit.lote)}
             </option>
           ))}
         </select>
@@ -1466,7 +1226,7 @@ function RiskTab({
             </span>
           </div>
           <p className="text-sm leading-6 text-slate-600">
-            {client.agreement.risk === EMPTY_FIELD
+            {!isFilledField(client.agreement.risk)
               ? EMPTY_FIELD
               : `O cliente está em ${client.workflow.stage.toLowerCase()}, com ${client.parcelas.vencidas} parcela(s) vencida(s), saldo em atraso de ${client.saldoDevedor} e chance de quebra de acordo de ${client.agreement.aiSuggestion.breakChance}%.`}
           </p>
@@ -1488,66 +1248,7 @@ function DocumentsTab({
     null,
   );
   const [documentError, setDocumentError] = useState<string | null>(null);
-  const selectedUnit = unit ?? client.carteira.unidades[0];
-  const contractCode = selectedUnit?.matricula ?? "Sem cod. unidade";
-  const contractDocumentId = selectedUnit?.signedContractDocumentId;
-  const contractUrl = contractDocumentId
-    ? `/api/hades/d4sign/contracts/${encodeURIComponent(contractDocumentId)}`
-    : undefined;
-  const unitLabel = selectedUnit
-    ? `${selectedUnit.empreendimento} ${selectedUnit.quadra} ${selectedUnit.lote}`.trim()
-    : "Unidade não selecionada";
-  const agreementDocuments = client.commitments
-    .filter((commitment) => commitment.type === "Acordo")
-    .filter(
-      (agreement) =>
-        !selectedUnit || agreement.unitCode === selectedUnit.matricula,
-    )
-    .map((agreement) => ({
-      detail: agreement.protocol,
-      id: agreement.id,
-      meta: `${agreement.negotiatedValue} · ${agreement.installmentsCount} parcelas`,
-      status: agreement.status,
-      title: "Acordo",
-      unitBadge: agreement.unitCode,
-    }));
-  const documents = [
-    {
-      detail: contractCode,
-      href: contractUrl,
-      id: "contract",
-      meta: unitLabel,
-      status: contractDocumentId
-        ? (selectedUnit?.signedContractStatus ?? "Assinado")
-        : "Não localizado",
-      title: "Contrato",
-      unitBadge: contractCode,
-    },
-    ...(agreementDocuments.length > 0
-      ? agreementDocuments
-      : [
-          {
-            detail: client.agreement.id.toUpperCase(),
-            id: "agreement-planned",
-            meta: `${client.agreement.negotiatedValue} · ${client.agreement.installmentsCount} parcelas`,
-            status: client.agreement.status,
-            title: "Acordo",
-            unitBadge: contractCode,
-          },
-        ]),
-    {
-      detail: client.agreement.id.toUpperCase(),
-      id: "boleto-c2x",
-      status: client.agreement.status,
-      title: "Boleto C2X",
-    },
-    {
-      detail: `${client.timeline.length} eventos`,
-      id: "collection-history",
-      status: "Registrado",
-      title: "Histórico de cobrança",
-    },
-  ];
+  const documents = buildClientDocumentSummary(client, unit);
 
   async function openHadesDocument(documentUrl: string, documentId: string) {
     const previewWindow = window.open("about:blank", "_blank");
@@ -1624,9 +1325,13 @@ function DocumentsTab({
                   <button
                     type="button"
                     disabled={openingDocumentId === document.id}
-                    onClick={() =>
-                      void openHadesDocument(document.href, document.id)
-                    }
+                    onClick={() => {
+                      if (!document.href) {
+                        return;
+                      }
+
+                      void openHadesDocument(document.href, document.id);
+                    }}
                     className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-white px-2 py-1 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
                   >
                     <span className="truncate">{document.detail}</span>
@@ -1691,10 +1396,7 @@ function RiskAnalysisModal({
     return null;
   }
 
-  const evasionTrend = Math.min(
-    client.scoreRisco + Math.floor(client.atrasoDias / 3),
-    96,
-  );
+  const riskMetrics = buildClientRiskMetrics(client);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -1737,7 +1439,7 @@ function RiskAnalysisModal({
           />
           <MetricTile
             label="Tendência de evasão"
-            value={`${evasionTrend}%`}
+            value={`${riskMetrics.evasionTrend}%`}
             tone="danger"
           />
           <MetricTile
@@ -1747,20 +1449,12 @@ function RiskAnalysisModal({
           />
           <MetricTile
             label="Risco financeiro"
-            value={
-              client.agreement.risk === EMPTY_FIELD
-                ? EMPTY_FIELD
-                : `${client.agreement.aiSuggestion.breakChance}%`
-            }
+            value={riskMetrics.financialRisk}
             tone="danger"
           />
           <InfoPanel
             title="Diagnóstico IA"
-            value={
-              client.agreement.risk === EMPTY_FIELD
-                ? EMPTY_FIELD
-                : `O cliente combina ${client.atrasoDias} dias de atraso, ${client.parcelas.vencidas} parcela(s) vencida(s), acordo ${client.agreement.status.toLowerCase()} e risco ${client.agreement.risk.toLowerCase()}.`
-            }
+            value={riskMetrics.aiDiagnostic}
           />
           <InfoPanel
             title="Recomendação"
@@ -1810,7 +1504,7 @@ function OverviewTimelineAndAlerts({ client }: { client: QueueClient }) {
           <InfoPanel
             title="Risco de quebra"
             value={
-              client.agreement.risk === EMPTY_FIELD
+              !isFilledField(client.agreement.risk)
                 ? EMPTY_FIELD
                 : `${client.agreement.aiSuggestion.breakChance}% de chance prevista no acordo atual.`
             }
@@ -1822,7 +1516,7 @@ function OverviewTimelineAndAlerts({ client }: { client: QueueClient }) {
           <InfoPanel
             title="Acordo"
             value={
-              client.agreement.risk === EMPTY_FIELD
+              !isFilledField(client.agreement.risk)
                 ? EMPTY_FIELD
                 : `${client.agreement.status}, risco ${client.agreement.risk}.`
             }
@@ -1952,24 +1646,8 @@ function UnitContext({ label, unit }: { label: string; unit: PortfolioUnit }) {
       <p className="text-xs font-medium text-slate-500">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-slate-950">
         {unit.empreendimento} · Quadra {unit.quadra} · Lote{" "}
-        {formatLote(unit.lote)}
+        {formatPortfolioLot(unit.lote)}
       </p>
     </div>
   );
-}
-
-function formatLote(lote: string) {
-  return lote.replace(/^L/i, "");
-}
-
-function parseMoney(value: string) {
-  const normalized = value
-    .replace(/[^\d,.-]/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
-  return Number.parseFloat(normalized) || 0;
-}
-
-function formatMoney(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }

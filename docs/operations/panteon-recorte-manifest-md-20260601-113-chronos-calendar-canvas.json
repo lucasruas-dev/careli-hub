@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "MD-20260601-113-CHRONOS-CALENDAR-CANVAS",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos calendar canvas extraction",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "agenda",
+    "calendar-canvas",
+    "meeting-type-visuals",
+    "module-decomposition"
+  ],
+  "allowedLayers": ["zeus"],
+  "includedFiles": [
+    "apps/hub/modules/chronos/components/chronos-calendar-canvas.tsx",
+    "apps/hub/modules/chronos/components/chronos-meeting-type-visuals.ts",
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "docs/operations/panteon-work-execution-tree-2026-05-30.md",
+    "docs/operations/panteon-recorte-manifest-md-20260601-113-chronos-calendar-canvas.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-calendar-canvas.tsx modules/chronos/components/chronos-meeting-type-visuals.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos extracao do canvas/calendario Chronos",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node em apps/hub/eslint.config.js",
+    "npm.cmd run build --workspace @repo/hub: PASS com warning conhecido Turbopack/NFT sobre trace de engineering-operations-source.ts",
+    "smoke HTTP local em servidor ja ativo http://127.0.0.1:3001: /chronos 200, /chronos/lideranca 200, /hermes 200, /hades 200 e /iris 200",
+    "smoke HTTP local sem sessao para /api/chronos/meetings, /api/chronos/google-calendar/status e /api/chronos/invitees?q=lu: PASS 401 esperado",
+    "rg @ts-nocheck e rg eslint-disable em apps/hub/modules/chronos/components/chronos-calendar-canvas.tsx, apps/hub/modules/chronos/components/chronos-meeting-type-visuals.ts e apps/hub/modules/chronos/ChronosPage.tsx: PASS, sem supressoes",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-md-20260601-113-chronos-calendar-canvas.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --files <arquivos-do-recorte>: PASS",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "sem endpoint novo, banco, env, secret, token, Vercel, Supabase admin, Preview, homologacao ou producao"
+  ],
+  "productionBaseline": {
+    "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "technicalUrl": "https://careli-hub-hub-i2bs-nqodcei76-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_FoWV8qikCmJbxSyEFYa4z3AeLrs6",
+    "publishedCommit": "e5c7ac3",
+    "postDeployRecordCommit": "a145058"
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reintroduzir ChronosCalendarCanvas, MiniCalendar e subcomponentes de calendario no apps/hub/modules/chronos/ChronosPage.tsx, se for necessario reverter a decomposicao.",
+    "Recolocar chronosMeetingTypeVisuals no ChronosPage.tsx caso o helper compartilhado seja revertido.",
+    "Nao ha DDL, env, deploy, endpoint novo, alias, dominio ou mudanca de integracao real associada."
+  ],
+  "notes": [
+    "Move ChronosCalendarCanvas, ChronosTimeGrid, ChronosMonthGrid, ChronosYearGrid, ChronosAgendaEventCard, ChronosCalendarEventPill e MiniCalendar para apps/hub/modules/chronos/components/chronos-calendar-canvas.tsx.",
+    "Move chronosMeetingTypeVisuals para apps/hub/modules/chronos/components/chronos-meeting-type-visuals.ts para uso compartilhado com ChronosAgendaScreen.",
+    "ChronosPage.tsx caiu para 2464 linhas apos o recorte; o novo canvas ficou com 535 linhas e o helper visual com 55 linhas.",
+    "Nao altera OpenAI, Google Calendar, storage, schema, env, token, Vercel, Supabase admin, Preview, homologacao ou producao."
+  ]
+}
