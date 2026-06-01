@@ -28777,3 +28777,35 @@ Conclusao:
 - A segunda camada trata valores reais inesperados que ainda poderiam derrubar a renderizacao client-side.
 - O impacto pratico e tornar Chronos tolerante a dados legados/incompletos vindos da agenda e do Drive.
 - A proxima acao e publicar o segundo hotfix e pedir novo teste autenticado do Lucas na aba Atas.
+
+## 2026-06-01 02:02:00 -03:00 - Chronos/Zeus - segunda camada em producao
+
+Assunto: [Chronos] fallback de datas e status publicado
+
+- Nome da squad/agente: Chronos Core, publicado por Zeus/Hefesto.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-120-CHRONOS-DATE-STATUS-FALLBACK`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO NOVO TESTE AUTENTICADO DO LUCAS.
+- Commit publicado: `a6385f4 fix(chronos): guard date and status fallbacks`.
+- Deployment:
+  - deployment anterior ao segundo hotfix: `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`;
+  - deployment novo: `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`;
+  - URL tecnica nova: `https://careli-hub-hub-i2bs-nlbl16yz1-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato: `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`.
+- Validacoes pos-deploy:
+  - build remoto Vercel Production: READY, com warnings conhecidos;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - logs recentes em `c2x.app.br`: sem erro server-side novo observado.
+- Observacao:
+  - se o navegador do Lucas continuar mostrando o mesmo boundary imediatamente, o proximo passo e forcar uma atualizacao dura/limpar controle do app instalado, porque o dominio ja aponta para o deployment novo;
+  - se o erro mudar ou persistir apos refresh duro, sera necessario capturar a mensagem exata do console/overlay.
+
+Conclusao:
+
+- A segunda camada ja esta em producao e cobre datas invalidas e enums/status legados fora do esperado.
+- O impacto pratico e impedir que eventos vindos do Google/Chronos quebrem a Agenda/Drive antes da aba Atas carregar.
+- A acao agora e Lucas dar refresh completo na pagina de producao e testar novamente `Drive > Atas`.

@@ -4,7 +4,7 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos date and status fallback hotfix",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -50,8 +50,24 @@
     "npx.cmd eslint lib/chronos/client.ts lib/chronos/calendar.ts lib/chronos/minutes-draft.ts modules/chronos/components/chronos-calendar-canvas.tsx modules/chronos/components/chronos-calendar-event-details-popup.tsx modules/chronos/components/chronos-drive-item-card.tsx modules/chronos/components/chronos-drive-recording-card.tsx modules/chronos/components/chronos-executive-room-panel.tsx modules/chronos/components/chronos-meeting-overview.tsx modules/chronos/components/chronos-meeting-type-visuals.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-panels.tsx modules/chronos/components/chronos-recording-context-panel.tsx modules/chronos/components/chronos-recordings-panel.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
     "npm.cmd run check-types:hub: PASS",
     "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
-    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido"
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-120-chronos-date-status-fallback.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS",
+    "npx.cmd vercel deploy --prod --yes: PASS, deployment dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu READY",
+    "npx.cmd vercel inspect https://c2x.app.br: PASS, Ready no deployment dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: PASS, Ready no deployment dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
+    "healthchecks producao: GET https://c2x.app.br/chronos 200; GET https://c2x.app.br/api/chronos/meetings sem sessao 401 esperado",
+    "npx.cmd vercel logs https://c2x.app.br --since 10m: PASS, sem erro server-side novo observado"
   ],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j",
+    "hotfixDeploymentId": "dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-nlbl16yz1-lucasruas-devs-projects.vercel.app",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j",
+    "rollbackDeploymentIdPreviousEngineeringRelease": "dpl_34sTeQMRmSLBQzHkx26urYGcgCkT",
+    "hotfixCodeCommit": "a6385f4"
+  },
   "sensitiveOperations": [
     "Deploy Vercel --prod do segundo hotfix Chronos autorizado por Lucas apos reportar que o erro persistiu."
   ],

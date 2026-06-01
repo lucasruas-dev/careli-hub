@@ -2611,3 +2611,46 @@ Registro de producao:
   - `npx.cmd vercel logs https://c2x.app.br --since 10m`: sem erro novo; observados `200` para rotas Chronos e `401` esperado para API protegida sem sessao.
 - Rollback planejado: promover novamente `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT` se houver regressao critica; rollback anterior do pacote de engenharia continua documentado em `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
 - Proxima acao: Lucas atualizar a pagina em producao, abrir `Drive > Atas` autenticado e confirmar se a tela carrega sem boundary.
+
+## 2026-06-01 - CH-20260601-120-CHRONOS-DATE-STATUS-FALLBACK
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando novo teste autenticado do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] segunda camada do hotfix de Atas em producao`.
+- Protocolo: `CH-20260601-120-CHRONOS-DATE-STATUS-FALLBACK`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas confirmou que o erro persistiu depois do protocolo `CH-20260601-119`.
+- Escopo publicado:
+  - normalizacao client-side ampliada para campos opcionais, datas, salas e perfis;
+  - fallback para datas invalidas em cards/agenda;
+  - fallback para tipos/status/minutes/gravacao fora das enums esperadas;
+  - helper visual seguro para tipos de reuniao Chronos.
+- Itens nao alterados: endpoints, banco, migrations, Supabase admin, envs, secrets, tokens, dominios, aliases manuais e regras de negocio.
+- Commit publicado: `a6385f4 fix(chronos): guard date and status fallbacks`.
+- Deployment anterior: `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`.
+- Deployment novo: `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`.
+- URL tecnica: `https://careli-hub-hub-i2bs-nlbl16yz1-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - ESLint focado nos arquivos Chronos alterados: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-120-chronos-date-status-fallback.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: OK;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF.
+- Build remoto Vercel Production: READY, com warnings conhecidos.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m`: sem erro server-side novo observado.
+- Rollback planejado: promover novamente `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j` se houver regressao critica; rollback anterior da engenharia segue em `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`.
+- Proxima acao: Lucas atualizar totalmente `https://c2x.app.br/chronos` e testar `Drive > Atas`; se persistir, capturar console/overlay do navegador.
