@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-128-CHRONOS-MINUTES-PDF-ROOM-BACKGROUND",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos Atas inteligentes, PDF padrao e gravacao com fundo da sala",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "ALTO",
+  "approvedBy": "PENDENTE",
+  "blocks": [
+    "chronos-drive",
+    "minutes",
+    "transcription",
+    "recording-composition",
+    "room-background"
+  ],
+  "allowedLayers": ["chronos", "zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/lib/chronos/minutes.ts",
+    "apps/hub/lib/chronos/minutes-preview.ts",
+    "apps/hub/lib/chronos/recording.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-minutes-formatted-preview.tsx",
+    "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-128-chronos-minutes-pdf-room-background.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**",
+    "docs/operations/releases-production.md"
+  ],
+  "validations": [
+    "Causa da aba Atas identificada: Intl.DateTimeFormat usava dateStyle junto de hour/minute, combinacao invalida que gera TypeError Invalid option : option.",
+    "Formatadores de data da ata trocados para componentes explicitos dia/mes/ano/hora/minuto com fallback sem throw.",
+    "Prazo padrao do plano de acao trocado de 5 dias uteis para 5 dias corridos a partir da data base da reuniao.",
+    "Rota /api/chronos/meetings/agent passou a pedir response_format=json na transcricao e JSON schema estruturado na geracao de ata pelo Responses API.",
+    "Prompt da ata reforcado para leitura executiva, bullets curtos, secoes profissionais e tabela obrigatoria de Plano de acao no perfil alinhamento.",
+    "PDF/preview da ata ajustado para Century Gothic, corpo 9pt, line-height 1.5 e espacamento de paragrafo 0/0.",
+    "Botoes de gerar/transcrever ata ganharam feedback visual de spinner durante processamento.",
+    "Gravacao composta passou a desenhar o background data URL da sala no canvas capturado antes da tela compartilhada e dos tiles laterais.",
+    "Documentacao oficial revisada: OpenAI audio transcriptions, OpenAI structured outputs, MDN MediaRecorder e HTMLCanvasElement.captureStream.",
+    "npm.cmd run check-types: PASS",
+    "npm.cmd run lint: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run build: PASS com warnings conhecidos Turbopack/NFT e root inferido por worktree em .codex-deploy",
+    "next start temporario em localhost:3019: GET /chronos 200 OK"
+  ],
+  "gitContext": {
+    "localCommit": "PENDENTE",
+    "commitMode": "pendente",
+    "commitNote": "Recorte validado localmente e aguardando autorizacao explicita de Lucas para commit/deploy de producao."
+  },
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_94aModt7TkVq5BjKrVCRpvMNU1vF",
+    "hotfixDeploymentId": "PENDENTE",
+    "hotfixTechnicalUrl": "PENDENTE",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_94aModt7TkVq5BjKrVCRpvMNU1vF",
+    "hotfixCodeCommit": "PENDENTE",
+    "operationsCenterStatus": {
+      "status": "PENDENTE",
+      "reason": "Nenhuma operacao remota executada neste recorte sem autorizacao explicita de Lucas.",
+      "sensitiveHandling": "Nenhum secret, token, chave, env, migration, banco remoto, dominio ou alias foi alterado."
+    }
+  },
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter os arquivos incluidos deste protocolo para o deployment atual dpl_94aModt7TkVq5BjKrVCRpvMNU1vF se houver regressao critica antes de publicar.",
+    "Se publicado e houver regressao, promover novamente dpl_94aModt7TkVq5BjKrVCRpvMNU1vF.",
+    "Nao ha DDL, migration, env, secret, token, dominio, alias manual ou alteracao direta de banco associada."
+  ],
+  "notes": [
+    "O erro Invalid option : option era local de formatacao Intl e tambem podia interromper a geracao de prompt da ata no servidor.",
+    "A personalizacao da sala so aparece na gravacao se for desenhada dentro do canvas que alimenta canvas.captureStream.",
+    "A geracao de PDF continua pelo fluxo de janela de impressao do navegador, agora rotulada como Gerar PDF e com CSS do modelo solicitado.",
+    "Teste funcional autenticado pendente: clicar Transcrever em uma gravacao disponivel, conferir transcript/ata e abrir Gerar PDF; iniciar chamada com fundo personalizado e conferir nova gravacao no Drive."
+  ]
+}

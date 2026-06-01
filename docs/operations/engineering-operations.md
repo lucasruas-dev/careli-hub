@@ -29291,3 +29291,50 @@ Conclusao:
 - O protocolo `CH-20260601-127` esta em producao e os healthchecks tecnicos passaram.
 - O impacto pratico esperado e estabilizar a negociacao de audio/video em chamadas com tres ou mais pessoas e limpar o loading do Asana na Home.
 - A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos`, testar uma chamada com pelo menos tres participantes e alternar microfone, camera e compartilhamento de tela; se houver regressao critica, o rollback imediato e promover `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS`. O registro Markdown/release esta fechado; o registro vivo do Operations Center precisa ser reconciliado depois com ambiente server-side configurado ou rotina granular autorizada.
+
+## 2026-06-01 05:22:00 -03:00 - Chronos/Zeus - Atas inteligentes, PDF padrao e gravacao com fundo da sala
+
+Assunto: [Chronos] Atas inteligentes, PDF padrao e fundo da sala na gravacao
+
+- Nome da squad/agente: Chronos Core, coordenado por Zeus.
+- Ambiente: worktree limpo de producao `.codex-deploy/z01-001-engineering-prod-20260601`.
+- Protocolo: `CH-20260601-128-CHRONOS-MINUTES-PDF-ROOM-BACKGROUND`.
+- Status: VALIDADO LOCAL / PUBLICACAO BLOQUEADA ATE AUTORIZACAO EXPLICITA.
+- Autorizacao: Lucas ainda nao autorizou deploy deste novo recorte; nenhuma operacao remota foi executada.
+- Origem:
+  - Lucas confirmou que a gravacao passou a salvar e nao interromper;
+  - Lucas relatou que a gravacao ainda nao carregava a personalizacao da sala/fundo;
+  - Lucas relatou que `Transcrever` nao gerava ata e que a aba Atas seguia mostrando `Invalid option : option`;
+  - Lucas definiu o padrao da ata: Century Gothic, 9 pt, espacamento antes/depois 0/0, entrelinhas 1,5, PDF, leitura executiva, bullets organizados e plano de acao em tabela; quando a atividade nao trouxer prazo, considerar 5 dias a partir da data da reuniao.
+- Causa tratada:
+  - a aba Atas quebrava por `Intl.DateTimeFormat` usando `dateStyle` junto de `hour`/`minute`, combinacao invalida que gera `TypeError: Invalid option : option`;
+  - a mesma formatacao podia interromper a montagem do prompt da ata no servidor;
+  - o compositor da gravacao usa `canvas.captureStream()`, entao o background da sala precisa ser desenhado dentro do canvas antes da tela/camera;
+  - o fluxo visual de transcricao nao deixava claro que o clique estava processando.
+- Implementacao:
+  - `apps/hub/lib/chronos/minutes.ts` passou a formatar datas com componentes explicitos e fallback sem throw;
+  - o prazo padrao do plano de acao passou a ser 5 dias corridos da data base da reuniao;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` passou a pedir `response_format=json` na transcricao e JSON schema estruturado na geracao de ata pela Responses API;
+  - o prompt da Ata reforca leitura executiva, bullets curtos e tabela obrigatoria de Plano de acao no perfil alinhamento;
+  - `apps/hub/lib/chronos/minutes-preview.ts` e `chronos-minutes-formatted-preview.tsx` alinham PDF/preview a Century Gothic, 9 pt no corpo, line-height 1.5 e espacamento 0/0;
+  - `chronos-minutes-panel.tsx` e `chronos-drive-recording-card.tsx` exibem spinner nos botoes de gerar/transcrever enquanto processam;
+  - `apps/hub/lib/chronos/recording.ts` e `ChronosExternalRoomPage.tsx` desenham o background data URL da sala no canvas da gravacao composta antes da tela compartilhada e dos tiles laterais.
+- Documentacao consultada:
+  - OpenAI Audio transcriptions API;
+  - OpenAI Structured Outputs/Responses API;
+  - MDN `MediaRecorder`;
+  - MDN `HTMLCanvasElement.captureStream`.
+- Validacoes:
+  - `npm.cmd run check-types`: PASS;
+  - `npm.cmd run lint`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build`: PASS, com warnings conhecidos Turbopack/NFT e root inferido por worktree em `.codex-deploy`;
+  - `next start` temporario em `localhost:3019`: `GET /chronos` 200 OK.
+- Limites:
+  - sem deploy, redeploy, alias, dominio, env, secret, token, migration, DDL, Supabase admin, service role ou alteracao direta de banco;
+  - teste funcional autenticado ainda pendente: clicar `Transcrever`, conferir transcript/ata, abrir `Gerar PDF`, gravar nova chamada com fundo personalizado e revisar o video salvo no Drive.
+
+Conclusao:
+
+- O erro `Invalid option : option` tinha causa objetiva de formatacao local de datas, nao de conteudo da reuniao.
+- O impacto esperado e destravar a aba Atas, permitir que `Transcrever` gere transcricao/rascunho de ata e padronizar a saida executiva/PDF conforme o modelo informado por Lucas.
+- A acao agora e Lucas autorizar publicacao deste protocolo ou validar localmente antes; Zeus/Hefesto devem publicar apenas o protocolo `CH-20260601-128` se houver autorizacao explicita.

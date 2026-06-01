@@ -1272,6 +1272,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     }
 
     const recordingMedia = buildChronosRecordingMedia({
+      backgroundDataUrl: pageBackgroundImage,
       getLocalStream: () => localStreamRef.current,
       getParticipantVideos: getChronosRecordingParticipantVideos,
       getScreenTrack: () => screenTrackRef.current,

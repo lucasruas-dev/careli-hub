@@ -62,7 +62,7 @@ export function ChronosMinutesFormattedPreview({
             />
           </header>
           <div
-            className="chronos-minutes-body [&_h2]:mb-0 [&_h2]:mt-3 [&_h2]:text-[10pt] [&_h2]:font-bold [&_li]:mt-0.5 [&_p]:m-0 [&_p]:mt-1 [&_strong]:font-bold [&_table]:mt-2 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-[#d9e0e7] [&_td]:p-1.5 [&_td]:align-top [&_th]:border [&_th]:border-[#d9e0e7] [&_th]:bg-[#f3f6fa] [&_th]:p-1.5 [&_th]:text-left [&_th]:font-bold [&_ul]:m-0 [&_ul]:mt-1 [&_ul]:pl-5"
+            className="chronos-minutes-body [&_h2]:mb-0 [&_h2]:mt-3 [&_h2]:text-[10pt] [&_h2]:font-bold [&_li]:m-0 [&_p]:m-0 [&_strong]:font-bold [&_table]:mt-2 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-[#d9e0e7] [&_td]:p-1.5 [&_td]:align-top [&_th]:border [&_th]:border-[#d9e0e7] [&_th]:bg-[#f3f6fa] [&_th]:p-1.5 [&_th]:text-left [&_th]:font-bold [&_ul]:m-0 [&_ul]:mt-1 [&_ul]:pl-5"
             dangerouslySetInnerHTML={{
               __html: buildChronosMinutesBodyHtml(minutes),
             }}

@@ -10,7 +10,7 @@ import {
   type ChronosUpdateInput,
 } from "@/lib/chronos/types";
 import { Badge, Surface } from "@repo/uix";
-import { Download, Mic, Save, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { Download, Loader2, Mic, Save, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ChronosMinutesFormattedPreview } from "./chronos-minutes-formatted-preview";
 import { chronosMinutesStatusVariant } from "./chronos-minutes-status";
@@ -178,7 +178,11 @@ export function MinutesPanel({
               onClick={() => void onGenerateMinutesDraft(meeting, minutesProfile)}
               type="button"
             >
-              <Sparkles aria-hidden="true" size={15} />
+              {saving ? (
+                <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+              ) : (
+                <Sparkles aria-hidden="true" size={15} />
+              )}
               {hasTranscript ? "Gerar ata da transcricao" : "Gerar ata Athena"}
             </button>
             <button
@@ -195,9 +199,15 @@ export function MinutesPanel({
               }
               type="button"
             >
-              <Mic aria-hidden="true" size={15} />
+              {saving ? (
+                <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+              ) : (
+                <Mic aria-hidden="true" size={15} />
+              )}
               {transcribableRecording
-                ? "Transcrever gravacao"
+                ? saving
+                  ? "Transcrevendo"
+                  : "Transcrever gravacao"
                 : hasTranscript
                   ? "Transcricao registrada"
                   : "Gravacao pendente"}
@@ -246,7 +256,7 @@ export function MinutesPanel({
           type="button"
         >
           <Download aria-hidden="true" size={15} />
-          PDF
+          Gerar PDF
         </button>
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"

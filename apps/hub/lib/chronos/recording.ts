@@ -68,6 +68,7 @@ export function buildChronosRecordingStream<
 export function buildChronosRecordingMedia<
   TParticipant extends ChronosRecordingParticipant,
 >({
+  backgroundDataUrl,
   getLocalStream,
   getParticipantVideos,
   getScreenTrack,
@@ -78,12 +79,14 @@ export function buildChronosRecordingMedia<
   getLocalStream?: () => MediaStream | null;
   getParticipantVideos?: () => ChronosRecordingVideoSource[];
   getScreenTrack?: () => MediaStreamTrack | null;
+  backgroundDataUrl?: string;
   localStream: MediaStream | null;
   remoteParticipants: Record<string, TParticipant>;
   screenTrack: MediaStreamTrack | null;
 }): ChronosRecordingMedia | null {
   if (canBuildChronosCompositeRecording()) {
     const composite = buildChronosCompositeRecordingStream({
+      backgroundDataUrl,
       getLocalStream,
       getParticipantVideos,
       getScreenTrack,
@@ -166,6 +169,7 @@ function canBuildChronosCompositeRecording() {
 function buildChronosCompositeRecordingStream<
   TParticipant extends ChronosRecordingParticipant,
 >({
+  backgroundDataUrl,
   getLocalStream,
   getParticipantVideos,
   getScreenTrack,
@@ -173,6 +177,7 @@ function buildChronosCompositeRecordingStream<
   remoteParticipants,
   screenTrack,
 }: {
+  backgroundDataUrl?: string;
   getLocalStream?: () => MediaStream | null;
   getParticipantVideos?: () => ChronosRecordingVideoSource[];
   getScreenTrack?: () => MediaStreamTrack | null;
@@ -200,6 +205,9 @@ function buildChronosCompositeRecordingStream<
   ]);
   let frameId = 0;
   let disposed = false;
+  const backgroundImage = createChronosRecordingBackgroundImage(
+    backgroundDataUrl,
+  );
   const videoElementsByTrackId = new Map<string, HTMLVideoElement>();
 
   const getVideoForTrack = (track: MediaStreamTrack | null | undefined) => {
@@ -233,6 +241,7 @@ function buildChronosCompositeRecordingStream<
       getScreenTrack,
       getVideoForTrack,
       localStream,
+      backgroundImage,
       screenTrack,
       videoElementsByTrackId,
     });
@@ -303,6 +312,7 @@ function releaseUnusedChronosRecordingVideoElements(
 }
 
 function drawChronosRecordingFrame({
+  backgroundImage,
   canvas,
   context,
   getLocalStream,
@@ -313,6 +323,7 @@ function drawChronosRecordingFrame({
   screenTrack,
   videoElementsByTrackId,
 }: {
+  backgroundImage: HTMLImageElement | null;
   canvas: HTMLCanvasElement;
   context: CanvasRenderingContext2D;
   getLocalStream?: () => MediaStream | null;
@@ -378,8 +389,7 @@ function drawChronosRecordingFrame({
 
   releaseUnusedChronosRecordingVideoElements(videoElementsByTrackId, liveTrackIds);
 
-  context.fillStyle = "#071018";
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  drawChronosRecordingBackground(context, canvas, backgroundImage);
   drawChronosVideoContain(context, mainSource.video, 0, 0, mainWidth, canvas.height);
 
   if (!hasRail) {
@@ -411,6 +421,57 @@ function drawChronosRecordingFrame({
     context.font = "600 14px Arial";
     context.fillText(source.label || "Participante", tileX + 10, tileY + tileHeight - 10);
   });
+}
+
+function createChronosRecordingBackgroundImage(value?: string) {
+  const dataUrl = typeof value === "string" ? value.trim() : "";
+
+  if (!/^data:image\//i.test(dataUrl)) {
+    return null;
+  }
+
+  const image = new Image();
+
+  image.src = dataUrl;
+
+  return image;
+}
+
+function drawChronosRecordingBackground(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  image: HTMLImageElement | null,
+) {
+  if (image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+    drawChronosImageCover(context, image, canvas.width, canvas.height);
+    return;
+  }
+
+  const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+
+  gradient.addColorStop(0, "#071018");
+  gradient.addColorStop(0.52, "#101820");
+  gradient.addColorStop(1, "#1f2933");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawChronosImageCover(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number,
+) {
+  const coverScale = Math.max(
+    width / image.naturalWidth,
+    height / image.naturalHeight,
+  );
+  const coverWidth = image.naturalWidth * coverScale;
+  const coverHeight = image.naturalHeight * coverScale;
+  const coverX = (width - coverWidth) / 2;
+  const coverY = (height - coverHeight) / 2;
+
+  context.drawImage(image, coverX, coverY, coverWidth, coverHeight);
 }
 
 function drawChronosVideoContain(

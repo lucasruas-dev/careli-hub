@@ -55,10 +55,11 @@ export function openChronosMinutesPrintWindow({
       h1, h2, h3, p, ul { margin-bottom: 0; margin-top: 0; }
       h1 { font-size: 13pt; font-weight: 700; }
       h2 { font-size: 10pt; font-weight: 700; margin-top: 12px; }
-      p { margin-top: 4px; }
+      p { margin-top: 0; }
       ul { padding-left: 18px; }
-      li { margin-top: 2px; }
+      li { margin-top: 0; }
       strong { font-weight: 700; }
+      p, li, td, th { font-size: 9pt; line-height: 1.5; }
       table {
         border-collapse: collapse;
         margin-top: 8px;
@@ -162,7 +163,7 @@ export function buildChronosMinutesBodyHtml(minutes: string | null | undefined) 
       continue;
     }
 
-    if (/^\d+\.\s+/.test(line) || /^[A-Z0-9\sÃ‡ÃƒÃ•ÃÃ‰ÃÃ“ÃšÃ‚ÃŠÃ”Ã€:.-]{6,}$/.test(line)) {
+    if (isChronosMinutesHeadingLine(line)) {
       flushList();
       chunks.push(`<h2>${formatChronosMinutesInline(line)}</h2>`);
       continue;
@@ -218,6 +219,23 @@ function buildChronosMinutesTableHtml(lines: string[]) {
 
 function isChronosMarkdownTableLine(line: string) {
   return line.includes("|") && line.split("|").filter(Boolean).length >= 2;
+}
+
+function isChronosMinutesHeadingLine(line: string) {
+  const withoutBold = line.replace(/^\*\*/, "").replace(/\*\*$/, "").trim();
+  const normalized = withoutBold
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (/^\d+\.\s+/.test(normalized)) {
+    return true;
+  }
+
+  if (/^\*\*[^*]{3,}\*\*$/.test(line)) {
+    return true;
+  }
+
+  return /^[A-Z0-9\s:./-]{6,}$/.test(normalized) || /:$/.test(withoutBold);
 }
 
 function formatChronosMinutesInline(value: string) {

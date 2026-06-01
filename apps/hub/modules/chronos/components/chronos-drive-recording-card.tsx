@@ -17,7 +17,7 @@ import {
   type ChronosMinutesProfile,
 } from "@/lib/chronos/types";
 import { Badge } from "@repo/uix";
-import { Download, FileText, Mic, PlayCircle, Video } from "lucide-react";
+import { Download, FileText, Loader2, Mic, PlayCircle, Video } from "lucide-react";
 
 type ChronosDriveViewMode = "grid" | "list";
 
@@ -283,9 +283,15 @@ function ChronosDriveRecordingActions({
             }
             type="button"
           >
-            <Mic aria-hidden="true" size={13} />
+            {saving ? (
+              <Loader2 aria-hidden="true" className="animate-spin" size={13} />
+            ) : (
+              <Mic aria-hidden="true" size={13} />
+            )}
             {primaryRecording.transcribedAt
               ? "Transcrita"
+              : saving
+                ? "Transcrevendo"
               : canTranscribeChronosDriveRecording(primaryRecording)
                 ? "Transcrever"
                 : "Aguardando video"}

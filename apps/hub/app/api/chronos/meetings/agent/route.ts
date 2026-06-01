@@ -32,6 +32,26 @@ const CHRONOS_MINUTES_FALLBACK_MODELS = [
   DEFAULT_MINUTES_MODEL,
   "gpt-4.1-mini",
 ] as const;
+const CHRONOS_MINUTES_RESPONSE_FORMAT = {
+  name: "chronos_minutes_draft",
+  schema: {
+    additionalProperties: false,
+    properties: {
+      minutes: {
+        description: "Conteudo completo da ata em markdown executivo.",
+        type: "string",
+      },
+      summary: {
+        description: "Resumo executivo curto da ata.",
+        type: "string",
+      },
+    },
+    required: ["summary", "minutes"],
+    type: "object",
+  },
+  strict: true,
+  type: "json_schema",
+} as const;
 const OPENAI_TIMEOUT_MS = 60_000;
 const OPENAI_TRANSCRIPTION_MAX_BYTES = 25_000_000;
 const MAX_RECORDING_BYTES = 150_000_000;
@@ -522,6 +542,7 @@ async function requestChronosTranscription({
       "Ignore ruido de fundo, silencio, eco, notificacoes e falas sobrepostas que nao fiquem inteligiveis.",
     ].join(" "),
   );
+  formData.append("response_format", "json");
 
   try {
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -689,6 +710,9 @@ async function requestChronosMinutesDraft({
         ].join("\n"),
         max_output_tokens: 2_400,
         model,
+        text: {
+          format: CHRONOS_MINUTES_RESPONSE_FORMAT,
+        },
       }),
       cache: "no-store",
       headers: {
@@ -807,13 +831,15 @@ function buildChronosMinutesPrompt({
     profileInstruction[minutesProfile],
     "Use topicos com bullets para deixar a leitura organizada.",
     "Use negrito em titulos e dados importantes usando markdown (**texto**).",
+    "Organize a ata com leitura executiva: identificacao, participantes, resumo executivo, pontos alinhados, decisoes, pendencias, plano de acao e observacoes.",
+    "Evite blocos longos. Prefira bullets curtos, objetivos e acionaveis.",
     "Na identificacao da reuniao, use sempre o inicio programado e o fim real de encerramento. Nao use o fim agendado como fim da ata.",
     "Nos participantes, liste somente quem fez check-in/entrou na reuniao. Nao use convidados sem check-in.",
     "Para transcricao, use somente o que esta nos trechos recebidos. Se houver ruido ou baixa confianca, registre como 'Nao identificado' e nao invente fala.",
     "Trate gravacoes de video como evidencias vinculadas da reuniao. Use o video como lastro operacional, mas nao descreva tela, gesto, planilha ou conteudo visual que nao esteja na transcricao, chat, timeline ou metadados.",
     "Quando existir transcricao salva, ela e o gatilho principal para gerar a ata formatada, mesmo que a gravacao ainda esteja apenas como evidencia.",
     "Para reuniao de alinhamento, o Plano de acao deve ser uma tabela markdown com colunas: Atividade | Responsavel | Prazo | Status.",
-    `Se uma atividade ficar sem prazo mencionado, use ${minutesContext.defaultActionDueLabel} como prazo padrao de 5 dias uteis a partir da reuniao.`,
+    `Se uma atividade ficar sem prazo mencionado, use ${minutesContext.defaultActionDueLabel} como prazo padrao de 5 dias corridos a partir da data da reuniao.`,
     "Se nenhuma atividade for mencionada, registre uma linha com 'Sem atividade formal registrada' e prazo 'Nao informado'.",
     "",
     "Retorne JSON neste formato:",

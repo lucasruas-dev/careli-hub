@@ -28,7 +28,7 @@ export function buildChronosMinutesContext(
     endsAt: actualEndAt,
     startsAt: scheduledStartAt,
   });
-  const defaultActionDueAt = addBusinessDaysIso(
+  const defaultActionDueAt = addCalendarDaysIso(
     actualEndAt ?? scheduledStartAt ?? meeting.createdAt,
     5,
   );
@@ -154,12 +154,18 @@ export function formatChronosDateTime(value?: string | null) {
     return "Nao informado";
   }
 
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: chronosMinutesTimeZone,
-  }).format(new Date(value));
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      month: "2-digit",
+      timeZone: chronosMinutesTimeZone,
+      year: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return "Nao informado";
+  }
 }
 
 export function formatChronosDate(value?: string | null) {
@@ -167,10 +173,16 @@ export function formatChronosDate(value?: string | null) {
     return "Nao informado";
   }
 
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeZone: chronosMinutesTimeZone,
-  }).format(new Date(value));
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone: chronosMinutesTimeZone,
+      year: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return "Nao informado";
+  }
 }
 
 function hasChronosCheckIn(participant: ChronosParticipant) {
@@ -190,23 +202,14 @@ function hasChronosCheckIn(participant: ChronosParticipant) {
   ].includes(normalizedStatus);
 }
 
-function addBusinessDaysIso(value: string | null, amount: number) {
+function addCalendarDaysIso(value: string | null, amount: number) {
   if (!value || !isValidDateString(value)) {
     return null;
   }
 
   const date = new Date(value);
-  let remaining = amount;
 
-  while (remaining > 0) {
-    date.setDate(date.getDate() + 1);
-
-    const day = date.getDay();
-
-    if (day !== 0 && day !== 6) {
-      remaining -= 1;
-    }
-  }
+  date.setDate(date.getDate() + amount);
 
   return date.toISOString();
 }
