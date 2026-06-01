@@ -21,12 +21,16 @@ import {
   formatChronosDuration,
 } from "@/lib/chronos/minutes";
 
-const DEFAULT_MINUTES_MODEL = "gpt-5.5";
+const DEFAULT_MINUTES_MODEL = "gpt-4o-mini";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const CHRONOS_TRANSCRIPTION_MODELS = [
   "gpt-4o-mini-transcribe",
   "gpt-4o-transcribe",
   "whisper-1",
+] as const;
+const CHRONOS_MINUTES_FALLBACK_MODELS = [
+  DEFAULT_MINUTES_MODEL,
+  "gpt-4.1-mini",
 ] as const;
 const OPENAI_TIMEOUT_MS = 60_000;
 const OPENAI_TRANSCRIPTION_MAX_BYTES = 25_000_000;
@@ -154,7 +158,7 @@ export async function POST(request: NextRequest) {
           speakerLabel: parsed.speakerLabel ?? "Athena",
         },
       });
-      const { draft, meeting: updatedMeeting } = await saveChronosMinutesDraft({
+      const minutesResult = await trySaveChronosMinutesDraft({
         apiKey,
         authorization,
         meeting: transcribedMeeting,
@@ -164,11 +168,12 @@ export async function POST(request: NextRequest) {
 
       return Response.json(
         {
-          meeting: updatedMeeting,
-          minutes: draft.minutes,
+          meeting: minutesResult.meeting,
+          minutes: minutesResult.draft?.minutes,
+          minutesError: minutesResult.error,
           minutesProfile: parsed.minutesProfile,
           source: "openai",
-          summary: draft.summary,
+          summary: minutesResult.draft?.summary,
           transcript,
         },
         { headers: { "Cache-Control": "no-store" } },
@@ -190,7 +195,7 @@ export async function POST(request: NextRequest) {
           speakerLabel: parsed.speakerLabel ?? "Athena",
         },
       });
-      const { draft, meeting } = await saveChronosMinutesDraft({
+      const minutesResult = await trySaveChronosMinutesDraft({
         apiKey,
         authorization,
         meeting: transcribedMeeting,
@@ -200,11 +205,12 @@ export async function POST(request: NextRequest) {
 
       return Response.json(
         {
-          meeting,
-          minutes: draft.minutes,
+          meeting: minutesResult.meeting,
+          minutes: minutesResult.draft?.minutes,
+          minutesError: minutesResult.error,
           minutesProfile: parsed.minutesProfile,
           source: "openai",
-          summary: draft.summary,
+          summary: minutesResult.draft?.summary,
           transcript,
         },
         { headers: { "Cache-Control": "no-store" } },
@@ -309,6 +315,38 @@ async function saveChronosMinutesDraft({
   });
 
   return { draft, meeting: updatedMeeting };
+}
+
+async function trySaveChronosMinutesDraft(
+  input: Parameters<typeof saveChronosMinutesDraft>[0],
+) {
+  try {
+    const result = await saveChronosMinutesDraft(input);
+
+    return {
+      draft: result.draft,
+      error: undefined,
+      meeting: result.meeting,
+      ok: true,
+    };
+  } catch (error) {
+    const errorMessage = getChronosAgentErrorMessage(
+      error,
+      "Transcricao salva, mas a ata ainda nao foi gerada.",
+    );
+
+    console.error("[chronos/agent] minutes draft failed after transcription", {
+      meetingId: input.meetingId,
+      message: errorMessage,
+    });
+
+    return {
+      draft: undefined,
+      error: errorMessage,
+      meeting: input.meeting,
+      ok: false,
+    };
+  }
 }
 
 async function parseChronosAgentRequest(
@@ -425,10 +463,48 @@ async function transcribeChronosRecording({
     );
   }
 
-  const model = resolveChronosTranscriptionModel(
+  const models = getChronosTranscriptionModelCandidates(
     process.env.HUB_CHRONOS_TRANSCRIPTION_MODEL,
     process.env.HUB_IT_TICKET_TRANSCRIPTION_MODEL,
   );
+
+  let lastError: unknown;
+
+  for (const model of models) {
+    try {
+      return await requestChronosTranscription({
+        apiKey,
+        file,
+        model,
+      });
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetriableChronosOpenAiOptionError(error)) {
+        break;
+      }
+
+      console.error("[chronos/agent] retrying transcription with fallback model", {
+        error: getChronosAgentErrorMessage(error, "Falha na transcricao."),
+        model,
+      });
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Falha na transcricao.");
+}
+
+async function requestChronosTranscription({
+  apiKey,
+  file,
+  model,
+}: {
+  apiKey: string;
+  file: File;
+  model: (typeof CHRONOS_TRANSCRIPTION_MODELS)[number];
+}) {
   const formData = new FormData();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
@@ -446,7 +522,6 @@ async function transcribeChronosRecording({
       "Ignore ruido de fundo, silencio, eco, notificacoes e falas sobrepostas que nao fiquem inteligiveis.",
     ].join(" "),
   );
-  formData.append("response_format", "json");
 
   try {
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -458,7 +533,7 @@ async function transcribeChronosRecording({
       method: "POST",
       signal: controller.signal,
     });
-    const payload = (await response.json().catch(() => null)) as
+    const payload = (await readChronosOpenAiPayload(response)) as
       | { error?: { message?: unknown }; text?: unknown }
       | null;
 
@@ -488,17 +563,25 @@ async function transcribeChronosRecording({
   }
 }
 
-function resolveChronosTranscriptionModel(
+function getChronosTranscriptionModelCandidates(
   ...candidates: Array<string | undefined>
 ) {
-  return (
-    candidates
-      .map(normalizeChronosOpenAiModelCandidate)
-      .map((candidate) => candidate?.toLowerCase())
-      .find((candidate): candidate is (typeof CHRONOS_TRANSCRIPTION_MODELS)[number] =>
-        isChronosTranscriptionModel(candidate),
-      ) ?? DEFAULT_TRANSCRIPTION_MODEL
-  );
+  const uniqueModels = new Set<(typeof CHRONOS_TRANSCRIPTION_MODELS)[number]>();
+
+  for (const candidate of [
+    ...candidates,
+    DEFAULT_TRANSCRIPTION_MODEL,
+    "gpt-4o-transcribe",
+    "whisper-1",
+  ]) {
+    const normalized = normalizeChronosOpenAiModelCandidate(candidate)?.toLowerCase();
+
+    if (isChronosTranscriptionModel(normalized)) {
+      uniqueModels.add(normalized);
+    }
+  }
+
+  return Array.from(uniqueModels);
 }
 
 async function fetchChronosRecordingFile({
@@ -532,11 +615,53 @@ async function draftChronosMinutes({
   meeting: ChronosMeeting;
   minutesProfile: ChronosMinutesProfile;
 }) {
-  const model = resolveChronosOpenAiModel(
-    DEFAULT_MINUTES_MODEL,
+  const models = getChronosOpenAiModelCandidates(
     process.env.HUB_CHRONOS_MINUTES_MODEL,
     process.env.HUB_AI_MODEL,
+    ...CHRONOS_MINUTES_FALLBACK_MODELS,
   );
+  let lastError: unknown;
+
+  for (const model of models) {
+    try {
+      return await requestChronosMinutesDraft({
+        apiKey,
+        meeting,
+        minutesProfile,
+        model,
+      });
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetriableChronosOpenAiOptionError(error)) {
+        break;
+      }
+
+      console.error("[chronos/agent] retrying minutes with fallback model", {
+        error: getChronosAgentErrorMessage(error, "Falha ao gerar ata."),
+        model,
+      });
+    }
+  }
+
+  return buildChronosFallbackMinutes({
+    error: lastError,
+    meeting,
+    minutesProfile,
+  });
+}
+
+async function requestChronosMinutesDraft({
+  apiKey,
+  meeting,
+  minutesProfile,
+  model,
+}: {
+  apiKey: string;
+  meeting: ChronosMeeting;
+  minutesProfile: ChronosMinutesProfile;
+  model: string;
+}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
 
@@ -573,7 +698,9 @@ async function draftChronosMinutes({
       method: "POST",
       signal: controller.signal,
     });
-    const payload = (await response.json().catch(() => null)) as OpenAiResponsePayload;
+    const payload = (await readChronosOpenAiPayload(
+      response,
+    )) as OpenAiResponsePayload;
 
     if (!response.ok) {
       throw new Error(getOpenAiErrorMessage(payload, "Falha ao gerar ata."));
@@ -586,28 +713,25 @@ async function draftChronosMinutes({
     }
 
     return parsed;
-  } catch (error) {
-    return buildChronosFallbackMinutes({
-      error,
-      meeting,
-      minutesProfile,
-    });
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function resolveChronosOpenAiModel(
-  fallback: string,
+function getChronosOpenAiModelCandidates(
   ...candidates: Array<string | undefined>
 ) {
-  return (
-    candidates
-      .map(normalizeChronosOpenAiModelCandidate)
-      .find((candidate): candidate is string =>
-        isUsableChronosOpenAiModel(candidate),
-      ) ?? fallback
-  );
+  const uniqueModels = new Set<string>();
+
+  for (const candidate of candidates) {
+    const normalized = normalizeChronosOpenAiModelCandidate(candidate);
+
+    if (isUsableChronosOpenAiModel(normalized)) {
+      uniqueModels.add(normalized);
+    }
+  }
+
+  return Array.from(uniqueModels);
 }
 
 function normalizeChronosOpenAiModelCandidate(value?: string) {
@@ -622,7 +746,7 @@ function normalizeChronosOpenAiModelCandidate(value?: string) {
     .trim();
 }
 
-function isUsableChronosOpenAiModel(value?: string) {
+function isUsableChronosOpenAiModel(value?: string): value is string {
   if (!value) {
     return false;
   }
@@ -989,6 +1113,42 @@ function getOpenAiErrorMessage(
       : "";
 
   return normalizeChronosOpenAiErrorMessage(message || fallback);
+}
+
+async function readChronosOpenAiPayload(response: Response) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.toLowerCase().includes("application/json")) {
+    return response.json().catch(() => null);
+  }
+
+  const text = await response.text().catch(() => "");
+
+  if (response.ok) {
+    return { text };
+  }
+
+  return {
+    error: {
+      message: text || response.statusText || "Falha OpenAI sem corpo textual.",
+    },
+  };
+}
+
+function isRetriableChronosOpenAiOptionError(error: unknown) {
+  const message = getChronosAgentErrorMessage(error, "")
+    .toLowerCase()
+    .trim();
+
+  return [
+    "does not exist",
+    "invalid model",
+    "invalid option",
+    "invalid value",
+    "model_not_found",
+    "not found",
+    "unsupported",
+  ].some((fragment) => message.includes(fragment));
 }
 
 function normalizeChronosOpenAiErrorMessage(message: string) {

@@ -68,19 +68,25 @@ export function buildChronosRecordingStream<
 export function buildChronosRecordingMedia<
   TParticipant extends ChronosRecordingParticipant,
 >({
+  getLocalStream,
   getParticipantVideos,
+  getScreenTrack,
   localStream,
   remoteParticipants,
   screenTrack,
 }: {
+  getLocalStream?: () => MediaStream | null;
   getParticipantVideos?: () => ChronosRecordingVideoSource[];
+  getScreenTrack?: () => MediaStreamTrack | null;
   localStream: MediaStream | null;
   remoteParticipants: Record<string, TParticipant>;
   screenTrack: MediaStreamTrack | null;
 }): ChronosRecordingMedia | null {
-  if (canBuildChronosCompositeRecording(screenTrack)) {
+  if (canBuildChronosCompositeRecording()) {
     const composite = buildChronosCompositeRecordingStream({
+      getLocalStream,
       getParticipantVideos,
+      getScreenTrack,
       localStream,
       remoteParticipants,
       screenTrack,
@@ -147,11 +153,9 @@ function getChronosRecordingAudioTracks<
   return Array.from(tracksById.values());
 }
 
-function canBuildChronosCompositeRecording(screenTrack: MediaStreamTrack | null) {
+function canBuildChronosCompositeRecording() {
   return Boolean(
-    screenTrack &&
-      screenTrack.readyState === "live" &&
-      typeof document !== "undefined" &&
+    typeof document !== "undefined" &&
       typeof requestAnimationFrame === "function" &&
       typeof cancelAnimationFrame === "function" &&
       typeof HTMLCanvasElement !== "undefined" &&
@@ -162,20 +166,20 @@ function canBuildChronosCompositeRecording(screenTrack: MediaStreamTrack | null)
 function buildChronosCompositeRecordingStream<
   TParticipant extends ChronosRecordingParticipant,
 >({
+  getLocalStream,
   getParticipantVideos,
+  getScreenTrack,
   localStream,
   remoteParticipants,
   screenTrack,
 }: {
+  getLocalStream?: () => MediaStream | null;
   getParticipantVideos?: () => ChronosRecordingVideoSource[];
+  getScreenTrack?: () => MediaStreamTrack | null;
   localStream: MediaStream | null;
   remoteParticipants: Record<string, TParticipant>;
   screenTrack: MediaStreamTrack | null;
 }): ChronosRecordingMedia | null {
-  if (!screenTrack || screenTrack.readyState !== "live") {
-    return null;
-  }
-
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
 
@@ -185,15 +189,6 @@ function buildChronosCompositeRecordingStream<
 
   canvas.width = 1280;
   canvas.height = 720;
-  const screenVideo = createChronosRecordingVideoElement(
-    new MediaStream([screenTrack]),
-  );
-  const localCameraTrack = (localStream?.getVideoTracks() ?? []).find(
-    (track) => track.readyState === "live" && track.id !== screenTrack.id,
-  );
-  const localCameraVideo = localCameraTrack
-    ? createChronosRecordingVideoElement(new MediaStream([localCameraTrack]))
-    : null;
   const canvasStream = canvas.captureStream(24);
   const audioTracks = getChronosRecordingAudioTracks({
     localStream,
@@ -205,6 +200,25 @@ function buildChronosCompositeRecordingStream<
   ]);
   let frameId = 0;
   let disposed = false;
+  const videoElementsByTrackId = new Map<string, HTMLVideoElement>();
+
+  const getVideoForTrack = (track: MediaStreamTrack | null | undefined) => {
+    if (!isLiveChronosVideoTrack(track)) {
+      return null;
+    }
+
+    const existingVideo = videoElementsByTrackId.get(track.id);
+
+    if (existingVideo) {
+      return existingVideo;
+    }
+
+    const video = createChronosRecordingVideoElement(new MediaStream([track]));
+
+    videoElementsByTrackId.set(track.id, video);
+
+    return video;
+  };
 
   const drawFrame = () => {
     if (disposed) {
@@ -214,9 +228,13 @@ function buildChronosCompositeRecordingStream<
     drawChronosRecordingFrame({
       canvas,
       context,
+      getLocalStream,
       getParticipantVideos,
-      localCameraVideo,
-      screenVideo,
+      getScreenTrack,
+      getVideoForTrack,
+      localStream,
+      screenTrack,
+      videoElementsByTrackId,
     });
     frameId = requestAnimationFrame(drawFrame);
   };
@@ -228,11 +246,16 @@ function buildChronosCompositeRecordingStream<
       disposed = true;
       cancelAnimationFrame(frameId);
       stopChronosMediaStream(canvasStream);
-      releaseChronosRecordingVideoElement(screenVideo);
-      releaseChronosRecordingVideoElement(localCameraVideo);
+      releaseChronosRecordingVideoElements(videoElementsByTrackId);
     },
     stream,
   };
+}
+
+function isLiveChronosVideoTrack(
+  track: MediaStreamTrack | null | undefined,
+): track is MediaStreamTrack {
+  return Boolean(track && track.kind === "video" && track.readyState === "live");
 }
 
 function createChronosRecordingVideoElement(stream: MediaStream) {
@@ -256,38 +279,108 @@ function releaseChronosRecordingVideoElement(video: HTMLVideoElement | null) {
   video.srcObject = null;
 }
 
+function releaseChronosRecordingVideoElements(
+  videoElementsByTrackId: Map<string, HTMLVideoElement>,
+) {
+  videoElementsByTrackId.forEach((video) => {
+    releaseChronosRecordingVideoElement(video);
+  });
+  videoElementsByTrackId.clear();
+}
+
+function releaseUnusedChronosRecordingVideoElements(
+  videoElementsByTrackId: Map<string, HTMLVideoElement>,
+  liveTrackIds: Set<string>,
+) {
+  videoElementsByTrackId.forEach((video, trackId) => {
+    if (liveTrackIds.has(trackId)) {
+      return;
+    }
+
+    releaseChronosRecordingVideoElement(video);
+    videoElementsByTrackId.delete(trackId);
+  });
+}
+
 function drawChronosRecordingFrame({
   canvas,
   context,
+  getLocalStream,
   getParticipantVideos,
-  localCameraVideo,
-  screenVideo,
+  getScreenTrack,
+  getVideoForTrack,
+  localStream,
+  screenTrack,
+  videoElementsByTrackId,
 }: {
   canvas: HTMLCanvasElement;
   context: CanvasRenderingContext2D;
+  getLocalStream?: () => MediaStream | null;
   getParticipantVideos?: () => ChronosRecordingVideoSource[];
-  localCameraVideo: HTMLVideoElement | null;
-  screenVideo: HTMLVideoElement;
+  getScreenTrack?: () => MediaStreamTrack | null;
+  getVideoForTrack: (
+    track: MediaStreamTrack | null | undefined,
+  ) => HTMLVideoElement | null;
+  localStream: MediaStream | null;
+  screenTrack: MediaStreamTrack | null;
+  videoElementsByTrackId: Map<string, HTMLVideoElement>;
 }) {
+  const currentScreenTrack = getScreenTrack?.() ?? screenTrack;
+  const currentLocalStream = getLocalStream?.() ?? localStream;
+  const liveTrackIds = new Set<string>();
+  const screenVideo = getVideoForTrack(currentScreenTrack);
+  const localCameraTrack = (currentLocalStream?.getVideoTracks() ?? []).find(
+    (track) =>
+      isLiveChronosVideoTrack(track) && track.id !== currentScreenTrack?.id,
+  );
+  const localCameraVideo = getVideoForTrack(localCameraTrack);
   const remoteSources = getParticipantVideos?.() ?? [];
+  const mainSource =
+    screenVideo
+      ? {
+          id: "screen-share",
+          label: "Tela compartilhada",
+          video: screenVideo,
+        }
+      : localCameraVideo
+        ? {
+            id: "local-camera-main",
+            label: "Camera",
+            video: localCameraVideo,
+          }
+        : (remoteSources[0] ?? {
+            id: "empty",
+            label: "Sem video",
+            video: null,
+          });
   const participantSources = [
-    localCameraVideo
+    screenVideo && localCameraVideo
       ? {
           id: "local-camera",
           label: "Camera",
           video: localCameraVideo,
         }
       : null,
-    ...remoteSources,
+    ...remoteSources.filter((source) => source.id !== mainSource.id),
   ].filter((source): source is ChronosRecordingVideoSource => Boolean(source));
   const hasRail = participantSources.length > 0;
   const railWidth = hasRail ? 260 : 0;
   const gutter = hasRail ? 16 : 0;
   const mainWidth = canvas.width - railWidth - gutter;
 
+  if (isLiveChronosVideoTrack(currentScreenTrack)) {
+    liveTrackIds.add(currentScreenTrack.id);
+  }
+
+  if (isLiveChronosVideoTrack(localCameraTrack)) {
+    liveTrackIds.add(localCameraTrack.id);
+  }
+
+  releaseUnusedChronosRecordingVideoElements(videoElementsByTrackId, liveTrackIds);
+
   context.fillStyle = "#071018";
   context.fillRect(0, 0, canvas.width, canvas.height);
-  drawChronosVideoContain(context, screenVideo, 0, 0, mainWidth, canvas.height);
+  drawChronosVideoContain(context, mainSource.video, 0, 0, mainWidth, canvas.height);
 
   if (!hasRail) {
     return;

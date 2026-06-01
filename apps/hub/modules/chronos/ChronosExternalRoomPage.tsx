@@ -234,7 +234,6 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const recordingStartedAtRef = useRef(0);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const recordingMediaRestartPromiseRef = useRef<Promise<void> | null>(null);
   const recordingStopPromiseRef = useRef<Promise<void> | null>(null);
   const resolveRecordingStopRef = useRef<(() => void) | null>(null);
   const lastRecordingUrlRef = useRef("");
@@ -1065,11 +1064,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       setLocalParticipant(nextParticipant);
       sendScreenShareSignal("screen-share-start");
 
-      if (isRecordingRef.current) {
-        await restartRecordingForMediaChange(
-          "Gravacao reiniciada para capturar a tela compartilhada.",
-        );
-      }
+      setMediaError(null);
     } catch {
       setMediaError("Nao foi possivel compartilhar a tela.");
     }
@@ -1081,7 +1076,6 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     }
 
     stoppingScreenShareRef.current = true;
-    const shouldRestartRecording = isRecordingRef.current;
 
     try {
       screenTrackRef.current?.stop();
@@ -1102,12 +1096,6 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
         localParticipantRef.current = nextParticipant;
         setLocalParticipant(nextParticipant);
-
-        if (shouldRestartRecording) {
-          await restartRecordingForMediaChange(
-            "Gravacao reiniciada apos encerrar o compartilhamento de tela.",
-          );
-        }
 
         return;
       }
@@ -1149,21 +1137,9 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
         localParticipantRef.current = nextParticipant;
         setLocalParticipant(nextParticipant);
-
-        if (shouldRestartRecording) {
-          await restartRecordingForMediaChange(
-            "Gravacao reiniciada apos encerrar o compartilhamento de tela.",
-          );
-        }
       } catch {
         replaceVideoTrackForPeers(null);
         setMediaError("Nao foi possivel restaurar a camera.");
-
-        if (shouldRestartRecording) {
-          await restartRecordingForMediaChange(
-            "Gravacao reiniciada apos encerrar o compartilhamento de tela.",
-          );
-        }
       }
     } finally {
       stoppingScreenShareRef.current = false;
@@ -1238,28 +1214,6 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     await startRecording();
   }
 
-  async function restartRecordingForMediaChange(message: string) {
-    if (!isRecordingRef.current) {
-      return;
-    }
-
-    if (recordingMediaRestartPromiseRef.current) {
-      await recordingMediaRestartPromiseRef.current;
-      return;
-    }
-
-    const restartPromise = (async () => {
-      setMediaError(message);
-      await stopRecording();
-      await startRecording();
-    })().finally(() => {
-      recordingMediaRestartPromiseRef.current = null;
-    });
-
-    recordingMediaRestartPromiseRef.current = restartPromise;
-    await restartPromise;
-  }
-
   async function startRecording() {
     if (!meetingId || !localParticipant) {
       return;
@@ -1271,7 +1225,9 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     }
 
     const recordingMedia = buildChronosRecordingMedia({
+      getLocalStream: () => localStreamRef.current,
       getParticipantVideos: getChronosRecordingParticipantVideos,
+      getScreenTrack: () => screenTrackRef.current,
       localStream: localStreamRef.current,
       remoteParticipants: remoteParticipantsRef.current,
       screenTrack: screenTrackRef.current,

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-126-CHRONOS-STABLE-RECORDING-ATAS-OPTION",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos stable screen-share recording and OpenAI option fallback",
+  "status": "PRONTO_PARA_PRODUCAO",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "drive-atas",
+    "recordings",
+    "video-calls",
+    "openai-transcription",
+    "screen-share-recording"
+  ],
+  "allowedLayers": ["zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/lib/chronos/recording.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-126-chronos-stable-recording-atas-option.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "documentacao oficial MDN revisada: MediaRecorder dispara stop quando stop() e chamado ou a stream termina; canvas.captureStream fornece uma MediaStream de video estavel para gravacao composta; getDisplayMedia entrega a trilha de compartilhamento de tela.",
+    "documentacao oficial OpenAI revisada: transcricao usa /v1/audio/transcriptions com modelos oficiais gpt-4o-mini-transcribe, gpt-4o-transcribe e whisper-1; Chronos removeu parametro opcional response_format e adicionou fallback controlado de modelo.",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "git diff --check: PASS com avisos esperados LF/CRLF"
+  ],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_2PePdZRXy6K38SBG3nvM9m9wfP83",
+    "hotfixDeploymentId": "PENDENTE",
+    "hotfixTechnicalUrl": "PENDENTE",
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_2PePdZRXy6K38SBG3nvM9m9wfP83",
+    "hotfixCodeCommit": "PENDENTE"
+  },
+  "sensitiveOperations": [
+    "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas no incidente de queda da gravacao com compartilhamento, tela ausente no video e erro Invalid option : option em Atas/Transcricao."
+  ],
+  "rollback": [
+    "Reapontar producao para dpl_2PePdZRXy6K38SBG3nvM9m9wfP83 se a composicao estavel por canvas gerar regressao critica.",
+    "Nao ha DDL, migration, env, secret, token, dominio, alias manual ou alteracao de chave associada."
+  ],
+  "notes": [
+    "O reinicio automatico de gravacao em start/stop de compartilhamento foi removido; a gravacao passa a ficar ativa ate o usuario parar manualmente.",
+    "A stream gravada agora nasce como canvas estavel e escolhe dinamicamente tela compartilhada, camera local e participantes sem trocar a trilha do MediaRecorder.",
+    "O agente de Atas/Transcricao agora tenta modelos oficiais de transcricao em fallback e nao derruba a transcricao quando a geracao posterior da ata falha.",
+    "O modelo padrao de ata foi recolocado em um modelo oficial estavel e o agente filtra placeholders como option/default/select antes de chamar OpenAI."
+  ]
+}
