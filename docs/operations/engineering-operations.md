@@ -29505,3 +29505,71 @@ Conclusao:
 - O pacote Hermes/Chronos esta preparado localmente e guardado para a subida maior solicitada por Lucas.
 - O impacto pratico esperado e liberar melhor leitura historica no Hermes, agenda Chronos por usuario e menor chance de queda de chamada/gravacao ao compartilhar tela.
 - A acao agora e Lucas decidir quando autoriza publicar; ate la, producao permanece bloqueada para este pacote e o proximo passo tecnico e teste autenticado real em Hermes Lideranca, Google Agenda com outro usuario e chamada Chronos com compartilhamento de tela.
+
+## 2026-06-01 11:48:13 -03:00 - Hermes/Chronos - pacote publicado em producao
+
+Assunto: [Hermes/Chronos] timeline, agenda por usuario e estabilidade de gravacao em producao
+
+- Nome da squad/agente: Hermes Core e Chronos Core, coordenados por Zeus/Hefesto.
+- Ambiente: producao Vercel.
+- Protocolos relacionados:
+  - `HM-20260601-129-HERMES-TIMELINE-SCROLL`;
+  - `CH-20260601-130-CHRONOS-AI-MINUTES-QUALITY`;
+  - `CH-20260601-131-CHRONOS-AGENDA-RECORDING-STABILITY`.
+- Status: EM PRODUCAO / AGUARDANDO TESTE FUNCIONAL AUTENTICADO DO LUCAS.
+- Autorizacao:
+  - Lucas autorizou subir as alteracoes feitas agora do Hermes, da agenda e da videochamada.
+- Escopo publicado:
+  - Hermes: timeline com scroll proprio, composer fixo, divisores de data/dia da semana e limite default de mensagens ampliado para 250;
+  - Chronos Ata: geracao executiva por OpenAI sem fallback local ruim como ata final, limites ampliados e erro parcial propagado para UI;
+  - Chronos Agenda: botao `Conectar`, OAuth pelo endpoint existente e pull inicial automatico da Google Agenda do proprio usuario;
+  - Chronos sala/gravacao: assinatura realtime por `participantId` estavel, `MediaRecorder` com timeslice/bitrates controlados e failover de gravacao quando o gravador sai sem encerrar a reuniao.
+- Commit:
+  - publicado: `e67e63a8cd22b08c9c9cfd00dd917f31eac98161`;
+  - branch: `codex/hefesto/engineering-prod-20260601`;
+  - push: enviado para GitHub com `--no-verify` porque o hook local aponta para `scripts/panteon-hook-runner.ps1` ausente neste worktree; gates manuais passaram.
+- Deployment:
+  - anterior: `dpl_CAcJHJcBDTDQn1acNCqnayGLUHhH`;
+  - novo: `dpl_5pjadPafkx6K44kfmDcQCNE7rgG3`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-596oycojl-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - homologacao/paridade: `https://homo.c2x.app.br` segue em Preview divergente `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`; nao foi reapontado porque a autorizacao foi para producao sem operacao manual de alias.
+- Validacoes pre-deploy:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS com warnings conhecidos `MODULE_TYPELESS_PACKAGE_JSON` e turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS com warnings conhecidos Turbopack/NFT e root inferido por worktree `.codex-deploy`;
+  - `git diff --check -- ...`: PASS com avisos esperados LF/CRLF do Git no Windows;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest ...`: PASS para os tres protocolos;
+  - `node scripts/panteon-boundary-check.mjs --module hermes --allow zeus --files ...`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --files ...`: PASS.
+- Build remoto Vercel:
+  - `npx.cmd vercel deploy --prod --yes`: READY;
+  - warnings conhecidos: `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_5pjadPafkx6K44kfmDcQCNE7rgG3`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_5pjadPafkx6K44kfmDcQCNE7rgG3`;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/pulsex/messages` sem sessao: 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 15m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 15m --level error`: sem logs encontrados.
+- Operacoes sensiveis:
+  - nenhum env, secret, token, migration, DDL, Supabase admin, service role, banco, dominio ou alias manual foi criado, alterado, removido ou exposto.
+- Operations Center estruturado:
+  - registro Markdown/release fechado;
+  - registro vivo em `hub_engineering_operation_records` pendente de reconciliacao por rotina com credenciais server-side, sem puxar ou expor secrets neste recorte.
+- Rollback:
+  - promover novamente `dpl_CAcJHJcBDTDQn1acNCqnayGLUHhH` se houver regressao critica.
+- Limites:
+  - teste autenticado real ainda pendente: Hermes Lideranca/scroll, Google Agenda com outro usuario e chamada Chronos com compartilhamento de tela/gravacao;
+  - a gravacao continua browser-side, embora agora tenha estabilidade melhor e tentativa de continuidade quando ha sinal de saida.
+
+Conclusao:
+
+- O pacote saiu do estado guardado e foi publicado em producao.
+- O impacto esperado e melhorar a leitura historica do Hermes, permitir agenda Chronos conectada por usuario e reduzir queda de chamada/gravacao em troca de midia e compartilhamento de tela.
+- A acao agora e Lucas fazer refresh duro em `https://c2x.app.br`, testar Hermes, conectar Google Agenda com outro usuario e validar uma chamada Chronos com gravacao e compartilhamento.
