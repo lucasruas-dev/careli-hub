@@ -178,7 +178,7 @@ export function ChronosDriveLibraryScreen({
 
         {selectedMinutesMeeting ? (
           <ChronosDriveMinutesErrorBoundary
-            resetKey={selectedMinutesMeeting.id}
+            resetKey={`${selectedMinutesMeeting.id}:${selectedMinutesMeeting.updatedAt}`}
           >
             <div className="grid gap-4">
               <MinutesPanel
@@ -233,6 +233,8 @@ class ChronosDriveMinutesErrorBoundary extends Component<
 
   render() {
     if (this.state.error) {
+      const errorMessage = this.state.error.message?.trim();
+
       return (
         <Surface bordered className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <div className="grid gap-3">
@@ -242,6 +244,11 @@ class ChronosDriveMinutesErrorBoundary extends Component<
                 Um dado inconsistente desta reuniao impediu a montagem visual da
                 ata, mas a rota continua aberta para as gravacoes.
               </p>
+              {errorMessage ? (
+                <p className="m-0 mt-2 text-xs font-semibold text-amber-950">
+                  Motivo tecnico: {errorMessage}
+                </p>
+              ) : null}
             </div>
             <button
               className="inline-flex h-8 w-fit items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"

@@ -6,6 +6,7 @@ import {
   deleteChronosMeeting,
   deleteChronosRoom,
   draftChronosMinutes,
+  getChronosUnknownErrorMessage,
   loadChronosSnapshot,
   transcribeChronosExistingRecording,
   transcribeChronosRecording,
@@ -98,9 +99,10 @@ export function ChronosPage() {
       });
     } catch (loadError) {
       setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Nao foi possivel carregar o Chronos.",
+        getChronosUnknownErrorMessage(
+          loadError,
+          "Nao foi possivel carregar o Chronos.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -126,9 +128,10 @@ export function ChronosPage() {
       replaceMeeting(meeting);
     } catch (createError) {
       setError(
-        createError instanceof Error
-          ? createError.message
-          : "Nao foi possivel criar a reuniao.",
+        getChronosUnknownErrorMessage(
+          createError,
+          "Nao foi possivel criar a reuniao.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -152,9 +155,10 @@ export function ChronosPage() {
       replaceMeeting(meeting);
     } catch (updateError) {
       setError(
-        updateError instanceof Error
-          ? updateError.message
-          : "Nao foi possivel atualizar a reuniao.",
+        getChronosUnknownErrorMessage(
+          updateError,
+          "Nao foi possivel atualizar a reuniao.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -184,9 +188,10 @@ export function ChronosPage() {
       await reloadChronos();
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Nao foi possivel excluir o evento.",
+        getChronosUnknownErrorMessage(
+          deleteError,
+          "Nao foi possivel excluir o evento.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -210,9 +215,10 @@ export function ChronosPage() {
       return room;
     } catch (createError) {
       setError(
-        createError instanceof Error
-          ? createError.message
-          : "Nao foi possivel criar a sala.",
+        getChronosUnknownErrorMessage(
+          createError,
+          "Nao foi possivel criar a sala.",
+        ),
       );
       return null;
     } finally {
@@ -237,9 +243,10 @@ export function ChronosPage() {
       return room;
     } catch (updateError) {
       setError(
-        updateError instanceof Error
-          ? updateError.message
-          : "Nao foi possivel atualizar a sala.",
+        getChronosUnknownErrorMessage(
+          updateError,
+          "Nao foi possivel atualizar a sala.",
+        ),
       );
       return null;
     } finally {
@@ -264,9 +271,10 @@ export function ChronosPage() {
       return room;
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Nao foi possivel excluir a sala.",
+        getChronosUnknownErrorMessage(
+          deleteError,
+          "Nao foi possivel excluir a sala.",
+        ),
       );
       return null;
     } finally {
@@ -290,9 +298,10 @@ export function ChronosPage() {
       replaceMeeting(updatedMeeting);
     } catch (minutesError) {
       setError(
-        minutesError instanceof Error
-          ? minutesError.message
-          : "Nao foi possivel gerar a ata Chronos.",
+        getChronosUnknownErrorMessage(
+          minutesError,
+          "Nao foi possivel gerar a ata Chronos.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -331,9 +340,10 @@ export function ChronosPage() {
       }
     } catch (transcriptionError) {
       setError(
-        transcriptionError instanceof Error
-          ? transcriptionError.message
-          : "Nao foi possivel transcrever a gravacao.",
+        getChronosUnknownErrorMessage(
+          transcriptionError,
+          "Nao foi possivel transcrever a gravacao.",
+        ),
       );
     } finally {
       setSaving(false);
@@ -359,9 +369,10 @@ export function ChronosPage() {
       replaceMeeting(updatedMeeting);
     } catch (transcriptionError) {
       setError(
-        transcriptionError instanceof Error
-          ? transcriptionError.message
-          : "Nao foi possivel transcrever a gravacao salva.",
+        getChronosUnknownErrorMessage(
+          transcriptionError,
+          "Nao foi possivel transcrever a gravacao salva.",
+        ),
       );
     } finally {
       setSaving(false);

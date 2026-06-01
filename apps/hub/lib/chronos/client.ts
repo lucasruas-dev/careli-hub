@@ -38,7 +38,7 @@ import {
 
 type ChronosApiResponse = Partial<ChronosSnapshot> & {
   authorizationUrl?: string;
-  error?: string;
+  error?: unknown;
   googleCalendar?: ChronosGoogleCalendarStatus | ChronosGoogleCalendarSyncResult;
   invitees?: ChronosHubInvitee[];
   meeting?: ChronosMeeting;
@@ -85,7 +85,9 @@ export async function loadChronosSnapshot(accessToken?: string | null) {
     | null;
 
   if (!response.ok || !payload || !Array.isArray(payload.meetings)) {
-    throw new Error(payload?.error ?? "Nao foi possivel carregar o Chronos.");
+    throw new Error(
+      getChronosApiErrorMessage(payload, "Nao foi possivel carregar o Chronos."),
+    );
   }
 
   return normalizeChronosSnapshot(payload);
@@ -111,7 +113,10 @@ export async function loadChronosGoogleCalendarStatus(
 
   if (!response.ok || !googleCalendar) {
     throw new Error(
-      payload?.error ?? "Nao foi possivel carregar o status do Google Agenda.",
+      getChronosApiErrorMessage(
+        payload,
+        "Nao foi possivel carregar o status do Google Agenda.",
+      ),
     );
   }
 
@@ -142,7 +147,10 @@ export async function startChronosGoogleCalendarConnection(
 
   if (!response.ok || !payload?.authorizationUrl) {
     throw new Error(
-      payload?.error ?? "Nao foi possivel iniciar a conexao com Google Agenda.",
+      getChronosApiErrorMessage(
+        payload,
+        "Nao foi possivel iniciar a conexao com Google Agenda.",
+      ),
     );
   }
 
@@ -172,7 +180,10 @@ export async function syncChronosGoogleCalendar(
 
   if (!response.ok || !result) {
     throw new Error(
-      payload?.error ?? "Nao foi possivel sincronizar Google Agenda.",
+      getChronosApiErrorMessage(
+        payload,
+        "Nao foi possivel sincronizar Google Agenda.",
+      ),
     );
   }
 
@@ -195,7 +206,9 @@ export async function createChronosMeeting(input: ChronosCreateMeetingInput) {
     | null;
 
   if (!response.ok || !payload?.meeting) {
-    throw new Error(payload?.error ?? "Nao foi possivel criar a reuniao.");
+    throw new Error(
+      getChronosApiErrorMessage(payload, "Nao foi possivel criar a reuniao."),
+    );
   }
 
   return normalizeChronosMeeting(payload.meeting);
@@ -217,7 +230,9 @@ export async function deleteChronosMeeting(input: ChronosMeetingDeleteInput) {
     | null;
 
   if (!response.ok || !payload?.meetingId) {
-    throw new Error(payload?.error ?? "Nao foi possivel excluir o evento.");
+    throw new Error(
+      getChronosApiErrorMessage(payload, "Nao foi possivel excluir o evento."),
+    );
   }
 
   return payload.meetingId;
@@ -240,7 +255,12 @@ export async function searchChronosInternalInvitees(query: string) {
     | null;
 
   if (!response.ok || !Array.isArray(payload?.invitees)) {
-    throw new Error(payload?.error ?? "Nao foi possivel buscar o time interno.");
+    throw new Error(
+      getChronosApiErrorMessage(
+        payload,
+        "Nao foi possivel buscar o time interno.",
+      ),
+    );
   }
 
   return payload.invitees;
@@ -287,7 +307,9 @@ async function mutateChronosRoom(
     | null;
 
   if (!response.ok || !payload?.room) {
-    throw new Error(payload?.error ?? "Nao foi possivel salvar a sala.");
+    throw new Error(
+      getChronosApiErrorMessage(payload, "Nao foi possivel salvar a sala."),
+    );
   }
 
   return payload.room;
@@ -312,7 +334,9 @@ async function mutateChronosProfile(
     | null;
 
   if (!response.ok || !payload?.profile) {
-    throw new Error(payload?.error ?? "Nao foi possivel salvar o perfil.");
+    throw new Error(
+      getChronosApiErrorMessage(payload, "Nao foi possivel salvar o perfil."),
+    );
   }
 
   return payload.profile;
@@ -334,7 +358,12 @@ export async function updateChronosMeeting(input: ChronosUpdateInput) {
     | null;
 
   if (!response.ok || !payload?.meeting) {
-    throw new Error(payload?.error ?? "Nao foi possivel atualizar a reuniao.");
+    throw new Error(
+      getChronosApiErrorMessage(
+        payload,
+        "Nao foi possivel atualizar a reuniao.",
+      ),
+    );
   }
 
   return normalizeChronosMeeting(payload.meeting);
@@ -377,7 +406,12 @@ export async function transcribeChronosRecording(input: {
     | null;
 
   if (!response.ok || !payload?.meeting) {
-    throw new Error(payload?.error ?? "Nao foi possivel transcrever a reuniao.");
+    throw new Error(
+      getChronosApiErrorMessage(
+        payload,
+        "Nao foi possivel transcrever a reuniao.",
+      ),
+    );
   }
 
   return normalizeChronosMeeting(payload.meeting);
@@ -411,7 +445,10 @@ export async function transcribeChronosExistingRecording(input: {
 
   if (!response.ok || !payload?.meeting) {
     throw new Error(
-      payload?.error ?? "Nao foi possivel transcrever a gravacao salva.",
+      getChronosApiErrorMessage(
+        payload,
+        "Nao foi possivel transcrever a gravacao salva.",
+      ),
     );
   }
 
@@ -441,7 +478,12 @@ export async function draftChronosMinutes(input: {
     | null;
 
   if (!response.ok || !payload?.meeting) {
-    throw new Error(payload?.error ?? "Nao foi possivel gerar a ata Chronos.");
+    throw new Error(
+      getChronosApiErrorMessage(
+        payload,
+        "Nao foi possivel gerar a ata Chronos.",
+      ),
+    );
   }
 
   return normalizeChronosMeeting(payload.meeting);
@@ -709,6 +751,61 @@ function readDateString(value: unknown, fallback: string) {
   return typeof value === "string" && !Number.isNaN(Date.parse(value))
     ? value
     : fallback;
+}
+
+export function getChronosUnknownErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return normalizeChronosClientErrorMessage(error.message, fallback);
+  }
+
+  return readChronosClientErrorMessage(error) ?? fallback;
+}
+
+function getChronosApiErrorMessage(
+  payload: ChronosApiResponse | null,
+  fallback: string,
+) {
+  return readChronosClientErrorMessage(payload?.error) ?? fallback;
+}
+
+function readChronosClientErrorMessage(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = normalizeChronosClientErrorMessage(value, "");
+
+    return normalized || null;
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as {
+    code?: unknown;
+    detail?: unknown;
+    description?: unknown;
+    error?: unknown;
+    message?: unknown;
+  };
+
+  return (
+    readChronosClientErrorMessage(candidate.message) ??
+    readChronosClientErrorMessage(candidate.error) ??
+    readChronosClientErrorMessage(candidate.detail) ??
+    readChronosClientErrorMessage(candidate.description) ??
+    (typeof candidate.code === "string" && candidate.code.trim()
+      ? `Erro Chronos retornou codigo ${candidate.code.trim()}.`
+      : null)
+  );
+}
+
+function normalizeChronosClientErrorMessage(value: string, fallback: string) {
+  const message = value.trim();
+
+  if (!message || message === "[object Object]") {
+    return fallback;
+  }
+
+  return message;
 }
 
 function readDateStringOrNull(value: unknown) {

@@ -47,6 +47,10 @@ export function MinutesPanel({
   const latestMinutes = meetingMinutes[0];
   const latestMinutesContent =
     typeof latestMinutes?.content === "string" ? latestMinutes.content : "";
+  const executiveSummaryText =
+    typeof meeting.executiveSummary === "string"
+      ? meeting.executiveSummary.trim()
+      : "";
   const [minutesProfile, setMinutesProfile] =
     useState<ChronosMinutesProfile>("alinhamento");
   const [minutesView, setMinutesView] = useState<"edit" | "preview">("preview");
@@ -203,7 +207,7 @@ export function MinutesPanel({
             {minutesEvidenceLabel}
           </div>
           <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 text-sm leading-6 text-[#344054]">
-            {meeting.executiveSummary || "Resumo executivo pendente."}
+            {executiveSummaryText || "Resumo executivo pendente."}
           </div>
         </div>
         {minutesView === "edit" ? (

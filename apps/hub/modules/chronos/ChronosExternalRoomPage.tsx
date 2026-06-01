@@ -9,7 +9,7 @@ import type {
 } from "@/lib/chronos/types";
 import {
   addMissingChronosRecordingAudioTracks,
-  buildChronosRecordingStream,
+  buildChronosRecordingMedia,
   formatChronosDuration,
   getEnabledChronosAudioTracks,
   getSupportedChronosRecordingMimeType,
@@ -230,6 +230,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingCleanupRef = useRef<(() => void) | null>(null);
   const recordingStartedAtRef = useRef(0);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -1269,11 +1270,13 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       return;
     }
 
-    const stream = buildChronosRecordingStream({
+    const recordingMedia = buildChronosRecordingMedia({
+      getParticipantVideos: getChronosRecordingParticipantVideos,
       localStream: localStreamRef.current,
       remoteParticipants: remoteParticipantsRef.current,
       screenTrack: screenTrackRef.current,
     });
+    const stream = recordingMedia?.stream ?? null;
 
     if (!stream || stream.getTracks().length === 0) {
       setMediaError("Nenhuma midia disponivel para gravar.");
@@ -1284,6 +1287,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     setRecordingStorageStatus("idle");
     const mimeType = getSupportedChronosRecordingMimeType();
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recordingCleanupRef.current = recordingMedia?.cleanup ?? null;
     recordingStreamRef.current = stream;
     recorderRef.current = recorder;
     recordingStopPromiseRef.current = new Promise((resolve) => {
@@ -1362,7 +1366,12 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     stopAthenaTranscription();
     setIsRecording(false);
     sendRecordingStateSignal("available");
-    await stopPromise;
+    try {
+      await stopPromise;
+    } finally {
+      recordingCleanupRef.current?.();
+      recordingCleanupRef.current = null;
+    }
   }
 
   async function uploadChronosRecordingBlob({
@@ -1736,6 +1745,19 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     }
 
     videoElementsByParticipantIdRef.current.delete(participantId);
+  }
+
+  function getChronosRecordingParticipantVideos() {
+    const localParticipantId = localParticipantRef.current?.id;
+    const participants = remoteParticipantsRef.current;
+
+    return Array.from(videoElementsByParticipantIdRef.current.entries())
+      .filter(([participantId]) => participantId !== localParticipantId)
+      .map(([participantId, video]) => ({
+        id: participantId,
+        label: participants[participantId]?.displayName ?? "Participante",
+        video,
+      }));
   }
 
   async function handleLeaveRoom(

@@ -29,6 +29,7 @@ const CHRONOS_TRANSCRIPTION_MODELS = [
   "whisper-1",
 ] as const;
 const OPENAI_TIMEOUT_MS = 60_000;
+const OPENAI_TRANSCRIPTION_MAX_BYTES = 25_000_000;
 const MAX_RECORDING_BYTES = 150_000_000;
 
 export const dynamic = "force-dynamic";
@@ -251,12 +252,19 @@ export async function POST(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    const errorMessage = getChronosAgentErrorMessage(
+      error,
+      "Nao foi possivel executar o agente Chronos.",
+    );
+
+    console.error("[chronos/agent] request failed", {
+      message: errorMessage,
+      status: getChronosAgentErrorStatus(error),
+    });
+
     return Response.json(
       {
-        error: getChronosAgentErrorMessage(
-          error,
-          "Nao foi possivel executar o agente Chronos.",
-        ),
+        error: errorMessage,
       },
       { status: getChronosAgentErrorStatus(error) },
     );
@@ -411,6 +419,12 @@ async function transcribeChronosRecording({
   apiKey: string;
   file: File;
 }) {
+  if (file.size > OPENAI_TRANSCRIPTION_MAX_BYTES) {
+    throw new Error(
+      "OpenAI aceita transcricao de audio/video ate 25 MB. Baixe a gravacao e compacte/recorte o arquivo antes de transcrever.",
+    );
+  }
+
   const model = resolveChronosTranscriptionModel(
     process.env.HUB_CHRONOS_TRANSCRIPTION_MODEL,
     process.env.HUB_IT_TICKET_TRANSCRIPTION_MODEL,
@@ -978,15 +992,11 @@ function getOpenAiErrorMessage(
 }
 
 function normalizeChronosOpenAiErrorMessage(message: string) {
-  if (
-    /invalid option\s*:?\s*option/i.test(message) ||
-    /\bmodel\b.*\boption\b/i.test(message) ||
-    /\boption\b.*\bmodel\b/i.test(message)
-  ) {
-    return "OpenAI recusou um placeholder de modelo chamado option. Chronos deve ignorar esse placeholder e usar o modelo padrao.";
-  }
+  const normalized = message.trim();
 
-  return message;
+  return normalized && normalized !== "[object Object]"
+    ? normalized
+    : "OpenAI retornou uma falha sem mensagem textual.";
 }
 
 function normalizeOptionalText(value: unknown, maxLength: number) {

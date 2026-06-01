@@ -88,14 +88,16 @@ export function TranscriptPanel({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold uppercase text-[#667085]">
-                    {segment.speakerLabel ?? "Participante"}
+                    {readChronosRenderableText(segment.speakerLabel) ??
+                      "Participante"}
                   </span>
                   <span className="text-xs text-[#98a2b3]">
                     {formatChronosDateTime(segment.createdAt)}
                   </span>
                 </div>
                 <p className="m-0 mt-2 text-sm leading-6 text-[#344054]">
-                  {segment.content}
+                  {readChronosRenderableText(segment.content) ??
+                    "Trecho sem conteudo textual."}
                 </p>
               </div>
             ))}
@@ -111,4 +113,8 @@ export function TranscriptPanel({
       )}
     </Surface>
   );
+}
+
+function readChronosRenderableText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }

@@ -4401,19 +4401,26 @@ function mapMeetingRow(input: {
     chatMessages: input.chatMessages ?? [],
     createdAt: input.meeting.created_at,
     endsAt: input.meeting.ends_at,
-    executiveSummary: input.meeting.executive_summary,
-    externalReference: input.meeting.external_reference,
+    executiveSummary: readChronosNullableText(
+      input.meeting.executive_summary,
+      8_000,
+    ),
+    externalReference: readChronosNullableText(
+      input.meeting.external_reference,
+      500,
+    ),
     followUps: input.followUps,
-    hostName: input.meeting.host_name,
+    hostName: readChronosNullableText(input.meeting.host_name, 160),
     hostUserId: input.meeting.host_user_id,
     id: input.meeting.id,
     meetingType: input.meeting.meeting_type,
     metadata: input.meeting.metadata ?? {},
     minutes: input.minutes,
     minutesStatus: input.meeting.minutes_status,
-    objective: input.meeting.objective,
+    objective: readChronosNullableText(input.meeting.objective, 4_000),
     participants: input.participants,
-    protocol: input.meeting.protocol,
+    protocol:
+      readChronosNullableText(input.meeting.protocol, 80) ?? "CHR-SEM-PROTOCOLO",
     recordingStatus: input.meeting.recording_status,
     recordings: input.recordings,
     room: input.room,
@@ -4421,7 +4428,7 @@ function mapMeetingRow(input: {
     startsAt: input.meeting.starts_at,
     status: input.meeting.status,
     timeline: input.timeline,
-    title: input.meeting.title,
+    title: readChronosNullableText(input.meeting.title, 240) ?? "Reuniao Chronos",
     transcriptionStatus: input.meeting.transcription_status,
     transcript: input.transcript,
     updatedAt: input.meeting.updated_at,
@@ -4431,15 +4438,22 @@ function mapMeetingRow(input: {
 function mapParticipantRow(row: ChronosParticipantRow): ChronosParticipant {
   return {
     attendanceStatus: row.attendance_status,
-    displayName: row.display_name,
-    email: row.email,
+    displayName:
+      readChronosNullableText(row.display_name, 160) ?? "Participante",
+    email: readChronosNullableText(row.email, 220),
     id: row.id,
     joinedAt: row.joined_at,
     leftAt: row.left_at,
-    organization: row.organization,
+    organization: readChronosNullableText(row.organization, 160),
     role: row.role,
     userId: row.user_id,
   };
+}
+
+function readChronosNullableText(value: unknown, maxLength: number) {
+  const text = sanitizeText(value, maxLength);
+
+  return text || null;
 }
 
 function findMatchingChronosParticipantRow(
@@ -4561,23 +4575,25 @@ function mapTranscriptRow(
   row: ChronosTranscriptSegmentRow,
 ): ChronosTranscriptSegment {
   return {
-    content: row.content,
+    content:
+      readChronosNullableText(row.content, 12_000) ??
+      "Trecho sem conteudo textual.",
     createdAt: row.created_at,
     endedAt: row.ended_at,
     id: row.id,
     source: row.source,
-    speakerLabel: row.speaker_label,
+    speakerLabel: readChronosNullableText(row.speaker_label, 160),
     startedAt: row.started_at,
   };
 }
 
 function mapChatMessageRow(row: ChronosChatMessageRow): ChronosChatMessage {
   return {
-    content: row.content,
+    content: readChronosNullableText(row.content, 4_000) ?? "",
     createdAt: row.created_at,
     id: row.id,
     participantId: row.participant_id,
-    senderName: row.sender_name,
+    senderName: readChronosNullableText(row.sender_name, 160) ?? "Participante",
   };
 }
 
@@ -4585,7 +4601,7 @@ function mapMinutesRow(row: ChronosMinutesRow): ChronosMinutes {
   return {
     approvedAt: row.approved_at,
     approvedByUserId: row.approved_by_user_id,
-    content: row.content,
+    content: readChronosNullableText(row.content, 20_000) ?? "",
     createdAt: row.created_at,
     id: row.id,
     status: row.status,

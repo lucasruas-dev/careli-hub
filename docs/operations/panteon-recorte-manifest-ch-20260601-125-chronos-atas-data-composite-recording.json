@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-125-CHRONOS-ATAS-DATA-COMPOSITE-RECORDING",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos Atas data guards and composite screen-share recording",
+  "status": "PRONTO_PARA_PRODUCAO",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "drive-atas",
+    "recordings",
+    "video-calls",
+    "openai-transcription",
+    "screen-share-recording"
+  ],
+  "allowedLayers": ["zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/lib/chronos/client.ts",
+    "apps/hub/lib/chronos/recording.ts",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+    "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+    "apps/hub/modules/chronos/components/chronos-transcript-panel.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-125-chronos-atas-data-composite-recording.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "documentacao oficial OpenAI revisada: transcriptions aceita webm/mp4/audio e limita upload a 25 MB",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "git diff --check: PASS com avisos esperados LF/CRLF"
+  ],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX",
+    "hotfixDeploymentId": null,
+    "hotfixTechnicalUrl": null,
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX",
+    "hotfixCodeCommit": null
+  },
+  "sensitiveOperations": [
+    "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas apos regressao funcional em Atas, transcricao e gravacao com compartilhamento."
+  ],
+  "rollback": [
+    "Reapontar producao para dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX se a composicao por canvas ou os guards de dados gerarem regressao critica.",
+    "Nao ha DDL, migration, env, secret, token, dominio, alias manual ou alteracao de chave associada."
+  ],
+  "notes": [
+    "A causa visivel do alerta [object Object] era tratamento de erro/dado aceitando objeto onde a tela esperava string.",
+    "Atas e Transcricao agora normalizam campos textuais vindos do servidor antes de renderizar.",
+    "O cliente Chronos extrai mensagens de erro de payloads estruturados sem exibir [object Object].",
+    "A API de transcricao valida o limite oficial de 25 MB antes de chamar OpenAI e retorna mensagem direta.",
+    "Quando ha compartilhamento de tela, a gravacao passa a usar canvas 1280x720 com tela principal e trilha lateral para camera/participantes."
+  ]
+}
