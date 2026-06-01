@@ -4,7 +4,7 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos shell permissions fallback hotfix",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -44,16 +44,22 @@
     "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: BLOQUEADO inicialmente pelo mesmo owner setup",
     "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-122-shell-permissions-fallback.json apos declarar setup como camada permitida: PASS",
     "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --allow setup --from-git: PASS",
-    "git diff --check: PASS com avisos esperados LF/CRLF"
+    "git diff --check: PASS com avisos esperados LF/CRLF",
+    "npx.cmd vercel deploy --prod --yes: PASS, deployment dpl_2s6CTppev67fsAKScYThnnGYHRY9 READY",
+    "npx.cmd vercel inspect https://c2x.app.br: PASS, Ready no deployment dpl_2s6CTppev67fsAKScYThnnGYHRY9",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: PASS, Ready no deployment dpl_2s6CTppev67fsAKScYThnnGYHRY9",
+    "healthchecks producao: GET https://c2x.app.br/chronos 200; GET https://c2x.app.br/api/chronos/meetings sem sessao 401 esperado",
+    "npx.cmd vercel logs https://c2x.app.br --since 10m --level error: PASS, sem logs encontrados",
+    "npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error: PASS, sem logs encontrados"
   ],
   "productionContext": {
     "currentDeploymentIdBeforeHotfix": "dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS",
-    "hotfixDeploymentId": "pendente",
-    "hotfixTechnicalUrl": "pendente",
+    "hotfixDeploymentId": "dpl_2s6CTppev67fsAKScYThnnGYHRY9",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-8uezvro15-lucasruas-devs-projects.vercel.app",
     "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
     "rollbackDeploymentId": "dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS",
     "rollbackDeploymentIdPreviousChronosHotfix": "dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu",
-    "hotfixCodeCommit": "pendente"
+    "hotfixCodeCommit": "ab7bcba"
   },
   "sensitiveOperations": [
     "Deploy Vercel --prod do quarto hotfix Chronos autorizado por Lucas apos solicitar revisao integral do bloco Atas e identificacao do motivo."

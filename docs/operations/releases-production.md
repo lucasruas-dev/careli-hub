@@ -2700,3 +2700,48 @@ Registro de producao:
 - Rollback planejado: promover novamente `dpl_Ep9mZmfdh4eJvjmwFwyXTDDvEQYu` se houver regressao critica; rollback anterior do segundo hotfix segue em `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`.
 - Observacao: a validacao autenticada pelo plugin Chrome ficou indisponivel por falha local do `node_repl`; Lucas precisa fazer refresh duro no navegador real e testar `/chronos`.
 - Proxima acao: Lucas atualizar `https://c2x.app.br/chronos` com refresh duro; se o boundary persistir, capturar console/overlay exato para atacar a proxima causa client-side.
+
+## 2026-06-01 - CH-20260601-122-SHELL-PERMISSIONS-FALLBACK
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando novo teste autenticado do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] shell permissions fallback em producao`.
+- Protocolo: `CH-20260601-122-SHELL-PERMISSIONS-FALLBACK`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas solicitou revisar o bloco completo de Atas e identificar o motivo do boundary persistente em `https://c2x.app.br/chronos`.
+- Causa tratada: a revisao de Atas nao encontrou quebra direta restante nos componentes principais; o ponto compatível com queda da rota inteira estava no `HubShell`, que usa `canAccessModule -> hasPermission`; `hasPermission` ainda dependia de `user.permissions.includes(...)` sem fallback quando a sessao real viesse sem `permissions` como array.
+- Escopo publicado:
+  - `packages/shared/src/permissions/helpers.ts` agora usa `getUserPermissionList`;
+  - `getUserPermissionList` usa `user.permissions` se for array e, em caso contrario, cai para `rolePermissionMatrix[user.role]`;
+  - regras de permissao preservadas para perfis corretos.
+- Itens nao alterados: endpoints, banco, migrations, Supabase admin, envs, secrets, tokens, dominios, aliases manuais, telas/API de Setup e regras de negocio de Atas.
+- Commit publicado: `ab7bcba fix(chronos): fallback shell permissions`.
+- Deployment anterior: `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`.
+- Deployment novo: `dpl_2s6CTppev67fsAKScYThnnGYHRY9`.
+- URL tecnica: `https://careli-hub-hub-i2bs-8uezvro15-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - ESLint focado nos componentes Chronos/Atas revisados: OK;
+  - ESLint focado em `packages/shared/src/permissions/helpers.ts`: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-122-shell-permissions-fallback.json`: OK apos declarar `setup` como camada permitida para o helper compartilhado;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --allow setup --from-git`: OK;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF.
+- Build remoto Vercel Production: READY, com warnings conhecidos.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_2s6CTppev67fsAKScYThnnGYHRY9`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_2s6CTppev67fsAKScYThnnGYHRY9`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Rollback planejado: promover novamente `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS` se houver regressao critica.
+- Proxima acao: Lucas atualizar `https://c2x.app.br/chronos` e testar acesso ao Drive/Atas; se persistir, capturar console/overlay exato do Chrome porque servidor e rota publica seguem sem erro.

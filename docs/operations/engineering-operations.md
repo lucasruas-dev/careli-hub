@@ -28922,3 +28922,36 @@ Conclusao:
 - A revisao do bloco Atas nao apontou uma quebra direta restante dentro dos componentes de ata; o ponto que ainda combinava com o boundary da rota inteira estava antes dela, no helper de permissao do shell.
 - O impacto pratico e que um payload autenticado sem `permissions` como array deixa de quebrar `/chronos`; o acesso cai para as permissoes padrao da `role`.
 - A proxima acao e concluir `check-types`, `lint`, `build`, boundary/manifest e publicar o hotfix `CH-122`.
+
+## 2026-06-01 02:27:11 -03:00 - Chronos/Zeus - shell permissions fallback em producao
+
+Assunto: [Chronos] shell permissions fallback publicado
+
+- Nome da squad/agente: Chronos Core, publicado por Zeus/Hefesto.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-122-SHELL-PERMISSIONS-FALLBACK`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO NOVO TESTE AUTENTICADO DO LUCAS.
+- Commit publicado: `ab7bcba fix(chronos): fallback shell permissions`.
+- Deployment:
+  - deployment anterior ao quarto hotfix: `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`;
+  - deployment novo: `dpl_2s6CTppev67fsAKScYThnnGYHRY9`;
+  - URL tecnica nova: `https://careli-hub-hub-i2bs-8uezvro15-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato: `dpl_3hxwtaszWSdEo4EywZ3VwSDfj2VS`.
+- Validacoes pos-deploy:
+  - build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_2s6CTppev67fsAKScYThnnGYHRY9`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_2s6CTppev67fsAKScYThnnGYHRY9`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - logs de erro recentes em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Observacao:
+  - a causa tratada neste quarto hotfix nao estava diretamente nos componentes de Atas, mas no helper de permissao compartilhado usado pelo shell antes da aba Atas renderizar;
+  - o recorte declarou `setup` como camada permitida apenas porque o manifesto classifica `packages/shared/src/permissions/**` como dono de Setup;
+  - nao houve alteracao visual, API, banco, env, secret, migration ou regra de Setup.
+
+Conclusao:
+
+- O quarto hotfix esta em producao e cobre a quebra do `HubShell` quando a sessao autenticada nao entrega `permissions` como array.
+- O impacto pratico e que o Chronos deve conseguir montar a rota e chegar ao Drive/Atas sem boundary por permissao malformada.
+- A acao agora e Lucas atualizar `https://c2x.app.br/chronos` com reload do navegador e testar novamente o acesso ao Drive/Atas.
