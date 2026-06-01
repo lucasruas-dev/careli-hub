@@ -23,7 +23,14 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  Component,
+  useEffect,
+  useMemo,
+  useState,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import {
   ChronosDrivePanel,
   type ChronosDriveView,
@@ -170,22 +177,26 @@ export function ChronosDriveLibraryScreen({
         </Surface>
 
         {selectedMinutesMeeting ? (
-          <div className="grid gap-4">
-            <MinutesPanel
-              canDeleteMinutes={canDeleteMinutes}
-              meeting={selectedMinutesMeeting}
-              onGenerateMinutesDraft={onGenerateMinutesDraft}
-              onTranscribeExistingRecording={onTranscribeExistingRecording}
-              onUpdate={onUpdate}
-              saving={saving}
-            />
-            <TranscriptPanel
-              meeting={selectedMinutesMeeting}
-              onUpdate={onUpdate}
-              saving={saving}
-              userName={userName}
-            />
-          </div>
+          <ChronosDriveMinutesErrorBoundary
+            resetKey={selectedMinutesMeeting.id}
+          >
+            <div className="grid gap-4">
+              <MinutesPanel
+                canDeleteMinutes={canDeleteMinutes}
+                meeting={selectedMinutesMeeting}
+                onGenerateMinutesDraft={onGenerateMinutesDraft}
+                onTranscribeExistingRecording={onTranscribeExistingRecording}
+                onUpdate={onUpdate}
+                saving={saving}
+              />
+              <TranscriptPanel
+                meeting={selectedMinutesMeeting}
+                onUpdate={onUpdate}
+                saving={saving}
+                userName={userName}
+              />
+            </div>
+          </ChronosDriveMinutesErrorBoundary>
         ) : (
           <Surface bordered className="grid min-h-full place-items-center border-[#d9e0e7] bg-white p-5 text-sm text-[#667085]">
             Selecione um item do Drive.
@@ -194,6 +205,58 @@ export function ChronosDriveLibraryScreen({
       </section>
     </ChronosDrivePanel>
   );
+}
+
+class ChronosDriveMinutesErrorBoundary extends Component<
+  { children: ReactNode; resetKey: string },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("[chronos/drive] minutes view failed", {
+      componentStack: errorInfo.componentStack,
+      message: error.message,
+      stack: error.stack,
+    });
+  }
+
+  componentDidUpdate(previousProps: { resetKey: string }) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <Surface bordered className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="grid gap-3">
+            <div>
+              <p className="m-0 font-semibold">Ata protegida pelo Chronos.</p>
+              <p className="m-0 mt-1 text-xs font-medium text-amber-800">
+                Um dado inconsistente desta reuniao impediu a montagem visual da
+                ata, mas a rota continua aberta para as gravacoes.
+              </p>
+            </div>
+            <button
+              className="inline-flex h-8 w-fit items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
+              onClick={() => this.setState({ error: null })}
+              type="button"
+            >
+              Tentar abrir novamente
+            </button>
+          </div>
+        </Surface>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 function ChronosRecordingFolderExplorer({

@@ -361,6 +361,7 @@ type NormalizedChronosPublicRecordingUploadUrlInput = {
   mimeType: string;
   participantId: string;
   sizeBytes: number;
+  startedAt?: string;
 };
 
 type NormalizedChronosPublicRecordingUploadCompletionInput =
@@ -1602,10 +1603,12 @@ export async function completeChronosPublicRecordingUpload({
         mimeType: normalizedInput.mimeType,
         participantId: normalizedInput.participantId,
         sizeBytes: normalizedInput.sizeBytes,
+        startedAt: normalizedInput.startedAt ?? null,
         source: "chronos-external-room-storage-direct",
       },
       mime_type: normalizedInput.mimeType,
       size_bytes: normalizedInput.sizeBytes,
+      started_at: normalizedInput.startedAt ?? null,
       status: "available",
       stopped_at: now,
       storage_bucket: normalizedInput.storageBucket,
@@ -3031,6 +3034,7 @@ function normalizePublicRecordingUploadUrlInput(
     mimeType,
     participantId,
     sizeBytes,
+    startedAt: normalizeOptionalDate(maybeInput.startedAt),
   };
 }
 

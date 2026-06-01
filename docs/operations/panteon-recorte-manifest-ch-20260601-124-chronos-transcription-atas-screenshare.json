@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-124-CHRONOS-TRANSCRIPTION-ATAS-SCREENSHARE",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos transcription, Atas and screen-share recording hotfix",
+  "status": "PRONTO_PARA_PRODUCAO",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "video-calls",
+    "recordings",
+    "drive-atas",
+    "openai-transcription",
+    "screen-share-recording"
+  ],
+  "allowedLayers": ["zeus", "hefesto"],
+  "includedFiles": [
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/lib/chronos/drive.ts",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-124-chronos-transcription-atas-screenshare.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "documentacao oficial revisada: OpenAI audio transcriptions, Supabase uploadToSignedUrl/createSignedUploadUrl e MDN MediaRecorder",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+    "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
+    "smoke HTTP local em servidor ja ativo: /chronos 200 e /chronos/careli 200",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-124-chronos-transcription-atas-screenshare.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS"
+  ],
+  "productionContext": {
+    "currentDeploymentIdBeforeHotfix": "dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW",
+    "hotfixDeploymentId": null,
+    "hotfixTechnicalUrl": null,
+    "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
+    "rollbackDeploymentId": "dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW",
+    "hotfixCodeCommit": null
+  },
+  "sensitiveOperations": [
+    "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas apos regressao funcional em transcricao, Atas e gravacao com compartilhamento."
+  ],
+  "rollback": [
+    "Reapontar producao para dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW se a nova captura segmentada ou transcricao gerar regressao critica.",
+    "Nao ha DDL, migration, env, secret, token, dominio, alias manual ou alteracao de chave associada."
+  ],
+  "notes": [
+    "A transcricao passa a aceitar somente modelos OpenAI de audio conhecidos pelo endpoint de transcriptions.",
+    "A chamada de transcricao deixa de enviar parametro temperature para evitar rejeicao nos modelos novos de audio.",
+    "A aba Atas recebe uma barreira local para impedir que um dado inconsistente derrube a rota inteira do Chronos.",
+    "Quando a tela compartilhada entra ou sai durante uma gravacao, Chronos reinicia a captura em segmento novo para gravar a trilha correta.",
+    "O upload final passa a salvar startedAt real do arquivo para evitar linha de Drive com inicio nulo."
+  ]
+}

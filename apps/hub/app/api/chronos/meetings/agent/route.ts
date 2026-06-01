@@ -23,6 +23,11 @@ import {
 
 const DEFAULT_MINUTES_MODEL = "gpt-5.5";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+const CHRONOS_TRANSCRIPTION_MODELS = [
+  "gpt-4o-mini-transcribe",
+  "gpt-4o-transcribe",
+  "whisper-1",
+] as const;
 const OPENAI_TIMEOUT_MS = 60_000;
 const MAX_RECORDING_BYTES = 150_000_000;
 
@@ -406,8 +411,7 @@ async function transcribeChronosRecording({
   apiKey: string;
   file: File;
 }) {
-  const model = resolveChronosOpenAiModel(
-    DEFAULT_TRANSCRIPTION_MODEL,
+  const model = resolveChronosTranscriptionModel(
     process.env.HUB_CHRONOS_TRANSCRIPTION_MODEL,
     process.env.HUB_IT_TICKET_TRANSCRIPTION_MODEL,
   );
@@ -429,7 +433,6 @@ async function transcribeChronosRecording({
     ].join(" "),
   );
   formData.append("response_format", "json");
-  formData.append("temperature", "0");
 
   try {
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -446,7 +449,17 @@ async function transcribeChronosRecording({
       | null;
 
     if (!response.ok) {
-      throw new Error(getOpenAiErrorMessage(payload, "Falha na transcricao."));
+      const errorMessage = getOpenAiErrorMessage(
+        payload,
+        "Falha na transcricao.",
+      );
+
+      console.error("[chronos/agent] OpenAI transcription failed", {
+        model,
+        status: response.status,
+        error: errorMessage,
+      });
+      throw new Error(errorMessage);
     }
 
     const transcript = normalizeText(payload?.text, 12_000);
@@ -459,6 +472,19 @@ async function transcribeChronosRecording({
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function resolveChronosTranscriptionModel(
+  ...candidates: Array<string | undefined>
+) {
+  return (
+    candidates
+      .map(normalizeChronosOpenAiModelCandidate)
+      .map((candidate) => candidate?.toLowerCase())
+      .find((candidate): candidate is (typeof CHRONOS_TRANSCRIPTION_MODELS)[number] =>
+        isChronosTranscriptionModel(candidate),
+      ) ?? DEFAULT_TRANSCRIPTION_MODEL
+  );
 }
 
 async function fetchChronosRecordingFile({
@@ -601,6 +627,12 @@ function isUsableChronosOpenAiModel(value?: string) {
   ].includes(
     value.toLowerCase(),
   );
+}
+
+function isChronosTranscriptionModel(
+  value?: string,
+): value is (typeof CHRONOS_TRANSCRIPTION_MODELS)[number] {
+  return CHRONOS_TRANSCRIPTION_MODELS.some((model) => model === value);
 }
 
 function hasChronosAvailableRecording(meeting: ChronosMeeting) {

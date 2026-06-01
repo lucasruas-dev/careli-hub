@@ -431,12 +431,23 @@ export function getChronosMeetingDriveStart(meeting: ChronosMeeting) {
 }
 
 export function getChronosMeetingDriveEnd(meeting: ChronosMeeting) {
+  const recordings = Array.isArray(meeting.recordings) ? meeting.recordings : [];
+  const latestRecordingStop =
+    recordings
+      .map((recording) => recording.stoppedAt)
+      .filter((value): value is string => Boolean(value))
+      .sort(
+        (firstValue, secondValue) =>
+          Date.parse(secondValue) - Date.parse(firstValue),
+      )[0] ?? null;
+
   return (
     readChronosMetadataText(meeting.metadata, [
       "actualEndedAt",
       "closedAt",
       "endedAt",
     ]) ||
+    latestRecordingStop ||
     meeting.endsAt ||
     null
   );
