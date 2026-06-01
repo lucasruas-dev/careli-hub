@@ -3020,3 +3020,60 @@ Registro de producao:
   - `npx.cmd vercel logs https://ops.c2x.app.br --since 15m --level error`: sem logs encontrados.
 - Rollback planejado: promover novamente `dpl_ChNdoKQW38Ufp4TSDqvcaXzUrBHS` se houver regressao critica.
 - Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, abrir chamada com pelo menos tres participantes, alternar microfone/camera, compartilhar tela e conferir se todos os participantes recebem audio/video corretamente.
+
+## 2026-06-01 - CH-20260601-128-CHRONOS-MINUTES-PDF-ROOM-BACKGROUND
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando teste funcional autenticado do Lucas no fluxo Transcrever > Ata > Gerar PDF > nova gravacao com fundo personalizado.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Atas inteligentes, PDF padrao e fundo da sala na gravacao em producao`.
+- Protocolo: `CH-20260601-128-CHRONOS-MINUTES-PDF-ROOM-BACKGROUND`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas autorizou publicar o recorte apos confirmar que a gravacao deixou de interromper, mas que a Ata ainda nao gerava e o fundo personalizado da sala nao aparecia no video salvo.
+- Causa tratada:
+  - `Intl.DateTimeFormat` usava `dateStyle` junto de `hour`/`minute`, combinacao invalida que gerava `TypeError: Invalid option : option`;
+  - o compositor de gravacao precisava desenhar o background da sala dentro do canvas capturado por `canvas.captureStream`;
+  - o fluxo de transcricao/ata precisava de saida estruturada e feedback visual.
+- Escopo publicado:
+  - transcricao com `response_format=json`;
+  - geracao de ata por Responses API com JSON schema estruturado;
+  - ata executiva com bullets, tabela obrigatoria de Plano de acao em alinhamento e prazo padrao de 5 dias corridos quando a atividade nao trouxer data;
+  - preview/PDF em Century Gothic, corpo 9 pt, espacamento 0/0 e entrelinhas 1,5;
+  - spinners nos botoes de transcricao/geracao;
+  - canvas da gravacao composta com fundo da sala antes da tela/camera.
+- Itens nao alterados: DDL, migration, env, secret, token, dominio, alias manual, Supabase admin e alteracao direta de banco.
+- Commit publicado: `5e69cb1dec82d771d7b453d2112b002faf49f1f5`.
+- Commit de codigo: `d7d821027cdef3fb27b4996ec60e0c4531341c09`.
+- Deployment anterior: `dpl_94aModt7TkVq5BjKrVCRpvMNU1vF`.
+- Deployment novo: `dpl_CAcJHJcBDTDQn1acNCqnayGLUHhH`.
+- URL tecnica: `https://careli-hub-hub-i2bs-7n4j5pk0d-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - `npm.cmd run check-types`: OK;
+  - `npm.cmd run lint`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build`: OK, com warnings conhecidos Turbopack/NFT por worktree em `.codex-deploy`;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-128-chronos-minutes-pdf-room-background.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow panteon --allow zeus --allow hefesto --from-git`: OK;
+  - `next start` temporario em `localhost:3019`: `GET /chronos` 200 OK.
+- Build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18` e Turbopack/NFT.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_CAcJHJcBDTDQn1acNCqnayGLUHhH`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_CAcJHJcBDTDQn1acNCqnayGLUHhH`;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 15m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 15m --level error`: sem logs encontrados.
+- Operations Center estruturado:
+  - registro Markdown/release fechado;
+  - registro vivo em `hub_engineering_operation_records` pendente de reconciliacao por rotina com credenciais server-side;
+  - nenhum secret, token ou chave foi puxado, impresso ou alterado.
+- Rollback planejado: promover novamente `dpl_94aModt7TkVq5BjKrVCRpvMNU1vF` se houver regressao critica.
+- Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, clicar `Transcrever` em uma gravacao disponivel, conferir se a Ata aparece, abrir `Gerar PDF` e gravar uma nova chamada com fundo personalizado para validar o video salvo no Drive.

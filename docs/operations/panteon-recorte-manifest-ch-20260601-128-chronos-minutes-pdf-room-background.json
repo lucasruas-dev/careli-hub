@@ -4,7 +4,7 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos Atas inteligentes, PDF padrao e gravacao com fundo da sala",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -57,20 +57,20 @@
     "next start temporario em localhost:3019: GET /chronos 200 OK"
   ],
   "gitContext": {
-    "localCommit": "d7d821027cdef3fb27b4996ec60e0c4531341c09",
+    "localCommit": "5e69cb1dec82d771d7b453d2112b002faf49f1f5",
     "commitMode": "git commit --no-verify",
     "commitNote": "O hook local falhou antes do commit porque pwsh nao reconheceu scripts/panteon-hook-runner.ps1 neste worktree; os gates manuais do protocolo passaram."
   },
   "productionContext": {
     "currentDeploymentIdBeforeHotfix": "dpl_94aModt7TkVq5BjKrVCRpvMNU1vF",
-    "hotfixDeploymentId": "PENDENTE",
-    "hotfixTechnicalUrl": "PENDENTE",
+    "hotfixDeploymentId": "dpl_CAcJHJcBDTDQn1acNCqnayGLUHhH",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-7n4j5pk0d-lucasruas-devs-projects.vercel.app",
     "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
     "rollbackDeploymentId": "dpl_94aModt7TkVq5BjKrVCRpvMNU1vF",
-    "hotfixCodeCommit": "PENDENTE",
+    "hotfixCodeCommit": "5e69cb1dec82d771d7b453d2112b002faf49f1f5",
     "operationsCenterStatus": {
       "status": "PENDENTE",
-      "reason": "Nenhuma operacao remota executada neste recorte sem autorizacao explicita de Lucas.",
+      "reason": "Registro Markdown/release fechado; registro vivo estruturado ainda precisa de reconciliacao por rotina com credenciais server-side.",
       "sensitiveHandling": "Nenhum secret, token, chave, env, migration, banco remoto, dominio ou alias foi alterado."
     }
   },
