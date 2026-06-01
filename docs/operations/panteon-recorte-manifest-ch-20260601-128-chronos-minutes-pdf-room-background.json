@@ -4,9 +4,9 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos Atas inteligentes, PDF padrao e gravacao com fundo da sala",
-  "status": "VALIDADO_LOCAL",
+  "status": "PRONTO_PARA_PRODUCAO",
   "riskLevel": "ALTO",
-  "approvedBy": "PENDENTE",
+  "approvedBy": "Lucas",
   "blocks": [
     "chronos-drive",
     "minutes",
@@ -74,7 +74,9 @@
       "sensitiveHandling": "Nenhum secret, token, chave, env, migration, banco remoto, dominio ou alias foi alterado."
     }
   },
-  "sensitiveOperations": [],
+  "sensitiveOperations": [
+    "Deploy Vercel Production autorizado por Lucas para publicar o protocolo CH-20260601-128-CHRONOS-MINUTES-PDF-ROOM-BACKGROUND."
+  ],
   "rollback": [
     "Reverter os arquivos incluidos deste protocolo para o deployment atual dpl_94aModt7TkVq5BjKrVCRpvMNU1vF se houver regressao critica antes de publicar.",
     "Se publicado e houver regressao, promover novamente dpl_94aModt7TkVq5BjKrVCRpvMNU1vF.",

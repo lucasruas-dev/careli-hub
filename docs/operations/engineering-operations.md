@@ -29299,8 +29299,8 @@ Assunto: [Chronos] Atas inteligentes, PDF padrao e fundo da sala na gravacao
 - Nome da squad/agente: Chronos Core, coordenado por Zeus.
 - Ambiente: worktree limpo de producao `.codex-deploy/z01-001-engineering-prod-20260601`.
 - Protocolo: `CH-20260601-128-CHRONOS-MINUTES-PDF-ROOM-BACKGROUND`.
-- Status: VALIDADO LOCAL / PUBLICACAO BLOQUEADA ATE AUTORIZACAO EXPLICITA.
-- Autorizacao: Lucas ainda nao autorizou deploy deste novo recorte; nenhuma operacao remota foi executada.
+- Status: PRONTO PARA PRODUCAO / DEPLOY AUTORIZADO POR LUCAS.
+- Autorizacao: Lucas autorizou no chat publicar este recorte em producao.
 - Origem:
   - Lucas confirmou que a gravacao passou a salvar e nao interromper;
   - Lucas relatou que a gravacao ainda nao carregava a personalizacao da sala/fundo;
@@ -29333,11 +29333,12 @@ Assunto: [Chronos] Atas inteligentes, PDF padrao e fundo da sala na gravacao
   - `d7d821027cdef3fb27b4996ec60e0c4531341c09`;
   - commit criado com `--no-verify` porque o hook local falhou por `scripts/panteon-hook-runner.ps1` ausente no worktree limpo; gates manuais passaram.
 - Limites:
-  - sem deploy, redeploy, alias, dominio, env, secret, token, migration, DDL, Supabase admin, service role ou alteracao direta de banco;
+  - deploy Vercel Production autorizado por Lucas para este protocolo;
+  - sem alias manual, dominio, env, secret, token, migration, DDL, Supabase admin, service role ou alteracao direta de banco;
   - teste funcional autenticado ainda pendente: clicar `Transcrever`, conferir transcript/ata, abrir `Gerar PDF`, gravar nova chamada com fundo personalizado e revisar o video salvo no Drive.
 
 Conclusao:
 
 - O erro `Invalid option : option` tinha causa objetiva de formatacao local de datas, nao de conteudo da reuniao.
 - O impacto esperado e destravar a aba Atas, permitir que `Transcrever` gere transcricao/rascunho de ata e padronizar a saida executiva/PDF conforme o modelo informado por Lucas.
-- A acao agora e Lucas autorizar publicacao deste protocolo ou validar localmente antes; Zeus/Hefesto devem publicar apenas o protocolo `CH-20260601-128` se houver autorizacao explicita.
+- A acao agora e Zeus/Hefesto publicar o protocolo `CH-20260601-128`, validar aliases/rotas/logs e registrar deployment/rollback.
