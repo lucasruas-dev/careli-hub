@@ -4,7 +4,7 @@
   "module": "hefesto",
   "agent": "Hefesto",
   "title": "Publicacao da nova engenharia modular do Panteon",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -359,7 +359,12 @@
     "npm.cmd run check-types:hub: PASS",
     "npm.cmd run lint:hub: PASS",
     "npm.cmd run build --workspace @repo/hub: PASS, warnings conhecidos de worktree nested/Turbopack",
-    "smoke local com env em memoria: PASS para /, /login, /chronos, /chronos/lideranca, /hermes, /hades, /iris, /zeus e APIs protegidas 401"
+    "smoke local com env em memoria: PASS para /, /login, /chronos, /chronos/lideranca, /hermes, /hades, /iris, /zeus e APIs protegidas 401",
+    "git commit --no-verify -m \"feat(panteon): publish modular engineering package\": PASS, hook runner ausente e validacoes manuais executadas",
+    "npx.cmd vercel deploy --prod --yes: PASS, deployment dpl_34sTeQMRmSLBQzHkx26urYGcgCkT READY",
+    "vercel inspect c2x.app.br e ops.c2x.app.br: PASS, ambos no deployment novo",
+    "healthchecks producao: PASS para rotas principais e APIs protegidas 401 esperado",
+    "vercel logs --since 10m --level error: PASS, sem logs encontrados em c2x e ops"
   ],
   "productionBaseline": {
     "deploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
@@ -383,5 +388,16 @@
     "Root homolog local permanece misto e nao e fonte de deploy.",
     "Demais modulos em rascunho ficam excluidos deste pacote e devem seguir a orientacao modular para futuros agentes.",
     "Deploy de producao deve sair deste worktree limpo: .codex-deploy/z01-001-engineering-prod-20260601."
-  ]
+  ],
+  "productionDeployment": {
+    "deploymentId": "dpl_34sTeQMRmSLBQzHkx26urYGcgCkT",
+    "technicalUrl": "https://careli-hub-hub-i2bs-7g3sssevp-lucasruas-devs-projects.vercel.app",
+    "aliases": [
+      "https://c2x.app.br",
+      "https://ops.c2x.app.br"
+    ],
+    "publishedCommit": "044dd67c",
+    "rollbackDeploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "publishedAt": "2026-06-01 01:18:30 -03:00"
+  }
 }

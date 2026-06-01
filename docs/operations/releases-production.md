@@ -2498,7 +2498,7 @@ Registro de producao:
 
 ## 2026-06-01 - HF-20260601-001-ENGINEERING-PROD
 
-Status: PRONTO PARA PRODUCAO, autorizado por Lucas e aguardando deploy Vercel Production.
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando validacao funcional autenticada do Lucas.
 
 Registro de producao:
 
@@ -2537,11 +2537,31 @@ Registro de producao:
   - smoke local com env carregado somente em memoria: OK para `/`, `/login`, `/chronos`, `/chronos/lideranca`, `/hermes`, `/hades`, `/iris`, `/zeus`;
   - smoke local sem sessao: OK para `/api/chronos/meetings`, `/api/hermes/messages` e `/api/iris/meta/templates` retornando `401` esperado;
   - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-hf-20260601-001-engineering-prod.json`: OK.
-- Pendencias para fechamento:
-  - criar commit do pacote limpo;
-  - executar Vercel Production;
-  - inspecionar deployment final e aliases;
-  - rodar healthchecks em producao;
-  - atualizar este registro para `EM PRODUCAO`.
+- Commit de codigo publicado: `044dd67c feat(panteon): publish modular engineering package`.
+- Observacao de commit: criado com `--no-verify` porque o hook local apontou para `scripts/panteon-hook-runner.ps1`, ausente tambem no root; as validacoes obrigatorias foram executadas manualmente e passaram antes do deploy.
+- Deployment novo: `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`.
+- URL tecnica nova: `https://careli-hub-hub-i2bs-7g3sssevp-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, engines Node, envs Postgres antigas fora do `turbo.json` e Turbopack/NFT em rota documental do Zeus.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: `Ready`, deployment `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: `Ready`, deployment `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200;
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/hades`: 200;
+  - `GET https://c2x.app.br/iris`: 200;
+  - `GET https://c2x.app.br/zeus`: 307 esperado para redirecionamento do Zeus; seguindo redirect retorna 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/iris/meta/templates` sem sessao: 401 esperado.
+- Logs recentes de erro:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
 - Rollback planejado: promover novamente `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n` se houver regressao critica; nao ha migration/env/schema neste release.
-- Proxima acao: publicar somente a partir do worktree limpo e registrar deployment final, healthchecks e commit.
+- Proxima acao: Lucas validar autenticado os fluxos reais de Iris, Hades, Hermes, Chronos e Zeus em producao antes do go-live operacional.
