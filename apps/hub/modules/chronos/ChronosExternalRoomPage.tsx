@@ -163,6 +163,9 @@ const peerConnectionConfig = {
   iceCandidatePoolSize: 4,
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 } satisfies RTCConfiguration;
+const chronosRecordingAudioBitrate = 96_000;
+const chronosRecordingTimesliceMs = 5_000;
+const chronosRecordingVideoBitrate = 1_200_000;
 const chronosVirtualBackgroundFps = 24;
 const chronosVirtualBackgroundModelUrl =
   "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite";
@@ -238,6 +241,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStopPromiseRef = useRef<Promise<void> | null>(null);
+  const recordingOwnerIdRef = useRef<string | null>(null);
   const resolveRecordingStopRef = useRef<(() => void) | null>(null);
   const lastRecordingUrlRef = useRef("");
   const lastTranscriptSegmentRef = useRef<{
@@ -253,6 +257,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   const sendRecordingStateSignalRef = useRef<
     (status: "available" | "recording", toParticipantId?: string) => void
   >(() => undefined);
+  const startRecordingRef = useRef<() => Promise<void>>(async () => undefined);
   const startAthenaTranscriptionRef = useRef<() => void>(() => undefined);
   const stopAthenaTranscriptionRef = useRef<() => void>(() => undefined);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -262,6 +267,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     new Map(),
   );
   const hasJoined = Boolean(localParticipant && meetingId);
+  const localParticipantId = localParticipant?.id ?? null;
   const pageBackgroundImage = room.backgroundDataUrl || "";
   const participantLabel = isHubParticipant
     ? (hubUser?.name ?? "Colaborador Careli")
@@ -672,6 +678,36 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     [createPeerConnection, room.slug, sendSignal],
   );
 
+  const scheduleRecordingFailover = useCallback((lostOwnerId: string) => {
+    const participant = localParticipantRef.current;
+
+    if (
+      !participant ||
+      isRecordingRef.current ||
+      recordingOwnerIdRef.current !== lostOwnerId
+    ) {
+      return;
+    }
+
+    const nextOwnerId = [
+      participant.id,
+      ...Object.keys(remoteParticipantsRef.current).filter(
+        (participantId) => participantId !== lostOwnerId,
+      ),
+    ].sort()[0];
+
+    if (nextOwnerId !== participant.id) {
+      return;
+    }
+
+    setMediaError(
+      "Gravador anterior saiu da sala; Chronos iniciou uma nova gravacao de continuidade.",
+    );
+    window.setTimeout(() => {
+      void startRecordingRef.current();
+    }, 750);
+  }, []);
+
   const handleSignal = useCallback(
     async (payload: unknown) => {
       const signal = payload as Partial<ChronosRoomSignal>;
@@ -739,9 +775,13 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
       if (signal.kind === "recording-state") {
         if (signal.recordingStatus === "recording") {
+          recordingOwnerIdRef.current = remoteParticipantId;
           startAthenaTranscriptionRef.current();
           setIsTranscriptOpen(true);
         } else {
+          if (recordingOwnerIdRef.current === remoteParticipantId) {
+            recordingOwnerIdRef.current = null;
+          }
           stopAthenaTranscriptionRef.current();
         }
 
@@ -774,6 +814,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
 
       if (signal.kind === "leave") {
         closePeerConnection(remoteParticipantId);
+        scheduleRecordingFailover(remoteParticipantId);
         setRemoteParticipants((currentParticipants) => {
           const nextParticipants = { ...currentParticipants };
           delete nextParticipants[remoteParticipantId];
@@ -833,12 +874,19 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       createPeerConnection,
       flushPendingIceCandidates,
       room.slug,
+      scheduleRecordingFailover,
       sendSignal,
     ],
   );
 
   useEffect(() => {
-    if (!hasJoined || !localParticipant || !meetingId) {
+    if (!hasJoined || !localParticipantId || !meetingId) {
+      return;
+    }
+
+    const joinedParticipant = localParticipantRef.current;
+
+    if (!joinedParticipant) {
       return;
     }
 
@@ -877,21 +925,25 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         }
 
         setRealtimeStatus("ready");
+        const participant = localParticipantRef.current ?? joinedParticipant;
+
         sendSignal({
-          fromParticipantId: localParticipant.id,
+          fromParticipantId: participant.id,
           kind: "join",
           meetingId,
-          participant: stripParticipantStream(localParticipant),
+          participant: stripParticipantStream(participant),
           roomSlug: room.slug,
         });
       });
 
     return () => {
+      const participant = localParticipantRef.current ?? joinedParticipant;
+
       sendSignal({
-        fromParticipantId: localParticipant.id,
+        fromParticipantId: participant.id,
         kind: "leave",
         meetingId,
-        participant: stripParticipantStream(localParticipant),
+        participant: stripParticipantStream(participant),
         roomSlug: room.slug,
       });
       channelRef.current = null;
@@ -899,7 +951,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       closeAllPeerConnections();
       void client.removeChannel(channel);
     };
-  }, [handleSignal, hasJoined, localParticipant, meetingId, room.slug, sendSignal]);
+  }, [handleSignal, hasJoined, localParticipantId, meetingId, room.slug, sendSignal]);
 
   async function handleJoinRoom() {
     const nextDisplayName = participantLabel;
@@ -1241,6 +1293,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
       return;
     }
 
+    recordingOwnerIdRef.current = status === "recording" ? participant.id : null;
     sendSignal({
       fromParticipantId: participant.id,
       kind: "recording-state",
@@ -1262,7 +1315,10 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
   }
 
   async function startRecording() {
-    if (!meetingId || !localParticipant) {
+    const participant = localParticipantRef.current;
+    const currentMeetingId = meetingIdRef.current;
+
+    if (!currentMeetingId || !participant) {
       return;
     }
 
@@ -1290,7 +1346,11 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     recordingChunksRef.current = [];
     setRecordingStorageStatus("idle");
     const mimeType = getSupportedChronosRecordingMimeType();
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: chronosRecordingAudioBitrate,
+      videoBitsPerSecond: chronosRecordingVideoBitrate,
+    });
     recordingCleanupRef.current = recordingMedia?.cleanup ?? null;
     recordingStreamRef.current = stream;
     recorderRef.current = recorder;
@@ -1348,7 +1408,7 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
         }
       })();
     });
-    recorder.start(1000);
+    recorder.start(chronosRecordingTimesliceMs);
     recordingStartedAtRef.current = Date.now();
     setRecordingSeconds(0);
     setIsRecording(true);
@@ -1357,7 +1417,9 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     sendRecordingStateSignal("recording");
   }
 
-  async function stopRecording() {
+  async function stopRecording(
+    options: { broadcastAvailable?: boolean } = {},
+  ) {
     const recorder = recorderRef.current;
     const stopPromise = recordingStopPromiseRef.current;
 
@@ -1369,7 +1431,11 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     recordingStreamRef.current = null;
     stopAthenaTranscription();
     setIsRecording(false);
-    sendRecordingStateSignal("available");
+
+    if (options.broadcastAvailable !== false) {
+      sendRecordingStateSignal("available");
+    }
+
     try {
       await stopPromise;
     } finally {
@@ -1771,7 +1837,9 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     const shouldNotifyPeers = options.notifyPeers !== false;
 
     if (isRecording) {
-      await stopRecording();
+      await stopRecording({
+        broadcastAvailable: shouldCloseMeeting,
+      });
     }
 
     if (shouldCloseMeeting && localParticipant && meetingId) {
@@ -1804,10 +1872,12 @@ export function ChronosExternalRoomPage({ room }: ChronosExternalRoomPageProps) 
     setIsChatOpen(false);
     setTranscriptPreview([]);
     setIsTranscriptOpen(false);
+    recordingOwnerIdRef.current = null;
   }
 
   handleLeaveRoomRef.current = handleLeaveRoom;
   sendRecordingStateSignalRef.current = sendRecordingStateSignal;
+  startRecordingRef.current = startRecording;
   startAthenaTranscriptionRef.current = startAthenaTranscription;
   stopAthenaTranscriptionRef.current = stopAthenaTranscription;
 

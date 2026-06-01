@@ -408,6 +408,8 @@ const chronosLocalFallbackFlag = "CHRONOS_ENABLE_LOCAL_FALLBACK";
 const chronosProfileRegistrySlug = "__chronos-profile-registry";
 const chronosDriveStorageBucket = "chronos-drive";
 const maxTextLength = 8_000;
+const maxChronosMinutesContentLength = 40_000;
+const maxChronosTranscriptContentLength = 40_000;
 const maxRoomBackgroundDataUrlLength = 7_000_000;
 const maxChronosRecordingUploadBytes = 500_000_000;
 
@@ -2389,7 +2391,7 @@ async function applyChronosUpdate({
   if (input.action === "add_transcript") {
     const source = sanitizeChronosTranscriptSource(input.source);
     const insertResult = await client.from("chronos_transcript_segments").insert({
-      content: sanitizeText(input.content, maxTextLength),
+      content: sanitizeText(input.content, maxChronosTranscriptContentLength),
       created_by_user_id: user.id,
       meeting_id: input.meetingId,
       source,
@@ -2446,7 +2448,7 @@ async function applyChronosUpdate({
     await assertChronosMeetingHasAvailableRecording(client, input.meetingId);
     const version = await getNextMinutesVersion(client, input.meetingId);
     const minutesResult = await client.from("chronos_minutes").insert({
-      content: sanitizeText(input.content, maxTextLength),
+      content: sanitizeText(input.content, maxChronosMinutesContentLength),
       created_by_user_id: user.id,
       meeting_id: input.meetingId,
       status: input.status,
@@ -3202,7 +3204,10 @@ function normalizeUpdateInput(input: unknown): ChronosUpdateInput {
 
     return {
       action,
-      content: sanitizeText((maybeInput as { content?: unknown }).content, maxTextLength),
+      content: sanitizeText(
+        (maybeInput as { content?: unknown }).content,
+        maxChronosTranscriptContentLength,
+      ),
       meetingId,
       source,
       speakerLabel: sanitizeOptionalText(
@@ -3229,7 +3234,10 @@ function normalizeUpdateInput(input: unknown): ChronosUpdateInput {
 
     return {
       action,
-      content: sanitizeText((maybeInput as { content?: unknown }).content, maxTextLength),
+      content: sanitizeText(
+        (maybeInput as { content?: unknown }).content,
+        maxChronosMinutesContentLength,
+      ),
       meetingId,
       status,
     };
@@ -4576,7 +4584,7 @@ function mapTranscriptRow(
 ): ChronosTranscriptSegment {
   return {
     content:
-      readChronosNullableText(row.content, 12_000) ??
+      readChronosNullableText(row.content, maxChronosTranscriptContentLength) ??
       "Trecho sem conteudo textual.",
     createdAt: row.created_at,
     endedAt: row.ended_at,
@@ -4601,7 +4609,7 @@ function mapMinutesRow(row: ChronosMinutesRow): ChronosMinutes {
   return {
     approvedAt: row.approved_at,
     approvedByUserId: row.approved_by_user_id,
-    content: readChronosNullableText(row.content, 20_000) ?? "",
+    content: readChronosNullableText(row.content, maxChronosMinutesContentLength) ?? "",
     createdAt: row.created_at,
     id: row.id,
     status: row.status,

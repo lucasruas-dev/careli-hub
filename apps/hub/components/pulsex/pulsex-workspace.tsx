@@ -1581,9 +1581,10 @@ export function HermesWorkspace() {
             unreadCallCount={unreadCallCount}
             unreadThreadReplyCount={unreadThreadReplyCount}
           />
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
+          <div className="min-h-0 flex-1 overflow-hidden bg-[#f3f6fa]">
             <MessageList
               callEvents={activeChannelCallEvents}
+              channelId={activeChannel.id}
               currentUserId={currentUserId}
               filter={activeMessageFilter}
               messages={filteredChannelMessages}

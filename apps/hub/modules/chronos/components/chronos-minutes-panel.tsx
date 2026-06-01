@@ -1,5 +1,4 @@
 import { buildChronosMinutesContext } from "@/lib/chronos/minutes";
-import { buildChronosMinutesDraft } from "@/lib/chronos/minutes-draft";
 import { openChronosMinutesPrintWindow } from "@/lib/chronos/minutes-preview";
 import {
   chronosMinutesProfileLabels,
@@ -10,7 +9,15 @@ import {
   type ChronosUpdateInput,
 } from "@/lib/chronos/types";
 import { Badge, Surface } from "@repo/uix";
-import { Download, Loader2, Mic, Save, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  Mic,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ChronosMinutesFormattedPreview } from "./chronos-minutes-formatted-preview";
 import { chronosMinutesStatusVariant } from "./chronos-minutes-status";
@@ -54,9 +61,7 @@ export function MinutesPanel({
   const [minutesProfile, setMinutesProfile] =
     useState<ChronosMinutesProfile>("alinhamento");
   const [minutesView, setMinutesView] = useState<"edit" | "preview">("preview");
-  const [minutesDraft, setMinutesDraft] = useState(
-    latestMinutesContent || buildChronosMinutesDraft(meeting),
-  );
+  const [minutesDraft, setMinutesDraft] = useState(latestMinutesContent);
   const minutesContext = useMemo(
     () => buildChronosMinutesContext(meeting),
     [meeting],
@@ -79,6 +84,7 @@ export function MinutesPanel({
     [meeting.recordings],
   );
   const canGenerateMinutes = hasTranscript || Boolean(transcribableRecording);
+  const hasMinutesDraft = minutesDraft.trim().length > 0;
   const minutesStatusLabel =
     chronosMinutesStatusLabels[meeting.minutesStatus] ?? "Nao iniciada";
   const minutesStatusVariant =
@@ -90,8 +96,8 @@ export function MinutesPanel({
       : "Aguardando gravacao ou transcricao para liberar a ata operacional.";
 
   useEffect(() => {
-    setMinutesDraft(latestMinutesContent || buildChronosMinutesDraft(meeting));
-  }, [latestMinutesContent, meeting]);
+    setMinutesDraft(latestMinutesContent);
+  }, [latestMinutesContent]);
 
   async function saveMinutes(status: ChronosMinutesStatus) {
     await onUpdate({
@@ -226,12 +232,16 @@ export function MinutesPanel({
             onChange={(event) => setMinutesDraft(event.target.value)}
             value={minutesDraft}
           />
-        ) : (
+        ) : hasMinutesDraft ? (
           <ChronosMinutesFormattedPreview
             context={minutesContext}
             meeting={meeting}
             minutes={minutesDraft}
           />
+        ) : (
+          <div className="flex min-h-[22rem] items-center justify-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] text-sm font-semibold text-[#526078]">
+            Ata ainda nao gerada pela Athena.
+          </div>
         )}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#edf0f4] p-3">
@@ -249,7 +259,7 @@ export function MinutesPanel({
         ) : null}
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
-          disabled={saving}
+          disabled={saving || !hasMinutesDraft}
           onClick={() =>
             openChronosMinutesPrintWindow({ meeting, minutes: minutesDraft })
           }
@@ -260,7 +270,7 @@ export function MinutesPanel({
         </button>
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
-          disabled={saving}
+          disabled={saving || !hasMinutesDraft}
           onClick={() => void saveMinutes("in_review")}
           type="button"
         >
@@ -269,7 +279,7 @@ export function MinutesPanel({
         </button>
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-wait disabled:opacity-60"
-          disabled={saving}
+          disabled={saving || !hasMinutesDraft}
           onClick={() => void saveMinutes("approved")}
           type="button"
         >

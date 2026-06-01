@@ -44,6 +44,7 @@ type ChronosApiResponse = Partial<ChronosSnapshot> & {
   meeting?: ChronosMeeting;
   meetingId?: string;
   minutes?: string;
+  minutesError?: unknown;
   minutesProfile?: ChronosMinutesProfile;
   profile?: ChronosMeetingProfile;
   room?: ChronosRoom;
@@ -414,7 +415,10 @@ export async function transcribeChronosRecording(input: {
     );
   }
 
-  return normalizeChronosMeeting(payload.meeting);
+  return {
+    meeting: normalizeChronosMeeting(payload.meeting),
+    minutesError: readStringOrUndefined(payload.minutesError),
+  };
 }
 
 export async function transcribeChronosExistingRecording(input: {
@@ -430,7 +434,7 @@ export async function transcribeChronosExistingRecording(input: {
       meetingId: input.meetingId,
       minutesProfile: input.minutesProfile ?? "alinhamento",
       recordingId: input.recordingId,
-      speakerLabel: input.speakerLabel ?? "Athena",
+      speakerLabel: input.speakerLabel ?? "Transcricao OpenAI",
     }),
     cache: "no-store",
     headers: {
@@ -452,7 +456,10 @@ export async function transcribeChronosExistingRecording(input: {
     );
   }
 
-  return normalizeChronosMeeting(payload.meeting);
+  return {
+    meeting: normalizeChronosMeeting(payload.meeting),
+    minutesError: readStringOrUndefined(payload.minutesError),
+  };
 }
 
 export async function draftChronosMinutes(input: {
@@ -745,6 +752,12 @@ function readString(value: unknown, fallback = "") {
 
 function readStringOrNull(value: unknown) {
   return typeof value === "string" ? value : null;
+}
+
+function readStringOrUndefined(value: unknown) {
+  const text = readStringOrNull(value)?.trim();
+
+  return text || undefined;
 }
 
 function readDateString(value: unknown, fallback: string) {

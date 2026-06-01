@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-130-CHRONOS-AI-MINUTES-QUALITY",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos AI executive minutes without local fallback",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "MEDIO",
+  "approvedBy": null,
+  "blocks": [
+    "minutes",
+    "transcription",
+    "drive",
+    "ai"
+  ],
+  "allowedLayers": [
+    "zeus"
+  ],
+  "includedFiles": [
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/lib/chronos/client.ts",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-130-chronos-ai-minutes-quality.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint app/api/chronos/meetings/agent/route.ts lib/chronos/server.ts lib/chronos/client.ts modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-minutes-panel.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS",
+    "npm.cmd run lint:hub: PASS com warnings conhecidos MODULE_TYPELESS_PACKAGE_JSON e turbo global",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos de root inferido pelo Turbopack/NFT no worktree .codex-deploy",
+    "git diff --check -- apps/hub/app/api/chronos/meetings/agent/route.ts apps/hub/lib/chronos/server.ts apps/hub/lib/chronos/client.ts apps/hub/modules/chronos/ChronosPage.tsx apps/hub/modules/chronos/components/chronos-minutes-panel.tsx: PASS com avisos esperados LF/CRLF do Git no Windows",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-130-chronos-ai-minutes-quality.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --files ...: PASS",
+    "sem endpoint novo, schema, migration, RLS, env, secret, token, Supabase admin, Vercel, Preview, homologacao ou producao"
+  ],
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apps/hub/app/api/chronos/meetings/agent/route.ts para permitir o fallback local anterior somente se Lucas decidir aceitar rascunho local.",
+    "Reverter os limites ampliados de ata/transcricao em apps/hub/lib/chronos/server.ts caso haja impacto de payload.",
+    "Reverter apps/hub/lib/chronos/client.ts, ChronosPage.tsx e chronos-minutes-panel.tsx para a exibicao anterior caso o fluxo de UI precise voltar ao comportamento antigo."
+  ],
+  "notes": [
+    "A ata deixa de salvar rascunho local ruim quando a OpenAI nao retorna conteudo estruturado valido.",
+    "O prompt da OpenAI passa a seguir o modelo executivo da ata Careli, com secoes numeradas, resumo, direcionamentos, riscos, plano de acao e formalizacao.",
+    "O transcript completo e tratado como insumo; o documento final nao deve despejar falas literais nem usar labels Athena/browser como identidade confirmada do falante.",
+    "Os limites de tokens e persistencia foram ampliados para reduzir truncamento em reunioes longas.",
+    "A UI da aba Ata mostra estado vazio quando ainda nao existe ata gerada pela IA, em vez de apresentar fallback local como documento final."
+  ]
+}

@@ -15,6 +15,7 @@ import { MessageItem } from "./message-item";
 
 type MessageListProps = {
   callEvents?: readonly HermesCallHistoryEntry[];
+  channelId: string;
   currentUserId?: HermesPresenceUser["id"];
   filter?: HermesMessageFilter;
   messages: readonly HermesMessage[];
@@ -43,6 +44,7 @@ type MessageListProps = {
 
 export function MessageList({
   callEvents = [],
+  channelId,
   currentUserId,
   filter = "all",
   messages,
@@ -57,73 +59,120 @@ export function MessageList({
   reactionOptions,
   users,
 }: MessageListProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const previousChannelIdRef = useRef(channelId);
+  const shouldFollowTailRef = useRef(true);
   const timelineItems = getHermesTimelineItems({
     callEvents: filter === "all" ? callEvents : [],
     messages,
   });
   const lastTimelineItemId = timelineItems.at(-1)?.id;
+  const visibleTimelineItems =
+    getHermesTimelineItemsWithDateDividers(timelineItems);
+
+  function handleScroll() {
+    const container = scrollContainerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+
+    shouldFollowTailRef.current = distanceFromBottom < 96;
+  }
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
+    const channelChanged = previousChannelIdRef.current !== channelId;
+
+    if (channelChanged) {
+      previousChannelIdRef.current = channelId;
+      shouldFollowTailRef.current = true;
+    }
+
+    if (!shouldFollowTailRef.current) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({
+        behavior: channelChanged ? "auto" : "smooth",
+        block: "end",
+      });
     });
-  }, [lastTimelineItemId]);
+  }, [channelId, lastTimelineItemId]);
 
   if (timelineItems.length === 0) {
     return (
-      <EmptyState
-        description={
-          filter === "all"
-            ? "As mensagens deste canal aparecerao aqui."
-            : filter === "mentions"
-              ? "Nenhuma mensagem marcou voce neste canal."
-            : "Nenhuma mensagem desta conversa possui a tag selecionada."
-        }
-        title={
-          filter === "all"
-            ? "Nenhuma mensagem"
-            : filter === "mentions"
-              ? "Nenhuma mencao"
-              : "Nenhuma mensagem no filtro"
-        }
-      />
+      <div className="grid h-full min-h-0 place-items-center px-4">
+        <EmptyState
+          description={
+            filter === "all"
+              ? "As mensagens deste canal aparecerao aqui."
+              : filter === "mentions"
+                ? "Nenhuma mensagem marcou voce neste canal."
+              : "Nenhuma mensagem desta conversa possui a tag selecionada."
+          }
+          title={
+            filter === "all"
+              ? "Nenhuma mensagem"
+              : filter === "mentions"
+                ? "Nenhuma mencao"
+                : "Nenhuma mensagem no filtro"
+          }
+        />
+      </div>
     );
   }
 
   return (
     <div
       aria-label="Mensagens do canal"
-      className="grid gap-2 px-2"
+      className="h-full min-h-0 overflow-y-auto overflow-x-hidden px-2 py-4 [scrollbar-gutter:stable]"
+      onScroll={handleScroll}
+      ref={scrollContainerRef}
       role="log"
     >
-      {timelineItems.map((item) =>
-        item.kind === "message" ? (
-          <MessageItem
-            author={users.find((user) => user.id === item.message.authorId)}
-            currentUserId={currentUserId}
-            key={item.id}
-            message={item.message}
-            onAskAiReply={onAskAiReply}
-            onEditMessage={onEditMessage}
-            onOpenThread={onOpenThread}
-            onPreviewAttachment={onPreviewAttachment}
-            onToggleReaction={onToggleReaction}
-            onToggleTag={onToggleTag}
-            reactionOptions={reactionOptions}
-            threadUnreadCount={getThreadUnreadCount?.(item.message.id) ?? 0}
-            users={users}
-          />
-        ) : (
-          <HermesCallEventCard
-            entry={item.entry}
-            key={item.id}
-            onReturnCall={onReturnCall}
-          />
-        ),
-      )}
-      <div ref={bottomRef} />
+      <div className="grid min-h-full content-end gap-2">
+        {visibleTimelineItems.map((item) => {
+          if (item.kind === "message") {
+            return (
+              <MessageItem
+                author={users.find(
+                  (user) => user.id === item.message.authorId,
+                )}
+                currentUserId={currentUserId}
+                key={item.id}
+                message={item.message}
+                onAskAiReply={onAskAiReply}
+                onEditMessage={onEditMessage}
+                onOpenThread={onOpenThread}
+                onPreviewAttachment={onPreviewAttachment}
+                onToggleReaction={onToggleReaction}
+                onToggleTag={onToggleTag}
+                reactionOptions={reactionOptions}
+                threadUnreadCount={getThreadUnreadCount?.(item.message.id) ?? 0}
+                users={users}
+              />
+            );
+          }
+
+          if (item.kind === "call") {
+            return (
+              <HermesCallEventCard
+                entry={item.entry}
+                key={item.id}
+                onReturnCall={onReturnCall}
+              />
+            );
+          }
+
+          return <HermesDateDivider key={item.id} label={item.label} />;
+        })}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 }
@@ -140,6 +189,15 @@ type HermesTimelineItem =
       kind: "message";
       sortTime: number;
       message: HermesMessage;
+    };
+
+type HermesVisibleTimelineItem =
+  | HermesTimelineItem
+  | {
+      id: string;
+      kind: "date";
+      label: string;
+      sortTime: number;
     };
 
 function getHermesTimelineItems({
@@ -169,6 +227,41 @@ function getHermesTimelineItems({
 
     return firstItem.id.localeCompare(secondItem.id);
   });
+}
+
+function getHermesTimelineItemsWithDateDividers(
+  timelineItems: readonly HermesTimelineItem[],
+): HermesVisibleTimelineItem[] {
+  const visibleItems: HermesVisibleTimelineItem[] = [];
+  let currentDateKey = "";
+
+  for (const item of timelineItems) {
+    const dateKey = getHermesTimelineDateKey(item.sortTime);
+
+    if (dateKey !== currentDateKey) {
+      currentDateKey = dateKey;
+      visibleItems.push({
+        id: `date-${dateKey}`,
+        kind: "date",
+        label: formatHermesTimelineDateLabel(item.sortTime),
+        sortTime: item.sortTime,
+      });
+    }
+
+    visibleItems.push(item);
+  }
+
+  return visibleItems;
+}
+
+function HermesDateDivider({ label }: { label: string }) {
+  return (
+    <div className="sticky top-2 z-10 my-3 grid place-items-center">
+      <span className="rounded-full border border-[#d9e0ea] bg-white/95 px-3 py-1 text-[0.68rem] font-bold uppercase tracking-[0.08em] text-[#667085] shadow-sm backdrop-blur">
+        {label}
+      </span>
+    </div>
+  );
 }
 
 function HermesCallEventCard({
@@ -296,4 +389,52 @@ function formatCallEventTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(time));
+}
+
+function getHermesTimelineDateKey(time: number) {
+  if (!Number.isFinite(time) || time <= 0) {
+    return "sem-data";
+  }
+
+  const date = new Date(time);
+
+  return [
+    date.getFullYear(),
+    (date.getMonth() + 1).toString().padStart(2, "0"),
+    date.getDate().toString().padStart(2, "0"),
+  ].join("-");
+}
+
+function formatHermesTimelineDateLabel(time: number) {
+  if (!Number.isFinite(time) || time <= 0) {
+    return "Sem data";
+  }
+
+  const date = new Date(time);
+  const dateLabel = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+  const weekdayLabel = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+  }).format(date);
+  const dateKey = getHermesTimelineDateKey(time);
+  const today = new Date();
+  const todayKey = getHermesTimelineDateKey(today.getTime());
+  const yesterday = new Date(today);
+
+  yesterday.setDate(today.getDate() - 1);
+
+  const yesterdayKey = getHermesTimelineDateKey(yesterday.getTime());
+
+  if (dateKey === todayKey) {
+    return `Hoje - ${dateLabel}, ${weekdayLabel}`;
+  }
+
+  if (dateKey === yesterdayKey) {
+    return `Ontem - ${dateLabel}, ${weekdayLabel}`;
+  }
+
+  return `${dateLabel}, ${weekdayLabel}`;
 }

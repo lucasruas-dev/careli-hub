@@ -28667,6 +28667,48 @@ Conclusao:
 - O impacto pratico e que Lucas ja pode testar nos dominios oficiais sem depender do ambiente local.
 - A acao agora e validacao funcional autenticada pelo Lucas; se houver regressao critica, Hefesto deve promover rollback para `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
 
+## 2026-06-01 09:14:59 -03:00 - Hermes - timeline scroll e datas
+
+Assunto: [Hermes] timeline com scroll proprio e marcador de dia
+
+- Nome da squad/agente: Hermes Core, coordenado por Zeus.
+- Ambiente: codigo/documentacao local na worktree limpa `.codex-deploy/z01-001-engineering-prod-20260601`.
+- Protocolo: `HM-20260601-129-HERMES-TIMELINE-SCROLL`.
+- Status: VALIDADO_LOCAL / SEM DEPLOY / SEM OPERACAO SENSIVEL.
+- Origem:
+  - Lucas priorizou Hermes antes de Chronos;
+  - canal Lideranca nao permitia navegar com previsibilidade para mensagens anteriores;
+  - timeline nao indicava claramente a que dia cada grupo de mensagens pertencia.
+- Implementacao:
+  - `apps/hub/components/pulsex/message-list.tsx` passou a ser dona do proprio scroll interno;
+  - auto-scroll agora acompanha o rodape apenas quando o operador esta perto do fim da conversa ou troca de canal;
+  - timeline passa a exibir divisor por dia com data e dia da semana;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx` removeu o scroll concorrente do wrapper da timeline;
+  - `apps/hub/app/api/pulsex/messages/route.ts` ampliou o limite default seguro de mensagens de 150 para 250 quando `limit` nao e informado;
+  - criado `docs/operations/hermes-chronos-continuity-prompt-2026-06-01.md` para continuidade caso o chat atual precise ser substituido.
+- Limites:
+  - sem endpoint novo;
+  - sem alteracao de schema, RLS, migration, Supabase admin, service role, env, secret, token, dominio, alias, Preview, homologacao ou producao;
+  - sem mexer em Chronos neste recorte de Hermes.
+- Validacao final local:
+  - `npx.cmd eslint components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx app/api/pulsex/messages/route.ts --max-warnings 0` em `apps/hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-hm-20260601-129-hermes-timeline-scroll.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module hermes --allow zeus --files ...`: PASS apos repetir com a sintaxe correta do parametro `--files`;
+  - `git diff --check -- ...`: PASS, com avisos esperados LF/CRLF do Git no Windows;
+  - `npm.cmd run lint:hub`: PASS, com warnings conhecidos `MODULE_TYPELESS_PACKAGE_JSON` e `turbo` ausente no ambiente local;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de root inferido pelo Turbopack/NFT no worktree `.codex-deploy`;
+  - `next dev` temporario em `localhost:3021`: `GET /hermes` 200 OK.
+- Proxima validacao recomendada:
+  - smoke visual autenticado em `/hermes`, canais Lideranca e Tecnologia, conferindo scroll, retorno para mensagens antigas e marcadores de data;
+  - Browser/Chrome do Codex ficou indisponivel neste host por falha local de runtime sandbox, entao essa validacao visual nao foi marcada como concluida.
+
+Conclusao:
+
+- O Hermes agora tem base tecnica para navegar melhor em canais longos e localizar mensagens por data.
+- O impacto pratico esperado e permitir que Lucas suba o historico do canal Lideranca sem a tela puxar de volta para baixo, mantendo marcador claro de dia/data/dia da semana.
+- Nao precisa de acao sensivel agora; o proximo passo e validar visualmente e, depois, abrir o recorte Chronos para gravacao/transcricao/agenda.
+
 ## 2026-06-01 02:56:30 -03:00 - Chronos - Videochamadas, Drive e Atas
 
 Assunto: [Chronos] hotfix de gravacoes e layout de compartilhamento em producao
@@ -29362,3 +29404,104 @@ Conclusao:
 - O erro `Invalid option : option` tinha causa objetiva de formatacao local de datas, nao de conteudo da reuniao.
 - O impacto esperado e destravar a aba Atas, permitir que `Transcrever` gere transcricao/rascunho de ata e padronizar a saida executiva/PDF conforme o modelo informado por Lucas.
 - A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos`, clicar `Transcrever` em uma gravacao disponivel, conferir se a Ata e gerada, abrir `Gerar PDF`, e gravar uma nova chamada com fundo personalizado para conferir o video salvo no Drive.
+
+## 2026-06-01 10:21:09 -03:00 - Chronos - Ata executiva OpenAI sem fallback local
+
+Assunto: [Chronos] Ata executiva OpenAI sem fallback local
+
+- Nome da squad/agente: Chronos Core.
+- Ambiente: worktree limpo de producao `.codex-deploy/z01-001-engineering-prod-20260601`.
+- Protocolo: `CH-20260601-130-CHRONOS-AI-MINUTES-QUALITY`.
+- Status: VALIDADO LOCAL / AGUARDANDO TESTE FUNCIONAL AUTENTICADO E AUTORIZACAO EXPLICITA PARA PUBLICAR.
+- Origem:
+  - Lucas testou a ata gerada para `CHR-004371 | Careli: Reuniao de Alinhamento` e identificou que o documento ficou ruim, literal e operacional demais;
+  - a saida apresentou "Rascunho de ata alinhamento gerado localmente para revisao humana", despejou falas registradas e informou fallback por falha da OpenAI;
+  - Lucas anexou o modelo real de ata executiva `20260310-CARELI-VISTA-ALEGRE-ATA-REUNIAO-DE APRESENTACAO-DE-RESULTADOS.pdf` como referencia de entrega.
+- Causa tratada:
+  - o endpoint ainda salvava uma ata local quando a OpenAI nao retornava JSON valido, o que deixava o produto parecer finalizado mesmo com conteudo fraco;
+  - o limite de tokens e o limite persistido de transcricao/ata eram curtos para uma reuniao real de 50 minutos;
+  - o prompt permitia uma estrutura muito parecida com relatorio tecnico e com despejo de transcript;
+  - labels de captura como Athena/browser podiam ser interpretados como identidade confiavel do falante, agravando atribuicoes erradas.
+- Implementacao:
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` deixou de salvar fallback local quando a OpenAI falha ou retorna conteudo invalido;
+  - o prompt de ata passou a exigir documento executivo no modelo Careli: participantes, objetivo, resumo executivo, pontos alinhados, decisoes/direcionamentos, pendencias/riscos, plano de acao, proxima reuniao, formalizacao e assinaturas;
+  - no perfil de resultado, o prompt aproxima o modelo anexado por Lucas com secoes de performance/indicadores, carteira/operacao, comunicacao, direcionamentos, plano de acao e proxima reuniao;
+  - falas captadas por browser/Athena passam a entrar no prompt como `Falante nao confirmado`, evitando atribuir Nivea, Lucas, Cinthia ou Northon quando o dado nao esta confiavel;
+  - `apps/hub/lib/chronos/server.ts` ampliou persistencia de transcricao e ata para reduzir truncamento em reunioes longas;
+  - `apps/hub/lib/chronos/client.ts`, `ChronosPage.tsx` e `chronos-minutes-panel.tsx` passaram a propagar erro parcial de ata e a mostrar estado vazio quando ainda nao existe ata gerada pela IA, em vez de exibir rascunho local ruim.
+- Validacoes:
+  - `npx.cmd eslint app/api/chronos/meetings/agent/route.ts lib/chronos/server.ts lib/chronos/client.ts modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-minutes-panel.tsx --max-warnings 0` em `apps/hub`: PASS com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS com warnings conhecidos `MODULE_TYPELESS_PACKAGE_JSON` e turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS com warnings conhecidos de root inferido pelo Turbopack/NFT no worktree `.codex-deploy`;
+  - `git diff --check -- apps/hub/app/api/chronos/meetings/agent/route.ts apps/hub/lib/chronos/server.ts apps/hub/lib/chronos/client.ts apps/hub/modules/chronos/ChronosPage.tsx apps/hub/modules/chronos/components/chronos-minutes-panel.tsx`: PASS com avisos esperados LF/CRLF do Git no Windows;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-130-chronos-ai-minutes-quality.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --files ...`: PASS.
+- Operacoes sensiveis:
+  - nenhum deploy, redeploy, alias, dominio, env, secret, token, migration, DDL, Supabase admin, service role ou alteracao direta de banco foi executado neste recorte.
+- Limites:
+  - a qualidade final da ata ainda depende de teste autenticado real clicando `Transcrever`/`Gerar ata da transcricao` em producao ou Preview autorizado;
+  - diarizacao perfeita por speaker ainda exige recorte proprio, porque o navegador continua entregando falas de captura com baixa confiabilidade;
+  - a agenda por usuario e a gravacao resiliente independente do host permanecem como proximos recortes de Chronos.
+
+Conclusao:
+
+- O problema desta ata nao era apenas visual: o sistema estava aceitando um fallback local como se fosse documento de IA.
+- O impacto pratico do recorte e impedir ata ruim salva automaticamente e forcar o Chronos a usar uma ata executiva estruturada pela OpenAI, com erro claro quando a IA nao entregar conteudo valido.
+- A acao agora e publicar somente com autorizacao explicita de Lucas, testar uma gravacao real em `Transcrever` e conferir se a ata vem sintetica, executiva e aderente ao modelo anexado.
+
+## 2026-06-01 11:18:00 -03:00 - Hermes/Chronos - pacote maior guardado sem deploy
+
+Assunto: [Hermes/Chronos] pacote maior guardado sem deploy
+
+- Nome da squad/agente: Hermes Core e Chronos Core, coordenados por Zeus.
+- Ambiente: worktree limpo de producao `.codex-deploy/z01-001-engineering-prod-20260601`.
+- Protocolos relacionados:
+  - `HM-20260601-129-HERMES-TIMELINE-SCROLL`;
+  - `CH-20260601-130-CHRONOS-AI-MINUTES-QUALITY`;
+  - `CH-20260601-131-CHRONOS-AGENDA-RECORDING-STABILITY`.
+- Status: VALIDADO LOCAL / GUARDADO PARA PACOTE MAIOR / SEM DEPLOY.
+- Autorizacao:
+  - Lucas pediu para guardar o deploy e acumular Hermes, Agenda Chronos e video/gravacao Chronos para subir um pacote maior depois.
+- Origem:
+  - Hermes tinha prioridade para corrigir timeline sem dia/data e canal Lideranca sem rolagem adequada;
+  - Agenda Chronos precisava deixar cada usuario conectar e sincronizar a propria Google Agenda;
+  - Chronos precisava reduzir queda de chamada/gravação ao compartilhar tela e diminuir dependencia do host.
+- Implementacao Hermes:
+  - `apps/hub/components/pulsex/message-list.tsx` passou a ser dono do scroll da timeline, preservando o composer fixo;
+  - a timeline passou a inserir divisores de data com data e dia da semana;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx` removeu o overflow externo que prendia a rolagem em canais longos;
+  - `apps/hub/app/api/pulsex/messages/route.ts` elevou o limite default seguro de mensagens para 250.
+- Implementacao Chronos Agenda:
+  - `chronos-agenda-screen.tsx` passou a mostrar botao `Conectar` quando o Google Agenda do usuario ainda nao esta autorizado;
+  - a tela inicia o OAuth pelo endpoint seguro existente e redireciona de volta para `/chronos`;
+  - ao detectar conexao `connected`, faz pull inicial automatico; quando nao ha sync token ou nunca houve sync, executa pull completo;
+  - o backend ja filtra/importa eventos por `authorization.user.id`, mantendo a agenda do proprio usuario.
+- Implementacao Chronos gravacao/chamada:
+  - `ChronosExternalRoomPage.tsx` deixou de depender do objeto inteiro `localParticipant` no efeito de realtime, usando `participantId` estavel para evitar desmontar canal/peers em mudancas de camera, microfone ou compartilhamento de tela;
+  - `MediaRecorder` passou a usar timeslice maior e bitrates controlados para reduzir pressao de memoria/CPU em reunioes longas;
+  - quando o participante que gravava sai sem fechar a reuniao, o menor `participantId` remanescente tenta assumir uma nova gravacao de continuidade;
+  - o compositor existente de gravacao segue usando canvas com background da sala, tela compartilhada e tiles laterais.
+- Validacoes:
+  - `npx.cmd eslint components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx app/api/pulsex/messages/route.ts --max-warnings 0` em `apps/hub`: PASS com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npx.cmd eslint modules/chronos/components/chronos-agenda-screen.tsx lib/chronos/client.ts lib/chronos/server.ts modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-minutes-panel.tsx app/api/chronos/meetings/agent/route.ts --max-warnings 0` em `apps/hub`: PASS com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0` em `apps/hub`: PASS com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS com warnings conhecidos `MODULE_TYPELESS_PACKAGE_JSON` e turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS com warnings conhecidos Turbopack/NFT e root inferido por worktree `.codex-deploy`;
+  - `git diff --check -- ...`: PASS com avisos esperados LF/CRLF do Git no Windows;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest ...`: PASS para `HM-20260601-129`, `CH-20260601-130` e `CH-20260601-131`;
+  - `node scripts/panteon-boundary-check.mjs --module hermes --allow zeus --files ...`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --files ...`: PASS.
+- Operacoes sensiveis:
+  - nenhum deploy, redeploy, alias, dominio, env, secret, token, migration, DDL, Supabase admin, service role ou alteracao direta de banco foi executado neste pacote.
+- Limites:
+  - a gravacao ainda e browser-side; o recorte reduz quedas causadas por troca de midia e tenta continuidade quando ha `leave`, mas nao substitui uma arquitetura server-side real;
+  - queda abrupta do navegador antes de emitir sinal de saida ainda pode interromper o segmento local;
+  - teste funcional autenticado com duas ou mais contas ainda precisa ser feito antes de promocao.
+
+Conclusao:
+
+- O pacote Hermes/Chronos esta preparado localmente e guardado para a subida maior solicitada por Lucas.
+- O impacto pratico esperado e liberar melhor leitura historica no Hermes, agenda Chronos por usuario e menor chance de queda de chamada/gravacao ao compartilhar tela.
+- A acao agora e Lucas decidir quando autoriza publicar; ate la, producao permanece bloqueada para este pacote e o proximo passo tecnico e teste autenticado real em Hermes Lideranca, Google Agenda com outro usuario e chamada Chronos com compartilhamento de tela.

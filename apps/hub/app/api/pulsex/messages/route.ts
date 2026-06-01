@@ -923,7 +923,7 @@ function normalizeMessageLimit(value: string | null) {
   const parsedValue = Number(value);
 
   if (!Number.isFinite(parsedValue)) {
-    return 150;
+    return 250;
   }
 
   return Math.max(25, Math.min(250, Math.trunc(parsedValue)));

@@ -32,6 +32,9 @@ const CHRONOS_MINUTES_FALLBACK_MODELS = [
   DEFAULT_MINUTES_MODEL,
   "gpt-4.1-mini",
 ] as const;
+const CHRONOS_MINUTES_MAX_OUTPUT_TOKENS = 8_000;
+const CHRONOS_MINUTES_MAX_CHARS = 24_000;
+const CHRONOS_TRANSCRIPT_MAX_CHARS = 40_000;
 const CHRONOS_MINUTES_RESPONSE_FORMAT = {
   name: "chronos_minutes_draft",
   schema: {
@@ -175,7 +178,7 @@ export async function POST(request: NextRequest) {
           content: transcript,
           meetingId: parsed.meetingId,
           source: "openai",
-          speakerLabel: parsed.speakerLabel ?? "Athena",
+          speakerLabel: parsed.speakerLabel ?? "Transcricao OpenAI",
         },
       });
       const minutesResult = await trySaveChronosMinutesDraft({
@@ -212,7 +215,7 @@ export async function POST(request: NextRequest) {
           content: transcript,
           meetingId: parsed.meetingId,
           source: "openai",
-          speakerLabel: parsed.speakerLabel ?? "Athena",
+          speakerLabel: parsed.speakerLabel ?? "Transcricao OpenAI",
         },
       });
       const minutesResult = await trySaveChronosMinutesDraft({
@@ -572,7 +575,7 @@ async function requestChronosTranscription({
       throw new Error(errorMessage);
     }
 
-    const transcript = normalizeText(payload?.text, 12_000);
+    const transcript = normalizeText(payload?.text, CHRONOS_TRANSCRIPT_MAX_CHARS);
 
     if (!transcript) {
       throw new Error("OpenAI nao retornou transcricao para este arquivo.");
@@ -665,11 +668,9 @@ async function draftChronosMinutes({
     }
   }
 
-  return buildChronosFallbackMinutes({
-    error: lastError,
-    meeting,
-    minutesProfile,
-  });
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("OpenAI nao retornou uma ata valida para revisao.");
 }
 
 async function requestChronosMinutesDraft({
@@ -708,7 +709,7 @@ async function requestChronosMinutesDraft({
           "A ata nunca deve sair aprovada; ela e rascunho para revisao humana.",
           "Retorne somente JSON valido com summary e minutes.",
         ].join("\n"),
-        max_output_tokens: 2_400,
+        max_output_tokens: CHRONOS_MINUTES_MAX_OUTPUT_TOKENS,
         model,
         text: {
           format: CHRONOS_MINUTES_RESPONSE_FORMAT,
@@ -730,7 +731,7 @@ async function requestChronosMinutesDraft({
       throw new Error(getOpenAiErrorMessage(payload, "Falha ao gerar ata."));
     }
 
-    const parsed = parseChronosMinutesJson(extractOutputText(payload));
+    const parsed = parseChronosMinutesPayload(payload);
 
     if (!parsed) {
       throw new Error("OpenAI nao retornou uma ata valida para revisao.");
@@ -829,18 +830,23 @@ function buildChronosMinutesPrompt({
     "Monte um rascunho de ata Chronos para revisao humana.",
     `Perfil da ata: ${chronosMinutesProfileLabels[minutesProfile]}.`,
     profileInstruction[minutesProfile],
-    "Use topicos com bullets para deixar a leitura organizada.",
-    "Use negrito em titulos e dados importantes usando markdown (**texto**).",
-    "Organize a ata com leitura executiva: identificacao, participantes, resumo executivo, pontos alinhados, decisoes, pendencias, plano de acao e observacoes.",
-    "Evite blocos longos. Prefira bullets curtos, objetivos e acionaveis.",
+    "Use o padrao executivo do modelo Careli: titulo objetivo, secoes numeradas, texto curto, bullets profissionais e plano de acao em tabela.",
+    "Use markdown simples. Titulos das secoes devem vir como linhas numeradas: 1. Participantes, 2. Objetivo da Reuniao, 3. Resumo Executivo etc.",
+    "Nao despeje a transcricao literal na ata principal. Nao crie uma secao 'Falas registradas'. Transforme falas em sintese executiva, decisoes, direcionamentos, pendencias e plano de acao.",
+    "Organize a ata com esta base minima: Participantes, Objetivo da Reuniao, Resumo Executivo, Pontos Alinhados, Decisoes e Direcionamentos, Pendencias e Riscos, Plano de Acao, Proxima Reuniao, Formalizacao e Assinaturas.",
+    "Evite blocos longos. Prefira bullets curtos, objetivos e acionaveis, com linguagem executiva e formal.",
+    "Quando o perfil for Resultado, aproxime a estrutura do modelo de apresentacao de resultados: Performance/Indicadores, Gestao de Carteira ou Operacao, Comunicacao, Direcionamentos, Plano de Acao e Proxima Reuniao.",
     "Na identificacao da reuniao, use sempre o inicio programado e o fim real de encerramento. Nao use o fim agendado como fim da ata.",
     "Nos participantes, liste somente quem fez check-in/entrou na reuniao. Nao use convidados sem check-in.",
     "Para transcricao, use somente o que esta nos trechos recebidos. Se houver ruido ou baixa confianca, registre como 'Nao identificado' e nao invente fala.",
+    "Rotulos de falante vindos de captura browser/Athena sao origem de captura, nao identidade confirmada. Nao atribua uma fala a Lucas, Nivea, Cinthia, Northon ou outro participante se o contexto nao confirmar claramente.",
     "Trate gravacoes de video como evidencias vinculadas da reuniao. Use o video como lastro operacional, mas nao descreva tela, gesto, planilha ou conteudo visual que nao esteja na transcricao, chat, timeline ou metadados.",
     "Quando existir transcricao salva, ela e o gatilho principal para gerar a ata formatada, mesmo que a gravacao ainda esteja apenas como evidencia.",
     "Para reuniao de alinhamento, o Plano de acao deve ser uma tabela markdown com colunas: Atividade | Responsavel | Prazo | Status.",
     `Se uma atividade ficar sem prazo mencionado, use ${minutesContext.defaultActionDueLabel} como prazo padrao de 5 dias corridos a partir da data da reuniao.`,
-    "Se nenhuma atividade for mencionada, registre uma linha com 'Sem atividade formal registrada' e prazo 'Nao informado'.",
+    `Se nenhuma atividade for mencionada, registre uma linha com 'Sem atividade formal registrada' e prazo '${minutesContext.defaultActionDueLabel}'.`,
+    "A secao Formalizacao deve informar que a ata segue para revisao humana e formalizacao/assinatura digital quando aplicavel.",
+    "A secao Assinaturas deve conter texto declaratorio curto, sem inventar assinatura efetiva.",
     "",
     "Retorne JSON neste formato:",
     '{"summary":"Resumo executivo curto.","minutes":"Conteudo completo da ata."}',
@@ -887,10 +893,7 @@ function buildChronosMinutesPrompt({
     "Transcricao:",
     meeting.transcript.length
       ? meeting.transcript
-          .map(
-            (segment) =>
-              `[${segment.speakerLabel ?? "Participante"}] ${segment.content}`,
-          )
+          .map(formatChronosTranscriptSegmentForPrompt)
           .join("\n")
       : "Nao ha transcricao salva.",
     "",
@@ -965,100 +968,59 @@ function buildChronosChatContext(meeting: ChronosMeeting) {
     .join("\n");
 }
 
-function buildChronosFallbackMinutes({
-  error,
-  meeting,
-  minutesProfile,
-}: {
-  error: unknown;
-  meeting: ChronosMeeting;
-  minutesProfile: ChronosMinutesProfile;
-}) {
-  const context = buildChronosMinutesContext(meeting);
-  const participants = context.participants
-    .map((participant) => {
-      const details = [
-        participant.role,
-        participant.email,
-        participant.organization,
-      ].filter(Boolean);
+function formatChronosTranscriptSegmentForPrompt(
+  segment: ChronosMeeting["transcript"][number],
+) {
+  const source = segment.source?.toLowerCase() ?? "";
+  const rawLabel = segment.speakerLabel?.trim() ?? "";
+  const label = isReliableChronosSpeakerLabel(rawLabel, source)
+    ? rawLabel
+    : "Falante nao confirmado";
+  const captureNote =
+    rawLabel && rawLabel !== label ? ` (captado por ${rawLabel})` : "";
 
-      return `- ${participant.displayName}${
-        details.length ? ` (${details.join(" / ")})` : ""
-      }`;
-    })
-    .join("\n");
-  const transcript = meeting.transcript
-    .slice(0, 18)
-    .map(
-      (segment) =>
-        `- **${segment.speakerLabel ?? "Participante"}:** ${segment.content}`,
-    )
-    .join("\n");
-  const timeline = meeting.timeline
-    .slice(0, 14)
-    .map((event) => `- ${formatChronosDateTime(event.eventAt)}: ${event.title}`)
-    .join("\n");
-  const recordingEvidence = buildChronosRecordingEvidence(meeting);
-  const chatContext = buildChronosChatContext(meeting);
-  const followUps = meeting.followUps
-    .map(
-      (followUp) =>
-        `| ${followUp.title} | ${followUp.ownerName ?? "Nao informado"} | ${
-          followUp.dueAt ? formatChronosDate(followUp.dueAt) : "Nao informado"
-        } | ${followUp.status} |`,
-    )
-    .join("\n");
-  const fallbackReason =
-    error instanceof Error && error.message.trim()
-      ? error.message.trim()
-      : "Falha operacional da OpenAI";
-  const summary = `Rascunho de ata ${chronosMinutesProfileLabels[
-    minutesProfile
-  ].toLowerCase()} gerado localmente para revisao humana.`;
-  const minutes = [
-    `**Ata ${meeting.protocol}**`,
-    "",
-    "**Identificacao da reuniao**",
-    `- **Reuniao:** ${meeting.title}`,
-    `- **Perfil:** ${chronosMinutesProfileLabels[minutesProfile]}`,
-    `- **Inicio programado:** ${context.scheduledStartLabel}`,
-    `- **Fim real:** ${context.actualEndLabel}`,
-    `- **Duracao:** ${context.durationLabel}`,
-    `- **Sala:** ${meeting.room?.name ?? "Nao informado"}`,
-    `- **Host:** ${meeting.hostName ?? "Nao informado"}`,
-    "",
-    "**Participantes com check-in**",
-    participants || "- Nao informado",
-    "",
-    "**Resumo executivo**",
-    meeting.executiveSummary ||
-      "Rascunho gerado com base nos registros disponiveis do Chronos.",
-    "",
-    "**Falas registradas**",
-    transcript || "- Nao ha transcricao salva.",
-    "",
-    "**Evidencias de gravacao/video**",
-    recordingEvidence,
-    "",
-    "**Chat da reuniao**",
-    chatContext,
-    "",
-    "**Linha do tempo**",
-    timeline || "- Nao informada.",
-    "",
-    "**Plano de acao**",
-    "| Atividade | Responsavel | Prazo | Status |",
-    "| --- | --- | --- | --- |",
-    followUps ||
-      `| Sem atividade formal registrada | Nao informado | ${context.defaultActionDueLabel} | Aberto |`,
-    "",
-    "**Observacao operacional**",
-    `- Athena gerou este rascunho localmente porque a chamada OpenAI retornou: ${fallbackReason}.`,
-    "- Ata sujeita a revisao humana antes de aprovacao.",
-  ].join("\n");
+  return `[${label}]${captureNote} ${segment.content}`;
+}
 
-  return { minutes, summary };
+function isReliableChronosSpeakerLabel(label: string, source: string) {
+  if (!label) {
+    return false;
+  }
+
+  const normalized = label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (
+    [
+      "athena",
+      "browser",
+      "captura",
+      "falante nao confirmado",
+      "openai",
+      "participante",
+      "transcricao openai",
+    ].some((fragment) => normalized.includes(fragment))
+  ) {
+    return false;
+  }
+
+  if (source === "browser" || source === "athena") {
+    return false;
+  }
+
+  return true;
+}
+
+function parseChronosMinutesPayload(payload: OpenAiResponsePayload) {
+  const parsedFromText = parseChronosMinutesJson(extractOutputText(payload));
+
+  if (parsedFromText) {
+    return parsedFromText;
+  }
+
+  return findChronosMinutesObject(payload);
 }
 
 function parseChronosMinutesJson(value: string) {
@@ -1075,7 +1037,7 @@ function parseChronosMinutesJson(value: string) {
       summary?: unknown;
     };
     const summary = normalizeText(parsed.summary, 2_000);
-    const minutes = normalizeText(parsed.minutes, 8_000);
+    const minutes = normalizeText(parsed.minutes, CHRONOS_MINUTES_MAX_CHARS);
 
     if (!summary || !minutes) {
       return null;
@@ -1085,6 +1047,45 @@ function parseChronosMinutesJson(value: string) {
   } catch {
     return null;
   }
+}
+
+function findChronosMinutesObject(value: unknown): {
+  minutes: string;
+  summary: string;
+} | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as { minutes?: unknown; summary?: unknown };
+  const summary = normalizeText(candidate.summary, 2_000);
+  const minutes = normalizeText(candidate.minutes, CHRONOS_MINUTES_MAX_CHARS);
+
+  if (summary && minutes) {
+    return { minutes, summary };
+  }
+
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        const nested = findChronosMinutesObject(item);
+
+        if (nested) {
+          return nested;
+        }
+      }
+
+      continue;
+    }
+
+    const nested = findChronosMinutesObject(child);
+
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
 }
 
 function extractOutputText(payload: OpenAiResponsePayload) {

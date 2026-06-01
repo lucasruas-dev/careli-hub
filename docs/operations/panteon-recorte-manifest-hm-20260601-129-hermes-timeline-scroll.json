@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "HM-20260601-129-HERMES-TIMELINE-SCROLL",
+  "module": "hermes",
+  "agent": "Hermes Core",
+  "title": "Hermes timeline scroll and date markers",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "blocks": [
+    "messages",
+    "timeline",
+    "scroll",
+    "ui"
+  ],
+  "allowedLayers": [
+    "zeus"
+  ],
+  "includedFiles": [
+    "apps/hub/components/pulsex/message-list.tsx",
+    "apps/hub/components/pulsex/pulsex-workspace.tsx",
+    "apps/hub/app/api/pulsex/messages/route.ts",
+    "docs/operations/hermes-chronos-continuity-prompt-2026-06-01.md",
+    "docs/operations/panteon-recorte-manifest-hm-20260601-129-hermes-timeline-scroll.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint components/pulsex/message-list.tsx components/pulsex/pulsex-workspace.tsx app/api/pulsex/messages/route.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos ajuste de scroll e divisores de data do Hermes",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-hm-20260601-129-hermes-timeline-scroll.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module hermes --allow zeus --files ...: PASS apos repetir com a sintaxe correta do parametro --files",
+    "git diff --check -- apps/hub/components/pulsex/message-list.tsx apps/hub/components/pulsex/pulsex-workspace.tsx apps/hub/app/api/pulsex/messages/route.ts docs/operations/hermes-chronos-continuity-prompt-2026-06-01.md docs/operations/panteon-recorte-manifest-hm-20260601-129-hermes-timeline-scroll.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF do Git no Windows",
+    "npm.cmd run lint:hub: PASS com warnings conhecidos MODULE_TYPELESS_PACKAGE_JSON e turbo ausente no ambiente local",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos de root inferido pelo Turbopack/NFT no worktree .codex-deploy",
+    "next dev temporario em localhost:3021: GET /hermes 200 OK; Browser/Chrome do Codex indisponivel por falha local de runtime sandbox, entao smoke visual autenticado ficou pendente",
+    "sem endpoint novo, schema, migration, RLS, env, secret, token, Supabase admin, Vercel, Preview, homologacao ou producao"
+  ],
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apps/hub/components/pulsex/message-list.tsx para o scroll externo e sem divisores de data.",
+    "Reverter apps/hub/components/pulsex/pulsex-workspace.tsx para deixar o wrapper da timeline com overflow-y-auto.",
+    "Reverter o limite default de app/api/pulsex/messages/route.ts de 250 para 150, caso o volume extra se mostre inadequado."
+  ],
+  "notes": [
+    "A lista de mensagens passa a ser dona do proprio scroll interno, preservando o composer fixo.",
+    "O auto-scroll passa a seguir o fim da conversa apenas quando o operador esta perto do rodape ou troca de canal.",
+    "A timeline passa a mostrar divisores de data com data e dia da semana.",
+    "O carregamento inicial da API Hermes passa a usar o teto seguro atual de 250 mensagens quando limit nao for informado.",
+    "Validacao visual automatizada pelo Browser/Chrome ficou indisponivel neste host por falha de runtime sandbox; nao houve erro funcional local no /hermes HTTP."
+  ]
+}

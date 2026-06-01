@@ -318,14 +318,18 @@ export function ChronosPage() {
     setError(null);
 
     try {
-      const updatedMeeting = await transcribeChronosRecording({
+      const result = await transcribeChronosRecording({
         file: input.file,
         fileName: input.fileName,
         meetingId: input.meeting.id,
-        speakerLabel: "Athena",
+        speakerLabel: "Transcricao OpenAI",
       });
 
-      replaceMeeting(updatedMeeting);
+      replaceMeeting(result.meeting);
+
+      if (result.minutesError) {
+        setError(result.minutesError);
+      }
 
       if (input.recordingId) {
         const transcribedAt = new Date().toISOString();
@@ -359,14 +363,18 @@ export function ChronosPage() {
     setError(null);
 
     try {
-      const updatedMeeting = await transcribeChronosExistingRecording({
+      const result = await transcribeChronosExistingRecording({
         meetingId: input.meeting.id,
         minutesProfile: input.minutesProfile,
         recordingId: input.recordingId,
-        speakerLabel: "Athena",
+        speakerLabel: "Transcricao OpenAI",
       });
 
-      replaceMeeting(updatedMeeting);
+      replaceMeeting(result.meeting);
+
+      if (result.minutesError) {
+        setError(result.minutesError);
+      }
     } catch (transcriptionError) {
       setError(
         getChronosUnknownErrorMessage(

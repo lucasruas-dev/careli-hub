@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "CH-20260601-131-CHRONOS-AGENDA-RECORDING-STABILITY",
+  "module": "chronos",
+  "agent": "Chronos Core",
+  "title": "Chronos per-user agenda and browser recording stability",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "MEDIO",
+  "approvedBy": null,
+  "blocks": [
+    "agenda",
+    "google-calendar",
+    "room",
+    "recording",
+    "webrtc"
+  ],
+  "allowedLayers": [
+    "zeus"
+  ],
+  "includedFiles": [
+    "apps/hub/modules/chronos/components/chronos-agenda-screen.tsx",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "docs/operations/panteon-recorte-manifest-ch-20260601-131-chronos-agenda-recording-stability.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**"
+  ],
+  "validations": [
+    "npx.cmd eslint modules/chronos/components/chronos-agenda-screen.tsx lib/chronos/client.ts lib/chronos/server.ts modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-minutes-panel.tsx app/api/chronos/meetings/agent/route.ts --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0 em apps/hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types:hub: PASS apos ajuste de Agenda e sala externa Chronos",
+    "npm.cmd run lint:hub: PASS com warnings conhecidos MODULE_TYPELESS_PACKAGE_JSON e turbo global",
+    "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos de root inferido pelo Turbopack/NFT no worktree .codex-deploy",
+    "git diff --check -- apps/hub/modules/chronos/components/chronos-agenda-screen.tsx apps/hub/modules/chronos/ChronosExternalRoomPage.tsx docs/operations/panteon-recorte-manifest-ch-20260601-131-chronos-agenda-recording-stability.json docs/operations/engineering-operations.md: PASS com avisos esperados LF/CRLF do Git no Windows",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-131-chronos-agenda-recording-stability.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --files ...: PASS",
+    "sem endpoint novo, schema, migration, RLS, env, secret, token, Supabase admin, Vercel, Preview, homologacao ou producao"
+  ],
+  "sensitiveOperations": [],
+  "rollback": [
+    "Reverter apps/hub/modules/chronos/components/chronos-agenda-screen.tsx para remover botao Conectar e pull inicial automatico.",
+    "Reverter apps/hub/modules/chronos/ChronosExternalRoomPage.tsx para a assinatura realtime dependente do objeto localParticipant e parametros anteriores do MediaRecorder.",
+    "Se o failover de gravacao causar duplicidade de segmentos, remover scheduleRecordingFailover e manter apenas a estabilizacao do realtime por participantId."
+  ],
+  "notes": [
+    "Agenda passa a expor conexao Google Agenda por usuario quando a conta ainda nao esta autorizada.",
+    "Ao detectar conexao Google Agenda conectada, a tela executa pull inicial automatico; se a conexao nunca sincronizou ou nao tem sync token, usa sincronizacao completa.",
+    "A assinatura realtime da sala externa passa a depender do participantId estavel, evitando desmontar canal/peers quando microfone, camera ou compartilhamento de tela mudam.",
+    "A gravacao via MediaRecorder passa a usar timeslice maior e bitrates controlados para reduzir pressao de memoria e CPU no navegador.",
+    "Quando o participante que estava gravando sai sem encerrar a chamada, o menor participantId remanescente tenta iniciar uma nova gravacao de continuidade.",
+    "Este recorte reduz risco do navegador, mas ainda nao transforma a gravacao em server-side; queda abrupta do browser antes de emitir leave pode continuar exigindo nova sessao."
+  ]
+}

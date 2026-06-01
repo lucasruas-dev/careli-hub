@@ -1,5 +1,6 @@
 import {
   loadChronosGoogleCalendarStatus,
+  startChronosGoogleCalendarConnection,
   syncChronosGoogleCalendar,
 } from "@/lib/chronos/client";
 import {
@@ -64,6 +65,9 @@ export function ChronosAgendaScreen({
   const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(
     null,
   );
+  const [googleCalendarConnecting, setGoogleCalendarConnecting] = useState(false);
+  const [googleCalendarInitialPullDone, setGoogleCalendarInitialPullDone] =
+    useState(false);
   const [googleCalendarSyncing, setGoogleCalendarSyncing] = useState(false);
   const [googleCalendarSyncError, setGoogleCalendarSyncError] = useState<
     string | null
@@ -127,6 +131,62 @@ export function ChronosAgendaScreen({
     void refreshGoogleCalendarStatus();
   }, [refreshGoogleCalendarStatus]);
 
+  useEffect(() => {
+    if (
+      googleCalendarInitialPullDone ||
+      googleCalendarSyncing ||
+      googleCalendarStatus?.status !== "connected"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    setGoogleCalendarInitialPullDone(true);
+    setGoogleCalendarSyncing(true);
+    setGoogleCalendarSyncError(null);
+
+    void syncChronosGoogleCalendar("pull", {
+      full:
+        !googleCalendarStatus.connection.syncTokenPresent ||
+        !googleCalendarStatus.connection.lastSyncedAt,
+    })
+      .then(async () => {
+        if (cancelled) {
+          return;
+        }
+
+        await refreshGoogleCalendarStatus();
+        await onReload();
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setGoogleCalendarSyncError(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel sincronizar Google Agenda.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setGoogleCalendarSyncing(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    googleCalendarInitialPullDone,
+    googleCalendarStatus,
+    googleCalendarSyncing,
+    onReload,
+    refreshGoogleCalendarStatus,
+  ]);
+
   function openMeetingDetails(meetingId: string) {
     onSelectMeeting(meetingId);
     setDetailMeetingId(meetingId);
@@ -154,6 +214,37 @@ export function ChronosAgendaScreen({
       setGoogleCalendarSyncing(false);
     }
   }
+
+  async function handleGoogleCalendarConnect() {
+    if (googleCalendarConnecting) {
+      return;
+    }
+
+    setGoogleCalendarConnecting(true);
+    setGoogleCalendarSyncError(null);
+
+    try {
+      const authorizationUrl = await startChronosGoogleCalendarConnection(
+        "/chronos",
+      );
+
+      window.location.assign(authorizationUrl);
+    } catch (error) {
+      setGoogleCalendarConnecting(false);
+      setGoogleCalendarSyncError(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel conectar Google Agenda.",
+      );
+    }
+  }
+
+  const googleCalendarConnected =
+    googleCalendarStatus?.connection.connected === true;
+  const canConnectGoogleCalendar =
+    googleCalendarStatus?.configured === true &&
+    googleCalendarStatus.connection.storageReady &&
+    !googleCalendarConnected;
 
   return (
     <Surface bordered className="relative grid min-h-[38rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-[#d9e0e7] bg-white">
@@ -226,23 +317,35 @@ export function ChronosAgendaScreen({
               {googleCalendarSyncError ?? googleCalendarError}
             </span>
           ) : null}
-          <button
-            aria-label="Sincronizar Google Agenda"
-            className={`grid h-9 w-9 place-items-center rounded-md border text-sm font-black transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
-              googleCalendarStatus?.connection.connected
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                : "border-[#d9e0e7] bg-white text-[#526078] hover:bg-[#f8fafc] hover:text-[#101820]"
-            }`}
-            disabled={googleCalendarSyncing}
-            onClick={() => void handleGoogleCalendarSync()}
-            type="button"
-          >
-            {googleCalendarSyncing ? (
-              <Loader2 aria-hidden="true" className="animate-spin" size={15} />
-            ) : (
-              <span aria-hidden="true">G</span>
-            )}
-          </button>
+          {googleCalendarConnected ? (
+            <button
+              aria-label="Sincronizar Google Agenda"
+              className="grid h-9 w-9 place-items-center rounded-md border border-emerald-200 bg-emerald-50 text-sm font-black text-emerald-700 transition hover:bg-emerald-100 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={googleCalendarSyncing}
+              onClick={() => void handleGoogleCalendarSync()}
+              type="button"
+            >
+              {googleCalendarSyncing ? (
+                <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+              ) : (
+                <span aria-hidden="true">G</span>
+              )}
+            </button>
+          ) : (
+            <button
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-55"
+              disabled={!canConnectGoogleCalendar || googleCalendarConnecting}
+              onClick={() => void handleGoogleCalendarConnect()}
+              type="button"
+            >
+              {googleCalendarConnecting ? (
+                <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+              ) : (
+                <span aria-hidden="true">G</span>
+              )}
+              Conectar
+            </button>
+          )}
           <button
             aria-label="Criar evento"
             className="grid h-9 w-9 place-items-center rounded-md bg-[#101820] text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-55"
