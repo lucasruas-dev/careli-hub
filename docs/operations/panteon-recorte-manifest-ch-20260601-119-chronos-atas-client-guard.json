@@ -4,7 +4,7 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos Atas client guard hotfix",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -54,15 +54,24 @@
     "smoke HTTP local isolado em http://localhost:3002: /chronos 200; /api/chronos/meetings 401 esperado sem sessao",
     "git diff --check nos arquivos do recorte: PASS com avisos esperados LF/CRLF",
     "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-119-chronos-atas-client-guard.json: PASS",
-    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS"
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS",
+    "npx.cmd vercel deploy --prod --yes: PASS, deployment dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j READY",
+    "npx.cmd vercel inspect https://c2x.app.br: PASS, Ready no deployment dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: PASS, Ready no deployment dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j",
+    "healthchecks producao: GET https://c2x.app.br/chronos 200; GET https://c2x.app.br/chronos/lideranca 200; GET https://c2x.app.br/api/chronos/meetings sem sessao 401 esperado",
+    "npx.cmd vercel logs https://c2x.app.br --since 10m: PASS, sem erro novo; logs observados 200/401 esperados"
   ],
   "productionContext": {
     "currentDeploymentIdBeforeHotfix": "dpl_34sTeQMRmSLBQzHkx26urYGcgCkT",
     "currentTechnicalUrlBeforeHotfix": "https://careli-hub-hub-i2bs-7g3sssevp-lucasruas-devs-projects.vercel.app",
+    "hotfixDeploymentId": "dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-7c3alvgbq-lucasruas-devs-projects.vercel.app",
     "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
-    "rollbackDeploymentId": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
+    "rollbackDeploymentId": "dpl_34sTeQMRmSLBQzHkx26urYGcgCkT",
+    "rollbackDeploymentIdPreviousRelease": "dpl_GpLQK812ChTr53ZGmqhrDefbjx4n",
     "publishedCommitBeforeHotfix": "044dd67c",
-    "recordCommitBeforeHotfix": "5e564a7"
+    "recordCommitBeforeHotfix": "5e564a7",
+    "hotfixCodeCommit": "b1cb1fb"
   },
   "sensitiveOperations": [
     "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas na conversa de 2026-06-01 para corrigir erro de pagina em producao ao acessar Atas."

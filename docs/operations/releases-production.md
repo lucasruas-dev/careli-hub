@@ -2565,3 +2565,49 @@ Registro de producao:
   - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
 - Rollback planejado: promover novamente `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n` se houver regressao critica; nao ha migration/env/schema neste release.
 - Proxima acao: Lucas validar autenticado os fluxos reais de Iris, Hades, Hermes, Chronos e Zeus em producao antes do go-live operacional.
+
+## 2026-06-01 - CH-20260601-119-CHRONOS-ATAS-CLIENT-GUARD
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando validacao autenticada do Lucas na aba Atas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] hotfix tela de Atas em producao`.
+- Protocolo: `CH-20260601-119-CHRONOS-ATAS-CLIENT-GUARD`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas reportou que `https://c2x.app.br/chronos` caia no boundary do Next ao acessar a tela de Atas.
+- Causa tratada: falha client-side provavel quando uma reuniao Chronos chegava ao Drive/Atas com arrays ou campos ausentes de `recordings`, `minutes`, `transcript`, `participants`, `timeline`, `followUps` ou `chatMessages`.
+- Escopo publicado:
+  - normalizacao defensiva do snapshot client-side em `apps/hub/lib/chronos/client.ts`;
+  - normalizacao dos retornos de criacao, atualizacao, transcricao e geracao de ata;
+  - guardas nos helpers de ata, Drive, calendario e salas;
+  - guardas nos paineis de Atas, Transcricao, Gravacoes e cards do Drive.
+- Itens nao alterados: regra de negocio de Atas, endpoints, Google Calendar, OpenAI, banco, migrations, Supabase admin, envs, secrets, tokens, dominio e alias manual.
+- Commit publicado: `b1cb1fb fix(chronos): guard atas runtime payload`.
+- Deployment anterior: `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`.
+- Deployment novo: `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`.
+- URL tecnica: `https://careli-hub-hub-i2bs-7c3alvgbq-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - ESLint focado nos arquivos Chronos alterados: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - smoke local isolado em `http://localhost:3002`: `/chronos` 200 e `/api/chronos/meetings` 401 esperado sem sessao;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-119-chronos-atas-client-guard.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: OK;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF.
+- Build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m`: sem erro novo; observados `200` para rotas Chronos e `401` esperado para API protegida sem sessao.
+- Rollback planejado: promover novamente `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT` se houver regressao critica; rollback anterior do pacote de engenharia continua documentado em `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
+- Proxima acao: Lucas atualizar a pagina em producao, abrir `Drive > Atas` autenticado e confirmar se a tela carrega sem boundary.

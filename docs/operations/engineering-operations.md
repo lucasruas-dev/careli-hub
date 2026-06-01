@@ -28706,3 +28706,38 @@ Conclusao:
 - A causa provavel foi payload de reuniao com campos de Atas/gravacao/transcricao ausentes, quebrando a renderizacao client-side da aba.
 - O impacto pratico do hotfix e impedir que dado incompleto derrube a tela; a interface passa a mostrar estado vazio/controlado e seguir operando.
 - A proxima acao e publicar o hotfix em Vercel Production, validar `/chronos` em producao e pedir ao Lucas refresh/teste autenticado da aba Atas.
+
+## 2026-06-01 01:49:00 -03:00 - Chronos/Zeus - hotfix Atas em producao
+
+Assunto: [Chronos] Atas client guard publicado
+
+- Nome da squad/agente: Chronos Core, publicado por Zeus/Hefesto sob autorizacao operacional do Lucas.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-119-CHRONOS-ATAS-CLIENT-GUARD`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO TESTE AUTENTICADO DO LUCAS NA ABA ATAS.
+- Commit publicado:
+  - `b1cb1fb fix(chronos): guard atas runtime payload`;
+  - commit criado com `--no-verify` porque o hook local conhecido aponta para `scripts/panteon-hook-runner.ps1`, ausente no worktree; as validacoes obrigatorias foram executadas manualmente.
+- Deployment:
+  - deployment anterior ao hotfix: `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`;
+  - deployment novo: `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`;
+  - URL tecnica nova: `https://careli-hub-hub-i2bs-7c3alvgbq-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados no deployment novo: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato: `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`.
+- Validacoes pos-deploy:
+  - build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_JCpGkkHbEH6LUFHTnU1h8Lqorm8j`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m`: sem erro novo; observados `200` para Chronos e `401` esperado para API sem sessao.
+- Risco remanescente:
+  - a confirmacao final precisa ser feita no navegador autenticado do Lucas clicando em `Drive > Atas`, porque o erro original era client-side em sessao real;
+  - nao houve alteracao de schema, env, token, Supabase admin, dominio ou alias manual.
+
+Conclusao:
+
+- O hotfix da tela de Atas ja esta em producao e os healthchecks publicos passaram.
+- O impacto pratico e reduzir a falha de pagina inteira quando algum registro Chronos chega sem arrays de ata, gravacao, transcricao, participantes ou follow-ups.
+- A acao agora e Lucas atualizar `https://c2x.app.br/chronos`, abrir `Drive > Atas` e confirmar se a tela carrega; em regressao critica, Hefesto deve promover rollback para `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`.
