@@ -29070,3 +29070,59 @@ Conclusao:
 - O quinto hotfix de Chronos esta em producao e cobre o fluxo de transcricao, a estabilidade da aba Atas e a captura quando o compartilhamento de tela entra ou sai.
 - O impacto pratico e que `Transcrever` nao deve mais enviar placeholder/parametro rejeitado para OpenAI, `Atas` nao deve derrubar a rota inteira e novas gravacoes devem criar segmentos corretos quando a tela for compartilhada.
 - A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos` e testar uma chamada curta com gravacao, compartilhamento, `Assistir`, `Baixar`, `Transcrever` e `Drive > Atas`.
+
+## 2026-06-01 04:02:30 -03:00 - Chronos/Zeus - Atas data guards e gravacao composta em producao
+
+Assunto: [Chronos] Atas data guards e gravacao composta publicados
+
+- Nome da squad/agente: Chronos Core, publicado por Zeus/Hefesto.
+- Ambiente: Vercel Production.
+- Protocolo: `CH-20260601-125-CHRONOS-ATAS-DATA-COMPOSITE-RECORDING`.
+- Status: EM PRODUCAO / HEALTHCHECKS PASSARAM / AGUARDANDO TESTE FUNCIONAL AUTENTICADO DO LUCAS.
+- Origem:
+  - Lucas reportou que a gravacao passou a iniciar quando compartilhava tela, mas o arquivo gravado mostrava apenas a tela compartilhada e nao a sala da videochamada;
+  - Lucas tambem reportou alerta `[object Object]` no Drive e erro visual ao abrir `Drive > Atas`;
+  - a leitura local do Supabase nao foi tratada como fonte de verdade porque `.env.local` apontava para outro projeto Supabase diferente do host visto no navegador do Lucas.
+- Causa tratada:
+  - o erro visivel `[object Object]` vinha de payload/metadata estruturado sendo exibido como string;
+  - os pontos de risco eram `payload.error` no client e campos textuais vindos do snapshot de Chronos, como resumo executivo, conteudo de ata, transcript e labels de fala;
+  - a classificacao de erro OpenAI tambem podia mascarar a mensagem real ao trocar erro amplo por mensagem de placeholder;
+  - na gravacao, o `MediaRecorder` grava exatamente o `MediaStream` recebido; quando a trilha de video era a tela compartilhada, a sala/cameras nao entravam no arquivo final.
+- Implementacao:
+  - `apps/hub/lib/chronos/client.ts` passou a extrair mensagem legivel de erro estruturado e evitar `[object Object]`;
+  - `apps/hub/lib/chronos/server.ts` normaliza campos textuais de reuniao, participante, transcript, chat e ata antes de entregar ao frontend;
+  - `apps/hub/modules/chronos/components/chronos-minutes-panel.tsx` e `chronos-transcript-panel.tsx` protegem renderizacao de texto inconsistente;
+  - `apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx` mostra motivo tecnico sanitizado se um dado inconsistente ainda bloquear a ata;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` valida limite de 25 MB antes de chamar OpenAI e preserva mensagem real da API;
+  - `apps/hub/lib/chronos/recording.ts` cria uma composicao canvas 1280x720 com tela compartilhada como principal e trilha lateral direita para camera/participantes quando o browser permitir;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` passou a usar a composicao de gravacao e limpar recursos ao parar.
+- Commit publicado: `d7adfdf fix(chronos): harden atas data and recording composition`.
+- Deployment:
+  - deployment anterior: `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`;
+  - deployment novo: `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`;
+  - URL tecnica nova: `https://careli-hub-hub-i2bs-pj7n4kl7h-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`;
+  - rollback imediato: `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos Turbopack/NFT e root inferido;
+  - `git diff --check`: PASS, com avisos esperados LF/CRLF;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-125-chronos-atas-data-composite-recording.json`: PASS;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: PASS;
+  - deploy Vercel Production: READY;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado;
+  - logs de erro recentes em `c2x.app.br` e `ops.c2x.app.br`: sem logs encontrados.
+- Limites:
+  - sem DDL, migration, env, secret, token, dominio, alias manual, Supabase admin ou alteracao direta de banco;
+  - teste autenticado visual continua com Lucas, porque a automacao Chrome local continua indisponivel no Windows sandbox.
+
+Conclusao:
+
+- O sexto hotfix de Chronos esta em producao e cobre os dois sintomas novos: dado/erro estruturado derrubando Atas e gravacao de compartilhamento capturando somente a tela.
+- O impacto pratico e que, se a ata receber objeto onde esperava texto, a tela deve mostrar mensagem tecnica legivel em vez de cair em `[object Object]`; e novas gravacoes com compartilhamento devem tentar registrar tela + lateral da sala.
+- A acao agora e Lucas fazer refresh duro em `https://c2x.app.br/chronos`, gravar uma chamada curta com camera ligada e compartilhamento de tela, abrir `Assistir`, depois `Transcrever` e `Drive > Atas`.

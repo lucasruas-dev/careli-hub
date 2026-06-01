@@ -4,7 +4,7 @@
   "module": "chronos",
   "agent": "Chronos Core",
   "title": "Chronos Atas data guards and composite screen-share recording",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "ALTO",
   "approvedBy": "Lucas",
   "blocks": [
@@ -47,15 +47,25 @@
     "npm.cmd run check-types:hub: PASS",
     "npm.cmd run lint:hub: PASS com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
     "npm.cmd run build --workspace @repo/hub: PASS com warnings conhecidos Turbopack/NFT e root inferido",
-    "git diff --check: PASS com avisos esperados LF/CRLF"
+    "git diff --check: PASS com avisos esperados LF/CRLF",
+    "node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-125-chronos-atas-data-composite-recording.json: PASS",
+    "node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git: PASS",
+    "npx.cmd vercel deploy --prod --yes: READY",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready no deployment dpl_2PePdZRXy6K38SBG3nvM9m9wfP83",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready no deployment dpl_2PePdZRXy6K38SBG3nvM9m9wfP83",
+    "GET https://c2x.app.br/chronos: 200",
+    "GET https://ops.c2x.app.br/zeus: 200",
+    "GET https://c2x.app.br/api/chronos/meetings sem sessao: 401 esperado",
+    "npx.cmd vercel logs https://c2x.app.br --since 10m --level error: sem logs encontrados",
+    "npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error: sem logs encontrados"
   ],
   "productionContext": {
     "currentDeploymentIdBeforeHotfix": "dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX",
-    "hotfixDeploymentId": null,
-    "hotfixTechnicalUrl": null,
+    "hotfixDeploymentId": "dpl_2PePdZRXy6K38SBG3nvM9m9wfP83",
+    "hotfixTechnicalUrl": "https://careli-hub-hub-i2bs-pj7n4kl7h-lucasruas-devs-projects.vercel.app",
     "aliases": ["https://c2x.app.br", "https://ops.c2x.app.br"],
     "rollbackDeploymentId": "dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX",
-    "hotfixCodeCommit": null
+    "hotfixCodeCommit": "d7adfdfdc5598d35ebcaea48c5ba2ce0e121aa37"
   },
   "sensitiveOperations": [
     "Deploy Vercel --prod do hotfix Chronos autorizado por Lucas apos regressao funcional em Atas, transcricao e gravacao com compartilhamento."

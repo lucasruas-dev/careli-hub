@@ -2857,3 +2857,55 @@ Registro de producao:
   - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
 - Rollback planejado: promover novamente `dpl_HY7KWmrCptTvF24ZA9FK4qZzF4MW` se houver regressao critica.
 - Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, criar uma reuniao curta, iniciar gravacao, compartilhar tela, parar gravacao, abrir `Drive > Gravacoes`, clicar `Assistir`, `Baixar`, `Transcrever` e depois `Drive > Atas`.
+
+## 2026-06-01 - CH-20260601-125-CHRONOS-ATAS-DATA-COMPOSITE-RECORDING
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando teste funcional autenticado do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Atas data guards e gravacao composta em producao`.
+- Protocolo: `CH-20260601-125-CHRONOS-ATAS-DATA-COMPOSITE-RECORDING`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas reportou que, apos o hotfix anterior, a gravacao com compartilhamento iniciou, mas o video gravado capturava apenas a tela compartilhada, nao a sala da videochamada; tambem reportou alerta `[object Object]` e erro visual em `Drive > Atas`.
+- Causa tratada:
+  - o cliente Chronos podia renderizar `payload.error` estruturado como texto, gerando `[object Object]`;
+  - campos vindos de Atas/transcricao/resumo podiam chegar como objeto ou formato inesperado em pontos que esperavam string;
+  - o tratamento de erro OpenAI escondia mensagens reais ao classificar erro amplo de modelo como placeholder;
+  - quando havia compartilhamento de tela, o `MediaRecorder` recebia a trilha de tela como video principal e nao compunha a sala junto da tela.
+- Escopo publicado:
+  - normalizacao client-side de erro estruturado para mensagem legivel;
+  - normalizacao server-side de campos textuais de reuniao, participantes, transcript, chat e minutes;
+  - guard visual em Atas com motivo tecnico sanitizado caso um dado inconsistente ainda apareca;
+  - limite explicito de 25 MB antes de enviar arquivo para transcricao OpenAI;
+  - preservacao da mensagem real de erro OpenAI em vez de mascarar tudo como placeholder;
+  - gravacao com compartilhamento passa a usar canvas 1280x720, tela principal e trilha lateral direita com camera/participantes quando o navegador permitir.
+- Itens nao alterados: DDL, migration, env, secret, token, dominio, alias manual, Supabase admin e alteracao direta de banco.
+- Commit publicado: `d7adfdf fix(chronos): harden atas data and recording composition`.
+- Deployment anterior: `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX`.
+- Deployment novo: `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`.
+- URL tecnica: `https://careli-hub-hub-i2bs-pj7n4kl7h-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados:
+  - `https://c2x.app.br`;
+  - `https://ops.c2x.app.br`.
+- Validacoes pre-deploy:
+  - documentacao oficial OpenAI revisada para transcriptions e limite de arquivo;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK;
+  - `git diff --check`: OK, com avisos esperados LF/CRLF;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-ch-20260601-125-chronos-atas-data-composite-recording.json`: OK;
+  - `node scripts/panteon-boundary-check.mjs --module chronos --allow zeus --allow hefesto --from-git`: OK.
+- Build remoto Vercel Production: READY, com warnings conhecidos de `npm audit`, `engines.node >=18`, envs Postgres fora do `turbo.json` e Turbopack/NFT.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_2PePdZRXy6K38SBG3nvM9m9wfP83`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/chronos/meetings` sem sessao: 401 esperado.
+- Logs recentes:
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --since 10m --level error`: sem logs encontrados.
+- Rollback planejado: promover novamente `dpl_CrtiytJiKs5ZgyumUXSosLRYFKsX` se houver regressao critica.
+- Proxima acao: Lucas fazer refresh duro em `https://c2x.app.br/chronos`, criar uma chamada curta com camera ligada, iniciar gravacao, compartilhar tela, encerrar, abrir `Assistir` e conferir se o arquivo mostra tela compartilhada mais a trilha lateral da sala; depois testar `Transcrever` e `Drive > Atas`.
