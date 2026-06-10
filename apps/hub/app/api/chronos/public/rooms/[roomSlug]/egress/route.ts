@@ -14,6 +14,7 @@ export async function POST(
   try {
     const result = await handleChronosPublicLiveKitEgress({
       authorizationHeader: request.headers.get("authorization"),
+      egressBaseUrl: new URL("/chronos/recording-view", request.url).toString(),
       input: await request.json().catch(() => null),
       roomSlug,
     });

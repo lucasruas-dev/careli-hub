@@ -33907,3 +33907,53 @@ Conclusao:
 - Precisa de acao agora: Lucas precisa autorizar explicitamente o deploy de producao do protocolo `OP-20260609-019-CHRONOS-LIVEKIT-ONLY-CALLS`.
 - Quem deve agir agora: Zeus aguarda autorizacao para montar commit limpo, production safety gate e publicar o hotfix; Lucas valida nova chamada real apos publicacao.
 - Proximo passo tecnico: se Lucas autorizar, publicar o recorte seguro e depois comparar o room/session id gerado com o painel LiveKit correto.
+
+## 2026-06-10 00:05:24 -03:00 - Chronos - Sala completa e RoomComposite customizado
+
+Assunto: [Chronos] Recorte local para layout de sala e gravacao completa
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / CHRONOS LIVEKIT / VIDEOCHAMADA / ROOMCOMPOSITE / SCREEN SHARE`.
+- Status: `VALIDADO_LOCAL / NAO PUBLICADO`.
+- Protocolo: `OP-20260610-020-CHRONOS-ROOM-RECORDING-LAYOUT`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-chronos-20260610-020-room-recording-layout.json`.
+- Motivo:
+  - Lucas pediu que o status `Gravando` apareca para todos da sala, nao apenas para o host;
+  - Lucas mostrou referencia do sistema que sera substituido pelo Chronos, onde a sala tem fundo/ambiente completo e a gravacao nao e apenas um grid de cameras;
+  - Lucas pediu que, ao compartilhar tela, a camera do apresentador continue projetada para os demais;
+  - Lucas pediu que as cameras nao fiquem sobrepostas sobre a tela compartilhada, preservando leitura de Power BI, navegador, planilha ou outro conteudo.
+- Correcoes locais aplicadas:
+  - `recording-state` agora atualiza estado visual nos participantes remotos, incluindo timestamp de inicio para quem entra depois;
+  - o banner fixo `Gravando` passa a refletir o estado remoto da sala, nao apenas o estado local do host;
+  - a sala LiveKit passou a tratar camera e screen share como fontes visuais separadas (`cameraStream` e `screenStream`);
+  - o compartilhamento de tela via LiveKit nao substitui mais a camera publicada do participante;
+  - o layout com tela compartilhada agora usa area principal dedicada para a tela e trilho lateral/inferior para cameras, sem sobrepor conteudo;
+  - foi criada a rota publica `apps/hub/app/chronos/recording-view/page.tsx`;
+  - foi criada a view `apps/hub/modules/chronos/ChronosRecordingViewPage.tsx` para composicao de gravacao Chronos;
+  - o RoomComposite Egress de video passa a receber `custom_base_url` apontando para `/chronos/recording-view`, permitindo gravar a composicao visual Chronos em vez do grid padrao LiveKit;
+  - o Egress `audio_only` continua sem layout e sem `custom_base_url`, preservando o fluxo de audio dedicado.
+- Esclarecimento tecnico:
+  - LiveKit possui Egress nativo, mas a gravacao da sala visualmente composta usa RoomComposite/Web Egress com Chromium headless;
+  - para gravar apenas trilhas, o LiveKit usa track/participant egress; para gravar a sala como experiencia visual pronta, o RoomComposite renderiza uma pagina web e captura essa composicao;
+  - por isso o Chronos precisa de uma view de gravacao controlada pelo produto quando a expectativa e sair o fundo da sala, tela compartilhada, cameras separadas e status visual.
+- Validacoes executadas:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosExternalRoomPage.tsx modules/chronos/ChronosRecordingViewPage.tsx app/chronos/recording-view/page.tsx app/api/chronos/public/rooms/[roomSlug]/egress/route.ts lib/chronos/livekit.ts lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `git diff --check -- <arquivos do recorte>`: PASS, com avisos esperados de LF/CRLF no Windows.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase remoto, banco ou migration foi alterado;
+  - nenhum modulo fora de Chronos foi alterado como parte do recorte;
+  - validacao visual em chamada real e gravacao real ainda depende de publicacao autorizada pelo Lucas.
+- Riscos e observacoes:
+  - este recorte deve subir junto ou depois do protocolo `OP-20260609-019-CHRONOS-LIVEKIT-ONLY-CALLS`, porque ambos alteram a mesma sala externa Chronos;
+  - o RoomComposite customizado depende de a URL publica `/chronos/recording-view` estar acessivel pelo Egress no deployment publicado;
+  - o primeiro teste real precisa confirmar se o LiveKit Cloud abre corretamente a view customizada e se o arquivo gerado mostra a sala completa.
+
+Conclusao:
+
+- O recorte local deixa a sala Chronos mais proxima da experiencia que Lucas mostrou como referencia: fundo de sala, status de gravacao, camera persistente no compartilhamento e divisao limpa entre tela e participantes.
+- O impacto pratico esperado e uma gravacao muito mais util para consulta posterior, porque o video passa a representar a sala Chronos completa em vez de apenas uma grade padrao de cameras.
+- Precisa de acao agora: nao publicar ainda sem autorizacao explicita do Lucas para o protocolo `OP-20260610-020-CHRONOS-ROOM-RECORDING-LAYOUT`.
+- Quem deve agir agora: Zeus finaliza commit limpo do recorte; Lucas decide depois se quer publicar junto com o hotfix LiveKit-only.
+- Proximo passo tecnico: se Lucas autorizar, rodar production safety gate incluindo `OP-20260609-019` e `OP-20260610-020`, publicar em `https://c2x.app.br` e testar uma chamada real com gravacao, tela compartilhada e cameras em trilho separado.

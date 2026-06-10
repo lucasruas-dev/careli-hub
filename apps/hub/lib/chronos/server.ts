@@ -1711,10 +1711,12 @@ export async function uploadChronosPublicRecording({
 
 export async function handleChronosPublicLiveKitEgress({
   authorizationHeader,
+  egressBaseUrl,
   input,
   roomSlug,
 }: {
   authorizationHeader?: string | null;
+  egressBaseUrl?: string | null;
   input: unknown;
   roomSlug: string;
 }) {
@@ -1723,6 +1725,7 @@ export async function handleChronosPublicLiveKitEgress({
   if (normalizedInput.action === "start") {
     return startChronosPublicLiveKitEgress({
       authorizationHeader,
+      egressBaseUrl,
       input: normalizedInput,
       roomSlug,
     });
@@ -1745,10 +1748,12 @@ export async function handleChronosPublicLiveKitEgress({
 
 async function startChronosPublicLiveKitEgress({
   authorizationHeader,
+  egressBaseUrl,
   input,
   roomSlug,
 }: {
   authorizationHeader?: string | null;
+  egressBaseUrl?: string | null;
   input: NormalizedChronosPublicEgressInput;
   roomSlug: string;
 }) {
@@ -1769,6 +1774,7 @@ async function startChronosPublicLiveKitEgress({
       roomSlug: slug,
     });
   const egress = await startChronosLiveKitRoomCompositeEgress({
+    customBaseUrl: egressBaseUrl,
     meetingId: meeting.id,
     participantId: input.participantId,
     roomSlug: slug,

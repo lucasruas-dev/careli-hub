@@ -7,7 +7,6 @@ import type {
   ChronosPublicRoom,
 } from "@/lib/chronos/types";
 import {
-  addMissingChronosRecordingAudioTracks,
   formatChronosDuration,
   getEnabledChronosAudioTracks,
   stopChronosMediaStream,
@@ -90,6 +89,7 @@ type ChronosExternalRoomPageProps = {
 };
 
 type ChronosRoomParticipant = {
+  cameraStream?: MediaStream | null;
   displayName: string;
   id: string;
   isCameraOn: boolean;
@@ -97,6 +97,7 @@ type ChronosRoomParticipant = {
   isMuted: boolean;
   isScreenSharing: boolean;
   organization?: string;
+  screenStream?: MediaStream | null;
   stream?: MediaStream | null;
 };
 
@@ -140,7 +141,11 @@ type ChronosRoomSignal = {
     | "transcript-segment";
   message?: ChronosChatMessage;
   meetingId: string;
-  participant?: Omit<ChronosRoomParticipant, "stream">;
+  participant?: Omit<
+    ChronosRoomParticipant,
+    "cameraStream" | "screenStream" | "stream"
+  >;
+  recordingStartedAt?: string;
   recordingStatus?: "available" | "recording";
   roomSlug: string;
   sentAt: string;
@@ -445,9 +450,6 @@ export function ChronosExternalRoomPage({
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const settingsPreviewVideoRef = useRef<HTMLVideoElement>(null);
   const recordingStartedAtRef = useRef(0);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const recordingStopPromiseRef = useRef<Promise<void> | null>(null);
   const liveKitEgressIdRef = useRef("");
   const liveKitEgressRecordingIdRef = useRef("");
   const liveKitAudioEgressIdRef = useRef("");
@@ -546,17 +548,6 @@ export function ChronosExternalRoomPage({
   useEffect(() => {
     isRecordingRef.current = isRecording;
   }, [isRecording]);
-
-  useEffect(() => {
-    if (!isRecording || !recordingStreamRef.current) {
-      return;
-    }
-
-    addMissingChronosRecordingAudioTracks(recordingStreamRef.current, {
-      localStream,
-      remoteParticipants,
-    });
-  }, [isRecording, localStream, remoteParticipants]);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
@@ -829,7 +820,9 @@ export function ChronosExternalRoomPage({
       if (localParticipantRef.current && meetingIdRef.current && !screenTrackRef.current) {
         const nextParticipant = {
           ...localParticipantRef.current,
+          cameraStream: nextStream,
           isCameraOn: hasVideoTrack,
+          screenStream: null,
           stream: nextStream,
         };
 
@@ -1200,6 +1193,31 @@ export function ChronosExternalRoomPage({
       }
 
       if (signal.kind === "recording-state") {
+        const nextIsRecording = signal.recordingStatus === "recording";
+
+        if (nextIsRecording) {
+          const startedAtMs = Date.parse(
+            signal.recordingStartedAt || signal.sentAt || "",
+          );
+
+          recordingStartedAtRef.current = Number.isFinite(startedAtMs)
+            ? startedAtMs
+            : Date.now();
+          setRecordingSeconds(
+            Math.max(
+              0,
+              Math.floor((Date.now() - recordingStartedAtRef.current) / 1000),
+            ),
+          );
+          setRecordingStorageError("");
+          setRecordingStorageStatus("recording");
+        } else {
+          recordingStartedAtRef.current = 0;
+          setRecordingSeconds(0);
+          setRecordingStorageStatus("idle");
+        }
+
+        setIsRecording(nextIsRecording);
         return;
       }
 
@@ -1403,29 +1421,37 @@ export function ChronosExternalRoomPage({
       const metadata = parseChronosLiveKitParticipantMetadata(
         remoteParticipant.metadata,
       );
-      const participantStream =
-        buildChronosLiveKitRemoteParticipantStream(remoteParticipant);
+      const participantMedia =
+        buildChronosLiveKitRemoteParticipantMedia(remoteParticipant);
 
-      liveKitRemoteStreamsRef.current.set(
-        remoteParticipant.identity,
-        participantStream,
-      );
+      if (participantMedia.stream) {
+        liveKitRemoteStreamsRef.current.set(
+          remoteParticipant.identity,
+          participantMedia.stream,
+        );
+      } else {
+        liveKitRemoteStreamsRef.current.delete(remoteParticipant.identity);
+      }
       setRemoteParticipants((currentParticipants) => ({
         ...currentParticipants,
         [remoteParticipant.identity]: {
+          cameraStream: participantMedia.cameraStream,
           displayName:
             remoteParticipant.name ||
             metadata.displayName ||
             "Participante Chronos",
           id: remoteParticipant.identity,
-          isCameraOn:
-            remoteParticipant.isCameraEnabled ||
-            remoteParticipant.isScreenShareEnabled,
+          isCameraOn: Boolean(
+            participantMedia.cameraStream?.getVideoTracks().length,
+          ),
           isHost: metadata.isHost,
           isMuted: !remoteParticipant.isMicrophoneEnabled,
-          isScreenSharing: remoteParticipant.isScreenShareEnabled,
+          isScreenSharing: Boolean(
+            participantMedia.screenStream?.getVideoTracks().length,
+          ),
           organization: metadata.organization,
-          stream: participantStream,
+          screenStream: participantMedia.screenStream,
+          stream: participantMedia.stream,
         },
       }));
     };
@@ -1805,6 +1831,7 @@ export function ChronosExternalRoomPage({
     if (localParticipantRef.current && meetingIdRef.current) {
       const nextParticipant = {
         ...localParticipantRef.current,
+        cameraStream: nextStream,
         isCameraOn: true,
         stream: nextStream,
       };
@@ -1950,6 +1977,7 @@ export function ChronosExternalRoomPage({
       }
 
       const participant: ChronosRoomParticipant = {
+        cameraStream: stream,
         displayName: payload.participant.displayName,
         id: payload.participant.id,
         isCameraOn: Boolean(stream?.getVideoTracks().length),
@@ -1957,6 +1985,7 @@ export function ChronosExternalRoomPage({
         isMuted,
         isScreenSharing: false,
         organization: payload.participant.organization,
+        screenStream: null,
         stream,
       };
 
@@ -2054,6 +2083,7 @@ export function ChronosExternalRoomPage({
       if (participant) {
         const nextParticipant = {
           ...participant,
+          cameraStream: nextStream,
           isCameraOn: false,
           stream: nextStream,
         };
@@ -2116,6 +2146,7 @@ export function ChronosExternalRoomPage({
       if (participant) {
         const nextParticipant = {
           ...participant,
+          cameraStream: nextStream,
           isCameraOn: true,
           stream: nextStream,
         };
@@ -2157,19 +2188,26 @@ export function ChronosExternalRoomPage({
       });
       if (isChronosLiveKitProvider) {
         await publishChronosLiveKitTrack(screenTrack, Track.Source.ScreenShare);
+      } else {
+        replaceVideoTrackForPeers(screenTrack);
       }
-      replaceVideoTrackForPeers(screenTrack);
       setIsScreenSharing(true);
       const currentParticipant = localParticipantRef.current;
+      const currentStream = localStreamRef.current;
+      const screenStream = new MediaStream([screenTrack]);
       const nextParticipant = currentParticipant
         ? {
             ...currentParticipant,
+            cameraStream: currentStream,
             isCameraOn: true,
             isScreenSharing: true,
-            stream: new MediaStream([
-              ...getEnabledChronosAudioTracks(localStreamRef.current),
-              screenTrack,
-            ]),
+            screenStream,
+            stream: isChronosLiveKitProvider
+              ? currentStream
+              : new MediaStream([
+                  ...getEnabledChronosAudioTracks(currentStream),
+                  screenTrack,
+                ]),
           }
         : null;
 
@@ -2190,13 +2228,36 @@ export function ChronosExternalRoomPage({
     setIsScreenSharing(false);
     sendScreenShareSignal("screen-share-stop");
 
+    if (isChronosLiveKitProvider) {
+      const currentParticipant = localParticipantRef.current;
+      const currentStream = localStreamRef.current;
+      const nextParticipant = currentParticipant
+        ? {
+            ...currentParticipant,
+            cameraStream: currentStream,
+            isCameraOn: Boolean(
+              cameraEnabled && currentStream?.getVideoTracks().length,
+            ),
+            isScreenSharing: false,
+            screenStream: null,
+            stream: currentStream,
+          }
+        : null;
+
+      localParticipantRef.current = nextParticipant;
+      setLocalParticipant(nextParticipant);
+      return;
+    }
+
     if (!cameraEnabled) {
       replaceVideoTrackForPeers(null);
       const currentParticipant = localParticipantRef.current;
       const nextParticipant = currentParticipant
         ? {
             ...currentParticipant,
+            cameraStream: null,
             isScreenSharing: false,
+            screenStream: null,
             stream: localStreamRef.current,
           }
         : null;
@@ -2254,7 +2315,9 @@ export function ChronosExternalRoomPage({
       const nextParticipant = currentParticipant
         ? {
             ...currentParticipant,
+            cameraStream: nextStream,
             isScreenSharing: false,
+            screenStream: null,
             stream: nextStream,
           }
         : null;
@@ -2320,6 +2383,10 @@ export function ChronosExternalRoomPage({
       kind: "recording-state",
       meetingId: currentMeetingId,
       participant: stripParticipantStream(participant),
+      recordingStartedAt:
+        status === "recording" && recordingStartedAtRef.current
+          ? new Date(recordingStartedAtRef.current).toISOString()
+          : undefined,
       recordingStatus: status,
       roomSlug: room.slug,
       toParticipantId,
@@ -2621,21 +2688,6 @@ export function ChronosExternalRoomPage({
     }
   }
 
-  async function stopRecording() {
-    const recorder = recorderRef.current;
-    const stopPromise = recordingStopPromiseRef.current;
-
-    if (recorder && recorder.state !== "inactive") {
-      recorder.stop();
-    }
-
-    recorderRef.current = null;
-    recordingStreamRef.current = null;
-    setIsRecording(false);
-    sendRecordingStateSignal("available");
-    await stopPromise;
-  }
-
   async function handleSubmitChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -2816,7 +2868,8 @@ export function ChronosExternalRoomPage({
       if (isChronosLiveKitProvider) {
         await stopLiveKitEgressRecording();
       } else {
-        await stopRecording();
+        setIsRecording(false);
+        sendRecordingStateSignal("available");
       }
     }
 
@@ -2884,19 +2937,25 @@ export function ChronosExternalRoomPage({
       ? [localParticipant, ...Object.values(remoteParticipants)]
       : [];
 
-    return participants.map((participant) => ({
-      participant: mapChronosParticipantToHermesTile(participant),
-      source: participant,
-    }));
+    return participants.map((participant) =>
+      buildChronosCameraTileParticipant(participant),
+    );
   }, [localParticipant, remoteParticipants]);
-  const screenShareParticipant = tileParticipants.find(
-    ({ source }) => source.isScreenSharing,
-  );
-  const companionParticipants = screenShareParticipant
-    ? tileParticipants.filter(
-        ({ source }) => source.id !== screenShareParticipant.source.id,
-      )
-    : tileParticipants;
+  const screenShareParticipant = useMemo(() => {
+    const participants = localParticipant
+      ? [localParticipant, ...Object.values(remoteParticipants)]
+      : [];
+
+    const participant = participants.find(
+      (currentParticipant) =>
+        currentParticipant.isScreenSharing &&
+        getChronosScreenShareStream(currentParticipant)?.getVideoTracks()
+          .length,
+    );
+
+    return participant ? buildChronosScreenShareTileParticipant(participant) : null;
+  }, [localParticipant, remoteParticipants]);
+  const companionParticipants = tileParticipants;
   const participantGridClassName = getChronosParticipantGridClassName(
     tileParticipants.length,
   );
@@ -3242,8 +3301,8 @@ export function ChronosExternalRoomPage({
 
             <div className="min-h-0 overflow-hidden pt-2">
               {screenShareParticipant ? (
-                <div className="relative h-full min-h-0">
-                  <div className="h-full min-h-0 overflow-hidden rounded-[1.25rem] border border-white/25 bg-[#111820]/30 p-1.5 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-black/20 backdrop-blur-[2px] [&_article]:h-full [&_article]:rounded-[1rem] [&_article]:border-0 [&_article]:p-0 [&_article]:ring-0 [&_video]:rounded-[0.95rem] [&_video]:object-contain">
+                <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] xl:grid-rows-1">
+                  <div className="h-full min-h-0 overflow-hidden rounded-[1rem] border border-white/18 bg-black/40 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-black/20 [&_article]:h-full [&_article]:rounded-[1rem] [&_article]:border-0 [&_article]:p-0 [&_article]:ring-0 [&_video]:rounded-[0.95rem] [&_video]:object-contain">
                     <div
                       className="relative h-full min-h-0 rounded-[1rem]"
                       style={getChronosParticipantWindowStyle({
@@ -3260,7 +3319,7 @@ export function ChronosExternalRoomPage({
                           localParticipant?.id
                         }
                         layout="spotlight"
-                        mediaStream={screenShareParticipant.source.stream}
+                        mediaStream={screenShareParticipant.mediaStream}
                         onVideoElementChange={handleVideoElementChange}
                         participant={screenShareParticipant.participant}
                       />
@@ -3269,11 +3328,13 @@ export function ChronosExternalRoomPage({
                       />
                     </div>
                   </div>
-                  <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex gap-3 overflow-x-auto pb-1">
-                    {companionParticipants.map(({ participant, source }) => (
+                  <aside className="min-h-0 overflow-x-auto rounded-[1rem] border border-white/12 bg-black/24 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.22)] xl:overflow-y-auto">
+                    <div className="flex min-h-[7.5rem] gap-2 xl:grid xl:min-h-0 xl:grid-cols-1">
+                    {companionParticipants.map(
+                      ({ mediaStream, participant, source, tileId }) => (
                       <div
-                        className="pointer-events-auto relative w-64 shrink-0 overflow-hidden rounded-2xl border border-white/25 bg-[#111820]/50 p-1.5 shadow-2xl ring-1 ring-black/30 backdrop-blur-sm [&_article]:rounded-[0.95rem] [&_article]:border-0 [&_article]:p-0 [&_article]:ring-0 [&_video]:rounded-[0.85rem] [&_video]:object-contain"
-                        key={source.id}
+                        className="relative aspect-video w-52 shrink-0 overflow-hidden rounded-[0.85rem] border border-white/18 bg-[#111820]/45 p-1 shadow-xl ring-1 ring-black/25 xl:w-full [&_article]:h-full [&_article]:rounded-[0.75rem] [&_article]:border-0 [&_article]:p-0 [&_article]:ring-0 [&_video]:rounded-[0.7rem]"
+                        key={tileId}
                         style={getChronosParticipantWindowStyle({
                           backgroundDataUrl: localParticipantFallbackBackground,
                           isLocal: source.id === localParticipant?.id,
@@ -3282,22 +3343,25 @@ export function ChronosExternalRoomPage({
                         <CallParticipantTile
                           hideCaption
                           isLocalMedia={source.id === localParticipant?.id}
-                          layout="floating"
-                          mediaStream={source.stream}
+                          layout="thumbnail"
+                          mediaStream={mediaStream}
                           onVideoElementChange={handleVideoElementChange}
                           participant={participant}
                         />
                         <ChronosParticipantIdentityCaption participant={source} />
                       </div>
-                    ))}
-                  </div>
+                      ),
+                    )}
+                    </div>
+                  </aside>
                 </div>
               ) : (
                 <div className={participantGridClassName}>
-                  {tileParticipants.map(({ participant, source }) => (
+                  {tileParticipants.map(
+                    ({ mediaStream, participant, source, tileId }) => (
                     <div
-                      className="relative min-h-0 overflow-hidden rounded-[1.25rem] border border-white/25 bg-[#111820]/34 p-1.5 shadow-[0_24px_80px_rgba(0,0,0,0.32)] ring-1 ring-black/20 backdrop-blur-[2px] [&_article]:h-full [&_article]:rounded-[1rem] [&_article]:border-0 [&_article]:p-0 [&_article]:ring-0 [&_video]:rounded-[0.95rem] [&_video]:object-contain"
-                      key={source.id}
+                      className="relative min-h-0 overflow-hidden rounded-[1rem] border border-white/18 bg-[#111820]/28 shadow-[0_24px_80px_rgba(0,0,0,0.28)] ring-1 ring-black/20 [&_article]:h-full [&_article]:rounded-[1rem] [&_article]:border-0 [&_article]:p-0 [&_article]:ring-0 [&_video]:rounded-[0.95rem]"
+                      key={tileId}
                       style={getChronosParticipantWindowStyle({
                         backgroundDataUrl: localParticipantFallbackBackground,
                         isLocal: source.id === localParticipant?.id,
@@ -3308,13 +3372,14 @@ export function ChronosExternalRoomPage({
                         hideCaption
                         isLocalMedia={source.id === localParticipant?.id}
                         layout="spotlight"
-                        mediaStream={source.stream}
+                        mediaStream={mediaStream}
                         onVideoElementChange={handleVideoElementChange}
                         participant={participant}
                       />
                       <ChronosParticipantIdentityCaption participant={source} />
                     </div>
-                  ))}
+                    ),
+                  )}
                 </div>
               )}
             </div>
@@ -4858,7 +4923,7 @@ function ChronosLiveKitControlButton({
   );
 }
 
-function buildChronosLiveKitRemoteParticipantStream(
+function buildChronosLiveKitRemoteParticipantMedia(
   participant: RemoteParticipant,
 ) {
   const audioTracks: MediaStreamTrack[] = [];
@@ -4890,12 +4955,28 @@ function buildChronosLiveKitRemoteParticipantStream(
     cameraTrack ??= mediaTrack;
   });
 
-  return new MediaStream(
-    [
-      ...audioTracks,
-      screenShareTrack ?? cameraTrack,
-    ].filter((track): track is MediaStreamTrack => Boolean(track)),
+  const cameraStream = new MediaStream(
+    [...audioTracks, cameraTrack].filter(
+      (track): track is MediaStreamTrack => Boolean(track),
+    ),
   );
+  const screenStream = screenShareTrack
+    ? new MediaStream([screenShareTrack])
+    : null;
+
+  return {
+    cameraStream:
+      cameraStream.getAudioTracks().length > 0 ||
+      cameraStream.getVideoTracks().length > 0
+        ? cameraStream
+        : null,
+    screenStream,
+    stream:
+      cameraStream.getAudioTracks().length > 0 ||
+      cameraStream.getVideoTracks().length > 0
+        ? cameraStream
+        : screenStream,
+  };
 }
 
 function parseChronosLiveKitParticipantMetadata(
@@ -5835,15 +5916,66 @@ function stripParticipantStream(participant: ChronosRoomParticipant) {
   };
 }
 
+type ChronosRoomTileParticipant = {
+  mediaStream: MediaStream | null;
+  participant: HermesCallParticipant;
+  source: ChronosRoomParticipant;
+  tileId: string;
+};
+
+function buildChronosCameraTileParticipant(
+  participant: ChronosRoomParticipant,
+): ChronosRoomTileParticipant {
+  const mediaStream =
+    participant.cameraStream ??
+    (!participant.isScreenSharing ? participant.stream ?? null : null);
+
+  return {
+    mediaStream,
+    participant: mapChronosParticipantToHermesTile(participant, {
+      isCameraOn: Boolean(
+        participant.isCameraOn && mediaStream?.getVideoTracks().length,
+      ),
+      isScreenSharing: false,
+    }),
+    source: participant,
+    tileId: `${participant.id}:camera`,
+  };
+}
+
+function buildChronosScreenShareTileParticipant(
+  participant: ChronosRoomParticipant,
+): ChronosRoomTileParticipant {
+  return {
+    mediaStream: getChronosScreenShareStream(participant),
+    participant: mapChronosParticipantToHermesTile(participant, {
+      isCameraOn: true,
+      isScreenSharing: true,
+    }),
+    source: participant,
+    tileId: `${participant.id}:screen`,
+  };
+}
+
+function getChronosScreenShareStream(participant: ChronosRoomParticipant) {
+  return participant.screenStream ?? (participant.isScreenSharing
+    ? participant.stream ?? null
+    : null);
+}
+
 function mapChronosParticipantToHermesTile(
   participant: ChronosRoomParticipant,
+  overrides: {
+    isCameraOn?: boolean;
+    isScreenSharing?: boolean;
+  } = {},
 ): HermesCallParticipant {
   return {
     id: participant.id,
     initials: getInitials(participant.displayName),
-    isCameraOn: participant.isCameraOn,
+    isCameraOn: overrides.isCameraOn ?? participant.isCameraOn,
     isMuted: participant.isMuted,
-    isScreenSharing: participant.isScreenSharing,
+    isScreenSharing: overrides.isScreenSharing ?? participant.isScreenSharing,
     label: participant.displayName,
     presenceStatus: "online",
     role: participant.organization || "Convidado",

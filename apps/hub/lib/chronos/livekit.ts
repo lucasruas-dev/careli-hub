@@ -35,6 +35,7 @@ type ChronosLiveKitEgressStorageConfig = {
 
 type ChronosLiveKitEgressInput = {
   audioOnly?: boolean;
+  customBaseUrl?: string | null;
   meetingId: string;
   participantId: string;
   roomSlug: string;
@@ -151,6 +152,7 @@ export function createChronosLiveKitToken({
 
 export async function startChronosLiveKitRoomCompositeEgress({
   audioOnly = false,
+  customBaseUrl,
   meetingId,
   participantId,
   roomSlug,
@@ -196,6 +198,12 @@ export async function startChronosLiveKitRoomCompositeEgress({
     requestBody.audio_only = true;
   } else {
     requestBody.layout = "grid";
+    const normalizedCustomBaseUrl =
+      normalizeChronosLiveKitCustomBaseUrl(customBaseUrl);
+
+    if (normalizedCustomBaseUrl) {
+      requestBody.custom_base_url = normalizedCustomBaseUrl;
+    }
   }
 
   const payload = await callChronosLiveKitEgressApi(config, {
@@ -727,6 +735,24 @@ function readChronosLiveKitEgressStatus(payload: Record<string, unknown>) {
   return typeof status === "string" || typeof status === "number"
     ? String(status)
     : "unknown";
+}
+
+function normalizeChronosLiveKitCustomBaseUrl(value?: string | null) {
+  if (!value?.trim()) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value.trim());
+
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return "";
+    }
+
+    return url.toString();
+  } catch {
+    return "";
+  }
 }
 
 function readChronosLiveKitEgressFileResult(
