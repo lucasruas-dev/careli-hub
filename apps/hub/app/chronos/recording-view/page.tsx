@@ -4,6 +4,30 @@ import { ChronosRecordingViewPage } from "@/modules/chronos/ChronosRecordingView
 
 export const dynamic = "force-dynamic";
 
+const chronosRecordingBootScript = `
+(() => {
+  if (window.__chronosRecordingStartLogged) {
+    return;
+  }
+
+  window.__chronosRecordingStartLogged = true;
+  console.log("START_RECORDING");
+
+  window.addEventListener(
+    "pagehide",
+    () => {
+      if (window.__chronosRecordingEndLogged) {
+        return;
+      }
+
+      window.__chronosRecordingEndLogged = true;
+      console.log("END_RECORDING");
+    },
+    { once: true },
+  );
+})();
+`;
+
 export const metadata: Metadata = {
   robots: {
     follow: false,
@@ -13,5 +37,10 @@ export const metadata: Metadata = {
 };
 
 export default function ChronosRecordingViewRoute() {
-  return <ChronosRecordingViewPage />;
+  return (
+    <>
+      <script dangerouslySetInnerHTML={{ __html: chronosRecordingBootScript }} />
+      <ChronosRecordingViewPage />
+    </>
+  );
 }

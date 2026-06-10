@@ -34225,3 +34225,39 @@ Conclusao:
 - Precisa de acao agora: Lucas deve realizar uma nova chamada curta no Chronos, encerrar a sala e confirmar no LiveKit se o RoomComposite sai de `STARTING` para `COMPLETE` e se o video aparece no Drive.
 - Quem deve agir agora: Lucas valida a chamada real; Zeus acompanha logs se a proxima gravacao ainda nao aparecer.
 - Proximo passo tecnico: se o Egress ainda ficar preso, investigar estado retornado pela API LiveKit no stop/sync e, com autorizacao explicita, auditar o Egress especifico no painel/API LiveKit.
+
+## 2026-06-10 04:33:00 -03:00 - Chronos - Hotfix do START_RECORDING no template Egress
+
+Assunto: [Chronos] Analise de Egress abortado por `Start signal not received`
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / INCIDENTE CHRONOS / LIVEKIT EGRESS / TEMPLATE CUSTOMIZADO`.
+- Status: `VALIDADO_LOCAL / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO`.
+- Protocolo: `OP-20260610-024-CHRONOS-EGRESS-START-SIGNAL`.
+- Contexto:
+  - Lucas enviou print do LiveKit Egress `EG_bddhiqcZrRak` com status `ABORTED` e erro `Start signal not received`;
+  - o Egress iniciou em `10/06/2026 03:57:46`, encerrou em `03:58:53` e apontava `customBaseUrl` para `https://c2x.app.br/chronos/recording-view`;
+  - logs Vercel confirmaram `GET /chronos/recording-view` 200 exatamente em `03:57:46`, entao a URL abriu, mas o Chromium do LiveKit nao recebeu `console.log("START_RECORDING")` dentro do prazo;
+  - isso indica falha no template customizado de composicao, nao falha de S3/Supabase.
+- Correcoes locais aplicadas:
+  - `apps/hub/app/chronos/recording-view/page.tsx` passou a emitir `START_RECORDING` por script inline no HTML inicial, antes de depender da hidratacao React ou do `room.connect` do `livekit-client`;
+  - o mesmo script registra `END_RECORDING` no `pagehide`, com guarda global para evitar duplicidade;
+  - `apps/hub/modules/chronos/ChronosRecordingViewPage.tsx` passou a reconhecer `window.__chronosRecordingStartLogged` e `window.__chronosRecordingEndLogged`, evitando duplicar sinais quando a camada cliente conecta/desconecta;
+  - a tela continua tentando conectar ao LiveKit e renderizar cameras/tela compartilhada normalmente.
+- Validacoes executadas:
+  - `npx.cmd vercel logs https://c2x.app.br --since 1h --query recording-view --scope lucasruas-devs-projects`: confirmou `GET /chronos/recording-view` 200 no horario do Egress;
+  - `npx.cmd vercel logs https://c2x.app.br --since 1h --query chronos --scope lucasruas-devs-projects`: confirmou chamadas Chronos 200 ao redor do erro, sem erro server-side;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/chronos/recording-view/page.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`, fora do recorte Chronos.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, token, Supabase, LiveKit dashboard, banco ou migration foi alterado nesta etapa;
+  - o Egress `EG_bddhiqcZrRak` abortado nao tem arquivo final porque o LiveKit abortou antes do sinal de inicio.
+
+Conclusao:
+
+- A causa provavel do erro e que o template customizado abriu, mas nao emitiu `START_RECORDING` a tempo para o LiveKit.
+- O impacto pratico do hotfix e impedir que o RoomComposite aborte antes de gravar quando a hidratacao/conexao do template demorar ou falhar cedo.
+- Precisa de acao agora: Lucas precisa autorizar explicitamente o deploy se quiser publicar este hotfix em producao.
+- Quem deve agir agora: Zeus pode publicar por pacote limpo/Safety Gate quando Lucas autorizar; Lucas valida uma chamada curta apos a publicacao.
+- Proximo passo tecnico: depois do deploy, testar uma chamada curta e confirmar se o Egress passa para `COMPLETE` e se o Drive recebe o video.

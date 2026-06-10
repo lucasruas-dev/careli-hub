@@ -34,6 +34,13 @@ type ChronosRecordingTile = {
   tileId: string;
 };
 
+declare global {
+  interface Window {
+    __chronosRecordingEndLogged?: boolean;
+    __chronosRecordingStartLogged?: boolean;
+  }
+}
+
 export function ChronosRecordingViewPage() {
   const [participants, setParticipants] = useState<ChronosRecordingParticipant[]>(
     [],
@@ -55,6 +62,11 @@ export function ChronosRecordingViewPage() {
       searchParams.get("token") ??
       searchParams.get("accessToken") ??
       searchParams.get("access_token");
+
+    if (window.__chronosRecordingStartLogged) {
+      startLoggedRef.current = true;
+      setStatus("recording");
+    }
 
     if (!liveKitUrl || !token) {
       setStatus("error");
@@ -81,6 +93,7 @@ export function ChronosRecordingViewPage() {
       }
 
       startLoggedRef.current = true;
+      window.__chronosRecordingStartLogged = true;
       setStatus("recording");
       console.log("START_RECORDING");
     };
@@ -101,7 +114,7 @@ export function ChronosRecordingViewPage() {
       })
       .on(RoomEvent.Disconnected, () => {
         if (startLoggedRef.current) {
-          console.log("END_RECORDING");
+          emitChronosRecordingEndSignal();
         }
       })
       .on(RoomEvent.ParticipantConnected, syncParticipants)
@@ -137,7 +150,7 @@ export function ChronosRecordingViewPage() {
       }
 
       if (startLoggedRef.current) {
-        console.log("END_RECORDING");
+        emitChronosRecordingEndSignal();
       }
 
       room.removeAllListeners();
@@ -253,6 +266,15 @@ export function ChronosRecordingViewPage() {
       </section>
     </main>
   );
+}
+
+function emitChronosRecordingEndSignal() {
+  if (window.__chronosRecordingEndLogged) {
+    return;
+  }
+
+  window.__chronosRecordingEndLogged = true;
+  console.log("END_RECORDING");
 }
 
 function ChronosRecordingTileCard({
