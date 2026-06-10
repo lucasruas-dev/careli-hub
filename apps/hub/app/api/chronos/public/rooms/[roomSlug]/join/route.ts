@@ -1,41 +1,25 @@
 import { type NextRequest } from "next/server";
 
-import { joinChronosPublicRoom } from "@/lib/chronos/server";
-
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ roomSlug: string }> },
 ) {
   const { roomSlug } = await params;
 
-  try {
-    const result = await joinChronosPublicRoom({
-      authorizationHeader: request.headers.get("authorization"),
-      input: await request.json().catch(() => null),
+  return Response.json(
+    {
+      error:
+        "Entrada local bloqueada. Use o endpoint LiveKit do Chronos para entrar na sala.",
       roomSlug,
-    });
-
-    return Response.json(result, {
+    },
+    {
       headers: {
         "Cache-Control": "no-store",
       },
-    });
-  } catch (error) {
-    return createChronosPublicErrorResponse(
-      error,
-      "Nao foi possivel entrar na sala Chronos.",
-    );
-  }
-}
-
-function createChronosPublicErrorResponse(error: unknown, fallback: string) {
-  return Response.json(
-    {
-      error: error instanceof Error && error.message.trim() ? error.message : fallback,
+      status: 410,
     },
-    { status: 400 },
   );
 }

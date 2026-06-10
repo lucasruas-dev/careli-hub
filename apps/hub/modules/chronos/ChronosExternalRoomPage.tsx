@@ -8,10 +8,8 @@ import type {
 } from "@/lib/chronos/types";
 import {
   addMissingChronosRecordingAudioTracks,
-  buildChronosRecordingStream,
   formatChronosDuration,
   getEnabledChronosAudioTracks,
-  getSupportedChronosRecordingMimeType,
   stopChronosMediaStream,
 } from "@/lib/chronos/recording";
 import type { HermesCallParticipant } from "@/lib/pulsex";
@@ -446,12 +444,10 @@ export function ChronosExternalRoomPage({
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const settingsPreviewVideoRef = useRef<HTMLVideoElement>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
   const recordingStartedAtRef = useRef(0);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStopPromiseRef = useRef<Promise<void> | null>(null);
-  const resolveRecordingStopRef = useRef<(() => void) | null>(null);
   const liveKitEgressIdRef = useRef("");
   const liveKitEgressRecordingIdRef = useRef("");
   const liveKitAudioEgressIdRef = useRef("");
@@ -1877,6 +1873,15 @@ export function ChronosExternalRoomPage({
       return;
     }
 
+    if (!isChronosLiveKitProvider) {
+      const message =
+        "LiveKit e obrigatorio para chamadas Chronos. A sala foi bloqueada para impedir chamada fora do LiveKit.";
+
+      setJoinError(message);
+      setMediaError(message);
+      return;
+    }
+
     if (
       isChronosLiveKitProvider &&
       !isHubParticipant &&
@@ -1918,9 +1923,7 @@ export function ChronosExternalRoomPage({
 
     try {
       const response = await fetch(
-        isChronosLiveKitProvider
-          ? `/api/chronos/public/rooms/${room.slug}/livekit-token`
-          : `/api/chronos/public/rooms/${room.slug}/join`,
+        `/api/chronos/public/rooms/${room.slug}/livekit-token`,
         {
           body: JSON.stringify({
             displayName: nextDisplayName,
@@ -1957,20 +1960,14 @@ export function ChronosExternalRoomPage({
         stream,
       };
 
-      if (isChronosLiveKitProvider) {
-        entryRequestApprovedRef.current = false;
-        entryRequestIdRef.current = "";
-        setEntryRequestStatus("idle");
-        await connectChronosLiveKitRoom({
-          participant,
-          payload,
-          stream,
-        });
-        return;
-      }
-
-      setMeetingId(payload.meetingId);
-      setLocalParticipant(participant);
+      entryRequestApprovedRef.current = false;
+      entryRequestIdRef.current = "";
+      setEntryRequestStatus("idle");
+      await connectChronosLiveKitRoom({
+        participant,
+        payload,
+        stream,
+      });
     } catch (error) {
       setJoinError(
         error instanceof Error
@@ -2330,32 +2327,25 @@ export function ChronosExternalRoomPage({
   }
 
   async function handleToggleRecording() {
-    if (isChronosLiveKitProvider) {
-      if (isRecording) {
-        await stopLiveKitEgressRecording();
-        return;
-      }
+    if (!isChronosLiveKitProvider) {
+      const message =
+        "Gravacao local bloqueada: o Chronos deve gravar somente via LiveKit Egress.";
 
-      const liveKitRecordingStatus = await startLiveKitEgressRecording();
-
-      if (liveKitRecordingStatus === "fallback") {
-        await startRecording();
-      }
-
+      setRecordingStorageStatus("failed");
+      setRecordingStorageError(message);
+      setMediaError(message);
       return;
     }
 
     if (isRecording) {
-      await stopRecording();
+      await stopLiveKitEgressRecording();
       return;
     }
 
-    await startRecording();
+    await startLiveKitEgressRecording();
   }
 
-  async function startLiveKitEgressRecording(): Promise<
-    "blocked" | "fallback" | "started"
-  > {
+  async function startLiveKitEgressRecording(): Promise<"blocked" | "started"> {
     if (!meetingId || !localParticipant) {
       setRecordingStorageStatus("failed");
       setRecordingStorageError("Entre na sala antes de iniciar a gravacao.");
@@ -2455,7 +2445,7 @@ export function ChronosExternalRoomPage({
       setRecordingStorageStatus("failed");
       setRecordingStorageError(normalizeChronosRecordingStorageError(error));
       setMediaError(normalizeChronosRecordingStorageError(error));
-      return "fallback";
+      return "blocked";
     }
   }
 
@@ -2631,96 +2621,6 @@ export function ChronosExternalRoomPage({
     }
   }
 
-  async function startRecording() {
-    if (!meetingId || !localParticipant) {
-      return;
-    }
-
-    if (typeof MediaRecorder === "undefined") {
-      setMediaError("Gravacao indisponivel neste navegador.");
-      return;
-    }
-
-    const stream = buildChronosRecordingStream({
-      localStream: localStreamRef.current,
-      remoteParticipants: remoteParticipantsRef.current,
-      screenTrack: screenTrackRef.current,
-    });
-
-    if (!stream || stream.getTracks().length === 0) {
-      setMediaError("Nenhuma midia disponivel para gravar.");
-      return;
-    }
-
-    recordingChunksRef.current = [];
-    setRecordingStorageError("");
-    setRecordingStorageStatus("idle");
-    const mimeType = getSupportedChronosRecordingMimeType();
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    recordingStreamRef.current = stream;
-    recorderRef.current = recorder;
-    recordingStopPromiseRef.current = new Promise((resolve) => {
-      resolveRecordingStopRef.current = resolve;
-    });
-    recorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size > 0) {
-        recordingChunksRef.current.push(event.data);
-      }
-    });
-    recorder.addEventListener("stop", () => {
-      const durationSeconds = Math.max(
-        0,
-        Math.floor((Date.now() - recordingStartedAtRef.current) / 1000),
-      );
-
-      void (async () => {
-        try {
-          if (recordingChunksRef.current.length > 0) {
-            const recordingBlob = new Blob(recordingChunksRef.current, {
-              type: recorder.mimeType || "video/webm",
-            });
-
-            if (recordingBlob.size > 0) {
-              if (lastRecordingUrlRef.current) {
-                URL.revokeObjectURL(lastRecordingUrlRef.current);
-              }
-
-              const recordingUrl = URL.createObjectURL(recordingBlob);
-
-              lastRecordingUrlRef.current = recordingUrl;
-              setLastRecordingUrl(recordingUrl);
-              const recordingName = `${room.slug}-${new Date()
-                .toISOString()
-                .replace(/[:.]/g, "-")}.webm`;
-
-              setLastRecordingName(recordingName);
-              await uploadChronosRecordingBlob({
-                blob: recordingBlob,
-                durationSeconds,
-                fileName: recordingName,
-              });
-            } else {
-              await postChronosRecordingStatus("available");
-            }
-          } else {
-            await postChronosRecordingStatus("available");
-          }
-        } finally {
-          recordingChunksRef.current = [];
-          resolveRecordingStopRef.current?.();
-          resolveRecordingStopRef.current = null;
-          recordingStopPromiseRef.current = null;
-        }
-      })();
-    });
-    recorder.start(1000);
-    recordingStartedAtRef.current = Date.now();
-    setRecordingSeconds(0);
-    setIsRecording(true);
-    await postChronosRecordingStatus("recording");
-    sendRecordingStateSignal("recording");
-  }
-
   async function stopRecording() {
     const recorder = recorderRef.current;
     const stopPromise = recordingStopPromiseRef.current;
@@ -2734,95 +2634,6 @@ export function ChronosExternalRoomPage({
     setIsRecording(false);
     sendRecordingStateSignal("available");
     await stopPromise;
-  }
-
-  async function uploadChronosRecordingBlob({
-    blob,
-    durationSeconds,
-    fileName,
-  }: {
-    blob: Blob;
-    durationSeconds: number;
-    fileName: string;
-  }) {
-    if (!meetingId || !localParticipant) {
-      await postChronosRecordingStatus("available");
-      return;
-    }
-
-    setRecordingStorageStatus("uploading");
-    setRecordingStorageError("");
-
-    try {
-      const formData = new FormData();
-      const recordingFile = new File([blob], fileName, {
-        type: blob.type || "video/webm",
-      });
-
-      formData.set("durationSeconds", String(durationSeconds));
-      formData.set("file", recordingFile);
-      formData.set("fileName", fileName);
-      formData.set("meetingId", meetingId);
-      formData.set("participantId", localParticipant.id);
-
-      const response = await fetch(
-        `/api/chronos/public/rooms/${room.slug}/recording/upload`,
-        {
-          body: formData,
-          cache: "no-store",
-          method: "POST",
-        },
-      );
-
-      if (!response.ok) {
-        let responseMessage = "";
-
-        try {
-          const responseBody = (await response.json()) as { error?: unknown };
-
-          responseMessage =
-            typeof responseBody.error === "string" ? responseBody.error : "";
-        } catch {
-          responseMessage = "";
-        }
-
-        throw new Error(responseMessage || "Chronos recording upload failed");
-      }
-
-      setRecordingStorageStatus("saved");
-    } catch (error) {
-      setRecordingStorageStatus("failed");
-      setRecordingStorageError(normalizeChronosRecordingStorageError(error));
-      await postChronosRecordingStatus("available");
-    }
-  }
-
-  async function postChronosRecordingStatus(
-    status: "available" | "recording",
-  ) {
-    if (!meetingId || !localParticipant) {
-      return;
-    }
-
-    await fetch(`/api/chronos/public/rooms/${room.slug}/recording`, {
-      body: JSON.stringify({
-        durationSeconds:
-          status === "available"
-            ? Math.max(
-                0,
-                Math.floor((Date.now() - recordingStartedAtRef.current) / 1000),
-              )
-            : undefined,
-        meetingId,
-        participantId: localParticipant.id,
-        status,
-      }),
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-    }).catch(() => undefined);
   }
 
   async function handleSubmitChat(event: FormEvent<HTMLFormElement>) {

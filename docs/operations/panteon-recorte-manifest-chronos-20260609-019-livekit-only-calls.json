@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "panteon.recorte.v1",
+  "protocolId": "OP-20260609-019-CHRONOS-LIVEKIT-ONLY-CALLS",
+  "module": "chronos",
+  "agent": "Zeus",
+  "title": "Bloqueio de chamada e gravacao Chronos fora do LiveKit",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "ALTO",
+  "approvedBy": "Lucas",
+  "blocks": [
+    "chronos",
+    "livekit",
+    "videochamada",
+    "gravacao",
+    "drive"
+  ],
+  "allowedLayers": [
+    "zeus"
+  ],
+  "includedFiles": [
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/join/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/recording/upload/route.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260609-019-livekit-only-calls.json"
+  ],
+  "excludedPaths": [
+    ".env",
+    ".env*",
+    ".env.*",
+    ".vercel/**",
+    ".git/**",
+    "node_modules/**",
+    ".next/**",
+    ".turbo/**",
+    ".codex-deploy/**",
+    ".codex-artifacts/**",
+    "packages/database/migrations/**",
+    "apps/hub/modules/hades/**",
+    "apps/hub/modules/hermes/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/modules/ares/**",
+    "apps/hub/lib/hades/**",
+    "apps/hub/lib/hermes/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/lib/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/app/api/zeus/**"
+  ],
+  "validations": [
+    "npx.cmd vercel logs https://c2x.app.br --since 2h --query chronos/public/rooms --json --scope lucasruas-devs-projects: confirmou POST /livekit-token 200 as 2026-06-09 22:56:52 -03:00 e 22:58:36 -03:00, e POST /egress 200 as 22:59:34, 23:02:40 e 23:02:45",
+    "npx.cmd vercel env ls --scope lucasruas-devs-projects: confirmou nomes CHRONOS_VIDEO_PROVIDER, NEXT_PUBLIC_CHRONOS_VIDEO_PROVIDER, LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET em Production sem expor valores",
+    "npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosExternalRoomPage.tsx app/api/chronos/public/rooms/[roomSlug]/join/route.ts app/api/chronos/public/rooms/[roomSlug]/recording/upload/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON do Node",
+    "npm.cmd run check-types --workspace @repo/hub: PASS",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos"
+  ],
+  "productionBaseline": "dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw",
+  "sensitiveOperations": [
+    "Deploy de producao Vercel fica BLOQUEADO ate commit limpo, production safety gate e autorizacao explicita do Lucas para publicar o protocolo OP-20260609-019.",
+    "Nenhum env, secret, Supabase remoto, banco, migration, dominio ou alias foi alterado neste diagnostico."
+  ],
+  "rollback": [
+    "Reverter os tres arquivos de codigo listados neste manifesto para o estado anterior ao protocolo OP-20260609-019.",
+    "Se publicado em producao e houver regressao critica, reapontar https://c2x.app.br para o deployment de rollback registrado no production safety gate correspondente.",
+    "Nao ha rollback de env, secret, migration ou banco porque nada disso foi alterado."
+  ],
+  "notes": [
+    "A causa de risco no codigo era a existencia simultanea de dois caminhos: /livekit-token para LiveKit e /join + RTCPeerConnection + MediaRecorder local como fallback legado.",
+    "Os logs da chamada reportada mostraram que o frontend chamou /livekit-token e /egress com 200, portanto o nao aparecimento no painel LiveKit deve ser investigado como possivel projeto LiveKit diferente, filtro/painel incorreto ou falha posterior de conexao do cliente.",
+    "Mesmo assim, o recorte fecha a brecha: se LiveKit nao estiver ativo, a sala nao entra em chamada; se Egress falhar, nao inicia gravacao local; /join e /recording/upload retornam 410.",
+    "A partir deste recorte, uma chamada Chronos valida deve depender de conexao LiveKit confirmada e gravacao deve depender de LiveKit Egress."
+  ]
+}

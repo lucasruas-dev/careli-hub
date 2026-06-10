@@ -33862,3 +33862,48 @@ Conclusao:
 - Precisa de acao agora: Lucas deve testar uma reuniao real no Chronos, iniciar/parar a gravacao, aguardar aparecer no Drive e acionar `Transcrever e gerar ata` para confirmar o fluxo completo.
 - Quem deve agir agora: Lucas valida o fluxo real; Zeus acompanha logs se houver falha de egress, arquivo ou transcricao.
 - Proximo passo tecnico: implementar captura dinamica para tracks publicados apos o inicio da gravacao, caso o teste real mostre participantes entrando ou ativando microfone depois do start.
+
+## 2026-06-09 23:21:11 -03:00 - Chronos - Bloqueio de chamada fora do LiveKit
+
+Assunto: [Chronos] Hotfix local para impedir fallback sem LiveKit
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / INCIDENTE CHRONOS / LIVEKIT ONLY / VIDEOCHAMADA / GRAVACAO`.
+- Status: `VALIDADO_LOCAL / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO`.
+- Protocolo: `OP-20260609-019-CHRONOS-LIVEKIT-ONLY-CALLS`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-chronos-20260609-019-livekit-only-calls.json`.
+- Deployment de producao observado: `dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw`.
+- Contexto:
+  - Lucas reportou que a videochamada aconteceu, mas nao apareceu no painel LiveKit observado;
+  - regra operacional definida: o Chronos nao pode permitir chamada de video nem gravacao fora do LiveKit.
+- Diagnostico:
+  - `npx.cmd vercel env ls --scope lucasruas-devs-projects` confirmou os nomes `CHRONOS_VIDEO_PROVIDER`, `NEXT_PUBLIC_CHRONOS_VIDEO_PROVIDER`, `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` em Production, sem expor valores;
+  - `npx.cmd vercel logs https://c2x.app.br --since 2h --query chronos/public/rooms --json --scope lucasruas-devs-projects` confirmou chamadas reais em producao para `/api/chronos/public/rooms/careli/livekit-token` com 200 as `2026-06-09 22:56:52 -03:00` e `22:58:36 -03:00`;
+  - o mesmo log confirmou chamadas para `/api/chronos/public/rooms/careli/egress` com 200 as `22:59:34`, `23:02:40` e `23:02:45`;
+  - portanto, a tela chamou o caminho LiveKit, mas o codigo ainda mantinha brechas antigas: se o provider viesse desligado, usava `/join` com `RTCPeerConnection`; se o Egress LiveKit falhasse, iniciava `MediaRecorder` local e upload para `/recording/upload`.
+- Correcoes locais aplicadas:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` agora bloqueia entrada na chamada quando LiveKit nao estiver ativo;
+  - a entrada da sala chama somente `/livekit-token`; o caminho `/join` nao e mais usado pelo frontend;
+  - `handleToggleRecording` nao cai mais para `MediaRecorder` local quando o Egress LiveKit falha;
+  - o bloco morto de `startRecording`, `uploadChronosRecordingBlob` e `postChronosRecordingStatus` foi removido;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/join/route.ts` retorna 410 para bloquear entrada local legada;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/recording/upload/route.ts` retorna 410 para bloquear upload local de gravacao.
+- Validacoes executadas:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosExternalRoomPage.tsx app/api/chronos/public/rooms/[roomSlug]/join/route.ts app/api/chronos/public/rooms/[roomSlug]/recording/upload/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos.
+- Fora do escopo:
+  - nenhum env, secret, Supabase remoto, banco, migration, dominio ou alias foi alterado;
+  - nenhuma publicacao em producao foi feita nesta etapa;
+  - investigar se o painel LiveKit observado e o mesmo projeto das credenciais de producao ainda depende de verificacao assistida, sem expor valores de secret.
+- Risco:
+  - enquanto este hotfix nao for publicado, producao ainda tem a brecha do fallback local de gravacao/chamada herdada;
+  - apos publicar, qualquer falha de LiveKit deve bloquear a chamada/gravação em vez de criar um fluxo local sem registro no LiveKit.
+
+Conclusao:
+
+- A causa tecnica da brecha era a convivencia do caminho LiveKit com fallback legado de WebRTC local e `MediaRecorder`.
+- O impacto pratico do hotfix e transformar o Chronos em fail-closed: sem LiveKit confirmado, nao ha chamada; sem Egress LiveKit, nao ha gravacao local.
+- Precisa de acao agora: Lucas precisa autorizar explicitamente o deploy de producao do protocolo `OP-20260609-019-CHRONOS-LIVEKIT-ONLY-CALLS`.
+- Quem deve agir agora: Zeus aguarda autorizacao para montar commit limpo, production safety gate e publicar o hotfix; Lucas valida nova chamada real apos publicacao.
+- Proximo passo tecnico: se Lucas autorizar, publicar o recorte seguro e depois comparar o room/session id gerado com o painel LiveKit correto.
