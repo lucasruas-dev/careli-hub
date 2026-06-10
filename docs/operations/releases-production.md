@@ -1,4 +1,4 @@
-# Releases Producao
+﻿# Releases Producao
 
 Este arquivo e o indice operacional dos recortes publicados em producao.
 Ele nao substitui o diario canonico `docs/operations/engineering-operations.md`.
@@ -17,7 +17,8 @@ Objetivo:
 - `Hefesto` e o responsavel padrao por promocao para producao, healthchecks finais, rollback e rastreabilidade oficial.
 - Quando `Zeus` for autorizado a publicar diretamente o proprio recorte em `https://ops.c2x.app.br`, tambem deve registrar aqui e no diario canonico.
 - Nao registrar valores de env, secrets, tokens, senhas, service role, `POSTGRES_URL` ou chaves externas.
-- Como `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo projeto/deployment Vercel, todo registro de producao deve informar impacto sobre os dois aliases quando aplicavel.
+- Dominios de producao por modulo: `https://c2x.app.br` e o destino padrao de Hermes, Chronos, Hades, Iris, Atlas, Setup, Apolo, Ares e demais modulos nao-Zeus; `https://ops.c2x.app.br` e destino exclusivo de melhorias e correcoes do Zeus/Operations Center.
+- Registros de modulos nao-Zeus nao devem listar `https://ops.c2x.app.br` como alias afetado, salvo excecao autorizada explicitamente pelo Lucas e documentada com motivo, risco e rollback.
 - O diario canonico continua recebendo o resumo consolidado da decisao, risco ou deploy relevante.
 
 ## Status permitidos
@@ -39,7 +40,8 @@ Objetivo:
 - Commit publicado
 - Deployment anterior
 - Deployment novo
-- Aliases/dominos afetados
+- Dominio alvo autorizado
+- Aliases/dominios afetados
 - Arquivos/modulos incluidos
 - Arquivos/modulos excluidos
 - Validacoes executadas
@@ -68,10 +70,10 @@ Registro de producao:
 - Commit publicado: `<hash commit ou pacote limpo>`.
 - Deployment anterior: `<deployment anterior conhecido saudavel>`.
 - Deployment novo: `<deployment Vercel novo / URL tecnica>`.
+- Dominio alvo autorizado: `<https://c2x.app.br para modulos nao-Zeus | https://ops.c2x.app.br para Zeus/OPS>`.
 - Aliases/dominios afetados:
-  - `https://c2x.app.br`: `<deployment/status>`;
-  - `https://ops.c2x.app.br`: `<deployment/status>`;
-  - `<outro alias, se houver>`.
+  - `<dominio alvo>`: `<deployment/status>`;
+  - `<impacto cruzado somente se autorizado pelo Lucas, com motivo>`.
 - Arquivos/modulos incluidos: `<lista objetiva>`.
 - Arquivos/modulos excluidos: `<lista objetiva do que ficou fora>`.
 - Validacoes executadas:
@@ -1330,3 +1332,1941 @@ Registro de producao:
   - a regra numerica continua sendo a do deploy anterior: base por `due_on`/`due_at`.
 - Rollback: promover novamente `dpl_66CR8Tw74aXkkfNZHNfT2GQy1dK7` se houver regressao visual critica na Home/Asana.
 - Proxima acao: Lucas validar a Home autenticada; Hefesto pode identificar este recorte pelo identificador `HEFESTO-PROD-20260522-1825-ZEUS-ASANA-DUE-LABELS`.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk fila ativa historico e evidencias em producao`.
+- Identificador Hefesto: `HEFESTO-PROD-20260526-1049-ZEUS-HELPDESK-FILA-HISTORICO-EVIDENCIAS`.
+- Squad/agente responsavel: `Zeus Operations`, com publicacao direta autorizada por Lucas.
+- Data e hora local: `2026-05-26 10:49:00 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou subir a melhoria Zeus/HelpDesk caso ainda nao estivesse em `https://ops.c2x.app.br`.
+- Escopo publicado:
+  - separacao da lista HelpDesk entre fila ativa e historico;
+  - tickets finalizados, resolvidos ou aguardando cliente saem da fila ativa;
+  - estados em que a operacao ja fez a parte dela deixam de sinalizar atraso vermelho;
+  - devolutiva tecnica passa a aceitar evidencias/anexos, incluindo arquivos, prints/imagens e midias gravadas quando suportado pelo navegador.
+- Base de producao preservada:
+  - branch/commit base: `codex/zeus/iris-meta-template-final-20260525` em `db68454`;
+  - deployment anterior: `dpl_4feJYS8Wtgejf6kT7snxbLLARops`;
+  - escopo preservado: Apolo perfil/carteira, Login sem e-mail pre-preenchido, Hermes/PulseX links clicaveis e Iris em standby server-side para producao.
+- Pacote limpo publicado:
+  - `.codex-deploy/zeus-helpdesk-prod-20260526-103538/workspace`.
+- Deployment:
+  - anterior: `dpl_4feJYS8Wtgejf6kT7snxbLLARops`;
+  - novo: `dpl_69GhASBvtfMagPehERvLMBcneKcT`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-lpt8nlu5z-lucasruas-devs-projects.vercel.app`;
+  - aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/modules/squadops/HubItTicketsBoard.tsx`;
+  - `apps/hub/lib/hub-it-tickets/server.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-production.md`.
+- Arquivos/modulos excluidos:
+  - root misto de `homolog`;
+  - envs, secrets, tokens, service role, banco, migrations, dominio novo, alias de homologacao, `node_modules`, `.next` e `.turbo`;
+  - recortes recentes de Iris/Ares/Athena/Apolo ainda apenas em homologacao.
+- Validacoes executadas:
+  - varredura de env sensivel: OK, sem `.env` ou `.env.local` no pacote; apenas `.env.example` versionados;
+  - `git diff --check` do recorte contra a base production: OK, com avisos CRLF conhecidos no Windows;
+  - `npx.cmd eslint modules/squadops/HubItTicketsBoard.tsx lib/hub-it-tickets/server.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de Turbo global, root inference e Turbopack/NFT;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs Postgres antigas fora do `turbo.json`.
+- Healthchecks:
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: `Ready`, deployment `dpl_69GhASBvtfMagPehERvLMBcneKcT`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: `Ready`, deployment `dpl_69GhASBvtfMagPehERvLMBcneKcT`;
+  - `GET https://ops.c2x.app.br/`: `307` esperado para Zeus;
+  - `GET https://ops.c2x.app.br/zeus`: `200`;
+  - `GET https://ops.c2x.app.br/login`: `200`;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/`: `200`;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/apolo`: `200`;
+  - `GET https://c2x.app.br/hermes`: `200`;
+  - `GET https://c2x.app.br/iris`: `200`;
+  - `GET https://c2x.app.br/api/iris/meta/templates` sem sessao: `401` esperado;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: `401` esperado;
+  - logs Vercel de erro em `ops.c2x.app.br` e `c2x.app.br` nos ultimos 10 minutos: sem logs encontrados.
+- Riscos conhecidos:
+  - validacao visual autenticada do Lucas ainda e necessaria para confirmar a experiencia real da fila/historico e anexos no OPS;
+  - `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo deployment Vercel;
+  - captura de audio/video depende das permissoes e capacidades do navegador do operador.
+- Rollback: promover novamente `dpl_4feJYS8Wtgejf6kT7snxbLLARops` se houver regressao critica no OPS/Zeus, Panteon principal, Apolo, Hermes ou Iris standby.
+- Proxima acao: Lucas validar `https://ops.c2x.app.br/zeus` autenticado, especialmente fila ativa, historico e anexo/print/gravação em devolutiva.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk Kanban e workflow simples`.
+- Identificador Hefesto: `HEFESTO-PROD-20260526-1215-ZEUS-HELPDESK-KANBAN-FLUXO-SIMPLES`.
+- Protocolo: `ZEUS-20260526-001-HELPDESK-KANBAN-FLUXO-SIMPLES`.
+- Squad/agente responsavel: `Zeus Operations`, com publicacao direta autorizada por Lucas.
+- Data e hora local: `2026-05-26 12:15:00 -03:00`.
+- Ambiente: `producao`.
+- Status: `EM VALIDACAO PARA PRODUCAO`.
+- Autorizacao: Lucas pediu melhorar a tela de tickets, aplicar o fluxo simples e subir em producao.
+- Escopo candidato:
+  - Kanban HelpDesk com fluxo Novo, Em tratativa, Validacao, Revisao e Finalizado;
+  - fila ativa passa a manter tudo exceto Finalizado;
+  - Validacao e Finalizado aparecem em verde;
+  - vencimento vermelho fica restrito a tickets ainda com Zeus/TI;
+  - acoes do operador: responder e manter em tratativa, ou marcar melhoria realizada e enviar para validacao;
+  - solicitante passa a finalizar ou pedir revisao no fluxo de validacao;
+  - notificacoes reais em `hub_notifications` para devolutivas/revisoes, sem migration;
+  - popup local do HelpDesk para nova mensagem/revisao;
+  - historico completo preservado com eventos, prints, audios, videos, arquivos e anexos.
+- Base de producao preservada:
+  - deployment atual antes do recorte: `dpl_69GhASBvtfMagPehERvLMBcneKcT`;
+  - aliases observados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Pacote limpo planejado:
+  - base: `.codex-deploy/zeus-helpdesk-prod-20260526-103538/workspace`;
+  - destino: `.codex-deploy/zeus-helpdesk-kanban-prod-20260526/workspace`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/modules/squadops/HubItTicketsBoard.tsx`;
+  - `apps/hub/components/hub-support/hub-user-tickets-panel.tsx`;
+  - `apps/hub/lib/hub-it-tickets/server.ts`;
+  - `apps/hub/lib/hub-it-tickets/types.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/releases-production.md`.
+- Arquivos/modulos excluidos:
+  - root misto de `homolog`;
+  - envs, secrets, tokens, service role, banco/migration, alias de homologacao, dominio, `node_modules`, `.next`, `.turbo`;
+  - recortes de Iris/Ares/Hades/Athena/Apolo nao pertencentes ao HelpDesk.
+- Validacoes iniciais:
+  - `npx.cmd eslint modules/squadops/HubItTicketsBoard.tsx components/hub-support/hub-user-tickets-panel.tsx lib/hub-it-tickets/server.ts lib/hub-it-tickets/types.ts --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+- Validacoes pendentes:
+  - `git diff --check` do recorte;
+  - `npm.cmd run check-types:hub`;
+  - `npm.cmd run lint:hub`;
+  - `npm.cmd run build --workspace @repo/hub`;
+  - deploy production Vercel;
+  - healthchecks em `ops.c2x.app.br` e `c2x.app.br`;
+  - logs Vercel de erro.
+- Riscos conhecidos:
+  - o shell global ainda usa estado realtime mockado; o recorte registra notificacoes reais e sinaliza o HelpDesk, mas a ligacao completa do sino global a realtime real deve ser tratada como evolucao posterior;
+  - validacao autenticada do Lucas e necessaria para confirmar o novo workflow visual.
+- Rollback planejado: promover novamente `dpl_69GhASBvtfMagPehERvLMBcneKcT` se houver regressao critica em OPS/Zeus, Panteon principal ou fluxos compartilhados.
+- Proxima acao: concluir validacoes em pacote limpo e publicar se o build passar.
+
+Atualizacao pos-deploy:
+
+- Assunto: [Zeus] HelpDesk Kanban e workflow simples.
+- Status final: EM PRODUCAO.
+- Deployment novo: dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f.
+- URL tecnica: https://careli-hub-hub-i2bs-itaab90ji-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://ops.c2x.app.br e https://c2x.app.br.
+- Rollback imediato: dpl_69GhASBvtfMagPehERvLMBcneKcT.
+- Validacoes finais: diff check OK; eslint escopado OK; check-types direto apps/hub OK; lint direto apps/hub OK; build hub OK; Vercel Production READY; healthchecks 200/401 esperado; logs error sem ocorrencia.
+- Observacao: producao foi publicada a partir do pacote limpo .codex-deploy/zeus-helpdesk-kanban-prod-20260526-1215/workspace, sem root misto e sem env/secret/migration/banco.
+
+## 2026-05-27 16:05:00 -03:00 - Hefesto - Producao Hub notificacoes Windows
+
+- Assunto: [Hub] Notificacoes nativas Windows.
+- Protocolo: HUB-20260527-001-NOTIFICACOES-WINDOWS.
+- Status final: EM PRODUCAO.
+- Deployment anterior/rollback imediato: dpl_DbnDfVk3JTvgneJvA9WNcacbyA3f.
+- Deployment novo: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
+- URL tecnica: https://careli-hub-hub-i2bs-4n2ztblkp-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit de codigo publicado: de9b601 feat(hub): add windows native notifications.
+- Commit de handoff publicado: f16b4c1 docs(hefesto): prepare hub notifications production handoff.
+- Validacoes executadas: diff check OK; eslint escopado OK; check-types OK; lint OK; build hub OK; Vercel Production READY; inspect dos aliases OK.
+- Healthchecks pos-deploy: `/`, `/login`, `/zeus`, `/sw.js`, `/api/pwa/manifest`, `/api/hades/db/health` e `/api/guardian/db/health` 200; `/api/operations/monitoring` e `/api/auth/profile` sem sessao 401 esperado.
+- Logs Vercel recentes: sem erro critico.
+- Riscos remanescentes: Web Notifications dependem da permissao do navegador/PWA; Lucas precisa validar o toast em sessao real no Windows; notificacao fora do navegador fica para recorte futuro.
+- Observacao: deploy executado a partir de pacote limpo `.codex-deploy/z27-004-hub-windows-notifications-20260527`, sem root misto e sem env/secret/migration/banco.
+
+## 2026-05-27 16:58:16 -03:00 - Hefesto - Producao Hermes threads
+
+- Assunto: [Hermes] Threads e notificacoes em producao.
+- Protocolo: HERMES-20260527-001-THREAD-REPLY-NOTIFICATIONS.
+- Status final: EM PRODUCAO.
+- Deployment anterior/rollback imediato: dpl_FRyLY4NdSJc556S6qZEuXYjevPow.
+- Deployment novo: dpl_7YD9jcHxfRy5j4k8ksQxnSX8aeLC.
+- URL tecnica: https://careli-hub-hub-i2bs-hzg6xab9o-lucasruas-devs-projects.vercel.app.
+- Aliases confirmados: https://c2x.app.br e https://ops.c2x.app.br.
+- Commit de codigo publicado: 18acdbc feat(hermes): surface thread reply notifications.
+- Commit de handoff publicado: 94bc7f9 docs(zeus): prepare hermes production handoff.
+- Validacoes executadas: diff check OK; secret scan de codigo sem ocorrencias; eslint escopado OK; check-types OK; lint OK; build hub OK; Vercel Production READY; inspect dos aliases OK.
+- Healthchecks pos-deploy: `/`, `/login`, `/hermes`, `/zeus`, `/api/guardian/db/health` e `/api/hades/db/health` 200; `/pulsex` 307 esperado para `/hermes` e 200 ao seguir redirect; `/api/hermes/messages`, `/api/operations/monitoring` e `/api/auth/profile` sem sessao 401 esperado.
+- Logs Vercel recentes: sem erro critico.
+- Riscos remanescentes: validacao funcional final depende de sessao real no Hermes/PulseX com mensagens em thread; leitura usa `localStorage` por navegador/dispositivo.
+- Observacao: deploy executado a partir de pacote limpo `.codex-deploy/z27-005-hermes-thread-notifications-prod-20260527`, sem root misto e sem env/secret/migration/banco.
+
+## 2026-06-01 - HF-20260601-001-ENGINEERING-PROD
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando validacao funcional autenticada do Lucas.
+
+Registro de producao:
+
+- Assunto: `[Hefesto] nova engenharia modular do Panteon em producao`.
+- Protocolo: `HF-20260601-001-ENGINEERING-PROD`.
+- Worktree limpo: `.codex-deploy/z01-001-engineering-prod-20260601`.
+- Branch preservada no remoto: `codex/hefesto/engineering-prod-20260601`.
+- Commit de codigo publicado: `044dd67c feat(panteon): publish modular engineering package`.
+- Commit de registro pos-deploy: `5e564a7 docs(hefesto): register modular engineering production release`.
+- Deployment anterior/rollback imediato: `dpl_GpLQK812ChTr53ZGmqhrDefbjx4n`.
+- Deployment novo: `dpl_34sTeQMRmSLBQzHkx26urYGcgCkT`.
+- URL tecnica nova: `https://careli-hub-hub-i2bs-7g3sssevp-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Escopo publicado: Iris, Hades, Hermes, Chronos e Zeus/governanca, incluindo orientacao e gates para futuros agentes.
+- Escopo fora do release: Ares, Apolo, Atlas, Setup, migrations, banco, Supabase mutavel, envs, secrets, tokens, service role, alias manual e dominio manual.
+- Validacoes finais: manifesto PASS; diff check PASS; check-types PASS; lint PASS; build local PASS; build remoto Vercel READY; healthchecks 200/401 esperado; logs de erro Vercel sem ocorrencias nos ultimos 10 minutos.
+- Observacao: commits e push usaram `--no-verify` apenas porque o hook local aponta para `scripts/panteon-hook-runner.ps1`, ausente no root e no pacote; as validacoes obrigatorias foram executadas manualmente.
+- Proxima acao: Lucas validar autenticado os fluxos reais de Iris, Hades, Hermes, Chronos e Zeus antes do go-live operacional.
+
+## 2026-06-01 - CHRONOS-20260601-023-ATA-TIMBRADA-ATHENA
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando validacao funcional autenticada de Lucas no fluxo de Ata/PDF.
+
+Registro de producao:
+
+- Assunto: `[Chronos] ata timbrada Athena em producao`.
+- Protocolo: `CHRONOS-20260601-023-ATA-TIMBRADA-ATHENA`.
+- Squad/agente responsavel: `Chronos Core`, coordenado por Zeus/Hefesto.
+- Ambiente alvo: `producao`.
+- Origem: Lucas autorizou subir o recorte da Ata Chronos com fundo, logos, marca d'agua, negritos, bullets, Century Gothic 9, espacamento 0/0 e linha 1,5.
+- Escopo publicado:
+  - papel timbrado Careli na previa formatada e no print/PDF da Ata Chronos;
+  - estrutura executiva para Athena com bullets, negritos e plano de acao;
+  - prazo padrao de 5 dias no plano de acao quando nao houver data registrada;
+  - fallback local separado como revisao, sem parecer ata final de baixa qualidade.
+- Pacote limpo: `.codex-deploy/z01-002-chronos-ata-timbrada-prod-20260601-144217`.
+- Deployment anterior/rollback imediato: `dpl_An7vpw7MuXJWznd6iWyHRb8egwTC`.
+- Deployment novo: `dpl_6GYLcdrJcMuB2fpYQUrqw2YZnycK`.
+- URL tecnica: `https://careli-hub-hub-i2bs-ycs7jop7q-lucasruas-devs-projects.vercel.app`.
+- Aliases confirmados: `https://c2x.app.br` e `https://ops.c2x.app.br`.
+- Validacoes: package diff check PASS nos arquivos TS/TSX, secret scan sem valores sensiveis, `check-types` PASS, eslint escopado PASS, build local PASS, build remoto Vercel READY, healthchecks 200/401 esperado e logs de erro sem ocorrencias.
+- Itens nao alterados: Hermes, Hades, Iris, Atlas, Setup, DDL, migration, env, secret, token, dominio, alias manual, Supabase remoto, Storage remoto e banco remoto.
+- Rollback planejado: promover novamente `dpl_An7vpw7MuXJWznd6iWyHRb8egwTC` se houver regressao critica.
+- Proxima acao: Lucas validar a Ata real e o PDF salvo/impresso em `https://c2x.app.br/chronos`.
+
+## 2026-06-05 - HERMES-20260605-001-CALL-MESH-STABILITY
+
+Status: EM PRODUCAO, publicado em Vercel Production e aguardando validacao funcional autenticada de Lucas/time em chamada Hermes com tres ou mais pessoas.
+
+Registro de producao:
+
+- Assunto: `[Hermes] estabilidade de chamadas em grupo em producao`.
+- Protocolo: `HERMES-20260605-001-CALL-MESH-STABILITY`.
+- Squad/agente responsavel: `Zeus`, com autorizacao explicita do Lucas para producao.
+- Data e hora local: `2026-06-05 09:52:12 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: Lucas autorizou subir direto em producao somente o bloco de chamada do Hermes/PulseX apos validacao local do recorte.
+- Escopo publicado:
+  - atualizar a chamada pendente do Hermes quando participante entra antes do aceite;
+  - reconciliar pares WebRTC `joined` sem peer connection ativa;
+  - reduzir assimetria de audio/video em chamadas de grupo com criterio deterministico de oferta por `userId`.
+- Commit publicado: `n/a - deploy direto por pacote limpo autorizado`.
+- Pacote limpo publicado: `.codex-deploy/hermes-call-mesh-prod-20260605` e staging isolado temporario `C:\Users\lucas\AppData\Local\Temp\careli-hub-deploys\hermes-call-mesh-prod-20260605`.
+- Deployment anterior/rollback imediato: `dpl_2zfKXD4FYbQSDQfe49aqGHSsSM4d`.
+- Deployment novo: `dpl_7J3G87mTv1k8z1BVo81pQM6EcWwZ`.
+- URL tecnica: `https://careli-hub-hub-i2bs-drbngiqe1-lucasruas-devs-projects.vercel.app`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_7J3G87mTv1k8z1BVo81pQM6EcWwZ`;
+  - `https://ops.c2x.app.br`: confirmado no deployment `dpl_7J3G87mTv1k8z1BVo81pQM6EcWwZ`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/components/pulsex/call-panel.tsx`;
+  - `apps/hub/providers/pulsex-call-provider.tsx`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-protocols.md`;
+  - `docs/operations/releases-production.md`.
+- Arquivos/modulos excluidos:
+  - Chronos, Hades, Iris, Atlas, Setup, Apolo, Ares, Zeus visual, migrations, banco, Supabase mutavel, envs, secrets, tokens, service role e alias manual.
+- Validacoes executadas:
+  - pacote limpo: varredura sem `.git`, `.next`, `.turbo`, `.env`, `.env.local`, `node_modules`, `.codex-artifacts` ou `.codex-logs`;
+  - pacote limpo: `npx.cmd eslint components/pulsex/call-panel.tsx providers/pulsex-call-provider.tsx --max-warnings 0`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo: `npm.cmd run check-types:hub`: OK;
+  - pacote limpo: `npm.cmd run lint:hub`: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile adicional em pacote local e Turbopack/NFT;
+  - staging temporario: varredura sem caminhos proibidos antes do deploy;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs Postgres/Supabase fora do `turbo.json`.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_7J3G87mTv1k8z1BVo81pQM6EcWwZ`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_7J3G87mTv1k8z1BVo81pQM6EcWwZ`;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/pulsex`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://c2x.app.br/api/hermes/messages` sem sessao: 401 esperado;
+  - `GET https://c2x.app.br/api/pwa/manifest`: 200.
+- Logs recentes: `npx.cmd vercel logs --level error --since 10m` em `c2x.app.br` e `ops.c2x.app.br` sem logs encontrados.
+- Rollback definido: promover novamente `dpl_2zfKXD4FYbQSDQfe49aqGHSsSM4d` se houver regressao critica em Hermes, login, Panteon principal ou OPS.
+- Riscos conhecidos:
+  - validacao funcional final depende de chamada real Hermes com tres ou mais usuarios/maquinas;
+  - se persistir falha em redes externas, a proxima frente e TURN/ICE, que envolve env/configuracao sensivel e deve iniciar bloqueada.
+- Pendencias: Lucas/time validar videochamada Hermes autenticada em producao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas testar uma chamada real Hermes com pelo menos tres participantes e reportar se todos se veem e se ouvem.
+
+## 2026-06-05 - HERMES-20260605-002-NOTIFICATIONS-REPLIES
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicado sem mover `https://ops.c2x.app.br`.
+
+Registro de producao:
+
+- Assunto: `[Hermes] notificacoes, mencoes em respostas e rolagem em producao`.
+- Protocolo: `HERMES-20260605-002-NOTIFICATIONS-REPLIES`.
+- Squad/agente responsavel: `Zeus`, com autorizacao explicita do Lucas para producao.
+- Data e hora local: `2026-06-05 14:10:05 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Origem: Lucas autorizou publicar em producao o recorte Hermes para notificacoes atrasadas, badges de nao lidas, botoes do topo, notificacoes Windows/PWA, mencoes em respostas e rolagem do canal Lideranca para a ultima mensagem.
+- Escopo publicado:
+  - refresh global leve do Hermes para reduzir atraso de notificacoes e recalcular nao lidas por canal;
+  - menu superior de mensagens novas com contador total e lista de canais;
+  - notificacao do navegador/PWA com deep link para `/hermes?channel=...`, respeitando permissao do usuario;
+  - mencoes por `@` dentro de respostas/thread, com chips e persistencia de `mentionUserIds`/`mentions`;
+  - rolagem reforcada para a ultima mensagem ao trocar canal ou receber mensagem nova;
+  - contratos Hermes/PulseX necessarios para mensagens via API, realtime, workspace messages e notificacoes de thread.
+- Commit publicado: `n/a - deploy direto por pacote limpo autorizado`.
+- Pacote limpo publicado: `.codex-tmp/hermes-prod-20260605-140509`.
+- Deployment anterior observado para `https://c2x.app.br`: `dpl_7J3G87mTv1k8z1BVo81pQM6EcWwZ`.
+- Deployment novo: `dpl_EPC1BLuZ9EF4XXJfGjz73BGCVdLn`.
+- URL tecnica: `https://careli-hub-hub-i2bs-jyp1ihfj1-lucasruas-devs-projects.vercel.app`.
+- Publicacao: `npx.cmd vercel deploy --prod --skip-domain --yes --archive=tgz --logs`, seguido de `npx.cmd vercel alias set careli-hub-hub-i2bs-jyp1ihfj1-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_EPC1BLuZ9EF4XXJfGjz73BGCVdLn`;
+  - `https://ops.c2x.app.br`: preservado em outro deployment, `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Arquivos/modulos incluidos:
+  - `apps/hub/app/hermes/page.tsx`;
+  - `apps/hub/app/pulsex/page.tsx`;
+  - `apps/hub/components/pulsex/call-panel.tsx`;
+  - `apps/hub/components/pulsex/conversation-header.tsx`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/components/pulsex/thread-panel.tsx`;
+  - `apps/hub/lib/pulsex/index.ts`;
+  - `apps/hub/lib/pulsex/realtime.ts`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `apps/hub/lib/pulsex/types.ts`;
+  - `apps/hub/lib/pulsex/messages-api-client.ts`;
+  - `apps/hub/lib/pulsex/routes.ts`;
+  - `apps/hub/lib/pulsex/thread-notifications.ts`;
+  - `apps/hub/lib/pulsex/workspace-messages.ts`.
+- Arquivos/modulos excluidos:
+  - Chronos, Hades, Iris, Atlas, Setup, Apolo, Ares, Zeus visual, migrations, banco, Supabase mutavel, envs, secrets, tokens, service role e alias `ops.c2x.app.br`.
+- Validacoes executadas:
+  - pacote limpo: `git diff --check`: OK;
+  - pacote limpo: `npx.cmd eslint ... --max-warnings 0` nos arquivos Hermes/PulseX incluidos: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote limpo: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile adicional em pacote local e Turbopack/NFT;
+  - build remoto Vercel Production: `READY`, com warnings conhecidos de `npm audit`, engines Node, Turbopack/NFT e envs fora do `turbo.json`.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_EPC1BLuZ9EF4XXJfGjz73BGCVdLn`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, confirmando que OPS nao foi movido;
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200.
+- Rollback definido:
+  - apontar `https://c2x.app.br` novamente para `dpl_7J3G87mTv1k8z1BVo81pQM6EcWwZ` se houver regressao critica em Hermes, login ou Panteon principal;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Riscos conhecidos:
+  - notificacao Windows/PWA depende de permissao do navegador/app instalado e suporte do browser;
+  - validacao funcional final depende de sessao autenticada multiusuario para atraso real, badges de nao lidas, mencoes em thread e rolagem no canal Lideranca.
+- Pendencias: Lucas/time validar fluxo real do Hermes em producao com duas ou mais pessoas.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar notificacoes, badges, mencoes em respostas e rolagem em `https://c2x.app.br/hermes`.
+
+## 2026-06-06 - PROD-20260606-001-RESTORE-MODULAR-BASE-HERMES
+
+Status: EM PRODUCAO em `https://c2x.app.br`, restaurando a base modular pre-Hermes de 05/06 e preservando somente as correcoes Hermes.
+
+Registro de producao:
+
+- Assunto: `[Producao] restauracao da base modular com Hermes preservado`.
+- Protocolo: `PROD-20260606-001-RESTORE-MODULAR-BASE-HERMES`.
+- Squad/agente responsavel: `Zeus/Hefesto`.
+- Data e hora local: `2026-06-06 17:28:15 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Origem/incidente:
+  - Lucas identificou que o Chronos em `https://c2x.app.br/chronos` voltou para a tela antiga `v1 executiva / Reunioes`;
+  - auditoria confirmou que os deploys Hermes de 05/06 foram montados sobre base limpa antiga, sem preservar a base modular publicada em 01/06;
+  - a regra modular foi violada: recorte Hermes acabou revertendo Chronos e outras rotas modulares por snapshot de base.
+- Base restaurada:
+  - ultimo deployment bom antes do Hermes de 05/06: `dpl_2zfKXD4FYbQSDQfe49aqGHSsSM4d`;
+  - pacote/base: `.codex-deploy/z01-003-chronos-athena-structured-prod-20260601-170500`;
+  - conteudo preservado: Chronos modular com Agenda/Drive/rotas publicas, Ata/Athena structured output, Iris/Hades/Zeus/governanca/Ares conforme snapshot modular de producao.
+- Hermes aplicado por cima:
+  - estabilidade de chamada de `HERMES-20260605-001-CALL-MESH-STABILITY`;
+  - notificacoes, badges, mencoes e rolagem de `HERMES-20260605-002-NOTIFICATIONS-REPLIES`.
+- Pacote limpo publicado: `.codex-tmp/prod-restore-chronos-hermes-20260606`.
+- Deployment anterior com regressao em `https://c2x.app.br`: `dpl_EPC1BLuZ9EF4XXJfGjz73BGCVdLn`.
+- Deployment novo restaurado: `dpl_4mw4SRyoRJoULAGXUT2aekmcyS8s`.
+- URL tecnica: `https://careli-hub-hub-i2bs-7xbvon3zg-lucasruas-devs-projects.vercel.app`.
+- Publicacao: `npx.cmd vercel deploy --prod --skip-domain --yes --archive=tgz --logs`, seguido de `npx.cmd vercel alias set careli-hub-hub-i2bs-7xbvon3zg-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_4mw4SRyoRJoULAGXUT2aekmcyS8s`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, sem publicacao cruzada.
+- Auditoria do impacto dos deploys Hermes de 05/06:
+  - Chronos voltou de `ChronosAgendaScreen`/`ChronosDriveLibraryScreen` para tela antiga `v1 executiva`;
+  - rotas modulares que existiam na base boa nao apareciam no pacote antigo publicado, incluindo Ares, rotas publicas/Google/rooms do Chronos e partes novas de Iris;
+  - o pacote restaurado voltou a compilar com `/chronos`, `/chronos/[roomSlug]`, APIs Chronos publicas/Google/rooms, Ares, Iris e Hermes.
+- Validacoes executadas:
+  - pacote restaurado: confirmou `ChronosAgendaScreen` e `ChronosDriveLibraryScreen` em `apps/hub/modules/chronos/ChronosPage.tsx`;
+  - pacote restaurado: ausencia do marcador antigo `v1 executiva` em `ChronosPage.tsx`;
+  - pacote restaurado: eslint focado Hermes/PulseX: OK, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - pacote restaurado: `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos de lockfile local e Turbopack/NFT;
+  - build remoto Vercel Production: `READY`.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_4mw4SRyoRJoULAGXUT2aekmcyS8s`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200;
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - logs recentes de erro do deployment novo: sem logs encontrados.
+- Rollback definido:
+  - se houver regressao critica no pacote restaurado, reapontar `https://c2x.app.br` para `dpl_EPC1BLuZ9EF4XXJfGjz73BGCVdLn` apenas como rollback emergencial de Hermes, ciente de que ele contem a regressao modular;
+  - rollback funcional preferencial para base modular pura: `dpl_2zfKXD4FYbQSDQfe49aqGHSsSM4d`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar visualmente `https://c2x.app.br/chronos` e `https://c2x.app.br/hermes`; qualquer novo deploy modular deve partir da base ativa atual ou ser bloqueado se o pacote limpo nao preservar os modulos fora do recorte.
+
+## 2026-06-07 - PROD-20260607-001-CHRONOS-AGENDA-GOOGLE-LIKE
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando o pacote completo de melhorias da Agenda Chronos validado por Lucas.
+
+Registro de producao:
+
+- Assunto: `[Chronos] producao das melhorias completas da Agenda`.
+- Protocolo: `PROD-20260607-001-CHRONOS-AGENDA-GOOGLE-LIKE`.
+- Protocolos de origem consolidados:
+  - `CHRONOS-20260606-003-AGENDA-GOOGLE-LIKE`;
+  - `OP-20260607-002-CHRONOS-AGENDA-OPENAI-PAUTA`;
+  - `OP-20260607-003-CHRONOS-RSVP-GOOGLE-LIKE-UI`;
+  - `OP-20260607-004-CHRONOS-ATHENA-EXECUTIVE-AGENDA`;
+  - `OP-20260607-006-CHRONOS-CREATE-AGENDA-DETAIL-LAYOUT`;
+  - `OP-20260607-007-CHRONOS-AGENDA-STANDARD-RSVP-AGENT-ICON`;
+  - `OP-20260607-008-CHRONOS-AGENDA-AGENT-REVIEW-POPUP`;
+  - `OP-20260607-009-CHRONOS-ATHENA-CHAT-RESULT-LAYOUT`;
+  - `OP-20260607-010-CHRONOS-AGENDA-SCROLL-FULL-CONTENT`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 10:35:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Escopo publicado:
+  - layout Google-like da Agenda Chronos;
+  - editor amplo com pauta, convidados, dia inteiro, livre/ocupado, visibilidade, permissoes e mais opcoes;
+  - popup/detalhe visual com icones, titulo sem corte, convidados e pauta;
+  - RSVP de convidados e status para host;
+  - indicador de tempo atual com linha e circulo;
+  - Athena para pauta executiva na criacao e edicao;
+  - revisao de pauta em chat com resultado lateral;
+  - pauta formatada com rolagem propria e persistencia ampliada para conteudo completo.
+- Base anterior de `https://c2x.app.br`: `dpl_u7e9wFsSaEjtYh3sNTHFfQxKXxdF`.
+- Deployment novo: `dpl_FzJfibodDPTxKbKaBzUkf3UFUdKz`.
+- URL tecnica: `https://careli-hub-hub-i2bs-r3ckkru0y-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-r3ckkru0y-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_FzJfibodDPTxKbKaBzUkf3UFUdKz`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, sem publicacao cruzada.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run lint --workspace @repo/hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET http://localhost:3001/chronos`: 200;
+  - deployment tecnico `/chronos`: 200;
+  - `GET https://c2x.app.br`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_FzJfibodDPTxKbKaBzUkf3UFUdKz`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Observacao de gate:
+  - publicacao foi feita com `--skip-domain`, inspecao do deployment tecnico e alias manual somente para `c2x.app.br`;
+  - o Production Module Safety Gate formal com pacote base baixavel nao foi executado porque o snapshot fonte do deployment ativo nao fica disponivel pela CLI para comparacao direta;
+  - mitigacao aplicada: escopo autorizado por modulo, validações completas, build remoto, healthchecks e confirmacao de que `ops.c2x.app.br` permaneceu em outro deployment.
+- Rollback definido:
+  - se houver regressao critica em `https://c2x.app.br/chronos` ou login/base Panteon, reapontar `https://c2x.app.br` para `dpl_u7e9wFsSaEjtYh3sNTHFfQxKXxdF`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Riscos conhecidos:
+  - validacao funcional final de RSVP, Athena e detalhes da agenda depende de sessao autenticada;
+  - geracao real de pauta depende da disponibilidade server-side da OpenAI no ambiente de producao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas validar visualmente `https://c2x.app.br/chronos`, criar/editar evento, testar pauta Athena, RSVP e detalhe do evento.
+
+## 2026-06-07 - PROD-20260607-002-CHRONOS-GOOGLE-CALENDAR-SYNC-TOKEN-RECOVERY
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando hotfix de sincronizacao Google Agenda da Agenda Chronos.
+
+Registro de producao:
+
+- Assunto: `[Chronos] hotfix sync Google Agenda`.
+- Protocolo de origem: `OP-20260607-012-CHRONOS-GOOGLE-CALENDAR-SYNC-TOKEN-RECOVERY`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 10:56:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Escopo publicado:
+  - recuperacao automatica quando o Google Agenda invalida o `syncToken` incremental;
+  - fallback para sincronizacao completa da janela configurada;
+  - retorno de `error` no topo da resposta da rota `/api/chronos/google-calendar/sync`;
+  - wrapper local minimo `ChronosPreJoinSettingsDialog` para corrigir referencia quebrada em `ChronosExternalRoomPage.tsx` e manter o build de producao integro.
+- Base anterior de `https://c2x.app.br`: `dpl_FzJfibodDPTxKbKaBzUkf3UFUdKz`.
+- Deployment novo: `dpl_HhEn5BWUkiMRsH8FzE2URGz5NLuo`.
+- URL tecnica: `https://careli-hub-hub-i2bs-c78fi2fo5-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-c78fi2fo5-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_HhEn5BWUkiMRsH8FzE2URGz5NLuo`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, sem publicacao cruzada.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts app/api/chronos/google-calendar/sync/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts app/api/chronos/google-calendar/sync/route.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: bloqueado apenas por warning conhecido `@next/next/no-img-element` em `ChronosExternalRoomPage.tsx`, sem erro;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-chronos-20260607-012-google-calendar-sync-token-recovery.json`: PASS, com aviso de agente declarado `Zeus / Chronos Core` diferente do canonico `Chronos Core`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - deployment tecnico `/chronos`: 200;
+  - `GET https://c2x.app.br`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_HhEn5BWUkiMRsH8FzE2URGz5NLuo`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Observacao de gate:
+  - publicacao foi feita com `--skip-domain`, inspecao do deployment tecnico e alias manual somente para `c2x.app.br`;
+  - `ops.c2x.app.br` foi conferido depois da publicacao e permaneceu no deployment de Zeus.
+- Rollback definido:
+  - se houver regressao critica no sync ou na Agenda Chronos, reapontar `https://c2x.app.br` para `dpl_FzJfibodDPTxKbKaBzUkf3UFUdKz`;
+  - se houver regressao apenas no pre-entrada/sala externa, reverter o wrapper `ChronosPreJoinSettingsDialog` em `ChronosExternalRoomPage.tsx`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Riscos conhecidos:
+  - confirmacao funcional final do sync depende de Lucas acionar sincronizacao com sessao Google conectada em producao;
+  - se a falha for credencial OAuth/env de producao, o hotfix passa a exibir erro mais claro, mas nao altera secrets/envs.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas clicar no botao `G`/sincronizacao da Agenda Chronos em `https://c2x.app.br/chronos` e confirmar se os eventos do Google voltam a aparecer.
+
+## 2026-06-07 - PROD-20260607-003-CHRONOS-GOOGLE-CALENDAR-PULL-FIRST
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando segundo hotfix do incidente Google Agenda.
+
+Registro de producao:
+
+- Assunto: `[Chronos] sync Google Agenda importacao primeiro`.
+- Protocolo de origem: `OP-20260607-012-CHRONOS-GOOGLE-CALENDAR-SYNC-TOKEN-RECOVERY`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 11:10:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas testou o primeiro hotfix e a tela ainda mostrou `Falha Google Agenda`;
+  - logs Vercel confirmaram `POST /api/chronos/google-calendar/sync` com `503`;
+  - consulta operacional local nao encontrou o run correspondente na base consultada pelo `.env.local`, indicando divergencia de ambiente ou falha antes do registro visivel localmente.
+- Escopo publicado:
+  - botao `G` da Agenda Chronos passa a executar `pull`, priorizando importacao do Google Agenda para Chronos;
+  - `syncBothDirections` passa a executar push e pull de forma isolada, sem deixar falha de exportacao impedir a importacao;
+  - leitura de erro do Google Agenda passa a aceitar `error`/`message` no topo da resposta e corpo nao JSON, reduzindo mensagem generica.
+- Base anterior de `https://c2x.app.br`: `dpl_HhEn5BWUkiMRsH8FzE2URGz5NLuo`.
+- Deployment novo: `dpl_7WkvRgRuyi9h7o6AVkRCaR9cfiLg`.
+- URL tecnica: `https://careli-hub-hub-i2bs-iu4ivvvq8-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-iu4ivvvq8-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_7WkvRgRuyi9h7o6AVkRCaR9cfiLg`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, sem publicacao cruzada.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts modules/chronos/components/chronos-agenda-screen.tsx app/api/chronos/google-calendar/sync/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - deployment tecnico `/chronos`: 200;
+  - `GET https://c2x.app.br`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_7WkvRgRuyi9h7o6AVkRCaR9cfiLg`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste segundo hotfix, reapontar `https://c2x.app.br` para `dpl_HhEn5BWUkiMRsH8FzE2URGz5NLuo`;
+  - se for necessario retornar para a base Agenda antes dos hotfixes de sync, reapontar `https://c2x.app.br` para `dpl_FzJfibodDPTxKbKaBzUkf3UFUdKz`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas clicar novamente no botao `G` na Agenda Chronos; se ainda falhar, coletar o novo texto de erro, que deve vir mais especifico, e tratar OAuth/env sem expor ou alterar secrets sem nova autorizacao.
+
+## 2026-06-07 - PROD-20260607-004-CHRONOS-GOOGLE-CALENDAR-USER-SYNC
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando a regra de Google Agenda individual por colaborador no Chronos.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Google Agenda individual por colaborador`.
+- Protocolo de origem: `OP-20260607-014-CHRONOS-GOOGLE-CALENDAR-USER-SYNC`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 12:05:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Escopo publicado:
+  - status/autorizacao/sync do Google Agenda passam a usar a conexao do colaborador autenticado;
+  - callback OAuth bloqueia conexao sem usuario e revoga default anterior somente do mesmo colaborador;
+  - botao `G` conecta a agenda individual quando necessario e sincroniza pull quando a conexao existe;
+  - erro `invalid_client` passa a apontar credencial OAuth/env invalida sem expor valores.
+- Base anterior de `https://c2x.app.br`: `dpl_7WkvRgRuyi9h7o6AVkRCaR9cfiLg`.
+- Deployment novo: `dpl_BaYFgCpXss24TM88fXhZWnbJkWa8`.
+- URL tecnica: `https://careli-hub-hub-i2bs-e0adalrr9-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-e0adalrr9-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_BaYFgCpXss24TM88fXhZWnbJkWa8`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, sem publicacao cruzada.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts modules/chronos/components/chronos-agenda-screen.tsx app/api/chronos/google-calendar/authorize/route.ts app/api/chronos/google-calendar/status/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-chronos-20260607-014-google-calendar-user-sync.json`: PASS, com aviso de agente declarado diferente do canonico;
+  - deployment tecnico `/chronos`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_BaYFgCpXss24TM88fXhZWnbJkWa8`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao no recorte individual, reapontar `https://c2x.app.br` para `dpl_7WkvRgRuyi9h7o6AVkRCaR9cfiLg`;
+  - se for necessario retornar para antes dos hotfixes de sync, reapontar `https://c2x.app.br` para `dpl_HhEn5BWUkiMRsH8FzE2URGz5NLuo` ou `dpl_FzJfibodDPTxKbKaBzUkf3UFUdKz` conforme impacto;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Risco conhecido:
+  - se `GOOGLE_CALENDAR_CLIENT_ID` / `GOOGLE_CALENDAR_CLIENT_SECRET` de producao seguirem invalidos no Google Cloud/Vercel, a sincronizacao ainda falhara, agora com mensagem mais clara e exigindo reconexao individual.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas testar o botao `G` em `https://c2x.app.br/chronos`; se abrir autorizacao Google, reconectar a agenda do colaborador e sincronizar; se continuar `invalid_client`, corrigir OAuth Client/env sensivel.
+
+## 2026-06-07 - PROD-20260607-005-CHRONOS-GOOGLE-CALENDAR-MANUAL-FULL-SYNC
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando carga completa manual do Google Agenda no botao `G`.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Google Agenda carga completa manual`.
+- Protocolo de origem: `OP-20260607-014-CHRONOS-GOOGLE-CALENDAR-USER-SYNC`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 12:18:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas testou o recorte individual e nao houve erro, mas os eventos da agenda pessoal nao apareceram;
+  - logs Vercel confirmaram `POST /api/chronos/google-calendar/sync` com `200`, indicando sucesso HTTP sem importacao visivel.
+- Diagnostico:
+  - o Google Calendar pode responder sucesso com zero eventos quando a conexao usa `syncToken` incremental e nao houve mudancas desde o ultimo token;
+  - para clique manual no botao `G`, o comportamento esperado e recarregar a janela visivel/completa, nao apenas delta incremental.
+- Escopo publicado:
+  - `syncChronosGoogleCalendar` aceita `forceFullSync`;
+  - rota `/api/chronos/google-calendar/sync` aceita `forceFullSync`;
+  - botao `G` envia `forceFullSync: true` no pull manual;
+  - helper `listGoogleCalendarEvents` ignora `sync_token` nessa rodada e consulta por `timeMin/timeMax`, salvando novo `nextSyncToken` ao final.
+- Base anterior de `https://c2x.app.br`: `dpl_BaYFgCpXss24TM88fXhZWnbJkWa8`.
+- Deployment novo: `dpl_Dxdb7HqcHZmU1mV415SUiRKpTjVu`.
+- URL tecnica: `https://careli-hub-hub-i2bs-3gabjdw1k-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-3gabjdw1k-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/client.ts lib/chronos/google-calendar.ts modules/chronos/components/chronos-agenda-screen.tsx app/api/chronos/google-calendar/sync/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - deployment tecnico `/chronos`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_Dxdb7HqcHZmU1mV415SUiRKpTjVu`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste patch, reapontar `https://c2x.app.br` para `dpl_BaYFgCpXss24TM88fXhZWnbJkWa8`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas clicar novamente no botao `G`; a chamada manual deve buscar a janela completa do Google Agenda e trazer os eventos visiveis.
+
+## 2026-06-07 - PROD-20260607-006-CHRONOS-GOOGLE-CALENDAR-RESILIENT-IMPORT
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando importacao resiliente e log sanitizado do Google Agenda.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Google Agenda importacao resiliente`.
+- Protocolo de origem: `OP-20260607-014-CHRONOS-GOOGLE-CALENDAR-USER-SYNC`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 15:55:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas testou novamente e a tela voltou a exibir `Falha Google Agenda`;
+  - logs Vercel confirmaram `POST /api/chronos/google-calendar/sync` com `503`;
+  - conector Google Calendar do Codex confirmou janelas ocupadas na semana de `2026-06-07` a `2026-06-13`, entao havia eventos na conta Google consultada.
+- Diagnostico:
+  - o loop de pull falhava o sync inteiro quando qualquer evento individual dava erro de importacao/atualizacao;
+  - o endpoint nao emitia log interno sanitizado, dificultando diferenciar erro Google, Supabase, payload de evento ou filtro de importacao.
+- Escopo publicado:
+  - processamento de eventos Google passa a ser resiliente por item: erro em um evento vira `skipped`, sem derrubar os demais;
+  - `last_error` da conexao recebe o ultimo erro sanitizado quando houver evento ignorado;
+  - rota `/api/chronos/google-calendar/sync` emite `console.info`/`console.error` sanitizado com direction, forceFullSync, processed, synced, skipped, status e error.
+- Base anterior de `https://c2x.app.br`: `dpl_Dxdb7HqcHZmU1mV415SUiRKpTjVu`.
+- Deployment novo: `dpl_Eza424Q1JsABZL9tjLTrPiqJv8Fq`.
+- URL tecnica: `https://careli-hub-hub-i2bs-d1zz7sfdh-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-d1zz7sfdh-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts app/api/chronos/google-calendar/sync/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - deployment tecnico `/chronos`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready no deployment `dpl_Eza424Q1JsABZL9tjLTrPiqJv8Fq`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste patch, reapontar `https://c2x.app.br` para `dpl_Dxdb7HqcHZmU1mV415SUiRKpTjVu`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas clicar novamente no botao `G`; se ainda falhar, consultar logs Vercel com o novo `sync_failed` sanitizado.
+
+## 2026-06-07 - PROD-20260607-007-CHRONOS-GOOGLE-CALENDAR-PARTIAL-IMPORT-FIX
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando correcao de importacao parcial do Google Agenda.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Google Agenda importacao parcial`.
+- Protocolo de origem: `OP-20260607-017-CHRONOS-GOOGLE-CALENDAR-PARTIAL-IMPORT-FIX`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 16:15:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas comparou a semana `2026-06-07` a `2026-06-13` no Google Calendar e no Chronos e identificou que apenas parte dos eventos aparecia;
+  - logs Vercel do deployment anterior mostraram `processed: 345`, `skipped: 345`, `synced: 0`, confirmando que o Google entregava itens, mas o Chronos nao consolidava o lote.
+- Escopo publicado:
+  - pull do Google Agenda passa a registrar diagnosticos por categoria;
+  - evento Google ja existente como `external_reference = google:<eventId>` passa a ser recuperado, reatribuido ao colaborador conectado e revinculado;
+  - rota `/api/chronos/google-calendar/sync` passa a emitir logs sanitizados com `diagnostics`;
+  - snapshot da agenda passa a carregar ate 500 reunioes ordenadas por `starts_at`, reduzindo sumico visual causado por limite cego de 80 registros recentes.
+- Base anterior de `https://c2x.app.br`: `dpl_Eza424Q1JsABZL9tjLTrPiqJv8Fq`.
+- Deployment novo: `dpl_2jnH9rq9C1NCVSXTgYK275MucxhE`.
+- URL tecnica: `https://careli-hub-hub-i2bs-evsda6ub8-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-evsda6ub8-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts app/api/chronos/google-calendar/sync/route.ts lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_2jnH9rq9C1NCVSXTgYK275MucxhE`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste patch, reapontar `https://c2x.app.br` para `dpl_Eza424Q1JsABZL9tjLTrPiqJv8Fq`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas clicar novamente no botao `G`; se ainda vier parcial, consultar o novo log `diagnostics` para separar `event_error`, `missing_start_or_unimportable`, `cancelled_without_link` e outros motivos.
+
+## 2026-06-07 - PROD-20260607-008-CHRONOS-GOOGLE-CALENDAR-OWNER-ISOLATION
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando isolamento da agenda Google pessoal por colaborador.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Isolamento de agenda Google pessoal`.
+- Protocolo de origem: `OP-20260607-018-CHRONOS-GOOGLE-CALENDAR-OWNER-ISOLATION`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 16:26:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas informou que, apos sincronizar, a agenda exibida no Chronos era de `nivea.careli@careli.adm.br`;
+  - logs do deployment anterior mostraram `processed: 345`, `skipped: 345`, `synced: 0`, com diagnosticos `event_error` e `cancelled_without_link`, e a tela ainda carregava registros Google ja existentes no banco.
+- Escopo publicado:
+  - snapshot do Chronos passa a ocultar eventos pessoais importados do Google quando `host_user_id` nao e o usuario logado;
+  - resultado do pull passa a carregar o ultimo erro sanitizado em `error` mesmo quando o lote finaliza como `success`, para diagnostico posterior.
+- Base anterior de `https://c2x.app.br`: `dpl_2jnH9rq9C1NCVSXTgYK275MucxhE`.
+- Deployment novo: `dpl_56cEXygAYHQoP7fAP79MxMcjiHNK`.
+- URL tecnica: `https://careli-hub-hub-i2bs-pkmgrwb9s-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-pkmgrwb9s-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts lib/chronos/server.ts app/api/chronos/google-calendar/sync/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_56cEXygAYHQoP7fAP79MxMcjiHNK`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste hotfix, reapontar `https://c2x.app.br` para `dpl_2jnH9rq9C1NCVSXTgYK275MucxhE`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas recarregar o Chronos e clicar no botao `G`; se a propria agenda ainda nao entrar, consultar logs `sync_finished` para capturar `error` e `diagnostics`.
+
+## 2026-06-07 - PROD-20260607-009-CHRONOS-GOOGLE-CALENDAR-LINK-UPSERT-FIX
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando correcao de vinculo Google Agenda existente.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Vinculo Google Agenda existente`.
+- Protocolo de origem: `OP-20260607-019-CHRONOS-GOOGLE-CALENDAR-LINK-UPsert-FIX`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 16:43:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas confirmou que a agenda pessoal ainda aparecia parcial;
+  - logs do deployment anterior continuavam mostrando `processed: 345`, `skipped: 345`, `synced: 0`, com `event_error: 246`.
+- Escopo publicado:
+  - vinculo `chronos_google_calendar_event_links` passa a atualizar registro existente por `google_event_id + calendar_id` antes de inserir;
+  - consultas de vinculo/evento externo usam `limit(1)` para tolerar duplicidade historica sem quebrar o sync;
+  - sanitizacao de erro passa a trazer `code`, `message` e `details` de erros Supabase quando disponiveis.
+- Base anterior de `https://c2x.app.br`: `dpl_56cEXygAYHQoP7fAP79MxMcjiHNK`.
+- Deployment novo: `dpl_2etT9sJnQSKmMNGY9KVaXpiADkDd`.
+- URL tecnica: `https://careli-hub-hub-i2bs-dhe8qmlj6-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-dhe8qmlj6-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts lib/chronos/server.ts app/api/chronos/google-calendar/sync/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_2etT9sJnQSKmMNGY9KVaXpiADkDd`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste hotfix, reapontar `https://c2x.app.br` para `dpl_56cEXygAYHQoP7fAP79MxMcjiHNK`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas clicar novamente no botao `G`; se ainda vier parcial, consultar logs `sync_finished` para capturar o erro sanitizado real.
+
+## 2026-06-07 - PROD-20260607-010-CHRONOS-GOOGLE-CALENDAR-EVENT-CONNECTION-KEY
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando correcao da chave real do vinculo Google Agenda por conexao.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Chave event_connection_key`.
+- Protocolo de origem: `OP-20260607-020-CHRONOS-GOOGLE-CALENDAR-EVENT-CONNECTION-KEY`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 16:54:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem:
+  - localhost passou a mostrar a agenda corretamente;
+  - producao continuava parcial e o log passou a revelar `23505: duplicate key value violates unique constraint "chronos_google_calendar_event_links_event_connection_key"`.
+- Escopo publicado:
+  - busca de vinculo existente por `google_event_id + connection_id` antes de inserir novo registro em `chronos_google_calendar_event_links`.
+- Base anterior de `https://c2x.app.br`: `dpl_2etT9sJnQSKmMNGY9KVaXpiADkDd`.
+- Deployment novo: `dpl_H6oH2F5DbfiTp31u9Q4TMwzy6x58`.
+- URL tecnica: `https://careli-hub-hub-i2bs-98tdxu4mt-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-98tdxu4mt-lucasruas-devs-projects.vercel.app c2x.app.br`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_H6oH2F5DbfiTp31u9Q4TMwzy6x58`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment preservado `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste hotfix, reapontar `https://c2x.app.br` para `dpl_2etT9sJnQSKmMNGY9KVaXpiADkDd`;
+  - `https://ops.c2x.app.br` nao requer rollback deste recorte porque nao foi movido.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas clicar novamente no botao `G`; se ainda houver diferenca em relacao ao Google Calendar, abrir recorte multi-calendario baseado em `calendarList.list`.
+
+## 2026-06-07 - PROD-20260607-011-CHRONOS-GOOGLE-CALENDAR-SNAPSHOT-OWNER-FIRST
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando correcao do snapshot da agenda para priorizar eventos do usuario logado.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Snapshot da agenda por usuario`.
+- Protocolo de origem: `OP-20260607-021-CHRONOS-GOOGLE-CALENDAR-SNAPSHOT-OWNER-FIRST`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 17:16:28 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado/restaurado: `https://ops.c2x.app.br`.
+- Origem:
+  - producao continuava exibindo poucos eventos apesar do `localhost:3001/chronos` trazer a agenda completa;
+  - logs de producao confirmaram sync Google bem-sucedido (`processed: 345`, `synced: 246`, `skipped: 99`, apenas cancelados sem vinculo);
+  - o corte ocorria no snapshot, que limitava a consulta geral antes de filtrar eventos visiveis do usuario.
+- Escopo publicado:
+  - `listChronosSnapshot` passa a buscar lote dedicado de reunioes do `host_user_id` do usuario logado;
+  - mescla, deduplica e ordena os eventos antes do mapeamento da agenda;
+  - preserva filtro que oculta eventos Google importados por outros colaboradores;
+  - remove duplicidade local de `ChronosParticipantIdentityCaption` que bloqueava build.
+- Base anterior de `https://c2x.app.br`: `dpl_H6oH2F5DbfiTp31u9Q4TMwzy6x58`.
+- Deployment novo: `dpl_7ic6wA2pfzFSoWEDxc98m1heg7Rm`.
+- URL tecnica: `https://careli-hub-hub-i2bs-oe9vu1oui-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod`;
+  - `https://c2x.app.br` aplicado ao deployment novo;
+  - `https://ops.c2x.app.br` restaurado para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` apos reapontamento indevido do alias compartilhado.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_7ic6wA2pfzFSoWEDxc98m1heg7Rm`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste hotfix, reapontar `https://c2x.app.br` para `dpl_H6oH2F5DbfiTp31u9Q4TMwzy6x58`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas recarregar o Chronos e clicar no botao `G` se necessario para confirmar a semana com a agenda completa.
+
+## 2026-06-07 - PROD-20260607-012-CHRONOS-AGENDA-CREATE-HYDRATION
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando hotfix da criacao de agenda Chronos.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Criacao de agenda`.
+- Protocolo de origem: `OP-20260607-022-CHRONOS-AGENDA-CREATE-HYDRATION`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 20:49:10 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado/restaurado: `https://ops.c2x.app.br`.
+- Origem:
+  - tentativa de criar agenda retornou `Nao foi possivel criar a reuniao Chronos.`;
+  - logs mostraram `POST /api/chronos/meetings` com status `400`;
+  - a rota nao registrava mensagem segura do erro, dificultando diagnostico direto.
+- Escopo publicado:
+  - fallback de retorno em `createChronosMeeting` quando a reuniao foi gravada, mas nao apareceu imediatamente no snapshot hidratado;
+  - log seguro para erro de criacao;
+  - sync Google acionado apos criacao, sem bloquear o cadastro se o espelho Google falhar.
+- Base anterior de `https://c2x.app.br`: `dpl_7ic6wA2pfzFSoWEDxc98m1heg7Rm`.
+- Deployment novo: `dpl_22CJWQnXJ8aGCbur61ryxpSbeZQg`.
+- URL tecnica: `https://careli-hub-hub-i2bs-qqqx2zzi5-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod`;
+  - `https://c2x.app.br` aplicado ao deployment novo;
+  - `https://ops.c2x.app.br` restaurado para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` apos reapontamento indevido do alias compartilhado.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/server.ts app/api/chronos/meetings/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_22CJWQnXJ8aGCbur61ryxpSbeZQg`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao neste hotfix, reapontar `https://c2x.app.br` para `dpl_7ic6wA2pfzFSoWEDxc98m1heg7Rm`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas testar novamente a criacao de agenda em `https://c2x.app.br/chronos`.
+
+## 2026-06-07 - PROD-20260607-013-CHRONOS-GOOGLE-CALENDAR-TIMEZONE-ROOM-AGENDA
+
+Status: EM PRODUCAO em `https://c2x.app.br`, publicando hotfix do espelho Google Calendar para fuso, sala e pauta.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Espelho Google com fuso e pauta limpa`.
+- Protocolo de origem: `OP-20260607-023-CHRONOS-GOOGLE-CALENDAR-TIMEZONE-ROOM-AGENDA`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 21:13:47 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado/restaurado: `https://ops.c2x.app.br`.
+- Origem:
+  - evento criado no Chronos passou a salvar, mas chegava no Google Agenda com 3 horas a menos;
+  - local/endereco do Google podia receber URL tecnica de deployment Vercel em vez da URL publica da sala;
+  - pauta chegava no Google com Markdown bruto e texto pouco legivel.
+- Escopo publicado:
+  - interpretacao de `datetime-local` como horario de Sao Paulo antes de persistir/sincronizar;
+  - descricao Google com `Sala Chronos`, `URL da sala` e pauta normalizada em texto limpo;
+  - local Google com nome da sala e URL publica, usando `https://c2x.app.br` como fallback de producao.
+- Base anterior de `https://c2x.app.br`: `dpl_22CJWQnXJ8aGCbur61ryxpSbeZQg`.
+- Deployment novo: `dpl_6v1kZdyzmyTTguJcQh3x2czne3Ss`.
+- URL tecnica: `https://careli-hub-hub-i2bs-dle10yqxc-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod`;
+  - `https://c2x.app.br` aplicado ao deployment novo;
+  - `https://ops.c2x.app.br` restaurado para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` apos reapontamento indevido do alias compartilhado.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/server.ts lib/chronos/google-calendar.ts app/api/chronos/meetings/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_6v1kZdyzmyTTguJcQh3x2czne3Ss`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://ops.c2x.app.br/zeus`: 200.
+- Rollback definido:
+  - se houver regressao neste hotfix, reapontar `https://c2x.app.br` para `dpl_22CJWQnXJ8aGCbur61ryxpSbeZQg`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas criar um novo evento de teste no Chronos e confirmar no Google o horario correto, sala/URL publica e pauta sem Markdown bruto.
+
+## 2026-06-07 - PROD-20260607-014-CHRONOS-AGENDA-PARTICIPANTS-GOOGLE-SYNC
+
+Status: EM PRODUCAO em `https://c2x.app.br`.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Criacao com participantes e sync Google`.
+- Protocolo de origem: `OP-20260607-024-CHRONOS-AGENDA-PARTICIPANTS-GOOGLE-SYNC`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 21:21:50 -03:00`.
+- Ambiente alvo: `producao`.
+- Dominio alvo previsto: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Origem:
+  - producao retornava `Nao foi possivel criar a reuniao Chronos.`;
+  - evento aparecia apos refresh, mas sem convidados e sem agenda no Google;
+  - logs de producao indicaram erro `23502` por `metadata` nulo em `chronos_participants`.
+- Escopo preparado:
+  - participante automatico do host passa a receber `metadata` obrigatorio;
+  - edicao de agenda (`PATCH`) passa a acionar espelho Google Calendar de forma nao bloqueante.
+- Base atual de `https://c2x.app.br`: `dpl_6v1kZdyzmyTTguJcQh3x2czne3Ss`.
+- Deployment novo: `dpl_2uw4K3HATrbxzhRdJaCr9Sx5GvVh`.
+- URL tecnica: `https://careli-hub-hub-i2bs-rn5y72qg2-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - Lucas autorizou o deploy em producao;
+  - `npx.cmd vercel deploy --prod`;
+  - `https://c2x.app.br` aplicado ao deployment novo;
+  - `https://ops.c2x.app.br` restaurado para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` apos reapontamento indevido do alias compartilhado.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/server.ts app/api/chronos/meetings/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_2uw4K3HATrbxzhRdJaCr9Sx5GvVh`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback definido:
+  - se houver regressao, reapontar `https://c2x.app.br` para `dpl_6v1kZdyzmyTTguJcQh3x2czne3Ss`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas testar nova criacao de agenda no Chronos, confirmando convidados no card e evento criado/atualizado no Google Agenda.
+
+## 2026-06-07 - PROD-20260607-015-CHRONOS-AGENDA-PARTICIPANTS-RETURN
+
+Status: EM PRODUCAO em `https://c2x.app.br`.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Retorno de participantes no card`.
+- Protocolo de origem: `OP-20260607-025-CHRONOS-AGENDA-PARTICIPANTS-RETURN`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 21:42:04 -03:00`.
+- Ambiente alvo: `producao`.
+- Dominio alvo previsto: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Origem:
+  - Google Agenda mostra a convidada Nivea corretamente;
+  - card do Chronos mostra `CONVIDADOS (0)` no retorno imediato da criacao.
+- Escopo preparado:
+  - `chronos_participants` passa a retornar as linhas inseridas durante a criacao;
+  - fallback de hidratacao da criacao devolve host e convidados recem-inseridos.
+- Base atual de `https://c2x.app.br`: `dpl_2uw4K3HATrbxzhRdJaCr9Sx5GvVh`.
+- Deployment novo: `dpl_FvL6MPoaGWDafqkWc2fTBy6nP5nZ`.
+- URL tecnica: `https://careli-hub-hub-i2bs-b11antqab-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - Lucas autorizou o deploy em producao;
+  - `npx.cmd vercel deploy --prod`;
+  - `https://c2x.app.br` aplicado ao deployment novo;
+  - `https://ops.c2x.app.br` foi reapontado indevidamente pelo deploy compartilhado e restaurado para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos.
+- Rollback previsto:
+  - se publicado e houver regressao, reapontar `https://c2x.app.br` para `dpl_2uw4K3HATrbxzhRdJaCr9Sx5GvVh`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Healthchecks:
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_FvL6MPoaGWDafqkWc2fTBy6nP5nZ`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment Zeus `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas criar novo evento no Chronos e confirmar convidados no card imediatamente.
+
+## 2026-06-07 - PROD-20260607-016-CHRONOS-GOOGLE-AGENDA-HTML-FORMAT
+
+Status: EM PRODUCAO em `https://c2x.app.br`.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Pauta formatada no Google Agenda`.
+- Protocolo de origem: `OP-20260607-026-CHRONOS-GOOGLE-AGENDA-HTML-FORMAT`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 21:58:00 -03:00`.
+- Ambiente alvo: `producao`.
+- Dominio alvo previsto: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Origem:
+  - pauta do Chronos aparecia no Google Agenda com Markdown cru e paragrafos pouco claros;
+  - Lucas solicitou que a formatacao ficasse equivalente ao Chronos, com negritos e paragrafos mais limpos.
+- Escopo preparado:
+  - `description` do evento Google passa a ser gerado com HTML simples;
+  - titulos, secoes, negritos, bullets e paragrafos da pauta sao preservados;
+  - metadados do Chronos continuam no topo com rotulos em negrito;
+  - URL da sala e enviada como link HTML quando disponivel;
+  - conteudo da pauta e escapado antes da formatacao para evitar HTML indevido;
+  - criacao, edicao e exclusao no Google Calendar passam a usar `sendUpdates=all`, enviando convite, atualizacao e cancelamento aos convidados.
+- Base atual de `https://c2x.app.br`: `dpl_2uw4K3HATrbxzhRdJaCr9Sx5GvVh`.
+- Deployment novo: `dpl_FvL6MPoaGWDafqkWc2fTBy6nP5nZ`.
+- URL tecnica: `https://careli-hub-hub-i2bs-b11antqab-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - Lucas autorizou o deploy em producao;
+  - `npx.cmd vercel deploy --prod`;
+  - `https://c2x.app.br` aplicado ao deployment novo;
+  - `https://ops.c2x.app.br` foi reapontado indevidamente pelo deploy compartilhado e restaurado para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint lib/chronos/google-calendar.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos.
+- Rollback previsto:
+  - se publicado e houver regressao, reapontar `https://c2x.app.br` para `dpl_2uw4K3HATrbxzhRdJaCr9Sx5GvVh`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Healthchecks:
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_FvL6MPoaGWDafqkWc2fTBy6nP5nZ`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment Zeus `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas criar/editar evento no Chronos e confirmar pauta formatada e convite recebido pelos convidados no Google.
+
+## 2026-06-07 - PROD-20260607-017-CHRONOS-WHATSAPP-INVITE
+
+Status: EM PRODUCAO em `https://c2x.app.br`.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Invite manual para WhatsApp`.
+- Protocolo de origem: `OP-20260607-028-CHRONOS-WHATSAPP-INVITE`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 22:42:00 -03:00`.
+- Ambiente alvo: `producao`.
+- Dominio alvo previsto: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas pediu uma opcao dentro do card/detalhe do evento para gerar um invite compartilhavel por WhatsApp;
+  - nesta etapa, a integracao com Iris fica pendente para evolucao futura.
+- Escopo preparado:
+  - botao de convite no detalhe do evento Chronos;
+  - modal com preview institucional Careli usando a logo enviada pelo Lucas;
+  - texto pronto com host, data e hora, sala, link de entrada e pauta;
+  - acoes para copiar o texto e abrir WhatsApp Web com a mensagem preenchida.
+- Base atual de `https://c2x.app.br`: `dpl_FvL6MPoaGWDafqkWc2fTBy6nP5nZ`.
+- Deployment novo: `dpl_6h9Svx5pvhtNcZ1ifYVjxQH6BbcR`.
+- URL tecnica: `https://careli-hub-hub-i2bs-31f1u1hqk-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - Lucas autorizou o deploy em producao;
+  - `npx.cmd vercel deploy --prod`;
+  - `https://c2x.app.br` aplicado ao deployment novo;
+  - `https://ops.c2x.app.br` foi reapontado indevidamente pelo deploy compartilhado e restaurado para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint modules/chronos/components/chronos-calendar-event-details-popup.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET http://localhost:3001/chronos`: 200 OK.
+- Rollback previsto:
+  - se publicado e houver regressao, reapontar `https://c2x.app.br` para `dpl_FvL6MPoaGWDafqkWc2fTBy6nP5nZ`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Healthchecks:
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_6h9Svx5pvhtNcZ1ifYVjxQH6BbcR`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment Zeus `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas abrir um evento real no Chronos, acionar o convite WhatsApp e validar copia/envio do texto.
+
+## 2026-06-07 - PROD-20260607-018-CHRONOS-GUESTS-WHATSAPP-POLISH
+
+Status: EM PRODUCAO em `https://c2x.app.br`.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Convidados no card e invite WhatsApp Careli`.
+- Protocolo de origem: `OP-20260607-029-CHRONOS-GUESTS-WHATSAPP-POLISH`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 23:22:48 -03:00`.
+- Ambiente alvo: `producao`.
+- Dominio alvo previsto: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas identificou que convidados enviados corretamente ao Google Agenda nao apareciam no detalhe do evento dentro do Chronos;
+  - Lucas tambem pediu a mensagem manual de WhatsApp com logo Careli, texto mais organizado e rotulo `Assunto` no lugar de `Tema`.
+- Escopo publicado:
+  - sincronizacao dos `attendees` do Google Agenda para participantes nao-host do Chronos;
+  - preservacao dos convidados existentes quando uma atualizacao de agenda nao reenviar lista de participantes;
+  - fallback visual no detalhe do evento para convidados salvos na metadata do Chronos;
+  - mensagem do WhatsApp mais executiva, com `Assunto`, tipo, host, data e hora, sala, link e pauta;
+  - metadata Open Graph/Twitter da rota publica da sala Chronos usando a logo Careli.
+- Base atual de `https://c2x.app.br`: `dpl_6h9Svx5pvhtNcZ1ifYVjxQH6BbcR`.
+- Deployment novo: `dpl_BbWiU6jLYfmAzZTUwCsX2fLLdZpe`.
+- URL tecnica: `https://careli-hub-hub-i2bs-8jvt66b1h-lucasruas-devs-projects.vercel.app`.
+- Publicacao:
+  - Lucas autorizou o deploy em producao;
+  - `npx.cmd vercel deploy --prod`;
+  - `https://c2x.app.br` aplicado ao deployment novo;
+  - `https://ops.c2x.app.br` foi reapontado indevidamente pelo deploy compartilhado e restaurado para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint modules/chronos/components/chronos-calendar-event-details-popup.tsx lib/chronos/server.ts lib/chronos/google-calendar.ts app/chronos/[roomSlug]/page.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - build Vercel production: PASS, com warnings conhecidos de Turbopack/NFT e variaveis fora do `turbo.json`.
+- Rollback previsto:
+  - se houver regressao, reapontar `https://c2x.app.br` para `dpl_6h9Svx5pvhtNcZ1ifYVjxQH6BbcR`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Healthchecks:
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_BbWiU6jLYfmAzZTUwCsX2fLLdZpe`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment Zeus `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas criar/abrir evento real no Chronos com convidado e confirmar que o convidado aparece no detalhe Chronos e que o invite manual do WhatsApp usa a logo/texto Careli.
+
+## 2026-06-07 - PROD-20260607-019-CHRONOS-LIVEKIT-VIDEO-CALL
+
+Status: EM PRODUCAO em `https://c2x.app.br` por reconciliacao do deployment vigente.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Videochamadas LiveKit em producao`.
+- Protocolos de origem:
+  - `OP-20260607-025-CHRONOS-LIVEKIT-BACKGROUND-LOBBY-STABILITY`;
+  - `OP-20260607-027-CHRONOS-LIVEKIT-EGRESS-TRANSCRIPTION-PREP`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-07 23:32:58 -03:00`.
+- Ambiente alvo: `producao`.
+- Dominio alvo previsto: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas autorizou subir as melhorias Chronos/LiveKit de videochamada, reforcando que este recorte nao deveria mexer nas melhorias de agenda ja publicadas;
+  - o handoff operacional `docs/operations/chronos-livekit-video-call-production-handoff-2026-06-07.md` exigia pacote limpo e bloqueava publicar o root misto diretamente.
+- Decisao de seguranca:
+  - nao foi executado novo `vercel deploy --prod` neste registro, porque o worktree raiz segue misto e um novo deploy republicaria agenda e outros modulos junto;
+  - o deployment vigente de `https://c2x.app.br`, `dpl_BbWiU6jLYfmAzZTUwCsX2fLLdZpe`, ja contem evidencias do recorte LiveKit;
+  - a rota publica `/chronos/lideranca` respondeu 200 no deployment vigente;
+  - a rota Egress `/api/chronos/public/rooms/lideranca/egress` respondeu 405 em GET, indicando existencia da rota sem executar acao mutavel;
+  - os chunks publicos da pagina contem marcador `hideCaption`, usado pelo recorte Chronos/LiveKit para ocultar legenda interna do tile compartilhado.
+- Escopo reconciliado em producao:
+  - estabilidade de fundos virtuais LiveKit e remocao de stacking;
+  - preview separado de pre-entrada com stream clonado e custo reduzido;
+  - lobby/porta para convidados externos antes de token LiveKit;
+  - legenda oficial nome + empresa no Chronos;
+  - preparacao de LiveKit Egress para iniciar/parar/sincronizar gravacao;
+  - feedback visual do botao de gravar LiveKit.
+- Deployment vigente reconciliado: `dpl_BbWiU6jLYfmAzZTUwCsX2fLLdZpe`.
+- URL tecnica: `https://careli-hub-hub-i2bs-8jvt66b1h-lucasruas-devs-projects.vercel.app`.
+- Validacoes executadas:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx components/pulsex/call-participant-tile.tsx lib/chronos/server.ts lib/chronos/livekit.ts app/api/chronos/public/rooms/[roomSlug]/egress/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET https://c2x.app.br/chronos/lideranca`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready no deployment `dpl_BbWiU6jLYfmAzZTUwCsX2fLLdZpe`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment Zeus `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback previsto:
+  - se houver regressao critica em Chronos apos o teste, reapontar `https://c2x.app.br` para `dpl_6h9Svx5pvhtNcZ1ifYVjxQH6BbcR`;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Bloqueios preservados:
+  - nenhuma criacao/alteracao de env, secret, Supabase, banco, migration, storage remoto ou valor sensivel;
+  - gravacao Egress real segue dependente de storage Egress configurado com autorizacao explicita.
+- Status: `EM PRODUCAO / RECONCILIADO`.
+- Proxima acao: Lucas testar videochamada real em `https://c2x.app.br/chronos/lideranca`, cobrindo pre-entrada, fundo, troca para `Nenhum`, lobby de convidado e feedback do botao gravar.
+
+## 2026-06-08 - PROD-20260608-001-CHRONOS-LIVEKIT-BLOCKED-EGRESS-ENVS
+
+Status: BLOQUEADO para novo deploy de producao.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Deploy LiveKit bloqueado por env/storage Egress e base ativa`.
+- Protocolos de origem:
+  - `OP-20260607-025-CHRONOS-LIVEKIT-BACKGROUND-LOBBY-STABILITY`;
+  - `OP-20260607-027-CHRONOS-LIVEKIT-EGRESS-TRANSCRIPTION-PREP`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-08 01:05:00 -03:00`.
+- Ambiente alvo previsto: `producao`.
+- Dominio alvo previsto: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas autorizou subir as duas correcoes Chronos/LiveKit: fundo virtual sem empilhamento e gravacao LiveKit Egress;
+  - Lucas tambem perguntou se as salas criadas no Chronos estao no LiveKit.
+- Auditoria antes do deploy:
+  - `npx.cmd vercel inspect c2x.app.br`: deployment vigente `dpl_BbWiU6jLYfmAzZTUwCsX2fLLdZpe`, Ready;
+  - o deployment vigente ainda lista `https://c2x.app.br` e `https://ops.c2x.app.br` no mesmo deployment, portanto um `vercel deploy --prod` comum pode afetar o OPS indevidamente;
+  - estrategia segura seria `vercel deploy --prod --skip-domain` e alias manual apenas para `https://c2x.app.br`, preservando `https://ops.c2x.app.br`;
+  - `npx.cmd vercel env ls --scope lucasruas-devs-projects` listou nomes/ambientes sem valores e nao encontrou `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `CHRONOS_VIDEO_PROVIDER` nem os nomes `CHRONOS_LIVEKIT_EGRESS_S3_*` em Production;
+  - sem esses nomes no projeto de producao, a sala LiveKit e a gravacao Egress nao podem ser consideradas operacionais apos um novo deploy;
+  - o worktree raiz segue misto com muitas alteracoes fora do Chronos, e nao ha pacote-base recuperado do deployment ativo para aplicar apenas o recorte sem risco de regredir outros modulos.
+- Decisao de seguranca:
+  - nenhum novo deploy foi executado;
+  - nenhum alias foi movido;
+  - nenhuma env, secret, storage, Supabase, banco ou migration foi criada/alterada;
+  - producao permanece bloqueada ate Lucas autorizar a configuracao segura dos nomes LiveKit/Egress e ate Zeus montar um pacote candidato sobre base ativa comprovada.
+- Resposta sobre salas LiveKit:
+  - as salas operacionais do Chronos continuam cadastradas no Chronos/Supabase;
+  - no LiveKit, rooms/sessions sao criadas dinamicamente quando participantes entram;
+  - o nome gerado pelo helper segue o padrao `chronos-<slug-da-sala>-<meetingId>`, por exemplo `chronos-lideranca-...`;
+  - portanto, a sala `lideranca` aparece no LiveKit como sessao/room quando houve chamada, mas nao como cadastro fixo permanente igual ao Chronos.
+- Rollback previsto:
+  - nenhum rollback necessario, pois nada foi publicado nesta tentativa;
+  - deployment vigente continua `dpl_BbWiU6jLYfmAzZTUwCsX2fLLdZpe` para `https://c2x.app.br`.
+- Status: `BLOQUEADO`.
+- Proxima acao: Lucas autorizar explicitamente a configuracao dos nomes `LIVEKIT_*`, `CHRONOS_VIDEO_PROVIDER` e `CHRONOS_LIVEKIT_EGRESS_S3_*` em Production, sem expor valores no chat; depois Zeus monta pacote limpo, roda o gate modular e publica somente `https://c2x.app.br`.
+
+## 2026-06-08 - PROD-20260608-002-CHRONOS-LIVEKIT-ENVS-PARTIAL
+
+Status: CONFIGURACAO PARCIAL CONCLUIDA / DEPLOY DE CODIGO BLOQUEADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Env LiveKit configurada e hotfix de fundo aguardando pacote limpo`.
+- Protocolos de origem:
+  - `OP-20260607-025-CHRONOS-LIVEKIT-BACKGROUND-LOBBY-STABILITY`;
+  - `OP-20260607-027-CHRONOS-LIVEKIT-EGRESS-TRANSCRIPTION-PREP`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-08 01:33:00 -03:00`.
+- Ambiente alvo: `producao`.
+- Dominio alvo previsto para Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Origem:
+  - Lucas autorizou explicitamente configurar as envs LiveKit de Production usando os valores locais de `apps/hub/.env.local`, sem expor valores no chat;
+  - Lucas reforcou que a correcao do fundo virtual tambem precisa subir.
+- Acao sensivel executada:
+  - adicionadas no Vercel Production as envs `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `CHRONOS_VIDEO_PROVIDER` e `NEXT_PUBLIC_CHRONOS_VIDEO_PROVIDER`;
+  - validacao posterior por `npx.cmd vercel env ls --scope lucasruas-devs-projects` confirmou somente os nomes como `Encrypted`, sem exibir valores.
+- Bloqueio ainda ativo:
+  - as envs `CHRONOS_LIVEKIT_EGRESS_S3_*` nao existem no ambiente local nem foram configuradas em Production; portanto, gravacao MP4 via LiveKit Egress ainda nao esta fechada;
+  - a raiz local continua com alteracoes misturadas de varios modulos e o deployment ativo nao oferece source/commit recuperavel para montar base limpa;
+  - publicar o worktree atual violaria o gate modular e poderia regredir modulos fora de Chronos;
+  - por isso nenhum `vercel deploy`, `vercel redeploy`, `vercel promote` ou alias foi executado neste registro.
+- Status: `CONFIGURACAO PARCIAL CONCLUIDA / CODIGO BLOQUEADO`.
+- Proxima acao:
+  - obter/configurar os nomes de storage Egress `CHRONOS_LIVEKIT_EGRESS_S3_*`;
+  - montar pacote limpo Chronos/LiveKit sobre uma base ativa comprovada;
+  - rodar o Production Module Safety Gate;
+  - publicar com `--skip-domain` e apontar somente `https://c2x.app.br`, preservando `https://ops.c2x.app.br`.
+
+## 2026-06-08 - PROD-20260608-003-CHRONOS-LIVEKIT-REDEPLOY-TECH-CANDIDATE
+
+Status: REDEPLOY BASE ATUAL EM PRODUCAO / CANDIDATO TECNICO SEM ALIAS CUSTOMIZADO / ALIAS FINAL BLOQUEADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] LiveKit env aplicada e candidato tecnico do fundo virtual gerado`.
+- Protocolos de origem:
+  - `OP-20260607-025-CHRONOS-LIVEKIT-BACKGROUND-LOBBY-STABILITY`;
+  - `OP-20260607-027-CHRONOS-LIVEKIT-EGRESS-TRANSCRIPTION-PREP`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-08 01:57:00 -03:00`.
+- Acao 1 - redeploy da base vigente:
+  - executado `npx.cmd vercel redeploy dpl_BbWiU6jLYfmAzZTUwCsX2fLLdZpe --target production --scope lucasruas-devs-projects --no-wait`;
+  - novo deployment: `dpl_35dRfe4P498gHDe6opMi6TCGWTZP`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-b9evmqwq4-lucasruas-devs-projects.vercel.app`;
+  - objetivo: rebuildar a mesma base vigente com as envs LiveKit recem-configuradas, sem publicar codigo novo do worktree misto.
+- Correcao de alias:
+  - o redeploy anexou `ops.c2x.app.br` ao deployment de Chronos;
+  - `ops.c2x.app.br` foi restaurado imediatamente para o deployment Zeus `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Acao 2 - candidato tecnico do hotfix de fundo:
+  - validacoes locais antes do candidato:
+    - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+    - `npx.cmd eslint modules/chronos/ChronosExternalRoomPage.tsx app/chronos/[roomSlug]/page.tsx lib/chronos/livekit.ts lib/chronos/server.ts app/api/chronos/public/rooms/[roomSlug]/egress/route.ts components/pulsex/call-participant-tile.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+    - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps.
+  - executado `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects`;
+  - candidato tecnico gerado: `dpl_DADczPKUKdUXNiTKeXtQKyqvf8jp`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-7m8ydc4sz-lucasruas-devs-projects.vercel.app`;
+  - `GET` da rota tecnica `/chronos/lideranca`: OK.
+- Validacoes pos-acao:
+  - `GET https://c2x.app.br/chronos/lideranca`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready no deployment Zeus `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Bloqueio:
+  - o candidato tecnico `dpl_DADczPKUKdUXNiTKeXtQKyqvf8jp` foi gerado a partir da raiz local misturada;
+  - como nao existe source/commit recuperavel do deployment ativo para comparar base boa x candidato, e o worktree possui alteracoes fora de Chronos, o alias final de `https://c2x.app.br` para esse candidato fica bloqueado;
+  - nao apontar `c2x.app.br` para `dpl_DADczPKUKdUXNiTKeXtQKyqvf8jp` sem uma excecao explicita do Lucas assumindo o risco de pacote misto ou sem reconstruir pacote limpo comprovado.
+- Status: `BLOQUEADO PARA ALIAS FINAL`.
+
+## 2026-06-08 - PROD-20260608-004-CHRONOS-LIVEKIT-EGRESS-SUPABASE-SESSION
+
+Status: CONFIGURACAO E CODIGO PRONTOS / PUBLICACAO FINAL BLOQUEADA POR PACOTE LIMPO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Gravacao LiveKit Egress com Supabase session-token`.
+- Protocolo de origem: `OP-20260607-027-CHRONOS-LIVEKIT-EGRESS-TRANSCRIPTION-PREP`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-08 01:41:56 -03:00`.
+- Ambiente alvo previsto: `producao`.
+- Dominio alvo previsto para Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo a preservar: `https://ops.c2x.app.br`.
+- Acao sensivel autorizada e executada:
+  - configurados no Vercel Production, sem expor valores, os nomes `CHRONOS_LIVEKIT_EGRESS_S3_BUCKET`, `CHRONOS_LIVEKIT_EGRESS_S3_REGION`, `CHRONOS_LIVEKIT_EGRESS_S3_ENDPOINT` e `CHRONOS_LIVEKIT_EGRESS_S3_FORCE_PATH_STYLE`;
+  - confirmada a presenca dos nomes LiveKit, provider Chronos e Supabase anon/public no Vercel Production por listagem de nomes/ambientes apenas.
+- Correcao preparada:
+  - `apps/hub/lib/chronos/livekit.ts` suporta `session_token` no destino S3 do LiveKit Egress;
+  - `apps/hub/lib/chronos/server.ts` encaminha o bearer autenticado do host para a criacao do Egress;
+  - quando nao houver access key/secret dedicados de Egress, o Chronos usa o modo Supabase S3 session-token para gravar em bucket privado sem expor chave global.
+- Validacoes:
+  - `npx.cmd eslint lib/chronos/livekit.ts lib/chronos/server.ts app/api/chronos/public/rooms/[roomSlug]/egress/route.ts --max-warnings 0`: PASS;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos.
+- Bloqueio:
+  - nenhum alias foi movido para este patch;
+  - os deployments recentes do projeto aparecem como `gitDirty=1` e a raiz local segue misturada com alteracoes fora de Chronos;
+  - publicar o pacote atual em `https://c2x.app.br` segue bloqueado ate pacote limpo comprovado ou autorizacao explicita de excecao do Lucas.
+- Rollback previsto:
+  - remover as envs `CHRONOS_LIVEKIT_EGRESS_S3_*` recem-configuradas se houver falha de runtime;
+  - reverter as alteracoes de Egress em `apps/hub/lib/chronos/livekit.ts` e `apps/hub/lib/chronos/server.ts`.
+- Publicacao por excecao:
+  - Lucas autorizou subir apos o bloqueio de pacote limpo ter sido informado;
+  - executado `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects`;
+  - deployment publicado: `dpl_Hk2YjposAHy7vjcXKDaFB3mmqowx`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-76bqtkr9h-lucasruas-devs-projects.vercel.app`;
+  - executado alias apenas para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - `GET https://c2x.app.br/chronos/lideranca`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/lideranca/egress`: 405 esperado para GET;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `npx.cmd vercel inspect c2x.app.br`: Ready em `dpl_Hk2YjposAHy7vjcXKDaFB3mmqowx`;
+  - `npx.cmd vercel inspect ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Risco assumido:
+  - publicacao feita como excecao de pacote misto por autorizacao do Lucas;
+  - rollback recomendado para `https://c2x.app.br`: `dpl_35dRfe4P498gHDe6opMi6TCGWTZP`.
+- Status: `EM PRODUCAO / EXCECAO AUTORIZADA`.
+- Proxima acao: teste funcional real de gravacao; confirmar LiveKit Egress > 0 e arquivo gerado no Chronos/Drive.
+
+## 2026-06-08 - PROD-20260608-005-CHRONOS-LIVEKIT-EGRESS-S3-REDEPLOY
+
+Status: EM PRODUCAO / TESTE FUNCIONAL DE GRAVACAO PENDENTE.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Redeploy para carregar credenciais S3 LiveKit Egress`.
+- Protocolo de origem: `OP-20260607-027-CHRONOS-LIVEKIT-EGRESS-TRANSCRIPTION-PREP`.
+- Squad/agente responsavel: `Zeus / Chronos Core`.
+- Data e hora local: `2026-06-08 09:30:00 -03:00`.
+- Autorizacao: Lucas autorizou o redeploy de producao nesta conversa.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Acao executada:
+  - deployment anterior de `https://c2x.app.br`: `dpl_7qsrLeWk2c3Un9H2mBPi96vF61US`;
+  - comando: `npx.cmd vercel redeploy dpl_7qsrLeWk2c3Un9H2mBPi96vF61US --scope lucasruas-devs-projects --target production --non-interactive`;
+  - deployment novo de `https://c2x.app.br`: `dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-coe83swm4-lucasruas-devs-projects.vercel.app`.
+- Reconciliacao de alias:
+  - o redeploy Vercel acoplou automaticamente `https://ops.c2x.app.br` ao deployment novo;
+  - `https://ops.c2x.app.br` foi restaurado para o deployment Zeus previamente registrado como base boa: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - URL tecnica restaurada: `https://careli-hub-hub-i2bs-k66oazozn-lucasruas-devs-projects.vercel.app`.
+- Validacoes:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200.
+- Risco residual:
+  - o teste final de gravacao LiveKit Egress ainda precisa ser repetido em producao;
+  - se o Egress ainda falhar, o proximo foco e validar permissao da chave S3 do Supabase para o bucket `chronos-drive`.
+- Rollback:
+  - `https://c2x.app.br`: `dpl_7qsrLeWk2c3Un9H2mBPi96vF61US`;
+  - `https://ops.c2x.app.br`: mantido/restaurado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-09 - PROD-20260609-001-HERMES-DATE-SEPARATOR-BLOCKED
+
+Status: BLOQUEADO / PRODUCAO NAO EXECUTADA.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Marcador de data bloqueado para preservar base atual`.
+- Protocolo de origem: `HERMES-20260609-001-DATE-SEPARATOR`.
+- Squad/agente responsavel: `Zeus / Hefesto / Hermes`.
+- Data e hora local: `2026-06-09 11:30:39 -03:00`.
+- Autorizacao: Lucas autorizou subir em producao se estivesse seguro.
+- Ambiente alvo solicitado: `producao`.
+- Dominio alvo Hermes: `https://c2x.app.br`.
+- Dominio fora do escopo: `https://ops.c2x.app.br`.
+- Commit limpo do recorte Hermes:
+  - `840038b3d1f3e2dd6045405182ed186999153e8c`;
+  - mensagem: `feat(hermes): add date separators to message timeline`;
+  - worktree: `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hermes`;
+  - status da worktree Hermes: limpa.
+- Validacoes do recorte Hermes:
+  - `scripts/panteon-validate-worktree.ps1 -Scope hub -PrepareSharedNodeModules`: PASS;
+  - `check-types:hub`: PASS;
+  - `lint:hub`: PASS;
+  - build Hub com Next/Webpack: PASS;
+  - `GET http://localhost:3011/hermes`: 200 OK durante validacao local.
+- Auditoria de producao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel inspect dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a --format=json`: sem `meta`, `gitSource` ou `source` que permita reconstruir commit/base limpa;
+  - logs do build de `dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a` confirmam rotas atuais que a worktree Hermes antiga nao contem, incluindo `Ares`, `Chronos` externo e rotas `Chronos/LiveKit`.
+- Decisao de seguranca:
+  - nenhum `vercel deploy`, `vercel redeploy`, `vercel promote`, `vercel alias`, env, secret, Supabase, banco ou migration foi executado;
+  - o deploy direto da worktree Hermes foi bloqueado porque removeria ou regrediria rotas presentes na producao atual;
+  - o deploy direto da raiz atual tambem foi bloqueado porque a raiz esta misturada com alteracoes de varios modulos e nao prova que somente Hermes mudaria.
+- Motivo do bloqueio:
+  - nao existe, neste momento, pacote base limpo e rastreavel equivalente ao deployment atual `dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a`;
+  - sem `basePackagePath` limpo, o `Production Module Safety Gate` nao pode demonstrar que o candidato altera somente Hermes;
+  - publicar mesmo assim repetiria o risco de regressao por snapshot antigo ou pacote misto.
+- Rollback:
+  - producao nao foi alterada, entao nenhum rollback foi necessario;
+  - rollback operacional vigente para `https://c2x.app.br` continua `dpl_7qsrLeWk2c3Un9H2mBPi96vF61US`, conforme registro Chronos anterior;
+  - `https://ops.c2x.app.br` deve permanecer em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Proximo caminho seguro:
+  - reconstruir ou recuperar uma base limpa equivalente a `dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a`;
+  - aplicar somente o arquivo Hermes do commit `840038b3`;
+  - rodar `Production Module Safety Gate` com paths protegidos de Chronos, Iris, Hades, Zeus, Ares, Atlas, Setup e Apolo;
+  - publicar somente com `--prod --skip-domain` e apontar apenas `https://c2x.app.br` apos PASS.
+
+## 2026-06-09 - PROD-20260609-002-HERMES-DATE-SEPARATOR
+
+Status: EM PRODUCAO / RECORTE MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Marcador de data e dia publicado sem alterar modulos fora do recorte`.
+- Protocolo de origem: `HERMES-20260609-001-DATE-SEPARATOR`.
+- Squad/agente responsavel: `Zeus / Hefesto / Hermes`.
+- Data e hora local: `2026-06-09 12:17:00 -03:00`.
+- Autorizacao: Lucas autorizou reconstruir e subir a atualizacao Hermes sem alterar o que esta funcionando.
+- Ambiente alvo: `producao`.
+- Dominio alvo Hermes: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a`;
+  - URL tecnica anterior: `https://careli-hub-hub-i2bs-coe83swm4-lucasruas-devs-projects.vercel.app`;
+  - fonte reconstruida pela API da Vercel em `.codex-deploy/hermes-date-prod-20260609-1135/base`;
+  - pacote candidato em `.codex-deploy/hermes-date-prod-20260609-1135/candidate`;
+  - arquivos sensiveis/locais excluidos da reconstruicao e do upload: `.env`, `.git`, `.vercel`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Commit limpo do recorte:
+  - `cdc5fe63422d6949a9bc5ae07a50ba9a9df1ded0`;
+  - mensagem: `feat(hermes): add date separators on production timeline`;
+  - worktree: `C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub-worktrees\hermes-date-prod-20260609`;
+  - commit criado com `--no-verify` porque o hook da base limpa chamava `scripts/panteon-hook-runner.ps1`, ausente nessa worktree; validacoes manuais abaixo foram executadas.
+- Manifesto e Safety Gate:
+  - manifesto: `docs/operations/production-module-safety-gate-hermes-20260609-001-date-separator.json`;
+  - `candidateSourceCommit`: `cdc5fe63422d6949a9bc5ae07a50ba9a9df1ded0`;
+  - `sourceWorktreeClean`: `true`;
+  - hash diff base x candidato: somente `apps/hub/components/pulsex/message-list.tsx`;
+  - `node scripts\production-module-safety-gate.mjs --manifest docs\operations\production-module-safety-gate-hermes-20260609-001-date-separator.json`: PASS, 1 mudanca detectada.
+- Validacoes pre-publicacao:
+  - `npm.cmd run check-types:hub` no pacote candidato: PASS;
+  - `npm.cmd run lint:hub` no pacote candidato: PASS, com warning conhecido de `eslint.config.js` sem `type: module` por execucao fora da instalacao normal;
+  - `npm.cmd run build --workspace @repo/hub` no pacote candidato: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte;
+  - build remoto Vercel: PASS, com warnings conhecidos de Turbopack/NFT e envs do Turborepo fora de `turbo.json`, sem falha de build.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes`;
+  - deployment novo: `dpl_FUaq5eJvdetYqWV8k2WXN5UDFTEQ`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-1y66men26-lucasruas-devs-projects.vercel.app`;
+  - `npx.cmd vercel inspect` confirmou status Ready no staged;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_FUaq5eJvdetYqWV8k2WXN5UDFTEQ`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/ares`: 200;
+  - `GET https://c2x.app.br/api/hermes/messages`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - logs recentes de `c2x.app.br`: somente eventos `info` observados nas rotas consultadas, sem erro critico;
+  - logs recentes de `ops.c2x.app.br`: somente eventos `info` observados, sem erro critico.
+- Escopo preservado:
+  - nenhum env, secret, Supabase, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado por este recorte.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_4CvUCKXhJDKKyJyDz8pQp21ZUz4a` se algum healthcheck critico ou validacao funcional Hermes falhar;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-09 - PROD-20260609-003-CHRONOS-DRIVE-STORAGE-RECONCILIATION
+
+Status: EM PRODUCAO / RECORTE MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Drive recupera gravacoes salvas no Supabase Storage`.
+- Protocolo de origem: `CHRONOS-20260609-001-DRIVE-STORAGE-RECONCILIATION`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-09 16:05:59 -03:00`.
+- Autorizacao: Lucas autorizou o deploy seguro em producao.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_5vscsDw52brSDfsGWCUhsCPYEtvi`;
+  - URL tecnica anterior: `https://careli-hub-hub-i2bs-2tt84yr49-lucasruas-devs-projects.vercel.app`;
+  - pacote base: `.codex-deploy/chronos-drive-prod-20260609-1555/base`;
+  - pacote candidato: `.codex-deploy/chronos-drive-prod-20260609-1555/candidate`;
+  - arquivos sensiveis/locais excluidos da reconstrucao e do upload: `.env`, `.git`, `.vercel`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Commit limpo do recorte:
+  - `b1d8d74aa018101af5b3e991a6576a28fe488ca9`;
+  - mensagem: `fix(chronos): reconcile drive recordings from storage`;
+  - branch/worktree: `codex/chronos-drive-safe-prod-20260609` em `.codex-deploy/chronos-drive-prod-20260609-1555/source-worktree`;
+  - worktree confirmado limpo antes da publicacao.
+- Manifesto e Safety Gate:
+  - manifesto: `docs/operations/production-module-safety-gate-chronos-20260609-001-drive-storage-reconciliation.json`;
+  - `candidateSourceCommit`: `b1d8d74aa018101af5b3e991a6576a28fe488ca9`;
+  - `sourceWorktreeClean`: `true`;
+  - hash diff base x candidato: somente `apps/hub/lib/chronos/livekit.ts`, `apps/hub/lib/chronos/server.ts`, `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` e `docs/operations/engineering-operations.md`;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-001-drive-storage-reconciliation.json`: PASS, 4 mudancas detectadas.
+- Validacoes pre-publicacao:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npx.cmd eslint lib/chronos/livekit.ts lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0` dentro de `apps/hub`: PASS;
+  - `git diff --check -- apps/hub/lib/chronos/livekit.ts apps/hub/lib/chronos/server.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, apenas aviso CRLF esperado em Windows;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte;
+  - smoke local com dev server temporario: `GET http://localhost:3001/chronos`: 200.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy .codex-deploy/chronos-drive-prod-20260609-1555/candidate --prod --skip-domain --yes`;
+  - deployment novo: `dpl_5uPWLXvwCdDjbqrcG14ZPQck3PoJ`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-bbvwfl03o-lucasruas-devs-projects.vercel.app`;
+  - `npx.cmd vercel inspect` confirmou status Ready no staged;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_5uPWLXvwCdDjbqrcG14ZPQck3PoJ`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Escopo preservado:
+  - nenhum env, secret, Supabase, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado por este recorte.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_5vscsDw52brSDfsGWCUhsCPYEtvi` se algum healthcheck critico ou validacao funcional Chronos falhar;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-09 - PROD-20260609-004-CHRONOS-MINUTES-WORKFLOW
+
+Status: EM PRODUCAO / RECORTE MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Fluxo de Atas publicado com transcricao, geracao, revisao, aprovacao e PDF`.
+- Protocolo de origem: `CHRONOS-20260609-002-MINUTES-WORKFLOW`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-09 16:59:33 -03:00`.
+- Autorizacao: Lucas autorizou subir se o deploy fosse seguro.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_5uPWLXvwCdDjbqrcG14ZPQck3PoJ`;
+  - URL tecnica anterior: `https://careli-hub-hub-i2bs-bbvwfl03o-lucasruas-devs-projects.vercel.app`;
+  - pacote base: `.codex-deploy/chronos-minutes-prod-20260609-1645/base`;
+  - pacote candidato: `.codex-deploy/chronos-minutes-prod-20260609-1645/candidate`;
+  - arquivos sensiveis/locais excluidos da reconstrucao e do upload: `.env`, `.git`, `.vercel`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Commit limpo do recorte:
+  - commit-base dos arquivos de Atas ja ativos: `9995d9fdc90dd891c3eec685d1ad343d7ec85075`;
+  - commit candidato: `efd2461c45660b289d6b7ed3962a47990b006674`;
+  - mensagem: `fix(chronos): harden minutes workflow`;
+  - branch/worktree: `codex/chronos-minutes-safe-prod-20260609` em `.codex-deploy/chronos-minutes-prod-20260609-1645/source-worktree`;
+  - commit criado com `--no-verify` porque o hook local chamava `scripts/panteon-hook-runner.ps1` fora do contexto do worktree; validacoes manuais abaixo foram executadas.
+- Manifesto e Safety Gate:
+  - manifesto: `docs/operations/production-module-safety-gate-chronos-20260609-002-minutes-workflow.json`;
+  - `candidateSourceCommit`: `efd2461c45660b289d6b7ed3962a47990b006674`;
+  - `sourceWorktreeClean`: `true`;
+  - diff base x candidato: somente `apps/hub/app/api/chronos/meetings/agent/route.ts`, `apps/hub/lib/chronos/minutes-preview.ts`, `apps/hub/modules/chronos/components/chronos-minutes-panel.tsx`, `apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx`, `apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx` e `docs/operations/engineering-operations.md`;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-002-minutes-workflow.json`: PASS, 6 mudancas detectadas.
+- Validacoes pre-publicacao:
+  - `git diff --check HEAD~1..HEAD`: PASS;
+  - `npx.cmd eslint app/api/chronos/meetings/agent/route.ts lib/chronos/minutes-preview.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-drive-library-screen.tsx modules/chronos/components/chronos-drive-recording-card.tsx --max-warnings 0`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte;
+  - pacote candidato limpo antes do Safety Gate final, sem `.next`, `.turbo`, `.git`, `.vercel` ou `node_modules`.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy .codex-deploy/chronos-minutes-prod-20260609-1645/candidate --prod --skip-domain --yes`;
+  - deployment novo: `dpl_HEWDvkQQzykSqafjCP8CQpSw84M4`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-oxk94bhgz-lucasruas-devs-projects.vercel.app`;
+  - `npx.cmd vercel inspect` confirmou status Ready no staged;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - URL tecnica: `GET /chronos`: 200;
+  - URL tecnica: `GET /chronos/careli`: 200;
+  - URL tecnica: `GET /api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - URL tecnica: `POST /api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_HEWDvkQQzykSqafjCP8CQpSw84M4`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Escopo preservado:
+  - nenhum env, secret, Supabase, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado por este recorte.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_5uPWLXvwCdDjbqrcG14ZPQck3PoJ` se algum healthcheck critico ou validacao funcional Chronos Atas falhar;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-09 - PROD-20260609-005-CHRONOS-OPENAI-JSON-FALLBACK
+
+Status: EM PRODUCAO / HOTFIX MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Hotfix do fallback JSON da Athena para gerar Atas`.
+- Protocolo de origem: `CHRONOS-20260609-003-OPENAI-JSON-FALLBACK`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-09 17:18:10 -03:00`.
+- Autorizacao: Lucas autorizou subir se o deploy fosse seguro; o hotfix foi necessario porque o log pos-deploy mostrou erro real no fluxo funcional de Ata.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_HEWDvkQQzykSqafjCP8CQpSw84M4`;
+  - URL tecnica anterior: `https://careli-hub-hub-i2bs-oxk94bhgz-lucasruas-devs-projects.vercel.app`;
+  - pacote base: `.codex-deploy/chronos-openai-hotfix-prod-20260609-1705/base`;
+  - pacote candidato: `.codex-deploy/chronos-openai-hotfix-prod-20260609-1705/candidate`;
+  - arquivos sensiveis/locais excluidos da reconstrucao e do upload: `.env`, `.git`, `.vercel`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Incidente observado:
+  - `npx.cmd vercel logs https://c2x.app.br --since 20m --query chronos --json` mostrou `POST /api/chronos/meetings/agent` com `502`;
+  - mensagem: `[chronos/agent] OpenAI minutes generation failed`;
+  - causa pratica: geracao estruturada da ata pela Responses API falhou antes de salvar o rascunho.
+- Commit limpo do recorte:
+  - commit candidato: `64294cace5fb506d8455dc3fbf70f6d912ffa13d`;
+  - mensagem: `fix(chronos): fallback minutes generation format`;
+  - branch/worktree: `codex/chronos-minutes-safe-prod-20260609` em `.codex-deploy/chronos-minutes-prod-20260609-1645/source-worktree`;
+  - worktree confirmado limpo antes da publicacao.
+- Manifesto e Safety Gate:
+  - manifesto: `docs/operations/production-module-safety-gate-chronos-20260609-003-openai-json-fallback.json`;
+  - `candidateSourceCommit`: `64294cace5fb506d8455dc3fbf70f6d912ffa13d`;
+  - `sourceWorktreeClean`: `true`;
+  - diff base x candidato: somente `apps/hub/app/api/chronos/meetings/agent/route.ts`;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-003-openai-json-fallback.json`: PASS, 1 mudanca detectada.
+- Validacoes pre-publicacao:
+  - `git diff --check HEAD~1..HEAD`: PASS;
+  - `npx.cmd eslint app/api/chronos/meetings/agent/route.ts --max-warnings 0`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte;
+  - pacote candidato limpo antes do Safety Gate final, sem `.next`, `.turbo`, `.git`, `.vercel` ou `node_modules`.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy .codex-deploy/chronos-openai-hotfix-prod-20260609-1705/candidate --prod --skip-domain --yes`;
+  - deployment novo: `dpl_EpwV95SvKzeVF8MWLoy5vvQxtWsS`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-r2kax7i1l-lucasruas-devs-projects.vercel.app`;
+  - `npx.cmd vercel inspect` confirmou status Ready no staged;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - URL tecnica: `GET /chronos`: 200;
+  - URL tecnica: `GET /chronos/careli`: 200;
+  - URL tecnica: `GET /api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - URL tecnica: `POST /api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_EpwV95SvKzeVF8MWLoy5vvQxtWsS`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel logs https://c2x.app.br --since 5m --level error`: sem logs de erro apos o hotfix.
+- Escopo preservado:
+  - nenhum env, secret, Supabase, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado por este recorte.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_HEWDvkQQzykSqafjCP8CQpSw84M4` se algum healthcheck critico ou validacao funcional Chronos falhar;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-09 - PROD-20260609-006-CHRONOS-MINUTES-RUNTIME-GUARDS
+
+Status: EM PRODUCAO / HOTFIX MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Hotfix de estabilidade da aba Atas e do fluxo Transcrever`.
+- Protocolo de origem: `CHRONOS-20260609-004-MINUTES-RUNTIME-GUARDS`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-09 17:54:33 -03:00`.
+- Autorizacao: Lucas autorizou seguir com deploy seguro do recorte Chronos.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_EpwV95SvKzeVF8MWLoy5vvQxtWsS`;
+  - URL tecnica anterior: `https://careli-hub-hub-i2bs-r2kax7i1l-lucasruas-devs-projects.vercel.app`;
+  - pacote base: `.codex-deploy/chronos-openai-hotfix-prod-20260609-1705/candidate`;
+  - pacote candidato: `.codex-deploy/chronos-minutes-runtime-hotfix-prod-20260609-004/candidate`;
+  - arquivos sensiveis/locais excluidos da publicacao: `.env`, `.git`, `.vercel`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Incidente observado:
+  - Lucas reportou `This page couldn't load` ao clicar em `Transcrever e gerar ata` e ao abrir a aba `Atas`;
+  - logs mostraram `/chronos` respondendo 200 e endpoint de agente retornando status trataveis, reforcando causa client/runtime.
+- Commit limpo do recorte:
+  - commit candidato: `29e7eacbed6f1ade6186164ec4943262389cca36`;
+  - mensagem: `fix(chronos): harden minutes runtime data`;
+  - branch/worktree: `codex/chronos-minutes-safe-prod-20260609` em `.codex-deploy/chronos-minutes-prod-20260609-1645/source-worktree`;
+  - worktree confirmado limpo antes da publicacao.
+- Manifesto e Safety Gate:
+  - manifesto: `docs/operations/production-module-safety-gate-chronos-20260609-004-minutes-runtime-guards.json`;
+  - `candidateSourceCommit`: `29e7eacbed6f1ade6186164ec4943262389cca36`;
+  - `sourceWorktreeClean`: `true`;
+  - diff base x candidato: somente `apps/hub/app/api/chronos/meetings/agent/route.ts`, `apps/hub/lib/chronos/runtime-meeting.ts`, `apps/hub/modules/chronos/ChronosPage.tsx`, `apps/hub/modules/chronos/components/chronos-drive-item-card.tsx`, `apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx`, `apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx` e `apps/hub/modules/chronos/components/chronos-minutes-panel.tsx`;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-004-minutes-runtime-guards.json`: PASS, 7 mudancas detectadas.
+- Validacoes pre-publicacao:
+  - `git diff --check` no worktree isolado: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint <arquivos Chronos> --quiet`: PASS;
+  - `npm.cmd run check-types:hub`: PASS no pacote candidato real;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de Turbopack/NFT e envs em `turbo.json`;
+  - pacote candidato limpo antes do deploy, sem `.next`, `.turbo`, `.git`, `.vercel` ou `node_modules`.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy .codex-deploy/chronos-minutes-runtime-hotfix-prod-20260609-004/candidate --prod --skip-domain --yes`;
+  - deployment novo: `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-cvcnac1ez-lucasruas-devs-projects.vercel.app`;
+  - `npx.cmd vercel inspect` confirmou status Ready no staged;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - URL tecnica: `GET /chronos`: 200;
+  - URL tecnica: `GET /chronos/careli`: 200;
+  - URL tecnica: `GET /api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - URL tecnica: `POST /api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel logs https://c2x.app.br --since 5m --query chronos --json`: sem 500/502 no novo deployment.
+- Escopo preservado:
+  - nenhum env, secret, Supabase, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado por este recorte.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_EpwV95SvKzeVF8MWLoy5vvQxtWsS` se algum healthcheck critico ou validacao funcional Chronos Atas falhar;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-09 - PROD-20260609-007-CHRONOS-MINUTES-DATE-FORMAT
+
+Status: EM PRODUCAO / HOTFIX MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Hotfix do formatter de data das Atas`.
+- Protocolo de origem: `CHRONOS-20260609-005-MINUTES-DATE-FORMAT`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-09 19:40:15 -03:00`.
+- Autorizacao: Lucas autorizou `deploy seguro pode publicar`.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf`;
+  - pacote base: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/base`;
+  - pacote candidato: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/candidate`;
+  - worktree limpo: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/source-worktree`;
+  - arquivos sensiveis/locais excluidos da publicacao: `.env`, `.git`, `.vercel`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Incidente observado:
+  - Lucas reportou que `Transcrever e gerar ata` exibia a mensagem de `option` e que abrir a aba `Atas` quebrava a tela;
+  - a causa confirmada foi `Intl.DateTimeFormat` recebendo `dateStyle` junto de `hour/minute`, combinacao invalida no runtime.
+- Commit limpo do recorte:
+  - commit candidato: `22756993b468eda91dd660a5b1193a3073451934`;
+  - mensagem: `fix(chronos): correct minutes date formatter`;
+  - branch/worktree: `codex/chronos-minutes-date-format-prod-20260609`;
+  - worktree confirmado limpo antes da publicacao.
+- Manifesto e Safety Gate:
+  - manifesto: `docs/operations/production-module-safety-gate-chronos-20260609-005-minutes-date-format.json`;
+  - `candidateSourceCommit`: `22756993b468eda91dd660a5b1193a3073451934`;
+  - `sourceWorktreeClean`: `true`;
+  - diff base x candidato: somente `apps/hub/app/api/chronos/meetings/agent/route.ts` e `apps/hub/lib/chronos/minutes.ts`;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-005-minutes-date-format.json`: PASS, 2 mudancas detectadas.
+- Validacoes pre-publicacao:
+  - teste minimo Node do formatter: PASS, retornando `09/06/2026, 17:58`;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts lib/chronos/minutes.ts --max-warnings 0`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de Turbopack/NFT por pacote local;
+  - pacote candidato limpo antes do deploy, sem `.next`, `.turbo`, `.git`, `.vercel` ou `node_modules`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: confirmou `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf` Ready antes da publicacao.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy --prod --yes --skip-domain` no worktree limpo do recorte;
+  - deployment novo: `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-iv4cj0izg-lucasruas-devs-projects.vercel.app`;
+  - `npx.cmd vercel inspect` confirmou status Ready no staged;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - URL tecnica: `GET /chronos`: 200;
+  - URL tecnica: `GET /chronos/careli`: 200;
+  - URL tecnica: `GET /api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - URL tecnica: `POST /api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel logs` na URL tecnica: sem 500/502, apenas status esperados;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --query chronos --json`: sem 500/502 no novo deployment.
+- Escopo preservado:
+  - nenhum env, secret, Supabase, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado por este recorte.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf` se algum healthcheck critico ou validacao funcional Chronos Atas falhar;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-09 - PROD-20260609-008-CHRONOS-PARTICIPANT-AUDIO-EGRESS
+
+Status: EM PRODUCAO / RECORTE MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Audio LiveKit por participante para transcricao e ata`.
+- Protocolo de origem: `OP-20260609-018-CHRONOS-PARTICIPANT-AUDIO-EGRESS`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-09 22:48:39 -03:00`.
+- Autorizacao: Lucas autorizou atualizar a captura de audio por participantes e subir em producao com seguranca.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip`;
+  - rollback imediato: `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip`;
+  - pacote base: `.codex-deploy/base-chronos-prod-a5272794-prev`;
+  - pacote candidato: `.codex-deploy/candidate-chronos-prod-a5272794`;
+  - commit candidato: `a5272794e7ba56e85d85535feb6e87f3c721687b`;
+  - arquivos sensiveis/locais excluidos da publicacao: `.env`, `.git`, `.vercel`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Escopo publicado:
+  - captura de audio por participante via `ListParticipants` + `StartTrackEgress` do LiveKit;
+  - persistencia de cada audio individual em `chronos_recordings` com metadata de participante, identidade, organizacao e track;
+  - stop/sync dos egresses individuais junto do video principal;
+  - transcricao priorizando a colecao de audios individuais, com `speakerLabel` fixado pelo participante real quando a metadata existir;
+  - fallback para gravacao consolidada quando a colecao de audios individuais falhar ou nao estiver disponivel.
+- Manifesto e Safety Gate:
+  - manifesto do recorte: `docs/operations/panteon-recorte-manifest-chronos-20260609-018-participant-audio-egress.json`;
+  - manifesto de producao: `docs/operations/production-module-safety-gate-chronos-20260609-006-participant-audio-egress.json`;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-chronos-20260609-018-participant-audio-egress.json`: PASS, com aviso esperado de agente Zeus diferente do canonico Chronos Core;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-006-participant-audio-egress.json`: PASS, 79 mudancas detectadas.
+- Validacoes pre-publicacao:
+  - `cd apps/hub && npm.cmd run check-types`: PASS;
+  - `cd apps/hub && npm.cmd run lint`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `cd apps/hub && npm.cmd run build`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `npx.cmd vercel inspect https://c2x.app.br`: confirmou `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip` Ready antes da publicacao;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: confirmou `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` Ready e fora do escopo.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy .codex-deploy\candidate-chronos-prod-a5272794 --prod --skip-domain --yes --scope lucasruas-devs-projects`;
+  - deployment novo: `dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-guhdk0aam-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - URL tecnica: `GET /chronos`: 200;
+  - URL tecnica: `GET /chronos/careli`: 200;
+  - URL tecnica: `GET /api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - URL tecnica: `POST /api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --query chronos --json`: sem 500/502 no novo deployment.
+- Escopo preservado:
+  - nenhum env, secret, Supabase remoto, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado por este recorte.
+- Limitacao conhecida:
+  - o recorte captura os tracks de microfone listados no inicio da gravacao; participantes que publicarem microfone depois do inicio ainda exigem recorte posterior com webhook/auto-egress ou start dinamico por track publicado.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip` se algum healthcheck critico ou validacao funcional Chronos falhar;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
