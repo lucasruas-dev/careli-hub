@@ -34517,3 +34517,101 @@ Conclusao:
 - Precisa de acao agora: Zeus deve gerar pacote limpo, rodar Safety Gate e publicar somente se o recorte continuar isolado.
 - Quem deve agir agora: Zeus conduz a publicacao segura; Lucas valida uma chamada real curta depois.
 - Proximo passo tecnico: empacotar sobre a producao Chronos atual, bloquear qualquer divergencia de alias/projeto e validar `https://c2x.app.br/chronos/recording-view` apos o deploy.
+
+## 2026-06-10 12:58:45 -03:00 - Chronos - Producao da sala publica sem login
+
+Assunto: [Chronos] Producao do bypass publico para sala externa e Recording View
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `PRODUCAO / HOTFIX CHRONOS / LIVEKIT EGRESS / URL PUBLICA`.
+- Status: `EM PRODUCAO / AGUARDANDO TESTE REAL DO LUCAS`.
+- Protocolo: `OP-20260610-027-CHRONOS-PUBLIC-ROOM-AUTH-BYPASS`.
+- Autorizacao: Lucas reportou que o RoomComposite gravou a tela de login; Zeus publicou somente apos pacote limpo, Safety Gate `PASS`, smoke da URL candidata e confirmacao do dominio antigo.
+- Diagnostico consolidado:
+  - a rota publica existia no servidor, mas a hidratacao do `AuthProvider` redirecionava qualquer usuario sem sessao para `/login`;
+  - isso fazia o Chromium do LiveKit e convidados anonimos cairem no login do Panteon;
+  - o erro observado de tela de login era diferente do erro anterior de `START_RECORDING`.
+- Correcao publicada:
+  - `apps/hub/providers/auth-provider.tsx` passou a considerar `/chronos/recording-view` e `/chronos/<slug>` como rotas publicas;
+  - o dashboard operacional `/chronos` continua protegido por login;
+  - nenhuma env var, secret, token, chave LiveKit/Supabase, migration, banco, dominio adicional ou alias `ops.c2x.app.br` foi alterado.
+- Commit publicado: `1669c31ecb8a2446f38a7077b309a95cf10464e8`.
+- Deployment anterior / rollback: `dpl_FyUv4vVL8PQ5tX2sw9CzCSJUtqhx`.
+- Deployment novo em producao: `dpl_A2VZx27U4nfFyqDqi9kxxc1CoYVc`.
+- URL tecnica: `https://careli-hub-hub-i2bs-qal2sxrft-lucasruas-devs-projects.vercel.app`.
+- Alias publicado: `https://c2x.app.br`.
+- Alias preservado fora do recorte: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Manifesto do Safety Gate:
+  - `.codex-deploy/chronos-public-room-auth-prod-20260610-1669c31/production-module-safety-gate.json`.
+- Validacoes pre-deploy:
+  - `npm.cmd exec --workspace @repo/hub -- eslint providers/auth-provider.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/providers/auth-provider.tsx`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - browser local em `http://localhost:3014/chronos/recording-view`: manteve `/chronos/recording-view`, sem campos de login e com `START_RECORDING` no console;
+  - browser local em `http://localhost:3014/chronos/careli`: nao redirecionou para `/login`; erro server-side local esperado por ausencia de Supabase server-side configurado;
+  - `node C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub\scripts\production-module-safety-gate.mjs --manifest .codex-deploy/chronos-public-room-auth-prod-20260610-1669c31/production-module-safety-gate.json`: PASS, 3 mudancas detectadas;
+  - pacote de deploy `candidate-deploy` comparado com `candidate-gate`: `MATCH_EXCLUDING_VERCEL`.
+- Validacoes de producao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: confirmou `dpl_A2VZx27U4nfFyqDqi9kxxc1CoYVc`, `Ready`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: confirmou `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200, `START_RECORDING` presente e sem texto de login;
+  - browser em `https://c2x.app.br/chronos/recording-view`: permaneceu em `/chronos/recording-view`, sem campos de e-mail/senha e com `START_RECORDING`;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - browser em `https://c2x.app.br/chronos/careli`: permaneceu em `/chronos/careli`, sem campos de e-mail/senha e com formulario publico de entrada;
+  - browser em `https://c2x.app.br/chronos`: redirecionou para `/login`, confirmando que o dashboard Chronos segue protegido;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para metodo GET;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - logs Vercel do deployment novo, filtro `chronos`, sem 500/502.
+- Fora do escopo:
+  - nao houve mudanca em LiveKit dashboard, Supabase, banco, storage, migrations, secrets, envs, aliases fora de `c2x.app.br` ou modulos fora de Chronos;
+  - a causa do audio ainda depende de novo teste real: se a proxima gravacao continuar sem audio, investigar o Egress ID novo e as tracks publicadas, agora sem a interferencia da tela de login.
+- Rollback:
+  - reapontar `https://c2x.app.br` para `dpl_FyUv4vVL8PQ5tX2sw9CzCSJUtqhx` se a sala publica apresentar regressao;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+Conclusao:
+
+- O hotfix esta em producao no dominio principal `https://c2x.app.br`.
+- O impacto pratico e que convidados e o Chromium do LiveKit agora acessam `/chronos/careli` e `/chronos/recording-view` sem login Panteon.
+- Precisa de acao agora: Lucas deve fazer uma chamada curta no Chronos, entrar como convidado sem login e confirmar no LiveKit/Drive se o RoomComposite grava a sala com audio e video.
+- Quem deve agir agora: Lucas executa o teste funcional real; Zeus acompanha logs e novo Egress ID se o audio ainda falhar.
+- Proximo passo tecnico: se o video vier correto mas o audio ainda faltar, investigar as tracks de audio no novo Egress, porque a captura da tela de login foi removida da equacao.
+
+## 2026-06-10 13:03:30 -03:00 - Chronos - Host opcional e Nome com espaco
+
+Assunto: [Chronos] Correcao do reconhecimento do host na sala publica
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `HOTFIX CHRONOS / URL PUBLICA / HOST / FORMULARIO`.
+- Status: `VALIDADO LOCAL / CANDIDATO A PRODUCAO`.
+- Protocolo: `OP-20260610-028-CHRONOS-PUBLIC-HOST-NAME`.
+- Autorizacao: Lucas reportou apos o deploy anterior que a URL publica abriu, mas o usuario logado nao foi reconhecido como host e o campo `Nome` nao aceitava espaco.
+- Diagnostico:
+  - o hotfix anterior liberou `/chronos/recording-view` e `/chronos/<slug>` do redirect obrigatorio para `/login`, mas tambem zerava a sessao no `AuthProvider` para essas rotas;
+  - sem sessao opcional carregada, `hubUser` ficava vazio e a sala tratava o Lucas como convidado externo, exigindo aprovacao do host;
+  - o campo `Nome` usava `displayName.trim()` como `value`; ao digitar um espaco no final, o React removia o espaco imediatamente e a proxima palavra colava no nome anterior.
+- Correcao candidata:
+  - `apps/hub/providers/auth-provider.tsx` passou a carregar a sessao opcional nas rotas publicas Chronos, mantendo o bypass apenas para nao redirecionar convidados anonimos;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` passou a preservar o valor cru do campo `Nome` durante digitacao e aplicar `trim()` somente para validar/enviar;
+  - o botao `Participar` fica bloqueado enquanto a sessao opcional ainda esta carregando, evitando que o host clique antes de ser reconhecido;
+  - convidados anonimos continuam podendo acessar a sala publica apos a verificacao opcional terminar.
+- Validacoes locais:
+  - `npm.cmd exec --workspace @repo/hub -- eslint providers/auth-provider.tsx modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/providers/auth-provider.tsx apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos.
+- Riscos e pendencias:
+  - por alterar novamente `AuthProvider`, o Safety Gate de producao deve exigir marcadores que preservem o redirect de `/chronos` e o bypass anonimo de `/chronos/<slug>`;
+  - a validacao visual de `Nome` com espaco e reconhecimento real de host precisa ocorrer na URL candidata Vercel, porque o ambiente local nao tem Supabase server-side para renderizar `/chronos/careli`.
+- Rollback planejado:
+  - reapontar `https://c2x.app.br` para `dpl_A2VZx27U4nfFyqDqi9kxxc1CoYVc` se o hotfix apresentar regressao;
+  - preservar `https://ops.c2x.app.br` fora do recorte Chronos.
+
+Conclusao:
+
+- A URL publica estava correta, mas perdeu a camada de autenticacao opcional necessaria para reconhecer o host ja logado.
+- O impacto pratico do novo recorte e permitir que Lucas entre como host sem aprovacao manual e que nomes como `Lucas Ruas` sejam digitados normalmente.
+- Precisa de acao agora: Zeus deve empacotar, rodar Safety Gate e validar a URL candidata no browser antes de alias.
+- Quem deve agir agora: Zeus conduz a publicacao segura; Lucas valida a chamada real depois.
+- Proximo passo tecnico: publicar somente se a URL candidata mostrar o campo `Nome` aceitando espaco e o fluxo autenticado nao ficar preso na aprovacao de host.

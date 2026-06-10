@@ -119,7 +119,7 @@ export function AuthProvider({
       let isMounted = true;
       const client = getHubSupabaseClient();
 
-      if (isAuthBypassRoute) {
+      if (isLoginRoute) {
         setProfileStatus("idle");
         setAuthState(createUnauthenticatedAuthState());
         return;
@@ -277,7 +277,7 @@ export function AuthProvider({
       logAuthDebug("auth error", "invalid mock session");
       setAuthState(createUnauthenticatedAuthState());
     }
-  }, [authRetryKey, isAuthBypassRoute]);
+  }, [authRetryKey, isLoginRoute]);
 
   useEffect(() => {
     if (authState.status === "loading") {

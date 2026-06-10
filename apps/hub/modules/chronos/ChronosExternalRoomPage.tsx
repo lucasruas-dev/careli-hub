@@ -474,10 +474,12 @@ export function ChronosExternalRoomPage({
   const pageBackgroundImage = room.backgroundDataUrl || "";
   const participantLabel = isHubParticipant
     ? (hubUser?.name ?? "Colaborador Careli")
-    : displayName.trim();
+    : displayName;
+  const participantNameForJoin = participantLabel.trim();
   const participantOrganization = isHubParticipant
     ? "Careli"
     : organization.trim();
+  const isResolvingHubParticipant = authState.status === "loading";
   const backgroundPreferenceKey = useMemo(
     () => `chronos:background:${room.slug}:${hubUser?.id ?? "guest"}`,
     [hubUser?.id, room.slug],
@@ -1923,10 +1925,15 @@ export function ChronosExternalRoomPage({
   }
 
   async function handleJoinRoom() {
-    const nextDisplayName = participantLabel;
+    const nextDisplayName = participantNameForJoin;
 
     if (!nextDisplayName) {
       setJoinError("Informe seu nome para participar.");
+      return;
+    }
+
+    if (isResolvingHubParticipant) {
+      setJoinError("Aguarde a verificacao do login do colaborador.");
       return;
     }
 
@@ -3194,7 +3201,7 @@ export function ChronosExternalRoomPage({
                     </option>
                   ))}
                 </select>
-                {profileStatus === "loading" ? (
+                {profileStatus === "loading" || isResolvingHubParticipant ? (
                   <p className="m-0 text-xs font-semibold text-[#667085]">
                     Verificando login do colaborador...
                   </p>
@@ -3213,7 +3220,11 @@ export function ChronosExternalRoomPage({
               <div className="border-t border-[#edf0f4] p-4">
                 <button
                   className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-[#A07C3B] bg-[#A07C3B] px-4 text-sm font-semibold text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-55"
-                  disabled={joining || !participantLabel}
+                  disabled={
+                    joining ||
+                    isResolvingHubParticipant ||
+                    !participantNameForJoin
+                  }
                   onClick={() => void handleJoinRoom()}
                   type="button"
                 >
