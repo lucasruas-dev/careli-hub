@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { isChronosLiveKitProviderEnabled } from "@/lib/chronos/livekit";
 import { getChronosPublicRoomBySlug } from "@/lib/chronos/server";
+import { isChronosWherebyProviderEnabled } from "@/lib/chronos/whereby";
 import { ChronosExternalRoomPage } from "@/modules/chronos/ChronosExternalRoomPage";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,13 @@ export default async function ChronosExternalRoomRoute({
 
   return (
     <ChronosExternalRoomPage
-      isLiveKitProviderEnabled={isChronosLiveKitProviderEnabled()}
+      videoProvider={
+        isChronosWherebyProviderEnabled()
+          ? "whereby"
+          : isChronosLiveKitProviderEnabled()
+            ? "livekit"
+            : "disabled"
+      }
       room={room}
     />
   );

@@ -34940,3 +34940,94 @@ Conclusao:
 - Precisa de acao agora: sim, publicar Preview seguro e entregar URL para validacao.
 - Quem deve agir agora: Zeus executa o pacote seguro e registra o resultado.
 - Proximo passo tecnico: Safety Gate e Preview Vercel; bucket/ata historica seguem como proxima etapa separada.
+
+## 2026-06-10 18:12:05 -03:00 - Chronos - Migracao Whereby
+
+Assunto: [Chronos] Migracao da videochamada para Whereby com Athena gerando ata
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / CHRONOS / WHEREBY / VIDEOCHAMADA / ATA`.
+- Status: `VALIDADO LOCALMENTE / TOKEN WHEREBY OK / DEPLOY NAO EXECUTADO`.
+- Protocolo: `OP-20260610-033-CHRONOS-WHEREBY-MIGRATION`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-chronos-20260610-033-whereby-migration.json`.
+- Autorizacao: Lucas decidiu virar o Chronos para Whereby, usando a conta premium existente, com sala publica, URLs personalizadas, fundo de tela, registro de participantes, gravacoes/transcricoes no Drive Chronos e Athena gerando a ata a partir da transcricao.
+- Decisoes tecnicas:
+  - `CHRONOS_VIDEO_PROVIDER=whereby` passa a selecionar o provider server-side da sala publica;
+  - `WHEREBY_API_KEY`/`CHRONOS_WHEREBY_API_KEY` ficam somente server-side; nenhum token e enviado ao browser;
+  - convidados continuam entrando pela URL publica do Chronos sem login;
+  - host autenticado recebe `hostRoomUrl` do Whereby para ser reconhecido como host, sem expor essa URL para convidados;
+  - a URL interna do Whereby usa `roomNamePrefix` derivado do slug Chronos, enquanto a URL publica operacional segue sendo a do Chronos;
+  - o fundo configurado na sala Chronos e enviado para `room-background` do Whereby quando respeitar o limite de imagem;
+  - gravacoes e transcricoes ficam inicialmente hospedadas no Whereby, e o Drive Chronos salva metadados com `whereby://recordings/...` e resolve `access-link` temporario quando necessario;
+  - participantes sao registrados no Chronos no join e reconciliados depois via Whereby Insights usando `externalId`;
+  - transcricoes Whereby salvas como `source=whereby` viram evidencia valida para Athena gerar a ata sem retranscrever a gravacao.
+- Arquivos principais:
+  - `apps/hub/lib/chronos/whereby.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/whereby-meeting/route.ts`;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/whereby-sync/route.ts`;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts`;
+  - `.env.example`, `.env.homolog.example`, `apps/hub/.env.example`, `turbo.json`.
+- Validacoes locais:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npx.cmd eslint <arquivos do recorte Chronos/Whereby> --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON` sem falha;
+  - `npm.cmd run lint --workspace @repo/hub`: BLOQUEADO fora do recorte por warnings preexistentes `turbo/no-undeclared-env-vars` em `apps/hub/lib/chronos/google-calendar.ts` e `apps/hub/lib/chronos/livekit.ts`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora da migracao Whereby;
+  - `Invoke-WebRequest GET /meetings?limit=1` na Whereby API: PASS, `HTTP 200`, sem imprimir token.
+- Pendencias e bloqueios:
+  - `WHEREBY_API_KEY` foi salva somente em `apps/hub/.env.local` do recorte e nao deve ser commitada;
+  - nao houve teste real de criacao de sala Whereby, gravacao ou transcricao para evitar escrita externa sem novo Safety Gate;
+  - deploy, envs Vercel, alias, producao, Supabase e qualquer secret seguem bloqueados ate autorizacao explicita e Safety Gate;
+  - fundos maiores que o limite do Whereby podem permanecer visiveis no Chronos, mas nao serem aplicados ao theme do Whereby.
+- Rollback planejado:
+  - reverter o protocolo `OP-20260610-033-CHRONOS-WHEREBY-MIGRATION`;
+  - ou setar `CHRONOS_VIDEO_PROVIDER=livekit` para voltar ao provider anterior enquanto o fallback LiveKit permanecer no codigo;
+  - se transcricao Whereby nao estiver pronta, manter ata bloqueada ate existir transcricao textual salva.
+
+Conclusao:
+
+- O Chronos agora tem um recorte local validado para usar Whereby como motor de videochamada e manter Athena como motor de ata.
+- O impacto pratico esperado e reduzir custo/complexidade de Egress LiveKit, usar transcricao pronta do Whereby e registrar tudo no Drive Chronos.
+- Precisa de acao agora: sim, promover envs Whereby no ambiente alvo exige fluxo seguro e Safety Gate.
+- Quem deve agir agora: Zeus prepara a configuracao segura e valida o ambiente alvo somente com autorizacao explicita do Lucas.
+- Proximo passo tecnico: configurar envs do alvo sem expor valores, testar uma sala real Chronos/Whereby em ambiente controlado, rodar Safety Gate e so entao publicar.
+
+### Complemento 2026-06-10 18:56:00 -03:00 - producao autorizada
+
+- Status atualizado: `PRONTO PARA PRODUCAO / ENVS PRODUCTION OK / DEPLOY PENDENTE`.
+- Autorizacao: Lucas autorizou subir direto em producao com deploy seguro, reforcando que o recorte nao pode mudar Agenda e deve ficar restrito a Drive e Salas.
+- Escopo confirmado antes do deploy:
+  - sala publica Chronos com provider Whereby;
+  - estrutura nativa da Whereby apos o prejoin Chronos, sem layout/controles duplicados do Chronos dentro da chamada;
+  - Drive Chronos com gravacoes Whereby por access-link temporario;
+  - transcricoes Whereby como fonte oficial para Athena gerar ata;
+  - registro/reconciliacao de participantes por `externalId`;
+  - env examples e registry `turbo.json` apenas por nomes.
+- Fora do escopo preservado:
+  - tela principal de Agenda e `ChronosPage.tsx`;
+  - Google Agenda funcional;
+  - Supabase, banco, migrations, RLS e storage;
+  - `ops.c2x.app.br` e modulo Zeus.
+- Envs configuradas sem expor valores:
+  - Preview `(homolog)`: `CHRONOS_VIDEO_PROVIDER`, `WHEREBY_API_KEY`, `WHEREBY_API_BASE_URL`, `CHRONOS_WHEREBY_RECORDING_START_TRIGGER`, `CHRONOS_WHEREBY_TRANSCRIPTION_START_TRIGGER`, `CHRONOS_WHEREBY_TRANSCRIPTION_LANGUAGE`, `NEXT_PUBLIC_CHRONOS_WHEREBY_EMBED_SCRIPT_URL`;
+  - Production: `CHRONOS_VIDEO_PROVIDER`, `WHEREBY_API_KEY`, `WHEREBY_API_BASE_URL`, `CHRONOS_WHEREBY_RECORDING_START_TRIGGER`, `CHRONOS_WHEREBY_TRANSCRIPTION_START_TRIGGER`, `CHRONOS_WHEREBY_TRANSCRIPTION_LANGUAGE`, `CHRONOS_WHEREBY_ROOM_NAME_PREFIX`, `NEXT_PUBLIC_CHRONOS_WHEREBY_EMBED_SCRIPT_URL`.
+- Rollback capturado:
+  - `https://c2x.app.br`: `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`;
+  - `https://ops.c2x.app.br`: fora do escopo.
+- Validacoes pre-producao:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npx.cmd eslint <arquivos do recorte Chronos/Whereby> --max-warnings 0`: PASS;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora da migracao;
+  - `npm.cmd run lint --workspace @repo/hub`: PASS apos registrar no `turbo.json` nomes de env Chronos/Google/LiveKit/Whereby, sem valores;
+  - `npx.cmd vercel env ls preview/production --scope lucasruas-devs-projects`: confirmou presenca por nome, sem valores.
+
+Conclusao:
+
+- O pacote esta tecnicamente pronto para producao modular do Chronos, restrito a Salas/Drive/sala publica/Whereby/Athena.
+- O impacto pratico esperado e trocar o motor de chamada de LiveKit para Whereby em `c2x.app.br`, mantendo o Chronos como organizador, Drive e gerador de ata.
+- Precisa de acao agora: sim, criar commit limpo, montar pacote candidato, rodar gate manual de producao e publicar somente se o pacote continuar restrito.
+- Quem deve agir agora: Zeus executa a publicacao segura em `https://c2x.app.br`; Lucas valida a primeira sala real apos o deploy.
+- Proximo passo tecnico: commit, pacote limpo, gate, deploy `--prod --skip-domain`, healthchecks e alias somente de `c2x.app.br`.

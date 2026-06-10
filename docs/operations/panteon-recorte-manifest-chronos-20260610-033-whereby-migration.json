@@ -1,0 +1,110 @@
+{
+  "protocolId": "OP-20260610-033-CHRONOS-WHEREBY-MIGRATION",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-10T18:12:05-03:00",
+  "status": "PRONTO_PARA_PRODUCAO_ENVS_PRODUCTION_OK_DEPLOY_PENDENTE",
+  "summary": "Migra a sala publica do Chronos de LiveKit para Whereby, mantendo Athena como geradora de ata a partir de transcricao salva.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Migracao rapida Chronos para Whereby com URLs/fundos personalizados, participantes registrados, gravacoes/transcricoes no Drive Chronos e Athena gerando ata.",
+    "deployment": "Lucas autorizou subir direto em producao com deploy seguro em 2026-06-10, restrito a Chronos Salas/Drive/sala publica/Whereby/Athena. Envs Whereby foram configuradas em Preview(homolog) e Production sem imprimir valores. Deploy ainda pendente neste manifesto pre-publicacao."
+  },
+  "decisions": [
+    "CHRONOS_VIDEO_PROVIDER=whereby seleciona o provider server-side sem expor token no browser.",
+    "Convidados entram pela URL publica do Chronos sem login; host autenticado recebe hostRoomUrl do Whereby sem vazar para convidados.",
+    "Whereby hospeda gravacoes e transcricoes inicialmente; Chronos Drive salva metadados e usa access-link temporario para reproduzir/baixar.",
+    "Transcricoes Whereby salvas como source=whereby passam a ser evidencia valida para Athena gerar ata sem retranscrever a gravacao.",
+    "Participantes sao registrados no Chronos no join e reconciliados depois por Whereby Insights usando externalId.",
+    "Fundo da sala Chronos e enviado para o theme room-background do Whereby quando a imagem respeita o limite configurado.",
+    "Depois do prejoin Chronos, a chamada usa a estrutura nativa da Whereby, sem overlay de controles Chronos duplicando topbar, participantes, chat, tela ou botao de sair."
+  ],
+  "changedFiles": [
+    ".env.example",
+    ".env.homolog.example",
+    "apps/hub/.env.example",
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/whereby-meeting/route.ts",
+    "apps/hub/app/api/chronos/public/rooms/[roomSlug]/whereby-sync/route.ts",
+    "apps/hub/app/chronos/[roomSlug]/page.tsx",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/lib/chronos/types.ts",
+    "apps/hub/lib/chronos/whereby.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+    "turbo.json",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260610-033-whereby-migration.json"
+  ],
+  "requiredEnvNames": [
+    "CHRONOS_VIDEO_PROVIDER",
+    "WHEREBY_API_KEY",
+    "WHEREBY_API_BASE_URL",
+    "CHRONOS_WHEREBY_API_KEY",
+    "CHRONOS_WHEREBY_API_BASE_URL",
+    "CHRONOS_WHEREBY_RECORDING_START_TRIGGER",
+    "CHRONOS_WHEREBY_TRANSCRIPTION_START_TRIGGER",
+    "CHRONOS_WHEREBY_TRANSCRIPTION_LANGUAGE",
+    "CHRONOS_WHEREBY_BACKGROUND_MAX_BYTES",
+    "CHRONOS_WHEREBY_ROOM_NAME_PREFIX",
+    "NEXT_PUBLIC_CHRONOS_WHEREBY_EMBED_SCRIPT_URL"
+  ],
+  "validations": [
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "notes": "Sem whitespace error; apenas avisos CRLF esperados no Windows."
+    },
+    {
+      "command": "npm.cmd run check-types --workspace @repo/hub",
+      "status": "PASS",
+      "notes": "Executado apos os ajustes finais da migracao Whereby."
+    },
+    {
+      "command": "npx.cmd eslint <arquivos do recorte Chronos/Whereby> --max-warnings 0",
+      "status": "PASS",
+      "notes": "Arquivos alterados do recorte passaram; restou apenas warning Node MODULE_TYPELESS_PACKAGE_JSON sem falha."
+    },
+    {
+      "command": "npm.cmd run lint --workspace @repo/hub",
+      "status": "PASS",
+      "notes": "Passou apos registrar no turbo.json apenas nomes de env Chronos/Google/LiveKit/Whereby, sem valores sensiveis."
+    },
+    {
+      "command": "npm.cmd run build --workspace @repo/hub",
+      "status": "PASS",
+      "notes": "Build Next.js compilou; warnings de worktree/Turbopack/NFT conhecidos e fora da migracao Whereby."
+    },
+    {
+      "command": "Invoke-WebRequest GET /meetings?limit=1 na Whereby API",
+      "status": "PASS",
+      "notes": "WHEREBY_API_KEY salva em apps/hub/.env.local do recorte; API respondeu HTTP 200 sem imprimir token."
+    },
+    {
+      "command": "npx.cmd vercel env ls preview/production --scope lucasruas-devs-projects",
+      "status": "PASS",
+      "notes": "Confirmou por nome, sem valores, envs Whereby em Preview(homolog) e Production."
+    }
+  ],
+  "risks": [
+    "Teste real de criacao de sala, entrada host/convidado, gravacao e transcricao ainda nao foi executado antes do deploy de producao.",
+    "O limite de imagem de fundo do Whereby e cerca de 600 KB; fundos maiores ficam no Chronos, mas podem nao subir para o theme do Whereby.",
+    "A transcricao Whereby precisa estar em estado ready e com access-link disponivel para virar segmentos no Chronos.",
+    "CHRONOS_VIDEO_PROVIDER em Production foi substituido para whereby; rollback imediato deve reapontar c2x.app.br para o deployment anterior capturado se houver falha critica.",
+    "Supabase, banco, migrations, Agenda, ops.c2x.app.br e alias fora de c2x.app.br permanecem fora do escopo."
+  ],
+  "rollback": [
+    "Reverter o protocolo OP-20260610-033-CHRONOS-WHEREBY-MIGRATION.",
+    "Alternativamente setar CHRONOS_VIDEO_PROVIDER=livekit para voltar ao provider anterior enquanto o codigo de fallback permanecer presente.",
+    "Rollback de producao capturado antes da publicacao: reapontar https://c2x.app.br para dpl_GGEuKmTFwPomUKChvpy7TdynUjev se healthchecks ou teste real Chronos falharem.",
+    "Se a transcricao Whereby falhar, manter ata bloqueada ate existir transcricao textual ou gravacao transcrita pela Athena."
+  ],
+  "nextSteps": [
+    "Criar commit limpo do recorte.",
+    "Montar pacote candidato de producao sem .env, .git, .next, .turbo, node_modules, .codex-tmp ou .codex-deploy.",
+    "Rodar gate manual de producao por manifesto local, ja que o script production-module-safety-gate.mjs nao existe neste worktree.",
+    "Publicar com --prod --skip-domain, validar URL tecnica e so entao mover alias c2x.app.br se os healthchecks passarem.",
+    "Criar uma sala real Chronos/Whereby e validar host, convidado, fundo, participantes, gravacao, transcricao e ata Athena."
+  ]
+}

@@ -295,7 +295,7 @@ function ChronosDriveRecordingActions({
   };
   const hasTranscript = recordingMeetingRuntime.meeting.transcript.length > 0;
   const hasOfficialTranscript = recordingMeetingRuntime.meeting.transcript.some(
-    (segment) => segment.source === "openai",
+    (segment) => isChronosDriveOfficialTranscriptSource(segment.source),
   );
   const canTranscribeRecording =
     Boolean(transcriptionRecording?.blob) ||
@@ -411,6 +411,10 @@ function ChronosDriveRecordingActions({
       </div>
     </div>
   );
+}
+
+function isChronosDriveOfficialTranscriptSource(source?: string | null) {
+  return source === "openai" || source === "whereby";
 }
 
 function selectChronosTranscriptionRecording(

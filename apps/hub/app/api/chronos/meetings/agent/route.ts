@@ -466,7 +466,9 @@ async function ensureChronosOfficialTranscriptForMinutes({
   const normalizedMeeting = normalizeChronosMeetingRuntime(meeting);
 
   if (
-    normalizedMeeting.transcript.some((segment) => segment.source === "openai")
+    normalizedMeeting.transcript.some((segment) =>
+      isChronosOfficialTranscriptSource(segment.source),
+    )
   ) {
     return normalizedMeeting;
   }
@@ -1648,11 +1650,23 @@ function buildChronosMinutesPrompt({
 }
 
 function getChronosMinutesTranscriptSegments(meeting: ChronosMeeting) {
-  const officialTranscript = meeting.transcript.filter(
+  const openAiTranscript = meeting.transcript.filter(
     (segment) => segment.source === "openai",
   );
 
+  if (openAiTranscript.length > 0) {
+    return openAiTranscript;
+  }
+
+  const officialTranscript = meeting.transcript.filter((segment) =>
+    isChronosOfficialTranscriptSource(segment.source),
+  );
+
   return officialTranscript.length > 0 ? officialTranscript : meeting.transcript;
+}
+
+function isChronosOfficialTranscriptSource(source?: string | null) {
+  return source === "openai" || source === "whereby";
 }
 
 function buildChronosAgendaPrompt({

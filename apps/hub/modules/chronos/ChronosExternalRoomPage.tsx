@@ -5,6 +5,7 @@ import type {
   ChronosChatMessage,
   ChronosPublicJoinResult,
   ChronosPublicRoom,
+  ChronosWherebyPublicRoom,
 } from "@/lib/chronos/types";
 import {
   formatChronosDuration,
@@ -70,12 +71,14 @@ import {
   X,
 } from "lucide-react";
 import {
+  createElement,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type Dispatch,
   type FormEvent,
   type RefObject,
@@ -84,8 +87,8 @@ import {
 } from "react";
 
 type ChronosExternalRoomPageProps = {
-  isLiveKitProviderEnabled: boolean;
   room: ChronosPublicRoom;
+  videoProvider: "disabled" | "livekit" | "whereby";
 };
 
 type ChronosRoomParticipant = {
@@ -219,6 +222,28 @@ type ChronosLiveKitJoinResult = ChronosPublicJoinResult & {
   };
 };
 
+type ChronosWherebyJoinResult = ChronosPublicJoinResult & {
+  whereby?: ChronosWherebyPublicRoom;
+};
+
+type ChronosWherebyEmbedElement = HTMLElement & {
+  startLiveTranscription?: () => Promise<void>;
+  startRecording?: () => Promise<void>;
+  stopLiveTranscription?: () => Promise<void>;
+  stopRecording?: () => Promise<void>;
+};
+
+type ChronosWherebyEmbedProps = {
+  cameraEffect?: string;
+  displayName?: string;
+  externalId?: string;
+  lang?: string;
+  metadata?: string;
+  ref?: (element: Element | null) => void;
+  room?: string;
+  style?: CSSProperties;
+};
+
 type ChronosLiveKitParticipantAudioEgress = {
   egressId: string;
   organization?: string;
@@ -349,11 +374,12 @@ const chronosBackgroundPresetDefinitions = [
 let chronosImageSegmenterPromise: Promise<ImageSegmenter> | null = null;
 
 export function ChronosExternalRoomPage({
-  isLiveKitProviderEnabled,
   room,
+  videoProvider,
 }: ChronosExternalRoomPageProps) {
   const { authState, hubUser, profileStatus } = useAuth();
-  const isChronosLiveKitProvider = isLiveKitProviderEnabled;
+  const isChronosLiveKitProvider = videoProvider === "livekit";
+  const isChronosWherebyProvider = videoProvider === "whereby";
   const isHubParticipant = Boolean(hubUser);
   const [displayName, setDisplayName] = useState(hubUser?.name ?? "");
   const [organization, setOrganization] = useState("");
@@ -386,6 +412,11 @@ export function ChronosExternalRoomPage({
     "failed" | "idle" | "recording" | "saved" | "starting" | "uploading"
   >("idle");
   const [meetingId, setMeetingId] = useState("");
+  const [wherebyRoom, setWherebyRoom] =
+    useState<ChronosWherebyPublicRoom | null>(null);
+  const [wherebyStatus, setWherebyStatus] = useState<
+    "idle" | "loading" | "ready" | "syncing"
+  >("idle");
   const [localParticipant, setLocalParticipant] =
     useState<ChronosRoomParticipant | null>(null);
   const [remoteParticipants, setRemoteParticipants] = useState<
@@ -454,6 +485,7 @@ export function ChronosExternalRoomPage({
   const liveKitEgressRecordingIdRef = useRef("");
   const liveKitAudioEgressIdRef = useRef("");
   const liveKitAudioEgressRecordingIdRef = useRef("");
+  const wherebyEmbedRef = useRef<ChronosWherebyEmbedElement | null>(null);
   const liveKitParticipantAudioEgressesRef = useRef<
     ChronosLiveKitParticipantAudioEgress[]
   >([]);
@@ -484,6 +516,34 @@ export function ChronosExternalRoomPage({
     () => `chronos:background:${room.slug}:${hubUser?.id ?? "guest"}`,
     [hubUser?.id, room.slug],
   );
+  const syncChronosWherebyArtifacts = useCallback(async () => {
+    if (!localParticipant || !meetingId) {
+      return;
+    }
+
+    setWherebyStatus("syncing");
+
+    try {
+      await fetch(`/api/chronos/public/rooms/${room.slug}/whereby-sync`, {
+        body: JSON.stringify({
+          meetingId,
+          participantId: localParticipant.id,
+        }),
+        cache: "no-store",
+        headers: {
+          ...(authState.session?.accessToken
+            ? {
+                Authorization: `Bearer ${authState.session.accessToken}`,
+              }
+            : {}),
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+    } finally {
+      setWherebyStatus("ready");
+    }
+  }, [authState.session?.accessToken, localParticipant, meetingId, room.slug]);
 
   useEffect(() => {
     if (hubUser?.name) {
@@ -566,6 +626,119 @@ export function ChronosExternalRoomPage({
   useEffect(() => {
     meetingIdRef.current = meetingId;
   }, [meetingId]);
+
+  useEffect(() => {
+    if (!wherebyRoom || typeof window === "undefined") {
+      return;
+    }
+
+    if (window.customElements?.get("whereby-embed")) {
+      setWherebyStatus("ready");
+      return;
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      `script[src="${wherebyRoom.embedScriptUrl}"]`,
+    );
+
+    setWherebyStatus("loading");
+
+    if (existingScript) {
+      if (existingScript.dataset.chronosWherebyLoaded === "true") {
+        setWherebyStatus("ready");
+        return;
+      }
+
+      const handleLoaded = () => {
+        existingScript.dataset.chronosWherebyLoaded = "true";
+        setWherebyStatus("ready");
+      };
+
+      existingScript.addEventListener("load", handleLoaded, { once: true });
+
+      return () => {
+        existingScript.removeEventListener("load", handleLoaded);
+      };
+    }
+
+    const script = document.createElement("script");
+
+    script.src = wherebyRoom.embedScriptUrl;
+    script.type = "module";
+    script.addEventListener(
+      "load",
+      () => {
+        script.dataset.chronosWherebyLoaded = "true";
+        setWherebyStatus("ready");
+      },
+      {
+        once: true,
+      },
+    );
+    script.addEventListener(
+      "error",
+      () => {
+        setWherebyStatus("idle");
+        setJoinError("Nao foi possivel carregar a sala Whereby.");
+      },
+      { once: true },
+    );
+    document.head.appendChild(script);
+  }, [wherebyRoom]);
+
+  useEffect(() => {
+    const embedElement = wherebyEmbedRef.current;
+
+    if (!embedElement || !wherebyRoom || !localParticipant || !meetingId) {
+      return;
+    }
+
+    const handleRecordingStatusChange = (event: Event) => {
+      const detail = readChronosWherebyEventDetail(event);
+      const status =
+        typeof detail.status === "string" ? detail.status.toLowerCase() : "";
+
+      if (status === "stopped" && localParticipant.isHost) {
+        setRecordingStorageStatus("saved");
+        void syncChronosWherebyArtifacts();
+      }
+    };
+    const handleTranscriptionStatusChange = (event: Event) => {
+      const detail = readChronosWherebyEventDetail(event);
+      const status =
+        typeof detail.status === "string" ? detail.status.toLowerCase() : "";
+
+      if (status === "stopped" && localParticipant.isHost) {
+        void syncChronosWherebyArtifacts();
+      }
+    };
+
+    embedElement.addEventListener(
+      "recording_status_change",
+      handleRecordingStatusChange,
+    );
+    embedElement.addEventListener(
+      "transcription_status_change",
+      handleTranscriptionStatusChange,
+    );
+
+    return () => {
+      embedElement.removeEventListener(
+        "recording_status_change",
+        handleRecordingStatusChange,
+      );
+      embedElement.removeEventListener(
+        "transcription_status_change",
+        handleTranscriptionStatusChange,
+      );
+    };
+  }, [
+    localParticipant,
+    meetingId,
+    syncChronosWherebyArtifacts,
+    wherebyRoom,
+    wherebyStatus,
+  ]);
 
   useEffect(() => {
     const videoElements = [
@@ -1937,7 +2110,7 @@ export function ChronosExternalRoomPage({
       return;
     }
 
-    if (!isChronosLiveKitProvider) {
+    if (!isChronosLiveKitProvider && !isChronosWherebyProvider) {
       const message =
         "Sala indisponivel no momento. A chamada foi bloqueada para proteger o registro da reuniao.";
 
@@ -1983,9 +2156,71 @@ export function ChronosExternalRoomPage({
     setJoining(true);
     setJoinError(null);
 
-    const stream = localStreamRef.current ?? (await startLocalMedia());
+    const stream = isChronosWherebyProvider
+      ? localStreamRef.current
+      : localStreamRef.current ?? (await startLocalMedia());
 
     try {
+      if (isChronosWherebyProvider) {
+        const response = await fetch(
+          `/api/chronos/public/rooms/${room.slug}/whereby-meeting`,
+          {
+            body: JSON.stringify({
+              displayName: nextDisplayName,
+              organization: participantOrganization,
+            }),
+            cache: "no-store",
+            headers: {
+              ...(authState.session?.accessToken
+                ? {
+                    Authorization: `Bearer ${authState.session.accessToken}`,
+                  }
+                : {}),
+              "Content-Type": "application/json",
+            },
+            method: "POST",
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | (ChronosWherebyJoinResult & { error?: string })
+          | null;
+
+        if (!response.ok || !payload?.meetingId || !payload.participant) {
+          throw new Error(payload?.error ?? "Nao foi possivel entrar na sala.");
+        }
+
+        if (!payload.whereby?.roomUrl) {
+          throw new Error("Whereby nao retornou a URL da sala Chronos.");
+        }
+
+        const participant: ChronosRoomParticipant = {
+          cameraStream: null,
+          displayName: payload.participant.displayName,
+          id: payload.participant.id,
+          isCameraOn: cameraEnabled,
+          isHost: payload.isHost,
+          isMuted,
+          isScreenSharing: false,
+          organization: payload.participant.organization,
+          screenStream: null,
+          stream: null,
+        };
+
+        entryRequestApprovedRef.current = false;
+        entryRequestIdRef.current = "";
+        setEntryRequestStatus("idle");
+        setRemoteParticipants({});
+        setWherebyRoom(payload.whereby);
+        setLocalParticipant(participant);
+        setMeetingId(payload.meetingId);
+        setRealtimeStatus("ready");
+        setRecordingStorageStatus("idle");
+        stopCurrentLocalMedia();
+        setLocalStream(null);
+
+        return;
+      }
+
       const response = await fetch(
         `/api/chronos/public/rooms/${room.slug}/livekit-token`,
         {
@@ -2932,6 +3167,8 @@ export function ChronosExternalRoomPage({
     setLocalStream(null);
     setLocalParticipant(null);
     setMeetingId("");
+    setWherebyRoom(null);
+    setWherebyStatus("idle");
     setRemoteParticipants({});
     setChatMessages([]);
     setChatDraft("");
@@ -2999,6 +3236,26 @@ export function ChronosExternalRoomPage({
     guestBackgroundDataUrl
       ? guestBackgroundDataUrl
       : "";
+  const wherebyRoomUrl =
+    localParticipant?.isHost && wherebyRoom?.hostRoomUrl
+      ? wherebyRoom.hostRoomUrl
+      : wherebyRoom?.roomUrl;
+  const wherebyCameraEffect =
+    guestBackgroundMode === "blur-high"
+      ? "blur"
+      : guestBackgroundMode === "blur-low"
+        ? "slight-blur"
+        : "";
+  const wherebyMetadata =
+    localParticipant && wherebyRoom
+      ? JSON.stringify({
+          meetingId,
+          organization: localParticipant.organization ?? null,
+          participantId: localParticipant.id,
+          role: localParticipant.isHost ? "host" : "participant",
+          roomSlug: room.slug,
+        })
+      : "";
 
   return (
     <main
@@ -3012,34 +3269,36 @@ export function ChronosExternalRoomPage({
       }}
     >
       <div className="relative h-full min-h-0 bg-black/10">
-        <header
-          className={
-            hasJoined
-              ? "pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between px-4 py-3"
-              : "flex items-center justify-between px-5 py-4"
-          }
-        >
-          <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-lg bg-black/90 shadow-xl ring-1 ring-white/10">
-              <span
-                aria-hidden="true"
-                className="block h-7 w-7 bg-contain bg-center bg-no-repeat"
-                style={{
-                  backgroundImage: `url(${chronosCareliMark.src})`,
-                }}
-              />
-              <span className="sr-only">Careli</span>
-            </span>
-            <div className="rounded-lg bg-black/25 px-2 py-1 backdrop-blur-sm">
-              <h1 className="m-0 text-sm font-semibold">{room.name}</h1>
+        {hasJoined && isChronosWherebyProvider ? null : (
+          <header
+            className={
+              hasJoined
+                ? "pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between px-4 py-3"
+                : "flex items-center justify-between px-5 py-4"
+            }
+          >
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-lg bg-black/90 shadow-xl ring-1 ring-white/10">
+                <span
+                  aria-hidden="true"
+                  className="block h-7 w-7 bg-contain bg-center bg-no-repeat"
+                  style={{
+                    backgroundImage: `url(${chronosCareliMark.src})`,
+                  }}
+                />
+                <span className="sr-only">Careli</span>
+              </span>
+              <div className="rounded-lg bg-black/25 px-2 py-1 backdrop-blur-sm">
+                <h1 className="m-0 text-sm font-semibold">{room.name}</h1>
+              </div>
             </div>
-          </div>
-          <span className="sr-only" aria-live="polite">
-            {realtimeStatus === "ready" ? "Sala pronta" : "Sala carregando"}
-          </span>
-        </header>
+            <span className="sr-only" aria-live="polite">
+              {realtimeStatus === "ready" ? "Sala pronta" : "Sala carregando"}
+            </span>
+          </header>
+        )}
 
-        {hasJoined && isRecording ? (
+        {hasJoined && !isChronosWherebyProvider && isRecording ? (
           <div className="pointer-events-none absolute left-1/2 top-16 z-40 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-rose-300/35 bg-[#101820]/88 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em] text-white shadow-2xl ring-1 ring-black/35 backdrop-blur-md">
             <span className="relative flex h-2.5 w-2.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70" />
@@ -3267,6 +3526,50 @@ export function ChronosExternalRoomPage({
                 videoDevices={videoInputs}
               />
             ) : null}
+          </section>
+        ) : isChronosWherebyProvider &&
+          wherebyRoom &&
+          localParticipant &&
+          wherebyRoomUrl ? (
+          <section className="relative h-full min-h-0 overflow-hidden">
+            <div className="absolute inset-0 bg-black">
+              {wherebyStatus === "loading" ? (
+                <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] text-sm font-semibold text-white/72">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-2 shadow-xl">
+                    <Loader2
+                      aria-hidden="true"
+                      className="animate-spin"
+                      size={15}
+                    />
+                    Carregando sala
+                  </span>
+                </div>
+              ) : null}
+              {wherebyStatus !== "idle" ? (
+                createElement("whereby-embed", {
+                  cameraEffect: wherebyCameraEffect || undefined,
+                  displayName: localParticipant.displayName,
+                  externalId: localParticipant.id,
+                  lang: "pt",
+                  metadata: wherebyMetadata,
+                  ref: (element: Element | null) => {
+                    wherebyEmbedRef.current =
+                      element as ChronosWherebyEmbedElement | null;
+                  },
+                  room: wherebyRoomUrl,
+                  style: {
+                    border: 0,
+                    display: "block",
+                    height: "100%",
+                    width: "100%",
+                  },
+                } satisfies ChronosWherebyEmbedProps)
+              ) : (
+                <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] p-6 text-center text-sm font-semibold text-white/72">
+                  {joinError || "Sala Whereby indisponivel no momento."}
+                </div>
+              )}
+            </div>
           </section>
         ) : (
           <section className="relative grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-5 px-3 pb-[max(3.5rem,env(safe-area-inset-bottom))] pt-16 sm:px-4 sm:pb-10">
@@ -3537,7 +3840,8 @@ export function ChronosExternalRoomPage({
               </aside>
             ) : null}
 
-            {recordingStorageStatus !== "idle" || recordingStorageError ? (
+            {!isChronosWherebyProvider &&
+            (recordingStorageStatus !== "idle" || recordingStorageError) ? (
               <div className="absolute bottom-[5.75rem] left-1/2 z-40 flex max-w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-2 rounded-lg border border-white/15 bg-[#101820]/92 px-3 py-2 text-xs font-semibold text-white shadow-2xl ring-1 ring-black/35 backdrop-blur-md">
                 <Radio
                   aria-hidden="true"
@@ -3653,6 +3957,18 @@ function ChronosParticipantIdentityCaption({
       </p>
     </div>
   );
+}
+
+function readChronosWherebyEventDetail(event: Event) {
+  if (!("detail" in event)) {
+    return {};
+  }
+
+  const detail = event.detail;
+
+  return detail && typeof detail === "object"
+    ? (detail as Record<string, unknown>)
+    : {};
 }
 
 type ChronosLiveKitControlBarProps = {

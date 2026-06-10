@@ -463,6 +463,22 @@ export type ChronosPublicJoinResult = {
   room: ChronosPublicRoom;
 };
 
+export type ChronosWherebyPublicRoom = {
+  embedScriptUrl: string;
+  expiresAt: string;
+  hostRoomUrl?: string;
+  meetingId: string;
+  provider: "whereby";
+  recordingRequired: boolean;
+  roomName: string;
+  roomUrl: string;
+  transcriptionRequired: boolean;
+};
+
+export type ChronosWherebyPublicJoinResult = ChronosPublicJoinResult & {
+  whereby: ChronosWherebyPublicRoom;
+};
+
 export type ChronosUpdateInput =
   | {
       action: "set_status";
@@ -501,7 +517,7 @@ export type ChronosUpdateInput =
       action: "add_transcript";
       content: string;
       meetingId: string;
-      source?: "athena" | "browser" | "manual" | "openai";
+      source?: "athena" | "browser" | "manual" | "openai" | "whereby";
       speakerLabel?: string;
     }
   | {
@@ -509,7 +525,7 @@ export type ChronosUpdateInput =
       meetingId: string;
       segments: Array<{
         content: string;
-        source?: "athena" | "browser" | "manual" | "openai";
+        source?: "athena" | "browser" | "manual" | "openai" | "whereby";
         speakerLabel?: string;
       }>;
     }

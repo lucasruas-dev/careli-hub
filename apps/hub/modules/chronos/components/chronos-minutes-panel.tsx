@@ -58,7 +58,7 @@ export function MinutesPanel({
   );
   const hasTranscript = safeMeeting.transcript.length > 0;
   const hasOfficialTranscript = safeMeeting.transcript.some(
-    (segment) => segment.source === "openai",
+    (segment) => isChronosMinutesOfficialTranscriptSource(segment.source),
   );
   const transcribableRecording = useMemo(
     () => selectChronosMinutesTranscribableRecording(safeMeeting.recordings),
@@ -382,4 +382,8 @@ function parseChronosMinutesRecordingDate(value?: string | null) {
   const timestamp = value ? Date.parse(value) : NaN;
 
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function isChronosMinutesOfficialTranscriptSource(source?: string | null) {
+  return source === "openai" || source === "whereby";
 }
