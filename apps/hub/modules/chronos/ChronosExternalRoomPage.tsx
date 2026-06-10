@@ -1395,7 +1395,7 @@ export function ChronosExternalRoomPage({
     const livekit = payload.livekit;
 
     if (!livekit?.token || !livekit.url) {
-      throw new Error("LiveKit nao retornou token valido para a sala.");
+      throw new Error("Nao foi possivel preparar a sala de reuniao.");
     }
 
     disconnectChronosLiveKitRoom();
@@ -1595,10 +1595,7 @@ export function ChronosExternalRoomPage({
         .catch(() => null)) as { error?: string; ok?: boolean } | null;
 
       if (!presenceResponse.ok || !presencePayload?.ok) {
-        throw new Error(
-          presencePayload?.error ??
-            "LiveKit nao confirmou a presenca na sala Chronos.",
-        );
+        throw new Error("Nao foi possivel confirmar a sala de reuniao.");
       }
       setLocalParticipant(participant);
       setMeetingId(payload.meetingId);
@@ -1935,7 +1932,7 @@ export function ChronosExternalRoomPage({
 
     if (!isChronosLiveKitProvider) {
       const message =
-        "LiveKit e obrigatorio para chamadas Chronos. A sala foi bloqueada para impedir chamada fora do LiveKit.";
+        "Sala indisponivel no momento. A chamada foi bloqueada para proteger o registro da reuniao.";
 
       setJoinError(message);
       setMediaError(message);
@@ -2428,8 +2425,7 @@ export function ChronosExternalRoomPage({
 
   async function handleToggleRecording() {
     if (!isChronosLiveKitProvider) {
-      const message =
-        "Gravacao local bloqueada: o Chronos deve gravar somente via LiveKit Egress.";
+      const message = "Gravacao indisponivel nesta sala.";
 
       setRecordingStorageStatus("failed");
       setRecordingStorageError(message);
@@ -2453,8 +2449,7 @@ export function ChronosExternalRoomPage({
     }
 
     if (!localParticipant.isHost || !authState.session?.accessToken) {
-      const message =
-        "Somente o host autenticado pode iniciar a gravacao LiveKit.";
+      const message = "Somente o host autenticado pode iniciar a gravacao.";
 
       setRecordingStorageStatus("failed");
       setRecordingStorageError(message);
@@ -2497,7 +2492,7 @@ export function ChronosExternalRoomPage({
         throw new Error(
           typeof result.error === "string"
             ? result.error
-            : "LiveKit Egress nao iniciou a gravacao.",
+            : "Nao foi possivel iniciar a gravacao.",
         );
       }
 
@@ -2517,7 +2512,7 @@ export function ChronosExternalRoomPage({
         );
 
       if (!egressId) {
-        throw new Error("LiveKit nao retornou o identificador do Egress.");
+        throw new Error("Nao foi possivel confirmar o inicio da gravacao.");
       }
 
       liveKitEgressIdRef.current = egressId;
@@ -2557,8 +2552,7 @@ export function ChronosExternalRoomPage({
     }
 
     if (!localParticipant.isHost || !authState.session?.accessToken) {
-      const message =
-        "Somente o host autenticado pode parar a gravacao LiveKit.";
+      const message = "Somente o host autenticado pode parar a gravacao.";
 
       setRecordingStorageStatus("failed");
       setRecordingStorageError(message);
@@ -2616,7 +2610,7 @@ export function ChronosExternalRoomPage({
         throw new Error(
           typeof result.error === "string"
             ? result.error
-            : "LiveKit Egress nao encerrou a gravacao.",
+            : "Nao foi possivel encerrar a gravacao.",
         );
       }
 
@@ -2698,7 +2692,7 @@ export function ChronosExternalRoomPage({
           throw new Error(
             typeof result.error === "string"
               ? result.error
-              : "LiveKit Egress nao sincronizou a gravacao.",
+              : "Nao foi possivel sincronizar a gravacao.",
           );
         }
 
@@ -2710,7 +2704,7 @@ export function ChronosExternalRoomPage({
 
         if (result.status === "failed") {
           setRecordingStorageStatus("failed");
-          setRecordingStorageError("LiveKit Egress falhou ao salvar a gravacao.");
+          setRecordingStorageError("Nao foi possivel salvar a gravacao.");
           return;
         }
       } catch (error) {
@@ -3548,7 +3542,6 @@ export function ChronosExternalRoomPage({
                 <span className="min-w-0 truncate">
                   {getChronosRecordingStorageLabel({
                     error: recordingStorageError,
-                    isLiveKit: isChronosLiveKitProvider,
                     status: recordingStorageStatus,
                   })}
                 </span>
@@ -5870,11 +5863,11 @@ function normalizeChronosRecordingStorageError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
 
   if (/Supabase server-side/i.test(message)) {
-    return "Supabase server-side ausente";
+    return "Configuracao de storage pendente";
   }
 
   if (/LiveKit Egress storage nao configurado/i.test(message)) {
-    return message;
+    return "Configuracao de gravacao pendente";
   }
 
   if (/bucket|storage/i.test(message)) {
@@ -5886,7 +5879,7 @@ function normalizeChronosRecordingStorageError(error: unknown) {
   }
 
   if (/egress/i.test(message)) {
-    return "Egress LiveKit pendente";
+    return "Gravacao pendente";
   }
 
   return "Upload da gravacao nao confirmado";
@@ -5894,11 +5887,9 @@ function normalizeChronosRecordingStorageError(error: unknown) {
 
 function getChronosRecordingStorageLabel({
   error,
-  isLiveKit,
   status,
 }: {
   error: string;
-  isLiveKit: boolean;
   status: "failed" | "idle" | "recording" | "saved" | "starting" | "uploading";
 }) {
   if (error) {
@@ -5906,30 +5897,26 @@ function getChronosRecordingStorageLabel({
   }
 
   if (status === "saved") {
-    return isLiveKit
-      ? "Gravacao LiveKit salva no Chronos"
-      : "Gravacao salva no Chronos";
+    return "Gravacao salva no Chronos";
   }
 
   if (status === "recording") {
-    return isLiveKit ? "LiveKit gravando a sala" : "Gravacao em andamento";
+    return "Gravacao em andamento";
   }
 
   if (status === "starting") {
-    return isLiveKit ? "Iniciando gravacao LiveKit" : "Iniciando gravacao";
+    return "Iniciando gravacao";
   }
 
   if (status === "uploading") {
-    return isLiveKit
-      ? "LiveKit finalizando gravacao no Chronos"
-      : "Enviando gravacao para o Chronos";
+    return "Finalizando gravacao no Chronos";
   }
 
   if (status === "failed") {
-    return isLiveKit ? "LiveKit nao confirmou a gravacao" : "Upload falhou";
+    return "Nao foi possivel confirmar a gravacao";
   }
 
-  return isLiveKit ? "LiveKit Egress pronto" : "Gravacao pronta";
+  return "Gravacao pronta";
 }
 
 function wait(milliseconds: number) {

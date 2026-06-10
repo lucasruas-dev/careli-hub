@@ -34105,3 +34105,74 @@ Conclusao:
 - Precisa de acao agora: Lucas deve iniciar uma chamada real no Chronos e confirmar se ela aparece no LiveKit e se o banco recebe `externalRoom.liveKitPresence`.
 - Quem deve agir agora: Lucas valida a chamada real; Zeus acompanha logs se houver falha e aplica rollback se o fluxo bloquear indevidamente chamada valida.
 - Proximo passo tecnico: se ainda houver divergencia entre app, LiveKit e Supabase, o bloqueio passa a ser auditoria de envs `LIVEKIT_*`/Supabase Production, que exige autorizacao sensivel especifica.
+
+## 2026-06-10 02:18:38 -03:00 - Chronos - Rotulos operacionais de gravacao
+
+Assunto: [Chronos] Recorte local para remover nomenclatura tecnica da gravacao
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / UX CHRONOS / VIDEOCHAMADA / GRAVACAO`.
+- Status: `VALIDADO_LOCAL / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO`.
+- Protocolo: `OP-20260610-022-CHRONOS-RECORDING-LABELS`.
+- Contexto:
+  - Lucas validou que a chamada ativa passou pelo LiveKit, mas pediu remover da interface textos como `LiveKit gravando a sala` e mensagens parecidas;
+  - o objetivo do recorte e manter a integracao tecnica por baixo e exibir ao usuario apenas linguagem operacional de sala/gravacao.
+- Correcoes locais aplicadas:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` removeu mencoes visiveis a `LiveKit`, `Egress` e `Supabase server-side` de status, tooltips e erros de usuario ligados a entrada em sala e gravacao;
+  - os estados agora exibem mensagens como `Gravacao em andamento`, `Finalizando gravacao no Chronos`, `Gravacao salva no Chronos`, `Configuracao de gravacao pendente` e `Sala indisponivel no momento`;
+  - a logica de conexao, presenca server-side e gravacao nao foi alterada.
+- Validacoes executadas:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `git diff --check -- apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, com aviso esperado de CRLF no Windows.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, dominio, Vercel env, Supabase remoto, banco, migration, secret ou token foi alterado;
+  - nomes internos de tipos/funcoes ligados ao provedor continuam no codigo para preservar manutencao tecnica.
+
+Conclusao:
+
+- O recorte deixa a sala Chronos mais limpa para o usuario, sem expor fornecedor ou mecanismo tecnico na interface.
+- O impacto pratico e visual/UX: a gravacao continua passando pelo mesmo fluxo tecnico, mas o usuario ve somente status operacional.
+- Precisa de acao agora: Lucas deve autorizar explicitamente se quiser publicar este recorte em producao.
+- Quem deve agir agora: Zeus mantem o recorte local validado e pode preparar o pacote limpo/safety gate se Lucas autorizar o deploy.
+- Proximo passo tecnico: se autorizado, publicar somente `OP-20260610-022-CHRONOS-RECORDING-LABELS` por pacote limpo, com commit rastreavel e Safety Gate de producao.
+
+## 2026-06-10 02:54:00 -03:00 - Chronos - Fail-safe de encerramento do Egress
+
+Assunto: [Chronos] Recorte local para finalizar/sincronizar Egress preso ao fechar chamada
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / INCIDENTE CHRONOS / LIVEKIT EGRESS / GRAVACAO`.
+- Status: `VALIDADO_LOCAL / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO`.
+- Protocolo: `OP-20260610-023-CHRONOS-EGRESS-CLOSE-FAILSAFE`.
+- Contexto:
+  - Lucas encerrou chamada Chronos, mas o video ainda nao apareceu no Drive apos varios minutos;
+  - print do LiveKit mostrou a sessao `RM_A72jRKisLwxL` fechada, mas o RoomComposite `EG_RAME6JmLzDAR` permaneceu em `STARTING` e o Track `EG_vSsdUZ3YHt43` permaneceu `ACTIVE`;
+  - logs Vercel indicaram `POST /api/chronos/public/rooms/careli/egress`, `GET /chronos/recording-view` e `POST /api/chronos/public/rooms/careli/close` com status 200, sem erro server-side;
+  - a conclusao tecnica e que a sala passou pelo LiveKit, mas o Egress nao finalizou/uploadou arquivo completo para o Drive.
+- Correcoes locais aplicadas:
+  - `closeChronosPublicMeeting` agora tenta finalizar/sincronizar o Egress pendente antes de deletar a sala LiveKit;
+  - `stopChronosPublicLiveKitEgress` e `syncChronosPublicLiveKitEgress` agora reconstroem `egressId`, `recordingId`, `audioEgressId`, `audioRecordingId` e audios por participante a partir de `metadata.externalRoom` e `chronos_recordings`, sem depender somente da memoria do navegador;
+  - o fail-safe do close tenta `stop`; se o LiveKit indicar estado inconsistente, tenta `sync` antes de seguir com o fechamento;
+  - `ChronosRecordingViewPage` passou a aceitar aliases seguros de query params (`url`, `liveKitUrl`, `wsUrl`, `serverUrl`, `token`, `accessToken`, `access_token`) e ganhou fallback curto para emitir `START_RECORDING` quando a conexao nao falha mas demora a disparar o evento `Connected`;
+  - a view continua emitindo `END_RECORDING` no encerramento e nao inicia gravacao se a conexao ao LiveKit falhar explicitamente.
+- Validacoes executadas:
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts` fora do recorte Chronos;
+  - `git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/modules/chronos/ChronosRecordingViewPage.tsx`: PASS, com avisos esperados de LF/CRLF no Windows.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, dominio, Vercel env, Supabase remoto, banco, migration, secret, token, LiveKit dashboard ou Egress ativo em producao foi alterado nesta etapa;
+  - o Egress preso visto no painel LiveKit nao foi abortado manualmente por este recorte local.
+- Riscos e observacoes:
+  - o video da chamada ja encerrada pode nao ser recuperavel se o RoomComposite ficou preso em `STARTING` sem arquivo final no storage;
+  - o proximo teste real deve confirmar se o RoomComposite passa de `STARTING` para `COMPLETE` e se o Drive exibe o arquivo apos o fechamento;
+  - se um Egress ficar preso novamente em producao antes do deploy deste hotfix, a acao manual de abortar/parar no LiveKit continua sensivel e deve ser autorizada explicitamente por Lucas.
+
+Conclusao:
+
+- O recorte corrige a fragilidade principal: o fechamento do Chronos nao deve mais apagar a sala LiveKit sem antes tentar finalizar/sincronizar os Egresses pendentes.
+- O impacto pratico esperado e reduzir o caso em que a chamada fica fechada no LiveKit, mas o video nunca chega ao Drive por estado `STARTING`/`ACTIVE` preso.
+- Precisa de acao agora: Lucas deve autorizar explicitamente se quiser publicar este hotfix em producao.
+- Quem deve agir agora: Zeus mantem o recorte local validado e pode preparar commit/pacote limpo/Safety Gate se Lucas autorizar.
+- Proximo passo tecnico: se autorizado, publicar `OP-20260610-023-CHRONOS-EGRESS-CLOSE-FAILSAFE` junto do recorte `OP-20260610-022-CHRONOS-RECORDING-LABELS` ou em pacote limpo separado de Chronos.

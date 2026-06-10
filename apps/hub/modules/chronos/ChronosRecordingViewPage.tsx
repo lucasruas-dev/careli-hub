@@ -46,8 +46,15 @@ export function ChronosRecordingViewPage() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
-    const liveKitUrl = searchParams.get("url");
-    const token = searchParams.get("token");
+    const liveKitUrl =
+      searchParams.get("url") ??
+      searchParams.get("liveKitUrl") ??
+      searchParams.get("wsUrl") ??
+      searchParams.get("serverUrl");
+    const token =
+      searchParams.get("token") ??
+      searchParams.get("accessToken") ??
+      searchParams.get("access_token");
 
     if (!liveKitUrl || !token) {
       setStatus("error");
@@ -59,6 +66,7 @@ export function ChronosRecordingViewPage() {
       dynacast: true,
     });
     roomRef.current = room;
+    let connectionFailed = false;
 
     const syncParticipants = () => {
       setParticipants(
@@ -68,7 +76,7 @@ export function ChronosRecordingViewPage() {
       );
     };
     const markRecordingReady = () => {
-      if (startLoggedRef.current) {
+      if (startLoggedRef.current || connectionFailed) {
         return;
       }
 
@@ -76,6 +84,10 @@ export function ChronosRecordingViewPage() {
       setStatus("recording");
       console.log("START_RECORDING");
     };
+    const recordingReadyFallback = window.setTimeout(
+      markRecordingReady,
+      3500,
+    );
     const syncRemoteParticipant = (participant: LiveKitParticipant) => {
       if (participant instanceof RemoteParticipant) {
         syncParticipants();
@@ -111,9 +123,15 @@ export function ChronosRecordingViewPage() {
 
     void room
       .connect(liveKitUrl, token, { autoSubscribe: true })
-      .catch(() => setStatus("error"));
+      .catch(() => {
+        connectionFailed = true;
+        window.clearTimeout(recordingReadyFallback);
+        setStatus("error");
+      });
 
     return () => {
+      window.clearTimeout(recordingReadyFallback);
+
       if (roomRef.current === room) {
         roomRef.current = null;
       }

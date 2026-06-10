@@ -1658,11 +1658,13 @@ export async function closeChronosPublicMeeting({
     throw new Error("Somente o host autenticado pode encerrar a reserva Chronos.");
   }
 
-  const { meeting, room } = await getChronosPublicMeetingContext({
+  const closeContext = await getChronosPublicMeetingContext({
     client,
     meetingId: normalizedInput.meetingId,
     roomSlug: slug,
   });
+  let meeting = closeContext.meeting;
+  let room = closeContext.room;
   const canClose =
     meeting.host_user_id === loggedUser.id ||
     getPermissionsForRole(loggedUser.role).includes("chronos:manage");
@@ -1671,6 +1673,21 @@ export async function closeChronosPublicMeeting({
     throw new ChronosForbiddenError(
       "Somente o host da reserva pode encerrar a chamada Chronos.",
     );
+  }
+
+  const egressWasFinalized = await finalizeChronosLiveKitEgressBeforeClose({
+    authorizationHeader,
+    input: normalizedInput,
+    meeting,
+    roomSlug: slug,
+  });
+
+  if (egressWasFinalized) {
+    ({ meeting, room } = await getChronosPublicMeetingContext({
+      client,
+      meetingId: normalizedInput.meetingId,
+      roomSlug: slug,
+    }));
   }
 
   const now = new Date().toISOString();
@@ -1748,6 +1765,135 @@ export async function closeChronosPublicMeeting({
     ok: true,
     status: "closed" as const,
   };
+}
+
+async function finalizeChronosLiveKitEgressBeforeClose({
+  authorizationHeader,
+  input,
+  meeting,
+  roomSlug,
+}: {
+  authorizationHeader?: string | null;
+  input: NormalizedChronosPublicCloseInput;
+  meeting: ChronosMeetingRow;
+  roomSlug: string;
+}) {
+  if (!shouldFinalizeChronosLiveKitEgressBeforeClose(meeting)) {
+    return false;
+  }
+
+  const egressInput: NormalizedChronosPublicEgressInput = {
+    action: "stop",
+    meetingId: input.meetingId,
+    participantAudioEgresses: [],
+    participantId: input.participantId,
+  };
+
+  try {
+    await stopChronosPublicLiveKitEgress({
+      authorizationHeader,
+      input: egressInput,
+      roomSlug,
+    });
+
+    return true;
+  } catch (stopError) {
+    console.warn(
+      "[chronos] LiveKit egress close finalization failed; trying sync",
+      stopError instanceof Error ? stopError.message : "unknown error",
+    );
+  }
+
+  try {
+    await syncChronosPublicLiveKitEgress({
+      authorizationHeader,
+      input: { ...egressInput, action: "sync" },
+      roomSlug,
+    });
+
+    return true;
+  } catch (syncError) {
+    console.warn(
+      "[chronos] LiveKit egress close sync failed",
+      syncError instanceof Error ? syncError.message : "unknown error",
+    );
+
+    return false;
+  }
+}
+
+function shouldFinalizeChronosLiveKitEgressBeforeClose(
+  meeting: ChronosMeetingRow,
+) {
+  const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
+  const liveKitEgressMetadata = readRecordMetadata(
+    externalRoomMetadata.liveKitEgress,
+  );
+  const liveKitAudioEgressMetadata = readRecordMetadata(
+    externalRoomMetadata.liveKitAudioEgress,
+  );
+  const participantAudioEgresses = normalizeParticipantAudioEgressInputs(
+    externalRoomMetadata.liveKitParticipantAudioEgresses,
+  );
+  const hasEgress =
+    Boolean(
+      readChronosLiveKitEgressMetadataText(liveKitEgressMetadata, "egressId") ||
+        readChronosLiveKitEgressMetadataText(
+          liveKitAudioEgressMetadata,
+          "egressId",
+        ),
+    ) || participantAudioEgresses.length > 0;
+
+  if (!hasEgress) {
+    return false;
+  }
+
+  const statusValues = [
+    readChronosLiveKitEgressMetadataText(liveKitEgressMetadata, "status"),
+    readChronosLiveKitEgressMetadataText(liveKitAudioEgressMetadata, "status"),
+    ...readChronosParticipantAudioEgressStatusValues(externalRoomMetadata),
+  ].filter((status): status is string => Boolean(status));
+
+  return !(
+    statusValues.length > 0 &&
+    statusValues.every(isChronosLiveKitEgressTerminalStatus)
+  );
+}
+
+function readChronosParticipantAudioEgressStatusValues(
+  externalRoomMetadata: Record<string, unknown>,
+) {
+  const rawValues = externalRoomMetadata.liveKitParticipantAudioEgresses;
+
+  if (!Array.isArray(rawValues)) {
+    return [];
+  }
+
+  return rawValues
+    .map((value) =>
+      value && typeof value === "object"
+        ? readChronosLiveKitEgressMetadataText(
+            value as Record<string, unknown>,
+            "status",
+          )
+        : null,
+    )
+    .filter((status): status is string => Boolean(status));
+}
+
+function isChronosLiveKitEgressTerminalStatus(status: string) {
+  const normalizedStatus = status.trim().toLowerCase();
+
+  return (
+    normalizedStatus === "available" ||
+    normalizedStatus === "failed" ||
+    normalizedStatus === "egress_complete" ||
+    normalizedStatus === "egress_failed" ||
+    normalizedStatus === "egress_aborted" ||
+    normalizedStatus === "3" ||
+    normalizedStatus === "4" ||
+    normalizedStatus === "5"
+  );
 }
 
 export async function markChronosPublicRecording({
@@ -2291,19 +2437,27 @@ async function stopChronosPublicLiveKitEgress({
     );
   }
 
-  if (!input.egressId) {
-    throw new Error("Egress LiveKit nao informado para encerrar gravacao.");
-  }
-
   const { loggedUser, meeting, room } = await resolveChronosPublicRecordingHost({
     authorizationHeader,
     client,
     meetingId: input.meetingId,
     roomSlug: slug,
   });
-  const egressResult = await stopChronosLiveKitEgress(input.egressId);
-  const audioEgressResult = input.audioEgressId
-    ? await stopChronosLiveKitEgress(input.audioEgressId).catch(
+  const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
+  const resolvedInput = await hydrateChronosPublicEgressInput({
+    client,
+    externalRoomMetadata,
+    input,
+    meetingId: meeting.id,
+  });
+
+  if (!resolvedInput.egressId) {
+    throw new Error("Egress LiveKit nao informado para encerrar gravacao.");
+  }
+
+  const egressResult = await stopChronosLiveKitEgress(resolvedInput.egressId);
+  const audioEgressResult = resolvedInput.audioEgressId
+    ? await stopChronosLiveKitEgress(resolvedInput.audioEgressId).catch(
         (error: unknown) => {
           console.warn(
             "[chronos] LiveKit audio-only egress failed to stop",
@@ -2316,7 +2470,6 @@ async function stopChronosPublicLiveKitEgress({
     : null;
   const now = new Date().toISOString();
   const isComplete = egressResult.status === "EGRESS_COMPLETE";
-  const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
   const liveKitEgressMetadata = readRecordMetadata(
     externalRoomMetadata.liveKitEgress,
   );
@@ -2326,7 +2479,7 @@ async function stopChronosPublicLiveKitEgress({
   const participantAudioEgressReferences =
     readChronosParticipantAudioEgressReferences({
       externalRoomMetadata,
-      input,
+      input: resolvedInput,
     });
   const participantAudioEgressResults =
     await stopChronosParticipantAudioEgresses(participantAudioEgressReferences);
@@ -2382,11 +2535,12 @@ async function stopChronosPublicLiveKitEgress({
             "storagePath",
           ),
       },
-      ...(audioEgressResult || input.audioEgressId
+      ...(audioEgressResult || resolvedInput.audioEgressId
         ? {
             liveKitAudioEgress: {
               ...liveKitAudioEgressMetadata,
-              egressId: audioEgressResult?.egressId ?? input.audioEgressId,
+              egressId:
+                audioEgressResult?.egressId ?? resolvedInput.audioEgressId,
               fileName:
                 audioEgressResult?.file?.fileName ??
                 readChronosLiveKitEgressMetadataText(
@@ -2419,7 +2573,7 @@ async function stopChronosPublicLiveKitEgress({
                 buildChronosParticipantAudioRuntimeMetadata(entry, {
                   now,
                   stoppedAt: now,
-                  videoRecordingId: input.recordingId ?? null,
+                  videoRecordingId: resolvedInput.recordingId ?? null,
                 }),
               ),
           }
@@ -2453,11 +2607,11 @@ async function stopChronosPublicLiveKitEgress({
     throw meetingResult.error;
   }
 
-  if (input.recordingId) {
+  if (resolvedInput.recordingId) {
     const recordingResult = await client
       .from("chronos_recordings")
       .update(recordingUpdate)
-      .eq("id", input.recordingId)
+      .eq("id", resolvedInput.recordingId)
       .eq("meeting_id", meeting.id);
 
     if (recordingResult.error) {
@@ -2490,7 +2644,7 @@ async function stopChronosPublicLiveKitEgress({
       stoppedAt: now,
     });
 
-    if (input.audioRecordingId) {
+    if (resolvedInput.audioRecordingId) {
       const audioRecordingResult = await client
         .from("chronos_recordings")
         .update({
@@ -2503,10 +2657,10 @@ async function stopChronosPublicLiveKitEgress({
             provider: "livekit",
             source: "chronos-livekit-egress-audio",
             transcriptionSource: true,
-            videoRecordingId: input.recordingId ?? null,
+            videoRecordingId: resolvedInput.recordingId ?? null,
           },
         })
-        .eq("id", input.audioRecordingId)
+        .eq("id", resolvedInput.audioRecordingId)
         .eq("meeting_id", meeting.id);
 
       if (audioRecordingResult.error) {
@@ -2526,7 +2680,7 @@ async function stopChronosPublicLiveKitEgress({
           provider: "livekit",
           source: "chronos-livekit-egress-audio",
           transcriptionSource: true,
-          videoRecordingId: input.recordingId ?? null,
+          videoRecordingId: resolvedInput.recordingId ?? null,
         },
         ...audioRecordingUpdate,
       });
@@ -2546,7 +2700,7 @@ async function stopChronosPublicLiveKitEgress({
     meetingId: meeting.id,
     now,
     stoppedAt: now,
-    videoRecordingId: input.recordingId ?? null,
+    videoRecordingId: resolvedInput.recordingId ?? null,
   });
 
   await insertTimelineEvent(client, {
@@ -2571,7 +2725,8 @@ async function stopChronosPublicLiveKitEgress({
   }
 
   return {
-    audioEgressId: audioEgressResult?.egressId ?? input.audioEgressId ?? "",
+    audioEgressId:
+      audioEgressResult?.egressId ?? resolvedInput.audioEgressId ?? "",
     audioStatus: nextAudioRecordingStatus,
     egressId: egressResult.egressId,
     ok: true,
@@ -2601,10 +2756,6 @@ async function syncChronosPublicLiveKitEgress({
     );
   }
 
-  if (!input.egressId) {
-    throw new Error("Egress LiveKit nao informado para sincronizar gravacao.");
-  }
-
   const { meeting } = await resolveChronosPublicRecordingHost({
     authorizationHeader,
     client,
@@ -2613,6 +2764,17 @@ async function syncChronosPublicLiveKitEgress({
   });
   const now = new Date().toISOString();
   const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
+  const resolvedInput = await hydrateChronosPublicEgressInput({
+    client,
+    externalRoomMetadata,
+    input,
+    meetingId: meeting.id,
+  });
+
+  if (!resolvedInput.egressId) {
+    throw new Error("Egress LiveKit nao informado para sincronizar gravacao.");
+  }
+
   const liveKitEgressMetadata = readRecordMetadata(
     externalRoomMetadata.liveKitEgress,
   );
@@ -2622,10 +2784,11 @@ async function syncChronosPublicLiveKitEgress({
   const participantAudioEgressReferences =
     readChronosParticipantAudioEgressReferences({
       externalRoomMetadata,
-      input,
+      input: resolvedInput,
     });
-  const egressResult = await getChronosLiveKitEgressStatus(input.egressId).catch(
-    async (error: unknown) => {
+  const egressResult = await getChronosLiveKitEgressStatus(
+    resolvedInput.egressId,
+  ).catch(async (error: unknown) => {
       const storagePath = readChronosLiveKitEgressStoragePath(
         null,
         liveKitEgressMetadata,
@@ -2640,17 +2803,16 @@ async function syncChronosPublicLiveKitEgress({
         }))
       ) {
         return {
-          egressId: input.egressId ?? "",
+          egressId: resolvedInput.egressId ?? "",
           file: null,
           status: "EGRESS_COMPLETE",
         };
       }
 
       throw error;
-    },
-  );
-  const audioEgressResult = input.audioEgressId
-    ? await getChronosLiveKitEgressStatus(input.audioEgressId).catch(
+    });
+  const audioEgressResult = resolvedInput.audioEgressId
+    ? await getChronosLiveKitEgressStatus(resolvedInput.audioEgressId).catch(
         async (error: unknown) => {
           const storagePath = readChronosLiveKitEgressStoragePath(
             null,
@@ -2666,7 +2828,7 @@ async function syncChronosPublicLiveKitEgress({
             }))
           ) {
             return {
-              egressId: input.audioEgressId ?? "",
+              egressId: resolvedInput.audioEgressId ?? "",
               file: null,
               status: "EGRESS_COMPLETE",
             };
@@ -2738,11 +2900,12 @@ async function syncChronosPublicLiveKitEgress({
             "storagePath",
           ),
       },
-      ...(audioEgressResult || input.audioEgressId
+      ...(audioEgressResult || resolvedInput.audioEgressId
         ? {
             liveKitAudioEgress: {
               ...liveKitAudioEgressMetadata,
-              egressId: audioEgressResult?.egressId ?? input.audioEgressId,
+              egressId:
+                audioEgressResult?.egressId ?? resolvedInput.audioEgressId,
               fileName:
                 audioEgressResult?.file?.fileName ??
                 readChronosLiveKitEgressMetadataText(
@@ -2778,7 +2941,7 @@ async function syncChronosPublicLiveKitEgress({
                     entry.nextRecordingStatus === "available"
                       ? now
                       : undefined,
-                  videoRecordingId: input.recordingId ?? null,
+                  videoRecordingId: resolvedInput.recordingId ?? null,
                 }),
               ),
           }
@@ -2806,11 +2969,11 @@ async function syncChronosPublicLiveKitEgress({
     throw meetingResult.error;
   }
 
-  if (input.recordingId) {
+  if (resolvedInput.recordingId) {
     const recordingResult = await client
       .from("chronos_recordings")
       .update(recordingUpdate)
-      .eq("id", input.recordingId)
+      .eq("id", resolvedInput.recordingId)
       .eq("meeting_id", meeting.id);
 
     if (recordingResult.error) {
@@ -2818,7 +2981,7 @@ async function syncChronosPublicLiveKitEgress({
     }
   }
 
-  if (audioEgressResult && input.audioRecordingId) {
+  if (audioEgressResult && resolvedInput.audioRecordingId) {
     const audioRecordingUpdate = buildChronosLiveKitRecordingUpdate({
       egressResult: audioEgressResult,
       nextRecordingStatus: nextAudioRecordingStatus ?? "processing",
@@ -2829,7 +2992,7 @@ async function syncChronosPublicLiveKitEgress({
     const audioRecordingResult = await client
       .from("chronos_recordings")
       .update(audioRecordingUpdate)
-      .eq("id", input.audioRecordingId)
+      .eq("id", resolvedInput.audioRecordingId)
       .eq("meeting_id", meeting.id);
 
     if (audioRecordingResult.error) {
@@ -2851,11 +3014,12 @@ async function syncChronosPublicLiveKitEgress({
       )
         ? now
         : undefined,
-    videoRecordingId: input.recordingId ?? null,
+    videoRecordingId: resolvedInput.recordingId ?? null,
   });
 
   return {
-    audioEgressId: audioEgressResult?.egressId ?? input.audioEgressId ?? "",
+    audioEgressId:
+      audioEgressResult?.egressId ?? resolvedInput.audioEgressId ?? "",
     audioStatus: nextAudioRecordingStatus,
     egressId: egressResult.egressId,
     ok: true,
@@ -4581,6 +4745,166 @@ function buildChronosParticipantAudioEgressMetadata(
     trackMimeType: track?.trackMimeType ?? null,
     trackName: track?.trackName ?? null,
     transcriptionSource: true,
+  };
+}
+
+async function hydrateChronosPublicEgressInput({
+  client,
+  externalRoomMetadata,
+  input,
+  meetingId,
+}: {
+  client: ChronosClient;
+  externalRoomMetadata: Record<string, unknown>;
+  input: NormalizedChronosPublicEgressInput;
+  meetingId: string;
+}): Promise<NormalizedChronosPublicEgressInput> {
+  const liveKitEgressMetadata = readRecordMetadata(
+    externalRoomMetadata.liveKitEgress,
+  );
+  const liveKitAudioEgressMetadata = readRecordMetadata(
+    externalRoomMetadata.liveKitAudioEgress,
+  );
+  const participantAudioEgresses = readChronosParticipantAudioEgressReferences({
+    externalRoomMetadata,
+    input,
+  });
+  let egressId =
+    input.egressId ??
+    readChronosLiveKitEgressMetadataText(liveKitEgressMetadata, "egressId") ??
+    undefined;
+  let recordingId = input.recordingId;
+  let audioEgressId =
+    input.audioEgressId ??
+    readChronosLiveKitEgressMetadataText(
+      liveKitAudioEgressMetadata,
+      "egressId",
+    ) ??
+    undefined;
+  let audioRecordingId = input.audioRecordingId;
+  const participantAudioByEgressId = new Map(
+    participantAudioEgresses.map((reference) => [reference.egressId, reference]),
+  );
+  const recordingsResult = await client
+    .from("chronos_recordings")
+    .select("id, metadata, storage_path")
+    .eq("meeting_id", meetingId)
+    .order("created_at", { ascending: false })
+    .limit(120);
+
+  if (recordingsResult.error) {
+    console.warn(
+      "[chronos] LiveKit egress recording reference lookup failed",
+      recordingsResult.error.message,
+    );
+  }
+
+  const recordingRows = recordingsResult.data ?? [];
+
+  for (const recording of recordingRows) {
+    const recordingMetadata = readRecordMetadata(recording.metadata);
+    const recordingEgressId =
+      readChronosLiveKitEgressMetadataText(recordingMetadata, "egressId") ??
+      readChronosLiveKitEgressMetadataText(recordingMetadata, "egress_id");
+
+    if (!recordingEgressId) {
+      continue;
+    }
+
+    const source =
+      readChronosLiveKitEgressMetadataText(recordingMetadata, "source") ?? "";
+    const kind =
+      readChronosLiveKitEgressMetadataText(recordingMetadata, "kind") ?? "";
+
+    if (
+      source === "chronos-livekit-egress" ||
+      (!source && kind !== "audio" && kind !== "participant-audio")
+    ) {
+      egressId ??= recordingEgressId;
+
+      if (recordingEgressId === egressId) {
+        recordingId ??= recording.id;
+      }
+
+      continue;
+    }
+
+    if (source === "chronos-livekit-egress-audio" || kind === "audio") {
+      audioEgressId ??= recordingEgressId;
+
+      if (recordingEgressId === audioEgressId) {
+        audioRecordingId ??= recording.id;
+      }
+
+      continue;
+    }
+
+    if (
+      source === "chronos-livekit-egress-participant-audio" ||
+      kind === "participant-audio"
+    ) {
+      const currentReference = participantAudioByEgressId.get(
+        recordingEgressId,
+      );
+
+      participantAudioByEgressId.set(recordingEgressId, {
+        egressId: recordingEgressId,
+        organization:
+          currentReference?.organization ??
+          readChronosLiveKitEgressMetadataText(
+            recordingMetadata,
+            "organization",
+          ) ??
+          undefined,
+        participantId:
+          currentReference?.participantId ??
+          readChronosLiveKitEgressMetadataText(
+            recordingMetadata,
+            "participantId",
+          ) ??
+          undefined,
+        participantIdentity:
+          currentReference?.participantIdentity ??
+          readChronosLiveKitEgressMetadataText(
+            recordingMetadata,
+            "participantIdentity",
+          ) ??
+          undefined,
+        participantName:
+          currentReference?.participantName ??
+          readChronosLiveKitEgressMetadataText(
+            recordingMetadata,
+            "participantName",
+          ) ??
+          undefined,
+        recordingId: currentReference?.recordingId ?? recording.id,
+        storagePath: currentReference?.storagePath ?? recording.storage_path ?? undefined,
+        trackId:
+          currentReference?.trackId ??
+          readChronosLiveKitEgressMetadataText(recordingMetadata, "trackId") ??
+          undefined,
+        trackMimeType:
+          currentReference?.trackMimeType ??
+          readChronosLiveKitEgressMetadataText(
+            recordingMetadata,
+            "trackMimeType",
+          ) ??
+          undefined,
+        trackName:
+          currentReference?.trackName ??
+          readChronosLiveKitEgressMetadataText(recordingMetadata, "trackName") ??
+          undefined,
+      });
+    }
+  }
+
+  return {
+    ...input,
+    audioEgressId,
+    audioRecordingId,
+    egressId,
+    participantAudioEgresses: Array.from(participantAudioByEgressId.values()),
+    recordingId,
   };
 }
 
