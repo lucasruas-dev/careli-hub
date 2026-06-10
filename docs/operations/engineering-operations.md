@@ -34363,3 +34363,53 @@ Conclusao:
 - Precisa de acao agora: Lucas deve fazer uma chamada curta, encerrar e conferir se o RoomComposite fica `COMPLETE` e se o video aparece no Drive.
 - Quem deve agir agora: Lucas valida a chamada real; Zeus acompanha se aparecer novo Egress abortado.
 - Proximo passo tecnico: se falhar novamente com o mesmo erro, coletar o novo Egress ID e revisar o comportamento do custom template no detalhe; se falhar por outro erro, tratar como incidente novo.
+
+## 2026-06-10 10:44:18 -03:00 - Chronos - Script real para sinal do RoomComposite
+
+Assunto: [Chronos] Recorte local para corrigir sinal inicial do Egress visual
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / INCIDENTE CHRONOS / LIVEKIT EGRESS / TEMPLATE CUSTOMIZADO`.
+- Status: `VALIDADO_LOCAL / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO`.
+- Protocolo: `OP-20260610-026-CHRONOS-ROOMCOMPOSITE-REAL-START-SIGNAL`.
+- Contexto:
+  - Lucas acionou Zeus com urgencia para resolver Chronos/LiveKit apos nova falha do RoomComposite Egress;
+  - o teste real anterior mostrou Track Egress de audio `COMPLETE`, mas RoomComposite `ABORTED`, portanto S3/Supabase seguem improvaveis para este incidente;
+  - logs Vercel do deployment `dpl_JAqpPw8dWJqUZ84CEpzgQqo82pZY` confirmaram `POST /api/chronos/public/rooms/careli/egress` em `08:57:39` e `GET /chronos/recording-view` 200 em `08:57:42`;
+  - no close, o servidor registrou `egress with status EGRESS_ABORTED cannot be stopped`;
+  - a causa tecnica encontrada no HTML era que o `START_RECORDING` injetado via page server component aparecia serializado dentro do payload streaming/RSC do Next (`self.__next_f.push`), nao como script inicial executavel para o Chromium do LiveKit.
+- Correcoes locais aplicadas:
+  - `apps/hub/app/layout.tsx` ganhou um script minimo, com guarda por `window.location.pathname === "/chronos/recording-view"`, para emitir `START_RECORDING` como script real no HTML inicial somente na rota do template de gravacao;
+  - o script agenda tentativas de `START_RECORDING` de `0ms` ate `110s`, cobrindo atraso de carregamento do Chromium/recorder;
+  - `apps/hub/app/chronos/recording-view/page.tsx` deixou de carregar o boot script serializado dentro da page e voltou a renderizar somente o componente da view;
+  - `apps/hub/modules/chronos/ChronosRecordingViewPage.tsx` passou a reemitir `START_RECORDING` quando detectar track remota assinada, alem dos eventos de conexao/fallback ja existentes, alinhando melhor com o template SDK oficial da LiveKit.
+- Escopo do recorte:
+  - incluido: `apps/hub/app/layout.tsx`, `apps/hub/app/chronos/recording-view/page.tsx`, `apps/hub/modules/chronos/ChronosRecordingViewPage.tsx`, `docs/operations/engineering-operations.md`;
+  - preservado: Hermes restaurado no commit base `12e964297c59bb69b7e83df52559f2d7ccb42cd9`, `https://ops.c2x.app.br`, envs, secrets, Supabase, banco, migrations, alias e dominios.
+- Validacoes executadas:
+  - `GET https://c2x.app.br/chronos/recording-view`: 200, confirmando que a producao atual ainda serve o texto `START_RECORDING`, mas antes da correcao ele aparecia no payload RSC;
+  - `npx.cmd vercel inspect https://c2x.app.br`: producao atual `dpl_7sAoWx8KCUxubxHSifyrSHgpnQvD`, `Ready`;
+  - logs read-only do deployment anterior `dpl_JAqpPw8dWJqUZ84CEpzgQqo82pZY`: acesso 200 a `/chronos/recording-view` no horario do Egress e aviso de Egress abortado no close;
+  - consulta ao fonte publico do template SDK LiveKit confirmou que o helper oficial usa `console.log('START_RECORDING')`;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/layout.tsx app/chronos/recording-view/page.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/app/layout.tsx apps/hub/app/chronos/recording-view/page.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - smoke local com `next start --port 3011` no worktree limpo: `GET /chronos/recording-view` 200 e primeiro `START_RECORDING` dentro de `<script>` real (`IsFlightPayload = False`), com guarda da rota e retry ate `110000`.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, token, LiveKit dashboard, Supabase, banco, storage ou migration foi alterado;
+  - nenhuma mudanca Hermes/PulseX foi feita neste recorte.
+- Riscos e pendencias:
+  - producao continua `BLOQUEADO` ate autorizacao explicita do Lucas;
+  - como `apps/hub/app/layout.tsx` e compartilhado, o Safety Gate de producao deve declarar esse arquivo como permitido somente por causa do script inerte fora de `/chronos/recording-view`;
+  - a validacao funcional definitiva exige nova chamada real no Chronos apos publicacao, confirmando RoomComposite `COMPLETE` e video no Drive.
+- Rollback planejado se publicado:
+  - reapontar `https://c2x.app.br` para `dpl_7sAoWx8KCUxubxHSifyrSHgpnQvD`, preservando `https://ops.c2x.app.br` no deployment atual.
+
+Conclusao:
+
+- A falha nao estava no texto do sinal em si, mas no lugar onde o Next entregava o script: o sinal aparecia no HTML como payload de streaming, nao como script inicial confiavel para o Egress.
+- O impacto pratico do recorte e dar ao Chromium do LiveKit um `START_RECORDING` executavel de verdade no inicio da pagina e reforcar a reemissao quando a sala/tracks estiverem prontos.
+- Precisa de acao agora: Lucas precisa autorizar explicitamente o deploy de producao se quiser publicar o protocolo `OP-20260610-026-CHRONOS-ROOMCOMPOSITE-REAL-START-SIGNAL`.
+- Quem deve agir agora: Zeus pode preparar commit/pacote limpo/Safety Gate e publicar somente apos autorizacao; Lucas valida uma chamada real depois.
+- Proximo passo tecnico: montar pacote limpo sobre a base `12e964297c59bb69b7e83df52559f2d7ccb42cd9`, rodar Production Module Safety Gate com marcadores Hermes obrigatorios e publicar somente `https://c2x.app.br` se autorizado.

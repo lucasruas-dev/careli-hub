@@ -30,6 +30,71 @@ const appTitle = isHomologationEnvironment ? "Homo Panteon" : "Panteon";
 const appIconUrl = isHomologationEnvironment
   ? "/panteon-mark-homolog.png?v=1"
   : "/panteon-mark.png?v=1";
+const chronosRecordingEgressSignalScript = `
+(() => {
+  if (window.location.pathname !== "/chronos/recording-view") {
+    return;
+  }
+
+  if (window.__chronosRecordingStartSignalBooted) {
+    return;
+  }
+
+  window.__chronosRecordingStartSignalBooted = true;
+
+  const emitStartSignal = () => {
+    window.__chronosRecordingStartLogged = true;
+    console.log("START_RECORDING");
+  };
+
+  window.__chronosRecordingEmitStartSignal = emitStartSignal;
+
+  const scheduleStartSignals = () => {
+    [
+      0,
+      250,
+      750,
+      1500,
+      3000,
+      5000,
+      8000,
+      12000,
+      20000,
+      30000,
+      45000,
+      60000,
+      90000,
+      110000,
+    ].forEach((delay) => {
+      window.setTimeout(emitStartSignal, delay);
+    });
+  };
+
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", scheduleStartSignals, {
+      once: true,
+    });
+  } else {
+    scheduleStartSignals();
+  }
+
+  window.addEventListener("load", emitStartSignal, { once: true });
+  window.addEventListener("pageshow", emitStartSignal, { once: true });
+
+  window.addEventListener(
+    "pagehide",
+    () => {
+      if (window.__chronosRecordingEndLogged) {
+        return;
+      }
+
+      window.__chronosRecordingEndLogged = true;
+      console.log("END_RECORDING");
+    },
+    { once: true },
+  );
+})();
+`;
 
 export const metadata: Metadata = {
   applicationName: appTitle,
@@ -73,6 +138,11 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: chronosRecordingEgressSignalScript,
+          }}
+        />
         <PanteonPwaRuntime />
         <AppProviders>{children}</AppProviders>
       </body>

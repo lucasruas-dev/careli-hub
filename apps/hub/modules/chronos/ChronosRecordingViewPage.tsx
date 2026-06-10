@@ -82,13 +82,6 @@ export function ChronosRecordingViewPage() {
     roomRef.current = room;
     let connectionFailed = false;
 
-    const syncParticipants = () => {
-      setParticipants(
-        Array.from(room.remoteParticipants.values()).map(
-          mapLiveKitParticipantToChronosRecordingParticipant,
-        ),
-      );
-    };
     const markRecordingReady = () => {
       if (connectionFailed) {
         return;
@@ -97,6 +90,17 @@ export function ChronosRecordingViewPage() {
       startLoggedRef.current = true;
       setStatus("recording");
       emitChronosRecordingStartSignal();
+    };
+    const syncParticipants = () => {
+      const nextParticipants = Array.from(room.remoteParticipants.values()).map(
+        mapLiveKitParticipantToChronosRecordingParticipant,
+      );
+
+      setParticipants(nextParticipants);
+
+      if (hasChronosRecordingSubscribedTrack(nextParticipants)) {
+        markRecordingReady();
+      }
     };
     const recordingReadyFallback = window.setTimeout(
       markRecordingReady,
@@ -453,6 +457,16 @@ function getChronosRecordingGridClassName(participantCount: number) {
   }
 
   return "grid h-full min-h-0 grid-cols-3 gap-3";
+}
+
+function hasChronosRecordingSubscribedTrack(
+  participants: ChronosRecordingParticipant[],
+) {
+  return participants.some(
+    (participant) =>
+      Boolean(participant.cameraStream?.getTracks().length) ||
+      Boolean(participant.screenStream?.getTracks().length),
+  );
 }
 
 function parseChronosRecordingParticipantMetadata(metadata?: string) {
