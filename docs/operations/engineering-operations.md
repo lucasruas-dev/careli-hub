@@ -34718,3 +34718,28 @@ Conclusao:
 - Precisa de acao agora: Zeus deve rodar Safety Gate, publicar somente pacote limpo e validar URL candidata antes de mexer em producao.
 - Quem deve agir agora: Zeus conduz deploy seguro; Lucas valida uma gravacao curta depois.
 - Proximo passo tecnico: gerar commit/deploy candidato, confirmar `c2x.app.br` e `ops.c2x.app.br`, rodar Safety Gate e publicar apenas se os marcadores do recorte passarem.
+
+## 2026-06-10 14:19:42 -03:00 - Chronos - Deploy pausado por video ativo
+
+Assunto: [Chronos] Hold de deploy para preservar video em andamento
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da decisao: `BLOQUEIO OPERACIONAL / DEPLOY PAUSADO`.
+- Status: `BLOQUEADO PARA DEPLOY ENQUANTO HOUVER VIDEO ATIVO`.
+- Protocolo relacionado: `OP-20260610-029-CHRONOS-RECORDING-COMPOSITE-VISUAL`.
+- Decisao do Lucas: nao subir agora porque existe um video acontecendo e deploy/reapontamento pode derrubar a sala ou o Egress ativo.
+- Estado do pacote:
+  - commit local criado: `faefb1c3f76d0ca26b2bdd45c1e5f37bbf09ad53`;
+  - validacoes locais do candidato passaram conforme registro anterior;
+  - nenhum deploy, promote, alias ou reapontamento foi executado apos a decisao de hold.
+- Regra operacional imediata:
+  - nao executar `npx vercel deploy`, `vercel promote`, `vercel alias`, rollback, redeploy ou qualquer movimentacao de producao/homologacao para esse recorte enquanto Lucas nao liberar explicitamente;
+  - antes de retomar, confirmar que nao ha video/sala ativa em risco e repetir o Safety Gate/inspecao de dominios.
+
+Conclusao:
+
+- O pacote tecnico esta preparado localmente, mas a publicacao ficou bloqueada por seguranca operacional.
+- O impacto pratico e evitar derrubar video, sala Chronos ou Egress em andamento.
+- Precisa de acao agora: nao publicar nada.
+- Quem deve agir agora: Lucas avisa quando a chamada terminar; Zeus retoma Safety Gate e deploy somente apos liberacao explicita.
+- Proximo passo tecnico: manter o commit candidato em espera e revalidar antes de qualquer deploy.
