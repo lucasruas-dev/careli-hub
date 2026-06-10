@@ -63,7 +63,12 @@ export function ChronosDriveMeetingRecordingCard({
   const meeting = normalizeChronosMeetingRuntime(recordingMeeting.meeting);
   const safeRecordingMeeting = { ...recordingMeeting, meeting };
   const downloadUrl = primaryRecording?.downloadUrl ?? primaryRecording?.url;
-  const canOpenVideo = Boolean(primaryRecording?.url && primaryRecording.url !== "#");
+  const canOpenVideo = Boolean(
+    primaryRecording &&
+      !isChronosAudioRecording(primaryRecording) &&
+      primaryRecording.url &&
+      primaryRecording.url !== "#",
+  );
   const startedAt = getChronosMeetingDriveStart(meeting);
   const endedAt = getChronosMeetingDriveEnd(meeting);
   const displayTitle = getChronosDriveMeetingDisplayTitle(
@@ -71,10 +76,21 @@ export function ChronosDriveMeetingRecordingCard({
     recordingMeeting.roomLabel,
   );
   const status =
-    primaryRecording?.status ??
-    (recordingMeeting.availableRecordings > 0
+    recordingMeeting.availableRecordings > 0
       ? "available"
-      : meeting.recordingStatus);
+      : (primaryRecording?.status ?? meeting.recordingStatus);
+  const statusLabel = getChronosDriveRecordingStatusLabel(
+    recordingMeeting,
+    status,
+  );
+  const videoStatusLabel = getChronosDriveVideoStatusLabel(recordingMeeting);
+  const audioStatusLabel = getChronosDriveAudioStatusLabel(recordingMeeting);
+  const missingVideoLabel =
+    recordingMeeting.failedVideoRecordings > 0
+      ? "Video falhou; audio pode gerar ata"
+      : recordingMeeting.availableAudioRecordings > 0
+        ? "Video indisponivel; audio salvo"
+        : "Video em processamento";
   const checkedInParticipants = getChronosCheckedInParticipants(meeting);
 
   if (viewMode === "list") {
@@ -86,7 +102,7 @@ export function ChronosDriveMeetingRecordingCard({
               {displayTitle}
             </p>
             <Badge variant={status === "available" ? "success" : "neutral"}>
-              {chronosCaptureStatusLabels[status]}
+              {statusLabel}
             </Badge>
           </div>
           <p className="m-0 mt-1 truncate text-xs text-[#667085]">
@@ -104,6 +120,9 @@ export function ChronosDriveMeetingRecordingCard({
           </span>
           <span className="truncate">
             Assunto: {meeting.objective || meeting.title}
+          </span>
+          <span>
+            Video: {videoStatusLabel} / Audio e ata: {audioStatusLabel}
           </span>
         </div>
         <ChronosDriveRecordingActions
@@ -136,7 +155,7 @@ export function ChronosDriveMeetingRecordingCard({
             <Video aria-hidden="true" size={24} />
             <span className="text-xs font-semibold text-[#d7dee8]">
               {recordingMeeting.recordings.length > 0
-                ? "Video em processamento"
+                ? missingVideoLabel
                 : "Gravacao ainda nao disponivel"}
             </span>
           </div>
@@ -153,7 +172,7 @@ export function ChronosDriveMeetingRecordingCard({
             </p>
           </div>
           <Badge variant={status === "available" ? "success" : "neutral"}>
-            {chronosCaptureStatusLabels[status]}
+            {statusLabel}
           </Badge>
         </div>
         <div className="grid gap-1 text-xs text-[#667085]">
@@ -176,6 +195,9 @@ export function ChronosDriveMeetingRecordingCard({
             Arquivos: {recordingMeeting.recordings.length} / disponiveis:{" "}
             {recordingMeeting.availableRecordings}
           </span>
+          <span>
+            Video: {videoStatusLabel} / Audio e ata: {audioStatusLabel}
+          </span>
         </div>
         <ChronosDriveRecordingActions
           canOpenVideo={canOpenVideo}
@@ -191,6 +213,55 @@ export function ChronosDriveMeetingRecordingCard({
       </div>
     </article>
   );
+}
+
+function getChronosDriveRecordingStatusLabel(
+  recordingMeeting: ChronosDriveRecordingMeeting,
+  status: keyof typeof chronosCaptureStatusLabels,
+) {
+  if (
+    recordingMeeting.failedVideoRecordings > 0 &&
+    recordingMeeting.availableAudioRecordings > 0
+  ) {
+    return "Audio disponivel";
+  }
+
+  if (
+    recordingMeeting.failedRecordings > 0 &&
+    recordingMeeting.availableRecordings > 0
+  ) {
+    return "Parcial";
+  }
+
+  return chronosCaptureStatusLabels[status];
+}
+
+function getChronosDriveVideoStatusLabel(
+  recordingMeeting: ChronosDriveRecordingMeeting,
+) {
+  if (recordingMeeting.availableVideoRecordings > 0) {
+    return "Disponivel";
+  }
+
+  if (recordingMeeting.failedVideoRecordings > 0) {
+    return "Falhou";
+  }
+
+  return "Pendente";
+}
+
+function getChronosDriveAudioStatusLabel(
+  recordingMeeting: ChronosDriveRecordingMeeting,
+) {
+  if (recordingMeeting.availableAudioRecordings > 0) {
+    return "Disponivel para transcricao";
+  }
+
+  if (recordingMeeting.recordings.some(isChronosAudioRecording)) {
+    return "Processando";
+  }
+
+  return "Pendente";
 }
 
 function ChronosDriveRecordingActions({
@@ -222,6 +293,7 @@ function ChronosDriveRecordingActions({
     ...recordingMeeting,
     meeting: normalizeChronosMeetingRuntime(recordingMeeting.meeting),
   };
+  const hasTranscript = recordingMeetingRuntime.meeting.transcript.length > 0;
   const hasOfficialTranscript = recordingMeetingRuntime.meeting.transcript.some(
     (segment) => segment.source === "openai",
   );
@@ -236,7 +308,7 @@ function ChronosDriveRecordingActions({
     saving ||
     !transcriptionRecording ||
     hasOfficialTranscript ||
-    Boolean(transcriptionRecording.transcribedAt) ||
+    (hasTranscript && Boolean(transcriptionRecording.transcribedAt)) ||
     !canTranscribeRecording;
 
   async function handleTranscribeAndOpenMinutes() {
@@ -279,6 +351,16 @@ function ChronosDriveRecordingActions({
         <FileText aria-hidden="true" size={13} />
         Ata
       </button>
+      {hasTranscript ? (
+        <button
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
+          onClick={() => onOpenMeetingMinutes(recordingMeetingRuntime.meeting.id)}
+          type="button"
+        >
+          <Mic aria-hidden="true" size={13} />
+          Ver transcricao
+        </button>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {canOpenVideo && primaryRecording ? (
           <a
@@ -318,7 +400,8 @@ function ChronosDriveRecordingActions({
             type="button"
           >
             <Mic aria-hidden="true" size={13} />
-            {hasOfficialTranscript || transcriptionRecording.transcribedAt
+            {hasOfficialTranscript ||
+            (hasTranscript && transcriptionRecording.transcribedAt)
               ? "Transcrita"
               : canTranscribeRecording
                 ? "Transcrever e gerar ata"

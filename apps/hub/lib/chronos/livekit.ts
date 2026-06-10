@@ -209,6 +209,7 @@ export async function startChronosLiveKitRoomCompositeEgress({
     requestBody.audio_only = true;
   } else {
     requestBody.layout = "grid";
+    requestBody.preset = "H264_720P_30";
     const normalizedCustomBaseUrl =
       normalizeChronosLiveKitCustomBaseUrl(customBaseUrl);
 

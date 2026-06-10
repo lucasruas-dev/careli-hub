@@ -34743,3 +34743,200 @@ Conclusao:
 - Precisa de acao agora: nao publicar nada.
 - Quem deve agir agora: Lucas avisa quando a chamada terminar; Zeus retoma Safety Gate e deploy somente apos liberacao explicita.
 - Proximo passo tecnico: manter o commit candidato em espera e revalidar antes de qualquer deploy.
+
+## 2026-06-10 14:36:47 -03:00 - Chronos - Ata exige transcricao textual
+
+Assunto: [Chronos] Correcao local para ata sem transcricao e acesso a transcricao
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `HOTFIX CHRONOS / ATA / TRANSCRICAO`.
+- Status: `CORRIGIDO LOCALMENTE / DEPLOY BLOQUEADO POR VIDEO ATIVO`.
+- Protocolo: `OP-20260610-030-CHRONOS-MINUTES-TRANSCRIPTION-GUARD`.
+- Autorizacao: Lucas reportou que a ata veio sem transcricao, sem campo claro para ver a transcricao e sem conteudo real da reuniao.
+- Diagnostico consolidado:
+  - a rota da Athena podia chegar ao prompt de ata com `Nao ha transcricao salva.`;
+  - o backend ainda permitia salvar o rascunho automatico porque a gravacao disponivel contava como evidencia suficiente;
+  - o painel de ata escolhia a primeira gravacao disponivel para transcrever, o que podia apontar para o RoomComposite/MP4 em vez das faixas de audio `.ogg`;
+  - o card de gravacao mostrava `Ata` e status `Transcrita`, mas nao expunha um botao explicito `Ver transcricao`.
+- Correcao local:
+  - a geracao automatica de ata agora exige transcricao salva com conteudo antes de chamar a Athena ou salvar rascunho;
+  - a transcricao de gravacao existente passa a priorizar audio de participante sempre que houver, inclusive quando a acao veio do video composto;
+  - sem audio por participante, o seletor escolhe o melhor arquivo de audio disponivel antes de cair para video;
+  - o painel de Ata so libera salvar/revisar/aprovar quando houver transcricao textual;
+  - o card de gravacao mostra `Ver transcricao` quando a reuniao possui segmentos transcritos;
+  - se uma gravacao estiver marcada como transcrita mas a reuniao nao tiver transcricao salva, o botao deixa de ficar travado e permite tentar a transcricao novamente.
+- Validacoes locais:
+  - `npm.cmd run check-types`: PASS;
+  - `npx.cmd eslint app/api/chronos/meetings/agent/route.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-drive-recording-card.tsx --max-warnings 0`: BLOQUEADO por warnings preexistentes `turbo/no-undeclared-env-vars` em `HUB_CHRONOS_*`;
+  - `npx.cmd eslint app/api/chronos/meetings/agent/route.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-drive-recording-card.tsx --quiet`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build`: PASS, com warnings conhecidos de worktree temporario/Turbopack e NFT em rota SquadOps fora do recorte Chronos;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados do Windows.
+- Riscos e pendencias:
+  - nao houve leitura de banco/producao, logs Vercel ou Supabase porque isso segue bloqueado sem autorizacao explicita;
+  - para confirmar a ata afetada historica sera preciso auditar a reuniao real e, se necessario, retranscrever os arquivos `.ogg`;
+  - deploy segue bloqueado enquanto houver video/sala ativa.
+- Rollback planejado:
+  - se publicado e houver regressao no fluxo de atas, reverter o protocolo `OP-20260610-030-CHRONOS-MINUTES-TRANSCRIPTION-GUARD` e manter o hold operacional ate nova validacao.
+
+Conclusao:
+
+- A causa local encontrada foi a combinacao de permissao de ata por gravacao sem transcricao e selecao insuficiente do arquivo de audio.
+- O impacto pratico esperado e impedir novas atas automaticas vazias e facilitar o acesso direto a transcricao.
+- Precisa de acao agora: nao publicar nada enquanto o video ativo estiver em risco.
+- Quem deve agir agora: Zeus mantem o pacote local; Lucas libera auditoria de dados/producao ou deploy apenas quando for seguro.
+- Proximo passo tecnico: apos a chamada terminar, revalidar o pacote, rodar Safety Gate e, se Lucas autorizar, publicar o hotfix junto ou separado do recorte visual anterior.
+
+## 2026-06-10 15:36:25 -03:00 - Chronos - Egress economico e video 413
+
+Assunto: [Chronos] Reversao de audio por participante para reduzir custo LiveKit
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `HOTFIX CHRONOS / LIVEKIT EGRESS / CUSTO`.
+- Status: `CORRIGIDO LOCALMENTE / DEPLOY NAO EXECUTADO`.
+- Protocolo: `OP-20260610-031-CHRONOS-LIVEKIT-EGRESS-ECONOMICO`.
+- Autorizacao: Lucas identificou que os subscribers `EG_*` do LiveKit aumentavam a contagem operacional e poderiam elevar custo; solicitou voltar para um unico canal de audio, deixando diarizacao `speaker 00/01/02` e ajuste manual quando necessario.
+- Diagnostico consolidado:
+  - cada `EG_*` exibido em subscribers e um participante tecnico de Egress, nao uma pessoa;
+  - o desenho anterior iniciava `RoomComposite` para video e tambem `TrackEgress` por faixa de microfone;
+  - em sala com 5 publicadores humanos, isso podia gerar 1 Egress de video + 5 Egress de audio por participante;
+  - o erro do video reportado foi `S3 upload failed` com `StatusCode: 413` e `EntityTooLarge`, indicando que o destino S3/Supabase recusou o objeto final por tamanho.
+- Correcao local:
+  - novas gravacoes deixam de listar faixas de audio e deixam de iniciar `StartTrackEgress` por participante;
+  - novas gravacoes iniciam somente o `RoomComposite` de video e um `RoomComposite` `audioOnly` mixado para transcricao;
+  - o retorno mantem `participantAudioEgresses: []` por compatibilidade com a UI;
+  - rotinas de stop/sync para Egress antigos por participante foram preservadas para nao quebrar registros historicos ou encerramentos pendentes.
+- Validacoes locais:
+  - `npm.cmd run check-types`: PASS;
+  - `npx.cmd eslint lib/chronos/server.ts app/api/chronos/meetings/agent/route.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-drive-recording-card.tsx --quiet`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build`: PASS, com warnings conhecidos de worktree temporario/Turbopack e NFT em rota SquadOps fora do recorte Chronos.
+- Riscos e pendencias:
+  - a transcricao passa a depender da diarizacao do audio mixado; nomes reais podem precisar de revisao humana;
+  - reduzir o numero de Egress diminui custo e ruido, mas nao resolve sozinho o limite de tamanho do MP4 de video longo;
+  - recuperar o video que falhou exige auditoria read-only no LiveKit/Supabase para conferir `file_results`, `backup_storage_used` e existencia de objeto parcial; sem isso, nao considerar recuperavel.
+- Rollback planejado:
+  - se a transcricao por audio unico ficar insuficiente, reintroduzir audio por participante apenas como modo opcional/avancado e nunca como padrao.
+
+Conclusao:
+
+- O Chronos fica preparado localmente para gravar com menos Egress e menor custo recorrente.
+- O impacto pratico esperado e deixar de criar um subscriber tecnico por participante em novas gravacoes.
+- Precisa de acao agora: nao publicar sem Safety Gate e sem autorizacao expressa do Lucas.
+- Quem deve agir agora: Lucas decide se autoriza auditoria read-only do Egress falho e depois autoriza ou bloqueia deploy.
+- Proximo passo tecnico: auditar o Egress `EG_JQ4jnj4nbzaz` e o destino Supabase se Lucas autorizar; em paralelo, avaliar output segmentado ou reducao de bitrate para videos longos.
+
+## 2026-06-10 15:47:28 -03:00 - Chronos - Auditoria read-only Egress 413
+
+Assunto: [Chronos] Auditoria de recuperacao do video e prevencao de novo 413
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da atividade: `AUDITORIA READ-ONLY / LIVEKIT / STORAGE`.
+- Status: `VIDEO MP4 NAO RECUPERAVEL PELO METADADO DISPONIVEL / AUDIOS OGG LOCALIZADOS NO LIVEKIT`.
+- Protocolo relacionado: `OP-20260610-031-CHRONOS-LIVEKIT-EGRESS-ECONOMICO`.
+- Autorizacao: Lucas autorizou olhar se o video poderia ser recuperado e perguntou se a transcricao ainda permitiria gerar ata.
+- Evidencia read-only:
+  - `EG_JQ4jnj4nbzaz`: `EGRESS_FAILED`, erro `S3 upload failed`, `StatusCode: 413`, `EntityTooLarge`, `backupStorageUsed=false`, sem `file_results` e sem `manifest_location`;
+  - tentativa read-only no Storage pelo caminho do MP4 nao encontrou objeto completo;
+  - a sala retornou 5 Egress de audio `EGRESS_COMPLETE`, com arquivos `.ogg` de aproximadamente 50 minutos e tamanhos entre cerca de 3 MB e 37 MB;
+  - a tabela `chronos_transcript_segments` consultada para a reuniao estava com 0 segmentos;
+  - o `.env.local` disponivel aponta para Supabase `qanlld...`, enquanto os metadados LiveKit indicam destino Storage `bxguk...`, portanto baixar/transcrever os `.ogg` exige credencial do Storage de producao correto.
+- Correcao local adicional:
+  - `RoomComposite` de video passa a enviar `preset: "H264_720P_30"` para reduzir o tamanho do MP4;
+  - mantida a decisao de usar um unico audio mixado para transcricao nas novas gravacoes.
+- Validacoes locais:
+  - `npm.cmd run check-types`: PASS;
+  - `npx.cmd eslint lib/chronos/livekit.ts lib/chronos/server.ts app/api/chronos/meetings/agent/route.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-drive-recording-card.tsx --quiet`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build`: PASS, com warnings conhecidos de worktree temporario/Turbopack e NFT em rota SquadOps fora do recorte Chronos.
+- Riscos e pendencias:
+  - aumentar o limite do bucket `chronos-drive` no Storage de producao deve ser tratado como operacao sensivel e so pode ocorrer com autorizacao explicita;
+  - mesmo com 720p30, reunioes longas podem gerar MP4 grande; aumentar limite do bucket e/ou gravar em segmentos reduz o risco;
+  - para gerar ata desta reuniao, o proximo passo e obter acesso read-only ao Storage `bxguk...`, baixar/assinar os `.ogg`, transcrever e salvar segmentos antes da Athena gerar a ata.
+
+Conclusao:
+
+- O MP4 falho nao tem arquivo recuperavel nos metadados LiveKit disponiveis.
+- O impacto pratico e que o video composto provavelmente foi perdido, mas os audios completos existem como base para transcricao/ata.
+- Precisa de acao agora: Lucas decide se autoriza acesso ao Storage de producao correto e aumento do limite do bucket.
+- Quem deve agir agora: Zeus pode seguir com auditoria/transcricao se autorizado; Lucas autoriza alteracao sensivel de bucket separadamente.
+- Proximo passo tecnico: configurar/usar credencial do Storage `bxguk...` sem expor segredo, criar URLs temporarias para os `.ogg`, transcrever e gerar a ata; depois aplicar ajuste de limite/segmentacao antes do proximo video longo.
+
+## 2026-06-10 16:22:40 -03:00 - Chronos - Drive parcial e ata por transcricao
+
+Assunto: [Chronos] Drive deve exibir video failed e audio disponivel para ata
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `HOTFIX CHRONOS / DRIVE / ATA / STORAGE`.
+- Status: `CORRIGIDO LOCALMENTE / DEPLOY NAO EXECUTADO / BUCKET PRODUCAO BLOQUEADO ATE AUTORIZACAO`.
+- Protocolos relacionados:
+  - `OP-20260610-030-CHRONOS-MINUTES-TRANSCRIPTION-GUARD`;
+  - `OP-20260610-031-CHRONOS-LIVEKIT-EGRESS-ECONOMICO`.
+- Autorizacao: Lucas priorizou a recuperacao operacional da ata, pediu que o Drive reflita video failed mas transcricao ok quando houver audio, e apontou urgencia para evitar perda de novas reunioes por limite de upload.
+- Decisao operacional:
+  - o Drive Chronos deve tratar video e audio como evidencias separadas da mesma reuniao;
+  - se o MP4 falhar mas o audio existir, o card deve exibir status parcial em vez de parecer indisponivel;
+  - a ata deve ser gerada pela transcricao textual salva; quando ainda nao houver transcricao, a acao primaria deve transcrever o melhor audio disponivel e depois gerar a ata;
+  - o aumento do limite real do bucket `chronos-drive` e uma operacao sensivel de Storage/Supabase em producao e segue bloqueado ate autorizacao explicita do Lucas sobre projeto/bucket/limite.
+- Correcao local:
+  - `ChronosDriveRecordingMeeting` passou a carregar contadores de audio disponivel, video disponivel, falhas totais e falhas de video;
+  - o card de Drive agora mostra `Video: Falhou / Audio e ata: Disponivel` quando a gravacao composta falha mas ha audio transcritivel;
+  - o card so abre player para video real disponivel; audio disponivel fica como lastro de ata/transcricao;
+  - o mapeamento de gravacoes preserva `metadata` e `storagePath`, permitindo distinguir `chronos-livekit-egress-audio`, audio historico por participante e video;
+  - o painel de Ata continua exigindo transcricao com conteudo antes de salvar/revisar/aprovar;
+  - o backend da Athena prioriza audio por participante historico quando existir, depois audio mixado e por ultimo video.
+  - a transcricao em lote agora tolera falha isolada de um audio grande ou indisponivel e continua transcrevendo os demais; se nenhum arquivo do lote for transcrito, a ata permanece bloqueada.
+- Evidencia tecnica:
+  - LiveKit retornou o MP4 `EG_JQ4jnj4nbzaz` como `EGRESS_FAILED` por `S3 upload failed`/`413 EntityTooLarge`;
+  - os Egress `.ogg` da mesma sala aparecem como `EGRESS_COMPLETE` nos metadados LiveKit;
+  - o Storage correto indicado pelos metadados e `bxguk...`, diferente do Supabase local `qanlld...`; portanto a geracao da ata historica depende de acesso controlado ao projeto certo para assinar/importar os audios.
+- Validacoes locais:
+  - `npm.cmd run check-types`: PASS;
+  - `npx.cmd eslint lib/chronos/drive.ts modules/chronos/components/chronos-drive-recording-card.tsx lib/chronos/livekit.ts lib/chronos/server.ts app/api/chronos/meetings/agent/route.ts modules/chronos/components/chronos-minutes-panel.tsx --quiet`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build`: PASS, com warnings conhecidos de worktree temporario/Turbopack e NFT em rota SquadOps fora do recorte Chronos.
+- Riscos e pendencias:
+  - sem deploy, as reunioes atuais continuam usando o comportamento que estiver em producao;
+  - sem ajuste do bucket real, MP4 longo pode continuar falhando por tamanho;
+  - se um audio individual exceder o limite aceito pela transcricao, ele pode ficar de fora do lote ate haver segmentacao/conversao controlada;
+  - aumentar limite reduz o erro `EntityTooLarge`, mas reunioes muito longas ainda devem evoluir para segmentacao/resumable strategy;
+  - gerar a ata da reuniao historica exige assinar/importar os `.ogg` privados do Storage correto e rodar a transcricao antes da Athena.
+- Rollback planejado:
+  - se o Drive parcial causar leitura operacional confusa, reverter apenas o card/contadores do Drive mantendo a guarda de ata por transcricao;
+  - se o audio mixado ficar insuficiente, reintroduzir audio por participante como modo opcional e nao como padrao.
+
+Conclusao:
+
+- O Chronos agora esta preparado localmente para mostrar a verdade operacional: video pode estar failed e, ainda assim, audio/transcricao podem estar ok para gerar ata.
+- O impacto pratico esperado e reduzir perda de reuniao: mesmo sem MP4, o operador ve o caminho de transcricao e ata quando houver audio.
+- Precisa de acao agora: sim, mas a acao de bucket e sensivel; Zeus precisa de autorizacao explicita para alterar o Storage de producao correto.
+- Quem deve agir agora: Zeus pode preparar o comando/execucao controlada; Lucas deve autorizar projeto, bucket e limite antes de qualquer alteracao real.
+- Proximo passo tecnico: com autorizacao, ajustar `chronos-drive` no projeto `bxguk...` para limite maior, assinar/importar os audios `.ogg` da reuniao afetada, gerar a transcricao e entao gerar a ata.
+
+## 2026-06-10 16:35:00 -03:00 - Chronos - Autorizacao de deploy seguro
+
+Assunto: [Chronos] Lucas autorizou deploy seguro do hotfix Chronos
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da atividade: `DEPLOY SEGURO / PREVIEW VERCEL / SAFETY GATE`.
+- Status inicial: `AUTORIZADO PARA PREVIEW SEGURO / BUCKET PRODUCAO AINDA BLOQUEADO`.
+- Protocolo: `OP-20260610-032-CHRONOS-LIVEKIT-STORAGE-MINUTES`.
+- Autorizacao: Lucas informou `Autorizado a subir com um deploy seguro`.
+- Escopo autorizado neste registro:
+  - publicar o hotfix de codigo Chronos validado localmente em Preview Vercel/pacote seguro;
+  - preservar rollback do alias de homologacao antes de qualquer movimento de alias;
+  - nao alterar Storage/Supabase, bucket, banco, env, secret, dominio de producao ou alias de producao neste pacote.
+- Base de rollback capturada:
+  - `homo.c2x.app.br`: `dpl_EGyRHj2pqyqbn8Xs1QaKrimB6NEi`, projeto `careli-hub-hub-i2bs`, status `Ready`.
+- Manifesto do recorte:
+  - `docs/operations/panteon-recorte-manifest-chronos-20260610-032-livekit-storage-minutes-recovery.json`.
+- Proximo passo tecnico:
+  - commitar o recorte;
+  - montar pacote limpo sem `.git`, `.env`, `node_modules`, `.next` ou `.turbo`;
+  - rodar Homologation Safety Gate pre-deploy;
+  - publicar Preview;
+  - inspecionar Preview e registrar URL/deployment id antes de qualquer decisao de alias.
+
+Conclusao:
+
+- O deploy autorizado agora cobre somente codigo Chronos em fluxo seguro.
+- O impacto pratico esperado e liberar correcoes de gravacao, Drive parcial e ata por transcricao sem mexer em configuracao sensivel.
+- Precisa de acao agora: sim, publicar Preview seguro e entregar URL para validacao.
+- Quem deve agir agora: Zeus executa o pacote seguro e registra o resultado.
+- Proximo passo tecnico: Safety Gate e Preview Vercel; bucket/ata historica seguem como proxima etapa separada.

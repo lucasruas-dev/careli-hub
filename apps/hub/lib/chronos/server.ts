@@ -11,9 +11,7 @@ import {
   deleteChronosLiveKitRoom,
   getChronosLiveKitEgressStatus,
   listChronosLiveKitParticipants,
-  listChronosLiveKitParticipantAudioTracks,
   startChronosLiveKitRoomCompositeEgress,
-  startChronosLiveKitParticipantAudioTrackEgress,
   stopChronosLiveKitEgress,
   type ChronosLiveKitEgressPayload,
   type ChronosLiveKitEgressStatusPayload,
@@ -2144,53 +2142,19 @@ async function startChronosPublicLiveKitEgress({
     participantId: input.participantId,
     roomSlug: slug,
   });
-  const participantAudioTracks = await listChronosLiveKitParticipantAudioTracks({
+  const audioEgress = await startChronosLiveKitRoomCompositeEgress({
+    audioOnly: true,
     meetingId: meeting.id,
+    participantId: input.participantId,
     roomSlug: slug,
   }).catch((error: unknown) => {
     console.warn(
-      "[chronos] LiveKit participant audio tracks failed to list",
+      "[chronos] LiveKit audio-only egress failed to start",
       error instanceof Error ? error.message : "unknown error",
     );
 
-    return [];
+    return null;
   });
-  const participantAudioEgresses = (
-    await Promise.all(
-      participantAudioTracks.map((track) =>
-        startChronosLiveKitParticipantAudioTrackEgress({
-          meetingId: meeting.id,
-          roomSlug: slug,
-          track,
-        }).catch((error: unknown) => {
-          console.warn(
-            "[chronos] LiveKit participant audio egress failed to start",
-            error instanceof Error ? error.message : "unknown error",
-          );
-
-          return null;
-        }),
-      ),
-    )
-  ).filter(
-    (payload): payload is ChronosLiveKitEgressPayload => Boolean(payload),
-  );
-  const audioEgress =
-    participantAudioEgresses.length === 0
-      ? await startChronosLiveKitRoomCompositeEgress({
-          audioOnly: true,
-          meetingId: meeting.id,
-          participantId: input.participantId,
-          roomSlug: slug,
-        }).catch((error: unknown) => {
-          console.warn(
-            "[chronos] LiveKit audio-only egress failed to start",
-            error instanceof Error ? error.message : "unknown error",
-          );
-
-          return null;
-        })
-      : null;
   const now = new Date().toISOString();
   const meetingMetadata = {
     ...(meeting.metadata ?? {}),
@@ -2220,14 +2184,6 @@ async function startChronosPublicLiveKitEgress({
             },
           }
         : {}),
-      ...(participantAudioEgresses.length > 0
-        ? {
-            liveKitParticipantAudioEgresses:
-              participantAudioEgresses.map(
-                buildChronosParticipantAudioEgressMetadata,
-              ),
-          }
-        : {}),
       roomSlug: room.slug,
     },
   };
@@ -2247,13 +2203,6 @@ async function startChronosPublicLiveKitEgress({
         () => undefined,
       );
     }
-    await Promise.all(
-      participantAudioEgresses.map((participantAudioEgress) =>
-        stopChronosLiveKitEgress(participantAudioEgress.egressId).catch(
-          () => undefined,
-        ),
-      ),
-    );
     throw meetingResult.error;
   }
 
@@ -2287,19 +2236,10 @@ async function startChronosPublicLiveKitEgress({
         () => undefined,
       );
     }
-    await Promise.all(
-      participantAudioEgresses.map((participantAudioEgress) =>
-        stopChronosLiveKitEgress(participantAudioEgress.egressId).catch(
-          () => undefined,
-        ),
-      ),
-    );
     throw recordingResult.error;
   }
 
   let audioRecordingId = "";
-  const participantAudioRecordingReferences: NormalizedChronosParticipantAudioEgressInput[] =
-    [];
 
   if (audioEgress) {
     const audioRecordingResult = await client
@@ -2337,70 +2277,13 @@ async function startChronosPublicLiveKitEgress({
     }
   }
 
-  for (const participantAudioEgress of participantAudioEgresses) {
-    const track = participantAudioEgress.participantAudioTrack;
-    const participantAudioRecordingResult = await client
-      .from("chronos_recordings")
-      .insert({
-        file_name: participantAudioEgress.fileName,
-        meeting_id: meeting.id,
-        metadata: {
-          egressId: participantAudioEgress.egressId,
-          kind: participantAudioEgress.kind,
-          liveKitStatus: participantAudioEgress.status,
-          organization: track?.organization ?? null,
-          participantId: track?.participantId ?? input.participantId,
-          participantIdentity: track?.participantIdentity ?? null,
-          participantName: track?.participantName ?? null,
-          provider: "livekit",
-          roomName: participantAudioEgress.roomName,
-          source: "chronos-livekit-egress-participant-audio",
-          trackId: track?.trackId ?? null,
-          trackMimeType: track?.trackMimeType ?? null,
-          trackName: track?.trackName ?? null,
-          transcriptionSource: true,
-          videoRecordingId: recordingResult.data.id,
-        },
-        mime_type: participantAudioEgress.mimeType,
-        started_at: now,
-        status: "recording",
-        storage_bucket: participantAudioEgress.storageBucket,
-        storage_path: participantAudioEgress.storagePath,
-      })
-      .select("*")
-      .single<ChronosRecordingRow>();
-
-    if (participantAudioRecordingResult.error) {
-      console.warn(
-        "[chronos] LiveKit participant audio recording row failed",
-        participantAudioRecordingResult.error.message,
-      );
-    }
-
-    participantAudioRecordingReferences.push({
-      egressId: participantAudioEgress.egressId,
-      organization: track?.organization ?? undefined,
-      participantId: track?.participantId,
-      participantIdentity: track?.participantIdentity,
-      participantName: track?.participantName,
-      recordingId: participantAudioRecordingResult.data?.id,
-      storagePath: participantAudioEgress.storagePath,
-      trackId: track?.trackId,
-      trackMimeType: track?.trackMimeType ?? undefined,
-      trackName: track?.trackName ?? undefined,
-    });
-  }
-
   await insertTimelineEvent(client, {
     actorUserId: loggedUser.id,
     eventType: "recording_started",
     meetingId: meeting.id,
-    title:
-      participantAudioRecordingReferences.length > 0
-        ? "LiveKit Egress iniciou gravacao da sala Chronos com audio por participante"
-        : audioEgress
-          ? "LiveKit Egress iniciou gravacao da sala Chronos com audio para transcricao"
-          : "LiveKit Egress iniciou gravacao da sala Chronos",
+    title: audioEgress
+      ? "LiveKit Egress iniciou gravacao da sala Chronos com audio unico para transcricao"
+      : "LiveKit Egress iniciou gravacao da sala Chronos",
   });
 
   return {
@@ -2410,7 +2293,7 @@ async function startChronosPublicLiveKitEgress({
     egressId: egress.egressId,
     fileName: egress.fileName,
     ok: true,
-    participantAudioEgresses: participantAudioRecordingReferences,
+    participantAudioEgresses: [],
     provider: "livekit" as const,
     recordingId: recordingResult.data.id,
     roomName: egress.roomName,

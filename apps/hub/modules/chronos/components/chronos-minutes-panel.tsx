@@ -61,16 +61,11 @@ export function MinutesPanel({
     (segment) => segment.source === "openai",
   );
   const transcribableRecording = useMemo(
-    () =>
-      safeMeeting.recordings.find(
-        (recording) =>
-          recording.status === "available" &&
-          Boolean(recording.downloadUrl ?? recording.playbackUrl),
-      ) ?? null,
+    () => selectChronosMinutesTranscribableRecording(safeMeeting.recordings),
     [safeMeeting.recordings],
   );
   const canGenerateMinutes = hasTranscript || Boolean(transcribableRecording);
-  const hasMinutesEvidence = canGenerateMinutes;
+  const hasMinutesEvidence = hasTranscript;
   const canPersistMinutes = Boolean(minutesDraft.trim()) && hasMinutesEvidence;
   const minutesEvidenceLabel = hasOfficialTranscript
     ? "Transcricao pos-gravacao registrada: ata formatada pode ser gerada pela memoria textual oficial."
@@ -298,4 +293,93 @@ export function MinutesPanel({
       </div>
     </Surface>
   );
+}
+
+function selectChronosMinutesTranscribableRecording(
+  recordings: ChronosMeeting["recordings"],
+) {
+  return (
+    [...recordings]
+      .filter((recording) => {
+        const recordingUrl = recording.downloadUrl ?? recording.playbackUrl;
+
+        return (
+          recording.status === "available" &&
+          Boolean(recordingUrl && recordingUrl !== "#")
+        );
+      })
+      .sort((firstRecording, secondRecording) => {
+        const firstPriority =
+          getChronosMinutesRecordingTranscriptionPriority(firstRecording);
+        const secondPriority =
+          getChronosMinutesRecordingTranscriptionPriority(secondRecording);
+
+        if (firstPriority !== secondPriority) {
+          return secondPriority - firstPriority;
+        }
+
+        return (
+          getChronosMinutesRecordingSortDate(secondRecording) -
+          getChronosMinutesRecordingSortDate(firstRecording)
+        );
+      })[0] ?? null
+  );
+}
+
+function getChronosMinutesRecordingTranscriptionPriority(
+  recording: ChronosMeeting["recordings"][number],
+) {
+  const metadata = recording.metadata ?? {};
+  const source = typeof metadata.source === "string" ? metadata.source : "";
+  const kind = typeof metadata.kind === "string" ? metadata.kind : "";
+  const storagePath = recording.storagePath?.toLowerCase() ?? "";
+  const isAudio = isChronosMinutesAudioRecording(recording);
+
+  if (
+    source === "chronos-livekit-egress-participant-audio" ||
+    kind === "participant-audio" ||
+    (isAudio && storagePath.includes("/participants/"))
+  ) {
+    return 2;
+  }
+
+  return isAudio ? 1 : 0;
+}
+
+function isChronosMinutesAudioRecording(
+  recording: ChronosMeeting["recordings"][number],
+) {
+  const mimeType = recording.mimeType?.toLowerCase() ?? "";
+  const fileName = recording.fileName?.toLowerCase() ?? "";
+  const storagePath = recording.storagePath?.toLowerCase() ?? "";
+
+  return (
+    mimeType.startsWith("audio/") ||
+    fileName.endsWith("-audio.mp4") ||
+    fileName.endsWith(".ogg") ||
+    fileName.endsWith(".mp3") ||
+    fileName.endsWith(".m4a") ||
+    fileName.endsWith(".wav") ||
+    storagePath.endsWith(".ogg") ||
+    storagePath.endsWith(".mp3") ||
+    storagePath.endsWith(".m4a") ||
+    storagePath.endsWith(".wav") ||
+    (storagePath.includes("-audio-") && storagePath.endsWith(".mp4"))
+  );
+}
+
+function getChronosMinutesRecordingSortDate(
+  recording: ChronosMeeting["recordings"][number],
+) {
+  return (
+    parseChronosMinutesRecordingDate(recording.stoppedAt) ||
+    parseChronosMinutesRecordingDate(recording.startedAt) ||
+    parseChronosMinutesRecordingDate(recording.storagePath)
+  );
+}
+
+function parseChronosMinutesRecordingDate(value?: string | null) {
+  const timestamp = value ? Date.parse(value) : NaN;
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }

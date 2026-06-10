@@ -367,11 +367,11 @@ export async function POST(request: NextRequest) {
       meetingId: parsed.meetingId,
     });
 
-    if (!hasChronosAvailableRecording(meeting) && meeting.transcript.length === 0) {
+    if (!hasChronosTranscriptForMinutes(meeting)) {
       return Response.json(
         {
           error:
-            "Ata Chronos requer gravacao disponivel ou transcricao vinculada a reuniao.",
+            "Ata Chronos requer transcricao salva com conteudo. Transcreva a gravacao antes de gerar a ata.",
         },
         { status: 409 },
       );
@@ -421,9 +421,13 @@ async function saveChronosMinutesDraft({
   meetingId: string;
   minutesProfile: ChronosMinutesProfile;
 }) {
+  const normalizedMeeting = normalizeChronosMeetingRuntime(meeting);
+
+  assertChronosTranscriptForMinutes(normalizedMeeting);
+
   const draft = await draftChronosMinutes({
     apiKey,
-    meeting: normalizeChronosMeetingRuntime(meeting),
+    meeting: normalizedMeeting,
     minutesProfile,
   });
 
@@ -540,13 +544,15 @@ async function transcribeChronosRecordingCollection({
 }) {
   const participantAudioRecordings =
     selectChronosParticipantAudioRecordings(sourceMeeting);
-  const shouldUseParticipantAudio =
-    participantAudioRecordings.length > 0 &&
-    (isChronosParticipantAudioRecording(preferredRecording) ||
-      isChronosAudioRecording(preferredRecording));
+  const shouldUseParticipantAudio = participantAudioRecordings.length > 0;
+  const preferredTranscriptionRecording = isChronosAudioRecording(
+    preferredRecording,
+  )
+    ? preferredRecording
+    : (selectChronosTranscribableRecording(sourceMeeting) ?? preferredRecording);
   const recordingCollection = shouldUseParticipantAudio
     ? participantAudioRecordings
-    : [preferredRecording];
+    : [preferredTranscriptionRecording];
 
   try {
     return await transcribeChronosRecordingList({
@@ -601,6 +607,7 @@ async function transcribeChronosRecordingList({
   speakerLabel?: string;
 }) {
   let currentMeeting: ChronosMeeting | null = null;
+  const failedRecordings: string[] = [];
   const transcriptTexts: string[] = [];
 
   for (const recording of recordings) {
@@ -614,32 +621,51 @@ async function transcribeChronosRecordingList({
       speakerLabel ??
       getChronosRecordingSpeakerLabel(recording) ??
       CHRONOS_FULL_RECORDING_SPEAKER_LABEL;
-    const file = await fetchChronosRecordingFile({
-      fileName:
-        recording.fileName ??
-        recording.storagePath?.split("/").filter(Boolean).at(-1) ??
-        "chronos-recording.webm",
-      mimeType: recording.mimeType,
-      url: recordingUrl,
-    });
-    const transcription = await transcribeChronosRecording({
-      apiKey,
-      file,
-    });
+    try {
+      const file = await fetchChronosRecordingFile({
+        fileName:
+          recording.fileName ??
+          recording.storagePath?.split("/").filter(Boolean).at(-1) ??
+          "chronos-recording.webm",
+        mimeType: recording.mimeType,
+        url: recordingUrl,
+      });
+      const transcription = await transcribeChronosRecording({
+        apiKey,
+        file,
+      });
 
-    currentMeeting = await saveChronosTranscriptionResult({
-      authorization,
-      forceSpeakerLabel: isChronosParticipantAudioRecording(recording),
-      meetingId,
-      speakerLabel: label,
-      transcription,
-    });
-    transcriptTexts.push(`${label}: ${transcription.text}`);
+      currentMeeting = await saveChronosTranscriptionResult({
+        authorization,
+        forceSpeakerLabel: isChronosParticipantAudioRecording(recording),
+        meetingId,
+        speakerLabel: label,
+        transcription,
+      });
+      transcriptTexts.push(`${label}: ${transcription.text}`);
+    } catch (error) {
+      const message = getChronosAgentErrorMessage(
+        error,
+        "Falha ao transcrever audio Chronos.",
+      );
+      failedRecordings.push(`${label}: ${message}`);
+      console.warn("[chronos/agent] Recording transcription skipped", {
+        meetingId,
+        reason: message,
+        recordingId: recording.id,
+      });
+
+      if (recordings.length === 1) {
+        throw error;
+      }
+    }
   }
 
   if (!currentMeeting) {
     throw new Error(
-      "Gravacao Chronos nao possui arquivo assinado para transcricao.",
+      failedRecordings.length
+        ? `Nenhuma gravacao Chronos do lote foi transcrita: ${failedRecordings.join("; ")}`
+        : "Gravacao Chronos nao possui arquivo assinado para transcricao.",
     );
   }
 
@@ -1486,10 +1512,18 @@ function isChronosTranscriptionModel(
   return CHRONOS_TRANSCRIPTION_MODELS.some((model) => model === value);
 }
 
-function hasChronosAvailableRecording(meeting: ChronosMeeting) {
-  return meeting.recordings.some(
-    (recording) => recording.status === "available",
-  );
+function assertChronosTranscriptForMinutes(meeting: ChronosMeeting) {
+  if (!hasChronosTranscriptForMinutes(meeting)) {
+    throw new Error(
+      "Ata Chronos requer transcricao salva com conteudo. Transcreva a gravacao antes de gerar a ata.",
+    );
+  }
+}
+
+function hasChronosTranscriptForMinutes(meeting: ChronosMeeting) {
+  return getChronosMinutesTranscriptSegments(
+    normalizeChronosMeetingRuntime(meeting),
+  ).some((segment) => normalizeText(segment.content, 10_000).length > 0);
 }
 
 function buildChronosMinutesPrompt({

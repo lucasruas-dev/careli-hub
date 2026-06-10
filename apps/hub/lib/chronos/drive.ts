@@ -11,12 +11,14 @@ export type LocalRecording = {
   durationSeconds: number;
   id: string;
   meetingId: string;
+  metadata?: Record<string, unknown>;
   mimeType?: string | null;
   name: string;
   sizeBytes?: number | null;
   startedAt?: string | null;
   status?: ChronosCaptureStatus;
   stoppedAt?: string | null;
+  storagePath?: string | null;
   transcribedAt?: string;
   url: string;
 };
@@ -39,7 +41,11 @@ export type ChronosDriveRecordingFolder = {
 };
 
 export type ChronosDriveRecordingMeeting = {
+  availableAudioRecordings: number;
   availableRecordings: number;
+  availableVideoRecordings: number;
+  failedRecordings: number;
+  failedVideoRecordings: number;
   id: string;
   latestAt?: string | null;
   meeting: ChronosMeeting;
@@ -252,11 +258,29 @@ function buildChronosDriveRecordingMeeting({
     )
     .filter(Boolean)
     .join(", ");
+  const availableRecordings = recordings.filter(
+    (recording) => recording.status === "available" && recording.url !== "#",
+  );
+  const availableAudioRecordings = availableRecordings.filter(
+    isChronosDriveAudioRecording,
+  ).length;
+  const availableVideoRecordings = availableRecordings.filter(
+    (recording) => !isChronosDriveAudioRecording(recording),
+  ).length;
+  const failedRecordings = recordings.filter(
+    (recording) => recording.status === "failed",
+  ).length;
+  const failedVideoRecordings = recordings.filter(
+    (recording) =>
+      recording.status === "failed" && !isChronosDriveAudioRecording(recording),
+  ).length;
 
   return {
-    availableRecordings: recordings.filter(
-      (recording) => recording.status === "available" && recording.url !== "#",
-    ).length,
+    availableAudioRecordings,
+    availableRecordings: availableRecordings.length,
+    availableVideoRecordings,
+    failedRecordings,
+    failedVideoRecordings,
     id: meeting.id,
     latestAt,
     meeting,
@@ -497,12 +521,14 @@ export function mapPersistedRecording(
     durationSeconds: recording.durationSeconds ?? 0,
     id: recording.id,
     meetingId,
+    metadata: recording.metadata,
     mimeType: recording.mimeType,
     name: recording.fileName ?? recording.storagePath ?? recording.status,
     sizeBytes: recording.sizeBytes,
     startedAt: recording.startedAt,
     status: recording.status,
     stoppedAt: recording.stoppedAt,
+    storagePath: recording.storagePath,
     url: recording.playbackUrl ?? recording.downloadUrl ?? "#",
   };
 }
