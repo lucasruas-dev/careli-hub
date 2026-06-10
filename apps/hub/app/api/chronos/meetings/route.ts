@@ -3,11 +3,13 @@ import { type NextRequest } from "next/server";
 import {
   authorizeChronosRequest,
   createChronosMeeting,
+  deleteChronosMeeting,
   isChronosForbiddenError,
   isChronosSchemaMissingError,
   listChronosSnapshot,
   updateChronosMeeting,
 } from "@/lib/chronos/server";
+import { syncChronosMeetingToGoogleCalendar } from "@/lib/chronos/google-calendar";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,6 +30,8 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    console.error("[chronos] snapshot_load_failed", getChronosSafeErrorLog(error));
+
     return Response.json(
       {
         error: getChronosApiErrorMessage(
@@ -53,6 +57,19 @@ export async function POST(request: NextRequest) {
       input: await request.json().catch(() => null),
     });
 
+    try {
+      await syncChronosMeetingToGoogleCalendar({
+        meetingId: meeting.id,
+        trigger: "chronos_agenda_create",
+        userId: authorization.user.id,
+      });
+    } catch (syncError) {
+      console.error(
+        "[chronos] google_calendar_create_sync_failed",
+        getChronosSafeErrorLog(syncError),
+      );
+    }
+
     return Response.json(
       { meeting },
       {
@@ -62,6 +79,8 @@ export async function POST(request: NextRequest) {
       },
     );
   } catch (error) {
+    console.error("[chronos] meeting_create_failed", getChronosSafeErrorLog(error));
+
     return Response.json(
       {
         error: getChronosApiErrorMessage(
@@ -87,6 +106,19 @@ export async function PATCH(request: NextRequest) {
       input: await request.json().catch(() => null),
     });
 
+    try {
+      await syncChronosMeetingToGoogleCalendar({
+        meetingId: meeting.id,
+        trigger: "chronos_agenda_update",
+        userId: authorization.user.id,
+      });
+    } catch (syncError) {
+      console.error(
+        "[chronos] google_calendar_update_sync_failed",
+        getChronosSafeErrorLog(syncError),
+      );
+    }
+
     return Response.json(
       { meeting },
       {
@@ -101,6 +133,47 @@ export async function PATCH(request: NextRequest) {
         error: getChronosApiErrorMessage(
           error,
           "Nao foi possivel atualizar a reuniao Chronos.",
+        ),
+      },
+      { status: getChronosApiErrorStatus(error) },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const authorization = await authorizeChronosRequest(request);
+
+  if (!authorization.ok) {
+    return authorization.response;
+  }
+
+  try {
+    const result = await deleteChronosMeeting({
+      authorization,
+      input: await request.json().catch(() => null),
+    });
+
+    try {
+      await syncChronosMeetingToGoogleCalendar({
+        meetingId: result.meetingId,
+        trigger: "chronos_agenda_delete",
+        userId: authorization.user.id,
+      });
+    } catch {
+      // A exclusao no Chronos nao deve ficar presa se o espelho Google falhar.
+    }
+
+    return Response.json(result, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    return Response.json(
+      {
+        error: getChronosApiErrorMessage(
+          error,
+          "Nao foi possivel excluir o evento Chronos.",
         ),
       },
       { status: getChronosApiErrorStatus(error) },
@@ -128,4 +201,26 @@ function getChronosApiErrorStatus(error: unknown) {
   }
 
   return 400;
+}
+
+function getChronosSafeErrorLog(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return { message: String(error) };
+  }
+
+  const source = error as {
+    code?: unknown;
+    details?: unknown;
+    hint?: unknown;
+    message?: unknown;
+    name?: unknown;
+  };
+
+  return {
+    code: typeof source.code === "string" ? source.code : undefined,
+    details: typeof source.details === "string" ? source.details : undefined,
+    hint: typeof source.hint === "string" ? source.hint : undefined,
+    message: typeof source.message === "string" ? source.message : undefined,
+    name: typeof source.name === "string" ? source.name : undefined,
+  };
 }

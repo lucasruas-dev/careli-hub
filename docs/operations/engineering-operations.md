@@ -33198,3 +33198,611 @@ Conclusao:
 - Nao precisa de acao imediata em homologacao.
 - Quem deve agir agora: Lucas deve iniciar uma reuniao pelo Chronos em producao e testar a gravacao real; Zeus acompanha o resultado e logs caso o LiveKit retorne erro especifico.
 - Proximo passo: se a gravacao real falhar, investigar o erro do LiveKit Egress ja com a camada S3 basica validada.
+
+## 2026-06-09 15:10:42 -03:00 - Chronos - fechamento server-side de sala LiveKit
+
+Assunto: [Chronos] Encerramento da chamada agora solicita `DeleteRoom` no LiveKit
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `CODIGO / LIVEKIT / FECHAMENTO DE SALA`.
+- Status: `IMPLEMENTADO LOCALMENTE / NAO PUBLICADO`.
+- Motivo:
+  - Lucas testou uma chamada curta em producao e observou a sessao LiveKit permanecer temporariamente como `In progress` apos encerrar pelo Chronos.
+  - O painel LiveKit indicou `Egress` e depois fechou a sessao, sugerindo que o atraso estava na finalizacao da sala/egress e nao na camada S3 basica, que ja havia sido validada.
+- Pesquisa e decisao:
+  - a documentacao LiveKit indica que `RoomComposite Egress` e ligado ao ciclo de vida da sala e deve parar quando os participantes saem;
+  - a API `DeleteRoom` do `RoomService` desconecta forçadamente os participantes da sala;
+  - nao foi encontrada indicacao documental de que plano pago acelere o encerramento de sala/egress; planos pagos parecem ampliar recursos, suporte, colaboracao, metricas/export/API e escala, mas nao corrigem logica de fechamento do app.
+- Arquivos alterados:
+  - `apps/hub/lib/chronos/livekit.ts`;
+  - `apps/hub/lib/chronos/server.ts`.
+- Como foi feito:
+  - criado helper server-side `deleteChronosLiveKitRoom`, usando `RoomService/DeleteRoom` com token assinado e permissao `roomCreate`/`roomAdmin`;
+  - `closeChronosPublicMeeting` agora chama esse helper apos fechar a reuniao no Supabase;
+  - a chamada e `best-effort`: se a sala ja tiver sido encerrada pelo LiveKit, o fechamento do Chronos nao quebra e o erro fica apenas em warning sanitizado.
+- Validacao executada:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npx.cmd eslint lib/chronos/livekit.ts lib/chronos/server.ts --max-warnings 0` dentro de `apps/hub`: PASS;
+  - primeira tentativa de lint pela raiz falhou porque o ESLint nao encontrou `eslint.config.js`; reexecutado corretamente no pacote `apps/hub`.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase, banco ou migration foi alterado;
+  - `https://c2x.app.br`, `https://homo.c2x.app.br` e `https://ops.c2x.app.br` nao foram movidos.
+
+Conclusao:
+
+- A causa mais provavel do atraso observado nao e plano pago, e sim fechamento de sala ainda dependente do ciclo natural do LiveKit/egress.
+- O impacto pratico da correcao e reduzir o tempo em que a sessao fica ativa no painel apos o host encerrar a chamada.
+- Nao precisa de acao imediata em ambiente agora, pois a alteracao ainda nao foi publicada.
+- Quem deve agir agora: Zeus/Hefesto devem empacotar e publicar esse recorte quando Lucas autorizar; Lucas valida uma nova chamada curta depois da publicacao.
+- Proximo passo: publicar o recorte Chronos de fechamento LiveKit em fluxo seguro e testar se a sessao some/fecha no LiveKit em poucos segundos.
+
+## 2026-06-09 15:47:57 -03:00 - Chronos - reconciliacao do Drive com Storage LiveKit
+
+Assunto: [Chronos] Drive passa a recuperar gravacoes ja salvas no Supabase Storage
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `CODIGO / CHRONOS DRIVE / LIVEKIT EGRESS / SUPABASE STORAGE`.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO / NAO PUBLICADO`.
+- Motivo:
+  - Lucas validou que o LiveKit Egress gravou o MP4 no bucket `chronos-drive`, mas a tela `Chronos > Drive` continuava vazia.
+  - O Drive dependia de `chronos_recordings` e signed URLs hidratadas; se o egress terminasse e saisse da listagem ativa antes da sincronizacao, o arquivo ficava no Storage sem aparecer como item acionavel.
+- Correcao aplicada:
+  - `apps/hub/lib/chronos/livekit.ts` agora preserva `file_results` do LiveKit quando disponivel;
+  - `apps/hub/lib/chronos/server.ts` agora reconcilia reunioes com indicio de gravacao/egress contra o prefixo seguro `recordings/{sala}/{meetingId}` no bucket `chronos-drive`;
+  - gravacoes recuperadas do Storage entram no snapshot como `available`, recebem signed URL, aparecem no Drive e liberam as acoes existentes de assistir, baixar, transcrever e gerar ata;
+  - a sincronizacao do egress agora trata a janela em que `ListEgress` nao encontra mais o egress concluido, confirmando o arquivo esperado no Storage antes de marcar a gravacao como disponivel;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` ampliou o polling de conclusao de egress para ate 60s.
+- Validacao executada:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npx.cmd eslint lib/chronos/livekit.ts lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0` dentro de `apps/hub`: PASS;
+  - `git diff --check -- apps/hub/lib/chronos/livekit.ts apps/hub/lib/chronos/server.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, apenas aviso CRLF esperado em Windows;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com aviso Turbopack/NFT conhecido em `next.config.ts`/SquadOps fora do recorte Chronos.
+  - smoke local com dev server temporario: `GET http://localhost:3001/chronos` retornou HTTP `200`.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase, banco ou migration foi alterado;
+  - `https://c2x.app.br`, `https://homo.c2x.app.br` e `https://ops.c2x.app.br` nao foram movidos.
+
+Conclusao:
+
+- O arquivo salvo no Supabase Storage deixa de ficar invisivel para o Chronos Drive.
+- O impacto pratico e que a gravacao deve aparecer com assistir/baixar/transcrever, e a aba de Atas passa a ter evidencia para gerar ata.
+- Nao precisa de acao imediata em ambiente agora, pois a alteracao ainda nao foi publicada.
+- Quem deve agir agora: Zeus/Hefesto devem empacotar e publicar esse recorte quando Lucas autorizar; Lucas valida no Drive a gravacao ja salva e uma nova gravacao curta depois da publicacao.
+- Proximo passo: publicar o recorte Chronos Drive em fluxo seguro e testar `c2x.app.br/chronos` ate a gravacao aparecer no Drive com acoes habilitadas.
+
+## 2026-06-09 16:05:59 -03:00 - Chronos - Drive Storage reconciliation publicado em producao
+
+Assunto: [Chronos] Drive reconcilia gravacoes do Supabase Storage em producao
+
+- Nome da squad/agente: `Zeus / Hefesto / Chronos`.
+- Tipo da alteracao: `DEPLOY PRODUCAO / CHRONOS DRIVE / LIVEKIT EGRESS / SUPABASE STORAGE`.
+- Status: `EM PRODUCAO / RECORTE MODULAR VALIDADO`.
+- Protocolo: `CHRONOS-20260609-001-DRIVE-STORAGE-RECONCILIATION`.
+- Autorizacao: Lucas autorizou o deploy seguro em producao.
+- Escopo publicado:
+  - `apps/hub/lib/chronos/livekit.ts`;
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Commit limpo do recorte:
+  - `b1d8d74aa018101af5b3e991a6576a28fe488ca9`;
+  - branch/worktree: `codex/chronos-drive-safe-prod-20260609` em `.codex-deploy/chronos-drive-prod-20260609-1555/source-worktree`.
+- Manifesto e Safety Gate:
+  - manifesto: `docs/operations/production-module-safety-gate-chronos-20260609-001-drive-storage-reconciliation.json`;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-001-drive-storage-reconciliation.json`: PASS, 4 mudancas detectadas;
+  - pacote base: `.codex-deploy/chronos-drive-prod-20260609-1555/base`;
+  - pacote candidato: `.codex-deploy/chronos-drive-prod-20260609-1555/candidate`.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy .codex-deploy/chronos-drive-prod-20260609-1555/candidate --prod --skip-domain --yes`;
+  - deployment novo: `dpl_5uPWLXvwCdDjbqrcG14ZPQck3PoJ`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-bbvwfl03o-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pre-publicacao ja registradas no recorte:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npx.cmd eslint lib/chronos/livekit.ts lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0` dentro de `apps/hub`: PASS;
+  - `git diff --check -- apps/hub/lib/chronos/livekit.ts apps/hub/lib/chronos/server.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, apenas aviso CRLF esperado em Windows;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com aviso Turbopack/NFT conhecido em `next.config.ts`/SquadOps fora do recorte Chronos;
+  - smoke local com dev server temporario: `GET http://localhost:3001/chronos` retornou HTTP `200`.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_5uPWLXvwCdDjbqrcG14ZPQck3PoJ`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Avisos nao bloqueantes:
+  - build remoto Vercel passou com warnings conhecidos de Turbopack/NFT e envs fora de `turbo.json`, sem falha de build;
+  - `npm install` no build remoto reportou auditoria com vulnerabilidades ja existentes, fora do recorte Chronos.
+- Escopo preservado:
+  - nenhum env, secret, Supabase, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado.
+- Rollback:
+  - se algum healthcheck critico ou validacao funcional Chronos falhar, reapontar `https://c2x.app.br` para `dpl_5vscsDw52brSDfsGWCUhsCPYEtvi`.
+
+Conclusao:
+
+- O recorte Chronos Drive ja esta em producao em `https://c2x.app.br`.
+- O impacto pratico e que MP4s que ja estao no Supabase Storage passam a ser reconciliados no Drive com assistir, baixar, transcrever e gerar ata.
+- Precisa de uma acao funcional agora: Lucas deve abrir o Chronos Drive e validar se a gravacao salva aparece com as acoes habilitadas.
+- Quem deve agir agora: Lucas valida o fluxo real; Zeus acompanha logs se a gravacao aparecer mas alguma acao especifica falhar.
+- Proximo passo: testar uma nova chamada curta em producao e confirmar o ciclo completo sala -> egress -> Storage -> Drive -> ata.
+
+## 2026-06-09 16:22:13 -03:00 - Chronos - correcao local do preview/PDF de Atas
+
+Assunto: [Chronos] PDF da ata deixa de abrir janela vazia no PWA
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `CODIGO / CHRONOS ATAS / PRINT PREVIEW`.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO / NAO PUBLICADO`.
+- Motivo:
+  - Lucas confirmou que as gravacoes apareceram no Chronos Drive e sinalizou quebra na parte de Atas.
+  - O print indicou uma janela nova do Panteon com erro `This page couldn't load`, compativel com o fluxo antigo de PDF/ata que abria `window.open("")` e escrevia HTML via `document.write`.
+- Correcao aplicada:
+  - `apps/hub/lib/chronos/minutes-preview.ts` passou a imprimir a ata por iframe seguro dentro da propria pagina, evitando navegar para janela vazia;
+  - criado fallback por Blob HTML caso o navegador bloqueie o iframe/print;
+  - removido `document.write` da abertura principal do PDF para reduzir falhas em PWA/app instalado.
+- Validacao executada:
+  - consulta somente leitura de logs Vercel recentes de `https://c2x.app.br`: sem erro Chronos nos 100 logs retornados; logs estavam dominados por polling Hermes;
+  - `npx.cmd eslint lib/chronos/minutes-preview.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-drive-recording-card.tsx --max-warnings 0` dentro de `apps/hub`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com aviso Turbopack/NFT conhecido em `next.config.ts`/SquadOps fora do recorte Chronos.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase, banco ou migration foi alterado;
+  - `https://c2x.app.br`, `https://homo.c2x.app.br` e `https://ops.c2x.app.br` nao foram movidos.
+
+Conclusao:
+
+- A quebra mais provavel do print foi a abertura de janela vazia para gerar PDF da ata.
+- O impacto pratico da correcao e manter o usuario na tela do Chronos e abrir a impressao da ata sem navegar para uma pagina quebrada.
+- Nao precisa de acao em ambiente agora porque a correcao ainda nao foi publicada.
+- Quem deve agir agora: Lucas confirma se quer publicar esse recorte ou se prefere testar local/preview antes.
+- Proximo passo: publicar por recorte seguro quando Lucas autorizar e, em seguida, testar Atas no Drive com a gravacao ja existente.
+
+## 2026-06-09 16:41:03 -03:00 - Chronos - revisao completa do fluxo de Atas
+
+Assunto: [Chronos] Atas revisadas do Drive ate aprovacao
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `CODIGO / CHRONOS ATAS / ATHENA / UX OPERACIONAL`.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO / NAO PUBLICADO`.
+- Motivo:
+  - Lucas esclareceu que Atas nao era apenas o PDF: o fluxo tinha selecao da gravacao, geracao Athena, transcricao, revisao, aprovacao e acoes relacionadas.
+  - A primeira correcao tratou apenas o sintoma de janela vazia; a revisao completa precisou cobrir a sequencia funcional inteira.
+- Correcao aplicada:
+  - `apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx`:
+    - a aba `Atas` agora considera reunioes com gravacao disponivel, transcricao, ata existente ou status de ata, nao apenas gravacao;
+    - a partir da aba `Gravacoes`, abrir uma ata seleciona a reuniao e troca para a aba `Atas`.
+  - `apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx`:
+    - a acao antes chamada `Reuniao` passa a conduzir diretamente para `Ata`;
+    - `Transcrever` agora vira fluxo operacional para `Transcrever e gerar ata`, abrindo a aba `Atas` ao fim;
+    - gravacoes ja transcritas deixam de oferecer nova transcricao redundante.
+  - `apps/hub/modules/chronos/components/chronos-minutes-panel.tsx`:
+    - o botao principal passa a executar a etapa correta: se ja existe transcricao, gera ata da transcricao; se so existe gravacao, transcreve e gera a ata;
+    - salvar em revisao e aprovar ficam bloqueados quando nao ha rascunho/evidencia suficiente;
+    - textos de estado foram ajustados para explicar se falta gravacao, transcricao ou evidencia.
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts`:
+    - endpoint do agente Chronos declara `maxDuration = 300`;
+    - timeout OpenAI subiu para 240s para comportar transcricao + rascunho de ata;
+    - modelo de ata/pauta volta a respeitar fallback `HUB_AI_MODEL` apos envs especificas do Chronos;
+    - arquivos recuperados de URL assinada tambem passam pelo limite de tamanho antes da chamada OpenAI.
+  - `apps/hub/lib/chronos/minutes-preview.ts`:
+    - mantida a correcao de PDF/preview por iframe com fallback Blob, evitando janela vazia do PWA.
+- Validacao executada:
+  - `npx.cmd eslint app/api/chronos/meetings/agent/route.ts lib/chronos/minutes-preview.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-drive-library-screen.tsx modules/chronos/components/chronos-drive-recording-card.tsx --max-warnings 0` dentro de `apps/hub`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `git diff --check -- apps/hub/app/api/chronos/meetings/agent/route.ts apps/hub/lib/chronos/minutes-preview.ts apps/hub/modules/chronos/components/chronos-minutes-panel.tsx apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com aviso Turbopack/NFT conhecido em `next.config.ts`/SquadOps fora do recorte Chronos.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase, banco ou migration foi alterado;
+  - `https://c2x.app.br`, `https://homo.c2x.app.br` e `https://ops.c2x.app.br` nao foram movidos.
+
+Conclusao:
+
+- O fluxo completo de Atas foi revisado localmente, nao apenas o PDF.
+- O impacto pratico e que o operador deve conseguir partir da gravacao, mandar a Athena transcrever/gerar a ata, revisar, salvar em revisao, aprovar e gerar PDF sem navegar para tela quebrada.
+- Nao precisa de acao em ambiente agora porque a correcao ainda nao foi publicada.
+- Quem deve agir agora: Lucas autoriza publicacao segura se quiser testar esse fluxo em producao com as gravacoes ja visiveis.
+- Proximo passo: empacotar recorte limpo, criar commit rastreavel, rodar Safety Gate de producao e publicar somente quando Lucas autorizar.
+
+## 2026-06-09 16:59:33 -03:00 - Chronos - Atas publicadas em producao por recorte seguro
+
+Assunto: [Chronos] Fluxo de Atas publicado em producao sem mexer em outros modulos
+
+- Nome da squad/agente: `Zeus / Hefesto / Chronos`.
+- Tipo da alteracao: `DEPLOY PRODUCAO / CHRONOS ATAS / RECORTE MODULAR`.
+- Status: `EM PRODUCAO / RECORTE MODULAR VALIDADO`.
+- Autorizacao:
+  - Lucas autorizou subir se o deploy fosse seguro.
+  - A publicacao so seguiu depois de pacote limpo, commit rastreavel e Safety Gate PASS.
+- Publicacao:
+  - protocolo: `CHRONOS-20260609-002-MINUTES-WORKFLOW`;
+  - commit candidato: `efd2461c45660b289d6b7ed3962a47990b006674`;
+  - pacote candidato: `.codex-deploy/chronos-minutes-prod-20260609-1645/candidate`;
+  - deployment anterior/base de `https://c2x.app.br`: `dpl_5uPWLXvwCdDjbqrcG14ZPQck3PoJ`;
+  - deployment novo: `dpl_HEWDvkQQzykSqafjCP8CQpSw84M4`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-oxk94bhgz-lucasruas-devs-projects.vercel.app`;
+  - alias movimentado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes executadas:
+  - `git diff --check HEAD~1..HEAD` no worktree isolado: PASS;
+  - `npx.cmd eslint app/api/chronos/meetings/agent/route.ts lib/chronos/minutes-preview.ts modules/chronos/components/chronos-minutes-panel.tsx modules/chronos/components/chronos-drive-library-screen.tsx modules/chronos/components/chronos-drive-recording-card.tsx --max-warnings 0`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-002-minutes-workflow.json`: PASS, 6 mudancas detectadas;
+  - `npx.cmd vercel deploy .codex-deploy/chronos-minutes-prod-20260609-1645/candidate --prod --skip-domain --yes`: READY;
+  - URL tecnica: `GET /chronos` 200, `GET /chronos/careli` 200, `GET /api/chronos/public/rooms/careli/egress` 405 esperado, `POST /api/chronos/meetings/agent` sem bearer 401 esperado;
+  - `https://c2x.app.br`: `GET /chronos` 200, `GET /chronos/careli` 200, `GET /api/chronos/public/rooms/careli/egress` 405 esperado, `POST /api/chronos/meetings/agent` sem bearer 401 esperado.
+- Fora do escopo:
+  - nenhum env, secret, Supabase, banco, migration, dominio extra ou alias fora de `https://c2x.app.br` foi alterado.
+- Rollback:
+  - se algum healthcheck critico ou validacao funcional Chronos Atas falhar, reapontar `https://c2x.app.br` para `dpl_5uPWLXvwCdDjbqrcG14ZPQck3PoJ`.
+
+Conclusao:
+
+- O fluxo completo de Atas do Chronos foi publicado em producao pelo recorte seguro.
+- O impacto pratico e que a gravacao visivel no Drive agora deve conduzir para transcrever, gerar ata, revisar, aprovar e gerar PDF sem cair na tela quebrada.
+- Precisa de acao funcional agora: Lucas deve testar com a gravacao real que ja apareceu no Drive.
+- Quem deve agir agora: Lucas valida o fluxo na interface; Zeus acompanha se aparecer erro na chamada Athena/ata.
+- Proximo passo: testar a geracao da ata real a partir da gravacao no Chronos Drive em `https://c2x.app.br`.
+
+## 2026-06-09 17:18:10 -03:00 - Chronos - hotfix do fallback OpenAI das Atas em producao
+
+Assunto: [Chronos] Athena deixa de quebrar ata quando o formato estruturado e recusado
+
+- Nome da squad/agente: `Zeus / Hefesto / Chronos`.
+- Tipo da alteracao: `HOTFIX PRODUCAO / CHRONOS ATAS / OPENAI RESPONSES`.
+- Status: `EM PRODUCAO / HOTFIX MODULAR VALIDADO`.
+- Motivo:
+  - apos o deploy do fluxo de Atas, os healthchecks de pagina/API passaram, mas a consulta de logs encontrou erro real em `POST /api/chronos/meetings/agent`;
+  - log Vercel: `502` em `dpl_HEWDvkQQzykSqafjCP8CQpSw84M4`, `meetingId` real e mensagem `[chronos/agent] OpenAI minutes generation failed`;
+  - a falha ocorria na geracao estruturada da ata pela Responses API, antes de salvar o rascunho.
+- Correcao aplicada:
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` passou a tentar primeiro `text.format` com `json_schema`;
+  - se a OpenAI recusar formato/opcao, o Chronos repete a mesma geracao com fallback `json_object`;
+  - o prompt de ata e pauta foi explicitado para retornar JSON valido;
+  - o esforco padrao da ata caiu de `high` para `medium`, alinhado ao uso operacional recomendado para GPT-5.5 e reduzindo risco de latencia desnecessaria.
+- Publicacao:
+  - protocolo: `CHRONOS-20260609-003-OPENAI-JSON-FALLBACK`;
+  - commit candidato: `64294cace5fb506d8455dc3fbf70f6d912ffa13d`;
+  - pacote candidato: `.codex-deploy/chronos-openai-hotfix-prod-20260609-1705/candidate`;
+  - deployment anterior/base: `dpl_HEWDvkQQzykSqafjCP8CQpSw84M4`;
+  - deployment novo: `dpl_EpwV95SvKzeVF8MWLoy5vvQxtWsS`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-r2kax7i1l-lucasruas-devs-projects.vercel.app`;
+  - alias movimentado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes executadas:
+  - `git diff --check HEAD~1..HEAD`: PASS;
+  - `npx.cmd eslint app/api/chronos/meetings/agent/route.ts --max-warnings 0`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-003-openai-json-fallback.json`: PASS, 1 mudanca detectada;
+  - URL tecnica: `GET /chronos` 200, `GET /chronos/careli` 200, `GET /api/chronos/public/rooms/careli/egress` 405 esperado, `POST /api/chronos/meetings/agent` sem bearer 401 esperado;
+  - `https://c2x.app.br`: `GET /chronos` 200, `GET /chronos/careli` 200, `GET /api/chronos/public/rooms/careli/egress` 405 esperado, `POST /api/chronos/meetings/agent` sem bearer 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 5m --level error`: sem logs de erro apos o hotfix.
+- Fora do escopo:
+  - nenhum env, secret, Supabase, banco, migration, dominio extra ou alias fora de `https://c2x.app.br` foi alterado.
+- Rollback:
+  - se algum healthcheck critico falhar, reapontar `https://c2x.app.br` para `dpl_HEWDvkQQzykSqafjCP8CQpSw84M4`.
+
+Conclusao:
+
+- O erro 502 da Athena foi encontrado antes do fechamento e corrigido em producao.
+- O impacto pratico e que, se a OpenAI recusar o formato estruturado estrito, o Chronos tenta novamente em JSON simples e ainda consegue gerar o rascunho da ata.
+- Precisa de acao funcional agora: Lucas deve clicar novamente em `Transcrever e gerar ata` ou `Gerar ata da transcricao` na gravacao real.
+- Quem deve agir agora: Lucas valida o fluxo real; Zeus acompanha logs se o novo teste retornar erro.
+- Proximo passo: validar a geracao da ata real em `https://c2x.app.br` e confirmar se o rascunho aparece para revisao/aprovacao.
+
+## 2026-06-09 17:54:33 -03:00 - Chronos - hotfix da estabilidade da aba Atas em producao
+
+Assunto: [Chronos] Atas deixa de quebrar quando a reuniao vem com listas incompletas
+
+- Nome da squad/agente: `Zeus / Hefesto / Chronos`.
+- Tipo da alteracao: `HOTFIX PRODUCAO / CHRONOS ATAS / RUNTIME GUARDS`.
+- Status: `EM PRODUCAO / HOTFIX MODULAR VALIDADO`.
+- Motivo:
+  - Lucas reportou `This page couldn't load` ao clicar em `Transcrever e gerar ata` e tambem ao abrir a aba `Atas`;
+  - logs recentes mostraram `/chronos` respondendo 200 e `POST /api/chronos/meetings/agent` retornando 400/401 conforme o fluxo, sem 500 de pagina;
+  - a causa pratica ficou concentrada em renderizacao/acoes da aba Atas lendo listas de reuniao que podem vir ausentes ou incompletas em tempo de execucao.
+- Correcao aplicada:
+  - `apps/hub/lib/chronos/runtime-meeting.ts` normaliza listas de reuniao (`recordings`, `minutes`, `transcript`, `participants`, `timeline`, `followUps`, `chatMessages`) antes de componentes/API consumirem `.length`, `.find` ou `.map`;
+  - `ChronosDriveLibraryScreen`, `ChronosDriveRecordingCard`, `ChronosDriveItemCard` e `MinutesPanel` passaram a usar a reuniao normalizada antes de renderizar Atas/Drive;
+  - `ChronosPage` passou a retornar `true/false` nos handlers de transcricao, evitando abrir automaticamente a aba Atas quando a transcricao falhar;
+  - `app/api/chronos/meetings/agent/route.ts` tambem normaliza a reuniao antes de transcrever/gerar ata.
+- Publicacao:
+  - protocolo: `CHRONOS-20260609-004-MINUTES-RUNTIME-GUARDS`;
+  - commit candidato: `29e7eacbed6f1ade6186164ec4943262389cca36`;
+  - pacote candidato: `.codex-deploy/chronos-minutes-runtime-hotfix-prod-20260609-004/candidate`;
+  - deployment anterior/base de `https://c2x.app.br`: `dpl_EpwV95SvKzeVF8MWLoy5vvQxtWsS`;
+  - deployment novo: `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-cvcnac1ez-lucasruas-devs-projects.vercel.app`;
+  - alias movimentado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes executadas:
+  - pacote candidato montado a partir da producao ativa `dpl_EpwV95SvKzeVF8MWLoy5vvQxtWsS`;
+  - diff final base x candidato: somente 7 arquivos Chronos, 122 insercoes e 57 remocoes;
+  - `git diff --check` no worktree isolado: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint <arquivos Chronos> --quiet`: PASS;
+  - `npm.cmd run check-types:hub`: PASS no pacote candidato real;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de Turbopack/NFT e envs ausentes em `turbo.json`, sem ampliar escopo;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-004-minutes-runtime-guards.json`: PASS, 7 mudancas detectadas;
+  - URL tecnica: `GET /chronos` 200, `GET /chronos/careli` 200, `GET /api/chronos/public/rooms/careli/egress` 405 esperado, `POST /api/chronos/meetings/agent` sem bearer 401 esperado;
+  - `https://c2x.app.br`: `GET /chronos` 200, `GET /chronos/careli` 200, `POST /api/chronos/meetings/agent` sem bearer 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 5m --query chronos --json`: apenas 200/401/405 esperados no novo deployment, sem 500/502.
+- Fora do escopo:
+  - nenhum env, secret, Supabase, banco, migration, dominio extra ou alias fora de `https://c2x.app.br` foi alterado.
+- Rollback:
+  - se algum healthcheck critico ou validacao funcional Chronos Atas falhar, reapontar `https://c2x.app.br` para `dpl_EpwV95SvKzeVF8MWLoy5vvQxtWsS`.
+
+Conclusao:
+
+- A quebra da aba Atas foi tratada como hotfix de estabilidade client/runtime, sem mexer em banco, chaves ou outros modulos.
+- O impacto pratico e que a tela de Atas/Drive nao deve mais cair em `This page couldn't load` quando dados da reuniao vierem incompletos ou quando a transcricao falhar.
+- Precisa de acao funcional agora: Lucas deve testar novamente `Atas` e `Transcrever e gerar ata` com a gravacao real.
+- Quem deve agir agora: Lucas valida a interface; Zeus acompanha logs se o fluxo real ainda retornar erro funcional.
+- Proximo passo: se a tela abrir corretamente, avançar para validar geracao, revisao e aprovacao da ata real.
+
+## 2026-06-09 19:12:25 -03:00 - Chronos - hotfix local do formatter de data das Atas
+
+Assunto: [Chronos] Formatter de data deixa de derrubar Atas e fluxo de transcricao
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `HOTFIX LOCAL / CHRONOS ATAS / RUNTIME DATE FORMAT`.
+- Status: `IMPLEMENTADO LOCALMENTE / VALIDADO / NAO PUBLICADO`.
+- Motivo:
+  - Lucas reportou que o botao `Transcrever e gerar ata` exibia o banner `OpenAI recusou um placeholder de modelo chamado option` e que a aba `Atas` ainda caia em `This page couldn't load`;
+  - logs recentes de producao mostraram `POST /api/chronos/meetings/agent` retornando `400`, enquanto `/chronos` e `/api/chronos/meetings` respondiam `200`;
+  - a reproducao local confirmou que `Intl.DateTimeFormat("pt-BR", { dateStyle: "short", hour: "2-digit", minute: "2-digit" })` lança `TypeError: Invalid option : option`, derrubando a aba Atas e tambem o fluxo server-side que monta o contexto da ata.
+- Correcao aplicada:
+  - `apps/hub/lib/chronos/minutes.ts` passou a usar `dateStyle: "short"` com `timeStyle: "short"` em `formatChronosDateTime`;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` passou a diferenciar `TypeError` local de runtime da mensagem de placeholder de modelo da OpenAI;
+  - a mesma correcao foi espelhada no pacote candidato `.codex-deploy/chronos-minutes-runtime-hotfix-prod-20260609-004/candidate`.
+- Validacao executada:
+  - teste minimo Node do formatter corrigido: PASS, retornando `09/06/2026, 17:58`;
+  - root: `npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts lib/chronos/minutes.ts --max-warnings 0`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - root: `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - pacote candidato: `npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts lib/chronos/minutes.ts --max-warnings 0`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - pacote candidato: `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - pacote candidato: `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT fora do recorte Chronos.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase, banco ou migration foi alterado;
+  - `https://c2x.app.br`, `https://homo.c2x.app.br` e `https://ops.c2x.app.br` nao foram movidos.
+- Bloqueio de publicacao:
+  - para cumprir a regra vigente de producao, ainda falta montar commit/manifesto limpo do pacote exato antes de qualquer deploy ou alias.
+
+Conclusao:
+
+- A causa real dos dois sintomas era o formatter de data das Atas, nao uma chave OpenAI/Supabase.
+- O impacto pratico esperado e que abrir `Atas` e acionar `Transcrever e gerar ata` deixe de cair por `Invalid option : option`.
+- Nao precisa de acao de ambiente agora porque a correcao ainda nao foi publicada.
+- Quem deve agir agora: Zeus/Hefesto deve montar commit/manifesto limpo se Lucas autorizar publicacao; Lucas deve testar em producao somente apos o novo deploy seguro.
+- Proximo passo: preparar recorte rastreavel para producao ou aguardar autorizacao explicita de publicacao.
+
+## 2026-06-09 19:27:04 -03:00 - Chronos - recorte seguro do formatter de data das Atas
+
+Assunto: [Chronos] Recorte seguro montado para corrigir formatter de data das Atas
+
+- Nome da squad/agente: `Zeus / Hefesto / Chronos`.
+- Tipo da alteracao: `RECORTE SEGURO / CHRONOS ATAS / RUNTIME DATE FORMAT`.
+- Status: `RECORTE SEGURO MONTADO / VALIDADO / NAO PUBLICADO`.
+- Protocolo: `CHRONOS-20260609-005-MINUTES-DATE-FORMAT`.
+- Motivo:
+  - Lucas solicitou montar o recorte seguro antes de qualquer publicacao;
+  - a causa confirmada foi o uso invalido de `Intl.DateTimeFormat` com `dateStyle` junto de `hour` e `minute`, gerando `TypeError: Invalid option : option`;
+  - a raiz do repositorio segue suja com varias frentes antigas, entao o recorte foi isolado em pacote `base/candidate/source-worktree`.
+- Correcao incluida no recorte:
+  - `apps/hub/lib/chronos/minutes.ts` troca `hour/minute` por `timeStyle: "short"` no formatter das Atas;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` diferencia erro local de runtime (`option` invalida) da mensagem especifica de placeholder recusado pela OpenAI.
+- Pacote seguro:
+  - base: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/base`;
+  - candidato: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/candidate`;
+  - worktree limpo: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/source-worktree`;
+  - branch: `codex/chronos-minutes-date-format-prod-20260609`;
+  - commit candidato: `22756993b468eda91dd660a5b1193a3073451934`;
+  - manifesto: `docs/operations/production-module-safety-gate-chronos-20260609-005-minutes-date-format.json`.
+- Validacoes executadas:
+  - `git -C .codex-deploy/chronos-minutes-date-format-prod-20260609-005/source-worktree status --short --branch`: PASS, worktree limpo;
+  - `git diff --no-index --name-status base/candidate`: PASS, somente 2 arquivos Chronos modificados;
+  - teste minimo Node do formatter corrigido: PASS, retornando `09/06/2026, 17:58`;
+  - pacote candidato: `npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts lib/chronos/minutes.ts --max-warnings 0`: PASS, apenas warning conhecido de `eslint.config.js` sem `type: module`;
+  - pacote candidato: `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - pacote candidato: `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de Turbopack/NFT por pacote local e multiplos lockfiles;
+  - limpeza controlada: `apps/hub/.next` removido do pacote candidato apos o build;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-005-minutes-date-format.json`: PASS, 2 mudancas detectadas.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase, banco ou migration foi alterado;
+  - `https://c2x.app.br`, `https://homo.c2x.app.br` e `https://ops.c2x.app.br` nao foram movidos.
+- Rollback planejado caso Lucas autorize publicacao depois:
+  - manter ou reapontar `https://c2x.app.br` para `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf` se healthcheck critico falhar;
+  - `https://ops.c2x.app.br` permanece fora do recorte e nao deve ser alterado.
+
+Conclusao:
+
+- O recorte seguro esta pronto para ser publicado somente se Lucas autorizar producao explicitamente.
+- O impacto pratico esperado e eliminar a queda da aba `Atas` e o falso aviso de OpenAI causado pelo erro local `Invalid option : option`.
+- Nao precisa de acao de ambiente agora porque nada foi publicado.
+- Quem deve agir agora: Lucas decide se autoriza a publicacao; Zeus/Hefesto executa o deploy modular e healthchecks se houver autorizacao.
+- Proximo passo: com autorizacao explicita, publicar o commit `22756993b468eda91dd660a5b1193a3073451934` no projeto correto e validar `/chronos`, `/chronos/careli` e o fluxo real de `Transcrever e gerar ata`.
+
+## 2026-06-09 19:40:15 -03:00 - Chronos - publicacao segura do formatter de data das Atas
+
+Assunto: [Chronos] Hotfix do formatter de data das Atas publicado em producao
+
+- Nome da squad/agente: `Zeus / Hefesto / Chronos`.
+- Tipo da alteracao: `HOTFIX PRODUCAO / CHRONOS ATAS / RUNTIME DATE FORMAT`.
+- Status: `EM PRODUCAO / HOTFIX MODULAR VALIDADO`.
+- Protocolo: `CHRONOS-20260609-005-MINUTES-DATE-FORMAT`.
+- Registro de producao: `PROD-20260609-007-CHRONOS-MINUTES-DATE-FORMAT` em `docs/operations/releases-production.md`.
+- Autorizacao:
+  - Lucas autorizou explicitamente: `deploy seguro pode publicar`.
+- Correcao publicada:
+  - `apps/hub/lib/chronos/minutes.ts` usa `dateStyle: "short"` com `timeStyle: "short"` para evitar `TypeError: Invalid option : option`;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` diferencia o erro local de runtime da mensagem especifica de placeholder recusado pela OpenAI.
+- Pacote seguro publicado:
+  - base: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/base`;
+  - candidato: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/candidate`;
+  - worktree limpo: `.codex-deploy/chronos-minutes-date-format-prod-20260609-005/source-worktree`;
+  - branch: `codex/chronos-minutes-date-format-prod-20260609`;
+  - commit candidato: `22756993b468eda91dd660a5b1193a3073451934`;
+  - manifesto: `docs/operations/production-module-safety-gate-chronos-20260609-005-minutes-date-format.json`.
+- Validacoes pre-publicacao:
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260609-005-minutes-date-format.json`: PASS, 2 mudancas detectadas;
+  - `npx.cmd vercel inspect https://c2x.app.br`: confirmou `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf` Ready antes da publicacao;
+  - URL tecnica criada com `--skip-domain`: `https://careli-hub-hub-i2bs-iv4cj0izg-lucasruas-devs-projects.vercel.app`;
+  - deployment tecnico: `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip`, status Ready;
+  - URL tecnica: `/chronos` 200, `/chronos/careli` 200, `/api/chronos/public/rooms/careli/egress` GET 405 esperado, `/api/chronos/meetings/agent` POST sem bearer 401 esperado;
+  - logs da URL tecnica: sem 500/502, apenas status esperados.
+- Publicacao:
+  - alias movimentado somente para `https://c2x.app.br`;
+  - `https://c2x.app.br` agora aponta para `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip`;
+  - `https://ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pos-publicacao:
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para GET;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --query chronos --json`: sem 500/502, com `200`, `401` e `405` esperados.
+- Fora do escopo:
+  - nenhum env, secret, Supabase, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; o registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - se a validacao funcional real do Lucas falhar, reapontar `https://c2x.app.br` para `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf`;
+  - `https://ops.c2x.app.br` deve permanecer em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+Conclusao:
+
+- O hotfix do formatter de data das Atas esta publicado em producao.
+- O impacto pratico esperado e que a aba `Atas` e o botao `Transcrever e gerar ata` parem de cair por `Invalid option : option`.
+- Precisa de acao agora: Lucas deve testar o fluxo real na interface autenticada.
+- Quem deve agir agora: Lucas valida o fluxo; Zeus acompanha logs se aparecer erro funcional.
+- Proximo passo: se o teste real passar, manter o deployment; se falhar, executar rollback de `c2x.app.br` para `dpl_H3BCRGmy1LyiWH1LkR4Q8Yp5RPXf`.
+
+## 2026-06-09 21:14:39 -03:00 - Chronos - Drive, Atas, transcricao pos-gravacao e qualidade LiveKit
+
+Assunto: [Chronos] Recorte local para Drive, Atas, transcricao pos-gravacao e qualidade LiveKit
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / CHRONOS DRIVE / ATAS / TRANSCRICAO POS-GRAVACAO / LIVEKIT`.
+- Status: `VALIDADO_LOCAL / NAO PUBLICADO`.
+- Protocolo: `OP-20260609-017-CHRONOS-DRIVE-MINUTES-TRANSCRIPTION-QUALITY`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-chronos-20260609-017-drive-minutes-transcription-quality.json`.
+- Motivo:
+  - Lucas validou que as gravacoes voltaram a aparecer no Drive, mas apontou cinco pendencias: ata colidindo com a marca, reuniao longa com transcricao sem ata executiva, transcricao ao vivo capturando so o host, qualidade baixa de camera LiveKit e gravacao/transcricao recente ausente do Drive;
+  - Lucas autorizou remover a transcricao ao vivo e concentrar o fluxo em arquivo de transcricao pos-gravacao para consulta;
+  - a diretriz do recorte e manter Chronos isolado, sem alterar env, secret, Supabase remoto, migration, Vercel, homologacao ou producao.
+- Correcoes incluidas:
+  - a ata ganhou respiro superior maior na visualizacao e impressao para nao iniciar em cima da logo;
+  - o Drive Chronos passou a buscar reunioes recentes primeiro e ampliou o limite de snapshot, reduzindo risco de gravacoes novas ficarem fora da lista;
+  - os limites internos de texto foram ampliados para transcript e minutes, evitando cortar cedo uma transcricao longa antes da geracao da ata;
+  - a transcricao ao vivo por `SpeechRecognition` do navegador foi removida do fluxo da sala externa;
+  - a transcricao oficial agora e pos-gravacao: gravacao LiveKit/Egress -> OpenAI -> segmentos salvos com `source: "openai"` -> arquivo TXT para consulta -> ata executiva;
+  - a geracao de ata prioriza segmentos oficiais `source: "openai"` e nao deixa transcricoes parciais antigas de navegador bloquearem nova transcricao da gravacao;
+  - o modelo padrao de transcricao foi ajustado para `gpt-4o-transcribe-diarize`, usando `diarized_json` e `chunking_strategy: "auto"` quando aplicavel para separar falantes por rotulos genericos;
+  - a sala LiveKit passou a usar captura h720, simulcast, dynacast/adaptiveStream e preset h1080fps15 para compartilhamento de tela quando a rede suportar.
+- Validacoes executadas:
+  - `cd apps/hub && npm.cmd run check-types`: PASS;
+  - `cd apps/hub && npm.cmd run lint`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `cd apps/hub && npm.cmd run build`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-chronos-20260609-017-drive-minutes-transcription-quality.json`: PASS, com aviso esperado de agente executor `Zeus` diferente do canonico `Chronos Core`.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase remoto, banco ou migration foi alterado;
+  - nenhuma mudanca de Hades, Hermes, Iris, Guardian, Ares, Setup ou Atlas foi feita como parte deste recorte;
+  - transcricao automatica de gravacoes acima de 25 MB ainda exige proximo recorte para extrair audio compactado ou dividir em partes antes do envio para a OpenAI.
+- Riscos e observacoes:
+  - a identificacao de falante neste recorte usa diarizacao da OpenAI com rotulos genericos quando suportado; associar automaticamente `speaker_0` a nomes reais dos participantes exige um recorte posterior de mapeamento;
+  - reunioes longas, como a de 50 minutos citada por Lucas, podem exceder o limite de upload de 25 MB da API de transcricao e precisam do proximo recorte de audio/chunk para fechar o ciclo inteiro;
+  - o ganho de qualidade LiveKit depende tambem de camera, iluminacao, CPU, rede e politica adaptativa do LiveKit no cliente receptor.
+
+Conclusao:
+
+- O recorte local esta pronto e validado para os cinco pontos apontados, exceto a automacao completa de arquivos acima de 25 MB, que ficou documentada como proximo recorte tecnico.
+- O impacto pratico esperado e reduzir colisao visual da ata, trazer gravacoes recentes para o Drive, parar de depender de transcricao ao vivo do navegador, gerar arquivo TXT pos-gravacao e melhorar a qualidade base da sala LiveKit.
+- Nao precisa de acao de ambiente agora, porque nada foi publicado nem alterado fora do codigo local.
+- Quem deve agir agora: Zeus pode montar o proximo recorte para extracao/chunk de audio de gravacoes longas; Lucas valida localmente/preview quando houver publicacao autorizada.
+- Proximo passo: validar no navegador o fluxo real `Baixar transcricao` / `Transcrever e gerar ata` com uma gravacao menor que 25 MB e, em seguida, implementar o pipeline de audio compactado ou chunks para gravacoes longas.
+
+## 2026-06-09 21:59:59 -03:00 - Chronos - Audio dedicado, preview de transcricao e status de gravacao
+
+Assunto: [Chronos] Extensao do recorte local para audio dedicado e transcricao consultavel
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / CHRONOS LIVEKIT / DRIVE / TRANSCRICAO / ATAS`.
+- Status: `VALIDADO_LOCAL / NAO PUBLICADO`.
+- Protocolo: `OP-20260609-017-CHRONOS-DRIVE-MINUTES-TRANSCRIPTION-QUALITY`.
+- Manifesto atualizado: `docs/operations/panteon-recorte-manifest-chronos-20260609-017-drive-minutes-transcription-quality.json`.
+- Motivo:
+  - Lucas preferiu extrair audio para transcricao, sem enviar o video completo para a OpenAI, porque reunioes podem ser longas;
+  - Lucas pediu preview consultavel da transcricao na tela, nao apenas download TXT;
+  - Lucas pediu pop-up no botao de gravacao com duracao e indicador visivel de que a sala esta gravando;
+  - Lucas questionou como identificar quem esta falando, e o caminho seguro escolhido foi diarizacao por segmentos, sem inventar nomes reais.
+- Correcoes incluidas nesta extensao:
+  - `apps/hub/lib/chronos/livekit.ts` inicia um segundo Egress LiveKit `audio_only` em MP4, com `mime_type: "audio/mp4"`, separado do video principal;
+  - `apps/hub/lib/chronos/server.ts` persiste metadados e linhas de gravacao do audio dedicado, sincroniza/encerra audio e video juntos e mantem status combinado da reuniao;
+  - `apps/hub/lib/chronos/drive.ts` mantem o video como arquivo principal do Drive e evita somar duracao duplicada quando audio e video pertencem a mesma reuniao;
+  - `apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx` prioriza o audio dedicado para `Transcrever e gerar ata`, com fallback para video antigo quando audio nao existir;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` prioriza audio assinado na transcricao, usa formato aceito pela OpenAI e salva segmentos diarizados em lote;
+  - `apps/hub/lib/chronos/types.ts` e `apps/hub/lib/chronos/server.ts` ganharam a acao `add_transcript_segments`, registrando varios trechos em uma chamada e apenas um evento de timeline;
+  - `apps/hub/modules/chronos/components/chronos-transcript-panel.tsx` ganhou preview em tela da transcricao, mantendo download TXT;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` ganhou indicador fixo de gravacao em andamento e pop-up no botao de gravacao com duracao/status;
+  - textos residuais de `transcricao ao vivo` foram removidos do recorte operacional.
+- Identificacao de falantes:
+  - a primeira versao segura usa a diarizacao da OpenAI com rotulos genericos como `speaker_0`/`speaker_1` e tempos no conteudo quando retornados;
+  - o Chronos nao associa automaticamente esses rotulos a nomes reais sem evidencia, para evitar atribuir fala errada;
+  - o mapeamento para nomes reais fica para recorte posterior com amostras conhecidas de voz ou revisao humana.
+- Validacoes executadas:
+  - `cd apps/hub && npm.cmd run check-types`: PASS;
+  - `cd apps/hub && npm.cmd run lint`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `cd apps/hub && npm.cmd run build`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, env, secret, Supabase remoto, banco ou migration foi alterado;
+  - nenhum modulo fora de Chronos foi alterado como parte desta extensao;
+  - se o audio MP4 de uma reuniao longa exceder o limite de upload da OpenAI, ainda sera necessario um recorte de chunk/transcricao por partes.
+
+Conclusao:
+
+- O recorte local agora usa audio dedicado para transcricao, sem depender do video como arquivo enviado para a OpenAI.
+- O impacto pratico esperado e reduzir peso do processamento, preservar video para Drive/evidencia e melhorar a consulta da transcricao por trechos na tela.
+- Nao precisa de acao de ambiente agora, porque nada foi publicado nem alterado fora do codigo local.
+- Quem deve agir agora: Lucas valida o comportamento quando o recorte for publicado; Zeus acompanha se a diarizacao precisa de mapeamento para nomes reais.
+- Proximo passo: se Lucas autorizar publicacao, gerar pacote seguro/Preview ou producao conforme o protocolo; em seguida testar uma reuniao real com audio dedicado e conferir speaker labels.
+
+## 2026-06-09 22:33:27 -03:00 - Chronos - Audio LiveKit por participante
+
+Assunto: [Chronos] Recorte validado para captura de audio por participante
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / CHRONOS LIVEKIT / AUDIO POR PARTICIPANTE / TRANSCRICAO / ATAS`.
+- Status: `VALIDADO_LOCAL / CANDIDATO A PRODUCAO APOS GATE`.
+- Protocolo: `OP-20260609-018-CHRONOS-PARTICIPANT-AUDIO-EGRESS`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-chronos-20260609-018-participant-audio-egress.json`.
+- Motivo:
+  - Lucas decidiu remover a transcricao ao vivo e pediu que o Chronos capturasse audio pos-gravacao por participante sempre que possivel;
+  - Lucas perguntou se o LiveKit permite vincular participantes aos audios, e o caminho seguro escolhido foi usar `ListParticipants` + `TrackEgress` por microfone publicado, preservando `participantIdentity`, `participantName` e `trackId` na metadata;
+  - a publicacao em producao foi autorizada apenas se o pacote for seguro, rastreavel, validado e sem misturar outros modulos.
+- Correcoes incluidas:
+  - `apps/hub/lib/chronos/livekit.ts` ganhou listagem de participantes/tracks de microfone e `StartTrackEgress` para cada audio individual;
+  - `apps/hub/lib/chronos/server.ts` inicia, encerra e sincroniza egresses individuais junto com o video principal e o audio consolidado quando existir;
+  - cada audio individual passa a ser salvo em `chronos_recordings` com metadata `source: "chronos-livekit-egress-participant-audio"`, `participantIdentity`, `participantName`, `organization`, `trackId` e `transcriptionSource: true`;
+  - `apps/hub/lib/chronos/types.ts` expõe `metadata` em `ChronosRecording`, permitindo a rota de ata identificar o falante real do arquivo;
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` transcreve a colecao de audios individuais quando disponivel, força o `speakerLabel` para o participante real e tenta fallback para a gravacao consolidada se a colecao individual falhar;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` guarda e devolve a lista de egresses individuais no stop e no polling, evitando perder rastreio depois que a gravacao e encerrada.
+- Validacoes executadas:
+  - `cd apps/hub && npm.cmd run check-types`: PASS;
+  - `cd apps/hub && npm.cmd run lint`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `cd apps/hub && npm.cmd run build`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos.
+- Fora do escopo:
+  - nenhum env, secret, Supabase remoto, banco, migration, dominio ou alias foi alterado nesta etapa;
+  - nenhum modulo fora de Chronos foi alterado como parte do recorte;
+  - captura automatica de microfones publicados depois do inicio da gravacao ainda exige recorte posterior com webhook/auto-egress ou start dinamico por track publicado.
+- Riscos e observacoes:
+  - `TrackEgress` de audio direto tende a gerar arquivo OGG/Opus; se a OpenAI rejeitar esse container em algum caso, a rota tenta fallback para a gravacao consolidada disponivel;
+  - a associacao de falante agora usa evidencia do LiveKit por arquivo individual, nao diarizacao generica, mas so para quem ja tinha microfone publicado no momento em que a gravacao iniciou.
+
+Conclusao:
+
+- O recorte local fecha o vinculo principal entre participante LiveKit e arquivo de audio de transcricao.
+- O impacto pratico esperado e permitir que a ata mostre falas por nomes reais dos participantes quando os audios individuais estiverem disponiveis.
+- Precisa de acao agora: antes de producao, Zeus/Hefesto deve gerar commit limpo, production safety gate e pacote modular sem outros modulos.
+- Quem deve agir agora: Zeus monta o pacote seguro de producao; Lucas valida o teste real depois da publicacao.
+- Proximo passo: criar o commit rastreavel do recorte Chronos, rodar o safety gate de producao e publicar somente se o gate ficar `PASS`.
