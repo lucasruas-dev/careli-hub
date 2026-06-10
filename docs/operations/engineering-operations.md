@@ -33957,3 +33957,74 @@ Conclusao:
 - Precisa de acao agora: nao publicar ainda sem autorizacao explicita do Lucas para o protocolo `OP-20260610-020-CHRONOS-ROOM-RECORDING-LAYOUT`.
 - Quem deve agir agora: Zeus finaliza commit limpo do recorte; Lucas decide depois se quer publicar junto com o hotfix LiveKit-only.
 - Proximo passo tecnico: se Lucas autorizar, rodar production safety gate incluindo `OP-20260609-019` e `OP-20260610-020`, publicar em `https://c2x.app.br` e testar uma chamada real com gravacao, tela compartilhada e cameras em trilho separado.
+
+## 2026-06-10 00:40:15 -03:00 - Chronos - LiveKit obrigatorio e sala completa em producao
+
+Assunto: [Chronos] Publicacao segura do LiveKit-only e RoomComposite customizado
+
+- Nome da squad/agente: `Zeus / Hefesto / Chronos`.
+- Tipo da alteracao: `PRODUCAO / CHRONOS LIVEKIT / VIDEOCHAMADA / GRAVACAO / ROOMCOMPOSITE`.
+- Status: `EM PRODUCAO / RECORTE MODULAR VALIDADO`.
+- Protocolos:
+  - `OP-20260609-019-CHRONOS-LIVEKIT-ONLY-CALLS`;
+  - `OP-20260610-020-CHRONOS-ROOM-RECORDING-LAYOUT`.
+- Release de producao: `PROD-20260610-009-CHRONOS-LIVEKIT-ONLY-ROOM-RECORDING`.
+- Manifesto de producao: `docs/operations/production-module-safety-gate-chronos-20260610-007-livekit-only-room-recording.json`.
+- Commit candidato: `fe9eb2fce917cd1166e7a359e9dd7548449febd3`.
+- Deployment publicado: `dpl_JCN5GeqUKbTcuFq1DHjy1jdmeg8r`.
+- URL tecnica publicada: `https://careli-hub-hub-i2bs-8rw5wvzi7-lucasruas-devs-projects.vercel.app`.
+- Alias movimentado: `https://c2x.app.br`.
+- Alias preservado fora do escopo: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Rollback imediato: reapontar `https://c2x.app.br` para `dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw`.
+- Motivo:
+  - Lucas autorizou subir em producao os recortes que impedem chamada fora do LiveKit e melhoram a experiencia de sala/gravacao;
+  - a prioridade operacional e garantir que toda chamada Chronos passe pelo LiveKit, gere rastreabilidade e use a composicao visual correta na gravacao.
+- O que entrou em producao:
+  - frontend Chronos nao usa mais entrada WebRTC local legada para videochamada;
+  - `/api/chronos/public/rooms/[roomSlug]/join` retorna `410` para bloquear entrada local;
+  - `/api/chronos/public/rooms/[roomSlug]/recording/upload` retorna `410` para bloquear upload local de gravacao;
+  - cleanup de gravacao removeu referencia remanescente de `MediaRecorder`, mantendo parada pelo LiveKit Egress;
+  - status `Gravando` sincroniza para participantes remotos com timestamp de inicio;
+  - camera e compartilhamento de tela foram separados em `cameraStream` e `screenStream`;
+  - camera de quem compartilha tela permanece projetada;
+  - tela compartilhada usa area principal dedicada, com cameras em trilho lateral/inferior sem sobreposicao;
+  - RoomComposite Egress de video usa `custom_base_url` para `/chronos/recording-view`, preservando `audio_only` sem customizacao visual.
+- Base e pacote:
+  - base de comparacao: commit `a5272794e7ba56e85d85535feb6e87f3c721687b` e deployment `dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw`;
+  - pacote base: `.codex-deploy/chronos-livekit-only-room-layout-prod-20260610/base`;
+  - pacote candidato: `.codex-deploy/chronos-livekit-only-room-layout-prod-20260610/candidate`;
+  - o worktree local estava sujo com alteracoes de outros modulos, entao a publicacao direta da pasta raiz ficou bloqueada; o deploy foi feito somente pelo pacote candidato gerado por `git archive` do commit limpo.
+- Validacoes pre-publicacao:
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-chronos-20260609-019-livekit-only-calls.json`: PASS, com aviso esperado de agente Zeus diferente do canonico Chronos Core;
+  - `node scripts/panteon-recorte-manifest-check.mjs --manifest docs/operations/panteon-recorte-manifest-chronos-20260610-020-room-recording-layout.json`: PASS, com aviso esperado de agente Zeus diferente do canonico Chronos Core;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260610-007-livekit-only-room-recording.json`: PASS, 13 mudancas detectadas;
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosExternalRoomPage.tsx modules/chronos/ChronosRecordingViewPage.tsx app/chronos/recording-view/page.tsx app/api/chronos/public/rooms/[roomSlug]/egress/route.ts app/api/chronos/public/rooms/[roomSlug]/join/route.ts app/api/chronos/public/rooms/[roomSlug]/recording/upload/route.ts lib/chronos/livekit.ts lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - URL tecnica antes do alias: `GET /chronos` 200, `GET /chronos/careli` 200, `GET /api/chronos/public/rooms/careli/egress` 405 esperado e `POST /api/chronos/meetings/agent` sem bearer 401 esperado.
+- Publicacao:
+  - `npx.cmd vercel deploy .codex-deploy\chronos-livekit-only-room-layout-prod-20260610\candidate --prod --skip-domain --yes --scope lucasruas-devs-projects`: Ready em `dpl_JCN5GeqUKbTcuFq1DHjy1jdmeg8r`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-8rw5wvzi7-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects`: sucesso.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_JCN5GeqUKbTcuFq1DHjy1jdmeg8r`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/careli/join`: 410 esperado;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/careli/recording/upload`: 410 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --query chronos --json --scope lucasruas-devs-projects`: sem 500/502, apenas status esperados dos healthchecks.
+- Fora do escopo:
+  - nenhum env, secret, Supabase remoto, banco ou migration foi alterado;
+  - nenhum alias fora de `https://c2x.app.br` foi movimentado;
+  - validacao real de chamada com pessoas, compartilhamento de tela e arquivo final gravado ainda depende de teste funcional do Lucas em producao.
+
+Conclusao:
+
+- O Chronos em producao agora deve falhar fechado quando LiveKit nao estiver disponivel, em vez de abrir chamada ou gravacao por caminho local legado.
+- O impacto pratico e reduzir risco de reuniao sem registro no LiveKit e preparar a gravacao para capturar a sala Chronos completa via RoomComposite customizado.
+- Precisa de acao agora: Lucas deve testar uma chamada real no Chronos, iniciar gravacao, compartilhar tela e confirmar no LiveKit/Supabase/Drive se o arquivo mostra a sala completa e as cameras em trilho separado.
+- Quem deve agir agora: Lucas valida o fluxo real; Zeus acompanha logs e faz rollback para `dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw` se houver falha critica.
+- Proximo passo tecnico: se o teste real passar, avançar para as pendencias restantes de ata/transcricao e registrar qualquer ajuste fino de layout da gravacao como novo recorte.
