@@ -35080,3 +35080,42 @@ Conclusao:
 - Precisa de acao agora: sim, Lucas deve fazer uma primeira chamada real curta para validar host, convidados, gravacao, transcricao e ata.
 - Quem deve agir agora: Lucas valida a chamada real; Zeus fica de prontidao para rollback imediato se algum ponto critico falhar.
 - Proximo passo tecnico: criar uma sala Chronos real, iniciar/parar gravacao/transcricao no fluxo Whereby e conferir o Drive/ata.
+
+### Complemento 2026-06-10 20:40:56 -03:00 - entrada nativa Whereby
+
+- Status atualizado: `CORRECAO VALIDADA LOCALMENTE / DEPLOY BLOQUEADO ATE NOVA AUTORIZACAO`.
+- Protocolo: `OP-20260610-033-CHRONOS-WHEREBY-MIGRATION`.
+- Motivo: Lucas validou a primeira tela em producao e apontou corretamente que a Whereby nao deve depender de Agenda nem usar o prejoin do Chronos.
+- Diagnostico:
+  - o deployment de producao estava usando provider Whereby, mas a porta de entrada ainda era o prejoin antigo do Chronos;
+  - esse prejoin chamava o fluxo `joinChronosPublicRoom`, que ainda exigia uma reserva ativa em `chronos_meetings`;
+  - por isso apareceu `Sala Chronos sem reserva ativa na agenda para este horario.` antes da chamada chegar na Whereby.
+- Decisao de produto:
+  - a URL publica do Chronos continua sendo a porta operacional da Careli;
+  - a experiencia de entrada, nome, camera, microfone e lobby passa a ser integralmente da Whereby;
+  - o Chronos deixa de mostrar o formulario Nome/Empresa/Camera/Microfone quando `CHRONOS_VIDEO_PROVIDER=whereby`;
+  - o Chronos nao altera a Agenda principal para esse fluxo;
+  - quando nao houver reserva ativa, o Chronos cria uma reuniao interna ad hoc somente para Drive, transcricao, participantes via Whereby Insights e ata Athena.
+- Arquivos alterados:
+  - `apps/hub/lib/chronos/server.ts`;
+  - `apps/hub/app/api/chronos/public/rooms/[roomSlug]/whereby-meeting/route.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`;
+  - `docs/operations/panteon-recorte-manifest-chronos-20260610-033-whereby-migration.json`.
+- Validacoes:
+  - `git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx apps/hub/app/api/chronos/public/rooms/[roomSlug]/whereby-meeting/route.ts`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx app/api/chronos/public/rooms/[roomSlug]/whereby-meeting/route.ts --max-warnings 0`: PASS, apenas warning Node `MODULE_TYPELESS_PACKAGE_JSON` sem falha;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora deste ajuste.
+- Deploy:
+  - `BLOQUEADO`: a correcao muda comportamento em producao e precisa de nova autorizacao explicita do Lucas antes de publicar/reapontar `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` continua fora do escopo.
+- Risco residual:
+  - a primeira validacao real apos deploy precisa confirmar se a tela nativa da Whereby coleta nome/camera/microfone, se o host autenticado recebe controle de host e se Drive/Athena sincronizam gravacao/transcricao.
+
+Conclusao:
+
+- O problema nao era a Whereby em si; era o prejoin/gate antigo do Chronos ainda antes da Whereby.
+- O impacto pratico do ajuste e remover a dependencia de reserva/Agenda da sala Whereby e deixar a entrada inteira com a Whereby.
+- Precisa de acao agora: sim, Lucas deve autorizar explicitamente o deploy deste hotfix se quiser publicar agora.
+- Quem deve agir agora: Zeus publica somente apos autorizacao; Lucas valida a sala real em seguida.
+- Proximo passo tecnico: deploy seguro do recorte native entry, healthchecks em `c2x.app.br` e teste real curto de sala/gravacao/transcricao/ata.

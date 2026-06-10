@@ -3,7 +3,7 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-10T18:12:05-03:00",
-  "status": "EM_PRODUCAO",
+  "status": "EM_PRODUCAO_COM_AJUSTE_NATIVE_ENTRY_VALIDADO_LOCAL_DEPLOY_BLOQUEADO",
   "summary": "Migra a sala publica do Chronos de LiveKit para Whereby, mantendo Athena como geradora de ata a partir de transcricao salva.",
   "authorization": {
     "requestedBy": "Lucas",
@@ -17,7 +17,9 @@
     "Transcricoes Whereby salvas como source=whereby passam a ser evidencia valida para Athena gerar ata sem retranscrever a gravacao.",
     "Participantes sao registrados no Chronos no join e reconciliados depois por Whereby Insights usando externalId.",
     "Fundo da sala Chronos e enviado para o theme room-background do Whereby quando a imagem respeita o limite configurado.",
-    "Depois do prejoin Chronos, a chamada usa a estrutura nativa da Whereby, sem overlay de controles Chronos duplicando topbar, participantes, chat, tela ou botao de sair."
+    "Depois do prejoin Chronos, a chamada usa a estrutura nativa da Whereby, sem overlay de controles Chronos duplicando topbar, participantes, chat, tela ou botao de sair.",
+    "Ajuste 2026-06-10 20:40:56 -03:00: o provider Whereby passa a usar tambem a entrada nativa da Whereby; o formulario Nome/Empresa/Camera/Microfone do Chronos e o gate de reserva ativa da Agenda saem do caminho Whereby.",
+    "Ajuste 2026-06-10 20:40:56 -03:00: quando nao houver reserva ativa, Chronos cria uma reuniao interna ad hoc apenas para Drive, transcricao, participantes via Whereby Insights e ata Athena; a Agenda principal nao e alterada."
   ],
   "changedFiles": [
     ".env.example",
@@ -100,6 +102,26 @@
       "command": "Alias e healthchecks pos-producao c2x.app.br",
       "status": "PASS",
       "notes": "c2x.app.br aponta para dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H; ops.c2x.app.br permaneceu em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj; logs de erro dos ultimos 10 minutos sem ocorrencias."
+    },
+    {
+      "command": "git diff --check -- arquivos Chronos/Whereby native entry",
+      "status": "PASS",
+      "notes": "Sem whitespace error; apenas avisos CRLF esperados no Windows."
+    },
+    {
+      "command": "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx app/api/chronos/public/rooms/[roomSlug]/whereby-meeting/route.ts --max-warnings 0",
+      "status": "PASS",
+      "notes": "Lint focado no ajuste de entrada nativa Whereby; apenas warning Node MODULE_TYPELESS_PACKAGE_JSON sem falha."
+    },
+    {
+      "command": "npm.cmd run check-types --workspace @repo/hub",
+      "status": "PASS",
+      "notes": "Executado apos trocar o prejoin Chronos pela entrada nativa Whereby."
+    },
+    {
+      "command": "npm.cmd run build --workspace @repo/hub",
+      "status": "PASS",
+      "notes": "Build Next.js compilou com as rotas Whereby; warnings conhecidos de worktree/Turbopack/NFT fora do ajuste."
     }
   ],
   "risks": [
@@ -107,6 +129,7 @@
     "O limite de imagem de fundo do Whereby e cerca de 600 KB; fundos maiores ficam no Chronos, mas podem nao subir para o theme do Whereby.",
     "A transcricao Whereby precisa estar em estado ready e com access-link disponivel para virar segmentos no Chronos.",
     "CHRONOS_VIDEO_PROVIDER em Production foi substituido para whereby; rollback imediato deve reapontar c2x.app.br para o deployment anterior capturado se houver falha critica.",
+    "Ajuste native entry ainda nao publicado; producao atual ainda pode mostrar o prejoin Chronos e a mensagem de reserva ate Lucas autorizar novo deploy seguro.",
     "Supabase, banco, migrations, Agenda, ops.c2x.app.br e alias fora de c2x.app.br permanecem fora do escopo."
   ],
   "rollback": [
@@ -117,6 +140,7 @@
   ],
   "nextSteps": [
     "Criar uma sala real Chronos/Whereby e validar host, convidado, fundo, participantes, gravacao, transcricao e ata Athena.",
+    "Lucas autorizar explicitamente o deploy do ajuste native entry antes de reapontar c2x.app.br.",
     "Se a validacao real falhar, reapontar c2x.app.br para dpl_GGEuKmTFwPomUKChvpy7TdynUjev e manter ops.c2x.app.br preservado."
   ]
 }

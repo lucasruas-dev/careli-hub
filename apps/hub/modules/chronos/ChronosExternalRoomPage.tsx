@@ -226,6 +226,13 @@ type ChronosWherebyJoinResult = ChronosPublicJoinResult & {
   whereby?: ChronosWherebyPublicRoom;
 };
 
+type ChronosWherebySessionResult = {
+  error?: string;
+  isHost: boolean;
+  meetingId: string;
+  whereby?: ChronosWherebyPublicRoom;
+};
+
 type ChronosWherebyEmbedElement = HTMLElement & {
   startLiveTranscription?: () => Promise<void>;
   startRecording?: () => Promise<void>;
@@ -414,6 +421,7 @@ export function ChronosExternalRoomPage({
   const [meetingId, setMeetingId] = useState("");
   const [wherebyRoom, setWherebyRoom] =
     useState<ChronosWherebyPublicRoom | null>(null);
+  const [wherebyIsHost, setWherebyIsHost] = useState(false);
   const [wherebyStatus, setWherebyStatus] = useState<
     "idle" | "loading" | "ready" | "syncing"
   >("idle");
@@ -485,6 +493,7 @@ export function ChronosExternalRoomPage({
   const liveKitEgressRecordingIdRef = useRef("");
   const liveKitAudioEgressIdRef = useRef("");
   const liveKitAudioEgressRecordingIdRef = useRef("");
+  const wherebyPreparationKeyRef = useRef("");
   const wherebyEmbedRef = useRef<ChronosWherebyEmbedElement | null>(null);
   const liveKitParticipantAudioEgressesRef = useRef<
     ChronosLiveKitParticipantAudioEgress[]
@@ -502,7 +511,11 @@ export function ChronosExternalRoomPage({
   const videoElementsByParticipantIdRef = useRef<Map<string, HTMLVideoElement>>(
     new Map(),
   );
-  const hasJoined = Boolean(localParticipant && meetingId);
+  const hasWherebyNativeSession =
+    isChronosWherebyProvider && Boolean(wherebyRoom && meetingId);
+  const hasJoined = isChronosWherebyProvider
+    ? hasWherebyNativeSession
+    : Boolean(localParticipant && meetingId);
   const pageBackgroundImage = room.backgroundDataUrl || "";
   const participantLabel = isHubParticipant
     ? (hubUser?.name ?? "Colaborador Careli")
@@ -517,7 +530,7 @@ export function ChronosExternalRoomPage({
     [hubUser?.id, room.slug],
   );
   const syncChronosWherebyArtifacts = useCallback(async () => {
-    if (!localParticipant || !meetingId) {
+    if (!meetingId || (!localParticipant && !wherebyIsHost)) {
       return;
     }
 
@@ -527,7 +540,7 @@ export function ChronosExternalRoomPage({
       await fetch(`/api/chronos/public/rooms/${room.slug}/whereby-sync`, {
         body: JSON.stringify({
           meetingId,
-          participantId: localParticipant.id,
+          participantId: localParticipant?.id,
         }),
         cache: "no-store",
         headers: {
@@ -543,7 +556,13 @@ export function ChronosExternalRoomPage({
     } finally {
       setWherebyStatus("ready");
     }
-  }, [authState.session?.accessToken, localParticipant, meetingId, room.slug]);
+  }, [
+    authState.session?.accessToken,
+    localParticipant,
+    meetingId,
+    room.slug,
+    wherebyIsHost,
+  ]);
 
   useEffect(() => {
     if (hubUser?.name) {
@@ -689,7 +708,7 @@ export function ChronosExternalRoomPage({
   useEffect(() => {
     const embedElement = wherebyEmbedRef.current;
 
-    if (!embedElement || !wherebyRoom || !localParticipant || !meetingId) {
+    if (!embedElement || !wherebyRoom || !meetingId) {
       return;
     }
 
@@ -698,7 +717,7 @@ export function ChronosExternalRoomPage({
       const status =
         typeof detail.status === "string" ? detail.status.toLowerCase() : "";
 
-      if (status === "stopped" && localParticipant.isHost) {
+      if (status === "stopped" && (localParticipant?.isHost || wherebyIsHost)) {
         setRecordingStorageStatus("saved");
         void syncChronosWherebyArtifacts();
       }
@@ -708,7 +727,7 @@ export function ChronosExternalRoomPage({
       const status =
         typeof detail.status === "string" ? detail.status.toLowerCase() : "";
 
-      if (status === "stopped" && localParticipant.isHost) {
+      if (status === "stopped" && (localParticipant?.isHost || wherebyIsHost)) {
         void syncChronosWherebyArtifacts();
       }
     };
@@ -736,6 +755,7 @@ export function ChronosExternalRoomPage({
     localParticipant,
     meetingId,
     syncChronosWherebyArtifacts,
+    wherebyIsHost,
     wherebyRoom,
     wherebyStatus,
   ]);
@@ -1046,12 +1066,117 @@ export function ChronosExternalRoomPage({
   ]);
 
   useEffect(() => {
+    if (!isChronosLiveKitProvider) {
+      stopCurrentLocalMedia();
+      return;
+    }
+
     void startLocalMedia();
 
     return () => {
       stopCurrentLocalMedia();
     };
-  }, [startLocalMedia, stopCurrentLocalMedia]);
+  }, [isChronosLiveKitProvider, startLocalMedia, stopCurrentLocalMedia]);
+
+  useEffect(() => {
+    if (!isChronosWherebyProvider || authState.status === "loading") {
+      return;
+    }
+
+    const preparationKey = `${room.slug}:${
+      authState.session?.accessToken ? "hub" : "public"
+    }`;
+
+    if (
+      wherebyPreparationKeyRef.current === preparationKey &&
+      wherebyRoom &&
+      meetingId
+    ) {
+      return;
+    }
+
+    wherebyPreparationKeyRef.current = preparationKey;
+
+    let cancelled = false;
+
+    const prepareWherebyRoom = async () => {
+      setJoinError(null);
+      setJoining(true);
+      setWherebyStatus("loading");
+      stopCurrentLocalMedia();
+
+      try {
+        const response = await fetch(
+          `/api/chronos/public/rooms/${room.slug}/whereby-meeting`,
+          {
+            body: JSON.stringify({ mode: "whereby_native_entry" }),
+            cache: "no-store",
+            headers: {
+              ...(authState.session?.accessToken
+                ? {
+                    Authorization: `Bearer ${authState.session.accessToken}`,
+                  }
+                : {}),
+              "Content-Type": "application/json",
+            },
+            method: "POST",
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | ChronosWherebySessionResult
+          | null;
+
+        if (!response.ok || !payload?.meetingId || !payload.whereby?.roomUrl) {
+          throw new Error(
+            payload?.error ?? "Nao foi possivel preparar a sala Whereby.",
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setEntryRequestStatus("idle");
+        setLocalParticipant(null);
+        setMeetingId(payload.meetingId);
+        setRealtimeStatus("ready");
+        setRecordingStorageStatus("idle");
+        setRemoteParticipants({});
+        setWherebyIsHost(Boolean(payload.isHost));
+        setWherebyRoom(payload.whereby);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        wherebyPreparationKeyRef.current = "";
+        setJoinError(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel preparar a sala Whereby.",
+        );
+        setWherebyStatus("idle");
+      } finally {
+        if (!cancelled) {
+          setJoining(false);
+        }
+      }
+    };
+
+    void prepareWherebyRoom();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authState.session?.accessToken,
+    authState.status,
+    isChronosWherebyProvider,
+    meetingId,
+    room.slug,
+    stopCurrentLocalMedia,
+    wherebyRoom,
+  ]);
 
   useEffect(
     () => () => {
@@ -3236,26 +3361,18 @@ export function ChronosExternalRoomPage({
     guestBackgroundDataUrl
       ? guestBackgroundDataUrl
       : "";
-  const wherebyRoomUrl =
-    localParticipant?.isHost && wherebyRoom?.hostRoomUrl
-      ? wherebyRoom.hostRoomUrl
-      : wherebyRoom?.roomUrl;
-  const wherebyCameraEffect =
-    guestBackgroundMode === "blur-high"
-      ? "blur"
-      : guestBackgroundMode === "blur-low"
-        ? "slight-blur"
-        : "";
+  const wherebyRoomUrl = wherebyRoom?.roomUrl;
   const wherebyMetadata =
-    localParticipant && wherebyRoom
+    wherebyRoom && meetingId
       ? JSON.stringify({
           meetingId,
-          organization: localParticipant.organization ?? null,
-          participantId: localParticipant.id,
-          role: localParticipant.isHost ? "host" : "participant",
+          provider: "chronos",
+          role: wherebyIsHost ? "host" : "participant",
           roomSlug: room.slug,
         })
       : "";
+  const shouldShowChronosPreJoin =
+    !hasJoined && !isChronosWherebyProvider;
 
   return (
     <main
@@ -3308,7 +3425,7 @@ export function ChronosExternalRoomPage({
           </div>
         ) : null}
 
-        {!hasJoined ? (
+        {shouldShowChronosPreJoin ? (
           <section className="grid min-h-[calc(100dvh-5rem)] place-items-center overflow-y-auto px-4 pb-10">
             <div className="w-full max-w-[32rem] overflow-hidden rounded-xl border border-white/15 bg-white text-[#101820] shadow-2xl">
               <div
@@ -3527,13 +3644,10 @@ export function ChronosExternalRoomPage({
               />
             ) : null}
           </section>
-        ) : isChronosWherebyProvider &&
-          wherebyRoom &&
-          localParticipant &&
-          wherebyRoomUrl ? (
+        ) : isChronosWherebyProvider ? (
           <section className="relative h-full min-h-0 overflow-hidden">
             <div className="absolute inset-0 bg-black">
-              {wherebyStatus === "loading" ? (
+              {wherebyStatus === "loading" || joining ? (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] text-sm font-semibold text-white/72">
                   <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-2 shadow-xl">
                     <Loader2
@@ -3541,15 +3655,12 @@ export function ChronosExternalRoomPage({
                       className="animate-spin"
                       size={15}
                     />
-                    Carregando sala
+                    Preparando sala Whereby
                   </span>
                 </div>
               ) : null}
-              {wherebyStatus !== "idle" ? (
+              {wherebyRoom && wherebyRoomUrl && wherebyStatus !== "idle" ? (
                 createElement("whereby-embed", {
-                  cameraEffect: wherebyCameraEffect || undefined,
-                  displayName: localParticipant.displayName,
-                  externalId: localParticipant.id,
                   lang: "pt",
                   metadata: wherebyMetadata,
                   ref: (element: Element | null) => {

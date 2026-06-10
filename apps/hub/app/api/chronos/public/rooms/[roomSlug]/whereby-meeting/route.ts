@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 
-import { joinChronosPublicWherebyRoom } from "@/lib/chronos/server";
+import { prepareChronosPublicWherebyRoom } from "@/lib/chronos/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,9 +12,8 @@ export async function POST(
   const { roomSlug } = await params;
 
   try {
-    const result = await joinChronosPublicWherebyRoom({
+    const result = await prepareChronosPublicWherebyRoom({
       authorizationHeader: request.headers.get("authorization"),
-      input: await request.json().catch(() => null),
       roomSlug,
     });
 

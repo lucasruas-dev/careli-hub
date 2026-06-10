@@ -71,6 +71,7 @@ import {
   type ChronosTranscriptSegment,
   type ChronosUpdateInput,
   type ChronosWherebyPublicJoinResult,
+  type ChronosWherebyPublicRoom,
 } from "./types";
 
 type ChronosUserRow = {
@@ -1479,6 +1480,88 @@ export async function joinChronosPublicWherebyRoom({
 
   return {
     ...joinResult,
+    whereby,
+  };
+}
+
+export async function prepareChronosPublicWherebyRoom({
+  authorizationHeader,
+  roomSlug,
+}: {
+  authorizationHeader?: string | null;
+  roomSlug: string;
+}): Promise<{
+  isHost: boolean;
+  meetingId: string;
+  reservation: {
+    endsAt: string | null;
+    protocol: string;
+    startsAt: string | null;
+    title: string;
+  };
+  room: ChronosPublicRoom;
+  whereby: ChronosWherebyPublicRoom;
+}> {
+  if (!isChronosWherebyProviderEnabled()) {
+    throw new Error("Whereby nao esta habilitado para o Chronos.");
+  }
+
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    throw new Error(
+      "Chronos requer Supabase server-side configurado para sala Whereby.",
+    );
+  }
+
+  const room = await getChronosRoomRowBySlug(client, slug);
+
+  if (!room) {
+    throw new Error("Sala Chronos nao encontrada.");
+  }
+
+  const loggedUser = await resolveOptionalChronosUserFromBearer(
+    client,
+    authorizationHeader,
+  );
+  const resolvedMeeting = await resolveChronosPublicWherebyMeeting({
+    client,
+    loggedUser,
+    room,
+  });
+  const isHost = isChronosPublicWherebyHost({
+    loggedUser,
+    meeting: resolvedMeeting,
+    room,
+  });
+  const meeting =
+    resolvedMeeting.status === "live"
+      ? resolvedMeeting
+      : await openChronosPublicWherebyMeeting({
+          client,
+          isHost,
+          loggedUser,
+          meeting: resolvedMeeting,
+          room,
+        });
+  const whereby = await ensureChronosWherebyMeeting({
+    client,
+    isHost,
+    meeting,
+    room,
+  });
+
+  return {
+    isHost,
+    meetingId: meeting.id,
+    reservation: {
+      endsAt: meeting.ends_at,
+      protocol: meeting.protocol,
+      startsAt: meeting.starts_at,
+      title: meeting.title,
+    },
+    room: mapPublicRoom(mapRoomRow(room)),
     whereby,
   };
 }
@@ -4068,6 +4151,146 @@ async function resolveChronosPublicReservationMeeting(
   return meeting;
 }
 
+async function resolveChronosPublicWherebyMeeting({
+  client,
+  loggedUser,
+  room,
+}: {
+  client: ChronosClient;
+  loggedUser?: AuthorizedChronosUser | null;
+  room: ChronosRoomRow;
+}) {
+  const referenceDate = new Date();
+  const activeMeetingResult = await client
+    .from("chronos_meetings")
+    .select("*")
+    .eq("room_id", room.id)
+    .in("status", ["lobby", "live"])
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (activeMeetingResult.error) {
+    throw activeMeetingResult.error;
+  }
+
+  const activeMeeting = (activeMeetingResult.data ?? []).find((meeting) =>
+    isChronosExternalRoomMeetingStillOpen(meeting, referenceDate),
+  );
+
+  if (activeMeeting) {
+    return activeMeeting;
+  }
+
+  const windowEnd = new Date(
+    referenceDate.getTime() + 15 * 60 * 1000,
+  ).toISOString();
+  const scheduledMeetingResult = await client
+    .from("chronos_meetings")
+    .select("*")
+    .eq("room_id", room.id)
+    .in("status", ["scheduled", "lobby"])
+    .lte("starts_at", windowEnd)
+    .order("starts_at", { ascending: true })
+    .limit(10);
+
+  if (scheduledMeetingResult.error) {
+    throw scheduledMeetingResult.error;
+  }
+
+  const scheduledMeeting = (scheduledMeetingResult.data ?? []).find(
+    (candidate) => isChronosReservationInJoinWindow(candidate, referenceDate),
+  );
+
+  if (scheduledMeeting) {
+    return scheduledMeeting;
+  }
+
+  return createChronosPublicWherebyAdHocMeeting({
+    client,
+    loggedUser,
+    referenceDate,
+    room,
+  });
+}
+
+async function createChronosPublicWherebyAdHocMeeting({
+  client,
+  loggedUser,
+  referenceDate,
+  room,
+}: {
+  client: ChronosClient;
+  loggedUser?: AuthorizedChronosUser | null;
+  referenceDate: Date;
+  room: ChronosRoomRow;
+}) {
+  const startsAt = referenceDate.toISOString();
+  const endsAt = new Date(
+    referenceDate.getTime() + 4 * 60 * 60 * 1000,
+  ).toISOString();
+  const selectedProfile =
+    defaultChronosMeetingProfiles.find(
+      (profile) => profile.id === normalizeChronosOfficialProfileId(room.room_type),
+    ) ?? defaultChronosMeetingProfiles[0];
+  const protocol = await generateChronosProtocol(client);
+  const hostUserId = loggedUser?.id ?? room.created_by_user_id ?? null;
+  const { data, error } = await client
+    .from("chronos_meetings")
+    .insert({
+      ends_at: endsAt,
+      external_reference: `whereby-room:${room.slug}:${startsAt}`,
+      host_name: loggedUser?.name ?? null,
+      host_user_id: hostUserId,
+      meeting_type: selectedProfile.meetingType,
+      metadata: {
+        agenda: [],
+        apoloInvitees: [],
+        calendarEventKind: "event",
+        calendarOptions: null,
+        externalRoom: {
+          accessMode: "whereby_native_entry",
+          actualStartedAt: startsAt,
+          openedBy: loggedUser ? "hub_user" : "public_room",
+          provider: "whereby",
+          roomSlug: room.slug,
+          source: "chronos-whereby-native-entry",
+        },
+        hubInvitees: [],
+        location: {
+          address: null,
+          mode: "online",
+        },
+        meetingProfile: {
+          id: selectedProfile.id,
+          label: selectedProfile.label,
+          meetingType: selectedProfile.meetingType,
+        },
+        source: "chronos-whereby-native-entry",
+      },
+      objective: "Sala publica Whereby aberta pelo Chronos.",
+      protocol,
+      room_id: room.id,
+      starts_at: startsAt,
+      status: "live",
+      title: `${room.name} | Whereby`,
+    })
+    .select("*")
+    .single<ChronosMeetingRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  await insertTimelineEvent(client, {
+    actorUserId: loggedUser?.id,
+    eventType: "created",
+    meetingId: data.id,
+    title: "Sala Whereby aberta sem reserva da Agenda",
+  });
+
+  return data;
+}
+
 async function openChronosPublicReservation({
   client,
   isHost,
@@ -4118,6 +4341,64 @@ async function openChronosPublicReservation({
     title: isHost
       ? "Reserva Chronos aberta pelo host"
       : `Reserva Chronos aberta por ${participantName}`,
+  });
+
+  return data;
+}
+
+async function openChronosPublicWherebyMeeting({
+  client,
+  isHost,
+  loggedUser,
+  meeting,
+  room,
+}: {
+  client: ChronosClient;
+  isHost: boolean;
+  loggedUser?: AuthorizedChronosUser | null;
+  meeting: ChronosMeetingRow;
+  room: ChronosRoomRow;
+}) {
+  const now = new Date().toISOString();
+  const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
+  const metadata = {
+    ...(meeting.metadata ?? {}),
+    athena: {
+      ...readRecordMetadata(meeting.metadata?.athena),
+      assistant: "Athena",
+      transcription: room.transcription_required,
+    },
+    externalRoom: {
+      ...externalRoomMetadata,
+      accessMode: "whereby_native_entry",
+      actualStartedAt:
+        readChronosMetadataText(externalRoomMetadata, "actualStartedAt") ?? now,
+      openedBy: isHost ? "host" : loggedUser ? "hub_user" : "public_room",
+      provider: "whereby",
+      roomSlug: room.slug,
+      source: "chronos-whereby-native-entry",
+    },
+  };
+  const { data, error } = await client
+    .from("chronos_meetings")
+    .update({
+      metadata,
+      status: "live",
+      updated_at: now,
+    })
+    .eq("id", meeting.id)
+    .select("*")
+    .single<ChronosMeetingRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  await insertTimelineEvent(client, {
+    actorUserId: loggedUser?.id,
+    eventType: "joined",
+    meetingId: meeting.id,
+    title: "Sala Whereby aberta pelo Chronos",
   });
 
   return data;
@@ -4224,6 +4505,47 @@ function isChronosReservationInJoinWindow(
   const now = referenceDate.getTime();
 
   return now >= windowStart && now <= endsAt;
+}
+
+function isChronosExternalRoomMeetingStillOpen(
+  meeting: ChronosMeetingRow,
+  referenceDate: Date,
+) {
+  if (meeting.status !== "live" && meeting.status !== "lobby") {
+    return false;
+  }
+
+  if (!meeting.ends_at) {
+    return true;
+  }
+
+  const endsAt = new Date(meeting.ends_at).getTime();
+
+  if (!Number.isFinite(endsAt)) {
+    return false;
+  }
+
+  return referenceDate.getTime() <= endsAt + 55 * 60 * 1000;
+}
+
+function isChronosPublicWherebyHost({
+  loggedUser,
+  meeting,
+  room,
+}: {
+  loggedUser?: AuthorizedChronosUser | null;
+  meeting: ChronosMeetingRow;
+  room: ChronosRoomRow;
+}) {
+  if (!loggedUser) {
+    return false;
+  }
+
+  return (
+    meeting.host_user_id === loggedUser.id ||
+    room.created_by_user_id === loggedUser.id ||
+    getPermissionsForRole(loggedUser.role).includes("chronos:manage")
+  );
 }
 
 function readRecordMetadata(value: unknown) {
