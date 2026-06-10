@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "OP-20260610-024-CHRONOS-EGRESS-START-SIGNAL",
+  "module": "chronos",
+  "agent": "Zeus/Hefesto",
+  "title": "Hotfix Chronos para emitir START_RECORDING cedo no template LiveKit Egress",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_Gw64om9mbLfSqGpVtLZM4rHNFud2",
+  "candidateSourceCommit": "02525dcfa4bb7abf5afeba7c0a6e3e3fac886a37",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/chronos-egress-start-signal-prod-20260610-02525dc/base",
+  "candidatePackagePath": ".codex-deploy/chronos-egress-start-signal-prod-20260610-02525dc/candidate",
+  "rollbackDeploymentId": "dpl_Gw64om9mbLfSqGpVtLZM4rHNFud2",
+  "allowedChangedPaths": [
+    "apps/hub/app/chronos/**",
+    "apps/hub/modules/chronos/**",
+    "apps/hub/lib/chronos/**",
+    "docs/operations/**"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/ares/**",
+    "apps/hub/lib/ares/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+      "includes": [
+        "ChronosAgendaScreen",
+        "ChronosDriveLibraryScreen"
+      ]
+    },
+    {
+      "path": "apps/hub/app/chronos/recording-view/page.tsx",
+      "includes": [
+        "START_RECORDING",
+        "ChronosRecordingViewPage"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+      "includes": [
+        "v1 executiva"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/modules/chronos/components/chronos-agenda-screen.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+    "apps/hub/app/chronos/[roomSlug]/page.tsx",
+    "apps/hub/app/chronos/recording-view/page.tsx"
+  ],
+  "validations": [
+    "npm.cmd exec --workspace @repo/hub -- eslint app/chronos/recording-view/page.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0",
+    "npm.cmd run check-types --workspace @repo/hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "git diff --check -- apps/hub/app/chronos/recording-view/page.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx docs/operations/engineering-operations.md",
+    "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260610-008-egress-start-signal.json"
+  ],
+  "notes": [
+    "Pacote candidato montado por git archive do commit 02525dcfa4bb7abf5afeba7c0a6e3e3fac886a37.",
+    "Deploy executado com --prod --skip-domain e alias set somente para c2x.app.br.",
+    "Rollback definido para o deployment anterior dpl_Gw64om9mbLfSqGpVtLZM4rHNFud2."
+  ]
+}

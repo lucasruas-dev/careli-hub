@@ -95,6 +95,45 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Chronos] START_RECORDING antecipado no template LiveKit Egress`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-10 04:49:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: autorizacao direta do Lucas em incidente Chronos `Start signal not received`, protocolo `OP-20260610-024-CHRONOS-EGRESS-START-SIGNAL`.
+- Escopo publicado:
+  - `/chronos/recording-view` passou a emitir `START_RECORDING` no HTML inicial, antes da hidratacao React;
+  - a view cliente reconhece os guards globais e evita duplicar `START_RECORDING`/`END_RECORDING`;
+  - o template continua renderizando a sala LiveKit para o RoomComposite Egress.
+- Commit publicado: `02525dcfa4bb7abf5afeba7c0a6e3e3fac886a37`.
+- Deployment anterior: `dpl_Gw64om9mbLfSqGpVtLZM4rHNFud2`.
+- Deployment novo: `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK`; URL tecnica `https://careli-hub-hub-i2bs-8yve590r1-lucasruas-devs-projects.vercel.app`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK`, status `Ready`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+- Arquivos/modulos incluidos: `apps/hub/app/chronos/recording-view/page.tsx`, `apps/hub/modules/chronos/ChronosRecordingViewPage.tsx`, `docs/operations/engineering-operations.md`.
+- Arquivos/modulos excluidos: Hermes, Hades/Guardian, Iris, Atlas, Setup, Apolo, Ares, Zeus/OPS, migrations, envs, secrets, banco, Supabase, LiveKit dashboard e aliases fora de `c2x.app.br`.
+- Validacoes executadas:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/chronos/recording-view/page.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`, fora do recorte Chronos;
+  - `git diff --check -- apps/hub/app/chronos/recording-view/page.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx docs/operations/engineering-operations.md`: PASS;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260610-008-egress-start-signal.json`: PASS, 3 mudancas detectadas.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br`: `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK`, `Ready`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`, preservado;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200, contendo `START_RECORDING`;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para metodo GET.
+- Logs recentes: `npx.cmd vercel logs https://careli-hub-hub-i2bs-8yve590r1-lucasruas-devs-projects.vercel.app --since 5m` sem erro critico no novo deployment.
+- Rollback definido: reapontar `https://c2x.app.br` para `dpl_Gw64om9mbLfSqGpVtLZM4rHNFud2` se a proxima chamada real ainda abortar por sinal de inicio ou se algum healthcheck critico falhar.
+- Riscos conhecidos: a correcao elimina a causa observada do abort por `Start signal not received`, mas a prova funcional final ainda depende de Lucas iniciar uma chamada curta, encerrar e conferir se o Egress fica `COMPLETE` e o video entra no Drive.
+- Pendencias: Lucas validar uma gravacao curta do Chronos em producao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas testar chamada real; Zeus acompanhar LiveKit/Vercel se houver nova falha.
+
+Registro de producao:
+
 - Assunto: `[Zeus] HelpDesk autoria e conversa em producao`.
 - Squad/agente responsavel: `Zeus autorizado pelo Lucas`.
 - Data e hora local: `2026-05-21 12:25:21 -03:00`.
