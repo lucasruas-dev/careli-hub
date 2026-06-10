@@ -95,6 +95,50 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Chronos] START_RECORDING executavel no RoomComposite LiveKit`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-10 11:05:01 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: autorizacao direta do Lucas no incidente Chronos/LiveKit, protocolo `OP-20260610-026-CHRONOS-ROOMCOMPOSITE-REAL-START-SIGNAL`, publicado somente apos Safety Gate `PASS`.
+- Escopo publicado:
+  - mover o emissor `START_RECORDING` para `<script>` real no root layout, inerte fora de `/chronos/recording-view`;
+  - remover o boot script da page server component para evitar serializacao no payload RSC/Flight;
+  - reemitir o sinal quando a view detectar track remota renderizavel, preservando fallback curto apos conexao.
+- Commit publicado: `83409ffb97561ecebbf6b4701709b59d9823a379`.
+- Deployment anterior: `dpl_7sAoWx8KCUxubxHSifyrSHgpnQvD`.
+- Deployment novo: `dpl_FyUv4vVL8PQ5tX2sw9CzCSJUtqhx`; URL tecnica `https://careli-hub-hub-i2bs-kryyqgkp3-lucasruas-devs-projects.vercel.app`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_FyUv4vVL8PQ5tX2sw9CzCSJUtqhx`, status `Ready`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+- Arquivos/modulos incluidos: `apps/hub/app/layout.tsx`, `apps/hub/app/chronos/recording-view/page.tsx`, `apps/hub/modules/chronos/ChronosRecordingViewPage.tsx`, `docs/operations/engineering-operations.md`.
+- Arquivos/modulos excluidos: Hermes/PulseX, Hades/Guardian, Iris, Atlas, Setup, Apolo, Ares, Zeus/OPS, migrations, envs, secrets, banco, Supabase, LiveKit dashboard e aliases fora de `c2x.app.br`.
+- Validacoes executadas:
+  - pacote auditado `candidate-gate` sem `.vercel`, `.git`, `.next`, `.turbo` ou `node_modules`;
+  - pacote de deploy comparado com o pacote auditado: `MATCH_EXCLUDING_VERCEL`;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/layout.tsx app/chronos/recording-view/page.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/app/layout.tsx apps/hub/app/chronos/recording-view/page.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`, fora do recorte Chronos;
+  - smoke local com `next start --port 3011`: `GET /chronos/recording-view` 200 e primeiro `START_RECORDING` dentro de `<script>` real (`IsFlightPayload = False`);
+  - `node scripts/production-module-safety-gate.mjs --manifest .codex-deploy/chronos-roomcomposite-start-prod-20260610-83409ff/production-module-safety-gate.json`: PASS, 4 mudancas detectadas;
+  - smoke da URL candidata antes do alias: `/chronos/recording-view` 200 com `IsFlightPayload = False`, `/chronos/careli` 200 e GET do egress 405 esperado.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: `dpl_FyUv4vVL8PQ5tX2sw9CzCSJUtqhx`, `Ready`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`, preservado;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200, `START_RECORDING` presente, `IsFlightPayload = False`, guarda de rota presente e retry ate `110000`;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para metodo GET;
+  - `GET https://c2x.app.br/hermes`: 200.
+- Logs recentes: `npx.cmd vercel logs https://careli-hub-hub-i2bs-kryyqgkp3-lucasruas-devs-projects.vercel.app --since 10m --query chronos --scope lucasruas-devs-projects` sem 500/502, com respostas Chronos 200 no dominio final.
+- Rollback definido: reapontar `https://c2x.app.br` para `dpl_7sAoWx8KCUxubxHSifyrSHgpnQvD` se a proxima chamada real ainda abortar por `Start signal not received` ou se algum healthcheck critico falhar.
+- Riscos conhecidos: a prova funcional final ainda depende de uma chamada real do Lucas; se o LiveKit voltar a abortar, a investigacao deve usar o novo Egress ID e nao assumir que e o mesmo sintoma sem evidencias.
+- Pendencias: Lucas validar uma gravacao curta do Chronos em producao e confirmar RoomComposite `COMPLETE` e video no Drive.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas testar chamada real; Zeus acompanhar LiveKit/Vercel se houver nova falha.
+
+Registro de producao:
+
 - Assunto: `[Chronos] START_RECORDING antecipado no template LiveKit Egress`.
 - Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
 - Data e hora local: `2026-06-10 04:49:00 -03:00`.

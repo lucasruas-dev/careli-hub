@@ -34413,3 +34413,68 @@ Conclusao:
 - Precisa de acao agora: Lucas precisa autorizar explicitamente o deploy de producao se quiser publicar o protocolo `OP-20260610-026-CHRONOS-ROOMCOMPOSITE-REAL-START-SIGNAL`.
 - Quem deve agir agora: Zeus pode preparar commit/pacote limpo/Safety Gate e publicar somente apos autorizacao; Lucas valida uma chamada real depois.
 - Proximo passo tecnico: montar pacote limpo sobre a base `12e964297c59bb69b7e83df52559f2d7ccb42cd9`, rodar Production Module Safety Gate com marcadores Hermes obrigatorios e publicar somente `https://c2x.app.br` se autorizado.
+
+## 2026-06-10 11:05:01 -03:00 - Chronos - Producao do script real para RoomComposite
+
+Assunto: [Chronos] Producao segura do sinal executavel para Egress visual
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `PRODUCAO / HOTFIX CHRONOS / LIVEKIT EGRESS / TEMPLATE CUSTOMIZADO`.
+- Status: `EM PRODUCAO / AGUARDANDO TESTE REAL DO LUCAS`.
+- Protocolo: `OP-20260610-026-CHRONOS-ROOMCOMPOSITE-REAL-START-SIGNAL`.
+- Autorizacao: Lucas autorizou seguir desde que o deploy fosse seguro; Zeus publicou somente apos pacote limpo, Safety Gate `PASS`, smoke na URL candidata e confirmacao do dominio antigo.
+- Diagnostico consolidado:
+  - o hotfix anterior emitia o texto `START_RECORDING`, mas o primeiro sinal aparecia serializado dentro do payload streaming/RSC do Next (`self.__next_f.push`);
+  - para o Chromium do LiveKit RoomComposite, isso nao era confiavel como script inicial executavel;
+  - a consulta ao template SDK publico da LiveKit confirmou que o helper oficial usa `console.log("START_RECORDING")`;
+  - a correcao moveu a emissao para um `<script>` real no root layout, protegido por `window.location.pathname !== "/chronos/recording-view"`.
+- Correcoes publicadas:
+  - `apps/hub/app/layout.tsx` ganhou `chronosRecordingEgressSignalScript`, inerte fora de `/chronos/recording-view`, emitindo `START_RECORDING` em script real e repetindo o sinal ate `110s`;
+  - `apps/hub/app/chronos/recording-view/page.tsx` removeu o boot script da page server component e manteve a rota dinamica da view;
+  - `apps/hub/modules/chronos/ChronosRecordingViewPage.tsx` passou a reemitir o sinal quando detectar track remota renderizavel e preservou fallback curto apos conexao.
+- Commit publicado: `83409ffb97561ecebbf6b4701709b59d9823a379`.
+- Deployment anterior / rollback: `dpl_7sAoWx8KCUxubxHSifyrSHgpnQvD`.
+- Deployment novo em producao: `dpl_FyUv4vVL8PQ5tX2sw9CzCSJUtqhx`.
+- URL tecnica: `https://careli-hub-hub-i2bs-kryyqgkp3-lucasruas-devs-projects.vercel.app`.
+- Alias publicado: `https://c2x.app.br`.
+- Alias preservado fora do recorte: `https://ops.c2x.app.br` permaneceu em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+- Manifesto do Safety Gate:
+  - `.codex-deploy/chronos-roomcomposite-start-prod-20260610-83409ff/production-module-safety-gate.json`.
+- Validacoes pre-deploy:
+  - pacote auditado `candidate-gate` sem `.vercel`, `.git`, `.next`, `.turbo` ou `node_modules`;
+  - pacote de deploy comparado com o pacote auditado: `MATCH_EXCLUDING_VERCEL`, unica diferenca tecnica esperada sendo `.vercel/project.json`;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/layout.tsx app/chronos/recording-view/page.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/app/layout.tsx apps/hub/app/chronos/recording-view/page.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - smoke local com `next start --port 3011`: `GET /chronos/recording-view` 200 e primeiro `START_RECORDING` dentro de `<script>` real (`IsFlightPayload = False`);
+  - `node scripts/production-module-safety-gate.mjs --manifest .codex-deploy/chronos-roomcomposite-start-prod-20260610-83409ff/production-module-safety-gate.json`: PASS, 4 mudancas detectadas.
+- Publicacao:
+  - pacote base: `.codex-deploy/chronos-roomcomposite-start-prod-20260610-83409ff/base`;
+  - pacote candidato auditado: `.codex-deploy/chronos-roomcomposite-start-prod-20260610-83409ff/candidate-gate`;
+  - pacote candidato de deploy: `.codex-deploy/chronos-roomcomposite-start-prod-20260610-83409ff/candidate`;
+  - comando de deploy: `npx.cmd vercel deploy --prod --skip-domain --yes --scope lucasruas-devs-projects`;
+  - alias executado somente para `https://c2x.app.br`.
+- Validacoes de producao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: confirmou `dpl_FyUv4vVL8PQ5tX2sw9CzCSJUtqhx`, `Ready`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: confirmou `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`, preservado;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200, `START_RECORDING` presente, `IsFlightPayload = False`, guarda de rota presente e retry ate `110000`;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para metodo GET;
+  - `GET https://c2x.app.br/hermes`: 200, smoke publico sem regressao obvia;
+  - `npx.cmd vercel logs https://careli-hub-hub-i2bs-kryyqgkp3-lucasruas-devs-projects.vercel.app --since 10m --query chronos --scope lucasruas-devs-projects`: sem 500/502; logs mostraram `GET /chronos/recording-view` 200 e `GET /chronos/careli` 200 no dominio final.
+- Fora do escopo:
+  - nenhuma env var, secret, token, chave Supabase/LiveKit, migration, banco, storage, dominio adicional ou alias `ops.c2x.app.br` foi alterado;
+  - nao houve operacao manual no dashboard LiveKit nem tentativa de recuperar Egress abortado antigo;
+  - Hermes/PulseX foram apenas verificados por marcadores obrigatorios do gate e smoke publico.
+- Rollback:
+  - reapontar `https://c2x.app.br` para `dpl_7sAoWx8KCUxubxHSifyrSHgpnQvD` se a proxima chamada real ainda falhar por `Start signal not received` ou se algum healthcheck critico falhar;
+  - manter `https://ops.c2x.app.br` em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+
+Conclusao:
+
+- O hotfix esta em producao no dominio principal `https://c2x.app.br`.
+- O impacto pratico e que o RoomComposite Egress agora recebe `START_RECORDING` como script real no HTML inicial, fora do payload RSC/Flight, com retries longos para cobrir atraso do Chromium.
+- Precisa de acao agora: Lucas deve fazer uma chamada curta no Chronos, encerrar e confirmar no LiveKit/Drive se o RoomComposite ficou `COMPLETE` e se o video apareceu.
+- Quem deve agir agora: Lucas executa o teste funcional real; Zeus acompanha logs e novo Egress ID se ainda houver falha.
+- Proximo passo tecnico: se o erro persistir, investigar o novo Egress especifico; se o erro mudar, tratar como incidente novo, porque a causa observada do sinal nao executavel foi corrigida em producao.
