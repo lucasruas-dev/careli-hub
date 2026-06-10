@@ -3584,3 +3584,78 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK` se o proximo teste real ainda falhar por `Start signal not received` ou se algum healthcheck critico falhar;
   - `https://ops.c2x.app.br`: manter em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+
+## 2026-06-10 - PROD-20260610-033-CHRONOS-WHEREBY-MIGRATION
+
+Status: EM PRODUCAO / RECORTE MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Migracao das salas publicas para Whereby`.
+- Protocolo de origem: `OP-20260610-033-CHRONOS-WHEREBY-MIGRATION`.
+- Squad/agente responsavel: `Zeus / Chronos`.
+- Data e hora local: `2026-06-10 20:09:16 -03:00`.
+- Autorizacao: Lucas autorizou subir direto em producao com deploy seguro, restrito a Drive e Salas, sem mudar Agenda.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`;
+  - rollback imediato: `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - pacote candidato: `%LOCALAPPDATA%\Temp\chronos-whereby-prod-36b2779\candidate`;
+  - commit candidato: `36b2779d84ea9c3d69626995c72f8628f7e5af09`;
+  - arquivos sensiveis/locais excluidos da publicacao: `.env`, `.git`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Escopo publicado:
+  - `CHRONOS_VIDEO_PROVIDER=whereby` em producao para as salas publicas Chronos;
+  - criacao/uso de sala Whereby server-side sem expor token no browser;
+  - convidados entram pela URL publica Chronos sem login;
+  - host autenticado recebe contexto de host Whereby sem vazar a URL de host para convidados;
+  - chamada usa estrutura nativa da Whereby depois do prejoin Chronos, sem overlay duplicado do Chronos;
+  - Drive Chronos lista gravacoes Whereby por access-link temporario;
+  - transcricoes Whereby viram evidencia textual para Athena gerar ata;
+  - participantes registrados no join Chronos e reconciliados via Whereby Insights.
+- Manifesto e Safety Gate:
+  - manifesto do recorte: `docs/operations/panteon-recorte-manifest-chronos-20260610-033-whereby-migration.json`;
+  - gate manual de producao: PASS, porque o script `production-module-safety-gate.mjs` nao existe neste worktree;
+  - escopo permitido: Chronos Salas/Drive/sala publica/Whereby/Athena, env examples, `turbo.json` e registros operacionais;
+  - escopo bloqueado: Agenda principal, `ChronosPage.tsx`, Google Agenda funcional, Supabase/banco/migrations/RLS/storage, demais modulos e `ops.c2x.app.br`.
+- Validacoes pre-publicacao:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npx.cmd eslint <arquivos do recorte Chronos/Whereby> --max-warnings 0`: PASS;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run lint --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora da migracao;
+  - `npx.cmd vercel env ls preview/production --scope lucasruas-devs-projects`: confirmou envs Whereby por nome, sem valores;
+  - `npx.cmd vercel inspect https://c2x.app.br`: confirmou `dpl_GGEuKmTFwPomUKChvpy7TdynUjev` Ready antes da publicacao;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: confirmou `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` Ready e fora do escopo.
+- Publicacao:
+  - deployment novo: `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-horwuae7t-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes URL tecnica:
+  - `GET /chronos`: 200;
+  - `GET /chronos/careli`: 200;
+  - `POST /api/chronos/public/rooms/careli/whereby-meeting` com payload vazio: 400 controlado;
+  - `POST /api/chronos/public/rooms/careli/whereby-sync` com payload vazio: 400 controlado;
+  - `POST /api/chronos/meetings/agent` sem bearer: 401 esperado.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-meeting` com payload vazio: 400 controlado;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-sync` com payload vazio: 400 controlado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error --scope lucasruas-devs-projects`: sem logs de erro encontrados.
+- Escopo preservado:
+  - nenhuma agenda principal, Google Agenda funcional, Supabase remoto, banco, migration, RLS, storage, dominio adicional ou alias `ops.c2x.app.br` foi alterado;
+  - valores de chaves/envs nao foram impressos ou registrados.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Limitacao conhecida:
+  - a primeira validacao real ainda precisa confirmar host reconhecido, convidados sem login, fundo Whereby, participantes, gravacao, transcricao e ata Athena.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_GGEuKmTFwPomUKChvpy7TdynUjev` se a primeira validacao real falhar criticamente;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.

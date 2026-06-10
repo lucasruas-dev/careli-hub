@@ -3,12 +3,12 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-10T18:12:05-03:00",
-  "status": "PRONTO_PARA_PRODUCAO_ENVS_PRODUCTION_OK_DEPLOY_PENDENTE",
+  "status": "EM_PRODUCAO",
   "summary": "Migra a sala publica do Chronos de LiveKit para Whereby, mantendo Athena como geradora de ata a partir de transcricao salva.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Migracao rapida Chronos para Whereby com URLs/fundos personalizados, participantes registrados, gravacoes/transcricoes no Drive Chronos e Athena gerando ata.",
-    "deployment": "Lucas autorizou subir direto em producao com deploy seguro em 2026-06-10, restrito a Chronos Salas/Drive/sala publica/Whereby/Athena. Envs Whereby foram configuradas em Preview(homolog) e Production sem imprimir valores. Deploy ainda pendente neste manifesto pre-publicacao."
+    "deployment": "Lucas autorizou subir direto em producao com deploy seguro em 2026-06-10, restrito a Chronos Salas/Drive/sala publica/Whereby/Athena. Envs Whereby foram configuradas em Preview(homolog) e Production sem imprimir valores. Producao publicada em c2x.app.br no deployment dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H; ops.c2x.app.br preservado fora do escopo."
   },
   "decisions": [
     "CHRONOS_VIDEO_PROVIDER=whereby seleciona o provider server-side sem expor token no browser.",
@@ -85,10 +85,25 @@
       "command": "npx.cmd vercel env ls preview/production --scope lucasruas-devs-projects",
       "status": "PASS",
       "notes": "Confirmou por nome, sem valores, envs Whereby em Preview(homolog) e Production."
+    },
+    {
+      "command": "Gate manual de producao OP-20260610-033",
+      "status": "PASS",
+      "notes": "Pacote limpo sem .git, .env, .next, .turbo, node_modules, .codex-tmp ou .codex-deploy; escopo restrito a Chronos Salas/Drive/Whereby/Athena e docs operacionais."
+    },
+    {
+      "command": "Healthchecks URL tecnica dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H",
+      "status": "PASS",
+      "notes": "GET /chronos 200, GET /chronos/careli 200, POST whereby-meeting 400 controlado, POST whereby-sync 400 controlado, POST /api/chronos/meetings/agent sem sessao 401."
+    },
+    {
+      "command": "Alias e healthchecks pos-producao c2x.app.br",
+      "status": "PASS",
+      "notes": "c2x.app.br aponta para dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H; ops.c2x.app.br permaneceu em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj; logs de erro dos ultimos 10 minutos sem ocorrencias."
     }
   ],
   "risks": [
-    "Teste real de criacao de sala, entrada host/convidado, gravacao e transcricao ainda nao foi executado antes do deploy de producao.",
+    "Teste real de criacao de sala, entrada host/convidado, gravacao e transcricao ainda precisa ser executado por Lucas apos o deploy de producao.",
     "O limite de imagem de fundo do Whereby e cerca de 600 KB; fundos maiores ficam no Chronos, mas podem nao subir para o theme do Whereby.",
     "A transcricao Whereby precisa estar em estado ready e com access-link disponivel para virar segmentos no Chronos.",
     "CHRONOS_VIDEO_PROVIDER em Production foi substituido para whereby; rollback imediato deve reapontar c2x.app.br para o deployment anterior capturado se houver falha critica.",
@@ -101,10 +116,7 @@
     "Se a transcricao Whereby falhar, manter ata bloqueada ate existir transcricao textual ou gravacao transcrita pela Athena."
   ],
   "nextSteps": [
-    "Criar commit limpo do recorte.",
-    "Montar pacote candidato de producao sem .env, .git, .next, .turbo, node_modules, .codex-tmp ou .codex-deploy.",
-    "Rodar gate manual de producao por manifesto local, ja que o script production-module-safety-gate.mjs nao existe neste worktree.",
-    "Publicar com --prod --skip-domain, validar URL tecnica e so entao mover alias c2x.app.br se os healthchecks passarem.",
-    "Criar uma sala real Chronos/Whereby e validar host, convidado, fundo, participantes, gravacao, transcricao e ata Athena."
+    "Criar uma sala real Chronos/Whereby e validar host, convidado, fundo, participantes, gravacao, transcricao e ata Athena.",
+    "Se a validacao real falhar, reapontar c2x.app.br para dpl_GGEuKmTFwPomUKChvpy7TdynUjev e manter ops.c2x.app.br preservado."
   ]
 }

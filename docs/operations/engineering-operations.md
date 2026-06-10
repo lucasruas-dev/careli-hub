@@ -35031,3 +35031,52 @@ Conclusao:
 - Precisa de acao agora: sim, criar commit limpo, montar pacote candidato, rodar gate manual de producao e publicar somente se o pacote continuar restrito.
 - Quem deve agir agora: Zeus executa a publicacao segura em `https://c2x.app.br`; Lucas valida a primeira sala real apos o deploy.
 - Proximo passo tecnico: commit, pacote limpo, gate, deploy `--prod --skip-domain`, healthchecks e alias somente de `c2x.app.br`.
+
+### Complemento 2026-06-10 20:09:16 -03:00 - producao publicada
+
+- Status atualizado: `EM PRODUCAO / CHRONOS WHEREBY / C2X.APP.BR`.
+- Protocolo: `OP-20260610-033-CHRONOS-WHEREBY-MIGRATION`.
+- Commit candidato publicado: `36b2779d84ea9c3d69626995c72f8628f7e5af09`.
+- Deployment tecnico validado: `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H`.
+- URL tecnica: `https://careli-hub-hub-i2bs-horwuae7t-lucasruas-devs-projects.vercel.app`.
+- Alias movido: somente `https://c2x.app.br`.
+- Alias preservado fora do escopo: `https://ops.c2x.app.br`, ainda em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Gate de producao:
+  - pacote candidato limpo montado fora do repo em `%LOCALAPPDATA%\Temp\chronos-whereby-prod-36b2779\candidate`;
+  - pacote sem `.git`, `.env`, `.next`, `.turbo`, `node_modules`, `.codex-tmp` ou `.codex-deploy`;
+  - escopo permitido restrito a Chronos Salas/Drive/sala publica/Whereby/Athena, env examples, `turbo.json` e registros operacionais;
+  - Agenda principal, `ChronosPage.tsx`, Google Agenda funcional, Supabase/banco/migrations/RLS/storage, Hades/Hermes/Iris/Atlas/Setup e `ops.c2x.app.br` permaneceram fora do pacote.
+- Validacoes URL tecnica antes do alias:
+  - `GET /chronos`: 200;
+  - `GET /chronos/careli`: 200;
+  - `POST /api/chronos/public/rooms/careli/whereby-meeting` com payload vazio: 400 controlado, `Informe seu nome para entrar na sala Chronos.`;
+  - `POST /api/chronos/public/rooms/careli/whereby-sync` com payload vazio: 400 controlado, `Reuniao Chronos nao informada.`;
+  - `POST /api/chronos/meetings/agent` sem sessao: 401 esperado.
+- Publicacao:
+  - antes do alias, `https://c2x.app.br` foi reconfirmado em `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-horwuae7t-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects`: PASS.
+- Validacoes pos-producao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-meeting` com payload vazio: 400 controlado;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-sync` com payload vazio: 400 controlado;
+  - `POST https://c2x.app.br/api/chronos/meetings/agent` sem sessao: 401 esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error --scope lucasruas-devs-projects`: sem logs de erro encontrados.
+- Registro estruturado no Operations Center:
+  - `BLOQUEADO`: escrever em `hub_engineering_operation_records` envolve Supabase/banco e ficou fora da autorizacao explicita desta rodada, que Lucas restringiu a Drive e Salas;
+  - registro canonico em Markdown foi atualizado em `docs/operations/engineering-operations.md`, `docs/operations/releases-production.md` e no manifesto do protocolo.
+- Rollback imediato:
+  - reapontar `https://c2x.app.br` para `dpl_GGEuKmTFwPomUKChvpy7TdynUjev` se a primeira validacao real de sala/gravacao/transcricao/ata falhar criticamente;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Limitacao conhecida:
+  - teste real com Lucas ainda precisa confirmar host reconhecido, convidado sem login, fundo Whereby, registro de participantes, gravacao, transcricao e ata Athena gerada pela transcricao.
+
+Conclusao:
+
+- O Chronos foi publicado em producao com Whereby como motor de chamada no dominio `https://c2x.app.br`.
+- O impacto pratico e que as salas publicas e o Drive Chronos passam a usar o provider Whereby, mantendo Athena como geradora de ata por transcricao.
+- Precisa de acao agora: sim, Lucas deve fazer uma primeira chamada real curta para validar host, convidados, gravacao, transcricao e ata.
+- Quem deve agir agora: Lucas valida a chamada real; Zeus fica de prontidao para rollback imediato se algum ponto critico falhar.
+- Proximo passo tecnico: criar uma sala Chronos real, iniciar/parar gravacao/transcricao no fluxo Whereby e conferir o Drive/ata.
