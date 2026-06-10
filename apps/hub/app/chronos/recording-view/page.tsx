@@ -5,6 +5,9 @@ import { ChronosRecordingViewPage } from "@/modules/chronos/ChronosRecordingView
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
+  other: {
+    google: "notranslate",
+  },
   robots: {
     follow: false,
     index: false,

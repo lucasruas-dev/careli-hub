@@ -10,11 +10,15 @@ export async function POST(
   { params }: { params: Promise<{ roomSlug: string }> },
 ) {
   const { roomSlug } = await params;
+  const egressBaseUrl = new URL(
+    `/chronos/recording-view/${encodeURIComponent(roomSlug)}`,
+    request.url,
+  ).toString();
 
   try {
     const result = await handleChronosPublicLiveKitEgress({
       authorizationHeader: request.headers.get("authorization"),
-      egressBaseUrl: new URL("/chronos/recording-view", request.url).toString(),
+      egressBaseUrl,
       input: await request.json().catch(() => null),
       roomSlug,
     });

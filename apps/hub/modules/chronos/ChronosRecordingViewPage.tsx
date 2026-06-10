@@ -1,6 +1,7 @@
 "use client";
 
 import { CallParticipantTile } from "@/components/pulsex/call-participant-tile";
+import type { ChronosPublicRoom } from "@/lib/chronos/types";
 import type { HermesCallParticipant } from "@/lib/pulsex";
 import { Radio } from "lucide-react";
 import {
@@ -13,7 +14,6 @@ import {
 } from "livekit-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import careliMainBackground from "./assets/backgrounds/careli-main.jpeg";
 import chronosCareliMark from "./assets/chronos-careli-mark.png";
 
 type ChronosRecordingParticipant = {
@@ -34,6 +34,43 @@ type ChronosRecordingTile = {
   tileId: string;
 };
 
+type ChronosRecordingViewPageProps = {
+  initialRoom?: ChronosPublicRoom | null;
+};
+
+const chronosRecordingOverlayGuardCss = `
+  html.translated-ltr,
+  html.translated-rtl,
+  body {
+    top: 0 !important;
+  }
+
+  .skiptranslate,
+  .goog-te-banner-frame,
+  .goog-te-menu-frame,
+  .goog-te-balloon-frame,
+  .goog-te-gadget,
+  .goog-tooltip,
+  .gtx-bubble,
+  #goog-gt-tt,
+  #gtx-trans,
+  iframe.skiptranslate,
+  iframe.goog-te-banner-frame,
+  iframe.goog-te-menu-frame,
+  iframe[src*="translate.google"],
+  iframe[src*="translate.googleapis"],
+  [id^="goog-gt-"],
+  [id*="goog-gt-"],
+  [class*="goog-te"],
+  [class*="VIpgJd-"],
+  [class*="gtx-"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+`;
+
 declare global {
   interface Window {
     __chronosRecordingEmitStartSignal?: () => void;
@@ -43,7 +80,9 @@ declare global {
   }
 }
 
-export function ChronosRecordingViewPage() {
+export function ChronosRecordingViewPage({
+  initialRoom = null,
+}: ChronosRecordingViewPageProps) {
   const [participants, setParticipants] = useState<ChronosRecordingParticipant[]>(
     [],
   );
@@ -52,6 +91,40 @@ export function ChronosRecordingViewPage() {
   );
   const roomRef = useRef<Room | null>(null);
   const startLoggedRef = useRef(false);
+  const recordingBackgroundSource =
+    normalizeChronosRecordingBackgroundUrl(initialRoom?.backgroundDataUrl);
+  const recordingRoomName = initialRoom?.name?.trim() || "Sala Careli";
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const existingMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="google"]',
+    );
+    const googleMeta = existingMeta ?? document.createElement("meta");
+    const previousMetaContent = googleMeta.content;
+    const createdMeta = !existingMeta;
+
+    root.classList.add("notranslate");
+    body.classList.add("notranslate");
+    googleMeta.name = "google";
+    googleMeta.content = "notranslate";
+
+    if (createdMeta) {
+      document.head.appendChild(googleMeta);
+    }
+
+    return () => {
+      root.classList.remove("notranslate");
+      body.classList.remove("notranslate");
+
+      if (createdMeta) {
+        googleMeta.remove();
+      } else {
+        googleMeta.content = previousMetaContent;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -179,13 +252,16 @@ export function ChronosRecordingViewPage() {
 
   return (
     <main
-      className="relative h-[100vh] min-h-[100vh] overflow-hidden bg-[#050607] p-8 text-white"
+      className="notranslate relative h-[100vh] min-h-[100vh] overflow-hidden bg-[#050607] p-8 text-white"
       style={{
-        backgroundImage: `linear-gradient(rgba(4,6,8,0.62), rgba(4,6,8,0.66)), url(${careliMainBackground.src})`,
+        backgroundImage:
+          buildChronosRecordingBackgroundImage(recordingBackgroundSource),
         backgroundPosition: "center",
         backgroundSize: "cover",
       }}
+      translate="no"
     >
+      <style>{chronosRecordingOverlayGuardCss}</style>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(160,124,59,0.16),transparent_28%),radial-gradient(circle_at_80%_84%,rgba(160,124,59,0.18),transparent_24%)]" />
       <div
         aria-hidden="true"
@@ -205,17 +281,18 @@ export function ChronosRecordingViewPage() {
               Chronos
             </p>
             <h1 className="m-0 text-sm font-semibold text-white">
-              Sala Careli
+              {recordingRoomName}
             </h1>
           </div>
         </div>
 
-        <div className="inline-flex items-center gap-2 rounded-full border border-rose-300/35 bg-[#101820]/88 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em] text-white shadow-2xl ring-1 ring-black/35 backdrop-blur-md">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-400" />
-          </span>
-          Gravando
+        <div
+          aria-label="Gravando"
+          className="grid h-7 w-7 place-items-center rounded-full border border-white/14 bg-black/28 shadow-lg ring-1 ring-black/30 backdrop-blur-sm"
+          role="status"
+          title="Gravando"
+        >
+          <span className="h-2 w-2 rounded-full bg-rose-400/85 shadow-[0_0_10px_rgba(251,113,133,0.45)]" />
         </div>
       </header>
 
@@ -271,6 +348,24 @@ export function ChronosRecordingViewPage() {
       </section>
     </main>
   );
+}
+
+function buildChronosRecordingBackgroundImage(backgroundSource: string | null) {
+  if (!backgroundSource) {
+    return "linear-gradient(135deg, #182431, #101820 54%, #211d14)";
+  }
+
+  return `linear-gradient(rgba(4,6,8,0.62), rgba(4,6,8,0.66)), url("${escapeChronosRecordingCssUrl(backgroundSource)}")`;
+}
+
+function escapeChronosRecordingCssUrl(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function normalizeChronosRecordingBackgroundUrl(value?: string | null) {
+  const normalizedValue = value?.trim();
+
+  return normalizedValue || null;
 }
 
 function emitChronosRecordingEndSignal() {

@@ -23,6 +23,9 @@ export const metadata: Metadata = {
     title: "Convite Careli",
     type: "website",
   },
+  other: {
+    google: "notranslate",
+  },
   title: "Convite Careli | Chronos",
   twitter: {
     card: "summary_large_image",

@@ -32,7 +32,7 @@ const appIconUrl = isHomologationEnvironment
   : "/panteon-mark.png?v=1";
 const chronosRecordingEgressSignalScript = `
 (() => {
-  if (window.location.pathname !== "/chronos/recording-view") {
+  if (!window.location.pathname.startsWith("/chronos/recording-view")) {
     return;
   }
 

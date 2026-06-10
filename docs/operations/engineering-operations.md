@@ -34674,3 +34674,47 @@ Conclusao:
 - Precisa de acao agora: Lucas deve recarregar `https://c2x.app.br/chronos/careli` no navegador onde ja esta logado e confirmar se entra como host sem pedido de aprovacao.
 - Quem deve agir agora: Lucas testa host real; Zeus acompanha o novo Egress se ainda houver falha de audio/video.
 - Proximo passo tecnico: se Lucas ja for reconhecido como host, fazer uma gravacao curta; se ainda cair como convidado, investigar cookie/sessao do dominio `c2x.app.br` no navegador dele.
+
+## 2026-06-10 14:14:08 -03:00 - Chronos - Recording composite visual da sala
+
+Assunto: [Chronos] Candidato para fundo real da sala e overlay discreto na gravacao
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `HOTFIX CHRONOS / ROOMCOMPOSITE / VISUAL / GOOGLE TRANSLATE`.
+- Status: `PRONTO PARA SAFETY GATE / CANDIDATO A PRODUCAO`.
+- Protocolo: `OP-20260610-029-CHRONOS-RECORDING-COMPOSITE-VISUAL`.
+- Autorizacao: Lucas reportou que o video e audio passaram a subir, mas o RoomComposite gravou com fundo diferente da sala, indicador `GRAVANDO` muito chamativo e overlay do Google Translate aparente.
+- Diagnostico consolidado:
+  - `/chronos/recording-view` usava uma imagem fixa/preset e nao recebia o `roomSlug`, entao nao conseguia carregar o `backgroundDataUrl` da sala real;
+  - a excecao publica do AuthProvider e o script global do start signal tratavam apenas `/chronos/recording-view` exato, nao uma sub-rota por sala;
+  - a tela de recording nao declarava `notranslate` nem escondia overlays conhecidos do Google Translate;
+  - o badge visivel `GRAVANDO` aparecia como texto grande no video composto.
+- Correcao candidata:
+  - a rota de Egress passa a usar `/chronos/recording-view/<roomSlug>` como `custom_base_url`;
+  - a nova rota dinamica de recording busca a sala publica server-side e entrega `initialRoom` para o composite;
+  - o composite usa `room.backgroundDataUrl` quando existir e, sem imagem de sala, cai no mesmo fallback visual escuro da sala publica;
+  - o indicador de gravacao virou status visual discreto de `28px x 28px`, sem texto visivel;
+  - `meta google=notranslate`, `translate="no"` e CSS defensivo bloqueiam overlays conhecidos do Google Translate;
+  - `/chronos/recording-view/*` foi incluida no bypass publico e no start signal sem liberar outros modulos.
+- Validacoes locais:
+  - `npm.cmd run check-types`: PASS;
+  - `npx.cmd eslint app/layout.tsx app/chronos/[roomSlug]/page.tsx app/chronos/recording-view/page.tsx app/chronos/recording-view/[roomSlug]/page.tsx app/api/chronos/public/rooms/[roomSlug]/egress/route.ts modules/chronos/ChronosRecordingViewPage.tsx providers/auth-provider.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run lint`: BLOQUEADO por 20 warnings preexistentes `turbo/no-undeclared-env-vars` em variaveis Chronos/Google Calendar/LiveKit fora do recorte;
+  - `npm.cmd run build`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `GET http://localhost:3016/chronos/recording-view/careli`: 200;
+  - browser local em `http://localhost:3016/chronos/recording-view/careli`: permaneceu na rota de recording, titulo `Sala Careli`, fundo fallback escuro da sala publica, `notranslate` ativo, nenhum overlay Google visivel, indicador `Gravando` sem texto visivel e caixa `28px x 28px`.
+- Riscos e pendencias:
+  - validar em URL candidata Vercel se a sala real de producao possui `backgroundDataUrl` e se o composite recebe esse fundo no primeiro render;
+  - fazer gravacao curta apos deploy para confirmar o MP4 final sem overlay e com o fundo correto;
+  - preservar `https://ops.c2x.app.br` fora do recorte Zeus.
+- Rollback planejado:
+  - se publicado e houver regressao no RoomComposite, reapontar `https://c2x.app.br` para `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`;
+  - manter a URL antiga `/chronos/recording-view` como fallback tecnico sem `roomSlug`.
+
+Conclusao:
+
+- O candidato corrige a origem do fundo errado no RoomComposite e reduz o ruido visual do indicador de gravacao.
+- O impacto pratico esperado e o video final refletir a sala Chronos, sem texto `GRAVANDO` grande e com protecao contra Google Translate.
+- Precisa de acao agora: Zeus deve rodar Safety Gate, publicar somente pacote limpo e validar URL candidata antes de mexer em producao.
+- Quem deve agir agora: Zeus conduz deploy seguro; Lucas valida uma gravacao curta depois.
+- Proximo passo tecnico: gerar commit/deploy candidato, confirmar `c2x.app.br` e `ops.c2x.app.br`, rodar Safety Gate e publicar apenas se os marcadores do recorte passarem.

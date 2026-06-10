@@ -582,7 +582,7 @@ function isChronosPublicRoute(pathname: string | null): boolean {
     return false;
   }
 
-  if (pathname === "/chronos/recording-view") {
+  if (pathname.startsWith("/chronos/recording-view")) {
     return true;
   }
 
