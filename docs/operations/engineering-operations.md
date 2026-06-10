@@ -34176,3 +34176,52 @@ Conclusao:
 - Precisa de acao agora: Lucas deve autorizar explicitamente se quiser publicar este hotfix em producao.
 - Quem deve agir agora: Zeus mantem o recorte local validado e pode preparar commit/pacote limpo/Safety Gate se Lucas autorizar.
 - Proximo passo tecnico: se autorizado, publicar `OP-20260610-023-CHRONOS-EGRESS-CLOSE-FAILSAFE` junto do recorte `OP-20260610-022-CHRONOS-RECORDING-LABELS` ou em pacote limpo separado de Chronos.
+
+## 2026-06-10 03:49:00 -03:00 - Chronos - Deploy seguro do fail-safe de Egress
+
+Assunto: [Chronos] Producao do pacote limpo de gravacao LiveKit/Egress
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `PRODUCAO / HOTFIX CHRONOS / LIVEKIT EGRESS / GRAVACAO`.
+- Status: `EM PRODUCAO`.
+- Protocolos:
+  - `OP-20260610-022-CHRONOS-RECORDING-LABELS`;
+  - `OP-20260610-023-CHRONOS-EGRESS-CLOSE-FAILSAFE`.
+- Commit do recorte: `61018369c601dd6474b4dc1939f1a9c9e5719b26`.
+- Deployment anterior / rollback: `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+- Deployment definitivo em producao: `dpl_Gw64om9mbLfSqGpVtLZM4rHNFud2`.
+- URL tecnica definitiva: `https://careli-hub-hub-i2bs-c3wzgkt2w-lucasruas-devs-projects.vercel.app`.
+- Alias publicado: `https://c2x.app.br`.
+- Alias preservado fora do recorte: `https://ops.c2x.app.br` permaneceu em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+- Manifesto do Safety Gate:
+  - `docs/operations/production-module-safety-gate-chronos-20260610-006-livekit-egress-close-failsafe.json`.
+- Validacoes pre-deploy:
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`, fora do recorte Chronos;
+  - `git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx docs/operations/engineering-operations.md`: PASS;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260610-006-livekit-egress-close-failsafe.json`: PASS, 4 mudancas detectadas, todas dentro do recorte autorizado.
+- Validacoes de producao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: `dpl_Gw64om9mbLfSqGpVtLZM4rHNFud2`, `READY`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`, preservado;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para metodo GET;
+  - `GET https://c2x.app.br/ares`: 404, preservando comportamento fora do recorte;
+  - `GET https://c2x.app.br/api/ares/snapshot`: 404, preservando comportamento fora do recorte.
+- Observacao operacional:
+  - a primeira tentativa tecnica gerou o deployment `dpl_65r6Th7DFvUCwu7CqmFAnqpsAXQV`, mas foi revertida imediatamente porque o comando foi executado a partir da raiz com caminho do pacote como argumento e a Vercel acabou publicando a raiz suja, expondo `/ares` como 200;
+  - o alias `c2x.app.br` foi reapontado de volta para `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS` antes da publicacao definitiva;
+  - a publicacao correta foi refeita com `workdir` dentro de `.codex-deploy/chronos-egress-close-failsafe-prod-20260610-6101836/candidate`, com `.vercel/project.json` contendo apenas `projectId`, `orgId` e `projectName`;
+  - o deployment definitivo voltou a ter 360 outputs, `/ares` 404 e apenas o comportamento Chronos alterado.
+- Fora do escopo:
+  - nenhuma env var, secret, token, chave Supabase/LiveKit, migration, banco, storage, dominio adicional ou alias `ops.c2x.app.br` foi alterado;
+  - nao houve tentativa de abortar manualmente Egress preso no painel LiveKit.
+
+Conclusao:
+
+- O hotfix Chronos esta em producao no alias principal e foi publicado a partir de pacote limpo com commit rastreavel.
+- O impacto pratico e que o fechamento da sala agora tenta finalizar/sincronizar Egress pendente antes de apagar a sala LiveKit, reduzindo o risco de gravacao ficar presa sem aparecer no Drive; alem disso, a sala deixou de exibir rotulos tecnicos como `LiveKit gravando a sala`.
+- Precisa de acao agora: Lucas deve realizar uma nova chamada curta no Chronos, encerrar a sala e confirmar no LiveKit se o RoomComposite sai de `STARTING` para `COMPLETE` e se o video aparece no Drive.
+- Quem deve agir agora: Lucas valida a chamada real; Zeus acompanha logs se a proxima gravacao ainda nao aparecer.
+- Proximo passo tecnico: se o Egress ainda ficar preso, investigar estado retornado pela API LiveKit no stop/sync e, com autorizacao explicita, auditar o Egress especifico no painel/API LiveKit.

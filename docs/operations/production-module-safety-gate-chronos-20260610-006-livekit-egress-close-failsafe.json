@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "OP-20260610-023-CHRONOS-EGRESS-CLOSE-FAILSAFE",
+  "module": "chronos",
+  "agent": "Zeus",
+  "title": "Deploy seguro do fail-safe de encerramento do Egress Chronos",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS",
+  "candidateSourceCommit": "61018369c601dd6474b4dc1939f1a9c9e5719b26",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/chronos-egress-close-failsafe-prod-20260610-6101836/base",
+  "candidatePackagePath": ".codex-deploy/chronos-egress-close-failsafe-prod-20260610-6101836/candidate",
+  "rollbackDeploymentId": "dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS",
+  "allowedChangedPaths": [
+    "apps/hub/lib/chronos/**",
+    "apps/hub/modules/chronos/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**",
+    "docs/operations/engineering-operations.md"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/apolo/**",
+    "apps/hub/app/ares/**",
+    "apps/hub/app/atlas/**",
+    "apps/hub/app/caredesk/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/squadops/**",
+    "apps/hub/app/zeus/**",
+    "apps/hub/app/api/apolo/**",
+    "apps/hub/app/api/ares/**",
+    "apps/hub/app/api/atlas/**",
+    "apps/hub/app/api/caredesk/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/app/api/squadops/**",
+    "apps/hub/app/api/zeus/**",
+    "apps/hub/components/guardian/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/apolo/**",
+    "apps/hub/lib/ares/**",
+    "apps/hub/lib/guardian/**",
+    "apps/hub/lib/hub-it-tickets/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/apolo/**",
+    "apps/hub/modules/ares/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "packages/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+      "includes": [
+        "Sala indisponivel no momento",
+        "Nao foi possivel preparar a sala de reuniao",
+        "Gravacao em andamento"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/chronos/ChronosRecordingViewPage.tsx",
+      "includes": [
+        "liveKitUrl",
+        "recordingReadyFallback",
+        "START_RECORDING"
+      ]
+    },
+    {
+      "path": "apps/hub/lib/chronos/server.ts",
+      "includes": [
+        "finalizeChronosLiveKitEgressBeforeClose",
+        "hydrateChronosPublicEgressInput",
+        "shouldFinalizeChronosLiveKitEgressBeforeClose"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+      "includes": [
+        "LiveKit gravando a sala",
+        "Iniciando gravacao LiveKit",
+        "LiveKit finalizando gravacao no Chronos"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/modules/chronos/ChronosRecordingViewPage.tsx",
+    "apps/hub/app/chronos/[roomSlug]/page.tsx",
+    "apps/hub/app/chronos/recording-view/page.tsx"
+  ],
+  "validations": [
+    "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0",
+    "npm.cmd run check-types --workspace @repo/hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx docs/operations/engineering-operations.md"
+  ],
+  "notes": [
+    "Pacote candidato foi exportado do commit 61018369c601dd6474b4dc1939f1a9c9e5719b26.",
+    "A arvore local contem alteracoes de outros modulos, mas elas nao entram no pacote candidato.",
+    "Primeira tentativa dpl_65r6Th7DFvUCwu7CqmFAnqpsAXQV foi revertida porque publicou a raiz suja; o deployment definitivo foi dpl_Gw64om9mbLfSqGpVtLZM4rHNFud2 a partir do workdir do pacote candidato.",
+    "Rollback operacional: reapontar https://c2x.app.br para dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS."
+  ]
+}
