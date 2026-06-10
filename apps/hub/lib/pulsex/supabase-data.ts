@@ -25,6 +25,8 @@ import type {
 } from "./types";
 import { normalizeHermesMessageTags } from "./message-tags";
 import { isHermesDirectChannelId } from "./direct-channel";
+import { fetchHermesMessagesApi } from "./messages-api-client";
+import { getHermesMessagesApiUrl } from "./routes";
 
 type QueryResult<T> = {
   data: T | null;
@@ -528,24 +530,17 @@ export async function listHermesThreadReplies(input: {
     return [];
   }
 
-  const sessionResult = await client.auth.getSession();
-  const accessToken = sessionResult.data.session?.access_token;
+  const apiResult = await fetchHermesMessagesApi<{
+    data?: HermesMessageRow[];
+    error?: string;
+  }>({
+    client,
+    url: getHermesMessagesApiUrl({ threadParentMessageId: input.messageId }),
+  });
 
-  if (!sessionResult.error && accessToken) {
-    const response = await fetch(
-      `/api/hermes/messages?threadParentMessageId=${encodeURIComponent(input.messageId)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-    );
-    const payload = (await response.json().catch(() => null)) as
-      | { data?: HermesMessageRow[]; error?: string }
-      | null;
-
-    if (response.ok && payload?.data && payload.data.length > 0) {
-      return payload.data.map(mapThreadReply);
+  if (apiResult) {
+    if (apiResult.response.ok && apiResult.payload?.data) {
+      return apiResult.payload.data.map(mapThreadReply);
     }
   }
 
@@ -575,6 +570,8 @@ export async function createHermesThreadReply(input: {
   authorUserId?: string;
   body: string;
   channelId: HermesChannel["id"];
+  mentionUserIds?: readonly string[];
+  mentions?: readonly HermesMessageMention[];
   messageId: HermesMessage["id"];
 }): Promise<HermesThreadReply> {
   const message = await createHermesMessage({
@@ -582,6 +579,8 @@ export async function createHermesThreadReply(input: {
     authorUserId: input.authorUserId,
     body: input.body,
     channelId: input.channelId,
+    mentionUserIds: input.mentionUserIds,
+    mentions: input.mentions,
     threadParentMessageId: input.messageId,
   });
 
@@ -598,33 +597,23 @@ export async function updateHermesMessageTags(input: {
     return null;
   }
 
-  const sessionResult = await client.auth.getSession();
-  const accessToken = sessionResult.data.session?.access_token;
-
-  if (sessionResult.error || !accessToken) {
-    return null;
-  }
-
-  const response = await fetch("/api/hermes/messages", {
-    body: JSON.stringify({
+  const apiResult = await fetchHermesMessagesApi<{
+    data?: HermesMessageRow;
+    error?: string;
+  }>({
+    body: {
       messageId: input.messageId,
       tags: input.tags,
-    }),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
     },
+    client,
     method: "PATCH",
   });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: HermesMessageRow; error?: string }
-    | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!apiResult?.response.ok || !apiResult.payload?.data) {
     return null;
   }
 
-  return mapMessage(payload.data);
+  return mapMessage(apiResult.payload.data);
 }
 
 export async function updateHermesMessageReaction(input: {
@@ -637,34 +626,24 @@ export async function updateHermesMessageReaction(input: {
     return null;
   }
 
-  const sessionResult = await client.auth.getSession();
-  const accessToken = sessionResult.data.session?.access_token;
-
-  if (sessionResult.error || !accessToken) {
-    return null;
-  }
-
-  const response = await fetch("/api/hermes/messages", {
-    body: JSON.stringify({
+  const apiResult = await fetchHermesMessagesApi<{
+    data?: HermesMessageRow;
+    error?: string;
+  }>({
+    body: {
       action: "toggle-reaction",
       emoji: input.emoji,
       messageId: input.messageId,
-    }),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
     },
+    client,
     method: "PATCH",
   });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: HermesMessageRow; error?: string }
-    | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!apiResult?.response.ok || !apiResult.payload?.data) {
     return null;
   }
 
-  return mapMessage(payload.data);
+  return mapMessage(apiResult.payload.data);
 }
 
 export async function updateHermesMessageBody(input: {
@@ -677,34 +656,24 @@ export async function updateHermesMessageBody(input: {
     return null;
   }
 
-  const sessionResult = await client.auth.getSession();
-  const accessToken = sessionResult.data.session?.access_token;
-
-  if (sessionResult.error || !accessToken) {
-    return null;
-  }
-
-  const response = await fetch("/api/hermes/messages", {
-    body: JSON.stringify({
+  const apiResult = await fetchHermesMessagesApi<{
+    data?: HermesMessageRow;
+    error?: string;
+  }>({
+    body: {
       action: "edit-message",
       body: input.body,
       messageId: input.messageId,
-    }),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
     },
+    client,
     method: "PATCH",
   });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: HermesMessageRow; error?: string }
-    | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!apiResult?.response.ok || !apiResult.payload?.data) {
     return null;
   }
 
-  return mapMessage(payload.data);
+  return mapMessage(apiResult.payload.data);
 }
 
 export async function markHermesChannelRead(input: {
@@ -716,70 +685,46 @@ export async function markHermesChannelRead(input: {
     return null;
   }
 
-  const sessionResult = await client.auth.getSession();
-  const accessToken = sessionResult.data.session?.access_token;
-
-  if (sessionResult.error || !accessToken) {
-    return null;
-  }
-
-  const response = await fetch("/api/hermes/messages", {
-    body: JSON.stringify({
+  const apiResult = await fetchHermesMessagesApi<{
+    data?: {
+      channelId: string;
+      lastReadAt: string;
+      userId: string;
+    };
+    error?: string;
+  }>({
+    body: {
       action: "mark-read",
       channelId: input.channelId,
-    }),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
     },
+    client,
     method: "PATCH",
   });
-  const payload = (await response.json().catch(() => null)) as
-    | {
-        data?: {
-          channelId: string;
-          lastReadAt: string;
-          userId: string;
-        };
-        error?: string;
-      }
-    | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!apiResult?.response.ok || !apiResult.payload?.data) {
     return null;
   }
 
-  return payload.data;
+  return apiResult.payload.data;
 }
 
 async function listChannelMessagesViaApi(
   client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
   channelId: HermesChannel["id"],
 ) {
-  const sessionResult = await client.auth.getSession();
-  const accessToken = sessionResult.data.session?.access_token;
+  const apiResult = await fetchHermesMessagesApi<{
+    data?: HermesMessageRow[];
+    error?: string;
+  }>({
+    client,
+    url: getHermesMessagesApiUrl({ channelId }),
+  });
 
-  if (sessionResult.error || !accessToken) {
+  if (!apiResult?.response.ok || !apiResult.payload?.data) {
     return null;
   }
 
-  const response = await fetch(
-    `/api/hermes/messages?channelId=${encodeURIComponent(channelId)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  );
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: HermesMessageRow[]; error?: string }
-    | null;
-
-  if (!response.ok || !payload?.data) {
-    return null;
-  }
-
-  return mapChannelMessages(payload.data);
+  return mapChannelMessages(apiResult.payload.data);
 }
 
 async function createHermesMessageViaApi(
@@ -795,15 +740,11 @@ async function createHermesMessageViaApi(
     threadParentMessageId?: HermesMessage["id"];
   },
 ) {
-  const sessionResult = await client.auth.getSession();
-  const accessToken = sessionResult.data.session?.access_token;
-
-  if (sessionResult.error || !accessToken) {
-    return null;
-  }
-
-  const response = await fetch("/api/hermes/messages", {
-    body: JSON.stringify({
+  const apiResult = await fetchHermesMessagesApi<{
+    data?: HermesMessageRow;
+    error?: string;
+  }>({
+    body: {
       body: input.body,
       channelId: input.channelId,
       attachment: input.attachment,
@@ -812,22 +753,16 @@ async function createHermesMessageViaApi(
       mentions: input.mentions ?? [],
       tags: input.tags ?? [],
       threadParentMessageId: input.threadParentMessageId,
-    }),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
     },
+    client,
     method: "POST",
   });
-  const payload = (await response.json().catch(() => null)) as
-    | { data?: HermesMessageRow; error?: string }
-    | null;
 
-  if (!response.ok || !payload?.data) {
+  if (!apiResult?.response.ok || !apiResult.payload?.data) {
     return null;
   }
 
-  return mapMessage(payload.data);
+  return mapMessage(apiResult.payload.data);
 }
 
 async function listUserAssignments(
@@ -970,26 +905,42 @@ function mapUser(row: HubUserRow): HermesPresenceUser {
 
 function mapChannelMessages(rows: readonly HermesMessageRow[]): HermesMessage[] {
   const messages = rows.map(mapMessage);
-  const replyCountByMessageId = new Map<string, number>();
+  const replyActivityByMessageId = new Map<
+    string,
+    { count: number; latestCreatedAt?: string }
+  >();
 
   for (const message of messages) {
     if (!message.threadParentMessageId) {
       continue;
     }
 
-    replyCountByMessageId.set(
+    const currentActivity = replyActivityByMessageId.get(
       message.threadParentMessageId,
-      (replyCountByMessageId.get(message.threadParentMessageId) ?? 0) + 1,
     );
+    const latestCreatedAt = getLatestHermesDateValue(
+      currentActivity?.latestCreatedAt,
+      message.createdAt,
+    );
+
+    replyActivityByMessageId.set(message.threadParentMessageId, {
+      count: (currentActivity?.count ?? 0) + 1,
+      latestCreatedAt,
+    });
   }
 
   return messages
     .filter((message) => !message.threadParentMessageId)
-    .map((message) => ({
-      ...message,
-      threadCount:
-        (message.threadCount ?? 0) + (replyCountByMessageId.get(message.id) ?? 0),
-    }));
+    .map((message) => {
+      const replyActivity = replyActivityByMessageId.get(message.id);
+
+      return {
+        ...message,
+        lastThreadReplyAt:
+          replyActivity?.latestCreatedAt ?? message.lastThreadReplyAt,
+        threadCount: (message.threadCount ?? 0) + (replyActivity?.count ?? 0),
+      };
+    });
 }
 
 function mapMessage(row: HermesMessageRow | null): HermesMessage {
@@ -1054,11 +1005,39 @@ function mapThreadReplyFromMessage(
     channelId: message.channelId,
     createdAt: message.createdAt,
     id: message.id,
+    mentionUserIds: message.mentionUserIds,
+    mentions: message.mentions,
     messageId: parentMessageId,
     reactions: message.reactions,
     tags: message.tags,
     timestamp: message.timestamp,
   };
+}
+
+function getLatestHermesDateValue(
+  currentValue: string | undefined,
+  nextValue: string | undefined,
+) {
+  if (!nextValue) {
+    return currentValue;
+  }
+
+  if (!currentValue) {
+    return nextValue;
+  }
+
+  const currentTime = Date.parse(currentValue);
+  const nextTime = Date.parse(nextValue);
+
+  if (Number.isNaN(currentTime)) {
+    return nextValue;
+  }
+
+  if (Number.isNaN(nextTime)) {
+    return currentValue;
+  }
+
+  return nextTime > currentTime ? nextValue : currentValue;
 }
 
 function getMessageMetadata(value: unknown): Record<string, unknown> {

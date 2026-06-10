@@ -4,11 +4,15 @@ import type {
   HermesChannel,
   HermesCallHistoryEntry,
   HermesCallType,
+  HermesMessage,
   HermesPresenceUser,
 } from "@/lib/pulsex";
+import type { HermesThreadNotificationEntry } from "@/lib/pulsex/thread-notifications";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import {
+  Bell,
   History,
+  MessageSquareText,
   MoreHorizontal,
   Phone,
   PhoneIncoming,
@@ -34,38 +38,65 @@ export type HermesCallSoundOption = {
 type ConversationHeaderProps = {
   callHistory: readonly HermesCallHistoryEntry[];
   callSoundOptions: readonly HermesCallSoundOption[];
+  channelNotifications: readonly HermesChannelNotificationEntry[];
   channel: HermesChannel;
   isFavorite?: boolean;
   onChangeCallSound: (soundId: string) => void;
   onMarkCallHistoryRead: (channelId?: string) => void;
   onPreviewCallSound: (soundId: string) => void;
+  onOpenChannelNotification: (channelId: HermesChannel["id"]) => void;
   onReturnCall: (entry: HermesCallHistoryEntry) => void;
   onStartCall: (type: HermesCallType) => void;
   onToggleFavorite?: () => void;
+  onOpenThreadNotification: (messageId: HermesMessage["id"]) => void;
   presenceUsers: readonly HermesPresenceUser[];
+  threadNotifications: readonly HermesThreadNotificationEntry[];
   selectedCallSoundId: string;
+  unreadMessageCount: number;
   unreadCallCount: number;
+  unreadThreadReplyCount: number;
+};
+
+type HermesChannelNotificationEntry = {
+  channelId: HermesChannel["id"];
+  channelName: string;
+  id: string;
+  lastMessageAt: string;
+  preview: string;
+  unreadCount: number;
 };
 
 export function ConversationHeader({
   callHistory,
   callSoundOptions,
+  channelNotifications,
   channel,
   isFavorite = false,
   onChangeCallSound,
   onMarkCallHistoryRead,
   onPreviewCallSound,
+  onOpenChannelNotification,
   onReturnCall,
   onStartCall,
   onToggleFavorite,
+  onOpenThreadNotification,
   presenceUsers,
+  threadNotifications,
   selectedCallSoundId,
+  unreadMessageCount,
   unreadCallCount,
+  unreadThreadReplyCount,
 }: ConversationHeaderProps) {
   const [isCallHistoryOpen, setIsCallHistoryOpen] = useState(false);
+  const [isChannelNotificationsOpen, setIsChannelNotificationsOpen] =
+    useState(false);
   const [isSoundMenuOpen, setIsSoundMenuOpen] = useState(false);
+  const [isThreadNotificationsOpen, setIsThreadNotificationsOpen] =
+    useState(false);
   const callHistoryMenuRef = useRef<HTMLDivElement>(null);
+  const channelNotificationsMenuRef = useRef<HTMLDivElement>(null);
   const soundMenuRef = useRef<HTMLDivElement>(null);
+  const threadNotificationsMenuRef = useRef<HTMLDivElement>(null);
   const onlineCount = presenceUsers.filter(
     (user) => user.status === "online",
   ).length;
@@ -90,6 +121,16 @@ export function ConversationHeader({
     enabled: isCallHistoryOpen,
     onDismiss: () => setIsCallHistoryOpen(false),
     ref: callHistoryMenuRef,
+  });
+  useOutsideDismiss({
+    enabled: isChannelNotificationsOpen,
+    onDismiss: () => setIsChannelNotificationsOpen(false),
+    ref: channelNotificationsMenuRef,
+  });
+  useOutsideDismiss({
+    enabled: isThreadNotificationsOpen,
+    onDismiss: () => setIsThreadNotificationsOpen(false),
+    ref: threadNotificationsMenuRef,
   });
 
   return (
@@ -140,6 +181,48 @@ export function ConversationHeader({
           onClick={onToggleFavorite}
         />
         <HeaderAction ariaLabel="Buscar" icon={<Search size={17} />} />
+        <div className="relative" ref={channelNotificationsMenuRef}>
+          <HeaderAction
+            active={isChannelNotificationsOpen}
+            ariaLabel="Mensagens nao lidas"
+            attention={unreadMessageCount > 0}
+            badgeCount={unreadMessageCount}
+            icon={<MessageSquareText size={17} />}
+            onClick={() =>
+              setIsChannelNotificationsOpen((currentValue) => !currentValue)
+            }
+          />
+          {isChannelNotificationsOpen ? (
+            <ChannelNotificationMenu
+              entries={channelNotifications}
+              onOpen={(channelId) => {
+                onOpenChannelNotification(channelId);
+                setIsChannelNotificationsOpen(false);
+              }}
+            />
+          ) : null}
+        </div>
+        <div className="relative" ref={threadNotificationsMenuRef}>
+          <HeaderAction
+            active={isThreadNotificationsOpen}
+            ariaLabel="Notificacoes de respostas"
+            attention={unreadThreadReplyCount > 0}
+            badgeCount={unreadThreadReplyCount}
+            icon={<Bell size={17} />}
+            onClick={() =>
+              setIsThreadNotificationsOpen((currentValue) => !currentValue)
+            }
+          />
+          {isThreadNotificationsOpen ? (
+            <ThreadNotificationMenu
+              entries={threadNotifications}
+              onOpen={(messageId) => {
+                onOpenThreadNotification(messageId);
+                setIsThreadNotificationsOpen(false);
+              }}
+            />
+          ) : null}
+        </div>
         <div className="relative" ref={callHistoryMenuRef}>
           <HeaderAction
             active={isCallHistoryOpen}
@@ -269,6 +352,153 @@ function CallHistoryMenu({
           </p>
           <p className="m-0 mt-1 text-xs leading-5 text-[#667085]">
             Chamadas recebidas, perdidas e realizadas aparecerao aqui.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThreadNotificationMenu({
+  entries,
+  onOpen,
+}: {
+  entries: readonly HermesThreadNotificationEntry[];
+  onOpen: (messageId: HermesMessage["id"]) => void;
+}) {
+  const visibleEntries = entries.slice(0, 12);
+  const totalUnread = entries.reduce(
+    (total, entry) => total + entry.unreadCount,
+    0,
+  );
+
+  return (
+    <div className="absolute right-0 top-10 z-[90] w-[24rem] overflow-hidden rounded-xl border border-[#d9e0ea] bg-white text-[#101820] shadow-[0_22px_60px_rgba(16,24,32,0.22)]">
+      <div className="border-b border-[#edf1f6] px-4 py-3">
+        <p className="m-0 text-sm font-semibold">Respostas novas</p>
+        <p className="m-0 mt-0.5 text-xs text-[#667085]">
+          {totalUnread > 0
+            ? `${totalUnread} resposta${totalUnread === 1 ? "" : "s"} nao lida${totalUnread === 1 ? "" : "s"}`
+            : "Nenhuma resposta nova"}
+        </p>
+      </div>
+      {visibleEntries.length > 0 ? (
+        <div className="max-h-[26rem] overflow-y-auto p-2">
+          {visibleEntries.map((entry) => (
+            <button
+              className="grid w-full grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-2 py-2 text-left outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              key={entry.id}
+              onClick={() => onOpen(entry.messageId)}
+              type="button"
+            >
+              <span className="relative grid h-10 w-10 place-items-center rounded-full bg-[#e8f7f4] text-[#0f766e]">
+                <Bell aria-hidden="true" size={16} />
+                <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#0f766e] px-1 text-[0.62rem] font-black leading-none text-white ring-2 ring-white">
+                  {entry.unreadCount > 9 ? "9+" : entry.unreadCount}
+                </span>
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-[#101820]">
+                  {entry.parentAuthorName
+                    ? `${entry.parentAuthorName} recebeu resposta`
+                    : "Resposta nova"}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-[#667085]">
+                  {entry.parentPreview}
+                </span>
+                <span className="mt-0.5 block truncate text-[0.68rem] font-semibold text-[#0f766e]">
+                  {entry.channelName}
+                </span>
+              </span>
+              <span className="text-right">
+                <span className="block text-xs font-bold text-[#101820]">
+                  {entry.lastReplyLabel}
+                </span>
+                <span className="mt-1 inline-flex rounded-full border border-[#d9e0ea] px-2 py-0.5 text-[0.62rem] font-semibold text-[#667085]">
+                  Abrir
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="px-4 py-8 text-center">
+          <p className="m-0 text-sm font-semibold text-[#344054]">
+            Sem respostas novas
+          </p>
+          <p className="m-0 mt-1 text-xs leading-5 text-[#667085]">
+            Quando alguem responder uma mensagem, o aviso ficara registrado aqui.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChannelNotificationMenu({
+  entries,
+  onOpen,
+}: {
+  entries: readonly HermesChannelNotificationEntry[];
+  onOpen: (channelId: HermesChannel["id"]) => void;
+}) {
+  const visibleEntries = entries.slice(0, 12);
+  const totalUnread = entries.reduce(
+    (total, entry) => total + entry.unreadCount,
+    0,
+  );
+
+  return (
+    <div className="absolute right-0 top-10 z-[90] w-[24rem] overflow-hidden rounded-xl border border-[#d9e0ea] bg-white text-[#101820] shadow-[0_22px_60px_rgba(16,24,32,0.22)]">
+      <div className="border-b border-[#edf1f6] px-4 py-3">
+        <p className="m-0 text-sm font-semibold">Mensagens novas</p>
+        <p className="m-0 mt-0.5 text-xs text-[#667085]">
+          {totalUnread > 0
+            ? `${totalUnread} mensagem${totalUnread === 1 ? "" : "s"} nao lida${totalUnread === 1 ? "" : "s"}`
+            : "Nenhuma mensagem nova"}
+        </p>
+      </div>
+      {visibleEntries.length > 0 ? (
+        <div className="max-h-[26rem] overflow-y-auto p-2">
+          {visibleEntries.map((entry) => (
+            <button
+              className="grid w-full grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-2 py-2 text-left outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              key={entry.id}
+              onClick={() => onOpen(entry.channelId)}
+              type="button"
+            >
+              <span className="relative grid h-10 w-10 place-items-center rounded-full bg-[#f7f3eb] text-[#7b5f2d]">
+                <MessageSquareText aria-hidden="true" size={16} />
+                <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#A07C3B] px-1 text-[0.62rem] font-black leading-none text-white ring-2 ring-white">
+                  {entry.unreadCount > 9 ? "9+" : entry.unreadCount}
+                </span>
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-[#101820]">
+                  {entry.channelName}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-[#667085]">
+                  {entry.preview}
+                </span>
+              </span>
+              <span className="text-right">
+                <span className="block text-xs font-bold text-[#101820]">
+                  {entry.lastMessageAt}
+                </span>
+                <span className="mt-1 inline-flex rounded-full border border-[#d9e0ea] px-2 py-0.5 text-[0.62rem] font-semibold text-[#667085]">
+                  Abrir
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="px-4 py-8 text-center">
+          <p className="m-0 text-sm font-semibold text-[#344054]">
+            Tudo lido
+          </p>
+          <p className="m-0 mt-1 text-xs leading-5 text-[#667085]">
+            Canais com mensagens novas aparecerao aqui.
           </p>
         </div>
       )}
@@ -517,12 +747,14 @@ function getPresenceLabel(status: HermesPresenceUser["status"]) {
 function HeaderAction({
   active = false,
   ariaLabel,
+  attention = false,
   badgeCount = 0,
   icon,
   onClick,
 }: {
   active?: boolean;
   ariaLabel: string;
+  attention?: boolean;
   badgeCount?: number;
   icon: ReactNode;
   onClick?: () => void;
@@ -531,7 +763,11 @@ function HeaderAction({
     <button
       aria-label={ariaLabel}
       aria-pressed={active || undefined}
-      className="relative grid h-8 w-8 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[var(--uix-surface-muted)] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-[#f7f3eb] aria-pressed:text-[#A07C3B]"
+      className={`relative grid h-8 w-8 place-items-center rounded-md outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-[#f7f3eb] aria-pressed:text-[#A07C3B] ${
+        attention
+          ? "bg-[#e8f7f4] text-[#0f766e] shadow-sm shadow-[#0f766e]/10 hover:bg-[#d7f0eb] hover:text-[#0b5f58]"
+          : "text-[var(--uix-text-muted)] hover:bg-[var(--uix-surface-muted)] hover:text-[var(--uix-text-primary)]"
+      }`}
       onClick={onClick}
       type="button"
     >

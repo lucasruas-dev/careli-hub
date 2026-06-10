@@ -1101,6 +1101,43 @@ export function CallPanel({
   ]);
 
   useEffect(() => {
+    if (!localStream) {
+      return;
+    }
+
+    session.participants.forEach((participant) => {
+      const remoteUserId = participant.userId;
+
+      if (
+        !remoteUserId ||
+        remoteUserId === currentUserId ||
+        participant.status !== "joined" ||
+        !isHermesOfferOwner(currentUserId, remoteUserId)
+      ) {
+        return;
+      }
+
+      const peerConnection = peerConnectionsRef.current.get(remoteUserId);
+
+      if (
+        peerConnection &&
+        peerConnection.connectionState !== "closed" &&
+        peerConnection.connectionState !== "failed"
+      ) {
+        return;
+      }
+
+      void sendOfferToParticipant(remoteUserId);
+    });
+  }, [
+    currentUserId,
+    localStream,
+    remoteStreamsByUserId,
+    sendOfferToParticipant,
+    session.participants,
+  ]);
+
+  useEffect(() => {
     localStream?.getAudioTracks().forEach((track) => {
       track.enabled = !isMuted;
     });
@@ -1462,6 +1499,13 @@ function findPeerSender(
   return peerConnection
     .getTransceivers()
     .find((transceiver) => transceiver.receiver.track.kind === kind)?.sender;
+}
+
+function isHermesOfferOwner(
+  currentUserId: HermesPresenceUser["id"],
+  remoteUserId: HermesPresenceUser["id"],
+) {
+  return currentUserId.localeCompare(remoteUserId) < 0;
 }
 
 function createDeviceConstraint(

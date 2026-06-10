@@ -15,6 +15,7 @@ import { MessageItem } from "./message-item";
 
 type MessageListProps = {
   callEvents?: readonly HermesCallHistoryEntry[];
+  channelId?: string;
   currentUserId?: HermesPresenceUser["id"];
   filter?: HermesMessageFilter;
   messages: readonly HermesMessage[];
@@ -36,12 +37,14 @@ type MessageListProps = {
   onPreviewAttachment?: (
     attachment: NonNullable<HermesMessage["attachment"]>,
   ) => void;
+  getThreadUnreadCount?: (messageId: HermesMessage["id"]) => number;
   reactionOptions?: readonly HermesReactionEmoji[];
   users: readonly HermesPresenceUser[];
 };
 
 export function MessageList({
   callEvents = [],
+  channelId,
   currentUserId,
   filter = "all",
   messages,
@@ -52,6 +55,7 @@ export function MessageList({
   onReturnCall,
   onToggleReaction,
   onToggleTag,
+  getThreadUnreadCount,
   reactionOptions,
   users,
 }: MessageListProps) {
@@ -60,14 +64,30 @@ export function MessageList({
     callEvents: filter === "all" ? callEvents : [],
     messages,
   });
+  const timelineRows = getHermesTimelineRows(timelineItems);
   const lastTimelineItemId = timelineItems.at(-1)?.id;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
+    const scrollToBottom = (behavior: ScrollBehavior) => {
+      bottomRef.current?.scrollIntoView({
+        behavior,
+        block: "end",
+      });
+    };
+
+    scrollToBottom("auto");
+    const firstFrameId = window.requestAnimationFrame(() => {
+      scrollToBottom("smooth");
     });
-  }, [lastTimelineItemId]);
+    const timeoutId = window.setTimeout(() => {
+      scrollToBottom("auto");
+    }, 120);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [channelId, lastTimelineItemId]);
 
   if (timelineItems.length === 0) {
     return (
@@ -96,7 +116,7 @@ export function MessageList({
       className="grid gap-2 px-2"
       role="log"
     >
-      {timelineItems.map((item) =>
+      {timelineRows.map((item) =>
         item.kind === "message" ? (
           <MessageItem
             author={users.find((user) => user.id === item.message.authorId)}
@@ -110,8 +130,11 @@ export function MessageList({
             onToggleReaction={onToggleReaction}
             onToggleTag={onToggleTag}
             reactionOptions={reactionOptions}
+            threadUnreadCount={getThreadUnreadCount?.(item.message.id) ?? 0}
             users={users}
           />
+        ) : item.kind === "date-separator" ? (
+          <HermesDateSeparator key={item.id} label={item.label} />
         ) : (
           <HermesCallEventCard
             entry={item.entry}
@@ -138,6 +161,38 @@ type HermesTimelineItem =
       sortTime: number;
       message: HermesMessage;
     };
+
+type HermesTimelineRow =
+  | HermesTimelineItem
+  | {
+      id: string;
+      kind: "date-separator";
+      label: string;
+    };
+
+function getHermesTimelineRows(
+  timelineItems: readonly HermesTimelineItem[],
+): HermesTimelineRow[] {
+  const rows: HermesTimelineRow[] = [];
+  let currentDateKey = "";
+
+  for (const item of timelineItems) {
+    const dateInfo = getHermesTimelineDateInfo(item.sortTime);
+
+    if (dateInfo && dateInfo.key !== currentDateKey) {
+      rows.push({
+        id: `date-${dateInfo.key}`,
+        kind: "date-separator",
+        label: dateInfo.label,
+      });
+      currentDateKey = dateInfo.key;
+    }
+
+    rows.push(item);
+  }
+
+  return rows;
+}
 
 function getHermesTimelineItems({
   callEvents,
@@ -166,6 +221,20 @@ function getHermesTimelineItems({
 
     return firstItem.id.localeCompare(secondItem.id);
   });
+}
+
+function HermesDateSeparator({ label }: { label: string }) {
+  return (
+    <div
+      aria-label={`Data da conversa: ${label}`}
+      className="my-2 flex justify-center px-4"
+      role="separator"
+    >
+      <span className="rounded-full border border-[#d9e0ea] bg-white px-3 py-1 text-xs font-semibold text-[#475467] shadow-sm">
+        {label}
+      </span>
+    </div>
+  );
 }
 
 function HermesCallEventCard({
@@ -293,4 +362,44 @@ function formatCallEventTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(time));
+}
+
+const hermesTimelineTimeZone = "America/Sao_Paulo";
+
+const hermesTimelineDateLabelFormatter = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: hermesTimelineTimeZone,
+  weekday: "long",
+  year: "numeric",
+});
+
+const hermesTimelineDateKeyFormatter = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: hermesTimelineTimeZone,
+  year: "numeric",
+});
+
+function getHermesTimelineDateInfo(sortTime: number) {
+  if (!Number.isFinite(sortTime) || sortTime <= 0) {
+    return null;
+  }
+
+  const date = new Date(sortTime);
+  const label = hermesTimelineDateLabelFormatter.format(date);
+
+  return {
+    key: getHermesTimelineDateKey(date),
+    label: label.charAt(0).toLocaleUpperCase("pt-BR") + label.slice(1),
+  };
+}
+
+function getHermesTimelineDateKey(date: Date) {
+  const parts = hermesTimelineDateKeyFormatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+
+  return `${year}-${month}-${day}`;
 }

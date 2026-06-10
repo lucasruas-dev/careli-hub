@@ -59,6 +59,7 @@ type MessageItemProps = {
     attachment: NonNullable<HermesMessage["attachment"]>,
   ) => void;
   reactionOptions?: readonly HermesReactionEmoji[];
+  threadUnreadCount?: number;
   users?: readonly HermesPresenceUser[];
 };
 
@@ -73,6 +74,7 @@ export function MessageItem({
   onToggleReaction,
   onToggleTag,
   reactionOptions = defaultReactionOptions,
+  threadUnreadCount = 0,
   users = [],
 }: MessageItemProps) {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
@@ -110,6 +112,7 @@ export function MessageItem({
     !message.tags?.length &&
     !isEditing;
   const isStandaloneVisual = isStandaloneEmoji || isStandaloneSticker;
+  const hasUnreadThreadReplies = threadUnreadCount > 0;
 
   useEffect(() => {
     if (!isEditing) {
@@ -370,12 +373,16 @@ export function MessageItem({
           {onOpenThread ? (
             <button
               aria-label={
-                message.threadCount
+                hasUnreadThreadReplies
+                  ? `${threadUnreadCount} respostas novas`
+                  : message.threadCount
                   ? `${message.threadCount} respostas`
                   : "Responder"
               }
-              className={`inline-flex min-w-6 items-center justify-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
-                message.threadCount
+              className={`relative inline-flex min-w-6 items-center justify-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
+                hasUnreadThreadReplies
+                  ? "border border-[#0f766e] bg-[#0f766e] text-white opacity-100 shadow-sm shadow-[#0f766e]/25 hover:brightness-110"
+                  : message.threadCount
                   ? "border border-[#A07C3B] bg-[#A07C3B] text-white opacity-100 shadow-sm shadow-[#A07C3B]/25 hover:brightness-110"
                   : "text-inherit opacity-65 hover:bg-[#A07C3B]/10 hover:opacity-100"
               }`}
@@ -386,6 +393,11 @@ export function MessageItem({
               {message.threadCount ? (
                 <span className="text-[0.65rem] font-semibold">
                   {message.threadCount}
+                </span>
+              ) : null}
+              {hasUnreadThreadReplies ? (
+                <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-white px-1 text-[0.56rem] font-black leading-none text-[#0f766e] ring-1 ring-[#0f766e]/25">
+                  {threadUnreadCount > 9 ? "9+" : threadUnreadCount}
                 </span>
               ) : null}
             </button>
@@ -1155,10 +1167,13 @@ function renderMessageTextInline({
   textStart: number;
 }) {
   if (ranges.length === 0) {
-    return text;
+    return renderTextWithLinks({
+      keyPrefix,
+      text,
+    });
   }
 
-  const fragments = [];
+  const fragments: ReactNode[] = [];
   let cursor = 0;
 
   ranges.forEach((range, index) => {
@@ -1171,9 +1186,10 @@ function renderMessageTextInline({
 
     if (start > cursor) {
       fragments.push(
-        <span key={`${keyPrefix}-text-${index}-${cursor}`}>
-          {text.slice(cursor, start)}
-        </span>,
+        ...renderTextWithLinks({
+          keyPrefix: `${keyPrefix}-text-${index}-${cursor}`,
+          text: text.slice(cursor, start),
+        }),
       );
     }
 
@@ -1196,13 +1212,109 @@ function renderMessageTextInline({
 
   if (cursor < text.length) {
     fragments.push(
-      <span key={`${keyPrefix}-text-tail-${cursor}`}>
+      ...renderTextWithLinks({
+        keyPrefix: `${keyPrefix}-text-tail-${cursor}`,
+        text: text.slice(cursor),
+      }),
+    );
+  }
+
+  return fragments;
+}
+
+function renderTextWithLinks({
+  keyPrefix,
+  text,
+}: {
+  keyPrefix: string;
+  text: string;
+}) {
+  const fragments: ReactNode[] = [];
+  const urlPattern = /\bhttps?:\/\/[^\s<>"']+/gi;
+  let cursor = 0;
+
+  for (const match of text.matchAll(urlPattern)) {
+    const rawUrl = match[0];
+    const start = match.index ?? 0;
+
+    if (start > cursor) {
+      fragments.push(
+        <span key={`${keyPrefix}-plain-${cursor}`}>
+          {text.slice(cursor, start)}
+        </span>,
+      );
+    }
+
+    const { href, label, suffix } = normalizeMessageUrl(rawUrl);
+
+    if (!href) {
+      fragments.push(
+        <span key={`${keyPrefix}-invalid-url-${start}`}>{rawUrl}</span>,
+      );
+    } else {
+      fragments.push(
+        <a
+          className="font-semibold text-sky-700 underline underline-offset-2 transition hover:text-sky-900 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          href={href}
+          key={`${keyPrefix}-url-${start}`}
+          onClick={(event) => event.stopPropagation()}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          {label}
+        </a>,
+      );
+      if (suffix) {
+        fragments.push(
+          <span key={`${keyPrefix}-url-suffix-${start}`}>{suffix}</span>,
+        );
+      }
+    }
+
+    cursor = start + rawUrl.length;
+  }
+
+  if (cursor < text.length) {
+    fragments.push(
+      <span key={`${keyPrefix}-plain-tail-${cursor}`}>
         {text.slice(cursor)}
       </span>,
     );
   }
 
-  return fragments;
+  if (fragments.length > 0) {
+    return fragments;
+  }
+
+  return text
+    ? [<span key={`${keyPrefix}-plain-full`}>{text}</span>]
+    : [];
+}
+
+function normalizeMessageUrl(rawUrl: string) {
+  let label = rawUrl;
+  let suffix = "";
+
+  while (/[),.;:!?]$/.test(label)) {
+    suffix = `${label.slice(-1)}${suffix}`;
+    label = label.slice(0, -1);
+  }
+
+  try {
+    const url = new URL(label);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return { href: "", label: rawUrl, suffix: "" };
+    }
+
+    return {
+      href: url.href,
+      label,
+      suffix,
+    };
+  } catch {
+    return { href: "", label: rawUrl, suffix: "" };
+  }
 }
 
 function getBulletLineParts(line: string) {
