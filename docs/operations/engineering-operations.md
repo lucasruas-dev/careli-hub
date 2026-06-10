@@ -34615,3 +34615,62 @@ Conclusao:
 - Precisa de acao agora: Zeus deve empacotar, rodar Safety Gate e validar a URL candidata no browser antes de alias.
 - Quem deve agir agora: Zeus conduz a publicacao segura; Lucas valida a chamada real depois.
 - Proximo passo tecnico: publicar somente se a URL candidata mostrar o campo `Nome` aceitando espaco e o fluxo autenticado nao ficar preso na aprovacao de host.
+
+## 2026-06-10 13:12:55 -03:00 - Chronos - Producao do host opcional e Nome com espaco
+
+Assunto: [Chronos] Producao do reconhecimento de host na sala publica
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `PRODUCAO / HOTFIX CHRONOS / URL PUBLICA / HOST / FORMULARIO`.
+- Status: `EM PRODUCAO / AGUARDANDO TESTE REAL DO LUCAS`.
+- Protocolo: `OP-20260610-028-CHRONOS-PUBLIC-HOST-NAME`.
+- Autorizacao: Lucas reportou que a sala publica abriu, mas o usuario logado caiu como convidado pendente e o campo `Nome` nao aceitava espaco; Zeus publicou somente apos pacote limpo, Safety Gate `PASS`, smoke da URL candidata e validacao browser.
+- Diagnostico consolidado:
+  - o bypass publico anterior impedia redirect para login, mas tambem zerava a sessao no `AuthProvider`;
+  - sem sessao opcional, `hubUser` ficava vazio e o fluxo mandava o Lucas para aprovacao do host;
+  - o campo `Nome` usava `displayName.trim()` como `value`, removendo o espaco digitado antes da proxima palavra.
+- Correcao publicada:
+  - `apps/hub/providers/auth-provider.tsx` carrega sessao opcional nas rotas publicas Chronos e mantem o bypass somente para nao bloquear convidados anonimos;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` preserva o valor cru do campo `Nome` durante digitacao e usa `participantNameForJoin = participantLabel.trim()` apenas para validar/enviar;
+  - o botao `Participar` fica bloqueado enquanto a sessao opcional esta carregando, reduzindo o risco de o host entrar como convidado por clique antecipado.
+- Commit publicado: `30ac01efeed6927f5bb37ad0e63fc3a75661f58e`.
+- Deployment anterior / rollback: `dpl_A2VZx27U4nfFyqDqi9kxxc1CoYVc`.
+- Deployment novo em producao: `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`.
+- URL tecnica: `https://careli-hub-hub-i2bs-jnuuy71dd-lucasruas-devs-projects.vercel.app`.
+- Alias publicado: `https://c2x.app.br`.
+- Alias preservado fora do recorte: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Manifesto do Safety Gate:
+  - `.codex-deploy/chronos-public-host-name-prod-20260610-30ac01e/production-module-safety-gate.json`.
+- Validacoes pre-deploy:
+  - `npm.cmd exec --workspace @repo/hub -- eslint providers/auth-provider.tsx modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/providers/auth-provider.tsx apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `node C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub\scripts\production-module-safety-gate.mjs --manifest .codex-deploy/chronos-public-host-name-prod-20260610-30ac01e/production-module-safety-gate.json`: PASS, 4 mudancas detectadas;
+  - pacote de deploy `candidate-deploy` comparado com `candidate-gate`: `MATCH_EXCLUDING_VERCEL`;
+  - URL candidata: `/chronos/careli` 200, `/chronos/recording-view` 200 com `START_RECORDING` e sem login;
+  - browser candidato: campo `Nome` preservou `Lucas Ruas`, sala publica sem login e `/chronos` continuou redirecionando para `/login`.
+- Validacoes de producao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: confirmou `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`, `Ready`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: confirmou `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200, `START_RECORDING` presente e sem texto de login;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para metodo GET;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - browser em `https://c2x.app.br/chronos/careli`: campo `Nome` preservou `Lucas Ruas`, sem login;
+  - browser em `https://c2x.app.br/chronos`: redirecionou para `/login`;
+  - logs Vercel do deployment novo, filtro `chronos`, sem 500/502.
+- Fora do escopo:
+  - nao houve mudanca em LiveKit dashboard, Supabase, banco, storage, migrations, secrets, envs, aliases fora de `c2x.app.br` ou modulos fora de Chronos;
+  - a validacao final de reconhecimento de host depende do navegador logado do Lucas, porque o browser de smoke estava anonimo.
+- Rollback:
+  - reapontar `https://c2x.app.br` para `dpl_A2VZx27U4nfFyqDqi9kxxc1CoYVc` se o host continuar nao reconhecido ou se o formulario regredir;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+Conclusao:
+
+- O hotfix esta em producao no dominio principal `https://c2x.app.br`.
+- O impacto pratico e que a sala publica agora tenta reconhecer a sessao do host sem exigir login de convidados, e o campo `Nome` aceita espacos normalmente.
+- Precisa de acao agora: Lucas deve recarregar `https://c2x.app.br/chronos/careli` no navegador onde ja esta logado e confirmar se entra como host sem pedido de aprovacao.
+- Quem deve agir agora: Lucas testa host real; Zeus acompanha o novo Egress se ainda houver falha de audio/video.
+- Proximo passo tecnico: se Lucas ja for reconhecido como host, fazer uma gravacao curta; se ainda cair como convidado, investigar cookie/sessao do dominio `c2x.app.br` no navegador dele.

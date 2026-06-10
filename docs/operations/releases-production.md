@@ -95,6 +95,51 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Chronos] Host reconhecido e Nome com espaco na sala publica`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-10 13:12:55 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: autorizacao direta do Lucas no incidente Chronos/LiveKit, protocolo `OP-20260610-028-CHRONOS-PUBLIC-HOST-NAME`, publicado somente apos Safety Gate `PASS`, smoke da URL candidata e validacao browser do campo `Nome`.
+- Escopo publicado:
+  - carregar sessao opcional nas rotas publicas Chronos para reconhecer host logado sem bloquear convidados anonimos;
+  - preservar espacos no campo `Nome` durante digitacao e aplicar `trim()` somente na validacao/envio;
+  - bloquear o botao `Participar` enquanto a sessao opcional ainda esta carregando, evitando entrada do host como convidado por clique antecipado.
+- Commit publicado: `30ac01efeed6927f5bb37ad0e63fc3a75661f58e`.
+- Deployment anterior: `dpl_A2VZx27U4nfFyqDqi9kxxc1CoYVc`.
+- Deployment novo: `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`; URL tecnica `https://careli-hub-hub-i2bs-jnuuy71dd-lucasruas-devs-projects.vercel.app`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado no deployment `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`, status `Ready`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Arquivos/modulos incluidos: `apps/hub/providers/auth-provider.tsx`, `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`, `docs/operations/engineering-operations.md`, `docs/operations/releases-production.md`.
+- Arquivos/modulos excluidos: Hermes/PulseX, Hades/Guardian, Iris, Atlas, Setup, Apolo, Ares, Zeus/OPS, migrations, envs, secrets, banco, Supabase, LiveKit dashboard e aliases fora de `c2x.app.br`.
+- Validacoes executadas:
+  - `npm.cmd exec --workspace @repo/hub -- eslint providers/auth-provider.tsx modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/providers/auth-provider.tsx apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em `engineering-operations-source.ts`, fora do recorte Chronos;
+  - `node C:\Users\lucas\Documents\Careli_C2x\Sistemas\careli-hub\scripts\production-module-safety-gate.mjs --manifest .codex-deploy/chronos-public-host-name-prod-20260610-30ac01e/production-module-safety-gate.json`: PASS, 4 mudancas detectadas;
+  - URL candidata antes do alias: `/chronos/careli` 200, `/chronos/recording-view` 200 com `START_RECORDING` e sem login;
+  - browser candidato em `/chronos/careli`: campo `Nome` preservou `Lucas Ruas`, sem campos de login, botao habilitado;
+  - browser candidato em `/chronos`: redirecionou para `/login`, preservando protecao do dashboard.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: `dpl_GGEuKmTFwPomUKChvpy7TdynUjev`, `Ready`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200, `START_RECORDING` presente e sem texto de login;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para metodo GET;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - browser em `https://c2x.app.br/chronos/careli`: campo `Nome` preservou `Lucas Ruas`, sem login;
+  - browser em `https://c2x.app.br/chronos`: redirecionou para `/login`.
+- Logs recentes: `npx.cmd vercel logs https://careli-hub-hub-i2bs-jnuuy71dd-lucasruas-devs-projects.vercel.app --since 15m --query chronos --scope lucasruas-devs-projects` sem 500/502; logs mostraram `GET /chronos/careli` 200, `GET /chronos/recording-view` 200, `GET /chronos` 200 server-side antes do redirect client e endpoint de egress 405 esperado.
+- Rollback definido: reapontar `https://c2x.app.br` para `dpl_A2VZx27U4nfFyqDqi9kxxc1CoYVc` se o host nao for reconhecido ou o formulario regredir.
+- Riscos conhecidos: a validacao automatizada confirma sessao opcional no codigo e campo com espaco no browser; a confirmacao final de host depende do Lucas testar no navegador logado dele.
+- Pendencias: Lucas entrar em `https://c2x.app.br/chronos/careli` ja logado, confirmar que nao fica em aprovacao de host e entao testar a gravacao curta para audio/video.
+- Status: `EM PRODUCAO`.
+- Proxima acao: Lucas testar sala real como host; Zeus acompanhar se ainda houver falha de audio ou permissao.
+
+Registro de producao:
+
 - Assunto: `[Chronos] URL publica da sala sem gate de login`.
 - Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
 - Data e hora local: `2026-06-10 12:58:45 -03:00`.
