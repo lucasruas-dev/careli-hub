@@ -106,6 +106,8 @@ export function AuthProvider({
   const [profileStatus, setProfileStatus] =
     useState<AuthContextValue["profileStatus"]>("idle");
   const isLoginRoute = pathname === "/login";
+  const isPublicChronosRoute = isChronosPublicRoute(pathname);
+  const isAuthBypassRoute = isLoginRoute || isPublicChronosRoute;
   const hubUser = useMemo(
     () =>
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,
@@ -117,7 +119,7 @@ export function AuthProvider({
       let isMounted = true;
       const client = getHubSupabaseClient();
 
-      if (isLoginRoute) {
+      if (isAuthBypassRoute) {
         setProfileStatus("idle");
         setAuthState(createUnauthenticatedAuthState());
         return;
@@ -275,7 +277,7 @@ export function AuthProvider({
       logAuthDebug("auth error", "invalid mock session");
       setAuthState(createUnauthenticatedAuthState());
     }
-  }, [authRetryKey, isLoginRoute]);
+  }, [authRetryKey, isAuthBypassRoute]);
 
   useEffect(() => {
     if (authState.status === "loading") {
@@ -283,7 +285,10 @@ export function AuthProvider({
     }
 
     if (authState.status === "error") {
-      if (!isLoginRoute && shouldResetSessionAfterAuthError(authState.error)) {
+      if (
+        !isAuthBypassRoute &&
+        shouldResetSessionAfterAuthError(authState.error)
+      ) {
         resetBrokenSessionToLogin({
           setAuthState,
           setProfileStatus,
@@ -293,7 +298,7 @@ export function AuthProvider({
       return;
     }
 
-    if (!isAuthenticated(authState) && !isLoginRoute) {
+    if (!isAuthenticated(authState) && !isAuthBypassRoute) {
       router.replace("/login");
       return;
     }
@@ -301,7 +306,7 @@ export function AuthProvider({
     if (isAuthenticated(authState) && isLoginRoute) {
       router.replace("/");
     }
-  }, [authState, isLoginRoute, router]);
+  }, [authState, isAuthBypassRoute, isLoginRoute, router]);
 
   async function signIn({
     email,
@@ -524,11 +529,11 @@ export function AuthProvider({
     }
   }
 
-  if (authState.status === "loading" && !isLoginRoute) {
+  if (authState.status === "loading" && !isAuthBypassRoute) {
     return <AuthGateMessage message="Carregando sessao..." />;
   }
 
-  if (authState.status === "error" && !isLoginRoute) {
+  if (authState.status === "error" && !isAuthBypassRoute) {
     const authGateMessage = getAuthGateMessage(authState);
     const shouldResetSession = shouldResetSessionAfterAuthError(authGateMessage);
 
@@ -553,7 +558,7 @@ export function AuthProvider({
     );
   }
 
-  if (!isLoginRoute && !isAuthenticated(authState)) {
+  if (!isAuthBypassRoute && !isAuthenticated(authState)) {
     return <AuthGateMessage message="Redirecionando para login..." />;
   }
 
@@ -570,6 +575,20 @@ export function AuthProvider({
       {children}
     </AuthContext.Provider>
   );
+}
+
+function isChronosPublicRoute(pathname: string | null): boolean {
+  if (!pathname) {
+    return false;
+  }
+
+  if (pathname === "/chronos/recording-view") {
+    return true;
+  }
+
+  const segments = pathname.split("/").filter(Boolean);
+
+  return segments.length === 2 && segments[0] === "chronos";
 }
 
 export function useAuth() {

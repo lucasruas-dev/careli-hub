@@ -34478,3 +34478,42 @@ Conclusao:
 - Precisa de acao agora: Lucas deve fazer uma chamada curta no Chronos, encerrar e confirmar no LiveKit/Drive se o RoomComposite ficou `COMPLETE` e se o video apareceu.
 - Quem deve agir agora: Lucas executa o teste funcional real; Zeus acompanha logs e novo Egress ID se ainda houver falha.
 - Proximo passo tecnico: se o erro persistir, investigar o novo Egress especifico; se o erro mudar, tratar como incidente novo, porque a causa observada do sinal nao executavel foi corrigida em producao.
+
+## 2026-06-10 11:58:00 -03:00 - Chronos - Sala publica sem gate de login
+
+Assunto: [Chronos] Correcao do gate de autenticacao para sala externa publica
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `HOTFIX CHRONOS / LIVEKIT EGRESS / URL PUBLICA`.
+- Status: `VALIDADO LOCAL / CANDIDATO A PRODUCAO`.
+- Protocolo: `OP-20260610-027-CHRONOS-PUBLIC-ROOM-AUTH-BYPASS`.
+- Autorizacao: Lucas reportou que o RoomComposite subiu video, mas gravou a tela de login; a correcao segue a autorizacao anterior de publicar somente se o deploy for seguro.
+- Diagnostico:
+  - o RoomComposite `EG_9cJFr7YkEWmy` foi concluido, mas a imagem capturada mostrou o login do Panteon, nao a sala Chronos;
+  - o `AuthProvider` global redirecionava qualquer rota diferente de `/login` para `/login` quando nao havia sessao autenticada;
+  - isso afetava tanto a URL externa `/chronos/[roomSlug]` quanto a URL interna do Egress `/chronos/recording-view`, apesar de ambas serem rotas publicas de Chronos.
+- Correcao candidata:
+  - `apps/hub/providers/auth-provider.tsx` passou a tratar `/chronos/recording-view` e `/chronos/<slug>` como bypass publico de autenticacao;
+  - o dashboard operacional `/chronos` permanece protegido;
+  - nenhuma env, secret, token, chave LiveKit/Supabase, migration, banco, dominio ou alias foi alterado nesta etapa.
+- Validacoes locais:
+  - `npm.cmd exec --workspace @repo/hub -- eslint providers/auth-provider.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/providers/auth-provider.tsx`: PASS, com aviso esperado de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - smoke local com `next start --port 3014` e browser embutido: `GET /chronos/recording-view` manteve URL em `/chronos/recording-view`, sem campos de e-mail/senha, e emitiu `START_RECORDING` no console;
+  - smoke local de `/chronos/careli`: nao redirecionou para `/login`; a rota retornou erro server-side esperado no ambiente local sem Supabase server-side configurado (`Chronos requer Supabase server-side configurado para sala externa`).
+- Riscos e pendencias:
+  - por alterar `AuthProvider`, o Safety Gate de producao deve declarar o arquivo compartilhado como permitido somente pelo bypass Chronos e manter marcadores de login/rotas protegidas;
+  - a validacao funcional definitiva exige nova chamada real do Lucas apos publicacao, confirmando se o RoomComposite captura a sala e se o audio acompanha o video.
+- Rollback planejado:
+  - reapontar `https://c2x.app.br` para `dpl_FyUv4vVL8PQ5tX2sw9CzCSJUtqhx` se a sala publica apresentar regressao;
+  - preservar `https://ops.c2x.app.br` fora do recorte Chronos.
+
+Conclusao:
+
+- O erro novo foi causado pelo gate de login do client, nao pelo script `START_RECORDING`.
+- O impacto pratico da correcao e permitir que convidados e o Chromium do LiveKit acessem as telas publicas do Chronos sem sessao Panteon.
+- Precisa de acao agora: Zeus deve gerar pacote limpo, rodar Safety Gate e publicar somente se o recorte continuar isolado.
+- Quem deve agir agora: Zeus conduz a publicacao segura; Lucas valida uma chamada real curta depois.
+- Proximo passo tecnico: empacotar sobre a producao Chronos atual, bloquear qualquer divergencia de alias/projeto e validar `https://c2x.app.br/chronos/recording-view` apos o deploy.
