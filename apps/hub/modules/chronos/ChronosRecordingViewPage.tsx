@@ -36,7 +36,9 @@ type ChronosRecordingTile = {
 
 declare global {
   interface Window {
+    __chronosRecordingEmitStartSignal?: () => void;
     __chronosRecordingEndLogged?: boolean;
+    __chronosRecordingStartSignalBooted?: boolean;
     __chronosRecordingStartLogged?: boolean;
   }
 }
@@ -88,14 +90,13 @@ export function ChronosRecordingViewPage() {
       );
     };
     const markRecordingReady = () => {
-      if (startLoggedRef.current || connectionFailed) {
+      if (connectionFailed) {
         return;
       }
 
       startLoggedRef.current = true;
-      window.__chronosRecordingStartLogged = true;
       setStatus("recording");
-      console.log("START_RECORDING");
+      emitChronosRecordingStartSignal();
     };
     const recordingReadyFallback = window.setTimeout(
       markRecordingReady,
@@ -275,6 +276,17 @@ function emitChronosRecordingEndSignal() {
 
   window.__chronosRecordingEndLogged = true;
   console.log("END_RECORDING");
+}
+
+function emitChronosRecordingStartSignal() {
+  window.__chronosRecordingStartLogged = true;
+
+  if (typeof window.__chronosRecordingEmitStartSignal === "function") {
+    window.__chronosRecordingEmitStartSignal();
+    return;
+  }
+
+  console.log("START_RECORDING");
 }
 
 function ChronosRecordingTileCard({
