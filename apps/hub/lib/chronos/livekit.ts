@@ -53,6 +53,17 @@ export type ChronosLiveKitParticipantAudioTrack = {
   trackSource?: string | null;
 };
 
+export type ChronosLiveKitParticipantPresence = {
+  audioTrackCount: number;
+  organization?: string | null;
+  participantId: string;
+  participantIdentity: string;
+  participantName: string;
+  participantSid?: string | null;
+  trackCount: number;
+  videoTrackCount: number;
+};
+
 export type ChronosLiveKitEgressPayload = {
   egressId: string;
   fileName: string;
@@ -324,6 +335,84 @@ export async function listChronosLiveKitParticipantAudioTracks({
   }
 
   return [...tracksById.values()];
+}
+
+export async function listChronosLiveKitParticipants({
+  meetingId,
+  roomSlug,
+}: {
+  meetingId: string;
+  roomSlug: string;
+}): Promise<ChronosLiveKitParticipantPresence[]> {
+  const config = getChronosLiveKitConfig();
+
+  if (!config) {
+    throw new Error("LiveKit nao esta configurado para listar participantes.");
+  }
+
+  const roomName = createChronosLiveKitRoomName({ meetingId, roomSlug });
+  const payload = await callChronosLiveKitRoomServiceApi(config, {
+    body: {
+      room: roomName,
+    },
+    method: "ListParticipants",
+    roomName,
+  });
+  const participants = Array.isArray(payload.participants)
+    ? payload.participants
+    : [];
+
+  return participants
+    .map((participant): ChronosLiveKitParticipantPresence | null => {
+      if (!participant || typeof participant !== "object") {
+        return null;
+      }
+
+      const participantPayload = participant as Record<string, unknown>;
+
+      if (isChronosLiveKitEgressParticipant(participantPayload)) {
+        return null;
+      }
+
+      const metadata = readChronosLiveKitParticipantMetadata(
+        readChronosLiveKitText(participantPayload, ["metadata"]),
+      );
+      const participantIdentity =
+        readChronosLiveKitText(participantPayload, ["identity"]) ??
+        metadata.participantId ??
+        "";
+
+      if (!participantIdentity) {
+        return null;
+      }
+
+      const tracks = Array.isArray(participantPayload.tracks)
+        ? participantPayload.tracks.filter(
+            (track): track is Record<string, unknown> =>
+              track !== null && typeof track === "object",
+          )
+        : [];
+
+      return {
+        audioTrackCount: tracks.filter(isChronosLiveKitAudioTrack).length,
+        organization: metadata.organization,
+        participantId: metadata.participantId || participantIdentity,
+        participantIdentity,
+        participantName:
+          readChronosLiveKitText(participantPayload, ["name"]) ??
+          metadata.displayName ??
+          "Participante Chronos",
+        participantSid: readChronosLiveKitText(participantPayload, ["sid"]),
+        trackCount: tracks.length,
+        videoTrackCount: tracks.filter(isChronosLiveKitVideoTrack).length,
+      };
+    })
+    .filter(
+      (
+        participant,
+      ): participant is ChronosLiveKitParticipantPresence =>
+        Boolean(participant),
+    );
 }
 
 export async function startChronosLiveKitParticipantAudioTrackEgress({
@@ -895,6 +984,34 @@ function isChronosLiveKitMicrophoneAudioTrack(
     source === null;
 
   return isAudio && isMicrophone;
+}
+
+function isChronosLiveKitAudioTrack(track: Record<string, unknown>) {
+  const type = track.type;
+
+  return (
+    type === 0 ||
+    type === "AUDIO" ||
+    Boolean(
+      readChronosLiveKitText(track, ["mime_type", "mimeType"])?.startsWith(
+        "audio/",
+      ),
+    )
+  );
+}
+
+function isChronosLiveKitVideoTrack(track: Record<string, unknown>) {
+  const type = track.type;
+
+  return (
+    type === 1 ||
+    type === "VIDEO" ||
+    Boolean(
+      readChronosLiveKitText(track, ["mime_type", "mimeType"])?.startsWith(
+        "video/",
+      ),
+    )
+  );
 }
 
 function normalizeChronosLiveKitTrackSource(value: unknown) {

@@ -7,14 +7,17 @@ import { getPermissionsForRole } from "@repo/shared";
 
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import {
+  createChronosLiveKitRoomName,
   deleteChronosLiveKitRoom,
   getChronosLiveKitEgressStatus,
+  listChronosLiveKitParticipants,
   listChronosLiveKitParticipantAudioTracks,
   startChronosLiveKitRoomCompositeEgress,
   startChronosLiveKitParticipantAudioTrackEgress,
   stopChronosLiveKitEgress,
   type ChronosLiveKitEgressPayload,
   type ChronosLiveKitEgressStatusPayload,
+  type ChronosLiveKitParticipantPresence,
 } from "./livekit";
 import {
   chronosCaptureStatuses,
@@ -379,6 +382,13 @@ type NormalizedChronosPublicEgressInput = {
   participantId: string;
   participantAudioEgresses: NormalizedChronosParticipantAudioEgressInput[];
   recordingId?: string;
+};
+
+type NormalizedChronosPublicLiveKitPresenceInput = {
+  meetingId: string;
+  participantId: string;
+  participantIdentity: string;
+  roomName: string;
 };
 
 type NormalizedChronosParticipantAudioEgressInput = {
@@ -1402,6 +1412,215 @@ export async function joinChronosPublicRoom({
     },
     room: mapPublicRoom(mapRoomRow(room)),
   };
+}
+
+export async function confirmChronosPublicLiveKitPresence({
+  input,
+  roomSlug,
+}: {
+  input: unknown;
+  roomSlug: string;
+}) {
+  const normalizedInput = normalizePublicLiveKitPresenceInput(input);
+  const slug = normalizeRoomSlug(roomSlug, roomSlug);
+  const client = createChronosClient();
+
+  if (!client) {
+    throw new Error(
+      "Chronos requer Supabase server-side configurado para confirmar presenca LiveKit.",
+    );
+  }
+
+  const { meeting, room } = await getChronosPublicMeetingContext({
+    client,
+    meetingId: normalizedInput.meetingId,
+    roomSlug: slug,
+  });
+  const expectedRoomName = createChronosLiveKitRoomName({
+    meetingId: meeting.id,
+    roomSlug: room.slug,
+  });
+
+  if (normalizedInput.roomName !== expectedRoomName) {
+    throw new Error("Sala LiveKit nao confere com a reserva Chronos.");
+  }
+
+  const participantResult = await client
+    .from("chronos_participants")
+    .select("*")
+    .eq("id", normalizedInput.participantId)
+    .eq("meeting_id", meeting.id)
+    .maybeSingle<ChronosParticipantRow>();
+
+  if (participantResult.error) {
+    throw participantResult.error;
+  }
+
+  if (!participantResult.data) {
+    throw new Error("Participante Chronos nao encontrado para confirmar LiveKit.");
+  }
+
+  const presence = await waitForChronosLiveKitParticipantPresence({
+    meetingId: meeting.id,
+    participantId: normalizedInput.participantId,
+    participantIdentity: normalizedInput.participantIdentity,
+    roomSlug: room.slug,
+  });
+  const now = new Date().toISOString();
+  const participantMetadata = readRecordMetadata(participantResult.data.metadata);
+  const meetingExternalRoomMetadata = readRecordMetadata(
+    meeting.metadata?.externalRoom,
+  );
+  const participantUpdate = await client
+    .from("chronos_participants")
+    .update({
+      attendance_status: "joined",
+      joined_at: participantResult.data.joined_at ?? now,
+      left_at: null,
+      metadata: {
+        ...participantMetadata,
+        liveKit: {
+          ...readRecordMetadata(participantMetadata.liveKit),
+          audioTrackCount: presence.participant.audioTrackCount,
+          confirmedAt: now,
+          participantIdentity: presence.participant.participantIdentity,
+          participantName: presence.participant.participantName,
+          participantSid: presence.participant.participantSid ?? null,
+          provider: "livekit",
+          roomName: expectedRoomName,
+          source: "chronos-livekit-presence",
+          trackCount: presence.participant.trackCount,
+          videoTrackCount: presence.participant.videoTrackCount,
+        },
+      },
+    })
+    .eq("id", participantResult.data.id);
+
+  if (participantUpdate.error) {
+    throw participantUpdate.error;
+  }
+
+  const meetingUpdate = await client
+    .from("chronos_meetings")
+    .update({
+      metadata: {
+        ...(meeting.metadata ?? {}),
+        externalRoom: {
+          ...meetingExternalRoomMetadata,
+          liveKitPresence: {
+            confirmedAt: now,
+            participantCount: presence.participants.length,
+            provider: "livekit",
+            roomName: expectedRoomName,
+            source: "chronos-livekit-presence",
+          },
+          roomSlug: room.slug,
+        },
+      },
+      updated_at: now,
+    })
+    .eq("id", meeting.id);
+
+  if (meetingUpdate.error) {
+    throw meetingUpdate.error;
+  }
+
+  await insertTimelineEvent(client, {
+    eventType: "joined",
+    meetingId: meeting.id,
+    title: `LiveKit confirmou ${presence.participant.participantName} na sala`,
+  });
+
+  return {
+    ok: true,
+    participantCount: presence.participants.length,
+    participantIdentity: presence.participant.participantIdentity,
+    provider: "livekit" as const,
+    roomName: expectedRoomName,
+  };
+}
+
+async function waitForChronosLiveKitParticipantPresence({
+  meetingId,
+  participantId,
+  participantIdentity,
+  roomSlug,
+}: {
+  meetingId: string;
+  participantId: string;
+  participantIdentity: string;
+  roomSlug: string;
+}) {
+  let lastParticipants: ChronosLiveKitParticipantPresence[] = [];
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      const participants = await listChronosLiveKitParticipants({
+        meetingId,
+        roomSlug,
+      });
+      const participant = findChronosLiveKitPresenceParticipant(participants, {
+        participantId,
+        participantIdentity,
+      });
+
+      if (participant) {
+        return {
+          participant,
+          participants,
+        };
+      }
+
+      lastParticipants = participants;
+    } catch (error) {
+      lastError = error;
+    }
+
+    await waitForChronosLiveKitPresenceRetry(500);
+  }
+
+  if (lastError) {
+    console.warn(
+      "[chronos] LiveKit presence confirmation failed",
+      lastError instanceof Error ? lastError.message : "unknown error",
+    );
+  }
+
+  throw new Error(
+    lastParticipants.length > 0
+      ? "LiveKit respondeu a sala, mas nao confirmou este participante."
+      : "LiveKit nao confirmou participantes na sala Chronos.",
+  );
+}
+
+function findChronosLiveKitPresenceParticipant(
+  participants: ChronosLiveKitParticipantPresence[],
+  {
+    participantId,
+    participantIdentity,
+  }: {
+    participantId: string;
+    participantIdentity: string;
+  },
+) {
+  const expectedValues = new Set(
+    [participantId, participantIdentity]
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+
+  return participants.find(
+    (participant) =>
+      expectedValues.has(participant.participantId) ||
+      expectedValues.has(participant.participantIdentity),
+  );
+}
+
+function waitForChronosLiveKitPresenceRetry(milliseconds: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }
 
 export async function closeChronosPublicMeeting({
@@ -4161,6 +4380,31 @@ function normalizePublicEgressInput(
     ),
     participantId,
     recordingId: sanitizeOptionalText(maybeInput.recordingId, 120),
+  };
+}
+
+function normalizePublicLiveKitPresenceInput(
+  input: unknown,
+): NormalizedChronosPublicLiveKitPresenceInput {
+  if (!input || typeof input !== "object") {
+    throw new Error("Informe os dados da presenca LiveKit.");
+  }
+
+  const maybeInput = input as Partial<NormalizedChronosPublicLiveKitPresenceInput>;
+  const meetingId = sanitizeText(maybeInput.meetingId, 80);
+  const participantId = sanitizeText(maybeInput.participantId, 80);
+  const participantIdentity = sanitizeText(maybeInput.participantIdentity, 120);
+  const roomName = sanitizeText(maybeInput.roomName, 120);
+
+  if (!meetingId || !participantId || !participantIdentity || !roomName) {
+    throw new Error("Presenca LiveKit sem sala, reuniao ou participante.");
+  }
+
+  return {
+    meetingId,
+    participantId,
+    participantIdentity,
+    roomName,
   };
 }
 

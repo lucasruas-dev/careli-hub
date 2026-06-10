@@ -34028,3 +34028,39 @@ Conclusao:
 - Precisa de acao agora: Lucas deve testar uma chamada real no Chronos, iniciar gravacao, compartilhar tela e confirmar no LiveKit/Supabase/Drive se o arquivo mostra a sala completa e as cameras em trilho separado.
 - Quem deve agir agora: Lucas valida o fluxo real; Zeus acompanha logs e faz rollback para `dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw` se houver falha critica.
 - Proximo passo tecnico: se o teste real passar, avançar para as pendencias restantes de ata/transcricao e registrar qualquer ajuste fino de layout da gravacao como novo recorte.
+
+## 2026-06-10 01:22:05 -03:00 - Chronos - Presenca LiveKit obrigatoria
+
+Assunto: [Chronos] Recorte local para bloquear sala ativa sem confirmacao LiveKit
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `RECORTE LOCAL / INCIDENTE CHRONOS / LIVEKIT PRESENCE / VIDEOCHAMADA`.
+- Status: `VALIDADO_LOCAL / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO`.
+- Protocolo: `OP-20260610-021-CHRONOS-LIVEKIT-PRESENCE-GUARD`.
+- Contexto:
+  - Lucas validou em producao que a chamada exibiu estado de gravacao/sala, mas nao apareceu no banco esperado nem no projeto LiveKit aberto no painel;
+  - logs Vercel mostraram chamadas 200 para `/livekit-token` e `/egress`, mas essa evidencia isolada nao basta para considerar a chamada realmente rastreada no LiveKit correto;
+  - criterio operacional definido: a UI nao pode exibir sala ativa se o servidor nao confirmar o participante no RoomService do LiveKit.
+- Correcoes locais aplicadas:
+  - `apps/hub/lib/chronos/livekit.ts` passou a listar participantes LiveKit via RoomService, ignorando participantes internos de Egress;
+  - `apps/hub/lib/chronos/server.ts` recebeu `confirmChronosPublicLiveKitPresence`, que valida `meetingId`, `participantId`, `roomName`, confirma o participante no LiveKit e persiste metadados `liveKit` em `chronos_participants` e `externalRoom.liveKitPresence` em `chronos_meetings`;
+  - criada a rota `apps/hub/app/api/chronos/public/rooms/[roomSlug]/livekit-presence/route.ts`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` agora chama `livekit-presence` depois de `Room.connect` e publicacao de midia; se a confirmacao falhar, desconecta e nao entra no estado visual de sala.
+  - `apps/hub/components/pulsex/call-participant-tile.tsx` foi incluido como dependencia minima do layout Chronos ja publicado, adicionando `hideCaption` sem alterar o comportamento padrao dos tiles.
+- Validacoes executadas:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosExternalRoomPage.tsx lib/chronos/livekit.ts lib/chronos/server.ts app/api/chronos/public/rooms/[roomSlug]/livekit-presence/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, dominio, Vercel env, Supabase remoto, banco, migration, secret ou token foi alterado;
+  - a conferencia dos valores `LIVEKIT_*` e dos destinos Supabase/Storage de Production permanece `BLOQUEADO` ate autorizacao explicita do Lucas, por envolver secrets/envs.
+- Risco:
+  - se Production estiver apontando para projeto LiveKit ou Supabase diferente do painel que Lucas esta verificando, este recorte confirma o ambiente configurado, mas a correcao definitiva ainda exige auditoria/regularizacao das envs sensiveis.
+
+Conclusao:
+
+- A falha reportada pelo Lucas mostrou que endpoint 200 nao e evidencia suficiente de chamada rastreada.
+- O impacto pratico do recorte e impedir falso positivo: sem confirmacao server-side no LiveKit, o participante nao entra na sala Chronos.
+- Precisa de acao agora: Lucas deve autorizar explicitamente auditoria/regularizacao das envs `LIVEKIT_*` e destinos Supabase de Production se quiser fechar a divergencia entre app, banco e painel LiveKit.
+- Quem deve agir agora: Zeus mantem o recorte local validado e aguarda autorizacao para acao sensivel ou deploy.
+- Proximo passo tecnico: com autorizacao, comparar/regularizar envs Production sem expor valores e publicar o recorte `OP-20260610-021` por pacote limpo e Safety Gate.

@@ -5,6 +5,7 @@ import { Mic, MicOff, MonitorUp, Video, VideoOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 type CallParticipantTileProps = {
+  hideCaption?: boolean;
   isLocalMedia?: boolean;
   layout?: "floating" | "spotlight" | "standard" | "thumbnail";
   mediaStream?: MediaStream | null;
@@ -17,6 +18,7 @@ type CallParticipantTileProps = {
 };
 
 export function CallParticipantTile({
+  hideCaption = false,
   isLocalMedia = false,
   layout = "standard",
   mediaStream,
@@ -134,19 +136,21 @@ export function CallParticipantTile({
           }
         />
       ) : null}
-      {showVideo ? (
+      {showVideo && !hideCaption ? (
         <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-3 pb-3 pt-10">
           <ParticipantCaption participant={participant} compact />
         </div>
-      ) : (
+      ) : !showVideo ? (
         <div className={emptyMediaClassName}>
           <ParticipantAvatar className={avatarClassName} participant={participant} />
-          <ParticipantCaption
-            compact={layout === "thumbnail" || layout === "floating"}
-            participant={participant}
-          />
+          {!hideCaption ? (
+            <ParticipantCaption
+              compact={layout === "thumbnail" || layout === "floating"}
+              participant={participant}
+            />
+          ) : null}
         </div>
-      )}
+      ) : null}
     </article>
   );
 }

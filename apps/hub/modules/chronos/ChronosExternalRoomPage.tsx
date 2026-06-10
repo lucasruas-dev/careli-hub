@@ -1567,6 +1567,39 @@ export function ChronosExternalRoomPage({
       });
       await publishChronosLiveKitMediaStream(stream);
       liveKitRoom.remoteParticipants.forEach(syncRemoteParticipant);
+      const participantIdentity =
+        liveKitRoom.localParticipant.identity || participant.id;
+      const presenceResponse = await fetch(
+        `/api/chronos/public/rooms/${room.slug}/livekit-presence`,
+        {
+          body: JSON.stringify({
+            meetingId: payload.meetingId,
+            participantId: participant.id,
+            participantIdentity,
+            roomName: livekit.roomName,
+          }),
+          cache: "no-store",
+          headers: {
+            ...(authState.session?.accessToken
+              ? {
+                  Authorization: `Bearer ${authState.session.accessToken}`,
+                }
+              : {}),
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        },
+      );
+      const presencePayload = (await presenceResponse
+        .json()
+        .catch(() => null)) as { error?: string; ok?: boolean } | null;
+
+      if (!presenceResponse.ok || !presencePayload?.ok) {
+        throw new Error(
+          presencePayload?.error ??
+            "LiveKit nao confirmou a presenca na sala Chronos.",
+        );
+      }
       setLocalParticipant(participant);
       setMeetingId(payload.meetingId);
       setRealtimeStatus("ready");
