@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "OP-20260610-025-CHRONOS-EGRESS-START-SIGNAL-RETRY",
+  "module": "chronos",
+  "agent": "Zeus/Hefesto",
+  "title": "Hotfix modular do retry do START_RECORDING no RoomComposite Egress",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_7LScsoFfijnxSNJZCV6m7t6s34KK",
+  "candidateProductionDeploymentId": "dpl_JAqpPw8dWJqUZ84CEpzgQqo82pZY",
+  "candidateSourceCommit": "6ed798e57a090b124b0cfc0ba8374714bccaf161",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/chronos-egress-start-retry-prod-20260610-6ed798e/base",
+  "candidatePackagePath": ".codex-deploy/chronos-egress-start-retry-prod-20260610-6ed798e/candidate",
+  "rollbackDeploymentId": "dpl_7LScsoFfijnxSNJZCV6m7t6s34KK",
+  "allowedChangedPaths": [
+    "apps/hub/app/chronos/recording-view/page.tsx",
+    "apps/hub/modules/chronos/ChronosRecordingViewPage.tsx"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/zeus/**",
+    "apps/hub/lib/squadops/**",
+    "apps/hub/app/ares/**",
+    "apps/hub/lib/ares/**",
+    "apps/hub/modules/ares/**",
+    "apps/hub/app/apolo/**",
+    "apps/hub/lib/apolo/**",
+    "apps/hub/modules/apolo/**",
+    "apps/hub/app/atlas/**",
+    "apps/hub/modules/atlas/**",
+    "apps/hub/app/setup/**"
+  ],
+  "ignoredPaths": [
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md",
+    "docs/operations/production-module-safety-gate-chronos-20260610-009-egress-start-signal-retry.json"
+  ],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/app/chronos/recording-view/page.tsx",
+      "includes": [
+        "__chronosRecordingStartSignalBooted",
+        "__chronosRecordingEmitStartSignal",
+        "[250, 750, 1500, 3000, 5000, 8000, 12000, 20000]",
+        "console.log(\"START_RECORDING\")"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/chronos/ChronosRecordingViewPage.tsx",
+      "includes": [
+        "emitChronosRecordingStartSignal",
+        "__chronosRecordingEmitStartSignal",
+        "window.setTimeout(markRecordingReady, 650)"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [],
+  "requiredPaths": [
+    "apps/hub/app/chronos/recording-view/page.tsx",
+    "apps/hub/modules/chronos/ChronosRecordingViewPage.tsx"
+  ],
+  "validations": [
+    "Erro reportado por Lucas: nova chamada gerou Track Egress COMPLETE para audio, mas RoomComposite Egress ABORTED.",
+    "LiveKit ListEgress confirmou erro 412 Start signal not received no RoomComposite EG_DkGNKgr3xiVz.",
+    "Vercel logs confirmaram GET /chronos/recording-view 200 no instante do Egress, indicando que a URL abriu e o problema era janela de captura do console.",
+    "Recorte corrige o template para emitir START_RECORDING em janelas repetidas e permite que a camada React reemita o sinal sem ser bloqueada pelo guard anterior.",
+    "git diff --name-only HEAD^ HEAD: somente apps/hub/app/chronos/recording-view/page.tsx e apps/hub/modules/chronos/ChronosRecordingViewPage.tsx.",
+    "npm.cmd exec --workspace @repo/hub -- eslint app/chronos/recording-view/page.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0.",
+    "git diff --check -- apps/hub/app/chronos/recording-view/page.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx.",
+    "npm.cmd run check-types --workspace @repo/hub.",
+    "npm.cmd run build --workspace @repo/hub.",
+    "node scripts/production-module-safety-gate.mjs --manifest .codex-deploy/chronos-egress-start-retry-prod-20260610-6ed798e/production-module-safety-gate.json: PASS, 2 mudancas detectadas.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_JAqpPw8dWJqUZ84CEpzgQqo82pZY apos alias.",
+    "GET https://c2x.app.br/chronos/recording-view: 200 com START_RECORDING, __chronosRecordingEmitStartSignal e __chronosRecordingStartSignalBooted.",
+    "GET https://c2x.app.br/chronos/careli: 200.",
+    "GET https://c2x.app.br/api/chronos/public/rooms/careli/egress: 405 esperado.",
+    "npx.cmd vercel logs https://careli-hub-hub-i2bs-mzyml1k30-lucasruas-devs-projects.vercel.app --since 10m --query chronos: sem 500/502, apenas respostas Chronos 200 e o acesso 200 ao recording-view."
+  ],
+  "notes": [
+    "Recorte nao altera envs, secrets, Supabase, banco, migrations, dominio adicional ou alias ops.c2x.app.br.",
+    "A raiz do repositorio permanecia suja com frentes paralelas fora de Chronos; a publicacao e a auditoria foram feitas por pacote base/candidate limpo gerado do commit do recorte.",
+    "A conclusao tecnica e que o erro especifico nao era chave S3/Supabase, pois o Track Egress de audio finalizou COMPLETE e gerou destino.",
+    "Rollback imediato: reapontar c2x.app.br para dpl_7LScsoFfijnxSNJZCV6m7t6s34KK se o proximo teste real ainda falhar por Start signal not received ou se algum healthcheck critico falhar.",
+    "A validacao funcional final ainda depende de Lucas iniciar uma chamada curta no Chronos, encerrar e confirmar RoomComposite COMPLETE no LiveKit e video no Drive."
+  ]
+}

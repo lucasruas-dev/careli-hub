@@ -3385,3 +3385,65 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_CspuLzPuZCJCP1UAT9uPr9ztZPip` se algum healthcheck critico ou validacao funcional Chronos falhar;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-10 - PROD-20260610-009-CHRONOS-EGRESS-START-SIGNAL-RETRY
+
+Status: EM PRODUCAO / HOTFIX MODULAR VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Retry do sinal START_RECORDING no RoomComposite Egress`.
+- Protocolo de origem: `OP-20260610-025-CHRONOS-EGRESS-START-SIGNAL-RETRY`.
+- Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
+- Data e hora local: `2026-06-10 08:01:58 -03:00`.
+- Autorizacao: Lucas reportou novo erro LiveKit e autorizou corrigir e subir se o deploy estivesse seguro.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK`;
+  - rollback imediato: `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK`;
+  - pacote base: `.codex-deploy/chronos-egress-start-retry-prod-20260610-6ed798e/base`;
+  - pacote candidato: `.codex-deploy/chronos-egress-start-retry-prod-20260610-6ed798e/candidate`;
+  - commit candidato: `6ed798e57a090b124b0cfc0ba8374714bccaf161`;
+  - arquivos sensiveis/locais excluidos da publicacao: `.env`, `.git`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Escopo publicado:
+  - `recording-view` agora emite `START_RECORDING` em uma sequencia curta de tentativas, em vez de depender de uma unica emissao no boot;
+  - o boot script expoe `window.__chronosRecordingEmitStartSignal` para a camada React reemitir o sinal quando a sala conectar ou quando o fallback de readiness disparar;
+  - o guard anterior deixou de impedir reemissoes uteis depois da primeira tentativa;
+  - `END_RECORDING` continua protegido contra duplicidade no encerramento da pagina.
+- Manifesto e Safety Gate:
+  - manifesto de producao: `docs/operations/production-module-safety-gate-chronos-20260610-009-egress-start-signal-retry.json`;
+  - `node scripts/production-module-safety-gate.mjs --manifest .codex-deploy/chronos-egress-start-retry-prod-20260610-6ed798e/production-module-safety-gate.json`: PASS, 2 mudancas detectadas.
+- Validacoes pre-publicacao:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/chronos/recording-view/page.tsx modules/chronos/ChronosRecordingViewPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check -- apps/hub/app/chronos/recording-view/page.tsx apps/hub/modules/chronos/ChronosRecordingViewPage.tsx`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT em rota SquadOps fora do recorte Chronos;
+  - `npx.cmd vercel inspect https://c2x.app.br`: confirmou `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK` Ready antes da publicacao;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: confirmou `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS` Ready e fora do escopo.
+- Publicacao:
+  - comando staged: `npx.cmd vercel deploy --prod --skip-domain --yes`, executado de dentro do pacote candidato limpo;
+  - deployment novo: `dpl_JAqpPw8dWJqUZ84CEpzgQqo82pZY`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-mzyml1k30-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_JAqpPw8dWJqUZ84CEpzgQqo82pZY`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`, preservado;
+  - `GET https://c2x.app.br/chronos/recording-view`: 200, contendo `START_RECORDING`, `__chronosRecordingEmitStartSignal` e `__chronosRecordingStartSignalBooted`;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `GET https://c2x.app.br/api/chronos/public/rooms/careli/egress`: 405 esperado para metodo GET;
+  - `npx.cmd vercel logs https://careli-hub-hub-i2bs-mzyml1k30-lucasruas-devs-projects.vercel.app --since 10m --query chronos`: sem 500/502, com respostas Chronos 200 no novo deployment.
+- Diagnostico tecnico:
+  - o Egress de audio por track ficou `COMPLETE`, comprovando que S3/credenciais nao eram a causa deste erro especifico;
+  - o RoomComposite abortou com `Start signal not received`, apesar de `GET /chronos/recording-view` retornar 200 no horario do Egress;
+  - a causa pratica era janela de timing do console signal no Chromium do LiveKit.
+- Escopo preservado:
+  - nenhuma env var, secret, token, chave Supabase/LiveKit, migration, banco, storage, dominio adicional ou alias `ops.c2x.app.br` foi alterado;
+  - nao houve operacao no dashboard LiveKit nem tentativa de recuperar Egress abortado antigo.
+- Limitacao conhecida:
+  - o proximo teste real deve confirmar se o RoomComposite passa para `COMPLETE` e se o Drive recebe o video.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK` se o proximo teste real ainda falhar por `Start signal not received` ou se algum healthcheck critico falhar;
+  - `https://ops.c2x.app.br`: manter em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
