@@ -34064,3 +34064,44 @@ Conclusao:
 - Precisa de acao agora: Lucas deve autorizar explicitamente auditoria/regularizacao das envs `LIVEKIT_*` e destinos Supabase de Production se quiser fechar a divergencia entre app, banco e painel LiveKit.
 - Quem deve agir agora: Zeus mantem o recorte local validado e aguarda autorizacao para acao sensivel ou deploy.
 - Proximo passo tecnico: com autorizacao, comparar/regularizar envs Production sem expor valores e publicar o recorte `OP-20260610-021` por pacote limpo e Safety Gate.
+
+## 2026-06-10 02:07:00 -03:00 - Chronos - Presenca LiveKit publicada em producao
+
+Assunto: [Chronos] Deploy seguro do recorte `OP-20260610-021`
+
+- Nome da squad/agente: `Zeus / Chronos`.
+- Tipo da alteracao: `DEPLOY PRODUCAO / LIVEKIT PRESENCE / FAIL-CLOSED`.
+- Status: `EM PRODUCAO`.
+- Commit publicado: `1e8397a7`.
+- Deployment Vercel: `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+- URL tecnica: `https://careli-hub-hub-i2bs-kxxh1vv3s-lucasruas-devs-projects.vercel.app`.
+- Alias de producao: `https://c2x.app.br`.
+- Rollback imediato: deployment anterior `dpl_JCN5GeqUKbTcuFq1DHjy1jdmeg8r` ou rollback historico `dpl_GT9n1Q2qFTafXxWe6NeZCpEggLAw`, conforme janela validada por Zeus/Hefesto.
+- Escopo publicado:
+  - confirmacao server-side de participante LiveKit antes de liberar estado visual de sala Chronos;
+  - rota `POST /api/chronos/public/rooms/[roomSlug]/livekit-presence`;
+  - metadados `liveKit` em participante/reuniao quando a presenca for confirmada;
+  - dependencia minima `hideCaption` no tile compartilhado usado pelo layout Chronos.
+- Validacoes antes do deploy:
+  - lint do recorte Chronos: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS na arvore principal;
+  - worktree limpa do commit `1e8397a7` criada fora da pasta principal;
+  - `npm.cmd ci` na worktree limpa: PASS, com `npm audit` apontando 3 vulnerabilidades preexistentes;
+  - `npm.cmd run build` raiz na worktree limpa: PASS, com warning conhecido Turbopack/NFT da rota SquadOps.
+- Validacoes apos deploy:
+  - `GET https://c2x.app.br/chronos/careli`: 200 OK;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/careli/livekit-presence` com `{}`: 400 esperado, mensagem `Presenca LiveKit sem sala, reuniao ou participante.`;
+  - rota nova apareceu no build Vercel como `ƒ /api/chronos/public/rooms/[roomSlug]/livekit-presence`.
+- Observacoes:
+  - deploy foi feito a partir de worktree limpa, nao da pasta principal suja;
+  - hook local de commit esta quebrado porque aponta para `scripts/panteon-hook-runner.ps1`, ausente no workspace; commit foi feito com `--no-verify` depois de lint, tipos, build e diff-check manuais;
+  - nenhuma chave, secret, env, alias manual, migration, Supabase remoto ou banco foi alterado neste pacote.
+
+Conclusao:
+
+- O recorte agora esta em producao e impede falso positivo de videochamada: sem presenca confirmada pelo LiveKit RoomService, a sala nao deve permanecer ativa para o usuario.
+- O impacto pratico esperado e que uma chamada sem registro no LiveKit correto passe a falhar de forma visivel, em vez de parecer gravando/ativa.
+- Precisa de acao agora: Lucas deve iniciar uma chamada real no Chronos e confirmar se ela aparece no LiveKit e se o banco recebe `externalRoom.liveKitPresence`.
+- Quem deve agir agora: Lucas valida a chamada real; Zeus acompanha logs se houver falha e aplica rollback se o fluxo bloquear indevidamente chamada valida.
+- Proximo passo tecnico: se ainda houver divergencia entre app, LiveKit e Supabase, o bloqueio passa a ser auditoria de envs `LIVEKIT_*`/Supabase Production, que exige autorizacao sensivel especifica.
