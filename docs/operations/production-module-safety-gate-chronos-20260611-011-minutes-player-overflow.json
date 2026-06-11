@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "OP-20260611-011-CHRONOS-MINUTES-PLAYER-OVERFLOW",
+  "module": "chronos",
+  "agent": "Zeus",
+  "title": "Drive Chronos abre Ata filtrada, player interno e transcricao formatada",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8",
+  "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+  "candidateProductionDeploymentId": "",
+  "candidateProductionUrl": "",
+  "candidateSourceCommit": "06c8131",
+  "sourceWorktreeClean": true,
+  "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-minutes-player-overflow-prod-20260611-1820/base",
+  "candidatePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-minutes-player-overflow-prod-20260611-1820/candidate-gate",
+  "candidateDeployPackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-minutes-player-overflow-prod-20260611-1820/candidate",
+  "rollbackDeploymentId": "dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8",
+  "allowedChangedPaths": [
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-item-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+    "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-011-minutes-player-overflow.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-011-minutes-player-overflow.json"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/zeus/**",
+    "apps/hub/lib/squadops/**",
+    "apps/hub/app/atlas/**",
+    "apps/hub/modules/atlas/**",
+    "apps/hub/app/setup/**"
+  ],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/app/api/chronos/meetings/agent/route.ts",
+      "includes": [
+        "syncChronosWherebyTranscriptForMinutes",
+        "buildChronosTranscriptTextForResponse",
+        "isChronosWherebyRecording",
+        "A transcricao Whereby desta gravacao ainda esta em processamento"
+      ]
+    },
+    {
+      "path": "apps/hub/lib/chronos/server.ts",
+      "includes": [
+        "syncChronosWherebyArtifactsForMeeting",
+        "force = false",
+        "force,"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx",
+      "includes": [
+        "setPlayerOpen(true)",
+        "role=\"dialog\"",
+        "Transcricao em sincronizacao",
+        "<video",
+        "Ata"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/chronos/components/chronos-drive-item-card.tsx",
+      "includes": [
+        "[-webkit-line-clamp:2]",
+        "[overflow-wrap:anywhere]",
+        "min-w-0"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+      "includes": [
+        "focusedMinutesMeetingId",
+        "setRoomFilter(\"all\")",
+        "Ver todas",
+        "md:grid-cols-2",
+        "min-w-0"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+      "includes": [
+        "ChronosMinutesView = \"preview\" | \"transcript\" | \"edit\"",
+        "ChronosTranscriptFormattedPreview",
+        "Transcricao formatada",
+        "MessageSquareText"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+      "includes": [
+        "localRecordings = useMemo<LocalRecording[]>(() => [], [])",
+        "onTranscribeExistingRecording={handleTranscribeExistingRecording}"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx",
+      "includes": [
+        "Transcrever e gerar ata",
+        "Ver transcricao",
+        "onTranscribeRecording"
+      ]
+    }
+  ],
+  "validations": [
+    "git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/app/api/chronos/meetings/agent/route.ts apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx apps/hub/modules/chronos/components/chronos-drive-item-card.tsx apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx: PASS, com avisos esperados de LF para CRLF.",
+    "npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts lib/chronos/server.ts modules/chronos/components/chronos-drive-recording-card.tsx modules/chronos/components/chronos-drive-item-card.tsx modules/chronos/components/chronos-drive-library-screen.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "git diff --check -- apps/hub/modules/chronos/ChronosPage.tsx apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx apps/hub/modules/chronos/components/chronos-minutes-panel.tsx: PASS, com avisos esperados de LF para CRLF.",
+    "npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-drive-recording-card.tsx modules/chronos/components/chronos-drive-library-screen.tsx modules/chronos/components/chronos-minutes-panel.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+  ],
+  "notes": [
+    "Este pacote altera somente Chronos Drive, endpoint agent de Chronos e registro operacional.",
+    "A correcao evita enviar video Whereby grande para OpenAI quando a transcricao Whereby ainda pode ser sincronizada.",
+    "A tela de Gravacoes nao exibe mais acao de transcricao; Ata abre o painel de Atas filtrado para a reuniao selecionada.",
+    "O painel de Atas agora oferece a visualizacao Transcricao para leitura formatada dos segmentos sincronizados.",
+    "O player interno depende de o navegador conseguir reproduzir a URL assinada retornada pelo provider; se o header remoto for attachment, o download separado continua disponivel.",
+    "Nenhuma escrita direta em Supabase, migration, env, secret, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br entra no escopo."
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "protocolId": "OP-20260611-011-CHRONOS-MINUTES-PLAYER-OVERFLOW",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-11T18:20:11-03:00",
+  "status": "VALIDADO_LOCAL / AGUARDANDO_PUBLICACAO",
+  "summary": "Corrige o pos-clique do Drive Chronos: Gravações ficam com Ata, Assistir e Baixar; Ata abre a aba de Atas filtrada pela reunião; Atas exibe transcrição formatada; e a geração de ata usa transcrição Whereby antes de qualquer tentativa OpenAI.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Apos OP-010, as gravacoes Whereby apareceram no Drive, mas gerar ata caiu no limite de 25 MB da OpenAI, o botao Assistir baixava o arquivo, cards de Atas quebravam com titulos longos e Lucas pediu que a tela de Gravacoes removesse a acao de transcricao.",
+    "deployment": "Pendente; somente apos safety gate e publicacao controlada em c2x.app.br. Rollback esperado para dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8."
+  },
+  "diagnosis": [
+    "O Drive passou a listar as reunioes Whereby de 11/06 depois do OP-010.",
+    "Ao clicar em Transcrever e gerar ata, o fluxo retornou Arquivo maior que 25 MB, indicando tentativa de transcricao OpenAI do arquivo grande.",
+    "Lucas ajustou o comportamento esperado: na tela de Gravacoes devem existir apenas Ata, Assistir e Baixar.",
+    "O clique em Ata deve abrir a aba de Atas filtrada para a reuniao daquele video.",
+    "O painel de Atas deve oferecer visualizacao da transcricao formatada no proprio contexto da ata.",
+    "Gravacoes Whereby podem ter transcricao oficial propria, entao o fluxo de ata deve sincronizar e usar estes segmentos antes de recorrer a audio OpenAI.",
+    "O botao Assistir usava o link direto da gravacao, que em alguns responses do Whereby/S3 chega com header de download e baixa o arquivo no navegador.",
+    "A grade de Atas permitia tres colunas em larguras onde o painel lateral consumia espaco, e titulos longos nao tinham clamp suficiente."
+  ],
+  "decisions": [
+    "Adicionar syncChronosWherebyArtifactsForMeeting com opcao force para sincronizar artefatos de uma meeting especifica antes da ata.",
+    "Alterar transcribe_existing_recording para tentar transcricao Whereby e gerar rascunho de ata a partir dos segmentos ja sincronizados.",
+    "Nao tentar transcrever video Whereby grande pela OpenAI quando a transcricao Whereby ainda nao estiver pronta; retornar mensagem operacional de processamento.",
+    "Trocar Assistir para modal com video HTML5 dentro do Chronos, preservando Baixar como acao separada.",
+    "Remover a acao de transcrever da tela de Gravacoes; a transcricao/geracao passa a viver no painel de Atas.",
+    "Adicionar foco de reuniao ao abrir Ata a partir de Gravacoes, com opcao Ver todas na aba Atas.",
+    "Adicionar visualizacao Transcricao no painel de Ata para mostrar a transcricao formatada.",
+    "Aplicar min-width, line clamp e grid mais conservador nos cards de Atas para evitar overflow visual.",
+    "Nao alterar Supabase schema, migrations, envs, secrets, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br."
+  ],
+  "changedFiles": [
+    "apps/hub/modules/chronos/ChronosPage.tsx",
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-item-card.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+    "apps/hub/modules/chronos/components/chronos-minutes-panel.tsx",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-011-minutes-player-overflow.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-011-minutes-player-overflow.json"
+  ],
+  "validations": [
+    "git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/app/api/chronos/meetings/agent/route.ts apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx apps/hub/modules/chronos/components/chronos-drive-item-card.tsx apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx: PASS, com avisos esperados de LF para CRLF.",
+    "npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts lib/chronos/server.ts modules/chronos/components/chronos-drive-recording-card.tsx modules/chronos/components/chronos-drive-item-card.tsx modules/chronos/components/chronos-drive-library-screen.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "git diff --check -- apps/hub/modules/chronos/ChronosPage.tsx apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx apps/hub/modules/chronos/components/chronos-minutes-panel.tsx: PASS, com avisos esperados de LF para CRLF.",
+    "npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-drive-recording-card.tsx modules/chronos/components/chronos-drive-library-screen.tsx modules/chronos/components/chronos-minutes-panel.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+  ],
+  "rollback": [
+    "Reverter apps/hub/app/api/chronos/meetings/agent/route.ts, apps/hub/lib/chronos/server.ts, ChronosPage.tsx e os componentes de Drive/Atas Chronos ao estado anterior ao OP-011.",
+    "Se publicado e houver regressao critica, reapontar c2x.app.br para dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8."
+  ],
+  "nextSteps": [
+    "Rodar Production Module Safety Gate comparando OP-010 contra OP-011.",
+    "Publicar o recorte no projeto Vercel careli-hub-hub-i2bs somente se o gate passar.",
+    "Validar /chronos em candidate e em c2x.app.br.",
+    "Lucas atualizar o Drive e testar Ata, Assistir, Baixar e a aba Transcricao dentro do painel de Atas."
+  ]
+}
