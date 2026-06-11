@@ -3,12 +3,12 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-11T19:09:21-03:00",
-  "status": "VALIDADO_LOCAL / AGUARDANDO_PUBLICACAO",
+  "status": "EM_PRODUCAO / AGUARDANDO_VALIDACAO_VISUAL_DO_LUCAS",
   "summary": "Hotfix do fluxo de Ata: apos sincronizar Whereby, o agent recarrega diretamente chronos_transcript_segments da reuniao antes de decidir que a transcricao ainda esta em processamento.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Lucas clicou em Transcrever e gerar ata em CHR-005959; a UI mostrou transcricao vazia, enquanto o diagnostico publico confirmou 1 segmento salvo no banco.",
-    "deployment": "Pendente; rollback esperado para dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7."
+    "deployment": "Publicado em c2x.app.br no deployment dpl_3nn79exgh9km3rfCd25UE48gX4cX; rollback para dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7."
   },
   "diagnosis": [
     "Log de producao do OP-011 mostrou sync Whereby para CHR-005959 com transcriptSegmentCount 1 e transcriptionCount 1.",
@@ -33,7 +33,14 @@
     "npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
     "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
-    "POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-sync para CHR-005959: PASS 200; log confirmou transcriptSegments 1."
+    "POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-sync para CHR-005959: PASS 200; log confirmou transcriptSegments 1.",
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes: PASS, Ready em dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
+    "GET https://careli-hub-hub-i2bs-670yzsb11-lucasruas-devs-projects.vercel.app/chronos: PASS 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-670yzsb11-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: PASS 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "rollback": [
     "Reverter apps/hub/app/api/chronos/meetings/agent/route.ts ao estado anterior ao OP-012.",
@@ -42,6 +49,7 @@
   "nextSteps": [
     "Rodar Production Module Safety Gate.",
     "Publicar o hotfix se o gate passar.",
-    "Lucas atualizar o Drive e clicar novamente em Transcrever e gerar ata na reunião CHR-005959."
+    "Lucas atualizar o Drive e clicar novamente em Transcrever e gerar ata na reunião CHR-005959.",
+    "Zeus ler logs de transcribe_existing_recording se ainda houver erro visual."
   ]
 }

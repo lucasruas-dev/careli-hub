@@ -36325,3 +36325,33 @@ Conclusao:
 - Precisa de acao agora: Zeus deve rodar safety gate e publicar o OP-012.
 - Quem deve agir agora: Zeus publica; Lucas testa novamente depois do aviso.
 - Proximo passo: publicar OP-012 e Lucas clicar de novo em `Transcrever e gerar ata`.
+
+### Complemento 2026-06-11 19:14:00 -03:00 - OP-012 publicado em c2x.app.br
+
+- Status atualizado: `EM PRODUCAO / AGUARDANDO_VALIDACAO_VISUAL_DO_LUCAS`.
+- Protocolo: `OP-20260611-012-CHRONOS-WHEREBY-TRANSCRIPT-DIRECT-RELOAD`.
+- Deploy:
+  - `Production Module Safety Gate`: PASS, 4 mudancas detectadas;
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`: PASS;
+  - deployment: `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - URL candidate: `https://careli-hub-hub-i2bs-670yzsb11-lucasruas-devs-projects.vercel.app`;
+  - `c2x.app.br` aponta para `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - `ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes de producao:
+  - `GET https://careli-hub-hub-i2bs-670yzsb11-lucasruas-devs-projects.vercel.app/chronos`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Risco residual:
+  - a validacao funcional final depende do clique autenticado do Lucas em `Transcrever e gerar ata`;
+  - se ainda falhar, Zeus deve ler os logs do action `transcribe_existing_recording` no deployment `dpl_3nn79exgh9km3rfCd25UE48gX4cX`.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7`.
+
+Conclusao:
+
+- O que aconteceu: o hotfix que recarrega diretamente os segmentos Whereby apos sync foi publicado em producao.
+- Impacto pratico: o botao `Transcrever e gerar ata` deve encontrar o segmento ja salvo de `CHR-005959` e seguir para gerar ata.
+- Precisa de acao agora: Lucas deve atualizar a tela e clicar novamente em `Transcrever e gerar ata`.
+- Quem deve agir agora: Lucas valida visualmente; Zeus monitora logs se houver erro.
+- Proximo passo: confirmar se a aba `Transcricao` passa a mostrar o trecho e se a ata e gerada.

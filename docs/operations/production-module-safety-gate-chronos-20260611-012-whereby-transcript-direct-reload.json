@@ -8,8 +8,8 @@
   "expectedProjectName": "careli-hub-hub-i2bs",
   "currentProductionDeploymentId": "dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "",
-  "candidateProductionUrl": "",
+  "candidateProductionDeploymentId": "dpl_3nn79exgh9km3rfCd25UE48gX4cX",
+  "candidateProductionUrl": "https://careli-hub-hub-i2bs-670yzsb11-lucasruas-devs-projects.vercel.app",
   "candidateSourceCommit": "56536dd",
   "sourceWorktreeClean": true,
   "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-transcript-direct-reload-prod-20260611-1909/base",
@@ -61,7 +61,14 @@
     "npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
     "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
-    "POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-sync para CHR-005959: PASS 200; log confirmou transcriptSegments 1."
+    "POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-sync para CHR-005959: PASS 200; log confirmou transcriptSegments 1.",
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes: PASS, Ready em dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
+    "GET https://careli-hub-hub-i2bs-670yzsb11-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-670yzsb11-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "notes": [
     "Este pacote altera somente o endpoint agent de Chronos e registros operacionais.",
