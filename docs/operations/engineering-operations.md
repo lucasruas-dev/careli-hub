@@ -35999,3 +35999,41 @@ Conclusao:
 - Precisa de acao agora: Zeus publica este hotfix e Lucas atualiza novamente o Drive.
 - Quem deve agir agora: Zeus publica/valida; Lucas testa visualmente.
 - Proximo passo tecnico: se ainda faltar `Operacao`, fazer backfill focado no meetingId correto de `/careli-operacaomg7634`.
+
+### Complemento 2026-06-11 15:39:02 -03:00 - visibilidade Whereby publicada em producao
+
+- Status atualizado: `EM PRODUCAO / AGUARDANDO VALIDACAO VISUAL DO LUCAS`.
+- Protocolo: `OP-20260611-007-CHRONOS-WHEREBY-SNAPSHOT-VISIBILITY`.
+- Commit funcional: `23f934f`.
+- Deployment anterior de `c2x.app.br`: `dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix`.
+- Deployment novo de `c2x.app.br`: `dpl_2Zyk1M2no2oswM3W8Ad7JY84i5wY`.
+- URL tecnica: `https://careli-hub-hub-i2bs-ei8v5pcvb-lucasruas-devs-projects.vercel.app`.
+- Alias movido: `https://c2x.app.br`.
+- Alias preservado: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `git diff --check -- apps/hub/lib/chronos/server.ts`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos fora do recorte Chronos;
+  - `Production Module Safety Gate`: PASS, 4 mudancas detectadas;
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes`: PASS, `READY`;
+  - `GET` URL tecnica `/chronos` e `/chronos/careli`: 200;
+  - `npx.cmd vercel alias set ... c2x.app.br`: SUCCESS;
+  - `GET https://c2x.app.br/chronos` e `/chronos/careli`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_2Zyk1M2no2oswM3W8Ad7JY84i5wY`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync`: 200, `recordingCount: 2`, `transcriptionCount: 2`, `transcriptSegmentCount: 139`.
+- Fora do escopo:
+  - nenhum backfill direto em banco/Supabase foi executado;
+  - nenhuma env, secret, migration, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br` foi alterado.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix`;
+  - `ops.c2x.app.br` nao precisa de rollback neste pacote.
+
+Conclusao:
+
+- O hotfix que libera meetings Whereby/gravadas no snapshot esta em producao.
+- O impacto pratico esperado e que a pasta `Lideranca` passe a listar as reunioes de hoje ja sincronizadas.
+- Precisa de acao agora: Lucas deve atualizar o Drive Chronos novamente.
+- Quem deve agir agora: Lucas valida visualmente; Zeus monitora e, se ainda faltar `Operacao`, segue para backfill focado.
+- Proximo passo tecnico: caso a tela ainda nao mude, a proxima etapa nao e mais deploy generico; e diagnostico direto do payload autenticado ou backfill no Supabase real de producao.

@@ -3,12 +3,12 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-11T15:30:29-03:00",
-  "status": "VALIDADO_LOCAL_AGUARDANDO_PUBLICACAO",
+  "status": "EM_PRODUCAO_AGUARDANDO_VALIDACAO_VISUAL_LUCAS",
   "summary": "Corrige a visibilidade do snapshot para nao esconder reunioes Google/Chronos que ja possuem sala Whereby ou artefatos de gravacao/transcricao.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Drive Chronos ainda mostra apenas reuniao antiga mesmo com Whereby sync confirmando duas gravacoes e duas transcricoes para Lideranca.",
-    "deployment": "Lucas autorizou subir os hotfixes Chronos deste incidente; rollback sera registrado no gate."
+    "deployment": "Lucas autorizou subir os hotfixes Chronos deste incidente; publicado em c2x.app.br no deployment dpl_2Zyk1M2no2oswM3W8Ad7JY84i5wY, com rollback para dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix."
   },
   "diagnosis": [
     "O runtime confirmou /careli-liderancaaqrnsv com recordingCount 2, transcriptionCount 2 e transcriptSegmentCount 139.",
@@ -32,7 +32,11 @@
     "npm.cmd run check-types:hub: PASS.",
     "git diff --check -- apps/hub/lib/chronos/server.ts: PASS.",
     "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
-    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos."
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos.",
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes: PASS, Ready em dpl_2Zyk1M2no2oswM3W8Ad7JY84i5wY.",
+    "GET https://c2x.app.br/chronos e /chronos/careli: PASS 200.",
+    "POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync: PASS, recordingCount 2, transcriptionCount 2, transcriptSegmentCount 139."
   ],
   "rollback": [
     "Reverter apps/hub/lib/chronos/server.ts ao estado anterior ao protocolo OP-20260611-007.",
