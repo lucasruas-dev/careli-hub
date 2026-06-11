@@ -35826,3 +35826,44 @@ Conclusao:
 - Precisa de acao agora: sim, publicar este complemento e validar novamente logs/Drive.
 - Quem deve agir agora: Zeus publica e monitora; Lucas valida a pasta `Lideranca` e depois a sala de `Operacao` se ela aparecer no Drive.
 - Proximo passo tecnico: publicar o complemento, abrir o Drive e observar se o log muda de `sync skipped complete` para `sync completed` com contagens atualizadas.
+
+### Complemento 2026-06-11 13:37:38 -03:00 - recheck recente publicado e Lideranca sincronizada
+
+- Status atualizado: `EM PRODUCAO / LIDERANCA RECONCILIADA / OPERACAO PENDENTE DE CONFIRMACAO`.
+- Protocolo: `OP-20260611-005-CHRONOS-WHEREBY-MULTI-RECORDING-TRANSCRIPTION-SYNC`.
+- Deployment anterior de `c2x.app.br`: `dpl_8eBSjRHQThs6RSi5dECH72bogpCi`.
+- Deployment novo de `c2x.app.br`: `dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE`.
+- URL tecnica: `https://careli-hub-hub-i2bs-ozbesmifm-lucasruas-devs-projects.vercel.app`.
+- Alias movido: `https://c2x.app.br`.
+- Alias preservado: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - `git diff --check -- apps/hub/lib/chronos/server.ts`: PASS;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos fora do recorte Chronos;
+  - `Production Module Safety Gate`: PASS, 3 mudancas detectadas;
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes`: PASS, `READY`;
+  - `GET` URL tecnica `/chronos` e `/chronos/careli`: 200;
+  - `npx.cmd vercel alias set ... c2x.app.br`: SUCCESS;
+  - `GET https://c2x.app.br/chronos` e `/chronos/careli`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Resultado pos-publicacao:
+  - `POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync` para o meeting `e1c52323-ed0f-4cca-a795-8bb57d1e4389`: 200;
+  - retorno confirmado: `recordingCount: 2`, `transcriptSegmentCount: 65`, `transcriptionCount: 1`, `roomName: /careli-liderancaaqrnsv`;
+  - logs confirmaram `Whereby artifact sync completed` para Lideranca e, na repeticao imediata, `syncSkipped: recent`, como esperado pelo throttle;
+  - rota `/chronos/operacao`: 200, mas logs nao expuseram `meetingId` nem `whereby-sync` para `/careli-operacaomg7634`.
+- Fora do escopo:
+  - nenhum backfill direto de banco, Supabase, env, secret ou migration foi executado;
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br`.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_8eBSjRHQThs6RSi5dECH72bogpCi`;
+  - `ops.c2x.app.br` nao precisa de rollback neste pacote.
+
+Conclusao:
+
+- Lucas nao estava fazendo nada errado; o problema estava no servidor pulando sala Whereby recente como `complete`.
+- O impacto pratico confirmado e que Lideranca agora reconciliou 2 gravacoes e 65 segmentos de transcricao no runtime de producao.
+- Precisa de acao agora: Lucas deve clicar na pasta `Lideranca` no Drive Chronos e atualizar; se a gravacao de `Operacao` nao aparecer, Zeus deve executar backfill assistido especifico para `/careli-operacaomg7634`.
+- Quem deve agir agora: Lucas valida a pasta `Lideranca`; Zeus fica pronto para backfill de `Operacao` se ainda faltar.
+- Proximo passo tecnico: se `Operacao` continuar ausente, localizar/criar vinculo seguro do roomName `/careli-operacaomg7634` com a meeting Chronos correta sem expor secrets.
