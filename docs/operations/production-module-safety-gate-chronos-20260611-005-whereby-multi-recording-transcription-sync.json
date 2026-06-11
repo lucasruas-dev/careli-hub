@@ -3,19 +3,19 @@
   "protocolId": "OP-20260611-005-CHRONOS-WHEREBY-MULTI-RECORDING-TRANSCRIPTION-SYNC",
   "module": "chronos",
   "agent": "Zeus",
-  "title": "Sync de varias gravacoes Whereby no mesmo roomName com transcricao por recordingId",
+  "title": "Sync de varias gravacoes Whereby no mesmo roomName com recheck de sala recente",
   "domain": "https://c2x.app.br",
   "expectedProjectName": "careli-hub-hub-i2bs",
-  "currentProductionDeploymentId": "dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp",
+  "currentProductionDeploymentId": "dpl_8eBSjRHQThs6RSi5dECH72bogpCi",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "dpl_8eBSjRHQThs6RSi5dECH72bogpCi",
-  "candidateProductionUrl": "https://careli-hub-hub-i2bs-qdx9gun8g-lucasruas-devs-projects.vercel.app",
-  "candidateSourceCommit": "8f36fcba57dc998b5de09c94b950473313467c72",
+  "candidateProductionDeploymentId": "PENDING_DEPLOY",
+  "candidateProductionUrl": "PENDING_DEPLOY",
+  "candidateSourceCommit": "0a8f9817c77271a7b8e31b6a2a1525f9df95aeca",
   "sourceWorktreeClean": true,
-  "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-multi-recording-prod-20260611-125425/base",
-  "candidatePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-multi-recording-prod-20260611-125425/candidate-gate",
-  "candidateDeployPackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-multi-recording-prod-20260611-125425/candidate",
-  "rollbackDeploymentId": "dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp",
+  "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-recent-recheck-prod-20260611-1330/base",
+  "candidatePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-recent-recheck-prod-20260611-1330/candidate-gate",
+  "candidateDeployPackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-recent-recheck-prod-20260611-1330/candidate",
+  "rollbackDeploymentId": "dpl_8eBSjRHQThs6RSi5dECH72bogpCi",
   "allowedChangedPaths": [
     "apps/hub/lib/chronos/server.ts",
     "apps/hub/lib/chronos/whereby.ts",
@@ -56,11 +56,10 @@
     {
       "path": "apps/hub/lib/chronos/server.ts",
       "includes": [
+        "chronosWherebyCompleteRecheckWindowMs",
         "isChronosWherebyArtifactSyncComplete",
-        "recordingCount > 0",
-        "transcriptionRequired === false || transcriptSegmentCount > 0",
-        "activeTranscriptions",
-        "transcriptionRecordingIds"
+        "Date.now() - referenceTime.getTime()",
+        "return false"
       ]
     },
     {
@@ -73,9 +72,9 @@
     }
   ],
   "validations": [
-    "git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/lib/chronos/whereby.ts: PASS, apenas avisos CRLF esperados no Windows.",
+    "git diff --check -- apps/hub/lib/chronos/server.ts: PASS, apenas avisos CRLF esperados no Windows.",
     "npm.cmd run check-types:hub: PASS.",
-    "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
     "node -e JSON.parse(...manifest...): PASS.",
     "git commit --no-verify -m \"fix chronos whereby multi recording sync\": PASS; hook local padrao falhou antes por ausencia de scripts/panteon-hook-runner.ps1 neste worktree, e por isso foi ignorado apos validacoes manuais.",
@@ -91,9 +90,9 @@
     "npx.cmd vercel logs ... --query chronos --expand: 4 logs info dos healthchecks, sem warning/erro novo."
   ],
   "notes": [
-    "Lucas autorizou subir este hotfix em 2026-06-11.",
-    "O problema reportado envolve 3 gravacoes Whereby de 2026-06-11 visiveis no Dashboard Whereby e ausentes no Drive Chronos/transcricao.",
-    "O recorte impede falsa conclusao de sync sem contagem real de gravacao/transcricao e solicita transcricao por gravacao, nao por sala inteira.",
+    "Lucas validou apos F5 que a tela ainda nao mostrava as gravacoes de hoje.",
+    "Logs do deployment anterior mostraram Whereby artifact sync skipped com reason complete para a sala recente /careli-liderancaaqrnsv.",
+    "O complemento impede complete definitivo em salas/reunioes Whereby recentes por 24h, mantendo throttle/backoff para proteger a API.",
     "Nenhuma env, secret, migration, banco, Supabase schema, Agenda, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br entra no escopo.",
     "Rollback imediato: reapontar c2x.app.br para dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp se houver regressao critica.",
     "Backfill real nao foi executado neste deploy porque depende de Supabase/Whereby de producao correto; o proximo gatilho seguro e abrir o Drive Chronos autenticado ou autorizar execucao assistida em ambiente com envs corretas."
