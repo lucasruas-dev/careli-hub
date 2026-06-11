@@ -36255,3 +36255,34 @@ Conclusao:
 - Precisa de acao agora: Zeus deve rodar safety gate, publicar o pacote e validar `/chronos`.
 - Quem deve agir agora: Zeus publica e monitora; Lucas atualiza a tela quando Zeus avisar.
 - Proximo passo: publicar OP-011 e Lucas testar `Ata`, `Assistir`, `Baixar` e a visualizacao `Transcricao` no painel de Atas.
+
+### Complemento 2026-06-11 18:48:53 -03:00 - OP-011 publicado em c2x.app.br
+
+- Status atualizado: `EM PRODUCAO / AGUARDANDO_VALIDACAO_VISUAL_DO_LUCAS`.
+- Protocolo: `OP-20260611-011-CHRONOS-MINUTES-PLAYER-OVERFLOW`.
+- Deploy:
+  - `Production Module Safety Gate`: PASS, 10 mudancas detectadas;
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`: PASS;
+  - deployment: `dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7`;
+  - URL candidate: `https://careli-hub-hub-i2bs-ad1ymevyg-lucasruas-devs-projects.vercel.app`;
+  - `c2x.app.br` aponta para `dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7`;
+  - `ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes de producao:
+  - `GET https://careli-hub-hub-i2bs-ad1ymevyg-lucasruas-devs-projects.vercel.app/chronos`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Risco residual:
+  - a validacao visual autenticada depende de Lucas atualizar o Chronos e clicar em `Ata`, `Assistir`, `Baixar` e `Transcricao`;
+  - se `Assistir` ainda baixar em algum arquivo especifico, a causa provavel passa a ser header remoto da URL assinada; a acao `Baixar` permanece como fallback explicito;
+  - se a transcricao Whereby ainda estiver processando, a tela deve orientar aguardar sincronizacao em vez de tentar enviar video grande para OpenAI.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8`.
+
+Conclusao:
+
+- O que aconteceu: o pacote OP-011 foi publicado no dominio final do Panteon.
+- Impacto pratico: Gravacoes agora deve operar como atalho limpo para `Ata`, `Assistir` e `Baixar`, com a leitura formatada da transcricao dentro de Atas.
+- Precisa de acao agora: Lucas deve atualizar a tela e testar os tres botoes da gravacao e a aba `Transcricao` no painel de Atas.
+- Quem deve agir agora: Lucas valida visualmente; Zeus monitora logs se aparecer erro no clique de Ata.
+- Proximo passo: se Lucas confirmar, fechar o incidente Chronos Drive/Atas; se algum clique ainda falhar, corrigir pelo log real do OP-011.

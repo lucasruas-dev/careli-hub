@@ -8,8 +8,8 @@
   "expectedProjectName": "careli-hub-hub-i2bs",
   "currentProductionDeploymentId": "dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "",
-  "candidateProductionUrl": "",
+  "candidateProductionDeploymentId": "dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7",
+  "candidateProductionUrl": "https://careli-hub-hub-i2bs-ad1ymevyg-lucasruas-devs-projects.vercel.app",
   "candidateSourceCommit": "06c8131",
   "sourceWorktreeClean": true,
   "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-minutes-player-overflow-prod-20260611-1820/base",
@@ -130,7 +130,14 @@
     "git diff --check -- apps/hub/modules/chronos/ChronosPage.tsx apps/hub/modules/chronos/components/chronos-drive-recording-card.tsx apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx apps/hub/modules/chronos/components/chronos-minutes-panel.tsx: PASS, com avisos esperados de LF para CRLF.",
     "npm.cmd exec --workspace @repo/hub -- eslint modules/chronos/ChronosPage.tsx modules/chronos/components/chronos-drive-recording-card.tsx modules/chronos/components/chronos-drive-library-screen.tsx modules/chronos/components/chronos-minutes-panel.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
     "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
-    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
+    "Production Module Safety Gate: PASS, 10 mudancas detectadas.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes: PASS, Ready em dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7.",
+    "GET https://careli-hub-hub-i2bs-ad1ymevyg-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-ad1ymevyg-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "notes": [
     "Este pacote altera somente Chronos Drive, endpoint agent de Chronos e registro operacional.",
