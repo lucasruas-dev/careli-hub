@@ -3,12 +3,29 @@
   "module": "Home / Panteon",
   "owner": "Zeus / Home",
   "createdAt": "2026-06-11T20:21:05-03:00",
-  "status": "VALIDADO_LOCAL / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS",
+  "status": "PREVIEW_PUBLICADO / PRODUCAO_INTACTA / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS",
   "summary": "Nova visao estrategica admin-only de disponibilidade na Home, com regra de ausencia apos 3 minutos, logout automatico apos 5 minutos e excecao automatica para reunioes Chronos em andamento.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Lucas solicitou uma aba macro para admins acompanharem disponibilidade, produtividade e historico completo de acesso/status, alem de atualizar a regra atual de 10 minutos para ausencia em 3 minutos e logout em 5 minutos.",
-    "deployment": "Nao autorizado nem executado neste recorte; validacao local concluida."
+    "deployment": "Lucas autorizou subir com seguranca sem alterar producao; publicado apenas Preview tecnico, sem --prod e sem alias."
+  },
+  "deployment": {
+    "publishedAt": "2026-06-11T20:41:11-03:00",
+    "commit": "8c9f8ad",
+    "deploymentId": "dpl_2k48EuLxgybr4toMKJnHgbVYQ981",
+    "previewUrl": "https://careli-hub-hub-i2bs-oxlwts238-lucasruas-devs-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/2k48EuLxgybr4toMKJnHgbVYQ981",
+    "target": "preview",
+    "package": "git archive do commit 8c9f8ad expandido fora do repositorio principal em pasta temporaria",
+    "discardedDeployment": {
+      "deploymentId": "dpl_Fc9K8PGPYadjinLTvwyPp8Vu2jAd",
+      "reason": "Descartado porque o build remoto mostrou rotas fora do pacote limpo, indicando risco de contexto misturado do repositorio principal; nao houve alias nem producao."
+    },
+    "productionAfterDeploy": {
+      "c2x.app.br": "dpl_3nn79exgh9km3rfCd25UE48gX4cX",
+      "ops.c2x.app.br": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
+    }
   },
   "decisions": [
     "Manter a Home como painel macro e operacional, sem redesign estrutural da tela principal.",
@@ -37,7 +54,12 @@
     "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.",
     "git diff --check -- arquivos do recorte Home/presenca: PASS, com avisos esperados de LF para CRLF.",
-    "Browser local em http://localhost:3001/: PASS sem erros de console; redirecionou para /login por ausencia de sessao autenticada neste ambiente."
+    "Browser local em http://localhost:3001/: PASS sem erros de console; redirecionou para /login por ausencia de sessao autenticada neste ambiente.",
+    "Safety gate manual: PASS, arquivos restritos a Home/presenca/docs; nenhum env, secret, migration, schema, banco, alias ou dominio.",
+    "npx.cmd vercel deploy --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes em pacote limpo por git archive: PASS, Ready em dpl_2k48EuLxgybr4toMKJnHgbVYQ981, target preview.",
+    "GET https://careli-hub-hub-i2bs-oxlwts238-lucasruas-devs-projects.vercel.app/login: PASS 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready preservado em dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "risks": [
     "A validacao visual completa da aba Disponibilidade depende de sessao autenticada admin do Lucas.",

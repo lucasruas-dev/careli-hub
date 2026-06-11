@@ -36393,3 +36393,41 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar visualmente com usuario admin autenticado antes de qualquer publicacao.
 - Quem deve agir agora: Lucas valida a Home; Zeus prepara Preview/Homologacao somente se Lucas autorizar.
 - Proximo passo: testar a aba `Disponibilidade`, o painel `Meu dia` e uma reuniao Chronos ativa para confirmar a excecao de status `reuniao`.
+
+### Complemento 2026-06-11 20:41:11 -03:00 - OP-013 Preview seguro publicado sem alterar producao
+
+- Status atualizado: `PREVIEW_PUBLICADO / PRODUCAO_INTACTA / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Commit local do recorte: `8c9f8ad` (`feat(home): add availability strategy panel`).
+- Safety gate executado:
+  - worktree do recorte limpo apos commit;
+  - arquivos restritos a Home/presenca/docs;
+  - nenhum env, secret, migration, schema, banco, Supabase manual, alias ou dominio alterado;
+  - primeiro Preview tecnico `dpl_Fc9K8PGPYadjinLTvwyPp8Vu2jAd` foi descartado porque o build remoto mostrou rotas fora do pacote limpo, indicando contexto misturado do repositorio principal; nao houve alias nem producao;
+  - pacote definitivo foi gerado por `git archive` do commit `8c9f8ad`, expandido fora do repositorio principal em pasta temporaria.
+- Deploy Preview definitivo:
+  - comando: `npx.cmd vercel deploy --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - deployment: `dpl_2k48EuLxgybr4toMKJnHgbVYQ981`;
+  - URL Preview: `https://careli-hub-hub-i2bs-oxlwts238-lucasruas-devs-projects.vercel.app`;
+  - target: `preview`;
+  - build remoto: PASS, com warnings conhecidos de Turbopack/NFT, audit npm e allowlist de env no Turbo; nenhum valor sensivel foi exposto no registro.
+- Validacoes pos-deploy:
+  - `npx.cmd vercel inspect https://careli-hub-hub-i2bs-oxlwts238-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects`: Ready, target `preview`;
+  - `GET https://careli-hub-hub-i2bs-oxlwts238-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Fora do escopo:
+  - nenhum `--prod`;
+  - nenhum `vercel alias set`;
+  - nenhum env, secret, migration, Supabase manual, dominio, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional alterado.
+- Risco residual:
+  - validacao da aba `Disponibilidade` e da regra 3/5 depende de sessao admin autenticada do Lucas no Preview;
+  - se o Preview protegido exigir login/autenticacao Vercel, Lucas deve validar pelo acesso autorizado normal da equipe.
+
+Conclusao:
+
+- O que aconteceu: o recorte Home foi publicado em Preview tecnico limpo.
+- Impacto pratico: Lucas pode testar a nova aba admin `Disponibilidade` sem alterar a producao atual.
+- Precisa de acao agora: Lucas deve abrir a URL Preview, entrar com usuario admin e validar a aba, o painel `Meu dia`, a regra de ausencia e a excecao de reuniao.
+- Quem deve agir agora: Lucas valida visualmente; Zeus monitora e corrige se surgir erro.
+- Proximo passo: se Lucas aprovar, decidir depois se o recorte vai para homologacao compartilhada ou fica aguardando ajustes.
