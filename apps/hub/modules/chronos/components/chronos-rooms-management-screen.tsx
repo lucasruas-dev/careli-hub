@@ -3,7 +3,8 @@ import {
   buildExternalRoomLink,
   buildRoomInputFromDraft,
   createRoomDraft,
-  readFileAsDataUrl,
+  optimizeChronosRoomBackgroundDataUrl,
+  readChronosRoomBackgroundFileAsDataUrl,
   slugifyRoomName,
   type ChronosRoomDraft,
 } from "@/lib/chronos/rooms";
@@ -19,6 +20,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { EmptyPanel, PanelTitle } from "./chronos-panels";
 
 const chronosRoomBackgroundUploadLimitBytes = 5_000_000;
+const chronosWherebyRoomBackgroundLimitBytes = 580 * 1024;
 
 type ChronosRoomsManagementScreenProps = {
   meetings: ChronosMeeting[];
@@ -101,7 +103,24 @@ export function ChronosRoomsManagementScreen({
   async function handleSaveRoom(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const input = buildRoomInputFromDraft(roomDraft);
+    let normalizedDraft: ChronosRoomDraft;
+
+    try {
+      normalizedDraft = await normalizeRoomDraftBackground(roomDraft);
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel otimizar o fundo da sala.",
+      );
+      return;
+    }
+
+    const input = buildRoomInputFromDraft(normalizedDraft);
+
+    if (normalizedDraft !== roomDraft) {
+      setRoomDraft(normalizedDraft);
+    }
 
     if (isCreatingRoom) {
       const room = await onCreateRoom(input);
@@ -165,13 +184,27 @@ export function ChronosRoomsManagementScreen({
       return;
     }
 
-    const dataUrl = await readFileAsDataUrl(file);
+    try {
+      const dataUrl = await readChronosRoomBackgroundFileAsDataUrl({
+        file,
+        maxBytes: chronosWherebyRoomBackgroundLimitBytes,
+      });
 
-    setRoomDraft((currentDraft) => ({
-      ...currentDraft,
-      backgroundDataUrl: dataUrl,
-      backgroundName: file.name,
-    }));
+      setRoomDraft((currentDraft) => ({
+        ...currentDraft,
+        backgroundDataUrl: dataUrl,
+        backgroundName:
+          file.size > chronosWherebyRoomBackgroundLimitBytes
+            ? `${file.name} (otimizado)`
+            : file.name,
+      }));
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel otimizar o fundo da sala.",
+      );
+    }
   }
 
   const externalRoomPath = buildExternalRoomLink(roomDraft.slug);
@@ -453,4 +486,27 @@ export function ChronosRoomsManagementScreen({
       ) : null}
     </div>
   );
+}
+
+async function normalizeRoomDraftBackground(draft: ChronosRoomDraft) {
+  if (!draft.backgroundDataUrl) {
+    return draft;
+  }
+
+  const backgroundDataUrl = await optimizeChronosRoomBackgroundDataUrl({
+    dataUrl: draft.backgroundDataUrl,
+    maxBytes: chronosWherebyRoomBackgroundLimitBytes,
+  });
+
+  if (backgroundDataUrl === draft.backgroundDataUrl) {
+    return draft;
+  }
+
+  return {
+    ...draft,
+    backgroundDataUrl,
+    backgroundName: draft.backgroundName
+      ? `${draft.backgroundName} (otimizado)`
+      : "fundo-chronos-otimizado.jpg",
+  };
 }

@@ -35430,3 +35430,195 @@ Conclusao:
 - Precisa de acao agora: Lucas pode atualizar a tela do Chronos e validar visualmente a agenda.
 - Quem deve agir agora: Lucas valida o uso real; Zeus monitora se aparecer erro novo.
 - Proximo passo tecnico: se Lucas aprovar visualmente, manter o pacote; se houver regressao, rollback imediato para `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`.
+
+### Complemento 2026-06-11 00:14:15 -03:00 - sala Whereby normal e Drive Chronos
+
+- Status atualizado: `VALIDADO_LOCAL / PRODUCAO AUTORIZADA / DEPLOY EM PREPARACAO`.
+- Protocolo: `OP-20260611-001-CHRONOS-WHEREBY-NORMAL-DRIVE-SYNC`.
+- Manifesto de producao: `docs/operations/production-module-safety-gate-chronos-20260611-001-whereby-normal-drive-sync.json`.
+- Motivo:
+  - Lucas reportou que a sala estava abrindo no comportamento de imagem-em-imagem/flutuante, quando o esperado era entrar no modo normal da sala Whereby;
+  - Lucas reportou que a gravacao existia no painel da Whereby, mas nao aparecia no Drive do Chronos.
+- Correcoes preparadas:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` removeu o cabecalho customizado da sala Whereby e voltou a renderizar o embed em tela normal, sem `floatSelf` e sem bloquear o controle nativo de imagem-em-imagem;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` passou a registrar falha de sync Whereby no console quando a sessao autenticada do host estiver ausente ou a API recusar a gravacao;
+  - `apps/hub/lib/chronos/server.ts` passou a priorizar a reconciliacao das salas Whereby mais recentes antes do limite de 8 pendencias por snapshot, evitando que pendencias antigas escondam gravacoes novas do Drive;
+  - `apps/hub/lib/chronos/whereby.ts` aceitou tambem chaves especificas de lista (`recordings`, `transcriptions`, `roomSessions`, `sessions`, `participants`) alem de `results/data/items`.
+- Validacoes:
+  - consulta read-only na API Whereby confirmou gravacoes recentes retornando em `results`, incluindo salas `/careli-carelizhaahf` e `/tecnologiab9c1d104-90fc-4f53-a127-fad63f9b528b`, sem imprimir chaves ou links de acesso;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts lib/chronos/whereby.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos.
+- Limitacao de validacao:
+  - smoke local `GET http://localhost:3001/chronos/careli`: BLOQUEADO no worktree temporario por ausencia de Supabase server-side para sala externa (`Chronos requer Supabase server-side configurado para sala externa.`); o dev server iniciou corretamente, mas a rota depende de env sensivel nao copiado para o recorte.
+- Fora do escopo:
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas, Setup, Supabase schema, migration, secret/env, dominio ou alias foi executada neste recorte;
+  - nenhum deploy de producao foi executado neste complemento.
+- Rollback:
+  - reverter os arquivos `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`, `apps/hub/lib/chronos/server.ts` e `apps/hub/lib/chronos/whereby.ts` para o commit anterior do recorte se houver regressao.
+
+Conclusao:
+
+- O comportamento de imagem-em-imagem foi causado pelo `floatSelf` aplicado ao embed Whereby e ja foi removido no recorte local.
+- O atraso do Drive tinha uma causa provavel no reconciliador: ele limitava a 8 pendencias, mas podia priorizar meetings antigos antes dos mais recentes; agora as salas Whereby recentes sincronizam primeiro.
+- Precisa de acao agora: sim, Lucas deve autorizar explicitamente o deploy se quiser publicar este recorte em `https://c2x.app.br`.
+- Quem deve agir agora: Zeus publica com deploy seguro; Lucas valida uma nova sala e abre o Drive apos a gravacao ficar disponivel.
+- Proximo passo tecnico: deploy seguro do recorte `OP-20260611-001-CHRONOS-WHEREBY-NORMAL-DRIVE-SYNC`, preservando `ops.c2x.app.br`.
+
+### Complemento 2026-06-11 07:46:30 -03:00 - fundo Whereby e artefatos no Drive Chronos
+
+- Status atualizado: `VALIDADO_LOCAL / PRODUCAO AUTORIZADA / DEPLOY EM PREPARACAO`.
+- Protocolo: `OP-20260611-002-CHRONOS-WHEREBY-THEME-ARTIFACTS-SYNC`.
+- Manifesto de producao: `docs/operations/production-module-safety-gate-chronos-20260611-002-whereby-theme-artifacts-sync.json`.
+- Motivo:
+  - Lucas reportou que o fundo configurado da sala nao estava aplicado na experiencia Whereby;
+  - Lucas reportou que as gravacoes e transcricoes da Whereby nao estavam aparecendo no Drive Chronos para gerar ata;
+  - pela documentacao Whereby, a gravacao fica disponivel via `/recordings`, a transcricao pode vir por live transcription ou por job `POST /transcriptions` usando `recordingId`, e ambos exigem reconciliacao server-side do Chronos.
+- Correcoes preparadas:
+  - `apps/hub/lib/chronos/whereby.ts` passou a expor `applyChronosWherebyRoomTheme` para reaplicar tema/fundo em meetings ja existentes;
+  - `apps/hub/lib/chronos/whereby.ts` adicionou `createChronosWherebyTranscription(recordingId)` para solicitar transcricao oficial da Whereby quando houver gravacao sem transcricao;
+  - `apps/hub/lib/chronos/server.ts` passou a sincronizar tema/fundo da sala Whereby quando o fingerprint do fundo configurado mudar;
+  - `apps/hub/lib/chronos/server.ts` passou a aceitar sync publico controlado por `roomSlug + meetingId` ja vinculados, sem exigir sessao Hub apenas para reconciliar artefatos;
+  - `apps/hub/lib/chronos/server.ts` passou a solicitar transcricao Whereby por `recordingId` quando a gravacao existe e a transcricao ainda nao foi criada;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` passou a disparar `whereby-sync` tambem em sala publica, enviando bearer apenas quando existir sessao autenticada.
+  - `apps/hub/lib/chronos/rooms.ts` passou a otimizar o fundo no navegador via canvas, gerando JPEG menor quando a imagem excede o limite aceito pela Whereby;
+  - `apps/hub/modules/chronos/components/chronos-rooms-management-screen.tsx` passou a otimizar fundo tanto no upload quanto no salvar, permitindo corrigir fundos antigos grandes demais apenas abrindo a configuracao da sala e salvando.
+- Validacoes:
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts lib/chronos/whereby.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido de workspace/Turbopack/NFT fora do recorte Chronos;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_57qL9FnNL38RFRAvuwHJ2pVNTFhx` antes do hotfix;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` antes do hotfix;
+  - `npx.cmd vercel logs ... --query chronos --expand`: warning confirmou causa do fundo (`Fundo Chronos excede o limite de envio do Whereby para background.`);
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts lib/chronos/rooms.ts lib/chronos/whereby.ts modules/chronos/ChronosExternalRoomPage.tsx modules/chronos/components/chronos-rooms-management-screen.tsx --max-warnings 0`: PASS apos compressao do fundo;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS apos compressao do fundo;
+  - `git diff --check`: PASS apos compressao do fundo;
+  - `npm.cmd run build --workspace @repo/hub`: PASS apos compressao do fundo, com warning conhecido de workspace/Turbopack/NFT fora do recorte Chronos.
+- Fora do escopo:
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas, Setup, Supabase schema, migration, secret/env, dominio ou alias `ops.c2x.app.br`;
+  - o video continua hospedado na Whereby por referencia temporaria; o Drive Chronos registra o artefato e gera access link quando necessario.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_57qL9FnNL38RFRAvuwHJ2pVNTFhx`;
+  - `ops.c2x.app.br` nao deve ser movido neste pacote.
+
+Conclusao:
+
+- O problema nao era falta de arquivo no painel Whereby; era falta de reconciliacao robusta entre Whereby e Drive Chronos em sala publica.
+- O impacto pratico esperado e que a gravacao apareca no Drive e a transcricao seja solicitada/baixada para Athena assim que a Whereby liberar o artefato.
+- Precisa de acao agora: sim, Zeus deve publicar o hotfix seguro ja autorizado pelo Lucas.
+- Quem deve agir agora: Zeus publica e valida; Lucas valida nova gravacao e Drive apos processamento Whereby.
+- Proximo passo tecnico: pacote limpo, deploy Vercel com `--skip-domain`, alias somente de `c2x.app.br`, healthchecks e registro final.
+
+### Complemento 2026-06-11 08:50:57 -03:00 - rate limit Whereby no Drive Chronos
+
+- Status atualizado: `VALIDADO_LOCAL / CANDIDATO A PRODUCAO / DEPLOY NAO EXECUTADO NESTE COMPLEMENTO`.
+- Protocolo: `OP-20260611-003-CHRONOS-WHEREBY-RATE-LIMIT-DRIVE-SYNC`.
+- Manifesto de producao: `docs/operations/production-module-safety-gate-chronos-20260611-003-whereby-rate-limit-drive-sync.json`.
+- Diagnostico:
+  - logs read-only da Vercel em producao confirmaram falha de sync Whereby por `Rate limit active for throttle key: organization:336761`;
+  - a falha apareceu tanto no caminho de `recording sync` quanto no de `transcription sync`;
+  - o efeito pratico era: a gravacao existia na Whereby, mas o Chronos nao conseguia reconciliar o artefato para aparecer no Drive nem alimentar a transcricao da ata Athena.
+- Correcoes preparadas:
+  - `apps/hub/lib/chronos/server.ts` passou a aplicar throttle de 2 minutos por meeting antes de chamar a API Whereby;
+  - `apps/hub/lib/chronos/server.ts` passou a gravar backoff de 10 minutos em metadata quando a Whereby responder com rate limit/throttle;
+  - `apps/hub/lib/chronos/server.ts` passou a chamar gravacoes, transcricoes e room sessions em sequencia, sem `Promise.allSettled` simultaneo contra a Whereby;
+  - `apps/hub/lib/chronos/server.ts` reduziu a reconciliacao automatica do snapshot do Drive para ate 3 meetings recentes e tambem em sequencia;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` passou a limitar o sync publico por aba a cada 2 minutos, com tentativas em 2, 5 e 10 minutos e polling continuo a cada 5 minutos.
+- Validacoes:
+  - `npx.cmd eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0` em `apps/hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_4K5BHaPvdnsUHoGdLLFTdd9sphTy` antes deste pacote;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` antes deste pacote.
+- Fora do escopo:
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas, Setup, Supabase schema, migration, secret/env, dominio ou alias foi executada neste complemento;
+  - nenhum deploy de producao ou movimento de alias foi executado neste complemento.
+- Rollback:
+  - se o pacote for publicado e houver regressao critica, reapontar `c2x.app.br` para `dpl_4K5BHaPvdnsUHoGdLLFTdd9sphTy`;
+  - `ops.c2x.app.br` permanece preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+Conclusao:
+
+- A causa confirmada do Drive vazio apos gravacao Whereby foi bloqueio temporario por rate limit da API Whereby, provocado por chamadas repetidas/concorrentes do sync.
+- O impacto pratico esperado do hotfix e reduzir drasticamente a pressao na API Whereby e permitir que o Chronos registre a gravacao no Drive e solicite/baixe a transcricao para a ata assim que o artefato estiver liberado.
+- Precisa de acao agora: sim, publicar este protocolo em producao depois da autorizacao explicita do Lucas para mover `c2x.app.br`.
+- Quem deve agir agora: Zeus/Hefesto publica com pacote limpo; Lucas valida uma nova sala gravada no Drive Chronos.
+- Proximo passo tecnico: deploy seguro do protocolo `OP-20260611-003-CHRONOS-WHEREBY-RATE-LIMIT-DRIVE-SYNC`, preservando `ops.c2x.app.br`.
+
+### Complemento 2026-06-11 09:07:13 -03:00 - rate limit Whereby publicado em producao
+
+- Status atualizado: `EM PRODUCAO`.
+- Protocolo: `OP-20260611-003-CHRONOS-WHEREBY-RATE-LIMIT-DRIVE-SYNC`.
+- Manifesto de producao atualizado: `docs/operations/production-module-safety-gate-chronos-20260611-003-whereby-rate-limit-drive-sync.json`.
+- Deployment anterior de `c2x.app.br`: `dpl_4K5BHaPvdnsUHoGdLLFTdd9sphTy`.
+- Deployment novo de `c2x.app.br`: `dpl_BJwSxFKLS4unSJ6V641URLZrpkXu`.
+- URL tecnica: `https://careli-hub-hub-i2bs-cif97hyi2-lucasruas-devs-projects.vercel.app`.
+- Alias movido: `https://c2x.app.br`.
+- Alias preservado: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Deploy:
+  - pacote limpo montado em `C:/Users/lucas/AppData/Local/Temp/chronos-whereby-rate-limit-prod-20260611-085912/candidate`;
+  - `.git`, `.next`, `node_modules`, `.codex-deploy`, `.codex-logs`, `.codex-tmp` e envs locais ficaram fora do pacote;
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes`: PASS, `READY`;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-cif97hyi2-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects`: PASS.
+- Healthchecks:
+  - `GET https://careli-hub-hub-i2bs-cif97hyi2-lucasruas-devs-projects.vercel.app/chronos`: 200;
+  - `GET https://careli-hub-hub-i2bs-cif97hyi2-lucasruas-devs-projects.vercel.app/chronos/careli`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_BJwSxFKLS4unSJ6V641URLZrpkXu`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel logs https://careli-hub-hub-i2bs-cif97hyi2-lucasruas-devs-projects.vercel.app --since 15m --query chronos --expand`: 30 logs Chronos, todos `info`, sem warning/erro.
+- Fora do escopo:
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas, Setup, Supabase schema, migration, secret/env ou alias `ops.c2x.app.br` foi executada neste pacote.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_4K5BHaPvdnsUHoGdLLFTdd9sphTy`;
+  - `ops.c2x.app.br` nao precisa de rollback neste pacote, pois nao foi movido.
+
+Conclusao:
+
+- O hotfix de rate limit Whereby esta publicado em `https://c2x.app.br`.
+- O impacto pratico esperado e que chamadas repetidas de `whereby-sync` nao virem rajadas contra a API Whereby; o servidor passa a respeitar throttle/backoff e deve liberar o registro de gravacao/transcricao no Drive Chronos conforme a Whereby concluir os artefatos.
+- Precisa de acao agora: Lucas deve testar uma nova gravacao curta e aguardar alguns minutos para a Whereby liberar o arquivo; depois abrir o Drive Chronos para confirmar video/transcricao/ata.
+- Quem deve agir agora: Lucas valida uso real; Zeus monitora logs se aparecer novo warning.
+- Proximo passo tecnico: se ainda houver sala sem aparecer no Drive, consultar logs por `whereby-sync` e forcar nova tentativa depois do backoff de 10 minutos.
+
+### Complemento 2026-06-11 10:56:27 -03:00 - recuperacao Whereby quando Drive nao recebe artefatos
+
+- Status atualizado: `VALIDADO_LOCAL / PRODUCAO AUTORIZADA / DEPLOY EM PREPARACAO`.
+- Protocolo: `OP-20260611-004-CHRONOS-WHEREBY-ARTIFACT-RECOVERY-SYNC`.
+- Manifesto de producao: `docs/operations/production-module-safety-gate-chronos-20260611-004-whereby-artifact-recovery-sync.json`.
+- Motivo:
+  - Lucas autorizou recuperar gravacoes ja feitas e corrigir o fluxo para nao perder novas reunioes;
+  - o hotfix anterior reduziu rate limit, mas ainda havia um ponto de falsa conclusao: o servidor podia considerar o sync `complete` quando `recording_status` e `transcription_status` estavam `available`, mesmo se o Drive Chronos nao tivesse contagem real de gravacao/transcricao persistida;
+  - esse comportamento bloqueava novas tentativas de reconciliacao e explicava a gravacao existir na Whereby sem aparecer no Drive Chronos.
+- Correcoes preparadas:
+  - `apps/hub/lib/chronos/server.ts` passou a registrar logs sanitizados de `Whereby artifact sync skipped` e `Whereby artifact sync completed`, com contagens agregadas e sem secrets;
+  - `apps/hub/lib/chronos/server.ts` passou a considerar `complete` somente quando houver `recordingCount > 0` e, quando a transcricao for exigida, `transcriptSegmentCount > 0` ou `transcriptionCount > 0`;
+  - `apps/hub/lib/chronos/server.ts` adicionou leitura booleana segura de metadata para respeitar `transcriptionRequired`;
+  - `scripts/chronos-whereby-backfill.mjs` ganhou modo `--public-sync` para disparar o endpoint publico controlado de `whereby-sync` e modo `--diagnose-meetings` para diagnosticar candidatos sem expor secrets.
+- Recuperacao dos videos ja gravados:
+  - tentativa direta local ficou `BLOQUEADA`, porque o ambiente local disponivel aponta para outro projeto Supabase que nao e o projeto efetivo de producao; nenhum valor sensivel foi exibido;
+  - tentativa `--public-sync` local retornou 0 candidatos, coerente com a divergencia do banco local em relacao a producao;
+  - a recuperacao segura passa a depender do deploy deste hotfix em producao e da nova reconciliacao no proprio runtime correto, onde as envs de producao ja existem.
+- Validacoes ja executadas:
+  - `node --check scripts/chronos-whereby-backfill.mjs`: PASS;
+  - `npx.cmd eslint lib/chronos/server.ts --max-warnings 0` em `apps/hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos.
+- Fora do escopo:
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas, Setup, Supabase schema, migration, secret/env ou alias `ops.c2x.app.br`;
+  - nenhum valor de `WHEREBY_API_KEY`, `SUPABASE_SECRET_KEY`, service role ou chave equivalente foi exibido.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_BJwSxFKLS4unSJ6V641URLZrpkXu`;
+  - `ops.c2x.app.br` nao deve ser movido neste pacote.
+
+Conclusao:
+
+- O problema adicional era uma trava logica de sincronizacao: o Chronos confiava demais no status geral e podia parar antes de ter video/transcricao realmente registrados no Drive.
+- O impacto pratico esperado e reabrir a reconciliacao das reunioes Whereby ainda dentro da janela segura e evitar que novas reunioes fiquem marcadas como prontas sem artefatos.
+- Precisa de acao agora: sim, publicar o hotfix em `c2x.app.br` e validar logs/Drive depois do processamento Whereby.
+- Quem deve agir agora: Zeus publica e monitora; Lucas pode abrir o Drive Chronos depois do deploy para forcar/validar a reconciliacao pelo runtime de producao.
+- Proximo passo tecnico: montar pacote limpo, validar diff/gate, publicar somente `c2x.app.br`, preservar `ops.c2x.app.br` e registrar healthchecks.

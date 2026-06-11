@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "OP-20260611-001-CHRONOS-WHEREBY-NORMAL-DRIVE-SYNC",
+  "module": "chronos",
+  "agent": "Zeus/Hefesto",
+  "title": "Sala Whereby normal e reconciliacao do Drive Chronos",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_8rs3e1nDKdBTYNfkEmW8X71pEiTW",
+  "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+  "candidateProductionDeploymentId": "dpl_57qL9FnNL38RFRAvuwHJ2pVNTFhx",
+  "candidateSourceCommit": "local-package-from-codex-chronos-worktree",
+  "sourceWorktreeClean": false,
+  "candidatePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-normal-drive-sync-prod-20260611-0025/candidate",
+  "rollbackDeploymentId": "dpl_8rs3e1nDKdBTYNfkEmW8X71pEiTW",
+  "allowedChangedPaths": [
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/lib/chronos/whereby.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/production-module-safety-gate-chronos-20260611-001-whereby-normal-drive-sync.json"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/zeus/**",
+    "apps/hub/lib/squadops/**",
+    "apps/hub/app/ares/**",
+    "apps/hub/lib/ares/**",
+    "apps/hub/modules/ares/**",
+    "apps/hub/app/apolo/**",
+    "apps/hub/lib/apolo/**",
+    "apps/hub/modules/apolo/**",
+    "apps/hub/app/atlas/**",
+    "apps/hub/modules/atlas/**",
+    "apps/hub/app/setup/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+      "includes": [
+        "Whereby artifact sync skipped",
+        "whereby-embed",
+        "toolbarText: \"off\""
+      ]
+    },
+    {
+      "path": "apps/hub/lib/chronos/server.ts",
+      "includes": [
+        "compareChronosWherebyArtifactSyncCandidates",
+        "getChronosWherebyArtifactSyncReferenceTime"
+      ]
+    },
+    {
+      "path": "apps/hub/lib/chronos/whereby.ts",
+      "includes": [
+        "objectPayload.recordings",
+        "objectPayload.transcriptions",
+        "objectPayload.roomSessions"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+      "includes": [
+        "floatSelf: true",
+        "pipButton: \"off\""
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/lib/chronos/whereby.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx"
+  ],
+  "validations": [
+    "consulta read-only na API Whereby: PASS, gravacoes recentes retornaram em results sem imprimir chaves ou links.",
+    "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts lib/chronos/whereby.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "git diff --check: PASS, apenas avisos CRLF esperados no Windows.",
+    "npm.cmd run check-types --workspace @repo/hub: PASS.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos.",
+    "GET http://localhost:3001/chronos/careli: BLOQUEADO no worktree temporario por ausencia de Supabase server-side para sala externa.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_8rs3e1nDKdBTYNfkEmW8X71pEiTW antes do deploy.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj antes do deploy.",
+    "pacote limpo em C:/Users/lucas/AppData/Local/Temp/chronos-whereby-normal-drive-sync-prod-20260611-0025/candidate: sem .git, sem apps/hub/.env.local, sem apps/hub/.next e sem node_modules.",
+    "npx.cmd vercel link --yes --project careli-hub-hub-i2bs --scope lucasruas-devs-projects: PASS.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes: PASS, Ready em dpl_57qL9FnNL38RFRAvuwHJ2pVNTFhx.",
+    "GET https://careli-hub-hub-i2bs-fd7efr3qx-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "GET https://careli-hub-hub-i2bs-fd7efr3qx-lucasruas-devs-projects.vercel.app/chronos/careli: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-fd7efr3qx-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_57qL9FnNL38RFRAvuwHJ2pVNTFhx apos alias.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: permaneceu Ready em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj apos alias.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "GET https://c2x.app.br/chronos/careli: 200.",
+    "npx.cmd vercel logs https://careli-hub-hub-i2bs-fd7efr3qx-lucasruas-devs-projects.vercel.app --since 15m --query chronos: 7 logs, todos 200, sem 500/502."
+  ],
+  "notes": [
+    "Lucas autorizou deploy seguro em producao em 2026-06-11.",
+    "Deploy deve preservar ops.c2x.app.br em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj; o alias movido deve ser somente c2x.app.br.",
+    "Recorte nao altera envs, secrets, Supabase schema, migrations, agenda, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br.",
+    "Rollback imediato: reapontar c2x.app.br para dpl_8rs3e1nDKdBTYNfkEmW8X71pEiTW se healthcheck critico falhar."
+  ]
+}

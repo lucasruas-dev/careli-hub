@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -18,7 +19,9 @@ import {
   type ChronosLiveKitParticipantPresence,
 } from "./livekit";
 import {
+  applyChronosWherebyRoomTheme,
   createChronosWherebyMeeting,
+  createChronosWherebyTranscription,
   getChronosWherebyEmbedScriptUrl,
   getChronosWherebyRecordingAccessLink,
   getChronosWherebyTranscriptionAccessLink,
@@ -479,6 +482,9 @@ const maxMinutesTextLength = 32_000;
 const maxTranscriptTextLength = 80_000;
 const maxRoomBackgroundDataUrlLength = 7_000_000;
 const maxChronosRecordingUploadBytes = 500_000_000;
+const chronosWherebySyncThrottleMs = 2 * 60 * 1000;
+const chronosWherebyRateLimitBackoffMs = 10 * 60 * 1000;
+const chronosWherebySnapshotSyncLimit = 3;
 
 const defaultChronosRooms: ChronosRoom[] = [
   {
@@ -3116,18 +3122,19 @@ export async function syncChronosPublicWherebyArtifacts({
     );
   }
 
-  const { loggedUser, meeting, room } = await resolveChronosPublicRecordingHost({
-    authorizationHeader,
-    client,
-    meetingId: normalizedInput.meetingId,
-    roomSlug: slug,
-  });
+  const { actorUserId, meeting, room } =
+    await resolveChronosPublicWherebySyncContext({
+      authorizationHeader,
+      client,
+      meetingId: normalizedInput.meetingId,
+      roomSlug: slug,
+    });
 
   return {
     ok: true,
     provider: "whereby" as const,
     ...(await syncChronosWherebyMeetingArtifacts({
-      actorUserId: loggedUser.id,
+      actorUserId,
       client,
       meeting,
       room,
@@ -3149,18 +3156,19 @@ async function syncPendingChronosWherebyArtifactsForSnapshot({
   const roomsById = new Map(rooms.map((room) => [room.id, room]));
   const candidates = meetings
     .filter(shouldSyncChronosWherebyArtifactsInSnapshot)
-    .slice(0, 8);
+    .sort(compareChronosWherebyArtifactSyncCandidates)
+    .slice(0, chronosWherebySnapshotSyncLimit);
 
   if (candidates.length === 0) {
     return;
   }
 
-  const results = await Promise.allSettled(
-    candidates.map(async (meeting) => {
+  for (const meeting of candidates) {
+    try {
       const room = meeting.room_id ? roomsById.get(meeting.room_id) : null;
 
       if (!room) {
-        return;
+        continue;
       }
 
       await syncChronosWherebyMeetingArtifacts({
@@ -3169,17 +3177,13 @@ async function syncPendingChronosWherebyArtifactsForSnapshot({
         meeting,
         room,
       });
-    }),
-  );
-
-  results.forEach((result) => {
-    if (result.status === "rejected") {
+    } catch (error) {
       console.warn(
         "[chronos] Whereby snapshot reconciliation failed",
-        result.reason instanceof Error ? result.reason.message : "unknown error",
+        error instanceof Error ? error.message : "unknown error",
       );
     }
-  });
+  }
 }
 
 function shouldSyncChronosWherebyArtifactsInSnapshot(
@@ -3202,18 +3206,44 @@ function shouldSyncChronosWherebyArtifactsInSnapshot(
     return false;
   }
 
-  const referenceTime =
-    parseChronosTimestampValue(
-      readChronosMetadataText(wherebyMetadata, "endDate") ??
-        meeting.ends_at ??
-        meeting.updated_at,
-    ) ?? parseChronosTimestampValue(meeting.updated_at);
+  const referenceTime = getChronosWherebyArtifactSyncReferenceTime(meeting);
 
   if (!referenceTime) {
     return true;
   }
 
   return Date.now() - referenceTime.getTime() <= 72 * 60 * 60 * 1000;
+}
+
+function compareChronosWherebyArtifactSyncCandidates(
+  firstMeeting: ChronosMeetingRow,
+  secondMeeting: ChronosMeetingRow,
+) {
+  const firstReference =
+    getChronosWherebyArtifactSyncReferenceTime(firstMeeting)?.getTime() ?? 0;
+  const secondReference =
+    getChronosWherebyArtifactSyncReferenceTime(secondMeeting)?.getTime() ?? 0;
+
+  if (firstReference !== secondReference) {
+    return secondReference - firstReference;
+  }
+
+  return secondMeeting.id.localeCompare(firstMeeting.id);
+}
+
+function getChronosWherebyArtifactSyncReferenceTime(
+  meeting: ChronosMeetingRow,
+) {
+  const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
+  const wherebyMetadata = readRecordMetadata(externalRoomMetadata.whereby);
+
+  return (
+    parseChronosTimestampValue(
+      readChronosMetadataText(wherebyMetadata, "endDate") ??
+        meeting.ends_at ??
+        meeting.updated_at,
+    ) ?? parseChronosTimestampValue(meeting.updated_at)
+  );
 }
 
 async function syncChronosWherebyMeetingArtifacts({
@@ -3241,13 +3271,49 @@ async function syncChronosWherebyMeetingArtifacts({
     };
   }
 
-  const now = new Date().toISOString();
-  const [recordingsResult, transcriptionsResult, roomSessionsResult] =
-    await Promise.allSettled([
-      listChronosWherebyRecordings(roomName),
-      listChronosWherebyTranscriptions(roomName),
-      listChronosWherebyRoomSessions(roomName),
-    ]);
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const syncThrottle = getChronosWherebySyncThrottle({
+    meeting,
+    now: nowDate,
+    wherebyMetadata,
+  });
+
+  if (syncThrottle) {
+    console.info("[chronos] Whereby artifact sync skipped", {
+      meetingId: meeting.id,
+      reason: syncThrottle,
+      roomName,
+    });
+
+    return {
+      participantCount:
+        readChronosMetadataNumber(wherebyMetadata, "participantCount") ?? 0,
+      recordingCount:
+        readChronosMetadataNumber(wherebyMetadata, "recordingCount") ?? 0,
+      roomName,
+      syncSkipped: syncThrottle,
+      transcriptSegmentCount:
+        readChronosMetadataNumber(wherebyMetadata, "transcriptSegmentCount") ?? 0,
+      transcriptionCount:
+        readChronosMetadataNumber(wherebyMetadata, "transcriptionCount") ?? 0,
+    };
+  }
+
+  const recordingsResult = await settleChronosWherebySync(() =>
+    listChronosWherebyRecordings(roomName),
+  );
+  const transcriptionsResult = room.transcription_required
+    ? await settleChronosWherebySync(() =>
+        listChronosWherebyTranscriptions(roomName),
+      )
+    : ({
+        status: "fulfilled",
+        value: [] as ChronosWherebyTranscription[],
+      } satisfies PromiseFulfilledResult<ChronosWherebyTranscription[]>);
+  const roomSessionsResult = await settleChronosWherebySync(() =>
+    listChronosWherebyRoomSessions(roomName),
+  );
   const recordings =
     recordingsResult.status === "fulfilled" ? recordingsResult.value : [];
   const transcriptions =
@@ -3256,6 +3322,16 @@ async function syncChronosWherebyMeetingArtifacts({
       : [];
   const roomSessions =
     roomSessionsResult.status === "fulfilled" ? roomSessionsResult.value : [];
+  const transcriptionJobRecordingIds = room.transcription_required
+    ? await requestMissingChronosWherebyRecordingTranscriptions({
+        recordings,
+        transcriptions,
+        wherebyMetadata,
+      })
+    : readChronosMetadataTextArray(
+        wherebyMetadata,
+        "transcriptionJobRecordingIds",
+      );
 
   if (recordingsResult.status === "rejected") {
     console.warn(
@@ -3313,6 +3389,12 @@ async function syncChronosWherebyMeetingArtifacts({
       : room.transcription_required || hasProcessingTranscription
         ? "processing"
         : meeting.transcription_status;
+  const isRateLimited =
+    isChronosWherebyRateLimitError(recordingsResult) ||
+    isChronosWherebyRateLimitError(transcriptionsResult);
+  const nextSyncBackoffUntil = isRateLimited
+    ? new Date(nowDate.getTime() + chronosWherebyRateLimitBackoffMs).toISOString()
+    : null;
   const nextMetadata = {
     ...(meeting.metadata ?? {}),
     externalRoom: {
@@ -3321,12 +3403,16 @@ async function syncChronosWherebyMeetingArtifacts({
       roomSlug: room.slug,
       whereby: {
         ...wherebyMetadata,
+        lastSyncAttemptAt: now,
         lastSyncedAt: now,
+        lastSyncError: isRateLimited ? "whereby_rate_limit" : null,
         participantCount,
         recordingCount: Math.max(recordings.length, recordingCount),
         roomName,
         source: "chronos-whereby-sync",
+        syncBackoffUntil: nextSyncBackoffUntil,
         transcriptSegmentCount,
+        transcriptionJobRecordingIds,
         transcriptionCount: transcriptions.length,
       },
     },
@@ -3363,6 +3449,15 @@ async function syncChronosWherebyMeetingArtifacts({
     });
   }
 
+  console.info("[chronos] Whereby artifact sync completed", {
+    meetingId: meeting.id,
+    participantCount,
+    recordingCount: Math.max(recordings.length, recordingCount),
+    roomName,
+    transcriptSegmentCount,
+    transcriptionCount: transcriptions.length,
+  });
+
   return {
     participantCount,
     recordingCount: Math.max(recordings.length, recordingCount),
@@ -3370,6 +3465,147 @@ async function syncChronosWherebyMeetingArtifacts({
     transcriptSegmentCount,
     transcriptionCount: transcriptions.length,
   };
+}
+
+function getChronosWherebySyncThrottle({
+  meeting,
+  now,
+  wherebyMetadata,
+}: {
+  meeting: ChronosMeetingRow;
+  now: Date;
+  wherebyMetadata: Record<string, unknown>;
+}) {
+  const backoffUntil = parseChronosTimestampValue(
+    readChronosMetadataText(wherebyMetadata, "syncBackoffUntil"),
+  );
+
+  if (backoffUntil && backoffUntil.getTime() > now.getTime()) {
+    return "rate_limited" as const;
+  }
+
+  const recordingCount = readChronosMetadataNumber(
+    wherebyMetadata,
+    "recordingCount",
+  ) ?? 0;
+  const transcriptSegmentCount = readChronosMetadataNumber(
+    wherebyMetadata,
+    "transcriptSegmentCount",
+  ) ?? 0;
+  const transcriptionCount = readChronosMetadataNumber(
+    wherebyMetadata,
+    "transcriptionCount",
+  ) ?? 0;
+  const transcriptionRequired = readChronosMetadataBoolean(
+    wherebyMetadata,
+    "transcriptionRequired",
+  );
+  const hasSyncedRecording = recordingCount > 0;
+  const hasSyncedTranscription =
+    !transcriptionRequired || transcriptSegmentCount > 0 || transcriptionCount > 0;
+
+  if (
+    meeting.recording_status === "available" &&
+    meeting.transcription_status === "available" &&
+    hasSyncedRecording &&
+    hasSyncedTranscription
+  ) {
+    return "complete" as const;
+  }
+
+  const lastAttempt =
+    parseChronosTimestampValue(
+      readChronosMetadataText(wherebyMetadata, "lastSyncAttemptAt"),
+    ) ??
+    parseChronosTimestampValue(
+      readChronosMetadataText(wherebyMetadata, "lastSyncedAt"),
+    );
+
+  if (
+    lastAttempt &&
+    now.getTime() - lastAttempt.getTime() < chronosWherebySyncThrottleMs
+  ) {
+    return "recent" as const;
+  }
+
+  return null;
+}
+
+function isChronosWherebyRateLimitError(
+  result: PromiseSettledResult<unknown>,
+) {
+  if (result.status !== "rejected") {
+    return false;
+  }
+
+  const message =
+    result.reason instanceof Error ? result.reason.message.toLowerCase() : "";
+
+  return message.includes("rate limit") || message.includes("throttle");
+}
+
+async function settleChronosWherebySync<T>(
+  loader: () => Promise<T>,
+): Promise<PromiseSettledResult<T>> {
+  try {
+    return { status: "fulfilled", value: await loader() };
+  } catch (reason) {
+    return { status: "rejected", reason };
+  }
+}
+
+async function requestMissingChronosWherebyRecordingTranscriptions({
+  recordings,
+  transcriptions,
+  wherebyMetadata,
+}: {
+  recordings: ChronosWherebyRecording[];
+  transcriptions: ChronosWherebyTranscription[];
+  wherebyMetadata: Record<string, unknown>;
+}) {
+  const requestedRecordingIds = new Set(
+    readChronosMetadataTextArray(wherebyMetadata, "transcriptionJobRecordingIds"),
+  );
+  const transcriptionRoomSessionIds = new Set(
+    transcriptions
+      .map((transcription) => transcription.roomSessionId?.trim())
+      .filter((roomSessionId): roomSessionId is string =>
+        Boolean(roomSessionId),
+      ),
+  );
+  const hasAnyTranscription = transcriptions.length > 0;
+
+  for (const recording of recordings) {
+    if (
+      !recording.recordingId ||
+      requestedRecordingIds.has(recording.recordingId)
+    ) {
+      continue;
+    }
+
+    if (
+      recording.roomSessionId &&
+      transcriptionRoomSessionIds.has(recording.roomSessionId)
+    ) {
+      continue;
+    }
+
+    if (!recording.roomSessionId && hasAnyTranscription) {
+      continue;
+    }
+
+    try {
+      await createChronosWherebyTranscription(recording.recordingId);
+      requestedRecordingIds.add(recording.recordingId);
+    } catch (error) {
+      console.warn(
+        "[chronos] Whereby recording transcription request failed",
+        error instanceof Error ? error.message : "unknown error",
+      );
+    }
+  }
+
+  return [...requestedRecordingIds];
 }
 
 async function persistChronosWherebyRecordings({
@@ -4507,6 +4743,15 @@ async function ensureChronosWherebyMeeting({
   const existingMeeting = readChronosWherebyMeetingFromMetadata(wherebyMetadata);
 
   if (existingMeeting && isChronosWherebyMeetingUsable(existingMeeting)) {
+    await ensureChronosWherebyRoomTheme({
+      client,
+      externalRoomMetadata,
+      meeting,
+      room,
+      roomName: existingMeeting.roomName,
+      wherebyMetadata,
+    });
+
     return buildChronosWherebyPublicRoom({
       isHost,
       meeting: existingMeeting,
@@ -4515,14 +4760,9 @@ async function ensureChronosWherebyMeeting({
     });
   }
 
-  const backgroundMetadata = readRecordMetadata(
-    readRecordMetadata(room.metadata).background,
-  );
+  const backgroundDataUrl = getChronosWherebyRoomBackgroundDataUrl(room);
   const wherebyMeeting = await createChronosWherebyMeeting({
-    backgroundDataUrl:
-      typeof backgroundMetadata.dataUrl === "string"
-        ? backgroundMetadata.dataUrl
-        : null,
+    backgroundDataUrl,
     endDate: resolveChronosWherebyEndDate(meeting),
     recordingRequired: room.recording_required,
     roomNamePrefix: buildChronosWherebyRoomNamePrefix(room.slug),
@@ -4544,6 +4784,8 @@ async function ensureChronosWherebyMeeting({
       roomName: wherebyMeeting.roomName,
       roomUrl: wherebyMeeting.roomUrl,
       source: "chronos-whereby-meeting",
+      themeFingerprint: buildChronosWherebyRoomThemeFingerprint(room),
+      themeSyncedAt: now,
       transcriptionRequired: room.transcription_required,
     },
   };
@@ -4574,6 +4816,90 @@ async function ensureChronosWherebyMeeting({
     recordingRequired: room.recording_required,
     transcriptionRequired: room.transcription_required,
   });
+}
+
+async function ensureChronosWherebyRoomTheme({
+  client,
+  externalRoomMetadata,
+  meeting,
+  room,
+  roomName,
+  wherebyMetadata,
+}: {
+  client: ChronosClient;
+  externalRoomMetadata: Record<string, unknown>;
+  meeting: ChronosMeetingRow;
+  room: ChronosRoomRow;
+  roomName: string;
+  wherebyMetadata: Record<string, unknown>;
+}) {
+  const themeFingerprint = buildChronosWherebyRoomThemeFingerprint(room);
+
+  if (
+    readChronosMetadataText(wherebyMetadata, "themeFingerprint") ===
+    themeFingerprint
+  ) {
+    return;
+  }
+
+  try {
+    await applyChronosWherebyRoomTheme({
+      backgroundDataUrl: getChronosWherebyRoomBackgroundDataUrl(room),
+      roomName,
+      roomSlug: room.slug,
+    });
+
+    const now = new Date().toISOString();
+    const updateResult = await client
+      .from("chronos_meetings")
+      .update({
+        metadata: {
+          ...(meeting.metadata ?? {}),
+          externalRoom: {
+            ...externalRoomMetadata,
+            provider: "whereby",
+            whereby: {
+              ...wherebyMetadata,
+              themeFingerprint,
+              themeSyncedAt: now,
+            },
+          },
+        },
+        updated_at: now,
+      })
+      .eq("id", meeting.id);
+
+    if (updateResult.error) {
+      throw updateResult.error;
+    }
+  } catch (error) {
+    console.warn(
+      "[chronos] Whereby room theme update failed",
+      error instanceof Error ? error.message : "unknown error",
+    );
+  }
+}
+
+function getChronosWherebyRoomBackgroundDataUrl(room: ChronosRoomRow) {
+  const backgroundMetadata = readRecordMetadata(
+    readRecordMetadata(room.metadata).background,
+  );
+
+  return typeof backgroundMetadata.dataUrl === "string"
+    ? backgroundMetadata.dataUrl
+    : null;
+}
+
+function buildChronosWherebyRoomThemeFingerprint(room: ChronosRoomRow) {
+  const backgroundDataUrl = getChronosWherebyRoomBackgroundDataUrl(room);
+
+  if (!backgroundDataUrl) {
+    return "panteon-theme:no-background";
+  }
+
+  return `panteon-theme:${room.slug}:${createHash("sha256")
+    .update(backgroundDataUrl)
+    .digest("hex")}`;
 }
 
 function isChronosReservationInJoinWindow(
@@ -4730,6 +5056,67 @@ function readChronosMetadataText(
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function readChronosMetadataNumber(
+  metadata: Record<string, unknown>,
+  key: string,
+) {
+  const value = metadata[key];
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const numberValue = Number(value);
+
+    if (Number.isFinite(numberValue)) {
+      return numberValue;
+    }
+  }
+
+  return null;
+}
+
+function readChronosMetadataBoolean(
+  metadata: Record<string, unknown>,
+  key: string,
+) {
+  const value = metadata[key];
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === "true") {
+      return true;
+    }
+
+    if (normalized === "false") {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function readChronosMetadataTextArray(
+  metadata: Record<string, unknown>,
+  key: string,
+) {
+  const value = metadata[key];
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+}
+
 async function getChronosPublicMeetingContext({
   client,
   meetingId,
@@ -4799,6 +5186,64 @@ async function resolveChronosPublicRecordingHost({
   }
 
   return { loggedUser, meeting, room };
+}
+
+async function resolveChronosPublicWherebySyncContext({
+  authorizationHeader,
+  client,
+  meetingId,
+  roomSlug,
+}: {
+  authorizationHeader?: string | null;
+  client: ChronosClient;
+  meetingId: string;
+  roomSlug: string;
+}) {
+  const [loggedUser, context] = await Promise.all([
+    resolveOptionalChronosUserFromBearer(client, authorizationHeader),
+    getChronosPublicMeetingContext({
+      client,
+      meetingId,
+      roomSlug,
+    }),
+  ]);
+  const canAttachActor =
+    loggedUser &&
+    (context.meeting.host_user_id === loggedUser.id ||
+      context.room.created_by_user_id === loggedUser.id ||
+      getPermissionsForRole(loggedUser.role).includes("chronos:manage"));
+
+  if (!canSyncChronosPublicWherebyArtifacts(context.meeting)) {
+    throw new Error(
+      "Sincronizacao Whereby indisponivel para esta reuniao Chronos.",
+    );
+  }
+
+  return {
+    actorUserId: canAttachActor ? loggedUser.id : null,
+    meeting: context.meeting,
+    room: context.room,
+  };
+}
+
+function canSyncChronosPublicWherebyArtifacts(meeting: ChronosMeetingRow) {
+  const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
+  const wherebyMetadata = readRecordMetadata(externalRoomMetadata.whereby);
+  const provider =
+    readChronosMetadataText(wherebyMetadata, "provider") ??
+    readChronosMetadataText(externalRoomMetadata, "provider");
+
+  if (provider !== "whereby" || !readChronosMetadataText(wherebyMetadata, "roomName")) {
+    return false;
+  }
+
+  const referenceTime = getChronosWherebyArtifactSyncReferenceTime(meeting);
+
+  if (!referenceTime) {
+    return true;
+  }
+
+  return Date.now() - referenceTime.getTime() <= 72 * 60 * 60 * 1000;
 }
 
 function createChronosClient() {

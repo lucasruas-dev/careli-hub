@@ -86,6 +86,8 @@ import {
   type SetStateAction,
 } from "react";
 
+const chronosWherebyClientSyncCooldownMs = 2 * 60 * 1000;
+
 type ChronosExternalRoomPageProps = {
   room: ChronosPublicRoom;
   videoProvider: "disabled" | "livekit" | "whereby";
@@ -245,11 +247,9 @@ type ChronosWherebyEmbedProps = {
   cameraEffect?: string;
   displayName?: string;
   externalId?: string;
-  floatSelf?: boolean;
   lang?: string;
   logo?: "off" | "on";
   metadata?: string;
-  pipButton?: "off";
   ref?: (element: Element | null) => void;
   room?: string;
   style?: CSSProperties;
@@ -503,6 +503,7 @@ export function ChronosExternalRoomPage({
   const liveKitAudioEgressRecordingIdRef = useRef("");
   const wherebyPreparationKeyRef = useRef("");
   const wherebyEmbedRef = useRef<ChronosWherebyEmbedElement | null>(null);
+  const lastWherebyArtifactSyncAtRef = useRef(0);
   const liveKitParticipantAudioEgressesRef = useRef<
     ChronosLiveKitParticipantAudioEgress[]
   >([]);
@@ -521,7 +522,8 @@ export function ChronosExternalRoomPage({
   );
   const hasWherebyNativeSession =
     isChronosWherebyProvider && Boolean(wherebyRoom && meetingId);
-  const canSyncWherebyArtifacts = Boolean(localParticipant?.isHost || wherebyIsHost);
+  const canSyncWherebyArtifacts =
+    isChronosWherebyProvider && Boolean(wherebyRoom && meetingId);
   const hasJoined = isChronosWherebyProvider
     ? hasWherebyNativeSession
     : Boolean(localParticipant && meetingId);
@@ -548,14 +550,24 @@ export function ChronosExternalRoomPage({
     [hubUser?.id, room.slug],
   );
   const syncChronosWherebyArtifacts = useCallback(async () => {
-    if (!meetingId || (!localParticipant && !wherebyIsHost)) {
+    if (!meetingId || !wherebyRoom) {
       return;
     }
 
+    const now = Date.now();
+
+    if (
+      now - lastWherebyArtifactSyncAtRef.current <
+      chronosWherebyClientSyncCooldownMs
+    ) {
+      return;
+    }
+
+    lastWherebyArtifactSyncAtRef.current = now;
     setWherebyStatus("syncing");
 
     try {
-      await fetch(`/api/chronos/public/rooms/${room.slug}/whereby-sync`, {
+      const response = await fetch(`/api/chronos/public/rooms/${room.slug}/whereby-sync`, {
         body: JSON.stringify({
           meetingId,
           participantId: localParticipant?.id,
@@ -572,6 +584,17 @@ export function ChronosExternalRoomPage({
         },
         method: "POST",
       });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+
+        console.warn(
+          "[chronos] Whereby artifact sync failed",
+          payload?.error ?? response.status,
+        );
+      }
     } finally {
       setWherebyStatus("ready");
     }
@@ -580,7 +603,7 @@ export function ChronosExternalRoomPage({
     localParticipant,
     meetingId,
     room.slug,
-    wherebyIsHost,
+    wherebyRoom,
   ]);
 
   useEffect(() => {
@@ -797,11 +820,11 @@ export function ChronosExternalRoomPage({
     const syncArtifacts = () => {
       void syncChronosWherebyArtifacts();
     };
-    const retryDelays = [15_000, 45_000, 120_000, 240_000];
+    const retryDelays = [120_000, 300_000, 600_000];
     const retryIds = retryDelays.map((delay) =>
       window.setTimeout(syncArtifacts, delay),
     );
-    const intervalId = window.setInterval(syncArtifacts, 90_000);
+    const intervalId = window.setInterval(syncArtifacts, 300_000);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         syncArtifacts();
@@ -3726,51 +3749,8 @@ export function ChronosExternalRoomPage({
             ) : null}
           </section>
         ) : isChronosWherebyProvider ? (
-          <section className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden p-3 sm:p-4">
-            <div className="flex min-h-12 min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#101820]/88 px-3 py-2 text-white shadow-xl ring-1 ring-black/30 backdrop-blur-md">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-black/90 shadow-lg ring-1 ring-white/10">
-                  <span
-                    aria-hidden="true"
-                    className="block h-6 w-6 bg-contain bg-center bg-no-repeat"
-                    style={{
-                      backgroundImage: `url(${chronosCareliMark.src})`,
-                    }}
-                  />
-                  <span className="sr-only">Careli</span>
-                </span>
-                <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-semibold leading-tight">
-                    {room.name}
-                  </p>
-                  <p className="m-0 truncate text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-white/52">
-                    Chronos via Whereby
-                  </p>
-                </div>
-              </div>
-              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-white/70">
-                <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#A07C3B]/35 bg-[#A07C3B]/16 px-3 text-[#f2d8a1]">
-                  <UsersRound aria-hidden="true" size={13} />
-                  Porta ativa
-                </span>
-                {wherebyRoom?.recordingRequired ? (
-                  <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-black/28 px-3">
-                    <Radio aria-hidden="true" size={13} />
-                    Gravacao auto
-                  </span>
-                ) : null}
-                {wherebyRoom?.transcriptionRequired ? (
-                  <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-black/28 px-3">
-                    <FileText aria-hidden="true" size={13} />
-                    Ata Athena
-                  </span>
-                ) : null}
-                <span className="inline-flex h-8 items-center rounded-full border border-white/10 bg-black/28 px-3">
-                  {wherebyIsHost ? "Host" : "Participante"}
-                </span>
-              </div>
-            </div>
-            <div className="relative min-h-0 overflow-hidden rounded-lg border border-white/12 bg-black shadow-2xl ring-1 ring-black/35">
+          <section className="relative h-full min-h-0 overflow-hidden bg-black">
+            <div className="relative h-full min-h-0 overflow-hidden bg-black">
               {wherebyStatus === "loading" || joining ? (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] text-sm font-semibold text-white/72">
                   <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-2 shadow-xl">
@@ -3831,29 +3811,27 @@ export function ChronosExternalRoomPage({
                     </div>
                   </form>
                 ) : (
-                createElement("whereby-embed", {
-                  background: "off",
-                  displayName: wherebyDisplayName || undefined,
-                  externalId: wherebyExternalId || undefined,
-                  floatSelf: true,
-                  lang: "pt",
-                  logo: "off",
-                  metadata: wherebyMetadata,
-                  pipButton: "off",
-                  ref: (element: Element | null) => {
-                    wherebyEmbedRef.current =
-                      element as ChronosWherebyEmbedElement | null;
-                  },
-                  room: wherebyRoomUrl,
-                  style: {
-                    border: 0,
-                    display: "block",
-                    height: "100%",
-                    width: "100%",
-                  },
-                  subgridLabels: "on",
-                  toolbarText: "off",
-                } satisfies ChronosWherebyEmbedProps)
+                  createElement("whereby-embed", {
+                    background: "off",
+                    displayName: wherebyDisplayName || undefined,
+                    externalId: wherebyExternalId || undefined,
+                    lang: "pt",
+                    logo: "off",
+                    metadata: wherebyMetadata,
+                    ref: (element: Element | null) => {
+                      wherebyEmbedRef.current =
+                        element as ChronosWherebyEmbedElement | null;
+                    },
+                    room: wherebyRoomUrl,
+                    style: {
+                      border: 0,
+                      display: "block",
+                      height: "100%",
+                      width: "100%",
+                    },
+                    subgridLabels: "on",
+                    toolbarText: "off",
+                  } satisfies ChronosWherebyEmbedProps)
                 )
               ) : (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] p-6 text-center text-sm font-semibold text-white/72">

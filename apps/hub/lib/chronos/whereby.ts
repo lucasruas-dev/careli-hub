@@ -233,6 +233,15 @@ export async function getChronosWherebyRecordingAccessLink(recordingId: string) 
   );
 }
 
+export async function createChronosWherebyTranscription(recordingId: string) {
+  const config = getChronosWherebyConfig();
+
+  await callChronosWherebyApi(config, "/transcriptions", {
+    body: { recordingId },
+    method: "POST",
+  });
+}
+
 export async function getChronosWherebyTranscriptionAccessLink(
   transcriptionId: string,
 ) {
@@ -246,7 +255,7 @@ export async function getChronosWherebyTranscriptionAccessLink(
   );
 }
 
-async function applyChronosWherebyRoomTheme({
+export async function applyChronosWherebyRoomTheme({
   backgroundDataUrl,
   roomName,
   roomSlug,
@@ -567,7 +576,14 @@ function readChronosWherebyList(payload: unknown) {
 
   const objectPayload = readChronosWherebyObject(payload);
   const results =
-    objectPayload.results ?? objectPayload.data ?? objectPayload.items;
+    objectPayload.results ??
+    objectPayload.data ??
+    objectPayload.items ??
+    objectPayload.recordings ??
+    objectPayload.transcriptions ??
+    objectPayload.roomSessions ??
+    objectPayload.sessions ??
+    objectPayload.participants;
 
   return Array.isArray(results) ? results : [];
 }

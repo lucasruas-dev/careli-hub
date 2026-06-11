@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "OP-20260611-004-CHRONOS-WHEREBY-ARTIFACT-RECOVERY-SYNC",
+  "module": "chronos",
+  "agent": "Zeus",
+  "title": "Recuperacao de artefatos Whereby quando status indica pronto mas Drive nao tem video/transcricao",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_BJwSxFKLS4unSJ6V641URLZrpkXu",
+  "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+  "candidateProductionDeploymentId": "pending",
+  "candidateSourceCommit": "pending",
+  "sourceWorktreeClean": false,
+  "candidatePackagePath": "pending",
+  "rollbackDeploymentId": "dpl_BJwSxFKLS4unSJ6V641URLZrpkXu",
+  "allowedChangedPaths": [
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/lib/chronos/rooms.ts",
+    "apps/hub/lib/chronos/whereby.ts",
+    "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx",
+    "apps/hub/modules/chronos/components/chronos-rooms-management-screen.tsx",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/production-module-safety-gate-chronos-20260611-001-whereby-normal-drive-sync.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-002-whereby-theme-artifacts-sync.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-003-whereby-rate-limit-drive-sync.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-004-whereby-artifact-recovery-sync.json",
+    "scripts/chronos-whereby-backfill.mjs"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/zeus/**",
+    "apps/hub/lib/squadops/**",
+    "apps/hub/app/ares/**",
+    "apps/hub/lib/ares/**",
+    "apps/hub/modules/ares/**",
+    "apps/hub/app/apolo/**",
+    "apps/hub/lib/apolo/**",
+    "apps/hub/modules/apolo/**",
+    "apps/hub/app/atlas/**",
+    "apps/hub/modules/atlas/**",
+    "apps/hub/app/setup/**"
+  ],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/lib/chronos/server.ts",
+      "includes": [
+        "Whereby artifact sync skipped",
+        "Whereby artifact sync completed",
+        "readChronosMetadataBoolean",
+        "transcriptionRequired",
+        "recordingCount > 0",
+        "transcriptSegmentCount > 0 || transcriptionCount > 0"
+      ]
+    },
+    {
+      "path": "scripts/chronos-whereby-backfill.mjs",
+      "includes": [
+        "--public-sync",
+        "--diagnose-meetings",
+        "whereby-sync"
+      ]
+    }
+  ],
+  "validations": [
+    "node --check scripts/chronos-whereby-backfill.mjs: PASS.",
+    "npx.cmd eslint lib/chronos/server.ts --max-warnings 0 em apps/hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run check-types --workspace @repo/hub: PASS.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos.",
+    "Backfill direto local: BLOQUEADO, porque env local de Supabase nao aponta para o mesmo projeto de producao; nenhum valor sensivel foi exibido.",
+    "Public-sync local: executado contra env local e retornou 0 candidatos, coerente com a divergencia de banco local/producao."
+  ],
+  "notes": [
+    "Lucas autorizou a recuperacao e o deploy seguro.",
+    "A causa adicional encontrada foi throttle de complete permissivo: o Chronos podia pular nova sincronizacao quando status dizia available, mesmo sem contagens reais de gravacao/transcricao persistidas no metadata.",
+    "O hotfix passa a considerar complete somente quando ha contagem real de gravacao sincronizada e, quando transcricao e exigida, evidencia de transcricao ou segmentos de transcript.",
+    "O script operacional foi ampliado para diagnostico e tentativa publica controlada, mas backfill direto de producao exige envs corretas no ambiente de execucao e nao deve reutilizar service key local divergente.",
+    "Recorte nao altera envs, secrets, Supabase schema, migrations, Agenda, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br.",
+    "Rollback imediato: reapontar c2x.app.br para dpl_BJwSxFKLS4unSJ6V641URLZrpkXu se houver regressao critica."
+  ]
+}
