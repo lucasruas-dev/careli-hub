@@ -1,0 +1,46 @@
+{
+  "protocolId": "OP-20260611-009-CHRONOS-WHEREBY-PUBLIC-DRIVE-DIAGNOSTIC",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-11T16:50:15-03:00",
+  "status": "VALIDADO_LOCAL_AGUARDANDO_PUBLICACAO_DIAGNOSTICA",
+  "summary": "Adiciona log sanitizado no sync publico Whereby para diagnosticar, no runtime de producao real, a associacao entre meeting, sala, gravacoes e visibilidade no Drive.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Drive Chronos continua sem mostrar as gravacoes de 11/06; a base local nao representa a producao visivel ao usuario.",
+    "deployment": "Lucas autorizou subir hotfixes Chronos deste incidente; este pacote e diagnostico, sem env, secret, migration ou escrita direta em Supabase."
+  },
+  "diagnosis": [
+    "A consulta Supabase usando .env.local nao bateu com a tela de producao: nao encontrou CHR-003714/Teste 6.",
+    "O diagnostico autenticado OP-20260611-008 depende de Lucas atualizar a tela para gerar log.",
+    "O endpoint publico de sync Whereby ja usa o Supabase real de producao e pode ser acionado por Zeus com meetingId conhecido.",
+    "Instrumentar esse endpoint permite confirmar se a meeting sincronizada tem room_id, status, gravacoes persistidas, segmentos e se passaria no filtro de snapshot para nao-host."
+  ],
+  "decisions": [
+    "Adicionar console.info [chronos] whereby_public_drive_diagnostic apos o sync Whereby publico.",
+    "Consultar somente a meeting sincronizada, suas primeiras gravacoes e a contagem de segmentos.",
+    "Nao retornar o diagnostico no response publico; manter os detalhes apenas em log Vercel.",
+    "Nao registrar emails, tokens, chaves, conteudo de transcricao nem payload completo."
+  ],
+  "changedFiles": [
+    "apps/hub/lib/chronos/server.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-009-whereby-public-drive-diagnostic.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-009-whereby-public-drive-diagnostic.json"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS.",
+    "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos."
+  ],
+  "rollback": [
+    "Reverter apps/hub/lib/chronos/server.ts ao estado anterior ao protocolo OP-20260611-009.",
+    "Se publicado e houver regressao critica, reapontar c2x.app.br para o deployment anterior registrado no gate."
+  ],
+  "nextSteps": [
+    "Rodar build do Hub.",
+    "Publicar diagnostico em c2x.app.br.",
+    "Acionar POST /api/chronos/public/rooms/lideranca/whereby-sync para o meetingId conhecido.",
+    "Ler logs por whereby_public_drive_diagnostic e corrigir a causa real."
+  ]
+}

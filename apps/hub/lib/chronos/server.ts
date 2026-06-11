@@ -3161,16 +3161,154 @@ export async function syncChronosPublicWherebyArtifacts({
       roomSlug: slug,
     });
 
+  const syncResult = await syncChronosWherebyMeetingArtifacts({
+    actorUserId,
+    client,
+    meeting,
+    room,
+  });
+
+  await logChronosWherebyPublicDriveDiagnostic({
+    client,
+    meetingId: meeting.id,
+    room,
+    roomSlug: slug,
+    syncResult,
+  });
+
   return {
     ok: true,
     provider: "whereby" as const,
-    ...(await syncChronosWherebyMeetingArtifacts({
-      actorUserId,
-      client,
-      meeting,
-      room,
-    })),
+    ...syncResult,
   };
+}
+
+async function logChronosWherebyPublicDriveDiagnostic({
+  client,
+  meetingId,
+  room,
+  roomSlug,
+  syncResult,
+}: {
+  client: ChronosClient;
+  meetingId: string;
+  room: ChronosRoomRow;
+  roomSlug: string;
+  syncResult: {
+    participantCount: number;
+    recordingCount: number;
+    roomName: string;
+    syncSkipped?: "rate_limited" | "recent" | "complete";
+    transcriptSegmentCount: number;
+    transcriptionCount: number;
+  };
+}) {
+  try {
+    const [meetingResult, recordingsResult, transcriptResult] =
+      await Promise.all([
+        client
+          .from("chronos_meetings")
+          .select(
+            "id,protocol,title,room_id,starts_at,ends_at,status,recording_status,transcription_status,external_reference,metadata,updated_at",
+          )
+          .eq("id", meetingId)
+          .maybeSingle<ChronosMeetingRow>(),
+        client
+          .from("chronos_recordings")
+          .select(
+            "id,status,storage_bucket,storage_path,started_at,stopped_at,created_at,metadata",
+          )
+          .eq("meeting_id", meetingId)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        client
+          .from("chronos_transcript_segments")
+          .select("id", { count: "exact", head: true })
+          .eq("meeting_id", meetingId),
+      ]);
+
+    const errors = [
+      meetingResult.error?.message,
+      recordingsResult.error?.message,
+      transcriptResult.error?.message,
+    ].filter(Boolean);
+
+    if (errors.length > 0) {
+      console.warn("[chronos] whereby_public_drive_diagnostic_failed", {
+        errors,
+        meetingId,
+        roomSlug,
+      });
+
+      return;
+    }
+
+    const meeting = meetingResult.data;
+    const metadata = readRecordMetadata(meeting?.metadata);
+    const externalRoomMetadata = readRecordMetadata(metadata.externalRoom);
+    const wherebyMetadata = readRecordMetadata(externalRoomMetadata.whereby);
+    const externalProvider =
+      readChronosMetadataText(wherebyMetadata, "provider") ??
+      readChronosMetadataText(externalRoomMetadata, "provider");
+
+    console.info("[chronos] whereby_public_drive_diagnostic", {
+      externalProvider,
+      externalReference: meeting?.external_reference ?? null,
+      externalRoomName:
+        readChronosMetadataText(wherebyMetadata, "roomName") ??
+        readChronosMetadataText(externalRoomMetadata, "roomName"),
+      meetingId,
+      protocol: meeting?.protocol ?? null,
+      recordingStatus: meeting?.recording_status ?? null,
+      recordings: (recordingsResult.data ?? []).map((recording) => ({
+        id: recording.id,
+        status: recording.status,
+        storageBucket: recording.storage_bucket,
+        storagePath: recording.storage_path,
+        wherebyRecordingId:
+          readChronosMetadataText(
+            readRecordMetadata(recording.metadata?.whereby),
+            "recordingId",
+          ) ?? null,
+        wherebyRoomName:
+          readChronosMetadataText(
+            readRecordMetadata(recording.metadata?.whereby),
+            "roomName",
+          ) ?? null,
+      })),
+      roomId: meeting?.room_id ?? null,
+      roomName: room.name,
+      roomSlug,
+      startsAt: meeting?.starts_at ?? null,
+      status: meeting?.status ?? null,
+      syncResult,
+      title: meeting?.title ?? null,
+      transcriptSegments: transcriptResult.count ?? null,
+      transcriptionStatus: meeting?.transcription_status ?? null,
+      visibleForNonHost: meeting
+        ? isChronosMeetingVisibleInSnapshot(
+            meeting,
+            "00000000-0000-0000-0000-000000000000",
+          )
+        : null,
+      wherebyMetadata: {
+        recordingCount:
+          readChronosMetadataNumber(wherebyMetadata, "recordingCount") ?? null,
+        source: readChronosMetadataText(wherebyMetadata, "source") ?? null,
+        transcriptSegmentCount:
+          readChronosMetadataNumber(wherebyMetadata, "transcriptSegmentCount") ??
+          null,
+        transcriptionCount:
+          readChronosMetadataNumber(wherebyMetadata, "transcriptionCount") ??
+          null,
+      },
+    });
+  } catch (error) {
+    console.warn(
+      "[chronos] whereby_public_drive_diagnostic_failed",
+      error instanceof Error ? error.message : "unknown error",
+    );
+  }
 }
 
 async function syncPendingChronosWherebyArtifactsForSnapshot({

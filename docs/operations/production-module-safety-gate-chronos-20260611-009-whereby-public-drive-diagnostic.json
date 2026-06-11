@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "OP-20260611-009-CHRONOS-WHEREBY-PUBLIC-DRIVE-DIAGNOSTIC",
+  "module": "chronos",
+  "agent": "Zeus",
+  "title": "Diagnostico publico sanitizado do sync Whereby para Drive Chronos",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_8aivMiHCBym8TfkioCcMETiv6Rvn",
+  "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+  "candidateProductionDeploymentId": "PENDENTE_PUBLICACAO",
+  "candidateProductionUrl": "PENDENTE_PUBLICACAO",
+  "candidateSourceCommit": "PENDENTE_COMMIT",
+  "sourceWorktreeClean": false,
+  "basePackagePath": "PENDENTE_GATE",
+  "candidatePackagePath": "PENDENTE_GATE",
+  "candidateDeployPackagePath": "PENDENTE_DEPLOY",
+  "rollbackDeploymentId": "dpl_8aivMiHCBym8TfkioCcMETiv6Rvn",
+  "allowedChangedPaths": [
+    "apps/hub/lib/chronos/server.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-009-whereby-public-drive-diagnostic.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-009-whereby-public-drive-diagnostic.json"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/zeus/**",
+    "apps/hub/lib/squadops/**",
+    "apps/hub/app/atlas/**",
+    "apps/hub/modules/atlas/**",
+    "apps/hub/app/setup/**"
+  ],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/lib/chronos/server.ts",
+      "includes": [
+        "logChronosWherebyPublicDriveDiagnostic",
+        "[chronos] whereby_public_drive_diagnostic",
+        "visibleForNonHost",
+        "transcriptSegments: transcriptResult.count",
+        "syncResult"
+      ]
+    }
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS.",
+    "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+  ],
+  "notes": [
+    "Este pacote nao altera regra de negocio do Drive; apenas gera observabilidade sanitizada no endpoint publico de sync Whereby.",
+    "O diagnostico fica apenas em log Vercel; nao e retornado no response publico.",
+    "Nenhuma escrita direta em Supabase, migration, env, secret, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br entra no escopo."
+  ]
+}

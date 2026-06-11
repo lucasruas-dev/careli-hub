@@ -36071,3 +36071,34 @@ Conclusao:
 - Precisa de acao agora: Zeus publica o diagnostico; Lucas atualiza a tela uma vez; Zeus le o log `drive_snapshot_diagnostic`.
 - Quem deve agir agora: Zeus publica e monitora; Lucas apenas valida a tela apos o deploy diagnostico.
 - Proximo passo tecnico: se a meeting nao aparecer no log, corrigir snapshot/backfill; se aparecer no log, corrigir agrupamento/filtro do Drive.
+
+### Complemento 2026-06-11 16:50:15 -03:00 - diagnostico Whereby publico para Drive Chronos
+
+- Status atualizado: `VALIDADO_LOCAL / DIAGNOSTICO EM PUBLICACAO`.
+- Protocolo: `OP-20260611-009-CHRONOS-WHEREBY-PUBLIC-DRIVE-DIAGNOSTIC`.
+- Contexto:
+  - o diagnostico autenticado `OP-20260611-008` foi publicado em `c2x.app.br`, mas ainda nao havia log `drive_snapshot_diagnostic` apos o deploy;
+  - consulta local ao Supabase via `.env.local` nao refletiu a producao vista por Lucas, pois nao encontrou `CHR-003714`/`Teste 6`;
+  - portanto a fonte confiavel para diagnostico imediato e o runtime Vercel em `c2x.app.br`.
+- Implementacao:
+  - `syncChronosPublicWherebyArtifacts` passa a chamar `logChronosWherebyPublicDriveDiagnostic` apos sincronizar a meeting Whereby;
+  - o log `[chronos] whereby_public_drive_diagnostic` registra meeting, sala, status, gravacoes persistidas, contagem de segmentos e `visibleForNonHost`;
+  - os detalhes ficam apenas em log Vercel; o response publico nao foi ampliado;
+  - o log nao contem emails, tokens, chaves, conteudo de transcricao nem payload completo.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos fora do recorte Chronos.
+- Fora do escopo:
+  - nenhuma escrita direta em Supabase foi executada;
+  - nenhum env, secret, migration, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br` foi alterado.
+- Rollback:
+  - se houver regressao critica apos publicacao, reapontar `c2x.app.br` para `dpl_8aivMiHCBym8TfkioCcMETiv6Rvn`.
+
+Conclusao:
+
+- O diagnostico agora pode ser acionado por Zeus via sync Whereby, sem depender da sessao autenticada do Lucas.
+- O impacto pratico esperado e confirmar se a meeting de Lideranca tem room/status/recordings/transcript suficientes para entrar no Drive.
+- Precisa de acao agora: Zeus publica, chama o sync da Lideranca e le o log `whereby_public_drive_diagnostic`.
+- Quem deve agir agora: Zeus.
+- Proximo passo tecnico: corrigir a causa com base no log real de producao, sem novo chute de UI ou cache.
