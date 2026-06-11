@@ -35622,3 +35622,56 @@ Conclusao:
 - Precisa de acao agora: sim, publicar o hotfix em `c2x.app.br` e validar logs/Drive depois do processamento Whereby.
 - Quem deve agir agora: Zeus publica e monitora; Lucas pode abrir o Drive Chronos depois do deploy para forcar/validar a reconciliacao pelo runtime de producao.
 - Proximo passo tecnico: montar pacote limpo, validar diff/gate, publicar somente `c2x.app.br`, preservar `ops.c2x.app.br` e registrar healthchecks.
+
+### Complemento 2026-06-11 11:19:46 -03:00 - recuperacao Whereby publicada em producao
+
+- Status atualizado: `EM PRODUCAO / OPERACIONAL COM ATENCAO`.
+- Protocolo: `OP-20260611-004-CHRONOS-WHEREBY-ARTIFACT-RECOVERY-SYNC`.
+- Commit rastreavel do runtime: `c6f5e19e4b2a879843e43d941da912957e48f697`.
+- Deployment anterior de `c2x.app.br`: `dpl_BJwSxFKLS4unSJ6V641URLZrpkXu`.
+- Deployment novo de `c2x.app.br`: `dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp`.
+- URL tecnica: `https://careli-hub-hub-i2bs-ldzxiqton-lucasruas-devs-projects.vercel.app`.
+- Alias movido: `https://c2x.app.br`.
+- Alias preservado: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Deploy:
+  - pacote base: `C:/Users/lucas/AppData/Local/Temp/chronos-whereby-artifact-recovery-prod-20260611-110521/base`;
+  - pacote candidato do gate: `C:/Users/lucas/AppData/Local/Temp/chronos-whereby-artifact-recovery-prod-20260611-110521/candidate-gate`;
+  - pacote candidato do deploy: `C:/Users/lucas/AppData/Local/Temp/chronos-whereby-artifact-recovery-prod-20260611-110521/candidate`;
+  - pacotes gerados por `git archive`, sem `.git`, `.env`, `.env.local`, `.next` ou `node_modules`;
+  - `.vercel/project.json` foi adicionado somente ao pacote de deploy para vinculo do projeto, sem envs locais.
+- Validacoes:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `node --check scripts/chronos-whereby-backfill.mjs`: PASS;
+  - `npx.cmd eslint lib/chronos/server.ts --max-warnings 0` em `apps/hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido de workspace/Turbopack/NFT fora do recorte Chronos;
+  - `node C:/Users/lucas/Documents/Careli_C2x/Sistemas/careli-hub/scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-chronos-20260611-004-whereby-artifact-recovery-sync.json`: PASS, 11 mudancas detectadas;
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes`: PASS, `READY`;
+  - `GET https://careli-hub-hub-i2bs-ldzxiqton-lucasruas-devs-projects.vercel.app/chronos`: 200;
+  - `GET https://careli-hub-hub-i2bs-ldzxiqton-lucasruas-devs-projects.vercel.app/chronos/careli`: 200;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-ldzxiqton-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects`: SUCCESS;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel logs ... --query chronos --expand`: logs `info` confirmaram os novos eventos `Whereby artifact sync completed/skipped`, sem warning/erro novo.
+- Recuperacao retroativa:
+  - logs apos deploy confirmaram sync em producao para salas `lideranca` e `relacionamento`;
+  - a sala `lideranca` retornou `skipped` por `complete`, agora pelo novo criterio baseado em contagens reais;
+  - a sala `relacionamento` retornou `completed` com contagens 0, indicando que nao havia artefato Whereby disponivel naquele momento;
+  - a sala `careli` retornou 200 na pagina publica, mas nao expôs `meetingId` nem disparou `whereby-sync` no GET publico;
+  - sem `meetingId` e sem acesso direto ao Supabase de producao neste ambiente local, nao foi seguro forcar backfill retroativo direto da sala `careli`.
+- Fora do escopo:
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas, Setup, Supabase schema, migration, secret/env ou alias `ops.c2x.app.br` foi executada;
+  - nenhum valor de secret, service role, bearer ou chave externa foi exibido.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_BJwSxFKLS4unSJ6V641URLZrpkXu`;
+  - `ops.c2x.app.br` nao precisa de rollback neste pacote.
+
+Conclusao:
+
+- O hotfix de recuperacao Whereby esta em producao e o Chronos agora nao deve mais se declarar `complete` sem ter gravacao/transcricao realmente sincronizadas no metadata do Drive.
+- O impacto pratico e que novas tentativas de sync podem registrar o video/transcricao assim que a Whereby liberar os artefatos, evitando atas vazias por falsa conclusao.
+- Precisa de acao agora: Lucas deve abrir o Drive Chronos e/ou a sala gravada pelo app autenticado para o runtime de producao disparar a reconciliacao com o `meetingId` correto; se ainda nao aparecer, Zeus deve executar backfill controlado com envs de producao corretas.
+- Quem deve agir agora: Lucas valida o Drive; Zeus monitora logs por `Whereby artifact sync` e, se necessario, conduz backfill assistido sem expor chaves.
+- Proximo passo tecnico: acompanhar logs apos a validacao do Lucas; se `careli` nao disparar sync, pedir somente o minimo necessario para executar o backfill em ambiente com Supabase/Whereby de producao corretos.

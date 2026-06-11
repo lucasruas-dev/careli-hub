@@ -8,10 +8,12 @@
   "expectedProjectName": "careli-hub-hub-i2bs",
   "currentProductionDeploymentId": "dpl_BJwSxFKLS4unSJ6V641URLZrpkXu",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "pending",
-  "candidateSourceCommit": "pending",
-  "sourceWorktreeClean": false,
-  "candidatePackagePath": "pending",
+  "candidateProductionDeploymentId": "dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp",
+  "candidateSourceCommit": "c6f5e19e4b2a879843e43d941da912957e48f697",
+  "sourceWorktreeClean": true,
+  "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-artifact-recovery-prod-20260611-110521/base",
+  "candidatePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-artifact-recovery-prod-20260611-110521/candidate-gate",
+  "candidateDeployPackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-artifact-recovery-prod-20260611-110521/candidate",
   "rollbackDeploymentId": "dpl_BJwSxFKLS4unSJ6V641URLZrpkXu",
   "allowedChangedPaths": [
     "apps/hub/lib/chronos/server.ts",
@@ -82,7 +84,17 @@
     "npm.cmd run check-types --workspace @repo/hub: PASS.",
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos.",
     "Backfill direto local: BLOQUEADO, porque env local de Supabase nao aponta para o mesmo projeto de producao; nenhum valor sensivel foi exibido.",
-    "Public-sync local: executado contra env local e retornou 0 candidatos, coerente com a divergencia de banco local/producao."
+    "Public-sync local: executado contra env local e retornou 0 candidatos, coerente com a divergencia de banco local/producao.",
+    "Production Module Safety Gate: PASS, 11 mudancas detectadas dentro do recorte Chronos.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes: PASS, Ready em dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp.",
+    "GET https://careli-hub-hub-i2bs-ldzxiqton-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "GET https://careli-hub-hub-i2bs-ldzxiqton-lucasruas-devs-projects.vercel.app/chronos/careli: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-ldzxiqton-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "GET https://c2x.app.br/chronos/careli: 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp apos alias.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: permaneceu Ready em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj apos alias.",
+    "npx.cmd vercel logs ... --query chronos --expand: logs info confirmaram novos eventos Whereby artifact sync completed/skipped, sem warning/erro novo."
   ],
   "notes": [
     "Lucas autorizou a recuperacao e o deploy seguro.",
@@ -90,6 +102,7 @@
     "O hotfix passa a considerar complete somente quando ha contagem real de gravacao sincronizada e, quando transcricao e exigida, evidencia de transcricao ou segmentos de transcript.",
     "O script operacional foi ampliado para diagnostico e tentativa publica controlada, mas backfill direto de producao exige envs corretas no ambiente de execucao e nao deve reutilizar service key local divergente.",
     "Recorte nao altera envs, secrets, Supabase schema, migrations, Agenda, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br.",
-    "Rollback imediato: reapontar c2x.app.br para dpl_BJwSxFKLS4unSJ6V641URLZrpkXu se houver regressao critica."
+    "Rollback imediato: reapontar c2x.app.br para dpl_BJwSxFKLS4unSJ6V641URLZrpkXu se houver regressao critica.",
+    "A sala careli nao exibiu meetingId em HTML publico nem sync recente nos logs apos o deploy; recuperacao retroativa dessa sala depende de abertura autenticada do Drive/sala no runtime de producao ou de execucao controlada com envs corretas."
   ]
 }
