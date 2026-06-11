@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "OP-20260611-006-CHRONOS-SNAPSHOT-RELATED-DATA-CHUNKS",
+  "module": "chronos",
+  "agent": "Zeus",
+  "title": "Snapshot Chronos em chunks para recuperar dados do Drive",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE",
+  "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+  "candidateProductionDeploymentId": "PENDING_DEPLOY",
+  "candidateProductionUrl": "PENDING_DEPLOY",
+  "candidateSourceCommit": "PENDING_COMMIT",
+  "sourceWorktreeClean": true,
+  "basePackagePath": "PENDING_PACKAGE",
+  "candidatePackagePath": "PENDING_PACKAGE",
+  "candidateDeployPackagePath": "PENDING_PACKAGE",
+  "rollbackDeploymentId": "dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE",
+  "allowedChangedPaths": [
+    "apps/hub/lib/chronos/server.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-006-snapshot-related-data-chunks.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-006-snapshot-related-data-chunks.json"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/zeus/**",
+    "apps/hub/lib/squadops/**",
+    "apps/hub/app/ares/**",
+    "apps/hub/lib/ares/**",
+    "apps/hub/modules/ares/**",
+    "apps/hub/app/apolo/**",
+    "apps/hub/lib/apolo/**",
+    "apps/hub/modules/apolo/**",
+    "apps/hub/app/atlas/**",
+    "apps/hub/modules/atlas/**",
+    "apps/hub/app/setup/**"
+  ],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/lib/chronos/server.ts",
+      "includes": [
+        "chronosSnapshotRelatedDataChunkSize",
+        "listChronosMeetingRelatedRows",
+        "chronos_chat_messages",
+        "index += chronosSnapshotRelatedDataChunkSize"
+      ]
+    }
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS.",
+    "git diff --check -- apps/hub/lib/chronos/server.ts: PASS, apenas avisos CRLF esperados no Windows.",
+    "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+  ],
+  "notes": [
+    "Lucas reportou que o Drive continuou igual apos F5, mesmo com sync Whereby confirmado para Lideranca.",
+    "A tela mostrava banner de dados complementares temporariamente indisponiveis.",
+    "Logs recentes apos F5 mostraram GET /api/chronos/meetings, mas nenhum novo Whereby artifact sync.",
+    "O snapshot fazia consultas relacionadas com ate 1500 meetingIds em uma unica chamada por tabela; o recorte muda isso para chunks de 100 ids.",
+    "Consulta local ao Supabase foi considerada insuficiente para backfill porque o .env.local do repo principal aponta para outro projeto mascarado, diferente do esperado pelo app publico.",
+    "Nenhuma env, secret, migration, schema, banco direto, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br entra no escopo."
+  ]
+}

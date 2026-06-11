@@ -1,0 +1,79 @@
+{
+  "protocolId": "OP-20260611-006-CHRONOS-SNAPSHOT-RELATED-DATA-CHUNKS",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-11T15:12:41-03:00",
+  "status": "VALIDADO_LOCAL_AGUARDANDO_PUBLICACAO",
+  "summary": "Corrige o snapshot do Chronos para carregar dados complementares em lotes menores, evitando falha parcial do Supabase/PostgREST quando a agenda possui muitas reunioes.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Resolver Drive Chronos que continua sem exibir gravacoes Whereby mesmo apos sync confirmado no runtime.",
+    "supabase": "Lucas autorizou consultas e alteracoes Supabase se necessario em 2026-06-11; neste recorte nenhuma escrita direta em banco foi executada.",
+    "deployment": "Lucas ja havia autorizado subir o pacote Chronos do incidente Whereby; este complemento segue o mesmo incidente operacional, com rollback registrado."
+  },
+  "diagnosis": [
+    "A tela de Lucas continuou exibindo o banner 'Chronos carregou a agenda, mas alguns dados complementares estao temporariamente indisponiveis'.",
+    "Logs recentes apos F5 mostraram GET /api/chronos/meetings, mas nao novo Whereby artifact sync.",
+    "O codigo de listChronosSnapshot buscava participantes, timeline, transcricoes, atas, follow-ups, gravacoes e chat com meeting_id in (...) usando ate 1500 ids em uma unica chamada por tabela.",
+    "Esse padrao pode estourar limite de URL/query no Supabase/PostgREST e fazer a rota responder 200 em modo parcial, deixando o Drive sem gravacoes/transcricoes apesar de o sync Whereby ter persistido artefatos.",
+    "Consulta local ao .env do worktree nao trouxe Supabase util; o .env do repo principal apontava para outro projeto mascarado, entao backfill direto local foi bloqueado para evitar escrita no projeto errado."
+  ],
+  "decisions": [
+    "Carregar dados relacionados do snapshot Chronos em chunks de 100 meetingIds.",
+    "Aplicar o mesmo padrao para chronos_chat_messages, que tambem recebia a lista completa de meetingIds.",
+    "Manter a resposta parcial atual se uma tabela falhar, mas reduzir o risco de falha causada por lista gigante de ids.",
+    "Nao executar backfill direto de Supabase enquanto o projeto de producao real nao for confirmado sem expor secrets."
+  ],
+  "changedFiles": [
+    "apps/hub/lib/chronos/server.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-006-snapshot-related-data-chunks.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-006-snapshot-related-data-chunks.json"
+  ],
+  "requiredEnvNames": [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_SECRET_KEY",
+    "WHEREBY_API_KEY",
+    "CHRONOS_WHEREBY_API_KEY"
+  ],
+  "validations": [
+    {
+      "command": "npm.cmd run check-types:hub",
+      "status": "PASS",
+      "notes": "TypeScript passou apos ajuste de callbacks async para builders Supabase."
+    },
+    {
+      "command": "git diff --check -- apps/hub/lib/chronos/server.ts",
+      "status": "PASS",
+      "notes": "Sem whitespace error; apenas aviso CRLF esperado no Windows."
+    },
+    {
+      "command": "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0",
+      "status": "PASS",
+      "notes": "ESLint passou; warning conhecido MODULE_TYPELESS_PACKAGE_JSON sem falha."
+    },
+    {
+      "command": "npm.cmd run build --workspace @repo/hub",
+      "status": "PASS",
+      "notes": "Next build compilou; warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+    }
+  ],
+  "risks": [
+    "Se houver outro erro de RLS/schema em tabelas relacionadas, o banner parcial pode continuar; nesse caso o proximo passo e diagnostico no Supabase de producao real.",
+    "Backfill direto continua dependente de confirmar o projeto Supabase de producao sem expor chaves.",
+    "O chunking aumenta o numero de chamadas Supabase por snapshot, mas reduz payloads gigantes e mantem o limite de reunioes atual."
+  ],
+  "rollback": [
+    "Reverter apps/hub/lib/chronos/server.ts para o commit anterior ao protocolo OP-20260611-006.",
+    "Se publicado e houver regressao critica, reapontar c2x.app.br para dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE.",
+    "ops.c2x.app.br permanece fora do escopo."
+  ],
+  "nextSteps": [
+    "Publicar o recorte limpo em c2x.app.br.",
+    "Validar GET /chronos e /chronos/careli.",
+    "Lucas deve pressionar atualizar no Drive; se o banner sumir e as gravacoes aparecerem, o incidente fecha.",
+    "Se Operacao ainda nao aparecer, executar diagnostico/backfill no Supabase de producao real com projeto confirmado."
+  ]
+}

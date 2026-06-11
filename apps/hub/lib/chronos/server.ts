@@ -486,6 +486,7 @@ const chronosWherebySyncThrottleMs = 2 * 60 * 1000;
 const chronosWherebyRateLimitBackoffMs = 10 * 60 * 1000;
 const chronosWherebySnapshotSyncLimit = 3;
 const chronosWherebyCompleteRecheckWindowMs = 24 * 60 * 60 * 1000;
+const chronosSnapshotRelatedDataChunkSize = 100;
 
 const defaultChronosRooms: ChronosRoom[] = [
   {
@@ -694,35 +695,59 @@ export async function listChronosSnapshot(
     ] =
       meetingIds.length > 0
         ? await Promise.all([
-            client
-              .from("chronos_participants")
-              .select("*")
-              .in("meeting_id", meetingIds),
-            client
-              .from("chronos_timeline_events")
-              .select("*")
-              .in("meeting_id", meetingIds)
-              .order("event_at", { ascending: false }),
-            client
-              .from("chronos_transcript_segments")
-              .select("*")
-              .in("meeting_id", meetingIds)
-              .order("created_at", { ascending: true }),
-            client
-              .from("chronos_minutes")
-              .select("*")
-              .in("meeting_id", meetingIds)
-              .order("created_at", { ascending: false }),
-            client
-              .from("chronos_followups")
-              .select("*")
-              .in("meeting_id", meetingIds)
-              .order("created_at", { ascending: false }),
-            client
-              .from("chronos_recordings")
-              .select("*")
-              .in("meeting_id", meetingIds)
-              .order("created_at", { ascending: false }),
+            listChronosMeetingRelatedRows<ChronosParticipantRow>(
+              meetingIds,
+              async (chunk) =>
+                client
+                  .from("chronos_participants")
+                  .select("*")
+                  .in("meeting_id", chunk),
+            ),
+            listChronosMeetingRelatedRows<ChronosTimelineEventRow>(
+              meetingIds,
+              async (chunk) =>
+                client
+                  .from("chronos_timeline_events")
+                  .select("*")
+                  .in("meeting_id", chunk)
+                  .order("event_at", { ascending: false }),
+            ),
+            listChronosMeetingRelatedRows<ChronosTranscriptSegmentRow>(
+              meetingIds,
+              async (chunk) =>
+                client
+                  .from("chronos_transcript_segments")
+                  .select("*")
+                  .in("meeting_id", chunk)
+                  .order("created_at", { ascending: true }),
+            ),
+            listChronosMeetingRelatedRows<ChronosMinutesRow>(
+              meetingIds,
+              async (chunk) =>
+                client
+                  .from("chronos_minutes")
+                  .select("*")
+                  .in("meeting_id", chunk)
+                  .order("created_at", { ascending: false }),
+            ),
+            listChronosMeetingRelatedRows<ChronosFollowUpRow>(
+              meetingIds,
+              async (chunk) =>
+                client
+                  .from("chronos_followups")
+                  .select("*")
+                  .in("meeting_id", chunk)
+                  .order("created_at", { ascending: false }),
+            ),
+            listChronosMeetingRelatedRows<ChronosRecordingRow>(
+              meetingIds,
+              async (chunk) =>
+                client
+                  .from("chronos_recordings")
+                  .select("*")
+                  .in("meeting_id", chunk)
+                  .order("created_at", { ascending: false }),
+            ),
           ])
         : [
             emptySupabaseList<ChronosParticipantRow>(),
@@ -750,11 +775,16 @@ export async function listChronosSnapshot(
     let chatMessages: ChronosChatMessageRow[] = [];
 
     if (meetingIds.length > 0) {
-      const chatMessagesResult = await client
-        .from("chronos_chat_messages")
-        .select("*")
-        .in("meeting_id", meetingIds)
-        .order("created_at", { ascending: true });
+      const chatMessagesResult =
+        await listChronosMeetingRelatedRows<ChronosChatMessageRow>(
+          meetingIds,
+          async (chunk) =>
+            client
+              .from("chronos_chat_messages")
+              .select("*")
+              .in("meeting_id", chunk)
+              .order("created_at", { ascending: true }),
+        );
 
       if (chatMessagesResult.error) {
         if (isChronosSchemaMissingError(chatMessagesResult.error)) {
@@ -9210,6 +9240,41 @@ function groupRows<Row extends { meeting_id: string }>(
   meetingId: string,
 ) {
   return rows.filter((row) => row.meeting_id === meetingId);
+}
+
+async function listChronosMeetingRelatedRows<Row>(
+  meetingIds: string[],
+  loadChunk: (
+    meetingIds: string[],
+  ) => Promise<{ data: Row[] | null; error: unknown }>,
+) {
+  const rows: Row[] = [];
+
+  for (
+    let index = 0;
+    index < meetingIds.length;
+    index += chronosSnapshotRelatedDataChunkSize
+  ) {
+    const chunk = meetingIds.slice(
+      index,
+      index + chronosSnapshotRelatedDataChunkSize,
+    );
+    const result = await loadChunk(chunk);
+
+    if (result.error) {
+      return {
+        data: rows,
+        error: result.error,
+      };
+    }
+
+    rows.push(...(result.data ?? []));
+  }
+
+  return {
+    data: rows,
+    error: null,
+  };
 }
 
 function emptySupabaseList<Row>() {

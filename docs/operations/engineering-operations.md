@@ -35867,3 +35867,41 @@ Conclusao:
 - Precisa de acao agora: Lucas deve clicar na pasta `Lideranca` no Drive Chronos e atualizar; se a gravacao de `Operacao` nao aparecer, Zeus deve executar backfill assistido especifico para `/careli-operacaomg7634`.
 - Quem deve agir agora: Lucas valida a pasta `Lideranca`; Zeus fica pronto para backfill de `Operacao` se ainda faltar.
 - Proximo passo tecnico: se `Operacao` continuar ausente, localizar/criar vinculo seguro do roomName `/careli-operacaomg7634` com a meeting Chronos correta sem expor secrets.
+
+### Complemento 2026-06-11 15:12:41 -03:00 - snapshot Chronos em chunks para recuperar Drive
+
+- Status atualizado: `VALIDADO_LOCAL / AGUARDANDO PUBLICACAO`.
+- Protocolo: `OP-20260611-006-CHRONOS-SNAPSHOT-RELATED-DATA-CHUNKS`.
+- Contexto:
+  - Lucas reportou que, mesmo apos F5, o Drive Chronos continuou igual;
+  - a tela exibiu o banner `Chronos carregou a agenda, mas alguns dados complementares estao temporariamente indisponiveis`;
+  - logs recentes confirmaram `GET /api/chronos/meetings`, mas nenhum novo `Whereby artifact sync` depois da validacao manual de Lideranca;
+  - o sync manual anterior ja havia confirmado `recordingCount: 2`, `transcriptSegmentCount: 65` e `transcriptionCount: 1` para `/careli-liderancaaqrnsv`.
+- Diagnostico:
+  - `listChronosSnapshot` buscava participantes, timeline, transcricoes, atas, follow-ups, gravacoes e chat usando `meeting_id in (...)` com ate 1500 ids de uma vez;
+  - esse padrao pode fazer o Supabase/PostgREST falhar parcialmente por payload/URL grande, mantendo a rota em 200, mas deixando o Drive sem dados complementares;
+  - isso combina com o banner parcial visto pelo Lucas e com a ausencia de novo sync Whereby apos refresh;
+  - consulta local ao Supabase nao foi usada para backfill porque o `.env.local` do worktree nao possui Supabase util e o `.env.local` do repo principal aponta para outro projeto mascarado, diferente do esperado pelo app publico.
+- Correcao:
+  - `apps/hub/lib/chronos/server.ts` adicionou `chronosSnapshotRelatedDataChunkSize = 100`;
+  - participantes, timeline, transcricoes, atas, follow-ups, gravacoes e chat agora usam `listChronosMeetingRelatedRows` em chunks de 100 `meetingIds`;
+  - nenhuma escrita direta em Supabase, migration, schema, env, secret ou backfill foi executado neste complemento.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `git diff --check -- apps/hub/lib/chronos/server.ts`: PASS, apenas aviso CRLF esperado no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.
+- Fora do escopo:
+  - nenhuma alteracao em Hades, Hermes, Iris, Atlas, Setup, Supabase schema, migrations, secrets/envs ou alias `ops.c2x.app.br`;
+  - nenhum backfill direto no banco de producao sem confirmar o projeto Supabase real.
+- Rollback:
+  - se houver regressao critica apos publicacao, reapontar `c2x.app.br` para `dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE`;
+  - `ops.c2x.app.br` nao precisa de rollback neste pacote.
+
+Conclusao:
+
+- O problema persistente apos o F5 provavelmente nao era o clique do Lucas nem a Whereby, mas o snapshot do Chronos carregando dados complementares em chamadas grandes demais.
+- O impacto pratico esperado e o Drive voltar a receber `chronos_recordings` e `chronos_transcript_segments` no payload da tela, incluindo a Lideranca ja sincronizada.
+- Precisa de acao agora: sim, publicar este complemento e Lucas atualizar o Drive depois.
+- Quem deve agir agora: Zeus publica e valida; Lucas testa o Drive em seguida.
+- Proximo passo tecnico: se apos este deploy `Operacao` ainda nao aparecer, executar diagnostico/backfill no Supabase de producao real com o projeto confirmado sem expor secrets.
