@@ -645,21 +645,31 @@ export async function listChronosSnapshot(
       throw roomsResult.error;
     }
 
-    const [meetingsResult, ownedMeetingsResult] = await Promise.all([
-      client
-        .from("chronos_meetings")
-        .select("*")
-        .neq("status", "cancelled")
-        .order("starts_at", { ascending: false, nullsFirst: false })
-        .limit(1500),
-      client
-        .from("chronos_meetings")
-        .select("*")
-        .eq("host_user_id", authorization.user.id)
-        .neq("status", "cancelled")
-        .order("updated_at", { ascending: false })
-        .limit(1500),
-    ]);
+    const [meetingsResult, ownedMeetingsResult, artifactMeetingsResult] =
+      await Promise.all([
+        client
+          .from("chronos_meetings")
+          .select("*")
+          .neq("status", "cancelled")
+          .order("starts_at", { ascending: false, nullsFirst: false })
+          .limit(1500),
+        client
+          .from("chronos_meetings")
+          .select("*")
+          .eq("host_user_id", authorization.user.id)
+          .neq("status", "cancelled")
+          .order("updated_at", { ascending: false })
+          .limit(1500),
+        client
+          .from("chronos_meetings")
+          .select("*")
+          .neq("status", "cancelled")
+          .or(
+            "recording_status.eq.available,transcription_status.eq.available,external_reference.like.whereby-room:%",
+          )
+          .order("updated_at", { ascending: false })
+          .limit(1500),
+      ]);
 
     if (meetingsResult.error) {
       throw meetingsResult.error;
@@ -669,8 +679,13 @@ export async function listChronosSnapshot(
       throw ownedMeetingsResult.error;
     }
 
+    if (artifactMeetingsResult.error) {
+      throw artifactMeetingsResult.error;
+    }
+
     const meetings = mergeChronosMeetingRowsById([
       ...(ownedMeetingsResult.data ?? []),
+      ...(artifactMeetingsResult.data ?? []),
       ...(meetingsResult.data ?? []),
     ])
       .filter((meeting) =>
