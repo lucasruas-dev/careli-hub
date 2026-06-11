@@ -36137,3 +36137,43 @@ Conclusao:
 - Precisa de acao agora: Lucas deve clicar no botao de refresh do Chronos ou recarregar a tela; Zeus deve ler o log `drive_snapshot_diagnostic` gerado pela chamada autenticada se a UI ainda nao listar.
 - Quem deve agir agora: Lucas valida visualmente; Zeus monitora os logs e corrige o frontend/snapshot se o payload autenticado divergir do diagnostico publico.
 - Proximo passo tecnico: se a tela ainda mostrar apenas `Teste 6`, usar o log `drive_snapshot_diagnostic` para comparar `recordingMeetingCount` e corrigir precisamente a camada que descartar `CHR-005926`.
+
+### Complemento 2026-06-11 17:40:04 -03:00 - Drive Chronos inclui meetings com artefatos no snapshot
+
+- Status atualizado: `VALIDADO_LOCAL / AGUARDANDO_PUBLICACAO`.
+- Protocolo: `OP-20260611-010-CHRONOS-SNAPSHOT-ARTIFACT-MEETINGS`.
+- Contexto:
+  - Lucas atualizou o Chronos e a tela do Drive continuou exibindo apenas `Teste 6`, apesar de o Whereby listar as gravacoes de 11/06;
+  - o diagnostico publico `whereby_public_drive_diagnostic` confirmou `CHR-005926` / `Careli: Capacitacao de Lideres` com 2 gravacoes, 139 segmentos, sala `Lideranca`, `recordingStatus: available`, `transcriptionStatus: available` e `visibleForNonHost: true`;
+  - o diagnostico autenticado `drive_snapshot_diagnostic`, apos refresh do Lucas, listou meetings com artefato apenas como `CHR-003712`, `CHR-003714` e `CHR-004371`, sem `CHR-005926`.
+- Causa identificada:
+  - `listChronosSnapshot` buscava as 1500 reunioes mais recentes por `starts_at` e as 1500 reunioes do host por `updated_at`;
+  - uma meeting Whereby nao-owned, mesmo com gravacao/transcricao disponivel, podia ficar fora do recorte inicial antes de carregar `chronos_recordings` e segmentos;
+  - por isso o Drive nao recebia a meeting com artefatos e nao tinha como renderizar a pasta/link.
+- Implementacao:
+  - `apps/hub/lib/chronos/server.ts` agora adiciona `artifactMeetingsResult` em `listChronosSnapshot`;
+  - a nova consulta inclui reunioes nao canceladas com `recording_status = available`, `transcription_status = available` ou `external_reference` Whereby;
+  - o merge passa a incluir `artifactMeetingsResult` antes do filtro de visibilidade e antes do carregamento das rows relacionadas.
+- Validacoes:
+  - `git diff --check -- apps/hub/lib/chronos/server.ts`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos;
+  - consulta Supabase local somente leitura: a clausula `.or(...)` foi aceita, mas a base local nao contem `CHR-005926` e nao representa a producao vista por Lucas.
+- Manifestos:
+  - `docs/operations/panteon-recorte-manifest-chronos-20260611-010-snapshot-artifact-meetings.json`;
+  - `docs/operations/production-module-safety-gate-chronos-20260611-010-snapshot-artifact-meetings.json`.
+- Fora do escopo:
+  - nenhuma escrita manual em Supabase foi executada;
+  - nenhum env, secret, migration, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br` foi alterado;
+  - S3 foi avaliado como arquitetura posterior, mas nao e a causa do incidente atual.
+- Rollback:
+  - se houver regressao critica apos publicacao, reapontar `c2x.app.br` para `dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn`.
+
+Conclusao:
+
+- O que aconteceu: a gravacao existia e estava persistida, mas a meeting com artefato ficava fora da lista inicial que alimenta o Drive.
+- Impacto pratico: apos publicacao, reunioes Whereby com gravacao/transcricao devem aparecer no Drive mesmo quando nao forem owned ou nao cairem no corte inicial por data.
+- Precisa de acao agora: Zeus deve rodar o safety gate, publicar o pacote e validar o log autenticado apos refresh.
+- Quem deve agir agora: Zeus publica e monitora; Lucas so precisa atualizar a tela quando Zeus avisar.
+- Proximo passo: deploy seguro do OP-20260611-010 e confirmacao de `CHR-005926` dentro de `drive_snapshot_diagnostic`.

@@ -1,0 +1,48 @@
+{
+  "protocolId": "OP-20260611-010-CHRONOS-SNAPSHOT-ARTIFACT-MEETINGS",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-11T17:40:04-03:00",
+  "status": "VALIDADO_LOCAL / AGUARDANDO_PUBLICACAO",
+  "summary": "Corrige o snapshot autenticado do Drive Chronos para incluir explicitamente reunioes com gravacao, transcricao ou referencia Whereby antes do filtro de visibilidade.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Drive Chronos nao lista as gravacoes Whereby de 11/06 apesar de o runtime de producao confirmar CHR-005926 com gravacoes e transcricao.",
+    "deployment": "Autorizado por Lucas durante o incidente Chronos-Whereby; publicacao depende do Production Module Safety Gate."
+  },
+  "diagnosis": [
+    "O diagnostico publico Whereby confirmou CHR-005926 com 2 gravacoes, 139 segmentos de transcricao, sala Lideranca e visibleForNonHost true.",
+    "O diagnostico autenticado do Drive mostrou apenas CHR-003712, CHR-003714 e CHR-004371 como meetings com artefato; CHR-005926 nao entrou em snapshot.meetings.",
+    "listChronosSnapshot buscava as 1500 reunioes mais recentes por starts_at e as 1500 reunioes owned por updated_at, mas nao forçava reunioes com artefatos.",
+    "Como o volume de agenda inclui muitos registros e a meeting Whereby nao pertence necessariamente ao usuario logado, a reuniao sincronizada podia ficar fora do recorte inicial."
+  ],
+  "decisions": [
+    "Adicionar artifactMeetingsResult em listChronosSnapshot.",
+    "Buscar chronos_meetings nao canceladas com recording_status available, transcription_status available ou external_reference whereby-room.",
+    "Mesclar artifactMeetingsResult antes de meetingsResult para que registros com artefatos cheguem ao filtro de visibilidade e ao carregamento de rows relacionadas.",
+    "Nao alterar frontend, RLS, migrations, envs, secrets, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br."
+  ],
+  "changedFiles": [
+    "apps/hub/lib/chronos/server.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-010-snapshot-artifact-meetings.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-010-snapshot-artifact-meetings.json"
+  ],
+  "validations": [
+    "git diff --check -- apps/hub/lib/chronos/server.ts: PASS.",
+    "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
+    "Consulta Supabase local somente leitura: a clausula .or(...) foi aceita, mas a base local nao contem CHR-005926 e nao representa a producao vista por Lucas."
+  ],
+  "rollback": [
+    "Reverter apps/hub/lib/chronos/server.ts ao estado anterior ao protocolo OP-20260611-010.",
+    "Se publicado e houver regressao critica, reapontar c2x.app.br para o deployment anterior dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn."
+  ],
+  "nextSteps": [
+    "Criar pacote limpo base/candidato.",
+    "Rodar Production Module Safety Gate.",
+    "Publicar em Vercel com --project careli-hub-hub-i2bs e --skip-domain.",
+    "Validar /chronos no candidate, reapontar c2x.app.br e ler drive_snapshot_diagnostic apos refresh autenticado."
+  ]
+}
