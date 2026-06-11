@@ -36355,3 +36355,41 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar a tela e clicar novamente em `Transcrever e gerar ata`.
 - Quem deve agir agora: Lucas valida visualmente; Zeus monitora logs se houver erro.
 - Proximo passo: confirmar se a aba `Transcricao` passa a mostrar o trecho e se a ata e gerada.
+
+### Complemento 2026-06-11 20:21:05 -03:00 - OP-013 Home recebe estrategia de disponibilidade
+
+- Status: `VALIDADO_LOCAL / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas pausou Chronos e solicitou uma evolucao da Home para visao macro/estrategica de disponibilidade;
+  - a regra anterior de ausencia apos 10 minutos foi substituida por ausencia apos 3 minutos sem interacao nos apps Panteon;
+  - Lucas tambem pediu logout automatico apos 5 minutos e excecao quando o colaborador estiver em reuniao no horario atual.
+- Implementacao:
+  - `apps/hub/lib/hub-presence-policy.ts` centraliza os tempos de 3 minutos, 5 minutos e heartbeat de 30 segundos;
+  - `apps/hub/hooks/use-hub-presence.ts` observa interacoes reais, marca `away` por ociosidade, executa logout automatico apos 5 minutos e preserva reunioes Chronos ativas;
+  - `apps/hub/layouts/hub-shell.tsx` acopla o logout automatico ao `signOut` existente do Hub;
+  - `apps/hub/app/api/hub/presence/route.ts` passa a aceitar `includeCurrentMeeting` e detectar reuniao ativa por host, participante ou email;
+  - `apps/hub/app/api/hub/home/route.ts` troca a regra backend para 3 minutos, injeta presenca de reuniao ativa e entrega snapshot admin-only de disponibilidade, produtividade, riscos, logouts automaticos e historico recente;
+  - `apps/hub/app/page.tsx` adiciona a aba admin `Disponibilidade` e melhora `Meu dia` com resumo individual por status/produtividade/transicoes.
+- Validacoes:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx hooks/use-hub-presence.ts layouts/hub-shell.tsx lib/hub-home.ts lib/hub-presence.ts lib/hub-presence-policy.ts app/api/hub/home/route.ts app/api/hub/presence/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home;
+  - `git diff --check -- arquivos do recorte Home/presenca`: PASS, com avisos esperados de LF para CRLF;
+  - Browser local em `http://localhost:3001/`: PASS sem erros de console; redirecionou para `/login` por ausencia de sessao autenticada neste ambiente.
+- Manifesto:
+  - `docs/operations/panteon-recorte-manifest-home-20260611-013-availability-strategy.json`.
+- Fora do escopo:
+  - nenhum deploy, alias, migration, env, secret, escrita manual em Supabase, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado.
+- Risco residual:
+  - a validacao visual completa da aba `Disponibilidade` depende de sessao autenticada admin do Lucas;
+  - a deteccao de reuniao depende de `chronos_meetings` e `chronos_participants` possuirem `host_user_id`, `user_id` ou email correspondente ao colaborador;
+  - se Lucas quiser auditoria de microatividade alem de transicoes de status, sera necessario um recorte futuro com schema/migration propria e aprovacao explicita.
+
+Conclusao:
+
+- O que aconteceu: a Home ganhou a base de estrategia de disponibilidade e a politica 3/5 ficou centralizada no Hub.
+- Impacto pratico: admins passam a ter um painel de disponibilidade/produtividade/historico e colaboradores ociosos serao marcados ausentes em 3 minutos e deslogados em 5 minutos, exceto em reuniao Chronos ativa.
+- Precisa de acao agora: Lucas deve validar visualmente com usuario admin autenticado antes de qualquer publicacao.
+- Quem deve agir agora: Lucas valida a Home; Zeus prepara Preview/Homologacao somente se Lucas autorizar.
+- Proximo passo: testar a aba `Disponibilidade`, o painel `Meu dia` e uma reuniao Chronos ativa para confirmar a excecao de status `reuniao`.

@@ -136,6 +136,7 @@ export function HubShell({
   const { hubUser, profileStatus, signOut } = useAuth();
   const hubPresence = useHubPresenceController({
     enabled: profileStatus === "ready" && Boolean(hubUser),
+    onAutoLogout: () => signOut(),
   });
   const { realtimeState } = useRealtime();
   const pathname = usePathname();

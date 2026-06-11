@@ -1,4 +1,5 @@
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
+import { HUB_IDLE_TIMEOUT_MS } from "@/lib/hub-presence-policy";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -29,8 +30,41 @@ type HubPresenceEventRow = {
 };
 
 type HubUserAccessRow = {
+  email: string;
   id: string;
   status: string;
+};
+
+type ChronosMeetingStatus =
+  | "cancelled"
+  | "closed"
+  | "live"
+  | "lobby"
+  | "review"
+  | "scheduled";
+
+type ChronosCurrentMeetingRow = {
+  ends_at: string | null;
+  host_user_id: string | null;
+  id: string;
+  protocol: string;
+  starts_at: string | null;
+  status: ChronosMeetingStatus;
+  title: string;
+};
+
+type ChronosParticipantRow = {
+  email: string | null;
+  meeting_id: string;
+  user_id: string | null;
+};
+
+type HubPresenceActiveMeeting = {
+  endsAt: string;
+  id: string;
+  protocol: string;
+  startsAt: string;
+  title: string;
 };
 
 type PresencePayload = {
@@ -59,6 +93,18 @@ type PresenceDatabase = {
         };
         Relationships: [];
         Row: never;
+        Update: never;
+      };
+      chronos_meetings: {
+        Insert: never;
+        Relationships: [];
+        Row: ChronosCurrentMeetingRow;
+        Update: never;
+      };
+      chronos_participants: {
+        Insert: never;
+        Relationships: [];
+        Row: ChronosParticipantRow;
         Update: never;
       };
       hub_presence: {
@@ -135,7 +181,6 @@ type ParsedPresencePayload =
     }
   | { error: string; ok: false };
 
-const HUB_IDLE_STALE_MS = 10 * 60 * 1000;
 const workedStatuses = new Set<HubPresenceStatus>(["agenda", "online"]);
 
 export async function GET(request: NextRequest) {
@@ -168,6 +213,7 @@ export async function GET(request: NextRequest) {
   }
 
   const responsePayload: {
+    currentMeeting?: HubPresenceActiveMeeting | null;
     data: {
       lastSeenAt: string;
       status: HubPresenceStatus;
@@ -181,6 +227,10 @@ export async function GET(request: NextRequest) {
       userId: row.user_id,
     })),
   };
+
+  if (request.nextUrl.searchParams.get("includeCurrentMeeting") === "true") {
+    responsePayload.currentMeeting = await loadCurrentChronosMeeting(context);
+  }
 
   if (request.nextUrl.searchParams.get("includeSummary") === "true") {
     const summary = await loadPresenceSummary({
@@ -519,7 +569,7 @@ async function createAuthorizedContext(
 
   const { data: user, error: userError } = await adminClient
     .from("hub_users")
-    .select("id,status")
+    .select("id,email,status")
     .eq("id", authData.user.id)
     .maybeSingle<HubUserAccessRow>();
 
@@ -574,7 +624,7 @@ function normalizeFreshPresence(row: HubPresenceRow): HubPresenceStatus {
 
   if (
     Number.isNaN(lastSeenTime) ||
-    Date.now() - lastSeenTime > HUB_IDLE_STALE_MS
+    Date.now() - lastSeenTime > HUB_IDLE_TIMEOUT_MS
   ) {
     return "away";
   }
@@ -689,6 +739,80 @@ function getLimitedString(value: unknown, fallback: string, maxLength: number) {
   const text = getString(value);
 
   return text ? text.slice(0, maxLength) : fallback;
+}
+
+async function loadCurrentChronosMeeting(
+  context: Extract<AuthorizedContext, { ok: true }>,
+): Promise<HubPresenceActiveMeeting | null> {
+  const now = new Date().toISOString();
+  const { data: meetings, error } = await context.adminClient
+    .from("chronos_meetings")
+    .select("id,protocol,title,status,starts_at,ends_at,host_user_id")
+    .not("starts_at", "is", null)
+    .not("ends_at", "is", null)
+    .lte("starts_at", now)
+    .gte("ends_at", now)
+    .in("status", ["scheduled", "lobby", "live", "review"])
+    .order("starts_at", { ascending: false })
+    .limit(20);
+
+  if (error || !meetings?.length) {
+    return null;
+  }
+
+  const hostedMeeting = meetings.find(
+    (meeting) => meeting.host_user_id === context.user.id,
+  );
+
+  if (hostedMeeting) {
+    return mapChronosMeetingPresence(hostedMeeting);
+  }
+
+  const meetingIds = meetings.map((meeting) => meeting.id);
+  const { data: participants, error: participantsError } = await context.adminClient
+    .from("chronos_participants")
+    .select("meeting_id,user_id,email")
+    .in("meeting_id", meetingIds)
+    .limit(200);
+
+  if (participantsError || !participants?.length) {
+    return null;
+  }
+
+  const userEmail = context.user.email.trim().toLowerCase();
+  const participantMeetingIds = new Set(
+    participants
+      .filter((participant) => {
+        const participantEmail = participant.email?.trim().toLowerCase();
+
+        return (
+          participant.user_id === context.user.id ||
+          (Boolean(participantEmail) && participantEmail === userEmail)
+        );
+      })
+      .map((participant) => participant.meeting_id),
+  );
+  const participantMeeting = meetings.find((meeting) =>
+    participantMeetingIds.has(meeting.id),
+  );
+
+  return participantMeeting ? mapChronosMeetingPresence(participantMeeting) : null;
+}
+
+function mapChronosMeetingPresence(
+  meeting: ChronosCurrentMeetingRow,
+): HubPresenceActiveMeeting | null {
+  if (!meeting.starts_at || !meeting.ends_at) {
+    return null;
+  }
+
+  return {
+    endsAt: meeting.ends_at,
+    id: meeting.id,
+    protocol: meeting.protocol,
+    startsAt: meeting.starts_at,
+    title: meeting.title,
+  };
 }
 
 function getString(value: unknown) {

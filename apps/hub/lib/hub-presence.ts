@@ -1,9 +1,19 @@
 "use client";
 
+import {
+  HUB_AUTO_LOGOUT_TIMEOUT_MS,
+  HUB_IDLE_TIMEOUT_MS,
+  HUB_PRESENCE_HEARTBEAT_MS,
+  formatHubPresencePolicyLabel,
+} from "@/lib/hub-presence-policy";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
-export const HUB_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
-export const HUB_PRESENCE_HEARTBEAT_MS = 30 * 1000;
+export {
+  HUB_AUTO_LOGOUT_TIMEOUT_MS,
+  HUB_IDLE_TIMEOUT_MS,
+  HUB_PRESENCE_HEARTBEAT_MS,
+  formatHubPresencePolicyLabel,
+};
 
 export type HubPresenceStatus =
   | "agenda"
@@ -46,7 +56,16 @@ export type HubPresenceSummary = {
   workedSeconds: number;
 };
 
+export type HubPresenceActiveMeeting = {
+  endsAt: string;
+  id: string;
+  protocol: string;
+  startsAt: string;
+  title: string;
+};
+
 export type HubPresenceSnapshot = {
+  currentMeeting?: HubPresenceActiveMeeting | null;
   data: HubPresenceRecord[];
   summary?: HubPresenceSummary;
 };
@@ -92,6 +111,7 @@ export async function listHubPresence(): Promise<
 }
 
 export async function getHubPresenceSnapshot(input?: {
+  includeCurrentMeeting?: boolean;
   includeSummary?: boolean;
   rangeEnd?: Date;
   rangeStart?: Date;
@@ -114,6 +134,10 @@ export async function getHubPresenceSnapshot(input?: {
     searchParams.set("includeSummary", "true");
     searchParams.set("start", rangeStart.toISOString());
     searchParams.set("end", rangeEnd.toISOString());
+  }
+
+  if (input?.includeCurrentMeeting) {
+    searchParams.set("includeCurrentMeeting", "true");
   }
 
   const response = await fetch(
@@ -139,6 +163,14 @@ export async function getHubPresenceSnapshot(input?: {
   }
 
   return payload;
+}
+
+export async function getHubPresenceCurrentMeeting() {
+  const snapshot = await getHubPresenceSnapshot({
+    includeCurrentMeeting: true,
+  });
+
+  return snapshot.currentMeeting ?? null;
 }
 
 export async function getHubPresenceTodaySummary() {

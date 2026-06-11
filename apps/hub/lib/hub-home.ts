@@ -1,7 +1,10 @@
 "use client";
 
 import { getHubSupabaseClient } from "@/lib/supabase/client";
-import type { HubPresenceStatus } from "@/lib/hub-presence";
+import type {
+  HubPresenceActiveMeeting,
+  HubPresenceStatus,
+} from "@/lib/hub-presence";
 
 export type HubHomeUser = {
   avatarUrl?: string;
@@ -18,6 +21,7 @@ export type HubHomeUser = {
 };
 
 export type HubHomePresence = {
+  currentMeeting?: HubPresenceActiveMeeting;
   lastSeenAt: string;
   status: HubPresenceStatus;
   userId: string;
@@ -49,8 +53,67 @@ export type HubHomeActivityEvent = {
   userId?: string;
 };
 
+export type HubAvailabilityTeamMember = {
+  currentMeeting?: HubPresenceActiveMeeting;
+  currentStatus: Exclude<HubPresenceStatus, "busy">;
+  displayName: string;
+  email: string;
+  lastEvent?: {
+    nextStatus: Exclude<HubPresenceStatus, "busy">;
+    reason: string;
+    source: string;
+    startedAt: string;
+  };
+  lastSeenAt?: string;
+  productiveSeconds: number;
+  productivityRate: number | null;
+  totals: Record<Exclude<HubPresenceStatus, "busy">, number>;
+  trackedSeconds: number;
+  transitionCount: number;
+  userId: string;
+};
+
+export type HubAvailabilityHistoryEntry = {
+  createdAt: string;
+  endedAt?: string;
+  id: string;
+  metadata: Record<string, unknown>;
+  nextStatus: Exclude<HubPresenceStatus, "busy">;
+  previousStatus?: Exclude<HubPresenceStatus, "busy">;
+  reason: string;
+  source: string;
+  startedAt: string;
+  userId: string;
+  userName: string;
+};
+
+export type HubAvailabilitySnapshot = {
+  generatedAt: string;
+  history: HubAvailabilityHistoryEntry[];
+  policy: {
+    awayTimeoutMs: number;
+    label: string;
+    logoutTimeoutMs: number;
+    meetingException: boolean;
+  };
+  rangeEnd: string;
+  rangeStart: string;
+  summary: {
+    autoLogoutCount: number;
+    meetingCount: number;
+    productiveSeconds: number;
+    productivityRate: number | null;
+    riskCount: number;
+    statusCounts: Record<Exclude<HubPresenceStatus, "busy">, number>;
+    trackedSeconds: number;
+    transitionCount: number;
+  };
+  team: HubAvailabilityTeamMember[];
+};
+
 export type HubHomeSnapshot = {
   activityEvents: HubHomeActivityEvent[];
+  availability?: HubAvailabilitySnapshot;
   departmentModules: HubHomeDepartmentModule[];
   generatedAt: string;
   modules: HubHomeModule[];

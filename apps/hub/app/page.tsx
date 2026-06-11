@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  formatHubPresencePolicyLabel,
   getHubPresenceLabel,
   getHubPresenceTodaySummary,
   normalizeHubPresenceStatus,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/hub-presence";
 import {
   getHubHomeSnapshot,
+  type HubAvailabilitySnapshot,
   type HubHomeSnapshot,
   type HubHomeUser,
 } from "@/lib/hub-home";
@@ -44,6 +46,7 @@ import {
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 type HomePresenceStatus = Exclude<HubPresenceStatus, "busy">;
+type HomeTab = "availability" | "overview" | "tickets";
 
 type HomeTeamMember = {
   avatarUrl?: string;
@@ -73,9 +76,7 @@ const operationStatusStyle = {
 
 export default function HomePage() {
   const { hubUser } = useAuth();
-  const [activeHomeTab, setActiveHomeTab] = useState<"overview" | "tickets">(
-    "overview",
-  );
+  const [activeHomeTab, setActiveHomeTab] = useState<HomeTab>("overview");
   const [snapshot, setSnapshot] = useState<HubHomeSnapshot | null>(null);
   const [asanaSnapshot, setAsanaSnapshot] =
     useState<AsanaTeamPerformanceSnapshot | null>(null);
@@ -114,6 +115,12 @@ export default function HomePage() {
   const unreadNotificationsCount = snapshot?.notifications.unreadCount ?? 0;
   const peopleCount = teamMembers.length;
   const messagesTodayCount = snapshot?.pulsex.messagesTodayCount ?? 0;
+
+  useEffect(() => {
+    if (!isAdmin && activeHomeTab === "availability") {
+      setActiveHomeTab("overview");
+    }
+  }, [activeHomeTab, isAdmin]);
 
   const loadAsanaPerformance = useCallback((silent = false) => {
     if (!silent) {
@@ -202,11 +209,14 @@ export default function HomePage() {
 
         <HomeTabs
           activeTab={activeHomeTab}
+          isAdmin={isAdmin}
           onTabChange={setActiveHomeTab}
         />
 
         {activeHomeTab === "tickets" ? (
           <HubUserTicketsPanel title="Meus chamados" />
+        ) : activeHomeTab === "availability" && isAdmin ? (
+          <AvailabilityAdminPanel snapshot={snapshot?.availability ?? null} />
         ) : (
           <>
             <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -225,7 +235,7 @@ export default function HomePage() {
                     eyebrow={isAdmin ? "Central adm" : "Mapa operacional"}
                     title="Ritmo da equipe"
                   />
-                  <Badge variant="info">ausente apos 10 min</Badge>
+                  <Badge variant="info">{formatHubPresencePolicyLabel()}</Badge>
                 </div>
                 <div className="mt-4 grid grid-cols-5 gap-2">
                   <StatusPill label="online" value={onlineCount} variant="online" />
@@ -313,20 +323,29 @@ export default function HomePage() {
 
 function HomeTabs({
   activeTab,
+  isAdmin,
   onTabChange,
 }: {
-  activeTab: "overview" | "tickets";
-  onTabChange: (tab: "overview" | "tickets") => void;
+  activeTab: HomeTab;
+  isAdmin: boolean;
+  onTabChange: (tab: HomeTab) => void;
 }) {
+  const tabClassName = (tab: HomeTab) =>
+    `h-9 rounded-md px-4 text-sm font-semibold transition ${
+      activeTab === tab
+        ? "bg-[#101820] text-white"
+        : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
+    }`;
+
   return (
-    <nav className="inline-grid w-fit grid-cols-2 rounded-lg border border-[#d9e0e7] bg-white p-1 shadow-[0_8px_22px_rgb(16_24_32_/_0.05)]">
+    <nav
+      className={`inline-grid w-fit rounded-lg border border-[#d9e0e7] bg-white p-1 shadow-[0_8px_22px_rgb(16_24_32_/_0.05)] ${
+        isAdmin ? "grid-cols-3" : "grid-cols-2"
+      }`}
+    >
       <button
         aria-pressed={activeTab === "overview"}
-        className={`h-9 rounded-md px-4 text-sm font-semibold transition ${
-          activeTab === "overview"
-            ? "bg-[#101820] text-white"
-            : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
-        }`}
+        className={tabClassName("overview")}
         onClick={() => onTabChange("overview")}
         type="button"
       >
@@ -334,16 +353,22 @@ function HomeTabs({
       </button>
       <button
         aria-pressed={activeTab === "tickets"}
-        className={`h-9 rounded-md px-4 text-sm font-semibold transition ${
-          activeTab === "tickets"
-            ? "bg-[#101820] text-white"
-            : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
-        }`}
+        className={tabClassName("tickets")}
         onClick={() => onTabChange("tickets")}
         type="button"
       >
         HelpDesk
       </button>
+      {isAdmin ? (
+        <button
+          aria-pressed={activeTab === "availability"}
+          className={tabClassName("availability")}
+          onClick={() => onTabChange("availability")}
+          type="button"
+        >
+          Disponibilidade
+        </button>
+      ) : null}
     </nav>
   );
 }
@@ -384,6 +409,223 @@ function DayMetric({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function AvailabilityAdminPanel({
+  snapshot,
+}: {
+  snapshot: HubAvailabilitySnapshot | null;
+}) {
+  if (!snapshot) {
+    return (
+      <Surface bordered className="border-[#d9e0e7] bg-white p-6">
+        <PanelTitle eyebrow="Central adm" title="Disponibilidade estrategica" />
+        <div className="mt-4 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
+          Carregando historico de presenca e disponibilidade.
+        </div>
+      </Surface>
+    );
+  }
+
+  const summary = snapshot.summary;
+  const attentionUsers = snapshot.team.filter((user) =>
+    ["away", "offline"].includes(user.currentStatus),
+  );
+
+  return (
+    <section className="grid grid-cols-12 gap-5">
+      <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <PanelTitle
+            eyebrow="Central adm"
+            title="Disponibilidade estrategica"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="info">{snapshot.policy.label}</Badge>
+            <Badge variant="neutral">excecao Chronos ativa</Badge>
+            <Badge variant="neutral">
+              {formatPresenceDateTime(snapshot.generatedAt)}
+            </Badge>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
+          <AvailabilityKpi
+            label="disponiveis agora"
+            value={summary.statusCounts.online}
+          />
+          <AvailabilityKpi
+            label="em reuniao"
+            tone="meeting"
+            value={summary.meetingCount}
+          />
+          <AvailabilityKpi
+            label="pontos de atencao"
+            tone={summary.riskCount > 0 ? "danger" : "neutral"}
+            value={summary.riskCount}
+          />
+          <AvailabilityKpi
+            label="produtividade"
+            value={formatNullablePercent(summary.productivityRate)}
+          />
+          <AvailabilityKpi
+            label="logouts auto"
+            tone={summary.autoLogoutCount > 0 ? "danger" : "neutral"}
+            value={summary.autoLogoutCount}
+          />
+          <AvailabilityKpi
+            label="mudancas"
+            value={summary.transitionCount}
+          />
+        </div>
+      </Surface>
+
+      <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-8">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <PanelTitle eyebrow="Equipe" title="Disponibilidade individual" />
+          <Badge variant={attentionUsers.length > 0 ? "warning" : "success"}>
+            {attentionUsers.length} em atencao
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-2">
+          {snapshot.team.map((member) => (
+            <AvailabilityTeamRow key={member.userId} member={member} />
+          ))}
+        </div>
+      </Surface>
+
+      <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-4">
+        <PanelTitle eyebrow="Historico" title="Acessos e status" />
+        <div className="mt-4 grid max-h-[34rem] gap-2 overflow-auto pr-1">
+          {snapshot.history.length ? (
+            snapshot.history.map((event) => (
+              <article
+                className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
+                key={event.id}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
+                      {event.userName}
+                    </p>
+                    <p className="m-0 mt-1 text-xs text-[#667085]">
+                      {event.previousStatus
+                        ? `${getHubPresenceLabel(event.previousStatus)} -> `
+                        : ""}
+                      {getHubPresenceLabel(event.nextStatus)}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs font-semibold text-[#667085]">
+                    {formatPresenceTime(event.startedAt)}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-[#d9e0e7] bg-white px-2 py-0.5 text-[0.6875rem] font-semibold text-[#667085]">
+                    {formatPresenceReason(event.reason)}
+                  </span>
+                  <span className="rounded-full border border-[#d9e0e7] bg-white px-2 py-0.5 text-[0.6875rem] font-semibold text-[#667085]">
+                    {event.source}
+                  </span>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4 text-sm text-[#667085]">
+              Nenhum evento de presenca no periodo.
+            </div>
+          )}
+        </div>
+      </Surface>
+    </section>
+  );
+}
+
+function AvailabilityKpi({
+  label,
+  tone = "neutral",
+  value,
+}: {
+  label: string;
+  tone?: "danger" | "meeting" | "neutral";
+  value: number | string;
+}) {
+  const toneClassNames = {
+    danger: "border-red-200 bg-red-50 text-red-700",
+    meeting: "border-sky-200 bg-sky-50 text-sky-700",
+    neutral: "border-[#edf0f4] bg-[#fafbfc] text-[#101820]",
+  } as const;
+
+  return (
+    <div className={`rounded-md border p-3 ${toneClassNames[tone]}`}>
+      <p className="m-0 text-2xl font-semibold">{value}</p>
+      <p className="m-0 mt-1 text-xs">{label}</p>
+    </div>
+  );
+}
+
+function AvailabilityTeamRow({
+  member,
+}: {
+  member: HubAvailabilitySnapshot["team"][number];
+}) {
+  return (
+    <article className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 xl:grid-cols-[minmax(12rem,1.2fr)_repeat(5,minmax(5rem,0.55fr))_minmax(12rem,0.95fr)]">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`h-2.5 w-2.5 rounded-full ${getPresenceDotClassName(member.currentStatus)}`} />
+          <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
+            {member.displayName}
+          </p>
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${operationStatusStyle[member.currentStatus]}`}
+          >
+            {operationStatusLabel[member.currentStatus]}
+          </span>
+        </div>
+        <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+          {member.email} / {formatPresenceSignal(member.lastSeenAt, member.currentStatus)}
+        </p>
+        {member.currentMeeting ? (
+          <p className="m-0 mt-1 truncate text-xs font-semibold text-sky-700">
+            {member.currentMeeting.protocol} / {member.currentMeeting.title}
+          </p>
+        ) : null}
+      </div>
+      <CompactMetric
+        label="produtivo"
+        value={formatPresenceDuration(member.productiveSeconds)}
+      />
+      <CompactMetric
+        label="online"
+        value={formatPresenceDuration(member.totals.online)}
+      />
+      <CompactMetric
+        label="reuniao"
+        value={formatPresenceDuration(member.totals.agenda)}
+      />
+      <CompactMetric
+        label="ausente"
+        tone={member.totals.away > 0 ? "danger" : "neutral"}
+        value={formatPresenceDuration(member.totals.away)}
+      />
+      <CompactMetric
+        label="taxa"
+        value={formatNullablePercent(member.productivityRate)}
+      />
+      <div className="min-w-0 text-xs text-[#667085]">
+        <p className="m-0 font-semibold uppercase tracking-[0.08em] text-[#8a97a8]">
+          Ultimo evento
+        </p>
+        <p className="m-0 mt-1 truncate">
+          {member.lastEvent
+            ? `${formatPresenceReason(member.lastEvent.reason)} / ${formatPresenceTime(member.lastEvent.startedAt)}`
+            : "sem evento hoje"}
+        </p>
+        <p className="m-0 mt-1 truncate">
+          {member.transitionCount} mudanca(s) hoje
+        </p>
+      </div>
+    </article>
   );
 }
 
@@ -805,7 +1047,10 @@ function PresenceTodayPanel({ className }: { className?: string }) {
 
   return (
     <Surface bordered className={`border-[#d9e0e7] bg-white p-5 ${className ?? ""}`}>
-      <PanelTitle eyebrow="Meu dia" title="Historico de status" />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PanelTitle eyebrow="Meu dia" title="Historico individual" />
+        <Badge variant="info">{formatHubPresencePolicyLabel()}</Badge>
+      </div>
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
         <div>
           <p className="m-0 text-xs text-[#667085]">Status atual</p>
@@ -817,7 +1062,7 @@ function PresenceTodayPanel({ className }: { className?: string }) {
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <MiniLightMetric
-          label="Trabalho"
+          label="Produtivo"
           value={formatPresenceDuration(summary?.workedSeconds ?? 0)}
         />
         <MiniLightMetric
@@ -832,23 +1077,36 @@ function PresenceTodayPanel({ className }: { className?: string }) {
           label="Ausente"
           value={formatPresenceDuration(summary?.totals.away ?? 0)}
         />
+        <MiniLightMetric
+          label="Offline"
+          value={formatPresenceDuration(summary?.totals.offline ?? 0)}
+        />
+        <MiniLightMetric
+          label="Mudancas"
+          value={String(summary?.events.length ?? 0)}
+        />
       </div>
       {summary?.events.length ? (
         <div className="mt-4 grid gap-2">
-          {summary.events.slice(0, 3).map((event) => (
+          {summary.events.slice(0, 6).map((event) => (
             <div
-              className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 text-xs"
+              className="rounded-md border border-[#edf0f4] bg-white p-2.5 text-xs"
               key={event.id}
             >
-              <span className="truncate text-[#485466]">
-                {event.previousStatus
-                  ? `${getHubPresenceLabel(event.previousStatus)} -> `
-                  : ""}
-                {getHubPresenceLabel(event.nextStatus)}
-              </span>
-              <span className="text-[#667085]">
-                {formatPresenceTime(event.startedAt)}
-              </span>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <span className="truncate font-semibold text-[#485466]">
+                  {event.previousStatus
+                    ? `${getHubPresenceLabel(event.previousStatus)} -> `
+                    : ""}
+                  {getHubPresenceLabel(event.nextStatus)}
+                </span>
+                <span className="text-[#667085]">
+                  {formatPresenceTime(event.startedAt)}
+                </span>
+              </div>
+              <p className="m-0 mt-1 truncate text-[#667085]">
+                {formatPresenceReason(event.reason)} / {event.source}
+              </p>
             </div>
           ))}
         </div>
@@ -975,6 +1233,37 @@ function formatPresenceTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatPresenceDateTime(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatPresenceReason(reason: string) {
+  const labels: Record<string, string> = {
+    activity: "atividade",
+    agenda: "reuniao",
+    heartbeat: "sinal",
+    idle: "inatividade",
+    login: "login",
+    logout: "logout",
+    manual: "manual",
+  };
+
+  return labels[reason] ?? reason;
+}
+
+function formatNullablePercent(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+
+  return formatPercent(value);
 }
 
 function formatPercent(value: number | null | undefined) {

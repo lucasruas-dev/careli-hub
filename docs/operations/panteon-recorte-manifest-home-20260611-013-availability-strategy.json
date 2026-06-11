@@ -1,0 +1,56 @@
+{
+  "protocolId": "OP-20260611-013-HOME-AVAILABILITY-STRATEGY",
+  "module": "Home / Panteon",
+  "owner": "Zeus / Home",
+  "createdAt": "2026-06-11T20:21:05-03:00",
+  "status": "VALIDADO_LOCAL / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS",
+  "summary": "Nova visao estrategica admin-only de disponibilidade na Home, com regra de ausencia apos 3 minutos, logout automatico apos 5 minutos e excecao automatica para reunioes Chronos em andamento.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Lucas solicitou uma aba macro para admins acompanharem disponibilidade, produtividade e historico completo de acesso/status, alem de atualizar a regra atual de 10 minutos para ausencia em 3 minutos e logout em 5 minutos.",
+    "deployment": "Nao autorizado nem executado neste recorte; validacao local concluida."
+  },
+  "decisions": [
+    "Manter a Home como painel macro e operacional, sem redesign estrutural da tela principal.",
+    "Adicionar aba Disponibilidade apenas para administradores.",
+    "Centralizar a politica de presenca em apps/hub/lib/hub-presence-policy.ts.",
+    "Marcar ausente apos 3 minutos sem interacao nos aplicativos Panteon.",
+    "Executar logout automatico apos 5 minutos sem interacao, registrando evento offline com motivo logout.",
+    "Nao aplicar ausencia/logout automatico quando o usuario tiver reuniao Chronos ativa no horario atual.",
+    "Atualizar Meu dia para exibir resumo individual mais completo de produtividade, agenda, ausencia, offline e transicoes.",
+    "Nao alterar schema, migrations, envs, secrets, Supabase manual, Hades, Hermes, Iris, Atlas, Setup, Chronos funcional ou aliases Vercel."
+  ],
+  "changedFiles": [
+    "apps/hub/app/api/hub/home/route.ts",
+    "apps/hub/app/api/hub/presence/route.ts",
+    "apps/hub/app/page.tsx",
+    "apps/hub/hooks/use-hub-presence.ts",
+    "apps/hub/layouts/hub-shell.tsx",
+    "apps/hub/lib/hub-home.ts",
+    "apps/hub/lib/hub-presence.ts",
+    "apps/hub/lib/hub-presence-policy.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-home-20260611-013-availability-strategy.json"
+  ],
+  "validations": [
+    "npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx hooks/use-hub-presence.ts layouts/hub-shell.tsx lib/hub-home.ts lib/hub-presence.ts lib/hub-presence-policy.ts app/api/hub/home/route.ts app/api/hub/presence/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.",
+    "git diff --check -- arquivos do recorte Home/presenca: PASS, com avisos esperados de LF para CRLF.",
+    "Browser local em http://localhost:3001/: PASS sem erros de console; redirecionou para /login por ausencia de sessao autenticada neste ambiente."
+  ],
+  "risks": [
+    "A validacao visual completa da aba Disponibilidade depende de sessao autenticada admin do Lucas.",
+    "O logout automatico usa a rotina existente de signOut do Hub; se algum navegador bloquear chamadas em background, a proxima interacao/heartbeat deve reconciliar o estado.",
+    "A deteccao automatica de reuniao depende dos dados atuais de chronos_meetings e chronos_participants para host_user_id, user_id ou email do participante."
+  ],
+  "rollback": [
+    "Reverter os arquivos listados em changedFiles para remover a aba Disponibilidade, a politica 3/5 e a excecao automatica de reuniao.",
+    "Sem rollback de banco, env, secret ou alias, pois nenhum deles foi alterado neste recorte."
+  ],
+  "nextSteps": [
+    "Lucas validar visualmente a Home com usuario admin autenticado.",
+    "Se aprovado, Zeus pode preparar Preview/Homologacao mediante autorizacao explicita.",
+    "Se Lucas quiser auditoria historica ainda mais granular, avaliar migration futura separada para registrar eventos de atividade sem depender apenas das transicoes de status existentes."
+  ]
+}
