@@ -54,12 +54,6 @@ type ChronosDriveLibraryScreenProps = {
     minutesProfile?: ChronosMinutesProfile;
     recordingId: string;
   }) => Promise<boolean>;
-  onTranscribeRecording: (input: {
-    file: Blob;
-    fileName?: string;
-    meeting: ChronosMeeting;
-    recordingId?: string;
-  }) => Promise<boolean>;
   onUpdate: (input: ChronosUpdateInput) => Promise<void>;
   rooms: ChronosRoom[];
   saving: boolean;
@@ -76,13 +70,13 @@ export function ChronosDriveLibraryScreen({
   onGenerateMinutesDraft,
   onSelectMeeting,
   onTranscribeExistingRecording,
-  onTranscribeRecording,
   onUpdate,
   rooms,
   saving,
   userName,
 }: ChronosDriveLibraryScreenProps) {
   const [roomFilter, setRoomFilter] = useState("all");
+  const [focusedMinutesMeetingId, setFocusedMinutesMeetingId] = useState("");
   const filteredMeetings = useMemo(() => {
     const byRoom =
       roomFilter === "all"
@@ -99,10 +93,18 @@ export function ChronosDriveLibraryScreen({
       );
     }
 
-    return sortMeetingsByDate(
+    const minutesMeetings = sortMeetingsByDate(
       byRoom.filter(hasChronosMeetingMinutesWorkspace),
     );
-  }, [activeDriveView, meetings, roomFilter]);
+
+    if (focusedMinutesMeetingId) {
+      return minutesMeetings.filter(
+        (currentMeeting) => currentMeeting.id === focusedMinutesMeetingId,
+      );
+    }
+
+    return minutesMeetings;
+  }, [activeDriveView, focusedMinutesMeetingId, meetings, roomFilter]);
   const selectedMinutesMeeting =
     activeDriveView === "minutes"
       ? meeting && filteredMeetings.some((currentMeeting) => currentMeeting.id === meeting.id)
@@ -114,24 +116,28 @@ export function ChronosDriveLibraryScreen({
     : null;
 
   function handleOpenMeetingMinutes(meetingId: string) {
+    setRoomFilter("all");
+    setFocusedMinutesMeetingId(meetingId);
     onSelectMeeting(meetingId);
     onChangeDriveView("minutes");
+  }
+
+  function handleChangeDriveView(view: ChronosDriveView) {
+    setFocusedMinutesMeetingId("");
+    onChangeDriveView(view);
   }
 
   if (activeDriveView === "recordings") {
     return (
       <ChronosDrivePanel
         activeDriveView={activeDriveView}
-        onChangeDriveView={onChangeDriveView}
+        onChangeDriveView={handleChangeDriveView}
       >
         <ChronosRecordingFolderExplorer
           localRecordings={localRecordings}
           meetings={meetings}
           onOpenMeetingMinutes={handleOpenMeetingMinutes}
-          onTranscribeExistingRecording={onTranscribeExistingRecording}
-          onTranscribeRecording={onTranscribeRecording}
           rooms={rooms}
-          saving={saving}
         />
       </ChronosDrivePanel>
     );
@@ -140,7 +146,7 @@ export function ChronosDriveLibraryScreen({
   return (
     <ChronosDrivePanel
       activeDriveView={activeDriveView}
-      onChangeDriveView={onChangeDriveView}
+      onChangeDriveView={handleChangeDriveView}
     >
       <section className="grid min-h-[42rem] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.72fr)]">
         <Surface bordered className="border-[#d9e0e7] bg-white">
@@ -148,7 +154,10 @@ export function ChronosDriveLibraryScreen({
             <PanelTitle eyebrow="Drive Chronos" title="Atas" />
             <select
               className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#526078] outline-none focus:border-[#A07C3B]"
-              onChange={(event) => setRoomFilter(event.target.value)}
+              onChange={(event) => {
+                setFocusedMinutesMeetingId("");
+                setRoomFilter(event.target.value);
+              }}
               value={roomFilter}
             >
               <option value="all">Todas as salas</option>
@@ -158,6 +167,16 @@ export function ChronosDriveLibraryScreen({
                 </option>
               ))}
             </select>
+            {focusedMinutesMeetingId ? (
+              <button
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#526078] transition hover:border-[#A07C3B] hover:text-[#101820]"
+                onClick={() => setFocusedMinutesMeetingId("")}
+                type="button"
+              >
+                <X aria-hidden="true" size={14} />
+                Ver todas
+              </button>
+            ) : null}
           </div>
           <div className="grid min-w-0 gap-3 p-4 md:grid-cols-2">
             {filteredMeetings.map((driveMeeting) => (
@@ -206,27 +225,12 @@ function ChronosRecordingFolderExplorer({
   localRecordings,
   meetings,
   onOpenMeetingMinutes,
-  onTranscribeExistingRecording,
-  onTranscribeRecording,
   rooms,
-  saving,
 }: {
   localRecordings: LocalRecording[];
   meetings: ChronosMeeting[];
   onOpenMeetingMinutes: (meetingId: string) => void;
-  onTranscribeExistingRecording: (input: {
-    meeting: ChronosMeeting;
-    minutesProfile?: ChronosMinutesProfile;
-    recordingId: string;
-  }) => Promise<boolean>;
-  onTranscribeRecording: (input: {
-    file: Blob;
-    fileName?: string;
-    meeting: ChronosMeeting;
-    recordingId?: string;
-  }) => Promise<boolean>;
   rooms: ChronosRoom[];
-  saving: boolean;
 }) {
   const folders = useMemo(
     () => buildChronosRecordingFolders({ localRecordings, meetings, rooms }),
@@ -440,10 +444,7 @@ function ChronosRecordingFolderExplorer({
                   <ChronosDriveMeetingRecordingCard
                     key={recordingMeeting.id}
                     onOpenMeetingMinutes={onOpenMeetingMinutes}
-                    onTranscribeExistingRecording={onTranscribeExistingRecording}
-                    onTranscribeRecording={onTranscribeRecording}
                     recordingMeeting={recordingMeeting}
-                    saving={saving}
                     viewMode={viewMode}
                   />
                 ))}

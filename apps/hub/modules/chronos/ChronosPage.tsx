@@ -10,7 +10,6 @@ import {
   loadChronosRooms,
   loadChronosSnapshot,
   transcribeChronosExistingRecording,
-  transcribeChronosRecording,
   updateChronosRoom,
   updateChronosMeeting,
 } from "@/lib/chronos/client";
@@ -58,7 +57,7 @@ export function ChronosPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [localRecordings, setLocalRecordings] = useState<LocalRecording[]>([]);
+  const localRecordings = useMemo<LocalRecording[]>(() => [], []);
   const selectedMeeting = useMemo(
     () =>
       snapshot.meetings.find((meeting) => meeting.id === selectedMeetingId) ??
@@ -337,50 +336,6 @@ export function ChronosPage() {
     }
   }
 
-  async function handleTranscribeRecording(input: {
-    file: Blob;
-    fileName?: string;
-    meeting: ChronosMeeting;
-    recordingId?: string;
-  }): Promise<boolean> {
-    setSaving(true);
-    setError(null);
-
-    try {
-      const updatedMeeting = await transcribeChronosRecording({
-        file: input.file,
-        fileName: input.fileName,
-        meetingId: input.meeting.id,
-        speakerLabel: "Audio completo da reuniao",
-      });
-
-      replaceMeeting(updatedMeeting);
-
-      if (input.recordingId) {
-        const transcribedAt = new Date().toISOString();
-
-        setLocalRecordings((currentRecordings) =>
-          currentRecordings.map((recording) =>
-            recording.id === input.recordingId
-              ? { ...recording, transcribedAt }
-              : recording,
-          ),
-        );
-      }
-
-      return true;
-    } catch (transcriptionError) {
-      setError(
-        transcriptionError instanceof Error
-          ? transcriptionError.message
-          : "Nao foi possivel transcrever a gravacao.",
-      );
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function handleTranscribeExistingRecording(input: {
     meeting: ChronosMeeting;
     minutesProfile?: ChronosMinutesProfile;
@@ -515,7 +470,6 @@ export function ChronosPage() {
             onGenerateMinutesDraft={handleGenerateMinutesDraft}
             onSelectMeeting={setSelectedMeetingId}
             onTranscribeExistingRecording={handleTranscribeExistingRecording}
-            onTranscribeRecording={handleTranscribeRecording}
             onUpdate={handleUpdateMeeting}
             rooms={snapshot.rooms}
             saving={saving}

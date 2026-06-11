@@ -1,5 +1,6 @@
 import { buildChronosMinutesContext } from "@/lib/chronos/minutes";
 import { buildChronosMinutesDraft } from "@/lib/chronos/minutes-draft";
+import { formatChronosDateTime } from "@/lib/chronos/format";
 import { openChronosMinutesPrintWindow } from "@/lib/chronos/minutes-preview";
 import { normalizeChronosMeetingRuntime } from "@/lib/chronos/runtime-meeting";
 import {
@@ -11,7 +12,15 @@ import {
   type ChronosUpdateInput,
 } from "@/lib/chronos/types";
 import { Badge, Surface } from "@repo/uix";
-import { Download, Mic, Save, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import {
+  Download,
+  MessageSquareText,
+  Mic,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ChronosMinutesFormattedPreview } from "./chronos-minutes-formatted-preview";
 import { chronosMinutesStatusVariant } from "./chronos-minutes-status";
@@ -33,6 +42,8 @@ type MinutesPanelProps = {
   saving: boolean;
 };
 
+type ChronosMinutesView = "preview" | "transcript" | "edit";
+
 export function MinutesPanel({
   canDeleteMinutes,
   meeting,
@@ -48,7 +59,8 @@ export function MinutesPanel({
   const latestMinutes = safeMeeting.minutes[0];
   const [minutesProfile, setMinutesProfile] =
     useState<ChronosMinutesProfile>("alinhamento");
-  const [minutesView, setMinutesView] = useState<"edit" | "preview">("preview");
+  const [minutesView, setMinutesView] =
+    useState<ChronosMinutesView>("preview");
   const [minutesDraft, setMinutesDraft] = useState(
     latestMinutes?.content || buildChronosMinutesDraft(safeMeeting),
   );
@@ -164,7 +176,8 @@ export function MinutesPanel({
             </div>
             <div className="inline-flex rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-1">
               {[
-                ["preview", "Formatada"],
+                ["preview", "Ata"],
+                ["transcript", "Transcricao"],
                 ["edit", "Texto"],
               ].map(([viewId, label]) => (
                 <button
@@ -174,7 +187,7 @@ export function MinutesPanel({
                       : "text-[#526078] hover:bg-white"
                   }`}
                   key={viewId}
-                  onClick={() => setMinutesView(viewId as "edit" | "preview")}
+                  onClick={() => setMinutesView(viewId as ChronosMinutesView)}
                   type="button"
                 >
                   {label}
@@ -237,6 +250,8 @@ export function MinutesPanel({
             onChange={(event) => setMinutesDraft(event.target.value)}
             value={minutesDraft}
           />
+        ) : minutesView === "transcript" ? (
+          <ChronosTranscriptFormattedPreview meeting={safeMeeting} />
         ) : (
           <ChronosMinutesFormattedPreview
             context={minutesContext}
@@ -292,6 +307,63 @@ export function MinutesPanel({
         </button>
       </div>
     </Surface>
+  );
+}
+
+function ChronosTranscriptFormattedPreview({
+  meeting,
+}: {
+  meeting: ChronosMeeting;
+}) {
+  if (meeting.transcript.length === 0) {
+    return (
+      <div className="grid min-h-[18rem] place-items-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-center text-sm font-semibold text-[#667085]">
+        Transcricao ainda nao disponivel para esta reuniao.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-[#d9e0e7] bg-[#eef2f6] p-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3 rounded-md border border-[#edf0f4] bg-white p-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#101820] text-[#A07C3B]">
+            <MessageSquareText aria-hidden="true" size={16} />
+          </span>
+          <div className="min-w-0">
+            <p className="m-0 text-xs font-bold uppercase text-[#A07C3B]">
+              Transcricao formatada
+            </p>
+            <h3 className="m-0 mt-1 truncate text-sm font-bold text-[#101820]">
+              {meeting.protocol} | {meeting.title}
+            </h3>
+          </div>
+        </div>
+        <span className="rounded-full border border-[#d9e0e7] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold text-[#526078]">
+          {meeting.transcript.length} trecho(s)
+        </span>
+      </div>
+      <div className="grid gap-2">
+        {meeting.transcript.map((segment, index) => (
+          <article
+            className="grid gap-2 rounded-md border border-[#edf0f4] bg-white p-3 text-sm leading-6 text-[#344054]"
+            key={segment.id}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] pb-2">
+              <span className="text-xs font-bold uppercase text-[#667085]">
+                {index + 1}. {segment.speakerLabel ?? "Participante"}
+              </span>
+              <span className="text-xs font-semibold text-[#98a2b3]">
+                {formatChronosDateTime(segment.createdAt)}
+              </span>
+            </div>
+            <p className="m-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {segment.content}
+            </p>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 
