@@ -35795,3 +35795,34 @@ Conclusao:
 - Precisa de acao agora: sim, Lucas deve abrir o Drive Chronos autenticado para disparar a reconciliacao no runtime de producao; se as 3 gravacoes ainda nao aparecerem, Zeus deve executar backfill assistido com envs de producao corretas.
 - Quem deve agir agora: Lucas valida o Drive; Zeus monitora logs e conduz backfill se ainda houver lacuna.
 - Proximo passo tecnico: observar logs por `Whereby artifact sync` e conferir se `/careli-liderancaaqrnsv` e `/careli-operacaomg7634` viraram registros no Drive Chronos.
+
+### Complemento 2026-06-11 13:29:31 -03:00 - salas Whereby recentes nao podem travar como complete
+
+- Status atualizado: `VALIDADO_LOCAL / HOTFIX EM PUBLICACAO`.
+- Protocolo: `OP-20260611-005-CHRONOS-WHEREBY-MULTI-RECORDING-TRANSCRIPTION-SYNC`.
+- Diagnostico apos validacao do Lucas:
+  - Lucas abriu o Drive e pressionou F5, mas as gravacoes do dia ainda nao apareceram;
+  - logs do deployment `dpl_8eBSjRHQThs6RSi5dECH72bogpCi` mostraram `POST /api/chronos/public/rooms/lideranca/whereby-sync` seguido de `Whereby artifact sync skipped` com `reason: complete` para `/careli-liderancaaqrnsv`;
+  - isso mostrou que a regra de complete ainda era agressiva para salas Whereby recentes: uma sala pode receber mais de uma gravacao no mesmo roomName no mesmo dia, entao nao pode parar definitivamente so porque ja existe uma gravacao anterior.
+- Correcao preparada:
+  - `apps/hub/lib/chronos/server.ts` adicionou `chronosWherebyCompleteRecheckWindowMs = 24h`;
+  - `isChronosWherebyArtifactSyncComplete` passa a retornar `false` para reunioes/salas Whereby ainda dentro dessa janela recente, mantendo reconciliacao ativa;
+  - o throttle de 2 minutos e o backoff de rate limit continuam protegendo a API Whereby contra rajadas.
+- Validacoes:
+  - `git diff --check -- apps/hub/lib/chronos/server.ts`: PASS, apenas aviso CRLF esperado no Windows;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.
+- Fora do escopo:
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas, Setup, Supabase schema, migration, secret/env ou alias `ops.c2x.app.br`;
+  - nenhum backfill direto de banco/API real foi executado neste complemento.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para o deployment anterior ao complemento.
+
+Conclusao:
+
+- Lucas nao estava fazendo nada errado; o F5 disparou o sync, mas o servidor ainda pulava a sala recente como `complete`.
+- O impacto pratico do complemento e fazer o Chronos consultar novamente a Whereby para salas recentes, permitindo descobrir novas gravacoes no mesmo roomName.
+- Precisa de acao agora: sim, publicar este complemento e validar novamente logs/Drive.
+- Quem deve agir agora: Zeus publica e monitora; Lucas valida a pasta `Lideranca` e depois a sala de `Operacao` se ela aparecer no Drive.
+- Proximo passo tecnico: publicar o complemento, abrir o Drive e observar se o log muda de `sync skipped complete` para `sync completed` com contagens atualizadas.

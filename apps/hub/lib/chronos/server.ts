@@ -485,6 +485,7 @@ const maxChronosRecordingUploadBytes = 500_000_000;
 const chronosWherebySyncThrottleMs = 2 * 60 * 1000;
 const chronosWherebyRateLimitBackoffMs = 10 * 60 * 1000;
 const chronosWherebySnapshotSyncLimit = 3;
+const chronosWherebyCompleteRecheckWindowMs = 24 * 60 * 60 * 1000;
 
 const defaultChronosRooms: ChronosRoom[] = [
   {
@@ -3515,6 +3516,16 @@ function isChronosWherebyArtifactSyncComplete({
   meeting: ChronosMeetingRow;
   wherebyMetadata: Record<string, unknown>;
 }) {
+  const referenceTime = getChronosWherebyArtifactSyncReferenceTime(meeting);
+
+  if (
+    referenceTime &&
+    Date.now() - referenceTime.getTime() <=
+      chronosWherebyCompleteRecheckWindowMs
+  ) {
+    return false;
+  }
+
   const recordingCount = readChronosMetadataNumber(
     wherebyMetadata,
     "recordingCount",
