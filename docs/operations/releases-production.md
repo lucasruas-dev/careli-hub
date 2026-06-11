@@ -3659,3 +3659,67 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_GGEuKmTFwPomUKChvpy7TdynUjev` se a primeira validacao real falhar criticamente;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-10 - PROD-20260610-034-CHRONOS-WHEREBY-NATIVE-ENTRY
+
+Status: EM PRODUCAO / HOTFIX MODULAR VALIDADO COM ATENCAO NO APEX.
+
+Registro de producao:
+
+- Assunto: `[Chronos] Entrada nativa Whereby sem gate de Agenda`.
+- Protocolo de origem: `OP-20260610-033-CHRONOS-WHEREBY-MIGRATION`.
+- Squad/agente responsavel: `Zeus / Chronos`.
+- Data e hora local: `2026-06-10 22:01:17 -03:00`.
+- Autorizacao: Lucas autorizou subir o hotfix apos validar que a Whereby deve controlar tambem a tela de entrada.
+- Ambiente alvo: `producao`.
+- Dominio alvo Chronos: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H`;
+  - rollback imediato: `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - pacote candidato: `%LOCALAPPDATA%\Temp\chronos-whereby-native-prod-f58772bc2b48-46574e9c\candidate`;
+  - commit candidato: `f58772bc2b4842bfdd03b39bf3430488d0f25f79`;
+  - arquivos sensiveis/locais excluidos da publicacao: `.env`, `.git`, `.next`, `.turbo`, `node_modules`, `.npmrc`, `.codex-tmp` e `.codex-deploy`.
+- Escopo publicado:
+  - remove o prejoin Chronos para `CHRONOS_VIDEO_PROVIDER=whereby`;
+  - prepara a sala server-side e renderiza direto a experiencia nativa da Whereby;
+  - evita o gate antigo de reserva ativa da Agenda no fluxo Whereby;
+  - cria reuniao interna ad hoc no Chronos apenas quando nao houver reserva ativa, para Drive, transcricao, participantes via Whereby Insights e ata Athena;
+  - mantem a Agenda principal e Google Agenda fora do recorte.
+- Manifesto e Safety Gate:
+  - manifesto do recorte: `docs/operations/panteon-recorte-manifest-chronos-20260610-033-whereby-migration.json`;
+  - gate manual de producao: PASS, 5 arquivos detectados;
+  - escopo permitido: rota Whereby publica, `server.ts`, `ChronosExternalRoomPage.tsx` e registros operacionais;
+  - escopo bloqueado: Agenda principal, `ChronosPage.tsx`, Google Agenda funcional, Supabase/banco/migrations/RLS/storage, demais modulos e `ops.c2x.app.br`.
+- Validacoes pre-publicacao:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx app/api/chronos/public/rooms/[roomSlug]/whereby-meeting/route.ts --max-warnings 0`: PASS;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte.
+- Publicacao:
+  - deployment novo: `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-2vy4oyp9x-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes URL tecnica:
+  - `GET /chronos`: 200;
+  - `GET /chronos/careli`: 200;
+  - `POST /api/chronos/public/rooms/__codex-missing__/whereby-meeting`: 400 controlado;
+  - `POST /api/chronos/meetings/agent` sem bearer: 401 esperado;
+  - `curl.exe -I https://careli-hub-hub-i2bs-2vy4oyp9x-lucasruas-devs-projects.vercel.app/chronos/careli`: 200.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error --scope lucasruas-devs-projects`: sem logs de erro encontrados.
+- Atencao operacional:
+  - healthcheck HTTP local contra `https://c2x.app.br/chronos/careli` falhou por timeout TCP para `216.198.79.1`;
+  - `Resolve-DnsName c2x.app.br` em DNS local, 1.1.1.1 e 8.8.8.8 retornou `216.198.79.1`;
+  - `ops.c2x.app.br` respondeu normalmente via CNAME Vercel, reforcando que `ops` foi preservado e que a atencao esta no apex `c2x.app.br`;
+  - como rollback de alias nao altera DNS do apex, reverter deve ser usado apenas se a validacao funcional do hotfix falhar, nao como correcao de conectividade DNS.
+- Escopo preservado:
+  - nenhuma Agenda principal, Google Agenda funcional, Supabase remoto, banco, migration, RLS, storage, dominio adicional ou alias `ops.c2x.app.br` foi alterado;
+  - valores de chaves/envs nao foram impressos ou registrados.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H` se a primeira validacao real confirmar regressao do hotfix;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.

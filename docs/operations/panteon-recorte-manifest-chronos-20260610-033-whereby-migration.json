@@ -3,12 +3,12 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-10T18:12:05-03:00",
-  "status": "EM_PRODUCAO_COM_AJUSTE_NATIVE_ENTRY_VALIDADO_LOCAL_DEPLOY_BLOQUEADO",
+  "status": "EM_PRODUCAO_NATIVE_ENTRY",
   "summary": "Migra a sala publica do Chronos de LiveKit para Whereby, mantendo Athena como geradora de ata a partir de transcricao salva.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Migracao rapida Chronos para Whereby com URLs/fundos personalizados, participantes registrados, gravacoes/transcricoes no Drive Chronos e Athena gerando ata.",
-    "deployment": "Lucas autorizou subir direto em producao com deploy seguro em 2026-06-10, restrito a Chronos Salas/Drive/sala publica/Whereby/Athena. Envs Whereby foram configuradas em Preview(homolog) e Production sem imprimir valores. Producao publicada em c2x.app.br no deployment dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H; ops.c2x.app.br preservado fora do escopo."
+    "deployment": "Lucas autorizou subir direto em producao com deploy seguro em 2026-06-10, restrito a Chronos Salas/Drive/sala publica/Whereby/Athena. Envs Whereby foram configuradas em Preview(homolog) e Production sem imprimir valores. Producao Whereby publicada em c2x.app.br no deployment dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H. Hotfix de entrada nativa Whereby publicado em c2x.app.br no deployment dpl_J32P1XTVh75bsDDAy8V65y2Rawm7; ops.c2x.app.br preservado fora do escopo."
   },
   "decisions": [
     "CHRONOS_VIDEO_PROVIDER=whereby seleciona o provider server-side sem expor token no browser.",
@@ -122,6 +122,26 @@
       "command": "npm.cmd run build --workspace @repo/hub",
       "status": "PASS",
       "notes": "Build Next.js compilou com as rotas Whereby; warnings conhecidos de worktree/Turbopack/NFT fora do ajuste."
+    },
+    {
+      "command": "Gate manual de producao native entry f58772bc2b48",
+      "status": "PASS",
+      "notes": "Pacote limpo em temp sem .git, .env, .next, .turbo, node_modules, .codex-tmp ou .codex-deploy; escopo restrito aos 5 arquivos do hotfix."
+    },
+    {
+      "command": "npx.cmd vercel deploy --prod --skip-domain --yes",
+      "status": "PASS",
+      "notes": "Deployment tecnico dpl_J32P1XTVh75bsDDAy8V65y2Rawm7 em https://careli-hub-hub-i2bs-2vy4oyp9x-lucasruas-devs-projects.vercel.app."
+    },
+    {
+      "command": "Healthchecks URL tecnica dpl_J32P1XTVh75bsDDAy8V65y2Rawm7",
+      "status": "PASS",
+      "notes": "GET /chronos 200, GET /chronos/careli 200, POST whereby-meeting com slug inexistente 400 controlado, POST /api/chronos/meetings/agent sem sessao 401."
+    },
+    {
+      "command": "Alias e healthchecks pos-producao native entry",
+      "status": "PASS_WITH_APEX_NETWORK_ATTENTION",
+      "notes": "c2x.app.br aponta via Vercel para dpl_J32P1XTVh75bsDDAy8V65y2Rawm7; ops.c2x.app.br permaneceu em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj; URL tecnica 200 e logs sem erro. Acesso HTTP local ao apex c2x.app.br falhou em TCP para 216.198.79.1, indicando atencao de DNS/rede do apex fora do codigo do hotfix."
     }
   ],
   "risks": [
@@ -129,7 +149,7 @@
     "O limite de imagem de fundo do Whereby e cerca de 600 KB; fundos maiores ficam no Chronos, mas podem nao subir para o theme do Whereby.",
     "A transcricao Whereby precisa estar em estado ready e com access-link disponivel para virar segmentos no Chronos.",
     "CHRONOS_VIDEO_PROVIDER em Production foi substituido para whereby; rollback imediato deve reapontar c2x.app.br para o deployment anterior capturado se houver falha critica.",
-    "Ajuste native entry ainda nao publicado; producao atual ainda pode mostrar o prejoin Chronos e a mensagem de reserva ate Lucas autorizar novo deploy seguro.",
+    "Hotfix native entry publicado, mas o acesso HTTP local ao apex c2x.app.br falhou por TCP para 216.198.79.1 neste ambiente; URL tecnica Vercel e Vercel inspect estao saudaveis.",
     "Supabase, banco, migrations, Agenda, ops.c2x.app.br e alias fora de c2x.app.br permanecem fora do escopo."
   ],
   "rollback": [
@@ -140,7 +160,7 @@
   ],
   "nextSteps": [
     "Criar uma sala real Chronos/Whereby e validar host, convidado, fundo, participantes, gravacao, transcricao e ata Athena.",
-    "Lucas autorizar explicitamente o deploy do ajuste native entry antes de reapontar c2x.app.br.",
+    "Lucas validar pelo navegador a sala real em c2x.app.br; se o apex nao abrir, tratar DNS/rede do dominio como incidente separado.",
     "Se a validacao real falhar, reapontar c2x.app.br para dpl_GGEuKmTFwPomUKChvpy7TdynUjev e manter ops.c2x.app.br preservado."
   ]
 }

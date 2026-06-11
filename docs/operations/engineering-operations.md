@@ -35119,3 +35119,55 @@ Conclusao:
 - Precisa de acao agora: sim, Lucas deve autorizar explicitamente o deploy deste hotfix se quiser publicar agora.
 - Quem deve agir agora: Zeus publica somente apos autorizacao; Lucas valida a sala real em seguida.
 - Proximo passo tecnico: deploy seguro do recorte native entry, healthchecks em `c2x.app.br` e teste real curto de sala/gravacao/transcricao/ata.
+
+### Complemento 2026-06-10 22:01:17 -03:00 - hotfix native entry em producao
+
+- Status atualizado: `EM PRODUCAO / CHRONOS WHEREBY NATIVE ENTRY`.
+- Protocolo: `OP-20260610-033-CHRONOS-WHEREBY-MIGRATION`.
+- Commit candidato publicado: `f58772bc2b4842bfdd03b39bf3430488d0f25f79`.
+- Deployment anterior de `https://c2x.app.br` usado como rollback imediato: `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H`.
+- Deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Deployment novo: `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`.
+- URL tecnica: `https://careli-hub-hub-i2bs-2vy4oyp9x-lucasruas-devs-projects.vercel.app`.
+- Alias movido: somente `https://c2x.app.br`.
+- Gate de producao:
+  - pacote limpo gerado fora do repo em `%LOCALAPPDATA%\Temp\chronos-whereby-native-prod-f58772bc2b48-46574e9c\candidate`;
+  - pacote sem `.git`, `.env`, `.next`, `.turbo`, `node_modules`, `.codex-tmp` ou `.codex-deploy`;
+  - mudancas restritas a 5 arquivos do recorte native entry;
+  - Agenda principal, `ChronosPage.tsx`, Google Agenda funcional, Supabase/banco/migrations/RLS/storage, Hades/Hermes/Iris/Atlas/Setup e `ops.c2x.app.br` permaneceram fora do pacote.
+- Validacoes pre-publicacao:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx app/api/chronos/public/rooms/[roomSlug]/whereby-meeting/route.ts --max-warnings 0`: PASS;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora deste ajuste.
+- Validacoes URL tecnica:
+  - `npx.cmd vercel inspect https://careli-hub-hub-i2bs-2vy4oyp9x-lucasruas-devs-projects.vercel.app`: Ready em `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`;
+  - `GET /chronos`: 200;
+  - `GET /chronos/careli`: 200;
+  - `POST /api/chronos/public/rooms/__codex-missing__/whereby-meeting`: 400 controlado, `Sala Chronos nao encontrada.`;
+  - `POST /api/chronos/meetings/agent` sem sessao: 401 esperado.
+- Publicacao:
+  - antes do alias, `https://c2x.app.br` foi reconfirmado em `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-2vy4oyp9x-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects`: PASS.
+- Validacoes pos-producao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `npx.cmd vercel logs https://c2x.app.br --since 10m --level error --scope lucasruas-devs-projects`: sem logs de erro encontrados;
+  - `curl.exe -I https://careli-hub-hub-i2bs-2vy4oyp9x-lucasruas-devs-projects.vercel.app/chronos/careli`: 200.
+- Atencao operacional:
+  - `Resolve-DnsName c2x.app.br` retornou `216.198.79.1`;
+  - `Test-NetConnection c2x.app.br -Port 443` falhou neste ambiente local;
+  - `curl.exe -I https://c2x.app.br/chronos/careli` falhou por timeout TCP neste ambiente local;
+  - `ops.c2x.app.br` respondeu normalmente via CNAME Vercel, confirmando que o problema observado e especifico do apex `c2x.app.br`/rota local e nao da URL tecnica do deployment;
+  - rollback de alias para `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H` nao altera DNS do apex; se Lucas tambem nao conseguir abrir `c2x.app.br`, tratar como incidente DNS/rede de dominio separado.
+- Rollback imediato:
+  - reapontar `https://c2x.app.br` para `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H` se a primeira validacao real confirmar regressao do hotfix;
+  - manter `https://ops.c2x.app.br` em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+Conclusao:
+
+- O hotfix que remove o prejoin/gate de Agenda do fluxo Whereby foi publicado em producao.
+- O impacto pratico esperado e que a URL publica do Chronos abra direto a experiencia nativa da Whereby, com Chronos apenas como retaguarda para Drive, transcricao e ata.
+- Precisa de acao agora: sim, Lucas deve testar a sala real no navegador; se `c2x.app.br` nao abrir, o proximo incidente e DNS/rede do apex.
+- Quem deve agir agora: Lucas valida a sala real; Zeus acompanha e faz rollback de alias somente se houver regressao funcional do hotfix.
+- Proximo passo tecnico: validar host/convidado na sala Whereby, gravacao, transcricao e ata Athena; se o apex falhar fora deste ambiente, diagnosticar DNS do dominio `c2x.app.br`.
