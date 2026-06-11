@@ -8,8 +8,8 @@
   "expectedProjectName": "careli-hub-hub-i2bs",
   "currentProductionDeploymentId": "dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "PENDENTE_DEPLOY",
-  "candidateProductionUrl": "PENDENTE_DEPLOY",
+  "candidateProductionDeploymentId": "dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8",
+  "candidateProductionUrl": "https://careli-hub-hub-i2bs-1azt55pc8-lucasruas-devs-projects.vercel.app",
   "candidateSourceCommit": "db63ccb6",
   "sourceWorktreeClean": true,
   "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-snapshot-artifact-meetings-prod-20260611-1740/base",
@@ -62,15 +62,20 @@
     "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
     "Consulta Supabase local somente leitura: clausula .or(...) aceita; base local nao contem CHR-005926 e nao representa a producao vista por Lucas.",
-    "Production Module Safety Gate: PENDENTE.",
-    "Deploy Vercel producao --skip-domain: PENDENTE.",
-    "Alias c2x.app.br: PENDENTE.",
-    "GET https://c2x.app.br/chronos: PENDENTE.",
-    "Log drive_snapshot_diagnostic com CHR-005926: PENDENTE apos refresh autenticado."
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes: PASS, Ready em dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8.",
+    "GET https://careli-hub-hub-i2bs-1azt55pc8-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-1azt55pc8-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+    "POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync: 200, recordingCount 2, transcriptionCount 2, transcriptSegmentCount 139.",
+    "npx.cmd vercel logs https://c2x.app.br --query drive_snapshot_diagnostic --since 10m --scope lucasruas-devs-projects --json: sem log ainda; depende de refresh autenticado do Lucas."
   ],
   "notes": [
     "Este pacote altera somente a consulta que monta o snapshot autenticado do Chronos.",
     "A mudanca nao move arquivos para S3 e nao altera provider Whereby; S3 fica como arquitetura posterior, nao como causa do incidente atual.",
+    "A validacao final de UI depende de Lucas atualizar a sessao autenticada para disparar GET /api/chronos/meetings.",
     "Nenhuma escrita direta em Supabase, migration, env, secret, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br entra no escopo."
   ]
 }

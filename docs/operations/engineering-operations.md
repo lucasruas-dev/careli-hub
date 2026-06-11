@@ -36177,3 +36177,33 @@ Conclusao:
 - Precisa de acao agora: Zeus deve rodar o safety gate, publicar o pacote e validar o log autenticado apos refresh.
 - Quem deve agir agora: Zeus publica e monitora; Lucas so precisa atualizar a tela quando Zeus avisar.
 - Proximo passo: deploy seguro do OP-20260611-010 e confirmacao de `CHR-005926` dentro de `drive_snapshot_diagnostic`.
+
+### Complemento 2026-06-11 17:52:00 -03:00 - OP-010 publicado em c2x.app.br
+
+- Status atualizado: `EM PRODUCAO / AGUARDANDO_REFRESH_AUTENTICADO`.
+- Protocolo: `OP-20260611-010-CHRONOS-SNAPSHOT-ARTIFACT-MEETINGS`.
+- Deploy:
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`: PASS;
+  - deployment: `dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8`;
+  - URL candidate: `https://careli-hub-hub-i2bs-1azt55pc8-lucasruas-devs-projects.vercel.app`;
+  - `c2x.app.br` aponta para `dpl_M6m1PwV1vJNagkU4ZJuS4JZ55xP8`;
+  - `ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes de producao:
+  - `Production Module Safety Gate`: PASS, 4 mudancas detectadas;
+  - `GET https://careli-hub-hub-i2bs-1azt55pc8-lucasruas-devs-projects.vercel.app/chronos`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync`: 200, `recordingCount: 2`, `transcriptionCount: 2`, `transcriptSegmentCount: 139`;
+  - `npx.cmd vercel logs https://c2x.app.br --query drive_snapshot_diagnostic --since 10m --scope lucasruas-devs-projects --json`: sem log ainda apos o deploy, pois depende de refresh autenticado do Lucas.
+- Risco residual:
+  - se Lucas atualizar e o log autenticado ainda nao listar `CHR-005926`, a proxima correcao deve mirar a camada de agrupamento/renderizacao do Drive com o payload real;
+  - se o log listar `CHR-005926`, o bug de snapshot esta corrigido e a validacao visual deve aparecer na pasta `Lideranca`.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn`.
+
+Conclusao:
+
+- O que aconteceu: a correcao do snapshot foi publicada em producao e o dominio final ja responde com o deployment novo.
+- Impacto pratico: o Chronos agora deve buscar explicitamente meetings com gravacao/transcricao Whereby antes de montar o Drive.
+- Precisa de acao agora: Lucas deve atualizar a tela do Drive; Zeus deve ler o log autenticado logo em seguida.
+- Quem deve agir agora: Lucas atualiza a UI; Zeus confirma em Vercel.
+- Proximo passo: validar `CHR-005926` no `drive_snapshot_diagnostic` ou corrigir a camada visual se o payload ja estiver correto.
