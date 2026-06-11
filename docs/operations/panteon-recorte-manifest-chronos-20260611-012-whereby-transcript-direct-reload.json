@@ -1,0 +1,47 @@
+{
+  "protocolId": "OP-20260611-012-CHRONOS-WHEREBY-TRANSCRIPT-DIRECT-RELOAD",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-11T19:09:21-03:00",
+  "status": "VALIDADO_LOCAL / AGUARDANDO_PUBLICACAO",
+  "summary": "Hotfix do fluxo de Ata: apos sincronizar Whereby, o agent recarrega diretamente chronos_transcript_segments da reuniao antes de decidir que a transcricao ainda esta em processamento.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Lucas clicou em Transcrever e gerar ata em CHR-005959; a UI mostrou transcricao vazia, enquanto o diagnostico publico confirmou 1 segmento salvo no banco.",
+    "deployment": "Pendente; rollback esperado para dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7."
+  },
+  "diagnosis": [
+    "Log de producao do OP-011 mostrou sync Whereby para CHR-005959 com transcriptSegmentCount 1 e transcriptionCount 1.",
+    "A tela de Atas ainda ficou vazia e retornou mensagem de processamento.",
+    "O diagnostico publico /api/chronos/public/rooms/careli/whereby-sync confirmou transcriptSegments 1 direto no banco para CHR-005959.",
+    "A falha esta no caminho do agent que dependia do snapshot completo imediatamente apos o sync; se o snapshot ainda voltasse sem transcript, o fluxo respondia 409 mesmo com segmento persistido."
+  ],
+  "decisions": [
+    "Manter a protecao contra upload de video Whereby grande na OpenAI.",
+    "Depois do sync Whereby, buscar diretamente chronos_transcript_segments por meeting_id.",
+    "Mesclar os segmentos diretos na meeting normalizada antes de chamar saveChronosMinutesDraft.",
+    "Nao alterar schema, migrations, envs, secrets, Supabase manual, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br."
+  ],
+  "changedFiles": [
+    "apps/hub/app/api/chronos/meetings/agent/route.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-012-whereby-transcript-direct-reload.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-012-whereby-transcript-direct-reload.json"
+  ],
+  "validations": [
+    "git diff --check -- apps/hub/app/api/chronos/meetings/agent/route.ts: PASS, com aviso esperado de LF para CRLF.",
+    "npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
+    "POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-sync para CHR-005959: PASS 200; log confirmou transcriptSegments 1."
+  ],
+  "rollback": [
+    "Reverter apps/hub/app/api/chronos/meetings/agent/route.ts ao estado anterior ao OP-012.",
+    "Se publicado e houver regressao critica, reapontar c2x.app.br para dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7."
+  ],
+  "nextSteps": [
+    "Rodar Production Module Safety Gate.",
+    "Publicar o hotfix se o gate passar.",
+    "Lucas atualizar o Drive e clicar novamente em Transcrever e gerar ata na reunião CHR-005959."
+  ]
+}

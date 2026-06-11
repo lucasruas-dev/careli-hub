@@ -36286,3 +36286,42 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar a tela e testar os tres botoes da gravacao e a aba `Transcricao` no painel de Atas.
 - Quem deve agir agora: Lucas valida visualmente; Zeus monitora logs se aparecer erro no clique de Ata.
 - Proximo passo: se Lucas confirmar, fechar o incidente Chronos Drive/Atas; se algum clique ainda falhar, corrigir pelo log real do OP-011.
+
+### Complemento 2026-06-11 19:09:21 -03:00 - OP-012 corrige leitura direta de transcricao Whereby no fluxo de Ata
+
+- Status atualizado: `VALIDADO_LOCAL / AGUARDANDO_PUBLICACAO`.
+- Protocolo: `OP-20260611-012-CHRONOS-WHEREBY-TRANSCRIPT-DIRECT-RELOAD`.
+- Contexto:
+  - Lucas clicou em `Transcrever e gerar ata` em `CHR-005959` e a tela retornou mensagem de processamento;
+  - a aba `Transcricao` no painel de Atas ficou vazia;
+  - o log de producao mostrou sync Whereby para `CHR-005959` com `transcriptSegmentCount: 1` e `transcriptionCount: 1`;
+  - o diagnostico publico `whereby_public_drive_diagnostic` confirmou `transcriptSegments: 1` direto no banco para `CHR-005959`.
+- Causa identificada:
+  - depois de sincronizar a Whereby, o agent dependia do snapshot completo para reencontrar a meeting com transcript;
+  - se o snapshot voltasse sem o segmento naquela mesma rodada, o fluxo respondia `409` como se a transcricao ainda estivesse processando, mesmo com segmento ja persistido.
+- Implementacao:
+  - `apps/hub/app/api/chronos/meetings/agent/route.ts` agora, apos `syncChronosWherebyArtifactsForMeeting`, consulta diretamente `chronos_transcript_segments` por `meeting_id`;
+  - os segmentos diretos sao mesclados na meeting normalizada antes de `saveChronosMinutesDraft`;
+  - a protecao contra upload de video Whereby grande para OpenAI foi preservada.
+- Validacoes:
+  - `git diff --check -- apps/hub/app/api/chronos/meetings/agent/route.ts`: PASS, com aviso esperado de LF para CRLF;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/agent/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos;
+  - `POST https://c2x.app.br/api/chronos/public/rooms/careli/whereby-sync` para `CHR-005959`: PASS 200; log confirmou `transcriptSegments: 1`.
+- Manifestos:
+  - `docs/operations/panteon-recorte-manifest-chronos-20260611-012-whereby-transcript-direct-reload.json`;
+  - `docs/operations/production-module-safety-gate-chronos-20260611-012-whereby-transcript-direct-reload.json`.
+- Fora do escopo:
+  - nenhuma escrita manual em Supabase foi executada;
+  - nenhum env, secret, migration, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br` foi alterado.
+- Rollback:
+  - se houver regressao critica apos publicacao, reapontar `c2x.app.br` para `dpl_7nKGL2toYmyBtMqhexG7XFXVvRp7`.
+
+Conclusao:
+
+- O que aconteceu: a transcricao ja existia em producao, mas o endpoint de ata nao a recarregava de forma direta apos o sync.
+- Impacto pratico: o clique `Transcrever e gerar ata` deve usar o segmento Whereby salvo e seguir para gerar a ata, em vez de parar como processamento.
+- Precisa de acao agora: Zeus deve rodar safety gate e publicar o OP-012.
+- Quem deve agir agora: Zeus publica; Lucas testa novamente depois do aviso.
+- Proximo passo: publicar OP-012 e Lucas clicar de novo em `Transcrever e gerar ata`.
