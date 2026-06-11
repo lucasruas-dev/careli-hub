@@ -35968,3 +35968,34 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar o Drive e conferir a pasta `Lideranca`.
 - Quem deve agir agora: Lucas valida visualmente; Zeus monitora e prepara o backfill de `Operacao` se ainda faltar.
 - Proximo passo tecnico: se `Operacao` continuar ausente, encontrar o `meetingId` seguro de `/careli-operacaomg7634` no Supabase de producao real antes de qualquer escrita.
+
+### Complemento 2026-06-11 15:30:29 -03:00 - Whereby sincronizada mas invisivel no snapshot
+
+- Status atualizado: `VALIDADO_LOCAL / HOTFIX EM PUBLICACAO`.
+- Protocolo: `OP-20260611-007-CHRONOS-WHEREBY-SNAPSHOT-VISIBILITY`.
+- Contexto:
+  - Lucas atualizou novamente o Drive e a tela continuou mostrando apenas `Teste 6` de 30/05 na pasta `Lideranca`;
+  - a chamada autenticada `GET /api/chronos/meetings` ocorreu no deployment novo, entao nao era cache antigo;
+  - o runtime ja havia confirmado `/careli-liderancaaqrnsv` com `recordingCount: 2`, `transcriptionCount: 2` e `transcriptSegmentCount: 139`.
+- Diagnostico:
+  - `isChronosMeetingVisibleInSnapshot` escondia eventos Google que nao fossem do host antes de considerar se a meeting tinha `externalRoom.whereby`;
+  - uma meeting podia sincronizar gravacao/transcricao via endpoint publico, mas ficar fora do snapshot usado pelo Drive;
+  - isso explica por que a Whereby/sync estavam corretos e a UI ainda mostrava somente a reuniao antiga.
+- Correcao:
+  - o filtro passa a manter visiveis meetings com `externalRoom.whereby`, `external_reference` `whereby-room:*`, `recording_status = available` ou `transcription_status = available`;
+  - eventos Google puros e sem artefatos continuam escondidos quando nao pertencem ao usuario.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `git diff --check -- apps/hub/lib/chronos/server.ts`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos fora do recorte Chronos.
+- Rollback:
+  - se houver regressao critica apos publicacao, reapontar `c2x.app.br` para `dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix`.
+
+Conclusao:
+
+- A causa mais provavel agora foi isolada: a meeting de hoje existia no runtime, mas o snapshot autenticado podia esconde-la por regra de visibilidade de Google Calendar.
+- O impacto pratico esperado e a pasta `Lideranca` passar a listar a meeting sincronizada de hoje no Drive.
+- Precisa de acao agora: Zeus publica este hotfix e Lucas atualiza novamente o Drive.
+- Quem deve agir agora: Zeus publica/valida; Lucas testa visualmente.
+- Proximo passo tecnico: se ainda faltar `Operacao`, fazer backfill focado no meetingId correto de `/careli-operacaomg7634`.

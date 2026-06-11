@@ -1,0 +1,46 @@
+{
+  "protocolId": "OP-20260611-007-CHRONOS-WHEREBY-SNAPSHOT-VISIBILITY",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-11T15:30:29-03:00",
+  "status": "VALIDADO_LOCAL_AGUARDANDO_PUBLICACAO",
+  "summary": "Corrige a visibilidade do snapshot para nao esconder reunioes Google/Chronos que ja possuem sala Whereby ou artefatos de gravacao/transcricao.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Drive Chronos ainda mostra apenas reuniao antiga mesmo com Whereby sync confirmando duas gravacoes e duas transcricoes para Lideranca.",
+    "deployment": "Lucas autorizou subir os hotfixes Chronos deste incidente; rollback sera registrado no gate."
+  },
+  "diagnosis": [
+    "O runtime confirmou /careli-liderancaaqrnsv com recordingCount 2, transcriptionCount 2 e transcriptSegmentCount 139.",
+    "A tela autenticada do Lucas continuou mostrando apenas Teste 6 de 30/05 na pasta Lideranca.",
+    "GET /api/chronos/meetings foi chamado apos o deploy, entao a tela ja estava no runtime novo.",
+    "O filtro isChronosMeetingVisibleInSnapshot retornava false para eventos Google que nao fossem do host antes de considerar externalRoom.whereby ou status de gravacao/transcricao.",
+    "Resultado: a reuniao que tinha artefatos Whereby podia existir/sincronizar no backend, mas ficar fora do snapshot usado pelo Drive."
+  ],
+  "decisions": [
+    "Manter eventos Google puros escondidos quando nao pertencem ao usuario.",
+    "Forcar visibilidade quando a meeting tem provider externalRoom.whereby, external_reference whereby-room, recording_status available ou transcription_status available.",
+    "Nao executar escrita direta no Supabase neste recorte."
+  ],
+  "changedFiles": [
+    "apps/hub/lib/chronos/server.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-007-whereby-snapshot-visibility.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-007-whereby-snapshot-visibility.json"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS.",
+    "git diff --check -- apps/hub/lib/chronos/server.ts: PASS.",
+    "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos."
+  ],
+  "rollback": [
+    "Reverter apps/hub/lib/chronos/server.ts ao estado anterior ao protocolo OP-20260611-007.",
+    "Se publicado e houver regressao critica, reapontar c2x.app.br para o deployment anterior registrado no gate."
+  ],
+  "nextSteps": [
+    "Publicar hotfix em c2x.app.br.",
+    "Lucas atualizar o Drive e conferir pasta Lideranca.",
+    "Se Operacao ainda faltar, localizar o meetingId correto e executar backfill especifico."
+  ]
+}

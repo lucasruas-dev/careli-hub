@@ -8654,6 +8654,20 @@ function isChronosMeetingVisibleInSnapshot(
   }
 
   const metadata = readRecordMetadata(meeting.metadata);
+  const externalRoomMetadata = readRecordMetadata(metadata.externalRoom);
+  const wherebyMetadata = readRecordMetadata(externalRoomMetadata.whereby);
+  const externalProvider =
+    readChronosMetadataText(wherebyMetadata, "provider") ??
+    readChronosMetadataText(externalRoomMetadata, "provider");
+
+  if (
+    externalProvider === "whereby" ||
+    meeting.external_reference?.startsWith("whereby-room:") ||
+    meeting.recording_status === "available" ||
+    meeting.transcription_status === "available"
+  ) {
+    return true;
+  }
 
   if (
     meeting.external_reference?.startsWith("google:") ||
