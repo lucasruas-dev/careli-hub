@@ -35675,3 +35675,31 @@ Conclusao:
 - Precisa de acao agora: Lucas deve abrir o Drive Chronos e/ou a sala gravada pelo app autenticado para o runtime de producao disparar a reconciliacao com o `meetingId` correto; se ainda nao aparecer, Zeus deve executar backfill controlado com envs de producao corretas.
 - Quem deve agir agora: Lucas valida o Drive; Zeus monitora logs por `Whereby artifact sync` e, se necessario, conduz backfill assistido sem expor chaves.
 - Proximo passo tecnico: acompanhar logs apos a validacao do Lucas; se `careli` nao disparar sync, pedir somente o minimo necessario para executar o backfill em ambiente com Supabase/Whereby de producao corretos.
+
+### Complemento 2026-06-11 11:31:00 -03:00 - prompt do novo Zeus para continuidade Chronos/Whereby
+
+- Status atualizado: `PROMPT CRIADO / CONTINUIDADE PRONTA`.
+- Arquivo criado: `docs/operations/zeus-new-chat-startup-prompt-2026-06-11.md`.
+- Motivo:
+  - Lucas solicitou um prompt para iniciar um novo agente Zeus;
+  - o prompt anterior de 2026-06-10 ainda priorizava LiveKit, mas a prioridade atual passou a ser Chronos/Whereby, Drive, transcricao e ata Athena;
+  - o novo Zeus precisa entrar sem mover alias, env, banco ou deploy automaticamente.
+- Conteudo do prompt:
+  - papel do Zeus e resposta inicial esperada;
+  - arquivos obrigatorios de leitura;
+  - estado de producao de `c2x.app.br` e `ops.c2x.app.br`;
+  - deployment atual `dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp`;
+  - rollback `dpl_BJwSxFKLS4unSJ6V641URLZrpkXu`;
+  - pendencia de recuperacao retroativa da sala `careli`;
+  - orientacao para diagnostico read-only, logs Whereby/Chronos e backfill assistido somente com autorizacao explicita;
+  - regra de nao voltar para LiveKit como prioridade.
+- Fora do escopo:
+  - nenhum codigo funcional, deploy, alias, env, secret, Supabase, banco ou Whereby foi alterado.
+
+Conclusao:
+
+- O novo prompt deixa o proximo Zeus alinhado com o estado real do Chronos/Whereby em producao.
+- O impacto pratico e reduzir risco de o novo agente recomecar pelo problema antigo de LiveKit ou mover alias/env sem necessidade.
+- Precisa de acao agora: Lucas pode iniciar novo chat copiando o prompt do arquivo criado.
+- Quem deve agir agora: novo Zeus deve ler, confirmar contexto e aguardar o primeiro comando.
+- Proximo passo tecnico: usar o novo Zeus para validar Drive Chronos, transcricao e ata Athena no runtime de producao.
