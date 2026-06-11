@@ -1,0 +1,82 @@
+{
+  "protocolId": "OP-20260611-005-CHRONOS-WHEREBY-MULTI-RECORDING-TRANSCRIPTION-SYNC",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-11T12:33:24-03:00",
+  "status": "VALIDADO_LOCAL_AGUARDANDO_AUTORIZACAO_PUBLICACAO",
+  "summary": "Corrige a reconciliacao Whereby para nao concluir sync sem artefatos persistidos e para solicitar transcricao por gravacao quando uma mesma sala gera varias gravacoes.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Resolver 3 videochamadas Whereby de 2026-06-11 que aparecem no dashboard Whereby, mas nao aparecem no Drive Chronos nem possuem transcricao/ata Athena.",
+    "deployment": "Nao autorizado neste recorte. Deploy, alias, banco, Supabase, envs, chaves e chamadas reais de backfill continuam BLOQUEADOS ate autorizacao explicita do Lucas."
+  },
+  "documentationReviewed": [
+    "Whereby REST API: /recordings, /recordings/{recordingId}/access-link, /transcriptions e rate limit global.",
+    "Whereby Cloud Recording: gravacoes em storage Whereby podem ser baixadas pelo Dashboard ou Recordings API; recording.finished indica arquivo pronto.",
+    "Whereby Recording Transcriptions: fluxo programatico usa recordingId no POST /transcriptions e depois GET /transcriptions/{transcriptionId}/access-link.",
+    "Whereby Session Transcription: trigger automatic-2nd-participant e transcricoes .md em storage Whereby quando ready."
+  ],
+  "decisions": [
+    "O snapshot do Chronos nao deve pular uma meeting Whereby so porque recording_status/transcription_status estao available; deve exigir recordingCount real e, quando transcricao for obrigatoria, transcriptSegmentCount real.",
+    "A condicao de sync complete passa a ser compartilhada entre o filtro do snapshot e o throttle, evitando falsa conclusao sem Drive/transcricao persistidos.",
+    "Transcricoes devem ser solicitadas por recordingId. Uma transcricao existente de outra gravacao da mesma sala nao pode bloquear a proxima gravacao.",
+    "Transcricoes failed nao contam como ativas para bloquear nova solicitacao.",
+    "O cliente Whereby passa a preservar roomName em recordings e recordingId em transcriptions quando a API retornar esses campos.",
+    "Triggers automatic-2nd-participant passam a ser aceitos explicitamente na configuracao Whereby do Chronos."
+  ],
+  "changedFiles": [
+    "apps/hub/lib/chronos/server.ts",
+    "apps/hub/lib/chronos/whereby.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-005-whereby-multi-recording-transcription-sync.json"
+  ],
+  "requiredEnvNames": [
+    "CHRONOS_VIDEO_PROVIDER",
+    "WHEREBY_API_KEY",
+    "WHEREBY_API_BASE_URL",
+    "CHRONOS_WHEREBY_API_KEY",
+    "CHRONOS_WHEREBY_API_BASE_URL",
+    "CHRONOS_WHEREBY_RECORDING_START_TRIGGER",
+    "CHRONOS_WHEREBY_TRANSCRIPTION_START_TRIGGER",
+    "CHRONOS_WHEREBY_TRANSCRIPTION_LANGUAGE"
+  ],
+  "validations": [
+    {
+      "command": "git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/lib/chronos/whereby.ts",
+      "status": "PASS",
+      "notes": "Sem whitespace error; apenas avisos CRLF esperados no Windows."
+    },
+    {
+      "command": "npm.cmd run check-types:hub",
+      "status": "PASS",
+      "notes": "TypeScript passou em @repo/hub e dependencias do filtro."
+    },
+    {
+      "command": "npm.cmd run lint:hub",
+      "status": "PASS",
+      "notes": "ESLint passou; warning conhecido MODULE_TYPELESS_PACKAGE_JSON sem falha."
+    },
+    {
+      "command": "npm.cmd run build --workspace @repo/hub",
+      "status": "PASS",
+      "notes": "Next build compilou; warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+    }
+  ],
+  "risks": [
+    "A recuperacao das 3 chamadas reais ainda precisa rodar no runtime correto de producao ou por backfill autorizado, porque este recorte nao executou API Whereby, Supabase, banco, Vercel ou alias.",
+    "A Whereby documenta que transcricoes de gravacoes maiores que 45 minutos podem falhar ocasionalmente; uma das gravacoes de 2026-06-11 tem cerca de 59 minutos.",
+    "Links de acesso Whereby sao temporarios e gerados sob demanda; o Drive Chronos guarda referencia whereby://recordings/{recordingId}.",
+    "Se uma transcricao ja estiver in_progress para o mesmo recordingId ou roomSessionId, o Chronos nao deve duplicar solicitacao.",
+    "Deploy e backfill real permanecem sensiveis e exigem autorizacao explicita do Lucas."
+  ],
+  "rollback": [
+    "Reverter apps/hub/lib/chronos/server.ts e apps/hub/lib/chronos/whereby.ts para o estado anterior ao protocolo OP-20260611-005.",
+    "Remover o manifesto deste protocolo se ele nao for publicado.",
+    "Se publicado e houver regressao critica, seguir o rollback do deployment anterior registrado para c2x.app.br; ops.c2x.app.br permanece fora do escopo."
+  ],
+  "nextSteps": [
+    "Se Lucas autorizar, publicar o protocolo em c2x.app.br com pacote limpo, Safety Gate e preservacao de ops.c2x.app.br.",
+    "Depois de publicado, abrir Drive Chronos/autenticado para disparar snapshot sync ou executar backfill controlado com envs de producao corretas.",
+    "Validar as salas do screenshot: careli-liderancaaqrnsv e careli-operacaomg7634 devem gerar registros no Drive Chronos; transcricao pode ficar processing ate a Whereby entregar .md."
+  ]
+}

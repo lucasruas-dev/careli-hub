@@ -3189,13 +3189,6 @@ async function syncPendingChronosWherebyArtifactsForSnapshot({
 function shouldSyncChronosWherebyArtifactsInSnapshot(
   meeting: ChronosMeetingRow,
 ) {
-  if (
-    meeting.recording_status === "available" &&
-    meeting.transcription_status === "available"
-  ) {
-    return false;
-  }
-
   const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
   const wherebyMetadata = readRecordMetadata(externalRoomMetadata.whereby);
   const provider =
@@ -3203,6 +3196,15 @@ function shouldSyncChronosWherebyArtifactsInSnapshot(
     readChronosMetadataText(externalRoomMetadata, "provider");
 
   if (provider !== "whereby" || !readChronosMetadataText(wherebyMetadata, "roomName")) {
+    return false;
+  }
+
+  if (
+    isChronosWherebyArtifactSyncComplete({
+      meeting,
+      wherebyMetadata,
+    })
+  ) {
     return false;
   }
 
@@ -3484,32 +3486,7 @@ function getChronosWherebySyncThrottle({
     return "rate_limited" as const;
   }
 
-  const recordingCount = readChronosMetadataNumber(
-    wherebyMetadata,
-    "recordingCount",
-  ) ?? 0;
-  const transcriptSegmentCount = readChronosMetadataNumber(
-    wherebyMetadata,
-    "transcriptSegmentCount",
-  ) ?? 0;
-  const transcriptionCount = readChronosMetadataNumber(
-    wherebyMetadata,
-    "transcriptionCount",
-  ) ?? 0;
-  const transcriptionRequired = readChronosMetadataBoolean(
-    wherebyMetadata,
-    "transcriptionRequired",
-  );
-  const hasSyncedRecording = recordingCount > 0;
-  const hasSyncedTranscription =
-    !transcriptionRequired || transcriptSegmentCount > 0 || transcriptionCount > 0;
-
-  if (
-    meeting.recording_status === "available" &&
-    meeting.transcription_status === "available" &&
-    hasSyncedRecording &&
-    hasSyncedTranscription
-  ) {
+  if (isChronosWherebyArtifactSyncComplete({ meeting, wherebyMetadata })) {
     return "complete" as const;
   }
 
@@ -3529,6 +3506,40 @@ function getChronosWherebySyncThrottle({
   }
 
   return null;
+}
+
+function isChronosWherebyArtifactSyncComplete({
+  meeting,
+  wherebyMetadata,
+}: {
+  meeting: ChronosMeetingRow;
+  wherebyMetadata: Record<string, unknown>;
+}) {
+  const recordingCount = readChronosMetadataNumber(
+    wherebyMetadata,
+    "recordingCount",
+  ) ?? 0;
+  const transcriptSegmentCount = readChronosMetadataNumber(
+    wherebyMetadata,
+    "transcriptSegmentCount",
+  ) ?? 0;
+  const transcriptionRequired = readChronosMetadataBoolean(
+    wherebyMetadata,
+    "transcriptionRequired",
+  );
+  const hasSyncedRecording = recordingCount > 0;
+  const hasSyncedTranscription =
+    transcriptionRequired === false || transcriptSegmentCount > 0;
+  const hasFinalTranscriptionStatus =
+    transcriptionRequired === false ||
+    meeting.transcription_status === "available";
+
+  return (
+    meeting.recording_status === "available" &&
+    hasFinalTranscriptionStatus &&
+    hasSyncedRecording &&
+    hasSyncedTranscription
+  );
 }
 
 function isChronosWherebyRateLimitError(
@@ -3566,14 +3577,21 @@ async function requestMissingChronosWherebyRecordingTranscriptions({
   const requestedRecordingIds = new Set(
     readChronosMetadataTextArray(wherebyMetadata, "transcriptionJobRecordingIds"),
   );
+  const activeTranscriptions = transcriptions.filter(
+    (transcription) => transcription.state?.toLowerCase() !== "failed",
+  );
+  const transcriptionRecordingIds = new Set(
+    activeTranscriptions
+      .map((transcription) => transcription.recordingId?.trim())
+      .filter((recordingId): recordingId is string => Boolean(recordingId)),
+  );
   const transcriptionRoomSessionIds = new Set(
-    transcriptions
+    activeTranscriptions
       .map((transcription) => transcription.roomSessionId?.trim())
       .filter((roomSessionId): roomSessionId is string =>
         Boolean(roomSessionId),
       ),
   );
-  const hasAnyTranscription = transcriptions.length > 0;
 
   for (const recording of recordings) {
     if (
@@ -3583,14 +3601,14 @@ async function requestMissingChronosWherebyRecordingTranscriptions({
       continue;
     }
 
+    if (transcriptionRecordingIds.has(recording.recordingId)) {
+      continue;
+    }
+
     if (
       recording.roomSessionId &&
       transcriptionRoomSessionIds.has(recording.roomSessionId)
     ) {
-      continue;
-    }
-
-    if (!recording.roomSessionId && hasAnyTranscription) {
       continue;
     }
 
@@ -3922,6 +3940,7 @@ function buildChronosWherebyTranscriptRows({
         whereby: {
           filename: transcription.filename ?? null,
           index,
+          recordingId: transcription.recordingId ?? null,
           roomName,
           roomSessionId: transcription.roomSessionId ?? null,
           transcriptionId: transcription.transcriptionId,

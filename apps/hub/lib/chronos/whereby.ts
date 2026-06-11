@@ -17,6 +17,7 @@ export type ChronosWherebyRecording = {
   endDate?: string | null;
   filename?: string | null;
   recordingId: string;
+  roomName?: string | null;
   roomSessionId?: string | null;
   sizeInMegaBytes?: number | null;
   startDate?: string | null;
@@ -27,6 +28,7 @@ export type ChronosWherebyTranscription = {
   durationInSeconds?: number | null;
   endDate?: string | null;
   filename?: string | null;
+  recordingId?: string | null;
   roomName?: string | null;
   roomSessionId?: string | null;
   startDate?: string | null;
@@ -425,7 +427,11 @@ function normalizeChronosWherebyRecording(
     endDate: readChronosWherebyText(payload, ["endDate", "endedAt"]),
     filename: readChronosWherebyText(payload, ["filename", "fileName"]),
     recordingId,
-    roomSessionId: readChronosWherebyText(payload, ["roomSessionId"]),
+    roomName: readChronosWherebyText(payload, ["roomName"]),
+    roomSessionId: readChronosWherebyText(payload, [
+      "roomSessionId",
+      "room_session_id",
+    ]),
     sizeInMegaBytes: readChronosWherebyNumber(payload, ["sizeInMegaBytes"]),
     startDate: readChronosWherebyText(payload, ["startDate", "startedAt"]),
   };
@@ -449,8 +455,12 @@ function normalizeChronosWherebyTranscription(
     durationInSeconds: readChronosWherebyNumber(payload, ["durationInSeconds"]),
     endDate: readChronosWherebyText(payload, ["endDate", "endedAt"]),
     filename: readChronosWherebyText(payload, ["filename", "fileName"]),
+    recordingId: readChronosWherebyText(payload, ["recordingId"]),
     roomName: readChronosWherebyText(payload, ["roomName"]),
-    roomSessionId: readChronosWherebyText(payload, ["roomSessionId"]),
+    roomSessionId: readChronosWherebyText(payload, [
+      "roomSessionId",
+      "room_session_id",
+    ]),
     startDate: readChronosWherebyText(payload, ["startDate", "startedAt"]),
     state: readChronosWherebyText(payload, ["state"]) ?? undefined,
     storageType: readChronosWherebyText(payload, ["storageType"]),
@@ -541,7 +551,8 @@ function getChronosWherebyStartTrigger(value?: string | null) {
 
   return normalized === "none" ||
     normalized === "prompt" ||
-    normalized === "automatic"
+    normalized === "automatic" ||
+    normalized === "automatic-2nd-participant"
     ? normalized
     : "automatic-2nd-participant";
 }
@@ -551,7 +562,8 @@ function getChronosWherebyTranscriptionStartTrigger(value?: string | null) {
 
   return normalized === "none" ||
     normalized === "manual" ||
-    normalized === "automatic"
+    normalized === "automatic" ||
+    normalized === "automatic-2nd-participant"
     ? normalized
     : "automatic-2nd-participant";
 }

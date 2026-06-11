@@ -35703,3 +35703,41 @@ Conclusao:
 - Precisa de acao agora: Lucas pode iniciar novo chat copiando o prompt do arquivo criado.
 - Quem deve agir agora: novo Zeus deve ler, confirmar contexto e aguardar o primeiro comando.
 - Proximo passo tecnico: usar o novo Zeus para validar Drive Chronos, transcricao e ata Athena no runtime de producao.
+
+### Complemento 2026-06-11 12:33:24 -03:00 - varias gravacoes Whereby sem Drive/transcricao
+
+- Status atualizado: `VALIDADO_LOCAL / AGUARDANDO AUTORIZACAO PARA PUBLICACAO OU BACKFILL`.
+- Protocolo: `OP-20260611-005-CHRONOS-WHEREBY-MULTI-RECORDING-TRANSCRIPTION-SYNC`.
+- Manifesto de recorte: `docs/operations/panteon-recorte-manifest-chronos-20260611-005-whereby-multi-recording-transcription-sync.json`.
+- Contexto:
+  - Lucas reportou 3 videochamadas realizadas em 2026-06-11 que aparecem no Dashboard Whereby, mas nao aparecem no Drive Chronos nem possuem transcricao;
+  - screenshot Whereby mostrou `/careli-liderancaaqrnsv` as 09:31 com 00:59:42, `/careli-operacaomg7634` as 09:00 com 00:29:33 e `/careli-liderancaaqrnsv` as 07:59 com 00:12:04;
+  - documentacao oficial Whereby revisada confirmou o fluxo: gravação cloud em storage Whereby, `recording.finished`, `POST /transcriptions` por `recordingId` e download de `.md` via `GET /transcriptions/{transcriptionId}/access-link`.
+- Causas corrigidas no codigo:
+  - `apps/hub/lib/chronos/server.ts` nao pula mais a reconciliacao do snapshot apenas por `recording_status` e `transcription_status` antigos como `available`; agora o sync so e considerado completo quando existe `recordingCount > 0` e, se transcricao for exigida, `transcriptSegmentCount > 0`;
+  - `apps/hub/lib/chronos/server.ts` removeu a trava ampla em que "qualquer transcricao" da sala bloqueava novas solicitacoes; agora o Chronos decide por `recordingId` e `roomSessionId`, preservando multiplas gravacoes no mesmo roomName;
+  - `apps/hub/lib/chronos/server.ts` nao considera transcricoes `failed` como ativas para impedir nova solicitacao;
+  - `apps/hub/lib/chronos/whereby.ts` passou a preservar `roomName` em recordings e `recordingId` em transcriptions quando retornados pela API;
+  - `apps/hub/lib/chronos/whereby.ts` passou a aceitar explicitamente `automatic-2nd-participant` nos triggers Whereby de gravacao/transcricao.
+- Validacoes:
+  - `git diff --check -- apps/hub/lib/chronos/server.ts apps/hub/lib/chronos/whereby.ts`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.
+- Fora do escopo:
+  - nenhuma operacao Vercel, alias, deploy, Supabase, banco, migration, env, secret ou chamada real Whereby foi executada neste complemento;
+  - nenhuma alteracao em Agenda, Hades, Hermes, Iris, Atlas ou Setup.
+- Riscos:
+  - para recuperar as 3 chamadas reais, o codigo precisa ser publicado no runtime correto ou um backfill controlado precisa ser autorizado por Lucas;
+  - a documentacao Whereby informa que transcricoes de gravacoes maiores que 45 minutos podem falhar ocasionalmente; a gravacao de 09:31 tem cerca de 59 minutos.
+- Rollback:
+  - reverter `apps/hub/lib/chronos/server.ts` e `apps/hub/lib/chronos/whereby.ts` para o estado anterior ao protocolo `OP-20260611-005`;
+  - se publicado e houver regressao critica, seguir o rollback do deployment anterior de `c2x.app.br`; `ops.c2x.app.br` permanece fora do escopo.
+
+Conclusao:
+
+- O problema atual nao e somente a Whereby ter ou nao gravado; o Chronos ainda podia parar a busca cedo demais e tambem podia deixar gravacoes extras da mesma sala sem pedido de transcricao.
+- O impacto pratico esperado do hotfix e permitir que o Drive Chronos importe todas as gravacoes do roomName Whereby e solicite transcricao por gravacao, incluindo os casos de varias reunioes no mesmo roomName.
+- Precisa de acao agora: sim, Lucas precisa autorizar o proximo passo operacional, que pode ser deploy seguro em `c2x.app.br` ou backfill controlado no runtime correto.
+- Quem deve agir agora: Zeus aguarda autorizacao para publicar/executar backfill; Lucas valida depois no Drive Chronos.
+- Proximo passo tecnico: publicar o protocolo `OP-20260611-005-CHRONOS-WHEREBY-MULTI-RECORDING-TRANSCRIPTION-SYNC` com pacote limpo e, apos isso, disparar reconciliacao/backfill das salas `careli-liderancaaqrnsv` e `careli-operacaomg7634` sem expor secrets.
