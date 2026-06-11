@@ -3,13 +3,13 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-11T15:12:41-03:00",
-  "status": "VALIDADO_LOCAL_AGUARDANDO_PUBLICACAO",
+  "status": "EM_PRODUCAO_AGUARDANDO_VALIDACAO_VISUAL_LUCAS",
   "summary": "Corrige o snapshot do Chronos para carregar dados complementares em lotes menores, evitando falha parcial do Supabase/PostgREST quando a agenda possui muitas reunioes.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Resolver Drive Chronos que continua sem exibir gravacoes Whereby mesmo apos sync confirmado no runtime.",
     "supabase": "Lucas autorizou consultas e alteracoes Supabase se necessario em 2026-06-11; neste recorte nenhuma escrita direta em banco foi executada.",
-    "deployment": "Lucas ja havia autorizado subir o pacote Chronos do incidente Whereby; este complemento segue o mesmo incidente operacional, com rollback registrado."
+    "deployment": "Lucas ja havia autorizado subir o pacote Chronos do incidente Whereby; complemento publicado em c2x.app.br no deployment dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix, com rollback para dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE."
   },
   "diagnosis": [
     "A tela de Lucas continuou exibindo o banner 'Chronos carregou a agenda, mas alguns dados complementares estao temporariamente indisponiveis'.",
@@ -58,6 +58,26 @@
       "command": "npm.cmd run build --workspace @repo/hub",
       "status": "PASS",
       "notes": "Next build compilou; warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+    },
+    {
+      "command": "Production Module Safety Gate",
+      "status": "PASS",
+      "notes": "4 mudancas detectadas, todas dentro do recorte Chronos/docs."
+    },
+    {
+      "command": "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes",
+      "status": "PASS",
+      "notes": "Deployment dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix ficou READY."
+    },
+    {
+      "command": "npx.cmd vercel alias set ... c2x.app.br",
+      "status": "PASS",
+      "notes": "Alias c2x.app.br movido para careli-hub-hub-i2bs-9xzml1g7i-lucasruas-devs-projects.vercel.app."
+    },
+    {
+      "command": "GET https://c2x.app.br/chronos e /chronos/careli",
+      "status": "PASS",
+      "notes": "Ambas as rotas retornaram 200 apos o alias."
     }
   ],
   "risks": [

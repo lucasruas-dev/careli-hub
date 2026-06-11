@@ -35905,3 +35905,45 @@ Conclusao:
 - Precisa de acao agora: sim, publicar este complemento e Lucas atualizar o Drive depois.
 - Quem deve agir agora: Zeus publica e valida; Lucas testa o Drive em seguida.
 - Proximo passo tecnico: se apos este deploy `Operacao` ainda nao aparecer, executar diagnostico/backfill no Supabase de producao real com o projeto confirmado sem expor secrets.
+
+### Complemento 2026-06-11 15:23:44 -03:00 - snapshot chunks publicado em producao
+
+- Status atualizado: `EM PRODUCAO / AGUARDANDO VALIDACAO VISUAL DO LUCAS`.
+- Protocolo: `OP-20260611-006-CHRONOS-SNAPSHOT-RELATED-DATA-CHUNKS`.
+- Commit funcional: `a64a252aacb7b43a1d136da30ef71e32e0ebe2ed`.
+- Deployment anterior de `c2x.app.br`: `dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE`.
+- Deployment novo de `c2x.app.br`: `dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix`.
+- URL tecnica: `https://careli-hub-hub-i2bs-9xzml1g7i-lucasruas-devs-projects.vercel.app`.
+- Alias movido: `https://c2x.app.br`.
+- Alias preservado: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Pacotes:
+  - base: `C:/Users/lucas/AppData/Local/Temp/chronos-snapshot-chunks-prod-20260611-1515/base`;
+  - candidato do gate: `C:/Users/lucas/AppData/Local/Temp/chronos-snapshot-chunks-prod-20260611-1515/candidate-gate`;
+  - candidato de deploy: `C:/Users/lucas/AppData/Local/Temp/chronos-snapshot-chunks-prod-20260611-1515/candidate`.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `git diff --check -- apps/hub/lib/chronos/server.ts`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos;
+  - `Production Module Safety Gate`: PASS, 4 mudancas detectadas;
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes`: PASS, `READY`;
+  - `GET` URL tecnica `/chronos` e `/chronos/careli`: 200;
+  - `npx.cmd vercel alias set ... c2x.app.br`: SUCCESS;
+  - `GET https://c2x.app.br/chronos` e `/chronos/careli`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel logs https://c2x.app.br --query chronos`: sem erro imediato, apenas healthchecks GET `/chronos` e `/chronos/careli`.
+- Fora do escopo:
+  - nenhum backfill direto em banco/Supabase de producao foi executado;
+  - nenhuma env, secret, migration, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br` foi alterado.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE`;
+  - `ops.c2x.app.br` nao precisa de rollback neste pacote.
+
+Conclusao:
+
+- O complemento de chunks esta publicado em producao e deve remover a principal causa do banner de dados complementares indisponiveis no Drive.
+- O impacto pratico esperado e o Drive carregar as gravacoes/transcricoes ja persistidas, incluindo Lideranca, sem depender de uma chamada gigante ao Supabase.
+- Precisa de acao agora: Lucas deve atualizar o Drive Chronos e conferir a pasta `Lideranca`.
+- Quem deve agir agora: Lucas valida visualmente; Zeus monitora logs e, se `Operacao` continuar ausente, prepara diagnostico/backfill no Supabase de producao real.
+- Proximo passo tecnico: se o banner persistir ou `Operacao` nao aparecer, confirmar o projeto Supabase real de producao antes de qualquer escrita direta.

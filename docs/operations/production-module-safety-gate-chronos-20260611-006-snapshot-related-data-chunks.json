@@ -8,13 +8,13 @@
   "expectedProjectName": "careli-hub-hub-i2bs",
   "currentProductionDeploymentId": "dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "PENDING_DEPLOY",
-  "candidateProductionUrl": "PENDING_DEPLOY",
-  "candidateSourceCommit": "PENDING_COMMIT",
+  "candidateProductionDeploymentId": "dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix",
+  "candidateProductionUrl": "https://careli-hub-hub-i2bs-9xzml1g7i-lucasruas-devs-projects.vercel.app",
+  "candidateSourceCommit": "a64a252aacb7b43a1d136da30ef71e32e0ebe2ed",
   "sourceWorktreeClean": true,
-  "basePackagePath": "PENDING_PACKAGE",
-  "candidatePackagePath": "PENDING_PACKAGE",
-  "candidateDeployPackagePath": "PENDING_PACKAGE",
+  "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-snapshot-chunks-prod-20260611-1515/base",
+  "candidatePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-snapshot-chunks-prod-20260611-1515/candidate-gate",
+  "candidateDeployPackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-snapshot-chunks-prod-20260611-1515/candidate",
   "rollbackDeploymentId": "dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE",
   "allowedChangedPaths": [
     "apps/hub/lib/chronos/server.ts",
@@ -66,7 +66,17 @@
     "npm.cmd run check-types:hub: PASS.",
     "git diff --check -- apps/hub/lib/chronos/server.ts: PASS, apenas avisos CRLF esperados no Windows.",
     "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
-    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas dentro do recorte Chronos/docs.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes: PASS, Ready em dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix.",
+    "GET https://careli-hub-hub-i2bs-9xzml1g7i-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "GET https://careli-hub-hub-i2bs-9xzml1g7i-lucasruas-devs-projects.vercel.app/chronos/careli: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-9xzml1g7i-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "GET https://c2x.app.br/chronos/careli: 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+    "npx.cmd vercel logs https://c2x.app.br --query chronos: sem erro imediato; apenas GET /chronos e /chronos/careli de healthcheck."
   ],
   "notes": [
     "Lucas reportou que o Drive continuou igual apos F5, mesmo com sync Whereby confirmado para Lideranca.",
@@ -74,6 +84,7 @@
     "Logs recentes apos F5 mostraram GET /api/chronos/meetings, mas nenhum novo Whereby artifact sync.",
     "O snapshot fazia consultas relacionadas com ate 1500 meetingIds em uma unica chamada por tabela; o recorte muda isso para chunks de 100 ids.",
     "Consulta local ao Supabase foi considerada insuficiente para backfill porque o .env.local do repo principal aponta para outro projeto mascarado, diferente do esperado pelo app publico.",
-    "Nenhuma env, secret, migration, schema, banco direto, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br entra no escopo."
+    "Nenhuma env, secret, migration, schema, banco direto, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br entra no escopo.",
+    "Rollback imediato deste complemento: reapontar c2x.app.br para dpl_HjnfQX47Tei7SKUid7LkP4y1yRDE se houver regressao critica."
   ]
 }
