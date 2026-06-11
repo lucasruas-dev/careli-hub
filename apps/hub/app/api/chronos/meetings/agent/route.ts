@@ -14,6 +14,7 @@ import {
   chronosMinutesProfiles,
   type ChronosMeeting,
   type ChronosMinutesProfile,
+  type ChronosTranscriptSegment,
 } from "@/lib/chronos/types";
 import {
   buildChronosMinutesContext,
@@ -583,10 +584,83 @@ async function syncChronosWherebyTranscriptForMinutes({
   const refreshedMeeting = snapshot.meetings.find(
     (currentMeeting) => currentMeeting.id === meetingId,
   );
-
-  return refreshedMeeting
+  const syncedMeeting = refreshedMeeting
     ? normalizeChronosMeetingRuntime(refreshedMeeting)
     : normalizedMeeting;
+
+  if (hasChronosOfficialTranscript(syncedMeeting)) {
+    return syncedMeeting;
+  }
+
+  const directTranscript = await loadChronosTranscriptSegmentsForMeeting({
+    authorization,
+    meetingId,
+  });
+
+  if (directTranscript.length === 0) {
+    return syncedMeeting;
+  }
+
+  return normalizeChronosMeetingRuntime({
+    ...syncedMeeting,
+    transcript: mergeChronosTranscriptSegments([
+      ...syncedMeeting.transcript,
+      ...directTranscript,
+    ]),
+  });
+}
+
+async function loadChronosTranscriptSegmentsForMeeting({
+  authorization,
+  meetingId,
+}: {
+  authorization: Parameters<typeof updateChronosMeeting>[0]["authorization"];
+  meetingId: string;
+}) {
+  if (!authorization.client) {
+    return [];
+  }
+
+  const result = await authorization.client
+    .from("chronos_transcript_segments")
+    .select("content,created_at,ended_at,id,source,speaker_label,started_at")
+    .eq("meeting_id", meetingId)
+    .order("created_at", { ascending: true });
+
+  if (result.error) {
+    console.warn(
+      "[chronos/agent] Direct transcript reload failed",
+      result.error.message,
+    );
+
+    return [];
+  }
+
+  return (result.data ?? []).map((segment) => ({
+    content: segment.content,
+    createdAt: segment.created_at,
+    endedAt: segment.ended_at,
+    id: segment.id,
+    source: segment.source,
+    speakerLabel: segment.speaker_label,
+    startedAt: segment.started_at,
+  })) satisfies ChronosTranscriptSegment[];
+}
+
+function mergeChronosTranscriptSegments(
+  segments: ChronosTranscriptSegment[],
+) {
+  return Array.from(
+    segments
+      .reduce((segmentById, segment) => {
+        segmentById.set(segment.id, segment);
+
+        return segmentById;
+      }, new Map<string, ChronosTranscriptSegment>())
+      .values(),
+  ).sort((firstSegment, secondSegment) =>
+    firstSegment.createdAt.localeCompare(secondSegment.createdAt),
+  );
 }
 
 async function saveChronosTranscriptionResult({
