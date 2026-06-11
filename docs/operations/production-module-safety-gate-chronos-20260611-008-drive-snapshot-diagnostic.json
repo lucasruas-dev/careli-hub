@@ -8,8 +8,8 @@
   "expectedProjectName": "careli-hub-hub-i2bs",
   "currentProductionDeploymentId": "dpl_2Zyk1M2no2oswM3W8Ad7JY84i5wY",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "PENDENTE_PUBLICACAO",
-  "candidateProductionUrl": "PENDENTE_PUBLICACAO",
+  "candidateProductionDeploymentId": "dpl_8aivMiHCBym8TfkioCcMETiv6Rvn",
+  "candidateProductionUrl": "https://careli-hub-hub-i2bs-2kxdtmn7n-lucasruas-devs-projects.vercel.app",
   "candidateSourceCommit": "0229ae1",
   "sourceWorktreeClean": true,
   "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-drive-snapshot-diagnostic-prod-20260611-1640/base",
@@ -61,7 +61,14 @@
     "npm.cmd run check-types:hub: PASS.",
     "git diff --check -- apps/hub/app/api/chronos/meetings/route.ts: PASS.",
     "npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
-    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas dentro do recorte Chronos/docs.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes: PASS, Ready em dpl_8aivMiHCBym8TfkioCcMETiv6Rvn.",
+    "GET https://careli-hub-hub-i2bs-2kxdtmn7n-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-2kxdtmn7n-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_8aivMiHCBym8TfkioCcMETiv6Rvn.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "notes": [
     "Este pacote nao altera regra de negocio do Drive; apenas gera observabilidade sanitizada no endpoint autenticado que alimenta a tela.",

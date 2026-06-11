@@ -3,12 +3,12 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-11T16:50:15-03:00",
-  "status": "VALIDADO_LOCAL_AGUARDANDO_PUBLICACAO_DIAGNOSTICA",
+  "status": "EM_PRODUCAO_DIAGNOSTICO_RUNTIME_CONFIRMADO",
   "summary": "Adiciona log sanitizado no sync publico Whereby para diagnosticar, no runtime de producao real, a associacao entre meeting, sala, gravacoes e visibilidade no Drive.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Drive Chronos continua sem mostrar as gravacoes de 11/06; a base local nao representa a producao visivel ao usuario.",
-    "deployment": "Lucas autorizou subir hotfixes Chronos deste incidente; este pacote e diagnostico, sem env, secret, migration ou escrita direta em Supabase."
+    "deployment": "Publicado em c2x.app.br no deployment dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn; rollback para dpl_8aivMiHCBym8TfkioCcMETiv6Rvn."
   },
   "diagnosis": [
     "A consulta Supabase usando .env.local nao bateu com a tela de producao: nao encontrou CHR-003714/Teste 6.",
@@ -31,7 +31,12 @@
   "validations": [
     "npm.cmd run check-types:hub: PASS.",
     "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
-    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos."
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos.",
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes: PASS, Ready em dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn.",
+    "GET https://c2x.app.br/chronos: PASS 200.",
+    "POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync: PASS, recordingCount 2, transcriptionCount 2, transcriptSegmentCount 139.",
+    "Vercel logs whereby_public_drive_diagnostic: PASS, CHR-005926 com 2 recordings, transcriptSegments 139, recordingStatus available, transcriptionStatus available, room Lideranca, visibleForNonHost true."
   ],
   "rollback": [
     "Reverter apps/hub/lib/chronos/server.ts ao estado anterior ao protocolo OP-20260611-009.",

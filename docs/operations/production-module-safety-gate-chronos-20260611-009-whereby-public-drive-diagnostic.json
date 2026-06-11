@@ -8,8 +8,8 @@
   "expectedProjectName": "careli-hub-hub-i2bs",
   "currentProductionDeploymentId": "dpl_8aivMiHCBym8TfkioCcMETiv6Rvn",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "PENDENTE_PUBLICACAO",
-  "candidateProductionUrl": "PENDENTE_PUBLICACAO",
+  "candidateProductionDeploymentId": "dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn",
+  "candidateProductionUrl": "https://careli-hub-hub-i2bs-q9u3pyonz-lucasruas-devs-projects.vercel.app",
   "candidateSourceCommit": "567f02e",
   "sourceWorktreeClean": true,
   "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-public-drive-diagnostic-prod-20260611-1655/base",
@@ -60,7 +60,16 @@
   "validations": [
     "npm.cmd run check-types:hub: PASS.",
     "npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
-    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos."
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas dentro do recorte Chronos/docs.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes: PASS, Ready em dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn.",
+    "GET https://careli-hub-hub-i2bs-q9u3pyonz-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-q9u3pyonz-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+    "POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync: 200, recordingCount 2, transcriptionCount 2, transcriptSegmentCount 139.",
+    "npx.cmd vercel logs https://c2x.app.br --query whereby_public_drive_diagnostic --since 20m --scope lucasruas-devs-projects --json: PASS, CHR-005926 com 2 recordings e visibleForNonHost true."
   ],
   "notes": [
     "Este pacote nao altera regra de negocio do Drive; apenas gera observabilidade sanitizada no endpoint publico de sync Whereby.",

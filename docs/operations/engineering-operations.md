@@ -36102,3 +36102,38 @@ Conclusao:
 - Precisa de acao agora: Zeus publica, chama o sync da Lideranca e le o log `whereby_public_drive_diagnostic`.
 - Quem deve agir agora: Zeus.
 - Proximo passo tecnico: corrigir a causa com base no log real de producao, sem novo chute de UI ou cache.
+
+### Complemento 2026-06-11 17:02:23 -03:00 - diagnostico Whereby confirma artefatos prontos para Drive
+
+- Status atualizado: `EM PRODUCAO / BACKEND CONFIRMADO / AGUARDANDO VALIDACAO VISUAL DO LUCAS`.
+- Protocolos:
+  - `OP-20260611-008-CHRONOS-DRIVE-SNAPSHOT-DIAGNOSTIC`;
+  - `OP-20260611-009-CHRONOS-WHEREBY-PUBLIC-DRIVE-DIAGNOSTIC`.
+- Deploys:
+  - `OP-20260611-008`: publicado em `dpl_8aivMiHCBym8TfkioCcMETiv6Rvn`;
+  - `OP-20260611-009`: publicado em `dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn`;
+  - `c2x.app.br` aponta para `dpl_2Kxmsu7zR3xuJHXsiEgy6Aqe83Fn`;
+  - `ops.c2x.app.br` preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Evidencia de producao:
+  - `POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync` para `e1c52323-ed0f-4cca-a795-8bb57d1e4389`: 200;
+  - retorno: `recordingCount: 2`, `transcriptionCount: 2`, `transcriptSegmentCount: 139`, `roomName: /careli-liderancaaqrnsv`;
+  - log `whereby_public_drive_diagnostic`: `protocol: CHR-005926`, `title: Careli: Capacitacao de Lideres`, `roomName: Lideranca`, `startsAt: 2026-06-11T09:30:00-03:00`, `recordingStatus: available`, `transcriptionStatus: available`, 2 recordings Whereby, 139 segmentos, `visibleForNonHost: true`.
+- Diagnostico:
+  - Whereby, persistencia em `chronos_recordings`, transcricao e associacao com sala `Lideranca` estao corretas no runtime de producao;
+  - o endpoint Chronos usa service role depois de validar a sessao, entao RLS nao deve esconder as gravacoes no snapshot;
+  - `ChronosDriveLibraryScreen` recebe `snapshot.meetings` integralmente e so depende de `meeting.recordings.length > 0` para listar a pasta;
+  - service worker nao cacheia fetch e o client Chronos usa `cache: no-store`.
+- Fora do escopo:
+  - nenhuma escrita direta manual no Supabase foi executada;
+  - nenhum env, secret, migration, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br` foi alterado;
+  - houve um deploy inicial acidental no projeto Vercel `candidate`, sem alias e sem impacto em `c2x.app.br`; o deploy correto foi refeito explicitamente com `--project careli-hub-hub-i2bs`.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_8aivMiHCBym8TfkioCcMETiv6Rvn` ou, para voltar antes dos diagnosticos, `dpl_2Zyk1M2no2oswM3W8Ad7JY84i5wY`.
+
+Conclusao:
+
+- A causa nao esta mais na Whereby nem na persistencia da reuniao de Lideranca: a meeting `CHR-005926` tem 2 gravacoes e 139 segmentos em producao.
+- O impacto pratico esperado e que, apos refresh autenticado do Chronos, a pasta `Lideranca` liste `Careli: Capacitacao de Lideres`.
+- Precisa de acao agora: Lucas deve clicar no botao de refresh do Chronos ou recarregar a tela; Zeus deve ler o log `drive_snapshot_diagnostic` gerado pela chamada autenticada se a UI ainda nao listar.
+- Quem deve agir agora: Lucas valida visualmente; Zeus monitora os logs e corrige o frontend/snapshot se o payload autenticado divergir do diagnostico publico.
+- Proximo passo tecnico: se a tela ainda mostrar apenas `Teste 6`, usar o log `drive_snapshot_diagnostic` para comparar `recordingMeetingCount` e corrigir precisamente a camada que descartar `CHR-005926`.

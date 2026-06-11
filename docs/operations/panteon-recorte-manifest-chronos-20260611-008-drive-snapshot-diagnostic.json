@@ -3,12 +3,12 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-11T16:34:15-03:00",
-  "status": "VALIDADO_LOCAL_AGUARDANDO_PUBLICACAO_DIAGNOSTICA",
+  "status": "EM_PRODUCAO_DIAGNOSTICO_AUTENTICADO_DISPONIVEL",
   "summary": "Adiciona log sanitizado no endpoint autenticado do snapshot Chronos para descobrir por que as gravacoes Whereby sincronizadas nao aparecem no Drive.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Drive Chronos continua mostrando apenas Teste 6 de 30/05 mesmo apos Whereby sync confirmar duas gravacoes e duas transcricoes para Lideranca.",
-    "deployment": "Lucas autorizou subir hotfixes Chronos deste incidente; este pacote e diagnostico, sem env, secret, migration ou escrita direta em Supabase."
+    "deployment": "Publicado em c2x.app.br no deployment dpl_8aivMiHCBym8TfkioCcMETiv6Rvn; rollback para dpl_2Zyk1M2no2oswM3W8Ad7JY84i5wY."
   },
   "diagnosis": [
     "O endpoint publico de sync da Lideranca retornou recordingCount 2, transcriptionCount 2 e transcriptSegmentCount 139.",
@@ -32,7 +32,12 @@
     "npm.cmd run check-types:hub: PASS.",
     "git diff --check -- apps/hub/app/api/chronos/meetings/route.ts: PASS.",
     "npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
-    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos."
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos.",
+    "Production Module Safety Gate: PASS, 4 mudancas detectadas.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes: PASS, Ready em dpl_8aivMiHCBym8TfkioCcMETiv6Rvn.",
+    "GET https://c2x.app.br/chronos: PASS 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_8aivMiHCBym8TfkioCcMETiv6Rvn.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "rollback": [
     "Reverter apps/hub/app/api/chronos/meetings/route.ts ao estado anterior ao protocolo OP-20260611-008.",
