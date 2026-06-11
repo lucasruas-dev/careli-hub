@@ -3,12 +3,12 @@
   "module": "Chronos",
   "owner": "Zeus / Chronos",
   "createdAt": "2026-06-11T12:33:24-03:00",
-  "status": "VALIDADO_LOCAL_AGUARDANDO_AUTORIZACAO_PUBLICACAO",
+  "status": "EM_PRODUCAO_OPERACIONAL_COM_ATENCAO",
   "summary": "Corrige a reconciliacao Whereby para nao concluir sync sem artefatos persistidos e para solicitar transcricao por gravacao quando uma mesma sala gera varias gravacoes.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Resolver 3 videochamadas Whereby de 2026-06-11 que aparecem no dashboard Whereby, mas nao aparecem no Drive Chronos nem possuem transcricao/ata Athena.",
-    "deployment": "Nao autorizado neste recorte. Deploy, alias, banco, Supabase, envs, chaves e chamadas reais de backfill continuam BLOQUEADOS ate autorizacao explicita do Lucas."
+    "deployment": "Lucas autorizou publicar em 2026-06-11; pacote publicado em c2x.app.br no deployment dpl_8eBSjRHQThs6RSi5dECH72bogpCi, preservando ops.c2x.app.br em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj. Banco, Supabase, envs, chaves e backfill direto real continuam BLOQUEADOS ate autorizacao explicita separada."
   },
   "documentationReviewed": [
     "Whereby REST API: /recordings, /recordings/{recordingId}/access-link, /transcriptions e rate limit global.",
@@ -75,8 +75,7 @@
     "Se publicado e houver regressao critica, seguir o rollback do deployment anterior registrado para c2x.app.br; ops.c2x.app.br permanece fora do escopo."
   ],
   "nextSteps": [
-    "Se Lucas autorizar, publicar o protocolo em c2x.app.br com pacote limpo, Safety Gate e preservacao de ops.c2x.app.br.",
-    "Depois de publicado, abrir Drive Chronos/autenticado para disparar snapshot sync ou executar backfill controlado com envs de producao corretas.",
+    "Abrir Drive Chronos/autenticado para disparar snapshot sync ou executar backfill controlado com envs de producao corretas se Lucas autorizar.",
     "Validar as salas do screenshot: careli-liderancaaqrnsv e careli-operacaomg7634 devem gerar registros no Drive Chronos; transcricao pode ficar processing ate a Whereby entregar .md."
   ]
 }

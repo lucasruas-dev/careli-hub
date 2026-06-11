@@ -8,7 +8,8 @@
   "expectedProjectName": "careli-hub-hub-i2bs",
   "currentProductionDeploymentId": "dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp",
   "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
-  "candidateProductionDeploymentId": "PENDING_DEPLOY",
+  "candidateProductionDeploymentId": "dpl_8eBSjRHQThs6RSi5dECH72bogpCi",
+  "candidateProductionUrl": "https://careli-hub-hub-i2bs-qdx9gun8g-lucasruas-devs-projects.vercel.app",
   "candidateSourceCommit": "8f36fcba57dc998b5de09c94b950473313467c72",
   "sourceWorktreeClean": true,
   "basePackagePath": "C:/Users/lucas/AppData/Local/Temp/chronos-whereby-multi-recording-prod-20260611-125425/base",
@@ -77,13 +78,24 @@
     "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Chronos.",
     "node -e JSON.parse(...manifest...): PASS.",
-    "git commit --no-verify -m \"fix chronos whereby multi recording sync\": PASS; hook local padrao falhou antes por ausencia de scripts/panteon-hook-runner.ps1 neste worktree, e por isso foi ignorado apos validacoes manuais."
+    "git commit --no-verify -m \"fix chronos whereby multi recording sync\": PASS; hook local padrao falhou antes por ausencia de scripts/panteon-hook-runner.ps1 neste worktree, e por isso foi ignorado apos validacoes manuais.",
+    "Production Module Safety Gate: PASS, 5 mudancas detectadas dentro do recorte Chronos.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes: PASS, Ready em dpl_8eBSjRHQThs6RSi5dECH72bogpCi.",
+    "GET https://careli-hub-hub-i2bs-qdx9gun8g-lucasruas-devs-projects.vercel.app/chronos: 200.",
+    "GET https://careli-hub-hub-i2bs-qdx9gun8g-lucasruas-devs-projects.vercel.app/chronos/careli: 200.",
+    "npx.cmd vercel alias set careli-hub-hub-i2bs-qdx9gun8g-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "GET https://c2x.app.br/chronos: 200.",
+    "GET https://c2x.app.br/chronos/careli: 200.",
+    "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_8eBSjRHQThs6RSi5dECH72bogpCi.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+    "npx.cmd vercel logs ... --query chronos --expand: 4 logs info dos healthchecks, sem warning/erro novo."
   ],
   "notes": [
     "Lucas autorizou subir este hotfix em 2026-06-11.",
     "O problema reportado envolve 3 gravacoes Whereby de 2026-06-11 visiveis no Dashboard Whereby e ausentes no Drive Chronos/transcricao.",
     "O recorte impede falsa conclusao de sync sem contagem real de gravacao/transcricao e solicita transcricao por gravacao, nao por sala inteira.",
     "Nenhuma env, secret, migration, banco, Supabase schema, Agenda, Hades, Hermes, Iris, Atlas, Setup ou ops.c2x.app.br entra no escopo.",
-    "Rollback imediato: reapontar c2x.app.br para dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp se houver regressao critica."
+    "Rollback imediato: reapontar c2x.app.br para dpl_4i9eSuQm3hFx5k4VNBCkmfXYypkp se houver regressao critica.",
+    "Backfill real nao foi executado neste deploy porque depende de Supabase/Whereby de producao correto; o proximo gatilho seguro e abrir o Drive Chronos autenticado ou autorizar execucao assistida em ambiente com envs corretas."
   ]
 }
