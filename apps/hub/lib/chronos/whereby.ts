@@ -106,7 +106,7 @@ export async function createChronosWherebyMeeting({
   const body: Record<string, unknown> = {
     endDate,
     fields: ["hostRoomUrl"],
-    isLocked: false,
+    isLocked: true,
     roomMode: "group",
     roomNamePattern: "human-short",
     roomNamePrefix: sanitizeChronosWherebyRoomNamePrefix(roomNamePrefix),
@@ -145,18 +145,16 @@ export async function createChronosWherebyMeeting({
     }),
   );
 
-  if (backgroundDataUrl) {
-    await updateChronosWherebyRoomBackground({
-      dataUrl: backgroundDataUrl,
-      roomName: meeting.roomName,
-      roomSlug,
-    }).catch((error: unknown) => {
-      console.warn(
-        "[chronos] Whereby room background update failed",
-        error instanceof Error ? error.message : "unknown error",
-      );
-    });
-  }
+  await applyChronosWherebyRoomTheme({
+    backgroundDataUrl,
+    roomName: meeting.roomName,
+    roomSlug,
+  }).catch((error: unknown) => {
+    console.warn(
+      "[chronos] Whereby room theme update failed",
+      error instanceof Error ? error.message : "unknown error",
+    );
+  });
 
   return meeting;
 }
@@ -248,14 +246,73 @@ export async function getChronosWherebyTranscriptionAccessLink(
   );
 }
 
+async function applyChronosWherebyRoomTheme({
+  backgroundDataUrl,
+  roomName,
+  roomSlug,
+}: {
+  backgroundDataUrl?: string | null;
+  roomName: string;
+  roomSlug: string;
+}) {
+  await updateChronosWherebyRoomThemeTokens({ roomName });
+
+  if (!backgroundDataUrl) {
+    return;
+  }
+
+  await Promise.all([
+    updateChronosWherebyRoomBackground({
+      dataUrl: backgroundDataUrl,
+      roomName,
+      roomSlug,
+      themePath: "room-background",
+    }),
+    updateChronosWherebyRoomBackground({
+      dataUrl: backgroundDataUrl,
+      roomName,
+      roomSlug,
+      themePath: "room-knock-page-background",
+    }),
+  ]);
+}
+
+async function updateChronosWherebyRoomThemeTokens({
+  roomName,
+}: {
+  roomName: string;
+}) {
+  const config = getChronosWherebyConfig();
+
+  await callChronosWherebyApi(
+    config,
+    `/rooms/${encodeURIComponent(roomName)}/theme/tokens`,
+    {
+      body: {
+        tokens: {
+          colors: {
+            focus: "#A07C3B",
+            primary: "#A07C3B",
+            secondary: "#101820",
+          },
+        },
+        tokensPreset: "custom",
+      },
+      method: "PUT",
+    },
+  );
+}
+
 async function updateChronosWherebyRoomBackground({
   dataUrl,
   roomName,
   roomSlug,
+  themePath,
 }: {
   dataUrl: string;
   roomName: string;
   roomSlug: string;
+  themePath: "room-background" | "room-knock-page-background";
 }) {
   const file = readChronosWherebyDataUrlFile(dataUrl, roomSlug);
 
@@ -270,7 +327,7 @@ async function updateChronosWherebyRoomBackground({
 
   await callChronosWherebyApi(
     config,
-    `/rooms/${encodeURIComponent(roomName)}/theme/room-background`,
+    `/rooms/${encodeURIComponent(roomName)}/theme/${themePath}`,
     {
       body: formData,
       method: "PUT",

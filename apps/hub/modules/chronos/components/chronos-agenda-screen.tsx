@@ -7,6 +7,7 @@ import {
   addMonths,
   addYears,
   formatCalendarPeriod,
+  formatChronosWeekOfYearLabel,
   roundDateToNextHour,
   sortMeetingsByDate,
   startOfDay,
@@ -217,6 +218,11 @@ export function ChronosAgendaScreen({
           <span className="ml-1 text-base font-semibold text-[#101820]">
             {formatCalendarPeriod(cursorDate, calendarView)}
           </span>
+          {calendarView === "week" ? (
+            <span className="rounded-full border border-[#d6c29b] bg-[#fffaf0] px-2.5 py-1 text-xs font-bold text-[#8a682d]">
+              {formatChronosWeekOfYearLabel(cursorDate)}
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="hidden flex-wrap items-center gap-2 text-[11px] font-semibold text-[#667085] xl:flex">

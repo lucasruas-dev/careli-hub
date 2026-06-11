@@ -669,6 +669,12 @@ export async function listChronosSnapshot(
         isChronosMeetingVisibleInSnapshot(meeting, authorization.user.id),
       )
       .sort(compareChronosMeetingRowsByStartDate);
+    await syncPendingChronosWherebyArtifactsForSnapshot({
+      actorUserId: authorization.user.id,
+      client,
+      meetings,
+      rooms: roomsResult.data ?? [],
+    });
     const meetingIds = meetings.map((meeting) => meeting.id);
 
     const [
@@ -3127,6 +3133,87 @@ export async function syncChronosPublicWherebyArtifacts({
       room,
     })),
   };
+}
+
+async function syncPendingChronosWherebyArtifactsForSnapshot({
+  actorUserId,
+  client,
+  meetings,
+  rooms,
+}: {
+  actorUserId: string;
+  client: ChronosClient;
+  meetings: ChronosMeetingRow[];
+  rooms: ChronosRoomRow[];
+}) {
+  const roomsById = new Map(rooms.map((room) => [room.id, room]));
+  const candidates = meetings
+    .filter(shouldSyncChronosWherebyArtifactsInSnapshot)
+    .slice(0, 8);
+
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const results = await Promise.allSettled(
+    candidates.map(async (meeting) => {
+      const room = meeting.room_id ? roomsById.get(meeting.room_id) : null;
+
+      if (!room) {
+        return;
+      }
+
+      await syncChronosWherebyMeetingArtifacts({
+        actorUserId,
+        client,
+        meeting,
+        room,
+      });
+    }),
+  );
+
+  results.forEach((result) => {
+    if (result.status === "rejected") {
+      console.warn(
+        "[chronos] Whereby snapshot reconciliation failed",
+        result.reason instanceof Error ? result.reason.message : "unknown error",
+      );
+    }
+  });
+}
+
+function shouldSyncChronosWherebyArtifactsInSnapshot(
+  meeting: ChronosMeetingRow,
+) {
+  if (
+    meeting.recording_status === "available" &&
+    meeting.transcription_status === "available"
+  ) {
+    return false;
+  }
+
+  const externalRoomMetadata = readRecordMetadata(meeting.metadata?.externalRoom);
+  const wherebyMetadata = readRecordMetadata(externalRoomMetadata.whereby);
+  const provider =
+    readChronosMetadataText(wherebyMetadata, "provider") ??
+    readChronosMetadataText(externalRoomMetadata, "provider");
+
+  if (provider !== "whereby" || !readChronosMetadataText(wherebyMetadata, "roomName")) {
+    return false;
+  }
+
+  const referenceTime =
+    parseChronosTimestampValue(
+      readChronosMetadataText(wherebyMetadata, "endDate") ??
+        meeting.ends_at ??
+        meeting.updated_at,
+    ) ?? parseChronosTimestampValue(meeting.updated_at);
+
+  if (!referenceTime) {
+    return true;
+  }
+
+  return Date.now() - referenceTime.getTime() <= 72 * 60 * 60 * 1000;
 }
 
 async function syncChronosWherebyMeetingArtifacts({
@@ -8824,6 +8911,16 @@ function normalizeOptionalDate(input: unknown) {
   );
 
   return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
+}
+
+function parseChronosTimestampValue(input: unknown) {
+  if (typeof input !== "string" || !input.trim()) {
+    return null;
+  }
+
+  const timestamp = Date.parse(input.trim());
+
+  return Number.isNaN(timestamp) ? null : new Date(timestamp);
 }
 
 function isChronosMeetingType(value: unknown): value is ChronosMeetingType {

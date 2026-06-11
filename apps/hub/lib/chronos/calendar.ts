@@ -121,6 +121,29 @@ export function getWeekDays(date: Date) {
   return Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
 }
 
+export function getChronosIsoWeek(date: Date) {
+  const safeDate = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
+  const dayNumber = safeDate.getUTCDay() || 7;
+
+  safeDate.setUTCDate(safeDate.getUTCDate() + 4 - dayNumber);
+
+  const year = safeDate.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil(
+    ((safeDate.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7,
+  );
+
+  return { week, year };
+}
+
+export function formatChronosWeekOfYearLabel(date: Date) {
+  const { week, year } = getChronosIsoWeek(date);
+
+  return `Semana ${week}/${year}`;
+}
+
 export function getMonthMatrix(date: Date) {
   const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
   const calendarStart = addDays(firstDay, -firstDay.getDay());

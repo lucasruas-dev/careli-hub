@@ -35171,3 +35171,262 @@ Conclusao:
 - Precisa de acao agora: sim, Lucas deve testar a sala real no navegador; se `c2x.app.br` nao abrir, o proximo incidente e DNS/rede do apex.
 - Quem deve agir agora: Lucas valida a sala real; Zeus acompanha e faz rollback de alias somente se houver regressao funcional do hotfix.
 - Proximo passo tecnico: validar host/convidado na sala Whereby, gravacao, transcricao e ata Athena; se o apex falhar fora deste ambiente, diagnosticar DNS do dominio `c2x.app.br`.
+
+### Complemento 2026-06-10 22:16:00 -03:00 - incidente DNS do apex c2x
+
+- Status atualizado: `DNS AUTORITATIVO CORRIGIDO / AGUARDANDO CACHE RECURSIVO`.
+- Protocolo: `INC-20260610-2216-C2X-APEX-DNS`.
+- Ambiente afetado: `producao`.
+- Dominio afetado: `https://c2x.app.br`.
+- Dominio preservado: `https://ops.c2x.app.br`.
+- Sintoma:
+  - navegador do Lucas mostrou `ERR_CONNECTION_TIMED_OUT` ao abrir `c2x.app.br`;
+  - healthcheck local tambem falhou por timeout TCP em `https://c2x.app.br/chronos/careli`.
+- Evidencia confirmada:
+  - `Resolve-DnsName c2x.app.br` e servidores autoritativos `b.sec.dns.br` / `c.sec.dns.br` retornaram `A 216.198.79.1`;
+  - `Test-NetConnection c2x.app.br -Port 443` falhou para `216.198.79.1`;
+  - `ops.c2x.app.br` respondeu normalmente por CNAME Vercel;
+  - painel Vercel indicou recomendacao de DNS para o apex `c2x.app.br`: tipo `A`, nome `@`, valor `216.150.1.1`;
+  - teste forcando `c2x.app.br:443` para `216.150.1.1` respondeu `HTTP 200` em `/chronos/careli`, com `X-Matched-Path: /chronos/[roomSlug]`;
+  - teste forcando `c2x.app.br:443` para `216.198.79.1` continuou em timeout.
+- Causa raiz:
+  - registro `A` do apex `c2x.app.br` no DNS autoritativo ainda apontava para `216.198.79.1`, divergente da recomendacao atual da Vercel e sem resposta HTTPS.
+- Acao orientada ao Lucas:
+  - alterar somente o registro `A c2x.app.br` de `216.198.79.1` para `216.150.1.1`;
+  - preservar CNAMEs `homo.c2x.app.br`, `ops.c2x.app.br` e `www.c2x.app.br`.
+- Acao confirmada:
+  - servidores autoritativos `b.sec.dns.br` e `c.sec.dns.br` passaram a responder `A 216.150.1.1`;
+  - `8.8.8.8` ja passou a responder `A 216.150.1.1`;
+  - DNS local e `1.1.1.1` ainda mantinham cache temporario de `216.198.79.1` no primeiro monitoramento apos a correcao.
+- Monitoramento 2026-06-10 22:21:00 -03:00:
+  - Vercel Domains passou a mostrar `c2x.app.br` como `Valid Configuration`;
+  - DNS autoritativo, `8.8.8.8` e `9.9.9.9` responderam `216.150.1.1`;
+  - resolvedor local e `1.1.1.1` ainda respondiam `216.198.79.1` por cache recursivo temporario;
+  - `curl --resolve c2x.app.br:443:216.150.1.1 https://c2x.app.br/chronos/careli` respondeu `HTTP 200`;
+  - URL tecnica `https://careli-hub-hub-i2bs-2vy4oyp9x-lucasruas-devs-projects.vercel.app/chronos/careli` respondeu `HTTP 200`.
+- Monitoramento 2026-06-10 22:24:00 -03:00:
+  - Windows local continuava usando DNS IPv4 `1.1.1.1` / `1.0.0.1` na interface Wi-Fi;
+  - tentativa de alterar DNS automaticamente para `8.8.8.8` / `8.8.4.4` falhou por permissao administrativa local (`PermissionDenied`);
+  - `Resolve-DnsName c2x.app.br` ainda retornava `216.198.79.1` pelo resolvedor local;
+  - proxima acao recomendada para urgencia local: trocar manualmente o DNS do Wi-Fi para Google DNS ou usar a URL tecnica ate o cache do Cloudflare expirar.
+- Monitoramento 2026-06-10 22:32:00 -03:00:
+  - Wi-Fi passou a usar DNS IPv4 `8.8.8.8` / `8.8.4.4`;
+  - `nslookup c2x.app.br 8.8.8.8` respondeu `216.150.1.1`;
+  - `nslookup c2x.app.br` sem servidor explicito continuou consultando o DNS IPv6 do roteador `fe80::4689:6dff:fea5:2a90`;
+  - esse DNS IPv6 do roteador ainda respondeu `216.198.79.1`;
+  - causa do bloqueio local apos a troca de IPv4: preferencia do Windows/Chrome pelo resolvedor IPv6 da rede;
+  - proxima acao recomendada: configurar DNS IPv6 manual para Google (`2001:4860:4860::8888` / `2001:4860:4860::8844`) ou desativar IPv6 temporariamente na interface Wi-Fi, depois limpar cache DNS e sockets do Chrome.
+- Fora do escopo:
+  - nenhum codigo, deploy, alias Vercel, env, secret, Supabase, banco, migration, storage ou modulo fora do Chronos foi alterado nesta etapa.
+- Proximo passo:
+  - apos Lucas salvar a zona DNS, monitorar propagacao dos autoritativos e repetir healthcheck em `https://c2x.app.br/chronos/careli`.
+
+Conclusao:
+
+- O problema de acesso ao `c2x.app.br` foi isolado no DNS do apex, nao no deploy Whereby/Chronos.
+- O impacto pratico e que o dominio principal nao conectava porque apontava para um IP sem resposta HTTPS neste caminho.
+- Precisa de acao agora: aguardar cache recursivo expirar nos provedores que ainda seguram `216.198.79.1`; para urgencia, usar a URL tecnica do deployment.
+- Quem deve agir agora: Zeus monitora propagacao e Lucas pode testar novamente quando o navegador resolver `216.150.1.1`.
+- Proximo passo tecnico: repetir `GET https://c2x.app.br/chronos/careli` pelo dominio normal quando o cache local atualizar.
+
+### Complemento 2026-06-10 22:52:00 -03:00 - hotfix Drive Whereby preparado
+
+- Status atualizado: `VALIDADO_LOCAL / DEPLOY BLOQUEADO ATE AUTORIZACAO`.
+- Protocolo: `OP-20260610-035-CHRONOS-WHEREBY-DRIVE-SYNC`.
+- Ambiente afetado: `producao`.
+- Sintoma:
+  - Lucas confirmou que a sala Whereby gravou;
+  - painel Whereby Cloud Recordings mostrou a gravacao da sala `/careli-carelizhaahf`, em `10 Jun 26, 22:44`, duracao `00:02:19`, tamanho `9 MB`;
+  - a gravacao ainda nao apareceu no Drive Chronos.
+- Diagnostico:
+  - o Chronos ja possui rota `whereby-sync` que consulta gravacoes/transcricoes Whereby e cria linhas em `chronos_recordings` / `chronos_transcript_segments`;
+  - a pagina nativa Whereby chamava esse sync apenas quando recebia eventos `recording_status_change` ou `transcription_status_change` com status `stopped`;
+  - se a Whereby processa a gravacao alguns minutos depois, ou se a pagina nao recebe o evento final, o sync pode rodar cedo demais ou nao rodar;
+  - o Drive Chronos lista apenas gravacoes ja persistidas no Chronos; ele nao reconciliava automaticamente reunioes Whereby recentes ao abrir.
+- Correcoes preparadas:
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` agora faz sync de artefatos Whereby pelo host em tentativas programadas (`15s`, `45s`, `120s`, `240s`), a cada `90s`, ao voltar foco/visibilidade e em `pagehide`;
+  - o sync aceita status finais mais amplos da Whereby (`available`, `complete`, `completed`, `ended`, `finished`, `ready`, `stopped`);
+  - `apps/hub/lib/chronos/server.ts` agora reconcilia ate 8 reunioes Whereby recentes ao carregar o snapshot/Drive, limitando a janela a 72h e apenas reunioes ainda sem gravacao/transcricao disponivel;
+  - a persistencia continua idempotente por `whereby.recordingId`, evitando duplicar gravacoes ja importadas.
+- Validacoes:
+  - `git diff --check -- apps/hub/modules/chronos/ChronosExternalRoomPage.tsx apps/hub/lib/chronos/server.ts`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos.
+- Fora do escopo:
+  - nenhuma Agenda principal, Google Agenda funcional, Whereby API key, env, secret, Supabase schema, migration, RLS, storage, Hades, Hermes, Iris, Atlas, Setup ou `ops.c2x.app.br` foi alterado;
+  - nenhum deploy ou escrita direta em banco de producao foi executado nesta etapa.
+- Proximo passo:
+  - Lucas autorizar deploy seguro do hotfix para `https://c2x.app.br`;
+  - apos deploy, abrir Chronos/Drive para o snapshot reconciliar a gravacao Whereby ja existente e criar o item no Drive Chronos.
+
+Conclusao:
+
+- A gravacao nao apareceu no Drive porque o sync Whereby -> Chronos dependia de um evento final pontual e nao de reconciliacao posterior.
+- O impacto pratico e que videos processados pela Whereby podiam ficar no painel Whereby sem linha correspondente no Drive Chronos.
+- Precisa de acao agora: sim, Lucas precisa autorizar o deploy deste hotfix se quiser recuperar automaticamente a gravacao atual no Drive.
+- Quem deve agir agora: Zeus publica somente com autorizacao explicita; Lucas valida o Drive apos o deploy.
+- Proximo passo tecnico: deploy seguro, healthcheck de `/chronos` e abrir Drive Chronos para confirmar a importacao da gravacao `/careli-carelizhaahf`.
+
+### Complemento 2026-06-10 23:11:20 -03:00 - UI Whereby Panteon e porta ativa preparados
+
+- Status atualizado: `VALIDADO_LOCAL / DEPLOY BLOQUEADO ATE AUTORIZACAO`.
+- Protocolo: `OP-20260610-036-CHRONOS-WHEREBY-UI-WAITING-ROOM`.
+- Ambiente afetado: `producao`.
+- Motivo:
+  - Lucas pediu melhoria de experiencia da sala Chronos com base na documentacao Whereby, mantendo aderencia visual ao Panteon;
+  - o fluxo deve continuar usando a estrutura nativa da Whereby, inclusive tela de entrada e mecanismo de "bater na porta".
+- Leitura tecnica:
+  - a documentacao Whereby indica que o Browser SDK permite customizar tiles e toolbar com React, mas exige montar manualmente a experiencia de chamada;
+  - a documentacao de pre-built UI vs Browser SDK indica que o pre-built e o caminho mais rapido/estavel quando a chamada padrao da Whereby deve ser preservada;
+  - a documentacao de Waiting Rooms indica que convidados batem na porta quando a sala e criada com `isLocked: true` e o host entra pelo `hostRoomUrl`;
+  - como o Chronos ja solicita `hostRoomUrl`, o recorte seguro foi ativar a sala trancada e melhorar a moldura operacional sem trocar o motor de chamada.
+- Correcoes preparadas:
+  - `apps/hub/lib/chronos/whereby.ts` passa a criar novas salas Whereby com `isLocked: true`;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` mantem o `whereby-embed` como experiencia principal e acrescenta um cabecalho compacto Panteon fora da area de video;
+  - o cabecalho mostra contexto da sala, entrada/porta Whereby, gravacao automatica quando aplicavel, ata Athena quando aplicavel e papel `Host`/`Participante`;
+  - a tela continua evitando o prejoin antigo do Chronos quando o provider e Whereby, preservando a entrada nativa da Whereby.
+- Validacoes:
+  - `git diff --check -- apps/hub/lib/chronos/whereby.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx apps/hub/lib/chronos/server.ts`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/server.ts lib/chronos/whereby.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos;
+  - smoke visual local em `http://localhost:3001/chronos/careli`: BLOQUEADO no worktree porque a rota exige Supabase server-side configurado para sala externa; dev server local foi encerrado apos a checagem.
+- Fora do escopo:
+  - nao foi adicionada dependencia `@whereby.com/browser-sdk`;
+  - nenhuma Agenda principal, Google Agenda funcional, env, secret, Supabase schema, migration, RLS, storage, Hades, Hermes, Iris, Atlas, Setup, alias Vercel ou `ops.c2x.app.br` foi alterado;
+  - nenhum deploy foi executado nesta etapa.
+- Risco residual:
+  - salas Whereby ja criadas antes deste recorte nao mudam retroativamente para `isLocked: true`;
+  - a primeira validacao real apos deploy deve confirmar host entrando pelo `hostRoomUrl`, convidado batendo na porta e host aprovando a entrada pela UI nativa Whereby.
+- Proximo passo:
+  - publicar junto com o hotfix de Drive Whereby quando Lucas autorizar deploy seguro para `https://c2x.app.br`;
+  - validar em producao uma sala nova com host + convidado, gravacao, transcricao, Drive Chronos e ata Athena.
+
+Conclusao:
+
+- A melhor decisao para este recorte foi preservar a UI nativa da Whereby e envolver a sala com identidade Panteon, em vez de trocar imediatamente para Browser SDK.
+- O impacto pratico e reduzir risco de regressao e ativar o comportamento de "bater na porta" em novas salas Chronos/Whereby.
+- Precisa de acao agora: sim, Lucas deve autorizar deploy se quiser publicar o ajuste em producao.
+- Quem deve agir agora: Zeus publica somente com autorizacao explicita; Lucas valida uma sala nova apos o deploy.
+- Proximo passo tecnico: deploy seguro do pacote Chronos acumulado, healthchecks e teste real de entrada host/convidado.
+
+### Complemento 2026-06-10 23:27:53 -03:00 - refinamento UI Whereby pre-built
+
+- Status atualizado: `VALIDADO_LOCAL / DEPLOY BLOQUEADO ATE AUTORIZACAO`.
+- Protocolo: `OP-20260610-037-CHRONOS-WHEREBY-PREBUILT-POLISH`.
+- Ambiente afetado: `producao`.
+- Motivo:
+  - Lucas pediu ajustes pequenos na tela de entrada e na sala Whereby: cor Panteon no botao, papeis de parede Careli, mensagem de gravacao menos invasiva, nome/empresa no video, remover textos dos icones e reposicionar imagem-na-imagem.
+- Correcoes preparadas:
+  - `apps/hub/lib/chronos/whereby.ts` agora aplica, na criacao de novas salas Whereby, tokens de tema com `primary/focus #A07C3B` e `secondary #101820`;
+  - o upload de background Whereby foi ampliado para aplicar o mesmo `backgroundDataUrl` da sala Chronos tambem na tela de "bater na porta" (`room-knock-page-background`), respeitando o limite local de `600 KB`;
+  - falha de tema/background Whereby fica em modo best effort: registra warning server-side, mas nao bloqueia abertura da sala;
+  - `apps/hub/modules/chronos/ChronosExternalRoomPage.tsx` passa `displayName` para o embed no formato `Nome - Empresa`, sanitizado pelos limites da Whereby;
+  - convidados publicos recebem um passo compacto de identificacao `Nome` + `Empresa` antes de montar o embed, para garantir que o label apareca na chamada;
+  - participantes autenticados continuam entrando direto, com `Nome - Careli`;
+  - o embed Whereby recebeu `toolbarText=off` para remover textos dos icones da barra inferior;
+  - o embed recebeu `background=off` para deixar a identidade visual externa do Chronos/Panteon aparecer quando suportado pela Whereby;
+  - o botao de imagem-na-imagem do topo foi ocultado com `pipButton=off`, pois o pre-built nao oferece atributo para mover esse controle para a barra inferior.
+- Limites confirmados na documentacao Whereby:
+  - cor de botao/fundo oficial depende de Branding/Room Theme API, nao de CSS local dentro do embed;
+  - a lista de efeitos/fundos da tela de configuracoes nativa nao aceita multiplos wallpapers proprios via web component; o atributo disponivel e `virtualBackgroundUrl` para um fundo padrao unico, com restricoes de URL/CORS e resolucao;
+  - a mensagem/modal de gravacao automatica e comportamento interno do pre-built, sem atributo documentado para reduzir tamanho; reduzir essa experiencia exigiria trocar para Browser SDK ou iniciar gravacao manualmente por comando custom, com risco maior para a automacao.
+- Validacoes:
+  - `git diff --check -- apps/hub/lib/chronos/whereby.ts apps/hub/modules/chronos/ChronosExternalRoomPage.tsx`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/whereby.ts modules/chronos/ChronosExternalRoomPage.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos.
+- Fora do escopo:
+  - nao foi adicionada dependencia `@whereby.com/browser-sdk`;
+  - nao houve deploy, migration, env, secret, Supabase schema, Agenda principal, Google Agenda funcional, Hades, Hermes, Iris, Atlas, Setup, alias Vercel ou `ops.c2x.app.br`;
+  - nao foi feito upload manual de novos arquivos binarios para o repositorio.
+- Risco residual:
+  - tema/background Whereby so se aplica automaticamente a novas salas criadas apos deploy; salas ja existentes podem manter a aparencia anterior;
+  - fundos maiores que `600 KB` continuam bloqueados para upload na Room Theme API conforme limite local, e os papeis de parede 1280x720 atuais precisam de compressao antes de virar biblioteca propria completa da Whereby;
+  - validacao visual real depende de sala nova em producao ou ambiente com Supabase server-side configurado.
+- Proximo passo:
+  - publicar junto com o pacote Chronos acumulado quando Lucas autorizar deploy seguro;
+  - validar sala nova com convidado publico preenchendo nome/empresa, host aprovando a porta, label do video, barra inferior sem texto, tema Panteon e importacao Drive/Athena.
+
+Conclusao:
+
+- O refinamento preserva a estabilidade da UI nativa da Whereby e melhora o que o web component/Room Theme API permitem sem assumir um SDK custom completo.
+- O impacto pratico e uma entrada mais alinhada ao Panteon, com identificacao melhor de participantes e menos poluicao visual na barra inferior.
+- Precisa de acao agora: sim, Lucas deve autorizar deploy para publicar o pacote em `https://c2x.app.br`.
+- Quem deve agir agora: Zeus publica somente com autorizacao explicita; Lucas valida uma sala nova apos o deploy.
+- Proximo passo tecnico: deploy seguro do recorte Chronos acumulado e teste real host/convidado/gravação/transcricao/Drive.
+
+### Complemento 2026-06-10 23:40:16 -03:00 - agenda Chronos dia inteiro e semana do ano
+
+- Status atualizado: `VALIDADO_LOCAL / PRODUCAO AUTORIZADA / DEPLOY EM PREPARACAO`.
+- Protocolo: `OP-20260610-038-CHRONOS-AGENDA-FULL-DAY-WEEK`.
+- Manifesto de producao: `docs/operations/production-module-safety-gate-chronos-20260610-010-agenda-full-day-week.json`.
+- Ambiente afetado: `producao`.
+- Motivo:
+  - Lucas reportou que a Agenda Chronos trazia apenas a faixa de horario comercial aproximada, escondendo eventos fora de `07:00-20:00`;
+  - Lucas pediu que a tela mostre todos os horarios e indique qual semana do ano a visao semanal representa.
+- Correcoes preparadas:
+  - `apps/hub/modules/chronos/components/chronos-calendar-canvas.tsx` passa a renderizar a grade diaria/semanal de `00:00` a `24:00`, com `scrollTime` inicial em `00:00`;
+  - `apps/hub/lib/chronos/calendar.ts` ganhou helper ISO para semana do ano (`getChronosIsoWeek`) e label `Semana N/AAAA`;
+  - `apps/hub/modules/chronos/components/chronos-agenda-screen.tsx` mostra a semana do ano como chip discreto no cabecalho quando a visao ativa e `Semana`.
+- Validacoes:
+  - `npm.cmd exec --workspace @repo/hub -- eslint lib/chronos/calendar.ts lib/chronos/server.ts lib/chronos/whereby.ts modules/chronos/ChronosExternalRoomPage.tsx modules/chronos/components/chronos-agenda-screen.tsx modules/chronos/components/chronos-calendar-canvas.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack/NFT fora do recorte Chronos;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7` antes do deploy;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` antes do deploy.
+- Fora do escopo:
+  - nenhuma regra funcional de Google Agenda, criacao de reuniao, Whereby, env, secret, Supabase schema, migration, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br` foi alterada.
+- Plano de deploy:
+  - montar pacote limpo a partir do worktree Chronos isolado;
+  - publicar deployment Vercel sem mover `ops.c2x.app.br`;
+  - reapontar somente `https://c2x.app.br`;
+  - validar `https://c2x.app.br/chronos`, `https://c2x.app.br/chronos/careli` e inspecionar novamente `https://ops.c2x.app.br`.
+
+Conclusao:
+
+- O limite de horario estava na propria configuracao visual do FullCalendar, nao na sincronizacao da agenda.
+- O impacto pratico e que eventos de madrugada/noite passam a ficar visiveis na grade do Chronos.
+- Precisa de acao agora: sim, Zeus deve executar o deploy seguro ja autorizado pelo Lucas.
+- Quem deve agir agora: Zeus publica e valida; Lucas pode conferir a tela semanal depois da publicacao.
+- Proximo passo tecnico: deployment Vercel por pacote limpo, alias apenas de `c2x.app.br`, healthchecks e registro final do resultado.
+
+### Complemento 2026-06-10 23:48:30 -03:00 - agenda Chronos publicada em producao
+
+- Status atualizado: `EM PRODUCAO`.
+- Protocolo: `OP-20260610-038-CHRONOS-AGENDA-FULL-DAY-WEEK`.
+- Deployment anterior de `c2x.app.br`: `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`.
+- Deployment novo de `c2x.app.br`: `dpl_8rs3e1nDKdBTYNfkEmW8X71pEiTW`.
+- URL tecnica: `https://careli-hub-hub-i2bs-4461polw4-lucasruas-devs-projects.vercel.app`.
+- Alias movido: `https://c2x.app.br`.
+- Alias preservado: `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Deploy:
+  - pacote limpo montado em `C:/Users/lucas/AppData/Local/Temp/chronos-agenda-full-day-week-prod-20260610-2350/candidate`;
+  - `.git`, `.next`, `.codex-deploy`, `.codex-logs`, `node_modules` e envs locais ficaram fora do pacote;
+  - `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes`: PASS, `READY`;
+  - `npx.cmd vercel alias set careli-hub-hub-i2bs-4461polw4-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects`: PASS.
+- Healthchecks:
+  - `GET https://careli-hub-hub-i2bs-4461polw4-lucasruas-devs-projects.vercel.app/chronos`: 200;
+  - `GET https://careli-hub-hub-i2bs-4461polw4-lucasruas-devs-projects.vercel.app/chronos/careli`: 200;
+  - `GET https://c2x.app.br/chronos`: 200;
+  - `GET https://c2x.app.br/chronos/careli`: 200;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8rs3e1nDKdBTYNfkEmW8X71pEiTW`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `npx.cmd vercel logs ... --since 15m --query chronos`: 4 logs Chronos, todos 200, sem 500/502.
+- Avisos conhecidos:
+  - build local e build Vercel mantiveram warning conhecido de NFT/Turbopack envolvendo leitura dinamica de `engineering-operations-source.ts`;
+  - build Vercel manteve avisos Turborepo de envs fora do `turbo.json`, sem falha de build;
+  - `npm audit` do install Vercel reportou 3 vulnerabilidades de dependencia ja existentes, sem bloquear este deploy.
+- Rollback:
+  - se houver regressao critica, reapontar `c2x.app.br` para `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`;
+  - `ops.c2x.app.br` nao precisa de rollback neste pacote, pois nao foi movido.
+
+Conclusao:
+
+- A agenda Chronos com grade de dia inteiro e chip de semana do ano esta publicada em `https://c2x.app.br`.
+- O impacto pratico e que a tela semanal/diaria deixa de esconder horarios fora do expediente e passa a indicar a semana do ano.
+- Precisa de acao agora: Lucas pode atualizar a tela do Chronos e validar visualmente a agenda.
+- Quem deve agir agora: Lucas valida o uso real; Zeus monitora se aparecer erro novo.
+- Proximo passo tecnico: se Lucas aprovar visualmente, manter o pacote; se houver regressao, rollback imediato para `dpl_J32P1XTVh75bsDDAy8V65y2Rawm7`.

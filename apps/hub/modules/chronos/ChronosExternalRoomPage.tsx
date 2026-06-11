@@ -241,14 +241,20 @@ type ChronosWherebyEmbedElement = HTMLElement & {
 };
 
 type ChronosWherebyEmbedProps = {
+  background?: "off" | "on";
   cameraEffect?: string;
   displayName?: string;
   externalId?: string;
+  floatSelf?: boolean;
   lang?: string;
+  logo?: "off" | "on";
   metadata?: string;
+  pipButton?: "off";
   ref?: (element: Element | null) => void;
   room?: string;
   style?: CSSProperties;
+  subgridLabels?: "off" | "on";
+  toolbarText?: "off" | "on";
 };
 
 type ChronosLiveKitParticipantAudioEgress = {
@@ -422,6 +428,8 @@ export function ChronosExternalRoomPage({
   const [wherebyRoom, setWherebyRoom] =
     useState<ChronosWherebyPublicRoom | null>(null);
   const [wherebyIsHost, setWherebyIsHost] = useState(false);
+  const [isWherebyIdentityConfirmed, setIsWherebyIdentityConfirmed] =
+    useState(false);
   const [wherebyStatus, setWherebyStatus] = useState<
     "idle" | "loading" | "ready" | "syncing"
   >("idle");
@@ -513,6 +521,7 @@ export function ChronosExternalRoomPage({
   );
   const hasWherebyNativeSession =
     isChronosWherebyProvider && Boolean(wherebyRoom && meetingId);
+  const canSyncWherebyArtifacts = Boolean(localParticipant?.isHost || wherebyIsHost);
   const hasJoined = isChronosWherebyProvider
     ? hasWherebyNativeSession
     : Boolean(localParticipant && meetingId);
@@ -524,6 +533,15 @@ export function ChronosExternalRoomPage({
   const participantOrganization = isHubParticipant
     ? "Careli"
     : organization.trim();
+  const wherebyDisplayName = buildChronosWherebyDisplayName({
+    displayName: participantNameForJoin,
+    organization: participantOrganization,
+  });
+  const wherebyExternalId = buildChronosWherebyExternalId(hubUser?.id);
+  const shouldCollectWherebyIdentity =
+    isChronosWherebyProvider && !isHubParticipant;
+  const canRenderWherebyEmbed =
+    !shouldCollectWherebyIdentity || isWherebyIdentityConfirmed;
   const isResolvingHubParticipant = authState.status === "loading";
   const backgroundPreferenceKey = useMemo(
     () => `chronos:background:${room.slug}:${hubUser?.id ?? "guest"}`,
@@ -543,6 +561,7 @@ export function ChronosExternalRoomPage({
           participantId: localParticipant?.id,
         }),
         cache: "no-store",
+        keepalive: true,
         headers: {
           ...(authState.session?.accessToken
             ? {
@@ -717,7 +736,10 @@ export function ChronosExternalRoomPage({
       const status =
         typeof detail.status === "string" ? detail.status.toLowerCase() : "";
 
-      if (status === "stopped" && (localParticipant?.isHost || wherebyIsHost)) {
+      if (
+        isChronosWherebyArtifactReadyStatus(status) &&
+        canSyncWherebyArtifacts
+      ) {
         setRecordingStorageStatus("saved");
         void syncChronosWherebyArtifacts();
       }
@@ -727,7 +749,10 @@ export function ChronosExternalRoomPage({
       const status =
         typeof detail.status === "string" ? detail.status.toLowerCase() : "";
 
-      if (status === "stopped" && (localParticipant?.isHost || wherebyIsHost)) {
+      if (
+        isChronosWherebyArtifactReadyStatus(status) &&
+        canSyncWherebyArtifacts
+      ) {
         void syncChronosWherebyArtifacts();
       }
     };
@@ -752,12 +777,54 @@ export function ChronosExternalRoomPage({
       );
     };
   }, [
-    localParticipant,
+    canSyncWherebyArtifacts,
     meetingId,
     syncChronosWherebyArtifacts,
-    wherebyIsHost,
     wherebyRoom,
     wherebyStatus,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isChronosWherebyProvider ||
+      !wherebyRoom ||
+      !meetingId ||
+      !canSyncWherebyArtifacts
+    ) {
+      return;
+    }
+
+    const syncArtifacts = () => {
+      void syncChronosWherebyArtifacts();
+    };
+    const retryDelays = [15_000, 45_000, 120_000, 240_000];
+    const retryIds = retryDelays.map((delay) =>
+      window.setTimeout(syncArtifacts, delay),
+    );
+    const intervalId = window.setInterval(syncArtifacts, 90_000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncArtifacts();
+      }
+    };
+
+    window.addEventListener("focus", syncArtifacts);
+    window.addEventListener("pagehide", syncArtifacts);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      retryIds.forEach((retryId) => window.clearTimeout(retryId));
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", syncArtifacts);
+      window.removeEventListener("pagehide", syncArtifacts);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [
+    canSyncWherebyArtifacts,
+    isChronosWherebyProvider,
+    meetingId,
+    syncChronosWherebyArtifacts,
+    wherebyRoom,
   ]);
 
   useEffect(() => {
@@ -3328,6 +3395,18 @@ export function ChronosExternalRoomPage({
     }).catch(() => undefined);
   }
 
+  function handleConfirmWherebyIdentity(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!participantNameForJoin || !participantOrganization) {
+      setJoinError("Informe nome e empresa para entrar.");
+      return;
+    }
+
+    setJoinError(null);
+    setIsWherebyIdentityConfirmed(true);
+  }
+
   const tileParticipants = useMemo(() => {
     const participants = localParticipant
       ? [localParticipant, ...Object.values(remoteParticipants)]
@@ -3365,7 +3444,9 @@ export function ChronosExternalRoomPage({
   const wherebyMetadata =
     wherebyRoom && meetingId
       ? JSON.stringify({
+          displayName: wherebyDisplayName || undefined,
           meetingId,
+          organization: participantOrganization || undefined,
           provider: "chronos",
           role: wherebyIsHost ? "host" : "participant",
           roomSlug: room.slug,
@@ -3645,8 +3726,51 @@ export function ChronosExternalRoomPage({
             ) : null}
           </section>
         ) : isChronosWherebyProvider ? (
-          <section className="relative h-full min-h-0 overflow-hidden">
-            <div className="absolute inset-0 bg-black">
+          <section className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden p-3 sm:p-4">
+            <div className="flex min-h-12 min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#101820]/88 px-3 py-2 text-white shadow-xl ring-1 ring-black/30 backdrop-blur-md">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-black/90 shadow-lg ring-1 ring-white/10">
+                  <span
+                    aria-hidden="true"
+                    className="block h-6 w-6 bg-contain bg-center bg-no-repeat"
+                    style={{
+                      backgroundImage: `url(${chronosCareliMark.src})`,
+                    }}
+                  />
+                  <span className="sr-only">Careli</span>
+                </span>
+                <div className="min-w-0">
+                  <p className="m-0 truncate text-sm font-semibold leading-tight">
+                    {room.name}
+                  </p>
+                  <p className="m-0 truncate text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-white/52">
+                    Chronos via Whereby
+                  </p>
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-white/70">
+                <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#A07C3B]/35 bg-[#A07C3B]/16 px-3 text-[#f2d8a1]">
+                  <UsersRound aria-hidden="true" size={13} />
+                  Porta ativa
+                </span>
+                {wherebyRoom?.recordingRequired ? (
+                  <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-black/28 px-3">
+                    <Radio aria-hidden="true" size={13} />
+                    Gravacao auto
+                  </span>
+                ) : null}
+                {wherebyRoom?.transcriptionRequired ? (
+                  <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-black/28 px-3">
+                    <FileText aria-hidden="true" size={13} />
+                    Ata Athena
+                  </span>
+                ) : null}
+                <span className="inline-flex h-8 items-center rounded-full border border-white/10 bg-black/28 px-3">
+                  {wherebyIsHost ? "Host" : "Participante"}
+                </span>
+              </div>
+            </div>
+            <div className="relative min-h-0 overflow-hidden rounded-lg border border-white/12 bg-black shadow-2xl ring-1 ring-black/35">
               {wherebyStatus === "loading" || joining ? (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] text-sm font-semibold text-white/72">
                   <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-2 shadow-xl">
@@ -3660,9 +3784,62 @@ export function ChronosExternalRoomPage({
                 </div>
               ) : null}
               {wherebyRoom && wherebyRoomUrl && wherebyStatus !== "idle" ? (
+                !canRenderWherebyEmbed ? (
+                  <form
+                    className="absolute inset-0 z-10 grid place-items-center bg-[#101820]/72 p-4 text-[#101820] backdrop-blur-sm"
+                    onSubmit={handleConfirmWherebyIdentity}
+                  >
+                    <div className="grid w-full max-w-[25rem] gap-3 rounded-lg border border-white/15 bg-white p-4 shadow-2xl">
+                      <div>
+                        <p className="m-0 text-sm font-semibold">
+                          Identificacao
+                        </p>
+                        <p className="m-0 mt-1 text-xs font-medium text-[#667085]">
+                          Esses dados aparecem no video e no registro da sala.
+                        </p>
+                      </div>
+                      <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                        Nome
+                        <input
+                          className="h-10 w-full rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                          onChange={(event) => setDisplayName(event.target.value)}
+                          placeholder="Seu nome"
+                          value={participantLabel}
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                        Empresa
+                        <input
+                          className="h-10 w-full rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                          onChange={(event) => setOrganization(event.target.value)}
+                          placeholder="Empresa"
+                          value={participantOrganization}
+                        />
+                      </label>
+                      {joinError ? (
+                        <p className="m-0 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                          {joinError}
+                        </p>
+                      ) : null}
+                      <button
+                        className="inline-flex h-10 items-center justify-center rounded-md border border-[#A07C3B] bg-[#A07C3B] px-4 text-sm font-semibold text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-55"
+                        disabled={!participantNameForJoin || !participantOrganization}
+                        type="submit"
+                      >
+                        Entrar na sala
+                      </button>
+                    </div>
+                  </form>
+                ) : (
                 createElement("whereby-embed", {
+                  background: "off",
+                  displayName: wherebyDisplayName || undefined,
+                  externalId: wherebyExternalId || undefined,
+                  floatSelf: true,
                   lang: "pt",
+                  logo: "off",
                   metadata: wherebyMetadata,
+                  pipButton: "off",
                   ref: (element: Element | null) => {
                     wherebyEmbedRef.current =
                       element as ChronosWherebyEmbedElement | null;
@@ -3674,7 +3851,10 @@ export function ChronosExternalRoomPage({
                     height: "100%",
                     width: "100%",
                   },
+                  subgridLabels: "on",
+                  toolbarText: "off",
                 } satisfies ChronosWherebyEmbedProps)
+                )
               ) : (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] p-6 text-center text-sm font-semibold text-white/72">
                   {joinError || "Sala Whereby indisponivel no momento."}
@@ -4080,6 +4260,40 @@ function readChronosWherebyEventDetail(event: Event) {
   return detail && typeof detail === "object"
     ? (detail as Record<string, unknown>)
     : {};
+}
+
+function buildChronosWherebyDisplayName({
+  displayName,
+  organization,
+}: {
+  displayName: string;
+  organization?: string;
+}) {
+  return [displayName, organization]
+    .map((value) => value?.trim().replace(/[$!<>:;]/g, " "))
+    .filter(Boolean)
+    .join(" - ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+}
+
+function buildChronosWherebyExternalId(value?: string | null) {
+  const normalized = value?.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 36) ?? "";
+
+  return normalized || undefined;
+}
+
+function isChronosWherebyArtifactReadyStatus(status: string) {
+  return [
+    "available",
+    "complete",
+    "completed",
+    "ended",
+    "finished",
+    "ready",
+    "stopped",
+  ].includes(status);
 }
 
 type ChronosLiveKitControlBarProps = {

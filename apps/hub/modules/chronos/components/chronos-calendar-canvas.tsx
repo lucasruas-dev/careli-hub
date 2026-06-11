@@ -61,7 +61,7 @@ export function ChronosCalendarCanvas({
   selectedMeetingId,
   view,
 }: ChronosCalendarCanvasProps) {
-  const hours = Array.from({ length: 16 }, (_, index) => index + 7);
+  const hours = Array.from({ length: 24 }, (_, index) => index);
 
   if (view === "list") {
     return (
@@ -265,7 +265,7 @@ function ChronosTimeGrid({
         locale="pt-br"
         nowIndicator
         plugins={[timeGridPlugin, dayGridPlugin, listPlugin, interactionPlugin]}
-        scrollTime="07:00:00"
+        scrollTime="00:00:00"
         slotDuration="00:30:00"
         slotEventOverlap
         slotLabelFormat={{
@@ -274,8 +274,8 @@ function ChronosTimeGrid({
           omitZeroMinute: false,
         }}
         slotLabelInterval="01:00:00"
-        slotMaxTime="20:00:00"
-        slotMinTime="07:00:00"
+        slotMaxTime="24:00:00"
+        slotMinTime="00:00:00"
         timeZone="local"
       />
       <style>{`
