@@ -1,0 +1,46 @@
+{
+  "protocolId": "OP-20260611-008-CHRONOS-DRIVE-SNAPSHOT-DIAGNOSTIC",
+  "module": "Chronos",
+  "owner": "Zeus / Chronos",
+  "createdAt": "2026-06-11T16:34:15-03:00",
+  "status": "VALIDADO_LOCAL_AGUARDANDO_PUBLICACAO_DIAGNOSTICA",
+  "summary": "Adiciona log sanitizado no endpoint autenticado do snapshot Chronos para descobrir por que as gravacoes Whereby sincronizadas nao aparecem no Drive.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Drive Chronos continua mostrando apenas Teste 6 de 30/05 mesmo apos Whereby sync confirmar duas gravacoes e duas transcricoes para Lideranca.",
+    "deployment": "Lucas autorizou subir hotfixes Chronos deste incidente; este pacote e diagnostico, sem env, secret, migration ou escrita direta em Supabase."
+  },
+  "diagnosis": [
+    "O endpoint publico de sync da Lideranca retornou recordingCount 2, transcriptionCount 2 e transcriptSegmentCount 139.",
+    "A tela autenticada do Drive continua listando apenas a reuniao antiga Teste 6 de 30/05.",
+    "O deploy anterior foi acessado pela chamada GET /api/chronos/meetings apos o refresh do Lucas, entao nao ha evidencia de cache antigo.",
+    "Falta visibilidade sobre o payload autenticado entregue ao Drive: nao sabemos se a reuniao de hoje fica fora do snapshot ou se a UI a descarta apos receber."
+  ],
+  "decisions": [
+    "Adicionar log estruturado e sanitizado em GET /api/chronos/meetings.",
+    "Registrar contagem de meetings, rooms, storage status e resumo tecnico das meetings com gravacao, transcricao ou sala Whereby.",
+    "Nao registrar emails, tokens, chaves, conteudo de transcricao nem payload completo.",
+    "Nao executar escrita direta no Supabase neste recorte."
+  ],
+  "changedFiles": [
+    "apps/hub/app/api/chronos/meetings/route.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-chronos-20260611-008-drive-snapshot-diagnostic.json",
+    "docs/operations/production-module-safety-gate-chronos-20260611-008-drive-snapshot-diagnostic.json"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS.",
+    "git diff --check -- apps/hub/app/api/chronos/meetings/route.ts: PASS.",
+    "npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos fora do recorte Chronos."
+  ],
+  "rollback": [
+    "Reverter apps/hub/app/api/chronos/meetings/route.ts ao estado anterior ao protocolo OP-20260611-008.",
+    "Se publicado e houver regressao critica, reapontar c2x.app.br para o deployment anterior registrado no gate."
+  ],
+  "nextSteps": [
+    "Publicar diagnostico em c2x.app.br.",
+    "Lucas atualizar o Drive uma vez.",
+    "Zeus ler logs por drive_snapshot_diagnostic e decidir se a causa esta no snapshot/backfill ou no frontend Drive."
+  ]
+}

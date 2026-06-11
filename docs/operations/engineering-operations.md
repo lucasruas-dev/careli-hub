@@ -36037,3 +36037,37 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar o Drive Chronos novamente.
 - Quem deve agir agora: Lucas valida visualmente; Zeus monitora e, se ainda faltar `Operacao`, segue para backfill focado.
 - Proximo passo tecnico: caso a tela ainda nao mude, a proxima etapa nao e mais deploy generico; e diagnostico direto do payload autenticado ou backfill no Supabase real de producao.
+
+### Complemento 2026-06-11 16:34:15 -03:00 - Drive Chronos ainda invisivel; diagnostico de snapshot autenticado
+
+- Status atualizado: `VALIDADO_LOCAL / DIAGNOSTICO EM PUBLICACAO`.
+- Protocolo: `OP-20260611-008-CHRONOS-DRIVE-SNAPSHOT-DIAGNOSTIC`.
+- Contexto:
+  - Lucas atualizou novamente o Drive e a tela continuou mostrando apenas `Teste 6` de 30/05 na pasta `Lideranca`;
+  - o runtime de producao ja havia confirmado `/careli-liderancaaqrnsv` com `recordingCount: 2`, `transcriptionCount: 2` e `transcriptSegmentCount: 139`;
+  - a chamada autenticada `GET /api/chronos/meetings` ocorreu apos o deploy anterior, entao a evidencia atual nao aponta para cache antigo.
+- Diagnostico:
+  - ainda nao ha prova se a meeting de hoje fica fora do snapshot autenticado ou se chega no payload e e descartada pelo agrupamento/filtro do Drive;
+  - a proxima etapa segura e instrumentar o endpoint que alimenta a tela com log sanitizado, sem puxar envs de producao e sem expor secrets.
+- Implementacao:
+  - `apps/hub/app/api/chronos/meetings/route.ts` agora registra `[chronos] drive_snapshot_diagnostic` em `GET /api/chronos/meetings`;
+  - o log contem contagens e resumo tecnico de meetings com gravacao, transcricao ou sala Whereby;
+  - o log nao contem emails, tokens, chaves, conteudo de transcricao nem payload completo.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS;
+  - `git diff --check -- apps/hub/app/api/chronos/meetings/route.ts`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/api/chronos/meetings/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos fora do recorte Chronos.
+- Fora do escopo:
+  - nenhuma escrita direta em Supabase foi executada;
+  - nenhum env, secret, migration, Hades, Hermes, Iris, Atlas, Setup ou alias `ops.c2x.app.br` foi alterado.
+- Rollback:
+  - se houver regressao critica apos publicacao, reapontar `c2x.app.br` para `dpl_2Zyk1M2no2oswM3W8Ad7JY84i5wY`.
+
+Conclusao:
+
+- O problema deixou de ser tratado como F5/cache: o proximo passo mede o payload autenticado real do Drive.
+- O impacto pratico esperado e identificar se a falha esta no snapshot/backfill do backend ou no frontend do Drive.
+- Precisa de acao agora: Zeus publica o diagnostico; Lucas atualiza a tela uma vez; Zeus le o log `drive_snapshot_diagnostic`.
+- Quem deve agir agora: Zeus publica e monitora; Lucas apenas valida a tela apos o deploy diagnostico.
+- Proximo passo tecnico: se a meeting nao aparecer no log, corrigir snapshot/backfill; se aparecer no log, corrigir agrupamento/filtro do Drive.

@@ -10,6 +10,7 @@ import {
   updateChronosMeeting,
 } from "@/lib/chronos/server";
 import { syncChronosMeetingToGoogleCalendar } from "@/lib/chronos/google-calendar";
+import { type ChronosMeeting, type ChronosSnapshot } from "@/lib/chronos/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,6 +24,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const snapshot = await listChronosSnapshot(authorization);
+
+    logChronosDriveSnapshotDiagnostic(snapshot);
 
     return Response.json(snapshot, {
       headers: {
@@ -223,4 +226,100 @@ function getChronosSafeErrorLog(error: unknown) {
     message: typeof source.message === "string" ? source.message : undefined,
     name: typeof source.name === "string" ? source.name : undefined,
   };
+}
+
+function logChronosDriveSnapshotDiagnostic(snapshot: ChronosSnapshot) {
+  const recordingMeetings = snapshot.meetings
+    .filter(isChronosDriveDiagnosticMeeting)
+    .map(summarizeChronosDriveDiagnosticMeeting)
+    .slice(0, 20);
+
+  console.info("[chronos] drive_snapshot_diagnostic", {
+    meetingCount: snapshot.meetings.length,
+    recordingMeetingCount: snapshot.meetings.filter(
+      (meeting) => meeting.recordings.length > 0,
+    ).length,
+    recordingMeetings,
+    roomCount: snapshot.rooms.length,
+    storageStatus: snapshot.storage.status,
+  });
+}
+
+function isChronosDriveDiagnosticMeeting(meeting: ChronosMeeting) {
+  return (
+    meeting.recordings.length > 0 ||
+    meeting.recordingStatus === "available" ||
+    meeting.transcriptionStatus === "available" ||
+    Boolean(readChronosDriveDiagnosticWherebyRoomName(meeting))
+  );
+}
+
+function summarizeChronosDriveDiagnosticMeeting(meeting: ChronosMeeting) {
+  return {
+    id: meeting.id,
+    protocol: meeting.protocol,
+    recordingIds: meeting.recordings
+      .map((recording) => ({
+        id: recording.id,
+        provider: readChronosDriveDiagnosticText(recording.metadata, [
+          "provider",
+        ]),
+        status: recording.status,
+        storageBucket: recording.storageBucket,
+        storagePath: recording.storagePath,
+        wherebyRecordingId:
+          readChronosDriveDiagnosticText(
+            readChronosDriveDiagnosticRecord(recording.metadata?.whereby),
+            ["recordingId"],
+          ) ?? null,
+      }))
+      .slice(0, 5),
+    recordingStatus: meeting.recordingStatus,
+    recordings: meeting.recordings.length,
+    roomId: meeting.roomId,
+    roomName: meeting.room?.name ?? null,
+    startsAt: meeting.startsAt,
+    status: meeting.status,
+    title: meeting.title,
+    transcriptSegments: meeting.transcript.length,
+    transcriptionStatus: meeting.transcriptionStatus,
+    wherebyRoomName: readChronosDriveDiagnosticWherebyRoomName(meeting),
+  };
+}
+
+function readChronosDriveDiagnosticWherebyRoomName(meeting: ChronosMeeting) {
+  const externalRoom = readChronosDriveDiagnosticRecord(
+    meeting.metadata?.externalRoom,
+  );
+  const whereby = readChronosDriveDiagnosticRecord(externalRoom.whereby);
+
+  return (
+    readChronosDriveDiagnosticText(whereby, ["roomName"]) ??
+    readChronosDriveDiagnosticText(externalRoom, ["roomName"])
+  );
+}
+
+function readChronosDriveDiagnosticRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readChronosDriveDiagnosticText(
+  metadata: Record<string, unknown> | undefined,
+  keys: string[],
+) {
+  if (!metadata) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = metadata[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
 }
