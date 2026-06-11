@@ -18,7 +18,8 @@ import {
   type ChronosMinutesProfile,
 } from "@/lib/chronos/types";
 import { Badge } from "@repo/uix";
-import { Download, FileText, Mic, PlayCircle, Video } from "lucide-react";
+import { Download, FileText, Mic, PlayCircle, Video, X } from "lucide-react";
+import { useState } from "react";
 
 type ChronosDriveViewMode = "grid" | "list";
 
@@ -253,6 +254,20 @@ function getChronosDriveVideoStatusLabel(
 function getChronosDriveAudioStatusLabel(
   recordingMeeting: ChronosDriveRecordingMeeting,
 ) {
+  const meeting = normalizeChronosMeetingRuntime(recordingMeeting.meeting);
+
+  if (meeting.transcript.length > 0) {
+    return "Transcricao disponivel";
+  }
+
+  if (meeting.transcriptionStatus === "available") {
+    return "Transcricao em sincronizacao";
+  }
+
+  if (meeting.transcriptionStatus === "processing") {
+    return "Transcricao em processamento";
+  }
+
   if (recordingMeeting.availableAudioRecordings > 0) {
     return "Disponivel para transcricao";
   }
@@ -310,6 +325,7 @@ function ChronosDriveRecordingActions({
     hasOfficialTranscript ||
     (hasTranscript && Boolean(transcriptionRecording.transcribedAt)) ||
     !canTranscribeRecording;
+  const [playerOpen, setPlayerOpen] = useState(false);
 
   async function handleTranscribeAndOpenMinutes() {
     if (!transcriptionRecording || transcriptionDisabled) {
@@ -361,20 +377,19 @@ function ChronosDriveRecordingActions({
           Ver transcricao
         </button>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex min-w-0 flex-wrap gap-2">
         {canOpenVideo && primaryRecording ? (
-          <a
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
-            href={primaryRecording.url}
-            rel="noreferrer"
-            target="_blank"
+          <button
+            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
+            onClick={() => setPlayerOpen(true)}
+            type="button"
           >
             <PlayCircle aria-hidden="true" size={13} />
             Assistir
-          </a>
+          </button>
         ) : (
           <button
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#8a95a6] disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#8a95a6] disabled:cursor-not-allowed disabled:opacity-70"
             disabled
             type="button"
           >
@@ -384,7 +399,7 @@ function ChronosDriveRecordingActions({
         )}
         {downloadUrl && downloadUrl !== "#" && primaryRecording ? (
           <a
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#101820] bg-[#101820] px-2.5 text-xs font-semibold text-white transition hover:bg-black"
+            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#101820] bg-[#101820] px-2.5 text-xs font-semibold text-white transition hover:bg-black"
             download={primaryRecording.name}
             href={downloadUrl}
           >
@@ -406,9 +421,55 @@ function ChronosDriveRecordingActions({
               : canTranscribeRecording
                 ? "Transcrever e gerar ata"
                 : "Aguardando arquivo"}
-          </button>
+            </button>
         ) : null}
       </div>
+      {playerOpen && primaryRecording?.url ? (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-[#101820]/75 p-4"
+          role="dialog"
+        >
+          <div className="grid max-h-[92dvh] w-full max-w-5xl overflow-hidden rounded-md border border-[#2a3542] bg-[#101820] shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <div className="min-w-0">
+                <p className="m-0 truncate text-sm font-semibold text-white">
+                  {recordingMeetingRuntime.meeting.title}
+                </p>
+                <p className="m-0 mt-1 truncate text-xs text-[#aab4c1]">
+                  {recordingMeetingRuntime.meeting.protocol}
+                </p>
+              </div>
+              <button
+                aria-label="Fechar player"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/15 text-white transition hover:bg-white/10"
+                onClick={() => setPlayerOpen(false)}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} />
+              </button>
+            </div>
+            <video
+              className="max-h-[72dvh] w-full bg-black"
+              controls
+              preload="metadata"
+              src={primaryRecording.url}
+            />
+            {downloadUrl && downloadUrl !== "#" ? (
+              <div className="flex justify-end border-t border-white/10 px-4 py-3">
+                <a
+                  className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/15 bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:bg-[#f3f6fa]"
+                  download={primaryRecording.name}
+                  href={downloadUrl}
+                >
+                  <Download aria-hidden="true" size={13} />
+                  Baixar arquivo
+                </a>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   isChronosForbiddenError,
   isChronosSchemaMissingError,
   listChronosSnapshot,
+  syncChronosWherebyArtifactsForMeeting,
   updateChronosMeeting,
 } from "@/lib/chronos/server";
 import {
@@ -230,6 +231,50 @@ export async function POST(request: NextRequest) {
           {
             error:
               "Gravacao Chronos ainda nao esta disponivel para transcricao.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const meetingWithSyncedTranscript =
+        await syncChronosWherebyTranscriptForMinutes({
+          authorization,
+          meeting,
+          meetingId: parsed.meetingId,
+        });
+
+      if (hasChronosTranscriptForMinutes(meetingWithSyncedTranscript)) {
+        const { draft, meeting: updatedMeeting } =
+          await saveChronosMinutesDraft({
+            apiKey,
+            authorization,
+            meeting: meetingWithSyncedTranscript,
+            meetingId: parsed.meetingId,
+            minutesProfile: parsed.minutesProfile,
+          });
+
+        return Response.json(
+          {
+            meeting: updatedMeeting,
+            minutes: draft.minutes,
+            minutesProfile: parsed.minutesProfile,
+            source: hasChronosWherebyTranscript(meetingWithSyncedTranscript)
+              ? "whereby"
+              : "openai",
+            summary: draft.summary,
+            transcript: buildChronosTranscriptTextForResponse(
+              meetingWithSyncedTranscript,
+            ),
+          },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      }
+
+      if (isChronosWherebyRecording(recording)) {
+        return Response.json(
+          {
+            error:
+              "A transcricao Whereby desta gravacao ainda esta em processamento. Atualize o Drive em alguns minutos e tente gerar a ata novamente.",
           },
           { status: 409 },
         );
@@ -465,18 +510,29 @@ async function ensureChronosOfficialTranscriptForMinutes({
 }) {
   const normalizedMeeting = normalizeChronosMeetingRuntime(meeting);
 
-  if (
-    normalizedMeeting.transcript.some((segment) =>
-      isChronosOfficialTranscriptSource(segment.source),
-    )
-  ) {
+  if (hasChronosOfficialTranscript(normalizedMeeting)) {
     return normalizedMeeting;
+  }
+
+  const meetingWithSyncedTranscript =
+    await syncChronosWherebyTranscriptForMinutes({
+      authorization,
+      meeting: normalizedMeeting,
+      meetingId,
+    });
+
+  if (hasChronosOfficialTranscript(meetingWithSyncedTranscript)) {
+    return meetingWithSyncedTranscript;
   }
 
   const recording = selectChronosTranscribableRecording(normalizedMeeting);
 
   if (!recording) {
-    return normalizedMeeting;
+    return meetingWithSyncedTranscript;
+  }
+
+  if (isChronosWherebyRecording(recording) && !isChronosAudioRecording(recording)) {
+    return meetingWithSyncedTranscript;
   }
 
   const transcription = await transcribeChronosRecordingCollection({
@@ -484,10 +540,53 @@ async function ensureChronosOfficialTranscriptForMinutes({
     authorization,
     meetingId,
     preferredRecording: recording,
-    sourceMeeting: normalizedMeeting,
+    sourceMeeting: meetingWithSyncedTranscript,
   });
 
   return transcription.meeting;
+}
+
+async function syncChronosWherebyTranscriptForMinutes({
+  authorization,
+  meeting,
+  meetingId,
+}: {
+  authorization: Parameters<typeof updateChronosMeeting>[0]["authorization"];
+  meeting: ChronosMeeting;
+  meetingId: string;
+}) {
+  const normalizedMeeting = normalizeChronosMeetingRuntime(meeting);
+
+  if (
+    hasChronosOfficialTranscript(normalizedMeeting) ||
+    !normalizedMeeting.recordings.some(isChronosWherebyRecording)
+  ) {
+    return normalizedMeeting;
+  }
+
+  try {
+    await syncChronosWherebyArtifactsForMeeting({
+      authorization,
+      force: true,
+      meetingId,
+    });
+  } catch (error) {
+    console.warn(
+      "[chronos/agent] Whereby transcript sync before minutes failed",
+      error instanceof Error ? error.message : "unknown error",
+    );
+
+    return normalizedMeeting;
+  }
+
+  const snapshot = await listChronosSnapshot(authorization);
+  const refreshedMeeting = snapshot.meetings.find(
+    (currentMeeting) => currentMeeting.id === meetingId,
+  );
+
+  return refreshedMeeting
+    ? normalizeChronosMeetingRuntime(refreshedMeeting)
+    : normalizedMeeting;
 }
 
 async function saveChronosTranscriptionResult({
@@ -777,6 +876,29 @@ function getChronosRecordingSpeakerLabel(
       : "";
 
   return participantName || participantIdentity || null;
+}
+
+function isChronosWherebyRecording(
+  recording: ChronosMeeting["recordings"][number],
+) {
+  const metadata = recording.metadata ?? {};
+  const wherebyMetadata =
+    metadata.whereby && typeof metadata.whereby === "object"
+      ? (metadata.whereby as Record<string, unknown>)
+      : {};
+  const source = typeof metadata.source === "string" ? metadata.source : "";
+  const provider =
+    typeof metadata.provider === "string" ? metadata.provider : "";
+  const storageBucket = recording.storageBucket?.toLowerCase() ?? "";
+  const storagePath = recording.storagePath?.toLowerCase() ?? "";
+
+  return (
+    provider === "whereby" ||
+    source.includes("whereby") ||
+    storageBucket === "whereby" ||
+    storagePath.startsWith("whereby://recordings/") ||
+    typeof wherebyMetadata.recordingId === "string"
+  );
 }
 
 function isChronosAudioRecording(recording: ChronosMeeting["recordings"][number]) {
@@ -1526,6 +1648,27 @@ function hasChronosTranscriptForMinutes(meeting: ChronosMeeting) {
   return getChronosMinutesTranscriptSegments(
     normalizeChronosMeetingRuntime(meeting),
   ).some((segment) => normalizeText(segment.content, 10_000).length > 0);
+}
+
+function hasChronosOfficialTranscript(meeting: ChronosMeeting) {
+  return normalizeChronosMeetingRuntime(meeting).transcript.some((segment) =>
+    isChronosOfficialTranscriptSource(segment.source),
+  );
+}
+
+function hasChronosWherebyTranscript(meeting: ChronosMeeting) {
+  return normalizeChronosMeetingRuntime(meeting).transcript.some(
+    (segment) => segment.source === "whereby",
+  );
+}
+
+function buildChronosTranscriptTextForResponse(meeting: ChronosMeeting) {
+  return normalizeText(
+    getChronosMinutesTranscriptSegments(normalizeChronosMeetingRuntime(meeting))
+      .map((segment) => segment.content)
+      .join("\n\n"),
+    80_000,
+  );
 }
 
 function buildChronosMinutesPrompt({

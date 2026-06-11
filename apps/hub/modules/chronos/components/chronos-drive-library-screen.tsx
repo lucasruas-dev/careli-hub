@@ -159,7 +159,7 @@ export function ChronosDriveLibraryScreen({
               ))}
             </select>
           </div>
-          <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid min-w-0 gap-3 p-4 md:grid-cols-2">
             {filteredMeetings.map((driveMeeting) => (
               <ChronosDriveItemCard
                 driveView="minutes"

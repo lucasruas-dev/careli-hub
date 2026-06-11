@@ -3198,6 +3198,76 @@ export async function syncChronosPublicWherebyArtifacts({
   };
 }
 
+export async function syncChronosWherebyArtifactsForMeeting({
+  authorization,
+  force = false,
+  meetingId,
+}: {
+  authorization: Extract<ChronosAuthorization, { ok: true }>;
+  force?: boolean;
+  meetingId: string;
+}) {
+  const client = authorization.client;
+
+  if (!client) {
+    throw new Error(
+      "Chronos requer Supabase server-side configurado para sincronizar Whereby.",
+    );
+  }
+
+  const meetingResult = await client
+    .from("chronos_meetings")
+    .select("*")
+    .eq("id", meetingId)
+    .maybeSingle<ChronosMeetingRow>();
+
+  if (meetingResult.error) {
+    throw meetingResult.error;
+  }
+
+  if (!meetingResult.data) {
+    throw new Error("Reuniao Chronos nao encontrada.");
+  }
+
+  if (!meetingResult.data.room_id) {
+    return {
+      participantCount: 0,
+      recordingCount: 0,
+      roomName: "",
+      transcriptSegmentCount: 0,
+      transcriptionCount: 0,
+    };
+  }
+
+  const roomResult = await client
+    .from("chronos_rooms")
+    .select("*")
+    .eq("id", meetingResult.data.room_id)
+    .maybeSingle<ChronosRoomRow>();
+
+  if (roomResult.error) {
+    throw roomResult.error;
+  }
+
+  if (!roomResult.data) {
+    return {
+      participantCount: 0,
+      recordingCount: 0,
+      roomName: "",
+      transcriptSegmentCount: 0,
+      transcriptionCount: 0,
+    };
+  }
+
+  return syncChronosWherebyMeetingArtifacts({
+    actorUserId: authorization.user.id,
+    client,
+    force,
+    meeting: meetingResult.data,
+    room: roomResult.data,
+  });
+}
+
 async function logChronosWherebyPublicDriveDiagnostic({
   client,
   meetingId,
@@ -3435,11 +3505,13 @@ function getChronosWherebyArtifactSyncReferenceTime(
 async function syncChronosWherebyMeetingArtifacts({
   actorUserId,
   client,
+  force = false,
   meeting,
   room,
 }: {
   actorUserId?: string | null;
   client: ChronosClient;
+  force?: boolean;
   meeting: ChronosMeetingRow;
   room: ChronosRoomRow;
 }) {
@@ -3459,11 +3531,13 @@ async function syncChronosWherebyMeetingArtifacts({
 
   const nowDate = new Date();
   const now = nowDate.toISOString();
-  const syncThrottle = getChronosWherebySyncThrottle({
-    meeting,
-    now: nowDate,
-    wherebyMetadata,
-  });
+  const syncThrottle = force
+    ? null
+    : getChronosWherebySyncThrottle({
+        meeting,
+        now: nowDate,
+        wherebyMetadata,
+      });
 
   if (syncThrottle) {
     console.info("[chronos] Whereby artifact sync skipped", {
