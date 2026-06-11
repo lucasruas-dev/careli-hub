@@ -35947,3 +35947,24 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar o Drive Chronos e conferir a pasta `Lideranca`.
 - Quem deve agir agora: Lucas valida visualmente; Zeus monitora logs e, se `Operacao` continuar ausente, prepara diagnostico/backfill no Supabase de producao real.
 - Proximo passo tecnico: se o banner persistir ou `Operacao` nao aparecer, confirmar o projeto Supabase real de producao antes de qualquer escrita direta.
+
+### Complemento 2026-06-11 15:29:10 -03:00 - Lideranca validada apos snapshot chunks
+
+- Status atualizado: `EM PRODUCAO / LIDERANCA VALIDADA NO RUNTIME / AGUARDANDO VALIDACAO VISUAL DO LUCAS`.
+- Protocolo: `OP-20260611-006-CHRONOS-SNAPSHOT-RELATED-DATA-CHUNKS`.
+- Validacao pos-deploy:
+  - `POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync` para o meeting `e1c52323-ed0f-4cca-a795-8bb57d1e4389`: 200;
+  - retorno confirmado: `recordingCount: 2`, `transcriptionCount: 2`, `transcriptSegmentCount: 139`, `roomName: /careli-liderancaaqrnsv`;
+  - a repeticao imediata retornou `syncSkipped: recent`, como esperado pelo throttle;
+  - comparado com a validacao anterior, Lideranca passou de `transcriptionCount: 1` e `transcriptSegmentCount: 65` para `transcriptionCount: 2` e `transcriptSegmentCount: 139`.
+- Fora do escopo:
+  - nenhum backfill direto de banco/Supabase foi executado;
+  - `Operacao` ainda depende de localizar o `meetingId` correto se nao aparecer no Drive apos refresh do Lucas.
+
+Conclusao:
+
+- A Lideranca esta reconciliada no runtime de producao com duas gravacoes e duas transcricoes Whereby.
+- O impacto pratico esperado e que a pasta `Lideranca` do Drive Chronos passe a mostrar o material apos refresh autenticado.
+- Precisa de acao agora: Lucas deve atualizar o Drive e conferir a pasta `Lideranca`.
+- Quem deve agir agora: Lucas valida visualmente; Zeus monitora e prepara o backfill de `Operacao` se ainda faltar.
+- Proximo passo tecnico: se `Operacao` continuar ausente, encontrar o `meetingId` seguro de `/careli-operacaomg7634` no Supabase de producao real antes de qualquer escrita.

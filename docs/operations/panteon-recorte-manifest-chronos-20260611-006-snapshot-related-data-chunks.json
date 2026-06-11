@@ -78,6 +78,11 @@
       "command": "GET https://c2x.app.br/chronos e /chronos/careli",
       "status": "PASS",
       "notes": "Ambas as rotas retornaram 200 apos o alias."
+    },
+    {
+      "command": "POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync",
+      "status": "PASS",
+      "notes": "Runtime novo confirmou recordingCount 2, transcriptionCount 2 e transcriptSegmentCount 139 para /careli-liderancaaqrnsv."
     }
   ],
   "risks": [

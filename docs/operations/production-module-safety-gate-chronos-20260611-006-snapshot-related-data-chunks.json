@@ -76,7 +76,8 @@
     "GET https://c2x.app.br/chronos/careli: 200.",
     "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_7uSR4BdSTyAqTRfkAbbZX2Je3Cix.",
     "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
-    "npx.cmd vercel logs https://c2x.app.br --query chronos: sem erro imediato; apenas GET /chronos e /chronos/careli de healthcheck."
+    "npx.cmd vercel logs https://c2x.app.br --query chronos: sem erro imediato; apenas GET /chronos e /chronos/careli de healthcheck.",
+    "POST https://c2x.app.br/api/chronos/public/rooms/lideranca/whereby-sync: 200, recordingCount 2, transcriptionCount 2, transcriptSegmentCount 139."
   ],
   "notes": [
     "Lucas reportou que o Drive continuou igual apos F5, mesmo com sync Whereby confirmado para Lideranca.",
