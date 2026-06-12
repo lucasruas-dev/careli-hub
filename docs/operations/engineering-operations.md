@@ -36695,3 +36695,46 @@ Conclusao:
 - Precisa de acao agora: para corrigir a producao, Lucas precisa autorizar o deploy deste hotfix.
 - Quem deve agir agora: Lucas decide se publica; Zeus/Hefesto publicam somente com autorizacao explicita.
 - Proximo passo: gerar pacote limpo e publicar em producao quando autorizado.
+
+### Complemento 2026-06-12 12:24:24 -03:00 - OP-013 hotfix de presenca publicado em producao
+
+- Status atualizado: `HOTFIX_EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Autorizacao:
+  - Lucas autorizou explicitamente o hotfix: `pode subir`.
+- Publicacao:
+  - commit publicado: `3e913554` (`fix(home): refine presence journey rules`);
+  - pacote: `git archive` do commit `3e913554`, expandido fora do repositorio principal em `%LOCALAPPDATA%\Temp\panteon-op013-hotfix-prod-3e913554`;
+  - deployment Vercel: `dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-8cjxmbs1l-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias aplicado somente em `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Base e rollback:
+  - deployment anterior de `https://c2x.app.br`: `dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT`;
+  - rollback imediato do hotfix: reapontar `https://c2x.app.br` para `dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT`;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - validacoes locais pre-publicacao registradas para o commit `3e913554`: eslint do recorte, `check-types:hub`, build do Hub e `git diff --check`;
+  - build remoto Vercel: PASS, com warning conhecido de Turbopack/NFT e avisos existentes de envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Homologacao:
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada porque a autorizacao do Lucas foi para corrigir producao imediatamente e o recorte ja tinha validacoes locais + build remoto; a divergencia fica registrada para reconciliacao posterior, se Lucas quiser manter homo espelhado neste hotfix.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhum valor sensivel foi impresso ou registrado.
+- Risco residual:
+  - a validacao visual autenticada final da aba `Disponibilidade` em producao depende do usuario admin do Lucas;
+  - registros historicos ja persistidos com sequencia incompleta sao saneados visualmente pela Home, sem escrita retroativa no banco.
+
+Conclusao:
+
+- O que aconteceu: o hotfix de regras de presenca foi publicado em producao.
+- Impacto pratico: novos eventos de jornada passam a respeitar `Ausente` apos 3 minutos, `Ausente` antes de `Deslogado`, `Almoco` manual estavel e deduplicacao de `Online`.
+- Precisa de acao agora: Lucas deve validar a aba `Disponibilidade` em producao com usuario admin.
+- Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
+- Proximo passo: manter `c2x.app.br` no hotfix se a validacao estiver boa.

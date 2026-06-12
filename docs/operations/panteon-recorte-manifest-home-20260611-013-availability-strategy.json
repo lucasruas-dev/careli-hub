@@ -3,7 +3,7 @@
   "module": "Home / Panteon",
   "owner": "Zeus / Home",
   "createdAt": "2026-06-11T20:21:05-03:00",
-  "status": "HOTFIX_VALIDADO_LOCAL / PRODUCAO_AINDA_NAO_ATUALIZADA / AGUARDANDO_AUTORIZACAO_DE_DEPLOY",
+  "status": "HOTFIX_EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO",
   "summary": "Nova visao admin-only de jornada de disponibilidade na Home, focada em login, ausencia, almoco, retorno e logout, com regra de ausencia apos 3 minutos, logout automatico apos 5 minutos e excecao somente dentro da sala Chronos.",
   "authorization": {
     "requestedBy": "Lucas",
@@ -191,19 +191,19 @@
   ],
   "rollback": [
     "Reverter os arquivos listados em changedFiles para remover a aba Disponibilidade, a politica 3/5 e a excecao por sala Chronos.",
-    "Para producao, reapontar https://c2x.app.br para dpl_3nn79exgh9km3rfCd25UE48gX4cX se houver regressao critica.",
+    "Para rollback do hotfix em producao, reapontar https://c2x.app.br para dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT se houver regressao critica.",
     "Manter https://ops.c2x.app.br em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "nextSteps": [
     "Lucas validar visualmente a Home em producao com usuario admin autenticado.",
-    "Se Lucas identificar regressao critica, Zeus/Hefesto executa rollback de c2x.app.br para dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
+    "Se Lucas identificar regressao critica, Zeus/Hefesto executa rollback de c2x.app.br para dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT.",
     "Se Lucas quiser auditoria historica ainda mais granular, avaliar migration futura separada para registrar eventos de atividade sem depender apenas das transicoes de status existentes."
   ],
   "businessRuleRefinement": [
     {
       "revisedAt": "2026-06-12T12:14:34-03:00",
       "reason": "Lucas identificou perda de historico apos logout, ausencia de evento Ausente antes de Deslogado e duplicidade de Online/Almoco na linha do tempo.",
-      "status": "validado localmente, aguardando autorizacao de deploy",
+      "status": "publicado em producao no commit 3e913554",
       "rules": [
         "Ausente automatico so pode nascer depois de 3 minutos sem atividade no Panteon.",
         "Logout automatico precisa preservar Ausente imediatamente antes do Deslogado.",
@@ -224,7 +224,36 @@
         "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.",
         "git diff --check: PASS, com avisos CRLF esperados no Windows."
       ],
-      "deployment": "BLOQUEADO ate autorizacao explicita do Lucas para novo deploy."
+      "deployment": "Publicado em producao em 2026-06-12T12:24:24-03:00 no deployment dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT."
     }
-  ]
+  ],
+  "hotfixProduction": {
+    "publishedAt": "2026-06-12T12:24:24-03:00",
+    "commit": "3e913554",
+    "deploymentId": "dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT",
+    "productionUrl": "https://c2x.app.br",
+    "technicalUrl": "https://careli-hub-hub-i2bs-8cjxmbs1l-lucasruas-devs-projects.vercel.app",
+    "target": "production",
+    "package": "git archive do commit 3e913554 expandido fora do repositorio principal em %LOCALAPPDATA%\\Temp\\panteon-op013-hotfix-prod-3e913554",
+    "alias": {
+      "changed": "c2x.app.br",
+      "previousDeploymentId": "dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT",
+      "currentDeploymentId": "dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT",
+      "rollbackDeploymentId": "dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT"
+    },
+    "preservedAliases": {
+      "ops.c2x.app.br": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
+    },
+    "homologationParity": {
+      "status": "divergencia registrada",
+      "reason": "Lucas autorizou hotfix direto em producao para corrigir comportamento observado; homo.c2x.app.br nao foi reapontado nesta rodada."
+    },
+    "postDeployValidations": [
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT.",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+      "GET https://c2x.app.br/login: PASS 200.",
+      "GET https://ops.c2x.app.br/login: PASS 200.",
+      "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados."
+    ]
+  }
 }
