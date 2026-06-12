@@ -31,7 +31,12 @@ type MarkPresenceOptions = {
 };
 
 function isManualHoldPresence(status: HubPresenceStatus) {
-  return status === "agenda" || status === "away" || status === "lunch";
+  return (
+    status === "agenda" ||
+    status === "away" ||
+    status === "lunch" ||
+    status === "offline"
+  );
 }
 
 function isProtectedManualPresence(status: HubPresenceStatus | null) {
@@ -337,8 +342,17 @@ export function useHubPresenceController({
 
       const idleMs = Date.now() - lastActivityAtRef.current;
 
+      if (manualPresenceRef.current === "offline") {
+        clearPresenceTimers();
+        return;
+      }
+
       if (idleMs >= HUB_AUTO_LOGOUT_TIMEOUT_MS) {
         triggerAutoLogout(idleMs);
+        return;
+      }
+
+      if (manualPresenceRef.current === "away") {
         return;
       }
 

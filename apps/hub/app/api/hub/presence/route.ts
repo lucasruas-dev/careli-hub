@@ -733,6 +733,14 @@ function shouldPreserveManualPresence({
     return true;
   }
 
+  if (
+    (storedPreviousStatus === "away" || storedPreviousStatus === "offline") &&
+    nextStatus === "online" &&
+    reason === "heartbeat"
+  ) {
+    return true;
+  }
+
   return false;
 }
 

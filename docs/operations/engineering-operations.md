@@ -36987,3 +36987,42 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar o Panteon e testar em uma chamada real, preferencialmente marcando `Agenda` manualmente por mais de 5 minutos.
 - Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
 - Proximo passo: manter o hotfix se a chamada nao cair e a tela continuar registrando a jornada corretamente.
+
+### Complemento 2026-06-12 17:56:48 -03:00 - OP-013 selecao manual de status refinada
+
+- Status atualizado: `VALIDADO_LOCAL / PRODUCAO_AINDA_NAO_ATUALIZADA / AGUARDANDO_AUTORIZACAO_DE_DEPLOY`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas reportou em producao que nao conseguia selecionar manualmente outros status alem de `almoco` e `online`.
+- Diagnostico:
+  - `Ausente` manual era aceito no clique, mas o heartbeat automatico podia reenviar `online` antes do ciclo de 3 minutos, fazendo parecer que a selecao nao funcionava;
+  - `Offline` manual tambem nao tinha hold interno, entao podia ser revertido por atividade/heartbeat tecnico;
+  - a correcao anterior protegeu `Agenda` contra penalidade, mas ainda faltava separar melhor `manual hold` de `automatic heartbeat`.
+- Implementacao local:
+  - `apps/hub/hooks/use-hub-presence.ts` passou a manter hold manual tambem para `offline`;
+  - `updateAutomaticPresence` passou a respeitar `away` manual sem sobrescrever por heartbeat antes do tempo de logout;
+  - `offline` manual passou a limpar timers e nao reenviar `online` tecnico automaticamente;
+  - `apps/hub/app/api/hub/presence/route.ts` passou a preservar `away` e `offline` armazenados contra heartbeats tecnicos de `online`.
+- Regra de negocio vigente:
+  - selecao manual deve conseguir fixar `online`, `ausente`, `almoco`, `agenda` e `offline`;
+  - `agenda` manual ou automatica continua sem penalidade de ausencia/logout;
+  - `almoco` manual continua protegido;
+  - `ausente` manual fica selecionavel e pode seguir para logout automatico se o usuario permanecer sem atividade pelo limite configurado.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte;
+  - `git diff --check`: PASS, apenas aviso conhecido de CRLF.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhuma limpeza retroativa foi executada em `hub_presence_events`.
+- Risco residual:
+  - producao segue com o hotfix anterior ate Lucas autorizar a publicacao deste refinamento.
+
+Conclusao:
+
+- O que aconteceu: a selecao manual estava sendo revertida por heartbeat tecnico em alguns status.
+- Impacto pratico: apos publicar, o usuario deve conseguir selecionar manualmente `ausente`, `agenda`, `almoco`, `offline` e `online`.
+- Precisa de acao agora: Lucas precisa autorizar novo deploy para aplicar em producao.
+- Quem deve agir agora: Zeus aguarda autorizacao de deploy.
+- Proximo passo: publicar e validar no topbar se cada opcao permanece selecionada apos o clique.
