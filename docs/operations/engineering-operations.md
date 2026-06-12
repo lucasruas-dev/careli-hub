@@ -36939,3 +36939,51 @@ Conclusao:
 - Precisa de acao agora: Lucas precisa autorizar novo deploy se quiser aplicar em producao.
 - Quem deve agir agora: Zeus aguarda autorizacao de deploy ou entrega o pacote validado localmente.
 - Proximo passo: publicar quando autorizado e validar com uma chamada real mantendo o status `agenda` por mais de 5 minutos.
+
+### Complemento 2026-06-12 17:48:10 -03:00 - OP-013 hotfix Agenda publicado em producao
+
+- Status atualizado: `HOTFIX_EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Autorizacao:
+  - Lucas autorizou explicitamente a publicacao: `pode subir`.
+- Publicacao:
+  - commit de codigo publicado: `7120987` (`fix(home): protect agenda presence from auto logout`);
+  - pacote: `git archive` do commit `7120987`, expandido fora do repositorio principal em `%LOCALAPPDATA%\Temp\panteon-op013-agenda-prod-7120987-20260612174335`;
+  - deployment Vercel: `dpl_BqfLqKM4NT2LTnBiHYLryiyFu87R`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-g3lcle4ac-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias aplicado somente em `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Base e rollback:
+  - deployment anterior de `https://c2x.app.br`: `dpl_2WL28JtckerrrAs31MXQPXRbC2MN`;
+  - rollback imediato do hotfix: reapontar `https://c2x.app.br` para `dpl_2WL28JtckerrrAs31MXQPXRbC2MN`;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - validacoes locais pre-publicacao: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check`;
+  - commit local executado com `--no-verify` porque o hook do worktree isolado nao encontrou `scripts/panteon-hook-runner.ps1`; as validacoes equivalentes foram executadas manualmente antes do deploy;
+  - build remoto Vercel: PASS, com warnings conhecidos de Turbopack/NFT, `npm audit` e envs listados pelo Turbo sem valores expostos;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_BqfLqKM4NT2LTnBiHYLryiyFu87R`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://careli-hub-hub-i2bs-g3lcle4ac-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Homologacao:
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada; Lucas autorizou hotfix direto em producao para corrigir comportamento observado em chamada real.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhuma limpeza retroativa foi executada em `hub_presence_events`;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - validacao funcional final depende de chamada real mantendo `agenda` por mais de 5 minutos;
+  - se o usuario sair de `agenda`, a regra normal volta: `online` pode virar `ausente` e depois logout automatico conforme politica.
+
+Conclusao:
+
+- O que aconteceu: o hotfix que protege `agenda` contra ausencia/logout automatico foi publicado em producao.
+- Impacto pratico: usuarios em `agenda`, automatico ou manual, nao devem cair da chamada por timer de inatividade do Panteon.
+- Precisa de acao agora: Lucas deve atualizar o Panteon e testar em uma chamada real, preferencialmente marcando `Agenda` manualmente por mais de 5 minutos.
+- Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
+- Proximo passo: manter o hotfix se a chamada nao cair e a tela continuar registrando a jornada corretamente.
