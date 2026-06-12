@@ -3,7 +3,7 @@
   "module": "Home / Panteon",
   "owner": "Zeus / Home",
   "createdAt": "2026-06-11T20:21:05-03:00",
-  "status": "REVISAO_VALIDADA_LOCAL / PREVIEW_ANTERIOR_OBSOLETO / PRODUCAO_INTACTA / AGUARDANDO_AUTORIZACAO_NOVO_PREVIEW",
+  "status": "PREVIEW_REVISADO_PUBLICADO / PRODUCAO_INTACTA / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS",
   "summary": "Nova visao admin-only de jornada de disponibilidade na Home, focada em login, ausencia, almoco, retorno e logout, com regra de ausencia apos 3 minutos, logout automatico apos 5 minutos e excecao somente dentro da sala Chronos.",
   "authorization": {
     "requestedBy": "Lucas",
@@ -30,7 +30,7 @@
   "revision": {
     "revisedAt": "2026-06-12T10:07:31-03:00",
     "reason": "Lucas rejeitou a primeira versao por excesso de informacao e apontou que a regra de inatividade nao foi assertiva porque permaneceu online apos longo periodo sem uso.",
-    "status": "validada localmente, ainda nao publicada em novo Preview",
+    "status": "Preview revisado publicado, aguardando validacao visual autenticada do Lucas",
     "diagnosis": [
       "A tela anterior trazia produtividade e indicadores demais para a necessidade real de auditoria macro.",
       "O backend e o hook permitiam que uma reuniao Chronos agendada no horario atual segurasse status de agenda/online mesmo sem uso real do Panteon.",
@@ -49,10 +49,24 @@
       "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
       "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.",
       "git diff --check: PASS, com avisos esperados de LF para CRLF.",
-      "Browser local em http://localhost:3011/login: PASS 200, titulo Panteon, sem erros de console; validacao autenticada da Home depende de sessao admin do Lucas."
+      "Browser local em http://localhost:3011/login: PASS 200, titulo Panteon, sem erros de console; validacao autenticada da Home depende de sessao admin do Lucas.",
+      "npx.cmd vercel deploy --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes em pacote limpo por git archive do commit 475e69ee: PASS, Ready em dpl_9jQAPCUndbkjxUksbwhZ8Us9wXg1, target preview.",
+      "GET https://careli-hub-hub-i2bs-ekqgzgvoa-lucasruas-devs-projects.vercel.app/login: PASS 200.",
+      "npx.cmd vercel inspect https://c2x.app.br: Ready preservado em dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
+      "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
     ],
+    "deployment": {
+      "publishedAt": "2026-06-12T10:24:08-03:00",
+      "commit": "475e69ee",
+      "deploymentId": "dpl_9jQAPCUndbkjxUksbwhZ8Us9wXg1",
+      "previewUrl": "https://careli-hub-hub-i2bs-ekqgzgvoa-lucasruas-devs-projects.vercel.app",
+      "inspectorUrl": "https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/9jQAPCUndbkjxUksbwhZ8Us9wXg1",
+      "target": "preview",
+      "package": "git archive do commit 475e69ee expandido fora do repositorio principal em pasta temporaria",
+      "obsoletePreview": "dpl_2k48EuLxgybr4toMKJnHgbVYQ981"
+    },
     "safety": [
-      "Nenhum deploy, redeploy, alias, production deployment, env, secret, migration, schema ou escrita manual em Supabase foi executado nesta revisao.",
+      "Nenhum --prod, alias, env, secret, migration, schema ou escrita manual em Supabase foi executado nesta revisao.",
       "O processo node na porta local 3011 ficou identificado por PID/nome, mas nao foi encerrado automaticamente porque o encerramento foi bloqueado pela revisao de seguranca sem identificacao mais forte do listener."
     ]
   },

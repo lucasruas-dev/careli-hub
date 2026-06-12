@@ -2039,3 +2039,51 @@ Registro de homologacao:
 - Pendencias: Lucas validar a Home no Preview com usuario admin.
 - Status: `PREVIEW_PUBLICADO / AGUARDANDO_VALIDACAO_VISUAL`.
 - Proxima acao: Lucas validar e decidir se Zeus prepara homologacao compartilhada ou ajustes adicionais.
+
+Registro de Preview tecnico:
+
+- Assunto: `[Zeus] Home disponibilidade jornada simples`.
+- Modulo/agente: `Zeus / Home`.
+- Data e hora local: `2026-06-12 10:24:08 -03:00`.
+- Ambiente: `Preview tecnico`, sem alias de homologacao e sem alteracao em producao.
+- Origem: Lucas rejeitou a primeira tela por excesso de informacao, pediu uma visao macro de jornada e autorizou novo Preview apos confirmar que Preview nao altera producao.
+- Escopo publicado:
+  - aba admin `Disponibilidade` simplificada para auditoria de jornada;
+  - filtros por colaborador e tipo de evento;
+  - linha do tempo de login, ausencia, almoco, volta e logout;
+  - painel `Meu dia` com apenas logins, ausencias, almoco e logouts;
+  - regra de ausencia apos 3 minutos e logout apos 5 minutos;
+  - excecao de reuniao restrita a entrada real na sala `/chronos/[roomSlug]`.
+- Protocolo relacionado: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Commit de codigo: `475e69ee`.
+- Pacote limpo de deploy: `git archive` do commit `475e69ee` expandido fora do repositorio principal em pasta temporaria.
+- Deployment Vercel oficial do Preview: `dpl_9jQAPCUndbkjxUksbwhZ8Us9wXg1`.
+- URL tecnica: `https://careli-hub-hub-i2bs-ekqgzgvoa-lucasruas-devs-projects.vercel.app`.
+- Preview anterior obsoleto: `dpl_2k48EuLxgybr4toMKJnHgbVYQ981`.
+- Arquivos incluidos:
+  - `apps/hub/app/api/hub/home/route.ts`;
+  - `apps/hub/app/page.tsx`;
+  - `apps/hub/hooks/use-hub-presence.ts`;
+  - `apps/hub/lib/hub-home.ts`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-manifest-home-20260611-013-availability-strategy.json`;
+  - `docs/operations/releases-homologation.md`.
+- Arquivos/modulos excluidos:
+  - Producao, aliases `c2x.app.br` e `ops.c2x.app.br`, envs, secrets, migrations, banco mutavel, Supabase manual, Hades, Hermes, Iris, Atlas, Setup e Chronos funcional.
+- Validacoes executadas:
+  - lint direcionado do recorte Home/presenca: OK;
+  - `npm.cmd run check-types:hub`: OK;
+  - `npm.cmd run build --workspace @repo/hub`: OK, com warnings conhecidos Turbopack/NFT fora do recorte;
+  - `git diff --check`: OK, apenas avisos CRLF do Git no Windows;
+  - Browser local em `http://localhost:3011/login`: OK, sem erros de console;
+  - `npx.cmd vercel deploy --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`: OK, Preview `dpl_9jQAPCUndbkjxUksbwhZ8Us9wXg1`;
+  - `npx.cmd vercel inspect` da URL tecnica: Ready, target `preview`;
+  - `GET /login` na URL tecnica: `200 OK`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: preservado em `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Riscos conhecidos:
+  - validacao funcional da aba admin depende de sessao autenticada do Lucas;
+  - testes no Preview podem gravar eventos reais de presenca/status se o ambiente apontar para a mesma base operacional.
+- Pendencias: Lucas validar a Home no Preview com usuario admin.
+- Status: `PREVIEW_REVISADO_PUBLICADO / AGUARDANDO_VALIDACAO_VISUAL`.
+- Proxima acao: Lucas validar a URL tecnica revisada e decidir se Zeus prepara homologacao compartilhada ou novos ajustes.

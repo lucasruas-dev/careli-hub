@@ -36474,3 +36474,45 @@ Conclusao:
 - Precisa de acao agora: publicar um novo Preview exige autorizacao explicita do Lucas.
 - Quem deve agir agora: Zeus aguarda autorizacao de Preview; Lucas valida a proxima URL autenticada quando publicada.
 - Proximo passo: gerar Preview limpo desta revisao e substituir a validacao do Preview anterior.
+
+### Complemento 2026-06-12 10:24:08 -03:00 - OP-013 Preview revisado publicado sem alterar producao
+
+- Status atualizado: `PREVIEW_REVISADO_PUBLICADO / PRODUCAO_INTACTA / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Autorizacao:
+  - Lucas perguntou se Preview tinha impacto em producao;
+  - Zeus explicou que Preview nao altera `c2x.app.br`, `ops.c2x.app.br`, alias, env, migration ou codigo de producao, mas pode gerar dados operacionais se apontar para a mesma base;
+  - Lucas autorizou: `pode subir`.
+- Deploy Preview revisado:
+  - commit publicado: `475e69ee` (`fix(home): simplify availability journey`);
+  - pacote: `git archive` do commit `475e69ee`, expandido em pasta temporaria fora do repositorio principal;
+  - comando: `npx.cmd vercel deploy --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - deployment: `dpl_9jQAPCUndbkjxUksbwhZ8Us9wXg1`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-ekqgzgvoa-lucasruas-devs-projects.vercel.app`;
+  - inspector: `https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/9jQAPCUndbkjxUksbwhZ8Us9wXg1`;
+  - target: `preview`;
+  - Preview anterior `dpl_2k48EuLxgybr4toMKJnHgbVYQ981` ficou obsoleto para validacao da tela.
+- Validacoes pos-deploy:
+  - `npx.cmd vercel inspect https://careli-hub-hub-i2bs-ekqgzgvoa-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects`: Ready, target `preview`;
+  - `GET https://careli-hub-hub-i2bs-ekqgzgvoa-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Build remoto:
+  - PASS com warnings conhecidos de Turbopack/NFT no import de `squadops/engineering-operations-source.ts`;
+  - npm audit reportou 3 vulnerabilidades ja existentes na instalacao remota;
+  - Turbo avisou variaveis de ambiente fora de `turbo.json`, sem expor valores sensiveis.
+- Fora do escopo:
+  - nenhum `--prod`;
+  - nenhum `vercel alias set`;
+  - nenhum env, secret, migration, schema, Supabase manual, dominio, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional alterado.
+- Risco residual:
+  - a validacao visual completa da aba `Disponibilidade` revisada depende de sessao autenticada admin do Lucas;
+  - testes no Preview podem registrar eventos de presenca/status se o ambiente apontar para a mesma base operacional.
+
+Conclusao:
+
+- O que aconteceu: o Preview tecnico da versao simplificada da Home/Disponibilidade foi publicado.
+- Impacto pratico: Lucas agora tem uma URL valida para testar a auditoria de jornada e a regra 3/5 sem alterar producao.
+- Precisa de acao agora: Lucas deve abrir o Preview, entrar com usuario admin e validar a aba `Disponibilidade`.
+- Quem deve agir agora: Lucas valida visualmente; Zeus corrige se houver divergencia.
+- Proximo passo: se Lucas aprovar a experiencia, decidir se o pacote segue para homologacao compartilhada.
