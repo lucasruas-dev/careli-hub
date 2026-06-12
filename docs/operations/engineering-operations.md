@@ -36619,3 +36619,44 @@ Conclusao:
 - Precisa de acao agora: publicar novo Preview depende de autorizacao explicita do Lucas.
 - Quem deve agir agora: Lucas decide se esta revisao deve ir para novo Preview.
 - Proximo passo: gerar Preview limpo do ajuste quando autorizado.
+
+### Complemento 2026-06-12 11:20:59 -03:00 - OP-013 publicado em producao
+
+- Status atualizado: `EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Autorizacao:
+  - Lucas autorizou explicitamente: `pode subir em producao`.
+- Publicacao:
+  - commit publicado: `45b13b3b` (`fix(home): clarify availability status events`);
+  - pacote: `git archive` do commit `45b13b3b`, expandido fora do repositorio principal em `%LOCALAPPDATA%\Temp\panteon-op013-prod-45b13b3b`;
+  - deployment Vercel: `dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-9k161rpaf-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias aplicado somente em `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Base e rollback:
+  - deployment anterior de `https://c2x.app.br`: `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - rollback imediato: reapontar `https://c2x.app.br` para `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - validacoes locais pre-publicacao ja registradas para o commit `45b13b3b`: eslint do recorte Home, `check-types:hub` e build do Hub com warnings conhecidos;
+  - build remoto Vercel: PASS, com warning conhecido de Turbopack/NFT e avisos existentes de envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhum valor sensivel foi impresso ou registrado.
+- Risco residual:
+  - a validacao visual autenticada final da aba `Disponibilidade` em producao depende do acesso admin do Lucas;
+  - a regra de presenca usa os eventos/status existentes do Hub, sem migration nova nesta entrega.
+
+Conclusao:
+
+- O que aconteceu: o recorte OP-013 da Home/Disponibilidade foi publicado em producao.
+- Impacto pratico: `https://c2x.app.br` agora contem a tela macro revisada com historico por data, eventos macro, retorno como `Online` e fallback de status atual.
+- Precisa de acao agora: Lucas deve validar visualmente a aba `Disponibilidade` em producao com usuario admin.
+- Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
+- Proximo passo: se a validacao estiver boa, manter o registro como `EM PRODUCAO`.

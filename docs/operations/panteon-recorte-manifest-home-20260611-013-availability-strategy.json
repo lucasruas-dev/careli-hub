@@ -3,12 +3,13 @@
   "module": "Home / Panteon",
   "owner": "Zeus / Home",
   "createdAt": "2026-06-11T20:21:05-03:00",
-  "status": "PREVIEW_REVISADO_PUBLICADO / PRODUCAO_INTACTA / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS",
+  "status": "EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO",
   "summary": "Nova visao admin-only de jornada de disponibilidade na Home, focada em login, ausencia, almoco, retorno e logout, com regra de ausencia apos 3 minutos, logout automatico apos 5 minutos e excecao somente dentro da sala Chronos.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Lucas solicitou uma aba macro para admins acompanharem disponibilidade, produtividade e historico completo de acesso/status, alem de atualizar a regra atual de 10 minutos para ausencia em 3 minutos e logout em 5 minutos.",
-    "deployment": "Lucas autorizou subir com seguranca sem alterar producao; publicado apenas Preview tecnico, sem --prod e sem alias."
+    "deployment": "Lucas autorizou subir com seguranca sem alterar producao; publicado primeiro apenas Preview tecnico, sem --prod e sem alias.",
+    "production": "Lucas autorizou explicitamente a producao em 2026-06-12: pode subir em producao."
   },
   "deployment": {
     "publishedAt": "2026-06-11T20:41:11-03:00",
@@ -100,7 +101,7 @@
       "statusLanguageTuning": {
         "revisedAt": "2026-06-12T11:09:10-03:00",
         "reason": "Lucas questionou o termo Volta e reforcou que a jornada deve aparecer como ausente ou almoco e depois online; apos logout, o proximo retorno deve aparecer como login.",
-        "status": "validado localmente, ainda nao publicado em novo Preview",
+        "status": "publicado em producao no commit 45b13b3b",
         "changes": [
           "Evento de retorno de ausencia/almoco passou a ser exibido como Online e frase ficou online.",
           "Evento vindo de offline/logout continua sendo exibido como Login.",
@@ -110,7 +111,12 @@
         "validations": [
           "npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
           "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
-          "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home."
+          "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.",
+          "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes em pacote limpo por git archive do commit 45b13b3b: PASS, Ready em dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT, target production.",
+          "npx.cmd vercel alias set https://careli-hub-hub-i2bs-9k161rpaf-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: PASS.",
+          "GET https://c2x.app.br/login: PASS 200.",
+          "GET https://ops.c2x.app.br/login: PASS 200.",
+          "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: PASS, sem logs encontrados."
         ]
       }
     },
@@ -129,6 +135,31 @@
     "Atualizar Meu dia para exibir resumo individual de logins, ausencias, almoco e logouts.",
     "Nao alterar schema, migrations, envs, secrets, Supabase manual, Hades, Hermes, Iris, Atlas, Setup, Chronos funcional ou aliases Vercel."
   ],
+  "production": {
+    "publishedAt": "2026-06-12T11:20:59-03:00",
+    "commit": "45b13b3b",
+    "deploymentId": "dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT",
+    "productionUrl": "https://c2x.app.br",
+    "technicalUrl": "https://careli-hub-hub-i2bs-9k161rpaf-lucasruas-devs-projects.vercel.app",
+    "target": "production",
+    "package": "git archive do commit 45b13b3b expandido fora do repositorio principal em %LOCALAPPDATA%\\Temp\\panteon-op013-prod-45b13b3b",
+    "alias": {
+      "changed": "c2x.app.br",
+      "previousDeploymentId": "dpl_3nn79exgh9km3rfCd25UE48gX4cX",
+      "currentDeploymentId": "dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT",
+      "rollbackDeploymentId": "dpl_3nn79exgh9km3rfCd25UE48gX4cX"
+    },
+    "preservedAliases": {
+      "ops.c2x.app.br": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
+    },
+    "postDeployValidations": [
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT.",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+      "GET https://c2x.app.br/login: PASS 200.",
+      "GET https://ops.c2x.app.br/login: PASS 200.",
+      "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados."
+    ]
+  },
   "changedFiles": [
     "apps/hub/app/api/hub/home/route.ts",
     "apps/hub/app/api/hub/presence/route.ts",
@@ -160,12 +191,12 @@
   ],
   "rollback": [
     "Reverter os arquivos listados em changedFiles para remover a aba Disponibilidade, a politica 3/5 e a excecao por sala Chronos.",
-    "Sem rollback de banco, env, secret ou alias, pois nenhum deles foi alterado neste recorte."
+    "Para producao, reapontar https://c2x.app.br para dpl_3nn79exgh9km3rfCd25UE48gX4cX se houver regressao critica.",
+    "Manter https://ops.c2x.app.br em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "nextSteps": [
-    "Lucas autorizar novo Preview da revisao simplificada, se quiser testar fora do localhost.",
-    "Lucas validar visualmente a Home com usuario admin autenticado apos novo Preview.",
-    "Se aprovado, Zeus pode preparar Homologacao mediante autorizacao explicita.",
+    "Lucas validar visualmente a Home em producao com usuario admin autenticado.",
+    "Se Lucas identificar regressao critica, Zeus/Hefesto executa rollback de c2x.app.br para dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
     "Se Lucas quiser auditoria historica ainda mais granular, avaliar migration futura separada para registrar eventos de atividade sem depender apenas das transicoes de status existentes."
   ]
 }

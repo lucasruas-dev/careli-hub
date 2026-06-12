@@ -3723,3 +3723,57 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_22xsgtvniG9sJsqPgA2NtNhvAv9H` se a primeira validacao real confirmar regressao do hotfix;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-12 - PROD-20260612-013-HOME-AVAILABILITY-STRATEGY
+
+Status: EM PRODUCAO / C2X ATUALIZADO / OPS PRESERVADO.
+
+Registro de producao:
+
+- Assunto: `[Home] Disponibilidade macro e historico de jornada`.
+- Protocolo de origem: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Squad/agente responsavel: `Zeus / Home`.
+- Data e hora local: `2026-06-12 11:20:59 -03:00`.
+- Autorizacao: Lucas autorizou explicitamente: `pode subir em producao`.
+- Ambiente alvo: `producao`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - rollback imediato de `https://c2x.app.br`: `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - pacote candidato: `%LOCALAPPDATA%\Temp\panteon-op013-prod-45b13b3b`;
+  - commit candidato: `45b13b3b`.
+- Escopo publicado:
+  - aba admin-only `Disponibilidade` na Home;
+  - historico macro agrupado por data e expansivel;
+  - filtro de colaborador, data e evento;
+  - eventos exibidos como login, ausencia, almoco, online e logout, sem transicoes tecnicas `agenda -> online`;
+  - fallback de status atual para evitar `Nenhum registro` quando o colaborador tem status operacional;
+  - regra de presenca 3 minutos para ausencia e 5 minutos para logout automatico, com excecao apenas em sala Chronos real.
+- Publicacao:
+  - deployment novo: `dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-9k161rpaf-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pre-publicacao:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.
+- Validacoes pos-publicacao:
+  - build remoto Vercel: PASS, com warning conhecido de Turbopack/NFT e avisos existentes de envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - a validacao visual autenticada final da aba `Disponibilidade` em producao depende do usuario admin do Lucas;
+  - a regra de presenca usa eventos/status existentes do Hub e nao criou migration nova.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_3nn79exgh9km3rfCd25UE48gX4cX` se Lucas identificar regressao critica;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
