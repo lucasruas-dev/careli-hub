@@ -36738,3 +36738,38 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar a aba `Disponibilidade` em producao com usuario admin.
 - Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
 - Proximo passo: manter `c2x.app.br` no hotfix se a validacao estiver boa.
+
+### Complemento 2026-06-12 14:06:01 -03:00 - OP-013 diagnostica historico ausente apos hotfix
+
+- Status atualizado: `HOTFIX_VALIDADO_LOCAL / PRODUCAO_AINDA_NAO_ATUALIZADA / AGUARDANDO_AUTORIZACAO_DE_DEPLOY`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas identificou que a aba `Disponibilidade` continuava sem historico suficiente apos o hotfix;
+  - Lucas perguntou se os logs estavam sendo registrados em banco.
+- Diagnostico:
+  - os registros de auditoria da jornada sao persistidos em `hub_presence_events`;
+  - o status atual fica em `hub_presence`;
+  - a API tambem cria eventos operacionais em `hub_activity_events`;
+  - a falha encontrada estava em `apps/hub/app/api/hub/presence/route.ts`: ao calcular o status fresco, um `online` sem atividade por 3 minutos era interpretado como `away` antes da decisao de gravar auditoria; com isso, o PATCH de `idle -> away` atualizava `hub_presence`, mas podia nao inserir o evento em `hub_presence_events`.
+- Implementacao local:
+  - `apps/hub/app/api/hub/presence/route.ts` passou a decidir a gravacao usando tambem o status realmente armazenado (`storedPreviousStatus`);
+  - em transicao `idle/away`, se o status armazenado ainda nao era `away`, o evento agora e registrado mesmo quando o status fresco ja foi normalizado como `away`;
+  - `apps/hub/app/api/hub/home/route.ts` deixou de cortar o historico visual em 120 eventos depois de ja buscar 500 eventos do banco.
+- Validacoes:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/api/hub/presence/route.ts app/api/hub/home/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.
+- Fora do escopo:
+  - nenhum deploy, alias, env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado nesta etapa;
+  - nenhuma consulta direta ao banco foi executada nesta etapa.
+- Risco residual:
+  - eventos `away` que nao foram inseridos no banco antes desta correcao nao sao recuperados automaticamente sem uma rotina retroativa especifica;
+  - producao segue com o comportamento anterior ate Lucas autorizar novo deploy.
+
+Conclusao:
+
+- O que aconteceu: a causa tecnica do historico ausente foi identificada e corrigida localmente.
+- Impacto pratico: novos ciclos de inatividade passam a gravar `Ausente` em `hub_presence_events`, em vez de atualizar apenas o status atual.
+- Precisa de acao agora: Lucas precisa autorizar o deploy deste hotfix para corrigir producao.
+- Quem deve agir agora: Lucas autoriza; Zeus/Hefesto publicam com pacote limpo e rollback registrado.
+- Proximo passo: publicar o hotfix quando autorizado.

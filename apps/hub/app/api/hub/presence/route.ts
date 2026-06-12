@@ -345,13 +345,25 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  if (previousStatus !== nextStatus) {
+  if (
+    shouldRecordPresenceTransition({
+      nextStatus,
+      previousStatus,
+      reason: payload.data.reason,
+      storedPreviousStatus,
+    })
+  ) {
     const eventResult = await recordPresenceTransition({
       context,
       metadata: payload.data.metadata,
       nextStatus,
       now,
-      previousStatus,
+      previousStatus: getPresenceTransitionPreviousStatus({
+        nextStatus,
+        previousStatus,
+        reason: payload.data.reason,
+        storedPreviousStatus,
+      }),
       reason: payload.data.reason,
       source: payload.data.source,
       storedPreviousStatus,
@@ -684,6 +696,51 @@ function shouldBridgeAwayBeforeTransition({
   return getIdleMs(metadata) >= HUB_IDLE_TIMEOUT_MS;
 }
 
+function shouldRecordPresenceTransition({
+  nextStatus,
+  previousStatus,
+  reason,
+  storedPreviousStatus,
+}: {
+  nextStatus: Exclude<HubPresenceStatus, "busy">;
+  previousStatus: Exclude<HubPresenceStatus, "busy">;
+  reason: string;
+  storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
+}) {
+  if (previousStatus !== nextStatus) {
+    return true;
+  }
+
+  return (
+    reason === "idle" &&
+    nextStatus === "away" &&
+    storedPreviousStatus !== "away"
+  );
+}
+
+function getPresenceTransitionPreviousStatus({
+  nextStatus,
+  previousStatus,
+  reason,
+  storedPreviousStatus,
+}: {
+  nextStatus: Exclude<HubPresenceStatus, "busy">;
+  previousStatus: Exclude<HubPresenceStatus, "busy">;
+  reason: string;
+  storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
+}) {
+  if (
+    reason === "idle" &&
+    nextStatus === "away" &&
+    previousStatus === "away" &&
+    storedPreviousStatus !== "away"
+  ) {
+    return storedPreviousStatus;
+  }
+
+  return previousStatus;
+}
+
 function shouldPreserveManualPresence({
   nextStatus,
   reason,
@@ -812,7 +869,7 @@ function parsePresencePayload(payload: unknown): ParsedPresencePayload {
   };
 }
 
-function normalizeFreshPresence(row: HubPresenceRow): HubPresenceStatus {
+function normalizeFreshPresence(row: HubPresenceRow): Exclude<HubPresenceStatus, "busy"> {
   const status = normalizeLegacyPresence(row.status);
 
   if (status === "offline" || status === "agenda" || status === "lunch") {

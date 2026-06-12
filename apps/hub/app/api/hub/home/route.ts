@@ -613,7 +613,7 @@ async function loadAvailabilitySnapshot({
 
   return {
     generatedAt: rangeEnd.toISOString(),
-    history: events.slice(0, 120).map((event) => ({
+    history: events.map((event) => ({
       createdAt: event.created_at,
       endedAt: event.ended_at ?? undefined,
       id: event.id,
