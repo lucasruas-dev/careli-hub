@@ -220,6 +220,7 @@ type HomeDatabase = {
 type SupabaseAdminClient = ReturnType<typeof createClient<HomeDatabase>>;
 
 const availabilityHistoryDays = 7;
+const availabilityHistoryLimitPerUser = 250;
 
 export async function GET(request: NextRequest) {
   const context = await createAuthorizedContext(request);
@@ -555,18 +556,12 @@ async function loadAvailabilitySnapshot({
   const historyStart = new Date(rangeStart);
   historyStart.setDate(historyStart.getDate() - (availabilityHistoryDays - 1));
 
-  const { data, error } = await adminClient
-    .from("hub_presence_events")
-    .select(
-      "id,user_id,previous_status,next_status,reason,source,metadata,started_at,ended_at,created_at",
-    )
-    .is("module_id", null)
-    .is("workspace_id", null)
-    .gte("started_at", historyStart.toISOString())
-    .order("started_at", { ascending: false })
-    .limit(500);
-  const events = error ? [] : ((data ?? []) as HubPresenceEventRow[]);
   const activeUsers = users.filter((user) => user.status === "active");
+  const events = await loadAvailabilityHistoryEvents({
+    activeUsers,
+    adminClient,
+    historyStart: historyStart.toISOString(),
+  });
   const eventsByUserId = groupPresenceEventsByUser(events);
   const userNames = new Map(activeUsers.map((user) => [user.id, user.display_name]));
   const team = activeUsers.map((user) => {
@@ -640,6 +635,45 @@ async function loadAvailabilitySnapshot({
     summary: createAvailabilitySummary(team, events),
     team,
   };
+}
+
+async function loadAvailabilityHistoryEvents({
+  activeUsers,
+  adminClient,
+  historyStart,
+}: {
+  activeUsers: HubUserRow[];
+  adminClient: SupabaseAdminClient;
+  historyStart: string;
+}) {
+  if (!activeUsers.length) {
+    return [];
+  }
+
+  const results = await Promise.all(
+    activeUsers.map((user) =>
+      adminClient
+        .from("hub_presence_events")
+        .select(
+          "id,user_id,previous_status,next_status,reason,source,metadata,started_at,ended_at,created_at",
+        )
+        .eq("user_id", user.id)
+        .is("module_id", null)
+        .is("workspace_id", null)
+        .gte("started_at", historyStart)
+        .order("started_at", { ascending: false })
+        .limit(availabilityHistoryLimitPerUser),
+    ),
+  );
+
+  return results
+    .flatMap((result) =>
+      result.error ? [] : ((result.data ?? []) as HubPresenceEventRow[]),
+    )
+    .sort(
+      (firstEvent, secondEvent) =>
+        Date.parse(secondEvent.started_at) - Date.parse(firstEvent.started_at),
+    );
 }
 
 async function loadCurrentChronosMeetingsByUserId(

@@ -1431,7 +1431,7 @@ function pushJourneyEventItem({
     return;
   }
 
-  if (previousItem && shouldSkipJourneyEvent(previousItem, item)) {
+  if (shouldSkipJourneyEvent(previousItem, item)) {
     return;
   }
 
@@ -1452,12 +1452,32 @@ function shouldReplacePreviousJourneyEvent(
 }
 
 function shouldSkipJourneyEvent(
-  previousItem: JourneyEventItem,
+  previousItem: JourneyEventItem | undefined,
   item: JourneyEventItem,
 ) {
+  if (!previousItem) {
+    return false;
+  }
+
   const deltaMs = getJourneyTimeDeltaMs(previousItem, item);
 
-  if (item.kind === previousItem.kind && deltaMs <= 60_000) {
+  // Keep the first online marker of a cycle; suppress heartbeat noise after it.
+  if (item.kind === previousItem.kind) {
+    return true;
+  }
+
+  if (
+    isPositiveJourneyEvent(item.kind) &&
+    isPositiveJourneyEvent(previousItem.kind)
+  ) {
+    return true;
+  }
+
+  if (
+    item.kind === "return" &&
+    previousItem.kind !== "away" &&
+    previousItem.kind !== "lunch"
+  ) {
     return true;
   }
 
@@ -1480,6 +1500,10 @@ function shouldSkipJourneyEvent(
   }
 
   return false;
+}
+
+function isPositiveJourneyEvent(kind: AvailabilityEventKind) {
+  return kind === "login" || kind === "return";
 }
 
 function createSyntheticAwayBeforeLogout(

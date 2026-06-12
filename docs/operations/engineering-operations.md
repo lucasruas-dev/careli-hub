@@ -36817,3 +36817,37 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar a Home e testar um ciclo real de 3 minutos sem atividade.
 - Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
 - Proximo passo: manter o hotfix se a validacao confirmar que o historico voltou.
+
+### Complemento 2026-06-12 15:15:07 -03:00 - OP-013 refinamento da jornada de disponibilidade
+
+- Status atualizado: `VALIDADO_LOCAL / PRODUCAO_AINDA_NAO_ATUALIZADA / AGUARDANDO_AUTORIZACAO_DE_DEPLOY`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas validou em producao que a aba `Disponibilidade` ainda ficava confusa, com sequencias de `ficou online` repetidas e historico pobre para alguns colaboradores;
+  - Lucas reforcou a regra esperada: manter o primeiro `online` do ciclo, mas ocultar/gravar como ruido os proximos `online` tecnicos ate existir uma mudanca real (`ausente`, `almoco` ou `deslogado`).
+- Diagnostico:
+  - a rota de presenca ainda decidia parte da auditoria a partir do status fresco (`normalizeFreshPresence`), que transforma um `online` antigo em `away` quando `last_seen_at` passa de 3 minutos;
+  - por isso, alguns heartbeats ou atividades tecnicas podiam ser interpretados como `away -> online` e virar eventos humanos repetidos;
+  - a Home tambem buscava um limite global de eventos, entao um colaborador com muitos registros ruidosos podia consumir a janela e empobrecer o historico de outro colaborador.
+- Implementacao local:
+  - `apps/hub/app/api/hub/presence/route.ts` passou a gravar auditoria somente por mudanca real do status armazenado em `hub_presence`, preservando ponte `online -> away -> offline/online` apenas quando o payload trouxer `idleMs` acima do limite de 3 minutos;
+  - `apps/hub/app/api/hub/home/route.ts` passou a carregar historico por colaborador ativo, com limite por pessoa, reduzindo risco de uma sequencia ruidosa esconder outro historico;
+  - `apps/hub/app/page.tsx` passou a consolidar a timeline: mantem o primeiro `online` do ciclo e remove `online` repetido enquanto nao houver `ausente`, `almoco` ou `deslogado` entre eles.
+- Validacoes:
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhuma limpeza retroativa foi executada em `hub_presence_events`; a tela apenas deixa de exibir repeticoes antigas como jornada real.
+- Risco residual:
+  - registros ruidosos antigos continuam no banco por rastreabilidade, mas deixam de dominar a tela;
+  - producao segue com a versao anterior ate Lucas autorizar novo deploy.
+
+Conclusao:
+
+- O que aconteceu: a regra da jornada foi refinada para separar batimento tecnico de mudanca real de disponibilidade.
+- Impacto pratico: a aba `Disponibilidade` deve mostrar uma linha macro confiavel: primeiro online/login, ausente, almoco, volta, logout e novo login, sem `online` repetido.
+- Precisa de acao agora: Lucas precisa autorizar novo deploy se quiser aplicar a correcao em producao.
+- Quem deve agir agora: Zeus aguarda autorizacao para publicar ou mantém o pacote validado localmente.
+- Proximo passo: publicar o refinamento quando autorizado e validar em producao com um ciclo real de 3 e 5 minutos.

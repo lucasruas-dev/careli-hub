@@ -284,9 +284,6 @@ export async function PATCH(request: NextRequest) {
   const storedPreviousStatus = existingPresence
     ? normalizeLegacyPresence(existingPresence.status)
     : "offline";
-  const previousStatus = existingPresence
-    ? normalizeFreshPresence(existingPresence)
-    : "offline";
   const nextStatus = payload.data.status;
 
   if (
@@ -347,9 +344,8 @@ export async function PATCH(request: NextRequest) {
 
   if (
     shouldRecordPresenceTransition({
+      metadata: payload.data.metadata,
       nextStatus,
-      previousStatus,
-      reason: payload.data.reason,
       storedPreviousStatus,
     })
   ) {
@@ -358,12 +354,7 @@ export async function PATCH(request: NextRequest) {
       metadata: payload.data.metadata,
       nextStatus,
       now,
-      previousStatus: getPresenceTransitionPreviousStatus({
-        nextStatus,
-        previousStatus,
-        reason: payload.data.reason,
-        storedPreviousStatus,
-      }),
+      previousStatus: storedPreviousStatus,
       reason: payload.data.reason,
       source: payload.data.source,
       storedPreviousStatus,
@@ -611,7 +602,6 @@ function createPresenceTransitionPlan({
   const bridgeAway = shouldBridgeAwayBeforeTransition({
     metadata,
     nextStatus,
-    previousStatus: normalizedPreviousStatus,
     storedPreviousStatus,
   });
 
@@ -673,19 +663,17 @@ function createPresenceTransitionPlan({
 function shouldBridgeAwayBeforeTransition({
   metadata,
   nextStatus,
-  previousStatus,
   storedPreviousStatus,
 }: {
   metadata: Record<string, unknown>;
   nextStatus: Exclude<HubPresenceStatus, "busy">;
-  previousStatus: Exclude<HubPresenceStatus, "busy">;
   storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
-  if (previousStatus !== "away") {
+  if (storedPreviousStatus === "away" || storedPreviousStatus === "lunch") {
     return false;
   }
 
-  if (storedPreviousStatus === "away" || storedPreviousStatus === "lunch") {
+  if (storedPreviousStatus !== "online") {
     return false;
   }
 
@@ -697,48 +685,25 @@ function shouldBridgeAwayBeforeTransition({
 }
 
 function shouldRecordPresenceTransition({
+  metadata,
   nextStatus,
-  previousStatus,
-  reason,
   storedPreviousStatus,
 }: {
+  metadata: Record<string, unknown>;
   nextStatus: Exclude<HubPresenceStatus, "busy">;
-  previousStatus: Exclude<HubPresenceStatus, "busy">;
-  reason: string;
-  storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
-}) {
-  if (previousStatus !== nextStatus) {
-    return true;
-  }
-
-  return (
-    reason === "idle" &&
-    nextStatus === "away" &&
-    storedPreviousStatus !== "away"
-  );
-}
-
-function getPresenceTransitionPreviousStatus({
-  nextStatus,
-  previousStatus,
-  reason,
-  storedPreviousStatus,
-}: {
-  nextStatus: Exclude<HubPresenceStatus, "busy">;
-  previousStatus: Exclude<HubPresenceStatus, "busy">;
-  reason: string;
   storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
   if (
-    reason === "idle" &&
-    nextStatus === "away" &&
-    previousStatus === "away" &&
-    storedPreviousStatus !== "away"
+    shouldBridgeAwayBeforeTransition({
+      metadata,
+      nextStatus,
+      storedPreviousStatus,
+    })
   ) {
-    return storedPreviousStatus;
+    return true;
   }
 
-  return previousStatus;
+  return storedPreviousStatus !== nextStatus;
 }
 
 function shouldPreserveManualPresence({
