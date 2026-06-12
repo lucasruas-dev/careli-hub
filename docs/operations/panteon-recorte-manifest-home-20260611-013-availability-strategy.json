@@ -191,12 +191,12 @@
   ],
   "rollback": [
     "Reverter os arquivos listados em changedFiles para remover a aba Disponibilidade, a politica 3/5 e a excecao por sala Chronos.",
-    "Para rollback do hotfix em producao, reapontar https://c2x.app.br para dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT se houver regressao critica.",
+    "Para rollback do hotfix de historico em producao, reapontar https://c2x.app.br para dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT se houver regressao critica.",
     "Manter https://ops.c2x.app.br em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "nextSteps": [
     "Lucas validar visualmente a Home em producao com usuario admin autenticado.",
-    "Se Lucas identificar regressao critica, Zeus/Hefesto executa rollback de c2x.app.br para dpl_2w8HCnNUYSwzBKR79RoE73p5hoUT.",
+    "Se Lucas identificar regressao critica, Zeus/Hefesto executa rollback de c2x.app.br para dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT.",
     "Se Lucas quiser auditoria historica ainda mais granular, avaliar migration futura separada para registrar eventos de atividade sem depender apenas das transicoes de status existentes."
   ],
   "businessRuleRefinement": [
@@ -250,6 +250,35 @@
     },
     "postDeployValidations": [
       "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT.",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+      "GET https://c2x.app.br/login: PASS 200.",
+      "GET https://ops.c2x.app.br/login: PASS 200.",
+      "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados."
+    ]
+  },
+  "presenceHistoryHotfixProduction": {
+    "publishedAt": "2026-06-12T14:52:35-03:00",
+    "commit": "67de2f0e",
+    "deploymentId": "dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y",
+    "productionUrl": "https://c2x.app.br",
+    "technicalUrl": "https://careli-hub-hub-i2bs-ooson5pq6-lucasruas-devs-projects.vercel.app",
+    "target": "production",
+    "package": "git archive do commit 67de2f0e expandido fora do repositorio principal em %LOCALAPPDATA%\\Temp\\panteon-op013-presence-history-prod-67de2f0e",
+    "alias": {
+      "changed": "c2x.app.br",
+      "previousDeploymentId": "dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT",
+      "currentDeploymentId": "dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y",
+      "rollbackDeploymentId": "dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT"
+    },
+    "preservedAliases": {
+      "ops.c2x.app.br": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
+    },
+    "homologationParity": {
+      "status": "divergencia registrada",
+      "reason": "Lucas autorizou hotfix direto em producao para corrigir historico de presenca observado em uso real; homo.c2x.app.br nao foi reapontado nesta rodada."
+    },
+    "postDeployValidations": [
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y.",
       "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
       "GET https://c2x.app.br/login: PASS 200.",
       "GET https://ops.c2x.app.br/login: PASS 200.",

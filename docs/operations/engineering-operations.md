@@ -36773,3 +36773,47 @@ Conclusao:
 - Precisa de acao agora: Lucas precisa autorizar o deploy deste hotfix para corrigir producao.
 - Quem deve agir agora: Lucas autoriza; Zeus/Hefesto publicam com pacote limpo e rollback registrado.
 - Proximo passo: publicar o hotfix quando autorizado.
+
+### Complemento 2026-06-12 14:52:35 -03:00 - OP-013 hotfix de historico publicado em producao
+
+- Status atualizado: `HOTFIX_EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Autorizacao:
+  - Lucas autorizou explicitamente o novo hotfix: `pode subir`.
+- Publicacao:
+  - commit publicado: `67de2f0e` (`fix(home): persist idle presence history`);
+  - pacote: `git archive` do commit `67de2f0e`, expandido fora do repositorio principal em `%LOCALAPPDATA%\Temp\panteon-op013-presence-history-prod-67de2f0e`;
+  - deployment Vercel: `dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-ooson5pq6-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias aplicado somente em `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Base e rollback:
+  - deployment anterior de `https://c2x.app.br`: `dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT`;
+  - rollback imediato do hotfix: reapontar `https://c2x.app.br` para `dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT`;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - validacoes locais pre-publicacao registradas para o commit `67de2f0e`: eslint do recorte, `check-types:hub`, build do Hub e `git diff --check`;
+  - build remoto Vercel: PASS, com warning conhecido de Turbopack/NFT e avisos existentes de envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Homologacao:
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada; Lucas autorizou hotfix direto em producao para corrigir historico de presenca em uso real.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhuma escrita retroativa em `hub_presence_events` foi executada;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - eventos `away` nao persistidos antes deste hotfix nao sao recriados automaticamente sem uma rotina retroativa separada;
+  - a validacao visual autenticada final depende do usuario admin do Lucas.
+
+Conclusao:
+
+- O que aconteceu: o hotfix que garante persistencia de `Ausente` em `hub_presence_events` foi publicado em producao.
+- Impacto pratico: novos ciclos de inatividade devem aparecer no historico da aba `Disponibilidade`, nao apenas no status atual.
+- Precisa de acao agora: Lucas deve atualizar a Home e testar um ciclo real de 3 minutos sem atividade.
+- Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
+- Proximo passo: manter o hotfix se a validacao confirmar que o historico voltou.
