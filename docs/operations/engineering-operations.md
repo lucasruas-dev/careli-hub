@@ -36516,3 +36516,37 @@ Conclusao:
 - Precisa de acao agora: Lucas deve abrir o Preview, entrar com usuario admin e validar a aba `Disponibilidade`.
 - Quem deve agir agora: Lucas valida visualmente; Zeus corrige se houver divergencia.
 - Proximo passo: se Lucas aprovar a experiencia, decidir se o pacote segue para homologacao compartilhada.
+
+### Complemento 2026-06-12 10:42:51 -03:00 - OP-013 reduz texto e agrupa historico por data
+
+- Status atualizado: `VALIDADO_LOCAL / AGUARDANDO_AUTORIZACAO_NOVO_PREVIEW`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas avaliou o Preview revisado como melhor, mas pediu uma tela ainda mais seca;
+  - pediu remover textos explicativos como `Jornada dos colaboradores`, `Colaboradores`, `Linha do tempo da jornada` e a politica visivel de `ausente apos 3 minutos/logout 5 minutos`;
+  - pediu historico agrupado por data, fechado por padrao, expansivel e com filtro de data;
+  - reforcou que o historico deve mostrar apenas eventos macro, sem transicoes tecnicas como `agenda -> online / login`.
+- Implementacao:
+  - `apps/hub/app/page.tsx` removeu os cabecalhos explicativos da aba `Disponibilidade`;
+  - removeu o badge visivel da politica de presenca da Home;
+  - adicionou filtro de data;
+  - agrupou o historico por data em blocos recolhidos por padrao e expansivos por clique;
+  - trocou a descricao tecnica por frases macro: `fez login`, `ficou ausente`, `saiu para almoco`, `voltou` e `foi deslogado`;
+  - filtrou `agenda -> online` e outros eventos tecnicos para nao aparecerem como historico macro;
+  - removeu o tempo de ultimo sinal da lista de colaboradores.
+- Validacoes:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, production deployment, env, secret, migration, schema, Supabase manual, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado nesta revisao.
+- Risco residual:
+  - a validacao visual autenticada depende de novo Preview, ainda nao publicado nesta etapa.
+
+Conclusao:
+
+- O que aconteceu: a aba `Disponibilidade` foi reduzida para uma leitura macro por colaborador, evento e data.
+- Impacto pratico: o historico deixa de parecer log tecnico e passa a funcionar como auditoria simples de jornada.
+- Precisa de acao agora: publicar novo Preview depende de autorizacao explicita do Lucas.
+- Quem deve agir agora: Lucas decide se esta revisao deve ir para novo Preview.
+- Proximo passo: gerar Preview limpo do ajuste visual quando autorizado.

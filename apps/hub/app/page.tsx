@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  formatHubPresencePolicyLabel,
   getHubPresenceLabel,
   getHubPresenceTodaySummary,
   normalizeHubPresenceStatus,
@@ -33,6 +32,7 @@ import {
   AlertTriangle,
   Bell,
   CalendarCheck2,
+  ChevronDown,
   CheckCircle2,
   Clock3,
   KeyRound,
@@ -59,6 +59,15 @@ type JourneyEventRecord = {
   nextStatus: HubPresenceStatus;
   previousStatus?: HubPresenceStatus;
   reason: string;
+};
+type JourneyEventItem<TEvent extends JourneyEventRecord & { startedAt: string }> = {
+  event: TEvent;
+  kind: AvailabilityEventKind;
+};
+type JourneyDateGroup<TEvent extends JourneyEventRecord & { startedAt: string }> = {
+  dateKey: string;
+  events: Array<JourneyEventItem<TEvent>>;
+  label: string;
 };
 
 type HomeTeamMember = {
@@ -88,11 +97,11 @@ const operationStatusStyle = {
 } as const satisfies Record<HomePresenceStatus, string>;
 
 const availabilityEventFilters = [
-  { label: "Todos os eventos", value: "all" },
+  { label: "Todos", value: "all" },
   { label: "Login", value: "login" },
   { label: "Ausente", value: "away" },
   { label: "Almoco", value: "lunch" },
-  { label: "Volta", value: "return" },
+  { label: "Retorno", value: "return" },
   { label: "Logout", value: "logout" },
 ] as const satisfies Array<{
   label: string;
@@ -260,7 +269,6 @@ export default function HomePage() {
                     eyebrow={isAdmin ? "Central adm" : "Mapa operacional"}
                     title="Ritmo da equipe"
                   />
-                  <Badge variant="info">{formatHubPresencePolicyLabel()}</Badge>
                 </div>
                 <div className="mt-4 grid grid-cols-5 gap-2">
                   <StatusPill label="online" value={onlineCount} variant="online" />
@@ -442,14 +450,17 @@ function AvailabilityAdminPanel({
 }: {
   snapshot: HubAvailabilitySnapshot | null;
 }) {
+  const [dateFilter, setDateFilter] = useState("");
   const [eventFilter, setEventFilter] =
     useState<AvailabilityEventFilter>("all");
+  const [expandedDateKeys, setExpandedDateKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [selectedUserId, setSelectedUserId] = useState("all");
 
   if (!snapshot) {
     return (
       <Surface bordered className="border-[#d9e0e7] bg-white p-6">
-        <PanelTitle eyebrow="Central adm" title="Jornada dos colaboradores" />
         <div className="mt-4 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
           Carregando historico de presenca e disponibilidade.
         </div>
@@ -471,33 +482,37 @@ function AvailabilityAdminPanel({
     )
     .filter((item) =>
       eventFilter === "all" ? true : item.kind === eventFilter,
+    )
+    .filter((item) =>
+      dateFilter ? getPresenceDateInputValue(item.event.startedAt) === dateFilter : true,
     );
+  const dateGroups = groupJourneyEventsByDate(journeyEvents);
   const currentCounts = {
     away: snapshot.team.filter((member) => member.currentStatus === "away").length,
     lunch: snapshot.team.filter((member) => member.currentStatus === "lunch").length,
     offline: snapshot.team.filter((member) => member.currentStatus === "offline").length,
     online: snapshot.team.filter((member) => member.currentStatus === "online").length,
   };
-  const selectedMember = snapshot.team.find(
-    (member) => member.userId === selectedUserId,
-  );
+  const toggleDateGroup = (dateKey: string) => {
+    setExpandedDateKeys((current) => {
+      const next = new Set(current);
+
+      if (next.has(dateKey)) {
+        next.delete(dateKey);
+      } else {
+        next.add(dateKey);
+      }
+
+      return next;
+    });
+  };
 
   return (
     <section className="grid grid-cols-12 gap-5">
       <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <PanelTitle eyebrow="Central adm" title="Jornada dos colaboradores" />
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="info">{snapshot.policy.label}</Badge>
-            <Badge variant="neutral">reuniao apenas na sala Chronos</Badge>
-            <Badge variant="neutral">
-              {formatPresenceDateTime(snapshot.generatedAt)}
-            </Badge>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(16rem,0.9fr)_minmax(16rem,0.7fr)_auto]">
-          <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#667085]">
-            Colaborador
+        <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_12rem_12rem_auto]">
+          <label>
+            <span className="sr-only">Colaborador</span>
             <select
               className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#17202f] outline-none focus:border-[#A07C3B]"
               onChange={(event) => setSelectedUserId(event.target.value)}
@@ -511,8 +526,8 @@ function AvailabilityAdminPanel({
               ))}
             </select>
           </label>
-          <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#667085]">
-            Evento
+          <label>
+            <span className="sr-only">Evento</span>
             <select
               className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#17202f] outline-none focus:border-[#A07C3B]"
               onChange={(event) =>
@@ -527,26 +542,35 @@ function AvailabilityAdminPanel({
               ))}
             </select>
           </label>
-          <div className="grid min-w-[16rem] rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2 text-xs text-[#667085]">
-            <span className="font-semibold uppercase tracking-[0.08em] text-[#8a97a8]">
-              Agora
-            </span>
-            <span className="mt-1 font-semibold text-[#17202f]">
+          <label>
+            <span className="sr-only">Data</span>
+            <input
+              className="h-10 w-full rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#17202f] outline-none focus:border-[#A07C3B]"
+              onChange={(event) => setDateFilter(event.target.value)}
+              type="date"
+              value={dateFilter}
+            />
+          </label>
+          <div className="flex min-w-[18rem] items-center justify-between gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2 text-sm font-semibold text-[#17202f]">
+            <span>
               {currentCounts.online} online / {currentCounts.away} ausentes /{" "}
               {currentCounts.lunch} almoco / {currentCounts.offline} offline
             </span>
+            {dateFilter ? (
+              <button
+                className="rounded-md border border-[#d9e0e7] bg-white px-2 py-1 text-xs text-[#667085] transition hover:border-[#A07C3B] hover:text-[#101820]"
+                onClick={() => setDateFilter("")}
+                type="button"
+              >
+                Limpar
+              </button>
+            ) : null}
           </div>
         </div>
       </Surface>
 
       <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <PanelTitle eyebrow="Equipe" title="Colaboradores" />
-          <Badge variant="neutral">
-            {snapshot.team.length} pessoas
-          </Badge>
-        </div>
-        <div className="mt-4 grid max-h-[38rem] gap-2 overflow-auto pr-1">
+        <div className="grid max-h-[38rem] gap-2 overflow-auto pr-1">
           {snapshot.team.map((member) => (
             <button
               className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border p-3 text-left transition ${
@@ -569,9 +593,6 @@ function AvailabilityAdminPanel({
                     {member.displayName}
                   </span>
                 </span>
-                <span className="mt-1 block truncate text-xs text-[#667085]">
-                  {formatPresenceSignal(member.lastSeenAt, member.currentStatus)}
-                </span>
               </span>
               <span
                 className={`rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${operationStatusStyle[member.currentStatus]}`}
@@ -584,55 +605,60 @@ function AvailabilityAdminPanel({
       </Surface>
 
       <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-8">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <PanelTitle
-            eyebrow="Historico"
-            title={
-              selectedMember
-                ? `Linha do tempo - ${selectedMember.displayName}`
-                : "Linha do tempo da jornada"
-            }
-          />
-          <Badge variant={journeyEvents.length > 0 ? "info" : "neutral"}>
-            {journeyEvents.length} registro(s)
-          </Badge>
-        </div>
-        <div className="mt-4 grid max-h-[38rem] gap-2 overflow-auto pr-1">
-          {journeyEvents.length ? (
-            journeyEvents.map(({ event, kind }) => (
-              <article
-                className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 lg:grid-cols-[7rem_minmax(0,1fr)_auto]"
-                key={event.id}
-              >
-                <div className="text-xs font-semibold text-[#667085]">
-                  <p className="m-0 text-[#17202f]">
-                    {formatPresenceTime(event.startedAt)}
-                  </p>
-                  <p className="m-0 mt-1">
-                    {formatPresenceDate(event.startedAt)}
-                  </p>
-                </div>
-                <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
-                    {event.userName}
-                  </p>
-                  <p className="m-0 mt-1 text-xs text-[#667085]">
-                    {formatJourneyTransition(event)}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-start justify-start gap-2 lg:justify-end">
-                  <Badge variant={getJourneyBadgeVariant(kind)}>
-                    {formatJourneyEventLabel(kind)}
-                  </Badge>
-                  {event.reason === "logout" ? (
-                    <Badge variant="warning">automatico</Badge>
+        <div className="grid max-h-[38rem] gap-2 overflow-auto pr-1">
+          {dateGroups.length ? (
+            dateGroups.map((group) => {
+              const isExpanded = expandedDateKeys.has(group.dateKey);
+
+              return (
+                <div
+                  className="overflow-hidden rounded-md border border-[#edf0f4] bg-[#fafbfc]"
+                  key={group.dateKey}
+                >
+                  <button
+                    className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-sm font-semibold text-[#17202f] transition hover:bg-white"
+                    onClick={() => toggleDateGroup(group.dateKey)}
+                    type="button"
+                  >
+                    <span>{group.label}</span>
+                    <span className="flex items-center gap-2 text-xs text-[#667085]">
+                      {group.events.length}
+                      <ChevronDown
+                        aria-hidden="true"
+                        className={`transition ${isExpanded ? "rotate-180" : ""}`}
+                        size={16}
+                      />
+                    </span>
+                  </button>
+                  {isExpanded ? (
+                    <div className="grid gap-2 border-t border-[#edf0f4] bg-white p-2">
+                      {group.events.map(({ event, kind }) => (
+                        <article
+                          className="grid gap-3 rounded-md border border-[#edf0f4] bg-white p-3 lg:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
+                          key={event.id}
+                        >
+                          <time
+                            className="text-sm font-semibold text-[#17202f]"
+                            dateTime={event.startedAt}
+                          >
+                            {formatPresenceTime(event.startedAt)}
+                          </time>
+                          <p className="m-0 min-w-0 truncate text-sm font-semibold text-[#17202f]">
+                            {formatJourneyMacroText(event, kind)}
+                          </p>
+                          <Badge variant={getJourneyBadgeVariant(kind)}>
+                            {formatJourneyEventLabel(kind)}
+                          </Badge>
+                        </article>
+                      ))}
+                    </div>
                   ) : null}
                 </div>
-              </article>
-            ))
+              );
+            })
           ) : (
             <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4 text-sm text-[#667085]">
-              Nenhum evento de jornada para o filtro selecionado.
+              Nenhum registro.
             </div>
           )}
         </div>
@@ -1071,7 +1097,6 @@ function PresenceTodayPanel({ className }: { className?: string }) {
     <Surface bordered className={`border-[#d9e0e7] bg-white p-5 ${className ?? ""}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PanelTitle eyebrow="Meu dia" title="Historico individual" />
-        <Badge variant="info">{formatHubPresencePolicyLabel()}</Badge>
       </div>
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
         <div>
@@ -1116,7 +1141,7 @@ function PresenceTodayPanel({ className }: { className?: string }) {
                 </span>
               </div>
               <p className="m-0 mt-1 truncate text-[#667085]">
-                {formatJourneyTransition(event)}
+                {formatJourneyMacroText(event, kind)}
               </p>
             </div>
           ))}
@@ -1235,27 +1260,15 @@ function formatPresenceTime(value: string) {
   }).format(new Date(value));
 }
 
-function formatPresenceDateTime(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "2-digit",
-  }).format(new Date(value));
-}
-
 function formatPresenceDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
+    year: "numeric",
   }).format(new Date(value));
 }
 
 function getJourneyEventKind(event: JourneyEventRecord): AvailabilityEventKind | null {
-  if (event.reason === "login" || (!event.previousStatus && event.nextStatus === "online")) {
-    return "login";
-  }
-
   if (event.reason === "logout" || event.nextStatus === "offline") {
     return "logout";
   }
@@ -1271,10 +1284,16 @@ function getJourneyEventKind(event: JourneyEventRecord): AvailabilityEventKind |
   if (
     event.nextStatus === "online" &&
     (event.previousStatus === "away" ||
-      event.previousStatus === "lunch" ||
-      event.previousStatus === "offline")
+      event.previousStatus === "lunch")
   ) {
     return "return";
+  }
+
+  if (
+    event.nextStatus === "online" &&
+    (!event.previousStatus || event.previousStatus === "offline")
+  ) {
+    return "login";
   }
 
   return null;
@@ -1314,26 +1333,53 @@ function getJourneyBadgeVariant(kind: AvailabilityEventKind) {
   return variants[kind];
 }
 
-function formatJourneyTransition(event: JourneyEventRecord) {
-  const previous = event.previousStatus
-    ? getHubPresenceLabel(event.previousStatus)
-    : "sem status";
+function groupJourneyEventsByDate<TEvent extends JourneyEventRecord & { startedAt: string }>(
+  events: Array<JourneyEventItem<TEvent>>,
+) {
+  const groups = new Map<string, JourneyDateGroup<TEvent>>();
 
-  return `${previous} -> ${getHubPresenceLabel(event.nextStatus)} / ${formatPresenceReason(event.reason)}`;
+  for (const item of events) {
+    const dateKey = getPresenceDateInputValue(item.event.startedAt);
+    const group = groups.get(dateKey);
+
+    if (group) {
+      group.events.push(item);
+    } else {
+      groups.set(dateKey, {
+        dateKey,
+        events: [item],
+        label: formatPresenceDate(item.event.startedAt),
+      });
+    }
+  }
+
+  return [...groups.values()];
 }
 
-function formatPresenceReason(reason: string) {
-  const labels: Record<string, string> = {
-    activity: "atividade",
-    agenda: "reuniao",
-    heartbeat: "sinal",
-    idle: "inatividade",
-    login: "login",
-    logout: "logout",
-    manual: "manual",
-  };
+function getPresenceDateInputValue(value: string) {
+  const date = new Date(value);
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
 
-  return labels[reason] ?? reason;
+  return `${year}-${month}-${day}`;
+}
+
+function formatJourneyMacroText(
+  event: JourneyEventRecord & { startedAt: string; userName?: string },
+  kind: AvailabilityEventKind,
+) {
+  const name = event.userName ?? "Usuario";
+
+  const labels = {
+    away: `${name} ficou ausente`,
+    login: `${name} fez login`,
+    logout: `${name} foi deslogado`,
+    lunch: `${name} saiu para almoco`,
+    return: `${name} voltou`,
+  } as const satisfies Record<AvailabilityEventKind, string>;
+
+  return labels[kind];
 }
 
 function formatPercent(value: number | null | undefined) {

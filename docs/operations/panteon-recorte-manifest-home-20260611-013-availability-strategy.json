@@ -65,6 +65,25 @@
       "package": "git archive do commit 475e69ee expandido fora do repositorio principal em pasta temporaria",
       "obsoletePreview": "dpl_2k48EuLxgybr4toMKJnHgbVYQ981"
     },
+    "visualTuning": {
+      "revisedAt": "2026-06-12T10:42:51-03:00",
+      "reason": "Lucas aprovou a direcao geral, mas pediu menos texto explicativo, historico agrupado por data, filtro por data e eventos macro sem transicoes tecnicas como agenda para online.",
+      "status": "validado localmente, ainda nao publicado em novo Preview",
+      "changes": [
+        "Removidos titulos explicativos da aba Disponibilidade, incluindo Jornada dos colaboradores, Colaboradores e Linha do tempo da jornada.",
+        "Removidos badges visiveis da politica ausente apos 3 minutos/logout 5 minutos da Home.",
+        "Adicionado filtro de data na aba Disponibilidade.",
+        "Historico passou a ser agrupado por data, fechado por padrao e expansivel por dia.",
+        "Eventos do historico passaram a usar frases macro, como fez login, ficou ausente, saiu para almoco, voltou e foi deslogado.",
+        "Transicoes tecnicas agenda para online deixaram de aparecer como eventos macro.",
+        "Lista de colaboradores deixou de exibir tempo de ultimo sinal para reduzir ruido visual."
+      ],
+      "validations": [
+        "npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+        "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+        "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home."
+      ]
+    },
     "safety": [
       "Nenhum --prod, alias, env, secret, migration, schema ou escrita manual em Supabase foi executado nesta revisao.",
       "O processo node na porta local 3011 ficou identificado por PID/nome, mas nao foi encerrado automaticamente porque o encerramento foi bloqueado pela revisao de seguranca sem identificacao mais forte do listener."
