@@ -30,8 +30,6 @@ type MarkPresenceOptions = {
   reason?: HubPresenceChangeReason;
 };
 
-const manualHoldStatuses = new Set<HubPresenceStatus>([]);
-
 export function useHubPresenceController({
   enabled,
   onAutoLogout,
@@ -39,10 +37,11 @@ export function useHubPresenceController({
 }: PresenceControllerInput) {
   const [status, setStatus] = useState<HubPresenceStatus>("offline");
   const activeMeetingRef = useRef<HubPresenceActiveMeeting | null>(null);
+  const awayTimeoutRef = useRef<number | null>(null);
   const autoLogoutTriggeredRef = useRef(false);
+  const logoutTimeoutRef = useRef<number | null>(null);
   const statusRef = useRef<HubPresenceStatus>("offline");
   const lastSentAtRef = useRef(0);
-  const manualStatusRef = useRef<HubPresenceStatus | null>(null);
   const lastActivityAtRef = useRef(Date.now());
   const onAutoLogoutRef = useRef(onAutoLogout);
 
@@ -53,12 +52,6 @@ export function useHubPresenceController({
   const markPresence = useCallback(
     async (nextStatus: HubPresenceStatus, options: MarkPresenceOptions = {}) => {
       const normalizedStatus = normalizeHubPresenceStatus(nextStatus);
-
-      if (options.manual) {
-        manualStatusRef.current = manualHoldStatuses.has(normalizedStatus)
-          ? normalizedStatus
-          : null;
-      }
 
       statusRef.current = normalizedStatus;
       setStatus(normalizedStatus);
@@ -85,6 +78,18 @@ export function useHubPresenceController({
     }
 
     let disposed = false;
+
+    function clearPresenceTimers() {
+      if (awayTimeoutRef.current !== null) {
+        window.clearTimeout(awayTimeoutRef.current);
+        awayTimeoutRef.current = null;
+      }
+
+      if (logoutTimeoutRef.current !== null) {
+        window.clearTimeout(logoutTimeoutRef.current);
+        logoutTimeoutRef.current = null;
+      }
+    }
 
     function runPresenceUpdate(
       nextStatus: HubPresenceStatus,
@@ -114,6 +119,53 @@ export function useHubPresenceController({
             console.warn("[presence] meeting check error", error);
           }
         });
+    }
+
+    function isMeetingExceptionActive() {
+      return isChronosCallRoute();
+    }
+
+    function getMeetingMetadata() {
+      const activeMeeting = activeMeetingRef.current;
+
+      return activeMeeting
+        ? {
+            meetingId: activeMeeting.id,
+            protocol: activeMeeting.protocol,
+            rule: "chronos_call_route",
+          }
+        : {
+            rule: "chronos_call_route",
+          };
+    }
+
+    function schedulePresenceTimers() {
+      clearPresenceTimers();
+
+      if (isMeetingExceptionActive()) {
+        return;
+      }
+
+      const idleMs = Date.now() - lastActivityAtRef.current;
+      const awayDelay = Math.max(0, HUB_IDLE_TIMEOUT_MS - idleMs);
+      const logoutDelay = Math.max(0, HUB_AUTO_LOGOUT_TIMEOUT_MS - idleMs);
+
+      awayTimeoutRef.current = window.setTimeout(() => {
+        updateAutomaticPresence();
+      }, awayDelay + 50);
+
+      logoutTimeoutRef.current = window.setTimeout(() => {
+        updateAutomaticPresence();
+      }, logoutDelay + 50);
+    }
+
+    function recordIdleAway(idleMs: number) {
+      runPresenceUpdate("away", "idle", {
+        awayTimeoutMs: HUB_IDLE_TIMEOUT_MS,
+        idleMs,
+        logoutTimeoutMs: HUB_AUTO_LOGOUT_TIMEOUT_MS,
+        rule: "idle_without_panteon_activity",
+      });
     }
 
     function triggerAutoLogout(idleMs: number) {
@@ -146,25 +198,40 @@ export function useHubPresenceController({
         });
     }
 
+    function reconcileIdleBeforeActivity(now = Date.now()) {
+      if (isMeetingExceptionActive()) {
+        return true;
+      }
+
+      const idleMs = now - lastActivityAtRef.current;
+
+      if (idleMs >= HUB_AUTO_LOGOUT_TIMEOUT_MS) {
+        triggerAutoLogout(idleMs);
+        return false;
+      }
+
+      if (idleMs >= HUB_IDLE_TIMEOUT_MS && statusRef.current !== "away") {
+        recordIdleAway(idleMs);
+      }
+
+      return true;
+    }
+
     function handleActivity() {
-      lastActivityAtRef.current = Date.now();
-      autoLogoutTriggeredRef.current = false;
+      const now = Date.now();
 
-      const activeMeeting = activeMeetingRef.current;
-
-      if (activeMeeting) {
-        runPresenceUpdate("agenda", "agenda", {
-          meetingId: activeMeeting.id,
-          protocol: activeMeeting.protocol,
-          rule: "chronos_current_meeting",
-        });
+      if (!reconcileIdleBeforeActivity(now)) {
         return;
       }
 
-      if (
-        manualStatusRef.current &&
-        manualHoldStatuses.has(manualStatusRef.current)
-      ) {
+      lastActivityAtRef.current = now;
+      autoLogoutTriggeredRef.current = false;
+
+      if (isMeetingExceptionActive()) {
+        runPresenceUpdate("agenda", "agenda", {
+          ...getMeetingMetadata(),
+        });
+        schedulePresenceTimers();
         return;
       }
 
@@ -178,18 +245,17 @@ export function useHubPresenceController({
 
         runPresenceUpdate("online", "activity");
       }
+
+      schedulePresenceTimers();
     }
 
     function updateAutomaticPresence() {
-      const activeMeeting = activeMeetingRef.current;
-
-      if (activeMeeting) {
+      if (isMeetingExceptionActive()) {
         autoLogoutTriggeredRef.current = false;
         runPresenceUpdate("agenda", "agenda", {
-          meetingId: activeMeeting.id,
-          protocol: activeMeeting.protocol,
-          rule: "chronos_current_meeting",
+          ...getMeetingMetadata(),
         });
+        schedulePresenceTimers();
         return;
       }
 
@@ -201,20 +267,7 @@ export function useHubPresenceController({
       }
 
       if (idleMs >= HUB_IDLE_TIMEOUT_MS) {
-        runPresenceUpdate("away", "idle", {
-          awayTimeoutMs: HUB_IDLE_TIMEOUT_MS,
-          idleMs,
-          logoutTimeoutMs: HUB_AUTO_LOGOUT_TIMEOUT_MS,
-          rule: "idle_without_panteon_activity",
-        });
-        return;
-      }
-
-      if (
-        manualStatusRef.current &&
-        manualHoldStatuses.has(manualStatusRef.current)
-      ) {
-        runPresenceUpdate(manualStatusRef.current, "heartbeat");
+        recordIdleAway(idleMs);
         return;
       }
 
@@ -245,6 +298,7 @@ export function useHubPresenceController({
 
     refreshCurrentMeeting();
     runPresenceUpdate("online", "login");
+    schedulePresenceTimers();
 
     for (const eventName of activityEvents) {
       window.addEventListener(eventName, handleActivity, { passive: true });
@@ -260,6 +314,7 @@ export function useHubPresenceController({
 
     return () => {
       disposed = true;
+      clearPresenceTimers();
       window.clearInterval(intervalId);
       window.clearInterval(meetingIntervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -274,6 +329,12 @@ export function useHubPresenceController({
     setStatus: markPresence,
     status,
   };
+}
+
+function isChronosCallRoute() {
+  const pathname = window.location.pathname;
+
+  return /^\/chronos\/(?!recording-view(?:\/|$))[^/]+/.test(pathname);
 }
 
 function isLocalDevelopmentRuntime() {

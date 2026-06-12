@@ -47,6 +47,19 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 type HomePresenceStatus = Exclude<HubPresenceStatus, "busy">;
 type HomeTab = "availability" | "overview" | "tickets";
+type AvailabilityEventFilter =
+  | "all"
+  | "away"
+  | "login"
+  | "logout"
+  | "lunch"
+  | "return";
+type AvailabilityEventKind = Exclude<AvailabilityEventFilter, "all">;
+type JourneyEventRecord = {
+  nextStatus: HubPresenceStatus;
+  previousStatus?: HubPresenceStatus;
+  reason: string;
+};
 
 type HomeTeamMember = {
   avatarUrl?: string;
@@ -73,6 +86,18 @@ const operationStatusStyle = {
   offline: "border-zinc-200 bg-zinc-50 text-zinc-500",
   online: "border-emerald-200 bg-emerald-50 text-emerald-700",
 } as const satisfies Record<HomePresenceStatus, string>;
+
+const availabilityEventFilters = [
+  { label: "Todos os eventos", value: "all" },
+  { label: "Login", value: "login" },
+  { label: "Ausente", value: "away" },
+  { label: "Almoco", value: "lunch" },
+  { label: "Volta", value: "return" },
+  { label: "Logout", value: "logout" },
+] as const satisfies Array<{
+  label: string;
+  value: AvailabilityEventFilter;
+}>;
 
 export default function HomePage() {
   const { hubUser } = useAuth();
@@ -417,10 +442,14 @@ function AvailabilityAdminPanel({
 }: {
   snapshot: HubAvailabilitySnapshot | null;
 }) {
+  const [eventFilter, setEventFilter] =
+    useState<AvailabilityEventFilter>("all");
+  const [selectedUserId, setSelectedUserId] = useState("all");
+
   if (!snapshot) {
     return (
       <Surface bordered className="border-[#d9e0e7] bg-white p-6">
-        <PanelTitle eyebrow="Central adm" title="Disponibilidade estrategica" />
+        <PanelTitle eyebrow="Central adm" title="Jornada dos colaboradores" />
         <div className="mt-4 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
           Carregando historico de presenca e disponibilidade.
         </div>
@@ -428,204 +457,187 @@ function AvailabilityAdminPanel({
     );
   }
 
-  const summary = snapshot.summary;
-  const attentionUsers = snapshot.team.filter((user) =>
-    ["away", "offline"].includes(user.currentStatus),
+  const journeyEvents = snapshot.history
+    .map((event) => ({
+      event,
+      kind: getJourneyEventKind(event),
+    }))
+    .filter((item): item is {
+      event: HubAvailabilitySnapshot["history"][number];
+      kind: AvailabilityEventKind;
+    } => Boolean(item.kind))
+    .filter((item) =>
+      selectedUserId === "all" ? true : item.event.userId === selectedUserId,
+    )
+    .filter((item) =>
+      eventFilter === "all" ? true : item.kind === eventFilter,
+    );
+  const currentCounts = {
+    away: snapshot.team.filter((member) => member.currentStatus === "away").length,
+    lunch: snapshot.team.filter((member) => member.currentStatus === "lunch").length,
+    offline: snapshot.team.filter((member) => member.currentStatus === "offline").length,
+    online: snapshot.team.filter((member) => member.currentStatus === "online").length,
+  };
+  const selectedMember = snapshot.team.find(
+    (member) => member.userId === selectedUserId,
   );
 
   return (
     <section className="grid grid-cols-12 gap-5">
       <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <PanelTitle
-            eyebrow="Central adm"
-            title="Disponibilidade estrategica"
-          />
+          <PanelTitle eyebrow="Central adm" title="Jornada dos colaboradores" />
           <div className="flex flex-wrap gap-2">
             <Badge variant="info">{snapshot.policy.label}</Badge>
-            <Badge variant="neutral">excecao Chronos ativa</Badge>
+            <Badge variant="neutral">reuniao apenas na sala Chronos</Badge>
             <Badge variant="neutral">
               {formatPresenceDateTime(snapshot.generatedAt)}
             </Badge>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
-          <AvailabilityKpi
-            label="disponiveis agora"
-            value={summary.statusCounts.online}
-          />
-          <AvailabilityKpi
-            label="em reuniao"
-            tone="meeting"
-            value={summary.meetingCount}
-          />
-          <AvailabilityKpi
-            label="pontos de atencao"
-            tone={summary.riskCount > 0 ? "danger" : "neutral"}
-            value={summary.riskCount}
-          />
-          <AvailabilityKpi
-            label="produtividade"
-            value={formatNullablePercent(summary.productivityRate)}
-          />
-          <AvailabilityKpi
-            label="logouts auto"
-            tone={summary.autoLogoutCount > 0 ? "danger" : "neutral"}
-            value={summary.autoLogoutCount}
-          />
-          <AvailabilityKpi
-            label="mudancas"
-            value={summary.transitionCount}
-          />
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(16rem,0.9fr)_minmax(16rem,0.7fr)_auto]">
+          <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#667085]">
+            Colaborador
+            <select
+              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#17202f] outline-none focus:border-[#A07C3B]"
+              onChange={(event) => setSelectedUserId(event.target.value)}
+              value={selectedUserId}
+            >
+              <option value="all">Todos os colaboradores</option>
+              {snapshot.team.map((member) => (
+                <option key={member.userId} value={member.userId}>
+                  {member.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#667085]">
+            Evento
+            <select
+              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#17202f] outline-none focus:border-[#A07C3B]"
+              onChange={(event) =>
+                setEventFilter(event.target.value as AvailabilityEventFilter)
+              }
+              value={eventFilter}
+            >
+              {availabilityEventFilters.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="grid min-w-[16rem] rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2 text-xs text-[#667085]">
+            <span className="font-semibold uppercase tracking-[0.08em] text-[#8a97a8]">
+              Agora
+            </span>
+            <span className="mt-1 font-semibold text-[#17202f]">
+              {currentCounts.online} online / {currentCounts.away} ausentes /{" "}
+              {currentCounts.lunch} almoco / {currentCounts.offline} offline
+            </span>
+          </div>
+        </div>
+      </Surface>
+
+      <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <PanelTitle eyebrow="Equipe" title="Colaboradores" />
+          <Badge variant="neutral">
+            {snapshot.team.length} pessoas
+          </Badge>
+        </div>
+        <div className="mt-4 grid max-h-[38rem] gap-2 overflow-auto pr-1">
+          {snapshot.team.map((member) => (
+            <button
+              className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border p-3 text-left transition ${
+                selectedUserId === member.userId
+                  ? "border-[#A07C3B] bg-[#fffaf1]"
+                  : "border-[#edf0f4] bg-[#fafbfc] hover:border-[#d9e0e7]"
+              }`}
+              key={member.userId}
+              onClick={() =>
+                setSelectedUserId(
+                  selectedUserId === member.userId ? "all" : member.userId,
+                )
+              }
+              type="button"
+            >
+              <span className="min-w-0">
+                <span className="flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${getPresenceDotClassName(member.currentStatus)}`} />
+                  <span className="truncate text-sm font-semibold text-[#17202f]">
+                    {member.displayName}
+                  </span>
+                </span>
+                <span className="mt-1 block truncate text-xs text-[#667085]">
+                  {formatPresenceSignal(member.lastSeenAt, member.currentStatus)}
+                </span>
+              </span>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${operationStatusStyle[member.currentStatus]}`}
+              >
+                {operationStatusLabel[member.currentStatus]}
+              </span>
+            </button>
+          ))}
         </div>
       </Surface>
 
       <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <PanelTitle eyebrow="Equipe" title="Disponibilidade individual" />
-          <Badge variant={attentionUsers.length > 0 ? "warning" : "success"}>
-            {attentionUsers.length} em atencao
+          <PanelTitle
+            eyebrow="Historico"
+            title={
+              selectedMember
+                ? `Linha do tempo - ${selectedMember.displayName}`
+                : "Linha do tempo da jornada"
+            }
+          />
+          <Badge variant={journeyEvents.length > 0 ? "info" : "neutral"}>
+            {journeyEvents.length} registro(s)
           </Badge>
         </div>
-        <div className="mt-4 grid gap-2">
-          {snapshot.team.map((member) => (
-            <AvailabilityTeamRow key={member.userId} member={member} />
-          ))}
-        </div>
-      </Surface>
-
-      <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-4">
-        <PanelTitle eyebrow="Historico" title="Acessos e status" />
-        <div className="mt-4 grid max-h-[34rem] gap-2 overflow-auto pr-1">
-          {snapshot.history.length ? (
-            snapshot.history.map((event) => (
+        <div className="mt-4 grid max-h-[38rem] gap-2 overflow-auto pr-1">
+          {journeyEvents.length ? (
+            journeyEvents.map(({ event, kind }) => (
               <article
-                className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
+                className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 lg:grid-cols-[7rem_minmax(0,1fr)_auto]"
                 key={event.id}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
-                      {event.userName}
-                    </p>
-                    <p className="m-0 mt-1 text-xs text-[#667085]">
-                      {event.previousStatus
-                        ? `${getHubPresenceLabel(event.previousStatus)} -> `
-                        : ""}
-                      {getHubPresenceLabel(event.nextStatus)}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-xs font-semibold text-[#667085]">
+                <div className="text-xs font-semibold text-[#667085]">
+                  <p className="m-0 text-[#17202f]">
                     {formatPresenceTime(event.startedAt)}
-                  </span>
+                  </p>
+                  <p className="m-0 mt-1">
+                    {formatPresenceDate(event.startedAt)}
+                  </p>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-[#d9e0e7] bg-white px-2 py-0.5 text-[0.6875rem] font-semibold text-[#667085]">
-                    {formatPresenceReason(event.reason)}
-                  </span>
-                  <span className="rounded-full border border-[#d9e0e7] bg-white px-2 py-0.5 text-[0.6875rem] font-semibold text-[#667085]">
-                    {event.source}
-                  </span>
+                <div className="min-w-0">
+                  <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
+                    {event.userName}
+                  </p>
+                  <p className="m-0 mt-1 text-xs text-[#667085]">
+                    {formatJourneyTransition(event)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-start justify-start gap-2 lg:justify-end">
+                  <Badge variant={getJourneyBadgeVariant(kind)}>
+                    {formatJourneyEventLabel(kind)}
+                  </Badge>
+                  {event.reason === "logout" ? (
+                    <Badge variant="warning">automatico</Badge>
+                  ) : null}
                 </div>
               </article>
             ))
           ) : (
             <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4 text-sm text-[#667085]">
-              Nenhum evento de presenca no periodo.
+              Nenhum evento de jornada para o filtro selecionado.
             </div>
           )}
         </div>
       </Surface>
     </section>
-  );
-}
-
-function AvailabilityKpi({
-  label,
-  tone = "neutral",
-  value,
-}: {
-  label: string;
-  tone?: "danger" | "meeting" | "neutral";
-  value: number | string;
-}) {
-  const toneClassNames = {
-    danger: "border-red-200 bg-red-50 text-red-700",
-    meeting: "border-sky-200 bg-sky-50 text-sky-700",
-    neutral: "border-[#edf0f4] bg-[#fafbfc] text-[#101820]",
-  } as const;
-
-  return (
-    <div className={`rounded-md border p-3 ${toneClassNames[tone]}`}>
-      <p className="m-0 text-2xl font-semibold">{value}</p>
-      <p className="m-0 mt-1 text-xs">{label}</p>
-    </div>
-  );
-}
-
-function AvailabilityTeamRow({
-  member,
-}: {
-  member: HubAvailabilitySnapshot["team"][number];
-}) {
-  return (
-    <article className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 xl:grid-cols-[minmax(12rem,1.2fr)_repeat(5,minmax(5rem,0.55fr))_minmax(12rem,0.95fr)]">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className={`h-2.5 w-2.5 rounded-full ${getPresenceDotClassName(member.currentStatus)}`} />
-          <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
-            {member.displayName}
-          </p>
-          <span
-            className={`rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${operationStatusStyle[member.currentStatus]}`}
-          >
-            {operationStatusLabel[member.currentStatus]}
-          </span>
-        </div>
-        <p className="m-0 mt-1 truncate text-xs text-[#667085]">
-          {member.email} / {formatPresenceSignal(member.lastSeenAt, member.currentStatus)}
-        </p>
-        {member.currentMeeting ? (
-          <p className="m-0 mt-1 truncate text-xs font-semibold text-sky-700">
-            {member.currentMeeting.protocol} / {member.currentMeeting.title}
-          </p>
-        ) : null}
-      </div>
-      <CompactMetric
-        label="produtivo"
-        value={formatPresenceDuration(member.productiveSeconds)}
-      />
-      <CompactMetric
-        label="online"
-        value={formatPresenceDuration(member.totals.online)}
-      />
-      <CompactMetric
-        label="reuniao"
-        value={formatPresenceDuration(member.totals.agenda)}
-      />
-      <CompactMetric
-        label="ausente"
-        tone={member.totals.away > 0 ? "danger" : "neutral"}
-        value={formatPresenceDuration(member.totals.away)}
-      />
-      <CompactMetric
-        label="taxa"
-        value={formatNullablePercent(member.productivityRate)}
-      />
-      <div className="min-w-0 text-xs text-[#667085]">
-        <p className="m-0 font-semibold uppercase tracking-[0.08em] text-[#8a97a8]">
-          Ultimo evento
-        </p>
-        <p className="m-0 mt-1 truncate">
-          {member.lastEvent
-            ? `${formatPresenceReason(member.lastEvent.reason)} / ${formatPresenceTime(member.lastEvent.startedAt)}`
-            : "sem evento hoje"}
-        </p>
-        <p className="m-0 mt-1 truncate">
-          {member.transitionCount} mudanca(s) hoje
-        </p>
-      </div>
-    </article>
   );
 }
 
@@ -1044,6 +1056,16 @@ function PresenceTodayPanel({ className }: { className?: string }) {
   }, []);
 
   const status = summary?.currentStatus ?? "offline";
+  const personalJourneyEvents =
+    summary?.events
+      .map((event) => ({
+        event,
+        kind: getJourneyEventKind(event),
+      }))
+      .filter((item): item is {
+        event: HubPresenceSummary["events"][number];
+        kind: AvailabilityEventKind;
+      } => Boolean(item.kind)) ?? [];
 
   return (
     <Surface bordered className={`border-[#d9e0e7] bg-white p-5 ${className ?? ""}`}>
@@ -1062,50 +1084,39 @@ function PresenceTodayPanel({ className }: { className?: string }) {
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <MiniLightMetric
-          label="Produtivo"
-          value={formatPresenceDuration(summary?.workedSeconds ?? 0)}
+          label="Logins"
+          value={String(countJourneyEvents(personalJourneyEvents, "login"))}
+        />
+        <MiniLightMetric
+          label="Ausencias"
+          value={String(countJourneyEvents(personalJourneyEvents, "away"))}
         />
         <MiniLightMetric
           label="Almoco"
-          value={formatPresenceDuration(summary?.totals.lunch ?? 0)}
+          value={String(countJourneyEvents(personalJourneyEvents, "lunch"))}
         />
         <MiniLightMetric
-          label="Agenda"
-          value={formatPresenceDuration(summary?.totals.agenda ?? 0)}
-        />
-        <MiniLightMetric
-          label="Ausente"
-          value={formatPresenceDuration(summary?.totals.away ?? 0)}
-        />
-        <MiniLightMetric
-          label="Offline"
-          value={formatPresenceDuration(summary?.totals.offline ?? 0)}
-        />
-        <MiniLightMetric
-          label="Mudancas"
-          value={String(summary?.events.length ?? 0)}
+          label="Logouts"
+          value={String(countJourneyEvents(personalJourneyEvents, "logout"))}
         />
       </div>
-      {summary?.events.length ? (
+      {personalJourneyEvents.length ? (
         <div className="mt-4 grid gap-2">
-          {summary.events.slice(0, 6).map((event) => (
+          {personalJourneyEvents.slice(0, 6).map(({ event, kind }) => (
             <div
               className="rounded-md border border-[#edf0f4] bg-white p-2.5 text-xs"
               key={event.id}
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                 <span className="truncate font-semibold text-[#485466]">
-                  {event.previousStatus
-                    ? `${getHubPresenceLabel(event.previousStatus)} -> `
-                    : ""}
-                  {getHubPresenceLabel(event.nextStatus)}
+                  {formatJourneyEventLabel(kind)}
                 </span>
                 <span className="text-[#667085]">
                   {formatPresenceTime(event.startedAt)}
                 </span>
               </div>
               <p className="m-0 mt-1 truncate text-[#667085]">
-                {formatPresenceReason(event.reason)} / {event.source}
+                {formatJourneyTransition(event)}
               </p>
             </div>
           ))}
@@ -1217,17 +1228,6 @@ function getPresenceDotClassName(status: HubPresenceStatus) {
   return classNames[status];
 }
 
-function formatPresenceDuration(seconds: number) {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (hours > 0) {
-    return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
-  }
-
-  return `${minutes}m`;
-}
-
 function formatPresenceTime(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     hour: "2-digit",
@@ -1244,6 +1244,84 @@ function formatPresenceDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function formatPresenceDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  }).format(new Date(value));
+}
+
+function getJourneyEventKind(event: JourneyEventRecord): AvailabilityEventKind | null {
+  if (event.reason === "login" || (!event.previousStatus && event.nextStatus === "online")) {
+    return "login";
+  }
+
+  if (event.reason === "logout" || event.nextStatus === "offline") {
+    return "logout";
+  }
+
+  if (event.nextStatus === "away") {
+    return "away";
+  }
+
+  if (event.nextStatus === "lunch") {
+    return "lunch";
+  }
+
+  if (
+    event.nextStatus === "online" &&
+    (event.previousStatus === "away" ||
+      event.previousStatus === "lunch" ||
+      event.previousStatus === "offline")
+  ) {
+    return "return";
+  }
+
+  return null;
+}
+
+function formatJourneyEventLabel(kind: AvailabilityEventKind) {
+  const labels = {
+    away: "Ausente",
+    login: "Login",
+    logout: "Logout",
+    lunch: "Almoco",
+    return: "Volta",
+  } as const satisfies Record<AvailabilityEventKind, string>;
+
+  return labels[kind];
+}
+
+function countJourneyEvents<T extends { kind: AvailabilityEventKind }>(
+  events: T[],
+  kind: AvailabilityEventKind,
+) {
+  return events.filter((event) => event.kind === kind).length;
+}
+
+function getJourneyBadgeVariant(kind: AvailabilityEventKind) {
+  const variants = {
+    away: "warning",
+    login: "success",
+    logout: "danger",
+    lunch: "neutral",
+    return: "info",
+  } as const satisfies Record<
+    AvailabilityEventKind,
+    "danger" | "info" | "neutral" | "success" | "warning"
+  >;
+
+  return variants[kind];
+}
+
+function formatJourneyTransition(event: JourneyEventRecord) {
+  const previous = event.previousStatus
+    ? getHubPresenceLabel(event.previousStatus)
+    : "sem status";
+
+  return `${previous} -> ${getHubPresenceLabel(event.nextStatus)} / ${formatPresenceReason(event.reason)}`;
+}
+
 function formatPresenceReason(reason: string) {
   const labels: Record<string, string> = {
     activity: "atividade",
@@ -1256,14 +1334,6 @@ function formatPresenceReason(reason: string) {
   };
 
   return labels[reason] ?? reason;
-}
-
-function formatNullablePercent(value: number | null | undefined) {
-  if (value === null || value === undefined) {
-    return "--";
-  }
-
-  return formatPercent(value);
 }
 
 function formatPercent(value: number | null | undefined) {

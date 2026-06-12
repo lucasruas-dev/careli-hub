@@ -3,8 +3,8 @@
   "module": "Home / Panteon",
   "owner": "Zeus / Home",
   "createdAt": "2026-06-11T20:21:05-03:00",
-  "status": "PREVIEW_PUBLICADO / PRODUCAO_INTACTA / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS",
-  "summary": "Nova visao estrategica admin-only de disponibilidade na Home, com regra de ausencia apos 3 minutos, logout automatico apos 5 minutos e excecao automatica para reunioes Chronos em andamento.",
+  "status": "REVISAO_VALIDADA_LOCAL / PREVIEW_ANTERIOR_OBSOLETO / PRODUCAO_INTACTA / AGUARDANDO_AUTORIZACAO_NOVO_PREVIEW",
+  "summary": "Nova visao admin-only de jornada de disponibilidade na Home, focada em login, ausencia, almoco, retorno e logout, com regra de ausencia apos 3 minutos, logout automatico apos 5 minutos e excecao somente dentro da sala Chronos.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Lucas solicitou uma aba macro para admins acompanharem disponibilidade, produtividade e historico completo de acesso/status, alem de atualizar a regra atual de 10 minutos para ausencia em 3 minutos e logout em 5 minutos.",
@@ -27,14 +27,43 @@
       "ops.c2x.app.br": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
     }
   },
+  "revision": {
+    "revisedAt": "2026-06-12T10:07:31-03:00",
+    "reason": "Lucas rejeitou a primeira versao por excesso de informacao e apontou que a regra de inatividade nao foi assertiva porque permaneceu online apos longo periodo sem uso.",
+    "status": "validada localmente, ainda nao publicada em novo Preview",
+    "diagnosis": [
+      "A tela anterior trazia produtividade e indicadores demais para a necessidade real de auditoria macro.",
+      "O backend e o hook permitiam que uma reuniao Chronos agendada no horario atual segurasse status de agenda/online mesmo sem uso real do Panteon.",
+      "A reconciliacao por heartbeat podia ser tardia se o navegador postergasse timers; a nova atividade agora reconcilia o tempo ocioso antes de resetar o contador."
+    ],
+    "changes": [
+      "A aba Disponibilidade passou a exibir filtros de colaborador e tipo de evento, lista de colaboradores e linha do tempo de jornada.",
+      "Foram removidos da interface os indicadores de produtividade, taxa, pontos de atencao e metricas operacionais desnecessarias para este recorte.",
+      "O painel Meu dia passou a resumir somente logins, ausencias, almoco e logouts.",
+      "A API da Home deixou de fabricar status agenda/offline a partir de reuniao apenas agendada; o status atual agora depende de presenca real registrada.",
+      "A excecao de reuniao ficou restrita a rota real da sala Chronos, excluindo views de gravacao.",
+      "O hook de presenca passou a agendar timers explicitos para 3 e 5 minutos e a reconciliar o tempo ocioso antes de aceitar nova atividade."
+    ],
+    "validations": [
+      "npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx hooks/use-hub-presence.ts app/api/hub/home/route.ts lib/hub-home.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+      "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+      "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.",
+      "git diff --check: PASS, com avisos esperados de LF para CRLF.",
+      "Browser local em http://localhost:3011/login: PASS 200, titulo Panteon, sem erros de console; validacao autenticada da Home depende de sessao admin do Lucas."
+    ],
+    "safety": [
+      "Nenhum deploy, redeploy, alias, production deployment, env, secret, migration, schema ou escrita manual em Supabase foi executado nesta revisao.",
+      "O processo node na porta local 3011 ficou identificado por PID/nome, mas nao foi encerrado automaticamente porque o encerramento foi bloqueado pela revisao de seguranca sem identificacao mais forte do listener."
+    ]
+  },
   "decisions": [
     "Manter a Home como painel macro e operacional, sem redesign estrutural da tela principal.",
-    "Adicionar aba Disponibilidade apenas para administradores.",
+    "Adicionar aba Disponibilidade apenas para administradores, focada em auditoria de jornada.",
     "Centralizar a politica de presenca em apps/hub/lib/hub-presence-policy.ts.",
     "Marcar ausente apos 3 minutos sem interacao nos aplicativos Panteon.",
     "Executar logout automatico apos 5 minutos sem interacao, registrando evento offline com motivo logout.",
-    "Nao aplicar ausencia/logout automatico quando o usuario tiver reuniao Chronos ativa no horario atual.",
-    "Atualizar Meu dia para exibir resumo individual mais completo de produtividade, agenda, ausencia, offline e transicoes.",
+    "Nao aplicar ausencia/logout automatico somente quando o usuario estiver dentro da sala Chronos, nao apenas por agenda do horario atual.",
+    "Atualizar Meu dia para exibir resumo individual de logins, ausencias, almoco e logouts.",
     "Nao alterar schema, migrations, envs, secrets, Supabase manual, Hades, Hermes, Iris, Atlas, Setup, Chronos funcional ou aliases Vercel."
   ],
   "changedFiles": [
@@ -62,17 +91,18 @@
     "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
   "risks": [
-    "A validacao visual completa da aba Disponibilidade depende de sessao autenticada admin do Lucas.",
-    "O logout automatico usa a rotina existente de signOut do Hub; se algum navegador bloquear chamadas em background, a proxima interacao/heartbeat deve reconciliar o estado.",
-    "A deteccao automatica de reuniao depende dos dados atuais de chronos_meetings e chronos_participants para host_user_id, user_id ou email do participante."
+    "A validacao visual completa da aba Disponibilidade revisada depende de sessao autenticada admin do Lucas.",
+    "O logout automatico usa a rotina existente de signOut do Hub; se algum navegador bloquear chamadas em background, a proxima interacao/heartbeat deve reconciliar o estado antes de aceitar nova atividade.",
+    "A excecao de reuniao agora depende da presenca do usuario na rota real /chronos/[roomSlug]; reuniao apenas agendada nao segura disponibilidade."
   ],
   "rollback": [
-    "Reverter os arquivos listados em changedFiles para remover a aba Disponibilidade, a politica 3/5 e a excecao automatica de reuniao.",
+    "Reverter os arquivos listados em changedFiles para remover a aba Disponibilidade, a politica 3/5 e a excecao por sala Chronos.",
     "Sem rollback de banco, env, secret ou alias, pois nenhum deles foi alterado neste recorte."
   ],
   "nextSteps": [
-    "Lucas validar visualmente a Home com usuario admin autenticado.",
-    "Se aprovado, Zeus pode preparar Preview/Homologacao mediante autorizacao explicita.",
+    "Lucas autorizar novo Preview da revisao simplificada, se quiser testar fora do localhost.",
+    "Lucas validar visualmente a Home com usuario admin autenticado apos novo Preview.",
+    "Se aprovado, Zeus pode preparar Homologacao mediante autorizacao explicita.",
     "Se Lucas quiser auditoria historica ainda mais granular, avaliar migration futura separada para registrar eventos de atividade sem depender apenas das transicoes de status existentes."
   ]
 }

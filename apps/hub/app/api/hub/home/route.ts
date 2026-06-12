@@ -312,10 +312,7 @@ export async function GET(request: NextRequest) {
     context.adminClient,
     users,
   );
-  const presenceUserIds = new Set([
-    ...presenceByUserId.keys(),
-    ...currentMeetingsByUserId.keys(),
-  ]);
+  const presenceUserIds = new Set([...presenceByUserId.keys()]);
   const availability =
     context.user.role === "admin"
       ? await loadAvailabilitySnapshot({
@@ -374,8 +371,8 @@ export async function GET(request: NextRequest) {
 
         return {
           ...(currentMeeting ? { currentMeeting } : {}),
-          lastSeenAt: row?.last_seen_at ?? currentMeeting?.startsAt ?? new Date().toISOString(),
-          status: currentMeeting ? "agenda" : row ? normalizeFreshPresence(row) : "offline",
+          lastSeenAt: row?.last_seen_at ?? new Date().toISOString(),
+          status: row ? normalizeFreshPresence(row) : "offline",
           userId,
         };
       }),
@@ -575,11 +572,7 @@ async function loadAvailabilitySnapshot({
   const team = activeUsers.map((user) => {
     const currentMeeting = currentMeetingsByUserId.get(user.id);
     const presence = presenceByUserId.get(user.id);
-    const currentStatus = currentMeeting
-      ? "agenda"
-      : presence
-        ? normalizeFreshPresence(presence)
-        : "offline";
+    const currentStatus = presence ? normalizeFreshPresence(presence) : "offline";
     const userEvents = eventsByUserId.get(user.id) ?? [];
     const todayEvents = userEvents.filter(
       (event) => Date.parse(event.started_at) >= rangeStart.getTime(),
@@ -640,6 +633,7 @@ async function loadAvailabilitySnapshot({
       label: HUB_PRESENCE_POLICY_LABEL,
       logoutTimeoutMs: HUB_AUTO_LOGOUT_TIMEOUT_MS,
       meetingException: true,
+      meetingExceptionScope: "chronos_call_route",
     },
     rangeEnd: rangeEnd.toISOString(),
     rangeStart: rangeStart.toISOString(),

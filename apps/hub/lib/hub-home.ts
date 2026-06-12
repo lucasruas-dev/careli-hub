@@ -95,6 +95,7 @@ export type HubAvailabilitySnapshot = {
     label: string;
     logoutTimeoutMs: number;
     meetingException: boolean;
+    meetingExceptionScope?: string;
   };
   rangeEnd: string;
   rangeStart: string;

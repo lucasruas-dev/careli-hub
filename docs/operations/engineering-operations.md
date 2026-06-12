@@ -36431,3 +36431,46 @@ Conclusao:
 - Precisa de acao agora: Lucas deve abrir a URL Preview, entrar com usuario admin e validar a aba, o painel `Meu dia`, a regra de ausencia e a excecao de reuniao.
 - Quem deve agir agora: Lucas valida visualmente; Zeus monitora e corrige se surgir erro.
 - Proximo passo: se Lucas aprovar, decidir depois se o recorte vai para homologacao compartilhada ou fica aguardando ajustes.
+
+### Complemento 2026-06-12 10:07:31 -03:00 - OP-013 revisa Disponibilidade para jornada simples e regra assertiva
+
+- Status atualizado: `REVISAO_VALIDADA_LOCAL / PREVIEW_ANTERIOR_OBSOLETO / PRODUCAO_INTACTA / AGUARDANDO_AUTORIZACAO_NOVO_PREVIEW`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas rejeitou a primeira tela de disponibilidade por excesso de informacao;
+  - a necessidade real agora e um painel macro/auditavel de jornada: horario de login, momento em que ficou ausente, ida para almoco, volta do almoco, logout automatico e novo login;
+  - Lucas tambem reportou que a regra anterior nao ficou assertiva, pois ficou mais de 10 minutos sem mexer no sistema e ainda permaneceu online.
+- Diagnostico:
+  - a primeira versao da aba exibia produtividade, taxa, pontos de atencao e metricas que nao atendiam ao objetivo de auditoria simples;
+  - o backend e o hook de presenca permitiam que uma reuniao Chronos agendada no horario atual segurasse o status `agenda` sem prova de uso real do Panteon;
+  - se o navegador postergasse timers, a proxima atividade podia resetar `lastActivityAt` antes de reconciliar o tempo ocioso.
+- Implementacao da revisao:
+  - `apps/hub/app/page.tsx` substitui a visao densa por filtros de colaborador e evento, lista de colaboradores e linha do tempo de jornada;
+  - a interface removeu produtividade, taxa, pontos de atencao e indicadores secundarios da aba `Disponibilidade`;
+  - o painel `Meu dia` passou a resumir somente `Logins`, `Ausencias`, `Almoco` e `Logouts`;
+  - `apps/hub/hooks/use-hub-presence.ts` agora agenda timers explicitos para ausencia aos 3 minutos e logout aos 5 minutos, e reconcilia o tempo ocioso antes de aceitar qualquer nova atividade;
+  - a excecao de reuniao passou a depender da rota real `/chronos/[roomSlug]`, excluindo views de gravacao, em vez de depender apenas de reuniao agendada;
+  - `apps/hub/app/api/hub/home/route.ts` deixou de fabricar status `agenda` para usuarios sem presenca real apenas por reuniao agendada;
+  - `apps/hub/lib/hub-home.ts` registra o escopo da excecao como `chronos_call_route`.
+- Validacoes:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx hooks/use-hub-presence.ts app/api/hub/home/route.ts lib/hub-home.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home;
+  - `git diff --check`: PASS, com avisos esperados de LF para CRLF;
+  - Browser local em `http://localhost:3011/login`: PASS 200, titulo `Panteon`, sem erros de console.
+- Manifesto:
+  - `docs/operations/panteon-recorte-manifest-home-20260611-013-availability-strategy.json`.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, production deployment, env, secret, migration, schema, escrita manual em Supabase, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado nesta revisao;
+  - o Preview anterior segue publicado, mas esta obsoleto para validacao de Lucas.
+- Risco residual:
+  - a validacao visual completa da Home revisada depende de sessao autenticada admin do Lucas em novo Preview ou homologacao;
+  - o processo local `node` na porta 3011 permaneceu ativo apos o smoke; o encerramento automatico foi bloqueado pela revisao de seguranca por nao haver identificacao forte do listener sem expor linha de comando.
+
+Conclusao:
+
+- O que aconteceu: a aba `Disponibilidade` foi simplificada para uma auditoria de jornada e a regra 3/5 foi endurecida.
+- Impacto pratico: a Home deixa de tratar reuniao agendada como prova de disponibilidade; sem uso real do Panteon, o colaborador deve ficar ausente em 3 minutos e ser deslogado em 5 minutos, salvo quando estiver dentro da sala Chronos.
+- Precisa de acao agora: publicar um novo Preview exige autorizacao explicita do Lucas.
+- Quem deve agir agora: Zeus aguarda autorizacao de Preview; Lucas valida a proxima URL autenticada quando publicada.
+- Proximo passo: gerar Preview limpo desta revisao e substituir a validacao do Preview anterior.
