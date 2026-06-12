@@ -81,8 +81,22 @@
       "validations": [
         "npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
         "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
-        "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home."
-      ]
+        "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.",
+        "npx.cmd vercel deploy --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes em pacote limpo por git archive do commit 7b49975c: PASS, Ready em dpl_GLKoAZc9jqUzATZkW8jEqtJfB6yX, target preview.",
+        "GET https://careli-hub-hub-i2bs-7jj06bho2-lucasruas-devs-projects.vercel.app/login: PASS 200.",
+        "npx.cmd vercel inspect https://c2x.app.br: Ready preservado em dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
+        "npx.cmd vercel inspect https://ops.c2x.app.br: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
+      ],
+      "deployment": {
+        "publishedAt": "2026-06-12T10:58:11-03:00",
+        "commit": "7b49975c",
+        "deploymentId": "dpl_GLKoAZc9jqUzATZkW8jEqtJfB6yX",
+        "previewUrl": "https://careli-hub-hub-i2bs-7jj06bho2-lucasruas-devs-projects.vercel.app",
+        "inspectorUrl": "https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/GLKoAZc9jqUzATZkW8jEqtJfB6yX",
+        "target": "preview",
+        "package": "git archive do commit 7b49975c expandido fora do repositorio principal em pasta temporaria",
+        "obsoletePreview": "dpl_9jQAPCUndbkjxUksbwhZ8Us9wXg1"
+      }
     },
     "safety": [
       "Nenhum --prod, alias, env, secret, migration, schema ou escrita manual em Supabase foi executado nesta revisao.",

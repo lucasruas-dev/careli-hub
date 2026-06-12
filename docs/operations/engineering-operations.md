@@ -36550,3 +36550,41 @@ Conclusao:
 - Precisa de acao agora: publicar novo Preview depende de autorizacao explicita do Lucas.
 - Quem deve agir agora: Lucas decide se esta revisao deve ir para novo Preview.
 - Proximo passo: gerar Preview limpo do ajuste visual quando autorizado.
+
+### Complemento 2026-06-12 10:58:11 -03:00 - OP-013 Preview do historico macro publicado
+
+- Status atualizado: `PREVIEW_REVISADO_PUBLICADO / PRODUCAO_INTACTA / AGUARDANDO_VALIDACAO_VISUAL_AUTENTICADA_DO_LUCAS`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Autorizacao:
+  - Lucas informou que o link anterior nao tinha mudado;
+  - Zeus confirmou que o ajuste visual estava apenas no commit local `7b49975c`;
+  - Lucas autorizou: `pode subir`.
+- Deploy Preview:
+  - commit publicado: `7b49975c` (`fix(home): tighten availability history`);
+  - pacote: `git archive` do commit `7b49975c`, expandido em pasta temporaria fora do repositorio principal;
+  - comando: `npx.cmd vercel deploy --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - deployment: `dpl_GLKoAZc9jqUzATZkW8jEqtJfB6yX`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-7jj06bho2-lucasruas-devs-projects.vercel.app`;
+  - inspector: `https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/GLKoAZc9jqUzATZkW8jEqtJfB6yX`;
+  - target: `preview`;
+  - Preview anterior `dpl_9jQAPCUndbkjxUksbwhZ8Us9wXg1` ficou obsoleto para validacao da tela.
+- Validacoes pos-deploy:
+  - `npx.cmd vercel inspect https://careli-hub-hub-i2bs-7jj06bho2-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects`: Ready, target `preview`;
+  - `GET https://careli-hub-hub-i2bs-7jj06bho2-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_3nn79exgh9km3rfCd25UE48gX4cX`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Fora do escopo:
+  - nenhum `--prod`;
+  - nenhum `vercel alias set`;
+  - nenhum env, secret, migration, schema, Supabase manual, dominio, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional alterado.
+- Risco residual:
+  - a validacao visual completa da aba `Disponibilidade` revisada depende de sessao autenticada admin do Lucas;
+  - testes no Preview podem registrar eventos de presenca/status se o ambiente apontar para a mesma base operacional.
+
+Conclusao:
+
+- O que aconteceu: o Preview tecnico com historico por data e linguagem macro foi publicado.
+- Impacto pratico: Lucas tem uma URL nova para validar a tela sem alterar producao.
+- Precisa de acao agora: Lucas deve abrir o novo Preview, entrar como admin e validar a aba `Disponibilidade`.
+- Quem deve agir agora: Lucas valida visualmente; Zeus corrige se houver divergencia.
+- Proximo passo: se Lucas aprovar a experiencia, decidir se o pacote segue para homologacao compartilhada.
