@@ -3888,3 +3888,62 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_EvsxeRUKpzoeGth7oZX5sotAD1WT` se Lucas identificar regressao critica;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-12 - PROD-20260612-016-HOME-AVAILABILITY-JOURNEY-DEDUP
+
+Status: HOTFIX EM PRODUCAO / C2X ATUALIZADO / OPS PRESERVADO.
+
+Registro de producao:
+
+- Assunto: `[Home] Refinamento da jornada de disponibilidade sem online repetido`.
+- Protocolo de origem: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Squad/agente responsavel: `Zeus / Home`.
+- Data e hora local: `2026-06-12 16:00:05 -03:00`.
+- Autorizacao: Lucas autorizou explicitamente a publicacao com `pode subir`.
+- Ambiente alvo: `producao`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y`;
+  - rollback imediato de `https://c2x.app.br`: `dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - pacote candidato: `%LOCALAPPDATA%\Temp\panteon-op013-availability-dedupe-prod-e87a9635`;
+  - commit candidato: `e87a9635`.
+- Escopo publicado:
+  - para auditoria, grava evento apenas quando o status armazenado muda de fato;
+  - preserva ponte `online -> ausente -> online/offline` somente quando o payload carrega `idleMs` acima de 3 minutos;
+  - carrega historico da Home por colaborador ativo, reduzindo risco de uma pessoa com ruido esconder outra;
+  - consolida a timeline visual mantendo o primeiro `online` do ciclo e removendo repeticoes tecnicas ate existir `ausente`, `almoco` ou `deslogado`.
+- Publicacao:
+  - deployment novo: `dpl_2WL28JtckerrrAs31MXQPXRbC2MN`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pre-publicacao:
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home;
+  - `git diff --check`: PASS, com avisos CRLF esperados no Windows.
+- Validacoes pos-publicacao:
+  - build remoto Vercel: PASS, com warning conhecido de Turbopack/NFT e alerta existente de `npm audit`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_2WL28JtckerrrAs31MXQPXRbC2MN`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`, preservado;
+  - `GET https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app/`: `200 OK`;
+  - `GET https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Homologacao:
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada; Lucas autorizou hotfix direto em producao para corrigir comportamento observado em uso real.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhuma limpeza retroativa foi executada em `hub_presence_events`;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - a validacao visual autenticada final da aba `Disponibilidade` em producao depende do usuario admin do Lucas;
+  - registros ruidosos antigos continuam persistidos por rastreabilidade, mas deixam de dominar a tela.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y` se Lucas identificar regressao critica;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.

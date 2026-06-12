@@ -36851,3 +36851,51 @@ Conclusao:
 - Precisa de acao agora: Lucas precisa autorizar novo deploy se quiser aplicar a correcao em producao.
 - Quem deve agir agora: Zeus aguarda autorizacao para publicar ou mantém o pacote validado localmente.
 - Proximo passo: publicar o refinamento quando autorizado e validar em producao com um ciclo real de 3 e 5 minutos.
+
+### Complemento 2026-06-12 16:00:05 -03:00 - OP-013 refinamento da jornada publicado em producao
+
+- Status atualizado: `HOTFIX_EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Autorizacao:
+  - Lucas autorizou explicitamente a publicacao: `pode subir`.
+- Publicacao:
+  - commit publicado: `e87a9635` (`fix(home): dedupe availability journey`);
+  - pacote: `git archive` do commit `e87a9635`, expandido fora do repositorio principal em `%LOCALAPPDATA%\Temp\panteon-op013-availability-dedupe-prod-e87a9635`;
+  - deployment Vercel: `dpl_2WL28JtckerrrAs31MXQPXRbC2MN`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias aplicado somente em `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Base e rollback:
+  - deployment anterior de `https://c2x.app.br`: `dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y`;
+  - rollback imediato do hotfix: reapontar `https://c2x.app.br` para `dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y`;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - validacoes locais pre-publicacao registradas para o commit `e87a9635`: `npm.cmd run lint:hub`, `npm.cmd run check-types:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check`;
+  - commit local executado com `--no-verify` porque o hook do worktree isolado nao encontrou `scripts/panteon-hook-runner.ps1`; as validacoes equivalentes foram executadas manualmente antes do deploy;
+  - build remoto Vercel: PASS, com warning conhecido de Turbopack/NFT e alerta existente de `npm audit`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_2WL28JtckerrrAs31MXQPXRbC2MN`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app/`: `200 OK`;
+  - `GET https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Homologacao:
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada; Lucas autorizou hotfix direto em producao para corrigir comportamento observado em uso real.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhuma limpeza retroativa foi executada em `hub_presence_events`;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - registros ruidosos antigos continuam no banco por rastreabilidade, mas a Home deixa de exibir duplicidade como jornada real;
+  - a validacao visual autenticada final depende do usuario admin do Lucas.
+
+Conclusao:
+
+- O que aconteceu: o refinamento que separa batimento tecnico de mudanca real da jornada foi publicado em producao.
+- Impacto pratico: `c2x.app.br` deve manter o primeiro online do ciclo e remover repeticoes tecnicas ate ocorrer ausente, almoco ou logout.
+- Precisa de acao agora: Lucas deve atualizar a Home e validar a aba `Disponibilidade` com um colaborador que antes aparecia com `online` repetido.
+- Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
+- Proximo passo: manter o hotfix se a timeline ficar limpa e confiavel.

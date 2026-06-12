@@ -284,5 +284,37 @@
       "GET https://ops.c2x.app.br/login: PASS 200.",
       "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados."
     ]
+  },
+  "availabilityJourneyDedupeProduction": {
+    "publishedAt": "2026-06-12T16:00:05-03:00",
+    "commit": "e87a9635",
+    "deploymentId": "dpl_2WL28JtckerrrAs31MXQPXRbC2MN",
+    "productionUrl": "https://c2x.app.br",
+    "technicalUrl": "https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app",
+    "target": "production",
+    "package": "git archive do commit e87a9635 expandido fora do repositorio principal em %LOCALAPPDATA%\\Temp\\panteon-op013-availability-dedupe-prod-e87a9635",
+    "alias": {
+      "changed": "c2x.app.br",
+      "previousDeploymentId": "dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y",
+      "currentDeploymentId": "dpl_2WL28JtckerrrAs31MXQPXRbC2MN",
+      "rollbackDeploymentId": "dpl_7mp1aThRAgCb5RygYSKYb9Kvz96y"
+    },
+    "preservedAliases": {
+      "ops.c2x.app.br": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
+    },
+    "homologationParity": {
+      "status": "divergencia registrada",
+      "reason": "Lucas autorizou hotfix direto em producao para corrigir comportamento observado em uso real; homo.c2x.app.br nao foi reapontado nesta rodada."
+    },
+    "postDeployValidations": [
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_2WL28JtckerrrAs31MXQPXRbC2MN.",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+      "GET https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app/: PASS 200.",
+      "GET https://careli-hub-hub-i2bs-pfapm7907-lucasruas-devs-projects.vercel.app/login: PASS 200.",
+      "GET https://c2x.app.br/login: PASS 200.",
+      "GET https://ops.c2x.app.br/login: PASS 200.",
+      "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados.",
+      "npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados."
+    ]
   }
 }
