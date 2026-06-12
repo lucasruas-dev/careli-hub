@@ -281,10 +281,46 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  const storedPreviousStatus = existingPresence
+    ? normalizeLegacyPresence(existingPresence.status)
+    : "offline";
   const previousStatus = existingPresence
     ? normalizeFreshPresence(existingPresence)
     : "offline";
   const nextStatus = payload.data.status;
+
+  if (
+    existingPresence &&
+    shouldPreserveManualPresence({
+      nextStatus,
+      reason: payload.data.reason,
+      storedPreviousStatus,
+    })
+  ) {
+    const { error: preserveError } = await context.adminClient
+      .from("hub_presence")
+      .update({
+        last_seen_at: now,
+        status: storedPreviousStatus,
+      })
+      .eq("id", existingPresence.id);
+
+    if (preserveError) {
+      return NextResponse.json(
+        { error: "Nao foi possivel atualizar presenca." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      data: {
+        lastSeenAt: now,
+        status: storedPreviousStatus,
+        userId: context.user.id,
+      },
+    });
+  }
+
   const query = existingPresence
     ? context.adminClient
         .from("hub_presence")
@@ -318,6 +354,7 @@ export async function PATCH(request: NextRequest) {
       previousStatus,
       reason: payload.data.reason,
       source: payload.data.source,
+      storedPreviousStatus,
     });
 
     if (!eventResult.ok) {
@@ -446,6 +483,7 @@ async function recordPresenceTransition({
   previousStatus,
   reason,
   source,
+  storedPreviousStatus,
 }: {
   context: Extract<AuthorizedContext, { ok: true }>;
   metadata: Record<string, unknown>;
@@ -454,10 +492,20 @@ async function recordPresenceTransition({
   previousStatus: HubPresenceStatus;
   reason: string;
   source: string;
+  storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
+  const transitionPlan = createPresenceTransitionPlan({
+    metadata,
+    nextStatus,
+    now,
+    previousStatus,
+    reason,
+    source,
+    storedPreviousStatus,
+  });
   const { error: closeError } = await context.adminClient
     .from("hub_presence_events")
-    .update({ ended_at: now })
+    .update({ ended_at: transitionPlan.closeOpenAt })
     .eq("user_id", context.user.id)
     .is("module_id", null)
     .is("workspace_id", null)
@@ -470,54 +518,205 @@ async function recordPresenceTransition({
     };
   }
 
-  const { error: eventError } = await context.adminClient
-    .from("hub_presence_events")
-    .insert({
-      metadata,
-      module_id: null,
-      next_status: nextStatus,
-      previous_status: normalizeLegacyPresence(previousStatus),
-      reason,
-      source,
-      started_at: now,
-      user_id: context.user.id,
-      workspace_id: null,
-    });
+  for (const transitionEvent of transitionPlan.events) {
+    const { error: eventError } = await context.adminClient
+      .from("hub_presence_events")
+      .insert({
+        ended_at: transitionEvent.endedAt,
+        metadata: transitionEvent.metadata,
+        module_id: null,
+        next_status: transitionEvent.nextStatus,
+        previous_status: transitionEvent.previousStatus,
+        reason: transitionEvent.reason,
+        source: transitionEvent.source,
+        started_at: transitionEvent.startedAt,
+        user_id: context.user.id,
+        workspace_id: null,
+      });
 
-  if (eventError) {
-    return {
-      error: "Nao foi possivel registrar log de presenca.",
-      ok: false as const,
-    };
-  }
+    if (eventError) {
+      return {
+        error: "Nao foi possivel registrar log de presenca.",
+        ok: false as const,
+      };
+    }
 
-  const { error: activityError } = await context.adminClient
-    .from("hub_activity_events")
-    .insert({
-      description: getPresenceActivityDescription(previousStatus, nextStatus),
-      metadata: {
-        ...metadata,
-        nextStatus,
-        previousStatus: normalizeLegacyPresence(previousStatus),
-        reason,
-        source,
-      },
-      module_id: null,
-      severity: getPresenceSeverity(nextStatus),
-      title: getPresenceActivityTitle(previousStatus, nextStatus, reason),
-      type: "presence",
-      user_id: context.user.id,
-      workspace_id: null,
-    });
+    const { error: activityError } = await context.adminClient
+      .from("hub_activity_events")
+      .insert({
+        description: getPresenceActivityDescription(
+          transitionEvent.previousStatus,
+          transitionEvent.nextStatus,
+        ),
+        metadata: {
+          ...transitionEvent.metadata,
+          nextStatus: transitionEvent.nextStatus,
+          previousStatus: transitionEvent.previousStatus,
+          reason: transitionEvent.reason,
+          source: transitionEvent.source,
+        },
+        module_id: null,
+        severity: getPresenceSeverity(transitionEvent.nextStatus),
+        title: getPresenceActivityTitle(
+          transitionEvent.previousStatus,
+          transitionEvent.nextStatus,
+          transitionEvent.reason,
+        ),
+        type: "presence",
+        user_id: context.user.id,
+        workspace_id: null,
+      });
 
-  if (activityError) {
-    return {
-      error: "Nao foi possivel registrar atividade de presenca.",
-      ok: false as const,
-    };
+    if (activityError) {
+      return {
+        error: "Nao foi possivel registrar atividade de presenca.",
+        ok: false as const,
+      };
+    }
   }
 
   return { ok: true as const };
+}
+
+function createPresenceTransitionPlan({
+  metadata,
+  nextStatus,
+  now,
+  previousStatus,
+  reason,
+  source,
+  storedPreviousStatus,
+}: {
+  metadata: Record<string, unknown>;
+  nextStatus: Exclude<HubPresenceStatus, "busy">;
+  now: string;
+  previousStatus: HubPresenceStatus;
+  reason: string;
+  source: string;
+  storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
+}) {
+  const normalizedPreviousStatus = normalizeLegacyPresence(previousStatus);
+  const bridgeAway = shouldBridgeAwayBeforeTransition({
+    metadata,
+    nextStatus,
+    previousStatus: normalizedPreviousStatus,
+    storedPreviousStatus,
+  });
+
+  if (bridgeAway) {
+    const awayStartedAt = getIdleAwayStartedAt(now, metadata);
+    const awayMetadata = {
+      ...metadata,
+      bridge: "idle_before_transition",
+      rule: "idle_without_panteon_activity",
+      synthetic: true,
+    };
+
+    return {
+      closeOpenAt: awayStartedAt,
+      events: [
+        {
+          endedAt: now,
+          metadata: awayMetadata,
+          nextStatus: "away" as const,
+          previousStatus: storedPreviousStatus,
+          reason: "idle",
+          source,
+          startedAt: awayStartedAt,
+        },
+        {
+          endedAt: undefined,
+          metadata,
+          nextStatus,
+          previousStatus: "away" as const,
+          reason,
+          source,
+          startedAt: now,
+        },
+      ],
+    };
+  }
+
+  const startedAt =
+    nextStatus === "away" && reason === "idle"
+      ? getIdleAwayStartedAt(now, metadata)
+      : now;
+
+  return {
+    closeOpenAt: startedAt,
+    events: [
+      {
+        endedAt: undefined,
+        metadata,
+        nextStatus,
+        previousStatus: normalizedPreviousStatus,
+        reason,
+        source,
+        startedAt,
+      },
+    ],
+  };
+}
+
+function shouldBridgeAwayBeforeTransition({
+  metadata,
+  nextStatus,
+  previousStatus,
+  storedPreviousStatus,
+}: {
+  metadata: Record<string, unknown>;
+  nextStatus: Exclude<HubPresenceStatus, "busy">;
+  previousStatus: Exclude<HubPresenceStatus, "busy">;
+  storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
+}) {
+  if (previousStatus !== "away") {
+    return false;
+  }
+
+  if (storedPreviousStatus === "away" || storedPreviousStatus === "lunch") {
+    return false;
+  }
+
+  if (nextStatus !== "offline" && nextStatus !== "online") {
+    return false;
+  }
+
+  return getIdleMs(metadata) >= HUB_IDLE_TIMEOUT_MS;
+}
+
+function shouldPreserveManualPresence({
+  nextStatus,
+  reason,
+  storedPreviousStatus,
+}: {
+  nextStatus: Exclude<HubPresenceStatus, "busy">;
+  reason: string;
+  storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
+}) {
+  return (
+    storedPreviousStatus === "lunch" &&
+    nextStatus === "online" &&
+    reason !== "manual" &&
+    reason !== "login"
+  );
+}
+
+function getIdleAwayStartedAt(now: string, metadata: Record<string, unknown>) {
+  const nowTime = Date.parse(now);
+  const idleMs = getIdleMs(metadata);
+  const offsetMs = Math.max(0, idleMs - HUB_IDLE_TIMEOUT_MS);
+
+  if (Number.isNaN(nowTime)) {
+    return now;
+  }
+
+  return new Date(nowTime - offsetMs).toISOString();
+}
+
+function getIdleMs(metadata: Record<string, unknown>) {
+  const value = metadata.idleMs;
+
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 async function createAuthorizedContext(

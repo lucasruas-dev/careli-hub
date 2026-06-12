@@ -36660,3 +36660,38 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar visualmente a aba `Disponibilidade` em producao com usuario admin.
 - Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
 - Proximo passo: se a validacao estiver boa, manter o registro como `EM PRODUCAO`.
+
+### Complemento 2026-06-12 12:14:34 -03:00 - OP-013 refina historico e regra de ausencia/logout
+
+- Status atualizado: `HOTFIX_VALIDADO_LOCAL / PRODUCAO_AINDA_NAO_ATUALIZADA / AGUARDANDO_AUTORIZACAO_DE_DEPLOY`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas identificou que, apos logout automatico, o historico nao preservava obrigatoriamente o evento `Ausente`;
+  - Lucas definiu a regra de negocio: `Ausente` precisa representar ao menos 3 minutos desde o ultimo `Online`; antes de `Deslogado` precisa existir `Ausente`;
+  - Lucas tambem apontou duplicidade de `Online` e ruido no fluxo `Almoco -> Online -> Online -> Almoco`.
+- Implementacao:
+  - `apps/hub/hooks/use-hub-presence.ts` deixou de criar `Ausente` e `Online` no mesmo retorno de atividade;
+  - o hook passou a enviar `idleMs` quando retorna para `Online` apos inatividade, permitindo que o servidor reconstrua a janela real de ausencia;
+  - status manuais `Ausente` e `Almoco` agora ficam protegidos contra clique, movimento ou heartbeat comum; para voltar, o usuario precisa mudar o status manualmente ou entrar em fluxo operacional valido;
+  - `apps/hub/app/api/hub/presence/route.ts` passou a preservar `Almoco` contra atualizacao automatica para `Online`;
+  - a API passou a criar uma transicao intermediaria `Ausente` antes de `Online` ou `Logout` quando detectar retorno/logout apos idle maior que 3 minutos;
+  - eventos de `Ausente` criados por idle sao retrodatados para o ponto correto: ultimo movimento + 3 minutos, evitando aparecer colados no retorno;
+  - `apps/hub/app/page.tsx` passou a normalizar a linha do tempo, removendo `Online` duplicado no mesmo minuto, ignorando retorno automatico imediatamente apos `Almoco` e sintetizando visualmente `Ausente` antes de `Logout` em registros antigos incompletos.
+- Validacoes:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx hooks/use-hub-presence.ts app/api/hub/presence/route.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home;
+  - `git diff --check`: PASS, com avisos CRLF esperados no Windows.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, production deployment, env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado nesta etapa.
+- Risco residual:
+  - producao segue com o comportamento anterior ate Lucas autorizar novo deploy;
+  - registros historicos ja gravados de forma incompleta serao saneados visualmente pela Home, mas a persistencia retroativa no banco nao foi alterada sem autorizacao especifica.
+
+Conclusao:
+
+- O que aconteceu: as regras de presenca foram reforcadas para impedir logout sem ausencia previa, ausencia sem janela minima de 3 minutos e duplicidade de `Online`.
+- Impacto pratico: novos eventos passam a preservar a jornada real e a tela deixa de mostrar ruido de status como se fosse historico de trabalho.
+- Precisa de acao agora: para corrigir a producao, Lucas precisa autorizar o deploy deste hotfix.
+- Quem deve agir agora: Lucas decide se publica; Zeus/Hefesto publicam somente com autorizacao explicita.
+- Proximo passo: gerar pacote limpo e publicar em producao quando autorizado.

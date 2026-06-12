@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  HUB_AUTO_LOGOUT_TIMEOUT_MS,
+  HUB_IDLE_TIMEOUT_MS,
   getHubPresenceLabel,
   getHubPresenceTodaySummary,
   normalizeHubPresenceStatus,
@@ -56,17 +58,22 @@ type AvailabilityEventFilter =
   | "return";
 type AvailabilityEventKind = Exclude<AvailabilityEventFilter, "all">;
 type JourneyEventRecord = {
+  id: string;
+  metadata?: Record<string, unknown>;
   nextStatus: HubPresenceStatus;
   previousStatus?: HubPresenceStatus;
   reason: string;
+  startedAt: string;
+  userId?: string;
+  userName?: string;
 };
-type JourneyEventItem<TEvent extends JourneyEventRecord & { startedAt: string }> = {
-  event: TEvent;
+type JourneyEventItem = {
+  event: JourneyEventRecord;
   kind: AvailabilityEventKind;
 };
-type JourneyDateGroup<TEvent extends JourneyEventRecord & { startedAt: string }> = {
+type JourneyDateGroup = {
   dateKey: string;
-  events: Array<JourneyEventItem<TEvent>>;
+  events: JourneyEventItem[];
   label: string;
 };
 
@@ -468,15 +475,7 @@ function AvailabilityAdminPanel({
     );
   }
 
-  const journeyEvents = snapshot.history
-    .map((event) => ({
-      event,
-      kind: getJourneyEventKind(event),
-    }))
-    .filter((item): item is {
-      event: HubAvailabilitySnapshot["history"][number];
-      kind: AvailabilityEventKind;
-    } => Boolean(item.kind))
+  const journeyEvents = createJourneyEventItems(snapshot.history)
     .filter((item) =>
       selectedUserId === "all" ? true : item.event.userId === selectedUserId,
     )
@@ -1118,16 +1117,7 @@ function PresenceTodayPanel({ className }: { className?: string }) {
   }, []);
 
   const status = summary?.currentStatus ?? "offline";
-  const personalJourneyEvents =
-    summary?.events
-      .map((event) => ({
-        event,
-        kind: getJourneyEventKind(event),
-      }))
-      .filter((item): item is {
-        event: HubPresenceSummary["events"][number];
-        kind: AvailabilityEventKind;
-      } => Boolean(item.kind)) ?? [];
+  const personalJourneyEvents = createJourneyEventItems(summary?.events ?? []);
 
   return (
     <Surface bordered className={`border-[#d9e0e7] bg-white p-5 ${className ?? ""}`}>
@@ -1369,10 +1359,196 @@ function getJourneyBadgeVariant(kind: AvailabilityEventKind) {
   return variants[kind];
 }
 
-function groupJourneyEventsByDate<TEvent extends JourneyEventRecord & { startedAt: string }>(
-  events: Array<JourneyEventItem<TEvent>>,
+function createJourneyEventItems(events: JourneyEventRecord[]) {
+  const eventsByUser = new Map<string, JourneyEventItem[]>();
+  const normalizedItems: JourneyEventItem[] = [];
+  const sortedEvents = [...events].sort(
+    (firstEvent, secondEvent) =>
+      Date.parse(firstEvent.startedAt) - Date.parse(secondEvent.startedAt),
+  );
+
+  for (const event of sortedEvents) {
+    const kind = getJourneyEventKind(event);
+
+    if (!kind) {
+      continue;
+    }
+
+    const userKey = event.userId ?? "__current_user";
+    const userItems = eventsByUser.get(userKey) ?? [];
+
+    if (kind === "logout") {
+      const syntheticAway = createSyntheticAwayBeforeLogout(event, userItems);
+
+      if (syntheticAway) {
+        pushJourneyEventItem({
+          eventsByUser,
+          item: syntheticAway,
+          normalizedItems,
+          userKey,
+        });
+      }
+    }
+
+    pushJourneyEventItem({
+      eventsByUser,
+      item: { event, kind },
+      normalizedItems,
+      userKey,
+    });
+  }
+
+  return normalizedItems.sort(
+    (firstItem, secondItem) =>
+      Date.parse(secondItem.event.startedAt) -
+      Date.parse(firstItem.event.startedAt),
+  );
+}
+
+function pushJourneyEventItem({
+  eventsByUser,
+  item,
+  normalizedItems,
+  userKey,
+}: {
+  eventsByUser: Map<string, JourneyEventItem[]>;
+  item: JourneyEventItem;
+  normalizedItems: JourneyEventItem[];
+  userKey: string;
+}) {
+  const userItems = eventsByUser.get(userKey) ?? [];
+  const previousItem = userItems.at(-1);
+
+  if (previousItem && shouldReplacePreviousJourneyEvent(previousItem, item)) {
+    userItems[userItems.length - 1] = item;
+    const previousIndex = normalizedItems.indexOf(previousItem);
+
+    if (previousIndex >= 0) {
+      normalizedItems[previousIndex] = item;
+    }
+
+    eventsByUser.set(userKey, userItems);
+    return;
+  }
+
+  if (previousItem && shouldSkipJourneyEvent(previousItem, item)) {
+    return;
+  }
+
+  userItems.push(item);
+  normalizedItems.push(item);
+  eventsByUser.set(userKey, userItems);
+}
+
+function shouldReplacePreviousJourneyEvent(
+  previousItem: JourneyEventItem,
+  item: JourneyEventItem,
 ) {
-  const groups = new Map<string, JourneyDateGroup<TEvent>>();
+  return (
+    item.kind === "lunch" &&
+    previousItem.kind === "return" &&
+    getJourneyTimeDeltaMs(previousItem, item) <= 60_000
+  );
+}
+
+function shouldSkipJourneyEvent(
+  previousItem: JourneyEventItem,
+  item: JourneyEventItem,
+) {
+  const deltaMs = getJourneyTimeDeltaMs(previousItem, item);
+
+  if (item.kind === previousItem.kind && deltaMs <= 60_000) {
+    return true;
+  }
+
+  if (
+    item.kind === "return" &&
+    previousItem.kind === "lunch" &&
+    item.event.reason !== "manual" &&
+    deltaMs <= 60_000
+  ) {
+    return true;
+  }
+
+  if (
+    item.kind === "away" &&
+    (previousItem.kind === "login" || previousItem.kind === "return") &&
+    deltaMs < HUB_IDLE_TIMEOUT_MS &&
+    getJourneyIdleMs(item.event) < HUB_IDLE_TIMEOUT_MS
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function createSyntheticAwayBeforeLogout(
+  event: JourneyEventRecord,
+  userItems: JourneyEventItem[],
+): JourneyEventItem | null {
+  const previousItem = userItems.at(-1);
+
+  if (previousItem?.kind === "away" || previousItem?.kind === "lunch") {
+    return null;
+  }
+
+  const logoutTime = Date.parse(event.startedAt);
+
+  if (Number.isNaN(logoutTime)) {
+    return null;
+  }
+
+  const idleMs = Math.max(
+    getJourneyIdleMs(event),
+    HUB_AUTO_LOGOUT_TIMEOUT_MS,
+  );
+  const startedAt = new Date(
+    logoutTime - Math.max(0, idleMs - HUB_IDLE_TIMEOUT_MS),
+  ).toISOString();
+
+  if (
+    previousItem &&
+    (previousItem.kind === "login" || previousItem.kind === "return") &&
+    Date.parse(startedAt) - Date.parse(previousItem.event.startedAt) <
+      HUB_IDLE_TIMEOUT_MS
+  ) {
+    return null;
+  }
+
+  return {
+    event: {
+      ...event,
+      id: `${event.id}:synthetic-away`,
+      metadata: {
+        ...event.metadata,
+        synthetic: true,
+      },
+      nextStatus: "away",
+      previousStatus: previousItem?.event.nextStatus ?? event.previousStatus,
+      reason: "idle",
+      startedAt,
+    },
+    kind: "away",
+  };
+}
+
+function getJourneyTimeDeltaMs(
+  previousItem: JourneyEventItem,
+  item: JourneyEventItem,
+) {
+  return Math.abs(
+    Date.parse(item.event.startedAt) - Date.parse(previousItem.event.startedAt),
+  );
+}
+
+function getJourneyIdleMs(event: JourneyEventRecord) {
+  const value = event.metadata?.idleMs;
+
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function groupJourneyEventsByDate(events: JourneyEventItem[]) {
+  const groups = new Map<string, JourneyDateGroup>();
 
   for (const item of events) {
     const dateKey = getPresenceDateInputValue(item.event.startedAt);

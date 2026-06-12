@@ -43,6 +43,7 @@ export function useHubPresenceController({
   const statusRef = useRef<HubPresenceStatus>("offline");
   const lastSentAtRef = useRef(0);
   const lastActivityAtRef = useRef(Date.now());
+  const manualPresenceRef = useRef<HubPresenceStatus | null>(null);
   const onAutoLogoutRef = useRef(onAutoLogout);
 
   useEffect(() => {
@@ -52,6 +53,17 @@ export function useHubPresenceController({
   const markPresence = useCallback(
     async (nextStatus: HubPresenceStatus, options: MarkPresenceOptions = {}) => {
       const normalizedStatus = normalizeHubPresenceStatus(nextStatus);
+
+      if (options.manual) {
+        lastActivityAtRef.current = Date.now();
+        autoLogoutTriggeredRef.current = false;
+        manualPresenceRef.current =
+          normalizedStatus === "away" || normalizedStatus === "lunch"
+            ? normalizedStatus
+            : null;
+      } else if (normalizedStatus === "offline" || normalizedStatus === "agenda") {
+        manualPresenceRef.current = null;
+      }
 
       statusRef.current = normalizedStatus;
       setStatus(normalizedStatus);
@@ -203,6 +215,10 @@ export function useHubPresenceController({
         return true;
       }
 
+      if (manualPresenceRef.current) {
+        return true;
+      }
+
       const idleMs = now - lastActivityAtRef.current;
 
       if (idleMs >= HUB_AUTO_LOGOUT_TIMEOUT_MS) {
@@ -210,15 +226,12 @@ export function useHubPresenceController({
         return false;
       }
 
-      if (idleMs >= HUB_IDLE_TIMEOUT_MS && statusRef.current !== "away") {
-        recordIdleAway(idleMs);
-      }
-
       return true;
     }
 
     function handleActivity() {
       const now = Date.now();
+      const idleMs = now - lastActivityAtRef.current;
 
       if (!reconcileIdleBeforeActivity(now)) {
         return;
@@ -235,6 +248,11 @@ export function useHubPresenceController({
         return;
       }
 
+      if (manualPresenceRef.current) {
+        schedulePresenceTimers();
+        return;
+      }
+
       if (document.visibilityState === "visible") {
         const recentlySynced =
           Date.now() - lastSentAtRef.current < HUB_PRESENCE_HEARTBEAT_MS / 2;
@@ -243,7 +261,18 @@ export function useHubPresenceController({
           return;
         }
 
-        runPresenceUpdate("online", "activity");
+        runPresenceUpdate(
+          "online",
+          "activity",
+          idleMs >= HUB_IDLE_TIMEOUT_MS
+            ? {
+                awayTimeoutMs: HUB_IDLE_TIMEOUT_MS,
+                idleMs,
+                logoutTimeoutMs: HUB_AUTO_LOGOUT_TIMEOUT_MS,
+                rule: "return_after_idle_without_panteon_activity",
+              }
+            : undefined,
+        );
       }
 
       schedulePresenceTimers();
@@ -256,6 +285,11 @@ export function useHubPresenceController({
           ...getMeetingMetadata(),
         });
         schedulePresenceTimers();
+        return;
+      }
+
+      if (manualPresenceRef.current === "lunch") {
+        clearPresenceTimers();
         return;
       }
 

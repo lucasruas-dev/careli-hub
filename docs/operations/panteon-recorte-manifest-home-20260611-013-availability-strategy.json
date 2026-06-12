@@ -3,7 +3,7 @@
   "module": "Home / Panteon",
   "owner": "Zeus / Home",
   "createdAt": "2026-06-11T20:21:05-03:00",
-  "status": "EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO",
+  "status": "HOTFIX_VALIDADO_LOCAL / PRODUCAO_AINDA_NAO_ATUALIZADA / AGUARDANDO_AUTORIZACAO_DE_DEPLOY",
   "summary": "Nova visao admin-only de jornada de disponibilidade na Home, focada em login, ausencia, almoco, retorno e logout, com regra de ausencia apos 3 minutos, logout automatico apos 5 minutos e excecao somente dentro da sala Chronos.",
   "authorization": {
     "requestedBy": "Lucas",
@@ -198,5 +198,33 @@
     "Lucas validar visualmente a Home em producao com usuario admin autenticado.",
     "Se Lucas identificar regressao critica, Zeus/Hefesto executa rollback de c2x.app.br para dpl_3nn79exgh9km3rfCd25UE48gX4cX.",
     "Se Lucas quiser auditoria historica ainda mais granular, avaliar migration futura separada para registrar eventos de atividade sem depender apenas das transicoes de status existentes."
+  ],
+  "businessRuleRefinement": [
+    {
+      "revisedAt": "2026-06-12T12:14:34-03:00",
+      "reason": "Lucas identificou perda de historico apos logout, ausencia de evento Ausente antes de Deslogado e duplicidade de Online/Almoco na linha do tempo.",
+      "status": "validado localmente, aguardando autorizacao de deploy",
+      "rules": [
+        "Ausente automatico so pode nascer depois de 3 minutos sem atividade no Panteon.",
+        "Logout automatico precisa preservar Ausente imediatamente antes do Deslogado.",
+        "Almoco manual nao pode ser derrubado por clique, movimento ou heartbeat comum.",
+        "Online repetido no mesmo minuto nao deve aparecer como jornada real.",
+        "Registros antigos incompletos podem receber Ausente sintetico apenas na apresentacao da Home, sem escrita retroativa no banco."
+      ],
+      "changedFiles": [
+        "apps/hub/app/api/hub/presence/route.ts",
+        "apps/hub/app/page.tsx",
+        "apps/hub/hooks/use-hub-presence.ts",
+        "docs/operations/engineering-operations.md",
+        "docs/operations/panteon-recorte-manifest-home-20260611-013-availability-strategy.json"
+      ],
+      "validations": [
+        "npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx hooks/use-hub-presence.ts app/api/hub/presence/route.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+        "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+        "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.",
+        "git diff --check: PASS, com avisos CRLF esperados no Windows."
+      ],
+      "deployment": "BLOQUEADO ate autorizacao explicita do Lucas para novo deploy."
+    }
   ]
 }
