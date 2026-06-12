@@ -36588,3 +36588,34 @@ Conclusao:
 - Precisa de acao agora: Lucas deve abrir o novo Preview, entrar como admin e validar a aba `Disponibilidade`.
 - Quem deve agir agora: Lucas valida visualmente; Zeus corrige se houver divergencia.
 - Proximo passo: se Lucas aprovar a experiencia, decidir se o pacote segue para homologacao compartilhada.
+
+### Complemento 2026-06-12 11:09:10 -03:00 - OP-013 ajusta retorno para Online e garante status atual
+
+- Status atualizado: `VALIDADO_LOCAL / AGUARDANDO_AUTORIZACAO_NOVO_PREVIEW`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas questionou o evento `Volta` no historico;
+  - Lucas definiu a leitura ideal: quando a pessoa sair de `ausente` ou `almoco`, o proximo estado deve aparecer como `online`; se a pessoa saiu por logout/offline, o retorno deve aparecer como `login`;
+  - Lucas tambem apontou que `Nenhum registro` nao deveria acontecer quando o colaborador selecionado possui status atual, como `ausente`.
+- Implementacao:
+  - `apps/hub/app/page.tsx` trocou o label de retorno de `Volta` para `Online`;
+  - eventos de `away/lunch -> online` agora aparecem como `ficou online`;
+  - eventos de `offline -> online` continuam como `fez login`;
+  - quando o colaborador selecionado nao tem evento historico exibivel no filtro, a tela renderiza um registro minimo com o status atual: `esta online`, `esta ausente`, `esta em almoco`, `esta offline` ou `esta em reuniao`;
+  - o registro minimo respeita filtro de data e tipo de evento.
+- Validacoes:
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home.
+- Fora do escopo:
+  - nenhum deploy, redeploy, alias, production deployment, env, secret, migration, schema, Supabase manual, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado nesta revisao.
+- Risco residual:
+  - a validacao visual autenticada depende de novo Preview, ainda nao publicado nesta etapa.
+
+Conclusao:
+
+- O que aconteceu: a linguagem de retorno foi ajustada para `Online` e a tela ganhou fallback de status atual.
+- Impacto pratico: o historico fica alinhado com a regra de jornada definida pelo Lucas e deixa de mostrar `Nenhum registro` para colaborador com status atual.
+- Precisa de acao agora: publicar novo Preview depende de autorizacao explicita do Lucas.
+- Quem deve agir agora: Lucas decide se esta revisao deve ir para novo Preview.
+- Proximo passo: gerar Preview limpo do ajuste quando autorizado.

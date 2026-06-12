@@ -96,6 +96,22 @@
         "target": "preview",
         "package": "git archive do commit 7b49975c expandido fora do repositorio principal em pasta temporaria",
         "obsoletePreview": "dpl_9jQAPCUndbkjxUksbwhZ8Us9wXg1"
+      },
+      "statusLanguageTuning": {
+        "revisedAt": "2026-06-12T11:09:10-03:00",
+        "reason": "Lucas questionou o termo Volta e reforcou que a jornada deve aparecer como ausente ou almoco e depois online; apos logout, o proximo retorno deve aparecer como login.",
+        "status": "validado localmente, ainda nao publicado em novo Preview",
+        "changes": [
+          "Evento de retorno de ausencia/almoco passou a ser exibido como Online e frase ficou online.",
+          "Evento vindo de offline/logout continua sendo exibido como Login.",
+          "Quando um colaborador selecionado nao possui evento historico no filtro, a tela exibe o status atual como registro minimo em vez de Nenhum registro.",
+          "O fallback de status atual respeita filtro de data e evento para nao poluir filtros especificos."
+        ],
+        "validations": [
+          "npm.cmd exec --workspace @repo/hub -- eslint app/page.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+          "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+          "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte Home."
+        ]
       }
     },
     "safety": [

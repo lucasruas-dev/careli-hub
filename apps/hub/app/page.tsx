@@ -101,7 +101,7 @@ const availabilityEventFilters = [
   { label: "Login", value: "login" },
   { label: "Ausente", value: "away" },
   { label: "Almoco", value: "lunch" },
-  { label: "Retorno", value: "return" },
+  { label: "Online", value: "return" },
   { label: "Logout", value: "logout" },
 ] as const satisfies Array<{
   label: string;
@@ -487,6 +487,17 @@ function AvailabilityAdminPanel({
       dateFilter ? getPresenceDateInputValue(item.event.startedAt) === dateFilter : true,
     );
   const dateGroups = groupJourneyEventsByDate(journeyEvents);
+  const selectedMember = snapshot.team.find(
+    (member) => member.userId === selectedUserId,
+  );
+  const shouldShowCurrentStatus =
+    Boolean(selectedMember) &&
+    shouldShowCurrentStatusFallback(
+      selectedMember?.currentStatus ?? "offline",
+      dateFilter,
+      eventFilter,
+      snapshot.generatedAt,
+    );
   const currentCounts = {
     away: snapshot.team.filter((member) => member.currentStatus === "away").length,
     lunch: snapshot.team.filter((member) => member.currentStatus === "lunch").length,
@@ -656,6 +667,31 @@ function AvailabilityAdminPanel({
                 </div>
               );
             })
+          ) : shouldShowCurrentStatus && selectedMember ? (
+            <div className="overflow-hidden rounded-md border border-[#edf0f4] bg-[#fafbfc]">
+              <div className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-sm font-semibold text-[#17202f]">
+                <span>{formatPresenceDate(snapshot.generatedAt)}</span>
+                <span className="text-xs text-[#667085]">1</span>
+              </div>
+              <div className="grid gap-2 border-t border-[#edf0f4] bg-white p-2">
+                <article className="grid gap-3 rounded-md border border-[#edf0f4] bg-white p-3 lg:grid-cols-[4.5rem_minmax(0,1fr)_auto]">
+                  <time
+                    className="text-sm font-semibold text-[#17202f]"
+                    dateTime={snapshot.generatedAt}
+                  >
+                    {formatPresenceTime(snapshot.generatedAt)}
+                  </time>
+                  <p className="m-0 min-w-0 truncate text-sm font-semibold text-[#17202f]">
+                    {formatCurrentStatusText(selectedMember)}
+                  </p>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${operationStatusStyle[selectedMember.currentStatus]}`}
+                  >
+                    {operationStatusLabel[selectedMember.currentStatus]}
+                  </span>
+                </article>
+              </div>
+            </div>
           ) : (
             <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4 text-sm text-[#667085]">
               Nenhum registro.
@@ -1305,7 +1341,7 @@ function formatJourneyEventLabel(kind: AvailabilityEventKind) {
     login: "Login",
     logout: "Logout",
     lunch: "Almoco",
-    return: "Volta",
+    return: "Online",
   } as const satisfies Record<AvailabilityEventKind, string>;
 
   return labels[kind];
@@ -1376,10 +1412,47 @@ function formatJourneyMacroText(
     login: `${name} fez login`,
     logout: `${name} foi deslogado`,
     lunch: `${name} saiu para almoco`,
-    return: `${name} voltou`,
+    return: `${name} ficou online`,
   } as const satisfies Record<AvailabilityEventKind, string>;
 
   return labels[kind];
+}
+
+function shouldShowCurrentStatusFallback(
+  status: HomePresenceStatus,
+  dateFilter: string,
+  eventFilter: AvailabilityEventFilter,
+  generatedAt: string,
+) {
+  if (dateFilter && dateFilter !== getPresenceDateInputValue(generatedAt)) {
+    return false;
+  }
+
+  if (eventFilter === "all") {
+    return true;
+  }
+
+  const matchingFilter = {
+    agenda: null,
+    away: "away",
+    lunch: "lunch",
+    offline: null,
+    online: "return",
+  } as const satisfies Record<HomePresenceStatus, AvailabilityEventFilter | null>;
+
+  return matchingFilter[status] === eventFilter;
+}
+
+function formatCurrentStatusText(member: HubAvailabilitySnapshot["team"][number]) {
+  const labels = {
+    agenda: `${member.displayName} esta em reuniao`,
+    away: `${member.displayName} esta ausente`,
+    lunch: `${member.displayName} esta em almoco`,
+    offline: `${member.displayName} esta offline`,
+    online: `${member.displayName} esta online`,
+  } as const satisfies Record<HomePresenceStatus, string>;
+
+  return labels[member.currentStatus];
 }
 
 function formatPercent(value: number | null | undefined) {
