@@ -30,6 +30,14 @@ type MarkPresenceOptions = {
   reason?: HubPresenceChangeReason;
 };
 
+function isManualHoldPresence(status: HubPresenceStatus) {
+  return status === "agenda" || status === "away" || status === "lunch";
+}
+
+function isProtectedManualPresence(status: HubPresenceStatus | null) {
+  return status === "agenda" || status === "lunch";
+}
+
 export function useHubPresenceController({
   enabled,
   onAutoLogout,
@@ -57,11 +65,10 @@ export function useHubPresenceController({
       if (options.manual) {
         lastActivityAtRef.current = Date.now();
         autoLogoutTriggeredRef.current = false;
-        manualPresenceRef.current =
-          normalizedStatus === "away" || normalizedStatus === "lunch"
-            ? normalizedStatus
-            : null;
-      } else if (normalizedStatus === "offline" || normalizedStatus === "agenda") {
+        manualPresenceRef.current = isManualHoldPresence(normalizedStatus)
+          ? normalizedStatus
+          : null;
+      } else if (normalizedStatus === "offline" || normalizedStatus === "online") {
         manualPresenceRef.current = null;
       }
 
@@ -72,14 +79,20 @@ export function useHubPresenceController({
         return;
       }
 
-      lastSentAtRef.current = Date.now();
+      const sentAt = Date.now();
+      lastSentAtRef.current = sentAt;
 
-      await markHubPresence({
+      const savedPresence = await markHubPresence({
         metadata: options.metadata,
         reason: options.reason ?? (options.manual ? "manual" : "heartbeat"),
         source,
         status: normalizedStatus,
       });
+
+      if (savedPresence && lastSentAtRef.current === sentAt) {
+        statusRef.current = savedPresence.status;
+        setStatus(savedPresence.status);
+      }
     },
     [enabled, source],
   );
@@ -123,6 +136,10 @@ export function useHubPresenceController({
       getHubPresenceCurrentMeeting()
         .then((meeting) => {
           activeMeetingRef.current = meeting;
+
+          if (meeting && !disposed) {
+            updateAutomaticPresence();
+          }
         })
         .catch((error: unknown) => {
           activeMeetingRef.current = null;
@@ -133,28 +150,52 @@ export function useHubPresenceController({
         });
     }
 
-    function isMeetingExceptionActive() {
-      return isChronosCallRoute();
+    function getAgendaExceptionRule() {
+      if (manualPresenceRef.current === "agenda") {
+        return "manual_agenda";
+      }
+
+      if (activeMeetingRef.current) {
+        return "chronos_current_meeting";
+      }
+
+      if (isChronosCallRoute()) {
+        return "chronos_call_route";
+      }
+
+      return null;
+    }
+
+    function isAgendaExceptionActive() {
+      return getAgendaExceptionRule() !== null;
+    }
+
+    function isPresencePenaltyExempt() {
+      return (
+        isAgendaExceptionActive() ||
+        isProtectedManualPresence(manualPresenceRef.current)
+      );
     }
 
     function getMeetingMetadata() {
       const activeMeeting = activeMeetingRef.current;
+      const rule = getAgendaExceptionRule() ?? "chronos_call_route";
 
       return activeMeeting
         ? {
             meetingId: activeMeeting.id,
             protocol: activeMeeting.protocol,
-            rule: "chronos_call_route",
+            rule,
           }
         : {
-            rule: "chronos_call_route",
+            rule,
           };
     }
 
     function schedulePresenceTimers() {
       clearPresenceTimers();
 
-      if (isMeetingExceptionActive()) {
+      if (isPresencePenaltyExempt()) {
         return;
       }
 
@@ -211,11 +252,7 @@ export function useHubPresenceController({
     }
 
     function reconcileIdleBeforeActivity(now = Date.now()) {
-      if (isMeetingExceptionActive()) {
-        return true;
-      }
-
-      if (manualPresenceRef.current) {
+      if (isPresencePenaltyExempt()) {
         return true;
       }
 
@@ -240,10 +277,15 @@ export function useHubPresenceController({
       lastActivityAtRef.current = now;
       autoLogoutTriggeredRef.current = false;
 
-      if (isMeetingExceptionActive()) {
+      if (isAgendaExceptionActive()) {
         runPresenceUpdate("agenda", "agenda", {
           ...getMeetingMetadata(),
         });
+        schedulePresenceTimers();
+        return;
+      }
+
+      if (isProtectedManualPresence(manualPresenceRef.current)) {
         schedulePresenceTimers();
         return;
       }
@@ -279,7 +321,7 @@ export function useHubPresenceController({
     }
 
     function updateAutomaticPresence() {
-      if (isMeetingExceptionActive()) {
+      if (isAgendaExceptionActive()) {
         autoLogoutTriggeredRef.current = false;
         runPresenceUpdate("agenda", "agenda", {
           ...getMeetingMetadata(),
@@ -288,7 +330,7 @@ export function useHubPresenceController({
         return;
       }
 
-      if (manualPresenceRef.current === "lunch") {
+      if (isProtectedManualPresence(manualPresenceRef.current)) {
         clearPresenceTimers();
         return;
       }

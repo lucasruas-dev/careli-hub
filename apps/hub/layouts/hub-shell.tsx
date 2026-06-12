@@ -580,6 +580,10 @@ export function HubShell({
                       void hubPresence
                         .setStatus(nextStatus, {
                           manual: true,
+                          metadata:
+                            nextStatus === "agenda"
+                              ? { rule: "manual_agenda" }
+                              : undefined,
                           reason: "manual",
                         })
                         .catch((error: unknown) => {

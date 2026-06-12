@@ -36899,3 +36899,43 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar a Home e validar a aba `Disponibilidade` com um colaborador que antes aparecia com `online` repetido.
 - Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
 - Proximo passo: manter o hotfix se a timeline ficar limpa e confiavel.
+
+### Complemento 2026-06-12 16:35:00 -03:00 - OP-013 excecao Agenda protegida contra ausente/logout
+
+- Status atualizado: `VALIDADO_LOCAL / PRODUCAO_AINDA_NAO_ATUALIZADA / AGUARDANDO_AUTORIZACAO_DE_DEPLOY`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Contexto:
+  - Lucas reportou que usuarios em `agenda` ainda podiam cair da chamada quando a regra de ausencia/logout automatico era aplicada;
+  - Lucas reforcou que, se a deteccao automatica de agenda falhar, o usuario precisa poder marcar `agenda` manualmente e ficar imune as penalidades de ausencia/logout enquanto estiver nesse status.
+- Diagnostico:
+  - `useHubPresenceController` limpava o hold manual quando o status era `agenda`, entao a selecao manual no topbar nao era tratada como excecao;
+  - a excecao de chamada olhava apenas a rota Chronos, sem considerar a reuniao atual retornada pela API nem o status manual `agenda`;
+  - a API de presenca preservava `lunch` contra heartbeats automaticos, mas nao protegia `agenda` contra `idle`, `heartbeat`, `login` ou `logout` tecnicos.
+- Implementacao local:
+  - `apps/hub/hooks/use-hub-presence.ts` passou a tratar `agenda` manual como estado protegido, sem timers de ausencia/logout, mantendo tambem `lunch` protegido;
+  - a mesma regra agora considera tres fontes de excecao: `manual_agenda`, reuniao Chronos atual (`chronos_current_meeting`) e rota de chamada Chronos (`chronos_call_route`);
+  - quando a API de presenca devolve um status preservado, o hook sincroniza o estado local com o status efetivamente salvo;
+  - `apps/hub/app/api/hub/presence/route.ts` passou a preservar `agenda` contra atualizacoes automaticas nao manuais, inclusive logout automatico, permitindo saida explicita por acao manual;
+  - `apps/hub/layouts/hub-shell.tsx` passou a registrar `agenda` manual com metadado `rule: manual_agenda`.
+- Regra de negocio vigente:
+  - `online` sem atividade no Panteon vira `ausente` apos 3 minutos e pode gerar logout automatico depois do limite configurado;
+  - `agenda` automatico ou manual nao pode virar `ausente` nem disparar logout automatico;
+  - `lunch` manual segue protegido;
+  - `away` nao foi transformado em excecao geral, para preservar a politica de ausencia/logout.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - nenhuma limpeza retroativa foi executada em `hub_presence_events`.
+- Risco residual:
+  - validacao autenticada final precisa ocorrer em producao ou preview com uma chamada real, porque a queda acontecia durante o ciclo real de idle/logout.
+
+Conclusao:
+
+- O que aconteceu: a regra de disponibilidade foi refinada para proteger `agenda` como estado operacional de chamada.
+- Impacto pratico: quando o usuario estiver em agenda, automatico ou manual, o sistema nao deve aplicar ausencia/logout automatico nem derrubar a chamada.
+- Precisa de acao agora: Lucas precisa autorizar novo deploy se quiser aplicar em producao.
+- Quem deve agir agora: Zeus aguarda autorizacao de deploy ou entrega o pacote validado localmente.
+- Proximo passo: publicar quando autorizado e validar com uma chamada real mantendo o status `agenda` por mais de 5 minutos.

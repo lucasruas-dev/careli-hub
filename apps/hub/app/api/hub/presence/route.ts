@@ -715,12 +715,25 @@ function shouldPreserveManualPresence({
   reason: string;
   storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
-  return (
+  if (
     storedPreviousStatus === "lunch" &&
     nextStatus === "online" &&
     reason !== "manual" &&
     reason !== "login"
-  );
+  ) {
+    return true;
+  }
+
+  if (
+    storedPreviousStatus === "agenda" &&
+    nextStatus !== "agenda" &&
+    reason !== "manual" &&
+    reason !== "activity"
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function getIdleAwayStartedAt(now: string, metadata: Record<string, unknown>) {
