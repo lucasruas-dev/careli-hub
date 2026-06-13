@@ -37065,3 +37065,45 @@ Conclusao:
 - Precisa de acao agora: Zeus deve publicar o hotfix autorizado em producao.
 - Quem deve agir agora: Zeus executa deploy e valida aliases `c2x`/`ops`.
 - Proximo passo: publicar, registrar deployment e validar em producao.
+
+### Complemento 2026-06-13 11:05:31 -03:00 - OP-013 politica 5/10 publicada em producao
+
+- Status atualizado: `HOTFIX_EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Publicacao:
+  - commit de codigo publicado: `dbfa6c9` (`fix(home): adjust presence policy to 5 10`);
+  - pacote: `git archive` do commit `dbfa6c9`, expandido fora do repositorio principal em `%LOCALAPPDATA%\Temp\panteon-op013-presence-5-10-prod-dbfa6c9-20260613105741`;
+  - deployment Vercel: `dpl_3bXK28ytceKVwiVQWJG8ArX8YHfS`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-75bmel3r8-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias aplicado somente em `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Base e rollback:
+  - deployment anterior de `https://c2x.app.br`: `dpl_BqfLqKM4NT2LTnBiHYLryiyFu87R`;
+  - rollback imediato do hotfix: reapontar `https://c2x.app.br` para `dpl_BqfLqKM4NT2LTnBiHYLryiyFu87R`;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - validacoes locais pre-publicacao: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check`;
+  - build remoto Vercel: PASS, com warnings conhecidos de Turbopack/NFT, `npm audit` e envs listados pelo Turbo sem valores expostos;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_3bXK28ytceKVwiVQWJG8ArX8YHfS`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://careli-hub-hub-i2bs-75bmel3r8-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - validacao funcional final depende de observar um ciclo real: 5 minutos para `ausente` e 10 minutos para logout automatico;
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada; Lucas autorizou hotfix direto em producao para a regra operacional.
+
+Conclusao:
+
+- O que aconteceu: a regra `5/10` foi publicada em producao junto com o refinamento de selecao manual.
+- Impacto pratico: `online` sem atividade vira `ausente` apos 5 minutos e logout automatico ocorre apos 10 minutos; `agenda` e `almoco` seguem protegidos.
+- Precisa de acao agora: Lucas deve atualizar o Panteon e observar um ciclo real de inatividade.
+- Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
+- Proximo passo: manter o hotfix se o comportamento 5/10 estiver correto.
