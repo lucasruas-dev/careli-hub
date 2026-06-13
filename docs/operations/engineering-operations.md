@@ -37359,7 +37359,7 @@ Conclusao:
   - `GET https://ops.c2x.app.br/login`: `200 OK`;
   - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
 - Fora do escopo:
-  - nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias, Preview ou deploy de producao foi executado;
+  - naquele momento, nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias de producao ou deploy de producao foi executado;
   - o chat principal ja aceitava arquivos; o recorte atuou no painel de respostas.
   - `docs/operations/homologation-safety-gate.md` e `scripts/homologation-safety-gate.mjs` citados no AGENTS nao existem neste worktree; o recorte foi controlado por manifesto e validacoes equivalentes disponiveis.
 
@@ -37370,3 +37370,58 @@ Conclusao:
 - Precisa de acao agora: Lucas deve testar o Preview autenticado anexando PDF/DOCX pequeno em uma resposta.
 - Quem deve agir agora: Lucas valida; Zeus/Hefesto so levam a producao se Lucas pedir explicitamente producao.
 - Proximo passo: apos validacao do Preview, decidir se o protocolo entra em producao.
+
+### Complemento 2026-06-13 16:01:54 -03:00 - Hermes respostas com documentos publicado em producao
+
+- Status: `EM PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `HERMES-20260613-016-REPLY-DOCUMENT-ATTACHMENTS`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-hermes-20260613-016-reply-document-attachments.json`.
+- Autorizacao:
+  - Lucas autorizou explicitamente a publicacao em producao com `pode subir em producao`.
+- Commit e branch:
+  - branch: `codex/hermes/reply-document-attachments-20260613`;
+  - commit usado no pacote publicado: `809f7590`;
+  - commit de codigo do recorte: `bc6ef29a` (`fix(hermes): allow documents in thread replies`).
+- Publicacao:
+  - pacote limpo: `%TEMP%/panteon-hermes-reply-attachments-prod-809f759-20260613-155859/source`;
+  - comando de deploy: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - deployment Vercel novo: `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-1m8vcgfva-lucasruas-devs-projects.vercel.app`;
+  - dominio alvo atualizado: `https://c2x.app.br`;
+  - alias executado somente para `https://c2x.app.br`;
+  - deployment anterior de `https://c2x.app.br` e rollback imediato: `dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pre-publicacao:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows.
+- Validacoes pos-publicacao:
+  - build remoto Vercel: PASS, com warnings conhecidos de Turbopack/NFT, `npm audit` e envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://careli-hub-hub-i2bs-1m8vcgfva-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual ou banco foi alterado;
+  - nenhum modulo fora do Hermes foi alterado;
+  - `https://ops.c2x.app.br` nao foi reapontado nesta rodada, por uso de `--skip-domain` e alias manual apenas em `c2x.app.br`;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - validacao funcional completa depende de Lucas testar em sessao autenticada anexando PDF/DOCX pequeno em uma resposta real do Hermes;
+  - o anexo continua usando o fluxo atual do Hermes como data URL, mantendo o limite operacional existente de 8 MB.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp` se Lucas identificar regressao critica;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+Conclusao:
+
+- O que aconteceu: o recorte que libera documentos nas respostas do Hermes saiu de Preview e foi publicado em producao.
+- Impacto pratico: `https://c2x.app.br` agora permite anexar documentos comuns em respostas de threads do Hermes, nao apenas imagens.
+- Precisa de acao agora: Lucas deve validar um anexo real pequeno em uma resposta do Hermes.
+- Quem deve agir agora: Lucas valida; Zeus fica pronto para rollback de `c2x.app.br` se houver regressao critica.
+- Proximo passo: manter em producao se o teste autenticado confirmar envio e exibicao dos anexos.

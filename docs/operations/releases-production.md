@@ -4014,3 +4014,68 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_EnvuLzDuf7iGBRWbVHzwLVtYDoQr` se Lucas identificar regressao critica;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-13 - PROD-20260613-018-HERMES-REPLY-DOCUMENT-ATTACHMENTS
+
+Status: EM PRODUCAO / C2X ATUALIZADO / OPS PRESERVADO.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Respostas com anexos de documentos`.
+- Protocolo de origem: `HERMES-20260613-016-REPLY-DOCUMENT-ATTACHMENTS`.
+- Squad/agente responsavel: `Zeus / Hermes`.
+- Data e hora local: `2026-06-13 16:01:54 -03:00`.
+- Autorizacao: Lucas autorizou explicitamente a publicacao com `pode subir em producao`.
+- Ambiente alvo: `producao`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp`;
+  - rollback imediato de `https://c2x.app.br`: `dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - pacote candidato: `%TEMP%/panteon-hermes-reply-attachments-prod-809f759-20260613-155859/source`;
+  - commit candidato/publicado: `809f7590`;
+  - commit de codigo do recorte: `bc6ef29a`.
+- Escopo publicado:
+  - composer de respostas do Hermes passa a aceitar documentos comuns, alem de imagens;
+  - extensoes aceitas no input de respostas: `csv`, `doc`, `docx`, `pdf`, `ppt`, `pptx`, `txt`, `xls`, `xlsx`, alem de audio, imagem e video;
+  - classificacao de anexo por MIME como `audio`, `image`, `video` ou `file`;
+  - previa local com miniatura apenas para imagem e icone de arquivo para documentos/outros anexos;
+  - colagem de prints preservada como anexo `image`.
+- Publicacao:
+  - branch: `codex/hermes/reply-document-attachments-20260613`;
+  - deployment novo: `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-1m8vcgfva-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - comando: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - alias executado manualmente apenas para `https://c2x.app.br`;
+  - `--skip-domain` foi usado para evitar reapontamento automatico de `https://ops.c2x.app.br`.
+- Validacoes pre-publicacao:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows.
+- Validacoes pos-publicacao:
+  - build remoto Vercel: PASS, com warnings conhecidos de Turbopack/NFT, alerta existente de `npm audit` e avisos existentes de envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://careli-hub-hub-i2bs-1m8vcgfva-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Homologacao:
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada; Lucas autorizou publicacao direta em producao para o recorte Hermes.
+- Operations Center estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; o registro canonico em Markdown foi atualizado nesta rodada.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Iris, Atlas, Setup, Chronos ou regra de presenca foi alterado;
+  - `https://ops.c2x.app.br` permaneceu no deployment preservado;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - validacao funcional completa depende de Lucas anexar um PDF/DOCX pequeno em uma resposta real autenticada no Hermes;
+  - o anexo continua embutido como data URL conforme fluxo atual do Hermes; arquivos maiores seguem bloqueados em 8 MB.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp` se Lucas identificar regressao critica;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.

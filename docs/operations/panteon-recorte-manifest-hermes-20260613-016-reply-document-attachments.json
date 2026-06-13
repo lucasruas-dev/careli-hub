@@ -3,12 +3,12 @@
   "module": "Hermes",
   "owner": "Zeus / Hermes",
   "createdAt": "2026-06-13T14:42:37-03:00",
-  "status": "PREVIEW_PUBLICADO / AGUARDANDO_VALIDACAO_LUCAS",
-  "summary": "Libera anexos de documentos no composer de respostas do Hermes, mantendo o contrato existente HermesMessageAttachment e sem alterar schema, banco, env ou producao.",
+  "status": "EM PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO",
+  "summary": "Libera anexos de documentos no composer de respostas do Hermes, mantendo o contrato existente HermesMessageAttachment e sem alterar schema, banco ou env.",
   "authorization": {
     "requestedBy": "Lucas",
     "scope": "Lucas pediu liberar dentro dos chats respostas do Hermes a opcao de anexar documentos, nao somente imagens.",
-    "deployment": "Lucas autorizou subir com 'pode subir'. Sem mencao explicita a producao, o recorte deve ser publicado como Preview tecnico, sem --prod e sem alias."
+    "deployment": "Lucas autorizou primeiro Preview com 'pode subir' e depois autorizou explicitamente producao com 'pode subir em producao'."
   },
   "changedFiles": [
     "apps/hub/components/pulsex/thread-panel.tsx",
@@ -31,7 +31,14 @@
     "GET https://careli-hub-hub-i2bs-gewr18b0e-lucasruas-devs-projects.vercel.app/login: PASS 200.",
     "GET https://c2x.app.br/login: PASS 200.",
     "GET https://ops.c2x.app.br/login: PASS 200.",
-    "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
+    "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+    "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes em pacote limpo por git archive do commit 809f7590: PASS, Ready em dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj, target production.",
+    "npx.cmd vercel alias set https://careli-hub-hub-i2bs-1m8vcgfva-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: PASS.",
+    "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj.",
+    "GET https://careli-hub-hub-i2bs-1m8vcgfva-lucasruas-devs-projects.vercel.app/login: PASS 200.",
+    "GET https://c2x.app.br/api/hub/home sem sessao: PASS 401 esperado.",
+    "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados.",
+    "npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados."
   ],
   "deployment": {
     "publishedAt": "2026-06-13T14:48:29-03:00",
@@ -47,8 +54,34 @@
       "ops.c2x.app.br": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
     }
   },
+  "production": {
+    "authorizedBy": "Lucas",
+    "authorizedText": "pode subir em producao",
+    "publishedAt": "2026-06-13T16:01:54-03:00",
+    "commit": "809f7590",
+    "branch": "codex/hermes/reply-document-attachments-20260613",
+    "packagePath": "%TEMP%/panteon-hermes-reply-attachments-prod-809f759-20260613-155859/source",
+    "deploymentId": "dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj",
+    "technicalUrl": "https://careli-hub-hub-i2bs-1m8vcgfva-lucasruas-devs-projects.vercel.app",
+    "target": "production",
+    "domain": "https://c2x.app.br",
+    "previousC2xDeploymentId": "dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp",
+    "opsPreservedDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+    "usedSkipDomain": true,
+    "postDeployChecks": [
+      "GET https://careli-hub-hub-i2bs-1m8vcgfva-lucasruas-devs-projects.vercel.app/login: 200 OK.",
+      "GET https://c2x.app.br/login: 200 OK.",
+      "GET https://ops.c2x.app.br/login: 200 OK.",
+      "GET https://c2x.app.br/api/hub/home sem sessao: 401 esperado.",
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj.",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+      "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados.",
+      "npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados."
+    ]
+  },
   "safety": [
-    "Nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias ou deploy de producao foi executado.",
+    "Nenhum env, secret, migration, schema, Supabase manual ou banco foi alterado.",
+    "Deploy de producao e alias c2x.app.br foram executados somente apos autorizacao explicita do Lucas.",
     "O recorte altera apenas o composer de respostas Hermes e documentacao operacional.",
     "O arquivo docs/operations/homologation-safety-gate.md e o script scripts/homologation-safety-gate.mjs citados no AGENTS nao existem neste worktree; foi criado manifesto de recorte e rodadas validacoes equivalentes disponiveis."
   ],
@@ -57,12 +90,12 @@
     "O anexo continua embutido como data URL conforme fluxo atual do Hermes; arquivos maiores seguem bloqueados em 8 MB."
   ],
   "rollback": [
-    "Reverter apps/hub/components/pulsex/thread-panel.tsx para restaurar o input accept image/* e validacao somente de imagem nas respostas.",
-    "Reverter este manifesto e o complemento do diario se o recorte nao for publicado."
+    "Reapontar https://c2x.app.br para dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp se houver regressao critica.",
+    "Manter https://ops.c2x.app.br em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+    "Reverter apps/hub/components/pulsex/thread-panel.tsx em novo recorte se Lucas quiser remover documentos das respostas."
   ],
   "nextSteps": [
-    "Publicar Preview tecnico sem --prod e sem alias.",
-    "Lucas testar uma resposta no Hermes anexando PDF/DOCX.",
-    "Se aprovado e Lucas pedir explicitamente producao, promover/publicar pelo protocolo com gate de producao e registro de aliases."
+    "Lucas testar uma resposta no Hermes anexando PDF/DOCX em producao.",
+    "Se houver regressao critica, executar rollback de c2x.app.br para dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp."
   ]
 }
