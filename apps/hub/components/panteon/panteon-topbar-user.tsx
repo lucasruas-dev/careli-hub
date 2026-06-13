@@ -12,6 +12,7 @@ import {
   type HubPresenceStatus,
 } from "@/lib/hub-presence";
 import { useAuth } from "@/providers/auth-provider";
+import { PanteonNotificationButton } from "@/components/panteon/panteon-notification-button";
 
 type PanteonTopbarUserProps = {
   className?: string;
@@ -38,6 +39,8 @@ export function PanteonTopbarUser({
 
   return (
     <div className={`flex h-10 shrink-0 items-center gap-2 ${className}`}>
+      <PanteonNotificationButton />
+
       <PanteonPresenceControl
         disabled={!isPresenceReady}
         onChange={(nextStatus) => {

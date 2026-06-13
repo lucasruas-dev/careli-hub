@@ -1,0 +1,69 @@
+{
+  "protocolId": "HERMES-20260613-015-PANTEON-GLOBAL-NOTIFICATION-CENTER",
+  "module": "Hermes / Panteon",
+  "owner": "Zeus / Hermes",
+  "createdAt": "2026-06-13T12:43:43-03:00",
+  "status": "VALIDADO_LOCAL / AGUARDANDO_PREVIEW",
+  "summary": "Primeira base da experiencia Hermes global e da Central de Notificacoes Panteon-wide: Hermes pode abrir conversa flutuante em outros apps, a central recebe um contrato generico e agora tambem consome eventos reais de hub_activity_events via snapshot da Home.",
+  "fronts": [
+    {
+      "name": "Hermes global",
+      "goal": "Reduzir esforco para ler e responder canais Hermes enquanto o usuario esta em outro modulo.",
+      "implemented": [
+        "Provider global do Hermes passou a expor contexto de notificacoes e popup flutuante de canal.",
+        "Mensagens reais do Hermes seguem usando realtime existente, som e notificacao do navegador.",
+        "Ao clicar em notificacao Hermes, o canal abre por cima da tela atual e permite responder sem navegar para /hermes.",
+        "Se o popup do canal ja estiver aberto, nova mensagem entra direto na conversa e o canal e marcado como lido."
+      ]
+    },
+    {
+      "name": "Central de Notificacoes Panteon",
+      "goal": "Criar uma central acionavel para todos os modulos do Hub, sem limitar a Chronos ou HelpDesk.",
+      "implemented": [
+        "Contrato PanteonNotificationItem inclui moduleId, moduleLabel, tipo, severidade, descricao, link e contexto de entidade.",
+        "Helper apps/hub/lib/panteon-notifications.ts mapeia hub_activity_events para notificacoes acionaveis usando moduleId/basePath do snapshot da Home, sem lista fixa limitada a Chronos ou HelpDesk.",
+        "Provider global consulta a fonte Panteon-wide a cada 90 segundos e substitui o snapshot activity:* para evitar historico stale no painel.",
+        "Eventos Hermes vindos da trilha generica sao ignorados nessa fonte para evitar duplicidade com a fonte rica realtime/flutuante do Hermes.",
+        "Botao padrao foi ligado ao PanteonTopbarUser para estar disponivel nos modulos que usam o topbar padrao.",
+        "O shell principal deixou de mostrar notificacoes mock do pacote realtime.",
+        "Topbar antigo do Hades perdeu o sino estatico e passou a herdar a central padrao pelo PanteonTopbarUser."
+      ]
+    }
+  ],
+  "changedFiles": [
+    "apps/hub/components/guardian/layout/Topbar.tsx",
+    "apps/hub/components/panteon/panteon-notification-button.tsx",
+    "apps/hub/components/panteon/panteon-topbar-user.tsx",
+    "apps/hub/layouts/hub-shell.tsx",
+    "apps/hub/lib/panteon-notifications.ts",
+    "apps/hub/providers/pulsex-notification-provider.tsx",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-hermes-20260613-015-global-notification-center.json"
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria.",
+    "git diff --check: PASS, apenas aviso conhecido de LF para CRLF no Windows."
+  ],
+  "outOfScope": [
+    "Nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias, deploy Preview ou deploy de producao foi executado.",
+    "Nenhuma regra de presenca 5/10 foi alterada.",
+    "Nenhum modulo especifico foi alterado funcionalmente; modulos que ainda nao publicam eventos em hub_activity_events continuam precisando publicar seus proprios eventos na trilha central."
+  ],
+  "risks": [
+    "Validacao visual autenticada ainda precisa confirmar popup Hermes em uma tela fora do Hermes e o menu da central no topbar.",
+    "A central Panteon-wide agora le a trilha real hub_activity_events, mas a cobertura por modulo depende da qualidade dos eventos que cada modulo publica nessa tabela.",
+    "O popup flutuante Hermes cobre o canto inferior direito; se colidir com algum dock especifico, ajustar posicionamento em recorte visual pequeno."
+  ],
+  "rollback": [
+    "Reverter apps/hub/providers/pulsex-notification-provider.tsx para o provider anterior, que apenas tocava som/browser notification.",
+    "Remover PanteonNotificationButton de apps/hub/components/panteon/panteon-topbar-user.tsx.",
+    "Restaurar, se necessario, o sino antigo do shell/Hades; preferivel somente como rollback temporario porque ele usava notificacao mock/estatica."
+  ],
+  "nextSteps": [
+    "Lucas validar a experiencia Hermes global em um modulo diferente do Hermes.",
+    "Auditar quais eventos Iris, Hades, Chronos, Atlas e futuros modulos ja publicam em hub_activity_events e completar lacunas em recortes pequenos por modulo.",
+    "Publicar Preview somente com autorizacao explicita do Lucas."
+  ]
+}

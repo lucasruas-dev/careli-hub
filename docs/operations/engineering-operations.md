@@ -37193,3 +37193,81 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar `https://c2x.app.br` e validar visualmente os modulos principais.
 - Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
 - Proximo passo: manter a publicacao se o topbar estiver padronizado ou abrir recorte especifico para qualquer modulo que ainda nao mostre o bloco.
+
+### Registro 2026-06-13 12:43:43 -03:00 - Hermes global e Central de Notificacoes Panteon-wide
+
+- Status: `VALIDADO_LOCAL / AGUARDANDO_PREVIEW`.
+- Protocolo: `HERMES-20260613-015-PANTEON-GLOBAL-NOTIFICATION-CENTER`.
+- Pedido do Lucas:
+  - melhorar a experiencia e reduzir esforco de acesso ao Hermes quando o usuario estiver em outros modulos;
+  - criar uma Central de Notificacoes inteligente para o Hub inteiro, nao limitada a Chronos ou HelpDesk, incluindo Iris, Hades, Atlas, Chronos, Hermes e modulos futuros.
+- Decisao:
+  - separar o recorte em duas frentes conectadas, mas independentes:
+    - `Hermes global`: experiencia rica para abrir canal flutuante e responder sem trocar de modulo;
+    - `Central de Notificacoes Panteon`: contrato generico Panteon-wide para qualquer modulo publicar evento acionavel com `moduleId`, `moduleLabel`, tipo, severidade, descricao, link e contexto de entidade.
+- Implementacao local:
+  - `apps/hub/providers/pulsex-notification-provider.tsx` deixou de ser apenas side-effect de som/browser notification e passou a prover contexto global de notificacoes, central acionavel e popup flutuante Hermes;
+  - Hermes continua usando mensagens reais e realtime existente; ao clicar em notificacao, abre conversa flutuante sobre a tela atual e permite responder;
+  - se o canal Hermes ja estiver aberto no popup, nova mensagem entra direto no popup e o canal e marcado como lido, sem gerar alerta pendente duplicado;
+  - `apps/hub/components/panteon/panteon-notification-button.tsx` concentra a UI do botao e painel da Central Panteon;
+  - `apps/hub/components/panteon/panteon-topbar-user.tsx` passou a renderizar o botao da Central Panteon junto ao status/avatar/nome/logout;
+  - `apps/hub/layouts/hub-shell.tsx` removeu o sino antigo baseado no estado mock do pacote realtime;
+  - `apps/hub/components/guardian/layout/Topbar.tsx` removeu o sino estatico local para herdar o botao padrao via `PanteonTopbarUser`;
+  - manifesto criado em `docs/operations/panteon-recorte-manifest-hermes-20260613-015-global-notification-center.json`.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria;
+  - `git diff --check`: PASS, apenas aviso conhecido de LF para CRLF no Windows.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias, Preview ou deploy de producao foi executado;
+  - nenhuma regra de presenca 5/10 foi alterada;
+  - nenhum modulo alem dos pontos globais/topbar foi funcionalmente alterado;
+  - Iris, Hades, Atlas, Chronos e modulos futuros ainda precisam de recortes proprios para publicar eventos reais no contrato comum da central.
+- Risco residual:
+  - validacao visual autenticada ainda precisa confirmar o popup Hermes em um modulo diferente do Hermes e a central no topbar;
+  - se o popup Hermes colidir com algum dock operacional no canto inferior direito, ajustar posicionamento em recorte visual pequeno;
+  - a Central Panteon-wide esta preparada para multiplos modulos, mas nesta rodada a unica fonte real rica conectada e Hermes.
+
+Conclusao:
+
+- O que aconteceu: foi criada a base local da experiencia Hermes global e da Central de Notificacoes Panteon-wide.
+- Impacto pratico: o usuario pode receber alerta Hermes em outro modulo, abrir a conversa por cima da tela atual e responder sem sair do fluxo; a central deixou de depender de notificacao mock e ganhou contrato para todos os modulos.
+- Precisa de acao agora: ainda nao; o recorte esta validado localmente e aguarda Preview/publicacao se Lucas autorizar.
+- Quem deve agir agora: Lucas valida a direcao; Zeus publica Preview somente com autorizacao explicita.
+- Proximo passo: plugar eventos reais de Iris, Hades, Chronos, Atlas e futuros modulos em recortes pequenos usando o contrato comum da central.
+
+### Complemento 2026-06-13 13:07:22 -03:00 - Central Panteon plugada na trilha real de atividades
+
+- Status: `VALIDADO_LOCAL / AGUARDANDO_PREVIEW`.
+- Protocolo: `HERMES-20260613-015-PANTEON-GLOBAL-NOTIFICATION-CENTER`.
+- Pedido complementar do Lucas:
+  - "pode plugar", mantendo a central ampla para todos os modulos atuais e futuros, sem reduzir o recorte a Chronos/HelpDesk.
+- Decisao:
+  - usar `hub_activity_events`, via `getHubHomeSnapshot()` e `/api/hub/home`, como primeira fonte real Panteon-wide da Central de Notificacoes;
+  - manter Hermes como fonte rica separada, com realtime/popup flutuante, e ignorar eventos `moduleId=hermes` vindos da trilha generica para evitar notificacoes duplicadas;
+  - filtrar eventos de presenca da trilha generica para nao transformar a central em ruido de status online/ausente.
+- Implementacao local:
+  - criado `apps/hub/lib/panteon-notifications.ts` com tipos compartilhados `PanteonNotificationItem`/`PanteonNotificationInput` e mapeamento de `HubHomeActivityEvent` para notificacao acionavel;
+  - o mapeamento usa `moduleId`, `moduleLabel` e `basePath` do snapshot de Home, sem lista fixa limitada a Chronos, HelpDesk ou qualquer modulo especifico;
+  - `apps/hub/providers/pulsex-notification-provider.tsx` passou a consultar a fonte Panteon-wide a cada 90 segundos e substituir itens `activity:*`, preservando as notificacoes ricas do Hermes;
+  - `apps/hub/components/panteon/panteon-notification-button.tsx` passou a consumir o tipo compartilhado do novo helper.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias, Preview ou deploy de producao foi executado;
+  - nenhum modulo especifico foi alterado funcionalmente;
+  - a cobertura completa depende de cada modulo publicar eventos relevantes em `hub_activity_events`.
+- Risco residual:
+  - validacao visual autenticada ainda precisa confirmar a central mostrando eventos reais do snapshot;
+  - modulos que nao publicam eventos relevantes em `hub_activity_events` ainda nao vao aparecer na central ate receberem seus recortes de publicacao.
+
+Conclusao:
+
+- O que aconteceu: a Central Panteon deixou de depender apenas do contrato generico e passou a consumir uma fonte real ampla ja existente no Hub.
+- Impacto pratico: eventos operacionais de qualquer modulo que ja esteja publicando em `hub_activity_events` podem aparecer na central sem criar uma regra especifica por aplicativo.
+- Precisa de acao agora: ainda nao; o recorte esta validado localmente e aguarda Preview/publicacao se Lucas autorizar.
+- Quem deve agir agora: Lucas valida a direcao; Zeus publica Preview/producao somente com autorizacao explicita e pelo protocolo.
+- Proximo passo: validar visualmente em ambiente autenticado e auditar lacunas de publicacao de eventos por modulo.

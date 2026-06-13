@@ -1,6 +1,5 @@
 "use client";
 
-import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 import { AthenaTicketRecordingProvider } from "@/components/hub-support/athena-ticket-recording-provider";
 import { HubSupportDock } from "@/components/hub-support/hub-support-dock";
@@ -19,7 +18,6 @@ import {
   CommandPalette,
   ContentArea,
   IconButton,
-  NotificationPanel,
   RealtimePulse,
   Sidebar,
   SidebarGroup,
@@ -29,7 +27,6 @@ import {
   Topbar,
 } from "@repo/uix";
 import {
-  Bell,
   BarChart3,
   CalendarClock,
   CalendarDays,
@@ -47,10 +44,7 @@ import {
   ShieldCheck,
   ShoppingCart,
 } from "lucide-react";
-import {
-  getUnreadNotificationsCount,
-  mapConnectionStatusToPulseState,
-} from "@repo/realtime";
+import { mapConnectionStatusToPulseState } from "@repo/realtime";
 import {
   canAccessModule,
   getHubModuleStatusLabel,
@@ -60,7 +54,7 @@ import {
 } from "@repo/shared";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 type HubShellProps = Readonly<{
   children: ReactNode;
@@ -119,8 +113,6 @@ export function HubShell({
     isOperationalChrome || layoutMode === "module",
   );
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-  const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
-  const notificationPanelRef = useRef<HTMLDivElement>(null);
   const [releasedModuleIds, setReleasedModuleIds] =
     useState<Set<string> | null>(null);
   const [isHomologationBrand, setIsHomologationBrand] = useState(
@@ -130,19 +122,12 @@ export function HubShell({
   const { realtimeState } = useRealtime();
   const pathname = usePathname();
   const router = useRouter();
-  const unreadNotificationsCount = getUnreadNotificationsCount(realtimeState);
   const panteonBrandIconSrc = isHomologationBrand
     ? "/panteon-mark-homolog.png"
     : "/panteon-mark-light.png";
   const activeModule = orderedHubModules.find((hubModule) =>
     pathname.startsWith(hubModule.basePath),
   );
-
-  useOutsideDismiss({
-    enabled: isNotificationPanelOpen,
-    onDismiss: () => setIsNotificationPanelOpen(false),
-    ref: notificationPanelRef,
-  });
 
   useEffect(() => {
     setIsHomologationBrand(
@@ -493,48 +478,6 @@ export function HubShell({
             <Topbar
               actions={
                 <ActionGroup align="end">
-                  <div className="relative" ref={notificationPanelRef}>
-                    <Tooltip content="Notificacoes">
-                      <button
-                        aria-expanded={isNotificationPanelOpen}
-                        aria-label="Abrir notificacoes"
-                        className="relative grid h-8 w-8 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] outline-none transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                        onClick={() =>
-                          setIsNotificationPanelOpen(
-                            (currentValue) => !currentValue,
-                          )
-                        }
-                        type="button"
-                      >
-                        <Bell aria-hidden="true" size={17} />
-                        {unreadNotificationsCount > 0 ? (
-                          <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[0.625rem] font-bold leading-none text-white">
-                            {unreadNotificationsCount > 99
-                              ? "99+"
-                              : unreadNotificationsCount}
-                          </span>
-                        ) : null}
-                      </button>
-                    </Tooltip>
-                    {isNotificationPanelOpen ? (
-                      <NotificationPanel
-                        items={realtimeState.notifications.map(
-                          (notification) => ({
-                            description: notification.moduleId
-                              ? `Modulo: ${notification.moduleId}`
-                              : "Panteon Central",
-                            id: notification.id,
-                            read: notification.read,
-                            status: notification.severity,
-                            timestamp: notification.timestamp,
-                            title: notification.title,
-                          }),
-                        )}
-                        title="Notificacoes"
-                        unreadCount={unreadNotificationsCount}
-                      />
-                    ) : null}
-                  </div>
                   <PanteonInstallButton />
                   <Tooltip content="Ajustes">
                     <IconButton

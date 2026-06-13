@@ -1,6 +1,25 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import Link from "next/link";
+import {
+  ExternalLink,
+  MessageSquareText,
+  Send,
+  X,
+} from "lucide-react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+
+import type { HermesChannel, HermesMessage } from "@/lib/pulsex";
 import {
   playHermesIncomingMessageSound,
   registerHermesNotificationPermissionIntent,
@@ -8,10 +27,24 @@ import {
 } from "@/lib/pulsex/notification-effects";
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
+  broadcastHermesMessage,
   getHermesMessageRealtimeTopic,
   parseHermesMessageBroadcastPayload,
+  type HermesMessageRealtimeChannel,
 } from "@/lib/pulsex/realtime";
-import { listHermesNotificationChannels } from "@/lib/pulsex/supabase-data";
+import {
+  createHermesMessage,
+  listChannelMessages,
+  listHermesNotificationChannels,
+  markHermesChannelRead,
+} from "@/lib/pulsex/supabase-data";
+import { withChannelUnreadCounts } from "@/lib/pulsex/workspace-messages";
+import {
+  PANTEON_ACTIVITY_NOTIFICATION_PREFIX,
+  listPanteonActivityNotifications,
+  type PanteonNotificationInput,
+  type PanteonNotificationItem,
+} from "@/lib/panteon-notifications";
 import {
   getHubSupabaseClient,
   hasHubSupabaseConfig,
@@ -23,6 +56,25 @@ import { useAuth } from "@/providers/auth-provider";
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
+type PanteonNotificationsContextValue = {
+  activeHermesChannelId: HermesChannel["id"] | null;
+  hermesChannels: readonly HermesChannel[];
+  items: readonly PanteonNotificationItem[];
+  publishNotification: (notification: PanteonNotificationInput) => void;
+  markAllRead: () => void;
+  openHermesChannel: (channelId: HermesChannel["id"]) => void;
+  unreadCount: number;
+};
+
+const PanteonNotificationsContext =
+  createContext<PanteonNotificationsContextValue | null>(null);
+
+const HERMES_MODULE_ID = "hermes";
+const HERMES_MODULE_LABEL = "Hermes";
+const HERMES_SNAPSHOT_INTERVAL_MS = 60_000;
+const PANTEON_ACTIVITY_SNAPSHOT_INTERVAL_MS = 90_000;
+const FLOATING_NOTIFICATION_TTL_MS = 9_000;
+
 export function HermesNotificationProvider({
   children,
 }: Readonly<{
@@ -30,9 +82,349 @@ export function HermesNotificationProvider({
 }>) {
   const { hubUser, profileStatus } = useAuth();
   const currentUserId = hubUser?.id ?? "";
+  const [items, setItems] = useState<PanteonNotificationItem[]>([]);
+  const [floatingItems, setFloatingItems] = useState<PanteonNotificationItem[]>(
+    [],
+  );
+  const [hermesChannels, setHermesChannels] = useState<HermesChannel[]>([]);
+  const [activeHermesChannelId, setActiveHermesChannelId] = useState<
+    HermesChannel["id"] | null
+  >(null);
+  const [latestHermesPopupMessage, setLatestHermesPopupMessage] =
+    useState<HermesMessage | null>(null);
   const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
+  const activeHermesChannelIdRef = useRef<HermesChannel["id"] | null>(null);
+  const realtimeChannelsByIdRef = useRef<Map<string, HubRealtimeChannel>>(
+    new Map(),
+  );
+  const floatingTimeoutsRef = useRef<Map<string, number>>(new Map());
+
+  const unreadCount = useMemo(
+    () => items.filter((item) => !item.read).length,
+    [items],
+  );
+
+  const publishNotification = useCallback(
+    (notification: PanteonNotificationInput) => {
+      const nextNotification = normalizePanteonNotification(notification);
+
+      setItems((currentItems) =>
+        upsertNotification(currentItems, nextNotification).slice(0, 80),
+      );
+    },
+    [],
+  );
+
+  const markAllRead = useCallback(() => {
+    setItems((currentItems) =>
+      currentItems.map((item) => ({
+        ...item,
+        read: true,
+      })),
+    );
+    setHermesChannels((currentChannels) =>
+      currentChannels.map((channel) => ({
+        ...channel,
+        unreadCount: 0,
+      })),
+    );
+
+    hermesChannels
+      .filter((channel) => (channel.unreadCount ?? 0) > 0)
+      .forEach((channel) => {
+        markHermesChannelRead({ channelId: channel.id }).catch(
+          (error: unknown) => {
+            logSupabaseDiagnostic("pulsex", "global mark all read error", {
+              channelId: channel.id,
+              error: serializeDiagnosticError(error),
+            });
+          },
+        );
+      });
+  }, [hermesChannels]);
+
+  const markChannelNotificationsRead = useCallback(
+    (channelId: HermesChannel["id"]) => {
+      const notificationId = getHermesChannelNotificationId(channelId);
+
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          item.id === notificationId ||
+          item.context?.hermesChannelId === channelId
+            ? {
+                ...item,
+                read: true,
+              }
+            : item,
+        ),
+      );
+      setHermesChannels((currentChannels) =>
+        currentChannels.map((channel) =>
+          channel.id === channelId
+            ? {
+                ...channel,
+                unreadCount: 0,
+              }
+            : channel,
+        ),
+      );
+    },
+    [],
+  );
+
+  const openHermesChannel = useCallback(
+    (channelId: HermesChannel["id"]) => {
+      setActiveHermesChannelId(channelId);
+      markChannelNotificationsRead(channelId);
+
+      markHermesChannelRead({ channelId }).catch((error: unknown) => {
+        logSupabaseDiagnostic("pulsex", "global mark read error", {
+          channelId,
+          error: serializeDiagnosticError(error),
+        });
+      });
+    },
+    [markChannelNotificationsRead],
+  );
+
+  const pushFloatingNotification = useCallback(
+    (notification: PanteonNotificationItem) => {
+      setFloatingItems((currentItems) =>
+        [notification, ...currentItems.filter((item) => item.id !== notification.id)].slice(
+          0,
+          3,
+        ),
+      );
+
+      const existingTimeout = floatingTimeoutsRef.current.get(notification.id);
+
+      if (existingTimeout) {
+        window.clearTimeout(existingTimeout);
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        setFloatingItems((currentItems) =>
+          currentItems.filter((item) => item.id !== notification.id),
+        );
+        floatingTimeoutsRef.current.delete(notification.id);
+      }, FLOATING_NOTIFICATION_TTL_MS);
+
+      floatingTimeoutsRef.current.set(notification.id, timeoutId);
+    },
+    [],
+  );
+
+  const refreshHermesSnapshot = useCallback(async () => {
+    if (!currentUserId || profileStatus !== "ready") {
+      setHermesChannels([]);
+      return;
+    }
+
+    const channels = await listHermesNotificationChannels({
+      currentUserId,
+      userRole: hubUser?.role,
+    });
+
+    const messagesByChannel = new Map<HermesChannel["id"], HermesMessage[]>();
+    const messages = (
+      await Promise.all(
+        channels.map(async (channel) => {
+          const channelMessages = await listChannelMessages(channel.id).catch(
+            (error: unknown) => {
+              logSupabaseDiagnostic("pulsex", "global channel messages error", {
+                channelId: channel.id,
+                error: serializeDiagnosticError(error),
+              });
+
+              return [];
+            },
+          );
+
+          messagesByChannel.set(channel.id, channelMessages);
+          return channelMessages;
+        }),
+      )
+    ).flat();
+    const channelsWithUnread = withChannelUnreadCounts({
+      channels,
+      currentUserId,
+      messages,
+    });
+    const hermesNotifications = channelsWithUnread
+      .map((channel) =>
+        createHermesChannelNotification({
+          channel,
+          currentUserId,
+          messages: messagesByChannel.get(channel.id) ?? [],
+        }),
+      )
+      .filter(
+        (notification): notification is PanteonNotificationItem =>
+          notification !== null,
+      );
+    const hermesNotificationIds = new Set(
+      hermesNotifications.map((notification) => notification.id),
+    );
+
+    setHermesChannels(channelsWithUnread);
+    setItems((currentItems) => {
+      const retainedItems = currentItems.filter(
+        (item) =>
+          item.moduleId !== HERMES_MODULE_ID ||
+          !item.context?.hermesChannelId ||
+          hermesNotificationIds.has(item.id),
+      );
+
+      return mergeNotifications(retainedItems, hermesNotifications).slice(0, 80);
+    });
+  }, [currentUserId, hubUser?.role, profileStatus]);
+
+  const refreshPanteonActivityNotifications = useCallback(async () => {
+    if (!currentUserId || profileStatus !== "ready") {
+      return;
+    }
+
+    const activityNotifications = (
+      await listPanteonActivityNotifications()
+    ).map(normalizePanteonNotification);
+
+    setItems((currentItems) =>
+      mergeNotifications(
+        currentItems.filter(
+          (item) => !item.id.startsWith(PANTEON_ACTIVITY_NOTIFICATION_PREFIX),
+        ),
+        activityNotifications,
+      ).slice(0, 80),
+    );
+  }, [currentUserId, profileStatus]);
+
+  const handleHermesMessage = useCallback(
+    (channel: HermesChannel, message: HermesMessage) => {
+      if (
+        message.channelId !== channel.id ||
+        message.authorId === currentUserId ||
+        notifiedMessageIdsRef.current.has(message.id)
+      ) {
+        return;
+      }
+
+      notifiedMessageIdsRef.current.add(message.id);
+      setLatestHermesPopupMessage(message);
+
+      if (activeHermesChannelIdRef.current === channel.id) {
+        markChannelNotificationsRead(channel.id);
+        markHermesChannelRead({ channelId: channel.id }).catch(
+          (error: unknown) => {
+            logSupabaseDiagnostic("pulsex", "global active mark read error", {
+              channelId: channel.id,
+              error: serializeDiagnosticError(error),
+            });
+          },
+        );
+        return;
+      }
+
+      const mentioned = message.mentionUserIds?.includes(currentUserId);
+      const notification = normalizePanteonNotification({
+        actionLabel: "Abrir conversa",
+        context: {
+          hermesChannelId: channel.id,
+          entityId: message.id,
+          entityType: "message",
+        },
+        createdAt: message.createdAt ?? new Date().toISOString(),
+        description: `${message.authorName ?? HERMES_MODULE_LABEL}: ${truncateNotificationBody(message.body)}`,
+        href: getHermesChannelPath(channel.id),
+        id: getHermesChannelNotificationId(channel.id),
+        kind: "mensagem",
+        moduleId: HERMES_MODULE_ID,
+        moduleLabel: HERMES_MODULE_LABEL,
+        severity: mentioned ? "warning" : "info",
+        title: mentioned
+          ? `Voce foi mencionado em ${channel.name}`
+          : `Nova mensagem em ${channel.name}`,
+      });
+
+      setItems((currentItems) =>
+        upsertNotification(currentItems, notification).slice(0, 80),
+      );
+      setHermesChannels((currentChannels) =>
+        currentChannels.map((currentChannel) =>
+          currentChannel.id === channel.id
+            ? {
+                ...currentChannel,
+                lastMessageAt: message.createdAt ?? message.timestamp,
+                preview: truncateNotificationBody(message.body),
+                unreadCount: (currentChannel.unreadCount ?? 0) + 1,
+              }
+            : currentChannel,
+        ),
+      );
+      pushFloatingNotification(notification);
+
+      playHermesIncomingMessageSound({
+        mentioned,
+        messageId: message.id,
+      });
+      showBrowserHermesNotification({
+        body: `${message.authorName ?? HERMES_MODULE_LABEL}: ${truncateNotificationBody(message.body)}`,
+        onClickPath: getHermesChannelPath(channel.id),
+        tag: `pulsex-message-${message.id}`,
+        title: notification.title,
+      });
+    },
+    [currentUserId, markChannelNotificationsRead, pushFloatingNotification],
+  );
+
+  const sendHermesPopupMessage = useCallback(
+    async (channelId: HermesChannel["id"], body: string) => {
+      if (!currentUserId) {
+        throw new Error("Sessao Hermes indisponivel.");
+      }
+
+      const savedMessage = await createHermesMessage({
+        authorUserId: currentUserId,
+        body,
+        channelId,
+        clientMessageId: `global-${currentUserId}-${Date.now()}`,
+      });
+      const realtimeChannel = realtimeChannelsByIdRef.current.get(channelId);
+
+      notifiedMessageIdsRef.current.add(savedMessage.id);
+      void broadcastHermesMessage({
+        message: savedMessage,
+        onError: (error: unknown, message: HermesMessage) => {
+          logSupabaseDiagnostic("pulsex", "global broadcast error", {
+            error: serializeDiagnosticError(error),
+            messageId: message.id,
+          });
+        },
+        realtimeChannel: (realtimeChannel ??
+          null) as HermesMessageRealtimeChannel | null,
+      });
+      markChannelNotificationsRead(channelId);
+
+      return savedMessage;
+    },
+    [currentUserId, markChannelNotificationsRead],
+  );
 
   useEffect(() => registerHermesNotificationPermissionIntent(), []);
+
+  useEffect(() => {
+    activeHermesChannelIdRef.current = activeHermesChannelId;
+  }, [activeHermesChannelId]);
+
+  useEffect(() => {
+    const floatingTimeouts = floatingTimeoutsRef.current;
+
+    return () => {
+      floatingTimeouts.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      floatingTimeouts.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -40,6 +432,69 @@ export function HermesNotificationProvider({
       profileStatus !== "ready" ||
       !hasHubSupabaseConfig()
     ) {
+      return;
+    }
+
+    void refreshHermesSnapshot().catch((error: unknown) => {
+      logSupabaseDiagnostic("pulsex", "global snapshot error", {
+        error: serializeDiagnosticError(error),
+      });
+    });
+
+    const intervalId = window.setInterval(() => {
+      void refreshHermesSnapshot().catch((error: unknown) => {
+        logSupabaseDiagnostic("pulsex", "global snapshot interval error", {
+          error: serializeDiagnosticError(error),
+        });
+      });
+    }, HERMES_SNAPSHOT_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [currentUserId, profileStatus, refreshHermesSnapshot]);
+
+  useEffect(() => {
+    if (
+      !currentUserId ||
+      profileStatus !== "ready" ||
+      !hasHubSupabaseConfig()
+    ) {
+      return;
+    }
+
+    void refreshPanteonActivityNotifications().catch((error: unknown) => {
+      logSupabaseDiagnostic("pulsex", "panteon activity snapshot error", {
+        error: serializeDiagnosticError(error),
+      });
+    });
+
+    const intervalId = window.setInterval(() => {
+      void refreshPanteonActivityNotifications().catch((error: unknown) => {
+        logSupabaseDiagnostic(
+          "pulsex",
+          "panteon activity snapshot interval error",
+          {
+            error: serializeDiagnosticError(error),
+          },
+        );
+      });
+    }, PANTEON_ACTIVITY_SNAPSHOT_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [currentUserId, profileStatus, refreshPanteonActivityNotifications]);
+
+  useEffect(() => {
+    const realtimeChannelsById = realtimeChannelsByIdRef.current;
+
+    if (
+      !currentUserId ||
+      profileStatus !== "ready" ||
+      !hasHubSupabaseConfig()
+    ) {
+      realtimeChannelsById.clear();
       return;
     }
 
@@ -61,6 +516,10 @@ export function HermesNotificationProvider({
           return;
         }
 
+        const channelMap = new Map(
+          channels.map((channel) => [channel.id, channel]),
+        );
+
         realtimeChannels = channels.map((channel) => {
           const realtimeChannel = client.channel(
             getHermesMessageRealtimeTopic(channel.id),
@@ -74,6 +533,7 @@ export function HermesNotificationProvider({
             },
           );
 
+          realtimeChannelsById.set(channel.id, realtimeChannel);
           realtimeChannel
             .on(
               "broadcast",
@@ -84,31 +544,15 @@ export function HermesNotificationProvider({
                 const message = parseHermesMessageBroadcastPayload(
                   payload.payload,
                 );
+                const currentChannel = message
+                  ? channelMap.get(message.channelId)
+                  : null;
 
-                if (
-                  !message ||
-                  message.channelId !== channel.id ||
-                  message.authorId === currentUserId ||
-                  notifiedMessageIdsRef.current.has(message.id)
-                ) {
+                if (!message || !currentChannel) {
                   return;
                 }
 
-                notifiedMessageIdsRef.current.add(message.id);
-                const mentioned = message.mentionUserIds?.includes(currentUserId);
-
-                playHermesIncomingMessageSound({
-                  mentioned,
-                  messageId: message.id,
-                });
-                showBrowserHermesNotification({
-                  body: `${message.authorName ?? "Hermes"}: ${truncateNotificationBody(message.body)}`,
-                  onClickPath: "/hermes",
-                  tag: `pulsex-message-${message.id}`,
-                  title: mentioned
-                    ? "Voce foi mencionado no Hermes"
-                    : `Nova mensagem em ${channel.name}`,
-                });
+                handleHermesMessage(currentChannel, message);
               },
             )
             .subscribe((status) => {
@@ -132,11 +576,505 @@ export function HermesNotificationProvider({
       realtimeChannels.forEach((realtimeChannel) => {
         void client.removeChannel(realtimeChannel);
       });
+      realtimeChannelsById.clear();
       realtimeChannels = [];
     };
-  }, [currentUserId, hubUser?.role, profileStatus]);
+  }, [currentUserId, handleHermesMessage, hubUser?.role, profileStatus]);
 
-  return children;
+  const contextValue = useMemo<PanteonNotificationsContextValue>(
+    () => ({
+      activeHermesChannelId,
+      hermesChannels,
+      items,
+      markAllRead,
+      openHermesChannel,
+      publishNotification,
+      unreadCount,
+    }),
+    [
+      activeHermesChannelId,
+      hermesChannels,
+      items,
+      markAllRead,
+      openHermesChannel,
+      publishNotification,
+      unreadCount,
+    ],
+  );
+  const activeHermesChannel =
+    activeHermesChannelId === null
+      ? null
+      : (hermesChannels.find((channel) => channel.id === activeHermesChannelId) ??
+        null);
+
+  return (
+    <PanteonNotificationsContext.Provider value={contextValue}>
+      {children}
+      <PanteonFloatingNotificationLayer
+        items={floatingItems}
+        onDismiss={(notificationId) =>
+          setFloatingItems((currentItems) =>
+            currentItems.filter((item) => item.id !== notificationId),
+          )
+        }
+        onOpen={(notification) => {
+          if (notification.context?.hermesChannelId) {
+            openHermesChannel(notification.context.hermesChannelId);
+          }
+        }}
+      />
+      {activeHermesChannel ? (
+        <HermesFloatingChannelPopup
+          channel={activeHermesChannel}
+          currentUserId={currentUserId}
+          incomingMessage={latestHermesPopupMessage}
+          onClose={() => setActiveHermesChannelId(null)}
+          onMessageCreated={sendHermesPopupMessage}
+        />
+      ) : null}
+    </PanteonNotificationsContext.Provider>
+  );
+}
+
+export function usePanteonNotifications() {
+  const context = useContext(PanteonNotificationsContext);
+
+  if (!context) {
+    throw new Error(
+      "usePanteonNotifications deve ser usado dentro de HermesNotificationProvider.",
+    );
+  }
+
+  return context;
+}
+
+function PanteonFloatingNotificationLayer({
+  items,
+  onDismiss,
+  onOpen,
+}: {
+  items: readonly PanteonNotificationItem[];
+  onDismiss: (notificationId: PanteonNotificationItem["id"]) => void;
+  onOpen: (notification: PanteonNotificationItem) => void;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="fixed bottom-5 right-5 z-[var(--uix-z-toast)] grid w-[min(23rem,calc(100vw-2rem))] gap-2">
+      {items.map((item) => (
+        <div
+          className="rounded-lg border border-[#d9e0e7] bg-white p-3 shadow-2xl"
+          key={item.id}
+        >
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#101820] text-white">
+              <MessageSquareText aria-hidden="true" size={17} />
+            </span>
+            <button
+              className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={() => onOpen(item)}
+              type="button"
+            >
+              <span className="block truncate text-sm font-semibold text-[#101820]">
+                {item.title}
+              </span>
+              {item.description ? (
+                <span className="mt-0.5 block truncate text-xs text-[#526078]">
+                  {item.description}
+                </span>
+              ) : null}
+            </button>
+            <button
+              aria-label="Fechar notificacao"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#526078] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={() => onDismiss(item.id)}
+              type="button"
+            >
+              <X aria-hidden="true" size={15} />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HermesFloatingChannelPopup({
+  channel,
+  currentUserId,
+  incomingMessage,
+  onClose,
+  onMessageCreated,
+}: {
+  channel: HermesChannel;
+  currentUserId: string;
+  incomingMessage: HermesMessage | null;
+  onClose: () => void;
+  onMessageCreated: (
+    channelId: HermesChannel["id"],
+    body: string,
+  ) => Promise<HermesMessage>;
+}) {
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<HermesMessage[]>([]);
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    setLoading(true);
+    setError("");
+    listChannelMessages(channel.id)
+      .then((channelMessages) => {
+        if (!mounted) {
+          return;
+        }
+
+        setMessages(channelMessages.slice(-50));
+        markHermesChannelRead({ channelId: channel.id }).catch(
+          (readError: unknown) => {
+            logSupabaseDiagnostic("pulsex", "floating mark read error", {
+              channelId: channel.id,
+              error: serializeDiagnosticError(readError),
+            });
+          },
+        );
+      })
+      .catch((loadError: unknown) => {
+        if (!mounted) {
+          return;
+        }
+
+        setError(getReadableError(loadError));
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [channel.id]);
+
+  useEffect(() => {
+    if (!incomingMessage || incomingMessage.channelId !== channel.id) {
+      return;
+    }
+
+    setMessages((currentMessages) =>
+      mergePopupMessages(currentMessages, [incomingMessage]).slice(-50),
+    );
+  }, [channel.id, incomingMessage]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      behavior: "smooth",
+      top: scrollRef.current.scrollHeight,
+    });
+  }, [messages.length]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const body = draft.replace(/\s+/g, " ").trim();
+
+    if (!body || sending) {
+      return;
+    }
+
+    setSending(true);
+    setError("");
+
+    try {
+      const savedMessage = await onMessageCreated(channel.id, body);
+
+      setMessages((currentMessages) =>
+        mergePopupMessages(currentMessages, [savedMessage]).slice(-50),
+      );
+      setDraft("");
+    } catch (sendError) {
+      setError(getReadableError(sendError));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section
+      aria-label={`Conversa Hermes ${channel.name}`}
+      className="fixed bottom-5 right-5 z-[var(--uix-z-modal)] grid h-[min(34rem,calc(100dvh-3rem))] w-[min(27rem,calc(100vw-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-[#d9e0e7] bg-white shadow-2xl"
+    >
+      <header className="flex h-14 items-center gap-3 border-b border-[#d9e0e7] bg-[#101820] px-3 text-white">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[#101820] text-xs font-bold">
+          {channel.avatar}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold">
+            {channel.name}
+          </span>
+          <span className="block truncate text-xs text-[#cbd5e1]">
+            Hermes
+          </span>
+        </span>
+        <Link
+          aria-label="Abrir canal no Hermes"
+          className="grid h-8 w-8 place-items-center rounded-md text-[#dbe4ef] outline-none transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-[#D6B56F]"
+          href={getHermesChannelPath(channel.id)}
+        >
+          <ExternalLink aria-hidden="true" size={16} />
+        </Link>
+        <button
+          aria-label="Fechar conversa"
+          className="grid h-8 w-8 place-items-center rounded-md text-[#dbe4ef] outline-none transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-[#D6B56F]"
+          onClick={onClose}
+          type="button"
+        >
+          <X aria-hidden="true" size={17} />
+        </button>
+      </header>
+      <div className="min-h-0 overflow-y-auto bg-[#f6f8fb] p-3" ref={scrollRef}>
+        {loading ? (
+          <div className="grid h-full min-h-48 place-items-center text-sm text-[#6b778c]">
+            Carregando conversa...
+          </div>
+        ) : messages.length > 0 ? (
+          <div className="grid gap-2">
+            {messages.map((message) => {
+              const ownMessage = message.authorId === currentUserId;
+
+              return (
+                <article
+                  className={`grid max-w-[86%] gap-1 rounded-lg border px-3 py-2 text-sm shadow-sm ${
+                    ownMessage
+                      ? "ml-auto border-[#bfe9d5] bg-[#eafaf2]"
+                      : "mr-auto border-[#d9e0e7] bg-white"
+                  }`}
+                  key={message.id}
+                >
+                  <div className="flex items-center justify-between gap-3 text-[0.7rem] font-semibold text-[#6b778c]">
+                    <span className="truncate">
+                      {ownMessage
+                        ? "Voce"
+                        : (message.authorName ?? HERMES_MODULE_LABEL)}
+                    </span>
+                    <span>{message.timestamp}</span>
+                  </div>
+                  <p className="m-0 whitespace-pre-wrap break-words text-[#17202f]">
+                    {message.body}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid h-full min-h-48 place-items-center text-sm text-[#6b778c]">
+            Sem mensagens recentes.
+          </div>
+        )}
+      </div>
+      <form
+        className="grid gap-2 border-t border-[#d9e0e7] bg-white p-3"
+        onSubmit={handleSubmit}
+      >
+        {error ? (
+          <p className="m-0 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">
+            {error}
+          </p>
+        ) : null}
+        <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] gap-2">
+          <input
+            className="h-10 rounded-md border border-[#d9e0e7] px-3 text-sm text-[#17202f] outline-none transition placeholder:text-[#9aa6b5] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={`Mensagem ${channel.name}...`}
+            value={draft}
+          />
+          <button
+            aria-label="Enviar mensagem"
+            className="grid h-10 w-10 place-items-center rounded-md bg-[#101820] text-white outline-none transition hover:bg-[#1d2734] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={!draft.trim() || sending}
+            type="submit"
+          >
+            <Send aria-hidden="true" size={16} />
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function normalizePanteonNotification(
+  notification: PanteonNotificationInput,
+): PanteonNotificationItem {
+  const createdAt = notification.createdAt ?? new Date().toISOString();
+
+  return {
+    ...notification,
+    createdAt,
+    id:
+      notification.id ??
+      `${notification.moduleId}:${notification.kind}:${createdAt}:${notification.title}`,
+    read: notification.read ?? false,
+    severity: notification.severity ?? "neutral",
+  };
+}
+
+function createHermesChannelNotification({
+  channel,
+  currentUserId,
+  messages,
+}: {
+  channel: HermesChannel;
+  currentUserId: string;
+  messages: readonly HermesMessage[];
+}) {
+  const unreadMessages = getUnreadMessages({
+    channel,
+    currentUserId,
+    messages,
+  });
+
+  if (unreadMessages.length === 0) {
+    return null;
+  }
+
+  const latestMessage = unreadMessages[unreadMessages.length - 1];
+  const mentioned = unreadMessages.some((message) =>
+    message.mentionUserIds?.includes(currentUserId),
+  );
+
+  if (!latestMessage) {
+    return null;
+  }
+
+  return normalizePanteonNotification({
+    actionLabel: "Abrir conversa",
+    context: {
+      hermesChannelId: channel.id,
+      entityId: latestMessage.id,
+      entityType: "message",
+    },
+    createdAt: latestMessage.createdAt ?? new Date().toISOString(),
+    description: `${latestMessage.authorName ?? HERMES_MODULE_LABEL}: ${truncateNotificationBody(latestMessage.body)}`,
+    href: getHermesChannelPath(channel.id),
+    id: getHermesChannelNotificationId(channel.id),
+    kind: "mensagem",
+    moduleId: HERMES_MODULE_ID,
+    moduleLabel: HERMES_MODULE_LABEL,
+    severity: mentioned ? "warning" : "info",
+    title:
+      unreadMessages.length > 1
+        ? `${unreadMessages.length} mensagens em ${channel.name}`
+        : `Nova mensagem em ${channel.name}`,
+  });
+}
+
+function getUnreadMessages({
+  channel,
+  currentUserId,
+  messages,
+}: {
+  channel: HermesChannel;
+  currentUserId: string;
+  messages: readonly HermesMessage[];
+}) {
+  const lastReadAt = channel.memberReadAtByUserId?.[currentUserId];
+  const lastReadTime = lastReadAt ? Date.parse(lastReadAt) : Number.NaN;
+
+  return messages.filter((message) => {
+    if (
+      message.authorId === currentUserId ||
+      message.deletedAt ||
+      message.threadParentMessageId
+    ) {
+      return false;
+    }
+
+    const createdAt = message.createdAt ?? message.timestamp;
+    const messageTime = Date.parse(createdAt);
+
+    if (Number.isNaN(messageTime)) {
+      return false;
+    }
+
+    if (Number.isNaN(lastReadTime)) {
+      return true;
+    }
+
+    return messageTime > lastReadTime;
+  });
+}
+
+function getHermesChannelNotificationId(channelId: HermesChannel["id"]) {
+  return `${HERMES_MODULE_ID}:channel:${channelId}`;
+}
+
+function getHermesChannelPath(channelId: HermesChannel["id"]) {
+  return `/hermes?channel=${encodeURIComponent(channelId)}`;
+}
+
+function upsertNotification(
+  currentItems: readonly PanteonNotificationItem[],
+  notification: PanteonNotificationItem,
+) {
+  return mergeNotifications(currentItems, [notification]);
+}
+
+function mergeNotifications(
+  currentItems: readonly PanteonNotificationItem[],
+  nextItems: readonly PanteonNotificationItem[],
+) {
+  const itemsById = new Map<string, PanteonNotificationItem>();
+
+  currentItems.forEach((item) => itemsById.set(item.id, item));
+  nextItems.forEach((item) => {
+    const currentItem = itemsById.get(item.id);
+
+    itemsById.set(item.id, {
+      ...currentItem,
+      ...item,
+      read: item.read ?? currentItem?.read ?? false,
+    });
+  });
+
+  return [...itemsById.values()].sort(
+    (firstItem, secondItem) =>
+      getNotificationSortTime(secondItem) - getNotificationSortTime(firstItem),
+  );
+}
+
+function mergePopupMessages(
+  currentMessages: readonly HermesMessage[],
+  nextMessages: readonly HermesMessage[],
+) {
+  const messagesById = new Map<string, HermesMessage>();
+
+  currentMessages.forEach((message) => messagesById.set(message.id, message));
+  nextMessages.forEach((message) => messagesById.set(message.id, message));
+
+  return [...messagesById.values()].sort(
+    (firstMessage, secondMessage) =>
+      getHermesMessageTime(firstMessage) - getHermesMessageTime(secondMessage),
+  );
+}
+
+function getHermesMessageTime(message: HermesMessage) {
+  const value = message.createdAt ?? message.timestamp;
+  const time = Date.parse(value);
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getNotificationSortTime(notification: PanteonNotificationItem) {
+  const time = Date.parse(notification.createdAt);
+
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function truncateNotificationBody(body: string) {
@@ -145,4 +1083,16 @@ function truncateNotificationBody(body: string) {
   return normalizedBody.length > 140
     ? `${normalizedBody.slice(0, 137)}...`
     : normalizedBody;
+}
+
+function getReadableError(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  return "Nao foi possivel concluir a acao.";
 }

@@ -1,7 +1,6 @@
 /* eslint-disable */
 // @ts-nocheck
-import { Bell, ShieldCheck } from "lucide-react";
-import { Tooltip } from "@repo/uix";
+import { ShieldCheck } from "lucide-react";
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 
 export function Topbar() {
@@ -21,17 +20,6 @@ export function Topbar() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <Tooltip content="Notificações" placement="bottom">
-            <button
-              type="button"
-              aria-label="Notificações"
-              className="relative flex size-9 items-center justify-center rounded-xl border border-slate-200/70 text-slate-600 transition-colors hover:bg-slate-50"
-            >
-              <Bell className="size-4" aria-hidden="true" />
-              <span className="absolute right-2 top-2 size-2 rounded-full bg-[#A07C3B]" />
-            </button>
-          </Tooltip>
-
           <PanteonTopbarUser />
         </div>
       </div>
