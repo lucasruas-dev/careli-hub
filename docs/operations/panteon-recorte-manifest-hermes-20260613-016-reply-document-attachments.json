@@ -1,0 +1,48 @@
+{
+  "protocolId": "HERMES-20260613-016-REPLY-DOCUMENT-ATTACHMENTS",
+  "module": "Hermes",
+  "owner": "Zeus / Hermes",
+  "createdAt": "2026-06-13T14:42:37-03:00",
+  "status": "VALIDADO_LOCAL / AGUARDANDO_PREVIEW",
+  "summary": "Libera anexos de documentos no composer de respostas do Hermes, mantendo o contrato existente HermesMessageAttachment e sem alterar schema, banco, env ou producao.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Lucas pediu liberar dentro dos chats respostas do Hermes a opcao de anexar documentos, nao somente imagens.",
+    "deployment": "Lucas autorizou subir com 'pode subir'. Sem mencao explicita a producao, o recorte deve ser publicado como Preview tecnico, sem --prod e sem alias."
+  },
+  "changedFiles": [
+    "apps/hub/components/pulsex/thread-panel.tsx",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-hermes-20260613-016-reply-document-attachments.json"
+  ],
+  "implemented": [
+    "O input de anexo do painel de respostas deixou de aceitar apenas image/* e passou a aceitar audio, imagem, video e documentos comuns.",
+    "Arquivos selecionados em respostas sao classificados por MIME como audio, image, video ou file.",
+    "A previa local da resposta mostra miniatura apenas para imagem e icone de tipo para documentos/outros anexos.",
+    "Colagem de prints continua preservada como anexo image."
+  ],
+  "validations": [
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria.",
+    "git diff --check: PASS, apenas avisos CRLF esperados no Windows."
+  ],
+  "safety": [
+    "Nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias ou deploy de producao foi executado.",
+    "O recorte altera apenas o composer de respostas Hermes e documentacao operacional.",
+    "O arquivo docs/operations/homologation-safety-gate.md e o script scripts/homologation-safety-gate.mjs citados no AGENTS nao existem neste worktree; foi criado manifesto de recorte e rodadas validacoes equivalentes disponiveis."
+  ],
+  "risks": [
+    "Validacao funcional completa depende de sessao autenticada do Lucas anexando PDF/DOCX pequeno em uma resposta real.",
+    "O anexo continua embutido como data URL conforme fluxo atual do Hermes; arquivos maiores seguem bloqueados em 8 MB."
+  ],
+  "rollback": [
+    "Reverter apps/hub/components/pulsex/thread-panel.tsx para restaurar o input accept image/* e validacao somente de imagem nas respostas.",
+    "Reverter este manifesto e o complemento do diario se o recorte nao for publicado."
+  ],
+  "nextSteps": [
+    "Publicar Preview tecnico sem --prod e sem alias.",
+    "Lucas testar uma resposta no Hermes anexando PDF/DOCX.",
+    "Se aprovado e Lucas pedir explicitamente producao, promover/publicar pelo protocolo com gate de producao e registro de aliases."
+  ]
+}

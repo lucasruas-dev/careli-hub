@@ -9,7 +9,16 @@ import type {
   HermesReactionEmoji,
   HermesThreadReply,
 } from "@/lib/pulsex";
-import { AtSign, Image as ImageIcon, Paperclip, Send, X } from "lucide-react";
+import {
+  AtSign,
+  FileText,
+  Image as ImageIcon,
+  Mic,
+  Paperclip,
+  Send,
+  Video,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -72,7 +81,7 @@ export function ThreadPanel({
   replyValue,
   users,
 }: ThreadPanelProps) {
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [attachment, setAttachment] = useState<HermesMessageAttachment | null>(
     null,
@@ -236,7 +245,7 @@ export function ThreadPanel({
     setActiveMentionIndex(0);
   }
 
-  async function handleImageInputChange(event: ChangeEvent<HTMLInputElement>) {
+  async function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
 
     event.target.value = "";
@@ -245,7 +254,7 @@ export function ThreadPanel({
       return;
     }
 
-    await attachImageFile(file);
+    await attachFile(file);
   }
 
   async function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
@@ -256,22 +265,21 @@ export function ThreadPanel({
     }
 
     event.preventDefault();
-    await attachImageFile(imageFile, {
+    await attachFile(imageFile, {
       label: `Print ${formatAttachmentTime(new Date())}.${getImageExtension(imageFile.type)}`,
+      type: "image",
     });
   }
 
-  async function attachImageFile(
+  async function attachFile(
     file: File,
-    options: { label?: string } = {},
+    options: {
+      label?: string;
+      type?: HermesMessageAttachment["type"];
+    } = {},
   ) {
-    if (!file.type.startsWith("image/")) {
-      setMediaError("Selecione uma imagem.");
-      return;
-    }
-
-    if (file.size > MAX_THREAD_IMAGE_BYTES) {
-      setMediaError("Imagem acima de 8 MB.");
+    if (file.size > MAX_THREAD_ATTACHMENT_BYTES) {
+      setMediaError("Arquivo acima de 8 MB.");
       return;
     }
 
@@ -280,15 +288,17 @@ export function ThreadPanel({
     try {
       url = await readFileAsDataUrl(file);
     } catch {
-      setMediaError("Nao foi possivel carregar a imagem.");
+      setMediaError("Nao foi possivel carregar o anexo.");
       return;
     }
 
+    const mimeType = file.type || "application/octet-stream";
+
     setAttachment({
       label: options.label ?? file.name,
-      mimeType: file.type,
+      mimeType,
       sizeBytes: file.size,
-      type: "image",
+      type: options.type ?? getAttachmentType(mimeType),
       url,
     });
     setMediaError(null);
@@ -359,10 +369,10 @@ export function ThreadPanel({
         onSubmit={handleSubmit}
       >
         <input
-          accept="image/*"
+          accept={THREAD_ATTACHMENT_ACCEPT}
           className="hidden"
-          onChange={handleImageInputChange}
-          ref={imageInputRef}
+          onChange={handleFileInputChange}
+          ref={fileInputRef}
           type="file"
         />
         <div className="grid gap-2 rounded-[1.15rem] border border-[#d9e0ea] bg-white p-2 shadow-[0_10px_26px_rgba(16,24,32,0.08)] transition focus-within:border-[var(--uix-brand-primary)]">
@@ -393,9 +403,9 @@ export function ThreadPanel({
           ) : null}
           <div className="flex items-end gap-2">
             <button
-              aria-label="Anexar imagem"
+              aria-label="Anexar arquivo"
               className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-              onClick={() => imageInputRef.current?.click()}
+              onClick={() => fileInputRef.current?.click()}
               type="button"
             >
               <Paperclip aria-hidden="true" size={17} />
@@ -479,6 +489,9 @@ function ThreadAttachmentPreview({
   attachment: HermesMessageAttachment;
   onRemove: () => void;
 }) {
+  const Icon = getAttachmentIcon(attachment.type);
+  const isImageAttachment = attachment.type === "image" && Boolean(attachment.url);
+
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] p-2">
       <span
@@ -486,7 +499,7 @@ function ThreadAttachmentPreview({
         className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-white text-[#667085]"
         role="img"
         style={
-          attachment.url
+          isImageAttachment
             ? {
                 backgroundImage: `url(${attachment.url})`,
                 backgroundPosition: "center",
@@ -495,7 +508,7 @@ function ThreadAttachmentPreview({
             : undefined
         }
       >
-        {attachment.url ? null : <ImageIcon aria-hidden="true" size={18} />}
+        {isImageAttachment ? null : <Icon aria-hidden="true" size={18} />}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-semibold text-[#121722]">
@@ -508,7 +521,7 @@ function ThreadAttachmentPreview({
         ) : null}
       </span>
       <button
-        aria-label="Remover imagem"
+        aria-label="Remover anexo"
         className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#667085] transition hover:bg-[#e6ebf2] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
         onClick={onRemove}
         type="button"
@@ -677,11 +690,43 @@ function readFileAsDataUrl(file: File) {
         return;
       }
 
-      reject(new Error("Imagem invalida."));
+      reject(new Error("Anexo invalido."));
     });
     reader.addEventListener("error", () => reject(reader.error));
     reader.readAsDataURL(file);
   });
+}
+
+function getAttachmentType(mimeType: string): HermesMessageAttachment["type"] {
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+
+  if (mimeType.startsWith("image/")) {
+    return "image";
+  }
+
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+
+  return "file";
+}
+
+function getAttachmentIcon(type: HermesMessageAttachment["type"]) {
+  if (type === "audio") {
+    return Mic;
+  }
+
+  if (type === "image") {
+    return ImageIcon;
+  }
+
+  if (type === "video") {
+    return Video;
+  }
+
+  return FileText;
 }
 
 function getImageExtension(mimeType: string) {
@@ -718,4 +763,6 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-const MAX_THREAD_IMAGE_BYTES = 8 * 1024 * 1024;
+const THREAD_ATTACHMENT_ACCEPT =
+  "audio/*,image/*,video/*,.csv,.doc,.docx,.pdf,.ppt,.pptx,.txt,.xls,.xlsx";
+const MAX_THREAD_ATTACHMENT_BYTES = 8 * 1024 * 1024;

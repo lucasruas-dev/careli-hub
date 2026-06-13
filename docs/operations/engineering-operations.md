@@ -37328,3 +37328,29 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar visualmente em producao com sessao autenticada.
 - Quem deve agir agora: Lucas valida; Zeus fica pronto para rollback de `c2x.app.br` se houver regressao critica.
 - Proximo passo: auditar quais modulos ainda nao publicam eventos relevantes em `hub_activity_events` e abrir recortes pequenos por modulo.
+
+### Complemento 2026-06-13 14:35:12 -03:00 - Hermes respostas com anexos de documentos
+
+- Status: `VALIDADO_LOCAL / AGUARDANDO_PUBLICACAO`.
+- Protocolo: `HERMES-20260613-016-REPLY-DOCUMENT-ATTACHMENTS`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-hermes-20260613-016-reply-document-attachments.json`.
+- Escopo:
+  - liberado o composer de respostas do Hermes para anexar arquivos alem de imagens;
+  - `apps/hub/components/pulsex/thread-panel.tsx` passa a aceitar audio, imagem, video e documentos comuns (`csv`, `doc`, `docx`, `pdf`, `ppt`, `pptx`, `txt`, `xls`, `xlsx`);
+  - a resposta continua usando o contrato existente `HermesMessageAttachment`, classificando documentos como `file`, sem migration ou nova tabela;
+  - a previa local da resposta agora mostra miniatura apenas para imagem e icone de arquivo para documentos/outros anexos.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias, Preview ou deploy de producao foi executado;
+  - o chat principal ja aceitava arquivos; o recorte atuou no painel de respostas.
+
+Conclusao:
+
+- O que aconteceu: o gargalo estava no painel de respostas, que ainda aceitava somente `image/*`.
+- Impacto pratico: respostas em threads do Hermes podem carregar documentos e exibi-los como anexos antes do envio.
+- Precisa de acao agora: publicar somente se Lucas autorizar o deploy desse protocolo.
+- Quem deve agir agora: Lucas valida a necessidade de publicar; Zeus/Hefesto publicam pelo protocolo quando autorizado.
+- Proximo passo: fazer teste autenticado anexando um PDF/DOCX pequeno em uma resposta do Hermes.
